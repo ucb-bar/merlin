@@ -43,6 +43,7 @@ from merlin_experiments.phase1.context import (
     resolve_context,
 )
 from merlin_experiments.phase1.feedback import qa as _qc
+from merlin_experiments.phase1.feedback.candidate_observations import _shape_coverage, diagnostics_cli
 from merlin_experiments.phase1.timing import barrier_measurements
 
 
@@ -630,41 +631,6 @@ def _selfcheck_counts(
     }
 
 
-def _shape_coverage(sub: Path, out_path: str, *, context: InvocationContext, contract: Path | None = None) -> int:
-    """The agent-facing shape-coverage report (see ``--shape-coverage``).
-
-    Leaks nothing: the probe shapes are multiples of the target's own derived tile edge, which the agent
-    can read off its RTL facts, and the report contains no golden, no corpus capsule and no reference
-    value -- only what the agent's own compiler emitted.
-    """
-
-    from merlin.targetgen import lowering_coverage as LC
-
-    try:
-        cov = LC.sweep(
-            sub,
-            target=context.target,
-            contract=str(contract if contract is not None else context.repo / "merlin/contract"),
-        )
-    except Exception as e:  # noqa: BLE001
-        print(json.dumps({"error": f"shape-coverage probe failed: {type(e).__name__}: {e}"}))
-        return 2
-    cov["note"] = (
-        "Each corner is the SAME contraction at a different extent. `emitted_work` is how many "
-        "instructions YOUR compiler emitted for it. A larger problem cannot need a smaller program, so a "
-        "corner marked `collapsed` is a shape you silently refused -- at the numeric tier that arrives as "
-        "an output of zeros and is indistinguishable from wrong arithmetic. `multi_tile_axes_uncovered` "
-        "names an axis your lowering does not loop over; `tail_axes_uncovered` and "
-        "`tail_cases_uncovered` cover sub-tile and non-multiple extents. If you truly cannot lower a shape, DECLARE it "
-        "(set `declined` on the command buffer) rather than emitting a terminator."
-    )
-    txt = json.dumps(cov, indent=2)
-    print(txt)
-    if out_path:
-        Path(out_path).write_text(txt)
-    return 0 if cov.get("all_covered") else 1
-
-
 def _offload_census(
     sub: Path, out_path: str, *, context: InvocationContext, capsules_root: Path, contract: Path | None = None
 ) -> int:
@@ -957,6 +923,10 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         "extents. Not part of your score. A backend that passes the suite and fails these runs "
         "toy shapes only. Honors --capsules: name one layer to check one layer.",
     )
+    ap.add_argument("--candidate-diagnostics", action="store_true",
+                    help="INSTEAD of grading, inspect own public source/emission/host work; no simulator or baseline")
+    ap.add_argument("--dynamic-census", action="store_true",
+                    help="append bounded own-ELF activity after functional screen")
     a = ap.parse_args(argv)
     if a.rtl_facts is not None:
         from ..frozen_facts import select
@@ -982,13 +952,16 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         if a.out:
             Path(a.out).write_text(txt)
         return 0 if result.get("status") == "layout_only" else 2
-    if a.sim is None:
+    if a.sim is None and not a.candidate_diagnostics:
         a.sim = _default_sim(context)
     contract = a.contract if a.contract is not None else contract
     capsules_root = a.capsules_root if a.capsules_root is not None else capsules_root
     if capsules_root is None:
         capsules_root = _public_capsules(context)
     capsules_root = Path(capsules_root)
+
+    if a.candidate_diagnostics:
+        return diagnostics_cli(a, context=context, capsules_root=capsules_root, contract=contract)
 
     if a.shape_coverage:
         return _shape_coverage(Path(a.submission), a.out, context=context, contract=contract)
@@ -1205,6 +1178,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         if ran:
             _declared_ran = True
             break
+    census_deadline = time.monotonic() + min(30, a.timeout)
     for cr in _results:
         try:
             d = json.loads(cr.read_text())
@@ -1215,6 +1189,8 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             continue
         if _qc._candidate_native_feedback(d) is not None:
             row, certified = _candidate_selfcheck_row(d, closed_rows.get(name), name=name, barrier_tier=barrier_tier)
+            if a.dynamic_census:
+                row["dynamic_census"] = {"status": "UNKNOWN", "reason": "distinct own model ELF owner required"}
             rows.append(row)
             npass += int(row["pass"])
             ncert += int(certified)
@@ -1377,6 +1353,11 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                     **({"sim_console_tail_unreadable": console_tail_unreadable} if console_tail_unreadable else {}),
                 }
             )
+        if a.dynamic_census:
+            from .candidate_census import attach_candidate_census
+
+            attach_candidate_census(row, gen, result=d, context=context, compiler=sub,
+                                    remaining_s=max(0, census_deadline - time.monotonic()))
         rows.append(row)
     n_result = len(rows)
     try:

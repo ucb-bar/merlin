@@ -21,6 +21,7 @@ from pathlib import Path
 from merlin.common import storage_lifecycle as storage
 from merlin_experiments.execution import _protocol as protocol
 
+from . import ordinary_measurement_selection as SELECTION
 from .contracts import StageGateError, canonical_json, document_sha256, sha256_file, write_json
 from .external_resources import ExternalResourceBoundary, executing_resource_boundary
 from .feedback_guardian import run_feedback_guardian
@@ -109,6 +110,8 @@ class _Job:
     refusal: str | None = None
     cpus: tuple = ()
     cancel_requested: bool = False
+    selected_members: tuple = ()
+    member_selection_sha256: str = field(default_factory=lambda: document_sha256(()))
 
 
 def _environment():
@@ -117,7 +120,18 @@ def _environment():
 
 
 def _fixed_evaluator(
-    *, policy, revision, baseline_revision, kind, timeout_s, root, grant, cpus, index, resource_boundary=None
+    *,
+    policy,
+    revision,
+    baseline_revision,
+    kind,
+    timeout_s,
+    root,
+    grant,
+    cpus,
+    index,
+    resource_boundary=None,
+    selected_members=(),
 ):
     """Fixed private worker entry; no callback, command or import selection in requests."""
     with executing_resource_boundary(resource_boundary):
@@ -131,10 +145,13 @@ def _fixed_evaluator(
             grant=grant,
             cpus=cpus,
             index=index,
+            selected_members=selected_members,
         )
 
 
-def _evaluate_fixed_routes(*, policy, revision, baseline_revision, kind, timeout_s, root, grant, cpus, index):
+def _evaluate_fixed_routes(
+    *, policy, revision, baseline_revision, kind, timeout_s, root, grant, cpus, index, selected_members=()
+):
     from . import corpus_feedback as CF
     from .component_screening import project_screening
     from .component_workflow import SCHEMA, _interval, validate_component_feedback
@@ -160,8 +177,10 @@ def _evaluate_fixed_routes(*, policy, revision, baseline_revision, kind, timeout
                 timeout_s=timeout_s,
                 workers=workers,
                 kind=kind,
+                **({"selected_members": selected_members} if kind == SELECTION.KIND else {}),
             )
-            return inputs.validate_result(raw, revision, kind)
+            result = inputs.validate_result(raw, revision, kind)
+            return SELECTION.validate_feedback(result, members=selected_members) if kind == SELECTION.KIND else result
     with executing_revisions(revision, baseline_revision):
         policy._validate()
     if kind == KINDS[0]:
@@ -344,6 +363,7 @@ class ComponentEvaluationPool:
         if self._engine_lease is None:
             raise StageGateError("evaluation outer coordinator engine lease is busy")
         self._lease_path = lease_path
+        from merlin.common import owned_children as core_owned_children
         from merlin_experiments.execution import owned_children
 
         from . import (
@@ -374,6 +394,7 @@ class ComponentEvaluationPool:
             _kernel_resources,
             supervised_feedback,
             owned_children,
+            core_owned_children,
             protocol,
         )
         self._implementation_pins = tuple(
@@ -497,6 +518,12 @@ class ComponentEvaluationPool:
         )
 
     def _verify(self, job):
+        if job.member_selection_sha256 != document_sha256(job.selected_members):
+            raise StageGateError("queued original member selection changed")
+        if job.kind == SELECTION.KIND:
+            SELECTION.select_members(self.policy, job.selected_members)
+        elif job.selected_members:
+            raise StageGateError("queued complete evaluation cannot select a partial original roster")
         job.revision.verify()
         self.baseline_revision.verify()
         with executing_revisions(job.revision, self.baseline_revision):
@@ -504,13 +531,23 @@ class ComponentEvaluationPool:
         if closure != job.closure or _environment() != job.environment:
             raise StageGateError("queued evaluation source/input/corpus/tool/environment/runtime selection drifted")
 
-    def submit(self, revision_id, *, kind=None, timeout_s=600):
+    def submit(self, revision_id, *, kind=None, timeout_s=600, selected_members=()):
         with self._lock:
             kind = self.inputs.kinds[0] if kind is None else kind
             if self._closed or self._submissions_stopped:
                 raise StageGateError("evaluation submissions stopped")
-            if kind not in self.inputs.kinds or type(timeout_s) not in (int, float) or not 1 <= timeout_s <= 2400:
+            selected_route = self.inputs.ordinary and kind == SELECTION.KIND
+            if (
+                kind not in self.inputs.kinds
+                and not selected_route
+                or type(timeout_s) not in (int, float)
+                or not 1 <= timeout_s <= 2400
+            ):
                 raise StageGateError("evaluation submission has an unsupported kind or deadline")
+            if selected_route:
+                selected_members = SELECTION.select_members(self.policy, selected_members)
+            elif selected_members:
+                raise StageGateError("member selection is diagnostic-only on the normal selected RTL route")
             if (self.inputs.analytical if kind == KINDS[0] else self.inputs.rtl) is None:
                 raise StageGateError("selected queued component evaluation provider is unavailable")
             if sum(job.state not in TERMINAL for job in self._jobs.values()) >= self.max_pending:
@@ -530,6 +567,8 @@ class ComponentEvaluationPool:
             job = _Job(
                 identity, revision, kind, float(timeout_s), self._closure(), _environment(), self.root / identity
             )
+            job.selected_members = selected_members
+            job.member_selection_sha256 = document_sha256(selected_members)
             job.lease = storage.acquire(job.root, owner="phase2 queued component evaluation")
             # Protect caches and immutable inputs for the entire queued/active lifetime.
             paths = {
@@ -589,6 +628,9 @@ class ComponentEvaluationPool:
         if provider is not None and provider.binding.independent_arms is not None:
             total += self._disk_bytes(provider.binding.independent_arms.cache_root)
         total += sum(path.stat().st_size for path in self.root.glob("*.json"))
+        calibration_root = self.root / "calibrations"
+        if calibration_root.exists():
+            total += self._disk_bytes(calibration_root)
         return total
 
     def _status(self, job):
@@ -609,6 +651,7 @@ class ComponentEvaluationPool:
             "promotion": "NO_FINAL_ACCEPTANCE",
             "grant": asdict(self.grant),
             "resource_enforcement": enforcement,
+            "selected_members": [list(key) for key in job.selected_members],
         }
 
     def status(self, job_id):
@@ -702,6 +745,7 @@ class ComponentEvaluationPool:
                             cpus=cpus,
                             index=list(self._jobs).index(job.job_id),
                             resource_boundary=self._external_boundary,
+                            **({"selected_members": job.selected_members} if job.kind == SELECTION.KIND else {}),
                         ),
                         destination,
                         FeedbackValueLimits(),

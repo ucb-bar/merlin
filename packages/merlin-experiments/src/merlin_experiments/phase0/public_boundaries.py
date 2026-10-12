@@ -17,11 +17,13 @@ from . import public_boundary_semantics as S
 from . import public_programs as P
 
 SCHEMA = "merlin.phase0.public_joint_boundaries.v1"
+SCHEMA_V2 = "merlin.phase0.public_joint_boundaries.v2"
 TEMPLATE = {
     "schema": SCHEMA,
     "constructor": "original_connected_float32_cuts",
     "pressure": "logical_tensor_volume_at_selected_store_rows",
 }
+TEMPLATE_V2 = {**TEMPLATE, "schema": SCHEMA_V2, "constructor": "original_typed_connected_cuts"}
 _BUDGETS = {"max_members", "max_nodes", "max_logical_elements", "max_extent", "max_source_bytes"}
 
 
@@ -35,11 +37,15 @@ def validate(value):
     if (
         not isinstance(value, dict)
         or set(value) != {"schema", *_BUDGETS}
-        or value.get("schema") != SCHEMA
+        or value.get("schema") not in (SCHEMA, SCHEMA_V2)
         or any(type(value[k]) is not int or value[k] < 1 for k in _BUDGETS)
     ):
         raise ValueError("public joint boundaries require an explicit version and finite source budgets")
     return copy.deepcopy(value)
+
+
+def template_for(policy):
+    return TEMPLATE_V2 if validate(policy)["schema"] == SCHEMA_V2 else TEMPLATE
 
 
 def render(program):
@@ -52,9 +58,13 @@ def render(program):
     ):
         raise ValueError("public boundary source must use constructor-owned value names")
     names = {row["name"] for row in program["inputs"]}
+    typed = program.get("schema") == S.TYPED_SCHEMA
+    from . import public_typed_semantics as T
 
     def literal(value):
         if isinstance(value, dict):
+            if typed and set(value) == {"kind", "value"}:
+                return T.literal(value)
             if set(value) != {"value"} or value["value"] not in names:
                 raise ValueError("public boundary source operand is unavailable")
             return value["value"]
@@ -73,7 +83,11 @@ def render(program):
         "    def forward(self, " + ", ".join(row["name"] for row in program["inputs"]) + "):",
     ]
     for row in program["nodes"]:
-        if row["target"] not in S.SUPPORTED or row["dtype"] != "float32" or row["name"] in names:
+        if (
+            row["target"] not in (T.SUPPORTED if typed else S.SUPPORTED)
+            or row["dtype"] not in (T.DTYPES if typed else {"float32"})
+            or row["name"] in names
+        ):
             raise ValueError("public boundary call is not a supported fresh original node")
         args = [literal(v) for v in row["args"]] + [k + "=" + literal(v) for k, v in row["kwargs"].items()]
         lines.append(f"        {row['name']} = torch.ops.{row['target']}({', '.join(args)})")
@@ -82,10 +96,31 @@ def render(program):
         raise ValueError("public boundary output is unavailable")
     lines += ["        return (" + ", ".join(program["outputs"]) + ",)", "", "def get_model_and_inputs():"]
     for ordinal, row in enumerate(program["inputs"]):
-        if row["dtype"] != "float32" or any(type(d) is not int or d < 1 for d in row["shape"]):
+        if row["dtype"] not in (T.DTYPES if typed else {"float32"}) or any(
+            type(d) is not int or d < 1 for d in row["shape"]
+        ):
             raise ValueError("public boundary input type is unavailable")
         # A bounded deterministic independent input domain. No original weights,
         # source outputs or backend-dependent arithmetic enters these stimuli.
+        if typed:
+            # Source integer representations retain their actual signedness.
+            # Float stimuli cross integer cast boundaries instead of collapsing
+            # to all-zero narrowed values; eager capture still owns references.
+            dtype = row["dtype"]
+            expression = f"(((torch.arange({prod(row['shape'])},dtype=torch.int64)+{ordinal})%17)-8)"
+            if dtype.startswith(("float", "bfloat")):
+                expression += f".to(torch.{dtype}) / 4"
+            elif dtype == "bool":
+                expression += ".remainder(2).to(torch.bool)"
+            else:
+                expression += f".to(torch.{dtype})"
+            order = row.get("layout_order", list(range(len(row["shape"]))))
+            inverse = [order.index(i) for i in range(len(order))]
+            expression = f"({expression}).reshape({[row['shape'][i] for i in order]!r})"
+            if order != list(range(len(order))):
+                expression += f".permute({inverse!r})"
+            lines.append(f"    {row['name']} = {expression}")
+            continue
         lines.append(
             f"    {row['name']} = (((torch.arange({prod(row['shape'])}, dtype=torch.int64) + {ordinal}) % 17) - 8)"
             f".to(torch.float32).reshape({row['shape']!r}) / 32"
@@ -121,7 +156,7 @@ def derive(original_entries, outputs, *, evidence, policy):
             entries,
             products,
             {
-                "schema": SCHEMA,
+                "schema": policy["schema"],
                 "selection": policy,
                 "requested": 0,
                 "constructed": 0,
@@ -140,7 +175,10 @@ def derive(original_entries, outputs, *, evidence, policy):
         trace = json.loads(raw)
         source_context = {"path": prefix + "/frontend-trace.json", "sha256": hashlib.sha256(raw).hexdigest()}
         products[source_context["path"]] = raw
-        regions, gaps = S.cuts(trace, max_nodes=policy["max_nodes"])
+        typed = policy["schema"] == SCHEMA_V2
+        from . import public_typed_semantics as T
+
+        regions, gaps = S.cuts(trace, max_nodes=policy["max_nodes"], typed=typed)
         origin = {
             key: binding[key] for key in ("capture_sha256", "receipt_sha256", "loader_sha256", "full_inventory_sha256")
         }
@@ -170,8 +208,28 @@ def derive(original_entries, outputs, *, evidence, policy):
                     "quantum": quantum,
                     "tail_offsets": [-1, 1],
                     "include_exact_capacity": True,
+                    **({"logical_payload_only": True} if typed else {}),
                     "allocations": [
-                        {"name": r["name"], "shape": r["shape"], "dtype": "f32"}
+                        {
+                            "name": r["name"],
+                            "shape": r["shape"],
+                            "dtype": T.DTYPES[r["dtype"]] if typed else "f32",
+                            **(
+                                {
+                                    "logical_element_bits": 1
+                                    if r["dtype"] == "bool"
+                                    else int(
+                                        T.DTYPES[r["dtype"]]
+                                        .removeprefix("bf")
+                                        .removeprefix("f")
+                                        .removeprefix("i")
+                                        .removeprefix("u")
+                                    )
+                                }
+                                if typed
+                                else {}
+                            ),
+                        }
                         for r in [*region["inputs"], *region["nodes"]]
                     ],
                 }
@@ -182,7 +240,7 @@ def derive(original_entries, outputs, *, evidence, policy):
                         axis=axis,
                         target=evidence.target,
                         tile=quantum,
-                        dtype="fp32",
+                        dtype=T.DTYPES[region["inputs"][0]["dtype"]] if typed else "fp32",
                         fixed=fixed,
                         evidence=evidence,
                         resolve_extent=resolve_extent,
@@ -216,7 +274,7 @@ def derive(original_entries, outputs, *, evidence, policy):
                         continue
                     point = next(p for p in pressure["points"] if p["extent"] == extent)
                     member = {
-                        "schema": SCHEMA,
+                        "schema": policy["schema"],
                         "origin": origin,
                         "source_context": source_context,
                         "constructor_node_budget": policy["max_nodes"],
@@ -280,7 +338,16 @@ def derive(original_entries, outputs, *, evidence, policy):
                             "label": "dev",
                             "source_role": "derived_sweep",
                             "source_reference": "receipt-bound public original call semantics and selected facts",
-                            "operand_dtype": "fp32",
+                            "operand_dtype": next(
+                                (
+                                    T.DTYPES[r["dtype"]]
+                                    for r in region["inputs"]
+                                    if r["dtype"].startswith(("float", "bfloat"))
+                                ),
+                                "fp32",
+                            )
+                            if typed
+                            else "fp32",
                             "loader": path,
                             "public_boundary": member,
                             "performance": performance,
@@ -288,7 +355,7 @@ def derive(original_entries, outputs, *, evidence, policy):
                     )
                     products[path] = source
     report = {
-        "schema": SCHEMA,
+        "schema": policy["schema"],
         "selection": policy,
         "requested": requested,
         "constructed": len(entries),
@@ -315,7 +382,7 @@ def selected_loader(entry, root):
     trace = json.loads(context_path.read_bytes())
     if trace["graphs"]["original"]["sha256"] != member["origin"]["graph_sha256"]:
         raise ValueError("public boundary original source identity differs")
-    regions, _ = S.cuts(trace, max_nodes=member["constructor_node_budget"])
+    regions, _ = S.cuts(trace, max_nodes=member["constructor_node_budget"], typed=member.get("schema") == SCHEMA_V2)
     regions = [region for region in regions if region["original_nodes"] == member["program"]["original_nodes"]]
     if (
         len(regions) != 1
@@ -352,7 +419,7 @@ def verify_written(capsule, directory):
         raise ValueError("public boundary purpose differs from its source derivation")
     source = (directory / "capsule.pytorch.py").read_bytes()
     if (
-        member.get("schema") != SCHEMA
+        member.get("schema") not in (SCHEMA, SCHEMA_V2)
         or source != render(program).encode()
         or hashlib.sha256(source).hexdigest() != member["loader_sha256"]
     ):
@@ -383,12 +450,22 @@ def verify_written(capsule, directory):
         if isinstance(value, dict):
             if set(value) == {"node_id", "value_id"}:
                 return {"value": names[value["value_id"]]}
+            if program.get("schema") == S.TYPED_SCHEMA:
+                from .public_typed_semantics import literal
+
+                literal(value)
+                return value
             raise ValueError("public boundary actual argument is unsupported")
         return [argument(v) for v in value] if isinstance(value, list) else value
 
     for actual, expected in zip([*inputs, *calls], [*program["inputs"], *program["nodes"]], strict=True):
         if len(actual["results"]) != 1 or any(actual["results"][0].get(k) != expected[k] for k in ("shape", "dtype")):
             raise ValueError("public boundary actual tensor type differs from derived dimensions")
+        if "layout_order" in expected:
+            from .public_typed_semantics import layout_order
+
+            if layout_order(actual["results"][0]) != expected["layout_order"]:
+                raise ValueError("public boundary changed the original logical input layout")
         if "target" in expected and (
             actual["target"] != expected["target"]
             or trace["graphs"]["original"].get("operator_schemas", {}).get(actual["target"])

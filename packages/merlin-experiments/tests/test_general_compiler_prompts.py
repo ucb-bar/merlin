@@ -53,6 +53,9 @@ def test_rendered_tasks_serve_identical_requirements_for_every_level(monkeypatch
     assert grants == frozenset()
     assert "cannot need a smaller program" not in task
     assert "--capsules <changed-capsule-or-subset>" in task
+    assert "--candidate-diagnostics" in task
+    assert "--dynamic-census" in task
+    assert "counts are descriptive" in task
 
 
 def test_explicit_tasks_keep_their_bytes_and_contract_is_not_duplicated():

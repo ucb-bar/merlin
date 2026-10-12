@@ -7,6 +7,16 @@ the per-backend adapters under `backends/`.
 
 ## What belongs here
 
+- `complete_call_timing` selects an optional reviewed normal contract boundary:
+  `logical_harness.complete_call_timing` names an existing `counter_semantics`
+  record and an explicit positive delta bound below 2**63. The record must bind
+  actual accessor/ISA/clock source files, cycles, 64-bit width and modulo wrap;
+  the existing selected counter assembly is reused. No default counter or clock
+  exists. Both original callers include main preparation, submitted whole-program
+  work, completion and every output publication. Static immutable staging,
+  loader/startup, final metric formatting/exit and external parent readback are
+  excluded explicitly. Cold/warm qualification remains UNKNOWN. Actual source
+  and engine certificates remain necessary; this reviewed data is no new role.
 - `simulator.py` / `reference.py` / `tensor.py` / `metrics.py` / `commandbuffer.py` — the
   synthetic-workload command-buffer engine (integer tensor math + metrics) and an
   independent reference recomputation it is gated against.

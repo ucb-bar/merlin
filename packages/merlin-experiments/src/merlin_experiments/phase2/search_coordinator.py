@@ -151,6 +151,12 @@ class ComponentSearchCoordinator:
         self._plateau = 0
         self._finalized = False
         self.selected = None
+        self.calibration, self.calibration_installations, self.calibration_wall_seconds = None, 0, None
+        from .contracts import canonical_json
+        from .ordinary_queue_calibration import partition
+
+        selected_partition = partition(pool.policy) if pool.inputs.ordinary else None
+        self.calibration_partition = canonical_json(selected_partition) if selected_partition is not None else None
 
     def admit_submission(self, *, timeout_s):
         elapsed = time.monotonic() - self.started
@@ -249,6 +255,7 @@ class ComponentSearchCoordinator:
             "beam": beam,
             **projection,
             "screening": screening,
+            "provisional": self.provisional(observations),
             "priorities": next(
                 (row["priorities"] for row in ranked if row["source_sha256"] == self._incumbent["source_sha256"]),
                 {"status": "UNKNOWN", "reason": "incumbent has no complete measured roster"},
@@ -263,6 +270,18 @@ class ComponentSearchCoordinator:
             "selected": self.selected,
             "final_requirements": "observed author lineage plus fresh complete compile/static/numerical checks",
         }
+
+    def provisional(self, observations=None):
+        from .provisional_search import project
+
+        if self.timing_kind != ORDINARY_KIND:
+            return {"status": "UNAVAILABLE", "candidates": [], "history": []}
+        return project(self, self.pool.observations() if observations is None else observations)
+
+    def resume_parent(self, revision_id):
+        from .provisional_search import resume
+
+        return resume(self, revision_id)
 
     def finalize(self, *, timeout_s):
         """Stop exploration and finish or reap queued work before source selection."""

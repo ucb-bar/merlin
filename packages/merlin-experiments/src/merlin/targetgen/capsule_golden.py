@@ -808,6 +808,33 @@ def compare(
         "per_output": {},
     }
     total_mismatch = 0
+    if mode == "per_output":
+        policies = policy.get("outputs")
+        if (
+            policy.get("schema") != "merlin.numeric_policy.per_output.v1"
+            or type(policies) is not dict
+            or set(policies) != set(expected)
+            or any(
+                type(p) is not dict or p.get("compare") not in {"exact_int", "tolerance_float"}
+                for p in policies.values()
+            )
+        ):
+            raise ValueError("per-output numerics require the complete original result policy roster")
+        for name, value in expected.items():
+            child = compare(
+                {name: value},
+                {name: observed[name]} if name in observed else {},
+                policies[name],
+                golden_source=golden_source,
+            )
+            rep["per_output"][name] = {**child["per_output"][name], "policy": policies[name]["compare"]}
+            rep["mismatch_count"] += child["mismatch_count"]
+            rep["max_abs_error"] = max(rep["max_abs_error"], child["max_abs_error"])
+            rep["max_rel_error"] = max(rep["max_rel_error"], child["max_rel_error"])
+            if child["status"] != "pass":
+                rep["status"] = "fail"
+                rep["first_mismatch"] = rep["first_mismatch"] or child["first_mismatch"]
+        return rep
     for name, exp in expected.items():
         ef = _flat(exp)
         if name not in observed:

@@ -3,6 +3,10 @@
 ## Purpose
 
 Shared utilities: schemas, IO, source/resource paths, storage and access identities.
+`owned_children` is the original shared Linux pidfd/subreaper cleanup primitive.
+Only a dedicated child becomes a subreaper; real waitpid/ECHILD closes its tree.
+The experiments import remains a reexport and explicit source rosters must pin
+this actual core implementation. No descendant snapshot grants cleanup.
 `cpu_pool` applies explicitly selected launch-thread affinity and optional exclusive
 per-CPU subprocess slots, restoring caller affinity. It chooses no role or CPU;
 trusted callers own pool selection, timeout budgets and process supervision.
@@ -70,6 +74,9 @@ at actually invoked process or Python-call boundaries. Interrupted observations
 remain unavailable. Caller-owned destinations stay outside invoked packages;
 callers own dependency completeness, sandbox routing and semantic stage lift.
 The observer confers no correctness, stage applicability or admission.
+`complete_streams` seals the caller's incrementally captured raw files without
+loading the full trace into RAM. The caller still owns actual bounded execution,
+cleanup and stream completion; the method cannot issue those observations.
 Actual subprocess runs freeze the selected effective environment and bind its
 complete process-byte mapping by digest and key roster without recording values.
 `require_environment` compares an explicit protected expected mapping; legacy

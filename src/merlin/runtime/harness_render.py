@@ -76,7 +76,7 @@ def _tensor(spec):
     if "base" in spec and (type(spec["base"]) is not int or not 0 <= spec["base"] < 2**64):
         raise ValueError("neutral harness has an invalid DRAM placement annotation")
     shape = spec.get("shape")
-    if type(shape) is not list or not shape or len(shape) > 32 or any(type(d) is not int or d <= 0 for d in shape):
+    if type(shape) is not list or len(shape) > 32 or any(type(d) is not int or d <= 0 for d in shape):
         raise ValueError("neutral harness requires positive static logical tensor dimensions")
     if spec.get("layout", "dense_row_major") not in ("dense_row_major", "row_major"):
         raise ValueError("neutral harness requires dense row-major logical storage")
@@ -109,7 +109,7 @@ def _tensor(spec):
     return tuple(shape), dtype, stride * (dtype.element_bits // 8)
 
 
-def _roster(cb):
+def _roster(cb, *, source_owned_mutables=None):
     if type(cb) is not dict or type(cb.get("tensors")) is not dict or not cb["tensors"]:
         raise ValueError("neutral harness requires a complete logical tensor roster")
     tensors = cb["tensors"]
@@ -143,6 +143,11 @@ def _roster(cb):
     if type(args) is not list or not args or type(outputs) is not list or not outputs:
         raise ValueError("neutral harness has an incomplete logical pointer/output roster")
     slots = {}
+    mutable = (
+        {name for name, spec in tensors.items() if type(spec) is dict and spec.get("role") == "intermediate"}
+        if source_owned_mutables is None
+        else set(source_owned_mutables)
+    )
     for arg in args:
         if (
             type(arg) is not dict
@@ -154,23 +159,28 @@ def _roster(cb):
         if name in slots or name not in tensors:
             raise ValueError("neutral harness repeats or substitutes a logical pointer")
         slots[name] = arg["access"]
+    if not mutable <= set(slots) or any(type(name) is not str for name in mutable):
+        raise ValueError("neutral source-owned scratch is outside the original pointer roster")
     if set(slots) != set(tensors) or any(type(name) is not str for name in outputs):
         raise ValueError("neutral harness omits or adds a declared logical tensor")
     if len(outputs) != len(set(outputs)) or set(outputs) != {
-        name for name, access in slots.items() if access != "read"
+        name for name, access in slots.items() if access != "read" and name not in mutable
     }:
         raise ValueError("neutral harness omits, repeats or substitutes a complete output")
     for name, spec in tensors.items():
         role = spec.get("role") if type(spec) is dict else None
         if role is not None and (
-            role not in ("input", "weight", "bias", "scale", "output")
+            role not in ("input", "weight", "bias", "scale", "output", "intermediate")
             or (role == "output" and name not in outputs)
-            or (role != "output" and slots[name] == "write")
+            or (role != "output" and name not in mutable and slots[name] == "write")
+            or (role == "intermediate" and (name not in mutable or slots[name] == "read"))
         ):
             raise ValueError("neutral harness pointer access conflicts with its semantic role")
     normalized = {**cb, "kernel_abi": kernel}
     leaves = whole_program_entry_bindings(normalized)
-    if leaves is not None and leaves != [name for name, access in slots.items() if access != "write"]:
+    if leaves is not None and leaves != [
+        name for name, access in slots.items() if access != "write" and name not in mutable
+    ]:
         raise ValueError("neutral harness changes the ordered logical input bindings")
     return normalized, slots
 
@@ -266,6 +276,7 @@ def render_harness(
     counter_plan=None,
     phase_plan=None,
     max_storage_bytes=16 * 1024 * 1024,
+    source_owned_mutables=(),
 ):
     """Ordinary renderer: storage/calls only, with complete output-only poisoning.
 
@@ -284,7 +295,9 @@ def render_harness(
         raise ValueError("neutral harness readback differs from its selected contract")
     if type(max_storage_bytes) is not int or not 0 < max_storage_bytes < 1 << 64:
         raise ValueError("neutral harness requires a positive complete storage budget")
-    normalized, slots = _roster(cb)
+    if type(source_owned_mutables) is not tuple or len(set(source_owned_mutables)) != len(source_owned_mutables):
+        raise ValueError("neutral source-owned scratch requires its original exact tuple")
+    normalized, slots = _roster(cb, source_owned_mutables=source_owned_mutables)
     layouts = {name: _tensor(spec) for name, spec in normalized["tensors"].items()}
     total = sum(row[2] for row in layouts.values())
     if original_abi is not None:
@@ -317,13 +330,17 @@ def render_harness(
         total += sum(phase_plan.bind(normalized, abi=abi, invocation_plan=invocation_plan).values())
     if total > max_storage_bytes:
         raise ValueError("neutral harness exceeds its complete storage budget before input rendering")
-    expected = {name for name, access in slots.items() if access != "write"}
+    expected = {name for name, access in slots.items() if access != "write" and name not in source_owned_mutables}
     if type(inputs) is not dict or set(inputs) != expected:
         raise ValueError("neutral harness needs the exact complete logical input roster")
     tensors = {}
     for name, spec in normalized["tensors"].items():
         shape, dtype, extent = layouts[name]
-        tensors[name] = {"shape": list(shape), "dtype": spec["dtype"]}
+        tensors[name] = {
+            "shape": list(shape),
+            "dtype": spec["dtype"],
+            **({"role": spec["role"]} if "role" in spec else {}),
+        }
         if name in expected:
             tensors[name]["preload_b64"] = _payload(inputs[name], spec, shape, dtype, extent)
             if "data" in spec and _payload(spec["data"], spec, shape, dtype, extent) != tensors[name]["preload_b64"]:
@@ -331,6 +348,9 @@ def render_harness(
         elif "data" in spec or "preload_b64" in spec:
             raise ValueError("neutral output-only storage cannot carry precomputed data")
     normalized = {**normalized, "tensors": tensors}
+    from .complete_call_timing import from_contract
+
+    complete_call_timing = from_contract(contract)
     return render_direct_kernel(
         normalized,
         inputs={name: {} for name in expected},
@@ -341,4 +361,6 @@ def render_harness(
         phase_plan=phase_plan,
         output_poison=0xA5,
         prelude_symbol=selected.prelude_symbol,
+        complete_call_timing=complete_call_timing,
+        source_owned_mutables=source_owned_mutables,
     )

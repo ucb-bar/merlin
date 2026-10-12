@@ -20,6 +20,13 @@ from merlin.perf import compiled_static_features as S
 from merlin.runtime.backends.base import get_backend
 from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+from merlin.targetgen.rtl import facts as RTL_FACTS
+from merlin_experiments.phase1.feedback.candidate_census import observe_passed_census
+from merlin_experiments.phase1.feedback.candidate_census import unknown as unknown_census
+from merlin_experiments.phase1.feedback.candidate_observations import (
+    observe_generated_artifacts,
+    reopen_native_products,
+)
 
 from . import campaign as PC
 from .contracts import StageGateError, exact_tree_record, mapping_file, sha256_file, write_json
@@ -41,43 +48,93 @@ def _unique(root, name):
     return next(iter(paths.values()))
 
 
-def compiled_observation(root, *, target):
+def compiled_observation(
+    root, *, target, compiler=None, numeric_context=None, candidate_sha256=None, original_grade=None
+):
     """Join fresh ELF/link invocation and emitted LLVM; unsupported bodies stay UNKNOWN."""
     try:
-        llvm, elf = _unique(root, "lowered.llvm.mlir"), _unique(root, PACKAGE_ELF_NAME)
+        entry = get_backend(target).harness_build_recipe().require_kernel_stack_frame().entry_symbol
+    except (ValueError, RuntimeError, AttributeError, KeyError):
+        entry = None
+    diagnostics = observe_generated_artifacts(
+        root,
+        compiler=compiler,
+        numeric_context=numeric_context,
+        entry_symbol=entry,
+        candidate_sha256=candidate_sha256,
+        original_grade=original_grade,
+    )
+    try:
+        native = (original_grade or {}).get("candidate_native_execution")
+        if native is not None:
+            if (
+                not isinstance(native, dict)
+                or not {"source", "candidate", "build_artifacts", "elf"} <= set(native)
+                or any(not isinstance(native[key], dict) for key in ("source", "candidate", "build_artifacts"))
+            ):
+                raise ValueError("original native candidate receipt is incomplete")
+            products, links = reopen_native_products(
+                root,
+                emission=original_grade.get("candidate_emission"),
+                elf_pin=native.get("elf"),
+                source=native.get("source"),
+                build_artifacts=native.get("build_artifacts"),
+                candidate=native.get("candidate"),
+            )
+            llvm, elf = products["emitted"], products["elf"]
+            join = {
+                "kind": "original_native_model_products",
+                "source_sha256": sha256_file(products["source"]),
+                "command_buffer_sha256": sha256_file(products["command_buffer"]),
+                "producer_sha256s": [sha256_file(path) for path in links],
+            }
+        else:
+            llvm, elf = _unique(root, "lowered.llvm.mlir"), _unique(root, PACKAGE_ELF_NAME)
+            elf_pin = {"path": str(elf), "sha256": sha256_file(elf)}
+            links = []
+            for path in root.rglob("invocation.json"):
+                row = mapping_file(path)
+                if row.get("stage") == "elf" and elf_pin in row.get("outputs", []) and successful_record(row):
+                    links.append(I.verify(path))
+            if not links:
+                raise ValueError("ordinary feature ELF lacks its actual native link invocation")
+            join = {"kind": "original_operator_products"}
         if llvm.stat().st_size > LIMITS.max_source_bytes or elf.stat().st_size > LIMITS.max_elf_bytes:
             raise ValueError("ordinary compiled feature byte limit exceeded")
         elf_pin = {"path": str(elf), "sha256": sha256_file(elf)}
-        links = []
-        for path in root.rglob("invocation.json"):
-            row = mapping_file(path)
-            if row.get("stage") == "elf" and elf_pin in row.get("outputs", []) and successful_record(row):
-                links.append(I.verify(path))
-        if not links:
-            raise ValueError("ordinary feature ELF lacks its actual native link invocation")
-        recipe = get_backend(target).harness_build_recipe()
-        entry = recipe.require_kernel_stack_frame().entry_symbol
-        data = elf.read_bytes()
-        retained = S.linked_entry_extent(data, entry)
-        # linked_entry_extent supports ELF64 only. This is an observed ELF class,
-        # not a claim about source pointer semantics or a selected target default.
-        report = S.derive_compiled_static_features(
-            llvm_mlir=llvm.read_text(),
-            elf_bytes=data,
-            entry_symbol=entry,
-            pointer_bits=64,
-            retained_entry=retained,
-            limits=LIMITS,
-        )
+        report, features = None, dict.fromkeys(FEATURES)
+        try:
+            if entry is None:
+                raise ValueError("ordinary feature entry selection is unavailable")
+            data = elf.read_bytes()
+            retained = S.linked_entry_extent(data, entry)
+            # This observer supports ELF64 only; it supplies no source pointer premise.
+            report = S.derive_compiled_static_features(
+                llvm_mlir=llvm.read_text(),
+                elf_bytes=data,
+                entry_symbol=entry,
+                pointer_bits=64,
+                retained_entry=retained,
+                limits=LIMITS,
+            )
+            features = {
+                FEATURES[0]: float(sum(report["emitted"]["action_sites"].values())),
+                FEATURES[1]: float(report["linked"]["executable_bytes"]),
+            }
+        except (OSError, ValueError, RuntimeError, KeyError, AttributeError) as error:
+            write_json(
+                root / "static_feature_failure_private.json",
+                {"category": type(error).__name__, "detail": str(error)[:500]},
+            )
         return {
             "status": "observed",
             "elf_sha256": elf_pin["sha256"],
             "llvm_mlir_sha256": sha256_file(llvm),
+            "artifact_join": join,
             "report": report,
-            "features": {
-                FEATURES[0]: float(sum(report["emitted"]["action_sites"].values())),
-                FEATURES[1]: float(report["linked"]["executable_bytes"]),
-            },
+            "static_status": "observed" if report is not None else "UNKNOWN",
+            "candidate_diagnostics": diagnostics,
+            "features": features,
         }
     except (OSError, ValueError, RuntimeError, KeyError, AttributeError) as error:
         write_json(
@@ -87,6 +144,7 @@ def compiled_observation(root, *, target):
             "status": "UNKNOWN",
             "reason": "ordinary compiled observation unavailable: " + type(error).__name__,
             "features": dict.fromkeys(FEATURES),
+            "candidate_diagnostics": diagnostics,
         }
 
 
@@ -113,6 +171,9 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
     # Keep the full original obligations. The ordinary runner records missing
     # deeper tiers as incomplete; consumers read actual L0/L1/L2 observations.
     capsule["oracle_tier_ceiling"] = "L2"
+    from .public_program_measurement import selection as public_selection
+
+    model_selection = public_selection(capsule, policy.feedback_evaluator.rtl_identity, simulator="spike")
     sandbox = PC.package_sandbox_policy(policy.target_experiment, workspace, revision.source)
     started = time.monotonic()
     with PC.boxed_entrypoints(sandbox):
@@ -127,12 +188,34 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
             adapter_managed_tiers=("L2",),
             timeout=remaining,
             workers=workers,
+            **({"model_execution_selection": model_selection} if model_selection is not None else {}),
         )
     tiers = grade.get("tiers") or {}
     functional = all((tiers.get(tier) or {}).get("status") == "pass" for tier in ("L0", "L1", "L2"))
     if before != (str(hash_tree(revision.source)["sha256"]), exact_tree_record(member.source_dir)["sha256"]):
         raise StageGateError("ordinary cheap execution changed frozen compiler or input bytes")
-    compiled = compiled_observation(workspace, target=policy.target_experiment.target)
+    compiled = compiled_observation(
+        workspace,
+        target=policy.target_experiment.target,
+        compiler=revision.source,
+        numeric_context=capsule,
+        candidate_sha256=revision.source_sha256,
+        original_grade=grade,
+    )
+    facts_path = policy.feedback_evaluator.rtl_facts_path
+    if facts_path.stat().st_size > 8 << 20:
+        compiled["dynamic_census"] = unknown_census("original census facts exceed the descriptive input budget")
+    # Reuse the already selected original facts, never an ambient target cache.
+    else:
+        with RTL_FACTS.observed_facts(policy.target_experiment.target, mapping_file(facts_path), facts_path):
+            compiled["dynamic_census"] = observe_passed_census(
+                workspace,
+                target=policy.target_experiment.target,
+                compiler=revision.source,
+                remaining_s=max(0, deadline - time.monotonic()),
+                numerical_pass=functional,
+                policy=sandbox,
+            )
     evidence = workspace / "ordinary_observation.json"
     result = {
         "functional_status": "PASS" if functional else "UNKNOWN_OR_FAILURE",

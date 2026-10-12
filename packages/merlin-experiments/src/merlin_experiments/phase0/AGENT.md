@@ -1,5 +1,15 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+Explicit ordinary `public_joint_boundaries` v2 selects typed connected cuts:
+casts with original dtype literals, integer representations, higher-rank batch
+contractions/broadcasting and reduction composition. Keep v1 float-only replay
+unchanged. Preserve every original live-out, exact integer references and each
+floating output's original tolerance through an explicit per-output policy.
+Observed dense input permutations are retained; other strided/effect domains
+remain UNKNOWN. Source widths price logical payload only at facts-derived row
+widths, never physical packing, simultaneous allocation or lifetime. New source
+cases still pass ordinary capture, private exclusion and discovery/freeze.
+
 Ordinary `public_joint_boundaries` v1 selects the shared public boundary factory.
 `public_boundary_semantics` replays exact original public typed calls and derives
 connected cuts/dimension equalities; `public_boundaries` emits changed bounded
