@@ -61,6 +61,9 @@ def _client_selection(options) -> dict | None:
 
 
 def _verify_client_selection(options, environment: dict) -> None:
+    prior = (environment.get("run_config") or {}).get("codex_max_subagents")
+    if prior != options.codex_max_subagents:
+        raise RuntimeError("explicit Codex delegation limit changed")
     recorded = (environment.get("run_config") or {}).get("codex_runtime")
     if recorded != _client_selection(options):
         raise RuntimeError("explicit client selection changed")
@@ -135,6 +138,7 @@ class RunRequest:
                 else {}
             ),
             **({"codex_runtime": _client_selection(a)} if a.codex_binary else {}),
+            **({"codex_max_subagents": a.codex_max_subagents} if a.codex_max_subagents is not None else {}),
             **({"readback_policy": readback_record(self.context)} if self.context.readback_policy is not None else {}),
         }
 

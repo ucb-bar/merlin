@@ -32,6 +32,7 @@ class ProviderConfig:
     subagent_model: str = ""
     background_model: str = ""
     codex_runtime: object | None = None
+    codex_max_subagents: int | None = None
 
 
 @dataclass(frozen=True)
@@ -266,6 +267,8 @@ def launch(
         drv = resolve_driver(model, config=config.provider)
         if config.provider.codex_runtime is not None and drv != "codex":
             raise ValueError("explicit client runtime requires the Codex provider")
+        if config.provider.codex_max_subagents is not None and (drv != "codex" or sandbox != "bwrap"):
+            raise ValueError("Codex subagents require the Codex provider and bwrap sandbox")
         # A (model, harness) pairing that needs the bridge needs the proxy running. Started here rather
         # than by the launcher so EVERY entry point (launch_ab_batch, chia_ab_batch, watchdog resume, a
         # bare run) gets it, and idempotently so concurrent arms of one campaign share one instance.
@@ -335,6 +338,8 @@ def launch(
                 background_model=config.provider.background_model,
                 effort=effort,
                 continue_session=continuous,
+                **({"max_concurrent_subagents": config.provider.codex_max_subagents}
+                   if config.provider.codex_max_subagents is not None else {}),
                 **codex_call_kwargs(
                     config.provider.codex_runtime, context=config.context, run_dir=run_dir, model=model
                 ),
