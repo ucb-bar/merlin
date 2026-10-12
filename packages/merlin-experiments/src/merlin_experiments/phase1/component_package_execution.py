@@ -20,6 +20,10 @@ from merlin.common import invocation_record
 from merlin.targetgen import package_runtime as P
 from merlin_experiments.execution.container_policy import prepare_strict_policy
 from merlin_experiments.execution.container_transport import PreparedContainerTransport, mounts_from_strict_policy
+from merlin_experiments.phase1.feedback.compiler_profile_runtime import (
+    finish_snapshot_invocation,
+    snapshot_scoped_entrypoint,
+)
 from merlin_experiments.phase2 import contracts as C
 from merlin_experiments.phase2.component_experiment import ComponentView, RuntimeGrant, strict_tool_policy
 from merlin_experiments.phase2.external_resources import active_resource_boundary, bounded_tool_scratch
@@ -117,6 +121,7 @@ class ComponentPackageExecutor:
                 "component qualification requires an independently boxed build service for declared build steps"
             )
 
+    @snapshot_scoped_entrypoint
     def run_entrypoint(
         self,
         pkg,
@@ -267,6 +272,7 @@ class ComponentPackageExecutor:
                         )
                         if host_output.is_symlink():
                             raise C.StageGateError("component compiler output staging contains a linked product")
+                        finish_snapshot_invocation()
                         if output_json is not None and host_output.is_file():
                             shutil.copyfile(host_output, output_json)
                         record.returned(stdout=result.stdout, stderr=result.stderr)
@@ -292,6 +298,7 @@ class ComponentPackageExecutor:
                     result = subprocess.CompletedProcess(command, actual.returncode, actual.stdout, actual.stderr)
                     if host_output.is_symlink():
                         raise C.StageGateError("component compiler output staging contains a linked product")
+                    finish_snapshot_invocation()
                     if output_json is not None and host_output.is_file():
                         shutil.copyfile(host_output, output_json)
                     record.complete(result)
