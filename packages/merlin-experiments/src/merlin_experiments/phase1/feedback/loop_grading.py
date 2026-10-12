@@ -397,6 +397,48 @@ def _fast_loop_verdict_doc(red: dict, tiers_graded, tiers_withheld) -> dict:
     }
 
 
+def _completed_loop_promoter(ws, frozen_source, runs, loop, cert, cover, *, inputs):
+    """Promote only closed, durable selected public/dev functional passes."""
+    import sys
+
+    from merlin.targetgen.capsule_common import discover_capsules
+    from merlin_experiments.phase1.feedback import promotion, qa
+
+    te = load_target_experiment(inputs.context.descriptor)
+    root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
+    caps = discover_capsules((root,), labels={"public", "dev"}, contract=inputs.contract)
+    excluded = set(te.effective_exclusions(cap.get("name") for cap in caps))
+    allowed = {str(cap["name"]) for cap in caps if cap.get("name") and cap["name"] not in excluded}
+
+    def complete(result):
+        name = result.get("capsule")
+        if name not in allowed or (result.get("tiers", {}).get(loop) or {}).get("status") != "pass":
+            return
+        # A callback observes a completed result, not an in-flight file or candidate
+        # supplied row. Reopen exactly its published record before attributing it.
+        path = Path(runs) / "runs" / _suite_for(te.target) / name / "capsule_result.json"
+        try:
+            if json.loads(path.read_text()) != result:
+                raise ValueError("completed capsule differs from its durable result")
+            promotion.promote(
+                ws, Path(ws) / ".qa_channel",
+                {"per_capsule": [{"capsule": name, "pass": True, "tiers": {loop: "pass"},
+                                  "execution_digest": qa._execution_digest_from_result(path)}]},
+                loop, cert, cover, sys.stderr, source_ws=frozen_source,
+                context=inputs.context, capsules_root=inputs.promotion_root,
+            )
+        except Exception as exc:  # noqa: BLE001 -- completed feedback survives queue faults
+            print(f"[first-grade] completed promotion skipped: {type(exc).__name__}: {exc}", flush=True)
+
+    return complete
+
+
+def _suite_for(target):
+    from merlin.targetgen.capsule_runner import suite_for
+
+    return suite_for(target)
+
+
 def fast_grade(
     ws: Path,
     run_dir: Path,
@@ -435,6 +477,21 @@ def fast_grade(
         policy_roots=inputs.policy_roots,
         public_roots=lambda: inputs.public_root() if callable(inputs.public_root) else inputs.public_root,
     )
+    # Resolve once before the suite: every completed functional result can feed
+    # the existing queue without waiting for the last capsule in this batch.
+    completed_promotion = None
+    try:
+        from merlin_experiments.phase1.feedback import promotion as _promotion
+
+        loop, cert, cover = _promotion.resolve_tiers(
+            ws, context=inputs.context, capsules_root=inputs.promotion_root
+        )
+        if loop and cert:
+            completed_promotion = _completed_loop_promoter(
+                ws, cand.parent, fruns, loop, cert, cover, inputs=inputs
+            )
+    except Exception as exc:  # noqa: BLE001 -- scheduling cannot invalidate completed loop evidence
+        print(f"[first-grade] streaming promotion unavailable: {type(exc).__name__}: {exc}", flush=True)
     try:
         _CG.grade(
             str(cand),
@@ -448,6 +505,7 @@ def fast_grade(
             max_workers=_CG.default_grade_workers(),
             target=te.target,
             additional_forbidden=inputs.additional_forbidden,
+            **({"on_capsule_complete": completed_promotion} if completed_promotion is not None else {}),
         )
     except Exception as e:  # noqa: BLE001 — a partial readback is still feedback, and every tier the
         # grade did not reach stays UNKNOWN in the document below rather than reading as clean.

@@ -498,3 +498,65 @@ def test_mandatory_cert_members_respect_selected_cohort_labels_and_exclusions(tm
     assert promotion._mandatory_cert_members(
         context=context(tmp_path), capsules_root=selected, cert_tier="L3"
     ) == {"mandatory"}
+
+
+def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp_path, monkeypatch):
+    import threading
+    from merlin.targetgen import capsule_common, capsule_scheduling
+    from merlin_experiments.phase1.feedback import promotion, qa
+
+    ws, frozen, runs = (tmp_path / name for name in ("ws", "frozen", "runs"))
+    for root in (ws, frozen):
+        (root / "submission").mkdir(parents=True)
+        (root / "submission/manifest.yaml").write_text("x: 1\n")
+    (ws / ".qa_channel").mkdir()
+    ctx = context(tmp_path)
+    ctx.descriptor.write_text("{}\n")
+    inputs = G.GradingInputs(context=ctx, arm="raw_baseline", public_root=tmp_path / "public", policy_roots=(),
+                             promotion_root=tmp_path / "policy", contract=tmp_path / "contract")
+    monkeypatch.setattr(G, "load_target_experiment", lambda _: SimpleNamespace(
+        target="fixture", effective_exclusions=lambda names: {"excluded"}))
+    monkeypatch.setattr(capsule_common, "discover_capsules", lambda *a, **kw: [
+        {"name": "first"}, {"name": "second"}, {"name": "failed"}, {"name": "excluded"}])
+    monkeypatch.setattr(G, "_suite_for", lambda _: "fixture-suite")
+    monkeypatch.setattr(qa, "_execution_digest_from_result", lambda _: None)
+    monkeypatch.setattr(promotion, "affordable_cert_items", lambda want, **kw: (want, {}))
+    monkeypatch.setattr(promotion, "_mandatory_cert_members", lambda **kw: {"first", "second"})
+    callback = G._completed_loop_promoter(ws, frozen, runs, "L2", "L3", {"first"}, inputs=inputs)
+    second_started, release_second = threading.Event(), threading.Event()
+    rows = {}
+
+    def run_one(cap, workers):
+        name = cap["name"]
+        if name == "second":
+            second_started.set()
+            assert release_second.wait(5)
+        row = {"capsule": name, "tiers": {"L2": {"status": "fail" if name == "failed" else "pass"}}}
+        path = runs / "runs/fixture-suite" / name / "capsule_result.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(row))
+        rows[name] = row
+        return row
+
+    def completed(row):
+        callback(row)
+        if row["capsule"] == "first":
+            assert second_started.wait(5)
+            reqs = list((ws / ".qa_channel").glob("simreq_*.json"))
+            assert len(reqs) == 1, "first pass must queue while second capsule is unfinished"
+            req = json.loads(reqs[0].read_text())
+            assert req["submission_digest"] == promotion._submission_digest(frozen)
+            (ws / "submission/manifest.yaml").write_text("live edit: true\n")
+            assert req["submission_digest"] != promotion._submission_digest(ws)
+            callback(row)  # The same completed identity cannot enqueue twice.
+            assert len(list((ws / ".qa_channel").glob("simreq_*.json"))) == 1
+            release_second.set()
+
+    capsule_scheduling.run_pipelined(
+        [{"name": name} for name in ("first", "second", "failed", "hidden", "excluded")],
+        run_one, max_workers=2, on_complete=completed,
+    )
+    assert len(list((ws / ".qa_channel").glob("simreq_*.json"))) == 2
+    # A result that has not been durably published cannot unlock a certificate.
+    callback({"capsule": "first", "tiers": {"L2": {"status": "pass"}}, "tampered": True})
+    assert len(list((ws / ".qa_channel").glob("simreq_*.json"))) == 2

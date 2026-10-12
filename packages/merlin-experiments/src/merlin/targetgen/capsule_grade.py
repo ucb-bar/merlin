@@ -1216,6 +1216,7 @@ def grade(
     target_experiment=None,
     additional_forbidden: tuple[str, ...] = (),
     model_snapshot_root: str | Path | None = None,
+    on_capsule_complete=None,
 ) -> dict:
     """Run the capsule suite over a submitted package; return a score dict (also schema-checkable).
 
@@ -1398,6 +1399,13 @@ def grade(
         _enforce_and_persist_models(results)
         _model_audit_ran = True
 
+    def _completed(result: dict) -> None:
+        # Completion is serialized by the scheduler, after the durable result was
+        # written and while the frozen model source scope is still owned here.
+        _enforce_and_persist_models([result])
+        if on_capsule_complete is not None:
+            on_capsule_complete(result)
+
     results = CR.run_suite(
         caps,
         pkg_dir,
@@ -1410,6 +1418,7 @@ def grade(
         no_oracle=no_oracle,
         model_snapshot_root=model_snapshot_root,
         post_suite=_post_suite,
+        **({"on_capsule_complete": _completed} if on_capsule_complete is not None else {}),
     )
     _suite_wall = _time.perf_counter() - _suite_t0
     if not _model_audit_ran:

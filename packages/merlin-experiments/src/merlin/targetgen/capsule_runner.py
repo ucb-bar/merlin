@@ -6525,6 +6525,7 @@ def _run_suite(
     oracle_adapters: dict[str, Callable] | None = None,
     timeout: int = 600,
     max_workers: int = 1,
+    on_capsule_complete: Callable[[dict], None] | None = None,
     target: str | None = None,
     suite: str | None = None,
     dtype: str = "i8xi8_i32",
@@ -6625,6 +6626,7 @@ def _run_suite(
             max_workers=max_workers,
             calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
             calibration_cap=_CALIBRATION_CAP,
+            on_complete=on_capsule_complete,
         )
 
     # A whole-model (kind == "model") capsule is the GATED capstone: it is scheduled only after the op

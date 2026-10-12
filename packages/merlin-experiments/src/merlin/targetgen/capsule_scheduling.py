@@ -67,6 +67,7 @@ def run_pipelined(
     calibrate: Callable[[], set[str]] | None = None,
     calibration_cap: int = 0,
     calibration_budget_s: float | None = CALIBRATION_BUDGET_S,
+    on_complete: Callable[[dict], None] | None = None,
 ) -> list[dict]:
     """Grade ``capsules`` with at most ``max_workers`` in flight, each as soon as its sibling finished.
 
@@ -106,6 +107,8 @@ def run_pipelined(
 
     def finished(name: str, result: dict) -> None:
         results[index[name]] = result
+        if on_complete is not None:
+            on_complete(result)
         for child in children[name]:
             waiting[child] -= 1
             if waiting[child] == 0:
