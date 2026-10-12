@@ -4,7 +4,7 @@ kind: reference
 status: current
 owner: runtime
 last_verified: 2026-10-10
-related: [target_resolution, simulator_selection, aws_gsim]
+related: [target_resolution, simulator_selection, gsim_worker_setup]
 code_refs: [src/merlin/runtime/backends/base.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/runtime/backends/chipyard_rocc_bound.py, src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/harness_render.py, src/merlin/targetgen/rocc/semantics.py, src/merlin/targetgen/rtl_checks_generic.py, src/merlin/targetgen/build_cache.py, packages/merlin-experiments/src/merlin_experiments/capture_execution/sealed_inventory.py]
 ---
 
@@ -24,8 +24,7 @@ projected from the same freshly observed complete inventory. Their directory
 membership, file modes, sizes and content digests retain the existing format.
 No cached verification result survives to a later boundary, and replay frequency
 is unchanged. This reduces duplicate hashing without supplying compiler code or
-weakening numerical checks. A synthetic overlapping-tree measurement reduced
-hashed bytes from 6,291,473 to 3,145,745; it is not an end-to-end speedup estimate.
+weakening numerical checks.
 
 ## Selection
 
@@ -67,7 +66,7 @@ the existing strict receipt/FIRRTL checks. The original contract and facts are
 reopened before publishing a new contract beneath the artifacts root; an existing
 destination refuses. No compiler, simulator or provider runs. Neither source
 consistency nor review status is upgraded. The output is deployment data, not a
-native qualification receipt. Follow the [AWS procedure](../guides/aws_gsim.md#prepare-the-catalog-phase-0-and-phase-1-handoff)
+native qualification receipt. Follow the [worker setup procedure](../guides/gsim_worker_setup.md#prepare-catalog-experiments)
 for the independent input review and subsequent execution gates.
 
 ## Logical tensors

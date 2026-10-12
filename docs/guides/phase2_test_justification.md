@@ -4,7 +4,7 @@ kind: guide
 status: current
 last_verified: 2026-10-08
 owner: experiments
-related: [phase0_specification, generating_capsules, perf_phase2_wiring]
+related: [phase0_specification, generating_capsules, normal_search_feedback]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/test_justification.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/bottleneck_priority.py
@@ -123,7 +123,7 @@ a small canonical `performance-scope.json`: the required and excluded connected
 chain identities and reasons, not the complete software requirement or private
 captures. Its digest is bound to the original requirement snapshot digest and
 the frozen corpus manifest. The post-GO priority report replays this scope; for
-current Gemmini captures it records the `no_eligible_chain` refusal rather than
+an ineligible source chain it records the `no_eligible_chain` refusal rather than
 silently crediting standalone matmuls with connected-chain coverage. Older frozen
 corpora without this projection remain `unknown` and need a newly frozen run for
 verified connected-scope reporting. Freeze refuses a

@@ -515,7 +515,9 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
                 raise StageGateError("compile-only uses its original public source roster")
             with BUILD.executing(self, work_root, reuse_products=reuse_artifacts):
                 return COMPILE_ONLY.evaluate_retained(self, revision, work_root=work_root, timeout_s=timeout_s)
-        if kind == FAST.KIND:
+        if kind in (FAST.KIND, FAST.SELECTED_KIND):
+            if kind == FAST.KIND and selected_members:
+                raise StageGateError("complete compile/Spike feedback cannot select a partial original roster")
             with BUILD.executing(self, work_root, reuse_products=reuse_artifacts):
                 return FAST.evaluate_retained(
                     self,
@@ -525,6 +527,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
                     call_index=call_index,
                     timeout_s=timeout_s,
                     workers=workers,
+                    selected_members=selected_members if kind == FAST.SELECTED_KIND else None,
                 )
         if kind not in ("corpus-rtl-feedback", MEMBER_SELECTION.KIND):
             raise StageGateError("ordinary queued feedback selected an unsupported fixed evaluator")

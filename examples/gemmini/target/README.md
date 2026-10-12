@@ -79,7 +79,7 @@ the software specification or runtime input package.
 2. Select its path as `phases.0.config.software_spec` in the experiment definition.
    Keep platform paths explicit and freeze their source identities.
 3. Follow the [Phase 0 walkthrough](../phase0/README.md). For a fresh AWS run, use
-   the [neutral worker preparation guide](../../../docs/guides/aws_phase0_phase1.md).
+   the [neutral worker preparation guide](../../../docs/guides/phase0_phase1_setup.md).
 4. Run the reviewed Phase 0 definition into a fresh owner, inspect its mandatory
    coverage and unresolved decisions, then review and seal the release.
 

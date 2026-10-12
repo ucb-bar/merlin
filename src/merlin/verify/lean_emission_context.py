@@ -24,6 +24,7 @@ from pathlib import Path
 from merlin.common import invocation_record
 
 from . import lean_emission_chain as E
+from .lean_emission_products import EmissionProducts, IssuedEmission
 
 _ACTIVE = contextvars.ContextVar("original_emission_checks", default=None)
 _ISSUED = weakref.WeakSet()
@@ -40,6 +41,7 @@ class _Pending:
     artifact_pin: dict
     manifest_sha256: str
     timeout_s: float
+    product: IssuedEmission
 
 
 def _manifest_identity(package):
@@ -51,7 +53,9 @@ class _Scope:
         self.service, self.admission = service, admission
         self.selection = E.EmissionChainSelection(service)
         self.records = {}
+        self.completed = {}
         self.claimed = set()
+        self.products = EmissionProducts(_MAX_PENDING * 2)
         self.lock = threading.RLock()
         self.live = True
 
@@ -60,6 +64,7 @@ class _Scope:
 
         if self not in _ISSUED or not self.live or active_compiler_imports() is not self.admission:
             raise ValueError("ordinary emission scope has no current original host admission")
+        self.products.verify()
         admission, service = self.admission, self.service
         admission.verify()
         if any(
@@ -70,7 +75,7 @@ class _Scope:
     def retain(self, pending):
         with self.lock:
             self.verify()
-            if len(self.records) >= _MAX_PENDING:
+            if len(self.records) + len(self.completed) >= _MAX_PENDING:
                 raise ValueError("ordinary emission scope exceeds its bounded live product inventory")
             self.records[id(pending)] = pending
 
@@ -78,16 +83,29 @@ class _Scope:
         digest = hashlib.sha256(source.encode()).hexdigest()
         with self.lock:
             self.verify()
-            matches = [pending for pending in self.records.values() if pending.artifact_pin["sha256"] == digest]
+            identity = self.products.identity(source)
+            matches = [
+                pending
+                for pending in (*self.records.values(), *self.completed.values())
+                if (pending.product is source if identity is not None else pending.artifact_pin["sha256"] == digest)
+            ]
             if len(matches) > 1:
                 # Equal artifact bytes cannot select which original source
                 # obligation this consumer owns. Preserve all records and
                 # refuse before either proof checking or native compilation.
                 raise ValueError("ordinary object input has ambiguous original emission ownership")
+            if identity is None and matches:
+                raise ValueError("traced object input requires original issued emission identity")
+            if identity is not None and not matches:
+                raise ValueError("original issued emission has no original object source obligation")
             if matches:
                 pending = matches[0]
                 if id(pending) in self.claimed:
                     raise ValueError("ordinary emission has an incomplete or already claimed object consumer")
+                # A second consumer rechecks the same source and observes its
+                # own actual object. Saved reports never issue this obligation.
+                self.completed.pop(id(pending), None)
+                self.records[id(pending)] = pending
                 self.claimed.add(id(pending))
                 return pending
         return None
@@ -99,18 +117,23 @@ class _Scope:
                 raise ValueError("ordinary emission completion lost its current claimed source")
             self.records.pop(id(pending))
             self.claimed.remove(id(pending))
+            self.completed[id(pending)] = pending
 
     def has_pending(self, source):
         digest = hashlib.sha256(source.encode()).hexdigest()
         with self.lock:
             self.verify()
+            if self.products.identity(source) is not None:
+                return any(pending.product is source for pending in self.records.values())
             return any(pending.artifact_pin["sha256"] == digest for pending in self.records.values())
 
     def close(self):
         with self.lock:
             self.live = False
             self.records.clear()
+            self.completed.clear()
             self.claimed.clear()
+            self.products.close()
 
 
 @contextlib.contextmanager
@@ -155,9 +178,58 @@ def active_emission_checks():
 
 
 def requires_fresh_object(source):
-    """Only a pending actual trace disables artifact-only legacy cache reuse."""
-    scope = active_emission_checks()
+    """A pending/claimed source cannot share even its own completed object."""
+    scope = _source_scope(source)
     return scope is not None and scope.has_pending(source)
+
+
+def requires_original_object(source):
+    """Issued origins never use legacy byte-only caches, even after completion."""
+    scope = _source_scope(source)
+    return scope is not None and (type(source) is IssuedEmission or scope.has_pending(source))
+
+
+def _source_scope(source):
+    scope = active_emission_checks()
+    if type(source) is IssuedEmission and scope is None:
+        raise ValueError("original issued emission requires its live original scope")
+    if scope is not None:
+        scope.products.identity(source)
+    return scope
+
+
+def artifact_cache_key(source):
+    scope = _source_scope(source)
+    return source if scope is None else scope.products.cache_key(source)
+
+
+def is_emitted_artifact(path):
+    scope = active_emission_checks()
+    return scope is not None and Path(path).absolute() in scope.products.aliases
+
+
+def write_emitted_artifact(path, source):
+    """Preserve a host-written copy's actual issued origin without metadata tickets."""
+    scope, path = _source_scope(source), Path(path).absolute()
+    if scope is None:
+        path.write_text(source, encoding="utf-8")
+    else:
+        with scope.lock:
+            scope.verify()
+            scope.products.invalidate(path)
+            path.write_text(source, encoding="utf-8")
+            if scope.products.identity(source) is not None:
+                scope.products.alias(source, E._pin(path))
+
+
+def read_emitted_artifact(path):
+    scope, path = active_emission_checks(), Path(path).absolute()
+    source = path.read_text(encoding="utf-8")
+    if scope is None:
+        return source
+    with scope.lock:
+        scope.verify()
+        return scope.products.read(path, source, E._pin(path))
 
 
 def explicit_emission_transport(function):
@@ -255,6 +327,9 @@ def observe_emission(function):
         if declared:
             values["memo"] = None
         artifact = generated / values["artifact_name"]
+        with scope.lock:
+            scope.verify()
+            writer = scope.products.invalidate(artifact)
         products = (generated / "input.interface.mlir", generated / "command_buffer.json", artifact)
         with invocation_record.observe_call(
             evidence,
@@ -268,6 +343,8 @@ def observe_emission(function):
             output = function(*bound.args, **bound.kwargs)
             call.returned(stdout=output[1])
         scope.verify()
+        with scope.lock:
+            scope.products.verify_write(artifact, writer)
         pin = E._pin(artifact)
         if pin["sha256"] != hashlib.sha256(output[1].encode()).hexdigest():
             raise ValueError("ordinary emitted product differs from its actual caller result")
@@ -289,11 +366,24 @@ def observe_emission(function):
             # The original ABI's actual dispatch entry is selected only at
             # object production. Standalone emission cannot assert that entry
             # from a candidate-authored trace or a guessed helper function.
-            scope.retain(
-                _Pending(
-                    package, source, products[0], artifact, call, pin, _manifest_identity(package), values["timeout"]
+            with scope.lock:
+                scope.verify()
+                scope.products.verify_write(artifact, writer)
+                product = scope.products.issue(output[1], pin)
+                scope.retain(
+                    _Pending(
+                        package,
+                        source,
+                        products[0],
+                        artifact,
+                        call,
+                        pin,
+                        _manifest_identity(package),
+                        values["timeout"],
+                        product,
+                    )
                 )
-            )
+            return output[0], product
         return output
 
     return observed
@@ -305,17 +395,18 @@ def observe_object(function):
 
     @functools.wraps(function)
     def observed(*args, **kwargs):
-        scope = active_emission_checks()
-        if scope is None:
-            return function(*args, **kwargs)
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
+        scope = _source_scope(bound.arguments["lowered_mlir_text"])
+        if scope is None:
+            return function(*args, **kwargs)
         values = bound.arguments
         source, work = values["lowered_mlir_text"], Path(values["workdir"])
         work.mkdir(parents=True, exist_ok=True)
         evidence = work / ("emission-consumer-" + uuid.uuid4().hex)
         evidence.mkdir(mode=0o700)
         pending = scope.matching(source)
+        values["lowered_mlir_text"] = str(source)
         result = None
         report = {
             "schema": E.RESULT_SCHEMA,

@@ -29,10 +29,11 @@ from .feedback_protocol import FeedbackValueLimits, receive_feedback_value
 from .ordinary_compile_only import KIND as COMPILE_ONLY_KIND
 from .portfolio_launch import acquire_host_resource_lease
 from .retained_revisions import RetainedRevisionStore, executing_revisions
-from .search_inputs import SearchInputs
+from .search_inputs import ORDINARY_SELECTED_FAST_KIND, SearchInputs
 from .supervised_feedback import _close_guardian, _complete_cleanup, _packet
 
 KINDS = ("component-analytical-feedback", "component-rtl-feedback")
+SELECTED_KINDS = (SELECTION.KIND, ORDINARY_SELECTED_FAST_KIND)
 TERMINAL = frozenset({"completed", "refused", "cancelled"})
 
 
@@ -183,9 +184,13 @@ def _evaluate_fixed_routes(
                 timeout_s=timeout_s,
                 workers=workers,
                 kind=kind,
-                **({"selected_members": selected_members} if kind == SELECTION.KIND else {}),
+                **({"selected_members": selected_members} if kind in SELECTED_KINDS else {}),
             )
             result = inputs.validate_result(raw, revision, kind)
+            if kind == ORDINARY_SELECTED_FAST_KIND:
+                from .ordinary_fast_feedback import validate_selected_feedback
+
+                return validate_selected_feedback(result, members=selected_members)
             return SELECTION.validate_feedback(result, members=selected_members) if kind == SELECTION.KIND else result
     with executing_revisions(revision, baseline_revision):
         policy._validate()
@@ -526,7 +531,7 @@ class ComponentEvaluationPool:
     def _verify(self, job):
         if job.member_selection_sha256 != document_sha256(job.selected_members):
             raise StageGateError("queued original member selection changed")
-        if job.kind == SELECTION.KIND:
+        if job.kind in SELECTED_KINDS:
             SELECTION.select_members(self.policy, job.selected_members)
         elif job.selected_members:
             raise StageGateError("queued complete evaluation cannot select a partial original roster")
@@ -542,7 +547,7 @@ class ComponentEvaluationPool:
             kind = self.inputs.kinds[0] if kind is None else kind
             if self._closed or self._submissions_stopped:
                 raise StageGateError("evaluation submissions stopped")
-            selected_route = self.inputs.ordinary and kind == SELECTION.KIND
+            selected_route = self.inputs.ordinary and kind in SELECTED_KINDS
             if (
                 kind not in self.inputs.kinds
                 and not selected_route
@@ -553,7 +558,7 @@ class ComponentEvaluationPool:
             if selected_route:
                 selected_members = SELECTION.select_members(self.policy, selected_members)
             elif selected_members:
-                raise StageGateError("member selection is diagnostic-only on the normal selected RTL route")
+                raise StageGateError("member selection requires an original diagnostic selected route")
             if (self.inputs.analytical if kind == KINDS[0] else self.inputs.rtl) is None:
                 raise StageGateError("selected queued component evaluation provider is unavailable")
             if sum(job.state not in TERMINAL for job in self._jobs.values()) >= self.max_pending:
@@ -751,7 +756,7 @@ class ComponentEvaluationPool:
                             cpus=cpus,
                             index=list(self._jobs).index(job.job_id),
                             resource_boundary=self._external_boundary,
-                            **({"selected_members": job.selected_members} if job.kind == SELECTION.KIND else {}),
+                            **({"selected_members": job.selected_members} if job.kind in SELECTED_KINDS else {}),
                         ),
                         destination,
                         FeedbackValueLimits(),

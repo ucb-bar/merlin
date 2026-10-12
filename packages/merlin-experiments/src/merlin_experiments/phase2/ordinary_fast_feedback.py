@@ -33,6 +33,8 @@ from .contracts import StageGateError, exact_tree_record, mapping_file, sha256_f
 from .retained_revisions import executing_revisions
 
 KIND = "corpus-compile-spike-feedback"
+SELECTED_KIND = "corpus-selected-compile-spike-feedback"
+SELECTED_ACTION = "evaluation-submit-functional-selected"
 SCHEMA = "merlin.ordinary_fast_feedback.v1"
 FEATURES = ("/compiled/emitted/action_sites", "/compiled/linked/executable_bytes")
 LIMITS = S.StaticFeatureLimits(8 << 20, 64 << 20, 100000)
@@ -233,8 +235,10 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
     return {**result, "evidence_sha256": sha256_file(evidence)}
 
 
-def evaluate_retained(policy, revision, baseline_revision, *, work_root, call_index, timeout_s, workers):
-    """Observe the exact complete public roster through original fixed Phase 1 owners."""
+def evaluate_retained(
+    policy, revision, baseline_revision, *, work_root, call_index, timeout_s, workers, selected_members=None
+):
+    """Observe original public members; an explicit subset is diagnostic only."""
     policy.validate_search_inputs()
     revision.verify(authority=policy.edit_authority)
     baseline_revision.verify(authority=policy.edit_authority)
@@ -242,9 +246,16 @@ def evaluate_retained(policy, revision, baseline_revision, *, work_root, call_in
     work_root.mkdir(parents=True, mode=0o700)
     deadline = time.monotonic() + timeout_s
     members = tuple(sorted(policy.search_corpus.capsules, key=lambda row: (row.family, row.capsule)))
+    partial = selected_members is not None
+    if partial:
+        from .ordinary_measurement_selection import select_members
+
+        selected_members = select_members(policy, selected_members)
+    selected = set(selected_members) if partial else {(row.family, row.capsule) for row in members}
     tasks = [
         (index, arm, issued, member)
         for index, member in enumerate(members)
+        if (member.family, member.capsule) in selected
         for arm, issued in (("baseline", baseline_revision), ("candidate", revision))
     ]
     with executing_revisions(revision, baseline_revision), ThreadPoolExecutor(max_workers=workers) as executor:
@@ -262,39 +273,56 @@ def evaluate_retained(policy, revision, baseline_revision, *, work_root, call_in
             for index, arm, issued, member in tasks
         ]
         results = [future.result() for future in futures]
+    observed = {(index, arm): result for (index, arm, _issued, _member), result in zip(tasks, results, strict=True)}
     cells = [
         {
             "family": member.family,
             "capsule": member.capsule,
             "source_sha256": member.source_sha256,
-            "baseline": results[2 * index],
-            "candidate": results[2 * index + 1],
+            "baseline": observed.get((index, "baseline")),
+            "candidate": observed.get((index, "candidate")),
+            **(
+                {
+                    "pending_reason": None
+                    if (member.family, member.capsule) in selected
+                    else "unselected original public member; compile/Spike not evaluated"
+                }
+                if partial
+                else {}
+            ),
         }
         for index, member in enumerate(members)
     ]
     document = {
         "schema": SCHEMA,
-        "kind": KIND,
+        "kind": SELECTED_KIND if partial else KIND,
         "candidate_sha256": revision.source_sha256,
         "tuning_corpus_sha256": policy.search_corpus.capsules_sha256,
         "manifest_sha256": policy.search_corpus.manifest_sha256,
         "certificate_sha256": policy.feedback_evaluator.certificate.sha256,
         "configuration_sha256": policy.search_closure_sha256,
         "cells": cells,
-        "promotion": "SCREENING_ONLY",
+        "promotion": "DIAGNOSTIC_ONLY" if partial else "SCREENING_ONLY",
         "screening": {"status": "UNKNOWN", "reason": "no live ordinary calibration and held observations", "order": []},
     }
+    if partial:
+        document["selected_members"] = [list(key) for key in selected_members]
+        document["screening"] = {
+            "status": "UNKNOWN",
+            "reason": "partial compile/Spike cannot establish complete screening",
+            "order": [],
+        }
     screen = getattr(policy, "_ordinary_screen", None)
-    if screen is not None:
+    if screen is not None and not partial:
         document["screening"] = screen.screen(policy, document)
     policy.validate_search_inputs()
     if time.monotonic() > deadline:
         raise StageGateError("ordinary cheap observation exceeded its aggregate deadline")
     write_json(work_root / "ordinary_fast_feedback.json", document)
-    return validate_feedback(document, policy=policy, revision=revision)
+    return validate_feedback(document, policy=policy, revision=revision, kind=document["kind"])
 
 
-def validate_feedback(document, *, policy, revision):
+def validate_feedback(document, *, policy, revision, kind=KIND):
     """Validate transport against the live original selection, never grant model authority."""
     fields = {
         "schema",
@@ -308,6 +336,9 @@ def validate_feedback(document, *, policy, revision):
         "screening",
         "promotion",
     }
+    partial = kind == SELECTED_KIND
+    if partial:
+        fields.add("selected_members")
     if (
         type(document) is not dict
         or set(document) != fields
@@ -323,17 +354,34 @@ def validate_feedback(document, *, policy, revision):
         )
         != (
             SCHEMA,
-            KIND,
+            kind,
             revision.source_sha256,
             policy.search_corpus.capsules_sha256,
             policy.search_corpus.manifest_sha256,
             policy.feedback_evaluator.certificate.sha256,
             policy.search_closure_sha256,
-            "SCREENING_ONLY",
+            "DIAGNOSTIC_ONLY" if partial else "SCREENING_ONLY",
         )
+        or kind not in (KIND, SELECTED_KIND)
     ):
         raise StageGateError("ordinary cheap result differs from its original source/corpus/runtime selection")
     expected = {(row.family, row.capsule): row.source_sha256 for row in policy.search_corpus.capsules}
+    selected = set(expected)
+    if partial:
+        from .ordinary_measurement_selection import select_members
+
+        selection = document["selected_members"]
+        if type(selection) is not list or any(type(key) is not list for key in selection):
+            raise StageGateError("selected compile/Spike feedback has invalid public member identities")
+        members = select_members(policy, tuple(tuple(key) for key in selection))
+        validate_selected_feedback(document, members=members)
+        selected = set(members)
+        if document["screening"] != {
+            "status": "UNKNOWN",
+            "reason": "partial compile/Spike cannot establish complete screening",
+            "order": [],
+        }:
+            raise StageGateError("partial compile/Spike feedback cannot claim complete screening")
     rows = document["cells"]
     if type(rows) is not list or len(rows) != len(expected):
         raise StageGateError("ordinary cheap result omitted its complete frozen roster")
@@ -343,6 +391,19 @@ def validate_feedback(document, *, policy, revision):
         if identity in seen or expected.get(identity) != row["source_sha256"]:
             raise StageGateError("ordinary cheap result changed public member identity")
         seen.add(identity)
+        if partial:
+            if set(row) != {"family", "capsule", "source_sha256", "baseline", "candidate", "pending_reason"}:
+                raise StageGateError("selected compile/Spike feedback changed its original cell fields")
+            if identity not in selected:
+                if (
+                    row["baseline"] is not None
+                    or row["candidate"] is not None
+                    or row["pending_reason"] != ("unselected original public member; compile/Spike not evaluated")
+                ):
+                    raise StageGateError("selected compile/Spike feedback evaluated an unselected obligation")
+                continue
+            if row["pending_reason"] is not None:
+                raise StageGateError("selected compile/Spike feedback skipped a selected obligation")
         for arm in ("baseline", "candidate"):
             value = row[arm]
             if (
@@ -365,4 +426,11 @@ def validate_feedback(document, *, policy, revision):
                 raise StageGateError("ordinary cheap features cannot claim physical traffic or cycle timing")
             if not math.isfinite(value["elapsed_seconds"]) or value["elapsed_seconds"] < 0:
                 raise StageGateError("ordinary cheap observation has invalid cost")
+    return document
+
+
+def validate_selected_feedback(document, *, members):
+    """Bind a completed partial result to its original queued member selection."""
+    if document.get("kind") != SELECTED_KIND or document.get("selected_members") != [list(key) for key in members]:
+        raise StageGateError("selected compile/Spike feedback differs from the original queued selection")
     return document

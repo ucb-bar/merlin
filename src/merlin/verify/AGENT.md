@@ -128,3 +128,14 @@ policy, and kernel reduction remains separately labeled `lean_kernel`.
 Identifiers are lexed structurally, excluding comments and strings; a generated
 query cannot override the solver. Saved documents remain descriptive, not live
 completion authority. Native loader closure and deployment stay independent.
+
+`lean_emission_products` issues immutable text carriers only within the original
+host process and live scope. Lookup uses exact object identity; equal-byte
+strings, serialized IDs and reconstructed objects cannot select a source.
+Trusted artifact copies retain exact path/byte association, with ambiguous
+paths refusing. Failed claims remain pending, and object sharing stays within
+one observed origin. Host rewrites invalidate previous path ownership; intervening
+writers prevent stale registration. Completed sources may feed later ordinary
+consumers only with a fresh source check and actual object observation, bypassing
+legacy byte caches. Bound pending/completed text, alias and writer records; never copy tensor
+data or grant an author new source permissions through this bookkeeping.

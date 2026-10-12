@@ -180,17 +180,20 @@ def test_absent_trace_remains_independent_not_formally_qualified(ordinary):
     assert fixture["calls"] == []
 
 
-def test_saved_summary_or_second_consumer_cannot_restore_completion(ordinary):
+def test_live_second_consumer_rechecks_its_source_but_saved_summary_cannot_restore_it(ordinary):
     fixture, owner = ordinary
     with _scope(owner), P.scoped_package_executor(_Executor()):
         _, artifact = _lower(fixture)
         C.llvm_mlir_to_object(artifact, fixture["tmp"] / "one")
         C.llvm_mlir_to_object(artifact, fixture["tmp"] / "two")
+        assert len(fixture["calls"]) == 2
+        assert not X.requires_fresh_object(artifact) and X.requires_original_object(artifact)
     assert _reports(fixture["tmp"] / "one")[0]["status"] == "partial"
-    assert _reports(fixture["tmp"] / "two")[0]["status"] == "not_matched"
+    assert _reports(fixture["tmp"] / "two")[0]["status"] == "partial"
     with _scope(owner), P.scoped_package_executor(_Executor()):
-        C.llvm_mlir_to_object(artifact, fixture["tmp"] / "three")
-    assert _reports(fixture["tmp"] / "three")[0]["status"] == "not_matched"
+        with pytest.raises(ValueError, match="no current original host issuance"):
+            C.llvm_mlir_to_object(artifact, fixture["tmp"] / "three")
+    assert not _reports(fixture["tmp"] / "three")
 
 
 def test_expired_copied_context_cannot_reuse_original_custody(ordinary):
@@ -214,7 +217,7 @@ def test_concurrent_same_byte_consumers_cannot_choose_another_source_obligation(
         _lower(fixture, "source-two")
         with ThreadPoolExecutor(max_workers=2) as pool:
             jobs = [
-                pool.submit(copy_context().run, C.llvm_mlir_to_object, artifact, fixture["tmp"] / name)
+                pool.submit(copy_context().run, C.llvm_mlir_to_object, str(artifact), fixture["tmp"] / name)
                 for name in ("build-one", "build-two")
             ]
             for job in jobs:
@@ -238,7 +241,7 @@ def test_same_byte_ambiguity_refuses_before_a_covered_failed_source_is_skipped(o
         _lower(fixture, "source-two")
         assert X.requires_fresh_object(artifact)
         with pytest.raises(ValueError, match="ambiguous original emission ownership"):
-            C.llvm_mlir_to_object(artifact, fixture["tmp"] / "build")
+            C.llvm_mlir_to_object(str(artifact), fixture["tmp"] / "build")
         assert len(X.active_emission_checks().records) == 2
         assert fixture["calls"] == []
     assert not (fixture["tmp"] / "build/kernel.o").exists()

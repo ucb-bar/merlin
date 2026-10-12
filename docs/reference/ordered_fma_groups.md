@@ -4,8 +4,7 @@ kind: reference
 status: current
 owner: llvmlower
 last_verified: 2026-10-06
-related:
-  - docs/reference/architecture.md
+related: [docs/reference/architecture.md]
 code_refs:
   - src/merlin/llvmlower/ordered_fma_groups.py
   - src/merlin/llvmlower/ordered_fma_rewrite.py

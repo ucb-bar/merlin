@@ -912,6 +912,31 @@ def derive_release_admission(staged) -> dict:
     }
 
 
+def _bundle_selection(optional_levels, selected_levels, selected_variants):
+    """Select declarations only; corpus and qualification policy stay unchanged."""
+    from merlin.targetgen.generate_bundles import _ARMS
+
+    from ..phase1.levels import LEVELS
+
+    historical = tuple(_ARMS) + tuple({"EL5": "merlin_isa", "EL6": "merlin_lean"}[level] for level in optional_levels)
+    arms = historical
+    if selected_levels is not None:
+        available = {row["id"]: row["bundle_arm"] for row in LEVELS if row["bundle_arm"] in historical}
+        if (not isinstance(selected_levels, tuple) or not selected_levels
+                or len(set(selected_levels)) != len(selected_levels)
+                or any(level not in available for level in selected_levels)):
+            raise SpecError("selected corpus levels must be a nonempty unique tuple of enabled levels")
+        arms = tuple(available[level] for level in selected_levels)
+    variants = ("public_v0", "realistic_v0", "hwbringup_v0")
+    if selected_variants is not None:
+        if (not isinstance(selected_variants, tuple) or not selected_variants
+                or len(set(selected_variants)) != len(selected_variants)
+                or any(variant not in variants for variant in selected_variants)):
+            raise SpecError("selected corpus variants must be a nonempty unique tuple of supported variants")
+        variants = selected_variants
+    return arms, variants
+
+
 def scaffold(
     te,
     corpus: Path,
@@ -922,6 +947,8 @@ def scaffold(
     selected_contract: tuple[Path, str] | None = None,
     phase1_gates: dict | None = None,
     optional_levels: tuple[str, ...] = (),
+    selected_levels: tuple[str, ...] | None = None,
+    selected_variants: tuple[str, ...] | None = None,
     lean_toolchain_manifest: Path | None = None,
     host_index_bits: int | None = None,
 ) -> dict:
@@ -930,6 +957,7 @@ def scaffold(
     from merlin.targetgen.sandbox.bwrap import resolve_grant
     from merlin.targetgen.target_experiment import load_target_experiment, observed_experiment_contract
 
+    arms, variants = _bundle_selection(optional_levels, selected_levels, selected_variants)
     experiment.mkdir(parents=True)
     inputs = {}
     for relative in ("task",):
@@ -1049,7 +1077,7 @@ def scaffold(
         }
     # Generate fresh declarations, not copies that might still point at the old corpus.
     from merlin.common.paths import python_source_dir
-    from merlin.targetgen.generate_bundles import _ARMS, materialize_bundles
+    from merlin.targetgen.generate_bundles import materialize_bundles
     from merlin.targetgen.sandbox.toolchain import ToolchainPaths
     from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3
 
@@ -1069,7 +1097,7 @@ def scaffold(
         materialize_bundles(
             promoted,
             experiment / "input_bundles",
-            variants=("public_v0", "realistic_v0", "hwbringup_v0"),
+            variants=variants,
             host_inputs=(str(private), *([str(corpus / "_phase0")] if (corpus / "_phase0").is_dir() else [])),
             python_source_root=python_source_dir(),
             llvm_toolchain_root=llvm_root if llvm_root != checkout_llvm else None,
@@ -1077,9 +1105,11 @@ def scaffold(
             common_substrate=COMMON_SUBSTRATE_V3,
             lean_toolchain_manifest=lean_toolchain_manifest,
             host_index_bits=host_index_bits,
-            arms=tuple(_ARMS) + tuple({"EL5": "merlin_isa", "EL6": "merlin_lean"}[level] for level in optional_levels),
+            arms=arms,
         )
     inputs["bundle_generation"] = {"diagnostics": diagnostics.getvalue()}
+    if selected_levels is not None or selected_variants is not None:
+        inputs["bundle_generation"]["selection"] = {"arms": list(arms), "variants": list(variants)}
     return inputs
 
 

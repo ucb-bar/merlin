@@ -27,7 +27,7 @@ from typing import Any
 from merlin.common import execution_deadline as _deadline_owner
 from merlin.common.execution_deadline import ExecutionDeadline, selected_deadline
 from merlin.targetgen.host_optimization_admission import active_selection, host_choices_build
-from merlin.verify.lean_emission_context import observe_object, requires_fresh_object
+from merlin.verify.lean_emission_context import observe_object, requires_original_object
 
 from .artifact_retesting import active_artifact_retests, compare_selected_artifacts, retain_selected_artifacts
 from .build_recipe import named_object_paths
@@ -918,10 +918,10 @@ def compile_lowered_to_elf(
             kwargs["warm_profile"] = warm_profile
         return link_elf(cb, obj, work, **kwargs)
     _explicit_prepack_inputs(inputs, prepack_authorizations)
-    if prepack_authorizations is not None or active_selection() is not None or requires_fresh_object(lowered_mlir_text):
-        # The legacy cache cannot bind prepacking or original host permissions.
-        # Build the current selected artifact freshly rather than reuse/store it.
-        # Unselected calls retain the existing cache path.
+    if prepack_authorizations is not None or active_selection() is not None or (
+        requires_original_object(lowered_mlir_text)
+    ):
+        # Original host permissions and traced emissions cannot use legacy caches.
         obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
         kwargs = {"target": target, "inputs": inputs, "prepack_authorizations": prepack_authorizations}
         if warm_profile is not None:

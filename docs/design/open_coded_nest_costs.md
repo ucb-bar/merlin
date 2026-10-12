@@ -4,7 +4,7 @@ kind: design
 status: current
 owner: compiler
 last_verified: 2026-10-07
-related: [agent_compiler_performance, accumulator_load_order, performance_levers_per_archetype, macro_scheduling]
+related: [verified_compiler_roadmap, accumulator_load_order, performance_levers_per_archetype, macro_scheduling]
 code_refs: [examples/gemmini/verification/probe_load_placement.py, merlin/tests/gemmini/test_load_placement_probe.py, merlin/contract/perf_reference_targets.yaml]
 ---
 

@@ -18,23 +18,23 @@ _ISSUER = object()
 def select_members(policy, members):
     roster = policy.validate_search_inputs()
     if type(members) is not tuple or not members or len(members) > len(roster):
-        raise StageGateError("selected RTL needs explicit nonempty public member identities")
+        raise StageGateError("selected evaluation needs explicit nonempty public member identities")
     if any(type(key) is not tuple or len(key) != 2 or any(type(value) is not str for value in key) for key in members):
-        raise StageGateError("selected RTL requires the original family/capsule identity pairs")
+        raise StageGateError("selected evaluation requires the original family/capsule identity pairs")
     if len(set(members)) != len(members) or not set(members) <= roster:
-        raise StageGateError("selected RTL repeats or substitutes original public members")
+        raise StageGateError("selected evaluation repeats or substitutes original public members")
     return tuple(sorted(members))
 
 
 def parse_members(policy, text):
     if type(text) is not str or not text or len(text) > 8192:
-        raise StageGateError("selected RTL needs bounded comma-separated public family/capsule identities")
+        raise StageGateError("selected evaluation needs bounded comma-separated public family/capsule identities")
     lookup = {family + "/" + capsule: (family, capsule) for family, capsule in policy.validate_search_inputs()}
     if len(lookup) != len(policy.validate_search_inputs()):
-        raise StageGateError("selected RTL public names are ambiguous")
+        raise StageGateError("selected evaluation public names are ambiguous")
     parts = text.split(",")
     if any(value not in lookup for value in parts):
-        raise StageGateError("selected RTL requested an unknown or ambiguous public identity")
+        raise StageGateError("selected evaluation requested an unknown or ambiguous public identity")
     return select_members(policy, tuple(lookup[value] for value in parts))
 
 

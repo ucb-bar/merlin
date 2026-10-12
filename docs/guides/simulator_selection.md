@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: runtime
 last_verified: 2026-10-10
-related: [phase0_specification, target_resolution, reproducing_whole_model_on_rtl]
+related: [phase0_specification, target_resolution, whole_model_on_accelerator]
 code_refs: [src/merlin/targetgen/gsim_emulator.py, src/merlin/targetgen/program_engine_policy.py, src/merlin/targetgen/program_oracle.py, src/merlin/targetgen/mem_perturb.py, src/merlin/targetgen/load_order.py]
 ---
 
@@ -33,7 +33,7 @@ produce incorrect results on the selected hardware.
 Gemmini's trusted support is canonical in `examples/gemmini/support`; no separate support branch
 checkout is needed. Its historical external origin is not the selected provider or a compiler
 candidate. The gSIM emitter and native model are separate dependencies; see the
-[AWS gSIM setup guide](aws_gsim.md) when provisioning a new worker.
+[gSIM worker setup](gsim_worker_setup.md) when provisioning a new worker.
 
 Program-driven engines consume assembled instruction words and memory regions.
 Their directory contains `<engine>_run.py` exposing `run_program`. ELF-driven

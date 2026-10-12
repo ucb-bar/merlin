@@ -19,6 +19,16 @@ def execution(tmp_path, monkeypatch):
     candidate.mkdir()
     (candidate / "compiler.py").write_text("compiler source")
     owner = R.CommonTransformService.__new__(R.CommonTransformService)
+    from merlin.targetgen.sandbox import bwrap
+
+    owner.repo = tmp_path / "selected-repo"
+    owner.repo.mkdir()
+    selected = owner.repo / "input"
+    selected.write_text("selected original input")
+    owner.workspace = tmp_path / "selected-workspace"
+    owner.workspace.mkdir()
+    owner.bundle = {"allowed": [{"path": str(selected), "mode": "ro"}], "host_inputs": [], "denied": []}
+    bwrap.materialize_bundle_inputs(owner.workspace, owner.bundle, repo=owner.repo)
     monkeypatch.setattr(R.CommonTransformService, "compiler_imports", lambda self: nullcontext())
     from merlin.verify import lean_emission_context
     # This synthetic transport fixture has no original sealed admission. The
@@ -183,8 +193,9 @@ def test_actual_frozen_source_box_imports_selected_leaf_at_an_independent_root(t
 
 
 def test_budget_child_cannot_drop_original_executor_and_inline_keeps_it(execution, monkeypatch):
-    from merlin.targetgen import capsule_runner as CR
     from merlin_experiments.phase2.contracts import StageGateError
+
+    from merlin.targetgen import capsule_runner as CR
 
     owner, candidate, work = execution
     monkeypatch.setattr(CR, "_grade_candidate_model_capsule_inline", lambda *args,**kwargs: {
@@ -282,3 +293,33 @@ def test_phase1_checkpoint_qa_and_emit_probes_keep_original_scope(execution, mon
     assert result["all_pass"] is True
     assert seen == ["numeric","emit","emit"]
     assert P.active_package_executor() is None
+
+
+def test_setup_scope_is_closed_before_grading(execution):
+    from merlin.common import bundle_snapshot
+
+    owner, candidate, work = execution
+    with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
+        assert bundle_snapshot._ACTIVE_VERIFICATION.get() is None
+        assert P.active_package_executor() is not None
+
+
+def test_setup_mutation_prevents_grading_and_unwinds_execution(execution, monkeypatch):
+    from merlin.common import bundle_snapshot
+
+    owner, candidate, work = execution
+    payload = bundle_snapshot.snapshot_path(
+        bundle_snapshot.bundle_snapshot_root(owner.workspace), owner.repo / "input", owner.repo)
+    original = R._Executor.__init__
+
+    def changing_setup(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        payload.chmod(0o600)
+        payload.write_text("tampered during setup")
+
+    monkeypatch.setattr(R._Executor, "__init__", changing_setup)
+    with pytest.raises(RuntimeError, match="content differs"):
+        with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
+            pytest.fail("unverified setup reached grading")
+    assert P.active_package_executor() is None
+    assert bundle_snapshot._ACTIVE_VERIFICATION.get() is None

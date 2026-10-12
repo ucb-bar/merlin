@@ -5,7 +5,7 @@ Phase 0 has no agent: selected input bytes and pinned tools determine extraction
 requirements and candidate capsules. Unknown semantics remain explicit blockers.
 Phase 1 develops the functional compiler; Phase 2 uses a separate performance cohort.
 
-For a fresh AWS experiment, use the [neutral worker preparation guide](../../../docs/guides/aws_phase0_phase1.md)
+For a fresh AWS experiment, use the [neutral worker preparation guide](../../../docs/guides/phase0_phase1_setup.md)
 and its operator-only deployment and verified-definition templates. This retained
 diagnostic example does not supply a reviewed execution contract or native launch
 evidence. The shared neutral tooling needs explicit contract/facts data and no
@@ -171,7 +171,7 @@ derivation and the subsequent Phase 0 run. Set `MERLIN_TARGET_CONTRACT` and
 toolchain/engines uses Merlin's shared neutral tooling without executable
 support. The checked-in prototype contract is reference metadata and does not
 already provide this deployment selection. See the
-[AWS handoff](../../../docs/guides/aws_gsim.md).
+[worker setup](../../../docs/guides/gsim_worker_setup.md).
 The generated requirement binds raw facts, the contract, effective readout
 facets and selected tooling source bytes. Changing those inputs requires fresh
 derivation rather than a resumed corpus run. The selected Gemmini readout supports

@@ -11,6 +11,7 @@ import contextlib
 import contextvars
 import hashlib
 import json
+import os
 import stat
 import weakref
 from pathlib import Path
@@ -32,7 +33,6 @@ def snapshot_path(root: Path, source: Path, repo: Path) -> Path:
         return root / "external" / Path(*source.parts[1:])
 
 
-
 _ACTIVE_VERIFICATION = contextvars.ContextVar("original_snapshot_verification", default=None)
 _ISSUED_VERIFICATIONS = weakref.WeakSet()
 
@@ -45,10 +45,53 @@ def _policy_bytes(bundle):
     return json.dumps(bundle, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
 
 
+def _scanned_members(root):
+    """One no-follow scan establishes exact lexical names, types and sizes."""
+    if root.resolve() != root:
+        raise RuntimeError("bundle input snapshot contains an indirect path")
+    pending = [(root, ())]
+    members = []
+    while pending:
+        directory, prefix = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                parts = (*prefix, entry.name)
+                metadata = entry.stat(follow_symlinks=False)
+                mode = metadata.st_mode
+                if stat.S_ISLNK(mode):
+                    raise RuntimeError("bundle input snapshot contains an indirect path")
+                if stat.S_ISREG(mode):
+                    kind, size = "file", metadata.st_size
+                elif stat.S_ISDIR(mode):
+                    kind, size = "directory", None
+                    pending.append((Path(entry.path), parts))
+                else:
+                    raise RuntimeError("bundle input snapshot contains a special file")
+                members.append((parts, Path(entry.path), kind, size))
+    members.sort(key=lambda member: member[0])
+    return members
+
+
+def _scanned_roster(members):
+    return tuple(("/".join(parts), kind, size) for parts, _, kind, size in members)
+
 
 def _member_roster(root, members):
-    return tuple((path.relative_to(root).as_posix(), "file" if path.is_file() else "directory",
-                  path.stat().st_size if path.is_file() else None) for path in members)
+    # Retain this internal helper's caller-supplied membership and ordering.
+    result = []
+    for path in members:
+        metadata = path.stat(follow_symlinks=False)
+        if stat.S_ISLNK(metadata.st_mode):
+            raise RuntimeError("bundle input snapshot contains an indirect path")
+        if stat.S_ISREG(metadata.st_mode):
+            kind, size = "file", metadata.st_size
+        elif stat.S_ISDIR(metadata.st_mode):
+            kind, size = "directory", None
+        else:
+            raise RuntimeError("bundle input snapshot contains a special file")
+        result.append((path.relative_to(root).as_posix(), kind, size))
+    return tuple(result)
+
 
 @contextlib.contextmanager
 def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
@@ -69,7 +112,7 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
         issued = _Verification()
         issued.root, issued.marker_bytes = root, marker_bytes
         issued.repo, issued.policy_bytes = repo, original_policy
-        issued.members = _member_roster(root, sorted(root.rglob("*")))
+        issued.members = _scanned_roster(_scanned_members(root))
         issued.signature = tuple(document[key] for key in ("content_sha256", "n_files", "n_bytes"))
         _ISSUED_VERIFICATIONS.add(issued)
         _ACTIVE_VERIFICATION.set(issued)
@@ -88,25 +131,24 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
             _ISSUED_VERIFICATIONS.discard(issued)
         _ACTIVE_VERIFICATION.reset(previous)
 
+
 def snapshot_content(root: Path) -> tuple[str, int, int]:
     """Same payload digest used by the freezer; marker bytes are bound separately."""
     rows = []
-    members = sorted(root.rglob("*"))
-    if root.resolve() != root or any(path.is_symlink() for path in members):
-        raise RuntimeError("bundle input snapshot contains an indirect path")
-    if any(not (stat.S_ISREG(path.stat().st_mode) or stat.S_ISDIR(path.stat().st_mode)) for path in members):
-        raise RuntimeError("bundle input snapshot contains a special file")
+    members = _scanned_members(root)
     issued = _ACTIVE_VERIFICATION.get()
     if type(issued) is _Verification and issued in _ISSUED_VERIFICATIONS and issued.root == root:
         if (root / MARKER).read_bytes() != issued.marker_bytes:
             raise RuntimeError("original snapshot scope marker changed")
-        if _member_roster(root, members) != issued.members:
+        if _scanned_roster(members) != issued.members:
             raise RuntimeError("original snapshot scope member roster changed")
         return issued.signature
-    for path in (p for p in members if p.is_file() and p != root / MARKER):
+    for parts, path, kind, _ in members:
+        if kind != "file" or parts == (MARKER,):
+            continue
         with path.open("rb") as stream:
             identity = hashlib.file_digest(stream, "sha256").hexdigest()
-        rows.append((path.relative_to(root).as_posix(), identity, path.stat().st_size))
+        rows.append(("/".join(parts), identity, path.stat().st_size))
     aggregate = hashlib.sha256()
     for relative, identity, size in rows:
         aggregate.update(relative.encode())
@@ -124,13 +166,21 @@ def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict
     root = bundle_snapshot_root(workspace)
     marker = root / MARKER
     issued = _ACTIVE_VERIFICATION.get()
-    if (type(issued) is _Verification and issued in _ISSUED_VERIFICATIONS and issued.root == root
-        and (issued.repo != repo or issued.policy_bytes != _policy_bytes(bundle))):
+    if (
+        type(issued) is _Verification
+        and issued in _ISSUED_VERIFICATIONS
+        and issued.root == root
+        and (issued.repo != repo or issued.policy_bytes != _policy_bytes(bundle))
+    ):
         raise RuntimeError("original snapshot scope selection changed")
     if (
-        not workspace.is_absolute() or workspace.resolve() != workspace
-        or not repo.is_absolute() or repo.resolve() != repo
-        or root.resolve() != root or marker.is_symlink() or not marker.is_file()
+        not workspace.is_absolute()
+        or workspace.resolve() != workspace
+        or not repo.is_absolute()
+        or repo.resolve() != repo
+        or root.resolve() != root
+        or marker.is_symlink()
+        or not marker.is_file()
     ):
         raise RuntimeError("original snapshot inputs require canonical independent paths")
     document = json.loads(marker.read_bytes())
@@ -149,8 +199,10 @@ def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict
                 raise RuntimeError("original snapshot input record ordering differs")
             destination, relative = Path(record["destination"]), Path(record["snapshot"])
             if (
-                not destination.is_absolute() or ".." in destination.parts
-                or relative.is_absolute() or ".." in relative.parts
+                not destination.is_absolute()
+                or ".." in destination.parts
+                or relative.is_absolute()
+                or ".." in relative.parts
                 or root / relative != snapshot_path(root, destination, repo)
             ):
                 raise RuntimeError("original snapshot input has an unsafe source mapping")
