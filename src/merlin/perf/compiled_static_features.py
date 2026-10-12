@@ -38,11 +38,26 @@ def linked_entry_extent(elf_bytes, entry_symbol):
         for offset in range(0, len(table.data), 24):
             name, info, _, owner, address, size = struct.unpack_from("<IBBHQQ", table.data, offset)
             if info & 15 == 2 and 0 < owner < len(sections) and _string(strings.data, name) == entry_symbol:
-                definitions.add((address, size))
+                definitions.add((address, size, owner))
     if len(definitions) != 1:
         raise ValueError("ELF has no unique retained function definition")
-    address, size = next(iter(definitions))
-    return {"symbol": entry_symbol, "address": address, "size_bytes": size, "scope": "static linked definition"}
+    address, size, owner = next(iter(definitions))
+    section = sections[owner]
+    if (
+        not section.flags & 4
+        or not section.name
+        or sum(item.name == section.name for item in sections) != 1
+        or address < section.address
+        or address + size > section.address + section.size
+    ):
+        raise ValueError("ELF function extent has no unique executable owner section")
+    return {
+        "symbol": entry_symbol,
+        "address": address,
+        "size_bytes": size,
+        "section": section.name,
+        "scope": "static linked definition",
+    }
 
 
 @dataclass(frozen=True)

@@ -97,8 +97,15 @@ def _kernel_command_inventory(path: Path, *, symbol: str, table: Mapping[str, An
     disassembler = toolchain.objdump()
     if not disassembler.is_file() or disassembler.is_symlink():
         raise NativeModelExecutionError("selected compiler has no matching LLVM objdump")
+    # --disassemble-symbols stops at interior local labels in relocatable
+    # objects (e.g. PC-relative relocation labels), truncating genuine work.
+    # Decode the independently verified owner section and complete extent.
     run = subprocess.run(
-        [str(disassembler), "-d", "--triple=riscv64", "-M", "no-aliases", f"--disassemble-symbols={symbol}", str(path)],
+        [
+            str(disassembler), "-d", "--triple=riscv64", "-M", "no-aliases",
+            f"--section={extent['section']}", f"--start-address={start}", f"--stop-address={start + size}",
+            str(path),
+        ],
         capture_output=True,
         text=True,
         timeout=60,
