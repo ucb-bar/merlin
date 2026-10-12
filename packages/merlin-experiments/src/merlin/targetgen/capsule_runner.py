@@ -4938,7 +4938,9 @@ def run_capsule(
             ),
             encoding="utf-8",
         )
-        if bool((capsule.get("semantic") or {}).get("must_accelerate")):
+        from .owned_host_model_selection import owned_model_required
+
+        if owned_model_required(capsule, target=eff_target):
             # The submitted program is the only certification authority for
             # a model demanding acceleration. The legacy runner-owned host
             # graph is not run, so its own model budget cannot starve this one.
