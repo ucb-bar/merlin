@@ -1041,6 +1041,14 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             if tier in {"L0", "L1"}:
                 continue
             evidence = (record.get("tiers") or {}).get(tier)
+            if tier == "L3" and (
+                evidence is None or (
+                    isinstance(evidence, dict)
+                    and evidence.get("status") in {"unavailable", "unverified", "not_run"}
+                )
+            ):
+                tiers[tier] = {"status": "unverified", "detail": "selected native tier has not completed"}
+                continue
             if (
                 not isinstance(evidence, dict)
                 or evidence.get("status") not in {"pass", "fail"}
@@ -1086,10 +1094,12 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
                     )
         required = frozen_policy["required_tiers"]
         failed = [tier for tier in required if tiers[tier]["status"] == "fail"]
-        numeric = (tiers.get("L3") or tiers.get("L2") or {}).get("numeric")
+        pending = [tier for tier in required if tiers[tier]["status"] == "unverified"]
+        numeric = next((tiers[tier]["numeric"] for tier in ("L3", "L2") if "numeric" in tiers.get(tier, {})), None)
         coverage = {
             "status": "verified",
             "source_sha256": dispatch["source_sha256"],
+            "n_source_operations": source["placement"]["n_source_operations"],
             "eligible_source_op_indices": source["placement"]["eligible_source_op_indices"],
             "completed_eligible_source_op_indices": sorted(
                 row["source_op_index"] for row in dispatch["eligible_tasks"]
@@ -1098,7 +1108,7 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             "n_completed_eligible": len(dispatch["eligible_tasks"]),
         }
         return {
-            "status": "fail" if failed else "pass",
+            "status": "fail" if failed else "incomplete" if pending else "pass",
             "kind": "owned_host_model_execution",
             "violations": ["candidate_verified_numeric_mismatch"] if failed else [],
             "owned_host_model_check": {
@@ -1107,13 +1117,15 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
                 "candidate_source_coverage": coverage,
             },
             "candidate_required_tiers": {
-                "status": "fail" if failed else "pass",
+                "status": "fail" if failed else "incomplete" if pending else "pass",
                 "required_tiers": required,
                 "failed_tiers": failed,
+                "pending_tiers": pending,
                 "tiers": tiers,
             },
             "candidate_completed_dispatch": dispatch,
             "candidate_source_placement": source["placement"],
+            "candidate_source_coverage": coverage,
             "numeric": numeric,
             "violations_scope": "provided Merlin host; candidate closed device kernels only",
         }

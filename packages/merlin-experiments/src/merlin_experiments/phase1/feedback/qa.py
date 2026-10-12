@@ -415,6 +415,24 @@ def _candidate_native_feedback(result: dict) -> dict | None:
     This projection does not grade or upgrade the underlying result.
     """
     owner = result
+    owned = result.get("model_execution_check")
+    if isinstance(owned, dict) and owned.get("kind") == "owned_host_model_execution":
+        # Project only the independently reopened owned audit, never its raw
+        # runtime receipt or the legacy host graph's numeric observations.
+        source = owned.get("candidate_source_placement")
+        dispatch = owned.get("candidate_completed_dispatch")
+        owner = {"candidate_native_model_check": {
+            "schema": "merlin_candidate_native_model_check_v1",
+            "status": owned.get("status"),
+            "violations": owned.get("violations"),
+            "emitted_host_compute": (
+                {"status": "clean"} if isinstance(source, dict) and source.get("status") == "clean" else {}
+            ),
+            "source_placement": source,
+            "completed_dispatch": dispatch,
+            "candidate_source_coverage": owned.get("candidate_source_coverage"),
+            "candidate_required_tiers": owned.get("candidate_required_tiers"),
+        }}
     top_level_candidate = "candidate_native_model_check" in owner
     if not top_level_candidate:
         owner = result.get("model_execution_check")

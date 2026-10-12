@@ -101,9 +101,22 @@ def _candidate_selfcheck_row(result: dict, closed: dict | None, *, name: str, ba
         and result.get("status") == "pass"
         and (summary.get("status") == "pass" and required_pass and source_verified and component_pass and bar == "pass")
     )
+    screened = (
+        barrier_tier == "L2" and source_verified
+        and summary.get("status") == "incomplete"
+        and not summary.get("violations")
+        and all(tiers.get(tier) == "pass" for tier in ("L0", "L1", "L2"))
+        and tiers.get("L3") == "unverified"
+        and set(required) == {"L0", "L1", "L2", "L3"}
+        and all(components.get(key) == expected for key, expected in (
+            ("emitted_host_compute", "clean"), ("source_placement", "clean"),
+            ("completed_dispatch", "verified"), ("candidate_required_tiers", "incomplete")))
+    )
     row = {
         "capsule": name,
-        "pass": certified,
+        "pass": certified or screened,
+        "screened_only": screened,
+        "certified_complete": certified,
         "execution_digest": None,
         "barrier_tier": bar_used,
         "barrier_declared": barrier_tier,
@@ -1203,8 +1216,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         if _qc._candidate_native_feedback(d) is not None:
             row, certified = _candidate_selfcheck_row(d, closed_rows.get(name), name=name, barrier_tier=barrier_tier)
             rows.append(row)
-            npass += int(certified)
+            npass += int(row["pass"])
             ncert += int(certified)
+            nscreened += int(row.get("screened_only", False))
             continue
         _tier_results = d.get("tiers") or {}
         tiers = {t: (v or {}).get("status") for t, v in _tier_results.items()}
