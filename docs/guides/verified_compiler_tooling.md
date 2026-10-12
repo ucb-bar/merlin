@@ -80,11 +80,29 @@ object. The entry symbol comes from the original build/capability contract,
 not from the trace. Absent traces retain historical reuse behavior and grant
 zero formal credit; unconsumed traces also grant none. Unsupported edges remain
 unproved in partial reports; covered failures reject the build. The join covers
-one unambiguous current observed source. Multiple pending emissions with the
-same artifact bytes refuse before proof checking or object compilation; bytes
-alone cannot select the actual original source obligation.
+one current observed source using its host-issued text identity. Distinct
+emissions with identical code retain separate source checks. Trusted host
+artifact copies register their exact path and byte pin before a read can
+recover that identity. Plain copied/serialized text cannot select a pending
+source, and ambiguous artifact paths refuse. A host rewrite invalidates the
+path's previous ownership before writing; its latest observed issued producer
+owns that path. Equal-byte plain or untraced rewrites carry no prior identity.
+An intervening observed writer prevents an older emission from registering.
+Issuance belongs to one process
+and live original scope; saved or reconstructed identifiers grant no authority.
 Failed or incomplete object consumers retain their claim until scope exit,
 keeping legacy artifact caches unavailable for retries of that emission.
+Later consumers of a completed origin recheck its original source, package,
+emission and invocation pins and observe a freshly built object. They never
+restore proof authority from a saved report or a byte-only cache. Ordinary
+oracle tiers therefore rebuild native objects; the independent proof checker
+can reuse only its own qualified successful checks.
+Whole-model workers share a completed object only within the same observed
+origin; untraced builds retain their original byte-based reuse. The host ledger
+retains at most 4,096 pending/completed sources, 8,192 original/alias records,
+8,192 observed writer paths and 256 MiB
+of issued text objects per scope. These are host resource ceilings, not tensor
+capacities. No per-alias text copy or tensor-data copy is required.
 Explicit compile-only proof transport does not duplicate the ordinary check.
 This custody establishes neither the compiler's internal pass
 history nor terminal lowering, dispatch, host optimization or machine semantics.

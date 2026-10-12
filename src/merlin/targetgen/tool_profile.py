@@ -69,6 +69,7 @@ AUTOMATIC_CHECKER_MODULES_V3 = (
     "merlin.verify.lean_checked",
     "merlin.verify.lean_emission_chain",
     "merlin.verify.lean_emission_context",
+    "merlin.verify.lean_emission_products",
     "merlin.verify.lean_sat_runtime",
     "merlin.verify.lean_isa_semantics",
     "merlin.targetgen.isa_spec",
