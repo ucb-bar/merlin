@@ -46,6 +46,19 @@ from merlin_experiments.phase1.feedback import qa as _qc
 from merlin_experiments.phase1.timing import barrier_measurements
 
 
+def _public_candidate_emission_failure(result: dict) -> dict | None:
+    """Expose only bounded structural compiler errors, never receipt payloads."""
+    failure = result.get("candidate_emission_failure")
+    detail = failure.get("detail") if isinstance(failure, dict) else failure
+    if not isinstance(detail, str) or not detail.strip():
+        return None
+    return {
+        "plane": "candidate_compilation",
+        "category": "CANDIDATE_EMISSION_FAILED",
+        "detail": _qc._redact_detail(detail[:2000]),
+    }
+
+
 def _candidate_selfcheck_row(result: dict, closed: dict | None, *, name: str, barrier_tier: str) -> tuple[dict, bool]:
     """Project one submitted whole-model artifact from QA's closed candidate fields.
 
@@ -113,6 +126,10 @@ def _candidate_selfcheck_row(result: dict, closed: dict | None, *, name: str, ba
                 "detail": projected.get("failure_detail"),
             },
         )
+    if not certified:
+        emission_failure = _public_candidate_emission_failure(result)
+        if emission_failure is not None:
+            row["failure"] = emission_failure
     return row, certified
 
 
@@ -1302,7 +1319,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                     "numeric": num,  # full diff stats, reference value redacted
                     "trace_summary": tr,  # YOUR instruction counts (mvin/mvout/compute/…)
                     "trace_check": d.get("trace_check"),
-                    "failure": d.get("failure"),  # full plane + detail
+                    "failure": d.get("failure") or _public_candidate_emission_failure(d),  # bounded compiler detail
                     "your_artifacts": own,  # copied to ./selfcheck_out/<capsule>/
                     "sim_console_tail": console_tail,
                     **({"sim_console_tail_unreadable": console_tail_unreadable} if console_tail_unreadable else {}),

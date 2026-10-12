@@ -2998,6 +2998,28 @@ def model_capture_python(workload: str | None, m2m_dir: str | Path | None = None
     return python
 
 
+def freeze_materialized_loader_profile(selection: dict, destination: Path) -> dict:
+    """Publish the exact selected adjacent loader input, for every workload role."""
+    import hashlib
+
+    selected, digest = selection.get("profile_path"), selection.get("profile_sha256")
+    if selected is None and digest is None:
+        return {}
+    if not isinstance(selected, str) or not isinstance(digest, str) or len(digest) != 64:
+        raise M2MUnavailable("materialized loader profile needs its selected path and digest")
+    profile = Path(selected)
+    loader = Path(selection.get("loader_path") or "")
+    if (profile.name != "profile.json" or profile.parent != loader.parent
+            or any(path.is_symlink() for path in (profile, *profile.parents)) or not profile.is_file()):
+        raise M2MUnavailable("materialized loader profile must be the exact adjacent ordinary input")
+    raw = profile.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != digest:
+        raise M2MUnavailable("materialized loader profile changed during publication")
+    destination = Path(destination)
+    (destination / "profile.json").write_bytes(raw)
+    return {"loader_profile": "profile.json", "loader_profile_sha256": digest}
+
+
 def freeze_model_loader_dependencies(
     workload: str | None, destination: Path, capture_meta: dict, m2m_dir: str | Path | None = None
 ) -> str | None:
@@ -3471,7 +3493,7 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
             raise M2MUnavailable("materialized loader must be an ordinary member beside its selected capture")
         if hashlib.sha256(loader.read_bytes()).hexdigest() != selection["loader_sha256"]:
             raise M2MUnavailable("materialized loader differs from its preselected workload snapshot")
-    if public_performance:
+    if selection.get("loader_path"):
         profile_sha = (meta.get("loader_provenance") or {}).get("profile_sha256")
         if profile_sha is not None or selection.get("profile_path"):
             profile = Path(selection.get("profile_path", ""))
@@ -3483,7 +3505,7 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
                 or hashlib.sha256(profile.read_bytes()).hexdigest() != profile_sha
                 or profile_sha != selection.get("profile_sha256")
             ):
-                raise M2MUnavailable("public performance profile differs from its preselected capture")
+                raise M2MUnavailable("materialized loader profile differs from its preselected capture")
     meta["materialized_artifact_identities"] = receipt["artifacts"]
     meta["materialized_receipt_bytes"] = receipt_raw
     # Retain original source bytes. The writer records the one known relocation.
@@ -3637,6 +3659,10 @@ def write_model_capsule(
             declared = art.meta["materialized_artifact_identities"][original]
             if len(payload) != declared["bytes"] or hashlib.sha256(payload).hexdigest() != declared["sha256"]:
                 raise M2MUnavailable(f"materialized external payload changed during capsule copying: {original}")
+    loader_profile = (
+        freeze_materialized_loader_profile(art.meta["materialized_capture"], d)
+        if artifact is not None else {}
+    )
     loader_dependencies = (
         freeze_model_loader_dependencies(workload, d, art.meta or {}, src.m2m_dir) if artifact is None else []
     )
@@ -3704,6 +3730,7 @@ def write_model_capsule(
                 ),
                 "torch_seed": int((art.meta or {}).get("torch_seed", 0)),
                 **({"loader_dependencies": loader_dependencies} if loader_dependencies else {}),
+                **loader_profile,
                 "compile_dtype": compile_dtype(binding.operand_dtype),
                 "arg_order": in_names + out_names,
                 "weights": "capsule.weights.safetensors",
@@ -3812,11 +3839,6 @@ def write_model_capsule(
                 if len(raw) != declared["bytes"] or hashlib.sha256(raw).hexdigest() != declared["sha256"]:
                     raise M2MUnavailable("public performance capture reference closure changed")
                 (d / ("source-capture-" + member)).write_bytes(raw)
-            if art.meta["materialized_capture"].get("profile_path"):
-                profile_raw = Path(art.meta["materialized_capture"]["profile_path"]).read_bytes()
-                if hashlib.sha256(profile_raw).hexdigest() != art.meta["materialized_capture"]["profile_sha256"]:
-                    raise M2MUnavailable("public performance profile changed during publication")
-                (d / "profile.json").write_bytes(profile_raw)
     write_golden(d, golden)
     return d
 

@@ -139,19 +139,18 @@ def _materialized_iteration_capsules(
                 raise ValueError(f"selected workload loader changed while copying {label}")
             outputs[f"{prefix}/{label}/loader.py"] = loader_bytes
             loader_binding = {"loader_path": f"{prefix}/{label}/loader.py", "loader_sha256": loader_sha256}
-            if performance_selection is not None:
-                profile = loader_path.with_name("profile.json")
-                declared_profile = (artifact.meta.get("loader_provenance") or {}).get("profile_sha256")
-                if profile.is_file() or declared_profile is not None:
-                    if profile.is_symlink() or not profile.is_file():
-                        raise ValueError("public performance source lacks its selected profile")
-                    profile_raw = profile.read_bytes()
-                    if hashlib.sha256(profile_raw).hexdigest() != declared_profile:
-                        raise ValueError("public performance profile differs from its actual capture")
-                    outputs[f"{prefix}/{label}/profile.json"] = profile_raw
-                    loader_binding.update(
-                        profile_path=f"{prefix}/{label}/profile.json", profile_sha256=declared_profile
-                    )
+            profile = loader_path.with_name("profile.json")
+            declared_profile = (artifact.meta.get("loader_provenance") or {}).get("profile_sha256")
+            if profile.is_file() or declared_profile is not None:
+                if profile.is_symlink() or not profile.is_file():
+                    raise ValueError("materialized source lacks its selected profile")
+                profile_raw = profile.read_bytes()
+                if hashlib.sha256(profile_raw).hexdigest() != declared_profile:
+                    raise ValueError("materialized loader profile differs from its actual capture")
+                outputs[f"{prefix}/{label}/profile.json"] = profile_raw
+                loader_binding.update(
+                    profile_path=f"{prefix}/{label}/profile.json", profile_sha256=declared_profile
+                )
         entries.append(
             {
                 "name": f"SY_source_{label}",

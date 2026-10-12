@@ -400,6 +400,7 @@ def prepare(
     retirements: Path | None = None,
     generated_only: bool = False,
     phase1_policy_descriptor: Path | None = None,
+    loader_profile_sources: tuple[Path, ...] | None = None,
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
@@ -464,6 +465,7 @@ def prepare(
                 private_baseline=private_baseline,
                 retirements=retirements,
                 generated_only=generated_only,
+                **({"loader_profile_sources": loader_profile_sources} if loader_profile_sources is not None else {}),
             )
             selected_facts = _selected_rtl_facts(plan, generated)
             selected_contract = _selected_capability_contract(plan, generated)

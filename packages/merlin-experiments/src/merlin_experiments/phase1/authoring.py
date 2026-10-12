@@ -265,6 +265,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         a.subagent_model,
         a.background_model,
         (prepared.selected_codex_runtime if a.codex_binary else None),
+        a.codex_max_subagents,
     )
     from merlin.targetgen.sandbox import bwrap as BW
 

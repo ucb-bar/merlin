@@ -25,6 +25,7 @@ class RunOptions:
     model: str
     effort: str
     driver: str
+    codex_max_subagents: int | None
     subagent_model: str
     background_model: str
     provider: str
@@ -94,6 +95,16 @@ def build_parser(
     ap.add_argument("--run-id", required=True)
     ap.add_argument(
         "--codex-canary", action="store_true", help="stop after an explicit sealed fresh-client canary; no authoring"
+    )
+    def positive_subagent_count(value):
+        count = int(value)
+        if count < 1:
+            raise argparse.ArgumentTypeError("Codex subagent limit must be positive")
+        return count
+
+    ap.add_argument(
+        "--codex-max-subagents", type=positive_subagent_count, default=None, metavar="N",
+        help="opt in to at most N concurrent Codex child agents in the existing bwrap sandbox",
     )
     ap.add_argument(
         "--codex-binary", default="", help="explicit canonical Codex executable; requires complete client selection"
