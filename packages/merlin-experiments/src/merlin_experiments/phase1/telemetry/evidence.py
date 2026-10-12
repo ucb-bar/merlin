@@ -146,6 +146,152 @@ def snapshot_agent_evidence(run_dir: Path) -> list[Path]:
     return copied
 
 
+def _json_lines(path: Path):
+    """Read complete provider records; a live trailing partial row is unavailable."""
+    try:
+        lines = path.read_bytes().splitlines(keepends=True)
+    except OSError:
+        return []
+    records = []
+    for line in lines:
+        if not line.endswith(b"\n"):
+            continue
+        try:
+            row = json.loads(line)
+        except (ValueError, UnicodeError):
+            continue
+        if isinstance(row, dict):
+            records.append(row)
+    return records
+
+
+def declared_home_usage(run_dir: Path) -> dict:
+    """Exact run-declared homes, raw thread identity, and cumulative live usage.
+
+    No global cache search or account/balance interpretation. Unmatched actors
+    are excluded rather than silently attributed to this experiment.
+    """
+    import yaml
+
+    run_dir = Path(run_dir)
+    unavailable = {"available": False, "threads": [], "tokens": {}, "cost_usd": None}
+    try:
+        env = yaml.safe_load((run_dir / "environment.yaml").read_text())
+    except (OSError, ValueError, yaml.YAMLError):
+        return unavailable
+    if not isinstance(env, dict) or env.get("run_id", run_dir.name) != run_dir.name:
+        return unavailable
+    declared = [
+        (env.get("codex_runtime_policy") or {}).get("home_root"),
+        ((env.get("run_config") or {}).get("codex_runtime") or {}).get("home_root"),
+    ]
+    declared = [v for v in declared if v is not None]
+    workspace = env.get("workspace_path")
+    if (not declared or any(not isinstance(v, str) for v in declared)
+        or len(set(declared)) != 1 or not isinstance(workspace, str)):
+        return unavailable
+    home = Path(declared[0])
+    if not home.is_absolute() or not Path(workspace).is_absolute():
+        return unavailable
+    selected = {}
+    for raw in sorted((run_dir / "rounds").glob("round_*.codex_events.raw.jsonl")):
+        suffix = raw.name.split(".")[0].removeprefix("round_")
+        if not suffix.isdigit():
+            continue
+        ids = {row.get("thread_id") for row in _json_lines(raw) if row.get("type") == "thread.started"}
+        ids = {v for v in ids if isinstance(v, str) and v}
+        files = list((home / f"{run_dir.name}_r{suffix}" / "sessions").rglob("*.jsonl"))
+        files += list((run_dir / "rounds" / f"round_{suffix}.codex_rollout_snapshot").rglob("*.jsonl"))
+        for path in sorted(files):
+            records = _json_lines(path)
+            metas = [row.get("payload") for row in records if row.get("type") == "session_meta"]
+            if len(metas) != 1 or not isinstance(metas[0], dict):
+                continue
+            meta = metas[0]
+            actor = meta.get("id")
+            if actor not in ids or meta.get("cwd") != workspace:
+                continue
+            start = timeline._stamp(records[0].get("timestamp")) if records else None
+            seen = set()
+            latest = None
+            for row in records:
+                payload = row.get("payload") or {}
+                if (row.get("type") != "event_msg" or not isinstance(payload, dict)
+                    or payload.get("type") != "token_count"):
+                    continue
+                info = payload.get("info") or {}
+                usage = info.get("total_token_usage") if isinstance(info, dict) else None
+                if not isinstance(usage, dict):
+                    continue
+                names = (
+                    "input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens"
+                )
+                if any(type(usage.get(k)) is not int or usage[k] < 0 for k in names):
+                    continue
+                write = usage.get("cache_write_input_tokens", 0)
+                if type(write) is not int or write < 0:
+                    continue
+                fingerprint = tuple(usage[k] for k in names) + (write,)
+                if fingerprint in seen:
+                    continue
+                seen.add(fingerprint)
+                if (usage["cached_input_tokens"] + write > usage["input_tokens"]
+                    or usage["reasoning_output_tokens"] > usage["output_tokens"]
+                    or usage["total_tokens"] != usage["input_tokens"] + usage["output_tokens"]):
+                    continue
+                stamp = timeline._stamp(row.get("timestamp"))
+                if stamp is None:
+                    continue
+                latest = {"stamp": stamp, "at": row.get("timestamp"), "usage": usage, "write": write}
+            if latest is None:
+                continue
+            prior = selected.get(actor)
+            if prior and prior["stamp"] > latest["stamp"]:
+                prior["rounds"].add(int(suffix))
+                continue
+            selected[actor] = {**latest, "start": start, "source": str(path), "rounds": {int(suffix)}}
+            if prior:
+                selected[actor]["rounds"].update(prior["rounds"])
+                selected[actor]["start"] = min(v for v in (start, prior["start"]) if v is not None)
+    threads = []
+    totals = {k: 0 for k in ("input_total", "fresh_input", "cache_read", "cache_write", "output", "reasoning", "total")}
+    for actor, item in sorted(selected.items()):
+        usage = item["usage"]
+        buckets = {
+            "input_total": usage["input_tokens"],
+            "fresh_input": usage["input_tokens"] - usage["cached_input_tokens"] - item["write"],
+            "cache_read": usage["cached_input_tokens"], "cache_write": item["write"],
+            "output": usage["output_tokens"], "reasoning": usage["reasoning_output_tokens"],
+            "total": usage["total_tokens"],
+        }
+        span = item["stamp"] - item["start"] if item["start"] is not None else None
+        span = span if span is not None and span > 0 else None
+        threads.append({
+            "thread_id": actor, "rounds": sorted(item["rounds"]), "source": item["source"],
+            "sampled_through": item["at"],
+            "tokens": buckets, "usage_sample_span_s": span, "cost_usd": None,
+            "input_tokens_per_client_observed_s": buckets["input_total"] / span if span else None,
+            "output_tokens_per_client_observed_s": buckets["output"] / span if span else None,
+            "reasoning_share_of_output": buckets["reasoning"] / buckets["output"] if buckets["output"] else None,
+        })
+        for key in totals:
+            totals[key] += buckets[key]
+    return {
+        "available": bool(threads), "threads": threads, "cost_usd": None,
+        "tokens": {
+            "tokens_input_total": totals["input_total"], "tokens_input_traffic": totals["input_total"],
+            "tokens_fresh_input": totals["fresh_input"], "tokens_cache_read": totals["cache_read"],
+            "tokens_cache_write": totals["cache_write"], "tokens_output": totals["output"],
+            "tokens_reasoning": totals["reasoning"], "tokens_total": totals["total"],
+            "reasoning_is_subset_of_output": True,
+        } if threads else {},
+        "usage_complete": False,
+        "scope": "latest cumulative provider usage per exactly matched thread; volatile observation, not billing",
+        "rate_note": "client-observed usage-sample traffic rates; not provider decode throughput or TTFT",
+        "unattributed_agents": "excluded; no subagent attribution without an exact observed thread identity",
+    }
+
+
 def rollout_telemetry(run_dir: Path) -> dict:
     """Incremental Codex response usage and client-observed response intervals.
 
@@ -153,6 +299,9 @@ def rollout_telemetry(run_dir: Path) -> dict:
     token-delta stream.  The interval begins at the preceding task-start/tool-result observed by the
     client.  It is deliberately called turnaround, never API latency or decode throughput.
     """
+    live = declared_home_usage(run_dir)
+    if live["available"]:
+        return live
     paths = sorted((Path(run_dir) / "rounds").glob("round_*.codex_rollout_snapshot/**/*.jsonl"))
     responses = []
     total = {"input_total": 0, "fresh_input": 0, "cache_read": 0, "cache_write": 0, "output": 0, "reasoning": 0}

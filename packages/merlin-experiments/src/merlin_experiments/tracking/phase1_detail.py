@@ -255,6 +255,21 @@ def cost_and_time(run_dir: Path, inventory: R.Inventory) -> dict[str, Any]:
     cost = inventory.yaml("cost_time_toolcalls.yaml", run_dir / "cost_time_toolcalls.yaml")
     timing = inventory.json("timing_detailed.json", run_dir / "timing_detailed.json")
     state = inventory.yaml("qa_loop_state.yaml", run_dir / "qa_loop_state.yaml")
+    from merlin_experiments.phase1.telemetry import evidence, report, timeline
+
+    live_usage = evidence.declared_home_usage(run_dir)
+    if live_usage["available"]:
+        tokens = live_usage["tokens"]
+        cost = {**(cost or {}),
+            "tokens_input": tokens["tokens_input_total"], "tokens_cached": tokens["tokens_cache_read"],
+            "tokens_output": tokens["tokens_output"], "tokens_reasoning": tokens["tokens_reasoning"],
+            "tokens_total": tokens["tokens_total"], "usage_complete": False,
+            "subscription_notional_usd": None, "estimated_cost_usd": None,
+        }
+    if timing is None:
+        paths = report.transcript_paths(run_dir)
+        if paths:
+            timing = timeline.decompose(timeline.read_events(paths))
     keys = (
         "model",
         "wall_time_seconds",
@@ -297,6 +312,7 @@ def cost_and_time(run_dir: Path, inventory: R.Inventory) -> dict[str, Any]:
     cumulative = (state or {}).get("cumulative") if isinstance((state or {}).get("cumulative"), Mapping) else {}
     return {
         "cost": {k: cost.get(k) for k in keys} if cost else None,
+        "live_usage": live_usage if live_usage["available"] else None,
         "timing": {
             k: timing.get(k)
             for k in (
