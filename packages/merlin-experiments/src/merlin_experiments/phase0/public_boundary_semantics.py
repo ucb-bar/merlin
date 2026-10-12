@@ -20,6 +20,15 @@ SUPPORTED = CONTRACTIONS | {
     "aten.mean.dim",
     "aten.sum.dim_IntList",
 }
+TYPED_SCHEMA = "merlin.public_connected_source.v2"
+
+
+def contractions(program):
+    if program.get("schema") == TYPED_SCHEMA:
+        from .public_typed_semantics import CONTRACTIONS as typed
+
+        return typed
+    return CONTRACTIONS
 
 
 def references(value):
@@ -34,7 +43,7 @@ def references(value):
             yield from references(child)
 
 
-def cuts(trace, *, max_nodes):
+def cuts(trace, *, max_nodes, typed=False):
     """Retain maximal connected supported calls, with every cut input explicit."""
     original_use_def_semantics(trace)
     nodes = trace["graphs"]["original"]["nodes"]
@@ -48,7 +57,7 @@ def cuts(trace, *, max_nodes):
         try:
             if not schemas.get(node["target"]):
                 raise ValueError("original operator schema identity is unavailable")
-            _shape_relations(node, values)
+            _shape_relations(node, values, typed=typed)
         except ValueError as exc:
             missing.append({"node": node["id"], "operation": node["target"], "status": "UNKNOWN", "reason": str(exc)})
         else:
@@ -73,7 +82,12 @@ def cuts(trace, *, max_nodes):
             del adjacent[name]
         region = [n for n in nodes if n["id"] in component]
         operations = {n["target"] for n in region}
-        if len(region) > max_nodes or not operations & CONTRACTIONS or not operations - CONTRACTIONS:
+        from .public_typed_semantics import CONTRACTIONS as typed_contractions
+
+        selected_contractions = typed_contractions if typed else CONTRACTIONS
+        if len(region) > max_nodes or (
+            not typed and (not operations & selected_contractions or not operations - selected_contractions)
+        ):
             missing.append(
                 {
                     "nodes": [n["id"] for n in region],
@@ -98,11 +112,18 @@ def cuts(trace, *, max_nodes):
                 }
             )
             continue
-        regions.append(_parameterize(region, values, schemas, live_outs))
+        try:
+            regions.append(_parameterize(region, values, schemas, live_outs, typed=typed))
+        except ValueError as exc:
+            missing.append({"nodes": [n["id"] for n in region], "status": "UNKNOWN", "reason": str(exc)})
     return regions, missing
 
 
-def _shape_relations(node, values):
+def _shape_relations(node, values, *, typed=False):
+    if typed:
+        from .public_typed_semantics import shape_relations
+
+        return shape_relations(node, values)
     target, args, kwargs = node["target"], node["args"], node["kwargs"]
     if target not in SUPPORTED or len(node["results"]) != 1:
         raise ValueError("original call has no implemented exact shape constructor")
@@ -200,7 +221,7 @@ def _shape_relations(node, values):
     return relations, units
 
 
-def _parameterize(nodes, values, schemas, live_outs):
+def _parameterize(nodes, values, schemas, live_outs, *, typed=False):
     produced = {n["results"][0]["id"] for n in nodes}
     leaves = list(dict.fromkeys(r for n in nodes for r in references([n["args"], n["kwargs"]]) if r not in produced))
     order = [*leaves, *[n["results"][0]["id"] for n in nodes]]
@@ -214,7 +235,7 @@ def _parameterize(nodes, values, schemas, live_outs):
 
     units = set()
     for node in nodes:
-        relations, fixed = _shape_relations(node, values)
+        relations, fixed = _shape_relations(node, values, typed=typed)
         units.update(fixed)
         for a, b in relations:
             parents[root(b)] = root(a)
@@ -240,6 +261,11 @@ def _parameterize(nodes, values, schemas, live_outs):
         if isinstance(value, dict):
             if set(value) == {"node_id", "value_id"}:
                 return {"value": names[value["value_id"]]}
+            if typed:
+                from .public_typed_semantics import literal
+
+                literal(value)
+                return copy.deepcopy(value)
             raise ValueError("constructor does not implement opaque original literal objects")
         if isinstance(value, list):
             return [argument(v) for v in value]
@@ -248,6 +274,13 @@ def _parameterize(nodes, values, schemas, live_outs):
         return value
 
     inputs = [{"name": names[v], "shape": shape(v), "dtype": values[v]["dtype"]} for v in leaves]
+    if typed:
+        from .public_typed_semantics import layout_order
+
+        for row, value in zip(inputs, leaves, strict=True):
+            order = layout_order(values[value])
+            if order is not None:
+                row["layout_order"] = order
     calls = [
         {
             "name": names[n["results"][0]["id"]],
@@ -261,6 +294,7 @@ def _parameterize(nodes, values, schemas, live_outs):
         for n in nodes
     ]
     return {
+        **({"schema": TYPED_SCHEMA} if typed else {}),
         "inputs": inputs,
         "nodes": calls,
         "outputs": [names[n["results"][0]["id"]] for n in nodes if n["results"][0]["id"] in live_outs],

@@ -92,6 +92,8 @@ def trace(program=None):
 
     def arg(value):
         if isinstance(value, dict):
+            if set(value) == {"kind", "value"}:
+                return value
             return {"node_id": value["value"], "value_id": value["value"] + ":0"}
         return [arg(v) for v in value] if isinstance(value, list) else value
 

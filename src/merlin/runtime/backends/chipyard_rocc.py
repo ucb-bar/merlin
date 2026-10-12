@@ -285,6 +285,23 @@ except ModuleNotFoundError as _missing:
         )
 
 
+def complete_call_timing():
+    """Optional reviewed normal timer; absent selection grants no cycle boundary."""
+    from merlin.runtime.complete_call_timing import from_contract
+
+    return from_contract(_contract())
+
+
+def build_source_paths():
+    """Original caller and optional clock bytes consumed by pure build services."""
+    from merlin.runtime import complete_call_timing as timing
+    from merlin.targetgen.contract import harness_render
+
+    plan = complete_call_timing()
+    clocks = () if plan is None else tuple(Path(p["path"]) for p in plan.record()["counter_semantics"]["source_pins"])
+    return (Path(timing.__file__).resolve(), Path(harness_render.__file__).resolve(), *clocks)
+
+
 # --- toolchain + engines ------------------------------------------------------------------------------
 def chipyard_root() -> Path:
     """The toolchain container checkout, located by the contract's declared variable (or ext key)."""

@@ -222,7 +222,9 @@ def bounded_feedback(callback, *, timeout_s, output, kwargs, limits=FeedbackValu
             except StageGateError as error:
                 primary = error
         sources = (Path(__file__).resolve(), Path(run_feedback_guardian.__code__.co_filename).resolve(),
-                   Path(owned_children.__file__).resolve(), Path(protocol.__file__).resolve(),
+                   Path(owned_children.__file__).resolve(),
+                   Path(owned_children.reap_owned_children.__code__.co_filename).resolve(),
+                   Path(protocol.__file__).resolve(),
                    Path(receive_feedback_value.__code__.co_filename).resolve(),
                    Path(acquire_host_resource_lease.__code__.co_filename).resolve())
         write_json(root / "lifecycle.json", {

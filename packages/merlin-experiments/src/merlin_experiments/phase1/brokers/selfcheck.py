@@ -55,6 +55,8 @@ FORWARDED_PROBES = {
     "shape_coverage": "--shape-coverage",
     "offload_census": "--offload-census",
     "model_layers": "--model-layers",
+    "candidate_diagnostics": "--candidate-diagnostics",
+    "dynamic_census": "--dynamic-census",
 }
 PROTOCOL_VERSION = 3
 _DIGEST_IGNORES = frozenset({"build", "__pycache__", ".git", "selfcheck_out"})
@@ -427,7 +429,8 @@ def main(
                 _atomic_write(resp, json.dumps(doc))
                 _atomic_write(ch / f"done_{rid}", "err")
                 continue
-        sim = None if r.get("caller_layout") else str(r.get("sim") or _default_sim() or "") or None
+        inspection = r.get("caller_layout") or r.get("candidate_diagnostics")
+        sim = None if inspection else str(r.get("sim") or _default_sim() or "") or None
         policy_error = _sim_policy_error(sim) if sim else None
         if policy_error:
             doc = _decorate_response(

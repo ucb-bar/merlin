@@ -137,10 +137,21 @@ class Invocation:
             data = value if isinstance(value, bytes) else (value or "").encode("utf-8")
             path = self.directory / (name + ".bin")
             path.write_bytes(data)
-            self.document[name] = _pin(path)
+        self.complete_streams(result.returncode)
+
+    def complete_streams(self, returncode: int):
+        """Seal streams written incrementally by the actual process caller.
+
+        The caller owns bounded capture and real process cleanup. Existing raw
+        stream files are pinned without loading a full trace into RAM.
+        """
+        if type(returncode) is not int:
+            raise ValueError("streamed invocation requires its actual process exit status")
+        for name in ("stdout", "stderr"):
+            self.document[name] = _pin(self.directory / (name + ".bin"))
         self.document.update(
-            status="completed" if result.returncode == 0 else "failed",
-            returncode=result.returncode,
+            status="completed" if returncode == 0 else "failed",
+            returncode=returncode,
             finished_ns=time.time_ns(),
             outputs=_pins(path for path in self.outputs if path.is_file()),
             inputs_unchanged=_pins(self.inputs) == self.document["inputs"],

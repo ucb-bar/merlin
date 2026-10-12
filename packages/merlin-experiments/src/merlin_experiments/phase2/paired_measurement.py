@@ -722,10 +722,14 @@ def _run_el4_compiler_engines(
     evidence: dict[str, Any] = {}
     adapters = {
         "L2": CR.simulator_adapter("spike", target),
-        "L3": _gsim_l3_adapter(target, evidence, certificate, reuse_scope=reuse_scope,
-                              reuse_measurement=reuse_measurement),
+        "L3": _gsim_l3_adapter(
+            target, evidence, certificate, reuse_scope=reuse_scope, reuse_measurement=reuse_measurement
+        ),
     }
     try:
+        from . import public_program_measurement as PUBLIC
+
+        public_selection = PUBLIC.selection(capsule, rtl_identity)
         grade = CR.run_capsule(
             capsule,
             str(package),
@@ -743,7 +747,19 @@ def _run_el4_compiler_engines(
             # The L3 adapter owns the certificate-bound evidence and replicate-scoped reuse.
             # A general tier-cache hit carries a verdict but never populates that evidence.
             adapter_managed_tiers=("L3",),
+            **({"model_execution_selection": public_selection} if public_selection is not None else {}),
         )
+        if public_selection is not None and grade.get("status") == "pass":
+            evidence["gsim"] = PUBLIC.project(
+                capsule, grade, target=target, readback_policy=CR._adapter_readback_policy(adapters)
+            )
+            # This projection follows the original mandatory grade and uses its
+            # raw same-ELF complete-call delta. It is never a second execution.
+            grade["tiers"]["L3"].update(
+                cycles=evidence["gsim"]["cycles"],
+                cycle_accurate=True,
+                complete_call_timing=evidence["gsim"]["complete_call_timing"],
+            )
     except Exception as exc:
         result.update(
             {

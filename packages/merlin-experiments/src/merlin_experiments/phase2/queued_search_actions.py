@@ -3,8 +3,11 @@
 import time
 
 from . import component_workflow as controls
+from . import ordinary_measurement_selection as SELECTION
+from . import ordinary_queue_calibration as CALIBRATION
 from .broker import BrokerAction
 from .contracts import StageGateError, canonical_json
+from .provisional_search import RESUME_ACTION
 from .search_inputs import ORDINARY_FAST_KIND, ORDINARY_KIND
 
 
@@ -24,7 +27,31 @@ def actions():
         )
         for action in controls.evaluation_pool_actions(search=True)
     )
-    return (*pool, *controls.search_actions())
+    return (
+        *pool,
+        *controls.search_actions(),
+        BrokerAction(
+            SELECTION.ACTION,
+            ("__host_corpus_search_pool__", SELECTION.ACTION),
+            ("revision_id", "members"),
+            "Queue diagnostic RTL for public family/capsule members; partial timing cannot promote",
+            False,
+        ),
+        BrokerAction(
+            RESUME_ACTION,
+            ("__host_corpus_search_pool__", RESUME_ACTION),
+            ("revision_id",),
+            "Restore an issued exploration parent; serialize author edits first; measured incumbent is unchanged",
+            False,
+        ),
+        BrokerAction(
+            CALIBRATION.ACTION,
+            ("__host_corpus_search_pool__", CALIBRATION.ACTION),
+            ("revision_ids",),
+            "Fit and validate from completed own cheap/RTL jobs; no simulator launch or promotion",
+            False,
+        ),
+    )
 
 
 def execute(policy, action_name, rendered, timeout_s, started):
@@ -39,6 +66,16 @@ def execute(policy, action_name, rendered, timeout_s, started):
         answer = coordinator.finalize(timeout_s=timeout_s)
     elif action_name == controls.SEARCH_SELECT_ACTION:
         answer = coordinator.select()
+    elif action_name == RESUME_ACTION:
+        answer = coordinator.resume_parent(rendered["revision_id"])
+    elif action_name == CALIBRATION.ACTION:
+        answer = CALIBRATION.install(coordinator, rendered["revision_ids"], timeout_s=timeout_s)
+    elif action_name == SELECTION.ACTION:
+        coordinator.admit_submission(timeout_s=timeout_s)
+        members = SELECTION.parse_members(policy, rendered["members"])
+        answer = pool.submit(
+            rendered["revision_id"], kind=SELECTION.KIND, selected_members=members, timeout_s=timeout_s
+        )
     elif action_name == controls.REVISION_FREEZE_ACTION:
         parent = rendered["parent_revision"]
         answer = pool.revisions.freeze(

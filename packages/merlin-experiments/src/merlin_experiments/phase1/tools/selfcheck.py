@@ -243,6 +243,10 @@ def main(argv=None):
     # got "unrecognized arguments" for it.
     ap.add_argument("--offload-census", action="store_true")
     ap.add_argument("--model-layers", action="store_true")
+    ap.add_argument("--candidate-diagnostics", action="store_true",
+                    help="inspect original public emission without grading")
+    ap.add_argument("--dynamic-census", action="store_true",
+                    help="append bounded own-ELF activity after functional screening")
     ap.add_argument(
         "--caller-layout",
         default="",
@@ -271,7 +275,7 @@ def main(argv=None):
     )
     a = ap.parse_args(argv)
 
-    policy_error = None if a.caller_layout else _sim_policy_error(a.sim)
+    policy_error = None if a.caller_layout or a.candidate_diagnostics else _sim_policy_error(a.sim)
     if policy_error:
         txt = json.dumps(
             {"error": policy_error, "all_pass": False, "sim": a.sim, "required_rtl_engine": _required_rtl_engine()}
@@ -324,6 +328,8 @@ def main(argv=None):
                     "shape_coverage": bool(a.shape_coverage),
                     "offload_census": bool(a.offload_census),
                     "model_layers": bool(a.model_layers),
+                    "candidate_diagnostics": bool(a.candidate_diagnostics),
+                    "dynamic_census": bool(a.dynamic_census),
                     "caller_layout": a.caller_layout,
                 }
             ),
@@ -402,6 +408,8 @@ def main(argv=None):
             # the shape-coverage report has no `all_pass`; its verdict is `all_covered`
             if a.shape_coverage:
                 return 0 if _v.get("all_covered") else 1
+            if a.candidate_diagnostics:
+                return 0 if _v.get("schema") == "merlin.public_candidate_diagnostics.v1" else 2
             if _v.get("status") == "layout_only":
                 return 0 if _v.get("schema") == "public_caller_layout_receipt_v1" else 2
             return 0 if _v.get("all_pass") else 1

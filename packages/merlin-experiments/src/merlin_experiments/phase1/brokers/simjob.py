@@ -29,6 +29,7 @@ import time
 from pathlib import Path
 
 from merlin_experiments.phase1.context import InvocationContext, add_context_arguments, resolve_context
+from merlin_experiments.phase1.feedback import completions as _completions
 from merlin_experiments.phase1.feedback import promotion as _TP
 from merlin_experiments.phase1.feedback.dispatch import allowed_sims as _allowed_sims
 from merlin_experiments.phase1.feedback.promotion import promote as _promote  # noqa: E402
@@ -143,6 +144,38 @@ def _completed_job_ids(ch: Path) -> set[str]:
     """Recover jobs whose durable response was already published by an earlier broker process."""
     prefix = "simresp_"
     return {p.stem[len(prefix) :] for p in ch.glob(f"{prefix}*.json")}
+
+
+def _current_source_first(requests, ws):
+    """Prioritize current-source work without treating request metadata as evidence.
+
+    Source recovery still authenticates every promoted request at launch. Unknown
+    bindings retain ordinary ordering; source changes during observation abandon
+    the optimization. Running jobs and their completed certificates are untouched.
+    """
+    ordered = sorted(requests)
+    if len(ordered) < 2:
+        return ordered
+    try:
+        current = _TP._submission_digest(ws)
+        ranks = {}
+        for request in ordered:
+            try:
+                row = json.loads(request.read_text())
+            except (OSError, ValueError):
+                ranks[request] = 1
+                continue
+            if not isinstance(row, dict):
+                ranks[request] = 1
+                continue
+            digest = row.get("submission_digest")
+            # Direct requests are frozen from current source when launched.
+            ranks[request] = 0 if not row.get("promoted") or digest == current else 1
+        if _TP._submission_digest(ws) != current:
+            return ordered
+        return sorted(ordered, key=lambda request: ranks[request])
+    except Exception:  # noqa: BLE001 -- an unreadable fingerprint cannot reorder the queue
+        return ordered
 
 
 class VerilSlotsUnusable(RuntimeError):
@@ -504,6 +537,18 @@ def main(
     # durable commit record; a bare simrun marker is not (the previous broker may have died mid-job), so
     # only responses are recovered here and interrupted requests remain retryable.
     claimed: set[str] = _completed_job_ids(ch)
+    if _CERT_TIER is not None:
+        recovered_results = {}
+        _completions.recover(
+            ws, cert_tier=_CERT_TIER, instrument=_TP.cert_instrument(_CERT_TIER, context=context), log=sys.stderr,
+            recovered_results=recovered_results,
+        )
+        for jid, verdict in recovered_results.items():
+            response = ch / f"simresp_{jid}.json"
+            if not response.exists():
+                response.write_text(json.dumps(verdict, indent=2))
+                (ch / f"simdone_{jid}").write_text("recovered")
+            claimed.add(jid)
     # STOP alone does not bound this broker's life: the sentinel is written by the driver, so if the
     # driver dies first nobody ever writes it and the broker polls forever -- while HOLDING sim slots and
     # child simulators. Three sibling brokers were found orphaned to init hours after their run ended,
@@ -537,6 +582,17 @@ def main(
                     "all_pass": False,
                     "error": f"{j['sim']} exceeded its time budget",
                 }
+            if j.get("promoted") and not out.get("error"):
+                try:
+                    _completions.persist(
+                        ws, jid, out, identity=j.get("identity"),
+                        source_digest=j.get("source_digest"),
+                        source_identity_verified=bool(j.get("source_identity_verified")),
+                        cert_tier=_CERT_TIER, instrument=j.get("cert_instrument"),
+                    )
+                except Exception as exc:  # noqa: BLE001 -- ordinary recording still runs
+                    print(f"[promote] completion custody not saved: {type(exc).__name__}: {exc}",
+                          file=sys.stderr, flush=True)
             resp.write_text(json.dumps(out, indent=2))
             (ch / (f"simerr_{jid}" if out.get("error") else f"simdone_{jid}")).write_text("ok")
             # PROMOTE: a capsule that just passed the loop tier earns the cert tier now, not at a round
@@ -588,7 +644,8 @@ def main(
             running.pop(jid)
         # launch queued (respect local + global caps)
         if len(running) < a.max_jobs:
-            for req in sorted(ch.glob("simreq_*.json")):
+            queued = (req for req in ch.glob("simreq_*.json") if req.stem[len("simreq_") :] not in claimed)
+            for req in _current_source_first(queued, ws):
                 jid = req.stem[len("simreq_") :]
                 if jid in claimed:
                     continue
@@ -679,6 +736,8 @@ def main(
                         continue
                     source_identity_verified = True
                 capspec = "all" if caps == ["all"] else ",".join(caps)
+                launched_source_digest = _TP._submission_digest(snapshot_root)
+                launched_instrument = _TP.cert_instrument(_CERT_TIER, context=context) if r.get("promoted") else None
                 to = _job_timeout_s(sim, ncaps, vpc)
                 resp_tmp = ch / f"simtmp_{jid}.json"
                 worker_kwargs = {"rtl_facts": a.rtl_facts} if a.rtl_facts is not None else {}
@@ -725,6 +784,8 @@ def main(
                     # which tier-state record this promotion was launched for (see the reap)
                     "identity": r.get("identity"),
                     "source_identity_verified": source_identity_verified,
+                    "source_digest": launched_source_digest,
+                    "cert_instrument": launched_instrument,
                     "snapshot_root": snapshot_root,
                 }
                 claimed.add(jid)

@@ -19,6 +19,7 @@ from merlin.perf.fast_estimate_validation import Observation, fit_linear_screen
 from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
 
 from . import ordinary_fast_feedback as FAST
+from . import ordinary_screen_features as FEATURES
 from .contracts import StageGateError, canonical_json, document_sha256, mapping_file, sha256_file, write_json
 
 _ISSUER = object()
@@ -44,8 +45,8 @@ def domain(policy):
             # Temporary output placement is private per job. Every other effective
             # environment selection remains in the empirical execution domain.
             "environment_sha256": document_sha256({key: value for key, value in os.environ.items() if key != "TMPDIR"}),
-            "scope": "complete ordinary selected simulator kernel cycles; host wall cost UNKNOWN",
-            "features": FAST.FEATURES,
+            "scope": "original selected member timing boundary; external host wall cost UNKNOWN",
+            "features": FEATURES.FEATURES,
         }
     )
 
@@ -96,14 +97,45 @@ def _join(timing_root, cell, arm, compiled, package_sha256):
             if not elf.is_relative_to(timing_root) or sha256_file(elf) != observed.get("elf_sha256"):
                 raise StageGateError("ordinary calibration selected ELF changed or escaped its owner")
             workspace = Path(attempt["workspace"])
-            images = {sha256_file(p) for p in workspace.rglob(PACKAGE_ELF_NAME) if p.is_file() and not p.is_symlink()}
-            sources = {
-                sha256_file(p) for p in workspace.rglob("lowered.llvm.mlir") if p.is_file() and not p.is_symlink()
-            }
-            if compiled["elf_sha256"] not in images or compiled["llvm_mlir_sha256"] not in sources:
-                continue
+            if workspace.resolve() != workspace or not workspace.is_relative_to(timing_root):
+                raise StageGateError("ordinary calibration workspace escaped its original timing owner")
+            native = compiled.get("artifact_join", {}).get("kind") == "original_native_model_products"
+            native_pins = ()
+            if native:
+                from merlin_experiments.phase1.feedback.candidate_observations import (
+                    _reopen_product,
+                    reopen_native_products,
+                )
+
+                if not isinstance(observed.get("actual_source"), dict):
+                    raise CalibrationUnavailable("ordinary native calibration lacks its original model source")
+                products, producers = reopen_native_products(
+                    workspace, emission=observed.get("actual_candidate"),
+                    elf_pin={"path": str(elf), "sha256": observed["elf_sha256"]},
+                    source=observed.get("actual_source"),
+                )
+                identity = compiled["artifact_join"]
+                if (sha256_file(products["elf"]) != compiled["elf_sha256"]
+                        or sha256_file(products["emitted"]) != compiled["llvm_mlir_sha256"]
+                        or sha256_file(products["source"]) != identity["source_sha256"]
+                        or sha256_file(products["command_buffer"]) != identity["command_buffer_sha256"]):
+                    continue
+                console = _reopen_product(observed.get("actual_console"), root=workspace)
+                invocation_pin = observed.get("execution_invocations", {}).get("L3")
+                actual_invocation = _reopen_product(invocation_pin, root=workspace)
+                native_pins = tuple((str(path), sha256_file(path))
+                                    for path in (*products.values(), *producers, console))
+            else:
+                images = {sha256_file(p) for p in workspace.rglob(PACKAGE_ELF_NAME)
+                          if p.is_file() and not p.is_symlink()}
+                sources = {sha256_file(p) for p in workspace.rglob("lowered.llvm.mlir")
+                           if p.is_file() and not p.is_symlink()}
+                if compiled["elf_sha256"] not in images or compiled["llvm_mlir_sha256"] not in sources:
+                    continue
             process = []
             for invocation in workspace.rglob("invocation.json"):
+                if native and invocation != actual_invocation:
+                    continue
                 row = mapping_file(invocation)
                 if (
                     row.get("stage")
@@ -111,11 +143,18 @@ def _join(timing_root, cell, arm, compiled, package_sha256):
                     and FAST.successful_record(row)
                     and any(pin.get("sha256") == observed["elf_sha256"] for pin in row.get("inputs", []))
                 ):
-                    I.verify(invocation)
+                    row = I.verify(invocation)
+                    if native:
+                        engine = observed.get("binary_sha256")
+                        selected = [row.get("executable") or {}, *row.get("dependencies", [])]
+                        if (not engine or not any(pin.get("sha256") == engine for pin in selected)
+                                or row.get("stdout", {}).get("sha256") != observed["actual_console"]["sha256"]
+                                or {"path": str(elf), "sha256": observed["elf_sha256"]} not in row.get("inputs", [])):
+                            continue
                     process.append((str(invocation), sha256_file(invocation)))
             if not process or mapping_file(path).get("package_sha256") != package_sha256:
                 continue
-            matches.append((observed["elf_sha256"], (str(path), sha256_file(path)), tuple(process)))
+            matches.append((observed["elf_sha256"], (str(path), sha256_file(path)), (*process, *native_pins)))
     if len(matches) != 1:
         raise CalibrationUnavailable(
             "ordinary calibration lacks one fresh joined compile/full-numeric/selected-engine observation"
@@ -190,7 +229,7 @@ class OrdinaryCalibration:
             predictions = []
             for arm in ("baseline", "candidate"):
                 value = cell[arm]
-                prediction = model.predict(value["compiled"]["features"], domain_sha256=self.domain_sha256)
+                prediction = model.predict(FEATURES.project(value["compiled"]), domain_sha256=self.domain_sha256)
                 if value["functional_status"] != "PASS":
                     from merlin.xdsl_dialects.lowering.global_plan import CycleInterval
 
@@ -223,7 +262,9 @@ class OrdinaryCalibration:
                     ),
                 )
             ],
-            "scope": "empirical kernel-cycle screening; physical terms and complete host cost UNKNOWN",
+            "scope": "empirical member-cycle screening; physical service prices and excluded host costs UNKNOWN",
+            "feature_pointers": list(model.model.pointers),
+            "unpriced_feature_pointers": [key for key in FEATURES.FEATURES if key not in model.model.pointers],
         }
 
 
@@ -231,12 +272,21 @@ class OrdinaryCalibration:
 class _ResidualScreen:
     model: object
     relative_residual: float
+    observed_domains: tuple
 
     def predict(self, features, *, domain_sha256):
+        from merlin.xdsl_dialects.lowering.global_plan import CycleInterval
+
+        for key, bounds in self.observed_domains:
+            value = features.get(key)
+            if bounds is None:
+                if value is not None:
+                    return CycleInterval.unknown("new feature visibility differs from empirical training domain")
+            elif value is None or not bounds[0] <= value <= bounds[1]:
+                return CycleInterval.unknown("observed work differs from empirical training domain: " + key)
         prediction = self.model.predict(features, domain_sha256=domain_sha256)
         if not prediction.resolved:
             return prediction
-        from merlin.xdsl_dialects.lowering.global_plan import CycleInterval
 
         midpoint = (prediction.lo + prediction.hi) / 2
         radius = midpoint * self.relative_residual
@@ -244,7 +294,9 @@ class _ResidualScreen:
 
 
 def _fit(rows):
-    model = fit_linear_screen(rows, pointers=FAST.FEATURES, include_fixed=True, maximum_condition=1e8)
+    model = fit_linear_screen(
+        rows, pointers=FEATURES.identifiable_pointers(rows), include_fixed=True, maximum_condition=1e8
+    )
     residual = max(
         abs(model.predict(row.features, domain_sha256=row.domain).lo - row.cycles) / row.cycles for row in rows
     )
@@ -252,18 +304,96 @@ def _fit(rows):
         raise ValueError("ordinary training residual is unresolved")
     # Empirical training residual only. The original held coverage/error gate
     # must independently qualify these intervals; this is no confidence claim.
-    return _ResidualScreen(model, residual)
+    domains = []
+    for key in FEATURES.FEATURES:
+        values = [row.features.get(key) for row in rows]
+        known = [value for value in values if value is not None]
+        domains.append((key, (min(known), max(known)) if known else None))
+    return _ResidualScreen(model, residual, tuple(domains))
 
 
 def _qualify(rows, partition_sha256):
     training, held = [r for r in rows if r.group == "calibration"], [r for r in rows if r.group != "calibration"]
-    report = qualify_component_screen(held, lambda _: _fit(training), calibration_sha256=partition_sha256)
+    try:
+        fitted, failure = _fit(training), None
+    except ValueError as error:
+        fitted, failure = None, str(error)
+
+    def training_only(_):
+        if fitted is None:
+            raise ValueError(failure)
+        return fitted
+
+    report = qualify_component_screen(held, training_only, calibration_sha256=partition_sha256)
     # The fixed fitter never reads held labels. The pure validator's generic
     # leave-group-out metadata describes its supplied rows; bind our actual
     # independent calibration inputs explicitly instead.
     for prediction in report["predictions"]:
         prediction["training_programs"] = [row.program for row in training]
     return report
+
+
+def collect_sample(policy, *, cheap_root, timing_root, cheap, timing, revision, baseline_revision, partition):
+    """Private fixed-route consumer; reopen actual products before accepting labels."""
+    groups = public_partition(policy, partition)
+    labels = {(r["family"], r["capsule"]): r for r in timing["cells"]}
+    member_indices = {
+        (member.family, member.capsule): index
+        for index, member in enumerate(sorted(policy.search_corpus.capsules, key=lambda row: (row.family, row.capsule)))
+    }
+    rows, artifacts = [], []
+    for cell in cheap["cells"]:
+        identity = cell["family"], cell["capsule"]
+        measured = labels[identity]
+        if not measured["measured"] or not measured["comparable"]:
+            raise CalibrationUnavailable("ordinary calibration requires complete correct measured RTL roster")
+        for arm, source in (("baseline", baseline_revision), ("candidate", revision)):
+            value, cheap_pin = _cheap_observation(cheap_root, cell, arm, member_indices[identity])
+            compiled = value["compiled"]
+            if value["functional_status"] != "PASS" or compiled["status"] != "observed":
+                raise CalibrationUnavailable("ordinary calibration lacks original functional/compiled observation")
+            program, attempt_pin, process_pins = _join(timing_root, cell, arm, compiled, source.source_sha256)
+            pins = (cheap_pin, attempt_pin, *process_pins)
+            artifacts.extend(pins)
+            rows.append(
+                Observation(
+                    program,
+                    cell["source_sha256"],
+                    "calibration" if groups[identity] == "calibration" else document_sha256(identity),
+                    domain(policy),
+                    FEATURES.project(compiled),
+                    measured[arm + "_gsim_cycles"],
+                    tuple(digest for _, digest in pins),
+                )
+            )
+    return rows, artifacts
+
+
+def issue_from_samples(policy, *, partition, samples, artifacts, root):
+    """Called only by fixed live producers, never deserializes a qualification owner."""
+    observed = {}
+    for row in samples:
+        prior = observed.get(row.id)
+        if prior is not None and (prior.features != row.features or prior.cycles != row.cycles):
+            raise StageGateError("ordinary calibration identical executable replicates disagree")
+        observed[row.id] = row
+    rows = tuple(observed.values())
+    selected_domain = domain(policy)
+    if any(row.domain != selected_domain for row in rows):
+        raise StageGateError("ordinary calibration runtime changed during public observations")
+    report = _qualify(rows, document_sha256(partition))
+    write_json(root / "qualification.json", report)
+    artifacts.append((str(root / "qualification.json"), sha256_file(root / "qualification.json")))
+    owner = OrdinaryCalibration(
+        selected_domain,
+        canonical_json(partition),
+        canonical_json([asdict(row) for row in rows]),
+        canonical_json(report),
+        tuple(sorted(set(artifacts))),
+        _ISSUER,
+    )
+    owner.verify(policy)
+    return owner
 
 
 def produce_calibration(policy, revisions, baseline_revision, *, partition, work_root, timeout_s, workers, allocation):
@@ -275,7 +405,7 @@ def produce_calibration(policy, revisions, baseline_revision, *, partition, work
     from .timing_study import _allocated
 
     policy.validate_search_inputs()
-    groups = public_partition(policy, partition)
+    public_partition(policy, partition)
     if (
         type(revisions) is not tuple
         or not 2 <= len(revisions) <= 64
@@ -287,7 +417,7 @@ def produce_calibration(policy, revisions, baseline_revision, *, partition, work
     if root.exists() or root.resolve() != root or not root.is_relative_to(Path(allocation["work_root"])):
         raise StageGateError("ordinary calibration needs a fresh allocated private output owner")
     root.mkdir(parents=True, mode=0o700)
-    selected_domain, observed, artifacts = domain(policy), {}, []
+    selected_domain, samples, artifacts = domain(policy), [], []
     for index, revision in enumerate(revisions):
         cheap_root, timing_root = root / f"r{index:03d}_cheap", root / f"r{index:03d}_rtl"
         cheap = _bounded_observe(
@@ -309,62 +439,26 @@ def produce_calibration(policy, revisions, baseline_revision, *, partition, work
             timeout_s=timeout_s,
             workers=workers,
         )
-        labels = {(r["family"], r["capsule"]): r for r in timing["cells"]}
         write_json(root / f"r{index:03d}_timing.json", timing)
         artifacts.extend(
             (str(p), sha256_file(p))
             for p in (cheap_root / "ordinary_fast_feedback.json", root / f"r{index:03d}_timing.json")
         )
-        member_indices = {
-            (member.family, member.capsule): index
-            for index, member in enumerate(
-                sorted(policy.search_corpus.capsules, key=lambda row: (row.family, row.capsule))
-            )
-        }
-        for cell in cheap["cells"]:
-            identity = cell["family"], cell["capsule"]
-            measured = labels[identity]
-            if not measured["measured"] or not measured["comparable"]:
-                raise CalibrationUnavailable("ordinary calibration requires complete correct measured RTL roster")
-            for arm, source in (("baseline", baseline_revision), ("candidate", revision)):
-                value, cheap_pin = _cheap_observation(cheap_root, cell, arm, member_indices[identity])
-                compiled = value["compiled"]
-                if value["functional_status"] != "PASS" or compiled["status"] != "observed":
-                    raise CalibrationUnavailable("ordinary calibration lacks original functional/compiled observation")
-                program, attempt_pin, process_pins = _join(timing_root, cell, arm, compiled, source.source_sha256)
-                pins = (cheap_pin, attempt_pin, *process_pins)
-                artifacts.extend(pins)
-                workload = cell["source_sha256"]
-                group = "calibration" if groups[identity] == "calibration" else document_sha256(identity)
-                row = Observation(
-                    program,
-                    workload,
-                    group,
-                    selected_domain,
-                    compiled["features"],
-                    measured[arm + "_gsim_cycles"],
-                    tuple(digest for _, digest in pins),
-                )
-                prior = observed.get(row.id)
-                if prior is not None and (prior.features != row.features or prior.cycles != row.cycles):
-                    raise StageGateError("ordinary calibration identical executable replicates disagree")
-                observed[row.id] = row
-    rows = tuple(observed.values())
+        values, pins = collect_sample(
+            policy,
+            cheap_root=cheap_root,
+            timing_root=timing_root,
+            cheap=cheap,
+            timing=timing,
+            revision=revision,
+            baseline_revision=baseline_revision,
+            partition=partition,
+        )
+        samples.extend(values)
+        artifacts.extend(pins)
     if domain(policy) != selected_domain:
         raise StageGateError("ordinary calibration runtime changed during public observations")
-    report = _qualify(rows, document_sha256(partition))
-    write_json(root / "qualification.json", report)
-    artifacts.append((str(root / "qualification.json"), sha256_file(root / "qualification.json")))
-    owner = OrdinaryCalibration(
-        selected_domain,
-        canonical_json(partition),
-        canonical_json([asdict(row) for row in rows]),
-        canonical_json(report),
-        tuple(sorted(set(artifacts))),
-        _ISSUER,
-    )
-    owner.verify(policy)
-    return owner
+    return issue_from_samples(policy, partition=partition, samples=samples, artifacts=artifacts, root=root)
 
 
 def _bounded_observe(policy, revision, baseline_revision, **kwargs):

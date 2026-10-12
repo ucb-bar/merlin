@@ -15,11 +15,29 @@ from dataclasses import asdict, is_dataclass, replace
 from functools import partial
 from pathlib import Path
 
+from merlin.common import owned_children as CORE_CHILDREN
+from merlin.perf import _census_process as CENSUS_PROCESS
+from merlin.perf import _dynamic_stream as DYNAMIC_STREAM
+from merlin.perf import candidate_cost_graph as CANDIDATE_GRAPH
+from merlin.perf import candidate_diagnostics as CANDIDATE_DIAGNOSTICS
+from merlin.perf import candidate_features as CANDIDATE_FEATURES
+from merlin.perf import candidate_source as CANDIDATE_SOURCE
+from merlin.perf import dynamic_census as DYNAMIC_CENSUS
 from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
+from merlin.runtime import complete_call_timing as COMPLETE_TIMING
+from merlin.runtime import direct_kernel_harness as DIRECT_HARNESS
+from merlin.runtime import harness_render as LOGICAL_HARNESS
+from merlin.targetgen import native_model_execution as NATIVE_MODEL
+from merlin.targetgen import native_model_policy as MODEL_POLICY
+from merlin.targetgen import public_program_timing as PUBLIC_PROGRAM
 from merlin.targetgen.contract import artifact_retesting as AR
+from merlin.targetgen.contract import compile as NATIVE_BUILD
 from merlin.targetgen.target_experiment import TargetExperiment
+from merlin_experiments.phase1.feedback import candidate_census as CANDIDATE_CENSUS
+from merlin_experiments.phase1.feedback import candidate_observations as CANDIDATE_OBSERVATIONS
 
 from . import campaign as PC
+from . import census_launch as CENSUS_LAUNCH
 from . import corpus as CORPUS
 from . import corpus_feedback as CF
 from . import development_feedback as DF
@@ -29,7 +47,12 @@ from . import measurement_support as MS
 from . import ordinary_build_runtime as BUILD
 from . import ordinary_calibration as CAL
 from . import ordinary_fast_feedback as FAST
+from . import ordinary_measurement_selection as MEMBER_SELECTION
+from . import ordinary_queue_calibration as QUEUE_CAL
+from . import ordinary_screen_features as SCREEN_FEATURES
 from . import paired_measurement as PME
+from . import provisional_search as PROV
+from . import public_program_measurement as PUBLIC_MEASUREMENT
 from . import queued_search_actions as QSA
 from .broker_policy import BrokerServices
 from .contracts import StageGateError, canonical_json, document_sha256, exact_tree_record, mapping_file, sha256_file
@@ -132,8 +155,68 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             (FAST.CR, "simulator_adapter", FAST.CR.simulator_adapter),
             (BUILD, "executing", BUILD.executing),
             (BUILD, "binding", BUILD.binding),
+            (PROV, "project", PROV.project),
+            (PROV, "resume", PROV.resume),
+            (QUEUE_CAL, "install", QUEUE_CAL.install),
+            (CAL, "collect_sample", CAL.collect_sample),
+            (CAL, "issue_from_samples", CAL.issue_from_samples),
+            (MEMBER_SELECTION, "prepare", MEMBER_SELECTION.prepare),
+            (CANDIDATE_CENSUS, "observe_passed_census", CANDIDATE_CENSUS.observe_passed_census),
+            (CENSUS_LAUNCH, "observe_dynamic_census", CENSUS_LAUNCH.observe_dynamic_census),
+            (DYNAMIC_CENSUS, "profile_elf", DYNAMIC_CENSUS.profile_elf),
+            (FAST, "observe_passed_census", FAST.observe_passed_census),
+            (PUBLIC_MEASUREMENT, "selection", PUBLIC_MEASUREMENT.selection),
+            (PUBLIC_MEASUREMENT, "project", PUBLIC_MEASUREMENT.project),
+            (PUBLIC_PROGRAM, "verify_selection", PUBLIC_PROGRAM.verify_selection),
+            (NATIVE_MODEL, "execute_candidate_model", NATIVE_MODEL.execute_candidate_model),
+            (MODEL_POLICY, "_frozen_model_policy", MODEL_POLICY._frozen_model_policy),
+            (MODEL_POLICY, "functional_engine_bytes", MODEL_POLICY.functional_engine_bytes),
+            (NATIVE_BUILD, "compile_lowered_to_elf", NATIVE_BUILD.compile_lowered_to_elf),
+            (LOGICAL_HARNESS, "render_harness", LOGICAL_HARNESS.render_harness),
+            (DIRECT_HARNESS, "render_direct_kernel", DIRECT_HARNESS.render_direct_kernel),
+            (COMPLETE_TIMING, "from_contract", COMPLETE_TIMING.from_contract),
         )
-        owners = (FI, PC, CORPUS, CF, DF, GATE, MS, PME, QSA, AR, FAST, CAL, BUILD, FAST.S, FAST.CR)
+        owners = (
+            FI,
+            PC,
+            CORPUS,
+            CF,
+            DF,
+            GATE,
+            MS,
+            PME,
+            QSA,
+            AR,
+            FAST,
+            CAL,
+            BUILD,
+            PROV,
+            QUEUE_CAL,
+            SCREEN_FEATURES,
+            MEMBER_SELECTION,
+            CANDIDATE_CENSUS,
+            CENSUS_LAUNCH,
+            DYNAMIC_CENSUS,
+            DYNAMIC_STREAM,
+            CENSUS_PROCESS,
+            CORE_CHILDREN,
+            CANDIDATE_OBSERVATIONS,
+            CANDIDATE_DIAGNOSTICS,
+            CANDIDATE_SOURCE,
+            CANDIDATE_FEATURES,
+            CANDIDATE_GRAPH,
+            FAST.RTL_FACTS,
+            FAST.S,
+            FAST.CR,
+            PUBLIC_MEASUREMENT,
+            PUBLIC_PROGRAM,
+            NATIVE_MODEL,
+            MODEL_POLICY,
+            NATIVE_BUILD,
+            LOGICAL_HARNESS,
+            DIRECT_HARNESS,
+            COMPLETE_TIMING,
+        )
         self._source_pins = tuple(
             (str(path), sha256_file(path))
             for path in (Path(__file__).resolve(), *(Path(owner.__file__).resolve() for owner in owners))
@@ -374,6 +457,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         workers=1,
         kind="corpus-rtl-feedback",
         reuse_artifacts=True,
+        selected_members=(),
     ):
         """Run the original complete tuning roster from issued immutable sources."""
         if (
@@ -414,8 +498,10 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
                     timeout_s=timeout_s,
                     workers=workers,
                 )
-        if kind != "corpus-rtl-feedback":
+        if kind not in ("corpus-rtl-feedback", MEMBER_SELECTION.KIND):
             raise StageGateError("ordinary queued feedback selected an unsupported fixed evaluator")
+        if kind != MEMBER_SELECTION.KIND and selected_members:
+            raise StageGateError("ordinary complete feedback cannot select only part of its original roster")
         deadline = time.monotonic() + timeout_s
         feedback = replace(
             self._selected_feedback,
@@ -430,6 +516,13 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             _achievable_points=self._selected_feedback.seed_points,
         )
         work_root.mkdir(parents=True, mode=0o700)
+        measurement_plan = (
+            MEMBER_SELECTION.prepare(
+                self, feedback, revision, baseline_revision, members=selected_members, timeout_s=int(timeout_s)
+            )
+            if kind == MEMBER_SELECTION.KIND
+            else None
+        )
         with (
             executing_revisions(revision, baseline_revision),
             self._native_context(),
@@ -451,7 +544,8 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
                     call_index=call_index,
                     timeout_s=int(timeout_s),
                     retained_revision=revision,
-                    complete_roster=True,
+                    complete_roster=measurement_plan is None,
+                    **({"measurement_plan": measurement_plan} if measurement_plan is not None else {}),
                 )
             )
         revision.verify(authority=self.edit_authority)

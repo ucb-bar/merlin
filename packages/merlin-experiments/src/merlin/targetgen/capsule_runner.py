@@ -2784,20 +2784,14 @@ def _grade_model_capsule_unlocked(
     candidate_pkg: Package | None = None,
     candidate_source_pinned: object | None = None,
 ) -> dict:
-    """Grade a whole-model capsule, under a wall-clock budget when one is set.
+    """Grade the original whole-model path under its aggregate capsule budget.
 
-    ``budget_s`` (default: :func:`model_budget_seconds`) is a ceiling on the CAPSULE, not on a step.
-    Exceeding it is reported as ``budget_exhausted`` with the elapsed time: a budget that ran out is
-    the absence of evidence, so it is neither a pass nor a fail of the submission and sits in neither
-    side of the score (see ``NOT_MEASURED_STATUSES``). With no budget the grade runs inline, exactly
-    as before.
-
-    A budgeted grade runs in a CHILD PROCESS in its own session. Two reasons, both load-bearing: an
-    in-process call cannot be interrupted (this runs on a ThreadPool worker, so signals are out), and
-    the grade spawns oracle subprocesses (verilator, spike) that must die with it -- killing only the
-    direct child leaves them competing for the CPU the next capsule needs. A plain subprocess rather
-    than ``multiprocessing``: ``spawn`` re-imports the caller's ``__main__`` (the harness entry points
-    are scripts, so that re-runs them) and ``fork`` is unsafe from a thread.
+    Budget exhaustion is absence of evidence, never a submission pass/fail.
+    An explicit absent/nonpositive budget preserves the original inline route.
+    Otherwise a separate child session owns descendant execution so expiry can
+    terminate its process tree. The child receives source-pinned JSON data;
+    it cannot inherit or reconstruct live package/resource capabilities.
+    Guarded callers must retain the existing hard-mode carryability refusal.
     """
     budget = model_budget_seconds() if budget_s is None else budget_s
 
@@ -2914,7 +2908,18 @@ def _grade_model_capsule_unlocked(
             return _stopped(f"whole-model grade result unreadable: {type(exc).__name__}: {exc}")
 
 
-def _grade_candidate_model_capsule_inline(
+def _grade_candidate_model_capsule_inline(capsule, *, target, timeout, package_dir, context, pkg=None):
+    """Keep explicit public-program treatment separate from owned-host model grading."""
+    from .owned_host_model_selection import owned_model_required
+
+    selected = _grade_public_program_capsule_inline if context.get("public_program_execution") is not None else (
+        _grade_owned_model_capsule_inline if owned_model_required(capsule, target=target)
+        else _grade_public_program_capsule_inline
+    )
+    return selected(capsule, target=target, timeout=timeout, package_dir=package_dir, context=context, pkg=pkg)
+
+
+def _grade_owned_model_capsule_inline(
     capsule: dict,
     *,
     target: str,
@@ -3014,6 +3019,141 @@ def _grade_candidate_model_capsule_inline(
         # for diagnosis, but never feed that receipt to the pass gate.
         result.pop("candidate_native_execution", None)
         result.pop("owned_host_native_execution", None)
+    return enforce_model_execution_check(
+        result,
+        capsule,
+        target=target,
+        **({"readback_policy": readback_policy} if readback_policy is not None else {}),
+    )
+
+
+def _grade_public_program_capsule_inline(
+    capsule: dict,
+    *,
+    target: str,
+    timeout: int,
+    package_dir: str | Path,
+    context: dict,
+    pkg: Package | None = None,
+) -> dict:
+    """Grade only the submitted whole-program model under the shared model budget.
+
+    The parent or suite retains a frozen capsule copy until this function has
+    enforced the candidate-only source, native and mandatory-tier checks.
+    """
+    from .capsule_grade import enforce_model_execution_check
+    from .native_model_execution import _digest, execute_candidate_model, independent_frozen_source_eligibility
+
+    attrs = (capsule.get("operation") or {}).get("attributes") or {}
+    result: dict = {
+        "capsule": capsule["name"],
+        "kind": "model",
+        "label": capsule.get("label"),
+        "operation": {
+            "op": "model",
+            "model": attrs.get("model"),
+            "dtype": attrs.get("compile_dtype", "fp32"),
+            "run": "submitted_whole_program",
+            "target": target,
+        },
+        "contract_version": CONTRACT_VERSION,
+        "status": "incomplete",
+        "legacy_model_diagnostic": {
+            "status": "not_run",
+            "scope": "runner-owned host-dispatch graph; not candidate whole-program evidence",
+        },
+    }
+    try:
+        result["candidate_source_eligibility"] = independent_frozen_source_eligibility(capsule, target=target)
+    except Exception as exc:  # noqa: BLE001 -- no source denominator means no submitted-program run
+        result["candidate_source_eligibility_failure"] = {"type": type(exc).__name__, "detail": str(exc)[:2000]}
+        return enforce_model_execution_check(result, capsule, target=target)
+
+    readback_policy = None
+    try:
+        execution_kwargs = {}
+        selection = context.get("public_program_execution")
+        if selection is not None:
+            from merlin.targetgen.public_program_timing import verify_selection
+
+            execution_kwargs = verify_selection(capsule, selection)
+            result["public_program_execution"] = selection
+        # The child receives a JSON context, not a Python capability. Reconstruct
+        # only the exact operator-selected policy record; absent means legacy.
+        readback_record = context.get("readback_policy")
+        if readback_record is not None:
+            from merlin.targetgen.contract.readback_policy import ReadbackPolicy
+
+            readback_policy = ReadbackPolicy.from_record(readback_record)
+        else:
+            readback_policy = None
+        selected_pkg = pkg
+        if selected_pkg is None:
+            selected_pkg = load_package(package_dir, contract=context["contract"])
+            integrity_scan(selected_pkg)
+            if not context["package_prebuilt"]:
+                build_package(selected_pkg)
+        paths = make_run_paths(
+            context["runs_root"],
+            context["run_id"],
+            suite=context["suite"],
+            target=target,
+            dtype=context["dtype"],
+            benchmark=capsule["name"],
+        )
+        _, candidate_cb, candidate_llvm = run_entrypoints(
+            selected_pkg,
+            package_dir,
+            capsule,
+            paths,
+            contract=context["contract"],
+            timeout=timeout,
+            fourth_output_name=context["fourth_output_name"],
+        )
+        source_interface = Path(capsule["__dir__"]) / capsule.get("interface_mlir", "capsule.interface.mlir")
+        if source_interface.is_symlink():
+            raise ValueError("frozen model interface cannot be a symlink")
+        result["candidate_emission"] = {
+            "capsule_declaration": _digest((Path(capsule["__dir__"]) / "capsule.yaml").resolve(strict=True)),
+            "source_interface": _digest(source_interface.resolve(strict=True)),
+            "command_buffer": _digest((paths.generated / "command_buffer.json").resolve(strict=True)),
+            "lowered_mlir": _digest((paths.generated / context["fourth_output_name"]).resolve(strict=True)),
+        }
+        from merlin.perf.work_volume import command_buffer_evidence
+
+        result["work_volume"], result["command_buffer_artifact"] = command_buffer_evidence(
+            candidate_cb,
+            compiler_provenance="actual submitted whole-program command buffer; physical pricing remains independent",
+        )
+        bundle_kwargs = {"artifact_root": paths.run_path / ".private_runtime_bundle"} if selection is not None else {}
+        with _model_runtime_bundle(capsule, timeout=timeout, **bundle_kwargs) as (bundle, provenance, verify):
+            result["candidate_capture"] = provenance
+            policy_kwargs = {"readback_policy": readback_policy} if readback_policy is not None else {}
+            result["candidate_native_execution"] = execute_candidate_model(
+                command_buffer=candidate_cb,
+                lowered_mlir_text=candidate_llvm,
+                capsule_dir=capsule["__dir__"],
+                capture_bundle=bundle,
+                target=target,
+                out_dir=paths.run_path / "candidate_native",
+                timeout=timeout,
+                **(
+                    execution_kwargs
+                    or {
+                        "simulator": os.environ.get("MERLIN_MODEL_NATIVE_SIMULATOR") or None,
+                        "rtl_facts": os.environ.get("MERLIN_MODEL_NATIVE_RTL_FACTS") or None,
+                        "board_config": os.environ.get("MERLIN_MODEL_NATIVE_BOARD_CONFIG") or None,
+                    }
+                ),
+                **policy_kwargs,
+            )
+            verify()
+    except Exception as exc:  # noqa: BLE001 -- candidate exceptions cannot borrow a legacy pass
+        result["candidate_emission_failure"] = {"type": type(exc).__name__, "detail": str(exc)[:2000]}
+        # A post-execution source/bundle verification failure invalidates even
+        # a numerically green native receipt. Keep its durable run artifacts
+        # for diagnosis, but never feed that receipt to the pass gate.
+        result.pop("candidate_native_execution", None)
     return enforce_model_execution_check(
         result,
         capsule,
@@ -3303,7 +3443,7 @@ def _numpy_dtype(dtype: str):
     return dtypes[dtype]
 
 
-def _model_runtime_bundle(capsule: dict, *, timeout: int):
+def _model_runtime_bundle(capsule: dict, *, timeout: int, artifact_root: Path | None = None):
     """Context manager yielding a read-only capture bundle made only from frozen capsule assets.
 
     The model capsule intentionally exposes a linalg interface, external weights and an independent
@@ -3451,7 +3591,13 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
                 raise ValueError(f"frozen golden {output_name!r} element count disagrees with interface shape")
             output_arrays[output_name] = np.ascontiguousarray(output_array.reshape(out_shape))
 
-        temp = Path(tempfile.mkdtemp(prefix="merlin_frozen_capsule_bundle_"))
+        if artifact_root is None:
+            temp = Path(tempfile.mkdtemp(prefix="merlin_frozen_capsule_bundle_"))
+        else:
+            temp = artifact_root
+            if not temp.is_absolute() or temp.exists() or temp.is_symlink():
+                raise ValueError("retained public runtime bundle requires a fresh private artifact root")
+            temp.mkdir(mode=0o700)
         bundle = temp / "bundle"
         bundle.mkdir(mode=0o700)
         try:
@@ -3588,12 +3734,13 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
 
             yield bundle, provenance, verify_unchanged
         finally:
-            if bundle.exists():
-                bundle.chmod(0o700)
-                for path in bundle.iterdir():
-                    if path.is_file() and not path.is_symlink():
-                        path.chmod(0o600)
-            shutil.rmtree(temp, ignore_errors=True)
+            if artifact_root is None:
+                if bundle.exists():
+                    bundle.chmod(0o700)
+                    for path in bundle.iterdir():
+                        if path.is_file() and not path.is_symlink():
+                            path.chmod(0o600)
+                shutil.rmtree(temp, ignore_errors=True)
 
     return _materialized()
 
@@ -4880,27 +5027,16 @@ def run_capsule(
     no_oracle: bool = False,
     workers: int | None = None,
     adapter_managed_tiers: tuple[str, ...] = (),
+    model_execution_selection: dict | None = None,
 ) -> dict:
-    """Run one capsule through the package; write artifacts; return a capsule_result dict.
+    """Run the original target-selected package/capsule ladder and full gates.
 
-    ``config`` (a :class:`runner_config.RunnerConfig`) supplies the per-target grading knobs — the
-    4th-artifact name, the sim-tier map + RTL tiers + loop order, the optional trace gate, and the perf
-    fields — so ONE runner serves every target. When absent, the implicit systolic config is
-    built from ``target``/``suite``/``dtype`` (byte-identical to the pre-collapse behavior). Output
-    equality uses the capsule's ``numeric_policy`` (exact for integer, tolerance for float). ``perf_extractor``
-    (cb -> flops) feeds the SIMT gflops/pct_fp_peak. ``oracle_adapters`` is the per-target oracle set: the
-    L0/L1 math floor always runs; RTL tiers grade only if an adapter is present + available (arc or a
-    bespoke sim), else honestly ``unavailable`` — arc is never assumed.
-
-    ``adapter_managed_tiers`` opts specific adapters out of the general tier-certificate lookup.
-    Such adapters own stronger execution evidence or a scoped measurement cache that a carried
-    tier verdict cannot supply. They must be invoked even for previously certified bytes. The
-    default keeps ordinary grading's reuse policy unchanged; this is per-call, never a global switch.
-
-    ``workers`` is the fan-out the CALLER is running this capsule inside; it is recorded on every
-    measured tier (:func:`concurrency_stamp`). Cycle counts do not move with it, wall times move by
-    up to 6.3x, so a ``timing`` block without it cannot be compared with any other run's. ``None`` (a
-    direct call) records "not stated" rather than assuming serial -- this host is shared."""
+    ``model_execution_selection`` selects exact public facts/timer data, never
+    live package/resource authority, protected access or waived numeric tiers.
+    ``adapter_managed_tiers`` bypass carried certificates for supplied adapters.
+    ``workers`` records actual caller fanout; absent means unstated.
+    Missing engines remain unavailable; structural counts supply no RTL timing.
+    """
     from ..runtime.reference import reference_outputs
     from ..runtime.simulator import simulate
     from .provenance import toolchain_shas
@@ -4933,6 +5069,10 @@ def run_capsule(
     # Whole-model capsule: graded end to end by compiling the captured model through the merlin
     # whole-model flow (compile_rvv) and gating vs its golden — NOT the per-op tier ladder. Write the
     # same capsule_result.json shape so downstream reporting is uniform.
+    if model_execution_selection is not None:
+        from merlin.targetgen.public_program_timing import verify_selection
+
+        verify_selection(capsule, model_execution_selection)
     if capsule.get("kind") == "model":
         # LEAVE A TRACE BEFORE THE LONG PART. A whole-model grade can legitimately run for hours, and
         # with nothing written until it finishes an operator cannot tell a working run from a wedged
@@ -4955,7 +5095,7 @@ def run_capsule(
         )
         from .owned_host_model_selection import owned_model_required
 
-        if owned_model_required(capsule, target=eff_target):
+        if owned_model_required(capsule, target=eff_target) or model_execution_selection is not None:
             # The submitted program is the only certification authority for
             # a model demanding acceleration. The legacy runner-owned host
             # graph is not run, so its own model budget cannot starve this one.
@@ -4991,6 +5131,11 @@ def run_capsule(
                         json.loads(os.environ["MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION"])
                         if os.environ.get("MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION") else None
                     ),
+                    **(
+                        {"public_program_execution": model_execution_selection}
+                        if model_execution_selection is not None else {}
+
+                    ),
                     **({"readback_policy": readback_policy.record()} if readback_policy is not None else {}),
                 },
             )
@@ -5011,6 +5156,7 @@ def run_capsule(
         _mw, _ma = _cb_evidence(None, compiler_provenance=volume_scope)
         result.setdefault("work_volume", _mw)
         result.setdefault("command_buffer_artifact", _ma)
+        result.setdefault("toolchain_shas", toolchain_shas(eff_target))
         (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
         # Persist the ARR coverage certificate as its own durable artifact (not only inside
         # capsule_result.json) so the report/grader can read it back per compilation.
@@ -5915,9 +6061,12 @@ def run_capsule(
                         # (`not_run_is_not_pass`) -- but it is reported for what it is. Calling this a
                         # tool crash sends the agent to debug a tool that did not break.
                         raise NotMeasuredFailure(
-                            _sim, _cat("TESTBENCH_TIMEOUT"), _why := _oracle_timeout_reason(_sim, _msg),
+                            _sim,
+                            _cat("TESTBENCH_TIMEOUT"),
+                            _why := _oracle_timeout_reason(_sim, _msg),
                             status=CERT_NOT_MEASURED if tier in cfg.rtl_tiers else "budget_exhausted",
-                            tier=tier, tier_reason=_why,
+                            tier=tier,
+                            tier_reason=_why,
                             cycles_before_stop=_partial_console.metrics(_partial).get("cycles"),
                         ) from e
                     raise CertFailure(_sim, _cat("TOOL_CRASH"), f"{_sim} invocation failed: {_clip(_msg, 400)}") from e

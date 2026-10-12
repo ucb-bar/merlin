@@ -706,6 +706,24 @@ _CAPACITY_MAX_RETRIES = 3
 _CAPACITY_BACKOFF_S = 20
 
 
+def delegation_user_prompt(prompt: str, limit: int | None) -> str:
+    """Translate the explicit operator opt-in into the actual user instruction."""
+    if limit is None:
+        return prompt
+    if type(limit) is not int or limit < 1:
+        raise ValueError("delegation prompt requires an explicit positive concurrency limit")
+    return prompt + (
+        "\n\nI explicitly request native sub-agent delegation for this compiler implementation. "
+        f"Keep at most {limit} helper sub-agent(s) active concurrently. Delegate an independent frontend "
+        "or lowering implementation task that advances the functional compiler goal in TASK.md; "
+        "continue an existing helper rather than duplicating its work. Assign disjoint source files "
+        "and a concrete compiler behavior to implement. The parent owns integration and must join "
+        "all helper changes before freezing a candidate or requesting a self-check. Keep helpers "
+        "focused on implementation results, not optional verification or documentation. Follow the "
+        "same task, source obligations, tools and permissions; this request grants no additional access."
+    )
+
+
 def build_resume_cmd(
     ws: Path, *, model: str, effort: str, final_path: Path, sandbox: str, thread_id: str, codex_bin: str = "codex"
 ) -> list[str]:
@@ -989,6 +1007,7 @@ def run_round(
             "Begin now."
         )
     )
+    msg = delegation_user_prompt(msg, max_concurrent_subagents)
     prompt_path.write_text(msg)
 
     inner_final = last_message_path(ws, final_path, sandbox)
@@ -1057,6 +1076,7 @@ def run_round(
             "checks improve, and never edit submission/ while a self-check is running."
         )
     )
+    _CONTINUE_MSG = delegation_user_prompt(_CONTINUE_MSG, max_concurrent_subagents)
     turn_index = 0
     rc = 0
     active_proc: subprocess.Popen | None = None

@@ -109,6 +109,7 @@ class HostHooks:
     #: declaration (used only when ``MERLIN_HW_COUNTERS`` requests a counter bracket).
     target: str = ""
     counter_bracket: Mapping[str, Any] | None = None
+    complete_call_timing: object | None = None
 
     @property
     def completion(self) -> str:
@@ -135,6 +136,9 @@ def hooks_from_contract(contract: Mapping[str, Any], *, target: str) -> HostHook
             raise HarnessRenderError(f"target {target!r}: logical_harness.{key} must be one plain instruction")
         values[key] = value
     bracket = block.get("counter_bracket")
+    from merlin.runtime.complete_call_timing import from_contract as complete_timing_from_contract
+
+    timing = complete_timing_from_contract(contract)
     return HostHooks(
         abi.entry_symbol,
         abi.cycle_window_metric,
@@ -142,6 +146,7 @@ def hooks_from_contract(contract: Mapping[str, Any], *, target: str) -> HostHook
         values["completion_asm"],
         target=target,
         counter_bracket=bracket if isinstance(bracket, Mapping) else None,
+        complete_call_timing=timing,
     )
 
 
@@ -150,6 +155,12 @@ _CACHE: dict[tuple, tuple[LogicalAbi, HostHooks]] = {}
 
 def resolve(target: str) -> tuple[LogicalAbi, HostHooks]:
     key = (target, os.environ.get("MERLIN_TARGET_PATH", ""), os.environ.get("MERLIN_TARGET_CONTRACT", ""))
+    from merlin.runtime.complete_call_timing import _NUMERICS_ONLY
+
+    if _NUMERICS_ONLY.get():
+        from merlin.targetgen.target_registry import resolve as resolve_target
+
+        return logical_abi(), hooks_from_contract(resolve_target(target).load_contract(), target=target)
     if key not in _CACHE:
         from merlin.targetgen.target_registry import resolve as resolve_target
 
@@ -557,6 +568,8 @@ def render_with(
         # default logical ABI carries them; a memory dump admits a fixed whole-program output layout.
         raise HarnessRenderError("memory readback requires an explicit whole-program kernel ABI")
     if compact_caller is not None:
+        if hooks.complete_call_timing is not None:
+            raise HarnessRenderError("compact caller lacks the selected complete-call timing producer")
         if readback_policy is not None:
             raise HarnessRenderError("full-value readback cannot use a prepared compact caller")
         if inputs is not None or prepack_authorizations is not None or source_owned_mutables is not None:
@@ -634,6 +647,8 @@ def render_with(
     includes = readout.includes()
 
     if warm_profile is not None:
+        if hooks.complete_call_timing is not None:
+            raise HarnessRenderError("complete-call timing requires the original single-call boundary")
         _counter_fragments(hooks, supported=False)
         if readout.packet:
             raise HarnessRenderError("coherent packet requires the declared standard measurement")
@@ -661,7 +676,19 @@ def render_with(
     counters = _counter_fragments(hooks)
     if counters is not None:
         includes += counters["helper"]
+    timing = hooks.complete_call_timing
+    if timing is not None:
+        from merlin.runtime.complete_call_timing import CompleteCallTiming
+
+        if type(timing) is not CompleteCallTiming or warm or counters is not None:
+            raise HarnessRenderError(
+                "complete-call timing requires its original single cold call without nested instrumentation"
+            )
+        timing.verify()
+        decls.extend(timing.declarations(console="stdio"))
     body = ["int main(void) {"]
+    if timing is not None:
+        body += timing.begin()
     body += readout.setup()
     if warm:
         body += prepare + [
@@ -672,19 +699,24 @@ def render_with(
     body += prepare
     if counters is not None:
         body += counters["prologue"]
-    body += [
-        "  uint64_t c0 = merlin_read_cycles();",
-        f"  {invoke}",
-        f"  {hooks.completion}",
-        "  uint64_t c1 = merlin_read_cycles();",
-        '  printf("METRIC cycles %lu\\n", (unsigned long)(c1 - c0));',
-    ]
+    if timing is None:
+        body += [
+            "  uint64_t c0 = merlin_read_cycles();",
+            f"  {invoke}",
+            f"  {hooks.completion}",
+            "  uint64_t c1 = merlin_read_cycles();",
+            '  printf("METRIC cycles %lu\\n", (unsigned long)(c1 - c0));',
+        ]
+    else:
+        body += [f"  {invoke}", f"  {hooks.completion}"]
     if counters is not None:
         body += counters["epilogue"]
     if hooks.cycle_window_metric:
         body.append(f'  printf("METRIC {hooks.cycle_window_metric} 1\\n");')
     body += prints
     body += readout.finish()
+    if timing is not None:
+        body += timing.end(console="stdio")
     body += ['  printf("DONE\\n");', "  return 0;", "}"]
     return _preamble(hooks, len(buffers), includes) + "\n".join(decls) + "\n" + "\n".join(body) + "\n"
 

@@ -116,6 +116,61 @@ def _category(name: str) -> str:
     }.get(name, "other")
 
 
+def _posttested_single_block_loop(header, latch, nodes, predecessors, positions):
+    """Prove a single-block do-while whose tested update is its exact backedge value."""
+    if latch is not header or nodes != {header}:
+        raise ValueError("post-tested loop is not a single block")
+    terminal = header.last_op
+    if terminal.name != "llvm.cond_br" or terminal.successors[0] is not header or terminal.successors[1] is header:
+        raise ValueError("post-tested loop branch is not true-backedge/false-exit")
+    condition = terminal.operands[0].owner
+    if not isinstance(condition, Operation) or condition.name != "llvm.icmp":
+        raise ValueError("post-tested loop needs an integer comparison")
+    try:
+        predicate = ICmpPredicateFlag.from_int(_integer_attr(condition.properties.get("predicate"))).value
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError("post-tested loop predicate is unknown") from None
+    update_value = condition.operands[0]
+    update = update_value.owner
+    if predicate not in {"slt", "ult"} or not isinstance(update, Operation) or update.name != "llvm.add":
+        raise ValueError("post-tested induction is not a positive addition less-than test")
+    candidates = [v for v in update.operands if v in header.args]
+    if len(candidates) != 1 or not isinstance(candidates[0].type, IntegerType):
+        raise ValueError("post-tested update does not uniquely consume induction")
+    induction = candidates[0]
+    induction_index = list(header.args).index(induction)
+    incoming = list(terminal.then_arguments)
+    if len(incoming) != len(header.args) or incoming[induction_index] is not update_value:
+        raise ValueError("post-tested backedge does not carry the tested update")
+    outside = predecessors[header] - nodes
+    if len(outside) != 1 or predecessors[header] & nodes != {header}:
+        raise ValueError("post-tested loop needs exactly one preheader")
+    preheader = next(iter(outside))
+    branch = preheader.last_op
+    if branch.name != "llvm.br" or branch.successors[0] is not header or len(branch.operands) != len(header.args):
+        raise ValueError("post-tested initial edge does not match header")
+    initial = constant_integer(branch.operands[induction_index])
+    bound = constant_integer(condition.operands[1])
+    step = constant_integer(next(v for v in update.operands if v is not induction))
+    if initial is None or bound is None or step is None or step <= 0:
+        raise ValueError("post-tested initial, bound and positive step must be constant")
+    width = int(induction.type.width.data)
+    if predicate == "ult":
+        initial &= (1 << width) - 1
+        bound &= (1 << width) - 1
+    trips = max(1, (bound - initial + step - 1) // step)
+    limit = (1 << width) - 1 if predicate == "ult" else (1 << (width - 1)) - 1
+    if initial + trips * step > limit:
+        raise ValueError("post-tested final induction update could overflow")
+    return {
+        "header_block": positions[header], "latch_block": positions[latch],
+        "body_blocks": [], "initial": initial, "bound": bound, "step": step,
+        "trip_count": trips, "induction_argument_index": induction_index,
+        "other_carried_values": len(header.args) - 1, "predicate": predicate,
+        "post_tested": True,
+    }, nodes
+
+
 def _constant_loop(header, latch, nodes, predecessors, positions):
     """Recognize constant induction independently of other carried SSA values.
 
@@ -123,6 +178,8 @@ def _constant_loop(header, latch, nodes, predecessors, positions):
     edges determine execution counts. Other conditional exits remain rejected by
     the enclosing CFG analysis; this does not model accumulator values.
     """
+    if header is latch:
+        return _posttested_single_block_loop(header, latch, nodes, predecessors, positions)
     terminal = header.last_op
     if terminal.name != "llvm.cond_br" or not header.args or len(terminal.successors) != 2:
         raise ValueError("loop header is not an induction conditional branch")
@@ -416,7 +473,9 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
     if not problems:
         for row, nodes in loops:
             for block in nodes:
-                multiplicity[block] *= row["trip_count"] + (index[block] == row["header_block"])
+                multiplicity[block] *= row["trip_count"] + (
+                    index[block] == row["header_block"] and not row.get("post_tested", False)
+                )
     else:
         multiplicity = {block: None for block in blocks}
 

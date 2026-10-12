@@ -98,6 +98,52 @@ def test_retained_cheap_route_executes_only_original_spike_and_keeps_rtl_pending
         inputs.validate_result(result, candidate, "arbitrary")
 
 
+def test_census_uses_original_selected_facts_and_restores_ambient_context(cheap_inputs, tmp_path, monkeypatch):
+    fixture, _ = cheap_inputs
+    selected_facts = {"facts": {"source": {"config": "original-board"}}, "observation": "selected"}
+    path = fixture.arguments["rtl_facts_path"]
+    path.write_text(json.dumps(selected_facts))
+    seen = []
+
+    def census(root, **kwargs):
+        # This is the actual accessor used by the nested descriptive observer;
+        # no target lookup, extraction, engine or namespace runs in this control.
+        seen.append(FAST.RTL_FACTS.load_facts(kwargs["target"], regenerate=False))
+        return {"status": "UNKNOWN", "reason": "synthetic control"}
+
+    monkeypatch.setattr(FAST, "observe_passed_census", census)
+    policy = OS.prepare_ordinary_search_policy(**fixture.arguments)
+    candidate, baseline = revisions(policy, tmp_path)
+    ambient = {"observation": "ambient, not the selected original facts"}
+    with FAST.RTL_FACTS.observed_facts("fixture", ambient, tmp_path / "ambient.json"):
+        policy.evaluate_retained(
+            candidate, baseline, kind=FAST.KIND, work_root=tmp_path / "cheap", call_index=0, timeout_s=10
+        )
+        assert FAST.RTL_FACTS.load_facts("fixture", regenerate=False) == ambient
+    assert seen == [selected_facts] * (2 * len(policy.search_corpus.capsules))
+
+
+def test_optional_census_budget_cannot_block_original_cheap_grade(cheap_inputs, tmp_path, monkeypatch):
+    fixture, _ = cheap_inputs
+    # A bounded observer does not load an oversized fact document. The source
+    # policy still pins it; sparse bytes here avoid an unnecessary allocation.
+    with fixture.arguments["rtl_facts_path"].open("wb") as stream:
+        stream.truncate((8 << 20) + 1)
+    calls = []
+    monkeypatch.setattr(FAST, "observe_passed_census", lambda *args, **kwargs: calls.append(kwargs))
+    policy = OS.prepare_ordinary_search_policy(**fixture.arguments)
+    candidate, baseline = revisions(policy, tmp_path)
+    result = policy.evaluate_retained(
+        candidate, baseline, kind=FAST.KIND, work_root=tmp_path / "cheap", call_index=0, timeout_s=10
+    )
+    assert not calls
+    for cell in result["cells"]:
+        for arm in ("candidate", "baseline"):
+            assert cell[arm]["functional_status"] == "PASS"
+            assert cell[arm]["compiled"]["dynamic_census"]["status"] == "UNKNOWN"
+            assert cell[arm]["pending_tiers"] == ["L3"]
+
+
 @pytest.mark.parametrize("drift", ["member", "traffic", "timing", "configuration", "roster"])
 def test_cheap_transport_cannot_gain_timing_or_other_input_identity(cheap_inputs, tmp_path, drift):
     fixture, _ = cheap_inputs
