@@ -51,7 +51,7 @@ def issue(ws, source_ws, result, *, capsule, context, cert_tier, receipt_path, c
 
     path = Path(receipt_path)
     receipt_bytes = path.read_bytes()
-    if json.loads(receipt_bytes) != result or result.get("kind") != "model":
+    if json.loads(receipt_bytes) != json.loads(_bytes(result)) or result.get("kind") != "model":
         raise ValueError("model voucher completion differs from owned durable receipt")
     check = _qualified_model_check(result)
     tiers = check.get("candidate_required_tiers", {}).get("tiers", {}) if isinstance(check, dict) else {}
