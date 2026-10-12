@@ -238,6 +238,21 @@ targets and hardware lower bounds have distinct meanings; neither guarantees
 reachable improvement. Members without a bound remain visible with their
 complete measured cost. Evaluation costs and savings per evaluation second stay
 unknown until complete matched tool costs are observed.
+
+Inspect `evaluation-status` for each job's `evaluation_cost`: the parent's wall
+duration covers assignment, verification/setup, actual evaluator completion,
+cleanup, durable release and artifact publication. Admission and queue wait are
+reported separately. Unknown cleanup or cost publication does not supply a
+complete price, and a failed or cancelled job cannot price a successful action.
+
+`search-status.evaluation_priorities` uses only passing singleton selected jobs
+matching the incumbent, fixed baseline, corpus and engine. It groups evaluator,
+resource, environment and source closure separately and retains all cost
+repeats. Conditional savings per observed second help compare development
+questions within that scope; they predict neither future gain nor another
+revision's duration. Existing absolute savings remain visible. Cache state, CPU
+time and per-arm costs remain UNKNOWN; compiler selection and final gates are
+unchanged.
 Submit `corpus-compile-spike-feedback` for the cheaper original compile/Spike
 route; each arm returns fresh compiled diagnostics and attempts the bounded
 own-executable census after its original L0/L1/L2 gates. Mandatory RTL tiers

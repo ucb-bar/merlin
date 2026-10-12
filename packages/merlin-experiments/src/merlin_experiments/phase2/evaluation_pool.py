@@ -21,6 +21,7 @@ from pathlib import Path
 from merlin.common import storage_lifecycle as storage
 from merlin_experiments.execution import _protocol as protocol
 
+from . import evaluation_costs as COSTS
 from . import ordinary_measurement_selection as SELECTION
 from .contracts import StageGateError, canonical_json, document_sha256, sha256_file, write_json
 from .external_resources import ExternalResourceBoundary, executing_resource_boundary
@@ -383,6 +384,7 @@ class ComponentEvaluationPool:
             component_execution,
             component_workflow,
             development_feedback,
+            evaluation_priorities,
             external_resources,
             feedback_guardian,
             feedback_protocol,
@@ -393,6 +395,8 @@ class ComponentEvaluationPool:
 
         owners = (
             Path(__file__),
+            COSTS,
+            evaluation_priorities,
             component_analytical,
             component_execution,
             component_workflow,
@@ -422,6 +426,7 @@ class ComponentEvaluationPool:
             self._engine_lease.close()
             raise
         self._jobs, self._lock, self._wake = {}, threading.RLock(), threading.Event()
+        self._evaluation_costs = COSTS.EvaluationCosts(self)
         self._closed = False
         self._submissions_stopped = False
         self._resource_selection = (
@@ -543,6 +548,7 @@ class ComponentEvaluationPool:
             raise StageGateError("queued evaluation source/input/corpus/tool/environment/runtime selection drifted")
 
     def submit(self, revision_id, *, kind=None, timeout_s=600, selected_members=()):
+        requested = time.monotonic()
         with self._lock:
             kind = self.inputs.kinds[0] if kind is None else kind
             if self._closed or self._submissions_stopped:
@@ -607,6 +613,7 @@ class ComponentEvaluationPool:
                 raise
             self._jobs[identity] = job
             self._save(job)
+            COSTS.note(self, job, "queued", requested=requested)
             self._wake.set()
             return self._status(job)
 
@@ -663,6 +670,7 @@ class ComponentEvaluationPool:
             "grant": asdict(self.grant),
             "resource_enforcement": enforcement,
             "selected_members": [list(key) for key in job.selected_members],
+            "evaluation_cost": COSTS.view(self, job),
         }
 
     def status(self, job_id):
@@ -710,8 +718,11 @@ class ComponentEvaluationPool:
             storage.unpin(path, token)
         job.pins.clear()
         job.lease.close("completed" if (state or job.state) == "completed" else "failed")
+        COSTS.note(self, job, "released")
 
     def _start(self, job, cpus):
+        job.cpus = cpus
+        COSTS.note(self, job, "start")
         self._verify(job)
         job.root.mkdir(mode=0o700)
         job.cpus, job.deadline = cpus, time.monotonic() + job.timeout_s
@@ -816,6 +827,7 @@ class ComponentEvaluationPool:
         os.close(job.guardian_fd)
         job.guardian_fd = None
         job.control.close()
+        COSTS.note(self, job, "cleaned")
         if not job.cancel_requested and error is None:
             try:
                 self._verify(job)
@@ -851,19 +863,21 @@ class ComponentEvaluationPool:
         if job.result is not None:
             self._feedback_bytes += len(canonical_json(job.result))
         job.state = state
+        publication = None
         if state == "completed" and self.inputs.ordinary:
             # Only this parent path has proved guardian reaping, validated the
             # result and durably released the original ownership. Saved cleanup
             # reports and still-running workers cannot publish reusable entries.
-            self.policy.publish_completed_artifacts(job.root)
+            publication = self.policy.publish_completed_artifacts(job.root)
         elif self.inputs.ordinary:
-            self.policy.discard_cleaned_artifacts(job.root)
+            publication = self.policy.discard_cleaned_artifacts(job.root)
         # Exact feedback/cleanup and closed ownership are already durable. This
         # control index cannot undo them if the capped filesystem becomes full.
         try:
             self._save(job)
         except OSError:
             pass
+        COSTS.note(self, job, "finish", publication=publication)
 
     def _tick(self):
         active = [job for job in self._jobs.values() if job.state not in TERMINAL and job.state != "queued"]
@@ -922,6 +936,7 @@ class ComponentEvaluationPool:
                     job.state, job.refusal = "refused", f"evaluation refused ({type(error).__name__})"
                     self._release(job)
                     self._save(job)
+                    COSTS.note(self, job, "finish")
             if job.state not in TERMINAL:
                 active.append(job)
                 engine_used += demand

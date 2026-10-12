@@ -245,6 +245,12 @@ class ComponentSearchCoordinator:
             and row["kind"] in ("component-analytical-feedback", "corpus-compile-spike-feedback")
             and "screening" in row["result"]
         ]
+        priorities = next(
+            (row["priorities"] for row in ranked if row["source_sha256"] == self._incumbent["source_sha256"]),
+            {"status": "UNKNOWN", "reason": "incumbent has no complete measured roster"},
+        )
+        from .evaluation_priorities import project as project_costs
+
         return {
             "schema": "merlin.component_search_status.v1",
             "corpus_sha256": self.corpus_sha256,
@@ -256,9 +262,14 @@ class ComponentSearchCoordinator:
             **projection,
             "screening": screening,
             "provisional": self.provisional(observations),
-            "priorities": next(
-                (row["priorities"] for row in ranked if row["source_sha256"] == self._incumbent["source_sha256"]),
-                {"status": "UNKNOWN", "reason": "incumbent has no complete measured roster"},
+            "priorities": priorities,
+            "evaluation_priorities": project_costs(
+                priorities,
+                observations,
+                source_sha256=self._incumbent["source_sha256"],
+                baseline_sha256=baseline["source_sha256"],
+                corpus_sha256=self.corpus_sha256,
+                certificate_sha256=self.configuration_sha256,
             ),
             "plateau_batches": self._plateau,
             "stop_reason": stop,

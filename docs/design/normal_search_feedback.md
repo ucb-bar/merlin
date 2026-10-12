@@ -16,6 +16,8 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_measurement_selection.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/provisional_search.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/queued_search_actions.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/evaluation_costs.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/evaluation_priorities.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/public_program_measurement.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/search_coordinator.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/stage_prompt.py
@@ -120,6 +122,29 @@ roster; neither partial kind can enter complete empirical calibration, measured
 promotion or plateau decisions. This avoids paying for an entire cheap sweep
 when the author has a specific development question. It does not infer source
 dependencies or certify that unselected inputs are unaffected.
+
+### Observe the cost of an evaluation
+
+The parent queue measures each original action from CPU assignment, before
+verification and setup, through result validation, descendant cleanup, durable
+ownership release and artifact publication. Admission and queue wait have
+separate durations; request latency includes them. Subsequent cost/status export
+and client transport are outside this boundary. Worker-only elapsed time cannot
+replace it.
+
+`evaluation-status` returns this observation as `evaluation_cost`. Successful,
+failed and cancelled outcomes remain distinct; incomplete cleanup or unavailable
+cost publication gives UNKNOWN. Original job, source pair, corpus, engine,
+environment, resource and saved-product identities must still match. Cache state,
+CPU consumption and separate arm costs remain unknown.
+
+`search-status.evaluation_priorities` joins passing selected singleton costs to
+the measured incumbent's existing potential savings. It retains every repeat,
+separates evaluator and resource contexts, and reports conditional savings per
+observed pair-action second. It cannot predict another compiler's cost, divide a
+batch across members, or sum singleton costs into a parallel sweep prediction.
+Missing bounds keep observed costs visible with unpriced savings. This feedback
+does not change compiler ranking, calibration, promotion, plateau or final gates.
 
 | Level | Use | Escalate when |
 | --- | --- | --- |
