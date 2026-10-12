@@ -38,3 +38,9 @@ explicit isolated Codex inputs. Never discover the real home in that route. Reje
 same-file/hard-link executable and credential selections before executable hashing.
 The shared ordinary/canary runtime constructs the same read grants, home mounts and
 native permission preflight. Existing per-round homes refuse before client startup.
+
+An explicit positive sub-agent concurrency option adds the operator's delegation request
+to both initial and continued user prompts, with the same recorded concurrency bound.
+Helpers implement disjoint compiler changes; the parent joins changes before candidate
+freezing or self-checks. This grants no additional tools, access or model selection.
+Omitting the option preserves the existing prompt bytes exactly.

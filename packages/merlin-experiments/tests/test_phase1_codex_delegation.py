@@ -46,3 +46,17 @@ def test_delegation_cli_metadata_and_resume_identity(tmp_path):
     assert parse_options(['--run-id', 'test']).codex_max_subagents is None
     with pytest.raises(SystemExit):
         parse_options(['--run-id', 'test', '--codex-max-subagents', '0'])
+
+
+def test_explicit_delegation_user_instruction_preserves_unset_prompt_and_recorded_cap():
+    initial, continuation = "Original initial instruction", "Original continuation"
+    for prompt in (initial, continuation):
+        assert codex_agent.delegation_user_prompt(prompt, None) == prompt
+        selected = codex_agent.delegation_user_prompt(prompt, 1)
+        assert selected.startswith(prompt)
+        assert "I explicitly request native sub-agent delegation" in selected
+        assert "at most 1 helper" in selected
+        assert "disjoint source files" in selected
+        assert "before freezing a candidate or requesting a self-check" in selected
+    with pytest.raises(ValueError, match="positive concurrency"):
+        codex_agent.delegation_user_prompt(initial, 0)
