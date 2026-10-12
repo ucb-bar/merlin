@@ -102,11 +102,27 @@ def snapshot_codex_rollouts(run_dir: Path) -> list[Path]:
     copied: only session JSONL.
     """
     run_dir = Path(run_dir)
+    copied = []
+    # Retain explicitly matched custom-home evidence before its lease ends.
+    # Usage discovery already checked raw thread identity and exact workspace.
+    for actor in declared_home_usage(run_dir)["threads"]:
+        source = Path(actor["source"])
+        if source.is_relative_to(run_dir):
+            continue  # Already a retained snapshot; never copy onto itself.
+        session = next((parent for parent in source.parents if parent.name == "sessions"), None)
+        if session is None:
+            continue
+        suffix = session.parent.name.removeprefix(f"{run_dir.name}_r")
+        if not suffix.isdigit() or int(suffix) not in actor["rounds"]:
+            continue
+        target = run_dir / "rounds" / f"round_{suffix}.codex_rollout_snapshot" / source.relative_to(session)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        copied.append(target)
     repo = _repo_from_run(run_dir)
     if repo is None:
-        return []
+        return copied
     cache = repo / "out" / "artifacts" / "cache" / "codex_home"
-    copied = []
     for home in sorted(cache.glob(f"{run_dir.name}_r*")):
         suffix = home.name.rsplit("_r", 1)[-1]
         dest = run_dir / "rounds" / f"round_{suffix}.codex_rollout_snapshot"
@@ -252,7 +268,8 @@ def declared_home_usage(run_dir: Path) -> dict:
             selected[actor] = {**latest, "start": start, "source": str(path), "rounds": {int(suffix)}}
             if prior:
                 selected[actor]["rounds"].update(prior["rounds"])
-                selected[actor]["start"] = min(v for v in (start, prior["start"]) if v is not None)
+                starts = [v for v in (start, prior["start"]) if v is not None]
+                selected[actor]["start"] = min(starts) if starts else None
     threads = []
     totals = {k: 0 for k in ("input_total", "fresh_input", "cache_read", "cache_write", "output", "reasoning", "total")}
     for actor, item in sorted(selected.items()):

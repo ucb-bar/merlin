@@ -71,3 +71,26 @@ def test_invalid_bucket_relations_cannot_mint_live_usage(tmp_path):
     for usage in (_usage(cached=101), _usage(reasoning=21), _usage(total=True)):
         session.write_text(_line(meta) + _line(usage))
         assert declared_home_usage(run)["available"] is False
+
+
+def test_explicit_home_snapshot_survives_home_retirement(tmp_path):
+    from merlin_experiments.phase1.telemetry.evidence import snapshot_codex_rollouts
+
+    run, session, _ = _run(tmp_path)
+    copied = snapshot_codex_rollouts(run)
+    assert len(copied) == 1
+    session.unlink()
+    result = declared_home_usage(run)
+    assert result["available"] and result["tokens"]["tokens_total"] == 180
+
+
+def test_missing_start_time_keeps_usage_known_and_rate_unknown(tmp_path):
+    run, session, meta = _run(tmp_path)
+    meta.pop("timestamp")
+    session.write_text(_line(meta) + _line(_usage()))
+    snapshot = run / "rounds/round_00.codex_rollout_snapshot/log.jsonl"
+    snapshot.parent.mkdir()
+    snapshot.write_bytes(session.read_bytes())
+    result = declared_home_usage(run)
+    assert result["available"] and result["tokens"]["tokens_total"] == 120
+    assert result["threads"][0]["output_tokens_per_client_observed_s"] is None
