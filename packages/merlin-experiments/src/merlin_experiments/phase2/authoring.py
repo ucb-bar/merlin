@@ -178,6 +178,12 @@ def functional_emission_guard(
     if frozen_functional.host_provenance is None:
         raise StageGateError("functional emission guard requires admitted V4 host provenance")
     verified = FI._verify_private_functional_provenance(frozen_functional.host_provenance)
+    from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import original_compiler_execution
+
+    profile_service = (None if verified["bundle"].get("compiler_tool_profile") is None else
+        CommonTransformService(workspace=verified["workspace"],
+            bundle_manifest=Path(frozen_functional.host_provenance["bundle_manifest"]), repo=verified["repo"]))
     environment_path = Path(frozen_functional.host_provenance["environment"])
     environment = CONTRACTS.mapping_file(environment_path, yaml_file=True)
     # The grading view is a declared host input, not an agent-visible grant. Reuse
@@ -236,12 +242,16 @@ def functional_emission_guard(
             continue
         with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR") or None) as raw:
             scratch = Path(raw)
-            base_rc, base_llvm, base_buffer = guard_execution.emit_pair(
-                base_pkg, interface, scratch, "baseline", timeout_s, target_experiment, inputs=sandbox_inputs
-            )
-            cand_rc, cand_llvm, cand_buffer = guard_execution.emit_pair(
-                cand_pkg, interface, scratch, "candidate", timeout_s, target_experiment, inputs=sandbox_inputs
-            )
+            with original_compiler_execution(profile_service, target_experiment=target_experiment,
+                    candidate=baseline, work_root=scratch / "profile-baseline", sandbox_inputs=sandbox_inputs):
+                base_rc, base_llvm, base_buffer = guard_execution.emit_pair(
+                    base_pkg, interface, scratch, "baseline", timeout_s, target_experiment, inputs=sandbox_inputs
+                )
+            with original_compiler_execution(profile_service, target_experiment=target_experiment,
+                    candidate=candidate, work_root=scratch / "profile-candidate", sandbox_inputs=sandbox_inputs):
+                cand_rc, cand_llvm, cand_buffer = guard_execution.emit_pair(
+                    cand_pkg, interface, scratch, "candidate", timeout_s, target_experiment, inputs=sandbox_inputs
+                )
         if base_rc != 0:
             offenders.append(
                 {"capsule": name, "kind": "baseline_emission_failed", "baseline_rc": base_rc, "candidate_rc": cand_rc}
@@ -317,21 +327,24 @@ def functional_emission_guard(
 
                 grading_candidate = output / "compiler"
                 shutil.copytree(candidate, grading_candidate)
-                guard_execution.require_inline_models(capsules)
-                with guard_execution.boxed_guard_package(
-                    target_experiment, output, grading_candidate, inputs=sandbox_inputs
-                ):
-                    score = CG.grade(
-                        grading_candidate,
-                        capsules_root=view.public,
-                        runs_root=output,
-                        model_snapshot_root=output / ".private_model_sources",
-                        labels={"public", "dev"},
-                        contract=view.contract,
-                        oracle_adapters=adapters,
-                        timeout=timeout_s,
-                        target=target_experiment.target,
-                    )
+                with original_compiler_execution(profile_service, target_experiment=target_experiment,
+                        candidate=grading_candidate, work_root=output / "profile-package-work",
+                        sandbox_inputs=sandbox_inputs):
+                    guard_execution.require_inline_models(capsules)
+                    with guard_execution.boxed_guard_package(
+                        target_experiment, output, grading_candidate, inputs=sandbox_inputs
+                    ):
+                        score = CG.grade(
+                            grading_candidate,
+                            capsules_root=view.public,
+                            runs_root=output,
+                            model_snapshot_root=output / ".private_model_sources",
+                            labels={"public", "dev"},
+                            contract=view.contract,
+                            oracle_adapters=adapters,
+                            timeout=timeout_s,
+                            target=target_experiment.target,
+                        )
                 scored = score.get("per_capsule") or []
                 expected_names = {
                     CONTRACTS.mapping_file(path / "capsule.yaml", yaml_file=True).get("name", path.name)
@@ -675,11 +688,13 @@ def run_stage(
         functional, public_manifest_path=stage_root / "_public_functional_snapshot.json"
     )
     from . import common_transforms as COMMON_TRANSFORMS
+    from . import public_compile_only as PUBLIC_COMPILE_ONLY
 
     public_projection = (
         CONTRACTS.mapping_file(frozen_functional.public_marker) if frozen_functional.public_marker else {}
     )
     inherited_common_transforms = public_projection.get("compiler_tool_profile") is not None
+    inherited_common_checks = COMMON_TRANSFORMS.supports_check(public_projection.get("compiler_tool_profile"))
     prepared_actions = BP.action_registry(
         BP.CORPUS_FEEDBACK_V1,
         base,
@@ -692,6 +707,10 @@ def run_stage(
     )
     if inherited_common_transforms:
         prepared_actions = (*prepared_actions, COMMON_TRANSFORMS.action())
+    if inherited_common_checks:
+        prepared_actions = (*prepared_actions, COMMON_TRANSFORMS.check_action())
+    if inherited_common_transforms:
+        prepared_actions = (*prepared_actions, PUBLIC_COMPILE_ONLY.action())
     if search is not None:
         from .queued_search_actions import actions as search_actions
 
@@ -869,6 +888,10 @@ def run_stage(
         actions = BP.action_registry(BP.CORPUS_FEEDBACK_V1, candidate, target_experiment)
         if inherited_common_transforms:
             actions = (*actions, COMMON_TRANSFORMS.action())
+        if inherited_common_checks:
+            actions = (*actions, COMMON_TRANSFORMS.check_action())
+        if inherited_common_transforms:
+            actions = (*actions, PUBLIC_COMPILE_ONLY.action())
         if search is not None:
             actions = (*actions, *search_actions())
         if action_registry_contract(actions, candidate) != prepared_action_contract:
@@ -892,6 +915,13 @@ def run_stage(
             )
         control_dir = stage_root / "control" / f"round_{round_index:02d}"
         receipt_path = control_dir / "receipts.jsonl"
+        common_transform, common_check = COMMON_TRANSFORMS.services(
+            frozen_functional, candidate=candidate, work_root=stage_root / "_common_transform_work",
+        ) if inherited_common_transforms else (None, None)
+        compile_only = PUBLIC_COMPILE_ONLY.service(frozen_functional, candidate=candidate,
+            corpus=frozen_corpus, target_experiment=target_experiment, contract=contract_root,
+            facts_path=rtl_facts, work_root=stage_root / "_public_compile_work", sandbox_inputs=sandbox_inputs,
+        ) if inherited_common_transforms else None
         workflow = BP.select_workflow(
             BP.CORPUS_FEEDBACK_V1,
             candidate=candidate,
@@ -900,9 +930,9 @@ def run_stage(
             services=BP.BrokerServices(
                 whole_model_analysis=partial(EA.analyze_whole_model_emission, contract_root=contract_root),
                 command_buffer_analysis=ED.analyze_command_buffers,
-                common_transform=COMMON_TRANSFORMS.service(
-                    frozen_functional, candidate=candidate, work_root=stage_root / "_common_transform_work",
-                ) if inherited_common_transforms else None,
+                common_transform=common_transform,
+                common_check=common_check,
+                compile_only=compile_only,
             ),
             feedback_evaluator=feedback,
             feedback_round=round_index,

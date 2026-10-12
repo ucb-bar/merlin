@@ -16,10 +16,12 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 from collections.abc import Iterator, Mapping, Sequence
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from dataclasses import field as dataclass_field
 from pathlib import Path
 
 import yaml
@@ -236,6 +238,8 @@ class PackageSandboxPolicy:
     target_experiment: TargetExperiment
     env_prefix: str | None = None
     frozen_inputs: FrozenPackageSandboxInputs | None = None
+    selected_inputs: PackageSandboxInputs | FrozenPackageSandboxInputs | None = dataclass_field(
+        default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         # Preserve the six-argument constructor while capturing its defaults once.
@@ -998,7 +1002,7 @@ def package_sandbox_policy(
         if isinstance(inputs, FrozenPackageSandboxInputs)
         else TC.sandbox_env(te, workspace, **selected)
     )
-    return PackageSandboxPolicy(
+    policy = PackageSandboxPolicy(
         tuple(argv),
         gaps,
         probes,
@@ -1007,7 +1011,11 @@ def package_sandbox_policy(
         te,
         prefix,
         inputs if isinstance(inputs, FrozenPackageSandboxInputs) else None,
+        discovered if inputs is None else inputs,
     )
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_public_package_policy
+
+    return active_public_package_policy(policy, target=te)
 
 
 def _verify_frozen_policy(policy: PackageSandboxPolicy) -> None:
@@ -1015,10 +1023,15 @@ def _verify_frozen_policy(policy: PackageSandboxPolicy) -> None:
         from merlin_experiments.phase2.qualification_policy import restore
 
         verified = restore(policy.frozen_inputs.root, policy.frozen_inputs.record)
+        from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_public_package_policy
+
+        expected = active_public_package_policy(
+            replace(policy, env_prefix=verified.env_prefix), target=policy.target_experiment
+        )
         if (
             verified != policy.frozen_inputs
             or policy.required_tools != verified.probes
-            or policy.env_prefix != verified.env_prefix
+            or policy.env_prefix != expected.env_prefix
         ):
             raise CampaignGateError("package execution policy differs from verified frozen inputs")
 
@@ -1169,6 +1182,21 @@ def _run_boxed(
         return functional_guard_execution.execute_isolated(
             policy, pkg, name, input_mlir, output_json, timeout=timeout, invocation_directory=invocation_directory
         )
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_profile_service
+
+    original_service = active_profile_service()
+    if original_service is not None:
+        # An original profile call sees exactly one input and output staging,
+        # never sibling oracle or simulation records in the performance workspace.
+        from merlin_experiments.phase1.feedback.compiler_profile_runtime import _Executor
+
+        if policy.selected_inputs is None:
+            raise CampaignGateError("original profile call lost its explicit package runtime selection")
+        with tempfile.TemporaryDirectory(prefix="profile-call-", dir=policy.workspace.parent) as raw:
+            executor = _Executor(original_service, policy.target_experiment, pkg.directory,
+                Path(raw), sandbox_inputs=policy.selected_inputs)
+            return executor.run_entrypoint(pkg, name, input_mlir, output_json, timeout=timeout,
+                invocation_directory=invocation_directory)
     argv = oot_runner._resolve_argv(pkg, name, input_mlir, output_json)
     if oot_runner._needs_interpreter(pkg, argv):
         argv = [sys.executable, *argv]

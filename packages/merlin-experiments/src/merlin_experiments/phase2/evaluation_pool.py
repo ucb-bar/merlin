@@ -26,6 +26,7 @@ from .contracts import StageGateError, canonical_json, document_sha256, sha256_f
 from .external_resources import ExternalResourceBoundary, executing_resource_boundary
 from .feedback_guardian import run_feedback_guardian
 from .feedback_protocol import FeedbackValueLimits, receive_feedback_value
+from .ordinary_compile_only import KIND as COMPILE_ONLY_KIND
 from .portfolio_launch import acquire_host_resource_lease
 from .retained_revisions import RetainedRevisionStore, executing_revisions
 from .search_inputs import SearchInputs
@@ -33,6 +34,11 @@ from .supervised_feedback import _close_guardian, _complete_cleanup, _packet
 
 KINDS = ("component-analytical-feedback", "component-rtl-feedback")
 TERMINAL = frozenset({"completed", "refused", "cancelled"})
+
+
+def _engine_slots(job, grant, *, ordinary):
+    """Only the fixed no-execution route may release simulator capacity."""
+    return 0 if ordinary and job.kind == COMPILE_ONLY_KIND else grant.engine_slots
 
 
 @dataclass(frozen=True)
@@ -892,10 +898,13 @@ class ComponentEvaluationPool:
             self.capacity.cores // self.grant.cores,
             self.capacity.ram_bytes // self.grant.ram_bytes,
             max(0, self.capacity.disk_bytes - self._retained_output_bytes()) // self.grant.disk_bytes,
-            self.capacity.engine_slots // self.grant.engine_slots,
         )
+        engine_used = sum(_engine_slots(job, self.grant, ordinary=self.inputs.ordinary) for job in active)
         for job in self._jobs.values():
             if job.state != "queued" or len(active) >= count:
+                continue
+            demand = _engine_slots(job, self.grant, ordinary=self.inputs.ordinary)
+            if engine_used + demand > self.capacity.engine_slots:
                 continue
             try:
                 self._start(job, tuple(free[: self.grant.cores]))
@@ -910,6 +919,7 @@ class ComponentEvaluationPool:
                     self._save(job)
             if job.state not in TERMINAL:
                 active.append(job)
+                engine_used += demand
                 free = free[self.grant.cores :]
 
     def _serve(self):

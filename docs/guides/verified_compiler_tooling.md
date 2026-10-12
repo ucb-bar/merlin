@@ -5,7 +5,7 @@ status: current
 owner: ir
 last_verified: 2026-10-12
 related: [verified_compiler_roadmap, compiler_verification, phase0_specification, compiler_authoring_prompts, aws_phase0_phase1]
-code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, packages/merlin-experiments/src/merlin_experiments/phase1/brokers]
+code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, packages/merlin-experiments/src/merlin_experiments/phase1/brokers, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py]
 ---
 
 # Shared transformations, ISA generation and Lean verification
@@ -19,13 +19,14 @@ records the remaining pass groups and their required evidence.
 
 ## Select a fresh experiment release
 
-Fresh `corpus prepare` selects `merlin.common_compiler_substrate.v2`. Direct
+Fresh `corpus prepare` selects `merlin.common_compiler_substrate.v3`. Direct
 bundle generation selects it with
-`--common-substrate merlin.common_compiler_substrate.v2`. Supply an explicit
+`--common-substrate merlin.common_compiler_substrate.v3`. Supply an explicit
 `--lean-toolchain-manifest` and the reviewed `--host-index-bits` of the selected
 host ABI. Missing formal tools cannot satisfy covered obligations. V1 retains
 its original source membership and formal registry; it cannot request the new
-V2 options or acquire the V2 pass observer through a resumed run.
+V2 options or acquire the V2 pass observer through a resumed run. V1 and V2
+cannot acquire the V3 authored-transformation checking action through resume.
 
 The profile records the actual common source bytes, automatic checker sources,
 formal coverage policy and selected toolchain. Earlier frozen bundles retain
@@ -47,6 +48,96 @@ author merely because the author can request a common transformation.
 Phase 2 inherits the exact original Phase 1 compiler tool profile, target/spec
 inputs, runtime grants and proof policy. It cannot silently add ISA generation,
 Lean authoring or a different proof toolchain after Phase 1 admission.
+
+## Use the tooling inside actual compiler calls
+
+The original Phase 1/2 package box stages the existing public transformation
+channel in each isolated compiler-call workspace. `MERLIN_COMMON_WORKSPACE`
+selects that channel. The source-pinned client can request `apply_transform` or
+`check_transform` using the same frozen source grants, formal coverage,
+semantics and selected toolchain as its author. Requests cannot choose another
+owner or grant themselves proof authority. The host binds the compiler/input
+identity and aggregate deadline, then reaps proof children before staging ends.
+
+Budgeted whole-model grading reconstructs this exact original profile executor
+in a fresh interpreter through a parent-issued sealed readonly descriptor.
+The child reopens the frozen inputs, package sandbox, selected environment and
+any original live resource boundary. Foreign or incomplete owners refuse.
+This does not reconstruct arbitrary alternative component executors. An unset
+`MERLIN_MODEL_BUDGET_S` retains the inline route. See
+[the transport scope](../design/public_compile_only_feedback.md#ordinary-compiler-execution-with-the-common-profile).
+
+Caller-selected artifact ABI 0.2 profiles also retain structural emission in
+this box, with fresh profile/source checks before output publication. This is
+not a numerical adapter or permission to treat opaque artifacts as LLVM.
+Frozen compiler scopes continue to refuse Python bytecode/cache writes.
+
+An accepted per-call IR pair is not a proof that the compiler used that pair
+in its final artifact. Under the active original V3 scope, ordinary lowering
+with `emit_transformation_trace` retains its actual input/emission observation;
+the object entry checks the raw checkpoint chain and binds a freshly produced
+object. The entry symbol comes from the original build/capability contract,
+not from the trace. Absent traces retain historical reuse behavior and grant
+zero formal credit; unconsumed traces also grant none. Unsupported edges remain
+unproved in partial reports; covered failures reject the build. The join covers
+one unambiguous current observed source. Multiple pending emissions with the
+same artifact bytes refuse before proof checking or object compilation; bytes
+alone cannot select the actual original source obligation.
+Failed or incomplete object consumers retain their claim until scope exit,
+keeping legacy artifact caches unavailable for retries of that emission.
+Explicit compile-only proof transport does not duplicate the ordinary check.
+This custody establishes neither the compiler's internal pass
+history nor terminal lowering, dispatch, host optimization or machine semantics.
+Numerical and RTL qualification remain independent.
+
+## Select reusable host optimizations
+
+The ordinary object producer reuses Merlin's logical layout/fusion checks,
+upstream allocation hoisting/lifetime passes and checked LLVM arena binder.
+An original host caller can supply `HostOptimizationSelection`; its context
+declares permissions and its request contains only bounded choices and the
+SHA256 of the actual source. A finished LLVM artifact cannot request tensor
+fusion or structured buffer passes. Device operations are not rewritten as
+host computation.
+
+For a fresh V3 experiment, a compiler can emit the optional command-buffer
+`host_optimization_request` defined in the original command-buffer schema.
+The same normal and compile-only object paths consume it. It supplies neither
+a pass pipeline nor semantic/runtime permissions. The original typed build
+service or unchanged frozen capability contract selects the entry symbol; the
+frozen profile selects index width.
+No candidate manifest, filename, target name or proof report grants permission.
+
+Permissions are an optional `host_optimization` block in the original reviewed
+software specification, which is already bound by `semantic_inputs`. Omission
+admits no requested host optimization and does not add a new required input.
+For example, an operator who has independently established the required runtime
+premises can select:
+
+```yaml
+host_optimization:
+  schema: merlin.host_optimization_admission.v1
+  permitted_stages: [llvm]
+  permitted_optimizations: [static_arena]
+  sequential_execution: true
+  successful_allocations: true
+  non_reentrant_entry: true
+```
+
+These booleans are reviewed premises, not evidence produced by this block.
+Unspecified premises default false. Logical/structured host selection also
+requires original `data_layout`; logical graph changes require
+`independent_element_order_unobserved`, and floating graph changes require
+`floating_environment_unobserved_nontrapping`. Requests cannot modify scales,
+rounding, approximation bounds or the required numerical gate. Phase 2 inherits
+these exact bytes from Phase 1.
+
+Each selected build preserves the original source, selected IR, raw translation,
+later LLVM and final object identities in `kernel.host_optimization.json`.
+Raw compiler stack reports remain immutable; their canonical measurements use
+separate files. Conditional structural checks and artifact custody do not issue
+a Lean proof, numerical pass, deployment receipt or cycle estimate. Existing
+numerical and instruction-policy checks still apply to the resulting artifact.
 
 ## Prepare the formal toolchain on the worker
 
@@ -73,12 +164,32 @@ python -m merlin.verify.lean_cli prepare-toolchain \
 
 Repeat `--library-root` for every dependency's compiled import directory and
 `--runtime-file` for additional required native loader files. The command
-compiles only Merlin's packaged foundation, pins the exact executable and
+compiles Merlin's packaged `Foundation`, `ResourceGeometry` and `StateEffects`
+into one product root, pins the exact executable and
 complete import products, and writes `lean-toolchain.json`. Existing output
 is refused. Compilation uses one Lean worker with explicit memory and wall
 budgets. The record is `prepared_unqualified`: it does not qualify a worker,
 infer native-loader dependencies or prove that an operator-selected library
 was built from its claimed source revision.
+
+Bit-vector obligations using `bv_decide` additionally require an explicitly
+selected `--sat-solver` and `--allow-native-reflection`. Supply the solver's
+required native loader files with `--runtime-file`; stage them as ordinary files
+under the same lexical RUNPATH layout before preparation. The solver may have
+its own small prefix: the Lean executable and import libraries are reused.
+The original manifest pins every selected file, the solver and this permission.
+Verification passes its exact frozen path to Lean and never uses PATH or a
+sibling fallback. Missing solver or permission leaves the covered proof
+unavailable before tactic execution.
+
+Lean's selected BV tactic checks LRAT through native reflection. Its receipt
+uses `lean_native_reflection` and states that the original Lean compiler and
+native checker are trusted. `Lean.ofReduceBool` and `Lean.trustCompiler` are
+admitted only under this explicit original mode; other unapproved axioms refuse.
+Kernel reduction
+receipts retain `lean_kernel`. These are different assurance scopes. Neither
+proves machine code, physical memory behavior, numerical execution or runtime
+qualification. Phase 2 inherits the same original selection.
 
 Stage any required native SONAME aliases as ordinary files while preserving
 their lexical loader names before inventorying them. Frozen snapshots preserve
@@ -88,6 +199,16 @@ need independent deployment qualification. Host checks clear loader-injection
 environment variables. Verify the manifest and execute a supported actual
 before/after check on the allocated worker before starting authoring. Then pass
 the manifest to release preparation; a declaration alone is not execution proof.
+
+Private host tool inventories may batch a maximal closed subdirectory below an
+original library root only when its complete plain-file tree exactly equals
+the selected manifest membership. Unpinned parent metadata stays excluded.
+The freezer checks every selected byte before copying and against the pending
+snapshot before sealing. Extra files, aliases, public overlap or unresolved
+ownership retain individual private leaves. This batches private storage and
+masks without exposing a directory to the author; EL6 public grants retain
+their exact file membership. Large policies also require the worker setup in
+[the bubblewrap argument guide](bubblewrap_argument_budget.md).
 
 ## Request a verified common transformation
 
@@ -126,6 +247,50 @@ elements or tiles. Escaping allocations and unsupported layouts remain explicit
 unknowns in storage planning. Dependency planning treats unknown configuration
 and device operations conservatively.
 
+## Check a transformation authored in the OOT
+
+V3 also admits
+`merlin.transforms.client.check_transform(workspace, before_ir, after_ir, entry="...")`
+on the original Phase 1 channel and inherited Phase 2 broker. Submit complete
+actual before/after IR. The request cannot provide semantics, purity claims,
+resource limits, proof tactics, a different toolchain or saved receipts.
+
+The original host reconstructs the primitive registry from the frozen software
+ISA and selected raw hardware facts, checking both byte identities. Without
+an ISA declaration it retains the standard builtins domain. A scalar proof
+checks the complete typed function for every input bit pattern. Host-selected
+simplification and bit-vector tactics share one bounded work budget. Failing
+a covered proof cannot fall through into an unsupported-domain success.
+
+An exact sequential permutation can instead enter the state model. The host
+checks complete typed SSA correspondence, conservative aliasing and every
+actual adjacent exchange. Lean derives commutation from disjoint read/write
+frames and proves preservation of the surrounding sequential context.
+Static structured loops aggregate effects without expanding their iterations.
+Distinct caller pointers may alias; distinct named device resources are also
+conservatively overlapping unless the original reviewed model proves otherwise.
+
+ISA effects alone do not establish totality, atomic completion or visibility.
+Effectful OOT operations require a separate original reviewed admission of their
+complete sequential state abstraction. An asynchronous DMA command is not
+automatically treated as a completed memory update. Unknown effects, unresolved
+access bounds, poison arithmetic and unsupported observations refuse this proof.
+Standard memory checks explicitly assume defined accesses and successful fresh
+allocations; these are IR semantics, not deployment or allocation guarantees.
+
+`verify_resource_assignment` is an internal host API for the actual emitted SSA
+resource annotation. It freshly reconstructs capacity/alignment, shared backing
+reservations, lifetimes, boundary addresses and instruction-port obligations.
+Lean checks the resulting geometry under the original host's representation
+and constraints. The author message cannot supply new bank capacities or
+overwrite permissions. Physical representation, constraints matching hardware,
+and final ISA consumption remain independently checked.
+
+Only live Lean completion under the original host selection can be accepted. Serialized
+reports describe results and do not create authority. A standalone checked
+pair does not establish that a compiler's final object implements that pair;
+artifact custody and independent numerical/RTL gates remain necessary.
+
 Standalone `apply_common_pipeline` calls transform a private clone and dispatch
 covered changes to a supplied host verification hook. An explicit `plan_only`
 call can inspect unverified transformed IR; it creates no accepted proof.
@@ -154,7 +319,9 @@ The initial modeled obligations are:
   actual body cloning, substitutions and exact yields checked structurally.
 
 The exporter, structural projection, selected primitive semantics and Lean
-kernel/toolchain are explicit assurance boundaries. Descriptor validity,
+kernel/toolchain are explicit assurance boundaries. Native-reflection receipts
+also trust the originally admitted Lean compiler and native LRAT checker;
+they are not kernel-only proofs. Descriptor validity,
 allocation failure, target instruction/RTL correspondence, final host ABI and
 machine-code execution need separate evidence. A mathematical interval theorem
 does not prove hardware capacity or memory safety for an arbitrary program.

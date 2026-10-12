@@ -329,31 +329,9 @@ def _validate_host_locations(ws: Path, hosts: list[tuple[str, Path]]) -> None:
 
 
 def _snapshot_content(root: Path) -> tuple[str, int, int]:
-    """Digest, file count and byte count for the frozen payload (not its marker)."""
-    rows: list[tuple[str, str, int]] = []
-    total = 0
-    marker = root / _SNAPSHOT_COMPLETE
-    members = sorted(root.rglob("*"))
-    if any(path.is_symlink() for path in members):
-        raise RuntimeError("bundle input snapshot contains a symlink")
-    for path in (p for p in members if p.is_file() and p != marker):
-        digest = hashlib.sha256()
-        size = 0
-        with path.open("rb") as stream:
-            while chunk := stream.read(8 * 1024 * 1024):
-                digest.update(chunk)
-                size += len(chunk)
-        rows.append((path.relative_to(root).as_posix(), digest.hexdigest(), size))
-        total += size
-    aggregate = hashlib.sha256()
-    for rel, digest, size in rows:
-        aggregate.update(rel.encode("utf-8"))
-        aggregate.update(b"\0")
-        aggregate.update(str(size).encode("ascii"))
-        aggregate.update(b"\0")
-        aggregate.update(digest.encode("ascii"))
-        aggregate.update(b"\n")
-    return aggregate.hexdigest(), len(rows), total
+    from merlin.common.bundle_snapshot import snapshot_content
+
+    return snapshot_content(root)
 
 
 def _read_snapshot_manifest(ws: Path) -> dict:
@@ -649,9 +627,13 @@ def materialize_bundle_inputs(
         return previous
     if pending.exists() or pending.is_symlink():
         shutil.rmtree(pending) if pending.is_dir() else pending.unlink()
+    from merlin.targetgen.tool_profile_toolchain import validate_private_toolchain_roots
+
+    host_paths = _host_input_paths(bundle)
+    validate_private_toolchain_roots(bundle)
 
     grants = _grant_sources(bundle, repo)
-    hosts = [(path, resolve_grant(path, repo)) for path in _host_input_paths(bundle)]
+    hosts = [(path, resolve_grant(path, repo)) for path in host_paths]
     if any(source.absolute() != (repo / path).absolute() for path, source in hosts):
         raise RuntimeError("host-only inputs require canonical paths, not shorthand or registry aliases")
     _validate_host_locations(ws, hosts)
@@ -727,6 +709,7 @@ def materialize_bundle_inputs(
                 content_store.place_tree(source, dst, input_store, observe=observe, preserve_permissions=private_copy)
             else:
                 content_store.place_file(source, dst, input_store, observe=observe, preserve_permissions=private_copy)
+        validate_private_toolchain_roots(bundle, snapshot_root=pending, repo=repo)
         digest, n_files, n_bytes = _snapshot_content(pending)
         grant_records = []
         for rel, source in inputs:
@@ -769,7 +752,10 @@ def materialize_bundle_inputs(
         raise
 
 
-def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_inputs: bool = False) -> list[str]:
+def _bundle_mount_args(
+    ws: Path, bundle: dict, repo: Path, *, _policy_test_live_inputs: bool = False,
+    visibility_prefix: Sequence[str] | None = None,
+) -> list[str]:
     """Frozen allow mounts and deny overlays, ordered so the MOST SPECIFIC declaration wins.
 
     bwrap applies mount operations in argv order, so whichever declaration is emitted LAST decides
@@ -809,6 +795,7 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_
     ]
     allow_dests = [d.absolute() for d, _ in live]
     deny_dests: list[tuple[Path, str]] = []
+    host_deny_dests: list[tuple[Path, str]] = []
     for denied in bundle.get("denied", []):
         d = resolve_grant(denied["path"], repo).absolute()
         kind = path_kind(d)
@@ -823,7 +810,7 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_
         else:
             manifest, _ = _snapshot_grants(ws, bundle, repo)
             host_records = _snapshot_host_inputs(ws, bundle, repo, manifest)
-        deny_dests.extend((destination, path_kind(frozen)) for _, destination, frozen in host_records)
+        host_deny_dests.extend((destination, path_kind(frozen)) for _, destination, frozen in host_records)
     for private, kind in _private_validation_paths(bundle):
         if private == ws or private in ws.parents or private.is_relative_to(ws):
             raise RuntimeError("private validation input overlaps the writable authoring workspace")
@@ -872,6 +859,21 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_
             ops.append((len(d.parts), 1, ["--tmpfs", str(d)]))
         else:
             ops.append((len(d.parts), 1, ["--ro-bind", _DEVNULL, str(d)]))
+    visibility = None
+    if visibility_prefix is not None:
+        preview = list(visibility_prefix)
+        for _depth, _tie, args in sorted(ops, key=lambda op: (op[0], op[1])):
+            preview.extend(args)
+        visibility = _MountVisibility(preview)
+    for destination, kind in host_deny_dests:
+        # Consult the full actual prefix AND the pending public grants/masks.
+        # System/runtime binds can expose a host file even without a bundle
+        # grant; later reapply calls reconsider their complete composed prefix.
+        # A standalone caller without that prefix retains every legacy denial.
+        if visibility is not None and not visibility.is_exposed(destination):
+            continue
+        args = ["--tmpfs", str(destination)] if kind == "dir" else ["--ro-bind", _DEVNULL, str(destination)]
+        ops.append((len(destination.parts), 1, args))
     for _depth, _tie, args in sorted(ops, key=lambda op: (op[0], op[1])):
         out += args
     return out
@@ -894,7 +896,7 @@ def reapply_bundle_snapshot(argv: list[str], ws: Path, bundle: dict, *, repo: Pa
     submission rather than reporting a setup failure.
     """
     repo = (repo or repo_root()).absolute()
-    return [*argv, *_bundle_mount_args(ws, bundle, repo), "--bind", str(ws), str(ws)]
+    return [*argv, *_bundle_mount_args(ws, bundle, repo, visibility_prefix=argv), "--bind", str(ws), str(ws)]
 
 
 def base_argv(
@@ -1000,7 +1002,9 @@ def base_argv(
         if Path(projects).exists():
             parts += ["--tmpfs", projects]
 
-    parts += _bundle_mount_args(ws, bundle, repo, _policy_test_live_inputs=_policy_test_live_inputs)
+    parts += _bundle_mount_args(
+        ws, bundle, repo, _policy_test_live_inputs=_policy_test_live_inputs, visibility_prefix=parts
+    )
     # Bind the writable workspace LAST so no mask clobbers it.
     parts += ["--bind", str(ws), str(ws)]
     return parts
@@ -1205,6 +1209,23 @@ class _MountPathIndex:
         return found
 
 
+def _resolved_bind_mounts(mounts: list[tuple[str, str, str]]) -> list[tuple[Path, Path, set[Path]]]:
+    """Resolve each source once within the trusted, stable launch namespace.
+
+    Retain every ordered exposed mount and both lexical/canonical source names.
+    This cache ends with the call; later calls must observe changed aliases.
+    """
+    sources: dict[Path, set[Path]] = {}
+    result = []
+    for state, raw_source, raw_destination in mounts:
+        if state == "expose":
+            source = Path(raw_source).absolute()
+            if source not in sources:
+                sources[source] = {source, source.resolve()}
+            result.append((source, Path(raw_destination), sources[source]))
+    return result
+
+
 def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[AnswerSurface]) -> list[AnswerSurface]:
     """Project answer denials through every bind, including deeper re-exposures.
 
@@ -1219,11 +1240,7 @@ def _support_bind_surfaces(mounts: list[tuple[str, str, str]], surfaces: list[An
     """
     if not surfaces:
         return []
-    exposed = []
-    for state, raw_source, raw_destination in mounts:
-        if state == "expose":
-            source = Path(raw_source).absolute()
-            exposed.append((source, Path(raw_destination), {source, source.resolve()}))
+    exposed = _resolved_bind_mounts(mounts)
     source_index = _MountPathIndex(spellings for _, _, spellings in exposed)
     destination_index = _MountPathIndex((destination,) for _, destination, _ in exposed)
     known = {surface.path for surface in surfaces}
@@ -1379,7 +1396,9 @@ def full_argv(
     """The complete isolation argv for one target+arm: deny-by-default base + claude runtime + toolchain
     binds + derived answer masks. ``bundle`` may be ``{}``/None for a descriptor-only (bundle-less)
     target — the answer masks are then driven purely by the descriptor."""
-    from merlin.targetgen.sandbox import toolchain as TC  # local: avoid a heavy import at module load
+    from merlin.targetgen.sandbox import (
+        toolchain as TC,  # local: avoid a heavy import at module load
+    )
 
     bundle = bundle or {}
     argv = (

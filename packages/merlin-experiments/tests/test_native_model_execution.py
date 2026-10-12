@@ -802,7 +802,10 @@ def test_kernel_inventory_requires_symbol_scoped_derived_command_words(tmp_path,
     table = {"custom_opcode": 0x2B, "legal_funct": [4], "names": {"4": "MAC"}}
     words, functs = _kernel_command_inventory(path, symbol="kernel", table=table)
     assert words == [0x0800002B] and functs == [4]
-    assert "--disassemble-symbols=kernel" in commands[0]
+    assert "--section=.text" in commands[0]
+    assert "--start-address=0" in commands[0]
+    assert "--stop-address=4" in commands[0]
+    assert not any(arg.startswith("--disassemble-symbols=") for arg in commands[0])
     table["legal_funct"] = []
     with pytest.raises(NativeModelExecutionError, match="unrecognized custom command"):
         _kernel_command_inventory(path, symbol="kernel", table=table)
@@ -1700,3 +1703,28 @@ def test_kernel_inventory_refuses_instruction_crossing_extent(tmp_path,monkeypat
     monkeypatch.setattr(subprocess,"run",lambda argv,**kwargs:subprocess.CompletedProcess(argv,0,"00000000 <kernel>:\n  0: 0800002b <unknown>\n",""))
     with pytest.raises(NativeModelExecutionError,match="crosses"):
         _kernel_command_inventory(path,symbol="kernel",table={})
+
+
+def test_kernel_inventory_keeps_work_after_interior_relocation_label(tmp_path, monkeypatch):
+    import subprocess
+    from merlin.llvmlower import toolchain
+
+    path = tmp_path / "kernel.o"
+    path.write_bytes(_kernel_symbol_elf(size=8))
+    tool = tmp_path / "llvm-objdump"
+    tool.write_bytes(b"selected tool")
+    monkeypatch.setattr(toolchain, "objdump", lambda: tool)
+
+    def disassemble(argv, **kwargs):
+        # LLVM's symbol-only mode stops before the interior PC-relative label.
+        text = "Disassembly of section .text:\n00000000 <kernel>:\n  0: 00000013 nop\n"
+        if not any(arg.startswith("--disassemble-symbols=") for arg in argv):
+            text += "00000004 <.Lpcrel_hi0>:\n  4: 0800002b <unknown>\n"
+            text += "00000008 <neighbor>:\n  8: 1000002b <unknown>\n"
+        assert "--section=.text" in argv
+        return subprocess.CompletedProcess(argv, 0, text, "")
+
+    monkeypatch.setattr(subprocess, "run", disassemble)
+    table = {"custom_opcode": 0x2B, "legal_funct": [4], "names": {"4": "MAC"}}
+    words, functs = _kernel_command_inventory(path, symbol="kernel", table=table)
+    assert words == [0x0800002B] and functs == [4]

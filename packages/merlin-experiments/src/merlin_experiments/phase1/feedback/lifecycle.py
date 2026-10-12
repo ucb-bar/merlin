@@ -8,6 +8,7 @@ handoff, not cancellation or a timed join. Numerical grading is supplied explici
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -364,7 +365,7 @@ def start_background(
 
     stop = threading.Event()
 
-    def _body() -> None:
+    def _grade_body() -> None:
         if not (ws / "qa" / "verdict.json").exists():
             landed, tries = False, 0
             while not stop.is_set():
@@ -430,6 +431,15 @@ def start_background(
                     on_tick(t)
                 except Exception as e:  # noqa: BLE001 - a tick hook must never kill the grader
                     print(f"[in-turn grade {t}] on_tick skipped: {type(e).__name__}: {e}", flush=True)
+
+    def _body() -> None:
+        from merlin.common.cpu_pool import parse_roster, selected_pool
+
+        # A new thread inherits the manager's CPU pool. Establish the grading
+        # base before callbacks create executors so nested build/sim leases
+        # restore grading CPUs, including between-capsule provenance work.
+        with selected_pool(parse_roster(os.environ.get("MERLIN_GRADE_CPUS", ""))):
+            _grade_body()
 
     th = threading.Thread(target=_body, name="in-turn-grader", daemon=True)
     th.start()

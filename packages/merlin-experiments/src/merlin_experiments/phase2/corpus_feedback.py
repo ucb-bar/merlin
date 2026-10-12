@@ -456,16 +456,29 @@ class CorpusFeedbackPolicy(WorkflowPolicy):
             from .common_transforms import action
 
             actions = (*actions, action())
+        if self.services.common_check is not None:
+            from .common_transforms import check_action
+
+            actions = (*actions, check_action())
+        if self.services.compile_only is not None:
+            from .public_compile_only import action
+
+            actions = (*actions, action())
         return actions
 
     verify_receipts = staticmethod(verify_broker_receipts)
 
     def execute(self, request, action_name, rendered, call_index, timeout_s, started):
-        if action_name == "common-transform":
-            if self.services.common_transform is None:
+        if action_name in {"common-transform", "common-check", "compile-only"}:
+            provider = self.services.common_check if action_name == "common-check" else self.services.common_transform
+            if action_name == "compile-only":
+                provider = self.services.compile_only
+            if provider is None:
                 raise StageGateError("the frozen Phase 1 common transformation service is unavailable")
             try:
-                document = self.services.common_transform(rendered["request"], timeout_s)
+                document = provider(
+                    rendered["capsules"] if action_name == "compile-only" else rendered["request"], timeout_s,
+                )
                 result = {"returncode": 0, "stdout": _canonical_json(document).decode(), "stderr": "",
                           "elapsed_s": round(time.monotonic() - started, 3)}
             except Exception as error:

@@ -45,6 +45,7 @@ def test_linked_entry_is_read_from_native_symbol_table_and_missing_definition_re
         "symbol": "entry",
         "address": 1024,
         "size_bytes": 8,
+        "section": ".code",
         "scope": "static linked definition",
     }
     with pytest.raises(ValueError, match="unique retained"):
@@ -132,3 +133,15 @@ def test_entry_must_be_a_complete_structurally_contained_definition(change):
     entry = {"symbol": "entry", "address": 1024, "size_bytes": 8, "scope": "static linked definition", **change}
     with pytest.raises(ValueError, match="extent"):
         observe("", retained_entry=entry)
+
+
+@pytest.mark.parametrize("non_executable", [False, True])
+def test_linked_entry_refuses_extent_without_executable_section_ownership(non_executable):
+    image = bytearray(symbol_elf())
+    if non_executable:
+        struct.pack_into("<Q", image, 64 + 2 * 64 + 8, 0)
+    else:
+        # Last symbol's size exceeds its owner section, even with a valid name.
+        struct.pack_into("<Q", image, len(image) - 8, 9)
+    with pytest.raises(ValueError, match="executable owner section"):
+        F.linked_entry_extent(bytes(image), "entry")

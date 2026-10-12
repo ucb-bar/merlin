@@ -56,10 +56,11 @@ FORWARDED_PROBES = {
     "offload_census": "--offload-census",
     "model_layers": "--model-layers",
     "candidate_diagnostics": "--candidate-diagnostics",
+    "compile_only": "--compile-only",
     "dynamic_census": "--dynamic-census",
 }
 PROTOCOL_VERSION = 3
-COMMON_ACTIONS = frozenset({"common-transform"})
+COMMON_ACTIONS = frozenset({"common-transform", "common-check"})
 _DIGEST_IGNORES = frozenset({"build", "__pycache__", ".git", "selfcheck_out"})
 
 
@@ -442,14 +443,31 @@ def main(
             try:
                 if common_service is None:
                     raise FileNotFoundError("versioned common transformation tooling was not admitted for this run")
+                if (
+                    r["action"] == "common-check"
+                    and common_service.profile.get("common_substrate") != "merlin.common_compiler_substrate.v3"
+                ):
+                    raise FileNotFoundError("common check was not admitted by the original compiler profile")
                 proof_root = a.compiler_bundle_manifest.parent / "common-transform-work"
                 proof_root.mkdir(mode=0o700, exist_ok=True)
-                body = common_service.apply(r.get("transform"), work_root=proof_root)
+                remaining = int(_child_deadline_monotonic(r) - time.monotonic())
+                if remaining < 1:
+                    raise TimeoutError("common request exhausted its original client deadline")
+                method = common_service.check if r["action"] == "common-check" else common_service.apply
+                body = method(r.get("transform"), work_root=proof_root, timeout_s=remaining)
             except Exception as error:
                 from merlin.common.path_scrub import scrub_host_paths
 
                 body = {"status": "unavailable" if isinstance(error, FileNotFoundError) else "unknown",
                         "reason": scrub_host_paths(str(error)), "all_pass": False}
+            if r["action"] == "common-check":
+                # Error summaries remain bound to the actual request too. These
+                # hashes describe bytes; they do not turn a refusal into proof.
+                payload = r.get("transform")
+                if isinstance(payload, dict):
+                    for field, key in (("before_ir", "source_sha256"), ("after_ir", "target_sha256")):
+                        if isinstance(payload.get(field), str):
+                            body.setdefault(key, hashlib.sha256(payload[field].encode()).hexdigest())
             doc = _decorate_response(
                 json.dumps(body), r, rid, graded_digest, started_ns=started_ns, completed_ns=time.time_ns(),
             )
@@ -459,7 +477,7 @@ def main(
             health["last_completed_at_unix_ns"] = time.time_ns()
             _atomic_write(health_path, json.dumps(health, sort_keys=True))
             continue
-        inspection = r.get("caller_layout") or r.get("candidate_diagnostics")
+        inspection = r.get("caller_layout") or r.get("candidate_diagnostics") or r.get("compile_only")
         sim = None if inspection else str(r.get("sim") or _default_sim() or "") or None
         policy_error = _sim_policy_error(sim) if sim else None
         if policy_error:
@@ -483,6 +501,8 @@ def main(
             continue
         to = int(r.get("timeout", 1800))
         worker_kwargs = {"rtl_facts": a.rtl_facts} if a.rtl_facts is not None else {}
+        if a.compiler_bundle_manifest is not None:
+            worker_kwargs["compiler_bundle_manifest"] = a.compiler_bundle_manifest
         argv2 = worker_command(context, capsules_root, contract, **worker_kwargs) + [
             "--submission",
             str(ws / "submission"),
@@ -638,6 +658,10 @@ def main(
         # The caller may stop the run immediately after observing ``done``. Re-check before starting
         # optional promotion: promotion is not part of the request and must not delay broker shutdown.
         if _should_stop(ch, orig_ppid):
+            continue
+        if inspection:
+            # Static observations cannot trigger a numerical/RTL promotion or
+            # pay for a simulator after a deliberately no-execution request.
             continue
 
         # PROMOTE off the SYNCHRONOUS path too. Promotion was first hooked into the async oracle alone,

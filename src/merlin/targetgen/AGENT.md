@@ -69,9 +69,11 @@ launching, capsule grading, golden generation, sandboxing and certification. The
 - `artifact_bundle.py` supplies explicit profile-bound structural checks for a
   draft artifact composition. File identities and logical-buffer ordering grant
   no artifact ABI, physical alias, capability, synchronization or execution
-  proof. ABI `0.2` has no normal executor/certification adapter. Default package
-  invocation refuses that version; typed profile permission admits structural
-  emission only. ABI `0.1` and its existing text-entry aliases remain unchanged.
+  proof. ABI `0.2` has no numerical/certification adapter. Default package
+  invocation refuses that version; an exact caller-selected typed profile
+  admits structural emission through the original package box with fresh
+  profile/source checks before output publication. It grants no namespace
+  access or LLVM conversion. ABI `0.1` and its text-entry aliases are unchanged.
 - `package_runtime.scoped_package_executor` accepts explicit caller-owned build
   and entrypoint execution services. It never discovers an optional evaluator;
   invocation without the scoped owner during a guarded run refuses, including
@@ -418,3 +420,17 @@ real scalar visits across the selected finite union; never invent both signs in
 one scalar. Complete typed extrema, signed zeros, RNE ties, subnormals and feasible
 ordered clamp branches remain explicit obligations. This grader stays masked;
 realized finite partitions do not establish whole-domain or compiled semantics.
+
+`host_optimization_admission` binds bounded command-buffer choices to actual
+terminal source bytes under the live original V3 import admission. Permissions
+are optional reviewed original software data, never request fields or Lean's
+mathematical memory assumptions. Original typed build entry/index selection,
+exact numerical policy and P1/P2 profile inheritance remain mandatory. The
+host-only request/compile leaves are pinned without a new author source grant.
+
+`common_transforms` is the core host checking service. Experiment channels
+reexport it without a second implementation. It reopens the original archive,
+profile, payload and marker, selected source inventory, software/facts and formal
+toolchain; candidate requests cannot replace any of these authorities. Core
+import admission is independent of optional experiment packages; sandbox views
+and grading remain separately selected by the original experiment owner.

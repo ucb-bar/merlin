@@ -189,17 +189,23 @@ def main(
     rows: list[dict[str, Any]] = []
     refusal = None
     try:
-        rows, roofline_cells = PM.execute_schedule(
-            plan,
-            out_dir,
-            contract_root=layout["contract_root"],
-            timeout=args.timeout,
-            target_experiment=target,
-            rtl_identity=rtl,
-            hardware_counters=args.hardware_counters,
-            counter_binding=counter_binding,
-            fanout=fanout,
+        from merlin_experiments.phase1.feedback.compiler_profile_runtime import (
+            functional_service,
+            original_compiler_imports,
         )
+
+        with original_compiler_imports(functional_service(inputs.functional.run_dir)):
+            rows, roofline_cells = PM.execute_schedule(
+                plan,
+                out_dir,
+                contract_root=layout["contract_root"],
+                timeout=args.timeout,
+                target_experiment=target,
+                rtl_identity=rtl,
+                hardware_counters=args.hardware_counters,
+                counter_binding=counter_binding,
+                fanout=fanout,
+            )
         manifest["completion"] = ME.completion_report(rows, plan.expected)
         if not manifest["completion"]["complete"]:
             raise PC.CampaignGateError(f"paired completion failed: {manifest['completion']}")

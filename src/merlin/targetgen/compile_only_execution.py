@@ -19,6 +19,7 @@ from merlin.targetgen.compiler_library import selected_library_record
 from merlin.targetgen.contract.build_service import BuildOnlyService
 from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor, prepare_linkage
 from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+from merlin.verify.lean_emission_context import explicit_emission_transport
 
 
 def _plain(path):
@@ -95,6 +96,7 @@ def _recipe(service):
     }
 
 
+@explicit_emission_transport
 def compile_source_only(
     *,
     package_dir,
@@ -109,6 +111,7 @@ def compile_source_only(
     timeout_s,
     compiler_library=None,
     compiler_library_root=None,
+    emission_verification=None,
 ):
     """Compile through the ordinary package pipeline; retain exact actual products.
 
@@ -171,6 +174,7 @@ def compile_source_only(
         "build_recipe": _recipe(build_service),
         "instruction_selection": admission,
         "scope": "ordinary structural compilation and linked instruction policy; no numerical/physical proof",
+        "emission_proof_chain": {"status": "not_selected", "outside_formal_coverage": "independent_checks_required"},
     }
     deadline = time.monotonic() + timeout_s
 
@@ -185,6 +189,7 @@ def compile_source_only(
     def invoke(*args, **kwargs):
         return P.run_entrypoint(*args, **{**kwargs, "timeout": remaining(), "invocation_directory": generated})
 
+    chain = None
     try:
         package = P.load_package(package_dir, contract=contract_root)
         if package.manifest.get("target") != target:
@@ -222,9 +227,54 @@ def compile_source_only(
         entry = build_service.recipe.require_kernel_stack_frame().entry_symbol
         linkage, binding = prepare_linkage(cb=cb, lowered_mlir=artifact, entry_symbol=entry, original_abi=original_abi)
         build = output / "build"
-        obj = llvm_mlir_to_object(
-            artifact, build, target=target, _build_service=build_service, build_timeout_s=math.ceil(remaining())
-        )
+        from .host_optimization_admission import selected_buffer_choices
+
+        with selected_buffer_choices(cb, artifact, target=target, build_service=build_service):
+            if emission_verification is not None:
+                from merlin.verify.lean_emission_chain import (
+                    check_emission_chain,
+                    consume_emission_chain,
+                    reread_emitted_product,
+                )
+
+                chain = check_emission_chain(
+                    selection=emission_verification,
+                    package=package,
+                    original_source=source,
+                    compiler_input=products[0],
+                    emitted_artifact=products[-1],
+                    emission_invocation=observation,
+                    target_entry=entry,
+                    evidence_root=output / "emission_proof",
+                    remaining=remaining,
+                )
+                report["emission_proof_chain"] = chain.record()
+                artifact = reread_emitted_product(chain, selection=emission_verification)
+                with invocation_record.observe_call(
+                    output,
+                    stage="emission_chain_object_consumer",
+                    function=llvm_mlir_to_object,
+                    arguments={"target": target, "actual_input_sha256": sha256_file(products[-1])},
+                    inputs=(products[-1],),
+                    outputs=(build / "kernel.llvm.mlir", build / "kernel.o"),
+                    dependencies=tuple(Path(path) for path, _ in build_service.source_pins),
+                ) as consumer:
+                    obj = llvm_mlir_to_object(
+                        artifact, build, target=target, _build_service=build_service,
+                        build_timeout_s=math.ceil(remaining()),
+                    )
+                    consumer.returned(stdout=str(obj))
+                report["emission_proof_chain"] = consume_emission_chain(
+                    chain,
+                    selection=emission_verification,
+                    object_invocation=consumer,
+                    object_path=obj,
+                    consumer_source=build / "kernel.llvm.mlir",
+                )
+            else:
+                obj = llvm_mlir_to_object(
+                    artifact, build, target=target, _build_service=build_service, build_timeout_s=math.ceil(remaining())
+                )
         elf = link_elf(
             cb,
             obj,
@@ -284,6 +334,10 @@ def compile_source_only(
         }
         return report
     except Exception as error:
+        if chain is not None:
+            from merlin.verify.lean_emission_chain import discard_emission_chain
+
+            discard_emission_chain(chain)
         report.update(compilation_status="unavailable", failure={"type": type(error).__name__, "detail": str(error)})
         report["retained_unqualified_records"] = [_pin(path) for path in sorted(output.rglob("invocation.json"))]
         raise
@@ -292,7 +346,13 @@ def compile_source_only(
 
 
 def verify_compile_only_report(
-    path, *, build_service, elf_admission, compiler_library=None, compiler_library_root=None
+    path,
+    *,
+    build_service,
+    elf_admission,
+    compiler_library=None,
+    compiler_library_root=None,
+    emission_verification=None,
 ):
     """Reopen actual transport evidence; no JSON can issue a semantic qualification."""
     path = _plain(path)
@@ -356,5 +416,17 @@ def verify_compile_only_report(
     )
     if binding != report["original_abi_binding"]:
         raise ValueError("compile-only original ABI binding changed")
+    emission = report.get("emission_proof_chain", {"status": "not_selected"})
+    if emission_verification is not None:
+        from merlin.verify.lean_emission_chain import reopen_emission_custody
+
+        reopen_emission_custody(
+            emission,
+            selection=emission_verification,
+            package_root=report["inputs"]["package_root"],
+            evidence_root=path.parent / "emission_proof",
+        )
+    elif emission.get("status") != "not_selected":
+        raise ValueError("selected emission custody requires the same original host binding to reopen")
     elf_admission.revalidate(elf=Path(report["elf"]["path"]), result=report["instruction_policy"], target=target)
     return report

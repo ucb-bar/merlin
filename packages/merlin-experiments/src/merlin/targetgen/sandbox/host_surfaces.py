@@ -21,6 +21,7 @@ from merlin.targetgen.sandbox.bwrap import (
     _MountPathIndex,
     _mounts,
     _private_validation_paths,
+    _resolved_bind_mounts,
     _snapshot_grants,
     _snapshot_host_inputs,
     _validate_host_locations,
@@ -71,7 +72,8 @@ def _host_mount_devices() -> list[tuple[int, Path]]:
 
 
 def _host_hardlink_surfaces(
-    argv: list[str], records: list[tuple[str, Path, Path]], approved: set[tuple[Path, Path]]
+    argv: list[str], records: list[tuple[str, Path, Path]], approved: set[tuple[Path, Path]],
+    *, mounts: list[tuple[str, str, str]] | None = None,
 ) -> list[AnswerSurface]:
     """Mask extra runtime names for private inodes, not identical public bytes.
 
@@ -131,7 +133,7 @@ def _host_hardlink_surfaces(
                         hits.append(Path(entry.path).relative_to(root))
         return hits
 
-    for state, raw_source, raw_destination in _mounts(argv):
+    for state, raw_source, raw_destination in _mounts(argv) if mounts is None else mounts:
         if state != "expose":
             continue
         source, destination = Path(raw_source).absolute(), Path(raw_destination).absolute()
@@ -228,11 +230,9 @@ def _private_path_surfaces(
     # Resolve this immutable mount plan once per policy invocation. Repeating
     # parsing and filesystem resolution for every private file makes a closed
     # formal-toolchain inventory quadratic in the size of the mount argv.
-    exposed = []
-    for state, raw_source, raw_destination in _mounts(argv):
-        if state == "expose":
-            source = Path(raw_source).absolute()
-            exposed.append(({source, source.resolve()}, Path(raw_destination)))
+    mounts = _mounts(argv)
+    binds = _resolved_bind_mounts(mounts)
+    exposed = [(spellings, destination) for _source, destination, spellings in binds]
     source_index = _MountPathIndex(spellings for spellings, _destination in exposed)
 
     surfaces: dict[Path, AnswerSurface] = {}
@@ -250,7 +250,7 @@ def _private_path_surfaces(
                     if alias_kind == "missing":
                         raise RuntimeError("private input alias cannot be classified for masking")
                     surfaces[alias] = AnswerSurface("host-only input alias", alias, alias_kind, "hidden")
-    for surface in _host_hardlink_surfaces(argv, records, approved):
+    for surface in _host_hardlink_surfaces(argv, records, approved, mounts=mounts):
         surfaces[surface.path] = surface
     return list(surfaces.values())
 

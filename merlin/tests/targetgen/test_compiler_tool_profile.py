@@ -284,3 +284,55 @@ def test_explicit_toolchain_is_host_owned_except_on_lean_author_level(selected_s
     library.write_bytes(b"changed imports")
     with pytest.raises(ValueError, match="bytes differ"):
         _bundles(selected_sources, lean=manifest)
+
+
+def test_explicit_system_runtime_is_public_without_publishing_formal_inputs(selected_sources, tmp_path):
+    import sysconfig
+
+    library = Path("/usr/lib") / sysconfig.get_config_var("MULTIARCH") / "libc.so.6"
+    if not library.is_file() or library.resolve() != library:
+        pytest.skip("ordinary canonical glibc fixture unavailable")
+    executable = tmp_path / "lean"
+    private = tmp_path / "Private.olean"
+    executable.write_bytes(b"independent executable fixture")
+    private.write_bytes(b"private compiler input")
+
+    def member(path):
+        return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+    document = {
+        "schema": "merlin.lean_toolchain.v1",
+        "executable": member(executable),
+        "files": [member(library), member(private)],
+        "library_roots": [str(tmp_path)],
+        "system_runtime_files": [member(library)],
+    }
+    manifest = tmp_path / "toolchain.json"
+    manifest.write_text(json.dumps(document))
+    for row in _bundles(selected_sources, lean=manifest).values():
+        assert str(library) in _paths(row, "allowed")
+        assert str(library) not in _paths(row, "host_inputs")
+        assert str(private) in _paths(row, "host_inputs")
+        assert str(executable) in _paths(row, "host_inputs")
+        assert str(manifest) in _paths(row, "host_inputs")
+        grant = next(entry for entry in row["allowed"] if entry["path"] == str(library))
+        assert grant["mode"] == "ro"
+        assert (
+            verify_tool_profile(row)["lean_toolchain"]["manifest_sha256"]
+            == hashlib.sha256(manifest.read_bytes()).hexdigest()
+        )
+    # A declaration cannot publish arbitrary SDK or private members even if pinned.
+    document["system_runtime_files"] = [member(private)]
+    manifest.write_text(json.dumps(document))
+    with pytest.raises(ValueError, match="OS ABI library"):
+        _bundles(selected_sources, lean=manifest)
+    document["system_runtime_files"] = [dict(member(library), sha256="0" * 64)]
+    manifest.write_text(json.dumps(document))
+    with pytest.raises(ValueError, match="exactly match"):
+        _bundles(selected_sources, lean=manifest)
+    # Omitted role preserves the historical private interpretation.
+    document.pop("system_runtime_files")
+    manifest.write_text(json.dumps(document))
+    for row in _bundles(selected_sources, lean=manifest).values():
+        assert str(library) in _paths(row, "host_inputs")
+        assert str(library) not in _paths(row, "allowed")

@@ -55,6 +55,13 @@ and working log: `docs/design/compiler_verification.md`.
   model timing, allocation failure or arbitrary memory/RTL execution. The
   invocation inventory commitment is written after closed-file byte validation;
   a saved commitment cannot seed the process-local completion ledger.
+- `lean_checked.py` reconstructs actual emitted resource geometry and actual
+  authored sequential reorderings before live receipt acceptance. V3's
+  `lean_isa_semantics.py` selects original frozen software/facts; candidate
+  messages cannot set primitive meanings, bank geometry or atomic completion.
+  `StateEffects` derives commutation from read/write frames under admitted
+  sequential semantics. `ResourceGeometry` checks actual projected intervals
+  and address relations; neither supplies a physical/RTL proof.
 
 - **A layer that cannot run must never look like one that ran clean.** Missing tool, missing solver,
   solver timeout: all report an explicit state. `unknown` is never `verified`; `abstracted` is never a
@@ -110,3 +117,14 @@ and working log: `docs/design/compiler_verification.md`.
   0.68 and 0.70 — identical. Upgrading does not help; `smt_ops` supplies the scope and
   `smt_semantics.in_range` constrains element widths with the shift identity instead.
 - Keep queries quantifier-free: take extents CONCRETE from the IR's own types.
+
+`lean_sat_runtime` binds generated BV obligations to an explicit original SAT
+executable/file inventory. Native reflection requires independent original
+opt-in, uses the exact frozen solver path and labels the broader Lean compiler
+and native LRAT TCB. Successful selected BV checks use `lean_native_reflection`,
+not kernel-only assurance. `Lean.ofReduceBool` and `Lean.trustCompiler` are
+admitted only in this original mode; other reported axioms retain the fixed
+policy, and kernel reduction remains separately labeled `lean_kernel`.
+Identifiers are lexed structurally, excluding comments and strings; a generated
+query cannot override the solver. Saved documents remain descriptive, not live
+completion authority. Native loader closure and deployment stay independent.

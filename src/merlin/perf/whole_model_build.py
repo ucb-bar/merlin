@@ -673,6 +673,7 @@ def _kernel_objects(rows: list[dict[str, Any]], *, target: str, out: Path, jobs:
     from merlin.llvmlower import toolchain
     from merlin.targetgen.contract.compile import llvm_mlir_to_object
     from merlin.targetgen.contract.harness_abi import for_target
+    from merlin.verify.lean_emission_context import requires_fresh_object
 
     entry = for_target(target).entry_symbol
     cache_root = _object_cache_root()
@@ -696,11 +697,12 @@ def _kernel_objects(rows: list[dict[str, Any]], *, target: str, out: Path, jobs:
         with table_lock:
             lock = text_locks.setdefault(artifact_text, threading.Lock())
         with lock:
-            cached = compiled_by_artifact.get(artifact_text)
+            fresh = requires_fresh_object(artifact_text)
+            cached = None if fresh else compiled_by_artifact.get(artifact_text)
             if cached is not None:
                 return cached[0], "shared"
             cached_path = None
-            if cache_root is not None and fingerprint is not None:
+            if not fresh and cache_root is not None and fingerprint is not None:
                 key = _object_cache_key(artifact_text, target=target, fingerprint=fingerprint)
                 cached_path = cache_root / key[:2] / f"{key}.o"
             # A HIT is re-verified against the digest recorded when it was written (`_OC.load`), so a
@@ -726,8 +728,10 @@ def _kernel_objects(rows: list[dict[str, Any]], *, target: str, out: Path, jobs:
         group = int(row["group"])
         work = out / f"g{group}"
         symbol = f"{entry}_g{group}"
+        fresh = False
         try:
             artifact_text = Path(row["artifact"]).read_text(encoding="utf-8")
+            fresh = requires_fresh_object(artifact_text)
             compiled, object_cache = compiled_object(artifact_text, work)
             renamed = out / f"g{group}.o"
             subprocess.run(
@@ -743,6 +747,8 @@ def _kernel_objects(rows: list[dict[str, Any]], *, target: str, out: Path, jobs:
             if symbol not in names or entry in names:
                 raise WholeModelBuildError(f"the renamed object defines {sorted(names & {entry, symbol})}")
         except Exception as error:  # noqa: BLE001 -- a group that will not build is a named fallback
+            if fresh:
+                raise WholeModelBuildError("original traced object production did not complete") from error
             detail = getattr(error, "stderr", "") or str(error)
             row.update(
                 {"on": ON_VENDOR, "cause": OBJECT_FAILED, "why": f"{type(error).__name__}: {str(detail)[-400:]}"}
@@ -760,8 +766,12 @@ def _kernel_objects(rows: list[dict[str, Any]], *, target: str, out: Path, jobs:
 
     # A fused region's internal members carry no kernel of their own: their region's is the boundary's.
     answered = [row for row in rows if row["on"] == ON_PACKAGE and row.get("artifact")]
+    from contextvars import copy_context
+
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-        list(pool.map(one, answered))
+        futures = [pool.submit(copy_context().run, one, row) for row in answered]
+        for future in futures:
+            future.result()
     if cache_root is not None:
         with contextlib.suppress(Exception):  # noqa: BLE001 -- pruning is an optimization, never a build dependency
             prune_object_cache(cache_root)

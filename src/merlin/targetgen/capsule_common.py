@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING
 
 import yaml
 
+from merlin.verify.lean_emission_context import observe_emission
+
 if TYPE_CHECKING:
     from aet.core.run_paths import RunPaths
 
@@ -376,6 +378,7 @@ def run_entrypoints(
     return pkg, cb, artifact
 
 
+@observe_emission
 def lower_interface(
     pkg,
     interface: str | Path,

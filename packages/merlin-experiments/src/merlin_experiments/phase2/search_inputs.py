@@ -45,11 +45,13 @@ class SearchInputs:
 
     @property
     def kinds(self):
-        return (
-            (ORDINARY_FAST_KIND, ORDINARY_KIND)
-            if self.ordinary
-            else ("component-analytical-feedback", self.timing_kind)
-        )
+        if self.ordinary:
+            from . import ordinary_compile_only as compile_only
+
+            return (ORDINARY_FAST_KIND, ORDINARY_KIND) + (
+                (compile_only.KIND,) if compile_only.available(self.policy) else ()
+            )
+        return ("component-analytical-feedback", self.timing_kind)
 
     def identities(self):
         self.validate()
@@ -67,6 +69,10 @@ class SearchInputs:
 
         roster = self.validate()
         if self.ordinary:
+            from . import ordinary_compile_only as compile_only
+
+            if kind == compile_only.KIND:
+                return compile_only.validate_feedback(raw, policy=self.policy, revision=revision)
             if kind == ORDINARY_FAST_KIND:
                 from .ordinary_fast_feedback import validate_feedback
 

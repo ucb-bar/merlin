@@ -1051,7 +1051,7 @@ def scaffold(
     from merlin.common.paths import python_source_dir
     from merlin.targetgen.generate_bundles import _ARMS, materialize_bundles
     from merlin.targetgen.sandbox.toolchain import ToolchainPaths
-    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V2
+    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3
 
     promoted = load_target_experiment(descriptor)
     toolchain = ToolchainPaths.from_checkout()
@@ -1074,7 +1074,7 @@ def scaffold(
             python_source_root=python_source_dir(),
             llvm_toolchain_root=llvm_root if llvm_root != checkout_llvm else None,
             rtl_facts_root=facts_root,
-            common_substrate=COMMON_SUBSTRATE_V2,
+            common_substrate=COMMON_SUBSTRATE_V3,
             lean_toolchain_manifest=lean_toolchain_manifest,
             host_index_bits=host_index_bits,
             arms=tuple(_ARMS) + tuple({"EL5": "merlin_isa", "EL6": "merlin_lean"}[level] for level in optional_levels),

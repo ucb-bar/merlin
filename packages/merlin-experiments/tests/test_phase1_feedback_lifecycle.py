@@ -589,3 +589,56 @@ def test_source_receipt_rejects_lifecycle_drift(tmp_path, monkeypatch, mutation)
         member.with_name("added_lifecycle.py").write_text("# new lifecycle member\n")
     with pytest.raises(SpecError, match="source identity changed"):
         SI.verify(record, **inputs)
+
+
+@pytest.mark.parametrize("configured", [True, False])
+def test_background_grade_pool_is_worker_base_and_nested_lease_restore(tmp_path, monkeypatch, configured):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from merlin.common.cpu_pool import selected_pool
+
+    original = os.sched_getaffinity(0)
+    available = sorted(original)
+    if len(available) < 4:
+        pytest.skip("requires four available CPUs for isolated affinity observations")
+    manager = {available[0]}
+    expected = set(available[1:3]) if configured else manager
+    if configured:
+        monkeypatch.setenv("MERLIN_GRADE_CPUS", ",".join(map(str, sorted(expected))))
+    else:
+        monkeypatch.delenv("MERLIN_GRADE_CPUS", raising=False)
+    completed = threading.Event()
+    observed = {}
+    handle = None
+
+    def worker():
+        before = os.sched_getaffinity(0)
+        with selected_pool((available[3],)):
+            leased = os.sched_getaffinity(0)
+        return before, leased, os.sched_getaffinity(0)
+
+    def fast(*args):
+        observed["grader"] = os.sched_getaffinity(0)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            observed["worker"] = pool.submit(worker).result(timeout=5)
+        observed["after_workers"] = os.sched_getaffinity(0)
+        completed.set()
+        return {"all_pass": None, "tiers_graded": ["loop"], "tiers_not_run": ["cert"]}
+
+    try:
+        os.sched_setaffinity(0, manager)
+        handle = L.start_background(
+            tmp_path / "workspace", tmp_path / "run", L.GradeCadence(60, False, 900),
+            interval_grades=False, grade_callback=lambda *a: pytest.fail("unexpected interval"),
+            fast_grade_callback=fast,
+        )
+        assert completed.wait(5)
+        L.stop_background(handle)
+        assert observed["grader"] == expected
+        assert observed["worker"] == (expected, {available[3]}, expected)
+        assert observed["after_workers"] == expected
+        assert os.sched_getaffinity(0) == manager
+    finally:
+        if handle is not None:
+            L.stop_background(handle)
+        os.sched_setaffinity(0, original)

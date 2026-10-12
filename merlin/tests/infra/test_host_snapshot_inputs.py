@@ -702,3 +702,32 @@ def test_support_alias_index_keeps_destination_reexposure_and_contract_exemption
     assert paths[0] == private
     assert denied_destination in paths
     assert allowed_destination not in paths
+
+
+def test_host_mask_compaction_keeps_public_exception_and_late_reexposure(private_bundle):
+    repo, workspace, bundle, hidden = private_bundle
+    bundle["allowed"] = [{"path": "inputs/public.txt"}]
+    BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    earlier_directory_mask = ["--tmpfs", str(repo / "inputs")]
+    compact = BW._bundle_mount_args(workspace, bundle, repo, visibility_prefix=earlier_directory_mask)
+    assert not any(state == "hide" and destination == str(hidden) for state, _, destination in BW._mounts(compact))
+    composed = earlier_directory_mask + compact
+    assert BW.is_exposed(composed, repo / "inputs/public.txt")
+    assert not BW.is_exposed(composed, hidden / "secret.bin")
+    late = [*composed, "--ro-bind", str(repo / "inputs"), str(repo / "inputs")]
+    assert BW.is_exposed(late, hidden / "secret.bin")
+    reapplied = BW.reapply_bundle_snapshot(late, workspace, bundle, repo=repo)
+    assert not BW.is_exposed(reapplied, hidden / "secret.bin")
+    assert BW.is_exposed(reapplied, repo / "inputs/public.txt")
+
+
+def test_host_mask_compaction_counts_platform_prefix_and_preserves_standalone(private_bundle):
+    repo, workspace, bundle, hidden = private_bundle
+    bundle["allowed"] = []
+    BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    assert BW._bundle_mount_args(workspace, bundle, repo, visibility_prefix=[]) == []
+    platform_prefix = ["--ro-bind", str(repo), str(repo)]
+    required = BW._bundle_mount_args(workspace, bundle, repo, visibility_prefix=platform_prefix)
+    assert required == ["--tmpfs", str(hidden)]
+    assert not BW.is_exposed(platform_prefix + required, hidden / "secret.bin")
+    assert BW._bundle_mount_args(workspace, bundle, repo) == required

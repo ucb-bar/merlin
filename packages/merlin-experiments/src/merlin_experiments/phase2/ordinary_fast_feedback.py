@@ -174,22 +174,25 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
     from .public_program_measurement import selection as public_selection
 
     model_selection = public_selection(capsule, policy.feedback_evaluator.rtl_identity, simulator="spike")
-    sandbox = PC.package_sandbox_policy(policy.target_experiment, workspace, revision.source)
-    started = time.monotonic()
-    with PC.boxed_entrypoints(sandbox):
-        grade = CR.run_capsule(
-            capsule,
-            revision.source,
-            runs_root=workspace / "capsule_runs",
-            run_id="functional",
-            contract=policy._contract_root,
-            target=policy.target_experiment.target,
-            oracle_adapters={"L2": CR.simulator_adapter("spike", policy.target_experiment.target)},
-            adapter_managed_tiers=("L2",),
-            timeout=remaining,
-            workers=workers,
-            **({"model_execution_selection": model_selection} if model_selection is not None else {}),
-        )
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import original_compiler_imports
+
+    with original_compiler_imports(getattr(policy.feedback_evaluator, "_compiler_profile_service", None)):
+        sandbox = PC.package_sandbox_policy(policy.target_experiment, workspace, revision.source)
+        started = time.monotonic()
+        with PC.boxed_entrypoints(sandbox):
+            grade = CR.run_capsule(
+                capsule,
+                revision.source,
+                runs_root=workspace / "capsule_runs",
+                run_id="functional",
+                contract=policy._contract_root,
+                target=policy.target_experiment.target,
+                oracle_adapters={"L2": CR.simulator_adapter("spike", policy.target_experiment.target)},
+                adapter_managed_tiers=("L2",),
+                timeout=remaining,
+                workers=workers,
+                **({"model_execution_selection": model_selection} if model_selection is not None else {}),
+            )
     tiers = grade.get("tiers") or {}
     functional = all((tiers.get(tier) or {}).get("status") == "pass" for tier in ("L0", "L1", "L2"))
     if before != (str(hash_tree(revision.source)["sha256"]), exact_tree_record(member.source_dir)["sha256"]):

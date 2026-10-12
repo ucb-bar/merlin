@@ -16,6 +16,7 @@ from typing import Any
 SCHEMA = "merlin.lean_transform_verification.v1"
 DOMAIN_VERSION = "1"
 EXTENDED_DOMAIN_VERSION = "2"
+AUTHORED_DOMAIN_VERSION = "3"
 DOMAINS = (
     "scalar_integer_v1",
     "ordered_loop_segmentation_v1",
@@ -23,6 +24,7 @@ DOMAINS = (
     "dependency_order_v1",
 )
 EXTENDED_DOMAINS = (*DOMAINS, "total_scalar_rewrite_v1", "ordered_loop_unrolling_v1")
+AUTHORED_DOMAINS = (*EXTENDED_DOMAINS, "resource_geometry_v1", "state_effect_schedule_v1")
 _FILE_CACHE: dict[tuple, str] = {}
 
 
@@ -57,16 +59,25 @@ def imported_product(path: Path) -> bool:
 
 def coverage_policy_record(*, version: str = DOMAIN_VERSION) -> dict:
     """The common policy. Candidates cannot narrow the host's selected coverage."""
-    if version not in {DOMAIN_VERSION, EXTENDED_DOMAIN_VERSION}:
+    if version not in {DOMAIN_VERSION, EXTENDED_DOMAIN_VERSION, AUTHORED_DOMAIN_VERSION}:
         raise ValueError("unknown formal coverage registry version")
-    return {
+    domains = {"1": DOMAINS, "2": EXTENDED_DOMAINS, "3": AUTHORED_DOMAINS}[version]
+    policy = {
         "schema": "merlin.lean_coverage_policy.v1",
         "mode": "strict_within_coverage",
         "registry_version": version,
-        "domains": list(DOMAINS if version == DOMAIN_VERSION else EXTENDED_DOMAINS),
+        "domains": list(domains),
         "unknown_within_coverage": "reject",
         "outside_coverage": "independent_checks_required",
     }
+    if version == AUTHORED_DOMAIN_VERSION:
+        policy["native_reflection"] = {
+            "selection": "optional_original_toolchain_permission_and_pinned_sat_solver",
+            "method": "lean_native_reflection",
+            "additional_tcb": ["Lean.ofReduceBool", "Lean.trustCompiler", "selected Lean native LRAT checker"],
+            "kernel_only": False,
+        }
+    return policy
 
 
 def digest(value: bytes | str) -> str:
@@ -94,6 +105,8 @@ class LeanToolchain:
     timeout_s: int = 120
     memory_mb: int = 1024
     dependency_revision: str = ""
+    sat_solver: tuple[Path, str] | None = None
+    allow_native_reflection: bool = False
 
     @classmethod
     def from_manifest(cls, path: Path, *, work_root: Path) -> LeanToolchain:
@@ -109,6 +122,9 @@ class LeanToolchain:
             return p if p.is_absolute() else root / p
 
         executable = raw["executable"]
+        solver = raw.get("sat_solver")
+        if solver is not None and (type(solver) is not dict or set(solver) != {"path", "sha256"}):
+            raise ValueError("Lean SAT manifest selection requires its exact path/SHA256")
         result = cls(
             executable=selected(executable["path"]),
             executable_sha256=executable["sha256"],
@@ -118,11 +134,18 @@ class LeanToolchain:
             timeout_s=raw.get("timeout_s", 120),
             memory_mb=raw.get("memory_mb", 1024),
             dependency_revision=raw.get("dependency_revision", ""),
+            sat_solver=(selected(solver["path"]), solver["sha256"]) if solver is not None else None,
+            allow_native_reflection=raw.get("allow_native_reflection", False),
         )
         result.verify()
         return result
 
     def verify(self, *, deadline: float | None = None) -> None:
+        from .lean_sat_runtime import validate_sat_solver
+
+        validate_sat_solver(self.sat_solver, self.files)
+        if type(self.allow_native_reflection) is not bool or (self.allow_native_reflection and self.sat_solver is None):
+            raise ValueError("Lean native reflection requires original boolean permission and a pinned SAT solver")
         if (
             type(self.timeout_s) is not int
             or self.timeout_s < 1
@@ -166,6 +189,8 @@ class LeanToolchain:
                 "revision": self.dependency_revision,
                 "timeout_s": self.timeout_s,
                 "memory_mb": self.memory_mb,
+                "sat_solver": (str(self.sat_solver[0]), self.sat_solver[1]) if self.sat_solver else None,
+                "allow_native_reflection": self.allow_native_reflection,
             }
         )
 
@@ -190,7 +215,7 @@ class LeanTransformReceipt:
 
     @property
     def verified(self) -> bool:
-        return self.status == "verified" and self.method == "lean_kernel"
+        return self.status == "verified" and self.method in {"lean_kernel", "lean_native_reflection"}
 
     def to_dict(self) -> dict:
         return asdict(self)
