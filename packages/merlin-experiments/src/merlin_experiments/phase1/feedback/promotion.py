@@ -771,7 +771,10 @@ def _cert_cover(ws, *, context: InvocationContext, capsules_root: Path | None = 
         _excluded = set(te.effective_exclusions(cap.get("name") for cap in _source))
         return set(
             cert_capsule_cover(
-                ((capsules_root,) if capsules_root is not None else te.graded_roots()), tile_dim=_td, exclude=_excluded
+                tuple(Path(cap["__dir__"]) for cap in _source),
+                labels={"public", "dev"},
+                tile_dim=_td,
+                exclude=_excluded,
             )["capsules"]
         )
     except Exception:  # noqa: BLE001 -- no resolvable corpus: stay permissive, never silently empty
