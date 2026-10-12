@@ -252,3 +252,9 @@ nested frozen policy cohorts; actual empty and wholly excluded cohorts stay empt
 Fast loop feedback schedules the existing cert queue immediately using its frozen
 candidate source. It does not grant withheld tiers, duplicate the full grade or
 change native slot limits; broker promotion keeps the same identity ledger.
+
+Fast grading also promotes each completed loop-tier pass before the remaining
+batch finishes. The serialized suite callback retains frozen model source
+custody and mandatory model checks, reopens the exact durable result, and admits
+only selected nonexcluded public/dev names. It always queues against the frozen
+candidate; optional queue errors cannot turn unknown tiers into passes.

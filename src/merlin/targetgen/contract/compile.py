@@ -1073,6 +1073,20 @@ def _counter_observations(
     return ([dict(o) for o in validated.observations] or None), validated.to_dict()
 
 
+def _selected_run_timeout(backend, simulator, requested, deadline):
+    """Keep the job's remaining budget within the selected process ceiling."""
+    import math
+
+    remaining = min(requested, deadline.remaining())
+    selected_limit = getattr(backend, "execution_timeout_limit", None)
+    if selected_limit is not None:
+        limit = selected_limit(simulator)
+        if type(limit) not in (int, float) or not math.isfinite(limit) or limit <= 0:
+            raise ValueError("selected execution deadline ceiling must be finite and positive")
+        remaining = min(remaining, limit)
+    return remaining
+
+
 def run_on_oracle(
     cb: dict[str, Any],
     lowered_mlir_text: str,
@@ -1102,6 +1116,7 @@ def run_on_oracle(
     deadline = selected_deadline(seconds=None, parent=execution_deadline, build_service=_build_service)
     if deadline is not None and _execution_service is None:
         raise ValueError("shared oracle deadline requires explicit independent execution support")
+    run_deadline = deadline if deadline is not None else ExecutionDeadline.start(timeout)
 
     def check_budget():
         return None if deadline is None else deadline.remaining()
@@ -1269,7 +1284,7 @@ def run_on_oracle(
             dependencies += tuple(Path(path) for path, _ in _execution_service.source_pins)
         if admission is not None:
             _elf_admission.revalidate(elf=elf, result=admission, target=target)
-        run_timeout = timeout if deadline is None else min(timeout, deadline.remaining())
+        run_timeout = _selected_run_timeout(backend, simulator, timeout, run_deadline)
         with invocation_record.observe_call(
             work,
             stage="execution",

@@ -227,9 +227,17 @@ def _complete_native_argv(argv: tuple[bytes, ...] | None) -> bool:
         return False
     loads = [arg.removeprefix(b"+loadmem=") for arg in argv if arg.startswith(b"+loadmem=")]
     limits = [arg.removeprefix(b"+max-cycles=") for arg in argv if arg.startswith(b"+max-cycles=")]
+    # Selected native engines also receive the image as a positional ELF argument.
+    # This closed three-argument form is complete, unlike a lone max-cycles flag.
+    # Recognition only permits later custody checks; it never discounts a process
+    # without stable owner/lock/UID/birth and (when selected) singleton CPU evidence.
+    positional = (
+        len(argv) == 3 and argv[1].startswith(b"/")
+        and argv[2].startswith(b"+max-cycles=") and not loads
+    )
     return (
-        len(loads) == len(limits) == 1
-        and bool(loads[0])
+        (len(loads) == 1 and bool(loads[0]) or positional)
+        and len(limits) == 1
         and 0 < len(limits[0]) <= 32
         and limits[0].isdigit()
         and int(limits[0]) > 0
@@ -501,7 +509,7 @@ def _admission_mutex(root: Path, deadline: float | None):
                 locked = True
             except BlockingIOError:
                 if deadline is not None and time.monotonic() >= deadline:
-                    raise TimeoutError("all five GSim slots stayed busy until the capsule wait deadline")
+                    raise TimeoutError(f"all {CAPSULE_WORKER_CAP['gsim']} GSim slots stayed busy until the capsule wait deadline")
                 time.sleep(0.01)
         yield
     finally:
@@ -614,7 +622,7 @@ def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | 
                     break
             if fd is None:
                 if deadline is not None and time.monotonic() >= deadline:
-                    raise TimeoutError("all five GSim slots stayed busy until the capsule wait deadline")
+                    raise TimeoutError(f"all {CAPSULE_WORKER_CAP['gsim']} GSim slots stayed busy until the capsule wait deadline")
                 time.sleep(0.1)
         held[key] = fd
         with _gsim_cpu_slot(index):

@@ -385,6 +385,10 @@ class BoundRoCCBackend:
         _require(block is not None, "requested execution engine is not selected")
         return block
 
+    def execution_timeout_limit(self, simulator):
+        """The immutable selected engine's process deadline ceiling."""
+        return self._engine(simulator)["max_timeout_s"]
+
     def _engine_identity(self, engine):
         block = self._engine(engine)
         binary = _check_pin(block["binary"], executable=True)
@@ -571,6 +575,9 @@ class BoundRoCCBackend:
             type(timeout) in (int, float) and math.isfinite(timeout) and 0 < timeout <= block["max_timeout_s"],
             "selected execution requires a bounded deadline",
         )
+        from merlin.common.execution_deadline import ExecutionDeadline
+
+        process_deadline = ExecutionDeadline.start(timeout)
         before = self._engine_identity(simulator)
         path = Path(elf)
         elf_sha = _digest(path)
@@ -635,7 +642,7 @@ class BoundRoCCBackend:
                     argv=argv,
                     environment=block["environment"],
                     cwd=cwd,
-                    timeout=timeout,
+                    timeout=process_deadline.remaining("selected execution budget expired while waiting for a slot"),
                     capture_bytes=capture_bytes,
                     unlimited_stack=False,
                     raw_result=True,
@@ -674,7 +681,7 @@ class BoundRoCCBackend:
                     argv,
                     cwd=cwd,
                     env=block["environment"],
-                    timeout=timeout,
+                    timeout=process_deadline.remaining("selected execution budget expired while waiting for a slot"),
                     max_bytes=block["max_console_bytes"],
                     observed=observed,
                 )
