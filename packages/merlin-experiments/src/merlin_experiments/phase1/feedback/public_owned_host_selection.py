@@ -30,3 +30,14 @@ def prepare(spec, declaration, *, target, output):
     output=Path(output);output.parent.mkdir(parents=True,exist_ok=True)
     output.write_text(json.dumps(selected,sort_keys=True,indent=2)+'\n');output.chmod(0o600)
     return {'path':str(output.absolute()),'sha256':hashlib.sha256(output.read_bytes()).hexdigest()}
+
+
+def install_for_session(spec, declaration, *, target, run_dir):
+    """Publish pinned operator inputs before authoring and broker subprocess startup."""
+    os.environ.pop(ENV, None)
+    if spec is None or declaration is None:
+        return None
+    record = prepare(spec, declaration, target=target,
+                     output=Path(run_dir).absolute() / 'public_owned_host_build_selection.json')
+    os.environ[ENV] = json.dumps(record, sort_keys=True)
+    return record

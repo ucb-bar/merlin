@@ -727,6 +727,14 @@ def prepare(
         resuming=_resuming,
     )
 
+    # Operator-side selfcheck brokers inherit the same pinned host build inputs as formal grading.
+    # Install before authoring; preparing only during formal grading is too late for selfchecks.
+    from .feedback import public_owned_host_selection
+
+    public_owned_host_selection.install_for_session(
+        _private_full_model_spec, _instruction_selection, target=context.target, run_dir=run_dir,
+    )
+
     if _resuming and _environment_record.get("corpus_review") != _corpus_review:
         raise RuntimeError("resume refused: operator corpus-review identity changed or was removed")
 

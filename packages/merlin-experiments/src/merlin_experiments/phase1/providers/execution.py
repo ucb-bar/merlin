@@ -148,6 +148,7 @@ def sandbox_command(
     # the declared bytes through read-only mounts and never needs (or gets) their host storage path.
     parts += ["--unsetenv", _MODEL_HOST_SNAPSHOT_ROOT_ENV, "--unsetenv", _MODEL_HOST_SNAPSHOT_REQUIRED_ENV]
     parts += ["--unsetenv", _MODEL_HOST_SNAPSHOT_RECORD_ENV]
+    parts += ["--unsetenv", "MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION"]
     # Per-driver runtime binds (e.g. the Codex CLI's package dir + an isolated
     # CODEX_HOME) go in BEFORE the mask pass, so a bind can never re-expose an
     # answer surface: masking is applied last and therefore wins.
