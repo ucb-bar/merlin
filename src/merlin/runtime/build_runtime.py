@@ -456,7 +456,7 @@ class BuildRuntimeView:
                 shutil.rmtree(staged_root)
 
     def run(self, selection, *, timeout):
-        self.reopen_selection(selection)
+        selection = self.reopen_selection(selection)
         directory = Path(selection["request"]["directory"])
         packed = Path(tempfile.mkdtemp(prefix="build-inputs-", dir=directory))
         try:
@@ -468,16 +468,9 @@ class BuildRuntimeView:
                 if F.digest(target) != row["sha256"]:
                     raise ValueError("copied build input differs from its freshly selected bytes")
             F.seal_directories(packed, max_files=self.max_files)
-            selected = {
-                "guest_argv": selection["identity"]["guest_argv"],
-                "cwd": selection["identity"]["guest_cwd"],
-                "environment": selection["child_environment"],
-                "storage_directories": selection["identity"]["storage_directories"],
-                **selection,
-            }
             result, record, adoption = L.run_process(
                 self,
-                selected,
+                selection,
                 readonly_mounts=((packed, "/run/merlin/inputs"),),
                 inputs=tuple(map(Path, selection["request"]["inputs"])),
                 outputs=tuple(map(Path, selection["request"]["outputs"])),
@@ -494,6 +487,8 @@ class BuildRuntimeView:
                 return result, None
             observed = I.verify(record)
             self.reopen_selection(selection)
+            if observed["stage"] != selection["identity"]["stage"]:
+                raise ValueError("actual build stage differs from the original selected step")
             if observed["inputs"] != sorted(selection["input_pins"], key=lambda pin: pin["path"]):
                 raise ValueError("actual build inputs differ from the original selected byte roster")
             output_pins = {pin["path"]: pin for pin in observed["outputs"]}
@@ -546,6 +541,8 @@ class BuildRuntimeView:
 
     def reopen_observation(self, observation, *, selection=None, outputs=None):
         self.verify()
+        if selection is not None:
+            selection = self.reopen_selection(selection)
         body = observation["body"]
         expected = hmac.new(self._secret, F.document(body).encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected, observation["signature"]) or body["returncode"] != 0:
@@ -562,7 +559,7 @@ class BuildRuntimeView:
             raise ValueError("build original process record changed")
         observed = I.verify(Path(record["path"]))
         if (
-            observed["stage"] != "original_build_process"
+            observed["stage"] != body["identity"]["stage"]
             or observed["kind"] != "subprocess"
             or not body["adoption"]
             or observed["inputs"] != body["inputs"]

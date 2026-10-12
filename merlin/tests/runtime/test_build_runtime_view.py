@@ -5,6 +5,7 @@ owners. They deliberately issue no positive namespace or process observation.
 """
 
 import copy
+import json
 import os
 import stat
 import subprocess
@@ -341,3 +342,105 @@ def test_effective_text_decoder_preserves_subprocess_newlines():
     result = subprocess.CompletedProcess([], 0, b"one\r\ntwo\rthree\n", b"warning\r\n")
     B.BuildRuntimeView._decode(result, {"request": {"text": True, "encoding": "utf-8", "errors": "strict"}})
     assert result.stdout == "one\ntwo\nthree\n" and result.stderr == "warning\n"
+
+
+@pytest.mark.parametrize("stage", ["object", "harness_object", "elf"])
+def test_shared_launcher_observes_original_selected_step_before_exec(frozen, monkeypatch, stage):
+    """Stop at the real record boundary; no process or namespace is started."""
+    for module in (B, I, L):
+        assert Path(module.__file__).resolve().is_relative_to(Path.cwd() / "src")
+    selected = selection(frozen, "stage")
+    selected = frozen.owner.selection(**{**selected["request"], "stage": stage})
+    calls = []
+
+    class BeforeExec(RuntimeError):
+        pass
+
+    def observe(directory, **kwargs):
+        invocation = I.Invocation(directory, **kwargs)
+        calls.append((kwargs, invocation.path))
+        raise BeforeExec("file-only control stops before Popen")
+
+    monkeypatch.setattr(I, "observe", observe)
+    with pytest.raises(BeforeExec):
+        L.run_process(
+            frozen.owner,
+            selected,
+            readonly_mounts=(),
+            inputs=tuple(map(Path, selected["request"]["inputs"])),
+            outputs=tuple(map(Path, selected["request"]["outputs"])),
+            timeout=1,
+            directory=Path(selected["request"]["directory"]),
+            build=True,
+        )
+    kwargs, path = calls[0]
+    record = json.loads(path.read_text())
+    assert kwargs["stage"] == record["stage"] == stage
+    assert record["kind"] == "subprocess" and record["status"] == "running"
+    assert record["inputs"] == selected["input_pins"]
+    assert kwargs["outputs"] == tuple(map(Path, selected["request"]["outputs"]))
+    assert not any(Path(p).exists() for p in selected["request"]["outputs"])
+    with pytest.raises(ValueError, match="did not complete"):
+        I.verify(path)
+
+
+def test_shared_launcher_refuses_detached_saved_stage_before_record(frozen, monkeypatch):
+    selected = selection(frozen, "changed-stage")
+    selected["identity"]["stage"] = "elf"
+    monkeypatch.setattr(I, "observe", lambda *args, **kwargs: pytest.fail("changed selection reached observer"))
+    with pytest.raises(ValueError, match="selection or fresh input bytes changed"):
+        L.run_process(
+            frozen.owner,
+            selected,
+            readonly_mounts=(),
+            inputs=(),
+            outputs=(),
+            timeout=1,
+            directory=frozen.output,
+            build=True,
+        )
+
+
+@pytest.mark.parametrize("damage", [None, "stage", "outputs"])
+def test_completed_build_joins_original_step_and_complete_products(frozen, monkeypatch, damage):
+    """Synthetic completion checks joins only; it issues no kernel authority."""
+    selected = selection(frozen, "completed")
+    selected = frozen.owner.selection(**{**selected["request"], "stage": "elf"})
+
+    def synthetic_process(owner, current, *, inputs, outputs, directory, **kwargs):
+        assert current == selected
+        for output in outputs:
+            output.write_bytes(b"synthetic original product")
+        if damage == "outputs":
+            other = directory / "other.elf"
+            other.write_bytes(b"unrelated output")
+            outputs = (other,)
+        result = subprocess.CompletedProcess(current["request"]["argv"], 0, b"link output\n", b"")
+        with I.observe(
+            directory,
+            stage="object" if damage == "stage" else "elf",
+            argv=result.args,
+            cwd=directory,
+            env={},
+            inputs=inputs,
+            outputs=outputs,
+            dependencies=owner.observation_sources(),
+        ) as recorded:
+            recorded.complete(result)
+        return result, recorded.path, {"control": "synthetic; no namespace observation"}
+
+    monkeypatch.setattr(L, "run_process", synthetic_process)
+    if damage is not None:
+        with pytest.raises(ValueError, match="actual build stage" if damage == "stage" else "actual build products"):
+            frozen.owner.run(selected, timeout=1)
+        return
+    result, observation = frozen.owner.run(selected, timeout=1)
+    body = frozen.owner.reopen_observation(observation, selection=selected)
+    original = I.verify(Path(body["record"]["path"]))
+    assert original["stage"] == body["identity"]["stage"] == "elf"
+    assert original["outputs"] == body["outputs"]
+    assert result.stdout == "link output\n"
+    changed = copy.deepcopy(selected)
+    changed["identity"]["stage"] = "object"
+    with pytest.raises(ValueError, match="selection or fresh input bytes changed"):
+        frozen.owner.reopen_observation(observation, selection=changed)
