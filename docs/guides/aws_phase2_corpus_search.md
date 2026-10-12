@@ -21,6 +21,11 @@ run ID and compiler digest, selected RTL facts and timing certificate. Reopen
 those same files on AWS. Source publication is not worker qualification.
 Protected validation programs and reference compiler answers are not author inputs.
 
+The [search and feedback design](../design/normal_search_feedback.md) records
+proposed improvements to diagnostic coverage and cheap exploration. Those
+extensions are distinct from the currently implemented measured search route;
+they supply no pending-Phase-1 admission or performance guarantee.
+
 ## Public performance inputs
 
 Normal Phase 0 can retain complete existing public programs through
