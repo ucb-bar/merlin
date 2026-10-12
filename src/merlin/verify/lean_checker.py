@@ -30,6 +30,7 @@ from .lean_contract import (
     document_digest,
 )
 from .lean_export import UnsupportedLeanIR, equivalence_query, export_scalar
+from .lean_sat_runtime import completion_assurance, proof_runtime_arguments, runtime_receipt, runtime_stage
 
 _ALLOWED_AXIOMS = frozenset({"propext", "Classical.choice", "Quot.sound"})
 _MAX_QUERY = 1024 * 1024
@@ -91,7 +92,13 @@ def semantic_identity(registry: Mapping | None = None) -> str:
     root = Path(__file__).parent
     parts = b"".join(
         name.encode() + b"\0" + (root / name).read_bytes() + b"\0"
-        for name in ("lean_contract.py", "lean_export.py", "lean_checker.py", "lean/Merlin/Foundation.lean")
+        for name in (
+            "lean_contract.py",
+            "lean_export.py",
+            "lean_checker.py",
+            "lean_sat_runtime.py",
+            "lean/Merlin/Foundation.lean",
+        )
     )
     return digest(parts + document_digest(dict(registry or {})).encode())
 
@@ -133,7 +140,7 @@ def _run(argv, toolchain, directory, *, deadline):
     with tempfile.TemporaryFile(dir=directory) as out, tempfile.TemporaryFile(dir=directory) as err:
         with invocation_record.observe(
             directory / "invocation",
-            stage="lean_kernel",
+            stage=runtime_stage(argv),
             argv=argv,
             inputs=tuple(Path(v) for v in argv[-1:] if Path(v).is_file()),
             dependencies=(toolchain.executable, inventory),
@@ -177,6 +184,8 @@ def _check_generated(
     deadline = min(deadline, started + toolchain.timeout_s) if deadline is not None else started + toolchain.timeout_s
     try:
         toolchain.verify(deadline=deadline)
+        runtime_options = proof_runtime_arguments(query, toolchain)
+        receipt = runtime_receipt(receipt, runtime_options)
         before_identity = toolchain.identity()
         cache_key = document_digest(
             {
@@ -193,8 +202,11 @@ def _check_generated(
         if cache_key in _PROOF_CACHE:
             axioms = _PROOF_CACHE[cache_key]
             _PROOF_CACHE.move_to_end(cache_key)
+            method, assumptions = completion_assurance(query, toolchain, axioms, receipt.assumptions, _ALLOWED_AXIOMS)
             completed = replace(
                 receipt,
+                method=method,
+                assumptions=assumptions,
                 status="verified",
                 query_sha256=digest(query),
                 toolchain_sha256=before_identity,
@@ -211,7 +223,10 @@ def _check_generated(
             # Check the selected import files before running tactics. No arbitrary
             # candidate imports can reach this generated theorem file.
             rc, dependencies, errors = _run(
-                [str(toolchain.executable), "--deps", str(source)], toolchain, directory / "deps", deadline=deadline
+                [str(toolchain.executable), *runtime_options, "--deps", str(source)],
+                toolchain,
+                directory / "deps",
+                deadline=deadline,
             )
             if rc:
                 raise FileNotFoundError("selected Lean imports could not be resolved: " + errors[-1000:])
@@ -221,7 +236,7 @@ def _check_generated(
                 if not path.is_file() or str(path.resolve()) not in pinned:
                     raise ValueError("Lean import is outside the selected dependency inventory")
             rc, stdout, stderr = _run(
-                [str(toolchain.executable), "--json", "-j1", f"-M{toolchain.memory_mb}", str(source)],
+                [str(toolchain.executable), *runtime_options, "--json", "-j1", f"-M{toolchain.memory_mb}", str(source)],
                 toolchain,
                 directory / "proof",
                 deadline=deadline,
@@ -261,10 +276,11 @@ def _check_generated(
                 if not opening or not tail.endswith("]"):
                     raise ValueError("unrecognized Lean axiom report")
                 axioms = tuple(item.strip() for item in tail[:-1].split(",") if item.strip())
-            if not set(axioms) <= _ALLOWED_AXIOMS:
-                raise ValueError("Lean obligation depends on an unapproved axiom")
+            method, assumptions = completion_assurance(query, toolchain, axioms, receipt.assumptions, _ALLOWED_AXIOMS)
             completed = replace(
                 receipt,
+                method=method,
+                assumptions=assumptions,
                 status="verified",
                 query_sha256=digest(query),
                 toolchain_sha256=before_identity,

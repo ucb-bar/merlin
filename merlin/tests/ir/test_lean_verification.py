@@ -270,5 +270,9 @@ def test_real_operator_toolchain_preparation(real_toolchain, tmp_path):
         memory_mb=real_toolchain.memory_mb,
     )
     selected = LeanToolchain.from_manifest(manifest, work_root=tmp_path)
+    assert all(
+        (selected.library_roots[0] / "Merlin" / (name + ".olean")).is_file()
+        for name in ("Foundation", "ResourceGeometry", "StateEffects")
+    )
     result = verify_scalar_transform(BEFORE, AFTER, entry="kernel", toolchain=selected)
     assert result.verified and accepted_receipt(result, BEFORE, AFTER), result.reason
