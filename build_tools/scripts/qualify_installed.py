@@ -3016,6 +3016,7 @@ SUITES = {
             "merlin_experiments.phase2.supervised_feedback",
             "merlin_experiments.phase2.feedback_guardian",
             "merlin_experiments.execution.owned_children",
+            "merlin.common.owned_children",
             "merlin_experiments.execution.container_image",
             "merlin_experiments.execution.container_policy",
             "merlin_experiments.execution.container_transport",
