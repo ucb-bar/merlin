@@ -232,3 +232,52 @@ def test_protected_engine_selection_uses_scoped_facts_without_changing_ambient(t
     monkeypatch.setattr(inputs, "selected_firrtl", lambda *a, **k: {**identity, "sha256": "changed"})
     with pytest.raises(ValueError, match="facts changed"):
         _native_engine_for_facts("synthetic", "gsim", identity)
+
+
+def test_historical_model_flag_cannot_bypass_owned_receipt_audit(monkeypatch):
+    from merlin.targetgen import capsule_grade, owned_host_model_execution
+
+    capsule = {'semantic': {'must_accelerate': False}, 'lanes': {'require': ['on_mesh']}}
+    result = {'status': 'pass', 'owned_host_native_execution': {'status': 'claimed_pass'}}
+    observed = []
+
+    def audit(actual, original, **kwargs):
+        assert actual is result and original is capsule
+        observed.append(kwargs['target'])
+        return {'status': 'incomplete', 'kind': 'owned_host_model_execution',
+                'violations': ['candidate_required_tiers_unverified']}
+
+    monkeypatch.setattr(owned_host_model_execution, 'audit_owned_host_model', audit)
+    checked = capsule_grade.enforce_model_execution_check(result, capsule, target='synthetic')
+    assert observed == ['synthetic']
+    assert checked['status'] == 'incomplete'
+    assert checked['model_execution_check']['kind'] == 'owned_host_model_execution'
+    assert capsule['semantic']['must_accelerate'] is False
+
+
+def test_declared_eligible_mesh_model_without_actual_receipt_refuses_legacy_numeric_credit(monkeypatch):
+    from merlin.targetgen.capsule_grade import enforce_model_execution_check
+
+    from merlin.targetgen import native_model_execution
+    monkeypatch.setattr(native_model_execution, 'independent_frozen_source_eligibility',
+                        lambda *a, **k: {'n_eligible': 1})
+    capsule = {'semantic': {'must_accelerate': False}, 'lanes': {'require': ['on_mesh']}}
+    result = {'status': 'pass', 'kind': 'model', 'numeric': {'status': 'pass'},
+              'mesh_execution': {'matmul_layers_on_mesh': 2}}
+    checked = enforce_model_execution_check(result, capsule, target='synthetic')
+    assert checked['status'] == 'incomplete'
+    assert checked['model_execution_check']['kind'] == 'owned_host_model_execution'
+    assert 'receipt or original frozen capsule is absent' in checked['model_execution_check']['detail']
+
+
+def test_ineligible_host_model_without_receipt_keeps_legacy_check(monkeypatch):
+    from merlin.targetgen import capsule_grade, native_model_execution, owned_host_model_execution
+
+    monkeypatch.setattr(native_model_execution, 'independent_frozen_source_eligibility',
+                        lambda *a, **k: {'n_eligible': 0})
+    def unexpected(*args, **kwargs):
+        raise AssertionError('pure host model must not require a device receipt')
+    monkeypatch.setattr(owned_host_model_execution, 'audit_owned_host_model', unexpected)
+    capsule = {'semantic': {'must_accelerate': False}, 'lanes': {'require': ['on_mesh']}}
+    checked = capsule_grade.model_execution_check({}, capsule, target='synthetic')
+    assert checked.get('kind') != 'owned_host_model_execution'

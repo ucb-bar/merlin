@@ -297,11 +297,18 @@ def model_execution_check(
     candidate_source_placement: dict | None = None
     candidate_completed_dispatch: dict | None = None
     candidate_check = None
-    if bool(((capsule or {}).get("semantic") or {}).get("must_accelerate")):
-        if "owned_host_native_execution" in result:
-            from .owned_host_model_execution import audit_owned_host_model
+    # The immutable corpus may withhold must_accelerate while independently
+    # requiring on_mesh. An owned receipt is never a legacy-host diagnostic:
+    # reopen its original source, eligible groups, custody and every native tier.
+    from .owned_host_model_selection import owned_model_required
 
-            return audit_owned_host_model(result, capsule, target=target, readback_policy=readback_policy)
+    requires_owned = owned_model_required(capsule, target=target) if isinstance(capsule, dict) else False
+    if "owned_host_native_execution" in result or (requires_owned and not
+            bool(((capsule or {}).get("semantic") or {}).get("must_accelerate"))):
+        from .owned_host_model_execution import audit_owned_host_model
+
+        return audit_owned_host_model(result, capsule, target=target, readback_policy=readback_policy)
+    if bool(((capsule or {}).get("semantic") or {}).get("must_accelerate")):
         # Keep candidate proof independent from this legacy host-dispatch
         # model check. The old ledger cannot certify a different program.
         effective_target = target or (result.get("operation") or {}).get("target")
