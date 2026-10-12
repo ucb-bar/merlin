@@ -8,6 +8,7 @@ from . import ordinary_measurement_selection as SELECTION
 from . import ordinary_queue_calibration as CALIBRATION
 from .broker import BrokerAction
 from .contracts import StageGateError, canonical_json
+from .ordinary_compile_only import KIND as COMPILE_ONLY_KIND
 from .provisional_search import RESUME_ACTION
 from .search_inputs import ORDINARY_FAST_KIND, ORDINARY_KIND
 
@@ -20,7 +21,9 @@ def actions():
             action.placeholders,
             (
                 f"Queue retained revision: kind={ORDINARY_FAST_KIND} observes compilation and Spike; "
-                f"kind={ORDINARY_KIND} measures certified RTL. Cheap screening cannot select the final source."
+                f"kind={ORDINARY_KIND} measures certified RTL; kind={COMPILE_ONLY_KIND} compiles original public "
+                "scale/frontier sources without values or execution when inherited from Phase 1. "
+                "Compile-only cannot supply correctness, timing or promotion."
                 if action.name == controls.EVALUATION_SUBMIT_ACTION
                 else action.purpose
             ),
