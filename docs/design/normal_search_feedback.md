@@ -4,7 +4,7 @@ kind: design
 status: current
 owner: merlin-experiments
 last_verified: 2026-10-12
-related: [aws_phase2_corpus_search, phase2_cpu_timing_study, independent_performance_feedback]
+related: [phase2_corpus_search, phase2_cpu_timing_study, independent_performance_feedback]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_observations.py
@@ -28,19 +28,19 @@ code_refs:
 
 # Normal compiler search and diagnostic feedback
 
-The implemented normal route reuses Phase 1's selected public target,
+The normal route reuses Phase 1's selected public target,
 specification, ISA, toolchain, neutral runtime and observers. Candidate diagnostics
 are available during Phase 1 without a successful baseline. Normal Phase 2 search
 still requires the original successful functional fork and timing certificate.
 There is no additional component qualification ledger prerequisite.
 
-Source publication and synthetic routing controls establish neither Phase 1
-success, worker readiness, model qualification nor performance parity. The route
-supplies no compiler implementation, preferred schedule or historical answer.
+Diagnostics describe the candidate's own artifacts and executions. They supply
+no compiler implementation, preferred schedule or historical answer, and do not
+replace functional admission or measured evaluation.
 
-## Current implementation and its limits
+## Capabilities and evidence limits
 
-| Item | Available now | Remaining limitation |
+| Item | Capability | Evidence limit |
 | --- | --- | --- |
 | Phase 1 selfcheck | `--candidate-diagnostics` observes own public emission; `--dynamic-census` follows original passing numerical execution | Neither probe grants admission; missing own executable or sandbox joins remain UNKNOWN |
 | Normal cheap feedback | Complete public compile and Spike roster, rich source/emission diagnostics, original scalar features and bounded census | Required RTL tiers remain pending; counts cannot price physical traffic or cycles |
@@ -104,7 +104,22 @@ Offload reporting keeps different denominators separate: operation count,
 arithmetic work and movement volume. A timed host/device percentage requires
 attributed timing. Full-trace instruction totals do not provide that percentage.
 
+For bottleneck attribution, collect counters and timing over the same bracket,
+inspect the complete emitted artifact, and compare controlled alternatives over
+identical work. A factorial comparison can separate a kernel change from its
+host or surrounding graph effects. Repeat unchanged executable controls to
+estimate measurement variability. Static instruction counts and functional
+retirement counts cannot substitute for measured or qualified predicted cycles.
+
 ## Evaluation ladder and escalation
+
+The normal queue supports an explicit selected compile/Spike diagnostic request
+as well as selected RTL measurement. Both use the original frozen public member
+identities and evaluators. Unselected obligations stay pending in the complete
+roster; neither partial kind can enter complete empirical calibration, measured
+promotion or plateau decisions. This avoids paying for an entire cheap sweep
+when the author has a specific development question. It does not infer source
+dependencies or certify that unselected inputs are unaffected.
 
 | Level | Use | Escalate when |
 | --- | --- | --- |
@@ -258,13 +273,13 @@ complete programs for timing; protected validation programs remain inaccessible.
 Source membership, interfaces, emitted placement and original full-output gates
 must be checked before transferring a result between cases.
 
-## Measured boundary and delivery limits
+## Measured boundary and execution requirements
 
 Eligible complete public programs use the original candidate native whole-program
 grade and its full output comparison. Selected gSIM timing requires the optional
 reviewed `logical_harness.complete_call_timing` declaration and original counter,
 ISA and clock source pins; absent data gives no complete-call cycle boundary.
-The [AWS guide](../guides/aws_phase2_corpus_search.md#complete-public-call-timing)
+The [search guide](../guides/phase2_corpus_search.md#complete-public-call-timing)
 defines its exact data shape. The timer includes main preparation through
 completed whole-program outputs and selected output publication. Immutable input
 staging, loader/startup, metric formatting, DONE/exit and external parent

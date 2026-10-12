@@ -4,9 +4,7 @@ kind: reference
 status: current
 owner: compiler
 last_verified: 2026-10-07
-related:
-  - reference/architecture.md
-  - reference/prepared_model_transform.md
+related: [reference/architecture.md, reference/prepared_model_transform.md]
 code_refs:
   - src/merlin/llvmlower/scalar_pointwise_packet.py
   - merlin/tests/ir/test_borrowed_pointwise_packet.py

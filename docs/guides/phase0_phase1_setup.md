@@ -1,21 +1,19 @@
 ---
-title: Prepare Phase 0 and Phase 1 on an AWS worker
+title: Set up Phase 0 and Phase 1
 kind: guide
 status: current
 owner: experiments
 last_verified: 2026-10-11
-related: [aws_gsim, neutral_runtime_tooling, phase0_specification, target_resolution]
+related: [gsim_worker_setup, neutral_runtime_tooling, phase0_specification, target_resolution]
 code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py]
 ---
 
-# Prepare Phase 0 and Phase 1 on an AWS worker
+# Set up Phase 0 and Phase 1
 
-Fetch the completed `feat/compiler-readiness` handoff and record the exact commit
-before preparing inputs. Install core and `merlin-experiments` from that same
-revision using the [AWS gSIM guide](aws_gsim.md). Repository delivery and worker
-qualification are separate: these commands prepare and test the actual worker
-after delivery. They do not require a compiler author experiment during repository
-development.
+Select and record an exact Merlin revision before preparing inputs. Install core
+and `merlin-experiments` from that revision, then qualify the selected tools and
+runtime on the execution worker. See [gSIM worker setup](gsim_worker_setup.md)
+for the simulator build and deployment procedure.
 
 Use the existing catalog, corpus release, native readiness, preflight and canary
 paths. No additional component qualification ledger is a launch prerequisite.
@@ -30,7 +28,7 @@ diagnostic prototypes. Do not copy their legacy harness includes, issue order,
 padding or preferred lowering into a fresh compiler experiment.
 
 The [deployment template](../../examples/gemmini/phase0/execution-declaration.template.yaml)
-selects the requested `FireSimGemminiRocketConfig`. It is deliberately incomplete:
+illustrates `FireSimGemminiRocketConfig`. It is deliberately incomplete:
 replace every marked field and attach freshly derived capability declarations.
 Its facts must describe that exact configuration; the diagnostic example's
 `GemminiRocketConfig` elaboration cannot qualify it. The checked-in templates
@@ -123,7 +121,7 @@ the checked-in template inert. In the operator-owned reviewed copy, set
 execute a definition that still says `kind: template`.
 
 The descriptor's `hardware_spec.target_contract` must name the complete prepared
-deployment contract before derivation. The reviewed handoff preserves this exact
+deployment contract before derivation. The frozen release preserves this exact
 selection; execution fields cannot be added after sealing. Add only reviewed
 public primitive ISA/facts data to its
 hardware grants; there is no vendor kernel-header requirement. Release preparation
@@ -211,7 +209,7 @@ serve as an author seed. Exercise the existing native grade and linked-ELF polic
   oracle timing record; gSIM and Verilator also bind their selected receipt and
   original FIRRTL through the explicit `MERLIN_RTL_FACTS` selection.
 
-Follow [native readiness and timing](aws_gsim.md#prepare-the-catalog-phase-0-and-phase-1-handoff).
+Follow [native readiness and timing](gsim_worker_setup.md#prepare-catalog-experiments).
 Spike observations are numerical evidence only. Source tests, successful linking,
 a copied console or a hand-written cycle number cannot replace native observations.
 
@@ -274,7 +272,7 @@ export PATH="$FILECHECK_BIN:$PATH"
 Then run ordinary `--preflight-only` with the released descriptor, seal, regenerated
 bundle and oracle timing. Run the fresh Codex client canary in the same sandbox
 with the same provider/model/tool selections and a separate fresh run ID. See
-[the exact preflight/canary commands](../../packages/merlin-experiments/README.md#sealed-fresh-codex-client-check-aws-execution).
+[the exact preflight/canary commands](../../packages/merlin-experiments/README.md#sealed-fresh-codex-client-check).
 Preflight must stop before authoring; the canary is only a bounded client check.
 
 ## 5. Author experiment start condition

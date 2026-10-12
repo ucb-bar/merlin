@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: targetgen
 last_verified: 2026-10-08
-related: [adding_a_target, gemmini_experiment, capsule_bench, integrations, phase0_specification]
+related: [adding_a_target, phase0_phase1_setup, capsule_bench, integrations, phase0_specification]
 code_refs:
   - experiments/catalog.yaml
   - packages/merlin-experiments/src/merlin_experiments/phase0/__main__.py
@@ -27,11 +27,13 @@ code_refs:
 
 Phase 0 derives tests; it does not certify a compiler. Start with an experiment in
 [the catalog](../../experiments/catalog.yaml), not a script in a legacy corpus directory.
-Install Merlin and the optional `merlin-experiments` distribution. Target support is the
-provider vendored at `examples/<example>/support` unless `MERLIN_TARGET_PATH` selects another;
-a Phase 1 launch records that effective selection in the child's environment, so a resume cannot
-pick up different support code. Provision RTL facts and capture/toolchain dependencies
-explicitly; an example recipe alone does not make them available. See [integrations](integrations.md).
+Install Merlin and the optional `merlin-experiments` distribution. Select a reviewed
+execution contract and exact RTL facts. The ordinary
+[neutral runtime](../reference/neutral_runtime_tooling.md) consumes these as data,
+without executable target support. Provider-bound workflows separately record
+their implementation selected by `MERLIN_TARGET_PATH`; resumes preserve that
+selection. Provision capture and toolchain dependencies explicitly; an example
+recipe alone does not make them available. See [integrations](integrations.md).
 
 ## Find the inputs
 
@@ -66,6 +68,25 @@ also needs an explicit cheaper sibling; it does not certify an unrun simulator.
 The installed generator lives in `merlin_experiments.phase0`; shared derivation primitives
 remain in core. There is no need to copy generation scripts into `out/`. Generated capsules
 are artifacts, not new library code or files to sync into a wheel.
+
+### Capsule files and access
+
+Materialization preserves these members when present. A file in the operator's
+corpus is not automatically an author grant; the frozen sandbox policy selects
+and masks each role, and private cohorts remain inaccessible.
+
+| Files | Role and access |
+| --- | --- |
+| `capsule.yaml`, `capsule.interface.mlir` | Semantic request and logical ABI; public cases supply the reviewed author view |
+| `capsule.pytorch.py`, `capsule.linalg.mlir`, `README.md` | Eligible public source grounding and description |
+| `golden.yaml`, `golden.npz` | Independent reference policy/data; answers remain operator-only |
+| `capsule.weights.safetensors`, its `.manifest.json` | Optional whole-program compile/runtime inputs; masked from authors |
+| `expected_instruction_coverage.yaml` | Grader-side instruction coverage expectations; not a compiler implementation |
+| `frontend-trace.json`, `frontend-source.mlir`, `frontend-evidence.json`, `pytorch-opset.json`, `source-capture-receipt.json` | Source lineage and frontend evidence; access requires explicit review and redaction |
+
+See [`materialize.py`](../../src/merlin/targetgen/contract/materialize.py) for
+the retained file roster. Capsule input selection never authorizes expected
+values, private paths or reference compiler code as feedback.
 
 The tracked `merlin/contract/capsules/` tree is retained historical benchmark input,
 not the destination for a new Phase 0 run. Existing descriptors and frozen input

@@ -53,7 +53,7 @@ require 95% ranking agreement, at most 10% error, 95% interval coverage, 100
 decided pairs, 20 per qualifying slice, three slices and 20 held predictions.
 Intervals are empirical screening evidence, not physical confidence claims.
 
-### Run the normal AWS CPU cost study
+### Run the CPU cost study
 
 Use the completed Phase 1 run, its admitted readonly baseline, existing target
 descriptor/toolchain/ISA/runtime, frozen development corpus, compiler edit
@@ -114,13 +114,18 @@ against `execution_engine_identity`. Public labels, callbacks, import strings
 and saved PASS records cannot supply the evaluator. Protected programs stay
 outside this route and retain the original final evaluator after compiler freeze.
 
-The current ordinary independent evaluator covers checked component programs.
+The optional `ComponentIndependentExecution` evaluator covers checked component programs.
 A connected generated DAG can use that scope when its original source/runtime
 qualification covers it. Full model coverage does not follow from component
-qualification. A full model numerical or timing request remains UNKNOWN while
-the ordinary whole-program issuer is absent. The legacy
+qualification. Requests outside that component scope remain UNKNOWN. The legacy
 `perf.execution_policy.require_probe_execution` continues to refuse model
 descriptors; its default and the existing final gates are unchanged.
+
+The normal corpus route separately uses `public_program_measurement` for
+complete public-program outputs. Its original source, ABI, numerical and
+instruction gates precede execution. A reviewed complete-call timer can supply
+matching gSIM timing; an absent timer leaves timing unavailable. This route
+does not inherit optional component qualification or expose protected programs.
 
 Spike output and ISA observations establish no physical traffic or timing. Native
 fixed-memory FIR execution remains conditional functional evidence. GSIM and
@@ -185,8 +190,10 @@ reuse needs the original native owner to adopt verified frozen loader/library
 and system runtime trees. Adding a cache input cannot establish that adoption.
 The current observation reports this exact closure gap as UNKNOWN and creates
 no reused cycle count, numerical acceptance or extra independent replicate.
-There is no parent-owned cross-job/worker observation transport. Selective
-execution reuse remains incomplete until that runtime mechanism exists.
+The parent publishes `ArtifactRetestIndex` and `BuildProductIndex` only after
+actual cleanup and ownership release. Those transports do not issue simulator
+execution replay or an independent timing replicate. Execution reuse still
+requires the missing complete native runtime closure.
 
 ## Nonexecuting study command
 
