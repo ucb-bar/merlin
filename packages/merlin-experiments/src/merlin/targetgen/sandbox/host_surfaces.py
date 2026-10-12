@@ -222,17 +222,23 @@ def _private_path_surfaces(
     argv: list[str], records: list[tuple[str, Path, Path]], approved: set[tuple[Path, Path]]
 ) -> list[AnswerSurface]:
     """One alias translation for frozen payloads and exact host provenance files."""
+    if not records:
+        return []
+    # Resolve this immutable mount plan once per policy invocation. Repeating
+    # parsing and filesystem resolution for every private file makes a closed
+    # formal-toolchain inventory quadratic in the size of the mount argv.
+    exposed = []
+    for state, raw_source, raw_destination in _mounts(argv):
+        if state == "expose":
+            source = Path(raw_source).absolute()
+            exposed.append(({source, source.resolve()}, Path(raw_destination)))
     surfaces: dict[Path, AnswerSurface] = {}
     for _, original, frozen in records:
         kind = path_kind(frozen)
         for private in {original, frozen}:
             surfaces[private] = AnswerSurface("host-only input", private, kind, "hidden")
-            for state, raw_source, raw_destination in _mounts(argv):
-                if state != "expose":
-                    continue
-                source = Path(raw_source).absolute()
-                for resolved in {source, source.resolve()}:
-                    destination = Path(raw_destination)
+            for spellings, destination in exposed:
+                for resolved in spellings:
                     translated = _bind_alias(private, kind, resolved, destination)
                     if translated is None:
                         continue

@@ -628,3 +628,32 @@ def test_public_directory_cycle_is_refused_with_indexed_private_paths(private_bu
     with pytest.raises(RuntimeError, match="directory cycle"):
         BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
     assert not BW.bundle_snapshot_root(workspace).exists()
+
+
+def test_private_alias_translation_parses_mounts_once_per_policy_call(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    frozen = tmp_path / "frozen"
+    source.mkdir()
+    frozen.mkdir()
+    records = []
+    for index in range(24):
+        original = source / str(index)
+        copy = frozen / str(index)
+        original.write_text("private input")
+        copy.write_bytes(original.read_bytes())
+        records.append((str(original), original, copy))
+    calls = 0
+    original_mounts = HS._mounts
+
+    def counted_mounts(argv):
+        nonlocal calls
+        calls += 1
+        return original_mounts(argv)
+
+    monkeypatch.setattr(HS, "_mounts", counted_mounts)
+    surfaces = HS._private_path_surfaces(["--ro-bind", str(source), "/alias"], records, set())
+    assert calls == 1
+    paths = {surface.path for surface in surfaces}
+    assert {record[1] for record in records} <= paths
+    assert {record[2] for record in records} <= paths
+    assert {Path("/alias") / str(index) for index in range(24)} <= paths
