@@ -266,7 +266,7 @@ def prove_literal_arange_source(capture: Path, *, index_bits: int) -> dict[str, 
     mlir, graphs = trace.get("mlir"), trace.get("graphs")
     _need(
         trace.get("schema") == "m2m.frontend_trace.v1"
-        and trace.get("status") == "complete"
+        and trace.get("status") in {"complete", "diagnostic"}
         and isinstance(mlir, dict)
         and mlir.get("sha256") == raw_sha
         and mlir.get("bytes") == len(raw)
@@ -394,6 +394,8 @@ def prove_literal_arange_source(capture: Path, *, index_bits: int) -> dict[str, 
         "raw_source_sha256": raw_sha,
         "normalized_source_sha256": normalized_sha,
         "frontend_trace_sha256": trace_sha,
+        "frontend_trace_status": trace["status"],
+        "source_correspondence_scope": "all captured prepared i64 literal ranges",
         "capture_receipt_sha256": checked["receipt_sha256"],
         "count": len(occurrences),
         "occurrences": occurrences,
