@@ -39,6 +39,19 @@ from merlin_experiments.phase1.feedback.snapshots import recover_promotion_snaps
 PY = sys.executable
 
 
+def _freeze_direct_job_source(ws):
+    """Run and promote one direct job from the same private immutable source."""
+    from merlin_experiments.phase1.feedback.snapshots import create_promotion_snapshot
+
+    digest = _TP._submission_digest(ws)
+    token, error = create_promotion_snapshot(ws, ws, digest, submission_digest=_TP._submission_digest)
+    if error:
+        return None, None, error
+    return recover_promotion_snapshot(
+        Path(ws), digest, snapshot_token=token, submission_digest=_TP._submission_digest
+    )
+
+
 def _conda_env() -> str:
     # Resolve only after explicit invocation initialization sources experiment.env.
     try:
@@ -540,6 +553,7 @@ def main(
                         sys.stderr,
                         context=context,
                         capsules_root=promotion_capsules_root,
+                        source_ws=j["snapshot_root"],
                     )
                 except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
                     print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)
@@ -649,6 +663,17 @@ def main(
                         )
                         (ch / f"simerr_{jid}").write_text("source identity mismatch")
                         print(f"[promote] {jid} not launched: {snapshot_error}", file=sys.stderr, flush=True)
+                        claimed.add(jid)
+                        continue
+                    source_identity_verified = True
+                else:
+                    submission, snapshot_root, snapshot_error = _freeze_direct_job_source(ws)
+                    if snapshot_error:
+                        _release_veril_workers(slots)
+                        (ch / f"simresp_{jid}.json").write_text(
+                            json.dumps({"error": snapshot_error, "all_pass": False}, indent=2)
+                        )
+                        (ch / f"simerr_{jid}").write_text("source identity mismatch")
                         claimed.add(jid)
                         continue
                     source_identity_verified = True
