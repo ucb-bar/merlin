@@ -295,16 +295,21 @@ def _audit_candidate_completed_dispatch(
             or selected_firrtl(selected["path"], target=target, config=selected["config"]) != selected
         ):
             raise NativeModelExecutionError("native RTL fact lineage changed or is absent")
-        selection = selected_l3_engine_report(target)
-        if (
-            not selection.get("available")
-            or selection.get("engine") != native["simulator"]
-            or (native.get("simulator_provenance") or {}).get("selection") != selection
-        ):
-            raise NativeModelExecutionError("native run is not on the selected mandatory RTL engine")
-        _, citation, revalidate_engine, _ = native_engine(target, native["simulator"], dict(selected))
+        if native.get("simulator") == "spike" and native.get("oracle_tier_ceiling") == "L2":
+            from .native_model_execution import _functional_engine
+
+            _, citation, revalidate_engine = _functional_engine(target)
+        else:
+            selection = selected_l3_engine_report(target)
+            if (
+                not selection.get("available")
+                or selection.get("engine") != native["simulator"]
+                or (native.get("simulator_provenance") or {}).get("selection") != selection
+            ):
+                raise NativeModelExecutionError("native run is not on the selected mandatory RTL engine")
+            _, citation, revalidate_engine, _ = native_engine(target, native["simulator"], dict(selected))
         if (native.get("simulator_provenance") or {}).get("citation") != citation:
-            raise NativeModelExecutionError("native run cites different RTL engine bytes")
+            raise NativeModelExecutionError("native run cites different selected engine bytes")
         revalidate_engine()
         selected_facts_path = Path(selected["path"])
         facts = json.loads(selected_facts_path.read_text(encoding="utf-8"))
@@ -316,7 +321,16 @@ def _audit_candidate_completed_dispatch(
             if isinstance(row, Mapping) and row.get("target") == target and row.get("exposure") == "rocc"
         ]
         names = {int(key): value for key, value in (table.get("names") or {}).items()}
-        work_functs = _verified_work_functs_by_family(endpoints, table)
+        from .native_model_execution import _frozen_model_policy
+
+        public_zero_device_demand = (
+            _frozen_model_policy(
+                _pinned_native_file(native["source"], "capsule_declaration").parent, target=target
+            ).get("public_zero_device_demand")
+            is True
+            and placement.get("eligible_source_op_indices") == []
+        )
+        work_functs = {} if public_zero_device_demand else _verified_work_functs_by_family(endpoints, table)
         trace = decode_module(module, target=target)
         trace_opcode = (trace.get("abi") or {}).get("custom_opcode")
         if (
@@ -376,9 +390,12 @@ def _audit_candidate_completed_dispatch(
                 if region not in allowed_regions:
                     raise NativeModelExecutionError("device-work command names an absent source region")
                 task_region_commands[owner].setdefault(region, set()).add(operation)
-        completed = _completed_eligible_tasks(
-            functions[0], placement, task_commands, task_region_commands, task_op_commands
-        )
+        if public_zero_device_demand:
+            completed = []
+        else:
+            completed = _completed_eligible_tasks(
+                functions[0], placement, task_commands, task_region_commands, task_op_commands
+            )
 
         artifacts = native.get("build_artifacts")
         if not isinstance(artifacts, Mapping):
@@ -509,6 +526,16 @@ def _audit_candidate_completed_dispatch(
             "console": _digest(_pinned_native_file(native, "console")),
             "numeric_status": numeric["status"],
             "eligible_tasks": completed,
+            **(
+                {
+                    "public_zero_device_demand": True,
+                    "scope": "complete public source/task CFG, actual object/ELF and full numerical output; "
+                    "zero mandatory accelerator obligations; optional legal device lowering "
+                    "retains ISA and output gates",
+                }
+                if public_zero_device_demand
+                else {}
+            ),
             "kernel_command_count": len(all_functs),
             "plan_digest": plan.get("plan_digest"),
             "disassembler": _digest(toolchain.objdump()),

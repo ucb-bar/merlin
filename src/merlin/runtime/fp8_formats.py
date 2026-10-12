@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from merlin.common.quant_formats import get as quant_format
+
 # scheme = how the all-ones exponent code is interpreted (the only place formats of the same width differ):
 #   "ieee"       exp==all-1 -> inf (mant 0) / NaN (mant != 0)        e5m2, fp16, bf16, f32
 #   "e4m3fn"     only all-1 exp AND all-1 mant is NaN; NO inf        OCP float8 e4m3fn
@@ -32,6 +34,8 @@ _FORMATS = {
     "bf16": (8, 7, 127, "ieee"),  # bfloat16
     "f32": (8, 23, 127, "ieee"),  # IEEE binary32
 }
+_BINARY64 = quant_format("f64")
+_FORMATS["f64"] = (_BINARY64.exp_bits, _BINARY64.mant_bits, (1 << (_BINARY64.exp_bits - 1)) - 1, "ieee")
 _FP8 = {"fp8_e4m3", "fp8_e5m2"}  # the fp8 subset (the fp8-only public API restricts to these)
 
 # accepted aliases (MLIR / torch / manifest spellings) -> canonical token. The ``mxfp*`` manifest tokens
@@ -55,6 +59,8 @@ _ALIASES = {
     "float16": "fp16",
     "bfloat16": "bf16",
     "float32": "f32",
+    "float64": "f64",
+    "double": "f64",
     "fp32": "f32",
     "f8E8M0FNU": "e8m0",
 }
@@ -168,7 +174,7 @@ def fp8_to_f32(u8: np.ndarray, fmt: str) -> np.ndarray:
 
 
 def codes_to_f32(codes, fmt: str) -> np.ndarray:
-    """Decode integer code patterns of ANY registered float format to float32.
+    """Decode registered float containers; binary64 retains its full precision.
 
     The wider sibling of :func:`fp8_to_f32` (which fails closed on a non-fp8 format) and the exact
     inverse of :func:`float_to_codes`, so ``codes_to_f32(float_to_codes(v, f), f) == v`` for every
@@ -184,6 +190,12 @@ def codes_to_f32(codes, fmt: str) -> np.ndarray:
     t = canonical_float(fmt)
     bits = storage_bits(t)
     mask = (1 << bits) - 1
+    if bits == 64:
+        # Keep all stored bits, including unsigned words above signed64 and
+        # signed console containers. Binary64 must never round through f32.
+        original = np.asarray(codes, dtype=object)
+        u64 = np.asarray([int(code) & mask for code in original.flat], dtype=np.uint64).reshape(original.shape)
+        return np.ascontiguousarray(u64).view(np.float64).copy()
     u = np.asarray(codes, dtype=np.int64) & np.int64(mask)
     if bits >= 32:
         return np.ascontiguousarray(u.astype(np.uint32)).view(np.float32).copy()
@@ -234,7 +246,7 @@ def float_to_codes(values, fmt: str) -> np.ndarray:
     Derived by inverting the decoder itself rather than re-deriving a layout: for any format that fits in
     <=16 bits every code is decoded once and the nearest one is selected, so encode(decode(c)) == c by
     construction and the two directions can never drift apart. A wide format (f32) is the identity view
-    (its 2**32 codes are not enumerable, and a float32 already IS the stored pattern).
+    (wide code spaces are not enumerable, and each IEEE value already IS its stored pattern).
 
     Ties land on the EVEN code (IEEE round-half-to-even). Values outside the finite range saturate to the
     largest finite magnitude of the matching sign rather than becoming inf — a preload operand that
@@ -242,12 +254,12 @@ def float_to_codes(values, fmt: str) -> np.ndarray:
     has a value the device cannot be handed.
     """
     t = canonical_float(fmt)
-    a = np.asarray(values, dtype=np.float32).ravel()
+    bits = storage_bits(t)
+    a = np.asarray(values, dtype=np.float64 if bits == 64 else np.float32).ravel()
     if np.isnan(a).any():
         raise ValueError(f"cannot encode NaN into {t} (fail closed)")
-    bits = storage_bits(t)
-    if bits >= 32:  # f32: the value already is the stored pattern
-        return np.ascontiguousarray(a).view(np.uint32).copy()
+    if bits >= 32:  # the wide IEEE value already is its stored pattern
+        return np.ascontiguousarray(a).view(np.uint64 if bits == 64 else np.uint32).copy()
     codes = np.arange(1 << bits, dtype=np.uint32)
     vals = _decode(codes, t)
     keep = np.isfinite(vals)

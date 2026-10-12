@@ -56,7 +56,7 @@ class DirectKernelAbi:
 
 def _layout(spec):
     shape = spec.get("shape")
-    if not isinstance(shape, list) or not shape or any(type(value) is not int or value <= 0 for value in shape):
+    if not isinstance(shape, list) or any(type(value) is not int or value <= 0 for value in shape):
         raise ValueError("direct kernel buffer requires a concrete nonempty shape")
     dtype = get(spec.get("dtype"))
     if dtype.element_bits not in (8, 16, 32, 64) or dtype.is_block_scaled:
@@ -106,6 +106,8 @@ def render_direct_kernel(
     phase_plan=None,
     output_poison=None,
     prelude_symbol=None,
+    complete_call_timing=None,
+    source_owned_mutables=(),
 ):
     """Render complete pointer-call storage with explicitly selected readback.
 
@@ -116,6 +118,14 @@ def render_direct_kernel(
     """
     if type(abi) is not DirectKernelAbi:
         raise ValueError("direct kernel harness requires a typed host ABI")
+    if complete_call_timing is not None:
+        from .complete_call_timing import CompleteCallTiming
+
+        if type(complete_call_timing) is not CompleteCallTiming or any(
+            p is not None for p in (invocation_plan, counter_plan, phase_plan)
+        ):
+            raise ValueError("complete-call timing requires one original invocation and its exact normal timer")
+        complete_call_timing.verify()
     abi.verify()
     if output_poison is not None and (type(output_poison) is not int or not 0 <= output_poison <= 255):
         raise ValueError("direct output poison must be an explicit byte")
@@ -159,6 +169,9 @@ def render_direct_kernel(
     ):
         raise ValueError("direct kernel harness needs a complete unique input/output roster")
     slots = {}
+    if type(source_owned_mutables) is not tuple or len(set(source_owned_mutables)) != len(source_owned_mutables):
+        raise ValueError("direct source-owned scratch needs the original complete unique tuple")
+    mutable = set(source_owned_mutables)
     for index, arg in enumerate(args):
         if (
             not isinstance(arg, dict)
@@ -170,8 +183,12 @@ def render_direct_kernel(
         if name in slots or name not in tensors:
             raise ValueError("direct kernel argument is duplicated or undeclared")
         slots[name] = (index, arg["access"], _layout(tensors[name]))
-    expected_inputs = {name for name, (_, access, _) in slots.items() if access != "write"}
-    expected_outputs = {name for name, (_, access, _) in slots.items() if access != "read"}
+    if not mutable <= set(slots) or any(
+        slots[name][1] == "read" or tensors[name].get("role") != "intermediate" for name in mutable
+    ):
+        raise ValueError("direct source-owned scratch differs from its original writable pointer roster")
+    expected_inputs = {name for name, (_, access, _) in slots.items() if access != "write" and name not in mutable}
+    expected_outputs = {name for name, (_, access, _) in slots.items() if access != "read" and name not in mutable}
     if set(inputs) != expected_inputs or set(outputs) != expected_outputs:
         raise ValueError("direct kernel ABI omits or adds an input/output pointer")
     counter_roster = None
@@ -222,11 +239,13 @@ def render_direct_kernel(
         declarations.append(f"extern void {abi.completion_symbol}(void);")
     if prelude_symbol is not None:
         declarations.append(f"extern void {prelude_symbol}(void);")
+    if complete_call_timing is not None:
+        declarations.extend(complete_call_timing.declarations())
     for name, (index, access, (count, width, dtype)) in slots.items():
         if width > abi.tensor_alignment:
             raise ValueError("direct kernel software alignment is smaller than a container word")
         payload = "0"
-        if access != "write":
+        if access != "write" and name not in mutable:
             raw = _raw(tensors[name], inputs[name], count=count, width=width, dtype=dtype, byte_order=abi.byte_order)
             payload = ",".join(f"0x{value:02x}" for value in raw)
         declarations.append(
@@ -245,6 +264,8 @@ def render_direct_kernel(
         if abi.main_convention == "primary_context_id"
         else ["int main(void){"]
     )
+    if complete_call_timing is not None:
+        body.extend(complete_call_timing.begin())
     if phase_roster is not None:
         body.extend(
             [
@@ -353,7 +374,7 @@ def render_direct_kernel(
     for name in () if memory else outputs:
         index, _, (count, width, dtype) = slots[name]
         rows = math.prod(tensors[name]["shape"][:-1])
-        cols = tensors[name]["shape"][-1]
+        cols = tensors[name]["shape"][-1] if tensors[name]["shape"] else 1
         signed = int(dtype.signed and not dtype.is_float)
         body.extend(
             [
@@ -380,6 +401,8 @@ def render_direct_kernel(
         )
     if phase_roster is not None:
         body.extend(phase_plan.begin("done_publication", "  "))
+    if complete_call_timing is not None:
+        body.extend(complete_call_timing.end())
     body.append('  htif_puts("DONE\\n");')
     if phase_roster is not None:
         body.extend(phase_plan.end("done_publication", "  "))

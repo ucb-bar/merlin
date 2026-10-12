@@ -102,28 +102,15 @@ def _materialized_cohort_admission(
 
 
 def _lane_scope(lane_report: dict, observed_lanes: set) -> set:
-    """``observed_lanes`` narrowed to the lanes ``lane_report`` is actually about.
-
-    The report's producer (:func:`capsule_runner.lane_report`) only ever judges the lanes a capsule
-    DECLARED, and exports that set as ``scope``. The dispatch ledger this end reads sees every lane that
-    ran. An older report with no ``scope`` is compared whole, which is what the two ends did before the
-    key existed -- correct exactly when a capsule declares every lane it dispatches on.
-    """
+    """Narrow declared lane scope; legacy reports retain their whole-set comparison."""
     scope = lane_report.get("scope")
     if not isinstance(scope, list):
         return observed_lanes
     return observed_lanes & {str(ln) for ln in scope}
 
 
-def candidate_native_model_check(result: dict, *, target: str, readback_policy=None) -> dict:
-    """Grade only the submitted whole-program artifact, never the legacy host graph.
-
-    This is a distinct diagnostic/qualification surface. It requires the
-    source-only frozen denominator, actual emitted task-scoped host audit,
-    candidate-built native ELF/full-output evidence, and a source-bound
-    mandatory dispatch join. It does not borrow the old host-dispatch ledger
-    or claim full transformation semantics from a numerical comparison.
-    """
+def candidate_native_model_check(result: dict, *, target: str, readback_policy=None, oracle_tier_ceiling=None) -> dict:
+    """Audit original source, host compute, actual ELF/output, obligations and tiers."""
     from .native_model_execution import (
         audit_candidate_completed_dispatch,
         audit_candidate_source_placement,
@@ -169,7 +156,8 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
     )
     native_identity_ok = candidate_artifact_identity_ok and isinstance(native.get("console"), dict)
     required_engine = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip()
-    if required_engine and (not isinstance(native, dict) or native.get("simulator") != required_engine):
+    if (oracle_tier_ceiling is None and required_engine
+        and (not isinstance(native, dict) or native.get("simulator") != required_engine)):
         violations.append("candidate_required_rtl_engine_mismatch")
     dispatch = audit_candidate_completed_dispatch(
         result.get("candidate_emission"),
@@ -200,7 +188,16 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
             for index in task.get("source_op_indices", [])
             if index in eligible
         }
-        if completed == eligible and eligible and dispatch.get("source_sha256") == placement.get("source_sha256"):
+        host_only = (
+            dispatch.get("public_zero_device_demand") is True
+            and (native.get("frozen_policy") or {}).get("public_zero_device_demand") is True
+            and not eligible
+        )
+        if (
+            completed == eligible
+            and (eligible or host_only)
+            and dispatch.get("source_sha256") == placement.get("source_sha256")
+        ):
             source_coverage = {
                 "status": "verified",
                 "source_sha256": placement["source_sha256"],
@@ -209,6 +206,7 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
                 "completed_eligible_source_op_indices": sorted(completed),
                 "n_eligible": len(eligible),
                 "n_completed_eligible": len(completed),
+                **({"public_zero_device_demand": True} if host_only else {}),
                 "scope": "independent frozen-source eligibility joined to mandatory candidate ELF commands; "
                 "no claim for unsupported glue, transformed semantics or performance",
             }
@@ -222,6 +220,7 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
         entry_symbol=entry,
         completed_dispatch=dispatch,
         **({"readback_policy": readback_policy} if readback_policy is not None else {}),
+        oracle_tier_ceiling=oracle_tier_ceiling,
     )
     static_tiers = tier_check.get("tiers") or {}
     l2_mismatch = (
@@ -279,35 +278,34 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
 def model_execution_check(
     result: dict, capsule: dict | None = None, *, target: str | None = None, readback_policy=None,
 ) -> dict:
-    """Return the model capsule's honest structural/effect evidence.
+    """Audit original source, placement, candidate ELF, full outputs and tiers.
 
-    Operator capsules have one emitted kernel, so their decoded instruction trace is the appropriate
-    structural check. A model capsule is a composition of many accelerator kernels and host islands,
-    so its equivalent proof is an ordered dynamic dispatch ledger. Every accelerator entry must bind
-    the exact decoded trace, RTL fidelity and content-addressed compiler artifacts; aggregate counters,
-    independently synthesized tiles and the declared host/accelerator seam must all agree with it.
-    Missing/malformed evidence fails closed.
+    Explicit public programs use the submitted artifact path, including when
+    no accelerator work is mandatory. Legacy host-graph ledgers cannot certify
+    a different submitted program. Missing evidence remains incomplete.
     """
     violations: list[str] = []
     emitted_host_compute: dict | None = None
     candidate_source_placement: dict | None = None
     candidate_completed_dispatch: dict | None = None
     candidate_check = None
-    if bool(((capsule or {}).get("semantic") or {}).get("must_accelerate")):
+    from merlin.targetgen.public_program_timing import candidate_execution_requested, numerical_screen_requested
+
+    if candidate_execution_requested(result, capsule):
         # Keep candidate proof independent from this legacy host-dispatch
         # model check. The old ledger cannot certify a different program.
         effective_target = target or (result.get("operation") or {}).get("target")
         candidate_check = candidate_native_model_check(
-            result, target=effective_target if isinstance(effective_target, str) else "",
+            result,
+            target=effective_target if isinstance(effective_target, str) else "",
             **({"readback_policy": readback_policy} if readback_policy is not None else {}),
+            **({"oracle_tier_ceiling": "L2"} if numerical_screen_requested(result, capsule) else {}),
         )
         violations.extend(candidate_check["violations"])
         emitted_host_compute = candidate_check["emitted_host_compute"]
         candidate_source_placement = candidate_check["source_placement"]
         candidate_completed_dispatch = candidate_check["completed_dispatch"]
-        # This is a separate candidate-only verdict at every status, not just
-        # pass. A missing candidate receipt must not acquire unrelated legacy
-        # host-graph ledger violations or inherit that graph's successful tiers.
+        # A missing candidate receipt cannot inherit the legacy host graph's verdict.
         return {
             "status": candidate_check["status"],
             "kind": "candidate_whole_program_execution",
@@ -754,18 +752,18 @@ def model_execution_check(
 
 
 def enforce_model_execution_check(result: dict, capsule: dict | None, *, target: str, readback_policy=None) -> dict:
-    """Attach and enforce a whole-model execution proof on the capsule verdict itself.
+    """Enforce the original complete model proof on its durable verdict.
 
-    The score-level structural flag is not enough: QA and checkpoint readers intentionally re-open each
-    durable ``capsule_result.json``.  Before this enforcement a Verilator-backed model remained
-    ``status=pass, L3=pass`` under a GSIM pin; only the in-memory score carried a failing auxiliary check,
-    so those durable readers false-accepted it.  A wrong/missing required engine is ``incomplete`` (the
-    requested evidence did not run), while malformed evidence from the requested engine is a real fail.
+    A wrong/missing requested engine is incomplete; malformed actual execution
+    is a failure. Promote only after every source, numeric and tier gate passes.
     """
     check = model_execution_check(
         result, capsule, target=target,
         **({"readback_policy": readback_policy} if readback_policy is not None else {}),
     )
+    from .native_model_policy import attach_numerical_screen
+
+    attach_numerical_screen(result, capsule, check)
     result["model_execution_check"] = check
     if check.get("candidate_native_model_check") is not None:
         result["candidate_native_model_check"] = check["candidate_native_model_check"]

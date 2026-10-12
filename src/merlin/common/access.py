@@ -226,7 +226,7 @@ MODULE_ACCESS = (
     _module("merlin.targetgen.rocc.decode", "grader"),
     _module("merlin.targetgen.trace_check", "grader"),
     _module("merlin.targetgen.capsule_grade", "grader"),
-    _module("merlin.targetgen.native_model_execution", "grader"),
+    _module("merlin.targetgen.native_model_execution", "grader", aliases=("merlin.targetgen.native_model_policy",)),
     _module(
         "merlin.targetgen.native_component_execution", "grader", aliases=("merlin.targetgen.native_component_inputs",)
     ),

@@ -369,14 +369,43 @@ class BoundRoCCBackend:
         self.harness_build_recipe()
         return {engine: self._engine_identity(engine) for engine in self._block()["engines"]}
 
-    def render_harness(self, cb, *, target, inputs=None, readback_policy=None, warm_profile=None):
+    def render_harness(
+        self, cb, *, target, inputs=None, readback_policy=None, warm_profile=None, source_owned_mutables=()
+    ):
         _require(target == self.target, "logical harness target differs from the selected backend")
         if warm_profile is not None:
             raise NotImplementedError("selected logical harness has no qualified warm profile transport")
         from merlin.runtime.harness_render import render_harness
 
+        contract = self._data()["contract"]
+        budget = (contract.get("logical_harness") or {}).get("storage_budget_bytes")
         return render_harness(
-            cb, target=target, inputs=inputs, contract=self._data()["contract"], readback_policy=readback_policy
+            cb,
+            target=target,
+            inputs=inputs,
+            contract=contract,
+            readback_policy=readback_policy,
+            source_owned_mutables=source_owned_mutables,
+            **({"max_storage_bytes": budget} if budget is not None else {}),
+        )
+
+    def complete_call_timing(self):
+        from merlin.runtime.complete_call_timing import from_contract
+
+        return from_contract(self._data()["contract"])
+
+    def build_source_paths(self):
+        from merlin.runtime import complete_call_timing, direct_kernel_harness, harness_render
+
+        plan = self.complete_call_timing()
+        clock = (
+            () if plan is None else tuple(Path(p["path"]) for p in plan.record()["counter_semantics"]["source_pins"])
+        )
+        return (
+            *clock,
+            Path(complete_call_timing.__file__).resolve(),
+            Path(direct_kernel_harness.__file__).resolve(),
+            Path(harness_render.__file__).resolve(),
         )
 
     def _engine(self, engine):

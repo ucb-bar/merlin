@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -703,69 +702,13 @@ def _pinned_native_file(record: Mapping[str, Any], role: str) -> Path:
 
 
 def _frozen_model_policy(capsule_dir: Path, *, target: str) -> dict[str, Any]:
-    """Read the selected reviewed corpus policy, not an ambient/default ISA rule."""
-    import yaml
+    from .native_model_policy import _frozen_model_policy as read_policy
 
-    from merlin.targetgen.target_experiment import load_target_experiment
-
-    descriptor_name = os.environ.get("MERLIN_TARGET_EXPERIMENT")
-    if not descriptor_name:
-        raise NativeModelExecutionError("selected reviewed target experiment is absent")
-    descriptor = Path(descriptor_name).resolve(strict=True)
-    if descriptor.is_symlink() or not descriptor.is_file():
-        raise NativeModelExecutionError("selected experiment is not an ordinary file")
-    experiment = load_target_experiment(descriptor)
-    if experiment.target != target:
-        raise NativeModelExecutionError("selected experiment names a different target")
-    manifest = experiment.capsule_corpus.parent / "MANIFEST.yaml"
-    if manifest.is_symlink() or not manifest.is_file():
-        raise NativeModelExecutionError("selected corpus has no ordinary instruction-policy manifest")
-    corpus = yaml.safe_load(manifest.read_text(encoding="utf-8"))
-    declaration_path = capsule_dir / "capsule.yaml"
-    declaration = yaml.safe_load(declaration_path.read_text(encoding="utf-8"))
-    coverage_path = capsule_dir / "expected_instruction_coverage.yaml"
-    coverage = yaml.safe_load(coverage_path.read_text(encoding="utf-8"))
-    if not all(isinstance(doc, dict) for doc in (corpus, declaration, coverage)):
-        raise NativeModelExecutionError("frozen model instruction policy is malformed")
-    instruction = corpus.get("instruction_policy") or {}
-    roles = instruction.get("prohibited_instruction_roles")
-    expected = (declaration.get("expected") or {}).get("instruction_classes")
-    if (
-        instruction.get("status") != "resolved"
-        or not isinstance(roles, list)
-        or any(not isinstance(role, str) or not role for role in roles)
-        or not isinstance(expected, list)
-        or not expected
-        or any(not isinstance(name, str) or not name for name in expected)
-        or coverage.get("instruction_classes") != expected
-    ):
-        raise NativeModelExecutionError("frozen instruction coverage or prohibited-role policy is unresolved")
-    required = declaration.get("required_oracle_tiers")
-    if (
-        not isinstance(required, list)
-        or not required
-        or len(required) != len(set(required))
-        or any(tier not in {"L0", "L1", "L2", "L3"} for tier in required)
-    ):
-        raise NativeModelExecutionError("frozen required oracle tiers are malformed")
-    return {
-        "descriptor": _digest(descriptor),
-        "manifest": _digest(manifest),
-        "capsule_declaration": _digest(declaration_path),
-        "instruction_coverage": _digest(coverage_path),
-        "required_tiers": required,
-        "expected_instruction_classes": expected,
-        "prohibited_instruction_roles": roles,
-    }
+    return read_policy(capsule_dir, target=target)
 
 
 def _functional_engine(target: str):
-    """Bind a declared chipyard L2 direct-ELF runner and its extension bytes.
-
-    A backend with no inspectable selected Spike executable/extension remains
-    unavailable. The extension is located by the backend's own invocation, not
-    by target spelling or a fallback host implementation.
-    """
+    """Preserve the original direct-ELF tier selection before reopening bytes."""
     from merlin.runtime.backends.base import get_backend
     from merlin.targetgen.oracle_policy import oracle_tier_plan, selected_sim_via
 
@@ -774,55 +717,9 @@ def _functional_engine(target: str):
     if via != "chipyard" or "L2" not in plan.tiers:
         raise NativeModelExecutionError("selected target metadata has no direct-ELF functional L2 tier")
     backend = get_backend(target)
-    path_fn = getattr(backend, "spike_path", None)
-    extension_fn = getattr(backend, "spike_extension", None)
-    if (
-        not callable(path_fn)
-        or not callable(extension_fn)
-        or not callable(getattr(backend, "run_elf", None))
-        or not backend.available("spike")
-    ):
-        raise NativeModelExecutionError("selected backend has no available inspectable Spike ELF runner")
-    binary = Path(path_fn()).resolve(strict=True)
-    if not binary.is_file() or binary.is_symlink():
-        raise NativeModelExecutionError("selected Spike executable is absent or indirect")
-    flags, library_dir = extension_fn()
-    if not isinstance(flags, (tuple, list)) or not isinstance(library_dir, Path):
-        raise NativeModelExecutionError("selected Spike extension invocation is malformed")
-    names = [part.split("=", 1)[1] for part in flags if part.startswith("--extension=")]
-    explicit = [part.split("=", 1)[1] for part in flags if part.startswith("--extlib=")]
-    if len(names) != 1 or len(explicit) > 1:
-        raise NativeModelExecutionError("selected Spike extension identity is ambiguous")
-    if explicit:
-        extension = Path(explicit[0]).resolve(strict=True)
-    else:
-        if not library_dir.is_dir() or library_dir.is_symlink():
-            raise NativeModelExecutionError("selected Spike extension library directory is absent")
-        matches = list(library_dir.glob(f"lib{names[0]}.so"))
-        if len(matches) != 1:
-            raise NativeModelExecutionError("selected default Spike extension bytes are not unique")
-        extension = matches[0].resolve(strict=True)
-    if not extension.is_file() or extension.is_symlink():
-        raise NativeModelExecutionError("selected Spike extension is absent or indirect")
-    citation = {
-        "engine": "spike",
-        "target": target,
-        "binary": _digest(binary),
-        "extension": _digest(extension),
-        "flags": list(flags),
-        "library_dir": str(library_dir),
-    }
+    from .native_model_policy import functional_engine_bytes
 
-    def revalidate() -> None:
-        if (
-            Path(path_fn()).resolve(strict=True) != binary
-            or _digest(binary) != citation["binary"]
-            or tuple(extension_fn()[0]) != tuple(flags)
-            or _digest(extension) != citation["extension"]
-        ):
-            raise NativeModelExecutionError("selected L2 engine or extension changed during execution")
-
-    return backend, citation, revalidate
+    return functional_engine_bytes(backend, target=target)
 
 
 def audit_candidate_static_tiers(
@@ -934,7 +831,13 @@ def audit_candidate_static_tiers(
             instructions = decoded.get("instructions")
             if (
                 not isinstance(instructions, list)
-                or not instructions
+                or (
+                    not instructions
+                    and not (
+                        policy.get("public_zero_device_demand") is True
+                        and placement.get("eligible_source_op_indices") == []
+                    )
+                )
                 or any(row.get("class") == "UNKNOWN" for row in instructions)
             ):
                 raise NativeModelExecutionError("candidate LLVM has missing/unknown selected ISA decode")
@@ -978,6 +881,7 @@ def audit_candidate_tiers(
     entry_symbol: str,
     completed_dispatch: Mapping[str, Any] | None,
     readback_policy=None,
+    oracle_tier_ceiling=None,
 ) -> dict[str, Any]:
     """Audit each frozen mandatory tier against this candidate's own artifact.
 
@@ -989,6 +893,8 @@ def audit_candidate_tiers(
     from merlin.targetgen.contract.readback_policy import read_console, selected
 
     readback_policy = selected(readback_policy)
+    if oracle_tier_ceiling not in (None, "L2"):
+        raise NativeModelExecutionError("unsupported public numerical ceiling")
     tiers = audit_candidate_static_tiers(emission, certificate, native, target=target, entry_symbol=entry_symbol)
     try:
         if not isinstance(native, Mapping):
@@ -1063,45 +969,13 @@ def audit_candidate_tiers(
         }
     except Exception as exc:  # noqa: BLE001 -- unbound engine/console is unavailable, not a tier pass
         tiers["L2"] = {"status": "unverified", "detail": f"{type(exc).__name__}: {exc}"}
-    try:
-        rtl = (native.get("tiers") or {}).get("L3") or {}
-        elf = _pinned_native_file(native, "elf")
-        console = _pinned_native_file(native, "console")
-        provenance = native.get("simulator_provenance") or {}
-        if (
-            not isinstance(completed_dispatch, Mapping)
-            or completed_dispatch.get("status") != "verified"
-            or completed_dispatch.get("numeric_status") not in {"pass", "fail"}
-            or rtl.get("status") != completed_dispatch["numeric_status"]
-            or completed_dispatch.get("linked_elf") != _digest(elf)
-            or completed_dispatch.get("console") != _digest(console)
-            or rtl.get("elf") != _digest(elf)
-            or rtl.get("console") != _digest(console)
-            or rtl.get("engine") != native.get("simulator")
-            or rtl.get("engine_citation") != provenance.get("citation")
-            or rtl.get("selection") != provenance.get("selection")
-            or rtl.get("numeric") != native.get("numeric")
-            or (native.get("numeric") or {}).get("status") != completed_dispatch["numeric_status"]
-        ):
-            raise NativeModelExecutionError("selected RTL tier lacks independently verified candidate completion")
-        tiers["L3"] = {
-            "status": completed_dispatch["numeric_status"],
-            "engine": rtl.get("engine"),
-            "elf": rtl["elf"],
-            "console": rtl["console"],
-            "completed_dispatch": completed_dispatch,
-        }
-        # Fidelity comes from the same selected engine report that the completed
-        # dispatch auditor revalidated, never from the L3 label. No selected
-        # fidelity means no RTL or cycle-accuracy claim in the score.
-        fidelity = (provenance.get("selection") or {}).get("fidelity")
-        if isinstance(fidelity, str) and fidelity:
-            from merlin.targetgen.rtl_engine_policy import ELABORATED_RTL
+    from .native_model_policy import audit_rtl_tier
 
-            tiers["L3"]["fidelity"] = fidelity
-            tiers["L3"]["derived_from_rtl"] = fidelity == ELABORATED_RTL
-    except Exception as exc:  # noqa: BLE001 -- no verified RTL completion is not an L3 pass
-        tiers["L3"] = {"status": "unverified", "detail": f"{type(exc).__name__}: {exc}"}
+    tiers["L3"] = (
+        {"status": "pending", "scope": "outside explicit L2 numerical ceiling"}
+        if oracle_tier_ceiling == "L2"
+        else audit_rtl_tier(native, completed_dispatch)
+    )
     missing = [tier for tier in required if (tiers.get(tier) or {}).get("status") != "pass"]
     failed = [tier for tier in required if (tiers.get(tier) or {}).get("status") == "fail"]
     return {
@@ -1159,14 +1033,14 @@ def execute_candidate_model(
     rtl_facts: str | Path | None = None,
     board_config: str | None = None,
     readback_policy=None,
+    complete_call_timing=False,
+    oracle_tier_ceiling=None,
 ) -> dict[str, Any]:
-    """Build one candidate whole-model ELF; optionally run and compare its entire output.
+    """Build the source-bound candidate ELF and compare every declared output.
 
-    ``capture_bundle`` is the caller's byte-bound, frozen runtime bundle from
-    ``_model_runtime_bundle``.  ``capsule_dir`` supplies the independent,
-    digest-checked golden.  A successful comparison is deliberately labelled a
-    *diagnostic*: eligibility, transform replay, and dynamic source-region
-    execution still need their independent mandatory gates.
+    The frozen runtime bundle and independent capsule golden retain their
+    original guards. A numerical screen leaves deeper required tiers pending;
+    no comparison alone establishes source transformation or physical timing.
     """
     from merlin.targetgen.bundle_harness import emitted_entry_arity, is_executable_emission
     from merlin.targetgen.contract.readback_policy import (
@@ -1196,7 +1070,15 @@ def execute_candidate_model(
         "scope": "candidate whole-program ELF output diagnostic; not a Phase-1 certification",
     }
     receipt = output / "result.json"
+    from merlin.runtime.complete_call_timing import _NUMERICS_ONLY
+
+    numerical_only = simulator == "spike" and oracle_tier_ceiling == "L2" and complete_call_timing is False
+    timing_scope = _NUMERICS_ONLY.set(numerical_only)
     try:
+        if (simulator == "spike" and not numerical_only) or (oracle_tier_ceiling is not None and not numerical_only):
+            raise NativeModelExecutionError("Spike model execution requires its explicit L2 numerical ceiling")
+        if numerical_only:
+            record["oracle_tier_ceiling"] = "L2"
         if not source.is_dir() or source.is_symlink() or not capture.is_dir() or capture.is_symlink():
             raise NativeModelExecutionError("model capsule and frozen runtime bundle must be ordinary directories")
         cb = json.loads(json.dumps(command_buffer))
@@ -1204,19 +1086,43 @@ def execute_candidate_model(
             raise NativeModelExecutionError("candidate did not declare a whole_program pointer ABI")
         from merlin.runtime.backends import base as backends
 
+        if type(complete_call_timing) is not bool:
+            raise NativeModelExecutionError("complete-call selection must be an explicit boolean")
+        selected_backend = backends.get_backend(target)
+        resolver = getattr(selected_backend, "complete_call_timing", None)
+        timing_plan = resolver() if callable(resolver) else None
+        if complete_call_timing and timing_plan is None:
+            raise NativeModelExecutionError(
+                "selected normal caller has no complete-call counter/clock source selection"
+            )
+        from merlin.common.execution_deadline import ExecutionDeadline
+
+        deadline = ExecutionDeadline.start(timeout) if timing_plan is not None or numerical_only else None
+
+        def stage_timeout():
+            return timeout if deadline is None else deadline.remaining("complete public program budget expired")
+
+        if timing_plan is not None:
+            timing_plan.verify()
+            record["complete_call_timing"] = timing_plan.record()
+
         entry_symbol = backends.harness_build_recipe(target).require_kernel_stack_frame().entry_symbol
         ok, reason = is_executable_emission(cb, artifact_text=lowered_mlir_text, entry_symbol=entry_symbol)
         if not ok:
             raise NativeModelExecutionError(reason)
         abi = cb["kernel_abi"]
         outputs = abi.get("outputs")
-        if not isinstance(outputs, list) or len(outputs) != 1 or not isinstance(outputs[0], str):
-            raise NativeModelExecutionError("one declared whole-model output is required")
-        output_name = outputs[0]
-        if (cb.get("tensors") or {}).get(output_name, {}).get("role") != "output":
+        if (
+            not isinstance(outputs, list)
+            or not outputs
+            or any(type(name) is not str for name in outputs)
+            or len(set(outputs)) != len(outputs)
+        ):
+            raise NativeModelExecutionError("complete unique whole-model outputs are required")
+        if any((cb.get("tensors") or {}).get(name, {}).get("role") != "output" for name in outputs):
             raise NativeModelExecutionError("declared model output has no output tensor role")
         golden = load_golden(source)
-        if not isinstance(golden, dict) or set(golden.get("outputs") or {}) != {output_name}:
+        if not isinstance(golden, dict) or set(golden.get("outputs") or {}) != set(outputs):
             raise NativeModelExecutionError("independent golden outputs do not match the candidate's ABI")
         if numeric_policy is None:
             import yaml
@@ -1227,9 +1133,13 @@ def execute_candidate_model(
             policy = dict(declaration.get("numeric_policy") or {})
         else:
             policy = dict(numeric_policy)
-        if policy.get("compare") not in ("exact_int", "tolerance_float"):
+        if policy.get("compare") not in ("exact_int", "tolerance_float", "per_output"):
             raise NativeModelExecutionError("no explicit supported numeric comparison policy")
-        if policy["compare"] == "exact_int" and str(cb["tensors"][output_name]["dtype"]).startswith("f"):
+        if any(
+            (policy.get("outputs", {}).get(name, policy)).get("compare") == "exact_int"
+            and str(cb["tensors"][name]["dtype"]).startswith("f")
+            for name in outputs
+        ):
             raise NativeModelExecutionError("exact_int policy cannot certify a floating output")
         inputs, binding = _bind_inputs(cb, capture, target=target, rtl_facts=rtl_facts, board_config=board_config)
         record["binding"] = binding
@@ -1290,15 +1200,41 @@ def execute_candidate_model(
             target=target,
             inputs=inputs,
             _build_service=service,
+            execution_deadline=deadline,
             **policy_kwargs,
         )
         if readback_policy is not None:
             from .native_readback import verify_build
 
             recipe_record, source_pins, record["readback_build"] = verify_build(
-                target=target, policy=readback_policy, service=service, output=output, cb=cb, elf=elf,
+                target=target,
+                policy=readback_policy,
+                service=service,
+                output=output,
+                cb=cb,
+                elf=elf,
             )
         record["elf"] = _digest(Path(elf))
+        if timing_plan is not None:
+            harness_path = output / "build" / "harness.c"
+            expected_caller = service.render(cb, target=target, inputs=inputs, **policy_kwargs)
+            declarations = (
+                "\n".join(timing_plan.declarations(console="stdio")),
+                "\n".join(timing_plan.declarations(console="htif")),
+            )
+            if (
+                not harness_path.is_file()
+                or harness_path.read_text() != expected_caller
+                or not any(code in expected_caller for code in declarations)
+                or "merlin_complete_call_start" not in expected_caller
+                or "merlin_complete_call_cycles" not in expected_caller
+            ):
+                raise NativeModelExecutionError(
+                    "ordinary build differs from its original selected complete-call caller"
+                )
+            record["complete_call_timing"]["caller"] = _digest(harness_path)
+            record["complete_call_timing"]["elf"] = record["elf"]
+            timing_plan.verify()
         revalidate_source()
         if rtl_facts is not None and board_config:
             from merlin.compile.model_execution_inputs import selected_firrtl
@@ -1315,8 +1251,8 @@ def execute_candidate_model(
         from merlin.targetgen.capsule_golden import compare
         from merlin.targetgen.oracle_policy import selected_l3_engine_report
 
-        selected = selected_l3_engine_report(target)
-        if not selected.get("available") or selected.get("engine") != simulator:
+        selected = None if numerical_only else selected_l3_engine_report(target)
+        if not numerical_only and (not selected.get("available") or selected.get("engine") != simulator):
             raise NativeModelExecutionError("requested simulator is not the selected RTL oracle")
         facts = selected_firrtl(rtl_facts, target=target, config=board_config)
         if memory_console:
@@ -1327,8 +1263,14 @@ def execute_candidate_model(
                     revalidate_engine()
                     revalidate_source()
                     verify_build(
-                        target=target, policy=readback_policy, service=service, output=output, cb=cb, elf=elf,
-                        expected=(recipe_record, source_pins), expected_receipt=record["readback_build"],
+                        target=target,
+                        policy=readback_policy,
+                        service=service,
+                        output=output,
+                        cb=cb,
+                        elf=elf,
+                        expected=(recipe_record, source_pins),
+                        expected_receipt=record["readback_build"],
                         stage="memory pre-decode",
                     )
 
@@ -1340,15 +1282,13 @@ def execute_candidate_model(
                     facts_path=Path(facts["path"]),
                     simulator=engine_name,
                     backend=selected_backend,
-                    timeout=timeout,
+                    timeout=stage_timeout(),
                     expected_elf_sha256=record["elf"]["sha256"],
                     post_run_revalidate=after_run,
                     readback_policy=readback_policy,
                 )
 
-        # The functional tier consumes the SAME already-linked candidate ELF.
-        # It is independently optional as a diagnostic run, but a mandatory L2
-        # remains unavailable in the grade if its engine cannot be byte-bound.
+        # The original byte-bound functional tier consumes this same candidate ELF.
         try:
             functional_backend, functional_citation, revalidate_functional = _functional_engine(target)
             revalidate_functional()
@@ -1359,20 +1299,33 @@ def execute_candidate_model(
                 )
                 record["readback_memory_l2"] = memory_record
             else:
-                functional_console = functional_backend.run_elf(
+                from .native_model_policy import observed_execution
+
+                functional_console, execution_pin = observed_execution(
+                    functional_backend,
                     elf,
                     simulator="spike",
-                    timeout=timeout,
-                    **capture_kwargs,
+                    citation=functional_citation,
+                    directory=output,
+                    timeout=stage_timeout(),
+                    capture_kwargs=capture_kwargs,
                 )
+                record.setdefault("execution_invocations", {})["L2"] = execution_pin
             revalidate_functional()
             revalidate_source()
             if _digest(Path(elf)) != record["elf"]:
                 raise NativeModelExecutionError("candidate ELF changed during L2 functional execution")
             if readback_policy is not None:
                 verify_build(
-                    target=target, policy=readback_policy, service=service, output=output, cb=cb, elf=elf,
-                    expected=(recipe_record, source_pins), expected_receipt=record["readback_build"], stage="L2",
+                    target=target,
+                    policy=readback_policy,
+                    service=service,
+                    output=output,
+                    cb=cb,
+                    elf=elf,
+                    expected=(recipe_record, source_pins),
+                    expected_receipt=record["readback_build"],
+                    stage="L2",
                 )
             functional_path = output / ("console_l2.bin" if binary_console else "console_l2.txt")
             functional_path.write_bytes(
@@ -1407,6 +1360,10 @@ def execute_candidate_model(
                 "detail": f"{type(exc).__name__}: {exc}",
                 "elf": record["elf"],
             }
+        if numerical_only:
+            from .native_model_policy import finish_numerical_execution
+
+            return finish_numerical_execution(record)
         backend, engine, revalidate, prepare = native_engine(target, simulator, facts)
         record["rtl_facts"] = facts
         record["simulator_provenance"] = {"selection": selected, "citation": engine}
@@ -1425,10 +1382,32 @@ def execute_candidate_model(
         elif simulator == "gsim":
             from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
 
-            with gsim_runtime_slot(wait_timeout_s=timeout):
-                console = backend.run_elf(elf, simulator=simulator, timeout=timeout, **capture_kwargs)
+            with gsim_runtime_slot(wait_timeout_s=stage_timeout()):
+                from .native_model_policy import observed_execution
+
+                console, execution_pin = observed_execution(
+                    backend,
+                    elf,
+                    simulator=simulator,
+                    citation=engine,
+                    directory=output,
+                    timeout=stage_timeout(),
+                    capture_kwargs=capture_kwargs,
+                )
+                record.setdefault("execution_invocations", {})["L3"] = execution_pin
         else:
-            console = backend.run_elf(elf, simulator=simulator, timeout=timeout, **capture_kwargs)
+            from .native_model_policy import observed_execution
+
+            console, execution_pin = observed_execution(
+                backend,
+                elf,
+                simulator=simulator,
+                citation=engine,
+                directory=output,
+                timeout=stage_timeout(),
+                capture_kwargs=capture_kwargs,
+            )
+            record.setdefault("execution_invocations", {})["L3"] = execution_pin
         if command is not None:
             command.revalidate()
         revalidate()
@@ -1437,8 +1416,15 @@ def execute_candidate_model(
             raise NativeModelExecutionError("candidate ELF bytes changed during execution")
         if readback_policy is not None:
             verify_build(
-                target=target, policy=readback_policy, service=service, output=output, cb=cb, elf=elf,
-                expected=(recipe_record, source_pins), expected_receipt=record["readback_build"], stage="L3",
+                target=target,
+                policy=readback_policy,
+                service=service,
+                output=output,
+                cb=cb,
+                elf=elf,
+                expected=(recipe_record, source_pins),
+                expected_receipt=record["readback_build"],
+                stage="L3",
             )
         console_path = output / ("console.bin" if binary_console else "console.txt")
         console_path.write_bytes(console if type(console) is bytes else console.encode("utf-8"))
@@ -1458,6 +1444,18 @@ def execute_candidate_model(
             numeric=comparison,
             status="numeric_match_diagnostic" if comparison["status"] == "pass" else "numeric_mismatch_diagnostic",
         )
+        from merlin_experiments.phase2.gsim_workload import OUTPUT_ENCODING, encode_declared_outputs
+
+        output_sha, output_tensors = encode_declared_outputs(observed, cb)
+        record["output_observation"] = {"sha256": output_sha, "encoding": OUTPUT_ENCODING, "tensors": output_tensors}
+        if timing_plan is not None:
+            service.verify(target)
+            timing_plan.verify()
+            if (
+                _digest(Path(record["complete_call_timing"]["caller"]["path"]))
+                != record["complete_call_timing"]["caller"]
+            ):
+                raise NativeModelExecutionError("original complete-call caller changed during execution")
         record.setdefault("tiers", {})["L3"] = {
             "status": "pass" if comparison.get("status") == "pass" else "fail",
             "engine": simulator,
@@ -1481,8 +1479,11 @@ def execute_candidate_model(
             record["failure"]["code"] = exc.code
         return record
     finally:
-        record["build_artifacts"] = _build_artifacts(output)
-        receipt.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        try:
+            record["build_artifacts"] = _build_artifacts(output)
+            receipt.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        finally:
+            _NUMERICS_ONLY.reset(timing_scope)
 
 
 def __getattr__(name: str) -> Any:

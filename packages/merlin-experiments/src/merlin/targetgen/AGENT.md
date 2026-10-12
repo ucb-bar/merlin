@@ -1,5 +1,15 @@
 # Trusted experiment evaluation
 
+Explicit ordinary public-program execution retains the source-owned runtime
+bundle and binds the actual complete-call caller, same ELF and raw outputs.
+Public sources with no accelerator obligations may have empty required device
+classes only under their original public basis and explicit false acceleration
+demand. Independent source eligibility, source/task CFG, object/ELF/ISA and full
+numeric/mandatory-tier checks still run. Optional legal accelerator lowering is
+allowed; no placement strategy follows from zero mandatory device obligations.
+Existing declared acceleration demand always retains its nonempty mandatory
+family-matched device dispatch proof. No strict component role is added.
+
 Contains evaluation implementations, not generic compiler package invocation.
 Package/runtime primitives and stable error identities live in core package_runtime.
 The common.access registry must name every withheld implementation before moving
