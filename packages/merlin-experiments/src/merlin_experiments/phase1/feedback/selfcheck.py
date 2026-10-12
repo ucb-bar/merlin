@@ -47,6 +47,14 @@ from merlin_experiments.phase1.feedback.candidate_observations import _shape_cov
 from merlin_experiments.phase1.timing import barrier_measurements
 
 
+def _successful_expected_refusal(result: dict) -> bool:
+    """A completed refusal obligation has no executable or numerical tier to measure."""
+    record = result.get("expected_refusal")
+    return (result.get("status") == "pass" and result.get("failure") is None
+            and isinstance(record, dict) and record.get("status") == "met"
+            and isinstance(result.get("declined"), dict) and bool(result["declined"]))
+
+
 def _public_candidate_emission_failure(result: dict) -> dict | None:
     """Expose only bounded structural compiler errors, never receipt payloads."""
     failure = result.get("candidate_emission_failure")
@@ -1247,7 +1255,8 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         _blocked_by_selection = _f.get("category") == "NOT_RUN_IS_NOT_PASS" and _f.get("tier_status") == "unavailable"
         _ran = {t: v for t, v in tiers.items() if v not in (None, "skipped", "unavailable")}
         _ran_clean = bool(_ran) and all(v == "pass" for v in _ran.values())
-        certified = (d.get("status") == "pass") and (bar == "pass")
+        refused_as_required = _successful_expected_refusal(d)
+        certified = refused_as_required or ((d.get("status") == "pass") and (bar == "pass"))
         screened = (not certified) and _blocked_by_selection and _ran_clean and bar in ("pass", None)
         passed = certified or screened
         npass += int(passed)
@@ -1286,6 +1295,10 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             "barrier_declared": barrier_tier,
             "barrier_status": bar,
         }
+        if refused_as_required:
+            row["expected_refusal"] = dict(d["expected_refusal"])
+            row["qualification"] = "expected_refusal"
+            row["native_executed"] = False
         # A post-search physical stage needs a per-capsule observation bound, not one corpus-wide
         # default. Preserve the cycle count from the tier that actually supplied this row's barrier
         # verdict. This is measurement metadata, not answer-bearing data, and is sealed with the score.
@@ -1310,6 +1323,8 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         if d.get("declined"):
             row["declined"] = d["declined"]
             row["declined_note"] = (
+                "declined as required by this capsule; no native execution is claimed"
+            ) if refused_as_required else (
                 "your backend DECLINED this capsule -- it never emitted a program. "
                 "This is a coverage gap (a shape/op you do not lower), not a "
                 "numeric bug; do not debug the arithmetic."

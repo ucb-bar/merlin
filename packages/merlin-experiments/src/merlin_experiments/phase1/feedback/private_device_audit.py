@@ -110,7 +110,13 @@ def audit_built_device_host_compute(
             )
             for name in functions
         ]
-        report = HA.audit(module, sites)
+        preparation = source.get("conv_input_preparation", {}).get(symbol)
+        report = HA.audit(
+            module,
+            sites,
+            input_preparation={abi.symbol: preparation} if preparation is not None else None,
+            target=target,
+        )
         HA.require_clean(report)
         if report.get("proven_clean") is not True or report.get("accelerator_groups_clean") != len(sites):
             raise ValueError(f"linked group {index} host-compute audit is unknown, not clean")

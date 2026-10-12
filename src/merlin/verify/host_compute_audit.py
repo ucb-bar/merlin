@@ -127,7 +127,9 @@ def _functions(module) -> dict[str, Any]:
     return found
 
 
-def audit_group(site: GroupSite, function: Any | None, budget: Budget = Budget()) -> dict[str, Any]:
+def audit_group(
+    site: GroupSite, function: Any | None, budget: Budget = Budget(), *, input_preparation=None, target=None
+) -> dict[str, Any]:
     """One group's verdict, with the numbers it rests on."""
     row: dict[str, Any] = {
         "group": site.group,
@@ -162,6 +164,20 @@ def audit_group(site: GroupSite, function: Any | None, budget: Budget = Budget()
     arithmetic = total_arithmetic - address_arithmetic
     value_arithmetic = sum(int(dynamic.get(name, 0)) for name in _VALUE_ONLY)
     payload = (activity.get("load_payload_bytes") or 0) + (activity.get("store_payload_bytes") or 0)
+    preparation = None
+    if input_preparation is not None and site.placement != HOST:
+        from merlin.verify.conv_input_preparation import prove_input_preparation
+
+        preparation = prove_input_preparation(function, activity, input_preparation, target=target)
+        row["input_preparation"] = preparation
+        if preparation.get("status") == "proven":
+            # All exclusions are actual closed address/copy execution counts;
+            # ordinary budgets still judge every operation outside that proof.
+            arithmetic -= preparation["arithmetic"] - address_arithmetic
+            payload -= preparation["payload_bytes"]
+            if arithmetic < 0 or payload < 0:
+                row.update(verdict=UNKNOWN, why="input preparation counts exceed original raw accounting")
+                return row
     top = (activity.get("block_signatures") or [{}])[0]
     row.update(
         arithmetic_basis="pointer_offset_provenance_v1",
@@ -170,6 +186,7 @@ def audit_group(site: GroupSite, function: Any | None, budget: Budget = Budget()
         host_address_arithmetic=address_arithmetic,
         host_value_arithmetic=value_arithmetic,
         host_payload_bytes=payload,
+        host_raw_payload_bytes=(activity.get("load_payload_bytes") or 0) + (activity.get("store_payload_bytes") or 0),
         dominant_block={
             "signature": top.get("signature"),
             "trips": top.get("trips"),
@@ -245,10 +262,21 @@ def compact_signature(signature: Any, *, limit: int = 160) -> str:
     return text if len(text) <= limit else text[: limit - 4].rstrip() + " ..."
 
 
-def audit(module: Any, sites: Sequence[GroupSite], budget: Budget = Budget()) -> dict[str, Any]:
+def audit(
+    module: Any, sites: Sequence[GroupSite], budget: Budget = Budget(), *, input_preparation=None, target=None
+) -> dict[str, Any]:
     """Audit every group site against the functions of an emitted LLVM-dialect module."""
     functions = _functions(module)
-    rows = [audit_group(site, functions.get(site.symbol), budget) for site in sites]
+    rows = [
+        audit_group(
+            site,
+            functions.get(site.symbol),
+            budget,
+            input_preparation=(input_preparation or {}).get(site.symbol),
+            target=target,
+        )
+        for site in sites
+    ]
     judged = [row for row in rows if row["placement"] != HOST]
     counts: dict[str, int] = {}
     for row in rows:

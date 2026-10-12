@@ -441,6 +441,7 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
             pending.extend(b for b in block.last_op.successors if b in index)
     if len(reachable) != len(blocks):
         problems.append("function contains unreachable blocks")
+    structural_problems = tuple(problems)
     loops = []
     if not problems:
         dominance = cfg.dominance
@@ -469,8 +470,20 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
                 problems.append("natural loops overlap without nesting")
         if not any(block.last_op.name == "llvm.return" for block in blocks):
             problems.append("function has no return")
+    constant_counts = None
+    if problems and not structural_problems:
+        from .constant_control_cfg import constant_control_counts
+
+        try:
+            constant_counts = constant_control_counts(function)
+        except (ValueError, KeyError, TypeError, AttributeError) as exc:
+            problems.append(f"constant-control fallback: {exc}")
+        else:
+            problems = []
     multiplicity = {block: 1 for block in blocks}
-    if not problems:
+    if constant_counts is not None:
+        multiplicity = constant_counts
+    elif not problems:
         for row, nodes in loops:
             for block in nodes:
                 multiplicity[block] *= row["trip_count"] + (
@@ -616,6 +629,9 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
         "schema": "host_cfg_activity_v1",
         "status": "derived" if not problems and not unknown_payload else "UNKNOWN",
         "problems": sorted(set(problems)),
+        "control_count_basis": "bounded_constant_control_v1"
+        if constant_counts is not None
+        else "constant_induction_v1",
         "loop_count": len(loops),
         "loops": [row for row, _ in loops],
         "blocks": [{"block": index[b], "execution_count": multiplicity[b]} for b in blocks],

@@ -1343,6 +1343,7 @@ def promote(
     # decomposition regardless, because a verdict that carries only the whole digest cannot be
     # re-examined per component later (it comes back UNDETERMINABLE, which re-runs).
     execution_by_name = {}
+    refusal_names = set()
     n_pass = n_fail = 0
     unreadable = []
     for row in verdict.get("per_capsule") or []:
@@ -1350,6 +1351,12 @@ def promote(
         if not name:
             continue
         name = str(name)
+        refusal = row.get("expected_refusal")
+        if isinstance(refusal, dict) and refusal.get("status") == "met":
+            # A correct stated refusal satisfies its obligation but executes no loop tier.
+            # It cannot authorize a native certificate, including from an older ledger slot.
+            refusal_names.add(name)
+            continue
         execution_digest = row.get("execution_digest")
         if not valid_execution_digest(execution_digest):
             execution_digest = None
@@ -1384,6 +1391,8 @@ def promote(
     identity_by_name = {n: current_identity(execution_by_name.get(n), digest) for n in st}
     states = []
     for n, e in st.items():
+        if n in refusal_names:
+            continue
         _id = identity_by_name[n]
         verdicts = {}
         for t in _recorded_tiers(e):

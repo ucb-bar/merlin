@@ -6684,6 +6684,54 @@ def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -
     return True
 
 
+def _run_streaming_model_gate(
+    op_caps, model_caps, run_one, *, max_workers, target, oracle_adapters,
+    on_complete=None, calibrate=None, calibration_cap=0,
+):
+    """Open capstones on a fixed selected-operator denominator in the same worker pool."""
+    from .capsule_scheduling import run_pipelined
+    from .capsule_source import model_gate_satisfied
+
+    caps = op_caps + model_caps
+    model_names = {str(cap["name"]) for cap in model_caps}
+    if any(str(cap.get("extends") or "") in model_names for cap in op_caps):
+        raise ValueError("operator capsule extends a gated model; dependency conflicts with the model gate")
+    # Determine eligibility from the complete selected roster, never completed rows.
+    eligible = [c for c in op_caps if _gate_counts({"capsule": c["name"]}, caps, target)]
+    denominator = eligible or op_caps
+    completed = {}
+
+    def fraction():
+        return sum(
+            _model_gate_operation_passed(completed.get(c["name"], {}), c, oracle_adapters)
+            for c in denominator
+        ) / len(denominator) if denominator else 0.0
+
+    def finished(result):
+        completed[str(result.get("capsule"))] = result
+        if on_complete is not None:
+            on_complete(result)
+
+    def blocked(cap):
+        return {
+            "capsule": cap["name"], "kind": cap.get("kind"), "label": cap.get("label"),
+            "status": "gated", "failure": {
+                "plane": "gate", "category": "GATED",
+                "detail": f"whole-model capsule deferred: op pass fraction {fraction():.2f} "
+                          f"< gate {(cap.get('gate') or {}).get('after_op_pass_fraction')}",
+            },
+        }
+
+    return run_pipelined(
+        caps, run_one, max_workers=max_workers, calibrate=calibrate, calibration_cap=calibration_cap,
+        on_complete=finished,
+        can_start=lambda cap: cap.get("kind") != "model" or model_gate_satisfied(cap, fraction()),
+        blocked_result=blocked,
+        calibration_eligible=lambda cap: cap.get("kind") != "model",
+        priority=lambda cap: 0 if cap.get("kind") == "model" else 1,
+    )
+
+
 def _run_suite(
     capsules: list[dict],
     package_dir: str | Path,
@@ -6837,6 +6885,15 @@ def _run_suite(
             flush=True,
             file=sys.stderr,
         )
+    if model_caps and not no_oracle and _tier_policy.budget_seconds() is None:
+        print("  model gate: streaming over the fixed full selected eligible operator denominator",
+              flush=True, file=sys.stderr)
+        return _run_streaming_model_gate(
+            op_caps, model_caps, _one, max_workers=max_workers, target=target,
+            oracle_adapters=oracle_adapters, on_complete=on_capsule_complete,
+            calibrate=lambda: set(_tier_policy.priced_tiers(target or "")),
+            calibration_cap=_CALIBRATION_CAP,
+        ) + ungradeable
     op_results = _run_all(op_caps) + ungradeable
     if ungradeable:
         print(

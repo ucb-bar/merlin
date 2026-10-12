@@ -68,6 +68,10 @@ def run_pipelined(
     calibration_cap: int = 0,
     calibration_budget_s: float | None = CALIBRATION_BUDGET_S,
     on_complete: Callable[[dict], None] | None = None,
+    can_start: Callable[[dict], bool] | None = None,
+    blocked_result: Callable[[dict], dict] | None = None,
+    calibration_eligible: Callable[[dict], bool] | None = None,
+    priority: Callable[[dict], int] | None = None,
 ) -> list[dict]:
     """Grade ``capsules`` with at most ``max_workers`` in flight, each as soon as its sibling finished.
 
@@ -105,6 +109,26 @@ def run_pipelined(
     ready: list[tuple[int, int, str]] = [(-volume[n], index[n], n) for n in names if waiting[n] == 0]
     heapq.heapify(ready)
 
+    def take_ready(*, calibration=False):
+        if not calibration and can_start is None and priority is None:
+            return heapq.heappop(ready) if ready else None
+        selectable = [item for item in ready if
+                      (can_start is None or can_start(capsules[item[1]])) and
+                      (not calibration or calibration_eligible is None or calibration_eligible(capsules[item[1]]))]
+        if not selectable:
+            return None
+        item = min(selectable, key=(lambda entry: (-entry[0], entry[1])) if calibration else
+                   (lambda entry: ((priority(capsules[entry[1]]) if priority else 0), entry)))
+        ready.remove(item)
+        heapq.heapify(ready)
+        return item
+
+    def finish_blocked():
+        if blocked_result is None:
+            raise ValueError("capsule readiness gate cannot progress and has no terminal result")
+        *_, name = heapq.heappop(ready)
+        finished(name, blocked_result(capsules[index[name]]))
+
     def finished(name: str, result: dict) -> None:
         results[index[name]] = result
         if on_complete is not None:
@@ -116,7 +140,11 @@ def run_pipelined(
 
     if max_workers <= 1:
         while ready:
-            *_, name = heapq.heappop(ready)
+            item = take_ready()
+            if item is None:
+                finish_blocked()
+                continue
+            *_, name = item
             finished(name, run_one(capsules[index[name]], 1))
         return [results[i] for i in range(len(capsules))]
 
@@ -127,9 +155,9 @@ def run_pipelined(
             for _ in range(calibration_cap):
                 if not ready:
                     break
-                item = min(ready, key=lambda entry: (-entry[0], entry[1]))  # the cheapest ready member
-                ready.remove(item)
-                heapq.heapify(ready)
+                item = take_ready(calibration=True)
+                if item is None:
+                    break
                 future = pool.submit(copy_context().run, run_one, capsules[item[1]], 1)
                 done, _ = wait([future], timeout=calibration_budget_s)
                 if not done:
@@ -145,8 +173,14 @@ def run_pipelined(
                 seen = now
         while ready or running:
             while ready and len(running) < max_workers:
-                *_, name = heapq.heappop(ready)
+                item = take_ready()
+                if item is None:
+                    break
+                *_, name = item
                 running[pool.submit(copy_context().run, run_one, capsules[index[name]], max_workers)] = name
+            if not running:
+                finish_blocked()
+                continue
             done, _ = wait(running, return_when=FIRST_COMPLETED)
             for future in done:
                 finished(running.pop(future), future.result())
