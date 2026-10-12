@@ -316,7 +316,8 @@ def test_real_proc_child_and_kernel_owner_admit_only_one_overlap(tmp_path, monke
         ready.close()
 
 
-def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_path, monkeypatch):
+@pytest.mark.parametrize("image_arg", (b"+loadmem=/neutral/program", b"/neutral/program.elf"))
+def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_path, monkeypatch, image_arg):
     root = tmp_path / "slots"
     proc = tmp_path / "proc"
     proc.mkdir()
@@ -335,7 +336,7 @@ def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_pat
                 pid + 1_000_000,
                 pid,
                 200 + number,
-                [b"/neutral/native", b"+loadmem=/neutral/program", b"+max-cycles=100"],
+                [b"/neutral/native", image_arg, b"+max-cycles=100"],
             )
             children.append(child)
         for number in range(2):
@@ -344,7 +345,7 @@ def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_pat
                 4_000_000 + number,
                 42,
                 300 + number,
-                [b"/neutral/uncoordinated", b"+loadmem=/neutral/program", b"+max-cycles=100"],
+                [b"/neutral/uncoordinated", image_arg, b"+max-cycles=100"],
             )
         census = P._native_gsim_census(proc_root=proc)
         assert census.count == 4 and len(census.matchable) == 4
