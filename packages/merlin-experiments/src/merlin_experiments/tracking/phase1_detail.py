@@ -20,6 +20,7 @@ is in family "not recorded".
 from __future__ import annotations
 
 import json
+import math
 import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -90,11 +91,20 @@ def jobs(channels: Sequence[Path], inventory: R.Inventory) -> list[dict[str, Any
                     continue
                 request = _json_file(channel / name) or {}
                 response = _json_file(channel / f"simresp_{jid}.json") if f"simresp_{jid}.json" in present else None
+                timing = _json_file(channel / f"simtiming_{jid}.json") or {}
+                if timing.get("schema") != "simjob_resource_timing_v1" or timing.get("job_id") != jid:
+                    timing = {}
+                measured = {}
+                for field in ("queue_wait_s", "worker_runtime_s", "reserved_verilator_slots"):
+                    value = timing.get(field)
+                    if type(value) in (int, float) and math.isfinite(value) and value >= 0:
+                        measured[field] = value
                 done = f"simdone_{jid}" in present
                 failed = f"simerr_{jid}" in present
                 end = _mtime(channel / (f"simdone_{jid}" if done else f"simerr_{jid}")) if done or failed else None
                 found[jid] = {
                     "kind": "simjob",
+                    "resource_timing": measured,
                     "id": jid,
                     "sim": str(request.get("sim") or "not recorded"),
                     "capsules": request.get("capsules"),
