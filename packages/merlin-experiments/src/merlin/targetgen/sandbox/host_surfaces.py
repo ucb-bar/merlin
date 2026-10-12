@@ -8,7 +8,6 @@ mount plan and the bundle's own records (:func:`host_input_surfaces`, :func:`pri
 
 from __future__ import annotations
 
-import bisect
 import os
 import stat
 from pathlib import Path
@@ -19,6 +18,7 @@ from merlin.targetgen.sandbox.bwrap import (
     _SNAPSHOT_COMPLETE,
     _bind_alias,
     _host_input_paths,
+    _MountPathIndex,
     _mounts,
     _private_validation_paths,
     _snapshot_grants,
@@ -233,33 +233,14 @@ def _private_path_surfaces(
         if state == "expose":
             source = Path(raw_source).absolute()
             exposed.append(({source, source.resolve()}, Path(raw_destination)))
-    source_ids = {}
-    for mount_id, (spellings, _destination) in enumerate(exposed):
-        for source in spellings:
-            source_ids.setdefault(source.parts, set()).add(mount_id)
-    ordered_sources = sorted(source_ids)
-
-    def related_mount_ids(private):
-        found = set()
-        for ancestor in (private, *private.parents):
-            found.update(source_ids.get(ancestor.parts, ()))
-        # Retain the existing conservative source-below-private check even if
-        # an original file spelling changed kind after its frozen copy was made.
-        prefix = private.parts
-        start = bisect.bisect_left(ordered_sources, prefix)
-        for index in range(start, len(ordered_sources)):
-            parts = ordered_sources[index]
-            if parts[:len(prefix)] != prefix:
-                break
-            found.update(source_ids[parts])
-        return sorted(found)
+    source_index = _MountPathIndex(spellings for spellings, _destination in exposed)
 
     surfaces: dict[Path, AnswerSurface] = {}
     for _, original, frozen in records:
         kind = path_kind(frozen)
         for private in {original, frozen}:
             surfaces[private] = AnswerSurface("host-only input", private, kind, "hidden")
-            for mount_id in related_mount_ids(private):
+            for mount_id in sorted(source_index.related(private)):
                 spellings, destination = exposed[mount_id]
                 for resolved in spellings:
                     translated = _bind_alias(private, kind, resolved, destination)

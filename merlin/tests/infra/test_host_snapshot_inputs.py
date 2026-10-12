@@ -681,3 +681,24 @@ def test_private_alias_index_skips_disjoint_mount_sources(tmp_path, monkeypatch)
     surfaces = HS._private_path_surfaces(argv, [(str(private), private, private)], set())
     assert calls == 1
     assert {surface.path for surface in surfaces} == {private, Path("/selected-alias")}
+
+
+def test_support_alias_index_keeps_destination_reexposure_and_contract_exemption(tmp_path):
+    from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface
+
+    private = tmp_path / "owner"
+    private.mkdir()
+    public = tmp_path / "public.txt"
+    public.write_text("control")
+    protected = AnswerSurface("owner", private, "dir", "backend", ("contracts",))
+    denied_destination = private / "implementation" / "alias.txt"
+    allowed_destination = private / "contracts" / "public.txt"
+    mounts = [
+        ("expose", str(public), str(denied_destination)),
+        ("expose", str(public), str(allowed_destination)),
+    ]
+    projected = BW._support_bind_surfaces(mounts, [protected])
+    paths = [surface.path for surface in projected]
+    assert paths[0] == private
+    assert denied_destination in paths
+    assert allowed_destination not in paths
