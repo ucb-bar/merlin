@@ -29,24 +29,26 @@ CONTEXT = {
 }
 
 
-def _proof(monkeypatch, replacement, transform=lambda text: text):
+def _proof(monkeypatch, replacement, transform=lambda text: text, observer_patch=lambda observer: observer):
     from merlin.targetgen.rocc import decode
 
     def instruction(funct, rs1, rs2, isa):
         return (
-            ("CONFIG_LD", {"stride": 1})
+            ("CONFIG_LD", {"stride": 1, "state_id": (rs1["raw"] >> 3) & 3})
             if funct == 0
             else ("MVIN2" if funct == 1 else "MVIN", {"dram": rs1, "rows": 1, "cols": 1})
         )
 
     semantics = SimpleNamespace(
+        word_bits=64,
         isa_constants=lambda target: {
             "CUSTOM_OPCODE": 0x7B,
-            "CONFIG_LD_LAYOUT": {"width": 64, "fields": {"state_id": {"offset": 3, "width": 2}}},
         },
         decode_instruction=instruction,
     )
-    monkeypatch.setattr(decode, "_semantics", lambda target: semantics)
+    monkeypatch.setattr(
+        decode, "_semantics", lambda target: SimpleNamespace(operand_observer=observer_patch(semantics))
+    )
     function = _functions(_parse_module(transform(BODY.replace("REPLACE", replacement))))["kernel"]
     return prove_input_preparation(function, analyze_host_cfg_activity(function), CONTEXT, target="test")
 
@@ -98,3 +100,26 @@ def test_pointer_add_requires_full_width_and_no_poison_flags():
     op.results = [SimpleNamespace(type=IntegerType(32))]
     with pytest.raises(ValueError, match="truncates"):
         _unpoisoned_pointer_add(op)
+
+
+def test_observer_absence_width_and_unknown_state_refuse(monkeypatch):
+    copy = "llvm.store %value, %scratch : i8, !llvm.ptr"
+    assert _proof(monkeypatch, copy, observer_patch=lambda observer: None)["status"] == "unproven"
+
+    def narrow(observer):
+        observer.word_bits = 32
+        return observer
+
+    def unknown_state(observer):
+        original = observer.decode_instruction
+
+        def decode(*args):
+            name, fields = original(*args)
+            fields.pop("state_id", None)
+            return name, fields
+
+        observer.decode_instruction = decode
+        return observer
+
+    for patch in (narrow, unknown_state):
+        assert _proof(monkeypatch, copy, observer_patch=patch)["status"] == "unproven"
