@@ -5011,6 +5011,7 @@ def run_capsule(
         return grade_owned_host_leaf(
             capsule, target=eff_target, paths=paths, cfg=cfg, run_id=run_id,
             timeout=timeout, no_oracle=no_oracle, readback_policy=_adapter_readback_policy(adapters),
+            reachable_oracle_tiers=frozenset(adapters),
         )
 
     tiers: dict[str, TierResult] = {}

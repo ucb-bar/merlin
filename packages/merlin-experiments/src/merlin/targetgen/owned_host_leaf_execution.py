@@ -207,7 +207,10 @@ def _host_leaf_structure(receipt, *, target, facts):
     }
 
 
-def grade_owned_host_leaf(capsule, *, target, paths, cfg, run_id, timeout, no_oracle, readback_policy=None):
+def grade_owned_host_leaf(
+    capsule, *, target, paths, cfg, run_id, timeout, no_oracle, readback_policy=None,
+    reachable_oracle_tiers=None,
+):
     """Execute one provided-host image at every required tier without candidate compilation."""
     import os
 
@@ -246,7 +249,13 @@ def grade_owned_host_leaf(capsule, *, target, paths, cfg, run_id, timeout, no_or
         catalog, dts, facts = (_selected_file(selection, role) for role in ("board_catalog", "dts", "rtl_facts"))
         _, host, host_identity = _resolve_model_host_lane(target, None)
         host_bytes = strict_tree_sha256(host)
-        output = paths.run_path / "owned_host_leaf"
+        from merlin.common.artifacts import new_product
+
+        product = new_product(
+            "owned-host-selfcheck", version=1, target=target, update_latest=False,
+            sources=[str(paths.run_path)], notes="Provided-host leaf build and native evidence custody",
+        )
+        output = product.path
         materialized, source, source_identity = materialize_host_leaf(capsule, target=target, output=output / "inputs")
         receipt = compile_saved_model(
             capture=materialized.root,
@@ -293,6 +302,17 @@ def grade_owned_host_leaf(capsule, *, target, paths, cfg, run_id, timeout, no_or
         if board is None or board.target != target or board.rtl_sim_config != protected_facts["config"]:
             raise ValueError("provided host leaf board and RTL facts identify different configurations")
         for tier in sorted(required - {"L0", "L1"}):
+            if no_oracle or (reachable_oracle_tiers is not None and tier not in reachable_oracle_tiers):
+                tiers[tier] = TierResult(
+                    tier=tier, status="unavailable", mandatory=True,
+                    reason="required provided-host tier is not selected in this grading request",
+                )
+                failure = {
+                    "plane": "oracle_availability", "category": "NOT_RUN_IS_NOT_PASS",
+                    "tier": tier, "tier_status": "unavailable",
+                    "detail": "required provided-host tier is not selected in this grading request",
+                }
+                continue
             if no_oracle:
                 tiers[tier] = TierResult(tier=tier, status="unavailable", mandatory=True, reason="no oracle requested")
                 continue
@@ -329,6 +349,7 @@ def grade_owned_host_leaf(capsule, *, target, paths, cfg, run_id, timeout, no_or
                 raise ValueError("provided host leaf native readback did not preserve bytes")
             console_path = output / f"{tier}-console.bin"
             console_path.write_bytes(console)
+            product.add_artifact(console_path.name)
             _verify_source_identity(capsule, source_identity)
             numeric, metrics = _numeric_full_output(capsule, record, console)
             _verify_source_identity(capsule, source_identity)
@@ -359,7 +380,15 @@ def grade_owned_host_leaf(capsule, *, target, paths, cfg, run_id, timeout, no_or
             raise ValueError("provided host leaf compiler or image changed before qualification")
         _verify_source_identity(capsule, source_identity)
         record_path.write_text(json.dumps(record, sort_keys=True, indent=2) + "\n")
-        status = "fail" if any(row.status == "fail" for row in tiers.values()) else "pass"
+        product.add_artifact(str(record_path.relative_to(output)))
+        product.add_artifact("model")
+        product.add_artifact("inputs")
+        product.write_manifest()
+        status = (
+            "fail" if any(row.status == "fail" for row in tiers.values())
+            else "incomplete" if any(row.status == "unavailable" for row in tiers.values())
+            else "pass"
+        )
         record["lane_report"] = elf_lanes.lane_report_from_elf(capsule, elf, target=target)
     except Exception as exc:
         status = "incomplete"
