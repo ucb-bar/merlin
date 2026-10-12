@@ -238,6 +238,12 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
     if file_sha256(elf) != output["elf_sha256"]:
         raise ValueError("owned host linked ELF changed")
     _linked_symbols(elf, routed_kernel_symbols(emitted))
+    source["conv_input_preparation"] = {
+        row["symbol"]: {"entry": emitted["entries"][row["symbol"]],
+                        "call_buffers": emitted["call_buffers"][row["symbol"]]}
+        for row in assigned if emitted.get("entries", {}).get(row["symbol"], {}).get("op") == "conv2d"
+        and emitted["signatures"].get(row["symbol"]) == []
+    }
     audits = audit_built_device_host_compute(elf.parent, assigned, source, target)
     return {
         "source": source,
