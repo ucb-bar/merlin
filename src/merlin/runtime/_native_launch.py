@@ -187,6 +187,20 @@ def run_process(
     owner, selection, *, readonly_mounts, inputs, timeout, directory, unlimited_stack=False, outputs=(), build=False
 ):
     """One shared kernel-verified namespace launch for native and build owners."""
+    stage = "native_runtime_process"
+    if build:
+        # Reopen the live owner's complete current request before preserving
+        # the original compiler step in the actual process record. Saved stage
+        # claims cannot select this boundary independently of that request.
+        selection = owner.reopen_selection(selection)
+        stage = selection["identity"]["stage"]
+        selection = {
+            "guest_argv": selection["identity"]["guest_argv"],
+            "cwd": selection["identity"]["guest_cwd"],
+            "environment": selection["child_environment"],
+            "storage_directories": selection["identity"]["storage_directories"],
+            **selection,
+        }
     with _retained_scratch(directory) as retained:
         scratch = retained.path
         work, temporary = scratch / "work", scratch / "tmp"
@@ -250,7 +264,7 @@ def run_process(
         try:
             with I.observe(
                 directory,
-                stage="original_build_process" if build else "native_runtime_process",
+                stage=stage,
                 argv=argv,
                 cwd=directory,
                 env={},

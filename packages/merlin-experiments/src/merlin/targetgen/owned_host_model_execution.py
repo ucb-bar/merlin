@@ -44,6 +44,7 @@ def execute_owned_host_model(
     timeout,
     source_certificate=None,
     readback_policy=None,
+    reachable_oracle_tiers=None,
 ):
     from merlin_experiments.phase1.feedback import private_instruction_coordinator as coordinator
     from merlin_experiments.phase1.feedback import private_instruction_declaration as declaration
@@ -63,7 +64,13 @@ def execute_owned_host_model(
     output = Path(output)
     if output.exists() or output.is_symlink():
         raise ValueError("owned host model needs a fresh output directory")
-    output.mkdir(parents=True)
+    from merlin.common.artifacts import new_product
+
+    product = new_product(
+        "owned-host-model", version=1, target=target, update_latest=False,
+        sources=[str(output)], notes="Owned-host model build and source-bound native evidence custody",
+    )
+    output = product.path
     from merlin.targetgen.contract.readback_policy import FULL_VALUES_BIN, selected
 
     readback_policy = selected(readback_policy)
@@ -124,11 +131,18 @@ def execute_owned_host_model(
         "runtime_inputs": str(retained.absolute()),
         "readback_policy": readback_policy.record() if readback_policy is not None else None,
     }
-    record.update(_execute_required_tiers(capsule, record, target=target, facts=facts, timeout=timeout))
+    record.update(_execute_required_tiers(
+        capsule, record, target=target, facts=facts, timeout=timeout,
+        reachable_oracle_tiers=reachable_oracle_tiers,
+    ))
     verify()
     materialized.verify(bundle)
     prepared.verify()
     _selected_file({"selection": selection_record}, "selection")
+    (output / "qualification.json").write_text(json.dumps(record, sort_keys=True, indent=2) + "\n")
+    for artifact in ("qualification.json", "model", "runtime_inputs", "instruction_selection"):
+        product.add_artifact(artifact)
+    product.write_manifest()
     return record
 
 
@@ -765,6 +779,18 @@ def _functional_engine_for_facts(target, facts):
         return _functional_engine(target)
 
 
+def _run_selected_functional(backend, elf, *, timeout):
+    """Apply the selected process ceiling to the owned functional transport."""
+    from merlin.common.execution_deadline import ExecutionDeadline
+    from merlin.targetgen.contract.compile import _selected_run_timeout
+
+    bounded = _selected_run_timeout(backend, "spike", timeout, ExecutionDeadline.start(timeout))
+    declared_runner = getattr(backend, "run_declared_model_elf", None)
+    if callable(declared_runner):
+        return declared_runner(elf, timeout=bounded, capture_bytes=True)
+    return backend.run_elf(elf, simulator="spike", timeout=bounded, capture_bytes=True)
+
+
 def _run_selected_rtl(elf, *, target, engine, facts, timeout, elf_sha256):
     """Execute under explicitly protected facts without changing global env.
 
@@ -776,6 +802,8 @@ def _run_selected_rtl(elf, *, target, engine, facts, timeout, elf_sha256):
     from contextlib import nullcontext
 
     from merlin.compile.model_execution_inputs import selected_firrtl
+    from merlin.common.execution_deadline import ExecutionDeadline
+    from merlin.targetgen.contract.compile import _selected_run_timeout
     from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
 
     backend, citation, revalidate, prepare = _native_engine_for_facts(target, engine, facts)
@@ -788,8 +816,12 @@ def _run_selected_rtl(elf, *, target, engine, facts, timeout, elf_sha256):
         evidence["max_cycles"] = command.to_evidence().get("max_cycles")
     revalidate()
     started = time.monotonic()
-    with gsim_runtime_slot(wait_timeout_s=timeout) if engine == "gsim" else nullcontext():
-        console = backend.run_elf(elf, simulator=engine, timeout=timeout, capture_bytes=True)
+    bounded = _selected_run_timeout(backend, engine, timeout, ExecutionDeadline.start(timeout))
+    deadline = ExecutionDeadline.start(bounded)
+    with gsim_runtime_slot(wait_timeout_s=bounded) if engine == "gsim" else nullcontext():
+        console = backend.run_elf(
+            elf, simulator=engine, timeout=deadline.remaining(), capture_bytes=True
+        )
     if command is not None:
         command.revalidate()
     revalidate()
@@ -798,7 +830,7 @@ def _run_selected_rtl(elf, *, target, engine, facts, timeout, elf_sha256):
     return {**evidence, "console": console, "wall_s": round(time.monotonic() - started, 1)}
 
 
-def _execute_required_tiers(capsule, record, *, target, facts, timeout):
+def _execute_required_tiers(capsule, record, *, target, facts, timeout, reachable_oracle_tiers=None):
     """Build once, execute the exact same ELF on every frozen required engine."""
     import os
 
@@ -816,17 +848,19 @@ def _execute_required_tiers(capsule, record, *, target, facts, timeout):
     for tier in policy["required_tiers"]:
         if tier in {"L0", "L1"}:
             continue
+        if reachable_oracle_tiers is not None and tier not in reachable_oracle_tiers:
+            tiers[tier] = {
+                "status": "unavailable", "elf": identity,
+                "detail": "required owned-model tier is not selected in this grading request",
+            }
+            continue
         directory = elf.parent.parent / f"owned_{tier.lower()}"
         directory.mkdir()
         try:
             if tier == "L2":
                 backend, citation, revalidate = _functional_engine_for_facts(target, selected_facts)
                 revalidate()
-                declared_runner = getattr(backend, "run_declared_model_elf", None)
-                if declared_runner is not None:
-                    console = declared_runner(elf, timeout=timeout, capture_bytes=True)
-                else:
-                    console = backend.run_elf(elf, simulator="spike", timeout=timeout, capture_bytes=True)
+                console = _run_selected_functional(backend, elf, timeout=timeout)
                 revalidate()
                 engine_evidence = {"engine": "spike", "engine_citation": citation}
             elif tier == "L3":

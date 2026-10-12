@@ -2,7 +2,9 @@
 
 import copy
 import json
+import subprocess
 from contextlib import nullcontext
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +16,8 @@ from merlin_experiments.phase2 import ordinary_search_policy as OS
 from merlin_experiments.phase2 import search_inputs as SI
 from merlin_experiments.phase2.contracts import StageGateError
 from merlin_experiments.phase2.retained_revisions import executing_revision
+
+from merlin.common import invocation_record as I
 
 revisions = NORMAL.revisions
 
@@ -146,6 +150,38 @@ def test_compiled_error_paths_stay_in_private_record(tmp_path, monkeypatch):
     result = FAST.compiled_observation(tmp_path, target="synthetic")
     assert secret not in json.dumps(result)
     assert secret in (tmp_path / "compiled_failure_private.json").read_text()
+
+
+@pytest.mark.parametrize("stage", ["elf", "original_build_process", "object"])
+def test_cheap_features_require_original_completed_elf_producer(tmp_path, monkeypatch, stage):
+    """File-only producer selection; synthetic bytes are never linked or run."""
+    assert Path(I.__file__).resolve().is_relative_to(Path.cwd() / "src")
+    assert Path(FAST.__file__).resolve().is_relative_to(Path.cwd() / "packages/merlin-experiments/src")
+    llvm, elf = tmp_path / "lowered.llvm.mlir", tmp_path / FAST.PACKAGE_ELF_NAME
+    llvm.write_text("synthetic emitted source")
+    elf.write_bytes(b"synthetic linked bytes")
+    tool = tmp_path / "linker"
+    tool.write_bytes(b"fake executable; never loaded")
+    tool.chmod(0o555)
+    with I.observe(tmp_path, stage=stage, argv=[str(tool)], inputs=(llvm,), outputs=(elf,), env={}) as recorded:
+        recorded.complete(subprocess.CompletedProcess([str(tool)], 0, b"", b""))
+    recipe = SimpleNamespace(require_kernel_stack_frame=lambda: SimpleNamespace(entry_symbol="entry"))
+    monkeypatch.setattr(FAST, "get_backend", lambda target: SimpleNamespace(harness_build_recipe=lambda: recipe))
+    monkeypatch.setattr(FAST.S, "linked_entry_extent", lambda data, entry: (0, len(data)))
+    monkeypatch.setattr(
+        FAST.S,
+        "derive_compiled_static_features",
+        lambda **kwargs: {
+            "emitted": {"action_sites": {"synthetic": 3}},
+            "linked": {"executable_bytes": len(elf.read_bytes())},
+        },
+    )
+    result = FAST.compiled_observation(tmp_path, target="synthetic")
+    assert result["status"] == ("observed" if stage == "elf" else "UNKNOWN")
+    if stage == "elf":
+        assert result["features"][FAST.FEATURES[0]] == 3
+        elf.write_bytes(b"changed after completed link")
+        assert FAST.compiled_observation(tmp_path, target="synthetic")["status"] == "UNKNOWN"
 
 
 def test_calibration_reopens_deterministic_private_evidence_and_rejects_returned_path(tmp_path):

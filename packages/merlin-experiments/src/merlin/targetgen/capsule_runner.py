@@ -3004,6 +3004,7 @@ def _grade_candidate_model_capsule_inline(
                 timeout=timeout,
                 source_certificate=result["candidate_source_eligibility"],
                 readback_policy=readback_policy,
+                reachable_oracle_tiers=context.get("reachable_oracle_tiers"),
             )
             verify()
     except Exception as exc:  # noqa: BLE001 -- candidate exceptions cannot borrow a legacy pass
@@ -4937,7 +4938,9 @@ def run_capsule(
             ),
             encoding="utf-8",
         )
-        if bool((capsule.get("semantic") or {}).get("must_accelerate")):
+        from .owned_host_model_selection import owned_model_required
+
+        if owned_model_required(capsule, target=eff_target):
             # The submitted program is the only certification authority for
             # a model demanding acceleration. The legacy runner-owned host
             # graph is not run, so its own model budget cannot starve this one.
@@ -4967,6 +4970,7 @@ def run_capsule(
                     "dtype": cfg.dtype,
                     "contract": str(contract) if contract is not None else None,
                     "fourth_output_name": cfg.fourth_output_name,
+                    "reachable_oracle_tiers": sorted(adapters),
                     "package_prebuilt": pkg is not None,
                     "owned_host_build": (
                         json.loads(os.environ["MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION"])
