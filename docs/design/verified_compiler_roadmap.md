@@ -34,8 +34,32 @@ The common substrate supplies static view/scalar normalization, ordered loop
 segmentation, initialized local buffer reuse and conservative sequential
 dependencies. Version 2 additionally supplies guarded scalar CSE/DCE and LICM,
 bounded ordered unrolling, actual IR analyses and an explicit resource allocator.
+Version 3 adds host checking of authored scalar and sequential state rewrites,
+facts-bound frozen ISA semantics and actual resource-assignment geometry
+obligations.
 These capabilities have different invocation and assurance boundaries below.
 Their presence does not prove whole-model compilation or performance.
+
+The original compiler-call transport now exposes these same admitted APIs
+inside actual Phase 1/2 package invocations. Budgeted whole-model children
+reconstruct only the exact original frozen profile executor and resource
+selection through a sealed parent-issued descriptor. These mechanisms preserve
+selection and custody; they supply no new numerical or runtime verdict.
+Per-call proof requests do not establish final-emission/object correspondence.
+The active original V3 scope separately observes traced ordinary interface
+lowering, checks the raw checkpoint chain at the original object entry and binds
+the fresh object consumed there. The entry comes from the original build or
+capability contract. Absent traces retain historical reuse with zero formal
+credit; unconsumed traces also grant none. Unsupported edges retain partial,
+unproved obligations; covered failures reject the build. The join covers one
+selected observed source, not every same-byte emission. Explicit compile-only
+proof transport avoids duplicate checking. The trace does not prove internal
+pass history, terminal lowering, dispatch or machine/numerical/RTL behavior.
+
+Formal assurance is method-specific: `lean_kernel` retains kernel reduction;
+`lean_native_reflection` requires the original pinned SAT executable and explicit
+native-reflection opt-in, and trusts the selected Lean compiler/native LRAT
+checker. Neither is a complete LLVM/object/RTL theorem.
 
 ## What actually runs
 
@@ -56,6 +80,8 @@ adding another implementation with the same name.
 | Version-2 host pass observations | The common request automatically invokes `perf.pass_observation.observe_changes`, recomputing storage/dependency planning and `analyses.analyze_ir` on connected actual before/after IR with the reviewed index width. | Reports static operations/loops, known integer allocation bytes, reservation plans, dependency edges, unresolved aliases and block-scoped logical liveness/pressure. It does not run resource allocation. Dynamic work, physical traffic, cycles and capsule impact remain unknown; these observations have no ranking authority. |
 | Version-2 callable structural analyses | An OOT or shared consumer explicitly calls `transforms.analyses.analyze_ir` and can validate its source-bound result with `validate_analysis`. | Supplies conservative alias/effect/dependency facts, scoped captured uses/liveness and known logical footprint/pressure subtotals. Region/CFG memory arguments remain unknown until forwarding is proved. No full CFG, access-range, cache, physical representation or asynchronous lifetime claim is made. |
 | Version-2 callable instruction resource allocation | An OOT explicitly supplies `ResourceBinding`, banks/units and `InstructionConstraints` to `allocate_instruction_resources`; `emit_resource_allocation` emits typed assignments and `validate_allocated_ir` independently checks those actual recorded assignments using the existing checked allocator. | Sequential single-result SSA and result-free state events are supported. Unknown effects, pointer/dynamic/opaque representations, nested control flow and simultaneous results remain refusals. The annotation is not terminal operand lowering, automatic host arena planning, a Lean receipt or proof that the supplied constraints match hardware. |
+| Version-3 authored transformation checks | `CommonTransformService.check` reconstructs its immutable ISA registry from original software/facts, checks actual scalar SSA or a complete sequential reorder, and requires live Lean completion in the original host. | Requests supply only before/after IR and entry. Scalar proofs cover every input bit pattern. State proofs derive adjacent commutation from complete read/write frames under explicit sequential/defined-access premises; aliases and unknown completion remain constrained. A checked pair is not a proof of final object execution. |
+| Version-3 resource geometry checks | `verify_resource_assignment` freshly projects actual emitted addresses and original host constraints, then invokes Lean on capacity/alignment, reservations, live intervals, boundary/port relations and sequential events. Acceptance reconstructs the same artifacts/model and requires a live completion. | The supported SSA allocation domain retains its refusals. Physical representation and backing relationships, correct instruction constraints, final address consumption and RTL correspondence remain separate assumptions/checks. Author requests cannot set these host premises. |
 | Optional ISA and interactive proof authoring | The minimal reviewed ISA can drive the generic definition/encoding/local-verifier generator in the EL5 treatment. EL6 additionally admits interactive Lean authoring. Automatic common verification is host-owned for every EL. | These tools generate declarations or check scoped obligations; they do not choose tiling, placement, layouts or schedules. The target OOT must author its compiler policies. Phase 2 inherits the admitted Phase 1 source/tool profile exactly; it cannot add a treatment tool after the fact. |
 
 Versioned public source membership makes a callable helper available and pins its

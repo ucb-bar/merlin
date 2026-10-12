@@ -3,6 +3,32 @@
 Host-only grading, redaction, certificate promotion and simulator dispatch live here.
 Inputs are explicit invocation context and corpus/contract paths, never native imports.
 
+`compiler_profile_runtime` preserves explicitly caller-selected artifact ABI 0.2
+structural emission through the same original source owner and isolated package
+box. Revalidate the exact typed profile before and after the call, before output
+publication, without mounting it or treating artifact bytes as LLVM/executable
+evidence. Frozen compiler scopes refuse Python bytecode writes; the core API's
+explicit scratch-copy opt-in is a separate non-profile execution contract.
+
+`compiler_profile_child` reconstructs only the exact original profile executor
+in a fresh bounded model-grade interpreter. Its parent-issued sealed readonly
+descriptor binds compiler source, frozen archive/snapshot/profile, target,
+explicit sandbox inputs, interpreter, direct host sources and environment.
+Reopen these selections and any original live kernel resource boundary before
+grading; recheck them and the transport receipt afterward. Foreign/incomplete
+owners and arbitrary alternative executors refuse. Transport identity supplies
+no new numerical, hardware, timing or transitive runtime authority.
+
+The original V3 import scope enters `lean_emission_context` for ordinary traced
+lowering and actual object consumption. Reopen input/emission observations,
+check the raw checkpoint chain freshly, and take the entry from the original
+build/capability contract. A consumed traced artifact requires a fresh object;
+absent traces retain historical reuse with zero formal credit. Unconsumed or
+unobserved emissions confer no proof, even with identical bytes. Unsupported
+edges retain partial unproved obligations; covered failures reject the build.
+Explicit compile-only transport avoids duplicate checking. Trace custody does not prove internal pass history,
+terminal lowering, dispatch, host optimization or machine/numerical/RTL behavior.
+
 `candidate_observations` supplies the public emission-only `--candidate-diagnostics`
 projection before compiler admission. Use original package integrity/build/ABI
 entrypoints and exact public member selection. No numerical or simulator call is

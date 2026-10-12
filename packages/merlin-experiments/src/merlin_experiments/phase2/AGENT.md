@@ -40,9 +40,11 @@ projection, and the full grade stays incomplete. The original backend call is
 observed as a Python dispatch with actual ELF/engine dependencies and raw
 console bytes; it is never relabeled as a newly observed subprocess.
 Retain original source, package sandbox/resource scopes, complete ABI/numerics,
-source-placement and mandatory tiers. An exec budget child cannot carry live
-owners: existing hard-mode refusal remains required, and the original guarded
-inline route requires its existing budget-unset policy. After a passing grade,
+source-placement and mandatory tiers. A budget child requires the original
+sealed `compiler_profile_child` reconstruction of the exact profile executor
+and any selected live resource boundary. Foreign/incomplete owners refuse;
+arbitrary alternative executors are not reconstructed. The inline route remains
+selected when its budget is unset. After a passing grade,
 reopen actual source, inputs, candidate, caller, object/ELF, console and original
 bound engine receipt. Reparse all outputs under the trusted selected readback
 policy and check the full original numerical contract before normal certificate
@@ -125,10 +127,11 @@ executor to baseline/candidate emission and the complete original final grade.
 Each actual compiler gets one streamed interface, a shared readonly package and
 private outputs retained until grade workers join. Copy only the declared output
 back; linked outputs and foreign package/workspace paths refuse. The numerical
-and certification gates remain original. A selected exec-based whole-model
-budget child cannot inherit these live owners and refuses in hard mode; the
-default inline route requires `MERLIN_MODEL_BUDGET_S` unset. No new source,
-model, timing or physical authority follows from the resource scope.
+and certification gates remain original. A selected whole-model budget child
+reconstructs the exact original profile and resource selections through the
+sealed child transport; it refuses foreign or incomplete owners. The inline
+route is selected with `MERLIN_MODEL_BUDGET_S` unset. No new numerical, model,
+timing or physical authority follows from this reconstruction or resource scope.
 
 `external_resources` and `_kernel_resources` verify externally provisioned Linux
 cgroup v2 ceilings and one whole capped backing filesystem without creating or

@@ -1,5 +1,14 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/execution
 
+Original compiler-profile composition may explicitly select bounded process
+environment pairs and final directory/empty-file answer masks for the container
+transport. Retain source/image, qualified view/runtime and actual create-plan
+pins; verify observed environment, readonly tmpfs masks and bind metadata.
+Unsupported masks, overlapping writable grants or changed observations refuse.
+Absent selections preserve historical transport interpretation. These checks
+establish selected metadata custody, never deployment, isolation, numerical,
+hardware or timing qualification. No alternate native fallback is permitted.
+
 The provisioned `native_supervisor` is the direct parent/reaper of every guardian.
 `native_guardian` owns only its descendant tree. `chia_native` adapts public Chia
 hooks; no worker-side Popen or private upstream tracker mutation is permitted.
