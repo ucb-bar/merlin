@@ -237,6 +237,8 @@ def build_options(gate: Mapping[str, Any]) -> dict[str, dict[str, dict[str, Any]
                 "readback": "full",
                 "group_profile": bool(entry.get("group_profile", True)),
             }
+            if entry.get("board") is not None:
+                out[model][program]["board"] = entry["board"]
     return out
 
 
