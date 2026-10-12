@@ -2,6 +2,23 @@
 
 Host-only grading, redaction, certificate promotion and simulator dispatch live here.
 Inputs are explicit invocation context and corpus/contract paths, never native imports.
+
+`candidate_observations` supplies the public emission-only `--candidate-diagnostics`
+projection before compiler admission. Use original package integrity/build/ABI
+entrypoints and exact public member selection. No numerical or simulator call is
+made. Reopen own source/IR/object/ELF and original invocation records; feature
+presence and source/global-plan joins do not waive ordinary grades. Source drift,
+ambiguous products and unsupported observers retain UNKNOWN. Raw paths, answer
+values and private grading records never enter the returned report.
+
+`candidate_census` optionally appends descriptive dynamic activity to ordinary
+selfcheck and normal cheap feedback only after the original numerical screen.
+Use the same selected public descriptor and original package policy; the fixed
+bounded census wrapper independently reopens the completed original ELF producer
+and narrows its sandbox. No policy, ambiguous products or missing ownership means
+UNKNOWN without raw-host fallback. Cleanup-unknown BaseException must abort the
+enclosing job. Legacy runner-owned model artifacts cannot substitute for the
+distinct candidate executable. Final/numerical/RTL obligations stay unchanged.
 Keep actual adapter construction, observation order, missing-oracle behavior and
 enqueue-time certificate attribution unchanged. Public clients remain separate.
 Dispatch owns only the closed async simulator policy shared by broker and promotion.
