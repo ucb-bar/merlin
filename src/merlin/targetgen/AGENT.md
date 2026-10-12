@@ -288,7 +288,9 @@ this selected placement contract does not establish PyTorch numerical equivalenc
   plugin; the support identity must not be guessed from a unit name.
 - Deterministic: same inputs -> byte-identical YAML artifacts.
 - Targets implement adapters; TargetGen never generates an independent runtime model.
-- Do not generate dialect ops directly from instruction names — synthesis stays conservative.
+- Do not infer dialect semantics or operands from instruction names. Optional
+  `isa_spec.py`/`isa_dialect_gen.py` generate definitions only from complete typed
+  declarations and resolved fact-bound encodings; missing effects remain unknown.
 - Every subdirectory contains an AGENT.md.
 
 ## Two caches, and why they are different things
