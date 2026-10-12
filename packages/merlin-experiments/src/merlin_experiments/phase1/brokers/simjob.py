@@ -145,6 +145,38 @@ def _completed_job_ids(ch: Path) -> set[str]:
     return {p.stem[len(prefix) :] for p in ch.glob(f"{prefix}*.json")}
 
 
+def _current_source_first(requests, ws):
+    """Prioritize current-source work without treating request metadata as evidence.
+
+    Source recovery still authenticates every promoted request at launch. Unknown
+    bindings retain ordinary ordering; source changes during observation abandon
+    the optimization. Running jobs and their completed certificates are untouched.
+    """
+    ordered = sorted(requests)
+    if len(ordered) < 2:
+        return ordered
+    try:
+        current = _TP._submission_digest(ws)
+        ranks = {}
+        for request in ordered:
+            try:
+                row = json.loads(request.read_text())
+            except (OSError, ValueError):
+                ranks[request] = 1
+                continue
+            if not isinstance(row, dict):
+                ranks[request] = 1
+                continue
+            digest = row.get("submission_digest")
+            # Direct requests are frozen from current source when launched.
+            ranks[request] = 0 if not row.get("promoted") or digest == current else 1
+        if _TP._submission_digest(ws) != current:
+            return ordered
+        return sorted(ordered, key=lambda request: ranks[request])
+    except Exception:  # noqa: BLE001 -- an unreadable fingerprint cannot reorder the queue
+        return ordered
+
+
 class VerilSlotsUnusable(RuntimeError):
     """The slot directory cannot be used at all -- distinct from every slot being busy."""
 
@@ -588,7 +620,8 @@ def main(
             running.pop(jid)
         # launch queued (respect local + global caps)
         if len(running) < a.max_jobs:
-            for req in sorted(ch.glob("simreq_*.json")):
+            queued = (req for req in ch.glob("simreq_*.json") if req.stem[len("simreq_") :] not in claimed)
+            for req in _current_source_first(queued, ws):
                 jid = req.stem[len("simreq_") :]
                 if jid in claimed:
                     continue

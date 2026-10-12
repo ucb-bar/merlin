@@ -46,3 +46,23 @@ def test_completed_results_serialize_whole_read_modify_write(tmp_path, monkeypat
     assert P.record_cert(tmp_path, {"per_capsule": [{"capsule": "unknown", "pass": True}]},
                          "L3", identity="submission:unknown") == []
     assert "unknown" not in original(tmp_path)
+
+
+def test_queue_prefers_current_source_without_cancelling_unknown_or_old(tmp_path, monkeypatch):
+    import json
+
+    from merlin_experiments.phase1.brokers import simjob as B
+    paths = []
+    for name, row in (("a_old", {"promoted": True, "submission_digest": "old"}),
+                      ("b_unknown", {"promoted": True}),
+                      ("c_current", {"promoted": True, "submission_digest": "current"}),
+                      ("d_direct", {})):
+        path = tmp_path / f"simreq_{name}.json"
+        path.write_text(json.dumps(row))
+        paths.append(path)
+    monkeypatch.setattr(B._TP, "_submission_digest", lambda ws: "current")
+    assert B._current_source_first(paths, tmp_path) == [paths[2], paths[3], paths[0], paths[1]]
+    assert all(p.exists() for p in paths)
+    digests = iter(("current", "changed"))
+    monkeypatch.setattr(B._TP, "_submission_digest", lambda ws: next(digests))
+    assert B._current_source_first(paths, tmp_path) == paths
