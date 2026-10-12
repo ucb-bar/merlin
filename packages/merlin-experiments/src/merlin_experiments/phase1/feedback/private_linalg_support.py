@@ -426,8 +426,6 @@ def _composite_source_matches(
             if type(ordinal) is not int or not 0 <= ordinal < len(parsed):
                 return False
             if item.get("schema") == EMBEDDING_GATHER_SCHEMA:
-                import json
-
                 pattern = asdict(recognize_embedding_gather(parsed[ordinal]))
                 if any(json.dumps(item.get(key)) != json.dumps(value) for key, value in pattern.items()):
                     return False
