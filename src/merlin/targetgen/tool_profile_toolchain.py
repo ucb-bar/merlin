@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import stat
+from bisect import bisect_left
 from pathlib import Path
 
 from merlin.common.path_relations import LexicalPathIndex
@@ -43,15 +44,34 @@ def _plain_tree_members(root):
         return None
 
 
+class _SelectedMembers:
+    """Call-local lexical inventory index; never caches verified bytes."""
+
+    def __init__(self, document, manifest):
+        self.members = {}
+        for row in document["files"]:
+            path = _member_path(row["path"], manifest)
+            if path in self.members:
+                raise ValueError("private toolchain inventory repeats a member")
+            self.members[path] = row["sha256"]
+        self.keys = sorted((path.parts, path) for path in self.members)
+        self.parts = [parts for parts, _ in self.keys]
+
+    def under(self, root):
+        prefix = root.parts
+        position = bisect_left(self.parts, prefix)
+        result = {}
+        while position < len(self.keys):
+            parts, path = self.keys[position]
+            if parts[:len(prefix)] != prefix:
+                break
+            result[path] = self.members[path]
+            position += 1
+        return result
+
+
 def _root_members(document, manifest, root):
-    rows = document["files"]
-    members = {}
-    for row in rows:
-        path = _member_path(row["path"], manifest)
-        if path in members:
-            raise ValueError("private toolchain inventory repeats a member")
-        members[path] = row["sha256"]
-    return {path: sha for path, sha in members.items() if path.is_relative_to(root)}
+    return _SelectedMembers(document, manifest).under(root)
 
 
 def _existing_sources(bundle):
@@ -132,11 +152,12 @@ def _private_root_records(bundle, document, manifest, roots, manifest_sha):
     solver = document.get("sat_solver")
     if solver is not None:
         protected.add(_member_path(solver["path"], manifest))
+    inventory = _SelectedMembers(document, manifest)
     record = []
     for root in roots:
         if any(root.is_relative_to(other) or other.is_relative_to(root) for other in roots if other != root):
             continue
-        members = _root_members(document, manifest, root)
+        members = inventory.under(root)
         for closed in _closed_subdirectories(root, members, (*existing, *protected)):
             record.append({
                 "path": str(closed), "note": "closed private formal verification library",

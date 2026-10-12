@@ -402,6 +402,8 @@ def prepare(
     phase1_policy_descriptor: Path | None = None,
     loader_profile_sources: tuple[Path, ...] | None = None,
     optional_levels: tuple[str, ...] = (),
+    selected_levels: tuple[str, ...] | None = None,
+    selected_variants: tuple[str, ...] | None = None,
     lean_toolchain_manifest: Path | None = None,
     host_index_bits: int | None = None,
 ) -> dict:
@@ -486,6 +488,8 @@ def prepare(
                 selected_contract=selected_contract,
                 phase1_gates=phase1_gates,
                 optional_levels=optional_levels,
+                **({"selected_levels": selected_levels} if selected_levels is not None else {}),
+                **({"selected_variants": selected_variants} if selected_variants is not None else {}),
                 lean_toolchain_manifest=lean_toolchain_manifest,
                 host_index_bits=host_index_bits,
             )
