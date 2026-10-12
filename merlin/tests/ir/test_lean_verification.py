@@ -116,6 +116,38 @@ def test_closed_import_membership_and_bytes(tmp_path):
         selected.verify()
 
 
+def test_dependency_hash_refuses_changes_during_read_and_does_not_cache(tmp_path, monkeypatch):
+    from merlin.verify import lean_contract
+
+    dependency = tmp_path / "product.olean"
+    dependency.write_bytes(b"first product")
+    original = lean_contract.hashlib.file_digest
+
+    def mutate(stream, algorithm):
+        observed = original(stream, algorithm)
+        dependency.write_bytes(b"second product with a different size")
+        return observed
+
+    monkeypatch.setattr(lean_contract.hashlib, "file_digest", mutate)
+    with pytest.raises(ValueError, match="changed while"):
+        lean_contract.file_digest(dependency)
+    assert not any(key[0] == str(dependency) for key in lean_contract._FILE_CACHE)
+    monkeypatch.setattr(lean_contract.hashlib, "file_digest", original)
+    assert lean_contract.file_digest(dependency) == digest(dependency.read_bytes())
+
+
+def test_dependency_hash_refreshes_after_same_size_replacement(tmp_path):
+    from merlin.verify.lean_contract import file_digest
+
+    dependency = tmp_path / "product.olean"
+    dependency.write_bytes(b"first product")
+    first = file_digest(dependency)
+    replacement = tmp_path / "replacement.olean"
+    replacement.write_bytes(b"other product")
+    replacement.replace(dependency)
+    assert file_digest(dependency) == digest(b"other product") != first
+
+
 @pytest.fixture
 def real_toolchain(tmp_path):
     manifest = os.environ.get("MERLIN_LEAN_TOOLCHAIN_MANIFEST")

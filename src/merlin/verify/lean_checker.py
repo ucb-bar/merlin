@@ -20,7 +20,15 @@ from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
-from .lean_contract import DOMAINS, SCHEMA, LeanToolchain, LeanTransformReceipt, digest, document_digest
+from .lean_contract import (
+    DOMAINS,
+    EXTENDED_DOMAINS,
+    SCHEMA,
+    LeanToolchain,
+    LeanTransformReceipt,
+    digest,
+    document_digest,
+)
 from .lean_export import UnsupportedLeanIR, equivalence_query, export_scalar
 
 _ALLOWED_AXIOMS = frozenset({"propext", "Classical.choice", "Quot.sound"})
@@ -29,6 +37,16 @@ _MAX_OUTPUT = 4 * 1024 * 1024
 _COMPLETED: weakref.WeakValueDictionary[int, LeanTransformReceipt] = weakref.WeakValueDictionary()
 _PROOF_CACHE: OrderedDict[str, tuple[str, ...]] = OrderedDict()
 _CACHE_LIMIT = 128
+_TRANSFORM_DOMAINS = {
+    "shape_view_normalization": DOMAINS[0],
+    "exact_integer_simplification": DOMAINS[0],
+    "ordered_loop_segmentation": DOMAINS[1],
+    "buffer_reuse": DOMAINS[2],
+    "sequential_dependency_schedule": DOMAINS[3],
+    "scalar_redundancy_elimination": EXTENDED_DOMAINS[4],
+    "scalar_loop_invariant_motion": EXTENDED_DOMAINS[4],
+    "ordered_loop_unrolling": EXTENDED_DOMAINS[5],
+}
 
 
 def accepted_receipt(receipt: LeanTransformReceipt, before: str, after: str) -> bool:
@@ -45,32 +63,25 @@ def accepted_receipt(receipt: LeanTransformReceipt, before: str, after: str) -> 
     )
 
 
-def pipeline_semantic_identity() -> str:
+def pipeline_semantic_identity(kind: str | None = None) -> str:
     root = Path(__file__).parent.parent / "transforms"
-    return digest(
-        semantic_identity().encode()
-        + b"".join(
-            (root / name).read_bytes()
-            for name in ("certificates.py", "normalization.py", "loops.py", "planning.py", "validation.py")
-        )
-    )
+    selected = ["certificates.py", "normalization.py", "loops.py", "planning.py", "validation.py"]
+    additional = b""
+    if kind in {"scalar_redundancy_elimination", "scalar_loop_invariant_motion", "ordered_loop_unrolling"}:
+        selected += ["pure_scalar.py", "scalar_witness.py", "unrolling.py"]
+        additional = (Path(__file__).parent / "lean_obligations.py").read_bytes()
+    return digest(semantic_identity().encode() + b"".join((root / name).read_bytes() for name in selected) + additional)
 
 
 def accepted_pipeline_receipt(receipt, change, *, toolchain: LeanToolchain | None = None) -> bool:
     """Bind the completion to the entire change's fixed domain and semantic scope."""
-    domain = {
-        "shape_view_normalization": DOMAINS[0],
-        "exact_integer_simplification": DOMAINS[0],
-        "ordered_loop_segmentation": DOMAINS[1],
-        "buffer_reuse": DOMAINS[2],
-        "sequential_dependency_schedule": DOMAINS[3],
-    }.get(change.kind)
+    domain = _TRANSFORM_DOMAINS.get(change.kind)
     return (
         isinstance(receipt, LeanTransformReceipt)
         and accepted_receipt(receipt, change.before_ir, change.after_ir)
         and receipt.domain == domain
         and receipt.scope == tuple(change.certificate.scope)
-        and receipt.semantics_sha256 == pipeline_semantic_identity()
+        and receipt.semantics_sha256 == pipeline_semantic_identity(change.kind)
         and receipt.toolchain_sha256 is not None
         and (toolchain is None or receipt.toolchain_sha256 == toolchain.identity())
     )
@@ -107,13 +118,25 @@ def _run(argv, toolchain, directory, *, deadline):
     }
     environment["LEAN_PATH"] = os.pathsep.join(str(p) for p in toolchain.library_roots)
     environment["TMPDIR"] = str(toolchain.work_root)
+    toolchain.verify(deadline=deadline)
+    inventory = directory / "observed-inventory.json"
+    inventory.write_text(
+        json.dumps(
+            {
+                "schema": "merlin.lean_invocation_inputs.v1",
+                "toolchain": toolchain.identity(),
+                "files": [(str(path), sha) for path, sha in toolchain.files],
+            },
+            sort_keys=True,
+        )
+    )
     with tempfile.TemporaryFile(dir=directory) as out, tempfile.TemporaryFile(dir=directory) as err:
         with invocation_record.observe(
             directory / "invocation",
             stage="lean_kernel",
             argv=argv,
             inputs=tuple(Path(v) for v in argv[-1:] if Path(v).is_file()),
-            dependencies=(toolchain.executable, *(p for p, _ in toolchain.files)),
+            dependencies=(toolchain.executable, inventory),
             cwd=directory,
             env=environment,
         ) as record:
@@ -328,14 +351,8 @@ def verify_pipeline_change(
     from merlin.transforms.certificates import BufferReuseWitness, IntegerWitness, LoopWitness, ShapeWitness
     from merlin.transforms.validation import validate_change
 
-    model = pipeline_semantic_identity()
-    domain = {
-        "shape_view_normalization": DOMAINS[0],
-        "exact_integer_simplification": DOMAINS[0],
-        "ordered_loop_segmentation": DOMAINS[1],
-        "buffer_reuse": DOMAINS[2],
-        "sequential_dependency_schedule": DOMAINS[3],
-    }.get(change.kind, "unsupported")
+    model = pipeline_semantic_identity(change.kind)
+    domain = _TRANSFORM_DOMAINS.get(change.kind, "unsupported")
     receipt = LeanTransformReceipt(
         SCHEMA,
         "lean_kernel",
@@ -354,6 +371,10 @@ def verify_pipeline_change(
     try:
         validate_change(change)
         statements, proofs = [], []
+        if change.kind in {"scalar_redundancy_elimination", "scalar_loop_invariant_motion", "ordered_loop_unrolling"}:
+            from .lean_obligations import extended_obligations
+
+            statements, proofs = extended_obligations(change)
         if change.kind == "sequential_dependency_schedule":
             # General opaque effects have no Lean state interpretation yet.
             # Prove supported scalar programs directly; retain the gap elsewhere.
@@ -379,6 +400,12 @@ def verify_pipeline_change(
             _COMPLETED[id(completed)] = completed
             return completed
         for witness in change.certificate.witnesses:
+            if statements and change.kind in {
+                "scalar_redundancy_elimination",
+                "scalar_loop_invariant_motion",
+                "ordered_loop_unrolling",
+            }:
+                break
             if isinstance(witness, IntegerWitness):
                 width = witness.width
                 operation = {"arith.addi": "Add", "arith.subi": "Sub", "arith.muli": "Mul"}[witness.operation]

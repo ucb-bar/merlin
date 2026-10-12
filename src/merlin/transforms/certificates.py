@@ -116,7 +116,39 @@ TRANSFORM_SCOPES = {
         "forwarded_loop_carried_state",
     ),
     "sequential_dependency_schedule": ("ssa_dependencies", "sequential_effect_order"),
+    "scalar_redundancy_elimination": (
+        "total_scalar_integer_operations",
+        "preserved_unknown_effects",
+        "ssa_use_def_and_dominance",
+    ),
+    "scalar_loop_invariant_motion": (
+        "total_scalar_integer_operations",
+        "total_speculation",
+        "loop_external_operands",
+        "unchanged_effect_order",
+    ),
+    "ordered_loop_unrolling": (
+        "static_nonnegative_index_bounds",
+        "positive_step",
+        "exact_iteration_order",
+        "forwarded_loop_carried_state",
+        "bounded_operation_growth",
+    ),
 }
+
+V2_KINDS = frozenset({"scalar_redundancy_elimination", "scalar_loop_invariant_motion", "ordered_loop_unrolling"})
+
+
+def _witness_kinds(schema: str) -> dict:
+    kinds = dict(_WITNESS_KINDS)
+    if schema == "merlin.shared_transform.v2":
+        from .scalar_witness import ScalarRewriteWitness
+        from .unrolling import UnrollWitness
+
+        kinds.update({ScalarRewriteWitness: "scalar_rewrite", UnrollWitness: "unroll"})
+    elif schema != "merlin.shared_transform.v1":
+        raise ValueError("unknown transformation certificate schema")
+    return kinds
 
 
 @dataclass(frozen=True)
@@ -130,7 +162,8 @@ class ChangeCertificate:
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)
-        result["witnesses"] = [{"kind": _WITNESS_KINDS[type(w)], **asdict(w)} for w in self.witnesses]
+        kinds = _witness_kinds(self.schema)
+        result["witnesses"] = [{"kind": kinds[type(w)], **asdict(w)} for w in self.witnesses]
         return result
 
 
@@ -167,9 +200,7 @@ class TransformationChange:
         certificate = value["certificate"]
         if not isinstance(certificate, Mapping) or set(certificate) != {f.name for f in fields(ChangeCertificate)}:
             raise ValueError("invalid transformation certificate fields")
-        if certificate["schema"] != "merlin.shared_transform.v1":
-            raise ValueError("unknown transformation certificate schema")
-        kinds = {v: k for k, v in _WITNESS_KINDS.items()}
+        kinds = {v: k for k, v in _witness_kinds(certificate["schema"]).items()}
         witnesses = []
         for encoded in certificate["witnesses"]:
             if not isinstance(encoded, Mapping) or encoded.get("kind") not in kinds:
@@ -197,15 +228,21 @@ class TransformationChange:
                 data["edges"] = tuple(tuple(edge) for edge in data["edges"])
                 data["order"] = tuple(data["order"])
                 data["unknown_effect_indices"] = tuple(data["unknown_effect_indices"])
+            elif encoded["kind"] == "unroll":
+                data["carried_types"] = tuple(data["carried_types"])
             witnesses.append(dtype(**data))
         decoded = dict(certificate)
         decoded["witnesses"] = tuple(witnesses)
         decoded["scope"] = tuple(decoded["scope"])
+        parameters = dict(value["parameters"])
+        for name in ("tile_iterations", "factors", "order"):
+            if name in parameters:
+                parameters[name] = tuple(parameters[name])
         result = cls(
             value["kind"],
             value["before_ir"],
             value["after_ir"],
-            dict(value["parameters"]),
+            parameters,
             ChangeCertificate(**decoded),
         )
         result.validate_identity()
@@ -227,5 +264,12 @@ def make_change(
         before,
         rendered,
         dict(parameters),
-        ChangeCertificate(kind, ir_digest(before), ir_digest(rendered), witnesses, scope),
+        ChangeCertificate(
+            kind,
+            ir_digest(before),
+            ir_digest(rendered),
+            witnesses,
+            scope,
+            "merlin.shared_transform.v2" if kind in V2_KINDS else "merlin.shared_transform.v1",
+        ),
     )

@@ -15,21 +15,35 @@ from typing import Any
 
 SCHEMA = "merlin.lean_transform_verification.v1"
 DOMAIN_VERSION = "1"
+EXTENDED_DOMAIN_VERSION = "2"
 DOMAINS = (
     "scalar_integer_v1",
     "ordered_loop_segmentation_v1",
     "buffer_lifetime_v1",
     "dependency_order_v1",
 )
+EXTENDED_DOMAINS = (*DOMAINS, "total_scalar_rewrite_v1", "ordered_loop_unrolling_v1")
 _FILE_CACHE: dict[tuple, str] = {}
 
 
 def file_digest(path: Path) -> str:
     stat = path.stat()
-    key = (str(path.resolve()), stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+    fingerprint = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_mode)
+    key = (str(path.resolve()), *fingerprint)
     if key not in _FILE_CACHE:
         with path.open("rb") as stream:
-            _FILE_CACHE[key] = hashlib.file_digest(stream, "sha256").hexdigest()
+            observed = hashlib.file_digest(stream, "sha256").hexdigest()
+        after = path.stat()
+        if (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+            after.st_mode,
+        ) != fingerprint:
+            raise ValueError("selected dependency changed while its bytes were observed")
+        _FILE_CACHE[key] = observed
     return _FILE_CACHE[key]
 
 
@@ -41,13 +55,15 @@ def imported_product(path: Path) -> bool:
     )
 
 
-def coverage_policy_record() -> dict:
+def coverage_policy_record(*, version: str = DOMAIN_VERSION) -> dict:
     """The common policy. Candidates cannot narrow the host's selected coverage."""
+    if version not in {DOMAIN_VERSION, EXTENDED_DOMAIN_VERSION}:
+        raise ValueError("unknown formal coverage registry version")
     return {
         "schema": "merlin.lean_coverage_policy.v1",
         "mode": "strict_within_coverage",
-        "registry_version": DOMAIN_VERSION,
-        "domains": list(DOMAINS),
+        "registry_version": version,
+        "domains": list(DOMAINS if version == DOMAIN_VERSION else EXTENDED_DOMAINS),
         "unknown_within_coverage": "reject",
         "outside_coverage": "independent_checks_required",
     }

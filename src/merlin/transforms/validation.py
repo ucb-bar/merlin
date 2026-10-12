@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from xdsl.dialects import arith, builtin, scf
 from xdsl.ir import Block, Operation, SSAValue
 
-from .certificates import TRANSFORM_SCOPES, LoopWitness, TransformationChange, ir_digest, ir_text, parse_ir
+from .certificates import TRANSFORM_SCOPES, V2_KINDS, LoopWitness, TransformationChange, ir_digest, ir_text, parse_ir
 from .normalization import constant_integer, normalize_shapes, simplify_integers
 from .planning import apply_order, plan_storage, reuse_storage
 
@@ -145,6 +145,19 @@ def validate_change(change: TransformationChange) -> None:
     change.validate_identity()
     if change.kind not in TRANSFORM_SCOPES or change.certificate.scope != TRANSFORM_SCOPES[change.kind]:
         raise ValueError("transformation coverage cannot be changed by candidate declarations")
+    expected_schema = "merlin.shared_transform.v2" if change.kind in V2_KINDS else "merlin.shared_transform.v1"
+    if change.certificate.schema != expected_schema:
+        raise ValueError("transformation schema differs from its immutable kind")
+    if change.kind in {"scalar_redundancy_elimination", "scalar_loop_invariant_motion"}:
+        from .scalar_witness import validate_scalar_change
+
+        validate_scalar_change(change)
+        return
+    if change.kind == "ordered_loop_unrolling":
+        from .unrolling import validate_unrolled_change
+
+        validate_unrolled_change(change)
+        return
     expected_parameters = {
         "ordered_loop_segmentation": {"index_bits", "tile_iterations"},
         "sequential_dependency_schedule": {"block_index", "order"},

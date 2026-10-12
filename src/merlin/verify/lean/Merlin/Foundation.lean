@@ -86,4 +86,19 @@ theorem commuteTransitions (first second : σ → σ)
     (commute : ∀ state, second (first state) = first (second state)) (state : σ) :
     second (first state) = first (second state) := commute state
 
+/-- Reuse a deterministic total scalar expression under the same argument bindings. -/
+theorem eliminateDuplicate (producer : α → β) (observe : β → β → σ) (argument : α) :
+    (let first := producer argument; let second := producer argument; observe first second) =
+      (let first := producer argument; observe first first) := rfl
+
+/-- A total pure unused expression contributes no observation or state change. -/
+theorem eliminateUnused (producer : α → β) (argument : α) (result : σ) :
+    (let _unused := producer argument; result) = result := rfl
+
+/-- Hoist a total invariant without evaluating any additional observable transition. -/
+theorem hoistInvariant (producer : α → β) (argument : α) (body : β → σ → Nat → σ)
+    (iterations : List Nat) (initial : σ) :
+    iterations.foldl (fun state index => body (producer argument) state index) initial =
+      (let invariant := producer argument; iterations.foldl (body invariant) initial) := rfl
+
 end Merlin

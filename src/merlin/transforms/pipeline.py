@@ -23,6 +23,10 @@ class PipelineOptions:
     simplify_integers: bool = True
     reuse_buffers: bool = True
     dependency_orders: tuple[tuple[int, tuple[int, ...]], ...] = ()
+    eliminate_redundancy: bool = False
+    hoist_invariants: bool = False
+    unroll_factors: tuple[int, ...] = ()
+    max_added_operations: int = 4096
 
 
 @dataclass(frozen=True)
@@ -90,6 +94,24 @@ def apply_common_pipeline(
             {},
             ("scalar_signless_wrapping_integers",),
         )
+    if options.eliminate_redundancy:
+        from .pure_scalar import eliminate_scalar_redundancy
+
+        run(
+            "scalar_redundancy_elimination",
+            lambda: eliminate_scalar_redundancy(current),
+            {},
+            TRANSFORM_SCOPES["scalar_redundancy_elimination"],
+        )
+    if options.hoist_invariants:
+        from .pure_scalar import hoist_scalar_invariants
+
+        run(
+            "scalar_loop_invariant_motion",
+            lambda: hoist_scalar_invariants(current),
+            {},
+            TRANSFORM_SCOPES["scalar_loop_invariant_motion"],
+        )
     storage = plan_storage(current)
     if options.reuse_buffers:
         run(
@@ -109,6 +131,24 @@ def apply_common_pipeline(
                 "exact_iteration_order",
                 "forwarded_loop_carried_state",
             ),
+        )
+    if options.unroll_factors:
+        from .unrolling import unroll_ordered_loops
+
+        run(
+            "ordered_loop_unrolling",
+            lambda: unroll_ordered_loops(
+                current,
+                options.unroll_factors,
+                index_bits=options.index_bits,
+                max_added_operations=options.max_added_operations,
+            ),
+            {
+                "factors": options.unroll_factors,
+                "index_bits": options.index_bits,
+                "max_added_operations": options.max_added_operations,
+            },
+            TRANSFORM_SCOPES["ordered_loop_unrolling"],
         )
     for block_index, order in options.dependency_orders:
         run(
