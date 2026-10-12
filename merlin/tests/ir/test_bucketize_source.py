@@ -275,3 +275,12 @@ def test_preserved_bucketize_identity_relations_keep_exact_ancestry_guards(tmp_p
     trace_path.write_text(json.dumps(trace))
     with pytest.raises(InvalidLinalgPattern, match='exact selected transformation relation'):
         screen_bucketize_source(model, trace_path, (ordinal,))
+
+
+def test_bf16_bucketize_requires_one_lossless_f32_extension():
+    text = _program(right=True).replace('tensor<2x3xf32>', 'tensor<2x3xbf16>').replace('%x: f32', '%x: bf16')
+    text = text.replace('        %less =', '        %wide = "arith.extf"(%x) : (bf16) -> f32\n        %less =').replace('(%b, %x)', '(%b, %wide)')
+    pattern = recognize_bucketize_source(_generic(text), right=True)
+    assert pattern.input_dtype == 'bf16'
+    with pytest.raises(InvalidLinalgPattern):
+        recognize_bucketize_source(_generic(text.replace('%wide =', '%extra = "arith.extf"(%x) : (bf16) -> f32\n        %wide =')), right=True)

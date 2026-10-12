@@ -447,7 +447,8 @@ def _screen_source_body(
         if any(not bucketize_pattern_fits_index(pattern, width) for pattern in patterns):
             return {"status": "unsupported", "reason": "bucketize source tensor exceeds selected signed index span"}
         if (
-            signature.get("ordered_operand_dtypes") != ["f32", "f32", "i64"]
+            any(signature.get("ordered_operand_dtypes") != list(pattern.ordered_types[:3]) for pattern in patterns)
+            or any(pattern.operation != declaration["source_body"]["operation"] for pattern in patterns)
             or signature.get("ordered_result_dtypes") != ["i64"]
             or type(signature.get("rank")) is not int
             or any(signature["rank"] != len(pattern.shape) for pattern in patterns)
