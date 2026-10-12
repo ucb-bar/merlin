@@ -101,9 +101,22 @@ def _candidate_selfcheck_row(result: dict, closed: dict | None, *, name: str, ba
         and result.get("status") == "pass"
         and (summary.get("status") == "pass" and required_pass and source_verified and component_pass and bar == "pass")
     )
+    screened = (
+        barrier_tier == "L2" and source_verified
+        and summary.get("status") == "incomplete"
+        and not summary.get("violations")
+        and all(tiers.get(tier) == "pass" for tier in ("L0", "L1", "L2"))
+        and tiers.get("L3") == "unverified"
+        and set(required) == {"L0", "L1", "L2", "L3"}
+        and all(components.get(key) == expected for key, expected in (
+            ("emitted_host_compute", "clean"), ("source_placement", "clean"),
+            ("completed_dispatch", "verified"), ("candidate_required_tiers", "incomplete")))
+    )
     row = {
         "capsule": name,
-        "pass": certified,
+        "pass": certified or screened,
+        "screened_only": screened,
+        "certified_complete": certified,
         "execution_digest": None,
         "barrier_tier": bar_used,
         "barrier_declared": barrier_tier,
@@ -429,6 +442,39 @@ def _sim_policy_error(sim: str, sim_via: str | None) -> str | None:
             f"use --sim 'spike' for a correctness-only screen or --sim {required!r} for RTL"
         )
     return None
+
+
+def _streaming_completion(*, context, capsules_root, contract, source, runs, adapters):
+    """Use only the trusted broker's frozen source, never public progress JSON."""
+    from ..brokers.selfcheck import _submission_digest
+    from . import loop_grading, promotion
+
+    ws, root, digest = (os.environ.get(key) for key in (
+        "MERLIN_SELFCHECK_PROMOTION_WS", "MERLIN_SELFCHECK_PROMOTION_ROOT", "MERLIN_SELFCHECK_PROMOTION_SHA256"
+    ))
+    if not any((ws, root, digest)):
+        return None
+    if not all((ws, root, digest)):
+        raise ValueError("streaming selfcheck promotion has incomplete trusted context")
+    if _submission_digest(Path(source)) != digest:
+        raise ValueError("streaming selfcheck candidate differs from frozen broker identity")
+    loop, cert, cover = promotion.resolve_tiers(Path(ws), context=context, capsules_root=Path(root))
+    if not loop or not cert or loop not in adapters or cert in adapters:
+        return None
+    inputs = loop_grading.GradingInputs(
+        context=context, arm="selfcheck", public_root=Path(capsules_root), policy_roots=(Path(root),),
+        contract=contract, promotion_root=Path(root),
+    )
+    completed = loop_grading._completed_loop_promoter(
+        Path(ws), Path(source).parent, Path(runs), loop, cert, cover, inputs=inputs
+    )
+
+    def callback(row):
+        if _submission_digest(Path(source)) != digest:
+            raise ValueError("streaming selfcheck frozen candidate changed during grading")
+        completed(row)
+
+    return callback
 
 
 def _adapters(sim: str, target: str, sim_via: str | None, *, readback_policy=None) -> tuple[dict, str]:
@@ -1067,6 +1113,10 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         )
         _progress_thread.start()
     try:
+        completion = _streaming_completion(
+            context=context, capsules_root=caps_root, contract=contract,
+            source=sub, runs=runs_root, adapters=adapters,
+        )
         _score = CG.grade(
             str(sub),
             capsules_root=str(caps_root),
@@ -1077,6 +1127,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             timeout=a.timeout,
             max_workers=a.workers,
             target=_tgt,
+            **({"on_capsule_complete": completion} if completion is not None else {}),
         )
     except Exception as e:
         print(json.dumps({"error": f"grade failed: {str(e)[:300]}"}))
@@ -1165,8 +1216,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         if _qc._candidate_native_feedback(d) is not None:
             row, certified = _candidate_selfcheck_row(d, closed_rows.get(name), name=name, barrier_tier=barrier_tier)
             rows.append(row)
-            npass += int(certified)
+            npass += int(row["pass"])
             ncert += int(certified)
+            nscreened += int(row.get("screened_only", False))
             continue
         _tier_results = d.get("tiers") or {}
         tiers = {t: (v or {}).get("status") for t, v in _tier_results.items()}

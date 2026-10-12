@@ -787,30 +787,42 @@ def enforce_model_execution_check(result: dict, capsule: dict | None, *, target:
     result["model_execution_check"] = check
     if check.get("candidate_native_model_check") is not None:
         result["candidate_native_model_check"] = check["candidate_native_model_check"]
-    if check.get("status") == "pass":
-        if check.get("kind") == "owned_host_model_execution":
-            result["status"] = "pass"
-            result.pop("failure", None)
-            result["numeric"] = check["numeric"]
+    if check.get("kind") == "owned_host_model_execution":
+        # Publish only reopened tiers, including a partial functional screen.
+        # A missing native tier never erases proven L2, and raw receipt claims
+        # never survive an audit refusal as promotion authority.
+        tier_check = check.get("candidate_required_tiers") or {}
+        audited = tier_check.get("tiers") or {}
+        required = tier_check.get("required_tiers") or list(result.get("tiers") or {})
+        result["status"] = check["status"]
+        result["numeric"] = check.get("numeric") or {}
+        result["candidate_source_coverage"] = check.get("candidate_source_coverage") or {}
+        if check.get("owned_host_model_check"):
             result["owned_host_model_check"] = check["owned_host_model_check"]
-            result["candidate_source_coverage"] = check["owned_host_model_check"]["candidate_source_coverage"]
-            tier_check = check["candidate_required_tiers"]
-            result["tiers"] = {
-                tier: {
-                    "tier": tier,
-                    "status": "pass",
-                    "mandatory": True,
-                    "evidence": "owned_host_model_same_elf"
-                    if tier in {"L2", "L3"}
-                    else "owned_host_model_structural_legality",
-                    "derived_from_rtl": tier == "L3"
-                    and (tier_check["tiers"][tier].get("selection") or {}).get("fidelity") == "elaborated_rtl",
-                    "cycle_accurate": False,
-                    "candidate_evidence": tier_check["tiers"][tier],
-                }
-                for tier in tier_check["required_tiers"]
+        result["tiers"] = {
+            tier: {
+                "tier": tier, "status": (audited.get(tier) or {}).get("status", "unverified"),
+                "mandatory": True,
+                "evidence": "owned_host_model_same_elf" if tier in {"L2", "L3"}
+                else "owned_host_model_structural_legality",
+                "derived_from_rtl": tier == "L3"
+                and (audited.get(tier) or {}).get("status") == "pass"
+                and ((audited.get(tier) or {}).get("selection") or {}).get("fidelity") == "elaborated_rtl",
+                "cycle_accurate": False,
+                "candidate_evidence": audited.get(tier) or {},
+            } for tier in required
+        }
+        if check["status"] == "pass":
+            result.pop("failure", None)
+        else:
+            result["failure"] = {
+                "plane": "candidate_model_execution",
+                "category": "FUNCTIONAL_MISMATCH" if check["status"] == "fail" else "NOT_RUN_IS_NOT_PASS",
+                "detail": check.get("detail") or ", ".join(check.get("violations") or [])
+                or "mandatory native tier has not completed",
             }
-            return result
+        return result
+    if check.get("status") == "pass":
         if check.get("kind") == "candidate_whole_program_execution":
             # Promote only after all frozen mandatory candidate tiers, source
             # attribution, host veto and independent full output passed.
@@ -1130,6 +1142,14 @@ def _score_numeric_status(row: dict) -> str | None:
             return "pass"
         if "candidate_verified_numeric_mismatch" in (check.get("violations") or []):
             return "fail"
+        if check.get("kind") == "owned_host_model_execution":
+            tier_check = check.get("candidate_required_tiers") or {}
+            tiers = tier_check.get("tiers") or {}
+            # This is the numeric screen, never final model certification.
+            if tier_check.get("pending_tiers") == ["L3"] and all(
+                (tiers.get(tier) or {}).get("status") == "pass" for tier in ("L0", "L1", "L2")
+            ):
+                return (tiers["L2"].get("numeric") or {}).get("status")
         return None
     return (row.get("numeric") or {}).get("status")
 

@@ -223,7 +223,7 @@ def _resources(capsules: list[dict]) -> None:
             "interface_mlir": capsule.get("interface_mlir"),
             "linalg_mlir": capsule.get("linalg_mlir"),
             "pytorch_ref.loader": (capsule.get("pytorch_ref") or {}).get("loader"),
-            **{key: attributes.get(key) for key in ("weights", "weights_manifest", "loader_dependencies")},
+            **{key: attributes.get(key) for key in ("weights", "weights_manifest", "loader_dependencies", "loader_profile")},
         }
         for field, value in references.items():
             if value is None:

@@ -258,3 +258,9 @@ batch finishes. The serialized suite callback retains frozen model source
 custody and mandatory model checks, reopens the exact durable result, and admits
 only selected nonexcluded public/dev names. It always queues against the frozen
 candidate; optional queue errors cannot turn unknown tiers into passes.
+
+Synchronous broker selfchecks freeze their verified candidate before launching
+the protected worker. Broker-only context enables the same durable per-capsule
+completion promotion for loop-only requests; public progress files never authorize
+certification. The worker checks that frozen source digest before scheduling,
+and omits this extra handoff when its own selected adapters already execute cert.

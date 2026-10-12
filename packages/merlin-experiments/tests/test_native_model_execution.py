@@ -761,13 +761,32 @@ def test_candidate_compute_command_must_be_on_every_returning_cfg_path():
     assert _mandatory_command_blocks(function, {entry_command})
 
 
+def _kernel_symbol_elf(*, size=4, symbol="kernel"):
+    import struct
+    names = b"\0.names\0.text\0.strings\0.symbols\0"
+    strings = b"\0" + symbol.encode() + b"\0"
+    header = bytearray(64)
+    header[:7] = b"\x7fELF\x02\x01\x01"
+    struct.pack_into("<HHIQQQIHHHHHH", header, 16, 1, 243, 1, 0, 0, 64, 0, 64, 0, 0, 64, 5, 1)
+    start = 64 + 5 * 64
+    sections = [bytes(64), struct.pack("<IIQQQQIIQQ", 1, 3, 0, 0, start, len(names), 0, 0, 1, 0)]
+    start += len(names)
+    sections.append(struct.pack("<IIQQQQIIQQ", 8, 1, 4, 0, start, 8, 0, 0, 1, 0))
+    start += 8
+    sections.append(struct.pack("<IIQQQQIIQQ", 14, 3, 0, 0, start, len(strings), 0, 0, 1, 0))
+    start += len(strings)
+    sections.append(struct.pack("<IIQQQQIIQQ", 23, 2, 0, 0, start, 24, 3, 0, 8, 24))
+    row = struct.pack("<IBBHQQ", 1, 2, 0, 2, 0, size)
+    return bytes(header) + b"".join(sections) + names + b"opaque00" + strings + row
+
+
 def test_kernel_inventory_requires_symbol_scoped_derived_command_words(tmp_path, monkeypatch):
     import subprocess
 
     from merlin.llvmlower import toolchain
 
     path = tmp_path / "kernel.o"
-    path.write_bytes(b"object bytes are read by the disassembler")
+    path.write_bytes(_kernel_symbol_elf())
     disassembler = tmp_path / "llvm-objdump"
     disassembler.write_bytes(b"selected tool pin")
     monkeypatch.setattr(toolchain, "objdump", lambda: disassembler)
@@ -776,7 +795,7 @@ def test_kernel_inventory_requires_symbol_scoped_derived_command_words(tmp_path,
     def disassemble(argv, **kwargs):
         commands.append(argv)
         return subprocess.CompletedProcess(
-            argv, 0, "Disassembly of section .text:\n00000000 <kernel>:\n  0: 0800002b <unknown>\n", ""
+            argv, 0, "Disassembly of section .text:\n00000000 <kernel>:\n  0: 0800002b <unknown>\n  4: 1000002b <unknown>\n", ""
         )
 
     monkeypatch.setattr(subprocess, "run", disassemble)
@@ -1662,3 +1681,22 @@ def test_candidate_child_reloads_selected_package_without_racing_suite_build(tmp
     assert calls == ["load", "scan", *([] if prebuilt else ["build"]), "owned_device_build"]
     assert result["status"] == "incomplete"
     assert result["candidate_emission_failure"]["type"] == "ValueError"
+
+
+@pytest.mark.parametrize("size,symbol", [(0,"kernel"),(4,"different")])
+def test_kernel_inventory_refuses_absent_or_zero_function_extent(tmp_path, size, symbol):
+    path=tmp_path/"kernel.o"
+    path.write_bytes(_kernel_symbol_elf(size=size,symbol=symbol))
+    with pytest.raises(NativeModelExecutionError,match="function extent"):
+        _kernel_command_inventory(path,symbol="kernel",table={})
+
+
+def test_kernel_inventory_refuses_instruction_crossing_extent(tmp_path,monkeypatch):
+    import subprocess
+    from merlin.llvmlower import toolchain
+    path=tmp_path/"kernel.o";path.write_bytes(_kernel_symbol_elf(size=2))
+    tool=tmp_path/"llvm-objdump";tool.write_bytes(b"selected tool")
+    monkeypatch.setattr(toolchain,"objdump",lambda:tool)
+    monkeypatch.setattr(subprocess,"run",lambda argv,**kwargs:subprocess.CompletedProcess(argv,0,"00000000 <kernel>:\n  0: 0800002b <unknown>\n",""))
+    with pytest.raises(NativeModelExecutionError,match="crosses"):
+        _kernel_command_inventory(path,symbol="kernel",table={})

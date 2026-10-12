@@ -146,6 +146,23 @@ def execute_owned_host_model(
     return record
 
 
+def _independently_eligible_group_ids(placement, groups):
+    """Keep every group containing proven eligible work, regardless of its root."""
+    rows = placement.get("eligible_source_regions")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("owned source lacks independently eligible group roster")
+    selected = set()
+    for row in rows:
+        index = row.get("source_group") if isinstance(row, dict) else None
+        if type(index) is not int or index < 0:
+            raise ValueError("owned source eligible group identity is invalid")
+        selected.add(index)
+    available = {group.index for group in groups}
+    if not selected <= available:
+        raise ValueError("owned source eligible group is absent from original groups")
+    return selected
+
+
 def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, certificate=None):
     """Recompute original group identities and audit the actual linked objects."""
     from merlin_experiments.phase1.feedback.private_device_audit import audit_built_device_host_compute
@@ -167,9 +184,10 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
     placement = _source_placement(
         capsule, certificate, module, groups, target=target, source_path=Path(bundle) / "model.mlir"
     )
+    eligible_groups = _independently_eligible_group_ids(placement, groups)
     source = {"eligible_groups": [], "eligible_group_provenance": [], "eligible_group_metrics": {}}
     for group in groups:
-        if group.placement == groups_api.HOST:
+        if group.index not in eligible_groups:
             continue
         region, nodes = eligible_source_identity(group.root)
         source["eligible_groups"].append(group.index)
@@ -201,6 +219,21 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
         raise ValueError("owned host model omitted eligible device groups")
     assigned = emitted.get("routed")
     joined = join_routed_source_groups(assigned, source)
+    from merlin.kernels.shapes import observe_contractions
+
+    original_shapes = {id(op): shape for op, shape in observe_contractions(module)}
+    original_groups = {group.index: group for group in groups}
+    for row in assigned:
+        entry = emitted.get("entries", {}).get(row["symbol"], {})
+        if entry.get("op") != "conv2d":
+            continue
+        shape = original_shapes.get(id(original_groups[joined[row["group"]]].root))
+        if shape is None or (
+            row.get("parallel") != list(shape.parallel)
+            or row.get("reduction") != list(shape.reduction)
+            or row.get("dtypes") != list(shape.dtypes)
+        ):
+            raise ValueError("convolution entry differs from original source contraction")
     elf = Path(output["elf"])
     if file_sha256(elf) != output["elf_sha256"]:
         raise ValueError("owned host linked ELF changed")
@@ -932,6 +965,29 @@ def _execute_required_tiers(capsule, record, *, target, facts, timeout, reachabl
     }
 
 
+def _same_owned_frozen_policy(recorded, fresh) -> bool:
+    """Join a retained capsule copy by verified bytes, preserving policy owners."""
+    from .native_model_execution import _read_pinned_payload
+
+    local_roles = {"capsule_declaration", "instruction_coverage"}
+    if not isinstance(recorded, dict) or not isinstance(fresh, dict) or set(recorded) != set(fresh):
+        return False
+    if any(recorded[key] != fresh[key] for key in fresh if key not in local_roles):
+        return False
+    for role in local_roles:
+        # Reopen both ordinary files under their exact stored identities;
+        # dropping path strings alone would let a missing or mutated copy pass.
+        original = _read_pinned_payload(recorded, role)
+        selected = _read_pinned_payload(fresh, role)
+        old_pin, new_pin = recorded[role], fresh[role]
+        if (set(old_pin) != {"path", "sha256", "size_bytes"}
+                or set(new_pin) != {"path", "sha256", "size_bytes"}
+                or old_pin["sha256"] != new_pin["sha256"]
+                or old_pin["size_bytes"] != new_pin["size_bytes"] or original != selected):
+            return False
+    return True
+
+
 def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
     """Independently reopen the provided-host result before promoting any tier."""
     import os
@@ -981,7 +1037,7 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             raise ValueError("owned model build used different selected host/board inputs")
         frozen_policy = _frozen_model_policy(Path(capsule["__dir__"]), target=target, source_bound_groups=True)
         if (
-            frozen_policy != record.get("frozen_policy")
+            not _same_owned_frozen_policy(record.get("frozen_policy"), frozen_policy)
             or record.get("required_tiers") != frozen_policy["required_tiers"]
         ):
             raise ValueError("owned model changed the frozen mandatory tier or ISA policy")
@@ -1018,6 +1074,14 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             if tier in {"L0", "L1"}:
                 continue
             evidence = (record.get("tiers") or {}).get(tier)
+            if tier == "L3" and (
+                evidence is None or (
+                    isinstance(evidence, dict)
+                    and evidence.get("status") in {"unavailable", "unverified", "not_run"}
+                )
+            ):
+                tiers[tier] = {"status": "unverified", "detail": "selected native tier has not completed"}
+                continue
             if (
                 not isinstance(evidence, dict)
                 or evidence.get("status") not in {"pass", "fail"}
@@ -1063,10 +1127,12 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
                     )
         required = frozen_policy["required_tiers"]
         failed = [tier for tier in required if tiers[tier]["status"] == "fail"]
-        numeric = (tiers.get("L3") or tiers.get("L2") or {}).get("numeric")
+        pending = [tier for tier in required if tiers[tier]["status"] == "unverified"]
+        numeric = next((tiers[tier]["numeric"] for tier in ("L3", "L2") if "numeric" in tiers.get(tier, {})), None)
         coverage = {
             "status": "verified",
             "source_sha256": dispatch["source_sha256"],
+            "n_source_operations": source["placement"]["n_source_operations"],
             "eligible_source_op_indices": source["placement"]["eligible_source_op_indices"],
             "completed_eligible_source_op_indices": sorted(
                 row["source_op_index"] for row in dispatch["eligible_tasks"]
@@ -1075,7 +1141,7 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             "n_completed_eligible": len(dispatch["eligible_tasks"]),
         }
         return {
-            "status": "fail" if failed else "pass",
+            "status": "fail" if failed else "incomplete" if pending else "pass",
             "kind": "owned_host_model_execution",
             "violations": ["candidate_verified_numeric_mismatch"] if failed else [],
             "owned_host_model_check": {
@@ -1084,13 +1150,15 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
                 "candidate_source_coverage": coverage,
             },
             "candidate_required_tiers": {
-                "status": "fail" if failed else "pass",
+                "status": "fail" if failed else "incomplete" if pending else "pass",
                 "required_tiers": required,
                 "failed_tiers": failed,
+                "pending_tiers": pending,
                 "tiers": tiers,
             },
             "candidate_completed_dispatch": dispatch,
             "candidate_source_placement": source["placement"],
+            "candidate_source_coverage": coverage,
             "numeric": numeric,
             "violations_scope": "provided Merlin host; candidate closed device kernels only",
         }

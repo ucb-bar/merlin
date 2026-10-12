@@ -370,10 +370,11 @@ def _spawn_selfcheck(argv, *, cwd, env, job_log, timeout_s):
     stopped by the kernel with SIGTTIN. The broker then mistakes a job that never ran for an RTL
     timeout. Simulator checks are non-interactive, so an explicit EOF is the only truthful stdin.
     """
+    from merlin.common.cpu_pool import worker_pool_command
     from merlin_experiments.frozen_python import inherited_python_command
 
     return subprocess.Popen(
-        ["timeout", str(timeout_s + 120)] + inherited_python_command(argv),
+        ["timeout", str(timeout_s + 120)] + worker_pool_command(inherited_python_command(argv), env),
         cwd=str(cwd),
         env=env,
         stdin=subprocess.DEVNULL,

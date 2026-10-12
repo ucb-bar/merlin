@@ -59,6 +59,28 @@ _TIER_ORDER = ["L0", "L1", "L2", "L3", "L4", "L5"]
 _DEFAULT_CEILING = "L2"  # bwrap sandbox: numerics + spike, no VCS/FireSim (L3+).
 
 
+def _declared_loader_profile(directory: Path, capsule: dict) -> tuple[Path, bytes] | None:
+    """Keep the exact declared loader input through public cohort projection."""
+    attributes = (capsule.get("operation") or {}).get("attributes") or {}
+    name, digest = attributes.get("loader_profile"), attributes.get("loader_profile_sha256")
+    if name is None and digest is None:
+        return None
+    if (
+        not isinstance(name, str) or not name or Path(name).name != name
+        or name in (".", "..") or name in _CAPSULE_FILES
+        or not isinstance(digest, str) or len(digest) != 64
+        or any(c not in "0123456789abcdef" for c in digest)
+    ):
+        raise ValueError("public cohort loader profile declaration is invalid")
+    source = directory / name
+    if source.is_symlink() or not source.is_file():
+        raise ValueError("public cohort declared loader profile is absent or indirect")
+    raw = source.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != digest:
+        raise ValueError("public cohort loader profile differs from its declared bytes")
+    return source, raw
+
+
 def _name_set_sha256(names) -> str:
     return hashlib.sha256(json.dumps(sorted(str(x) for x in names), separators=(",", ":")).encode("utf-8")).hexdigest()
 
@@ -315,6 +337,7 @@ def materialize_public_capsules(
 
         source_capsule = yaml.safe_load((src / "capsule.yaml").read_text(encoding="utf-8")) or {}
         verify_capture_tool(src, source_capsule)
+        profile = _declared_loader_profile(src, source_capsule)
         for f in _CAPSULE_FILES:
             sp = src / f
             if not sp.is_file():
@@ -350,6 +373,11 @@ def materialize_public_capsules(
         dependency_root = src / "capsule.loader_deps"
         if dependency_root.is_dir() and not dependency_root.is_symlink():
             shutil.copytree(dependency_root, d / dependency_root.name, dirs_exist_ok=True)
+        if profile is not None:
+            source, raw = profile
+            (d / source.name).write_bytes(raw)
+            if _declared_loader_profile(src, source_capsule) != profile:
+                raise ValueError("public cohort loader profile changed during publication")
         written.append(name)
     return sorted(written)
 
