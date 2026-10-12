@@ -3493,7 +3493,7 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
             raise M2MUnavailable("materialized loader must be an ordinary member beside its selected capture")
         if hashlib.sha256(loader.read_bytes()).hexdigest() != selection["loader_sha256"]:
             raise M2MUnavailable("materialized loader differs from its preselected workload snapshot")
-    if public_performance:
+    if selection.get("loader_path"):
         profile_sha = (meta.get("loader_provenance") or {}).get("profile_sha256")
         if profile_sha is not None or selection.get("profile_path"):
             profile = Path(selection.get("profile_path", ""))
@@ -3505,7 +3505,7 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
                 or hashlib.sha256(profile.read_bytes()).hexdigest() != profile_sha
                 or profile_sha != selection.get("profile_sha256")
             ):
-                raise M2MUnavailable("public performance profile differs from its preselected capture")
+                raise M2MUnavailable("materialized loader profile differs from its preselected capture")
     meta["materialized_artifact_identities"] = receipt["artifacts"]
     meta["materialized_receipt_bytes"] = receipt_raw
     # Retain original source bytes. The writer records the one known relocation.

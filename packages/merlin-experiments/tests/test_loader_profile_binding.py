@@ -52,3 +52,30 @@ def test_profile_pins_refuse_changed_source_and_unbound_adjacent_file(tmp_path):
     assert not (output / 'profile.json').exists()
     with pytest.raises(RuntimeError, match='no selected immutable binding'):
         worker._verify_loader_profile(loader, None)
+
+
+def test_iteration_requirement_producer_retains_receipt_bound_profile(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from merlin_experiments.phase0.requirements import _materialized_iteration_capsules
+    from merlin.targetgen import capsule_source
+
+    source = tmp_path / 'model.mlir'
+    source.write_text('original source')
+    loader = tmp_path / 'loader.py'
+    loader.write_text('original loader')
+    profile = tmp_path / 'profile.json'
+    profile.write_text('{"selected":"original"}')
+    sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+    receipt = tmp_path / 'capture_receipt.json'
+    receipt.write_text(json.dumps({'artifacts': {'model.mlir': {'bytes': source.stat().st_size, 'sha256': sha(source)}}}))
+    monkeypatch.setattr(capsule_source, 'materialized_model_artifacts', lambda *a: SimpleNamespace(
+        dtype='int8', meta={'loader_provenance': {'profile_sha256': sha(profile)}},
+    ))
+    entries, outputs = _materialized_iteration_capsules({'applications': {'public_program': {
+        'capture_source_path': str(source), 'capture_sha256': sha(source),
+        'capture_receipt': {'receipt_sha256': sha(receipt)}, 'n_operations': 1,
+    }}}, 'inventory', loader_snapshots={'public_program': (loader, sha(loader))})
+    binding = entries[0]['materialized_capture']
+    assert outputs[binding['profile_path']] == profile.read_bytes()
+    assert binding['profile_sha256'] == sha(profile)
+    assert binding['workload_role'] == 'iteration'
