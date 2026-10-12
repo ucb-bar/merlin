@@ -10,9 +10,61 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import sysconfig
 from pathlib import Path
 
 from . import tool_registry as TR
+
+
+def _public_runtime_members(document: dict, resolve_member) -> set[str]:
+    """Explicit selected OS runtime roles; never infer public grants from a prefix.
+
+    This bounded role is for the ordinary dynamic loader and glibc ABI libraries
+    already exposed by the sandbox's system runtime. It cannot publish compiler,
+    proof, SDK or arbitrary system files. The selected manifest still pins them.
+    """
+    runtime = document.get("system_runtime_files", [])
+    if not isinstance(runtime, list):
+        raise ValueError("selected system_runtime_files must be a list")
+    if not runtime:
+        return set()
+    files = document["files"]
+    multiarch = sysconfig.get_config_var("MULTIARCH")
+    if not isinstance(multiarch, str) or "/" in multiarch:
+        raise ValueError("selected OS runtime requires a known canonical system ABI")
+    names = {
+        "libc.so.6",
+        "libdl.so.2",
+        "libm.so.6",
+        "libpthread.so.0",
+        "librt.so.1",
+        "ld-linux-x86-64.so.2",
+        "ld-linux-aarch64.so.1",
+    }
+    canonical = {
+        (Path(root) / multiarch / name).resolve()
+        for root in ("/lib", "/usr/lib")
+        for name in names
+        if (Path(root) / multiarch / name).is_file()
+    }
+    selected: set[str] = set()
+    for row in runtime:
+        if not isinstance(row, dict) or set(row) != {"path", "sha256"} or row not in files:
+            raise ValueError("selected runtime member must exactly match a pinned file member")
+        path = resolve_member(row["path"])
+        if path not in canonical or str(path) in selected:
+            raise ValueError("selected runtime member is not a unique ordinary OS ABI library")
+        content = path.read_bytes()
+        if hashlib.sha256(content).hexdigest() != row["sha256"]:
+            raise ValueError("selected runtime bytes differ from its manifest")
+        if content[:4] != b"\x7fELF" or content[5:6] not in (b"\x01", b"\x02"):
+            raise ValueError("selected runtime member must be an ELF shared object")
+        order = "little" if content[5] == 1 else "big"
+        if len(content) < 18 or int.from_bytes(content[16:18], order) != 3:
+            raise ValueError("selected runtime member must be an ELF shared object")
+        selected.add(str(path))
+    return selected
+
 
 SCHEMA = "merlin.compiler_tool_profile.v1"
 COMMON_SUBSTRATE_V1 = "merlin.common_compiler_substrate.v1"
@@ -349,19 +401,23 @@ def attach_common_substrate(
                 missing = True
             if str(path) not in paths:
                 paths.append(str(path))
+        runtime_paths = _public_runtime_members(document, resolve_member)
         role = "allowed" if "lean_proof_authoring" in tools else "host_inputs"
         for path in (str(selected), *paths):
             # The compiled formal closure may also name the packaged foundation
             # already selected as automatic checker data. One source identity
             # must have one materialization record, rather than duplicate grants.
-            if any(row.get("path") == path for row in bundle[role]):
+            member_role = "allowed" if path in runtime_paths else role
+            if any(row.get("path") == path for row in bundle[member_role]):
                 continue
             row = {"path": path, "note": "selected formal verification toolchain"}
             if path == str(selected):
                 row["note"] = "selected formal verification toolchain manifest"
-            if role == "allowed":
+            if member_role == "allowed":
                 row["mode"] = "ro"
-            bundle[role].append(row)
+            if path in runtime_paths:
+                row["note"] = "selected ordinary OS runtime; not formal authoring capability"
+            bundle[member_role].append(row)
         toolchain = {
             "selection": "explicit_manifest",
             "manifest_sha256": hashlib.sha256(selected.read_bytes()).hexdigest(),

@@ -21,6 +21,7 @@ def prepare_toolchain(
     dependency_revision: str,
     timeout_s: int,
     memory_mb: int,
+    system_runtime_files: tuple[Path, ...] = (),
 ) -> Path:
     """Compile the packaged mathematical foundation against an explicit installation.
 
@@ -46,6 +47,23 @@ def prepare_toolchain(
         path.resolve() for root in roots for path in root.rglob("*") if path.is_file() and imported_product(path)
     )
     files = tuple((path, file_digest(path)) for path in sorted(paths))
+    public_runtime = [{"path": str(path), "sha256": file_digest(path)} for path in system_runtime_files]
+    if public_runtime:
+        from merlin.targetgen.tool_profile import _public_runtime_members
+
+        def ordinary_member(raw):
+            path = Path(raw)
+            if path.is_symlink() or not path.is_absolute() or path.resolve() != path:
+                raise ValueError("selected system runtime member must be ordinary and canonical")
+            return path
+
+        _public_runtime_members(
+            {
+                "files": [{"path": str(path), "sha256": sha} for path, sha in files],
+                "system_runtime_files": public_runtime,
+            },
+            ordinary_member,
+        )
     selected = LeanToolchain(
         executable, file_digest(executable), roots, files, work_root, timeout_s, memory_mb, dependency_revision
     )
@@ -104,6 +122,7 @@ def prepare_toolchain(
                 "dependency_revision": dependency_revision,
                 "timeout_s": timeout_s,
                 "memory_mb": memory_mb,
+                **({"system_runtime_files": public_runtime} if public_runtime else {}),
             },
             indent=2,
         )
@@ -123,6 +142,13 @@ def main(argv=None) -> int:
     prepare.add_argument("--executable", type=Path, required=True)
     prepare.add_argument("--library-root", type=Path, action="append", required=True)
     prepare.add_argument("--runtime-file", type=Path, action="append", default=[])
+    prepare.add_argument(
+        "--system-runtime-file",
+        type=Path,
+        action="append",
+        default=[],
+        help="explicit public OS loader/glibc subset of --runtime-file; no SDK grants",
+    )
     prepare.add_argument("--output", type=Path, required=True)
     prepare.add_argument("--work-root", type=Path, required=True)
     prepare.add_argument("--dependency-revision", required=True)
@@ -146,6 +172,7 @@ def main(argv=None) -> int:
                 executable=args.executable,
                 library_roots=tuple(args.library_root),
                 runtime_files=tuple(args.runtime_file),
+                system_runtime_files=tuple(args.system_runtime_file),
                 output=args.output,
                 work_root=args.work_root,
                 dependency_revision=args.dependency_revision,
