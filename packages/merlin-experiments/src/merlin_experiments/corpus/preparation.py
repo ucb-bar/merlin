@@ -547,6 +547,101 @@ def _reviewed_retirements(path: Path | None) -> tuple[dict[str, str], str | None
     return retired, fingerprint(path)
 
 
+def publish_loader_profile(source: Path, target: Path, document: dict, *, profile_sources: tuple[Path, ...]):
+    """Publish a receipt-bound existing loader dependency only in a fresh release."""
+    capture = document.get("materialized_capture")
+    if not isinstance(capture, dict):
+        return None
+
+    def read_bound(path, expected_sha, expected_bytes=None):
+        path = Path(path)
+        if not path.is_absolute() or any(p.is_symlink() for p in (path, *path.parents)) or not path.is_file():
+            raise SpecError("loader profile dependency is absent or indirect")
+        raw = path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != expected_sha or (
+            expected_bytes is not None and len(raw) != expected_bytes
+        ):
+            raise SpecError("loader profile dependency differs from authenticated capture evidence")
+        return raw
+
+    receipt = source / "source-capture-receipt.json"
+    receipt_raw = read_bound(receipt.absolute(), capture.get("receipt_sha256"))
+    original = json.loads(receipt_raw)
+    origin = Path(capture.get("path", "")).parent
+    meta_pin = (original.get("artifacts") or {}).get("meta.json")
+    if not isinstance(meta_pin, dict):
+        raise SpecError("loader profile has no capture metadata commitment")
+    meta_path = origin / "meta.json"
+    meta_raw = read_bound(meta_path, meta_pin.get("sha256"), meta_pin.get("bytes"))
+    meta = json.loads(meta_raw)
+    digest = (meta.get("loader_provenance") or {}).get("profile_sha256")
+    if digest is None:
+        if (target / "profile.json").exists() or ((document.get("operation") or {}).get("attributes") or {}).get(
+            "loader_profile"
+        ):
+            raise SpecError("published loader profile has no authenticated capture identity")
+        return None
+    if not isinstance(digest, str) or len(digest) != 64:
+        raise SpecError("capture profile digest is malformed")
+    if capture.get("profile_sha256") not in (None, digest):
+        raise SpecError("selected profile differs from authenticated capture metadata")
+    loader_sha = capture.get("loader_sha256")
+    if loader_sha != (original.get("source") or {}).get("sha256"):
+        raise SpecError("loader profile owner differs from captured source")
+    loader_name = (document.get("pytorch_ref") or {}).get("loader")
+    if not isinstance(loader_name, str) or Path(loader_name).name != loader_name:
+        raise SpecError("loader profile needs an ordinary capsule-local owner")
+    read_bound((source / loader_name).absolute(), loader_sha)
+    selected = []
+    for candidate in profile_sources:
+        candidate = Path(candidate).absolute()
+        if any(p.is_symlink() for p in (candidate, *candidate.parents)) or not candidate.is_file():
+            raise SpecError("selected loader profile source is absent or indirect")
+        raw = candidate.read_bytes()
+        if hashlib.sha256(raw).hexdigest() == digest:
+            read_bound(candidate, digest)
+            read_bound(candidate.with_name("loader.py"), loader_sha)
+            selected.append(candidate)
+    if len(selected) > 1:
+        raise SpecError("loader profile dependency selection is ambiguous")
+    local = source / "profile.json"
+    if local.exists():
+        raw = read_bound(local.absolute(), digest)
+        chosen = local.absolute()
+    elif selected:
+        chosen = selected[0]
+        raw = read_bound(chosen, digest)
+    else:
+        raise SpecError("authenticated loader profile is missing; select its retained source snapshot")
+    profile = target / "profile.json"
+    if profile.exists():
+        read_bound(profile.absolute(), digest)
+    else:
+        copy_input(chosen, profile, private=document.get("label") == "hidden", expected_sha256=digest)
+    updated = copy.deepcopy(document)
+    attrs = updated.setdefault("operation", {}).setdefault("attributes", {})
+    binding = {"loader_profile": "profile.json", "loader_profile_sha256": digest}
+    if any(attrs.get(k) not in (None, v) for k, v in binding.items()):
+        raise SpecError("published loader profile declaration conflicts with capture evidence")
+    attrs.update(loader_profile="profile.json", loader_profile_sha256=digest)
+    # Public corpus copies can share content-store inodes with historical inputs.
+    # Replace the release-local directory entry, never truncate that shared inode.
+    staged = target / ".capsule.profile.yaml"
+    staged.write_text(yaml.safe_dump(updated, sort_keys=False), encoding="utf-8")
+    staged.replace(target / "capsule.yaml")
+    if chosen != local.absolute():
+        read_bound(chosen.with_name("loader.py"), loader_sha)
+    read_bound(chosen, digest)
+    read_bound(receipt.absolute(), capture.get("receipt_sha256"))
+    read_bound(meta_path, meta_pin.get("sha256"), meta_pin.get("bytes"))
+    return {
+        "profile": {"path": str(chosen), "sha256": digest, "bytes": len(raw)},
+        "loader_sha256": loader_sha,
+        "capture_receipt_sha256": hashlib.sha256(receipt_raw).hexdigest(),
+        "capture_metadata": {"path": str(meta_path), **meta_pin},
+    }
+
+
 def assemble(
     te,
     generated: Path,
@@ -555,6 +650,7 @@ def assemble(
     private_baseline: Path | None = None,
     retirements: Path | None = None,
     generated_only: bool = False,
+    loader_profile_sources: tuple[Path, ...] | None = None,
 ) -> dict:
     """Assemble a historical baseline or an explicit Phase-0-only public corpus."""
     from merlin.targetgen.sandbox.bwrap import _validate_host_sources
@@ -659,6 +755,7 @@ def assemble(
         shutil.rmtree(target)
     existing_names = {value[1]["name"]: key for key, value in before.items()}
     replacements = []
+    profile_dependencies = []
     for key, (source, document) in emitted.items():
         previous = before.get(key)
         if document["name"] in existing_names and existing_names[document["name"]] != key:
@@ -671,6 +768,11 @@ def assemble(
             # This is only the fresh release's copy, never its source or historical evidence.
             shutil.rmtree(target)
         digest = copy_input(source, target, private=key.startswith("hidden/"))
+        if loader_profile_sources is not None:
+            dependency = publish_loader_profile(source, target, document, profile_sources=loader_profile_sources)
+            if dependency is not None:
+                profile_dependencies.append({"member": key, **dependency})
+                digest = fingerprint(target)
         replacements.append({"member": key, "previous_sha256": previous_sha, "sha256": digest})
     final_members = _members(destination)
     # Only this derivation may supply new completeness inputs. A historical
@@ -713,6 +815,7 @@ def assemble(
         },
         "generated_manifest_sha256": fingerprint(generated / "MANIFEST.yaml"),
         "replacements": replacements,
+        **({"loader_profile_dependencies": profile_dependencies} if loader_profile_sources is not None else {}),
     }
 
 
