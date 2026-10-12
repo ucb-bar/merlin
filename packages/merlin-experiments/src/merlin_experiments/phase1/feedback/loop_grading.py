@@ -418,7 +418,7 @@ def _completed_loop_promoter(ws, frozen_source, runs, loop, cert, cover, *, inpu
         # supplied row. Reopen exactly its published record before attributing it.
         path = Path(runs) / "runs" / _suite_for(te.target) / name / "capsule_result.json"
         try:
-            if json.loads(path.read_text()) != result:
+            if json.loads(path.read_text()) != json.loads(json.dumps(result, allow_nan=False)):
                 raise ValueError("completed capsule differs from its durable result")
             promotion.promote(
                 ws, Path(ws) / ".qa_channel",
