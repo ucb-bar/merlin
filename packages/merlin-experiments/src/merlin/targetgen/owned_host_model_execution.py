@@ -776,6 +776,8 @@ def _run_selected_rtl(elf, *, target, engine, facts, timeout, elf_sha256):
     from contextlib import nullcontext
 
     from merlin.compile.model_execution_inputs import selected_firrtl
+    from merlin.common.execution_deadline import ExecutionDeadline
+    from merlin.targetgen.contract.compile import _selected_run_timeout
     from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
 
     backend, citation, revalidate, prepare = _native_engine_for_facts(target, engine, facts)
@@ -788,8 +790,12 @@ def _run_selected_rtl(elf, *, target, engine, facts, timeout, elf_sha256):
         evidence["max_cycles"] = command.to_evidence().get("max_cycles")
     revalidate()
     started = time.monotonic()
-    with gsim_runtime_slot(wait_timeout_s=timeout) if engine == "gsim" else nullcontext():
-        console = backend.run_elf(elf, simulator=engine, timeout=timeout, capture_bytes=True)
+    bounded = _selected_run_timeout(backend, engine, timeout, ExecutionDeadline.start(timeout))
+    deadline = ExecutionDeadline.start(bounded)
+    with gsim_runtime_slot(wait_timeout_s=bounded) if engine == "gsim" else nullcontext():
+        console = backend.run_elf(
+            elf, simulator=engine, timeout=deadline.remaining(), capture_bytes=True
+        )
     if command is not None:
         command.revalidate()
     revalidate()
