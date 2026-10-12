@@ -69,6 +69,9 @@ def test_private_voucher_requires_closed_l2_gate_and_exact_source_context(tmp_pa
             "candidate_source_coverage": {"status": "verified"},
         },
     }
+    # Real model records carry tuple-valued provenance before JSON persistence.
+    # Custody compares the exact serialized structure, preserving every field.
+    record["source_provenance"] = {"typed_shape": (1, 32)}
     receipt = tmp_path / "receipt.json"
     receipt.write_text(json.dumps(record))
     path = vouchers.issue(ws, ws, record, capsule=cap, context=context, cert_tier="L3", receipt_path=receipt)
