@@ -1007,10 +1007,14 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                     help="INSTEAD of grading, inspect own public source/emission/host work; no simulator or baseline")
     ap.add_argument("--compile-only", action="store_true",
                     help="compile original public scale/frontier tensor sources and link a no-data probe; no execution")
+    ap.add_argument("--scale-probe", action="store_true",
+                    help="with --compile-only, inspect public scale/tail LLVM emission before object compilation")
     ap.add_argument("--compiler-bundle-manifest", type=Path, help=argparse.SUPPRESS)
     ap.add_argument("--dynamic-census", action="store_true",
                     help="append bounded own-ELF activity after functional screen")
     a = ap.parse_args(argv)
+    if a.scale_probe and not a.compile_only:
+        ap.error("--scale-probe requires --compile-only")
     if a.rtl_facts is not None:
         from ..frozen_facts import select
 

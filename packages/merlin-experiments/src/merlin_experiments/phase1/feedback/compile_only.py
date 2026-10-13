@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -30,6 +31,83 @@ from merlin_experiments.phase2.contracts import exact_tree_record, sha256_file
 
 SCHEMA = "merlin.public_compile_only_feedback.v1"
 ACTION = "compile-only"
+SCALE_PROBE_FLAG = "--scale-probe"
+
+
+def _emit_scale_case(candidate, source, output, *, contract, target, timeout_s, ir_budget):
+    """The ordinary package pipeline only; no object, linker, tensor or engine."""
+    from merlin.common.cpu_pool import shared_compute_pool
+    from merlin.llvmlower.device_ir_scalability import DeviceIRBudget, analyze_device_ir
+    from merlin.llvmlower.toolchain import mlir_translate
+    from merlin.targetgen import capsule_common as CC
+
+    if ir_budget is not None and type(ir_budget) is not DeviceIRBudget:
+        raise ValueError("scale probe budget must be the original typed host selection")
+    if P.active_package_executor() is None:
+        raise ValueError("scale probe lost its original scoped package executor")
+    package = P.load_package(candidate, contract=contract)
+    if package.target != target:
+        raise ValueError("scale probe package belongs to another original target")
+    P.integrity_scan(package)
+    P.build_package(package, timeout=timeout_s)
+    generated = output / "generated"
+    generated.mkdir(parents=True, mode=0o700)
+    source_pin = CO._pin(source)
+    products = tuple(generated / name for name in (
+        "input.interface.mlir", "command_buffer.json", "lowered.target.mlir", "lowered.llvm.mlir",
+    ))
+    deadline = time.monotonic() + timeout_s
+
+    def invoke(*args, **kwargs):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("original scale emission deadline expired")
+        return P.run_entrypoint(*args, **{**kwargs, "timeout": remaining, "invocation_directory": generated})
+
+    with invocation_record.observe_call(
+        output, stage="public_scale_source_lowering", function=CC.lower_interface,
+        arguments={"target": target, "timeout_s": timeout_s}, inputs=(source,), outputs=products,
+        dependencies=(Path(__file__),),
+    ) as observed:
+        _, artifact = CC.lower_interface(package, source, generated, contract=contract,
+                                         timeout=timeout_s, invoke=invoke)
+        observed.returned(stdout=artifact)
+    if CO._pin(source) != source_pin or products[-1].read_text() != artifact:
+        raise ValueError("scale probe original source or actual emitted product changed")
+    invocation_record.verify(observed.path)
+    # Count actual LLVM instructions, not the superficially similar LLVM-dialect
+    # MLIR. Translation verifies the emitted IR but never builds or runs an object.
+    lowered_pin = CO._pin(products[-1])
+    llvm = generated / "lowered.ll"
+    command = [str(mlir_translate().resolve()), "--mlir-to-llvmir", str(products[-1]), "-o", str(llvm)]
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("original scale translation deadline expired")
+    with invocation_record.observe(output, stage="public_scale_llvm_translation", argv=command,
+            inputs=(products[-1],), outputs=(llvm,), dependencies=(Path(__file__),)) as translated:
+        with shared_compute_pool(timeout_s=remaining):
+            process = subprocess.run(command, capture_output=True, text=True,
+                                     timeout=max(0.001, deadline - time.monotonic()))
+        translated.complete(process)
+    if process.returncode:
+        raise ValueError("original stock translation refused emitted IR")
+    invocation_record.verify(translated.path)
+    if CO._pin(products[-1]) != lowered_pin or CO._pin(source) != source_pin:
+        raise ValueError("scale probe original input or emitted IR changed during translation")
+    analysis = analyze_device_ir(llvm)
+    decision = ir_budget.evaluate(analysis) if ir_budget is not None else {"mode": "not_selected"}
+    return {
+        "lowering_status": "resource_refused" if decision.get("status") == "refused" else "emitted",
+        "compilation_status": "not_attempted",
+        "code_growth": {**analysis, "emitted_mlir_bytes": products[-1].stat().st_size,
+                        "emitted_mlir_sha256": lowered_pin["sha256"]},
+        "resource_budget": decision,
+        "emission_invocation_sha256": sha256_file(observed.path),
+        "translation_invocation_sha256": sha256_file(translated.path),
+        "static_obligations": {name: "UNKNOWN" for name in (
+            "semantic_coverage", "index_bounds", "resource_legality", "complete_output_coverage",
+        )},
+    }
 
 
 def snapshot_submission(source, destination):
@@ -230,6 +308,8 @@ def observe(
     timeout_s,
     selected="all",
     sandbox_inputs=None,
+    scale_probe=False,
+    ir_budget=None,
 ):
     """Run exact original public cases and reopen actual linked products.
 
@@ -261,19 +341,31 @@ def observe(
         for path in (candidate, contract, facts_path.parent)
     ):
         raise ValueError("compile-only products require a fresh separate host owner")
-    cases, source_manifest = SOURCES.derive(
-        capsules, selected=selected, index_bits=original_profile.get("host_index_bits")
-    )
+    if type(scale_probe) is not bool:
+        raise ValueError("public scale mode is an original explicit selection")
     facts_raw = facts_path.read_bytes()
     facts = json.loads(facts_raw)
     if (facts.get("facts") or {}).get("target") != target_experiment.target:
         raise ValueError("compile-only selected facts identify another target")
+    if scale_probe:
+        from merlin_experiments.phase0 import public_scale_sources
+
+        edges = {row.get("cols") for row in (facts.get("facts") or {}).get("arrays", [])
+                 if type(row.get("cols")) is int and row["cols"] > 0}
+        cases, source_manifest = public_scale_sources.derive(
+            capsules, selected=selected, index_bits=original_profile.get("host_index_bits"),
+            tile_edge=next(iter(edges)) if len(edges) == 1 else None,
+        )
+    else:
+        cases, source_manifest = SOURCES.derive(
+            capsules, selected=selected, index_bits=original_profile.get("host_index_bits")
+        )
     before = exact_tree_record(candidate)["sha256"]
     work_root.mkdir(parents=True, mode=0o700)
     sources = work_root / "sources"
     sources.mkdir()
-    service = _build_service_for(target_experiment.target)
-    checker = _InstructionPolicy(target_experiment.target, _roles(capsules), facts, facts_path)
+    service = None if scale_probe else _build_service_for(target_experiment.target)
+    checker = None if scale_probe else _InstructionPolicy(target_experiment.target, _roles(capsules), facts, facts_path)
     pins = sorted(
         set(
             [
@@ -285,7 +377,7 @@ def observe(
             ]
         )
     )
-    admission = LinkedElfAdmissionService(
+    admission = None if scale_probe else LinkedElfAdmissionService(
         target_experiment.target, checker.evaluate, tuple((str(path), sha256_file(path)) for path in pins)
     )
     deadline, rows = time.monotonic() + timeout_s, []
@@ -297,11 +389,13 @@ def observe(
         row = {
             "member": case.member,
             "scale": case.scale,
+            "variant": json.loads(case.derivation_json).get("variant", "original"),
             "source_sha256": hashlib.sha256(case.source_ir.encode()).hexdigest(),
             "original_abi_sha256": hashlib.sha256(
                 json.dumps(case.original_abi.record(), sort_keys=True).encode()
             ).hexdigest(),
             "compilation_status": "not_attempted",
+            "lowering_status": "not_attempted",
             "numeric": "not_attempted",
             "rtl": "not_attempted",
             "static_obligations": {
@@ -323,6 +417,13 @@ def observe(
                 P.scoped_package_executor(executor),
                 observed_facts(target_experiment.target, facts, facts_path),
             ):
+                if scale_probe:
+                    row.update(_emit_scale_case(candidate, source, root, contract=contract,
+                        target=target_experiment.target, timeout_s=remaining, ir_budget=ir_budget))
+                    row["wall_seconds"] = time.monotonic() - started
+                    case.verify()
+                    rows.append(row)
+                    continue
                 CO.compile_source_only(
                     package_dir=candidate,
                     source=source,
@@ -357,6 +458,14 @@ def observe(
             )
         except Exception as error:  # noqa: BLE001 - failures are incomplete observations, never grades
             row.update(compilation_status="unavailable", reason=type(error).__name__)
+            if scale_probe:
+                row["lowering_status"] = "unavailable"
+            emitted = root / "generated/lowered.llvm.mlir"
+            if scale_probe and emitted.is_file() and not emitted.is_symlink():
+                # A timed-out/refused later stage must not hide already emitted
+                # growth. No lexical LLVM counts are inferred from MLIR text.
+                row["partial_emission"] = {"bytes": emitted.stat().st_size,
+                                           "sha256": sha256_file(emitted), "scope": "unverified retained MLIR bytes"}
         row["wall_seconds"] = time.monotonic() - started
         case.verify()
         rows.append(row)
@@ -370,11 +479,13 @@ def observe(
         "compiler_tool_profile_sha256": original_profile["sha256"],
         "facts_sha256": hashlib.sha256(facts_raw).hexdigest(),
         "cases": rows,
+        "mode": "scale_emission_only" if scale_probe else "object_and_link",
         "all_pass": False,
         "numeric": "not_attempted",
         "rtl": "not_attempted",
         "timing_cycles": None,
-        "scope": "original public structural compile-only; not correctness, generality or timing acceptance",
+        "scope": "original public emission/code-growth only; no object/ABI/effects or execution proof" if scale_probe
+                 else "original public structural compile-only; not correctness, generality or timing acceptance",
     }
     (work_root / "public_compile_only.json").write_text(json.dumps(result, sort_keys=True, indent=2))
     return result
@@ -392,6 +503,8 @@ def run(
     timeout_s,
     selected="all",
     sandbox_inputs=None,
+    scale_probe=False,
+    ir_budget=None,
 ):
     # Discover metadata/source only; run_capsule/reference/harness generators are
     # deliberately absent from this path.
@@ -407,4 +520,6 @@ def run(
         timeout_s=timeout_s,
         selected=selected,
         sandbox_inputs=sandbox_inputs,
+        scale_probe=scale_probe,
+        ir_budget=ir_budget,
     )

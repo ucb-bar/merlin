@@ -204,7 +204,8 @@ def selfcheck_compile_only(a, *, context):
                 target_experiment=load_target_experiment(context.descriptor),
                 capsules_root=a.capsules_root, contract=a.contract, facts_path=a.rtl_facts,
                 common_service=owner, work_root=Path(temporary) / "products",
-                timeout_s=min(a.timeout, 600), selected=a.capsules)
+                timeout_s=min(a.timeout, 600), selected=a.capsules,
+                scale_probe=bool(getattr(a, "scale_probe", False)))
         owner._verify()
     except Exception as error:
         result = {"schema": "merlin.public_compile_only_feedback.v1", "status": "unavailable",

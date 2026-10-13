@@ -58,6 +58,7 @@ FORWARDED_PROBES = {
     "model_layers": "--model-layers",
     "candidate_diagnostics": "--candidate-diagnostics",
     "compile_only": "--compile-only",
+    "scale_probe": "--scale-probe",
     "dynamic_census": "--dynamic-census",
 }
 PROTOCOL_VERSION = 3
