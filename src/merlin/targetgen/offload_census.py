@@ -14,11 +14,15 @@ arithmetic that ran and was wrong.
 
 from __future__ import annotations
 
+import os
 import tempfile
 from collections.abc import Iterable, Mapping
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from pathlib import Path
 from typing import Any
 
+from merlin.common import cpu_pool
 from merlin.perf import isa_utilization
 from merlin.perf.offload import offload_report
 
@@ -187,48 +191,105 @@ def census(
     capsules: Iterable[Mapping[str, Any]],
     contract: str | Path | None = None,
     timeout: int = 300,
+    workers: int = 0,
 ) -> dict[str, Any]:
-    """Emit every capsule that carries interface MLIR through ``package`` and account for the result."""
+    """Emit independent programs concurrently, returning accounting in input order.
+
+    Zero workers selects ``MERLIN_GRADE_WORKERS`` (six when unset), bounded by
+    the shared compute roster. Build once before fan-out. Each case inherits the
+    original execution context and owns an independent artifact directory; no
+    parent CPU lease spans package subprocesses or their common-service RPCs.
+    """
+    from .package_runtime import build_package, integrity_scan, load_package
+
+    if type(workers) is not int or workers < 0:
+        raise ValueError("offload census workers must be a nonnegative integer")
+    if workers == 0:
+        raw = os.environ.get("MERLIN_GRADE_WORKERS", "6")
+        if not raw.isdecimal() or int(raw) < 1:
+            raise ValueError("MERLIN_GRADE_WORKERS must be a positive integer")
+        workers = int(raw)
+    compute_cpus = cpu_pool.grading_cpus()
+    if cpu_pool.shared_compute_enabled():
+        workers = min(workers, len(compute_cpus))
+    selected = [dict(capsule) for capsule in capsules if capsule.get("interface_mlir")]
+    workers = min(workers, len(selected)) if selected else 1
     rows: list[dict[str, Any]] = []
     artifacts: list[str] = []
     audits: list[dict[str, Any]] = []
+
+    def name_of(capsule):
+        return str(capsule.get("name") or Path(str(capsule.get("__dir__", ""))).name)
+
+    def error_row(name, failure):
+        if isinstance(failure, BackendDeclined):
+            return {"program": name, "outcome": "declined", "reason": failure.reason, "commands": 0, "routed_macs": 0}
+        detail = (f"{failure.plane}: {failure.detail[:200]}" if isinstance(failure, CertFailure)
+                  else f"{type(failure).__name__}: {str(failure)[:200]}")
+        return {"program": name, "outcome": "error", "reason": detail}
+
     with tempfile.TemporaryDirectory(prefix="offcensus_") as scratch:
-        for capsule in capsules:
-            if not capsule.get("interface_mlir"):
-                continue
-            name = str(capsule.get("name") or Path(str(capsule.get("__dir__", ""))).name)
-            paths = make_run_paths(
-                Path(scratch) / "runs",
-                name,
-                suite=f"{target}-offload-census",
-                target=target,
-                dtype=str(capsule.get("dtype") or "unknown"),
-                benchmark=str(capsule.get("kind") or "capsule"),
-            )
+        pkg = None
+        preparation_failure = None
+        if selected:
             try:
+                with cpu_pool.shared_compute_pool():
+                    pkg = load_package(package, contract=contract)
+                    integrity_scan(pkg)
+                # The original executor owns the build and its child invocations.
+                # Holding our CPU lock here can deadlock a child common-service call.
+                with cpu_pool.selected_pool(compute_cpus):
+                    build_package(pkg)
+            except Exception as failure:  # noqa: BLE001 -- reported for every unexecuted program
+                preparation_failure = failure
+
+        def run_one(index, capsule):
+            name = name_of(capsule)
+            if preparation_failure is not None:
+                return error_row(name, preparation_failure), None, None
+            try:
+                with cpu_pool.shared_compute_pool():
+                    paths = make_run_paths(
+                        Path(scratch) / f"case-{index:05d}" / "runs", name,
+                        suite=f"{target}-offload-census", target=target,
+                        dtype=str(capsule.get("dtype") or "unknown"),
+                        benchmark=str(capsule.get("kind") or "capsule"),
+                    )
                 _pkg, buffer, _artifact = run_entrypoints(
-                    None,
+                    pkg,
                     package,
-                    dict(capsule),
+                    capsule,
                     paths,
                     contract=contract,
                     timeout=timeout,
                     fourth_output_name="lowered.llvm.mlir",
                 )
-            except BackendDeclined as declined:
-                rows.append(
-                    {"program": name, "outcome": "declined", "reason": declined.reason, "commands": 0, "routed_macs": 0}
-                )
-                continue
-            except CertFailure as failure:
-                rows.append({"program": name, "outcome": "error", "reason": f"{failure.plane}: {failure.detail[:200]}"})
-                continue
-            except Exception as exc:  # noqa: BLE001 -- a harness fault is not an offload verdict
-                rows.append({"program": name, "outcome": "error", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"})
-                continue
-            rows.append(program_row(name, buffer))
-            artifacts.append(_artifact or "")
-            audits.append(host_compute_row(name, buffer, _artifact or "", rows[-1]["outcome"]))
+                with cpu_pool.shared_compute_pool():
+                    row = program_row(name, buffer)
+                    audit = host_compute_row(name, buffer, _artifact or "", row["outcome"])
+                return row, _artifact or "", audit
+            except Exception as failure:  # noqa: BLE001 -- a harness fault is not an offload verdict
+                return error_row(name, failure), None, None
+
+        def owned_case(index, capsule):
+            # Base affinity is a pool, not a held slot. Actual bounded Python
+            # stages lease one CPU; child/RPC owners can acquire theirs freely.
+            with cpu_pool.selected_pool(compute_cpus):
+                return run_one(index, capsule)
+
+        if workers == 1:
+            completed = [owned_case(index, capsule) for index, capsule in enumerate(selected)]
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                pending = [pool.submit(copy_context().run, owned_case, index, capsule)
+                           for index, capsule in enumerate(selected)]
+                completed = [future.result() for future in pending]
+        for row, artifact, audit in completed:
+            rows.append(row)
+            if artifact is not None:
+                artifacts.append(artifact)
+            if audit is not None:
+                audits.append(audit)
 
     outcomes: dict[str, int] = {}
     for row in rows:
@@ -236,6 +297,7 @@ def census(
     return {
         "schema": SCHEMA,
         "target": target,
+        "execution": {"workers": workers, "programs_requested": len(selected)},
         "programs": rows,
         "outcomes": outcomes,
         "routed_macs": sum(int(row.get("routed_macs") or 0) for row in rows),
@@ -263,12 +325,14 @@ def census_of_corpus(
     capsule_roots: Iterable[str | Path],
     contract: str | Path | None = None,
     timeout: int = 300,
+    workers: int = 0,
 ) -> dict[str, Any]:
     return census(
         package,
         target=target,
         contract=contract,
         timeout=timeout,
+        workers=workers,
         capsules=discover_capsules(list(capsule_roots), contract=contract),
     )
 

@@ -643,7 +643,8 @@ def _selfcheck_counts(
 
 
 def _offload_census(
-    sub: Path, out_path: str, *, context: InvocationContext, capsules_root: Path, contract: Path | None = None
+    sub: Path, out_path: str, *, context: InvocationContext, capsules_root: Path,
+    contract: Path | None = None, timeout: int = 300, workers: int = 0,
 ) -> int:
     """The agent-facing offload census (see ``--offload-census``).
 
@@ -659,6 +660,8 @@ def _offload_census(
             target=context.target,
             capsule_roots=[capsules_root],
             contract=str(contract if contract is not None else context.repo / "merlin/contract"),
+            timeout=timeout,
+            workers=workers,
         )
     except Exception as e:  # noqa: BLE001
         print(json.dumps({"error": f"offload census failed: {type(e).__name__}: {e}"}))
@@ -1000,7 +1003,8 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 )
             if a.offload_census:
                 return _offload_census(
-                    Path(a.submission), a.out, context=context, capsules_root=capsules_root, contract=contract
+                    Path(a.submission), a.out, context=context, capsules_root=capsules_root, contract=contract,
+                    timeout=a.timeout, workers=a.workers,
                 )
 
     sub = Path(a.submission)
