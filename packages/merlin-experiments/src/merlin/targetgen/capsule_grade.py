@@ -40,6 +40,7 @@ from .corpora import source_experiment_env
 from .elf_lanes import native_host_execution
 from .oot_runner import INFRASTRUCTURE_PLANE as OOT_INFRASTRUCTURE_PLANE
 from .oot_runner import CertFailure, build_package, integrity_scan, load_package
+from .trace_check import requirements_complete as _trace_requirements_complete
 
 
 def _name_set_sha256(names) -> str:
@@ -1768,7 +1769,7 @@ def grade(
     _trace_rows = [r for r in _execution_rows if r.get("kind") != "model" and r.get("capsule") not in _host_names]
     _model_rows = [r for r in _execution_rows if r.get("kind") == "model"]
     score["trace_all_pass"] = (
-        None if not _trace_rows else all(r.get("trace_check", {}).get("status") == "pass" for r in _trace_rows)
+        None if not _trace_rows else all(_trace_requirements_complete(r.get("trace_check")) for r in _trace_rows)
     )
     _trace_requirements = Counter(
         (r.get("trace_check") or {}).get("trace_requirement_status")

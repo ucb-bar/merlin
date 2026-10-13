@@ -59,6 +59,7 @@ def _operator_structural_feedback(result, capsule, *, target):
     """Qualification requires original applicable structure, independently of numerical screens."""
     from merlin.targetgen.expected_refusal import validated_result
     from merlin.targetgen.owned_host_leaf_execution import qualified_host_result, selected_host_leaf
+    from merlin.targetgen.trace_check import requirements_complete
 
     if not isinstance(capsule, dict) or capsule.get("name") != result.get("capsule"):
         return {"status": "unavailable", "component": "original_capsule_binding"}
@@ -71,7 +72,7 @@ def _operator_structural_feedback(result, capsule, *, target):
                 "component": "provided_host_infrastructure"}
     trace = result.get("trace_check") or {}
     requirement = trace.get("trace_requirement_status")
-    complete = trace.get("status") == "pass" and requirement in (None, "pass")
+    complete = requirements_complete(trace)
     return {
         "status": "pass" if complete else requirement or (
             "failed" if trace.get("status") == "fail" else "unavailable_record"
