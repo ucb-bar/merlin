@@ -3,7 +3,7 @@ title: Building the pinned LLVM/MLIR toolchain (third_party/llvm-install)
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-08-10
+last_verified: 2026-10-13
 related: [getting_started, llvm_integration, reproducibility, model2mlir, zephyr, targetgen]
 code_refs: [src/merlin/llvmlower/toolchain.py, src/merlin/llvmlower/pipeline.py,
             src/merlin/targetgen/contract/toolchain.py, src/merlin/runtime/backends/zephyr_model.py]
@@ -92,6 +92,18 @@ export MERLIN_MLIR_TRANSLATE=$PWD/third_party/llvm-build/bin/mlir-translate
 ```
 
 That skips installing 4 GB of headers and static libraries you only need for the out-of-tree C++ path.
+
+Models that call an external kernel (a model2MLIR `prov.kernel` call,
+`llvmlower/kernel_link.py`) also need `llvm-link`, which merges the kernel body into
+the model's LLVM IR. It takes seconds to build in the same tree:
+
+```bash
+.venv/bin/ninja -C third_party/llvm-build llvm-link   # ninja ships in the venv, not on PATH
+```
+
+`toolchain.llvm_link()` finds it beside `MERLIN_CLANG` with no further setup (override:
+`MERLIN_LLVM_LINK`). It must come from the same LLVM release as the clang that lowered the model — textual
+IR is not stable across releases.
 Everything else in this repo that wants LLVM will still report honest-unavailable rather than break.
 
 ### Cost
