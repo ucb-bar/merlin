@@ -810,6 +810,9 @@ def _prepare(
             treatment.stage_task(arm, ws, run_dir, sandbox=a.sandbox, bundle_dir=bundle_dir)
         else:
             stage_task(arm, ws, run_dir, sandbox=a.sandbox, task_scope=_task_scope_record, policy_root=_policy_root)
+        from .resource_prompt import append_resource_guidance
+
+        append_resource_guidance(ws, run_dir, a)
     elif not (ws / "TASK.md").is_file():
         raise RuntimeError("resume refused: sealed workspace TASK.md is missing")
 
