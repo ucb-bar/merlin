@@ -567,6 +567,9 @@ def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, r
     run._merlin_with_readback_policy = lambda policy: simulator_adapter(
         sim, target, selection=selection, readback_policy=policy
     )
+    from merlin_experiments.phase1.feedback.operator_child import register_adapter
+
+    register_adapter(run, engine=sim, target=target, selection=selection, readback_policy=readback_policy)
     return run
 
 
@@ -4689,6 +4692,7 @@ def _finalize_capsule_result(
     submission: dict | None = None,
     decoded_trace: dict | None = None,
     execution_tiers=None,
+    result_filename: str = "capsule_result.json",
 ) -> dict:
     """Turn a graded capsule's parts into its result row, and write it.
 
@@ -5012,8 +5016,12 @@ def _finalize_capsule_result(
     # verdict it is reported alongside.
     for _k, _v in (extra or {}).items():
         result.setdefault(_k, _v)
-    (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-    _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=cfg.target, suite=cfg.suite)
+    if result_filename not in ("capsule_result.json", ".operator_child_result.json"):
+        raise ValueError("capsule result publication requires its original fixed filename")
+    (paths.run_path / result_filename).write_text(json.dumps(result, indent=2), encoding="utf-8")
+    _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=cfg.target, suite=cfg.suite,
+                        filename=".operator_child_manifest.yaml" if result_filename != "capsule_result.json"
+                        else "run_manifest.yaml")
     try:
         schemas.validate(result, "capsule_result", contract=contract)
     except schemas.ContractViolation as e:
@@ -5042,6 +5050,7 @@ def run_capsule(
     workers: int | None = None,
     adapter_managed_tiers: tuple[str, ...] = (),
     model_execution_selection: dict | None = None,
+    _defer_result_publication: bool = False,
 ) -> dict:
     """Run the original target-selected package/capsule ladder and full gates.
 
@@ -5088,6 +5097,8 @@ def run_capsule(
 
         verify_selection(capsule, model_execution_selection)
     if capsule.get("kind") == "model":
+        if _defer_result_publication:
+            raise ValueError("operator publication cannot replace whole-model qualification")
         # LEAVE A TRACE BEFORE THE LONG PART. A whole-model grade can legitimately run for hours, and
         # with nothing written until it finishes an operator cannot tell a working run from a wedged
         # one -- which is exactly how a 5h30m stall was read as progress. Written first, so the run
@@ -5187,6 +5198,8 @@ def run_capsule(
     from .owned_host_leaf_execution import grade_owned_host_leaf, selected_host_leaf
 
     if selected_host_leaf(capsule):
+        if _defer_result_publication:
+            raise ValueError("operator publication cannot replace the owned-host route")
         return grade_owned_host_leaf(
             capsule, target=eff_target, paths=paths, cfg=cfg, run_id=run_id,
             timeout=timeout, no_oracle=no_oracle, readback_policy=_adapter_readback_policy(adapters),
@@ -6484,6 +6497,7 @@ def run_capsule(
 
     _movement_volume = _mv_evidence(cb, compiler_provenance="submission command-buffer contract entrypoint")
     return _finalize_capsule_result(
+        result_filename=".operator_child_result.json" if _defer_result_publication else "capsule_result.json",
         submission=submission_identity(package_dir, run_id=run_id),
         name=name,
         capsule=capsule,
@@ -6524,6 +6538,7 @@ def _write_run_manifest(
     *,
     target: str,
     suite: str | None = None,
+    filename: str = "run_manifest.yaml",
 ) -> None:
     manifest = {
         "schema_version": "1.0",
@@ -6544,7 +6559,9 @@ def _write_run_manifest(
             "cycles": {t: r.cycles for t, r in tiers.items() if r.cycles is not None},
         },
     }
-    (paths.run_path / "run_manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
+    if filename not in ("run_manifest.yaml", ".operator_child_manifest.yaml"):
+        raise ValueError("run manifest publication requires its original fixed filename")
+    (paths.run_path / filename).write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
 
 
 def run_suite(*args, **kwargs) -> list[dict]:
@@ -6804,6 +6821,11 @@ def _run_suite(
     package_dir = str(Path(package_dir).resolve())
     if contract is not None and Path(contract).exists():
         contract = str(Path(contract).resolve())
+    from merlin_experiments.phase1.feedback import operator_child as _operator_child
+
+    process_operators = _operator_child.enabled() and any(cap.get("kind") != "model" for cap in capsules)
+    if process_operators:
+        _operator_child.validate(target=target, adapters=oracle_adapters, config=config, perf_extractor=perf_extractor)
     pkg = load_package(package_dir, contract=contract)
     integrity_scan(pkg)
     build_package(pkg)
@@ -6822,6 +6844,13 @@ def _run_suite(
         # ``workers`` is what THIS capsule ran inside, not what the suite was configured for: the
         # calibration head is serial by construction, and recording the suite's max_workers for it
         # would describe contention its numbers never saw.
+        if process_operators and cap.get("kind") != "model":
+            from .owned_host_leaf_execution import selected_host_leaf
+
+            if not selected_host_leaf(cap):
+                return _operator_child.grade(cap, package_dir, runs_root=runs_root, contract=contract,
+                    target=target, suite=suite, dtype=dtype, adapters=oracle_adapters,
+                    timeout=timeout, workers=workers, no_oracle=no_oracle)
         if _pass_recorder is None:
             return run_capsule(
                 cap,
@@ -7035,6 +7064,10 @@ def main(argv: list[str] | None = None) -> int:
     # normal arguments because it shares none of them: the whole invocation is one spec file in and
     # one result file out, so the parent can kill the process group without losing what it knows.
     _av = list(sys.argv[1:] if argv is None else argv)
+    if "--operator-grade" in _av:
+        from merlin_experiments.phase1.feedback.operator_child import main as run_operator_grade
+
+        return run_operator_grade(_av)
     if "--model-grade" in _av:
         from merlin_experiments.phase1.feedback.compiler_profile_child import run_model_grade
 

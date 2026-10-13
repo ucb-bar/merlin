@@ -204,6 +204,7 @@ def _closure():
             resources.__name__,
             resources.kernel.__name__,
             "merlin.targetgen.capsule_runner",
+            "merlin_experiments.phase1.feedback.operator_child",
         )
     ]
 
