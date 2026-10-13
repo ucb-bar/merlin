@@ -22,7 +22,10 @@ def _strict_layouts(facts, word_bits):
         if type(bundle) is not dict or type(bundle.get("fields")) is not dict:
             raise ValueError("operand protocol requires source bundle field mappings")
         occupied = 0
-        for field in bundle["fields"].values():
+        projections = {}
+        for name, field in bundle["fields"].items():
+            if type(name) is not str or not name.isidentifier():
+                raise ValueError("operand field has no unique original source name")
             if type(field) is not dict:
                 raise ValueError("operand protocol field layout is malformed")
             width, offset = field.get("width"), field.get("offset")
@@ -36,6 +39,27 @@ def _strict_layouts(facts, word_bits):
             if occupied & mask:
                 raise ValueError("actual operand fields overlap")
             occupied |= mask
+            if "source_subfields" in field:
+                children = field["source_subfields"]
+                if type(children) is not list or not children or len(children) > word_bits:
+                    raise ValueError("operand subfield roster is not an actual bounded source projection")
+                end = offset
+                for child in children:
+                    _keys(child, {"field", "offset", "width"})
+                    path, start, child_width = child["field"], child["offset"], child["width"]
+                    if (type(path) is not str or not path or not all(part.isidentifier() for part in path.split("."))
+                            or type(start) is not int or start != end or type(child_width) is not int
+                            or child_width <= 0 or start + child_width > offset + width):
+                        raise ValueError("operand subfields have gaps, overlaps or unsupported source paths")
+                    key = name + "." + path
+                    if key in projections or key in bundle["fields"]:
+                        raise ValueError("operand subfield has ambiguous original ownership")
+                    projections[key] = {"offset": start, "width": child_width}
+                    end += child_width
+                if end != offset + width:
+                    raise ValueError("operand subfields do not preserve the complete original packed field")
+        # These are views of the original field, not new disjoint register fields.
+        bundle["fields"].update(projections)
     return layouts
 
 
@@ -85,11 +109,23 @@ class BoundOperandObserver:
             names = []
             for field in spec["fields"]:
                 _keys(field, set(), {"name", "names", "operand", "bundle", "field", "as", "const", "from",
-                                    "equals", "flag", "set", "clear"})
+                                    "equals", "flag", "set", "clear", "all"})
                 if "const" in field and type(field["const"]) is not str:
                     raise ValueError("protocol constants are symbolic labels, not invented numerical fields")
                 if field.get("as") in {"const", "equals"}:
                     raise ValueError("constant/comparison projections require explicit const/from declarations")
+                if "all" in field:
+                    _keys(field, {"name", "all"}, {"set", "clear"})
+                    if (type(field["all"]) is not list or not 1 <= len(field["all"]) <= 32
+                            or ("set" in field) != ("clear" in field)):
+                        raise ValueError("operand conjunction requires a bounded original predicate roster")
+                    for predicate in field["all"]:
+                        _keys(predicate, {"from", "equals"})
+                        if predicate["from"] not in names or type(predicate["equals"]) not in {bool, int, str}:
+                            raise ValueError("operand conjunction must reference previously decoded scalar fields")
+                    if "set" in field and any(type(field[key]) is not str or not field[key]
+                                              for key in ("set", "clear")):
+                        raise ValueError("operand conjunction choices must be explicit symbolic labels")
                 if "names" in field:
                     _keys(field, {"names", "operand", "bundle"})
                     if field["operand"] not in {"rs1", "rs2"}:

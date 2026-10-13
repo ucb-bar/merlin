@@ -126,3 +126,75 @@ def test_unset_protocol_keeps_legacy_raw_selection_exactly():
     raw = owner(contract, facts)
     assert raw.operand_observer is None
     assert set(raw.isa_constants(contract["name"])) == {"CUSTOM_OPCODE", "FUNCT3", "FUNCT_CLASS"}
+
+
+def compound_selection():
+    contract, facts = selection()
+    address = facts["facts"]["interfaces"][1]["bundles"]["Extent"]["fields"]["address"]
+    address["source_subfields"] = [
+        {"field": "data", "offset": 0, "width": 7},
+        {"field": "garbage_bit", "offset": 7, "width": 1},
+        {"field": "accumulate", "offset": 8, "width": 1},
+        {"field": "full", "offset": 9, "width": 1},
+        {"field": "accumulator", "offset": 10, "width": 1},
+    ]
+    fields = [{"name": name, "operand": "rs2", "bundle": "Extent", "field": "address." + name,
+               "as": "all_ones"} for name in ("data", "garbage_bit", "accumulate", "full", "accumulator")]
+    fields += [
+        {"name": "garbage", "all": [{"from": name, "equals": True}
+                                     for name in ("data", "garbage_bit", "accumulate", "full", "accumulator")]},
+        {"name": "readout", "all": [{"from": "garbage", "equals": False},
+                                      {"from": "accumulator", "equals": True},
+                                      {"from": "full", "equals": True}], "set": "wide", "clear": "small"},
+    ]
+    contract["rocc_operand_protocol"]["roles"]["classes"]["MVOUT"]["fields"] = fields
+    return contract, facts
+
+
+@pytest.mark.parametrize("address,readout", [(0, "small"), (1 << 9, "small"),
+    ((1 << 10) | (1 << 9), "wide"), ((1 << 11) - 1, "small"), ((1 << 11) - 2, "wide")])
+def test_source_subfields_and_compound_readout_preserve_all_actual_predicates(address, readout):
+    contract, facts = compound_selection()
+    observed = owner(contract, facts).operand_observer
+    result = observed.decode_instruction(9, {}, {"kind": "const", "raw": address},
+                                         observed.isa_constants(contract["name"]))
+    assert result[1]["readout"] == readout
+    assert set(facts["facts"]["interfaces"][1]["bundles"]["Extent"]["fields"]) == {"address", "rows"}
+
+
+def test_compound_unresolved_fields_stay_unknown_and_owner_program_remains_detached():
+    contract, facts = compound_selection()
+    observed = owner(contract, facts).operand_observer
+    isa = observed.isa_constants(contract["name"])
+    assert observed.decode_instruction(9, {}, {"kind": "arg", "raw": None}, isa)[1]["readout"] is None
+    fields = contract["rocc_operand_protocol"]["roles"]["classes"]["MVOUT"]["fields"]
+    fields[-1]["all"][0]["equals"] = True
+    assert observed.decode_instruction(9, {}, {"kind": "const", "raw": 1536}, isa)[1]["readout"] == "wide"
+    facts["facts"]["interfaces"][1]["bundles"]["Extent"]["fields"]["address"]["width"] = None
+    unknown = owner(contract, facts).operand_observer
+    assert unknown.decode_instruction(9, {}, {"kind": "const", "raw": 1536},
+                                      unknown.isa_constants(contract["name"]))[1]["readout"] is None
+
+
+@pytest.mark.parametrize("mutation", ["gap", "overlap", "incomplete", "duplicate", "forward", "mixed",
+                                      "numeric_choice"])
+def test_subfield_and_compound_forged_or_unsupported_projections_refuse(mutation):
+    contract, facts = compound_selection()
+    children = facts["facts"]["interfaces"][1]["bundles"]["Extent"]["fields"]["address"]["source_subfields"]
+    field = contract["rocc_operand_protocol"]["roles"]["classes"]["MVOUT"]["fields"][-1]
+    if mutation == "gap":
+        children[1]["offset"] += 1
+    elif mutation == "overlap":
+        children[1]["offset"] -= 1
+    elif mutation == "incomplete":
+        children.pop()
+    elif mutation == "duplicate":
+        children[1]["field"] = "data"
+    elif mutation == "forward":
+        field["all"][0]["from"] = "readout"
+    elif mutation == "mixed":
+        field["operand"] = "rs2"
+    else:
+        field["set"] = 32
+    with pytest.raises(ValueError):
+        owner(contract, facts)

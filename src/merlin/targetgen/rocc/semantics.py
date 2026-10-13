@@ -247,6 +247,9 @@ def _compile_field(cls: str, spec: dict, layouts: dict, flags: dict[str, int]) -
     name = spec.get("name")
     if not isinstance(name, str) or not name:
         raise OperandRolesError(f"{cls}: a field entry has no name")
+    if "all" in spec:
+        return [{"name": name, "as": "all_equals", "predicates": copy.deepcopy(spec["all"]),
+                 **({"set": spec["set"], "clear": spec["clear"]} if "set" in spec else {})}]
     if "const" in spec:
         return [{"name": name, "as": "const", "value": spec["const"]}]
     if "from" in spec:
@@ -367,7 +370,13 @@ def _decode_fields(program: dict, rs1: dict, rs2: dict) -> dict:
         if kind == "operand":
             dec[name] = dict(ops[step["operand"]])
             continue
-        if kind == "equals":
+        if kind == "all_equals":
+            values = [None if dec.get(predicate["from"]) is None else
+                      dec[predicate["from"]] == predicate["equals"] for predicate in step["predicates"]]
+            value = False if False in values else None if None in values else True
+            if value is not None and "set" in step:
+                value = step["set"] if value else step["clear"]
+        elif kind == "equals":
             src = dec.get(step["from"])
             value = (src == step["value"]) if src is not None else None
         elif kind == "raw":
