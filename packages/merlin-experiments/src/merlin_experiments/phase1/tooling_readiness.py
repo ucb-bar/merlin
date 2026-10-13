@@ -321,7 +321,7 @@ def run(
 ) -> dict:
     """Persist a private receipt bound to the selected manifest and frozen snapshot."""
     if snapshot is None:
-        assisted = bundle.get("arm") in {"merlin_assisted", "merlin_rtlchecks", "merlin_eqsat", "merlin_verify"}
+        assisted = "xdsl_kit" in TR.ARM_TOOLS.get(bundle.get("arm"), ())
         assisted = assisted or bool(set(tools) - {"cpp_oot_generators"})
         result = {
             "status": "no_go" if assisted else "skipped",

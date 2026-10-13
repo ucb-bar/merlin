@@ -1029,6 +1029,11 @@ def _enforced_workflow(
         "   a file or a PID burns your budget without advancing the compiler.",
     ]
     n = 6
+    if _has("merlin/contract/pass_catalog.yaml"):
+        from .tool_registry import spec
+
+        L.append(f"{n}. {spec('pass_catalog').blurb}")
+        n += 1
     if has_cpp and not has_xdsl:  # EL2
         L.append(
             f"{n}. Scaffold the package with the granted C++ OOT generators "

@@ -142,7 +142,7 @@ def test_agnostic_tool_blocks_have_no_target_name():
     literal = [p for t in TR.TOOLS.values() for p in t.bundle_paths]
     assert literal, "the registry grants nothing — the rungs would all be empty"
     for p in literal:
-        assert p.startswith("merlin/python/merlin/") and "gemmini" not in p
+        assert p.startswith(("merlin/python/merlin/", "merlin/contract/")) and "gemmini" not in p
 
 
 def test_increasing_help_gradient():

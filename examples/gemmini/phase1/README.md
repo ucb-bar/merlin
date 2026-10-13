@@ -1,5 +1,9 @@
 # Phase 1: functional compiler
 
+For the opt-in static allocation-catalog experiment, see
+[the catalog-only setup](PASS_CATALOG.md). It adds the catalog to EL4 and reuses
+the same reviewed corpus and grading treatment.
+
 Select the reviewed Phase 0 manifest's `phase_corpora.phase1` functional members
 and retain its evidence-manifest identity, SW spec and hardware selection.
 The example's current diagnostic derivation is not an admission release; required

@@ -433,16 +433,40 @@ def test_generated_only_admission_reports_model_policy_and_private_cohort_gaps(r
     assert not (fixture["release"] / "private/seal.json").exists()
 
 
-def _prepare(fixture, capsys):
+def _prepare(fixture, capsys, *, bundle_arms=()):
     assert main(["run", str(fixture["definition"]), "--phase", "0", "--run-dir", str(fixture["run"])]) == 0
     capsys.readouterr()
-    code = main(["corpus", "prepare", str(fixture["run"]), "--output", str(fixture["release"])])
+    args = ["corpus", "prepare", str(fixture["run"]), "--output", str(fixture["release"])]
+    for arm in bundle_arms:
+        args.extend(("--bundle-arm", arm))
+    code = main(args)
     output = capsys.readouterr()
     if code:
         diagnostic = fixture["release"] / "private/failure.json"
         pytest.fail(output.err + (diagnostic.read_text() if diagnostic.exists() else ""))
     assert "private_member_identity" not in output.out + output.err
     return json.loads(output.out)
+
+
+def test_prepare_selected_catalog_and_control_bundles(release_fixture, capsys):
+    fixture = release_fixture
+    _prepare(fixture, capsys, bundle_arms=("merlin_rtlchecks", "merlin_pass_catalog"))
+    bundles = fixture["release"] / "payload/experiment/input_bundles"
+    assert {path.name for path in bundles.iterdir()} == {
+        f"{stem}_{variant}"
+        for stem in ("merlin_assisted_rtlchecks", "merlin_assisted_pass_catalog")
+        for variant in ("public_v0", "realistic_v0", "hwbringup_v0")
+    }
+    treatment = bundles / "merlin_assisted_pass_catalog_public_v0"
+    control = bundles / "merlin_assisted_rtlchecks_public_v0"
+    assert "pass_catalog\n" in (treatment / "tools.txt").read_text()
+    assert "pass_catalog.yaml" in (treatment / "allowed_files.txt").read_text()
+    assert "pass_catalog.yaml" in (control / "denied_files.txt").read_text()
+    assert (treatment / "ALLOWED_MERLIN_TOOLS.md").is_file()
+    prepared = json.loads((fixture["release"] / "private/preparation.json").read_text())
+    assert prepared["scaffolding"]["bundle_generation"]["selected_arms"] == [
+        "merlin_rtlchecks", "merlin_pass_catalog",
+    ]
 
 
 def _phase1_policy(fixture):

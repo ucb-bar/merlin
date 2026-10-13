@@ -133,6 +133,19 @@ COMMON_BROKERS = (
 
 
 TOOLS: dict[str, ToolSpec] = {
+    "pass_catalog": ToolSpec(
+        "pass_catalog",
+        "Read `merlin/contract/pass_catalog.yaml` and match its allocation obligations to the "
+        "admitted hardware facts, software semantics and current IR. Implement an inspectable "
+        "resident-storage allocation stage in your OOT compiler before physical address emission, "
+        "or explain why another strategy satisfies those obligations. Start with static sizes, "
+        "known effects and sequential completion; leave missing information explicitly unknown. "
+        "Retain before/after IR, value-to-storage assignments and the production pipeline invocation. "
+        "Use existing execution checks; catalog verification declarations are not proof results.",
+        bundle_paths=("merlin/contract/pass_catalog.yaml", "merlin/contract/schemas/pass_catalog.schema.json"),
+        note="ALLOWED (catalog arm): static compiler pass requirements",
+        deny_reason="static pass catalog (catalog arm only)",
+    ),
     "cpp_oot_generators": ToolSpec(
         "cpp_oot_generators",
         "Generic C++ out-of-tree backend generators: MLIR scaffold, LLVM lowering plan, target repo.",
@@ -287,6 +300,7 @@ ARM_TOOLS: dict[str, tuple[str, ...]] = {
     # two ways at once, so its delta would attribute to neither, and the earlier contrast would silently
     # stop being comparable to the later one. Same reasoning as the eqsat arm above; same resolution.
     "merlin_verify": _ASSISTED + ("rtl_generators", "rtl_facts", "verify_seam"),
+    "merlin_pass_catalog": _ASSISTED + ("rtl_generators", "rtl_facts", "pass_catalog"),
 }
 
 

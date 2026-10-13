@@ -400,14 +400,18 @@ def prepare(
     retirements: Path | None = None,
     generated_only: bool = False,
     phase1_policy_descriptor: Path | None = None,
+    bundle_arms: tuple[str, ...] = (),
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
     from merlin.common.storage_lifecycle import lease
+    from merlin.targetgen.generate_bundles import _ALL_ARMS
     from merlin.targetgen.target_experiment import load_target_experiment
 
     from ..runner import fingerprint
 
+    if len(set(bundle_arms)) != len(bundle_arms) or any(arm not in _ALL_ARMS for arm in bundle_arms):
+        raise SpecError(f"bundle_arms must name distinct registered arms: {sorted(_ALL_ARMS)}")
     source = run_dir.expanduser().resolve(strict=True)
     if output is None:
         selected, _, _ = source_run(source)
@@ -472,6 +476,7 @@ def prepare(
                 selected_facts=selected_facts,
                 selected_contract=selected_contract,
                 phase1_gates=phase1_gates,
+                bundle_arms=bundle_arms,
             )
             descriptor = payload / "experiment" / "target_experiment.yaml"
             checked = admission(descriptor, coverage_output=root / "private" / "workload-coverage.json")

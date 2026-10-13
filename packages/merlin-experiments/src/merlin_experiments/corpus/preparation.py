@@ -778,6 +778,7 @@ def scaffold(
     selected_facts: Path | None = None,
     selected_contract: tuple[Path, str] | None = None,
     phase1_gates: dict | None = None,
+    bundle_arms: tuple[str, ...] = (),
 ) -> dict:
     """Stage only declared task/selfcheck/harness resources, never prior runs or bundles."""
     from merlin.common.digest import sha256_file
@@ -923,12 +924,15 @@ def scaffold(
             promoted,
             experiment / "input_bundles",
             variants=("public_v0", "realistic_v0", "hwbringup_v0"),
+            arms=bundle_arms,
             host_inputs=(str(private), *([str(corpus / "_phase0")] if (corpus / "_phase0").is_dir() else [])),
             python_source_root=python_source_dir(),
             llvm_toolchain_root=llvm_root if llvm_root != checkout_llvm else None,
             rtl_facts_root=facts_root,
         )
     inputs["bundle_generation"] = {"diagnostics": diagnostics.getvalue()}
+    if bundle_arms:
+        inputs["bundle_generation"]["selected_arms"] = list(bundle_arms)
     return inputs
 
 
