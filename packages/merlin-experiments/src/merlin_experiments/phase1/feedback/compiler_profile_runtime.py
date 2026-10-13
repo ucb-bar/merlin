@@ -411,7 +411,7 @@ class _Executor:
             from merlin_experiments.phase1.brokers.compiler_call_channel import compiler_call_transport
 
             with compiler_call_transport(self.owner, workspace=workspace, package=pkg.directory,
-                    input_path=incoming, command_name=name, timeout_s=timeout) as transport:
+                    input_path=incoming, command_name=name, timeout_s=timeout, borrow_compute=True) as transport:
                 policy = replace(policy, env_prefix=transport.env_prefix(policy.env_prefix))
                 result = self._invoke(policy, pkg.directory, argv, timeout=transport.remaining_timeout(),
                                       evidence=invocation_directory, inputs=(Path(input_mlir),),

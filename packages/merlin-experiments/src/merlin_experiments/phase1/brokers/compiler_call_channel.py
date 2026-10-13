@@ -25,6 +25,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from merlin.common import owned_children
+from merlin.common.cpu_pool import (
+    CompilerCPUTransfer,
+    borrow_compiler_cpu,
+    check_compiler_cpu,
+    shared_compute_enabled,
+    shared_compute_pool,
+    transfer_compiler_cpu,
+)
 from merlin.common.path_scrub import scrub_host_paths
 from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
 
@@ -179,12 +187,24 @@ def _verify_owner_selection(owner):
         or document.get("content_sha256") != owner["snapshot_sha256"]):
         raise ValueError("compiler channel changed its original snapshot owner")
 
-def _serve(selection, control):
+def _owner_digest(owner):
+    return hashlib.sha256(json.dumps(owner, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _serve(selection, control, cpu_transfer=None):
     if set(selection) != {"schema", "workspace", "package", "package_sha256", "input_path", "input_sha256",
                           "command_name", "deadline", "owner", "parent_pid"} or selection["schema"] != SCHEMA:
         raise ValueError("compiler channel has no original host selection")
     owner = selection["owner"]
     _verify_owner_selection(owner)
+    context = (borrow_compiler_cpu(cpu_transfer, owner_sha256=_owner_digest(owner))
+               if cpu_transfer is not None else contextlib.nullcontext())
+    with context:
+        _serve_requests(selection, control)
+
+
+def _serve_requests(selection, control):
+    owner = selection["owner"]
     service = None
     workspace, package, input_path = map(Path, (selection["workspace"], selection["package"], selection["input_path"]))
     if (input_path.resolve() != input_path or input_path.is_symlink()
@@ -229,6 +249,7 @@ def _serve(selection, control):
                         raise ValueError("compiler channel changed its original frozen owner")
                 body = _dispatch(service, request, request_id, deadline=deadline, proof_root=proof,
                     package_sha256=selection["package_sha256"], input_sha256=selection["input_sha256"])
+                check_compiler_cpu()
                 _write(descriptor, "resp_" + request_id + ".json", body)
                 _write(descriptor, "done_" + request_id, "ok")
                 processed.add(name)
@@ -244,7 +265,15 @@ def _serve(selection, control):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--selection", type=Path, required=True)
+    parser.add_argument("--cpu-lease-fd", type=int)
+    parser.add_argument("--cpu-slot-fd", type=int)
+    parser.add_argument("--cpu-lifetime-fd", type=int)
     args = parser.parse_args(argv)
+    descriptors = (args.cpu_lease_fd, args.cpu_slot_fd, args.cpu_lifetime_fd)
+    if (any(value is not None for value in descriptors)
+            and not all(type(value) is int and value >= 0 for value in descriptors)):
+        raise ValueError("compiler CPU transfer requires all original inherited descriptors")
+    transfer = CompilerCPUTransfer(*descriptors) if descriptors[0] is not None else None
     selected = args.selection
     if selected.resolve() != selected or selected.is_symlink():
         raise ValueError("compiler channel requires a canonical private host selection")
@@ -263,7 +292,7 @@ def main(argv=None):
     try:
         if os.getppid() != selection["parent_pid"]:
             raise _Cancelled()
-        _serve(selection, control)
+        _serve(selection, control, transfer)
     except _Cancelled:
         pass
     finally:
@@ -291,8 +320,44 @@ class CompilerCallTransport:
         return value
 
 
+def _service_owner(service):
+    return {"workspace": str(service.workspace), "bundle_manifest": str(service.bundle_manifest),
+            "repo": str(service.repo), "archive_sha256": hashlib.sha256(service.bundle_bytes).hexdigest(),
+            "snapshot_sha256": service.snapshot_digest, "profile_sha256": service.profile["sha256"],
+            "snapshot_marker_sha256": service.snapshot_marker_digest}
+
+
 @contextlib.contextmanager
-def compiler_call_transport(service, *, workspace, package, input_path, command_name, timeout_s, proof_parent=None):
+def compiler_call_transport(service, *, workspace, package, input_path, command_name, timeout_s,
+                            proof_parent=None, borrow_compute=False):
+    """Optionally lease one original CPU through candidate work and its RPC child.
+
+    The original broker borrows that same live slot through private inherited
+    descriptors. It is reaped before the parent closes the lease. No request or
+    candidate environment can select a CPU or recreate this transfer.
+    """
+    if type(service) is not CommonTransformService or type(borrow_compute) is not bool:
+        raise ValueError("compiler CPU transport requires the original owner and explicit CPU mode")
+    if not isinstance(timeout_s, (int, float)) or not math.isfinite(timeout_s) or timeout_s <= 0:
+        raise ValueError("compiler call transport requires its finite original invocation budget")
+    deadline = time.monotonic() + timeout_s
+    with contextlib.ExitStack() as stack:
+        transfer = None
+        if borrow_compute and shared_compute_enabled():
+            stack.enter_context(shared_compute_pool(timeout_s=timeout_s))
+            transfer = stack.enter_context(transfer_compiler_cpu(owner_sha256=_owner_digest(_service_owner(service))))
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("compiler call exhausted its CPU admission deadline")
+        with _compiler_call_transport(service, workspace=workspace, package=package, input_path=input_path,
+                                     command_name=command_name, timeout_s=remaining, proof_parent=proof_parent,
+                                     cpu_transfer=transfer) as transport:
+            yield transport
+
+
+@contextlib.contextmanager
+def _compiler_call_transport(service, *, workspace, package, input_path, command_name, timeout_s,
+                             proof_parent=None, cpu_transfer=None):
     """Stage only the existing common client channel for a single compiler call."""
     if type(service) is not CommonTransformService:
         raise ValueError("compiler call transport requires the exact original common owner")
@@ -318,10 +383,7 @@ def compiler_call_transport(service, *, workspace, package, input_path, command_
         selection = {"schema": SCHEMA, "workspace": str(workspace), "package": str(package),
             "package_sha256": package_sha256, "input_path": str(input_path), "input_sha256": input_sha256,
             "command_name": command_name, "deadline": deadline, "parent_pid": os.getpid(),
-            "owner": {"workspace": str(service.workspace), "bundle_manifest": str(service.bundle_manifest),
-                "repo": str(service.repo), "archive_sha256": hashlib.sha256(service.bundle_bytes).hexdigest(),
-                "snapshot_sha256": service.snapshot_digest, "profile_sha256": service.profile["sha256"],
-                "snapshot_marker_sha256": service.snapshot_marker_digest}}
+            "owner": _service_owner(service)}
         path = control / "selection.json"
         path.write_text(json.dumps(selection, sort_keys=True))
         path.chmod(0o400)
@@ -329,8 +391,14 @@ def compiler_call_transport(service, *, workspace, package, input_path, command_
         env = {**os.environ, "PYTHONPATH": os.pathsep.join(map(str, python_import_roots())),
                "PYTHONDONTWRITEBYTECODE": "1"}
         with (control / "broker.stdout").open("wb") as stdout, (control / "broker.stderr").open("wb") as stderr:
-            process = subprocess.Popen([sys.executable, "-m", __name__, "--selection", str(path)], cwd=control,
-                env=env, stdout=stdout, stderr=stderr, start_new_session=True)
+            command = [sys.executable, "-m", __name__, "--selection", str(path)]
+            descriptors = ()
+            if cpu_transfer is not None:
+                command += ["--cpu-lease-fd", str(cpu_transfer.metadata_fd), "--cpu-slot-fd", str(cpu_transfer.slot_fd),
+                            "--cpu-lifetime-fd", str(cpu_transfer.lifetime_fd)]
+                descriptors = cpu_transfer.pass_fds
+            process = subprocess.Popen(command, cwd=control, env=env, stdout=stdout, stderr=stderr,
+                pass_fds=descriptors, start_new_session=True)
             try:
                 while not (control / "ready.json").is_file():
                     if process.poll() is not None:

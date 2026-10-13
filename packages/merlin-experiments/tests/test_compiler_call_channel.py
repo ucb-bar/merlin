@@ -155,6 +155,27 @@ def test_separately_readonly_selected_input_needs_no_parent_grant(original):
         assert str(external) not in json.dumps(answer)
 
 
+def test_original_transport_borrows_explicit_cpu_and_reaps_before_release(original, monkeypatch):
+    from merlin.common.cpu_pool import selected_pool
+    from merlin.transforms.client import check_transform
+
+    value = original
+    cpu = next(iter(os.sched_getaffinity(0)))
+    root = value.root / "cpu-slots"
+    before = os.sched_getaffinity(0)
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(root))
+    with C.compiler_call_transport(value.owner, workspace=value.workspace, package=value.package,
+                                  input_path=value.source, command_name="compile", timeout_s=15,
+                                  borrow_compute=True):
+        assert os.sched_getaffinity(0) == {cpu}
+        answer = check_transform(value.workspace, "module {}", "module {}", entry="absent", wait_seconds=10)
+        assert answer["status"] == "unavailable"  # no selected proof toolchain
+    assert os.sched_getaffinity(0) == before
+    with selected_pool((cpu,), slot_root=root, timeout_s=0):
+        pass  # original broker has closed its duplicate slot before release
+
+
 def test_actual_original_compiler_call_uses_existing_client_inside_its_box(original,monkeypatch):
     """Real compilation-command/mount/client control; selected proof tool is absent."""
     if shutil.which("bwrap") is None:

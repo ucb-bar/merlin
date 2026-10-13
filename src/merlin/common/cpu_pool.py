@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import fcntl
+import json
 import math
 import os
+import select
+import stat
 import threading
 import time
+import weakref
 from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -14,15 +18,160 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _ACTIVE_LEASE = ContextVar("selected_cpu_lease", default=None)
+_ISSUED_LEASES = weakref.WeakKeyDictionary()
+# Linux UAPI values; some supported CPython builds omit the fcntl names.
+_SEALS = 0x000F
+_ADD_SEALS = getattr(fcntl, "F_ADD_SEALS", 1033)
+_GET_SEALS = getattr(fcntl, "F_GET_SEALS", 1034)
 
 
-@dataclass
+@dataclass(eq=False)
 class _Lease:
     pid: int
     thread: threading.Thread
     root: Path
     cpu: int
+    fd: int
+    check: object = None
     active: bool = True
+
+
+def _lease_fields(lease):
+    return lease.pid, lease.thread, lease.root, lease.cpu, lease.fd, lease.check
+
+
+def _slot_identity(root, cpu, fd):
+    path = root / f"cpu-{cpu}.lock"
+    before = os.fstat(fd)
+    current = path.stat(follow_symlinks=False)
+    if (not stat.S_ISREG(before.st_mode) or not stat.S_ISREG(current.st_mode)
+            or (before.st_dev, before.st_ino) != (current.st_dev, current.st_ino)):
+        raise RuntimeError("CPU lease lost its exact ordinary slot file")
+    return before.st_dev, before.st_ino
+
+
+def _verify_lease(lease):
+    if (type(lease) is not _Lease or not lease.active or lease.pid != os.getpid()
+            or lease.thread is not threading.current_thread()
+            or _ISSUED_LEASES.get(lease) != _lease_fields(lease)):
+        raise RuntimeError("CPU lease is not its unchanged live original thread owner")
+    _slot_identity(lease.root, lease.cpu, lease.fd)
+    if lease.check is not None:
+        lease.check()
+
+
+def check_compiler_cpu():
+    """Reopen live CPU custody before the original broker publishes a reply."""
+    lease = _ACTIVE_LEASE.get()
+    if lease is not None:
+        _verify_lease(lease)
+
+
+def _birth(pid, tid=None):
+    suffix = f"task/{tid}/stat" if tid is not None else "stat"
+    return Path(f"/proc/{pid}/{suffix}").read_text().rsplit(")", 1)[1].split()[19]
+
+
+@dataclass(frozen=True)
+class CompilerCPUTransfer:
+    """Private inherited FDs, never a compiler request/environment capability."""
+    metadata_fd: int
+    slot_fd: int
+    lifetime_fd: int
+
+    @property
+    def pass_fds(self):
+        return self.metadata_fd, self.slot_fd, self.lifetime_fd
+
+
+@contextmanager
+def transfer_compiler_cpu(*, owner_sha256):
+    """Transfer only this original thread's live slot to its trusted RPC child.
+
+    The caller must join/reap that child before this scope and its enclosing CPU
+    lease close. The token carries CPU custody only, never compiler authority.
+    """
+    lease = _ACTIVE_LEASE.get()
+    if lease is None:
+        yield None
+        return
+    _verify_lease(lease)
+    if (not isinstance(owner_sha256, str) or len(owner_sha256) != 64
+            or any(char not in "0123456789abcdef" for char in owner_sha256)):
+        raise ValueError("compiler CPU transfer needs its exact original owner digest")
+    if os.sched_getaffinity(0) != {lease.cpu}:
+        raise RuntimeError("compiler CPU transfer differs from its issuer affinity")
+    fd = os.memfd_create("original-compiler-cpu", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+    read_fd, write_fd = os.pipe2(os.O_CLOEXEC)
+    try:
+        body = {"version": 1, "owner_sha256": owner_sha256, "issuer_pid": os.getpid(),
+                "issuer_birth": _birth(os.getpid()), "issuer_tid": threading.get_native_id(),
+                "issuer_thread_birth": _birth(os.getpid(), threading.get_native_id()),
+                "root": str(lease.root), "cpu": lease.cpu, "slot_fd": lease.fd,
+                "slot_identity": list(_slot_identity(lease.root, lease.cpu, lease.fd))}
+        os.write(fd, json.dumps(body, sort_keys=True).encode())
+        fcntl.fcntl(fd, _ADD_SEALS, _SEALS)
+        yield CompilerCPUTransfer(fd, lease.fd, read_fd)
+        _verify_lease(lease)
+    finally:
+        os.close(write_fd)
+        os.close(read_fd)
+        os.close(fd)
+
+
+@contextmanager
+def borrow_compiler_cpu(transfer, *, owner_sha256):
+    """Activate the exact private parent slot in one trusted broker thread."""
+    if type(transfer) is not CompilerCPUTransfer or _ACTIVE_LEASE.get() is not None:
+        raise RuntimeError("compiler CPU borrower lacks its exact original transfer")
+    if fcntl.fcntl(transfer.metadata_fd, _GET_SEALS) & _SEALS != _SEALS:
+        raise RuntimeError("compiler CPU metadata is not immutable")
+    size = os.fstat(transfer.metadata_fd).st_size
+    if not 0 < size <= 8192:
+        raise RuntimeError("compiler CPU metadata exceeds its bounded record")
+    body = json.loads(os.pread(transfer.metadata_fd, size, 0))
+    if (type(body) is not dict or set(body) != {"version", "owner_sha256", "issuer_pid", "issuer_birth",
+            "issuer_tid", "issuer_thread_birth", "root", "cpu", "slot_fd", "slot_identity"}
+            or body["version"] != 1 or body["owner_sha256"] != owner_sha256
+            or type(body["cpu"]) is not int or type(body["issuer_pid"]) is not int
+            or type(body["issuer_tid"]) is not int or body["slot_fd"] != transfer.slot_fd):
+        raise RuntimeError("compiler CPU metadata differs from its original owner")
+    root, cpu = Path(body["root"]), body["cpu"]
+    if not root.is_absolute() or root.resolve() != root or root.is_symlink():
+        raise RuntimeError("compiler CPU slot root is not an ordinary canonical path")
+    poll = select.poll()
+    poll.register(transfer.lifetime_fd, select.POLLIN | select.POLLHUP | select.POLLERR)
+
+    def live():
+        if (os.getppid() != body["issuer_pid"] or poll.poll(0)
+                or _birth(body["issuer_pid"]) != body["issuer_birth"]
+                or _birth(body["issuer_pid"], body["issuer_tid"]) != body["issuer_thread_birth"]
+                or os.sched_getaffinity(body["issuer_tid"]) != {cpu}
+                or list(_slot_identity(root, cpu, transfer.slot_fd)) != body["slot_identity"]):
+            raise RuntimeError("compiler CPU issuer/slot lifetime is no longer live")
+        original = Path(f"/proc/{body['issuer_pid']}/fd/{body['slot_fd']}").stat()
+        current = os.fstat(transfer.slot_fd)
+        if (original.st_dev, original.st_ino) != (current.st_dev, current.st_ino):
+            raise RuntimeError("compiler CPU slot differs from its live parent descriptor")
+        # The inherited descriptor shares the parent's open-file description;
+        # this never waits for or acquires a different CPU slot.
+        fcntl.flock(transfer.slot_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    live()
+    original = os.sched_getaffinity(0)
+    lease = _Lease(os.getpid(), threading.current_thread(), root, cpu, transfer.slot_fd, live)
+    _ISSUED_LEASES[lease] = _lease_fields(lease)
+    token = _ACTIVE_LEASE.set(lease)
+    try:
+        os.sched_setaffinity(0, {cpu})
+        if os.sched_getaffinity(0) != {cpu}:
+            raise RuntimeError("borrowed compiler CPU is unavailable in this partition")
+        yield
+        _verify_lease(lease)
+    finally:
+        lease.active = False
+        _ACTIVE_LEASE.reset(token)
+        os.sched_setaffinity(0, original)
 
 
 def parse_roster(raw: str) -> tuple[int, ...]:
@@ -54,6 +203,7 @@ def selected_pool(cpus: tuple[int, ...], *, slot_root: Path | None = None, timeo
     held = _ACTIVE_LEASE.get()
     if (held is not None and held.active and held.pid == os.getpid()
             and held.thread is threading.current_thread()):
+        _verify_lease(held)
         if slot_root is None:
             if set(cpus) != {held.cpu}:
                 raise RuntimeError("nested CPU pool would widen its held lease")
@@ -62,6 +212,7 @@ def selected_pool(cpus: tuple[int, ...], *, slot_root: Path | None = None, timeo
         if held.cpu not in cpus or os.sched_getaffinity(0) != {held.cpu}:
             raise RuntimeError("nested CPU pool differs from its held lease")
         yield
+        _verify_lease(held)
         return
     original = os.sched_getaffinity(0)
     locked_fd = None
@@ -93,7 +244,8 @@ def selected_pool(cpus: tuple[int, ...], *, slot_root: Path | None = None, timeo
         if os.sched_getaffinity(0) != chosen:
             raise RuntimeError("selected CPU pool is unavailable in the process partition")
         if locked_fd is not None:
-            lease = _Lease(os.getpid(), threading.current_thread(), slot_root, next(iter(chosen)))
+            lease = _Lease(os.getpid(), threading.current_thread(), slot_root, next(iter(chosen)), locked_fd)
+            _ISSUED_LEASES[lease] = _lease_fields(lease)
             token = _ACTIVE_LEASE.set(lease)
         yield
     finally:

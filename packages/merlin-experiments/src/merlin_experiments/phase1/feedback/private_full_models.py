@@ -746,7 +746,7 @@ def _source_obligations(
         if group is None or group.placement == CG.HOST:
             raise ValueError(f"eligible source operation {index} has no accelerator group")
         eligible.append(group.index)
-    demand["n_unresolved_raw_regions"] = 0
+    source_demand.require_raw_reconciliation(demand)
 
     pool_support = prove_pool_source(
         capture,
