@@ -188,6 +188,8 @@ def grade(
     # with PermissionError. Keep the numeric id for logs, but let the caller supply a run-wide scratch
     # identity that includes both the agent round and its tick.
     _key = scratch_key or (f"{rnd:02d}" if label == "round" else str(rnd))
+    if inputs.driver_grade_completed is not None:
+        inputs.driver_grade_completed(None)
     oot_commit = None
     cand = run_dir / "_qa_work" / f"cand_{_key}" / "submission"
     if cand.exists():
@@ -301,6 +303,14 @@ def grade(
                     else {}
                 ),
             )
+            if inputs.driver_grade_completed is not None and not no_oracle:
+                from .grade_reuse import retain_driver_grade
+
+                with shared_compute_pool(timeout_s=timeout):
+                    receipt = retain_driver_grade(candidate=cand,
+                        runs=run_dir / "_qa_work" / f"runs_{_key}", public=public_root,
+                        verdict=verdict, inputs=inputs, run_dir=run_dir)
+                inputs.driver_grade_completed(receipt)
         _record_plateau(run_dir)  # operator-side; deliberately not in the agent's verdict
         FL.record_channel_health(ws, run_dir)
     # PROMOTE off the round grade too. Promotion is hooked into both BROKERS, but a broker only sees a
@@ -335,15 +345,6 @@ def grade(
                 print(f"  [promote] round grade -> {_cert}: {_p}", flush=True)
     except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
         print(f"  [promote] skipped: {type(_pe).__name__}: {_pe}", flush=True)
-
-    if inputs.driver_grade_completed is not None:
-        from .grade_reuse import retain_driver_grade
-
-        with shared_compute_pool(timeout_s=timeout):
-            receipt = retain_driver_grade(candidate=cand,
-                runs=run_dir / "_qa_work" / f"runs_{_key}", public=public_root,
-                verdict=verdict, inputs=inputs, run_dir=run_dir) if oot_commit is not None and not no_oracle else None
-        inputs.driver_grade_completed(receipt)
 
     # hand the redacted verdict to the agent for the next round
     qa_dir = ws / "qa"

@@ -115,6 +115,8 @@ def retain_driver_grade(*, candidate, runs, public, verdict, inputs, run_dir):
     from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen import expected_refusal as ER
 
+    from .compiler_profile_child import _original_executor
+
     try:
         if verdict.get("all_pass") is not True or verdict.get("gradeable") is not True:
             return None
@@ -127,6 +129,13 @@ def retain_driver_grade(*, candidate, runs, public, verdict, inputs, run_dir):
         binding = _binding(inputs, run_dir, public)
         source = _source(candidate)
         if not source:
+            return None
+        executor = _original_executor()
+        if (
+            executor is None
+            or executor.owner is not inputs.compiler_profile_service
+            or executor.source_sha256 != source
+        ):
             return None
         caps = CR.discover_capsules(public, labels={"public", "dev"}, contract=inputs.contract)
         cohort = {cap["name"]: cap for cap in caps}
@@ -152,9 +161,10 @@ def retain_driver_grade(*, candidate, runs, public, verdict, inputs, run_dir):
                     "expected_refusal": raw["expected_refusal"],
                 }
             else:
-                child = raw.get("original_compiler_child") or {}
-                if (
-                    child.get("schema") != "merlin.original_model_child.v1"
+                child = raw.get("original_compiler_child")
+                if child is not None and (
+                    not isinstance(child, dict)
+                    or child.get("schema") != "merlin.original_model_child.v1"
                     or child.get("candidate_sha256") != source
                     or any(child.get(key) != binding["owner"][key] for key in ("profile_sha256", "snapshot_sha256"))
                 ):

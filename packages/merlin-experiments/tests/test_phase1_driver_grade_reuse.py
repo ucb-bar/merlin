@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 from merlin_experiments.phase1 import authoring
+from merlin_experiments.phase1.feedback import compiler_profile_child as child_profile
 from merlin_experiments.phase1.feedback import compiler_profile_runtime as profile
 from merlin_experiments.phase1.feedback import grade_reuse as reuse
 
@@ -40,6 +41,11 @@ def grade(tmp_path, monkeypatch):
         additional_forbidden=(),
     )
     monkeypatch.setattr(profile, "compiler_profile_binding", lambda *a, **kw: dict(owner))
+    monkeypatch.setattr(
+        child_profile,
+        "_original_executor",
+        lambda: SimpleNamespace(owner=inputs.compiler_profile_service, source_sha256=reuse._source(candidate)),
+    )
     monkeypatch.setattr(tier_cache, "grading_path", lambda _: (instrument,))
     monkeypatch.setattr(CR, "discover_capsules", lambda *a, **kw: [cap])
     row = {
@@ -141,12 +147,10 @@ def test_changed_identity_never_reuses(grade, monkeypatch, change):
     assert checkpoint(grade, receipt) is None
 
 
-@pytest.mark.parametrize("change", ["tier", "child", "owner", "source", "partial", "ungradeable"])
+@pytest.mark.parametrize("change", ["tier", "owner", "source", "partial", "ungradeable"])
 def test_screen_or_missing_proof_is_not_retained(grade, change):
     if change == "tier":
         grade.row["tiers"].pop("L3")
-    elif change == "child":
-        grade.row.pop("original_compiler_child")
     elif change == "owner":
         grade.row["original_compiler_child"]["snapshot_sha256"] = "wrong"
     elif change == "source":
@@ -180,6 +184,77 @@ def test_no_original_owner_retains_legacy_grade_path(grade):
     grade.inputs.compiler_profile_service = None
     assert retain(grade) is None
     assert checkpoint(grade, {"all_pass": True, "n_passed": 146}) is None
+
+
+def test_host_leaf_uses_genuine_live_parent_owner(grade, monkeypatch):
+    grade.row.pop("original_compiler_child")
+    grade.result.write_text(json.dumps(grade.row))
+    assert checkpoint(grade, retain(grade))["all_pass"]
+    monkeypatch.setattr(child_profile, "_original_executor", lambda: None)
+    assert retain(grade) is None
+    monkeypatch.setattr(
+        child_profile,
+        "_original_executor",
+        lambda: SimpleNamespace(owner=object(), source_sha256=reuse._source(grade.candidate)),
+    )
+    assert retain(grade) is None
+
+
+def test_driver_retains_before_original_scope_closes_without_publishing_receipt(grade, monkeypatch):
+    from contextlib import contextmanager
+
+    from merlin_experiments.phase1.feedback import loop_grading as LG
+
+    active = []
+    received = []
+
+    @contextmanager
+    def execution(inputs, *, candidate, run_dir):
+        active.append(SimpleNamespace(owner=inputs.compiler_profile_service, source_sha256=reuse._source(candidate)))
+        try:
+            yield
+        finally:
+            active.clear()
+
+    monkeypatch.setattr(LG, "compiler_execution", execution)
+    monkeypatch.setattr(child_profile, "_original_executor", lambda: active[0] if active else None)
+    monkeypatch.setattr(LG, "_language_ok", lambda *a: (True, "fixture"))
+    monkeypatch.setattr(LG.OH, "commit_graded", lambda *a, **kw: SimpleNamespace(commit="fixture"))
+    monkeypatch.setattr(LG.OH, "record_round", lambda *a, **kw: None)
+    for name in (
+        "_write_stage_ledger",
+        "_attach_shape_generalization",
+        "_attach_codegen_scalability",
+        "_record_plateau",
+    ):
+        monkeypatch.setattr(LG, name, lambda *a, **kw: None)
+    monkeypatch.setattr(LG.FL, "record_channel_health", lambda *a: None)
+    (grade.submission / "manifest.yaml").write_text("language: python\n")
+
+    def qa(candidate, public, runs, *args, **kwargs):
+        row = dict(grade.row)
+        row.pop("original_compiler_child")  # genuine main-scope host leaf
+        root = runs / "runs/fixture/operator"
+        root.mkdir(parents=True)
+        (root / "capsule_result.json").write_text(json.dumps(row))
+        shutil.copyfile(grade.result.parent / "program.elf", root / "program.elf")
+        return grade.verdict
+
+    inputs = LG.GradingInputs(
+        grade.inputs.context,
+        "merlin_assisted",
+        grade.public,
+        (),
+        None,
+        compiler_profile_service=grade.inputs.compiler_profile_service,
+        verify_grade_inputs=grade.inputs.verify_grade_inputs,
+        driver_grade_completed=received.append,
+    )
+    LG.grade(grade.submission.parent, grade.run, 1, False, 30, inputs=inputs, qa_runner=qa)
+    assert not active and received[0] is None and type(received[-1]) is reuse.DriverGradeReceipt
+    assert received[-1].current(submission=grade.submission, inputs=inputs, run_dir=grade.run)
+    published = json.loads((grade.submission.parent / "qa/verdict.json").read_text())
+    assert "driver_grade_receipt" not in published
 
 
 def test_partial_or_held_cohort_does_not_skip_checkpoint(grade):
