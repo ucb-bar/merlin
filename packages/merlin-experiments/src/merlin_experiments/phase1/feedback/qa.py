@@ -813,6 +813,7 @@ def run(
     context: InvocationContext,
     contract: Path | None = None,
     additional_forbidden: tuple[str, ...] = (),
+    defer_pending=None,
 ) -> dict:
     # Loop gate = L0+L1+trace + the target's full reachable oracle ladder, screened cheapest-first. The
     # adapters are resolved from the descriptor's target+sim_via via the shared factory, so a non-chipyard
@@ -864,6 +865,7 @@ def run(
         target=_target,
         no_oracle=no_oracle,
         additional_forbidden=additional_forbidden,
+        **({"defer_pending": defer_pending} if defer_pending is not None else {}),
     )
     redacted = _per_capsule_from_results(runs_root)
 

@@ -175,6 +175,7 @@ def grade(
     scratch_key: str | None = None,
     previous_scratch_key: str | None = None,
     qa_runner: T.QARunner | None = None,
+    advisory_background: bool = False,
 ) -> dict:
     """Copy the agent's submission to an operator-only scratch, grade it, return + persist the
     redacted verdict (into ws/qa/verdict.json for the next round, and archived per round).
@@ -190,6 +191,12 @@ def grade(
     _key = scratch_key or (f"{rnd:02d}" if label == "round" else str(rnd))
     if inputs.driver_grade_completed is not None:
         inputs.driver_grade_completed(None)
+    background_guard = None
+    if advisory_background:
+        from .background_admission import BackgroundGuard, source_digest
+
+        public = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
+        background_guard = BackgroundGuard(ws, public, inputs, source_digest(ws))
     oot_commit = None
     cand = run_dir / "_qa_work" / f"cand_{_key}" / "submission"
     if cand.exists():
@@ -258,7 +265,13 @@ def grade(
                 timeout,
                 **({"contract": inputs.contract} if inputs.contract is not None else {}),
                 **({"additional_forbidden": inputs.additional_forbidden} if inputs.additional_forbidden else {}),
+                **({"defer_pending": background_guard.reason} if background_guard is not None else {}),
             )
+            if background_guard is not None and background_guard.reason() is not None:
+                verdict.update(all_pass=None, gradeable=False,
+                    n_capsules=len(verdict.get("per_capsule") or []),
+                    background_grade={"status": "deferred", "reason": background_guard.deferred,
+                                      "source_sha256": background_guard.source})
             if candidate_sha256 is not None:
                 verdict["graded_candidate_sha256"] = candidate_sha256
             verdict = write_verdict(out, verdict)
@@ -328,7 +341,8 @@ def grade(
         from merlin_experiments.phase1.feedback.promotion import resolve_tiers as _resolve
 
         _loop, _cert, _cover = _resolve(ws, context=inputs.context, capsules_root=inputs.promotion_root)
-        if _loop and _cert and isinstance(verdict, dict) and verdict.get("per_capsule"):
+        if (_loop and _cert and isinstance(verdict, dict) and verdict.get("per_capsule")
+                and (background_guard is None or background_guard.deferred is None)):
             _p = _promote(
                 ws,
                 ws / ".qa_channel",
@@ -349,7 +363,8 @@ def grade(
     # hand the redacted verdict to the agent for the next round
     qa_dir = ws / "qa"
     qa_dir.mkdir(exist_ok=True)
-    write_verdict(qa_dir / "verdict.json", verdict)
+    if background_guard is None or (background_guard.deferred is None and background_guard.current()):
+        write_verdict(qa_dir / "verdict.json", verdict)
     if oot_commit is None:
         return verdict
     OH.record_round(run_dir, oot_commit, label=label, key=_key, verdict=verdict)
@@ -492,9 +507,13 @@ def fast_grade(
     from merlin.targetgen import capsule_runner as _CR
     from merlin_experiments.phase1.feedback import qa as _qc
 
+    from .background_admission import BackgroundGuard, source_digest
+
     if not (ws / "submission" / "manifest.yaml").is_file():
         raise RuntimeError("no submission/manifest.yaml to grade yet")
     cand = run_dir / "_qa_work" / f"fcand_{tick}" / "submission"
+    public_root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
+    background_guard = BackgroundGuard(ws, public_root, inputs, source_digest(ws))
     with shared_compute_pool(timeout_s=timeout):
         if cand.parent.exists():
             shutil.rmtree(cand.parent)
@@ -530,9 +549,9 @@ def fast_grade(
         print(f"[first-grade] streaming promotion unavailable: {type(exc).__name__}: {exc}", flush=True)
     try:
         with compiler_execution(inputs, candidate=cand, run_dir=run_dir):
-            _CG.grade(
+            _fast_score = _CG.grade(
                 str(cand),
-                capsules_root=str(inputs.public_root() if callable(inputs.public_root) else inputs.public_root),
+                capsules_root=str(public_root),
                 runs_root=str(fruns),
                 model_snapshot_root=fruns.resolve() / ".private_model_sources",
                 labels={"public", "dev"},
@@ -543,17 +562,29 @@ def fast_grade(
                 max_workers=_CG.default_grade_workers(),
                 target=te.target,
                 additional_forbidden=inputs.additional_forbidden,
-                **({"on_capsule_complete": completed_promotion} if completed_promotion is not None else {}),
+                defer_pending=background_guard.reason,
+                **({"on_capsule_complete": lambda row: completed_promotion(row)
+                    if background_guard.reason() is None else None} if completed_promotion is not None else {}),
             )
     except Exception as e:  # noqa: BLE001 — a partial readback is still feedback, and every tier the
         # grade did not reach stays UNKNOWN in the document below rather than reading as clean.
         print(f"[first-grade] grade error: {type(e).__name__}: {str(e)[:200]}", flush=True)
-    verdict = _fast_loop_verdict_doc(_qc._per_capsule_from_results(fruns), sorted(adapters), sorted(_withheld))
+        _fast_score = {}
+    red = _qc._per_capsule_from_results(fruns)
+    for row in _fast_score.get("per_capsule") or []:
+        if row.get("background_deferred") and row.get("capsule") not in red:
+            red[row["capsule"]] = {"status": "gated", "tiers": {}}
+    verdict = _fast_loop_verdict_doc(red, sorted(adapters), sorted(_withheld))
+    if background_guard.reason() is not None:
+        verdict.update(all_pass=None, gradeable=False, mandatory_tiers_complete=False,
+            background_grade={"status": "deferred",
+            "reason": background_guard.deferred, "source_sha256": background_guard.source})
     out = run_dir / "qa_history" / f"verdict_fast_{tick}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     verdict = write_verdict(out, verdict)
     (ws / "qa").mkdir(exist_ok=True)
-    write_verdict(ws / "qa" / "verdict.json", verdict)
+    if background_guard.deferred is None and background_guard.current():
+        write_verdict(ws / "qa" / "verdict.json", verdict)
     _record_plateau(run_dir)  # operator-side; deliberately not in the agent's verdict
     FL.record_channel_health(ws, run_dir)
     # The first successful loop verdict unlocks cert work immediately. The existing
@@ -566,7 +597,7 @@ def fast_grade(
         from merlin_experiments.phase1.feedback.promotion import resolve_tiers as _resolve
 
         _loop, _cert, _cover = _resolve(ws, context=inputs.context, capsules_root=inputs.promotion_root)
-        if _loop and _cert and verdict.get("per_capsule"):
+        if _loop and _cert and verdict.get("per_capsule") and background_guard.deferred is None:
             _promote(
                 ws,
                 ws / ".qa_channel",

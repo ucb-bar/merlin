@@ -1247,6 +1247,7 @@ def grade(
     on_capsule_complete=None,
     model_gate_continuations=(),
     functional_hidden_tier: str | None = None,
+    defer_pending=None,
 ) -> dict:
     """Run the capsule suite over a submitted package; return a score dict (also schema-checkable).
 
@@ -1475,6 +1476,7 @@ def grade(
         model_snapshot_root=model_snapshot_root,
         post_suite=_post_suite,
         model_gate_continuations=model_gate_continuations,
+        **({"defer_pending": defer_pending} if defer_pending is not None else {}),
         **({"on_capsule_complete": _completed} if on_capsule_complete is not None else {}),
     )
     _suite_wall = _time.perf_counter() - _suite_t0
@@ -1993,6 +1995,8 @@ def grade(
             "trace": r.get("trace_check", {}).get("status"),
             "tiers": {t: _tier_status((r.get("tiers") or {}).get(t)) for t in tiers if t in (r.get("tiers") or {})},
         }
+        if isinstance(r.get("background_deferred"), str):
+            entry["background_deferred"] = r["background_deferred"]
         _original_refusal = _declared_refusals.get(str(r.get('capsule')))
         if _original_refusal is not None and _ER.validated_result(_original_refusal, r):
             entry.update(validated_refusal=True, qualification='expected_refusal', native_executed=False,

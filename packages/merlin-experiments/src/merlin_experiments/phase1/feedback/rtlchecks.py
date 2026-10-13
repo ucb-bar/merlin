@@ -160,6 +160,7 @@ def run(
     filecheck_candidates: tuple[Path, ...] = (),
     contract: Path | None = None,
     additional_forbidden: tuple[str, ...] = (),
+    defer_pending=None,
 ) -> dict:
     verdict = _base.run(
         submission,
@@ -171,6 +172,7 @@ def run(
         context=context,
         contract=contract,
         additional_forbidden=additional_forbidden,
+        **({"defer_pending": defer_pending} if defer_pending is not None else {}),
     )
     try:
         verdict["rtl_checks"] = feedback(
@@ -198,7 +200,8 @@ def treatment(context: InvocationContext, *, filecheck_candidates: tuple[Path, .
     """Create source-attributed callbacks bound to one explicit target invocation."""
 
     def qa_runner(
-        submission, capsules_root, runs_root, labels, no_oracle, timeout, *, contract=None, additional_forbidden=()
+        submission, capsules_root, runs_root, labels, no_oracle, timeout, *, contract=None, additional_forbidden=(),
+        defer_pending=None,
     ):
         return run(
             submission,
@@ -211,6 +214,7 @@ def treatment(context: InvocationContext, *, filecheck_candidates: tuple[Path, .
             filecheck_candidates=filecheck_candidates,
             contract=contract,
             additional_forbidden=additional_forbidden,
+            **({"defer_pending": defer_pending} if defer_pending is not None else {}),
         )
 
     def checkpoint_feedback(runs_root, *, capsule_roots):
