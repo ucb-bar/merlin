@@ -181,7 +181,12 @@ _SPIKE_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "900") or 
 
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
     timeout = kw.pop("timeout", _SPIKE_CMD_TIMEOUT_S or None)
-    return _proc.run_checked(cmd, error=SpikeModelError, timeout=timeout, timeout_hint=" (pathological compile)", **kw)
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    with shared_compute_pool(timeout_s=timeout):
+        return _proc.run_checked(
+            cmd, error=SpikeModelError, timeout=timeout, timeout_hint=" (pathological compile)", **kw,
+        )
 
 
 def _mlir_runtime_compiler(clang: Path, gcc: Path, flags: list[str]) -> list[str]:
@@ -439,6 +444,7 @@ def build(
     source_scalar_carrier=None,
     host_llvm_transform: Callable[[Path, Path], Path] | None = None,
     host_llvm_transform_chain: HostLLVMTransformChain | None = None,
+    host_llvm_bitcode: bool = False,
     host_provider_builder: Callable | None = None,
     cflags_override: list[str] | None = None,
     vlen: int | None = None,
@@ -569,6 +575,8 @@ def build(
     # Refusal during validation must not leave a previous build's success receipt.
     (Path(work) / COMPILATION_RECIPE).unlink(missing_ok=True)
     device_admission_selection = freeze_device_elf_admission(device)
+    if type(host_llvm_bitcode) is not bool:
+        raise TypeError("host LLVM bitcode transport requires an explicit Boolean selection")
     supplier_flags = () if math_archive_symbols is None else trace_symbol_flags(math_archive_symbols)
     (Path(work) / "execution_memory_admission.json").unlink(missing_ok=True)
     if host_llvm_transform_chain is not None:
@@ -807,10 +815,18 @@ def build(
             res.workdir / LOWERING_RECIPE, host_chain_receipt, source=res.ll_path, selected=model_ir
         )
         compilation.bind_preparation("host_transform_chain", host_chain_receipt)
+    compiler_input = model_ir
+    bitcode_receipt = None
+    if host_llvm_bitcode:
+        from ...llvmlower.host_bitcode_transport import assemble_host_bitcode
+
+        compiler_input, bitcode_receipt = assemble_host_bitcode(
+            model_ir, work / "host_bitcode", compiler=clang, compilation=compilation, runner=_run,
+        )
     compilation.run(
-        [clang, CLANG_TARGET, *model_cflags, "-c", model_ir, "-o", work / "model.o"],
+        [clang, CLANG_TARGET, *model_cflags, "-c", compiler_input, "-o", work / "model.o"],
         runner=_run,
-        inputs=[model_ir],
+        inputs=[compiler_input],
         output=work / "model.o",
     )
     if sha256_file(index_observation["compiler_resolved"]) != index_observation["compiler_sha256"]:
@@ -1295,6 +1311,7 @@ def build(
         "host_vectorize": vectorize,
         "host_math_policy": host_math_policy,
         "host_llvm_transform": host_ir_receipt,
+        **({"host_bitcode_transport": bitcode_receipt} if bitcode_receipt is not None else {}),
         "host_artifacts": {
             role: {"path": str(path.absolute()), "sha256": sha256_file(path), "size_bytes": path.stat().st_size}
             for role, path in (("llvm_ir", model_ir), ("object", work / "model.o"))

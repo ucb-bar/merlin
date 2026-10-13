@@ -132,6 +132,7 @@ def _program_entry(entry: Any, where: str) -> dict[str, Any]:
         "board",
         "group_profile",
         "basis",
+        "host_llvm_bitcode",
     }
     if unknown:
         raise ExecutionGateError(f"{where}: unknown key(s) {sorted(unknown)}")
@@ -169,7 +170,11 @@ def _program_entry(entry: Any, where: str) -> dict[str, Any]:
     profile = entry.get("group_profile", True)
     if type(profile) is not bool:
         raise ExecutionGateError(f"{where}: group_profile is a boolean")
+    bitcode = entry.get("host_llvm_bitcode", False)
+    if type(bitcode) is not bool:
+        raise ExecutionGateError(f"{where}: host_llvm_bitcode is a boolean")
     return {
+        **({"host_llvm_bitcode": True} if bitcode else {}),
         "board": board,
         "group_profile": profile,
         "engine": engine,
@@ -239,6 +244,8 @@ def build_options(gate: Mapping[str, Any]) -> dict[str, dict[str, dict[str, Any]
             }
             if entry.get("board") is not None:
                 out[model][program]["board"] = entry["board"]
+            if entry.get("host_llvm_bitcode"):
+                out[model][program]["host_llvm_bitcode"] = True
     return out
 
 
