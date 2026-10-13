@@ -17,6 +17,7 @@ from pathlib import Path
 
 import yaml
 
+from merlin.common.cpu_pool import shared_compute_pool
 from merlin.common.tree_hash import hash_tree
 from merlin.targetgen.target_experiment import load_target_experiment
 from merlin_experiments.phase1 import oot_history as OH
@@ -217,11 +218,13 @@ def grade(
             "(oot_starterkit + xdsl_dialects), declare language: python, no C++/cmake build.",
         }
     else:
-        shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
-        RI.strip_build_state(cand)  # clean, relocatable build per grade (abc9 L3-build bug)
+        with shared_compute_pool(timeout_s=timeout):
+            shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+            RI.strip_build_state(cand)  # clean, relocatable build per grade (abc9 L3-build bug)
         # The harness commits exactly the bytes about to be graded; the agent never touches the repo.
         oot_commit = OH.commit_graded(run_dir, cand, label=label, key=_key, sandbox_roots=(ws.parent,))
-        candidate_sha256 = hash_tree(cand)["sha256"] if inputs.public_build_service is not None else None
+        with shared_compute_pool(timeout_s=timeout):
+            candidate_sha256 = hash_tree(cand)["sha256"] if inputs.public_build_service is not None else None
         public_root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
         out = run_dir / "qa_history" / f"verdict_{label}_{_key}.json"
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -417,7 +420,8 @@ def _completed_loop_promoter(ws, frozen_source, runs, loop, cert, cover, *, inpu
 
     te = load_target_experiment(inputs.context.descriptor)
     root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
-    caps = discover_capsules((root,), labels={"public", "dev"}, contract=inputs.contract)
+    with shared_compute_pool():
+        caps = discover_capsules((root,), labels={"public", "dev"}, contract=inputs.contract)
     excluded = set(te.effective_exclusions(cap.get("name") for cap in caps))
     allowed = {str(cap["name"]) for cap in caps if cap.get("name") and cap["name"] not in excluded}
     by_name = {str(cap["name"]): cap for cap in caps if cap.get("name")}
@@ -479,10 +483,11 @@ def fast_grade(
     if not (ws / "submission" / "manifest.yaml").is_file():
         raise RuntimeError("no submission/manifest.yaml to grade yet")
     cand = run_dir / "_qa_work" / f"fcand_{tick}" / "submission"
-    if cand.parent.exists():
-        shutil.rmtree(cand.parent)
-    shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
-    RI.strip_build_state(cand)
+    with shared_compute_pool(timeout_s=timeout):
+        if cand.parent.exists():
+            shutil.rmtree(cand.parent)
+        shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+        RI.strip_build_state(cand)
     fruns = run_dir / "_qa_work" / f"fruns_{tick}"
     te = load_target_experiment(inputs.context.descriptor)
     adapters = _CR.qa_loop_adapters(

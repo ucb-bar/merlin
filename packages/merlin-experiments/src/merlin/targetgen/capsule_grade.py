@@ -1324,12 +1324,16 @@ def grade(
         "timing_rollup": {},
     }
 
+    # Preparation leases end before build/callback/child owners select their own CPU.
+    from merlin.common.cpu_pool import shared_compute_pool
+
     # K0/K1: load + integrity scan + build (fail-closed, recorded honestly)
     try:
-        pkg = load_package(pkg_dir, contract=contract)
-        score["integrity_exempt"] = pkg.integrity_exempt
-        integrity_scan(pkg, **({"additional_forbidden": additional_forbidden} if additional_forbidden else {}))
-        score["integrity_status"] = "clean" if not pkg.integrity_exempt else "exempt"
+        with shared_compute_pool(timeout_s=timeout):
+            pkg = load_package(pkg_dir, contract=contract)
+            score["integrity_exempt"] = pkg.integrity_exempt
+            integrity_scan(pkg, **({"additional_forbidden": additional_forbidden} if additional_forbidden else {}))
+            score["integrity_status"] = "clean" if not pkg.integrity_exempt else "exempt"
         build_package(pkg)
     except CertFailure as cf:
         score["integrity_status"] = f"FAIL[{cf.plane}]: {cf.detail[:200]}"
@@ -1337,7 +1341,8 @@ def grade(
         score["failure"] = {"plane": cf.plane, "category": str(cf.category), "detail": cf.detail}
         return score
 
-    source_caps = CR.discover_capsules(capsules_root, labels=labels, contract=contract)
+    with shared_compute_pool(timeout_s=timeout):
+        source_caps = CR.discover_capsules(capsules_root, labels=labels, contract=contract)
     caps = source_caps
     admission_policy = "all_discovered"
     capability_excluded: list[dict] = []

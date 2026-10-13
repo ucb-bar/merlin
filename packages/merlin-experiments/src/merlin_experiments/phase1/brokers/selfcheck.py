@@ -66,22 +66,25 @@ _DIGEST_IGNORES = frozenset({"build", "__pycache__", ".git", "selfcheck_out"})
 
 def _submission_digest(root: Path) -> str:
     """Stable digest of authored submission bytes, excluding disposable build state."""
-    root = Path(root)
-    digest = hashlib.sha256()
-    if not root.is_dir():
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    with shared_compute_pool():
+        root = Path(root)
+        digest = hashlib.sha256()
+        if not root.is_dir():
+            return digest.hexdigest()
+        for path in sorted(root.rglob("*")):
+            rel = path.relative_to(root)
+            if any(part in _DIGEST_IGNORES for part in rel.parts):
+                continue
+            if path.is_symlink():
+                digest.update(rel.as_posix().encode() + b"\0SYMLINK\0" + os.readlink(path).encode())
+            elif path.is_file():
+                digest.update(rel.as_posix().encode() + b"\0")
+                with path.open("rb") as f:
+                    while chunk := f.read(1024 * 1024):
+                        digest.update(chunk)
         return digest.hexdigest()
-    for path in sorted(root.rglob("*")):
-        rel = path.relative_to(root)
-        if any(part in _DIGEST_IGNORES for part in rel.parts):
-            continue
-        if path.is_symlink():
-            digest.update(rel.as_posix().encode() + b"\0SYMLINK\0" + os.readlink(path).encode())
-        elif path.is_file():
-            digest.update(rel.as_posix().encode() + b"\0")
-            with path.open("rb") as f:
-                while chunk := f.read(1024 * 1024):
-                    digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _decorate_response(

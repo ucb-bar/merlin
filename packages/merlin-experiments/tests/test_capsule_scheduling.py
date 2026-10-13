@@ -123,3 +123,32 @@ def test_ready_members_start_longest_first():
     caps = [_cap("small", shape=(4, 4)), _cap("large", shape=(512, 512)), _cap("mid", shape=(64, 64))]
     run_pipelined(caps, run, max_workers=1)
     assert order == ["large", "mid", "small"]
+
+
+def test_shared_scheduler_does_not_hold_slots_while_children_acquire(monkeypatch, tmp_path):
+    from merlin.common.cpu_pool import worker_pool_command
+
+    cpu = min(os.sched_getaffinity(0))
+    original = os.sched_getaffinity(0)
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "shared"))
+    monkeypatch.setenv("MERLIN_GRADE_CPUS", "invalid-legacy-pool")
+    parallelism = []
+    script = (
+        "import os; from merlin.common.cpu_pool import shared_compute_pool; "
+        "scope=shared_compute_pool(timeout_s=.5); scope.__enter__(); "
+        "print(sorted(os.sched_getaffinity(0))); scope.__exit__(None,None,None)"
+    )
+
+    def run(cap, parallel):
+        parallelism.append(parallel)
+        assert os.sched_getaffinity(0) == {cpu}
+        command = worker_pool_command([sys.executable, "-c", script], dict(os.environ))
+        child = subprocess.check_output(command, text=True, timeout=3)
+        assert child.strip() == str([cpu])
+        return {"capsule": cap["name"], "status": "pass"}
+
+    rows = run_pipelined([_cap("first"), _cap("second")], run, max_workers=6)
+    assert [row["capsule"] for row in rows] == ["first", "second"]
+    assert parallelism == [1, 1]
+    assert os.sched_getaffinity(0) == original

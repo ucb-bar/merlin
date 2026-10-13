@@ -15,7 +15,6 @@ back in input order.
 from __future__ import annotations
 
 import heapq
-import os
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextvars import copy_context
@@ -83,11 +82,14 @@ def run_pipelined(
     """
     deps = dependencies(capsules)
     # Linux affinity is per thread. Keep grading preparation off the scheduler's
-    # manager cores; subprocesses inherit this pool until their build/simulator
-    # owner explicitly selects its own pool. Restore affinity on every exit.
-    from merlin.common.cpu_pool import parse_roster, selected_pool
+    # manager cores; actual build/simulator step owners lease shared compute slots.
+    # Never hold a capsule-wide lease across a child/RPC wait. Restore affinity
+    # on every exit; shared mode takes precedence over the legacy grading pool.
+    from merlin.common.cpu_pool import grading_cpus, selected_pool, shared_compute_enabled
 
-    grade_cpus = parse_roster(os.environ.get("MERLIN_GRADE_CPUS", ""))
+    grade_cpus = grading_cpus()
+    if shared_compute_enabled():
+        max_workers = max(1, min(max_workers, len(grade_cpus)))
     if grade_cpus:
         unpinned_run_one = run_one
 
