@@ -327,6 +327,7 @@ _GRADING_MODULES = (
     "merlin.targetgen.rtl_engine_policy",
     "merlin.runtime.backends.base",
     "merlin.targetgen.tier_cache",
+    "merlin.targetgen.simulation_certificate",
 )
 
 
@@ -504,7 +505,7 @@ def lookup(capsule: str, tier: str, identity, instrument, *, root: "Path | None"
         if isinstance(raw, dict) and all(raw.get(k) == v for k, v in want.items()):
             if raw.get("status") == _CARRYABLE and isinstance(raw.get("tier_result"), dict):
                 return dict(raw)
-    for led in tuple(ledgers) or ledger_paths():
+    for led in (() if ledgers is False else (tuple(ledgers) or ledger_paths())):
         hit = _from_ledger(led, capsule, tier, identity, instrument)
         if hit is not None:
             return hit

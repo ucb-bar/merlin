@@ -874,7 +874,8 @@ def apply_prohibited_instruction_rule(status: str, failure: dict | None, report:
     return status, failure
 
 
-def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, shas, from_rtl: bool):
+def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, shas, from_rtl: bool,
+                          simulation_context=None):
     """``(execution identity, instrument digest, refusal reason)`` for one (capsule, tier).
 
     The identity is ``None`` whenever either half cannot be established -- no executable yet, a
@@ -888,6 +889,12 @@ def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, sh
     executables = run_executables(generated)
     identity = _TC.execution_identity(target=target, executables=executables, toolchain_shas=shas)
     if identity is None:
+        if simulation_context is not None:
+            from .simulation_certificate import key
+
+            simulated, instrument = key(simulation_context, executables, expected=(capsule_name, tier, target))
+            if simulated is not None:
+                return simulated, instrument, ""
         return None, None, _TC.execution_identity_reason(target=target, executables=executables, toolchain_shas=shas)
     instrument = _TC.instrument_digest(target, tier, rtl_tier=from_rtl)
     if instrument is None:
@@ -920,7 +927,8 @@ def stamp_cache_refusals(tiers: dict, refusals: dict) -> None:
             record.cache_unavailable = str(why)
 
 
-def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target, generated, shas, from_rtl: bool):
+def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target, generated, shas, from_rtl: bool,
+                        simulation_context=None):
     """A verdict this run may CARRY for ``tier``, as a TierResult, or ``None`` to execute the tier.
 
     The returned record is the stored one with the act of measurement stripped out: no wall-clock
@@ -941,15 +949,29 @@ def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target
     from . import tier_cache as _TC
 
     identity, instrument, why = _tier_certificate_key(
-        capsule_name, tier, target=target, generated=generated, shas=shas, from_rtl=from_rtl
+        capsule_name, tier, target=target, generated=generated, shas=shas, from_rtl=from_rtl,
+        simulation_context=simulation_context,
     )
     if identity is None:
         return None, why
-    hit = _TC.lookup(capsule_name, tier, identity, instrument)
+    simulated = simulation_context is not None and _TC.execution_identity(
+        target=target, executables=run_executables(generated), toolchain_shas=shas) is None
+    if simulated:
+        from . import simulation_certificate as _SC
+
+        root = _SC.cache_root()
+        hit = None if root is None else _TC.lookup(capsule_name, tier, identity, instrument, root=root, ledgers=False)
+        if hit is not None and _SC.key(simulation_context, run_executables(generated),
+                                      expected=(capsule_name, tier, target)) != (identity, instrument):
+            return None, "simulation certificate identities changed before publication"
+    else:
+        hit = _TC.lookup(capsule_name, tier, identity, instrument)
     if hit is None:
         return None, ""  # asked and missed: the ordinary case, and not a defect
     stored = dict(hit.get("tier_result") or {})
     carried = _TC.carried_block(hit)
+    if simulated:
+        carried.update(_SC.scope())
     carried["earned_evidence"] = {k: stored.pop(k) for k in _TC.ARTIFACTS_OF_THE_EARNING_RUN if k in stored} or None
     names = {f.name for f in dataclasses.fields(TierResult)}
     # `submission` is deliberately NOT carried: `_finalize_capsule_result` stamps THIS run's submission
@@ -983,6 +1005,7 @@ def record_tier_certificate(
     shas,
     from_rtl: bool,
     run_id: str | None = None,
+    simulation_context=None,
 ) -> None:
     """Store an EXECUTED tier verdict so a later grade need not re-buy it. Never raises.
 
@@ -994,13 +1017,22 @@ def record_tier_certificate(
         from . import tier_cache as _TC
 
         identity, instrument, _why = _tier_certificate_key(
-            capsule_name, tier, target=target, generated=generated, shas=shas, from_rtl=from_rtl
+            capsule_name, tier, target=target, generated=generated, shas=shas, from_rtl=from_rtl,
+            simulation_context=simulation_context,
         )
         if identity is None:
             return
-        _TC.record(
-            capsule_name, tier, identity, instrument, status=result.status, tier_result=result.to_dict(), run_id=run_id
-        )
+        arguments = {}
+        if simulation_context is not None and _TC.execution_identity(
+                target=target, executables=run_executables(generated), toolchain_shas=shas) is None:
+            from .simulation_certificate import cache_root
+
+            root = cache_root()
+            if root is None:
+                return
+            arguments['root'] = root
+        _TC.record(capsule_name, tier, identity, instrument, status=result.status,
+                   tier_result=result.to_dict(), run_id=run_id, **arguments)
     except Exception:  # noqa: BLE001 -- a cache write may never gate a grade
         return
 
@@ -5874,6 +5906,15 @@ def run_capsule(
             # actually executed in this run, because that is what guarantees the executable on disk is
             # this run's and not a previous grade's (see `_clear_stale_executable`). The lookup fails
             # closed on every ambiguity, and a hit is reported AS a carry -- never as a measurement.
+            from .simulation_certificate import capture as _simulation_request
+
+            _simulation_context = None
+            if tier in cfg.rtl_tiers and tier not in adapter_managed_tiers:
+                _simulation_context = _simulation_request(
+                    capsule=capsule, cb=cb, gold=gold, reference=ref, direct_oracle_golden=direct_oracle_golden,
+                    policy=policy, llvm_text=llvm_text, adapter=adapter, target=eff_target, tier=tier,
+                    package_dir=package_dir,
+                )
             if _executed_here and tier not in adapter_managed_tiers:
                 _carried, _why_not = carried_tier_result(
                     name,
@@ -5883,6 +5924,7 @@ def run_capsule(
                     generated=paths.generated,
                     shas=_pin_shas(),
                     from_rtl=tier in cfg.rtl_tiers,
+                    simulation_context=_simulation_context,
                 )
                 if _carried is not None:
                     tiers[tier] = _carried
@@ -6356,6 +6398,7 @@ def run_capsule(
                 shas=_pin_shas(),
                 from_rtl=tier in cfg.rtl_tiers,
                 run_id=run_id,
+                simulation_context=_simulation_context,
             )
             # Only a MANDATORY/gold tier mismatch fails the capsule. An ADDITIVE lower-fidelity tier
             # (one not in required_oracle_tiers — e.g. a fast functional model with known approximation
