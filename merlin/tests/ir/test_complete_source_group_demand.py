@@ -51,7 +51,12 @@ def test_real_dequant_source_composition_remains_in_complete_demand():
 
 @pytest.mark.parametrize("refusal", ["no_device_form", "readout_epilogue_undeclared", "missing_scale",
                                     "readout_requires_scale", None])
-def test_compiler_form_or_unknown_readout_is_never_a_hardware_host_exclusion(refusal):
+def test_compiler_form_or_unknown_readout_is_never_a_hardware_host_exclusion(refusal, monkeypatch):
+    from merlin.targetgen import eligibility
+
+    caps = {family: SemanticCapability(family, dtypes=("int8",))
+            for family in ("contraction", "elementwise_map")}
+    monkeypatch.setattr(eligibility, "capability_map_from_contract", lambda contract: caps)
     groups, operations, verdicts = original_source()
     groups[0].placement, groups[0].refusal = CG.HOST, refusal
     with pytest.raises(demand.SourceDemandIncomplete) as error:
@@ -73,6 +78,8 @@ def test_host_reason_requires_actual_selected_hardware_exclusion(monkeypatch):
     original_groups = form_source_groups(parsed, "synthetic", oracle=Oracle())
     floating = next(group for group in original_groups if CG.CONTRACTION in group.stages)
     assert floating.in_dtype == "fp32" and floating.refusal == "input_dtype"
+    # This isolated group actually contains only floating contraction work.
+    # Separate dequantization groups still need their own output-format proof.
     assert demand._hardware_exclusion(floating, {"independent": "selected integer capability"})
 
 

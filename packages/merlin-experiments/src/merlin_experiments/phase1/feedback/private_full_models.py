@@ -650,7 +650,7 @@ def _source_obligations(
     demand = source_demand.derive(
         groups, operations, raw_verdicts, source_sha256=source_sha, normalized_sha256=normalized_sha,
         capability=capability, software=software, facts_sha256=facts_sha256,
-        numeric_policy_sha256=numeric_policy_sha256,
+        numeric_policy_sha256=numeric_policy_sha256, source_operations=tuple(mq.walk(module)),
     )
     inventory = AI._application_operation_inventory(  # noqa: PLC2701 -- trusted exact inventory primitive
         source,
