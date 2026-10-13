@@ -14,6 +14,7 @@ from pathlib import Path
 from . import firrtl_struct as F
 
 SCHEMA = "merlin.firrtl_operand_layouts.v1"
+CONTEXT_SCHEMA = "merlin.firrtl_operand_layouts.v2"
 
 
 def _source(path, expected):
@@ -28,17 +29,27 @@ def _source(path, expected):
     return path
 
 
-def _type(module, reference, modules=None):
+def _type(module, reference, modules=None, *, dynamic_input=False):
+    def field_type(typ, segments):
+        for segment in segments:
+            if segment is None:
+                if not dynamic_input or typ is None or typ[0] != "vec" or typ[2] <= 0:
+                    raise ValueError("operand dynamic root has no exact homogeneous vector type")
+                typ = typ[1]
+            else:
+                typ = F.field_type(typ, (segment,))
+        return typ
+
     declaration = module.decls.get(reference.root)
-    if declaration is not None and declaration[0] == "inst" and not reference.dynamic:
+    if declaration is not None and declaration[0] == "inst":
         callee = (modules or {}).get(declaration[1])
         if callee is None or not reference.segments or type(reference.segments[0]) is not str:
             raise ValueError("operand instance root has no original selected port type")
-        return F.field_type(callee.port_type(reference.segments[0]), reference.segments[1:])
+        return field_type(callee.port_type(reference.segments[0]), reference.segments[1:])
     if (declaration is None or declaration[0] not in {"wire", "input", "output"}
-            or reference.dynamic):
+            or (reference.dynamic and not dynamic_input)):
         raise ValueError("operand source is not an explicit ground wire or interface")
-    return F.field_type(F.parse_type(declaration[1]), reference.segments)
+    return field_type(F.parse_type(declaration[1]), reference.segments)
 
 
 def _leaves(typ, path=()):
@@ -54,7 +65,8 @@ def _leaves(typ, path=()):
     raise ValueError("operand field has unresolved, signed or unsupported elaborated type")
 
 
-def _slice(module, expression, source, word_bits, *, active=None):
+def _slice(module, expression, source, word_bits, *, active=None, context=None):
+    context = context or {}
     active = set() if active is None else active
     if expression == source:
         return 0, word_bits, ()
@@ -71,33 +83,49 @@ def _slice(module, expression, source, word_bits, *, active=None):
             if declaration is None or declaration[0] != "wire":
                 raise ValueError("operand source reaches state or an unrelated interface")
             drivers = [c for c in module.connects if c.lhs == expression]
-            if len(drivers) != 1 or drivers[0].guards:
+            guards = [guard.text() for guard in drivers[0].guards] if len(drivers) == 1 else None
+            if len(drivers) != 1 or (guards and guards != context.get("guards")):
                 raise ValueError("operand source has missing, multiple or conditional drivers")
             rhs, line = drivers[0].rhs, drivers[0].line
-        offset, width, lines = _slice(module, rhs, source, word_bits, active=active)
-        if expression.root not in module.nodes and F.type_width(_type(module, expression)) != width:
-            raise ValueError("operand alias changes its actual declared width")
+        offset, width, lines = _slice(module, rhs, source, word_bits, active=active, context=context)
+        if expression.root not in module.nodes:
+            typ = _type(module, expression)
+            declared_width = F.type_width(typ)
+            if declared_width != width:
+                # A FIRRTL unsigned connect truncates high bits to its declared
+                # sink width. This is packing only, never selector validity.
+                if (not context.get("truncate_aliases") or typ is None or typ[0] != "uint"
+                        or type(declared_width) is not int or not 0 < declared_width < width):
+                    raise ValueError("operand alias changes its actual declared width")
+                width = declared_width
         return offset, width, (*lines, line)
     if isinstance(expression, F.Prim):
         if expression.op == "bits" and len(expression.args) == 3:
             value, high, low = expression.args
             if not isinstance(high, F.IntArg) or not isinstance(low, F.IntArg):
                 raise ValueError("operand extraction has unresolved bounds")
-            offset, width, lines = _slice(module, value, source, word_bits, active=active)
+            offset, width, lines = _slice(module, value, source, word_bits, active=active, context=context)
             if not 0 <= low.value <= high.value < width:
                 raise ValueError("operand extraction exceeds its actual source width")
             return offset + low.value, high.value - low.value + 1, lines
         if expression.op == "asUInt" and len(expression.args) == 1:
-            return _slice(module, expression.args[0], source, word_bits, active=active)
+            return _slice(module, expression.args[0], source, word_bits, active=active, context=context)
     raise ValueError("operand source is not an exact alias or bit extraction")
 
 
 def _field(module, row, word_bits, modules):
+    context = row.get("packing_context") or {}
     source, field = F.parse_expr(row["input"]), F.parse_expr(row["field"])
     if not isinstance(source, F.Ref) or not isinstance(field, F.Ref):
         raise ValueError("operand field selection requires explicit reference paths")
-    if F.type_width(_type(module, source, modules)) != word_bits:
+    source_type = _type(module, source, modules, dynamic_input=context.get("dynamic_input", False))
+    if source_type != ("uint", word_bits):
         raise ValueError("operand register root has another actual width")
+    if field.root in module.nodes and not field.segments and context.get("node_field"):
+        offset, width, lines = _slice(module, field, source, word_bits, context=context)
+        return {"status": "derived", "offset": offset, "width": width,
+                "subfields": [{"field": "", "offset": offset, "width": width}],
+                "source_lines": sorted(set(lines))}
     typ = _type(module, field)
     leaves = _leaves(typ)
     if not leaves or len(leaves) > word_bits:
@@ -105,7 +133,7 @@ def _field(module, row, word_bits, modules):
     projections, lines = [], []
     for tail, declared_width in leaves:
         reference = F.Ref(field.root, (*field.segments, *tail))
-        offset, width, evidence = _slice(module, reference, source, word_bits)
+        offset, width, evidence = _slice(module, reference, source, word_bits, context=context)
         if width != declared_width:
             raise ValueError("operand extraction differs from its actual declared field width")
         projections.append({"field": ".".join(map(str, tail)), "offset": offset, "width": width})
@@ -127,7 +155,11 @@ def derive_operand_layouts(firrtl, *, expected_sha256, selections, word_bits=64)
 
     Each explicit selection binds a destination ``bundle``/``name`` to one
     ``module``/``field`` and its original ``input`` register. No reserved packing
-    slot or numerical output participates in the observation.
+    slot or numerical output participates in the observation. Optional v2
+    ``packing_context`` names exact conditional guards, a typed homogeneous
+    dynamic input selection, node fields, or unsigned sink truncation. These
+    premises do not prove the guards hold, the selector is in range, or any
+    command is accepted; the complete original source remains mandatory.
     """
     if (word_bits not in {32, 64} or type(selections) is not list
             or not selections or len(selections) > 256):
@@ -135,11 +167,22 @@ def derive_operand_layouts(firrtl, *, expected_sha256, selections, word_bits=64)
     selections = copy.deepcopy(selections)
     identities = set()
     for row in selections:
-        if (type(row) is not dict or set(row) != {"bundle", "name", "module", "field", "input"}
-                or any(type(value) is not str or not value for value in row.values())
+        required = {"bundle", "name", "module", "field", "input"}
+        if (type(row) is not dict or not required <= set(row) or set(row) - required - {"packing_context"}
+                or any(type(row[key]) is not str or not row[key] for key in required)
                 or not row["bundle"].isidentifier() or not row["name"].isidentifier()
                 or (row["bundle"], row["name"]) in identities):
             raise ValueError("operand layout selection has malformed or duplicate fields")
+        if "packing_context" in row:
+            context = row["packing_context"]
+            allowed = {"guards", "dynamic_input", "truncate_aliases", "node_field"}
+            if (type(context) is not dict or set(context) - allowed
+                    or not context or any(type(context[key]) is not bool for key in context if key != "guards")):
+                raise ValueError("operand packing context has malformed or unsupported premises")
+            if "guards" in context and (type(context["guards"]) is not list or not context["guards"]
+                    or len(context["guards"]) > 32 or any(type(guard) is not str or not guard
+                                                        or len(guard) > 4096 for guard in context["guards"])):
+                raise ValueError("operand packing guards are not an exact bounded source roster")
         identities.add((row["bundle"], row["name"]))
     path = _source(firrtl, expected_sha256)
     names = {row["module"] for row in selections}
@@ -175,7 +218,8 @@ def derive_operand_layouts(firrtl, *, expected_sha256, selections, word_bits=64)
                 result = {"status": "unavailable", "reason": str(exc)}
         fields.append({**row, **result})
     _source(path, expected_sha256)
-    return {"schema": SCHEMA, "source": str(path), "source_sha256": expected_sha256,
+    return {"schema": CONTEXT_SCHEMA if any("packing_context" in row for row in selections) else SCHEMA,
+            "source": str(path), "source_sha256": expected_sha256,
             "word_bits": word_bits, "selections": selections, "fields": fields,
             "scope": "original elaborated combinational field packing only",
             "command_acceptance_and_semantic_roles": "unproven"}
@@ -187,7 +231,7 @@ def apply_selected_layouts(facts, selection):
     Only existing unresolved fields can gain actual widths. Unknown observations
     remain unresolved; another original width/offset is a refusal, never overwritten.
     """
-    if type(selection) is not dict or selection.get("schema") != SCHEMA:
+    if type(selection) is not dict or selection.get("schema") not in {SCHEMA, CONTEXT_SCHEMA}:
         raise ValueError("operand layout record is not an original selection")
     declared = (facts.get("inputs") or {}).get("firrtl_inputs") or []
     if not any(row.get("path") == selection.get("source")
@@ -215,8 +259,19 @@ def apply_selected_layouts(facts, selection):
         if field.get("offset") != row["offset"] or field.get("width") not in {None, row["width"]}:
             raise ValueError("actual operand layout contradicts the original source declaration")
         field["width"] = row["width"]
+        if any(child["field"] for child in row["subfields"]):
+            if "source_subfields" in field and field["source_subfields"] != row["subfields"]:
+                raise ValueError("actual operand subfields contradict the original source declaration")
+            field["source_subfields"] = copy.deepcopy(row["subfields"])
     result["inputs"]["operand_layout_selection"] = observed
     return result
+
+
+def verify_selected_layout_source(selection):
+    """Fresh final source byte/path check for an already rederived observation."""
+    if type(selection) is not dict or selection.get("schema") not in {SCHEMA, CONTEXT_SCHEMA}:
+        raise ValueError("operand layout record is not an original selection")
+    _source(selection["source"], selection["source_sha256"])
 
 
 def source_flag_offsets(selection, *, bundle, name, flags):

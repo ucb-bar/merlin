@@ -86,6 +86,29 @@ def join_routed_source_groups(assigned: Any, source: Mapping[str, Any]) -> dict[
     return joined
 
 
+def verify_routed_source_coverage(emitted: Mapping[str, Any], source: Mapping[str, Any]) -> dict[int, int]:
+    """Require every independently eligible root, allowing intended host selection.
+
+    ``source`` remains the original source-admission witness, never a roster
+    reconstructed from this sidecar. Host selection cannot excuse a missing,
+    duplicate or changed eligible identity. Other emitter refusals stay fatal.
+    This grants no linked-symbol, body, host-compute or numerical admission.
+    """
+    assigned = emitted.get("routed")
+    if not isinstance(assigned, list) or not assigned:
+        raise ValueError("linked roster differs from eligible source groups")
+    joined = join_routed_source_groups(assigned, source)
+    skipped = emitted.get("skipped", [])
+    if not isinstance(skipped, (list, tuple)) or any(
+        not isinstance(row, (list, tuple)) or len(row) != 2
+        or not isinstance(row[0], str) or not row[0]
+        or row[1] != "the placement did not select this group's root"
+        for row in skipped
+    ):
+        raise ValueError("linked build retained a device refusal outside intended host selection")
+    return joined
+
+
 def _conv_entry_signature_matches(emitted, symbol, row):
     """Join a logical NHWC convolution ABI to its captured matrix contraction."""
     entry = emitted.get("entries", {}).get(symbol)

@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
+import time
+import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -92,8 +95,8 @@ class CompilationRecipe:
     ) -> Any:
         """Launch the original command after retaining its explicit input bytes.
 
-        A command error leaves an invoked record without a returned output,
-        even when an older artifact remains at the requested output path.
+        A command error retains captured textual diagnostics and a failed record
+        without a returned output, even when an older artifact remains there.
         """
         executable = shutil.which(str(argv[0]))
         if executable is None:
@@ -112,12 +115,44 @@ class CompilationRecipe:
         self.record["commands"].append(command)
         self.record["status"] = "invoked"
         write_pretty_json(self.path, self.record)
-        result = runner(argv, **({"cwd": cwd} if cwd is not None else {}))
+        started = time.monotonic()
+        try:
+            result = runner(argv, **({"cwd": cwd} if cwd is not None else {}))
+        except Exception as failure:
+            captured = getattr(failure, "captured_process", None)
+            expired = getattr(failure, "captured_timeout", None)
+            if isinstance(failure, subprocess.TimeoutExpired):
+                expired = failure
+            self._retain_failure(command, captured, expired, time.monotonic() - started)
+            raise
         if result.returncode != 0:
+            self._retain_failure(command, result, None, time.monotonic() - started)
             raise RuntimeError(f"compilation command returned {result.returncode}")
         command.update(status="returned", output=_identity(output))
         write_pretty_json(self.path, self.record)
         return result
+
+    def _retain_failure(self, command, captured, expired, elapsed):
+        """Retain runner diagnostics; this cannot complete or certify a product."""
+        command.update(status="timeout" if expired is not None else "failed", elapsed_s=elapsed)
+        if captured is not None:
+            command["returncode"] = captured.returncode
+        if expired is not None:
+            command["timeout_s"] = expired.timeout
+        observation = expired if expired is not None else captured
+        if observation is not None:
+            directory = self.path.parent / "compiler-diagnostics" / uuid.uuid4().hex
+            directory.mkdir(parents=True)
+            diagnostics = {}
+            for name in ("stdout", "stderr"):
+                value = getattr(observation, name, None)
+                if value is not None:
+                    path = directory / (name + ".bin")
+                    path.write_bytes(value.encode("utf-8") if isinstance(value, str) else value)
+                    diagnostics[name] = _identity(path)
+            command["captured_diagnostics"] = diagnostics
+        self.record["status"] = command["status"]
+        write_pretty_json(self.path, self.record)
 
     def completed(self, executable: Path) -> None:
         """Bind the final executable only after successful linking and audits."""

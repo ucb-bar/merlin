@@ -132,6 +132,7 @@ def _program_entry(entry: Any, where: str) -> dict[str, Any]:
         "board",
         "group_profile",
         "basis",
+        "host_llvm_bitcode",
     }
     if unknown:
         raise ExecutionGateError(f"{where}: unknown key(s) {sorted(unknown)}")
@@ -169,7 +170,11 @@ def _program_entry(entry: Any, where: str) -> dict[str, Any]:
     profile = entry.get("group_profile", True)
     if type(profile) is not bool:
         raise ExecutionGateError(f"{where}: group_profile is a boolean")
+    bitcode = entry.get("host_llvm_bitcode", False)
+    if type(bitcode) is not bool:
+        raise ExecutionGateError(f"{where}: host_llvm_bitcode is a boolean")
     return {
+        **({"host_llvm_bitcode": True} if bitcode else {}),
         "board": board,
         "group_profile": profile,
         "engine": engine,
@@ -239,6 +244,8 @@ def build_options(gate: Mapping[str, Any]) -> dict[str, dict[str, dict[str, Any]
             }
             if entry.get("board") is not None:
                 out[model][program]["board"] = entry["board"]
+            if entry.get("host_llvm_bitcode"):
+                out[model][program]["host_llvm_bitcode"] = True
     return out
 
 
@@ -789,6 +796,7 @@ def run(
     *,
     target: str,
     static_out: str | Path,
+    selected_model: str | None = None,
     execute: Callable[..., Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Execute every declared program of the static gate's passing models; one record per program.
@@ -798,10 +806,37 @@ def run(
     declaration); a deferred program is recorded as deferred with its declared reason."""
     execute = execute or run_engine
     static_out = Path(static_out)
+    if selected_model is not None:
+        from . import private_full_models as models
+        from . import private_source_freeze
+
+        programs = gate.get("programs") or {}
+        expected_programs = {name: list(stages) for name, stages in programs.items()}
+        selected_rows = static.get("models") or []
+        if (
+            selected_model not in programs
+            or static.get("schema") != models.RESULT_SCHEMA
+            or static.get("target") != target
+            or static.get("mode") != "canonical_model_partition"
+            or static.get("selected_model") != selected_model
+            or static.get("partition_passed") is not True
+            or static.get("passed") is not False
+            or static.get("required_models") != list(programs)
+            or static.get("required_programs") != expected_programs
+            or not private_source_freeze.valid_binding(
+                static.get("authored_source_freeze"), static.get("private_spec_sha256")
+            )
+            or len(selected_rows) != 1
+            or selected_rows[0].get("model") != selected_model
+            or selected_rows[0].get("status") != PASS
+        ):
+            raise ExecutionGateError("canonical execution partition differs from the complete original static roster")
     built = _static_programs(static)
     rows: list[dict[str, Any]] = []
     started = time.monotonic()
     for model, program, entry in roster_of(gate):
+        if selected_model is not None and model != selected_model:
+            continue
         row: dict[str, Any] = {"model": model, "program": program}
         if "deferred" in entry:
             row.update(status=DEFERRED, reason=entry["deferred"], estimate=entry.get("estimate"))
@@ -826,14 +861,14 @@ def run(
     executed = [row for row in rows if row["status"] != DEFERRED]
     deferred = [f"{row['model']}:{row['program']}" for row in rows if row["status"] == DEFERRED]
     passed = bool(executed) and all(row["status"] == PASS for row in executed)
-    return {
+    result = {
         "schema": SCHEMA,
         "target": target,
         "required": gate["required"],
         "candidate_tree_sha256": static.get("candidate_tree_sha256"),
         "programs": rows,
         "deferred": deferred,
-        "passed": passed,
+        "passed": selected_model is None and passed,
         "numerical_scope": (
             "every declared program executed"
             if not deferred
@@ -842,6 +877,14 @@ def run(
         "per_group_exactness": PER_GROUP_SCOPE,
         "wall_s": round(time.monotonic() - started, 1),
     }
+    if selected_model is not None:
+        result.update(
+            mode="canonical_model_partition", selected_model=selected_model, partition_passed=passed,
+            required_models=list(gate["programs"]),
+            required_programs={name: list(stages) for name, stages in gate["programs"].items()},
+            numerical_scope="selected complete model programs only; full declared roster gate incomplete",
+        )
+    return result
 
 
 def not_run(gate: Mapping[str, Any], reason: str) -> dict[str, Any]:
@@ -867,7 +910,10 @@ def complete(
 
     Every declared program appears once, in order: a deferral exactly as declared, an executed program
     passed on its declared engine with the ELF digest the static record verified."""
-    if not isinstance(record, Mapping) or record.get("schema") != SCHEMA or record.get("passed") is not True:
+    if (
+        not isinstance(record, Mapping) or record.get("schema") != SCHEMA or record.get("passed") is not True
+        or record.get("mode") == "canonical_model_partition"
+    ):
         return False
     if record.get("candidate_tree_sha256") != candidate_sha256 or not isinstance(static, Mapping):
         return False

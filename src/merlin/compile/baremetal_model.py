@@ -67,7 +67,9 @@ def _output_root(path: str | Path) -> Path:
     return output
 
 
-def _saved_reference(capture: Path, name: str | None, *, execution: bool, materialized_inputs=None) -> np.ndarray | None:
+def _saved_reference(
+    capture: Path, name: str | None, *, execution: bool, materialized_inputs=None,
+) -> np.ndarray | None:
     verification = (
         {"status": "verified_materialized"}
         if materialized_inputs is not None and materialized_inputs.verify(capture)
@@ -98,7 +100,9 @@ def _saved_reference(capture: Path, name: str | None, *, execution: bool, materi
     return golden.reshape(-1)
 
 
-def _full_references(capture: Path, reference_file: str | None, *, materialized_inputs=None) -> list[tuple[str, np.ndarray | None]]:
+def _full_references(
+    capture: Path, reference_file: str | None, *, materialized_inputs=None,
+) -> list[tuple[str, np.ndarray | None]]:
     """``[(name, reference or None)]`` in forward-result order for a full-readback execution.
 
     A capture that states every result (``output_order.json`` with one array each in ``goldens.npz``)
@@ -286,6 +290,7 @@ def compile_saved_model(
     tolerance: dict[str, float] | None = None,
     materialized_inputs=None,
     respect_captured_quantization_scope: bool = False,
+    host_llvm_bitcode: bool = False,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
@@ -313,6 +318,8 @@ def compile_saved_model(
     full = readback == "full"
     if type(respect_captured_quantization_scope) is not bool:
         raise BaremetalModelError("captured quantization scope must be an explicit Boolean")
+    if type(host_llvm_bitcode) is not bool:
+        raise BaremetalModelError("host LLVM bitcode transport must be an explicit Boolean")
     if type(arena_mb) is not int or arena_mb < 1 or type(timeout_s) is not int or timeout_s < 1:
         raise BaremetalModelError("arena_mb and timeout_s must be positive integers")
     paths = [Path(capture), Path(package), Path(board_catalog), Path(dts)]
@@ -369,8 +376,13 @@ def compile_saved_model(
                 raise BaremetalModelError("explicit trusted materialized model binding required")
             materialized_inputs.verify(capture_path)
             receipt["inputs"]["materialization"] = materialized_inputs.record()
-        golden = _saved_reference(capture_path, reference_file, execution=run != "none" and not full, materialized_inputs=materialized_inputs)
-        references = _full_references(capture_path, reference_file, materialized_inputs=materialized_inputs) if full and run != "none" else None
+        golden = _saved_reference(
+            capture_path, reference_file, execution=run != "none" and not full, materialized_inputs=materialized_inputs,
+        )
+        references = (
+            _full_references(capture_path, reference_file, materialized_inputs=materialized_inputs)
+            if full and run != "none" else None
+        )
         boards = load_boards(catalog_path)
         selected = boards.get(board)
         if selected is None or selected.target != target:
@@ -431,6 +443,8 @@ def compile_saved_model(
         build_options = {"math_archive_symbols": math_archive_symbols} if math_archive_symbols is not None else {}
         if respect_captured_quantization_scope:
             receipt["inputs"]["respect_captured_quantization_scope"] = True
+        if host_llvm_bitcode:
+            receipt["inputs"]["host_llvm_bitcode"] = True
         if respect_captured_quantization_scope:
             from merlin.llvmlower.quant_scope import FEATURE as captured_quantization_scope
 
@@ -451,6 +465,7 @@ def compile_saved_model(
             device=device,
             full_readback=full,
             group_profile=bool(group_profile),
+            **({"host_llvm_bitcode": True} if host_llvm_bitcode else {}),
             **build_options,
         )
         if not isinstance(built.get("build_hash"), str) or not built["build_hash"]:
@@ -474,6 +489,7 @@ def compile_saved_model(
             "index_lowering": built["index_lowering"],
             "matrix_routing": built.get("matrix_routing"),
             "host_artifacts": built.get("host_artifacts"),
+            **({"host_bitcode_transport": built["host_bitcode_transport"]} if host_llvm_bitcode else {}),
             "device_artifacts": built.get("device_artifacts"),
         }
         # Bind the producer's record, rather than minting a new command history.

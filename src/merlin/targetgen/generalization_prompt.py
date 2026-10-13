@@ -74,9 +74,29 @@ validation follows compiler freeze under the host's declared evaluation policy.
    this plan nor a successful tool invocation establishes an untested property.
 """
 
+GENERAL_COMPILER_CONTRACT_V2 = GENERAL_COMPILER_CONTRACT_V1.replace(
+    "## General compiler requirements (shared v1)", "## General compiler requirements (shared v2)"
+).replace(
+    "Static instruction count need not grow with input size: loops can execute more\n"
+    "work with the same code. A compile-only result is compilation evidence, never a\n"
+    "numerical execution pass. Report unavailable checks and unproved properties.",
+    "Check public emitted-code growth before expensive simulations or full-model builds.\n"
+    "Large and unseen dimensions should generally change runtime loop bounds, not\n"
+    "replicate static instructions in proportion to all tensor elements. Legal\n"
+    "specialization remains allowed under the original semantics and resource limits.\n"
+    "Keep emitted IR, object-build time and storage within the operator's selected\n"
+    "budgets; preserve all work and outputs rather than truncate to fit a limit.\n"
+    "Functional numerical correctness, complete eligible accelerator placement and\n"
+    "required structural/trace checks remain separate acceptance requirements.\n"
+    "A small artifact, successful compile-only check or completed public stress\n"
+    "ladder proves none of these requirements or full-domain generality. Report\n"
+    "unavailable checks and unproved properties. Batch independent ready work on\n"
+    "the verified resource pools while retaining one stable compiler snapshot.",
+)
+
 
 def append_general_compiler_contract(text: str) -> str:
     """Serve the same block once, including when an explicit task already has it."""
-    if GENERAL_COMPILER_CONTRACT_V1 in text:
+    if GENERAL_COMPILER_CONTRACT_V1 in text or GENERAL_COMPILER_CONTRACT_V2 in text:
         return text
-    return text.rstrip() + "\n\n" + GENERAL_COMPILER_CONTRACT_V1
+    return text.rstrip() + "\n\n" + GENERAL_COMPILER_CONTRACT_V2

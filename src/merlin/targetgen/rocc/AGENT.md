@@ -75,3 +75,11 @@ selected `rocc_operand_protocol` version 1 data. It normalizes operand roles
 without changing raw command/coverage identities or discovering authored inputs.
 Actual field widths come from original source facts: reserved `slot_width` alone
 does not qualify a field or address flag. Missing relations remain UNKNOWN.
+
+`selected_operand_protocol.bind_original_operand_selection` additionally accepts
+an explicitly pinned data sidecar over unchanged original facts. It rederives
+selected FIRRTL packing and reopens ISA/controller sources before returning a
+detached observer. Source subfields and closed conjunctions retain unknowns;
+they grant no selector validity, queue acceptance or schedule qualification.
+The caller must select the sidecar through the original-owned profile; this
+helper supplies neither original-owner authority nor ambient activation.

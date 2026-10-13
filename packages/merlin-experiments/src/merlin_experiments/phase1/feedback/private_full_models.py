@@ -49,11 +49,12 @@ from merlin_experiments.phase1.feedback.private_group_provenance import (
     eligible_source_identity as _eligible_source_identity,
 )
 from merlin_experiments.phase1.feedback.private_group_provenance import (
-    join_routed_source_groups as _join_routed_source_groups,
+    join_routed_source_groups as _join_routed_source_groups,  # noqa: F401 -- preserve source-join compatibility alias
 )
 from merlin_experiments.phase1.feedback.private_group_provenance import (
     routed_kernel_symbols as _routed_kernel_symbols,
 )
+from merlin_experiments.phase1.feedback.private_group_provenance import verify_routed_source_coverage
 from merlin_experiments.phase1.feedback.private_prebuilt_receipt import load_diagnostic_receipt
 from merlin_experiments.phase1.feedback.private_source_support_join import (
     linked_source_support_complete as _linked_source_support_complete,
@@ -916,9 +917,7 @@ def _verify_compiled_program(
         if emitted.get("granularity") != BY_GROUP or emitted.get("device") != target:
             raise ValueError(f"{program} emitted another device or a partial route")
         assigned = emitted.get("routed")
-        if not assigned or emitted.get("skipped"):
-            raise ValueError(f"{program} linked roster differs from eligible source groups")
-        _join_routed_source_groups(assigned, source)
+        verify_routed_source_coverage(emitted, source)
         symbols = _routed_kernel_symbols(emitted)
         _linked_symbols(elf, symbols)
         host_compute_audit = _audit_built_device_host_compute(elf.parent, assigned, source, target)
@@ -983,6 +982,7 @@ def run(
     required_programs: Mapping[str, Sequence[str]],
     loader_env_requirements: Mapping[str, Mapping[str, Any]],
     out: str | Path,
+    selected_model: str | None = None,
     diagnostic_model: str | None = None,
     prebuilt_receipts: Mapping[str, str | Path] | None = None,
     source_freeze: Mapping[str, Any] | None = None,
@@ -990,11 +990,15 @@ def run(
     build_options: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
     linked_elf_admission=None,
 ) -> dict[str, Any]:
-    """Build the frozen roster, or inspect one prebuilt model without producer attribution.
+    """Build the frozen roster, one canonical partition, or a prebuilt diagnostic.
 
     ``build_options`` is ``{model: {program: {readback, group_profile}}}`` from the numerical execution
     declaration (:func:`.private_full_model_execution.build_options`): a program that will be executed
-    is linked to print every result in full and, when asked, to bracket its group calls."""
+    is linked to print every result in full and, when asked, to bracket its group calls.
+    ``selected_model`` retains the complete required roster and source freeze; it
+    builds all programs of one declared model and never passes the full gate.
+    Separate host processes may run these partitions under one original owner.
+    """
     from merlin.compile.baremetal_model import compile_saved_model
     from merlin.compile.model_execution_inputs import selected_firrtl
     from merlin.compile.route_before_build import plan_before_build
@@ -1029,6 +1033,13 @@ def run(
     ):
         raise ValueError("private full-model specification differs from required target roster")
     diagnostic = diagnostic_model is not None
+    if selected_model is not None and (
+        not isinstance(selected_model, str)
+        or selected_model not in required_models
+        or diagnostic
+        or prebuilt_receipts is not None
+    ):
+        raise ValueError("canonical model partition requires one declared model and no diagnostic or prebuilt inputs")
     if not diagnostic and frozen_authored is None:
         raise ValueError("canonical private full-model builds require a run-owned authored-source freeze")
     if diagnostic:
@@ -1045,7 +1056,7 @@ def run(
     results = []
     for row in rows:
         name = row["id"]
-        if diagnostic and name != diagnostic_model:
+        if (diagnostic and name != diagnostic_model) or (selected_model is not None and name != selected_model):
             continue
         item: dict[str, Any] = {"model": name, "status": "fail", "checks": {}}
         results.append(item)
@@ -1352,7 +1363,10 @@ def run(
         "required_models": list(required_models),
         "required_programs": {name: list(required_programs[name]) for name in required_models},
         "models": results,
-        "passed": not diagnostic and bool(results) and all(item["status"] == "pass" for item in results),
+        "passed": (
+            selected_model is None and not diagnostic and bool(results)
+            and all(item["status"] == "pass" for item in results)
+        ),
         "scope": (
             "diagnostic selected prebuilt model only; producer and toolchain unbound; not a full-model gate"
             if diagnostic
@@ -1369,7 +1383,18 @@ def run(
         result["diagnostic_model"] = diagnostic_model
         result["diagnostic_passed"] = len(results) == 1 and results[0]["status"] == "diagnostic_static_checks_passed"
         result["producer_binding"] = "unavailable_in_prebuilt_receipt"
-    report = base / "private_full_model_gate.json"
+    if selected_model is not None:
+        result.update(
+            mode="canonical_model_partition",
+            selected_model=selected_model,
+            partition_passed=len(results) == 1 and results[0]["status"] == "pass",
+            scope="one complete declared model, canonical source and linked-ELF evidence; full roster gate incomplete",
+        )
+    report = (
+        base / "private_full_model_gate.json"
+        if selected_model is None
+        else base / f"private_full_model_partition-{sha256(selected_model.encode()).hexdigest()}.json"
+    )
     with os.fdopen(os.open(report, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8") as stream:
         stream.write(json.dumps(result, indent=2) + "\n")
     return result
@@ -1400,7 +1425,7 @@ def complete(
         not isinstance(record, Mapping)
         or record.get("schema") != RESULT_SCHEMA
         or record.get("passed") is not True
-        or record.get("mode") == "prebuilt_diagnostic"
+        or record.get("mode") in {"prebuilt_diagnostic", "canonical_model_partition"}
     ):
         return False
     if record.get("full_model_numerical_equivalence") != "not_run" or record.get("paper_accuracy") != "not_claimed":

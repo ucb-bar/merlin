@@ -49,3 +49,25 @@ def test_unknown_shared_selection_or_out_of_boundary_pool_refuses(tmp_path):
         prompt.render_resource_block(
             SimpleNamespace(), environ={"MERLIN_CODEX_CPUS": "2"}, manager_cpus=(0,), grade_workers=2, boundary=boundary
         )
+
+
+def test_selected_build_budget_and_public_commands_are_grounded_in_actual_tools(monkeypatch):
+    from merlin_experiments.phase1.feedback import codegen_scalability, compile_only
+
+    options = SimpleNamespace(public_object_build_budget_s=12)
+    text = prompt.render_resource_block(options, environ={}, manager_cpus=(7,), grade_workers=2)
+    assert "12 seconds per sample" in text
+    assert f"{codegen_scalability._MAX_BUILD_PROBE_BYTES:,} bytes" in text
+    assert "--compile-only --capsules PUBLIC_ID_1,PUBLIC_ID_2 --timeout 120" in text
+    assert "--scale-probe" not in text
+    monkeypatch.setattr(compile_only, "SCALE_PROBE_FLAG", "--scale-probe", raising=False)
+    text = prompt.render_resource_block(options, environ={}, manager_cpus=(7,), grade_workers=2)
+    assert "--compile-only --scale-probe --capsules PUBLIC_ID_1 --timeout 120" in text
+    assert "No captured tensor values" in text and "required trace gates" in text
+
+
+@pytest.mark.parametrize("budget", [-1, 121, True])
+def test_rendering_cannot_invent_an_invalid_selected_build_budget(budget):
+    with pytest.raises(ValueError, match="selected 0..120-second budget"):
+        prompt.render_resource_block(SimpleNamespace(public_object_build_budget_s=budget), environ={},
+                                     manager_cpus=(7,), grade_workers=2)

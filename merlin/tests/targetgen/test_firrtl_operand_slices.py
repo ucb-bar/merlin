@@ -122,3 +122,91 @@ def test_duplicate_definition_and_duplicate_request_refuse(tmp_path):
     with pytest.raises(ValueError, match="duplicate fields"):
         derive_operand_layouts(path, expected_sha256=digest,
                                selections=[selection["selections"][0], selection["selections"][0]])
+
+
+def test_original_subfield_declaration_is_never_overwritten(tmp_path):
+    path, digest, observation = _selection(tmp_path)
+    original = _facts(path, digest)
+    address = original["facts"]["interfaces"][0]["bundles"]["Packed"]["fields"]["local_addr"]
+    address["source_subfields"] = [{"field": "different", "offset": 0, "width": 32}]
+    with pytest.raises(ValueError, match="subfields contradict"):
+        apply_selected_layouts(original, observation)
+
+
+def _project(tmp_path, text, rows):
+    path = tmp_path / "selected.fir"
+    path.write_text(text)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    return path, digest, derive_operand_layouts(path, expected_sha256=digest, selections=rows)
+
+
+def test_selected_guarded_packing_keeps_exact_conditional_premise(tmp_path):
+    text = SOURCE.replace("connect unpacked.rows, rows", "when control :\n      connect unpacked.rows, rows")
+    row = {"bundle": "Packed", "name": "num_rows", "module": "Top", "field": "unpacked.rows",
+           "input": "q.io.deq.bits.rs2", "packing_context": {"guards": ["control"]}}
+    path, digest, selected = _project(tmp_path, text, [row])
+    assert selected["schema"].endswith(".v2")
+    assert selected["fields"][0]["width"] == 5
+    assert selected["command_acceptance_and_semantic_roles"] == "unproven"
+    updated = apply_selected_layouts(_facts(path, digest), selected)
+    assert updated["facts"]["interfaces"][0]["bundles"]["Packed"]["fields"]["num_rows"]["width"] == 5
+    for guards in (["not control"], ["control", "unrelated"]):
+        wrong = copy.deepcopy(row)
+        wrong["packing_context"]["guards"] = guards
+        _, _, failed = _project(tmp_path, text, [wrong])
+        assert failed["fields"][0]["status"] == "unavailable"
+    # An alternative driver is still ambiguous, even if one selected guard matches.
+    text += "    when control :\n      connect unpacked.rows, UInt<5>(0)\n"
+    _, _, failed = _project(tmp_path, text, [row])
+    assert failed["fields"][0]["status"] == "unavailable"
+
+
+DYNAMIC_SOURCE = """FIRRTL version 4.2.0
+circuit Top:
+  module Top:
+    input selector : UInt<2>
+    input words : UInt<64>[3]
+    wire address : UInt<32>
+    connect address, words[selector]
+    node cols = bits(words[selector], 36, 32)
+    node selected_data = bits(address, 13, 0)
+    wire local : { upper : UInt<18>, data : UInt<14> }
+    connect local.data, selected_data
+    node flags = bits(address, 31, 14)
+    connect local.upper, flags
+"""
+
+
+def test_dynamic_root_node_and_unsigned_truncation_are_explicit_packing_only(tmp_path):
+    rows = [{"bundle": "Packed", "name": "num_rows", "module": "Top", "field": "cols",
+             "input": "words[selector]", "packing_context": {"dynamic_input": True, "node_field": True}},
+            {"bundle": "Packed", "name": "local_addr", "module": "Top", "field": "local",
+             "input": "words[selector]", "packing_context": {"dynamic_input": True, "truncate_aliases": True}}]
+    _, _, selected = _project(tmp_path, DYNAMIC_SOURCE, rows)
+    assert [(row["offset"], row["width"]) for row in selected["fields"]] == [(32, 5), (0, 32)]
+    assert selected["selections"] == rows  # the selector remains explicit, never a queue-slot guess
+    assert selected["command_acceptance_and_semantic_roles"] == "unproven"
+    for name in ("dynamic_input", "node_field", "truncate_aliases"):
+        changed = copy.deepcopy(rows)
+        for row in changed:
+            row["packing_context"][name] = False
+        _, _, failed = _project(tmp_path, DYNAMIC_SOURCE, changed)
+        assert any(row["status"] == "unavailable" for row in failed["fields"])
+    for changed in (
+        DYNAMIC_SOURCE.replace("words[selector]", "words[another]", 1),
+        DYNAMIC_SOURCE.replace("wire address : UInt<32>", "reg address : UInt<32>, clock"),
+        DYNAMIC_SOURCE.replace("input words : UInt<64>[3]", "input words : SInt<64>[3]"),
+        DYNAMIC_SOURCE.replace("node cols = bits(words[selector], 36, 32)",
+                               "node cols = mux(selector, bits(words[selector], 36, 32), UInt<5>(0))"),
+    ):
+        _, _, failed = _project(tmp_path, changed, rows)
+        assert any(row["status"] == "unavailable" for row in failed["fields"])
+
+
+@pytest.mark.parametrize("context", [{}, {"guards": []}, {"guards": [1]}, {"guards": "control"},
+                                      {"dynamic_input": 1}, {"unknown": True}])
+def test_packing_context_has_closed_explicit_premises(tmp_path, context):
+    row = {"bundle": "Packed", "name": "num_rows", "module": "Top", "field": "cols",
+           "input": "words[selector]", "packing_context": context}
+    with pytest.raises(ValueError, match="packing"):
+        _project(tmp_path, DYNAMIC_SOURCE, [row])

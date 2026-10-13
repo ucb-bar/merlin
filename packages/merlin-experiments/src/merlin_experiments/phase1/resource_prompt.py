@@ -8,7 +8,9 @@ from pathlib import Path
 from merlin.common.cpu_pool import grading_cpus, parse_roster, shared_compute_enabled
 
 
-def render_resource_block(options, *, environ=None, manager_cpus=None, grade_workers=None, boundary=None) -> str:
+def render_resource_block(
+    options, *, environ=None, manager_cpus=None, grade_workers=None, boundary=None, device_ir_budget=None
+) -> str:
     environment = os.environ if environ is None else environ
     manager = tuple(sorted(os.sched_getaffinity(0))) if manager_cpus is None else tuple(manager_cpus)
     author = parse_roster(environment.get("MERLIN_CODEX_CPUS", ""))
@@ -29,6 +31,9 @@ def render_resource_block(options, *, environ=None, manager_cpus=None, grade_wor
     workers = min(grade_workers, len(compute)) if compute else grade_workers
     native = getattr(options, "sim_max_jobs", 0)
     helpers = getattr(options, "codex_max_subagents", None)
+    object_budget = getattr(options, "public_object_build_budget_s", 0)
+    if type(object_budget) is not int or not 0 <= object_budget <= 120:
+        raise ValueError("public object-build prompt requires the selected 0..120-second budget")
 
     def roster(values):
         return ",".join(map(str, values)) if values else "inherited allocation"
@@ -72,11 +77,52 @@ def render_resource_block(options, *, environ=None, manager_cpus=None, grade_wor
         "- Keep builds and simulations on the documented harness routes. Reuse only evidence/cache hits "
         "whose source, executable, owner and instrument identity the harness authorizes.",
     ]
+    lines.extend([
+        "- Before expensive simulation or full-model builds, stress one or two original public members: "
+        "`python3 agent_selfcheck.py --compile-only --capsules PUBLIC_ID_1,PUBLIC_ID_2 --timeout 120`. "
+        "Replace those IDs with declared public member IDs; keep this diagnostic small. "
+        "The harness supplies the original source-only scale ladder and frozen compiler owner. "
+        "No captured tensor values, reference outputs or private model shapes are inputs.",
+        "- General large/unseen dimensions should usually change runtime loop bounds rather than expand "
+        "static instructions per tensor element. Check emitted IR growth and the selected build limits "
+        "early. Preserve all semantics, placement and outputs; a small artifact or compile-only result "
+        "does not pass functional, placement or required trace gates.",
+    ])
+    from .feedback import compile_only
+
+    if getattr(compile_only, "SCALE_PROBE_FLAG", None) == "--scale-probe":
+        lines.append(
+            "- Obtain cheaper emission-only feedback first: "
+            "`python3 agent_selfcheck.py --compile-only --scale-probe --capsules PUBLIC_ID_1 --timeout 120`. "
+            "This stops after actual emitted LLVM and reports size/CFG growth; it does not build, link or simulate."
+        )
+    if object_budget:
+        from .feedback.codegen_scalability import _MAX_BUILD_PROBE_BYTES
+
+        lines.append(
+            f"- Selected public object-build advisory budget: **{object_budget} seconds per sample**. "
+            f"Its actual pre-parse emitted-source cap is **{_MAX_BUILD_PROBE_BYTES:,} bytes**. "
+            "This probe-local cap is separate from any selected device-build IR budget. "
+            "Budget refusals and timeouts remain unqualified operational results."
+        )
+    else:
+        lines.append("- Public object-build advisory probes are unselected; current scalability feedback is emit-only.")
+    if device_ir_budget is not None:
+        from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
+
+        if type(device_ir_budget) is not DeviceIRBudget:
+            raise ValueError("task device IR limits require the exact operator-selected budget")
+        selected = device_ir_budget.record()
+        limits = ", ".join(f"{name}={value}" for name, value in selected.items()
+                           if name.startswith("max_") and value is not None)
+        lines.append(f"- Selected device IR budget mode: `{selected['mode']}`; limits: `{limits or 'none selected'}`. "
+                     "These limits constrain build resources and issue no correctness or execution credit.")
     return "\n".join(lines) + "\n"
 
 
-def append_resource_guidance(ws: Path, run_dir: Path, options) -> None:
+def append_resource_guidance(ws: Path, run_dir: Path, options, *, device_ir_budget=None) -> None:
     """Append before provenance, including when a treatment supplied its own task."""
     task = Path(ws) / "TASK.md"
-    task.write_text(task.read_text() + render_resource_block(options))
+    selected = {} if device_ir_budget is None else {"device_ir_budget": device_ir_budget}
+    task.write_text(task.read_text() + render_resource_block(options, **selected))
     (Path(run_dir) / "TASK.md").write_bytes(task.read_bytes())
