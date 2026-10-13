@@ -105,6 +105,30 @@ def test_precision_and_compositions_are_not_reconstructed(tmp_path):
     assert cases[0].record()["derivation"]["scale_family"] == "retained_only"
 
 
+@pytest.mark.parametrize("source,accepted", [
+    ('// !merlin_iface.acc<f32>\n "!merlin_iface.acc<i64>" !merlin_iface.acc < i32 >', True),
+    ('!merlin_iface.acc< // ignored\n i32 >', True),
+    ('!merlin_iface.acc< f32 >', False),
+    ('!merlin_iface.acc<si32>', False),
+    ('!merlin_iface.acc<tensor<4xi32>>', False),
+    ('!merlin_iface.acc<i32, i64>', False),
+    ('!merlin_iface.acc<i32', False),
+    ('!merlin_iface.acc', False),
+])
+def test_accumulator_precision_is_structurally_parsed(source, accepted):
+    assert SOURCES._supported_accumulator_types(source) is accepted
+
+
+def test_nonstandard_precision_whitespace_stays_exact_original(tmp_path):
+    cap, _ = member(tmp_path)
+    path = Path(cap["__dir__"]) / "interface.mlir"
+    changed = path.read_text().replace("!merlin_iface.acc<i32>", "!merlin_iface.acc< f32 >")
+    path.write_text(changed)
+    cases, _ = SOURCES.derive([cap], index_bits=64)
+    assert len(cases) == 1 and cases[0].source_ir == changed
+    assert cases[0].record()["derivation"]["scale_family"] == "retained_only"
+
+
 def test_private_selection_and_public_source_mutation_refuse(tmp_path):
     cap, _ = member(tmp_path)
     hidden = {"name": "withheld", "label": "hidden", "__dir__": str(tmp_path / "absent-private")}

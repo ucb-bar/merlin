@@ -11,14 +11,60 @@ import copy
 import hashlib
 import json
 import math
-import re
 from pathlib import Path
 
 from merlin.llvmlower.device_shim import logical_buffers
 from merlin.targetgen.capsule_dram import dtype_bits
 from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor
 from merlin.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
-from merlin_experiments.phase0.public_compile_sources import MAX_CASES, PublicCompileCase, _file
+from merlin_experiments.phase0.public_compile_sources import MAX_CASES, MAX_SOURCE_BYTES, PublicCompileCase, _file
+
+
+def _supported_accumulator_types(source):
+    """Inspect actual type tokens and parse their complete precision parameter.
+
+    Quoted attributes and comments cannot supply a type. Unknown, nested or
+    malformed precision stays exact original source instead of being rewritten.
+    """
+    from xdsl.context import Context
+    from xdsl.dialects.builtin import Builtin, i32
+    from xdsl.parser import Parser
+    from xdsl.utils.exceptions import ParseError
+    from xdsl.utils.lexer import Input
+    from xdsl.utils.mlir_lexer import MLIRLexer, MLIRTokenKind
+
+    from merlin.targetgen.contract.mlir_source_admission import MlirSourceUnavailable, admit_mlir_source
+
+    try:
+        admit_mlir_source(source, max_source_bytes=MAX_SOURCE_BYTES, max_nesting=32,
+                          max_integer_bits=128, allow_dense=False, allow_dense_resource=False)
+        lexer = MLIRLexer(Input(source, "original-public-scale-types"))
+        context = Context()
+        context.load_dialect(Builtin)
+        while True:
+            token = lexer.lex()
+            if token.kind is MLIRTokenKind.EOF:
+                return True
+            if token.kind is not MLIRTokenKind.EXCLAMATION_IDENT or token.text != "!merlin_iface.acc":
+                continue
+            opening = lexer.lex()
+            if opening.kind is not MLIRTokenKind.LESS:
+                return False
+            depth = 1
+            while depth:
+                closing = lexer.lex()
+                if closing.kind is MLIRTokenKind.EOF:
+                    return False
+                if closing.kind is MLIRTokenKind.LESS:
+                    depth += 1
+                elif closing.kind is MLIRTokenKind.GREATER:
+                    depth -= 1
+            parser = Parser(context, source[opening.span.end:closing.span.start])
+            precision = parser.parse_type()
+            if precision != i32 or parser._current_token.kind is not MLIRTokenKind.EOF:
+                return False
+    except (ParseError, MlirSourceUnavailable):
+        return False
 
 
 def _abi(source, index_bits):
@@ -48,7 +94,7 @@ def _family(cb, source):
     if any((cmd.get("attributes") or {}).get("layout", "packed_rhs")
            not in {"packed_rhs", "packed_conv_rhs", "NHWC", "nhwc"} for cmd in cb["commands"]):
         return None
-    if set(re.findall(r"!merlin_iface\.acc<([^>]+)>", source)) - {"i32"}:
+    if not _supported_accumulator_types(source):
         return None  # The original accumulator precision must survive reconstruction.
     return cb["commands"].index(work[0])
 
