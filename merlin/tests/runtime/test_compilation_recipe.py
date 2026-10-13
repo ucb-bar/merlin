@@ -211,8 +211,8 @@ def test_failed_compiler_keeps_old_object_unqualified(tmp_path):
     with pytest.raises(RuntimeError, match="compilation command returned"):
         recipe.run(cmd, runner=run, inputs=[source], output=obj)
     record = _read(tmp_path)
-    assert record["status"] == "invoked"
-    assert record["commands"][-1]["status"] == "invoked"
+    assert record["status"] == "failed"
+    assert record["commands"][-1]["status"] == "failed"
     assert "output" not in record["commands"][-1]
     assert obj.read_bytes() == old_bytes
     assert "executable" not in record
