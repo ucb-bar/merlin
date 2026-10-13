@@ -469,6 +469,17 @@ initialized from `tensor.empty` for exactly this reason. We handle it two ways:
   undefined source can reach a function result. This is a dataflow analysis over the IR with a Lean
   soundness proof. It is required of `S0` and of every `policy` input: those are the programs whose
   meaning the paper asserts.
+- **Support, not just definedness (`NotStuck`).** The semantics returns `stuck` for anything it does
+  not model. A per-boundary checker cannot know that the rest of the program is modelled, so each
+  boundary claims *conditional* refinement:
+  - `RefinesC tgt src := src is stuck ∨ tgt ⊑ src`. It is transitive (proved in
+    `Sem/Refine.lean`).
+  - The end-to-end claim additionally requires `FuncNotStuck` of the capture `S0` on the whole
+    domain. `FuncRefinesC.strict` then turns the chain into strict refinement.
+  - This is not a loophole. A non-stuck source is refined only by a non-stuck target, so a boundary
+    that introduces an unmodelled construct into a modelled program still fails.
+  - `FuncNotStuck(S0)` is established by a support checker. Its soundness rests on a *progress* lemma
+    per op family: a supported, well-typed op never returns `stuck`.
 - **Value-dependent poison** (an out-of-range `fptosi`, `nsw` overflow) cannot be excluded under
   parametric floats. The checker enumerates these sites, and the claim carries them as the explicit
   precondition "for inputs on which these sites are defined".
