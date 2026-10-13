@@ -102,6 +102,23 @@ def select_gsim_readback(contract, transport):
         engine.get("readback_transport", transport) == transport,
         "readback selection cannot replace another engine transport",
     )
+    if transport == COHERENT_PACKET_V1:
+        toolchain = block.get("toolchain")
+        backend._require(type(toolchain) is dict, "packet selection requires the original declared toolchain")
+        headers = toolchain.get("headers")
+        backend._units(headers, backend._HEADERS)
+        backend._require(
+            {"htif", "out_b64"} <= {row["id"] for row in headers},
+            "packet selection requires the original B64 console header roster",
+        )
+        for identifier in ("out_bin", "out_bin_memory"):
+            matches = [row for row in headers if row["id"] == identifier]
+            if matches:
+                _resources(matches, backend._HEADERS)
+            else:
+                row = {"id": identifier}
+                _resources([row], backend._HEADERS)
+                headers.append(row)
     engine["readback_transport"] = transport
     return selected
 
