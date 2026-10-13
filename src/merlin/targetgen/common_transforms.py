@@ -230,52 +230,55 @@ class CommonTransformService:
             parsed_orders.append((row[0], tuple(order)))
         selected["dependency_orders"] = tuple(parsed_orders)
         started = time.monotonic()
-        self._verify()
-        toolchain = self._toolchain(work_root)
-        if timeout_s is not None:
-            if type(timeout_s) is not int or timeout_s < 1:
-                raise ValueError("common transform host budget must be positive")
-        budget = min(timeout_s, toolchain.timeout_s) if timeout_s is not None else toolchain.timeout_s
-        deadline = started + budget
-        receipts = []
+        with BW.verified_snapshot_scope(self.workspace, self.bundle, repo=self.repo):
+            self._verify()
+            toolchain = self._toolchain(work_root)
+            if timeout_s is not None:
+                if type(timeout_s) is not int or timeout_s < 1:
+                    raise ValueError("common transform host budget must be positive")
+            budget = min(timeout_s, toolchain.timeout_s) if timeout_s is not None else toolchain.timeout_s
+            deadline = started + budget
+            receipts = []
 
-        def verify(change):
-            if time.monotonic() >= deadline:
-                raise TimeoutError("common transformation exhausted its original host work budget")
-            receipt = verify_pipeline_change(change, toolchain=toolchain, deadline=deadline)
-            if not accepted_pipeline_receipt(receipt, change, toolchain=toolchain):
-                raise ValueError(
-                    "common covered transformation was not established by Lean: "
-                    + str(getattr(receipt, "reason", "invalid checker completion"))
+            def verify(change):
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("common transformation exhausted its original host work budget")
+                receipt = verify_pipeline_change(change, toolchain=toolchain, deadline=deadline)
+                if not accepted_pipeline_receipt(receipt, change, toolchain=toolchain):
+                    raise ValueError(
+                        "common covered transformation was not established by Lean: "
+                        + str(getattr(receipt, "reason", "invalid checker completion"))
+                    )
+                receipts.append(receipt.to_dict())
+                return receipt
+
+            result = apply_common_pipeline(parse_ir(source), PipelineOptions(**selected), verifier=verify)
+            if time.monotonic() > deadline:
+                raise TimeoutError("common transformation exceeded its original host work budget")
+            self._verify()
+            document = {
+                "status": "verified" if receipts else "unchanged",
+                "scope": (
+                    "host-issued common transformation preservation" if receipts else "structurally unchanged program"
+                ),
+                "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
+                "transformed_ir": ir_text(result.module),
+                "receipts": receipts,
+                "compiler_tool_profile_sha256": self.profile["sha256"],
+                "hardware_conformance": "not_established",
+                "numerical_execution": "not_established",
+            }
+            if self.profile.get("common_substrate") in {COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3}:
+                from merlin.perf.pass_observation import observe_changes
+
+                document["pass_observations"] = observe_changes(
+                    result.changes, profile_sha256=self.profile["sha256"], index_bits=index_bits
                 )
-            receipts.append(receipt.to_dict())
-            return receipt
-
-        result = apply_common_pipeline(parse_ir(source), PipelineOptions(**selected), verifier=verify)
-        if time.monotonic() > deadline:
-            raise TimeoutError("common transformation exceeded its original host work budget")
-        self._verify()
-        document = {
-            "status": "verified" if receipts else "unchanged",
-            "scope": "host-issued common transformation preservation" if receipts else "structurally unchanged program",
-            "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
-            "transformed_ir": ir_text(result.module),
-            "receipts": receipts,
-            "compiler_tool_profile_sha256": self.profile["sha256"],
-            "hardware_conformance": "not_established",
-            "numerical_execution": "not_established",
-        }
-        if self.profile.get("common_substrate") in {COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3}:
-            from merlin.perf.pass_observation import observe_changes
-
-            document["pass_observations"] = observe_changes(
-                result.changes, profile_sha256=self.profile["sha256"], index_bits=index_bits
-            )
-        if time.monotonic() > deadline:
-            raise TimeoutError("common transformation observations exceeded its original host work budget")
-        if len(json.dumps(document).encode()) > 2 * MAX_REQUEST_BYTES:
-            raise ValueError("common transformation output exceeds its inherited byte budget")
-        return document
+            if time.monotonic() > deadline:
+                raise TimeoutError("common transformation observations exceeded its original host work budget")
+            if len(json.dumps(document).encode()) > 2 * MAX_REQUEST_BYTES:
+                raise ValueError("common transformation output exceeds its inherited byte budget")
+            return document
 
     def check(self, request: dict, *, work_root: Path, timeout_s: int | None = None) -> dict:
         """Check authored actual IR without accepting author-selected semantics."""
@@ -305,45 +308,46 @@ class CommonTransformService:
         if timeout_s is not None and (type(timeout_s) is not int or timeout_s < 1):
             raise ValueError("common check host budget must be positive")
         started = time.monotonic()
-        self._verify()
-        toolchain = self._toolchain(work_root)
-        deadline = started + min(timeout_s or toolchain.timeout_s, toolchain.timeout_s)
-        if time.monotonic() >= deadline:
-            raise TimeoutError("common authored check exhausted its original host work budget")
+        with BW.verified_snapshot_scope(self.workspace, self.bundle, repo=self.repo):
+            self._verify()
+            toolchain = self._toolchain(work_root)
+            deadline = started + min(timeout_s or toolchain.timeout_s, toolchain.timeout_s)
+            if time.monotonic() >= deadline:
+                raise TimeoutError("common authored check exhausted its original host work budget")
 
-        def resolve_path(original):
-            [selected] = BW.snapshot_input_paths(self.workspace, self.bundle, [Path(original)], repo=self.repo)
-            return selected
+            def resolve_path(original):
+                [selected] = BW.snapshot_input_paths(self.workspace, self.bundle, [Path(original)], repo=self.repo)
+                return selected
 
-        semantics = reconstruct_isa_semantics(self.profile["semantic_inputs"], resolve_path=resolve_path)
-        registry, contract = semantics.registry, semantics.effect_contract(index_bits=width)
-        receipt = verify_authored_transform(
-            before, after, entry=entry, registry=registry, contract=contract, toolchain=toolchain, deadline=deadline
-        )
-        accepted = accepted_authored_receipt(
-            receipt, before, after, entry=entry, registry=registry, contract=contract, toolchain=toolchain
-        )
-        if getattr(receipt, "verified", False) and not accepted:
-            raise ValueError("common authored transformation did not obtain an original live formal completion")
-        if time.monotonic() > deadline:
-            raise TimeoutError("common authored check exceeded its original host work budget")
-        self._verify()
-        # Re-read the immutable semantics after checking; neither saved summaries
-        # nor mutation of a source selection can re-attribute this completion.
-        reconstruct_isa_semantics(self.profile["semantic_inputs"], resolve_path=resolve_path)
-        document = {
-            "status": receipt.status,
-            "source_sha256": hashlib.sha256(before.encode()).hexdigest(),
-            "target_sha256": hashlib.sha256(after.encode()).hexdigest(),
-            "scope": list(receipt.scope),
-            "receipts": [receipt.to_dict()],
-            "compiler_tool_profile_sha256": self.profile["sha256"],
-            "admitted_semantics_sha256": document_digest(self.profile["semantic_inputs"]),
-            "hardware_conformance": "not_established",
-            "numerical_execution": "not_established",
-            "compiler_pass_chain": "not_established",
-            "outside_formal_coverage": "independent_checks_required",
-        }
-        if len(json.dumps(document).encode()) > 2 * MAX_REQUEST_BYTES:
-            raise ValueError("common authored check output exceeds its inherited byte budget")
-        return document
+            semantics = reconstruct_isa_semantics(self.profile["semantic_inputs"], resolve_path=resolve_path)
+            registry, contract = semantics.registry, semantics.effect_contract(index_bits=width)
+            receipt = verify_authored_transform(
+                before, after, entry=entry, registry=registry, contract=contract, toolchain=toolchain, deadline=deadline
+            )
+            accepted = accepted_authored_receipt(
+                receipt, before, after, entry=entry, registry=registry, contract=contract, toolchain=toolchain
+            )
+            if getattr(receipt, "verified", False) and not accepted:
+                raise ValueError("common authored transformation did not obtain an original live formal completion")
+            if time.monotonic() > deadline:
+                raise TimeoutError("common authored check exceeded its original host work budget")
+            self._verify()
+            # Re-read the immutable semantics after checking; neither saved summaries
+            # nor mutation of a source selection can re-attribute this completion.
+            reconstruct_isa_semantics(self.profile["semantic_inputs"], resolve_path=resolve_path)
+            document = {
+                "status": receipt.status,
+                "source_sha256": hashlib.sha256(before.encode()).hexdigest(),
+                "target_sha256": hashlib.sha256(after.encode()).hexdigest(),
+                "scope": list(receipt.scope),
+                "receipts": [receipt.to_dict()],
+                "compiler_tool_profile_sha256": self.profile["sha256"],
+                "admitted_semantics_sha256": document_digest(self.profile["semantic_inputs"]),
+                "hardware_conformance": "not_established",
+                "numerical_execution": "not_established",
+                "compiler_pass_chain": "not_established",
+                "outside_formal_coverage": "independent_checks_required",
+            }
+            if len(json.dumps(document).encode()) > 2 * MAX_REQUEST_BYTES:
+                raise ValueError("common authored check output exceeds its inherited byte budget")
+            return document

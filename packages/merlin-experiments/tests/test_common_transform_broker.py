@@ -21,10 +21,18 @@ SOURCE = """builtin.module {
 }"""
 
 
-def _service():
+def _service(tmp_path):
     service = object.__new__(CommonTransformService)
     service.profile = {"host_index_bits": 32, "lean_toolchain": {"selection": "not_selected"}, "sha256": "a" * 64}
     service._verify = lambda: None
+    # The formal completion remains synthetic; snapshot custody is real.
+    from merlin.targetgen.sandbox import bwrap
+
+    service.workspace = tmp_path / 'original'
+    service.workspace.mkdir(exist_ok=True)
+    service.repo = tmp_path
+    service.bundle = {'allowed': [], 'host_inputs': []}
+    bwrap.materialize_bundle_inputs(service.workspace, service.bundle, repo=service.repo)
     return service
 
 
@@ -37,13 +45,13 @@ def test_requests_cannot_supply_proof_authority(tmp_path, key):
     request = _request()
     request[key] = {"status": "verified"}
     with pytest.raises(ValueError, match="cannot select semantics"):
-        _service().apply(request, work_root=tmp_path)
+        _service(tmp_path).apply(request, work_root=tmp_path)
 
 
 def test_index_width_is_owned_by_frozen_host_policy(tmp_path):
     with pytest.raises(ValueError, match="frozen host ABI index width"):
-        _service().apply(_request(index_bits=64), work_root=tmp_path)
-    service = _service()
+        _service(tmp_path).apply(_request(index_bits=64), work_root=tmp_path)
+    service = _service(tmp_path)
     service.profile["host_index_bits"] = None
     with pytest.raises(ValueError, match="independently reviewed"):
         service.apply(_request(), work_root=tmp_path)
@@ -54,12 +62,12 @@ def test_index_width_is_owned_by_frozen_host_policy(tmp_path):
 )
 def test_v1_cannot_silently_acquire_v2_transforms(tmp_path, options):
     with pytest.raises(ValueError, match="frozen substrate"):
-        _service().apply(_request(**options), work_root=tmp_path)
+        _service(tmp_path).apply(_request(**options), work_root=tmp_path)
 
 
 def test_missing_formal_toolchain_cannot_turn_into_a_success(tmp_path):
     with pytest.raises(FileNotFoundError, match="explicitly selected"):
-        _service().apply(_request(), work_root=tmp_path)
+        _service(tmp_path).apply(_request(), work_root=tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -74,7 +82,7 @@ def test_missing_formal_toolchain_cannot_turn_into_a_success(tmp_path):
 def test_candidate_constructed_verified_receipt_cannot_discharge_a_change(tmp_path, monkeypatch, outcome):
     from merlin.verify import lean_checker, lean_contract
 
-    service = _service()
+    service = _service(tmp_path)
     toolchain = lean_contract.LeanToolchain(
         tmp_path / "absent",
         "a" * 64,
@@ -99,7 +107,7 @@ def test_host_callback_keeps_fixed_scope_model_toolchain_and_returns_completion(
 
     from merlin.verify import lean_checker, lean_contract
 
-    service = _service()
+    service = _service(tmp_path)
     toolchain = lean_contract.LeanToolchain(
         tmp_path / "absent",
         "a" * 64,
