@@ -88,8 +88,9 @@ def test_mode_fields_without_selected_protocol_remain_unavailable(tmp_path, monk
 def test_operand_layout_is_not_a_selected_tile_schedule(tmp_path, monkeypatch):
     backend = _bound(tmp_path, monkeypatch, protocol=True)
     result = trace_check.check(_trace(backend), {}, cb={"commands": [{"opcode": "MATMUL"}]}, target="synthetic")
-    assert result["status"] == "fail" and result["trace_requirement_status"] == "unavailable_fields"
-    assert result["unavailable_requirements"] == ["tile_geometry"]
+    assert result["status"] == "pass" and result["trace_requirement_status"] == "pass"
+    assert result["unavailable_requirements"] == []
+    assert result["tile_schedule_advisory"]["required"] is False
     movement = trace_check.check(_trace(backend), {}, cb={"commands": []}, target="synthetic")
     assert movement["status"] == "pass"
 
@@ -99,6 +100,47 @@ def test_partial_protocol_does_not_invent_resident_load_identity(tmp_path, monke
     result = trace_check.check(_trace(backend, (2, 3, 3)), {"modes": {"resident_reuse": True}}, target="synthetic")
     assert result["trace_requirement_status"] == "unavailable_fields"
     assert result["unavailable_requirements"] == ["resident_reuse"]
+
+
+def test_weight_bank_stay_class_cannot_replace_accumulation_destination_flag(tmp_path, monkeypatch):
+    from merlin.targetgen.rocc.normalized_operands import BoundOperandObserver
+
+    backend = _bound(tmp_path, monkeypatch, protocol=True)
+    semantics = backend.rocc_semantics
+    isa = semantics.isa_constants("synthetic")
+    protocol = {"version": 1, "encoding": {"semantic_class": {
+        2: "MVIN", 3: "MVOUT", 4: "COMPUTE_ACCUMULATE", 6: "PRELOAD",
+    }}, "roles": {"classes": {}}}
+    # This selected fixture labels a retained-bank operation. No accumulator flag is observed.
+    semantics.operand_observer = BoundOperandObserver(
+        target="synthetic", protocol=protocol, facts=backend._data()["facts"], raw_isa=isa, word_bits=64,
+    )
+    result = trace_check.check(_trace(backend, (6, 4)), {"modes": {"k_accumulate": True}}, target="synthetic")
+    assert result["status"] == "fail" and result["trace_requirement_status"] == "unavailable_fields"
+    assert result["unavailable_requirements"] == ["k_accumulate"]
+
+
+@pytest.mark.parametrize("bits,passed", [
+    (0xffffffff, False), (0x7fc00000, False), (0x7f800000, False), (0x3f800000, False), (0x3f000000, True),
+])
+def test_keep_scale_sentinel_and_nonfinite_bits_are_not_genuine_scale_updates(tmp_path, monkeypatch, bits, passed):
+    from merlin.targetgen.rocc.normalized_operands import BoundOperandObserver
+
+    backend = _bound(tmp_path, monkeypatch, protocol=True)
+    semantics = backend.rocc_semantics
+    facts = backend._data()["facts"]
+    layouts = next(row for row in facts["facts"]["interfaces"] if row.get("name") == "register_bundle_layouts")
+    layouts["bundles"]["Scale"] = {"width": 64, "fields": {"scale": {"offset": 0, "width": 32}}}
+    protocol = {"version": 1, "encoding": {"semantic_class": {
+        2: "CONFIG_ST", 3: "MVOUT", 4: "COMPUTE_PRELOADED", 6: "PRELOAD",
+    }}, "roles": {"classes": {"CONFIG_ST": {"fields": [
+        {"name": "acc_scale", "operand": "rs2", "bundle": "Scale", "field": "scale", "as": "f32"},
+    ]}}}}
+    semantics.operand_observer = BoundOperandObserver(
+        target="synthetic", protocol=protocol, facts=facts, raw_isa=semantics.isa_constants("synthetic"), word_bits=64,
+    )
+    result = trace_check.check(_trace(backend, (2,), rs2=bits), {"modes": {"acc_scale": True}}, target="synthetic")
+    assert (result["status"] == "pass") is passed
 
 
 @pytest.mark.parametrize("width,rs2,expected", [(1, 16, "pass"), (1, 0, "failed"), (None, 16, "unavailable_fields")])

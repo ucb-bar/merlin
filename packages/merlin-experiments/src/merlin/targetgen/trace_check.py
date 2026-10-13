@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import copy
 import functools
+import math
 from typing import Any
 
 _COMPUTE = {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"}
@@ -412,10 +413,12 @@ def check(
             ("i8", {"MVOUT"}, "readout"), ("relu", {"CONFIG_ST"}, "relu"),
             ("acc_scale", {"CONFIG_ST"}, "acc_scale"), ("k_accumulate", {"PRELOAD"}, "accumulate"),
         ):
-            if not modes.get(mode) or (mode == "k_accumulate" and "COMPUTE_ACCUMULATE" in present):
+            if not modes.get(mode):
                 continue
             observations = [row for row in ins if row["class"] in classes_needed]
-            if observations and not any(row.get("decoded", {}).get(field) is not None for row in observations):
+            if (mode == "k_accumulate" and not observations) or (
+                observations and not any(row.get("decoded", {}).get(field) is not None for row in observations)
+            ):
                 unresolved_fields.append(mode)
                 violations.append(f"mode {mode} has unresolved original operand fields")
         if modes.get("resident_reuse"):
@@ -436,11 +439,21 @@ def check(
         if not _any(lambda i: i["class"] == "CONFIG_ST" and i.get("decoded", {}).get("relu") is True):
             violations.append("mode relu declared but no CONFIG_ST sets relu activation")
     if modes.get("acc_scale"):
-        ok = _any(lambda i: i["class"] == "CONFIG_ST" and (i.get("decoded", {}).get("acc_scale") not in (None, 1.0)))
+        def _scale_update(instruction):
+            value = instruction.get("decoded", {}).get("acc_scale")
+            return (instruction["class"] == "CONFIG_ST" and type(value) in (int, float)
+                    and (binding is None or type(value) is float) and math.isfinite(value) and value != 1.0)
+
+        # All-ones can be a keep-state sentinel whose f32 view is NaN. It is
+        # not an observed scale update, nor is any nonfinite bit pattern.
+        ok = _any(_scale_update)
         if not ok:
             violations.append("mode acc_scale declared but no CONFIG_ST has a non-identity scale")
     if modes.get("k_accumulate"):
-        ok = ("COMPUTE_ACCUMULATE" in present) or _any(
+        # A selected COMPUTE_AND_STAY operation can retain a weight bank. Its
+        # class label alone does not prove accumulator write-add; use the actual
+        # selected destination accumulation flag for Bound protocols.
+        ok = (binding is None and "COMPUTE_ACCUMULATE" in present) or _any(
             lambda i: i["class"] == "PRELOAD" and i.get("decoded", {}).get("accumulate") is True
         )
         if not ok:
@@ -483,26 +496,32 @@ def check(
         if not present & loads or not present & stores:
             violations.append("mode movement declared but trace lacks MVIN/MVOUT")
 
-    # This legacy count checker assumes a 16-wide resident-tile schedule. A
-    # selected operand layout alone does not establish that schedule relation.
-    # Keep selected geometry evidence unavailable until an original relation is
-    # selected, rather than treating decoded field widths as schedule proof.
-    if cb is not None and binding is None:
-        try:
-            _check_tiles(classes, cb, violations)
-        except Exception as e:  # never let cross-check crash the verifier
-            violations.append(f"tile cross-check error (non-fatal): {e}")
-    elif cb is not None and any(
+    # A sixteen-wide resident schedule is a preferred strategy, not generic
+    # instruction legality. No original selected schedule relation is consumed
+    # here, so these findings never become required structural obligations.
+    tile_advisory = None
+    if cb is not None and any(
         command.get("opcode") in {"MATMUL", "MATMUL_RESIDENT"} for command in cb.get("commands", [])
     ):
-        unresolved_fields.append("tile_geometry")
-        violations.append("tile geometry requires an unavailable original selected schedule relation")
+        findings = []
+        available = binding is None or protocol_selected
+        if available:
+            try:
+                _check_tiles(classes, cb, findings)
+            except Exception as error:
+                findings.append(f"legacy tile-strategy observation unavailable: {error}")
+        tile_advisory = {
+            "required": False, "strategy": "legacy_16wide_resident_matmul",
+            "status": "observed" if available else "unavailable_projection", "findings": findings,
+        }
 
     # advisory DRAM-address provenance (parameterized by the harness address model; no-op if unknown)
     if address_model:
         violations += dram_address_findings(trace, address_model)
 
     out = {"status": "pass" if not violations else "fail", "violations": violations}
+    if tile_advisory is not None:
+        out["tile_schedule_advisory"] = tile_advisory
     if binding is not None:
         out["trace_requirement_status"] = (
             "unavailable_protocol" if unresolved_modes else "unavailable_fields" if unresolved_fields
