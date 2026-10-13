@@ -1,5 +1,16 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`evaluation_costs` observes original parent jobs from assigned CPUs before setup
+through verified cleanup, durable release and artifact publication. Keep admission
+and queue wait separate. Reopen original job identity, source/resource context and
+persisted products; saved data cannot issue an observation. Telemetry failure
+cannot change a grade or retry cleanup. Failed/cancelled costs are descriptive;
+CPU, per-arm cost and cache state remain UNKNOWN.
+`evaluation_priorities` joins passing singleton selected costs to the incumbent's
+existing potential savings, retaining every repeat and separate evaluator/resource
+contexts. This diagnostic projection never changes contender scores, calibration,
+promotion, plateau or final gates and cannot price another source or parallel sweep.
+
 `provisional_search` projects original completed cheap observations into a
 diverse exploration shortlist, separate from the complete measured incumbent.
 Reopen retained sources and original feedback; unknown or failed observations

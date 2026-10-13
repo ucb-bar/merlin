@@ -233,7 +233,21 @@ def _validate_toolchain(block, abi):
     _positive(stack["max_static_bytes"])
 
 
-def _validate_engine(engine, block):
+def _execution_timeout_ceiling(block):
+    """Only reviewed host selection can extend the legacy process ceiling."""
+    if "execution_resources" not in block:
+        return 600
+    resources = block["execution_resources"]
+    _fields(resources, {"max_native_timeout_s"})
+    ceiling = resources["max_native_timeout_s"]
+    _require(
+        type(ceiling) is int and 0 < ceiling <= 3600,
+        "selected native process ceiling must be an integer within 1..3600 seconds",
+    )
+    return ceiling
+
+
+def _validate_engine(engine, block, *, timeout_ceiling=600):
     required = {"binary", "argv", "environment", "cwd", "max_timeout_s", "max_console_bytes", "failure_markers"}
     _fields(block, required | ({"receipt"} if engine in {"gsim", "verilator"} else set()))
     _pin_shape(block["binary"])
@@ -255,7 +269,10 @@ def _validate_engine(engine, block):
         "execution requires an explicit process environment",
     )
     _positive(block["max_timeout_s"])
-    _require(block["max_timeout_s"] <= 600, "execution deadline exceeds the bounded process limit")
+    _require(
+        block["max_timeout_s"] <= (600 if engine == "spike" else timeout_ceiling),
+        "execution deadline exceeds the bounded process limit",
+    )
     _positive(block["max_console_bytes"])
     _strings(block["failure_markers"])
     if engine == "spike":
@@ -410,8 +427,10 @@ class BoundRoCCBackend:
         )
 
     def _engine(self, engine):
-        block = self._block()["engines"].get(engine)
+        selection = self._block()
+        block = selection["engines"].get(engine)
         _require(block is not None, "requested execution engine is not selected")
+        _validate_engine(engine, block, timeout_ceiling=_execution_timeout_ceiling(selection))
         return block
 
     def execution_timeout_limit(self, simulator):
@@ -426,6 +445,10 @@ class BoundRoCCBackend:
             "binary": block["binary"],
             "selection_sha256": hashlib.sha256(self._selection_json.encode()).hexdigest(),
         }
+        if "execution_resources" in self._block():
+            identity["execution_resources"] = {
+                **self._block()["execution_resources"], "selected_engine_timeout_s": block["max_timeout_s"]
+            }
         if engine == "gsim":
             from merlin.targetgen import gsim_emulator as GE
 
@@ -798,7 +821,7 @@ def bind(*, target, contract, facts):
     _require(type(runner) is dict and runner.get("backend") == "chipyard_rocc", "RoCC execution family is not selected")
     _require(not contract.get("plugin"), "data-bound runtime selection cannot grant executable provider hooks")
     block = runner.get("chipyard_rocc")
-    _fields(block, {"version", "config", "toolchain", "engines"}, {"readout"})
+    _fields(block, {"version", "config", "toolchain", "engines"}, {"readout", "execution_resources"})
     _require(
         type(block["version"]) is int and block["version"] == 1 and type(block["config"]) is str and block["config"],
         "RoCC execution requires a supported version and explicit configuration",
@@ -838,8 +861,9 @@ def bind(*, target, contract, facts):
         type(block["engines"]) is dict and block["engines"] and set(block["engines"]) <= {"spike", "gsim", "verilator"},
         "RoCC execution requires explicitly supported engines",
     )
+    timeout_ceiling = _execution_timeout_ceiling(block)
     for engine, engine_block in block["engines"].items():
-        _validate_engine(engine, engine_block)
+        _validate_engine(engine, engine_block, timeout_ceiling=timeout_ceiling)
     if "spike" in block["engines"]:
         extension = runner.get("spike_extension")
         _fields(extension, {"extension_name", "extlib", "sha256"})

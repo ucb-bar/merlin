@@ -23,7 +23,7 @@ def frozen(tmp_path):
     return ws, bundle, repo, S.snapshot_path(S.bundle_snapshot_root(ws), source, repo)
 
 
-def test_scoped_repeated_and_context_copied_checks_hash_only_boundaries(frozen, monkeypatch):
+def test_scoped_same_thread_checks_batch_but_copied_thread_checks_reopen(frozen, monkeypatch):
     ws, bundle, repo, payload = frozen
     original = S.hashlib.file_digest
     calls = []
@@ -37,9 +37,73 @@ def test_scoped_repeated_and_context_copied_checks_hash_only_boundaries(frozen, 
             B.verify_bundle_snapshot(ws, bundle, repo=repo)
         with ThreadPoolExecutor(max_workers=1) as pool:
             pool.submit(copy_context().run, S.verify_bundle_snapshot, ws, bundle, repo=repo).result()
-    assert calls.count(payload) == 2
-    S.verify_bundle_snapshot(ws, bundle, repo=repo)
     assert calls.count(payload) == 3
+    S.verify_bundle_snapshot(ws, bundle, repo=repo)
+    assert calls.count(payload) == 4
+
+
+@pytest.mark.parametrize('consumer', ['thread', 'fork'])
+def test_inherited_snapshot_signature_cannot_hide_same_size_mutation(frozen, consumer):
+    ws, bundle, repo, payload = frozen
+    original_bytes, original_mode = payload.read_bytes(), payload.stat().st_mode & 0o777
+
+    def verify():
+        try:
+            S.verify_bundle_snapshot(ws, bundle, repo=repo)
+        except RuntimeError as error:
+            return str(error)
+        return 'invalid cached signature reused'
+
+    with S.verified_snapshot_scope(ws, bundle, repo=repo):
+        try:
+            payload.chmod(0o600)
+            payload.write_bytes(bytes([original_bytes[0] ^ 1]) + original_bytes[1:])
+            if consumer == 'thread':
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    result = pool.submit(copy_context().run, verify).result(timeout=10)
+            else:
+                read_fd, write_fd = os.pipe()
+                pid = os.fork()
+                if pid == 0:
+                    os.close(read_fd)
+                    try:
+                        os.write(write_fd, verify().encode())
+                    finally:
+                        os._exit(0)
+                os.close(write_fd)
+                try:
+                    result = os.read(read_fd, 4096).decode()
+                finally:
+                    os.close(read_fd)
+                    _, status = os.waitpid(pid, 0)
+                assert os.waitstatus_to_exitcode(status) == 0
+            assert 'content differs' in result
+        finally:
+            payload.write_bytes(original_bytes)
+            payload.chmod(original_mode)
+
+
+def test_independent_consumer_reads_reopen_and_restore_outer_scope(frozen, monkeypatch):
+    ws, bundle, repo, payload = frozen
+    original = S.hashlib.file_digest
+    calls = []
+
+    def digest(stream, *args):
+        calls.append(Path(stream.name))
+        return original(stream, *args)
+
+    monkeypatch.setattr(S.hashlib, 'file_digest', digest)
+    with S.verified_snapshot_scope(ws, bundle, repo=repo):
+        outer = S._ACTIVE_VERIFICATION.get()
+        with pytest.raises(ValueError, match='consumer failed'):
+            with S.independent_snapshot_reads():
+                assert S._ACTIVE_VERIFICATION.get() is None
+                S.verify_bundle_snapshot(ws, bundle, repo=repo)
+                raise ValueError('consumer failed')
+        assert S._ACTIVE_VERIFICATION.get() is outer
+        S.verify_bundle_snapshot(ws, bundle, repo=repo)
+    assert calls.count(payload) == 3
+    assert S._ACTIVE_VERIFICATION.get() is None
 
 
 def test_scoped_final_check_reopens_changed_bytes_even_restored_mtime(frozen):

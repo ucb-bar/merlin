@@ -78,6 +78,29 @@ def test_incumbent_priorities_share_exact_ranking_weights_and_source():
     assert priority["unpriced_weighted_cycles"] == {"lo": 2_500, "hi": 2_500}
 
 
+def test_cost_guidance_does_not_change_incumbent_scores_or_plateau():
+    from test_evaluation_priorities import observation as cost_observation
+
+    winner = observation("c" * 64, 50, 5_000)
+    winner["result"]["evidence"]["cells"][0]["roofline"] = {"status": "derived", "roofline_cycles": 10}
+    plain = diagnostic_coordinator([winner]).status()
+    cost = cost_observation(5, identity=ROSTER[0])
+    cost["source_sha256"] = winner["source_sha256"]
+    context = cost["evaluation_cost"]["context"]
+    context.update(
+        candidate_sha256=winner["source_sha256"],
+        baseline_sha256="f" * 64,
+        corpus_sha256=CORPUS,
+        certificate_sha256=ENGINE,
+    )
+    priced = diagnostic_coordinator([winner, cost]).status()
+    for key in ("incumbent", "ranked", "priorities", "plateau_batches", "stop_reason"):
+        assert priced[key] == plain[key]
+    row = priced["evaluation_priorities"]["groups"][0]["ranked"][0]
+    assert row["evaluation_cost_seconds"] == {"lo": 5, "hi": 5}
+    assert row["savings_per_evaluation_second"] == {"lo": 4, "hi": 4}
+
+
 def test_repeated_measurements_never_pick_only_the_fastest_sample():
     result = rank(observation("c" * 64, 50, 5_000), observation("c" * 64, 200, 12_000, index=1))
     row = result["ranked"][0]

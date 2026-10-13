@@ -43,6 +43,7 @@ class ExecutionConfig:
     timing_file: Path
     sim_max_jobs: int = 0
     selected_rtl_facts: Path | None = None
+    sim_per_capsule_timeout: int = 0
 
 
 _DRIVER_MODULES = {
@@ -254,6 +255,7 @@ def launch(
                 contract,
                 config.selected_rtl_facts,
                 run_dir / "input_bundle_manifest.yaml" if bundle.get("compiler_tool_profile") is not None else None,
+                sim_per_capsule_timeout=config.sim_per_capsule_timeout,
             ),
         )
         if sandbox == "bwrap"

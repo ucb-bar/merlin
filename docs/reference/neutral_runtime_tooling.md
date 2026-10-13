@@ -50,6 +50,20 @@ Metadata binding does not execute tools, build RTL or establish native readiness
 Actual gSIM calls hold the same cross-process runtime reservation and optional
 operator-selected CPU slot as legacy calls, including release on failure.
 
+Native process deadlines default to a maximum of 600 seconds. A reviewed host
+contract can select `execution_resources: {max_native_timeout_s: 1800}` inside
+`runner.chipyard_rocc`; the explicit integer ceiling must be between 1 and 3600
+seconds. Each gSIM or Verilator engine still declares its own `max_timeout_s`,
+which cannot exceed that ceiling. Spike retains its 600-second ceiling.
+The immutable selection and engine identity bind the selected resource limits.
+This resource selection does not change simulator arguments, cycle limits,
+numerical checks or qualification requirements. Callers must also allow enough
+time in their job and whole-model budgets; expiration remains unmeasured.
+The host corpus-release API accepts `native_timeout_s` during fresh preparation.
+It records the original Phase 0 contract digest and the separately selected
+resource fields and output digest before review and sealing. Existing releases
+remain immutable; numerical and hardware declarations retain their original meaning.
+
 ## Prepare a worker selection
 
 `python -m merlin.runtime.backends.rocc_selection` turns an explicitly selected

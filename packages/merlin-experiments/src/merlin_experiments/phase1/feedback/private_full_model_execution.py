@@ -288,9 +288,12 @@ def run_engine(
 
     An RTL engine is cited against the ambient selected facts, which must be the ones the static gate
     built against (same digest, same config), and its citation is revalidated around the run."""
+    from merlin.common.execution_deadline import ExecutionDeadline
     from merlin.compile import model_execution_inputs as MI
     from merlin.runtime.backends import base as backends
+    from merlin.targetgen.contract.compile import _selected_run_timeout
 
+    deadline = ExecutionDeadline.start(timeout_s)
     evidence: dict[str, Any] = {"engine": engine}
     revalidate: Callable[[], None] = lambda: None  # noqa: E731
     command = None
@@ -318,7 +321,8 @@ def run_engine(
     with _engine_hang_bound(backend, engine, max_cycles):
         revalidate()
         started = time.monotonic()
-        console = backend.run_elf(elf, simulator=engine, timeout=timeout_s, capture_bytes=capture_bytes)
+        bounded = _selected_run_timeout(backend, engine, timeout_s, deadline)
+        console = backend.run_elf(elf, simulator=engine, timeout=bounded, capture_bytes=capture_bytes)
         wall = time.monotonic() - started
         if command is not None:
             command.revalidate()

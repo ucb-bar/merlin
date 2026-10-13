@@ -937,6 +937,36 @@ def _bundle_selection(optional_levels, selected_levels, selected_variants):
     return arms, variants
 
 
+def _stage_capability_contract(source, expected_sha256, destination, native_timeout_s):
+    """Record a host resource selection separately from original Phase 0 bytes."""
+    from merlin.common.digest import sha256_file
+    from merlin.runtime.backends import chipyard_rocc_bound as runtime, rocc_selection
+
+    if native_timeout_s is None:
+        return {"path": str(source), "sha256": copy_input(source, destination, expected_sha256=expected_sha256)}
+    ordinary_tree(source)
+    if sha256_file(source) != expected_sha256:
+        raise SpecError("selected corpus input differs from verified evidence; prepare a new release")
+    try:
+        selected = rocc_selection.select_native_timeout(read_yaml(source), native_timeout_s)
+    except runtime.RoCCExecutionError as error:
+        raise SpecError(str(error)) from error
+    native_engines = set(selected["runner"]["chipyard_rocc"]["engines"]) & {"gsim", "verilator"}
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open("x", encoding="utf-8") as output:
+        yaml.safe_dump(selected, output, sort_keys=False)
+    if sha256_file(source) != expected_sha256:
+        raise SpecError("selected original contract changed during resource selection")
+    return {
+        "path": str(source), "sha256": expected_sha256,
+        "execution_resource_selection": {
+            "max_native_timeout_s": native_timeout_s,
+            "engines": sorted(native_engines), "selected_contract_sha256": sha256_file(destination),
+            "scope": "host process resources only; original semantic and numerical declarations retained",
+        },
+    }
+
+
 def scaffold(
     te,
     corpus: Path,
@@ -951,6 +981,7 @@ def scaffold(
     selected_variants: tuple[str, ...] | None = None,
     lean_toolchain_manifest: Path | None = None,
     host_index_bits: int | None = None,
+    native_timeout_s: int | None = None,
 ) -> dict:
     """Stage only declared task/selfcheck/harness resources, never prior runs or bundles."""
     from merlin.common.digest import sha256_file
@@ -1000,11 +1031,13 @@ def scaffold(
     if selected_contract is not None:
         contract_source, contract_sha256 = selected_contract
         staged_contract = experiment / "contracts/target_contract.yaml"
-        digest = copy_input(contract_source, staged_contract, expected_sha256=contract_sha256)
+        contract_record = _stage_capability_contract(contract_source, contract_sha256, staged_contract, native_timeout_s)
         hardware["target_contract"] = str(staged_contract)
-        inputs["capability_contract"] = {"path": str(contract_source), "sha256": digest}
+        inputs["capability_contract"] = contract_record
     elif te.declared_contract:
         raise SpecError("descriptor declares a capability contract without a selected Phase 0 export; freeze a new run")
+    elif native_timeout_s is not None:
+        raise SpecError("native resource selection requires an original Phase 0 contract")
     hardware_root = None
     if te.hwbringup_set:
         source = resolve_grant(te.hwbringup_set)

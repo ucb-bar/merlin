@@ -15,6 +15,19 @@ from dataclasses import dataclass
 from merlin.targetgen import tool_registry as _TR
 from merlin.targetgen.contract.readback_policy import READBACK_TRANSPORTS
 
+MAX_SIM_PER_CAPSULE_TIMEOUT_S = 86400
+
+
+def sim_per_capsule_timeout(value):
+    """Explicit broker resource budget; zero retains the historical derivation."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("sim per-capsule timeout must be an integer") from exc
+    if not 0 <= parsed <= MAX_SIM_PER_CAPSULE_TIMEOUT_S:
+        raise argparse.ArgumentTypeError("sim per-capsule timeout must be 0..86400 seconds")
+    return parsed
+
 
 @dataclass(frozen=True)
 class RunOptions:
@@ -58,6 +71,7 @@ class RunOptions:
     with_tool: list[str]
     without_tool: list[str]
     account_config_dir: str
+    sim_per_capsule_timeout: int = 0
     private_full_model_spec: str = ""
     readback_policy: str = ""
     public_object_build_budget_s: int = 0
@@ -233,6 +247,11 @@ def build_parser(
         "holds a core for ~45 min. A cheap cert engine is a different machine problem: "
         "Raise this when the cert engine is cheap; leave it alone when it is not. "
         "Verilator's own global slot budget is unaffected either way.",
+    )
+    ap.add_argument(
+        "--sim-per-capsule-timeout", type=sim_per_capsule_timeout, default=0, metavar="SECONDS",
+        help="explicit async certificate worker budget (1..86400 seconds); 0 retains engine-derived "
+        "budget. This does not override the sealed native engine ceiling or whole-model budget.",
     )
     ap.add_argument(
         "--model-budget-s",
