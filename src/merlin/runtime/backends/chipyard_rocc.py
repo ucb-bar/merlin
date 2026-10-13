@@ -33,7 +33,7 @@ import subprocess
 import sys
 import threading
 from collections.abc import Mapping
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from math import prod
 from pathlib import Path
 from typing import Any
@@ -571,7 +571,9 @@ def run_elf(
 ) -> str | bytes:
     """Run ``elf`` on ``simulator``; an explicit memory export never changes the default command."""
     preexec = None
-    slot = nullcontext()
+    from merlin.targetgen.rtl_engine_policy import simulation_runtime_slot
+
+    slot = simulation_runtime_slot(simulator, wait_timeout_s=timeout)
     export = prepare_memory_readback(elf, simulator, memory_readback) if memory_readback is not None else None
     if simulator == "spike":
         cmd, env = _spike_argv(elf, *(export.argv_suffix if export else ()))
@@ -588,7 +590,6 @@ def run_elf(
 
         if getattr(rtl_engine_policy, "GSIM_RUNTIME_SLOT_PROTOCOL", None) != "reentrant_per_thread_v1":
             raise ChipyardRoccError("GSim requires Merlin runtime slot protocol reentrant_per_thread_v1")
-        slot = rtl_engine_policy.gsim_runtime_slot(wait_timeout_s=timeout)
         env = dict(os.environ)
         cmd = [*_gsim_argv(elf), *(export.argv_suffix if export else ())]
         preexec = _unlimited_stack

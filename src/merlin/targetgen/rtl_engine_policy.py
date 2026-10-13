@@ -509,7 +509,9 @@ def _admission_mutex(root: Path, deadline: float | None):
                 locked = True
             except BlockingIOError:
                 if deadline is not None and time.monotonic() >= deadline:
-                    raise TimeoutError(f"all {CAPSULE_WORKER_CAP['gsim']} GSim slots stayed busy until the capsule wait deadline")
+                    raise TimeoutError(
+                        f"all {CAPSULE_WORKER_CAP['gsim']} GSim slots stayed busy until the capsule wait deadline"
+                    )
                 time.sleep(0.01)
         yield
     finally:
@@ -524,6 +526,12 @@ def capsule_worker_cap(engine: str) -> int:
 
 
 def _gsim_cpu_roster() -> tuple[int, ...] | None:
+    from merlin.common.cpu_pool import shared_compute_enabled
+
+    if shared_compute_enabled():
+        # A shared lease selects a free CPU independently of the GSim cap
+        # reservation. Reservation indices no longer designate CPU numbers.
+        return None
     raw = os.environ.get("MERLIN_GSIM_CPUS", "").strip()
     if not raw:
         return None
@@ -567,7 +575,32 @@ def _gsim_cpu_slot(index: int):
 
 @contextmanager
 def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | None = None):
-    """Hold one of five same-user GSim slots for the entire native simulation.
+    """Lease compute before reserving native capacity; nested calls reuse both."""
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    deadline = None if wait_timeout_s is None else time.monotonic() + max(0.0, wait_timeout_s)
+    with shared_compute_pool(timeout_s=wait_timeout_s):
+        remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+        with _gsim_runtime_slot(wait_timeout_s=remaining, slot_root=slot_root):
+            yield
+
+
+@contextmanager
+def simulation_runtime_slot(engine: str, *, wait_timeout_s: float | None = None):
+    """Use the common compute lease for every engine, retaining GSim's native cap."""
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    if engine == "gsim":
+        with gsim_runtime_slot(wait_timeout_s=wait_timeout_s):
+            yield
+    else:
+        with shared_compute_pool(timeout_s=wait_timeout_s):
+            yield
+
+
+@contextmanager
+def _gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | None = None):
+    """Hold a configured same-user GSim reservation for the entire native simulation.
 
     Per-suite worker bounds do not protect the machine when two independent grades run at once.
     Advisory file locks survive abrupt worker exit without stale PID reclamation. A private,
@@ -576,7 +609,7 @@ def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | 
     uncoordinated launches after that snapshot cannot be prevented by this protocol.
     Nested synchronous calls in the same thread reuse its slot. Other threads and
     forked children acquire their own; do not launch concurrent children inside one slot.
-    Ambiguous multi-slot ownership can conservatively reduce utilization below five.
+    Ambiguous multi-slot ownership can conservatively reduce utilization below the cap.
     """
     selected_root = os.environ.get("MERLIN_GSIM_SLOT_ROOT", "").strip()
     root = slot_root or (Path(selected_root) if selected_root else Path("/tmp") / f"merlin_gsim_slots_{os.getuid()}")
@@ -622,7 +655,9 @@ def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | 
                     break
             if fd is None:
                 if deadline is not None and time.monotonic() >= deadline:
-                    raise TimeoutError(f"all {CAPSULE_WORKER_CAP['gsim']} GSim slots stayed busy until the capsule wait deadline")
+                    raise TimeoutError(
+                        f"all {CAPSULE_WORKER_CAP['gsim']} GSim slots stayed busy until the capsule wait deadline"
+                    )
                 time.sleep(0.1)
         held[key] = fd
         with _gsim_cpu_slot(index):

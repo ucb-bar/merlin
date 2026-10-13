@@ -41,14 +41,18 @@ def _observed_run(argv, *, workdir, stage, inputs=(), outputs=(), **kwargs):
     from merlin.common.cpu_pool import parse_roster, selected_pool
     from merlin.runtime.build_runtime import run_in_build_view
 
-    cpus = parse_roster(os.environ.get("MERLIN_BUILD_CPUS", ""))
-    slots = os.environ.get("MERLIN_BUILD_SLOT_ROOT", "")
-    if cpus and not slots:
-        raise ValueError("selected build CPU pool requires an explicit slot root")
     started = time.monotonic()
     timeout = kwargs.get("timeout")
+    if cpu_owner.shared_compute_enabled():
+        pool = cpu_owner.shared_compute_pool(timeout_s=timeout)
+    else:
+        cpus = parse_roster(os.environ.get("MERLIN_BUILD_CPUS", ""))
+        slots = os.environ.get("MERLIN_BUILD_SLOT_ROOT", "")
+        if cpus and not slots:
+            raise ValueError("selected build CPU pool requires an explicit slot root")
+        pool = selected_pool(cpus, slot_root=Path(slots) if cpus else None, timeout_s=timeout)
     try:
-        with selected_pool(cpus, slot_root=Path(slots) if cpus else None, timeout_s=timeout):
+        with pool:
             if timeout is not None:
                 kwargs["timeout"] = max(0, timeout - (time.monotonic() - started))
             selected = run_in_build_view(
@@ -425,9 +429,9 @@ def _recorded_operands(cb: dict[str, Any]) -> dict[str, list] | None:
 
 def _ordinary_integer_harness_inputs(cb):
     """Materialize the runner's existing integer stimulus, never a model fallback."""
+    from merlin.common.quant_formats import get
     from merlin.runtime.commandbuffer import materialize_inputs
     from merlin.runtime.harness_render import _roster, _tensor
-    from merlin.common.quant_formats import get
 
     if cb.get("kernel_abi") is not None:
         raise ValueError("whole-program harness requires explicit semantic inputs")
@@ -1271,6 +1275,7 @@ def run_on_oracle(
     try:
         run_kwargs = {"capture_bytes": True} if binary else {}
         from merlin.common import invocation_record
+        from merlin.targetgen.rtl_engine_policy import simulation_runtime_slot
 
         # Record the actual Python dispatch. The selected backend owns the
         # engine subprocess argv and its own lower-level invocation records.
@@ -1290,7 +1295,7 @@ def run_on_oracle(
         if admission is not None:
             _elf_admission.revalidate(elf=elf, result=admission, target=target)
         run_timeout = _selected_run_timeout(backend, simulator, timeout, run_deadline)
-        with invocation_record.observe_call(
+        with simulation_runtime_slot(simulator, wait_timeout_s=run_timeout), invocation_record.observe_call(
             work,
             stage="execution",
             function=backend.run_elf,
