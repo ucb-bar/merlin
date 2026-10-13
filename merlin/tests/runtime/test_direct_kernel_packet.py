@@ -85,6 +85,23 @@ def test_actual_native_words_use_lossless_independent_block_widths(actual_packet
     assert "OUT_B64_BEGIN" not in text
 
 
+def test_packet_arena_is_exact_file_backed_writable_storage(tmp_path, actual_packet):
+    from merlin_experiments.phase1.feedback.native_output_readback import _elf_output_symbols
+
+    _, cb, *_ = actual_packet
+    capacity = out_bin_packet_capacity(tuple(frame for _, _, frame in packet_output_blocks(cb)))
+    raw = (tmp_path / "harness.elf").read_bytes()
+    symbols, _ = _elf_output_symbols(raw, {"merlin_readback_packet": capacity,
+                                          "merlin_readback_packet_used": 8})
+    header = struct.unpack_from("<HHIQQQIHHHHHH", raw, 16)
+    segments = [struct.unpack_from("<IIQQQQQQ", raw, header[4] + index * 56) for index in range(header[9])]
+    address = symbols["merlin_readback_packet"]
+    rows = [row for row in segments if row[0] == 1 and row[1] & 6 == 6
+            and row[3] <= address < address + capacity <= row[3] + row[5]]
+    assert len(rows) == 1  # Arena capacity is loaded directly, outside zero-fill storage.
+    assert raw[rows[0][2] + address - rows[0][3]] == 1
+
+
 def test_complete_native_packet_reassembles_original_tensor_shapes(tmp_path, actual_packet):
     from merlin_experiments.phase1.feedback.native_memory_readback import _decode_neutral_packet
 
