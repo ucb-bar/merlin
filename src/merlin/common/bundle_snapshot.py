@@ -198,6 +198,8 @@ def snapshot_content(root: Path) -> tuple[str, int, int]:
 
 def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict:
     """Verify V4 original input ownership; never determine candidate visibility."""
+    from .cpu_pool import shared_compute_pool
+
     workspace, repo = Path(workspace), Path(repo)
     root = bundle_snapshot_root(workspace)
     marker = root / MARKER
@@ -246,7 +248,11 @@ def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict
             frozen = root / relative
             if not frozen.exists() or frozen.resolve() != frozen:
                 raise RuntimeError("original snapshot input source is missing or indirect")
-    observed = dict(zip(("content_sha256", "n_files", "n_bytes"), snapshot_content(root), strict=True))
+    # This synchronous metadata/hash stage owns one shared compute CPU, then
+    # releases it before returning to any compiler invocation or child wait.
+    with shared_compute_pool():
+        content = snapshot_content(root)
+    observed = dict(zip(("content_sha256", "n_files", "n_bytes"), content, strict=True))
     if observed != {key: document.get(key) for key in observed}:
         raise RuntimeError("original snapshot input content differs from its marker")
     return document
