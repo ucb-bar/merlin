@@ -68,4 +68,8 @@ the per-backend adapters under `backends/`.
 - Real implementations only; every result is gated (simulator == reference; dispatch
   runtime == torch golden). `dispatch_runtime` raises on any view op it cannot evaluate —
   no silent skips.
+- The host dispatch runtimes (`dispatch_runtime.execute`, `interpret.run_dispatch_program`) run
+  merlin's own outlined dispatches only; an external kernel call (model2MLIR `prov.kernel`) raises
+  `ExternalKernelNotExecutable` naming it. Such models run on the LLVM route, whose lowering links
+  the kernel body (`backends/spike_model.build(..., kernel_form=)`).
 - Every subdirectory must also contain an AGENT.md.

@@ -145,7 +145,9 @@ def build_program(
     kernels: dict[str, KernelEntry] = {}
     opcodes: set[str] = set()
     for node in dispatch.nodes:
-        opcodes.add(node.op if node.kind == "view" else f"dispatch:{node.op}")
+        # Compute nodes are namespaced by kind: an external kernel (prov.kernel) is not a
+        # merlin-compiled dispatch and gets no kernel-table entry.
+        opcodes.add(node.op if node.kind == "view" else f"{node.kind}:{node.op}")
         if node.kind == "dispatch" and node.op not in kernels:
             # The dispatch node's prov keys are the model2MLIR ``prov.*`` spellings (``prov.op`` /
             # ``prov.fqn`` / ``prov.region_id``), NOT bare ``root``/``op``/``name`` — the old filter

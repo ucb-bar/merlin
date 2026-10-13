@@ -29,6 +29,8 @@ from typing import Any
 
 import numpy as np
 
+from merlin.common.kernel_calls import ExternalKernelNotExecutable, is_kernel_call, kernel_qualname
+
 from .dispatch_numeric import boundary_scale as boundary_scale
 from .dispatch_numeric import float_boundary_operands as float_boundary_operands
 from .dispatch_transform_audit import qualify_model_transform_audit, record_model_transform_audit
@@ -1178,6 +1180,8 @@ def execute(
         for i, op in enumerate(blk.ops):
             if op.name in ("func.return", "scf.yield"):
                 return [env[id(o)] for o in op.operands]
+            if is_kernel_call(op):
+                raise ExternalKernelNotExecutable(kernel_qualname(op))
             if op.name == "func.call":
                 run_call(op)
             elif op.name == "scf.for":

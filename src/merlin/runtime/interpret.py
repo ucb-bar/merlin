@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from merlin.common.kernel_calls import ExternalKernelNotExecutable
+
 
 def run_dispatch_program(
     prog,
@@ -41,6 +43,8 @@ def run_dispatch_program(
 
     for node in prog.nodes:
         in_vals = [env[b] for b in node.inputs]
+        if node.kind == "external":
+            raise ExternalKernelNotExecutable(node.op)
         if node.kind == "dispatch":
             outs = invoke_kernel(node.op, in_vals)
         elif eval_view is not None:
