@@ -18,6 +18,56 @@ from .semantics import BoundSemantics
 SCHEMA = "merlin.selected_operand_protocol.v1"
 
 
+def _read_pin(pin, limit):
+    if type(pin) is not dict or set(pin) != {"path", "sha256"} or type(pin["path"]) is not str:
+        raise ValueError("operand selection file pin is malformed")
+    path = Path(pin["path"])
+    if not path.is_absolute() or path.resolve() != path or path.is_symlink() or not path.is_file():
+        raise ValueError("operand selection requires an ordinary canonical selected file")
+    if path.stat().st_size > limit:
+        raise ValueError("operand selection exceeds its bounded byte document")
+    with path.open("rb") as stream:
+        raw = stream.read(limit + 1)
+    if len(raw) > limit or hashlib.sha256(raw).hexdigest() != _sha(pin["sha256"]):
+        raise ValueError("operand selection file differs from its selected byte pin")
+    return raw
+
+
+def selected_inputs(selection):
+    """Explicit checker-only files that a fresh original profile must freeze."""
+    if type(selection) is not dict or set(selection) != {"original_facts", "sidecar"}:
+        raise ValueError("operand selection requires only original facts and a pinned sidecar")
+    _read_pin(selection["original_facts"], 16 * 1024 * 1024)
+    selected = _json(_read_pin(selection["sidecar"], 2 * 1024 * 1024), 2 * 1024 * 1024)
+    if type(selected) is not dict or selected.get("schema") != SCHEMA:
+        raise ValueError("operand selection sidecar has an unsupported schema")
+    _pins(selected.get("source_pins"))
+    layouts = selected.get("layouts")
+    if type(layouts) is not dict or type(layouts.get("source")) is not str:
+        raise ValueError("operand selection omits its exact FIRRTL source pin")
+    # The layout reader supplies the separate large-FIRRTL bounds and byte check.
+    verify_selected_layout_source(layouts)
+    source = {"path": layouts["source"], "sha256": _sha(layouts["source_sha256"])}
+    rows = [selection["original_facts"], selection["sidecar"], *selected["source_pins"], source]
+    return tuple(dict.fromkeys(row["path"] for row in rows))
+
+
+def bind_selected_observer(original, selection):
+    """Consume only explicit selected contract data, with final checks before return."""
+    if type(selection) is not dict or set(selection) != {"original_facts", "sidecar"}:
+        raise ValueError("operand selection requires only original facts and a pinned sidecar")
+    facts = _read_pin(selection["original_facts"], 16 * 1024 * 1024)
+    sidecar = _read_pin(selection["sidecar"], 2 * 1024 * 1024)
+    observer = bind_original_operand_selection(
+        original, original_facts_bytes=facts, selection_bytes=sidecar,
+        expected_selection_sha256=selection["sidecar"]["sha256"],
+    )
+    if (_read_pin(selection["original_facts"], 16 * 1024 * 1024) != facts
+            or _read_pin(selection["sidecar"], 2 * 1024 * 1024) != sidecar):
+        raise ValueError("operand selection changed before observer publication")
+    return observer
+
+
 def _sha(value):
     if type(value) is not str or len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
         raise ValueError("operand selection needs an exact SHA-256 byte pin")

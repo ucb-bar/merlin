@@ -74,6 +74,25 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
                 "freeze a new run and prepare a new release"
             )
         released = yaml.safe_load(path.read_bytes())
+        operand_selection = released.get("rocc_operand_selection") if isinstance(released, dict) else None
+        if operand_selection is not None:
+            from merlin.targetgen.rocc.selected_operand_protocol import _read_pin, selected_inputs
+
+            if (type(operand_selection) is not dict
+                    or set(operand_selection) != {"original_facts", "sidecar"}
+                    or type(operand_selection["original_facts"]) is not dict
+                    or type(operand_selection["sidecar"]) is not dict
+                    or operand_selection["original_facts"].get("path") != str(te.path.parent / "rtl_facts/facts.json")
+                    or operand_selection["sidecar"].get("path") != str(
+                        te.path.parent / "contracts/operand-protocol.json")):
+                raise ValueError("reviewed operand selection must name its exact release-local facts and sidecar")
+            raw_facts = (coverage_inputs or {}).get("raw_facts_utf8")
+            if (type(raw_facts) is not str
+                    or _read_pin(operand_selection["original_facts"], 16 * 1024 * 1024) != raw_facts.encode("utf-8")):
+                raise ValueError("reviewed operand selection differs from unchanged original Phase 0 facts")
+            original_only = {row.get("path") for row in bundle.get("host_inputs", []) if isinstance(row, dict)}
+            if not set(selected_inputs(operand_selection)) <= original_only:
+                raise ValueError("reviewed operand selection lacks its complete original-only frozen source roster")
         if released != selected:
             from merlin.runtime.backends import chipyard_rocc_bound as runtime
             from merlin.runtime.backends import rocc_selection
@@ -93,7 +112,9 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
                     expected_contract = rocc_selection.select_gsim_readback(
                         expected_contract, gsim["readback_transport"]
                     )
-            except (KeyError, TypeError, runtime.RoCCExecutionError) as error:
+                if operand_selection is not None:
+                    expected_contract = rocc_selection.select_operand_protocol(expected_contract, operand_selection)
+            except (KeyError, TypeError, ValueError, runtime.RoCCExecutionError) as error:
                 raise ValueError(
                     "released capability contract differs from selected Phase 0 coverage inputs"
                 ) from error
@@ -299,7 +320,8 @@ def _resources(capsules: list[dict]) -> None:
             "interface_mlir": capsule.get("interface_mlir"),
             "linalg_mlir": capsule.get("linalg_mlir"),
             "pytorch_ref.loader": (capsule.get("pytorch_ref") or {}).get("loader"),
-            **{key: attributes.get(key) for key in ("weights", "weights_manifest", "loader_dependencies", "loader_profile")},
+            **{key: attributes.get(key) for key in (
+                "weights", "weights_manifest", "loader_dependencies", "loader_profile")},
         }
         for field, value in references.items():
             if value is None:
