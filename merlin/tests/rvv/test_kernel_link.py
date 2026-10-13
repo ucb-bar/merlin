@@ -17,6 +17,7 @@ import pytest
 from merlin.common.paths import merlin_dir
 from merlin.llvmlower import kernel_link as KL
 from merlin.llvmlower import toolchain
+from mlp_bundles import forward_args
 
 FIXTURE = merlin_dir() / "tests" / "fixtures" / "mlp_basic_triton"
 KERNEL_FREE = merlin_dir() / "tests" / "fixtures" / "mlp_basic"
@@ -24,29 +25,6 @@ SYMBOL = "triton_exp__fused_mlp2"
 
 needs_toolchain = pytest.mark.skipif(not toolchain.available(),
                                      reason="clang-23 / model2MLIR venv not available")
-
-
-def forward_args(bundle):
-    """@forward's arguments for a fixture bundle, in signature order: weights from the safetensors
-    blob (by manifest name), the input from ``inputs.npz``. Shared with the spike tests."""
-    import json
-
-    import numpy as np
-
-    from merlin.llvmlower.weights_pack import load_safetensors_header
-    header, payload_off = load_safetensors_header(bundle / "weights.safetensors")
-    blob = (bundle / "weights.safetensors").read_bytes()[payload_off:]
-    manifest = json.loads((bundle / "weights.safetensors.manifest.json").read_text())
-    x = np.load(bundle / "inputs.npz")["in0"]
-    args = []
-    for i in range(len(manifest)):
-        meta = manifest[str(i)]
-        if meta["kind"] != "param":
-            args.append(np.ascontiguousarray(x))
-            continue
-        begin, end = header[meta["weight"]]["data_offsets"]
-        args.append(np.frombuffer(blob[begin:end], dtype=np.float32).reshape(meta["shape"]).copy())
-    return args
 
 
 def _text(path=FIXTURE) -> str:

@@ -3,7 +3,7 @@ title: RVV end-to-end — lower a model through model2MLIR and run it on the Mer
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-07-22
+last_verified: 2026-10-13
 related: [model2mlir, reproducibility, getting_started, kernel_mining,
           tinyllama_int8_rvv_zephyr]
 code_refs:
@@ -11,6 +11,8 @@ code_refs:
   - src/merlin/llvmlower/pipeline.py
   - src/merlin/llvmlower/passes_quant_int.py
   - src/merlin/runtime/backends/spike.py
+  - src/merlin/runtime/backends/spike_model.py
+  - src/merlin/llvmlower/kernel_link.py
   - src/merlin/mining/k1.py
   - merlin/tests/rvv/test_rvv_spike.py
   - merlin/tests/rvv/test_smolvla_rvv.py
@@ -117,6 +119,30 @@ through model2MLIR → native RVV → the dispatch runtime — passes at **cos �
 path reproduces after the refactor. Whole-model runs are minutes each — budget the timeout accordingly
 (a per-invocation wrapper shorter than the compile will SIGTERM it; pytest's own 900s per-test timeout
 governs cleanly).
+
+## 3b. Models that call an external kernel (model2MLIR `prov.kernel`)
+
+A capture can call a kernel it does not define — model2MLIR emits a registered custom op (e.g. a Triton
+`@triton_op`) as `func.call @<sym>` to a body-less declaration tagged `prov.kernel`. The whole-model
+lowering links a CPU body for it (`llvmlower/kernel_link.py`, bodies listed in
+`llvmlower/kernel_table.py`), so the ordinary spike path runs it unchanged:
+
+```bash
+.venv/bin/ninja -C third_party/llvm-build llvm-link        # once; the link step needs it
+.venv/bin/python -m pytest merlin/tests/runtime/test_external_kernel_spike.py -q
+```
+
+```python
+from merlin.runtime.backends import spike_model
+b = spike_model.build(model_dir, work, kernel_form="llvm_ir")    # or "llvm_mlir"
+b["kernels"]          # ['triton_exp::fused_mlp2:llvm_ir'] -- empty for an ordinary model
+r = spike_model.run(b["elf"], mem_bytes=b["mem_bytes"], vlen=b.get("vlen"))
+```
+
+`merlin/tests/fixtures/mlp_basic_triton` (fc1+relu+fc2+relu as one triton-cpu kernel) and its kernel-free
+twin `mlp_basic` both reproduce the PyTorch golden on spike. Limits today: one result per kernel, static
+shapes, no non-tensor `prov.kernel_args`, and the body must be portable LLVM IR (no arch intrinsics) or
+written for rv64. `runtime.kernel_spike` cannot run these — its harness links no allocator.
 
 ## 4. Verify on the real K1 board (optional, cycle truth)
 
