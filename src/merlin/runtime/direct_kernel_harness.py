@@ -15,6 +15,31 @@ from dataclasses import dataclass
 from merlin.common.quant_formats import get
 from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, FULL_VALUES_B64, ReadbackPolicy
 
+_OUTPUT_POISON_C = """static void merlin_poison_bytes(void *storage, uint64_t bytes, unsigned char byte){
+  volatile unsigned char *cursor=(volatile unsigned char*)storage;
+  if(!bytes) return;
+#if defined(__GNUC__) || defined(__clang__)
+  /* may_alias preserves character-storage aliasing; all stores remain volatile. */
+  typedef uintptr_t merlin_poison_word __attribute__((__may_alias__));
+  while(bytes && (uintptr_t)cursor % sizeof(merlin_poison_word)){
+    *cursor++=byte;
+    bytes--;
+  }
+  const merlin_poison_word word=((merlin_poison_word)~(merlin_poison_word)0 / UINT8_MAX) * byte;
+  volatile merlin_poison_word *words=(volatile merlin_poison_word*)cursor;
+  while(bytes>=sizeof(merlin_poison_word)){
+    *words++=word;
+    bytes-=sizeof(merlin_poison_word);
+  }
+  cursor=(volatile unsigned char*)words;
+#endif
+  while(bytes){
+    *cursor++=byte;
+    bytes--;
+  }
+}
+"""
+
 
 def _identifier(value):
     if (
@@ -239,6 +264,11 @@ def render_direct_kernel(
         declarations.append(f"extern void {abi.completion_symbol}(void);")
     if prelude_symbol is not None:
         declarations.append(f"extern void {prelude_symbol}(void);")
+    poison_symbol = "merlin_poison_bytes"
+    while poison_symbol in {abi.entry_symbol, abi.completion_symbol, prelude_symbol}:
+        poison_symbol += "_"
+    if output_poison is not None:
+        declarations.extend(_OUTPUT_POISON_C.replace("merlin_poison_bytes", poison_symbol).splitlines())
     if complete_call_timing is not None:
         declarations.extend(complete_call_timing.declarations())
     for name, (index, access, (count, width, dtype)) in slots.items():
@@ -308,13 +338,8 @@ def render_direct_kernel(
         lines = []
         for index, access, (count, width, _) in slots.values():
             if access == "write":
-                lines.extend(
-                    [
-                        indent + f"for(uint64_t merlin_poison_index=0;merlin_poison_index<UINT64_C({count * width});"
-                        "merlin_poison_index++)",
-                        indent + f"  ((volatile unsigned char*)tensor_{index})[merlin_poison_index]={output_poison};",
-                    ]
-                )
+                lines.append(indent + f"{poison_symbol}(tensor_{index},UINT64_C({count * width}),"
+                             f"{output_poison});")
         return lines
 
     if invocation_plan is None:
