@@ -111,22 +111,23 @@ def test_reviewed_phase1_handoff_accepts_only_the_exact_resource_variant(tmp_pat
 
 
 @pytest.mark.parametrize("timeout", [None, 1800])
-def test_full_value_transport_selection_retains_original_and_records_exact_selected_bytes(tmp_path, timeout):
+@pytest.mark.parametrize("transport", ["coherent_dump_v1", "coherent_packet_v1"])
+def test_full_value_transport_selection_retains_original_and_records_exact_selected_bytes(tmp_path, timeout, transport):
     source, original = _source(tmp_path)
     before = source.read_bytes()
     destination = tmp_path / "selected.yaml"
-    record = _stage_capability_contract(source, sha256_file(source), destination, timeout, "coherent_dump_v1")
+    record = _stage_capability_contract(source, sha256_file(source), destination, timeout, transport)
     selected = yaml.safe_load(destination.read_bytes())
     restored = copy.deepcopy(selected)
     block = restored["runner"]["chipyard_rocc"]
-    assert block["engines"]["gsim"].pop("readback_transport") == "coherent_dump_v1"
+    assert block["engines"]["gsim"].pop("readback_transport") == transport
     if timeout is not None:
         assert block.pop("execution_resources") == {"max_native_timeout_s": timeout}
         block["engines"]["gsim"]["max_timeout_s"] = 600
     assert restored == original
     assert source.read_bytes() == before and record["sha256"] == sha256_file(source)
     assert record["execution_transport_selection"] == {
-        "engine": "gsim", "readback_transport": "coherent_dump_v1",
+        "engine": "gsim", "readback_transport": transport,
         "selected_contract_sha256": sha256_file(destination),
         "scope": "complete output values only; original ABI, instruction and numerical declarations retained",
     }
@@ -134,7 +135,7 @@ def test_full_value_transport_selection_retains_original_and_records_exact_selec
         assert record["execution_resource_selection"]["selected_contract_sha256"] == sha256_file(destination)
 
 
-@pytest.mark.parametrize("transport", ["out_digest_v1", "out_b64_v1", "coherent_packet_v1", True, ""])
+@pytest.mark.parametrize("transport", ["out_digest_v1", "out_b64_v1", "other_transport", True, ""])
 def test_other_transport_selection_refuses_without_publication(tmp_path, transport):
     source, _ = _source(tmp_path)
     destination = tmp_path / "selected.yaml"
@@ -145,7 +146,10 @@ def test_other_transport_selection_refuses_without_publication(tmp_path, transpo
 
 @pytest.mark.parametrize("mutation", [None, "numeric", "abi", "spike_transport", "gsim_argv", "digest", "extra_engine"])
 @pytest.mark.parametrize("timeout", [None, 1800])
-def test_reviewed_handoff_allows_only_exact_full_values_transport_variant(tmp_path, monkeypatch, mutation, timeout):
+@pytest.mark.parametrize("transport", ["coherent_dump_v1", "coherent_packet_v1"])
+def test_reviewed_handoff_allows_only_exact_full_values_transport_variant(
+    tmp_path, monkeypatch, mutation, timeout, transport
+):
     from types import SimpleNamespace
 
     from merlin_experiments.phase0 import coverage_commitment
@@ -154,7 +158,7 @@ def test_reviewed_handoff_allows_only_exact_full_values_transport_variant(tmp_pa
     source, original = _source(tmp_path)
     experiment = tmp_path / "release/payload/experiment"
     destination = experiment / "contracts/selected.yaml"
-    _stage_capability_contract(source, sha256_file(source), destination, timeout, "coherent_dump_v1")
+    _stage_capability_contract(source, sha256_file(source), destination, timeout, transport)
     selected = yaml.safe_load(destination.read_bytes())
     block = selected["runner"]["chipyard_rocc"]
     if mutation == "numeric":

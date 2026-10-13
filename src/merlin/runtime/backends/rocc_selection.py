@@ -75,10 +75,10 @@ def select_native_timeout(contract, timeout_s):
 def select_gsim_readback(contract, transport):
     """Derive only the declared full-value gSIM transport, preserving semantics."""
     backend._require(type(contract) is dict, "readback selection requires an original contract")
-    from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, FULL_VALUES_B64
+    from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, COHERENT_PACKET_V1, FULL_VALUES_B64
 
     backend._require(
-        type(transport) is str and transport == COHERENT_DUMP_V1,
+        type(transport) is str and transport in (COHERENT_DUMP_V1, COHERENT_PACKET_V1),
         "readback selection requires complete coherent values",
     )
     selected = copy.deepcopy(contract)
@@ -99,7 +99,7 @@ def select_gsim_readback(contract, transport):
         "readback selection requires an original B64 logical ABI and declared gSIM engine",
     )
     backend._require(
-        engine.get("readback_transport", COHERENT_DUMP_V1) == COHERENT_DUMP_V1,
+        engine.get("readback_transport", transport) == transport,
         "readback selection cannot replace another engine transport",
     )
     engine["readback_transport"] = transport
