@@ -92,6 +92,43 @@ theorem Refines.trans {α : Type} {R : α → α → Prop} (hR : ∀ {a b c}, R 
       | stuck r => simp [Refines] at h₁
       | ok a => exact hR h₁ h₂
 
+/-- Per-boundary refinement: `tgt ⊑ src` wherever `src` is modelled. A `stuck` source makes this
+hold vacuously, so it is NEVER a claim on its own: the end-to-end claim (design §4.5, §5.10)
+additionally requires `NotStuck` of the capture `S0` on the whole domain, and `RefinesC.strict`
+turns the chain into strict refinement. A boundary that introduces an unmodelled construct into a
+modelled program still fails, because a non-stuck source is only refined by a non-stuck target. -/
+def RefinesC {α : Type} (R : α → α → Prop) (tgt src : Outcome α) : Prop :=
+  (∃ r, src = .stuck r) ∨ Refines R tgt src
+
+def Outcome.NotStuck {α : Type} : Outcome α → Prop
+  | .stuck _ => False
+  | _ => True
+
+theorem RefinesC.strict {α : Type} {R : α → α → Prop} {t s : Outcome α}
+    (h : RefinesC R t s) (hs : s.NotStuck) : Refines R t s := by
+  rcases h with ⟨r, rfl⟩ | h
+  · exact absurd hs (by simp [Outcome.NotStuck])
+  · exact h
+
+theorem RefinesC.of_refines {α : Type} {R : α → α → Prop} {t s : Outcome α}
+    (h : Refines R t s) : RefinesC R t s := Or.inr h
+
+theorem RefinesC.trans {α : Type} {R : α → α → Prop} (hR : ∀ {a b c}, R a b → R b c → R a c)
+    {x y z : Outcome α} (h₁ : RefinesC R x y) (h₂ : RefinesC R y z) : RefinesC R x z := by
+  rcases h₂ with ⟨r, rfl⟩ | h₂
+  · exact Or.inl ⟨r, rfl⟩
+  · cases z with
+    | ub => exact Or.inr trivial
+    | stuck r => exact Or.inl ⟨r, rfl⟩
+    | ok c =>
+      cases y with
+      | ub => simp [Refines] at h₂
+      | stuck r => simp [Refines] at h₂
+      | ok b =>
+        rcases h₁ with ⟨r, hr⟩ | h₁
+        · cases hr
+        · exact Or.inr (Refines.trans (R := R) (fun h h' => hR h h') h₁ h₂)
+
 theorem Refines.refl_ok {α : Type} {R : α → α → Prop} (hR : ∀ a, R a a) (a : α) :
     Refines R (.ok a) (.ok a) := hR a
 

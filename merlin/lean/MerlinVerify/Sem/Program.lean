@@ -26,6 +26,9 @@ structure Ctx where
   ext : ExtEnv
   /-- Bit width of `index` (from the lowering's `index_lowering.index_bits`). -/
   indexBits : Nat
+  /-- Current iteration point inside a structured op's body (read by `linalg.index`). Set by the
+  op that evaluates its region per point; empty elsewhere. Not part of any claim's quantifier. -/
+  loopIndex : List Nat := []
 
 /-- Meaning of a region: block-argument values ↦ the values its terminator yields. -/
 abbrev RegionSem := List RVal → Outcome (List RVal)
@@ -34,8 +37,9 @@ abbrev RegionSem := List RVal → Outcome (List RVal)
 abbrev CallSem := String → List RVal → Outcome (List RVal)
 
 /-- Meaning of one non-terminator op: given the context, calls, the op, its operand values and the
-meanings of its regions, produce its result values (one per `op.results`). -/
-abbrev OpSem := Ctx → CallSem → Op → List RVal → List RegionSem → Outcome (List RVal)
+meanings of its regions, produce its result values (one per `op.results`). A region's meaning takes
+the context to run it in, so a structured op can set `loopIndex` per iteration point. -/
+abbrev OpSem := Ctx → CallSem → Op → List RVal → List (Ctx → RegionSem) → Outcome (List RVal)
 
 /-- Ops that end a block and yield their operands to the enclosing op/function. -/
 def terminatorNames : List String :=
@@ -65,17 +69,17 @@ mutual
         else .stuck "ops after terminator"
       else
         (env.getAll operands).bind fun args =>
-        (sem ctx call op args (evalRegions sem ctx call env regions)).bind fun results =>
+        (sem ctx call op args (evalRegions sem call env regions)).bind fun results =>
         (env.bindAll op.results results).bind fun env' =>
         evalOps sem ctx call env' rest
     termination_by structural ops => ops
 
   /-- Meanings of a list of regions, closed over the enclosing environment (regions of e.g.
   `linalg.generic` may use values defined above them). -/
-  def evalRegions (sem : OpSem) (ctx : Ctx) (call : CallSem) (env : Env) :
-      List Region → List RegionSem
+  def evalRegions (sem : OpSem) (call : CallSem) (env : Env) :
+      List Region → List (Ctx → RegionSem)
     | [] => []
-    | r :: rs => evalRegion sem ctx call env r :: evalRegions sem ctx call env rs
+    | r :: rs => (fun ctx => evalRegion sem ctx call env r) :: evalRegions sem call env rs
     termination_by structural rs => rs
 
   def evalRegion (sem : OpSem) (ctx : Ctx) (call : CallSem) (env : Env) : Region → RegionSem
@@ -112,6 +116,31 @@ def FuncRefines (sem : OpSem) (ctxOk : Ctx → Prop) (D : List RVal → Prop)
     (tgt : Module) (tf : String) (src : Module) (sf : String) : Prop :=
   ∀ ctx, ctxOk ctx → ∀ args, D args →
     Refines ResultsRefine (denote sem ctx tgt tf args) (denote sem ctx src sf args)
+
+/-- Per-boundary claim form (see `RefinesC`): refinement wherever the source is modelled. -/
+def FuncRefinesC (sem : OpSem) (ctxOk : Ctx → Prop) (D : List RVal → Prop)
+    (tgt : Module) (tf : String) (src : Module) (sf : String) : Prop :=
+  ∀ ctx, ctxOk ctx → ∀ args, D args →
+    RefinesC ResultsRefine (denote sem ctx tgt tf args) (denote sem ctx src sf args)
+
+/-- The capture is fully modelled on the domain (design §4.5): required of `S0`. -/
+def FuncNotStuck (sem : OpSem) (ctxOk : Ctx → Prop) (D : List RVal → Prop)
+    (m : Module) (f : String) : Prop :=
+  ∀ ctx, ctxOk ctx → ∀ args, D args → (denote sem ctx m f args).NotStuck
+
+theorem FuncRefinesC.trans {sem : OpSem} {ctxOk : Ctx → Prop} {D : List RVal → Prop}
+    {a b c : Module} {fa fb fc : String}
+    (h₁ : FuncRefinesC sem ctxOk D a fa b fb) (h₂ : FuncRefinesC sem ctxOk D b fb c fc) :
+    FuncRefinesC sem ctxOk D a fa c fc :=
+  fun ctx hctx args hD =>
+    RefinesC.trans (R := ResultsRefine) (fun h h' => ResultsRefine.trans h h') (h₁ ctx hctx args hD)
+      (h₂ ctx hctx args hD)
+
+theorem FuncRefinesC.strict {sem : OpSem} {ctxOk : Ctx → Prop} {D : List RVal → Prop}
+    {a c : Module} {fa fc : String}
+    (h : FuncRefinesC sem ctxOk D a fa c fc) (hs : FuncNotStuck sem ctxOk D c fc) :
+    FuncRefines sem ctxOk D a fa c fc :=
+  fun ctx hctx args hD => RefinesC.strict (h ctx hctx args hD) (hs ctx hctx args hD)
 
 theorem FuncRefines.trans {sem : OpSem} {ctxOk : Ctx → Prop} {D : List RVal → Prop}
     {a b c : Module} {fa fb fc : String}
