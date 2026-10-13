@@ -1002,7 +1002,8 @@ def test_operator_cpu_slot_restores_affinity_after_failure(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "fault", (None, "shared_cpu", "broad_cpu", "missing_cpu", "changed_cpu", "grandchild", "extra_child"),
+    "fault",
+    (None, "shared_cpu", "broad_cpu", "missing_cpu", "changed_cpu", "grandchild", "extra_child", "shared_pool"),
 )
 def test_threaded_owner_pairs_only_stable_distinct_native_cpu_slots(tmp_path, monkeypatch, fault):
     root, proc = tmp_path / "slots", tmp_path / "proc"
@@ -1010,6 +1011,9 @@ def test_threaded_owner_pairs_only_stable_distinct_native_cpu_slots(tmp_path, mo
     proc.mkdir()
     monkeypatch.setitem(P.CAPSULE_WORKER_CAP, "gsim", 3)
     monkeypatch.setenv("MERLIN_GSIM_CPUS", "57,58,59")
+    if fault == "shared_pool":
+        monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(min(os.sched_getaffinity(0))))
+        monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "compute"))
     held = []
     owner = _fake_proc_member(proc, 100, 1, 10, [b"/neutral/owner"])
     (owner / "fd").mkdir()
@@ -1061,4 +1065,8 @@ def test_threaded_owner_pairs_only_stable_distinct_native_cpu_slots(tmp_path, mo
     lock_file = tmp_path / "locks"
     lock_file.write_bytes(b"")
     observed = P._verified_native_slot_overlap(root, slots, natives, proc_root=proc, locks_path=lock_file)
-    assert observed == (2 if fault is None else 0 if fault == "shared_cpu" else 1)
+    assert observed == (2 if fault is None else 0 if fault in {"shared_cpu", "shared_pool"} else 1)
+    if fault == "shared_pool":
+        monkeypatch.setattr(P, "_native_gsim_census", lambda **_: natives)
+        monkeypatch.setattr(P, "_locked_slot_census", lambda *_, **__: slots)
+        assert P._admitted_load(root, own_index=2, proc_root=proc, locks_path=lock_file) == 5
