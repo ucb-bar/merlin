@@ -132,6 +132,8 @@ AUTOMATIC_CHECKER_MODULES_V3 = (
     "merlin.targetgen.common_transforms",
     "merlin.common.bundle_snapshot",
     "merlin.common.read_lease_digest",
+    "merlin.targetgen.rtl.result_format_ceiling",
+    "merlin.targetgen.rtl.result_format_validity",
     "merlin.common.bwrap_args",
     "merlin.llvmlower.host_optimization_request",
     "merlin.llvmlower.host_optimization_compile",
