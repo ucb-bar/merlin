@@ -277,6 +277,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         runtime.oracle_timing,
         max(0, int(a.sim_max_jobs)),
         selected_rtl_facts,
+        sim_per_capsule_timeout=a.sim_per_capsule_timeout,
     )
 
     public_build_service = None

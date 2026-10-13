@@ -39,6 +39,14 @@ class BrokerConfig:
     contract: Path | None = None
     selected_rtl_facts: Path | None = None
     compiler_bundle_manifest: Path | None = None
+    sim_per_capsule_timeout: int = 0
+
+    def __post_init__(self):
+        from ..options import MAX_SIM_PER_CAPSULE_TIMEOUT_S
+
+        if (type(self.sim_per_capsule_timeout) is not int
+                or not 0 <= self.sim_per_capsule_timeout <= MAX_SIM_PER_CAPSULE_TIMEOUT_S):
+            raise ValueError("sim per-capsule timeout must be an explicit integer in 0..86400")
 
 
 @dataclass(frozen=True)
@@ -152,6 +160,8 @@ def start_brokers(ws: Path, config: BrokerConfig):
             # byte-identical to before.
             if config.sim_max_jobs and name == "merlin_experiments.phase1.brokers.simjob":
                 argv += ["--max-jobs", str(config.sim_max_jobs)]
+            if config.sim_per_capsule_timeout and name == "merlin_experiments.phase1.brokers.simjob":
+                argv += ["--per-capsule-timeout", str(config.sim_per_capsule_timeout)]
             output = open(ch / log, "w")
             launch_error = None
             try:

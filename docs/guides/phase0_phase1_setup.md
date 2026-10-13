@@ -302,3 +302,10 @@ self-check now delegates worker selection to the host, while an explicit
 for preflight and resume. Finish or relocate older jobs in the reserved pool
 before launching the fresh experiment, and confirm actual child affinities and
 simulator concurrency under the final launcher.
+
+A Phase 1 operator can select `--sim-per-capsule-timeout SECONDS` to set the
+async certificate worker budget explicitly (1–86400 seconds). The default,
+`0`, retains the existing selected-engine derivation. This setting does not
+override the sealed native process ceiling or `--model-budget-s`; select those
+resource bounds consistently before launching. Expired budgets remain
+unmeasured and never supply numerical or hardware qualification.
