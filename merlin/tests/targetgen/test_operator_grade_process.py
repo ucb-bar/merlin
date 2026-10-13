@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import subprocess
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -13,6 +17,7 @@ from merlin_experiments.phase1.feedback import operator_child as OC
 from merlin_experiments.phase2.contracts import StageGateError
 from test_compiler_profile_child import _scope, original  # noqa: F401 -- share the existing exact-owner fixture
 
+from merlin.common import bundle_snapshot as BW
 from merlin.targetgen import capsule_runner as CR
 
 CONTROL = """
@@ -189,3 +194,99 @@ def test_opt_in_is_explicit_and_invalid_selection_refuses(monkeypatch):
     monkeypatch.setenv(OC.ENV, "15")
     with pytest.raises(ValueError, match="requires 0 or 1"):
         OC.enabled()
+
+
+def test_parent_issuance_batches_payload_reads_and_closes_before_launch(setup, monkeypatch):
+    reads = []
+    original_digest = BW.hashlib.file_digest
+
+    def measured(stream, *args, **kwargs):
+        if str(stream.name) == str(setup.frozen):
+            reads.append(os.fstat(stream.fileno()).st_size)
+        return original_digest(stream, *args, **kwargs)
+
+    monkeypatch.setattr(BW.hashlib, "file_digest", measured)
+    monkeypatch.delenv("MERLIN_SNAPSHOT_LEASE_CACHE", raising=False)
+    with _scope(setup):
+        reads.clear()
+        root = OC.CHILD.model_child_temporary_root()
+        with tempfile.TemporaryDirectory(dir=root) as temporary:
+            spec = Path(temporary) / "spec.json"
+            spec.write_text(json.dumps({"package_dir": str(setup.candidate)}))
+            with OC.CHILD.prepare_model_child(spec_path=spec, environment=dict(os.environ),
+                                             package_dir=setup.candidate):
+                baseline = len(reads), sum(reads)
+        reads.clear()
+        document = {"package_dir": str(setup.candidate), "capsule": {"name": "synthetic"}}
+        with OC._prepared_child(document) as (spec, output, environment, transport):
+            assert BW._ACTIVE_VERIFICATION.get() is None
+            assert spec.is_file() and not output.exists()
+            assert os.fstat(transport.fd).st_size > 0
+            batched = len(reads), sum(reads)
+        assert not spec.exists()
+        with pytest.raises(OSError):
+            os.fstat(transport.fd)
+        assert batched[0] == 2 and baseline[0] > batched[0]
+        assert batched[1] < baseline[1]
+        print(f"parent issuance payload reads: {baseline[0]} -> {batched[0]}; "
+              f"selected member bytes: {baseline[1]} -> {batched[1]}")
+
+
+def test_parent_final_hash_refuses_same_size_restored_mtime_mutation_before_Popen(setup, monkeypatch):
+    prepare = OC.CHILD.prepare_model_child
+    issued_fds, launched = [], []
+
+    @contextlib.contextmanager
+    def changed(*args, **kwargs):
+        with prepare(*args, **kwargs) as transport:
+            issued_fds.append(transport.fd)
+            metadata = setup.frozen.stat()
+            setup.frozen.chmod(0o600)
+            with setup.frozen.open("r+b") as stream:
+                first = stream.read(1)
+                stream.seek(0)
+                stream.write(bytes([first[0] ^ 1]))
+            os.utime(setup.frozen, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
+            yield transport
+
+    monkeypatch.setattr(OC.CHILD, "prepare_model_child", changed)
+    monkeypatch.setattr(OC.subprocess, "Popen", lambda *args, **kwargs: launched.append(True))
+    with pytest.raises((RuntimeError, ValueError), match="content differs"):
+        with _scope(setup):
+            grade(setup, "changed-before-launch")
+    assert launched == [] and issued_fds
+    assert not list(setup.runs.glob("runs/*/*/capsule_result.json"))
+    for fd in issued_fds:
+        with pytest.raises(OSError):
+            os.fstat(fd)
+
+
+def test_parent_scope_ends_before_Popen_and_result_verification(setup, monkeypatch):
+    launch, verify = OC.subprocess.Popen, OC.CHILD.ModelChildTransport.verify_result
+    seen = []
+
+    def checked_launch(*args, **kwargs):
+        assert BW._ACTIVE_VERIFICATION.get() is None
+        seen.append("launch")
+        return launch(*args, **kwargs)
+
+    def checked_verify(self, result):
+        assert BW._ACTIVE_VERIFICATION.get() is None
+        seen.append("result")
+        return verify(self, result)
+
+    monkeypatch.setattr(OC.subprocess, "Popen", checked_launch)
+    monkeypatch.setattr(OC.CHILD.ModelChildTransport, "verify_result", checked_verify)
+    with _scope(setup):
+        grade(setup, "independent-child")
+    assert seen == ["launch", "result"]
+
+
+def test_expired_original_owner_cannot_issue_or_launch_operator_child(setup, monkeypatch):
+    launched = []
+    monkeypatch.setattr(OC.subprocess, "Popen", lambda *args, **kwargs: launched.append(True))
+    with _scope(setup):
+        pass
+    with pytest.raises(StageGateError, match="original live profile owner"):
+        grade(setup, "expired-owner")
+    assert not launched and not list(setup.runs.glob("runs/*/*/capsule_result.json"))
