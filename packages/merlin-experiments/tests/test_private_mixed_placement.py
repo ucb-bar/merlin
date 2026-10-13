@@ -15,6 +15,11 @@ def _records():
         ],
         "host_groups": [0, 1, 2],
     }
+    source["accelerator_source_demand"] = {
+        "status": "source_demand_derived", "n_unknown_host_groups": 0, "n_missing_direct_groups": 0,
+        "n_unresolved_raw_regions": 0, "n_demanded_groups": 1,
+        "demanded_group_provenance": deepcopy(source["eligible_group_provenance"]),
+    }
     emitted = {
         "routed": [{"group": 7, "source_region_id": "public-region", "source_node_ids": ["a", "b"]}],
         "skipped": [["other-host-region", "the placement did not select this group's root"]],

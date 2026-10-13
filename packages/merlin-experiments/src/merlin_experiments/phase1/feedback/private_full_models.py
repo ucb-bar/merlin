@@ -33,6 +33,7 @@ from merlin_experiments.phase1.feedback import private_linked_elf_selection as l
 from merlin_experiments.phase1.feedback import private_literal_arange_admission as arange_support
 from merlin_experiments.phase1.feedback import private_ordered_scan_support as ordered_scan_support
 from merlin_experiments.phase1.feedback import private_pure_stage_support as pure_stage
+from merlin_experiments.phase1.feedback import private_source_demand as source_demand
 from merlin_experiments.phase1.feedback import private_source_freeze as source_freeze_api
 from merlin_experiments.phase1.feedback.private_capture_roster import (
     captured_input_provenance as _captured_input_provenance,
@@ -61,7 +62,7 @@ from merlin_experiments.phase1.feedback.private_source_support_join import (
 )
 
 SCHEMA = "merlin.phase1.private_full_models.v1"
-RESULT_SCHEMA = "merlin.phase1.private_full_model_build_gate.v14"
+RESULT_SCHEMA = "merlin.phase1.private_full_model_build_gate.v15"
 BUILD_BOARD_SCOPE = "static_memory_layout_and_host_ISA_only; no board execution"
 TRANSPOSE_DATA_SUPPORT_SCOPE = data_movement.SCOPE
 _transpose_data_support = data_movement.prove_transpose_source
@@ -615,10 +616,12 @@ def _source_obligations(
     capability: Mapping,
     host: Mapping,
     selected_index_observation: Mapping[str, Any] | None = None,
+    *, facts_sha256: str | None = None, numeric_policy_sha256: str | None = None,
 ) -> dict:
     """Recompute eligibility over the actual source, independently of the candidate route."""
     from merlin.common import mlir_query as mq
     from merlin.frontends.capture_normalization import normalize_capture_mlir
+    from merlin.llvmlower.source_compute_groups import form_source_groups
     from merlin.targetgen import application_inventory as AI
     from merlin.targetgen import model_coverage as MC
     from merlin.targetgen import operation_accounting as OA
@@ -632,7 +635,7 @@ def _source_obligations(
         raise ValueError(f"full-model capture receipt is not verified: {checked.get('errors')}")
     text, _ = normalize_capture_mlir(source.read_text(encoding="utf-8"))
     module = mq.parse(text)
-    groups = CG.form_groups(module, target)
+    groups = form_source_groups(module, target)
     plan = CG.plan(module, target, groups=groups)
     CG.require_explained(plan)
     owners = {id(member): group for group in groups for member in group.members}
@@ -643,6 +646,12 @@ def _source_obligations(
     cap_map = capability_map_from_contract(dict(capability))
     source_sha = file_sha256(source)
     normalized_sha = sha256(text.encode("utf-8")).hexdigest()
+    raw_verdicts = tuple(is_eligible(descriptor, cap_map) for descriptor in descriptors)
+    demand = source_demand.derive(
+        groups, operations, raw_verdicts, source_sha256=source_sha, normalized_sha256=normalized_sha,
+        capability=capability, software=software, facts_sha256=facts_sha256,
+        numeric_policy_sha256=numeric_policy_sha256,
+    )
     inventory = AI._application_operation_inventory(  # noqa: PLC2701 -- trusted exact inventory primitive
         source,
         target,
@@ -697,7 +706,7 @@ def _source_obligations(
     if len(proven_ordinals) != len(set(proven_ordinals)):
         raise ValueError("source movement proofs overlap")
     proven_movement = {id(parsed[ordinal]) for ordinal in proven_ordinals}
-    eligible = []
+    eligible = [group.index for group in groups if group.placement != CG.HOST]
     for index, (op, descriptor) in enumerate(zip(operations, descriptors, strict=True)):
         if id(op) in proven_movement:
             # Typed movement requires linking; it waives no compute admission.
@@ -737,6 +746,7 @@ def _source_obligations(
         if group is None or group.placement == CG.HOST:
             raise ValueError(f"eligible source operation {index} has no accelerator group")
         eligible.append(group.index)
+    demand["n_unresolved_raw_regions"] = 0
 
     pool_support = prove_pool_source(
         capture,
@@ -785,11 +795,18 @@ def _source_obligations(
         )
         accelerator = admission["accelerator_admission"]
         host_decision = admission["host_admission"]
+        hardware = admission["hardware_admission"]
         if accelerator["status"] == "admitted":
             # The exact source linalg inventory above must carry this demand.  A
             # standalone eligible op absent from grouping cannot disappear into host.
             if not row["mlir_operation"].startswith("linalg."):
                 unresolved.append({"row": row, "admission": admission, "reason": "eligible operation is not outlined"})
+        elif (hardware.get("status") != "unsupported"
+              or hardware.get("basis") != "selected_capability_contract"
+              or hardware.get("refusal") not in _EXPLICIT_HARDWARE_EXCLUSIONS):
+            unresolved.append(
+                {"row": row, "admission": admission, "reason": "host compute is not proved hardware-unsupported"}
+            )
         elif host_decision["status"] != "admitted" or host_decision.get("reviewed") is not True:
             unresolved.append(
                 {"row": row, "admission": admission, "reason": "host operation lacks exact reviewed admission"}
@@ -863,6 +880,7 @@ def _source_obligations(
         "eligible_group_metrics": group_metrics,
         "host_groups": [group.index for group in groups if group.placement == CG.HOST],
         "host_justification": "source group reasons and exact reviewed host/software admissions",
+        "accelerator_source_demand": demand,
     }
     control_support.attach_source_record(result, bounded_control)
     if direct_return_support is not None:
@@ -927,6 +945,7 @@ def _verify_compiled_program(
         "elf_sha256": output["elf_sha256"],
         "candidate_tree_sha256": package_digest["sha256"],
     }
+    source_demand.link(source, linked_build, linked)
     transpose_support = source["transpose_data_support"]
     if transpose_support["status"] != "source_structural_data_support_pending_build":
         raise ValueError(f"{program} has no pending source-bound transpose support proof")
@@ -1204,12 +1223,20 @@ def run(
                 for program, board in program_boards.items()
             }
             with target_registry.observed_contract(target, dict(capability), source_path=capability_path):
-                sources = {
-                    program: _source_obligations(
-                        stage, target, software, capability, host, selected_index_observations[program]
+                sources, unresolved_demands = {}, {}
+                for program, stage in programs:
+                    try:
+                        sources[program] = _source_obligations(
+                            stage, target, software, capability, host, selected_index_observations[program],
+                            facts_sha256=facts["sha256"], numeric_policy_sha256=recipe_proof["recipe_semantic_sha256"],
+                        )
+                    except source_demand.SourceDemandIncomplete as error:
+                        unresolved_demands[program] = error.receipt
+                if unresolved_demands:
+                    item["checks"]["source_demand_refusals"] = unresolved_demands
+                    raise ValueError(
+                        f"original accelerator source demand is incomplete for {len(unresolved_demands)} program(s)"
                     )
-                    for program, stage in programs
-                }
             if not any(source["eligible_groups"] for source in sources.values()):
                 raise ValueError("full model has no independently eligible accelerator computation")
             item["checks"]["source"] = sources
@@ -1230,6 +1257,7 @@ def run(
                             capture=stage / "model.mlir",
                             granularity=BY_GROUP,
                             linked_elf_admission=linked_elf_admission,
+                            require_all_accelerator_groups=True,
                         )
                     device = routed.get("device_routing")
                     if device is None or routed.get("offload") is None:
@@ -1240,6 +1268,7 @@ def run(
                         from dataclasses import replace
 
                         device = replace(device, device_ir_budget=program_ir_budgets[program])
+                source_demand.request(source, device)
                 linked_policy.require_route(device, instruction_selection)
                 if diagnostic:
                     receipt_path = Path(prebuilt_receipts[program])
@@ -1278,6 +1307,7 @@ def run(
                             run="none",
                             arena_mb=int(row["arena_mb"]),
                             device=device,
+                            respect_captured_quantization_scope=True,
                             **({"math_archive_symbols": math_symbols} if math_symbols else {}),
                             **program_options[program],
                         )

@@ -107,6 +107,14 @@ class DeviceRouting:
     linked_elf_admission: LinkedElfAdmissionService | None = None
     #: Original-caller static compilation resource policy, never read from emitted programs.
     device_ir_budget: DeviceIRBudget | None = None
+    #: Original full-model qualification requests every source-admitted group.
+    require_complete_groups: bool = False
+
+    def __post_init__(self):
+        if type(self.require_complete_groups) is not bool:
+            raise TypeError("complete source group routing requires an original Boolean")
+        if self.require_complete_groups and self.granularity != "group":
+            raise ValueError("complete source group routing requires group granularity")
 
 
 def freeze_device_elf_admission(device):

@@ -1167,6 +1167,7 @@ def prepare_for_lowering(
             granularity=_grain,
             capture=getattr(device, "capture", None),
             model=str(getattr(device, "model", "") or ""),
+            **({"require_complete_groups": True} if getattr(device, "require_complete_groups", False) else {}),
         )
         from ...llvmlower.device_build import apply_post_offload_transform
         from ...llvmlower.device_offload import SIDECAR_NAME as _device_sidecar_name
