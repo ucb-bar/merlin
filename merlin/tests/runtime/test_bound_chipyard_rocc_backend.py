@@ -5,7 +5,7 @@ import copy
 import hashlib
 import json
 import subprocess
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 import pytest
@@ -562,6 +562,75 @@ def test_job_budget_respects_selected_process_ceiling(selection, monkeypatch):
     monkeypatch.setattr(D.time, "monotonic", lambda: 100.0)
     assert _selected_run_timeout(bound, "spike", 900, D.ExecutionDeadline(100, 900)) == 600
     assert _selected_run_timeout(bound, "spike", 900, D.ExecutionDeadline(0, 150)) == 50
+
+
+@pytest.mark.parametrize("resources", [None, {}, {"max_native_timeout_s": True},
+    {"max_native_timeout_s": 0}, {"max_native_timeout_s": -1},
+    {"max_native_timeout_s": 3601}, {"max_native_timeout_s": 1800.0},
+    {"max_native_timeout_s": 1800, "extra": 1}])
+def test_native_resource_selection_refuses_malformed_bounds(selection, resources):
+    selection[0]["runner"]["chipyard_rocc"]["execution_resources"] = resources
+    with pytest.raises(B.RoCCExecutionError):
+        _bound(selection)
+
+
+def test_legacy_native_bound_requires_explicit_host_extension(selection, tmp_path):
+    engine, _, _ = _gsim(selection, tmp_path)
+    engine["max_timeout_s"] = 601
+    with pytest.raises(B.RoCCExecutionError, match="bounded process limit"):
+        _bound(selection)
+    block = selection[0]["runner"]["chipyard_rocc"]
+    block["execution_resources"] = {"max_native_timeout_s": 1800}
+    engine["max_timeout_s"] = 1801
+    with pytest.raises(B.RoCCExecutionError, match="bounded process limit"):
+        _bound(selection)
+
+
+def test_native_extension_does_not_extend_functional_engine(selection):
+    block = selection[0]["runner"]["chipyard_rocc"]
+    block["execution_resources"] = {"max_native_timeout_s": 1800}
+    block["engines"]["spike"]["max_timeout_s"] = 601
+    with pytest.raises(B.RoCCExecutionError, match="bounded process limit"):
+        _bound(selection)
+
+
+def test_explicit_native_budget_keeps_frozen_selection_and_remaining_deadline(selection, tmp_path, monkeypatch):
+    from merlin.common import execution_deadline as D
+    from merlin.targetgen.contract.compile import _selected_run_timeout
+
+    engine, _, _ = _gsim(selection, tmp_path)
+    engine["max_timeout_s"] = 1800
+    block = selection[0]["runner"]["chipyard_rocc"]
+    block["execution_resources"] = {"max_native_timeout_s": 1800}
+    bound = _bound(selection)
+    original_identity = bound.execution_engine_identity("gsim")
+    block["execution_resources"]["max_native_timeout_s"] = 3600
+    engine["max_timeout_s"] = 3600
+    assert bound.execution_timeout_limit("gsim") == 1800
+    assert bound.execution_engine_identity("gsim") == original_identity
+    assert original_identity["execution_resources"] == {
+        "max_native_timeout_s": 1800, "selected_engine_timeout_s": 1800,
+    }
+    monkeypatch.setattr(D.time, "monotonic", lambda: 100.0)
+    assert _selected_run_timeout(bound, "gsim", 3600, D.ExecutionDeadline(100, 3600)) == 1800
+    assert _selected_run_timeout(bound, "gsim", 1200, D.ExecutionDeadline(100, 3600)) == 1200
+    assert _selected_run_timeout(bound, "gsim", 3600, D.ExecutionDeadline(0, 150)) == 50
+    with pytest.raises(TimeoutError, match="wall budget expired"):
+        _selected_run_timeout(bound, "gsim", 3600, D.ExecutionDeadline(0, 99))
+
+
+def test_selected_extended_native_budget_reaches_actual_process(selection, tmp_path, monkeypatch):
+    from merlin.targetgen import rtl_engine_policy
+
+    engine, _, _ = _gsim(selection, tmp_path)
+    engine["max_timeout_s"] = 1800
+    selection[0]["runner"]["chipyard_rocc"]["execution_resources"] = {"max_native_timeout_s": 1800}
+    monkeypatch.setattr(rtl_engine_policy, "gsim_runtime_slot", lambda **kwargs: nullcontext())
+    bound = _bound(selection)
+    elf = _file(tmp_path, "requested.elf", "owned original executable")
+    assert bound.run_elf(elf, simulator="gsim", timeout=1200) == _console()
+    with pytest.raises(B.RoCCExecutionError, match="bounded deadline"):
+        bound.run_elf(elf, simulator="gsim", timeout=1801)
 
 
 def test_expired_job_budget_refuses_before_selected_process(selection, monkeypatch):
