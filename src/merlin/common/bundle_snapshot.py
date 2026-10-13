@@ -17,6 +17,7 @@ import threading
 import weakref
 from pathlib import Path
 
+from . import read_lease_digest
 from .path_relations import LexicalPathIndex
 
 MARKER = "snapshot.json"
@@ -118,15 +119,18 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
     """Batch payload reads for one protected operation, never across calls.
 
     Every ordinary verification still checks mapping, canonical paths and
-    membership. The full payload is reopened at both boundaries. The caller
-    must close this scope before publishing its output or accepted receipt.
+    membership. Both boundaries independently hash the payload by default.
+    With MERLIN_SNAPSHOT_LEASE_CACHE=1, large immutable files may instead reuse
+    their SHA-256 under freshly checked Linux read leases; all other files are
+    hashed normally. Close this scope before publishing any accepted output.
     """
     workspace, repo = Path(workspace), Path(repo)
     previous = _ACTIVE_VERIFICATION.set(None)
     issued = None
     try:
         original_policy = _policy_bytes(bundle)
-        document = verify_bundle_snapshot(workspace, bundle, repo=repo)
+        with read_lease_digest.verification() as leases:
+            document = verify_bundle_snapshot(workspace, bundle, repo=repo)
         root = bundle_snapshot_root(workspace)
         marker_bytes = (root / MARKER).read_bytes()
         issued = _Verification()
@@ -135,15 +139,17 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
         issued.repo, issued.policy_bytes = repo, original_policy
         issued.members = _scanned_roster(_scanned_members(root))
         issued.signature = tuple(document[key] for key in ("content_sha256", "n_files", "n_bytes"))
+        issued.leases = leases
         _ISSUED_VERIFICATIONS.add(issued)
         _ACTIVE_VERIFICATION.set(issued)
         try:
             yield document
         finally:
-            # Disable ALL outer/nested reuse before the mandatory final read.
+            # Disable ALL outer/nested scope reuse before the mandatory final verification.
             _ACTIVE_VERIFICATION.set(None)
             if _policy_bytes(bundle) != original_policy or (root / MARKER).read_bytes() != marker_bytes:
                 raise RuntimeError("original snapshot scope policy or marker changed")
+            read_lease_digest.validate(issued.leases)
             final = verify_bundle_snapshot(workspace, bundle, repo=repo)
             if final != document:
                 raise RuntimeError("original snapshot scope ownership changed")
@@ -163,26 +169,37 @@ def snapshot_content(root: Path) -> tuple[str, int, int]:
             raise RuntimeError("original snapshot scope marker changed")
         if _scanned_roster(members) != issued.members:
             raise RuntimeError("original snapshot scope member roster changed")
+        read_lease_digest.validate(getattr(issued, "leases", None))
         return issued.signature
-    for parts, path, kind, _ in members:
-        if kind != "file" or parts == (MARKER,):
-            continue
-        with path.open("rb") as stream:
-            identity = hashlib.file_digest(stream, "sha256").hexdigest()
-        rows.append(("/".join(parts), identity, path.stat().st_size))
+    ordered = enumerate(members)
+    if read_lease_digest.enabled():
+        # Spend a constrained descriptor budget on the largest immutable files.
+        ordered = sorted(ordered, key=lambda row: -(row[1][3] or 0))
+    with read_lease_digest.verification():
+        for index, (parts, path, kind, size) in ordered:
+            if kind != "file" or parts == (MARKER,):
+                continue
+            identity = read_lease_digest.digest(path) if size >= read_lease_digest.MIN_BYTES else None
+            if identity is None:
+                with path.open("rb") as stream:
+                    identity = hashlib.file_digest(stream, "sha256").hexdigest()
+            rows.append((index, "/".join(parts), identity, path.stat().st_size))
+    rows.sort(key=lambda row: row[0])
     aggregate = hashlib.sha256()
-    for relative, identity, size in rows:
+    for _, relative, identity, size in rows:
         aggregate.update(relative.encode())
         aggregate.update(b"\0")
         aggregate.update(str(size).encode("ascii"))
         aggregate.update(b"\0")
         aggregate.update(identity.encode("ascii"))
         aggregate.update(b"\n")
-    return aggregate.hexdigest(), len(rows), sum(row[2] for row in rows)
+    return aggregate.hexdigest(), len(rows), sum(row[3] for row in rows)
 
 
 def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict:
     """Verify V4 original input ownership; never determine candidate visibility."""
+    from .cpu_pool import shared_compute_pool
+
     workspace, repo = Path(workspace), Path(repo)
     root = bundle_snapshot_root(workspace)
     marker = root / MARKER
@@ -231,7 +248,11 @@ def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict
             frozen = root / relative
             if not frozen.exists() or frozen.resolve() != frozen:
                 raise RuntimeError("original snapshot input source is missing or indirect")
-    observed = dict(zip(("content_sha256", "n_files", "n_bytes"), snapshot_content(root), strict=True))
+    # This synchronous metadata/hash stage owns one shared compute CPU, then
+    # releases it before returning to any compiler invocation or child wait.
+    with shared_compute_pool():
+        content = snapshot_content(root)
+    observed = dict(zip(("content_sha256", "n_files", "n_bytes"), content, strict=True))
     if observed != {key: document.get(key) for key in observed}:
         raise RuntimeError("original snapshot input content differs from its marker")
     return document

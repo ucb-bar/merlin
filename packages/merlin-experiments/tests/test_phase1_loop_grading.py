@@ -593,7 +593,9 @@ def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp
         [{"name": name} for name in ("first", "second", "failed", "hidden", "excluded")],
         run_one, max_workers=2, on_complete=completed,
     )
-    assert len(list((ws / ".qa_channel").glob("simreq_*.json"))) == 2
+    # The second frozen result is retained but cannot replenish native work
+    # after the author genuinely changes the reachable source.
+    assert len(list((ws / ".qa_channel").glob("simreq_*.json"))) == 1
     # A result that has not been durably published cannot unlock a certificate.
     callback({"capsule": "first", "tiers": {"L2": {"status": "pass"}}, "tampered": True})
-    assert len(list((ws / ".qa_channel").glob("simreq_*.json"))) == 2
+    assert len(list((ws / ".qa_channel").glob("simreq_*.json"))) == 1

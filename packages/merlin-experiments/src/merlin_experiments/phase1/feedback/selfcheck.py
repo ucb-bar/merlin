@@ -280,12 +280,30 @@ def _progress_snapshot(cb_root: Path, *, expected: int, started_ns: int) -> dict
             result = json.loads(result_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue  # writer still publishing; the next snapshot will see it
-        rows.append(
-            {
-                "capsule": str(result.get("capsule") or result_path.parent.name),
-                "status": str(result.get("status") or "unknown"),
-            }
+        if not isinstance(result, dict):
+            continue
+        row = {
+            "capsule": str(result.get("capsule") or result_path.parent.name),
+            "status": str(result.get("status") or "unknown"),
+        }
+        # Raw whole-model graph tiers do not qualify the submitted compiler's
+        # artifact. Model progress keeps its legacy status-only projection.
+        model = result.get("kind") == "model" or any(
+            key in result
+            for key in ("model_execution_check", "candidate_native_model_check", "candidate_native_execution")
         )
+        recorded = result.get("tiers")
+        if not model and isinstance(recorded, dict):
+            tiers = {
+                tier: record["status"]
+                for tier, record in recorded.items()
+                if tier in {"L0", "L1", "L2", "L3"} and isinstance(record, dict)
+                and isinstance(record.get("status"), str)
+                and record.get("status") in {"pass", "fail", "unverified", "unavailable", "incomplete", "skipped"}
+            }
+            if tiers:
+                row["tiers"] = tiers
+        rows.append(row)
     counts: dict[str, int] = {}
     for row in rows:
         status = row["status"]
@@ -302,7 +320,8 @@ def _progress_snapshot(cb_root: Path, *, expected: int, started_ns: int) -> dict
         "per_capsule": rows,
         "note": (
             "Incremental self-check progress from completed capsule records. This is not a final "
-            "verdict and contains no golden/reference values."
+            "verdict and contains no golden/reference values. Reported tiers are observed public "
+            "operator screens, not full-case certification; raw model tiers are omitted."
         ),
     }
 
@@ -311,12 +330,12 @@ def _progress_publisher(
     path: Path, cb_root: Path, *, expected: int, started_ns: int, stop: threading.Event, poll_s: float = 0.5
 ) -> None:
     """Continuously publish changing progress until the grade's final roll-up is available."""
-    last_finished = -1
+    last_rows = None
     while not stop.is_set():
         doc = _progress_snapshot(cb_root, expected=expected, started_ns=started_ns)
-        if doc["n_finished"] != last_finished:
+        if doc["per_capsule"] != last_rows:
             _atomic_json(path, doc)
-            last_finished = doc["n_finished"]
+            last_rows = doc["per_capsule"]
         stop.wait(poll_s)
     doc = _progress_snapshot(cb_root, expected=expected, started_ns=started_ns)
     doc["status"] = "grading_complete"

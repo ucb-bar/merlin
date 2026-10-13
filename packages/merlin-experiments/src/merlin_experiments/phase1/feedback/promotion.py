@@ -1465,6 +1465,14 @@ def promote(
     promoted = []
     _sim = cert_sim(cert_tier, context=context)
     _instrument = cert_instrument(cert_tier, context=context)
+    from . import promotion_admission as admission
+
+    try:
+        current_source = admission.observe_source(Path(ws)) if want else None
+    except (OSError, ValueError):
+        current_source = None
+    _loop_instrument = (cert_instrument(loop_tier, context=context)
+                        if current_source is not None and current_source.digest != digest else None)
     if want and _sim is None:
         # Say it once, loudly. Marking a capsule pending for a job that cannot be enqueued is how a
         # capsule strands at `pending` and never resolves.
@@ -1476,6 +1484,23 @@ def promote(
         )
     for w in want:
         if _sim is None:
+            continue
+        # A frozen loop can keep completing after the author changes source.
+        # Retain its loop evidence, but do not replenish obsolete native work.
+        refusal = None
+        if current_source is None:
+            refusal = "current source identity unavailable"
+        elif current_source.digest != digest:
+            refusal = admission.reason(
+                w.capsule, current=current_source, original=admission.Source(digest, comps),
+                current_instrument=_instrument, original_instrument=_instrument,
+                original_execution=execution_by_name.get(w.capsule),
+                observed_execution=admission.current_execution(
+                    st, w.capsule, loop_tier, current_source.digest, instrument=_loop_instrument),
+            )
+        if refusal:
+            print(f"[promote] {w.capsule} {cert_tier} auto promotion deferred: {refusal}",
+                  file=log, flush=True)
             continue
         execution_digest = execution_by_name.get(w.capsule)
         token = execution_digest[:16] if execution_digest is not None else digest

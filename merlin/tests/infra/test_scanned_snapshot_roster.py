@@ -1,5 +1,6 @@
 import hashlib
 import os
+import threading
 
 import pytest
 
@@ -45,6 +46,7 @@ def test_digest_parts_order_marker_roster_and_tamper(tmp_path):
 def test_scoped_roster_and_marker_changes_refuse(tmp_path, change):
     populate(tmp_path)
     issued = bs._Verification()
+    issued.process, issued.thread = os.getpid(), threading.current_thread()
     issued.root = tmp_path
     issued.marker_bytes = (tmp_path / bs.MARKER).read_bytes()
     issued.members = bs._scanned_roster(bs._scanned_members(tmp_path))
