@@ -319,6 +319,17 @@ def _operation_snapshot(scope):
         yield
 
 
+@contextlib.contextmanager
+def _object_operation(scope):
+    """Close fresh custody before returning unmatched native observations."""
+    with contextlib.ExitStack() as observations:
+        deferred = []
+        with _operation_snapshot(scope):
+            yield observations, deferred
+        for call, obj in deferred:
+            call.returned(stdout=str(obj))
+
+
 def observe_emission(function):
     """Observe the actual ordinary lower-interface call, without saved replay."""
     signature = inspect.signature(function)
@@ -434,7 +445,7 @@ def observe_object(function):
             "machine_semantics": "not_established",
         }
         try:
-            with _operation_snapshot(scope):
+            with _object_operation(scope) as (observations, deferred):
                 pending = scope.matching(source)
                 inputs = ()
                 if pending is not None:
@@ -477,7 +488,7 @@ def observe_object(function):
                     if E.reread_emitted_product(result, selection=scope.selection) != source:
                         raise ValueError("actual ordinary object input changed its live emitted product")
                     inputs = (pending.artifact,)
-                with invocation_record.observe_call(
+                call = observations.enter_context(invocation_record.observe_call(
                     evidence,
                     stage="ordinary_emission_object_consumer",
                     function=observed,
@@ -485,9 +496,17 @@ def observe_object(function):
                     inputs=inputs,
                     outputs=(work / "kernel.llvm.mlir", work / "kernel.o"),
                     dependencies=(Path(inspect.getsourcefile(function)),),
-                ) as call:
-                    from merlin.common.bundle_snapshot import independent_snapshot_reads
+                ))
+                from merlin.common.bundle_snapshot import independent_snapshot_reads
 
+                if pending is None:
+                    # No chain/proof runs before this consumer. Its enclosing
+                    # operation already supplies fresh entry and exit checks;
+                    # native internal reads remain independently fresh.
+                    with independent_snapshot_reads():
+                        obj = function(*bound.args, **bound.kwargs)
+                    deferred.append((call, obj))
+                else:
                     with _operation_snapshot(scope), independent_snapshot_reads():
                         obj = function(*bound.args, **bound.kwargs)
                     call.returned(stdout=str(obj))

@@ -497,6 +497,108 @@ def test_actual_proof_and_native_consumers_keep_independent_snapshot_reads(ordin
     assert bundle_snapshot._ACTIVE_VERIFICATION.get() is None
 
 
+def test_unmatched_object_uses_one_fresh_consumer_boundary(ordinary, monkeypatch):
+    from merlin.common import bundle_snapshot
+    from merlin.llvmlower import codegen
+
+    fixture, owner = ordinary
+    payload = bundle_snapshot.snapshot_path(
+        bundle_snapshot.bundle_snapshot_root(owner.workspace), Path(owner.bundle["allowed"][0]["path"]), owner.repo
+    )
+    original, compile_ll = bundle_snapshot.hashlib.file_digest, codegen.compile_ll
+    reads = []
+
+    def digest(stream, *args):
+        if Path(stream.name) == payload:
+            reads.append(stream.name)
+        return original(stream, *args)
+
+    def native(*args, **kwargs):
+        assert bundle_snapshot._ACTIVE_VERIFICATION.get() is None
+        return compile_ll(*args, **kwargs)
+
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        scope = X.active_emission_checks()
+        monkeypatch.setattr(bundle_snapshot.hashlib, "file_digest", digest)
+        monkeypatch.setattr(codegen, "compile_ll", native)
+        obj = C.llvm_mlir_to_object(FINAL, fixture["tmp"] / "unmatched")
+        assert obj.is_file() and len(reads) == 3  # Source selection + native entry/exit; previously five.
+        assert scope.records == scope.completed == {}
+        assert _reports(fixture["tmp"] / "unmatched")[0]["status"] == "not_matched"
+
+
+def test_unmatched_native_internal_reads_stay_fresh(ordinary, monkeypatch):
+    from merlin.common import bundle_snapshot
+    from merlin.llvmlower import codegen
+
+    fixture, owner = ordinary
+    original = codegen.compile_ll
+    entered = []
+
+    def native(*args, **kwargs):
+        assert bundle_snapshot._ACTIVE_VERIFICATION.get() is None
+        for _ in range(2):
+            document = bundle_snapshot.verify_bundle_snapshot(owner.workspace, owner.bundle, repo=owner.repo)
+            entered.append(document["content_sha256"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(codegen, "compile_ll", native)
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        C.llvm_mlir_to_object(FINAL, fixture["tmp"] / "unmatched")
+    assert entered == [owner.snapshot_digest] * 2
+
+
+@pytest.mark.parametrize("mutation_at", ["consumer", "final_boundary"])
+def test_unmatched_mutation_cannot_publish_return_or_report(ordinary, monkeypatch, mutation_at):
+    import os
+    from contextlib import contextmanager
+
+    from merlin.common import bundle_snapshot
+    from merlin.llvmlower import codegen
+
+    fixture, owner = ordinary
+    payload = bundle_snapshot.snapshot_path(
+        bundle_snapshot.bundle_snapshot_root(owner.workspace), Path(owner.bundle["allowed"][0]["path"]), owner.repo
+    )
+    contents, metadata = payload.read_bytes(), payload.stat()
+    original_compile, original_scope = codegen.compile_ll, X._operation_snapshot
+    work = fixture["tmp"] / "unmatched"
+
+    def mutate():
+        payload.chmod(0o600)
+        payload.write_bytes(bytes([contents[0] ^ 1]) + contents[1:])
+        os.utime(payload, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
+
+    def native(*args, **kwargs):
+        output = original_compile(*args, **kwargs)
+        if mutation_at == "consumer":
+            mutate()
+        return output
+
+    @contextmanager
+    def boundary(scope):
+        with original_scope(scope):
+            yield
+            if mutation_at == "final_boundary":
+                mutate()
+
+    monkeypatch.setattr(codegen, "compile_ll", native)
+    monkeypatch.setattr(X, "_operation_snapshot", boundary)
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        scope = X.active_emission_checks()
+        try:
+            with pytest.raises(RuntimeError, match="content differs"):
+                C.llvm_mlir_to_object(FINAL, work)
+            assert not _reports(work) and scope.records == scope.completed == {}
+            observations = [json.loads(path.read_bytes()) for path in work.rglob("invocation.json")]
+            consumer = [row for row in observations if row.get("stage") == "ordinary_emission_object_consumer"]
+            assert len(consumer) == 1 and consumer[0]["status"] == "interrupted"
+            assert "outcome" not in consumer[0]
+        finally:
+            payload.write_bytes(contents)
+            payload.chmod(metadata.st_mode & 0o777)
+
+
 def test_historical_versioned_profile_keeps_lowering_memo_and_no_chain(emission, monkeypatch):
     owner = _owner(emission, monkeypatch, COMMON_SUBSTRATE_V1)
     memo = {}
