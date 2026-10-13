@@ -21,8 +21,10 @@ all arguments.
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 import subprocess
+import time
 from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, wait
@@ -32,6 +34,8 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+
+    from .device_ir_scalability import DeviceIRBudget
 
 __all__ = [
     "FROM_EXTENTS",
@@ -101,6 +105,8 @@ class DeviceRouting:
     #: Explicit independently selected final linked-image policy. Every active
     #: ordinary device build requires it; the legacy callback cannot replace it.
     linked_elf_admission: LinkedElfAdmissionService | None = None
+    #: Original-caller static compilation resource policy, never read from emitted programs.
+    device_ir_budget: DeviceIRBudget | None = None
 
 
 def freeze_device_elf_admission(device):
@@ -113,6 +119,16 @@ def freeze_device_elf_admission(device):
     if type(service) is not LinkedElfAdmissionService:
         raise ValueError("device linked ELF admission requires an explicitly selected service")
     return device.device, service, service.verify(device.device)
+
+
+def freeze_device_ir_budget(device):
+    """Copy original caller policy before any package or provider callback runs."""
+    from .device_ir_scalability import DeviceIRBudget
+
+    selected = getattr(device, "device_ir_budget", None)
+    if selected is not None and type(selected) is not DeviceIRBudget:
+        raise ValueError("device_ir_budget must be an original-caller DeviceIRBudget")
+    return DeviceIRBudget(**(selected.record() if selected is not None else {}))
 
 
 def require_device_elf_admission(device, selection):
@@ -276,6 +292,7 @@ class DeviceBuild:
     built_from: dict[str, str] = field(default_factory=dict)
     #: Coarse build receipt: distinct compiled artifact texts versus exported kernel symbols.
     object_dedup: dict[str, int] = field(default_factory=dict)
+    build_metrics: dict[str, dict] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -510,7 +527,7 @@ def _run_build_tool(argv: Sequence[str], *, timeout: int) -> subprocess.Complete
         )
 
 
-def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output):
+def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output, metrics=None, expected_input_sha256=None):
     from merlin.common import invocation_record
     from merlin.common.cpu_pool import shared_compute_pool
 
@@ -518,13 +535,28 @@ def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output):
         directory, stage=stage, argv=argv, inputs=inputs, outputs=(output,),
         dependencies=(Path(__file__), Path(__file__).with_name("device_build_jobs.py")),
     ) as observed:
+        if metrics is not None:
+            observed.document["device_build_metrics"] = metrics
+            observed._write()
+        if expected_input_sha256 is not None and (
+            len(observed.document["inputs"]) != 1
+            or observed.document["inputs"][0]["sha256"] != expected_input_sha256
+        ):
+            raise ValueError("device LLVM changed after its static build admission")
+        started = time.monotonic()
+        if metrics is not None:
+            metrics["compiler_started"] = True
         result = _run_build_tool(argv, timeout=timeout)
+        observed.document["tool_elapsed_s"] = time.monotonic() - started
+        if metrics is not None:
+            metrics["stages"]["compilation_s"] = observed.document["tool_elapsed_s"]
         observed.complete(result)
     path = observed.path
     return result, {
         "path": str(path),
         "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "size_bytes": path.stat().st_size,
+        "elapsed_s": observed.document["tool_elapsed_s"],
     }
 
 
@@ -589,6 +621,7 @@ def build_device_objects(
     package_sha256: str | None = None,
     tile_edge: int | None = None,
     call_buffers: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+    device_ir_budget: DeviceIRBudget | None = None,
 ) -> DeviceBuild:
     """One kernel object per signature plus the shim object, ready to archive.
 
@@ -627,6 +660,7 @@ def build_device_objects(
     from merlin.targetgen.package_runtime import load_package, run_entrypoint
 
     from .device_build_jobs import ArtifactBuild, ArtifactCompiler, build_workers
+    from .device_ir_scalability import DeviceIRBudget, inspect_device_ir
     from .device_shim import (
         emit_logical_translation_unit,
         emit_translation_unit,
@@ -637,6 +671,10 @@ def build_device_objects(
     from .toolchain import clang, mlir_translate
 
     workers = build_workers()
+    if device_ir_budget is not None and type(device_ir_budget) is not DeviceIRBudget:
+        raise ValueError("device_ir_budget must be an original-caller DeviceIRBudget")
+    # Freeze before the package runs. Its returned LLVM/options cannot change this policy.
+    budget = DeviceIRBudget(**(device_ir_budget.record() if device_ir_budget is not None else {}))
     work = Path(workdir)
     if type(stop_on_first_failure) is not bool:
         raise ValueError("stop_on_first_failure must be a bool")
@@ -717,6 +755,7 @@ def build_device_objects(
     # interfaces may nevertheless produce the same LLVM artifact; compile its raw
     # object once, then rename a separate copy for each shim entry.
     custody = {}
+    build_metrics = {}
     objects_by_symbol = {}
     pending = deque()
 
@@ -730,13 +769,38 @@ def build_device_objects(
         )
         if t.returncode != 0:
             return ArtifactBuild(refusal=f"mlir-translate: {(t.stderr or '').strip()[:200]}")
-        c, compiled_invocation = _observed_build_tool(
-            compile_command, timeout=timeout, directory=work,
-            stage="device_object_compilation", inputs=(ll,), output=raw,
-        )
+        try:
+            report = inspect_device_ir(ll, budget)
+        except (OSError, ValueError) as error:
+            return ArtifactBuild(refusal=f"device_ir_analysis: {type(error).__name__}: {error}")
+        report["stages"] = {"translation_s": translated_invocation["elapsed_s"],
+                            "analysis_s": report["analysis"]["elapsed_s"], "compilation_s": None}
+        report["compiler_started"] = False
+        report_path = ll.with_suffix(".build-cost.json")
+        report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+        if report["decision"]["status"] != "accepted":
+            return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
+                                 refusal=f"{report['decision']['reason']}: {report['decision']['exceeded']}; "
+                                         f"retain counted loops; report={report_path.name}")
+        try:
+            c, compiled_invocation = _observed_build_tool(
+                compile_command, timeout=timeout, directory=work,
+                stage="device_object_compilation", inputs=(ll,), output=raw, metrics=report,
+                expected_input_sha256=report["analysis"]["sha256"],
+            )
+        except ValueError as error:
+            report["decision"].update(status="refused", reason="device_ir_changed_after_analysis", action=str(error))
+            report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+            return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
+                                 refusal=str(error))
+        report["compiler_started"] = True
+        report["stages"]["compilation_s"] = compiled_invocation["elapsed_s"]
+        report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
         if c.returncode != 0:
-            return ArtifactBuild(refusal=f"clang: {(c.stderr or '').strip()[:200]}")
-        return ArtifactBuild(raw, {"translation": translated_invocation, "compilation": compiled_invocation})
+            return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
+                                 refusal=f"clang: {(c.stderr or '').strip()[:200]}")
+        return ArtifactBuild(raw, {"translation": translated_invocation, "compilation": compiled_invocation,
+                                   "build_metrics": report, "build_metrics_path": str(report_path)})
 
     def finish_one():
         # Refill after any completed job: one slow group must not idle the other
@@ -746,6 +810,19 @@ def build_device_objects(
         pending.remove(record)
         sym, provenance, want, stem, future = record
         built = future.result()
+        if "build_metrics" in built.custody:
+            # A fresh symbol/shape record wraps any shared byte-identical analysis.
+            build_metrics[sym] = {**built.custody["build_metrics"],
+                "shape": list(signatures[sym]), "dtypes": list(dtypes[sym]),
+                "compiler_package_sha256": package_sha256,
+                "report_path": built.custody["build_metrics_path"]}
+            context = {"shape": list(signatures[sym]), "dtypes": list(dtypes[sym]),
+                       "compiler_package_sha256": package_sha256, "policy": budget.record(),
+                       "artifact_sha256": built.custody["build_metrics"]["analysis"]["sha256"],
+                       "compilation_invocation": built.custody.get("compilation")}
+            build_metrics[sym]["context_sha256"] = hashlib.sha256(
+                json.dumps(context, sort_keys=True, allow_nan=False).encode()
+            ).hexdigest()
         if built.refusal:
             skipped.append((sym, built.refusal))
             return
@@ -770,7 +847,8 @@ def build_device_objects(
         objs.append(obj)
         objects_by_symbol[sym] = obj
         kernels[sym] = want
-        custody[sym] = {**built.custody, "rename": renamed_invocation}
+        custody[sym] = {key: built.custody[key] for key in ("translation", "compilation")}
+        custody[sym]["rename"] = renamed_invocation
         built_from[sym] = provenance
 
     with ArtifactCompiler(workers) as compiler:
@@ -870,10 +948,12 @@ def build_device_objects(
             built_from=built_from,
             skipped=tuple(skipped),
             object_dedup=dedup_receipt(),
+            build_metrics=build_metrics,
         )
 
     if not kernels:
-        return DeviceBuild(device=device, skipped=tuple(skipped), object_dedup=dedup_receipt())
+        return DeviceBuild(device=device, skipped=tuple(skipped), object_dedup=dedup_receipt(),
+                           build_metrics=build_metrics)
 
     unit = (
         emit_logical_translation_unit(device, {s: group_buffers[s] for s in kernels}, kernel_symbol_for=kernels.get)
@@ -895,6 +975,7 @@ def build_device_objects(
             built_from=built_from,
             skipped=tuple([*skipped, *unit.skipped]),
             object_dedup=dedup_receipt(),
+            build_metrics=build_metrics,
         )
     # A KERNEL THE SHIM DECLINED IS NOT A KERNEL THIS ARCHIVE CAN OFFER. The shim is what defines the
     # symbol the model's own call binds to, so a kernel object with no entry beside it ships a private
@@ -924,6 +1005,7 @@ def build_device_objects(
             built_from=built_from,
             skipped=tuple(skipped),
             object_dedup=dedup_receipt(),
+            build_metrics=build_metrics,
         )
 
     return DeviceBuild(
@@ -935,6 +1017,7 @@ def build_device_objects(
         built_from=built_from,
         skipped=tuple(skipped),
         object_dedup=dedup_receipt(),
+        build_metrics=build_metrics,
     )
 
 

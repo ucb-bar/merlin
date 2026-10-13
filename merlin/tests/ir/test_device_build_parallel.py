@@ -207,3 +207,60 @@ def test_invalid_worker_selection_refuses(monkeypatch, value):
     monkeypatch.setenv("MERLIN_DEVICE_BUILD_JOBS", value)
     with pytest.raises(ValueError, match="positive integer"):
         jobs.build_workers()
+
+
+def test_static_budget_refuses_before_clang_and_retains_raw_products(synthetic_build, monkeypatch):
+    import json
+
+    from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
+
+    build, tool, _, calls, _, _ = synthetic_build
+    def translate(argv, *, timeout):
+        result = tool(argv, timeout=timeout)
+        if argv[0] == "translate":
+            Path(argv[-1]).write_text('define void @k() {\n'
+                                     ' call void asm "x", ""()\n call void asm "y", ""()\n ret void\n}\n')
+        return result
+    monkeypatch.setattr(DB, "_run_build_tool", translate)
+    result = build(names=("a",), stop_on_first_failure=True,
+                   device_ir_budget=DeviceIRBudget(mode="enforce", max_inline_asm_sites=1))
+    assert not result.ok and "device_ir_static_expansion_budget" in result.skipped[0][1]
+    assert [name for name, _output, _thread in calls] == ["translate"]
+    report = result.build_metrics["a"]
+    assert not report["compiler_started"] and report["analysis"]["inline_asm_sites"] == 2
+    path = Path(report["report_path"])
+    assert json.loads(path.read_text())["decision"]["status"] == "refused"
+    assert path.with_name("a.ll").is_file() and path.with_name("a.device.mlir").is_file()
+
+
+def test_shared_artifact_analysis_runs_once_and_real_compilation_timings_are_retained(synthetic_build, monkeypatch):
+    from merlin.llvmlower import device_ir_scalability as S
+
+    build, _, _, _, artifacts, _ = synthetic_build
+    artifacts.update(a="shared", b="shared")
+    actual, calls = S.analyze_device_ir, []
+    def measured(path):
+        calls.append(path)
+        return actual(path)
+    monkeypatch.setattr(S, "analyze_device_ir", measured)
+    result = build(names=("a", "b"))
+    assert result.ok and len(calls) == 1
+    for row in result.build_metrics.values():
+        assert row["compiler_started"]
+        assert all(value >= 0 for value in row["stages"].values())
+
+
+def test_changed_llvm_after_analysis_refuses_before_process(synthetic_build, monkeypatch):
+    from merlin.llvmlower import device_ir_scalability as S
+
+    build, _, _, calls, _, _ = synthetic_build
+    actual = S.inspect_device_ir
+    def changed(path, budget):
+        result = actual(path, budget)
+        path.write_bytes(path.read_bytes() + b"changed bytes")
+        return result
+    monkeypatch.setattr(S, "inspect_device_ir", changed)
+    result = build(names=("a",), stop_on_first_failure=True)
+    assert not result.ok and "changed after" in result.skipped[0][1]
+    assert [name for name, _output, _thread in calls] == ["translate"]
+    assert result.build_metrics["a"]["decision"]["reason"] == "device_ir_changed_after_analysis"

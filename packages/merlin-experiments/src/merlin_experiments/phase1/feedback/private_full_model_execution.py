@@ -131,6 +131,7 @@ def _program_entry(entry: Any, where: str) -> dict[str, Any]:
         "fp32_sanity",
         "board",
         "group_profile",
+        "device_ir_budget",
         "basis",
         "host_llvm_bitcode",
     }
@@ -173,10 +174,21 @@ def _program_entry(entry: Any, where: str) -> dict[str, Any]:
     bitcode = entry.get("host_llvm_bitcode", False)
     if type(bitcode) is not bool:
         raise ExecutionGateError(f"{where}: host_llvm_bitcode is a boolean")
+    budget = entry.get("device_ir_budget")
+    if budget is not None:
+        from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
+
+        if type(budget) is not dict:
+            raise ExecutionGateError(f"{where}: device_ir_budget is explicit original-caller policy data")
+        try:
+            budget = DeviceIRBudget(**budget).record()
+        except (TypeError, ValueError) as error:
+            raise ExecutionGateError(f"{where}: invalid device_ir_budget: {error}") from error
     return {
         **({"host_llvm_bitcode": True} if bitcode else {}),
         "board": board,
         "group_profile": profile,
+        **({"device_ir_budget": budget} if budget is not None else {}),
         "engine": engine,
         "timeout_s": _positive_int(entry.get("timeout_s"), f"{where}.timeout_s"),
         "max_cycles": None if max_cycles is None else _positive_int(max_cycles, f"{where}.max_cycles"),
@@ -246,6 +258,8 @@ def build_options(gate: Mapping[str, Any]) -> dict[str, dict[str, dict[str, Any]
                 out[model][program]["board"] = entry["board"]
             if entry.get("host_llvm_bitcode"):
                 out[model][program]["host_llvm_bitcode"] = True
+            if entry.get("device_ir_budget") is not None:
+                out[model][program]["device_ir_budget"] = dict(entry["device_ir_budget"])
     return out
 
 

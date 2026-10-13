@@ -1184,6 +1184,15 @@ def run(
                 program: dict(((build_options or {}).get(name) or {}).get(program) or {})
                 for program, _ in programs
             }
+            from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
+
+            program_ir_budgets = {}
+            for program, options in program_options.items():
+                selected_budget = options.pop("device_ir_budget", None)
+                if selected_budget is not None:
+                    if type(selected_budget) is not dict:
+                        raise ValueError("device_ir_budget must be explicit original build policy data")
+                    program_ir_budgets[program] = DeviceIRBudget(**selected_budget)
             program_boards = {
                 program: options.pop("board", row["board"])
                 for program, options in program_options.items()
@@ -1227,6 +1236,10 @@ def run(
                         raise ValueError(
                             f"{program} has no buildable accelerator route: {routed.get('device_routing_why')}"
                         )
+                    if program in program_ir_budgets:
+                        from dataclasses import replace
+
+                        device = replace(device, device_ir_budget=program_ir_budgets[program])
                 linked_policy.require_route(device, instruction_selection)
                 if diagnostic:
                     receipt_path = Path(prebuilt_receipts[program])
