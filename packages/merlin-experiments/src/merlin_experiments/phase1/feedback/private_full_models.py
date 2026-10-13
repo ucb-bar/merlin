@@ -49,11 +49,12 @@ from merlin_experiments.phase1.feedback.private_group_provenance import (
     eligible_source_identity as _eligible_source_identity,
 )
 from merlin_experiments.phase1.feedback.private_group_provenance import (
-    join_routed_source_groups as _join_routed_source_groups,
+    join_routed_source_groups as _join_routed_source_groups,  # noqa: F401 -- preserve source-join compatibility alias
 )
 from merlin_experiments.phase1.feedback.private_group_provenance import (
     routed_kernel_symbols as _routed_kernel_symbols,
 )
+from merlin_experiments.phase1.feedback.private_group_provenance import verify_routed_source_coverage
 from merlin_experiments.phase1.feedback.private_prebuilt_receipt import load_diagnostic_receipt
 from merlin_experiments.phase1.feedback.private_source_support_join import (
     linked_source_support_complete as _linked_source_support_complete,
@@ -916,9 +917,7 @@ def _verify_compiled_program(
         if emitted.get("granularity") != BY_GROUP or emitted.get("device") != target:
             raise ValueError(f"{program} emitted another device or a partial route")
         assigned = emitted.get("routed")
-        if not assigned or emitted.get("skipped"):
-            raise ValueError(f"{program} linked roster differs from eligible source groups")
-        _join_routed_source_groups(assigned, source)
+        verify_routed_source_coverage(emitted, source)
         symbols = _routed_kernel_symbols(emitted)
         _linked_symbols(elf, symbols)
         host_compute_audit = _audit_built_device_host_compute(elf.parent, assigned, source, target)
