@@ -11,6 +11,7 @@ import json
 import math
 import os
 import subprocess
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -159,19 +160,26 @@ class RecordedProcessExecution:
         call = self.record_root / uuid.uuid4().hex
         call.mkdir(mode=0o700)
         argv = [str(self.executable), *(operands.get(token, token) for token in self.argv_template)]
-        result = I.run(
-            argv,
-            directory=call,
-            stage="recorded_functional_process",
-            cwd=self.cwd,
-            env=dict(self.environment),
-            inputs=inputs,
-            outputs=outputs,
-            dependencies=tuple(Path(path) for path, _ in self.source_pins),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT if self.stream == "combined" else subprocess.PIPE,
-            timeout=timeout,
-        )
+        from merlin.common.cpu_pool import shared_compute_pool
+
+        started = time.monotonic()
+        with shared_compute_pool(timeout_s=timeout):
+            remaining = timeout - (time.monotonic() - started)
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(argv, timeout)
+            result = I.run(
+                argv,
+                directory=call,
+                stage="recorded_functional_process",
+                cwd=self.cwd,
+                env=dict(self.environment),
+                inputs=inputs,
+                outputs=outputs,
+                dependencies=tuple(Path(path) for path, _ in self.source_pins),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT if self.stream == "combined" else subprocess.PIPE,
+                timeout=remaining,
+            )
         result.check_returncode()
         records = tuple(call.glob("invocations/*/invocation.json"))
         if len(records) != 1:

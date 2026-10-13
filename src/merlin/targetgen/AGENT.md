@@ -60,6 +60,12 @@ launching, capsule grading, golden generation, sandboxing and certification. The
 
 ## What belongs here
 
+- `rtl_engine_policy.simulation_runtime_slot` uses the explicitly selected shared
+  compute lease for every simulator. GSim retains its separate conservative
+  native census/cap, acquiring compute first and reusing synchronous ownership.
+  Shared mode does not assign CPUs by native slot index or change oracle tiers.
+  Contract and FIRRTL build steps use that same compute namespace; absent shared
+  configuration retains legacy build and GSim CPU selection.
 - `build_cache.build_identity` includes the independently selected original
   `llvmlower.codegen.clang()` driver beside recipe compile/link drivers. Exact
   path, driver bytes and reported version/target invalidate legacy build keys;

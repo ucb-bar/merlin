@@ -17,7 +17,6 @@ import signal
 import stat
 import subprocess
 import time
-from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -723,11 +722,9 @@ class BoundRoCCBackend:
             inputs=(path,),
             dependencies=dependencies,
         ) as observed:
-            slot = nullcontext()
-            if simulator == "gsim":
-                from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
+            from merlin.targetgen.rtl_engine_policy import simulation_runtime_slot
 
-                slot = gsim_runtime_slot(wait_timeout_s=timeout)
+            slot = simulation_runtime_slot(simulator, wait_timeout_s=timeout)
             with slot:
                 result = _bounded_process(
                     argv,

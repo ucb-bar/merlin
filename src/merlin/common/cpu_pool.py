@@ -3,14 +3,27 @@
 from __future__ import annotations
 
 import fcntl
+import math
 import os
 import threading
 import time
+from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
 
 _ACTIVE_LEASE = ContextVar("selected_cpu_lease", default=None)
+
+
+@dataclass
+class _Lease:
+    pid: int
+    thread: threading.Thread
+    root: Path
+    cpu: int
+    active: bool = True
+
 
 def parse_roster(raw: str) -> tuple[int, ...]:
     if not raw:
@@ -34,16 +47,26 @@ def selected_pool(cpus: tuple[int, ...], *, slot_root: Path | None = None, timeo
     if not cpus:
         yield
         return
+    if timeout_s is not None and (
+        type(timeout_s) not in (int, float) or not math.isfinite(timeout_s) or timeout_s < 0
+    ):
+        raise ValueError("CPU pool wait budget must be finite and nonnegative")
     held = _ACTIVE_LEASE.get()
-    if slot_root is not None and held is not None and held[:2] == (os.getpid(), threading.get_native_id()):
-        if held[2] == slot_root:
-            if held[3] not in cpus or os.sched_getaffinity(0) != {held[3]}:
-                raise RuntimeError("nested CPU build pool differs from its held lease")
-            yield
-            return
+    if (held is not None and held.active and held.pid == os.getpid()
+            and held.thread is threading.current_thread()):
+        if slot_root is None:
+            if set(cpus) != {held.cpu}:
+                raise RuntimeError("nested CPU pool would widen its held lease")
+        elif held.root != slot_root:
+            raise RuntimeError("nested CPU slot directory differs from its held lease")
+        if held.cpu not in cpus or os.sched_getaffinity(0) != {held.cpu}:
+            raise RuntimeError("nested CPU pool differs from its held lease")
+        yield
+        return
     original = os.sched_getaffinity(0)
     locked_fd = None
     token = None
+    lease = None
     chosen = set(cpus)
     try:
         if slot_root is not None:
@@ -70,19 +93,68 @@ def selected_pool(cpus: tuple[int, ...], *, slot_root: Path | None = None, timeo
         if os.sched_getaffinity(0) != chosen:
             raise RuntimeError("selected CPU pool is unavailable in the process partition")
         if locked_fd is not None:
-            token = _ACTIVE_LEASE.set((os.getpid(), threading.get_native_id(), slot_root, next(iter(chosen))))
+            lease = _Lease(os.getpid(), threading.current_thread(), slot_root, next(iter(chosen)))
+            token = _ACTIVE_LEASE.set(lease)
         yield
     finally:
         if token is not None:
+            lease.active = False
             _ACTIVE_LEASE.reset(token)
-        os.sched_setaffinity(0, original)
-        if locked_fd is not None:
-            os.close(locked_fd)
+        try:
+            os.sched_setaffinity(0, original)
+        finally:
+            if locked_fd is not None:
+                os.close(locked_fd)
+
+
+def _shared_compute_selection(environ: Mapping[str, str]) -> tuple[tuple[int, ...], Path] | None:
+    keys = ("MERLIN_COMPUTE_CPUS", "MERLIN_COMPUTE_CPU_SLOTS")
+    if not any(key in environ for key in keys):
+        return None
+    cpus = parse_roster(environ.get(keys[0], "").strip())
+    root = Path(environ.get(keys[1], "").strip())
+    if (not cpus or not environ.get(keys[1], "").strip() or not root.is_absolute() or root.is_symlink()
+            or (root.exists() and not root.is_dir())):
+        raise ValueError("shared compute requires CPU roster and absolute ordinary CPU slot directory")
+    return cpus, root
+
+
+def shared_compute_enabled(environ: Mapping[str, str] | None = None) -> bool:
+    """An incomplete selection refuses instead of falling back to separate pools."""
+    return _shared_compute_selection(os.environ if environ is None else environ) is not None
+
+
+def grading_cpus(environ: Mapping[str, str] | None = None) -> tuple[int, ...]:
+    """Affinity for preparation workers; acquiring a slot is the actual step owner's job."""
+    environment = os.environ if environ is None else environ
+    selected = _shared_compute_selection(environment)
+    return selected[0] if selected is not None else parse_roster(environment.get("MERLIN_GRADE_CPUS", ""))
+
+
+@contextmanager
+def shared_compute_pool(*, timeout_s: float | None = None):
+    """Lease one compute CPU for a supervised build/simulator or bounded preparation step.
+
+    Use the same namespace across engines. Never hold a capsule/parent lease while
+    waiting for a child or RPC that acquires its own lease. Same-thread nested
+    steps reuse one lease; absent selection leaves legacy callers unchanged.
+    """
+    selected = _shared_compute_selection(os.environ)
+    if selected is None:
+        yield
+        return
+    cpus, root = selected
+    with selected_pool(cpus, slot_root=root, timeout_s=timeout_s):
+        yield
 
 
 def worker_pool_command(command: list[str], env: dict[str, str]) -> list[str]:
-    """Select grading affinity before the worker interpreter imports any code."""
-    cpus = parse_roster(env.get("MERLIN_GRADE_CPUS", ""))
+    """Select shared/legacy grading affinity before the worker interpreter imports code.
+
+    This parent-side command owns no CPU slot: actual child step owners acquire
+    theirs after launch, so waiting parent workers cannot exhaust the pool.
+    """
+    cpus = grading_cpus(env)
     if not cpus:
         return command
     return ["taskset", "--cpu-list", ",".join(map(str, cpus)), *command]

@@ -123,3 +123,87 @@ def test_ready_members_start_longest_first():
     caps = [_cap("small", shape=(4, 4)), _cap("large", shape=(512, 512)), _cap("mid", shape=(64, 64))]
     run_pipelined(caps, run, max_workers=1)
     assert order == ["large", "mid", "small"]
+
+
+def test_shared_scheduler_does_not_hold_slots_while_children_acquire(monkeypatch, tmp_path):
+    from merlin.common.cpu_pool import worker_pool_command
+
+    cpu = min(os.sched_getaffinity(0))
+    original = os.sched_getaffinity(0)
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "shared"))
+    monkeypatch.setenv("MERLIN_GRADE_CPUS", "invalid-legacy-pool")
+    parallelism = []
+    script = (
+        "import os; from merlin.common.cpu_pool import shared_compute_pool; "
+        "scope=shared_compute_pool(timeout_s=.5); scope.__enter__(); "
+        "print(sorted(os.sched_getaffinity(0))); scope.__exit__(None,None,None)"
+    )
+
+    def run(cap, parallel):
+        parallelism.append(parallel)
+        assert os.sched_getaffinity(0) == {cpu}
+        command = worker_pool_command([sys.executable, "-c", script], dict(os.environ))
+        child = subprocess.check_output(command, text=True, timeout=3)
+        assert child.strip() == str([cpu])
+        return {"capsule": cap["name"], "status": "pass"}
+
+    rows = run_pipelined([_cap("first"), _cap("second")], run, max_workers=6)
+    assert [row["capsule"] for row in rows] == ["first", "second"]
+    assert parallelism == [1, 1]
+    assert os.sched_getaffinity(0) == original
+
+
+@pytest.mark.parametrize("ordering,expected", [
+    ("legacy", ["model", "large", "small", "dependent"]),
+    ("operators-small-first", ["small", "large", "dependent", "model"]),
+])
+def test_optional_shortest_operator_order_preserves_dependencies_and_legacy_priority(monkeypatch, ordering, expected):
+    monkeypatch.setenv("MERLIN_CAPSULE_ORDER", ordering)
+    caps = [_cap("large", shape=(64, 64)), dict(_cap("model", shape=(1,)), kind="model"),
+            _cap("small", shape=(2,)), _cap("dependent", extends="large", shape=(1,))]
+    order = []
+
+    def run(cap, parallel):
+        order.append(cap["name"])
+        if cap["name"] == "dependent":
+            assert "large" in order[:-1]
+        return {"capsule": cap["name"], "status": "pass"}
+
+    rows = run_pipelined(caps, run, max_workers=1, priority=lambda cap: 0 if cap.get("kind") == "model" else 1)
+    assert order == expected
+    assert [row["capsule"] for row in rows] == [cap["name"] for cap in caps]
+
+
+def test_small_first_keeps_immediate_completion_and_explicit_model_prerequisites(monkeypatch):
+    monkeypatch.setenv("MERLIN_CAPSULE_ORDER", "operators-small-first")
+    fast_done, model_started = threading.Event(), threading.Event()
+    callbacks = []
+
+    def run(cap, parallel):
+        if cap["name"] == "fast":
+            time.sleep(.02)
+        elif cap["name"] == "large":
+            assert model_started.wait(timeout=2), "an admitted model waited for an unrelated active operator"
+        else:
+            assert fast_done.is_set(), "model bypassed its explicit prerequisite"
+            model_started.set()
+        return {"capsule": cap["name"], "status": "pass"}
+
+    def complete(row):
+        callbacks.append(row["capsule"])
+        if row["capsule"] == "fast":
+            fast_done.set()
+
+    caps = [_cap("large", shape=(64, 64)), dict(_cap("model", shape=(1,)), kind="model"), _cap("fast", shape=(2,))]
+    rows = run_pipelined(caps, run, max_workers=2, on_complete=complete,
+                        can_start=lambda cap: cap.get("kind") != "model" or fast_done.is_set())
+    assert callbacks[0] == "fast"
+    assert model_started.is_set()
+    assert [row["capsule"] for row in rows] == [cap["name"] for cap in caps]
+
+
+def test_invalid_capsule_order_refuses_before_execution(monkeypatch):
+    monkeypatch.setenv("MERLIN_CAPSULE_ORDER", "unknown")
+    with pytest.raises(ValueError, match="MERLIN_CAPSULE_ORDER"):
+        run_pipelined([_cap("unused")], lambda *a: pytest.fail("invalid selection started work"), max_workers=2)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from dataclasses import replace
@@ -45,6 +46,18 @@ def test_actual_process_consumes_exact_selected_artifact_and_stream(selected):
     assert console == "original stdout\n"
     assert Path(joined["stderr"]["path"]).read_bytes() == b"native stderr\n"
     assert "unqualified" in joined["scope"]
+
+
+def test_actual_process_inherits_shared_compute_cpu(selected, tmp_path, monkeypatch):
+    process, program = selected
+    cpu = min(os.sched_getaffinity(0))
+    slots = tmp_path / "compute"
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(slots))
+    program.write_text("import os,json\nprint(json.dumps(sorted(os.sched_getaffinity(0))))\n")
+    console = process.run_elf(program, timeout=5)
+    assert json.loads(console) == [cpu]
+    assert process.consumption(elf=program, console=console)["elf"]["path"] == str(program)
 
 
 def test_explicit_combined_stream_is_actual_merged_process_bytes(selected):

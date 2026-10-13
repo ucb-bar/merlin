@@ -10,6 +10,10 @@ this actual core implementation. No descendant snapshot grants cleanup.
 `cpu_pool` applies explicitly selected launch-thread affinity and optional exclusive
 per-CPU subprocess slots, restoring caller affinity. It chooses no role or CPU;
 trusted callers own pool selection, timeout budgets and process supervision.
+An explicit shared compute roster and slot directory provide one namespace for
+build, simulation and bounded preparation steps. Same-process/thread nested steps
+reuse one active lease; incompatible nested selections refuse. Preparation worker
+affinity never holds a capsule-wide slot across child or RPC waits.
 The common access registry contains only target-neutral identities; the experiments
 sandbox extends it with mandatory packaged historical target denials before launch.
 `frozen_imports` provides stdlib-only, process-local source import isolation for

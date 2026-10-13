@@ -2,8 +2,10 @@
 
 import base64
 import copy
+import fcntl
 import hashlib
 import json
+import os
 import subprocess
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
@@ -828,6 +830,35 @@ def test_selected_execution_guards_only_gsim_and_releases_after_failure(
         assert bound.run_elf(elf, simulator=simulator, timeout=2) == _console()
     assert active is False
     assert events == (["enter", "exit"] if simulator == "gsim" else [])
+
+
+@pytest.mark.parametrize("simulator", ("spike", "gsim"))
+def test_selected_native_process_uses_shared_compute_cpu(selection, tmp_path, monkeypatch, simulator):
+    from merlin.targetgen import rtl_engine_policy
+
+    cpu = min(os.sched_getaffinity(0))
+    slots = tmp_path / "compute"
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(slots))
+    monkeypatch.setenv("MERLIN_GSIM_SLOT_ROOT", str(tmp_path / "native"))
+    monkeypatch.setenv("MERLIN_GSIM_CPUS", "obsolete-fixed-roster")
+    monkeypatch.setitem(rtl_engine_policy.CAPSULE_WORKER_CAP, "gsim", 1)
+    monkeypatch.setattr(rtl_engine_policy, "_native_gsim_census", lambda **_: rtl_engine_policy._NativeCensus(0, ()))
+    if simulator == "gsim":
+        _gsim(selection, tmp_path)
+
+    def execute(argv, **kwargs):
+        assert os.sched_getaffinity(0) == {cpu}
+        with (slots / f"cpu-{cpu}.lock").open("rb") as probe:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = subprocess.CompletedProcess(argv, 0, stdout=_console().encode(), stderr=b"")
+        kwargs["observed"].complete(result)
+        return result
+
+    monkeypatch.setattr(B, "_bounded_process", execute)
+    elf = _file(tmp_path, "requested.elf", "owned original executable")
+    assert _bound(selection).run_elf(elf, simulator=simulator, timeout=2) == _console()
 
 
 @pytest.mark.parametrize("engine", ["spike", "gsim"])

@@ -106,12 +106,13 @@ NOT_MEASURED_STATUSES = (
 
 
 def _flat(nested) -> list:
+    """Preserve row-major scalar order across logical ranks and dense readback rows."""
     out: list = []
-    if nested and isinstance(nested[0], list):
-        for r in nested:
-            out.extend(r)
-    else:
-        out.extend(nested)
+    for value in nested:
+        if isinstance(value, list):
+            out.extend(_flat(value))
+        else:
+            out.append(value)
     return out
 
 

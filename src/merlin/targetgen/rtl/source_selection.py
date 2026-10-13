@@ -264,13 +264,17 @@ def _run_firtool(command):
     """Only the actual compiler subprocess occupies a shared selected build slot."""
     import os
 
-    from merlin.common.cpu_pool import parse_roster, selected_pool
+    from merlin.common.cpu_pool import parse_roster, selected_pool, shared_compute_enabled, shared_compute_pool
 
-    cpus = parse_roster(os.environ.get("MERLIN_BUILD_CPUS", ""))
-    root = os.environ.get("MERLIN_BUILD_SLOT_ROOT", "")
-    if cpus and not root:
-        raise ValueError("selected build CPU pool requires an explicit slot root")
-    with selected_pool(cpus, slot_root=Path(root) if cpus else None):
+    if shared_compute_enabled():
+        pool = shared_compute_pool()
+    else:
+        cpus = parse_roster(os.environ.get("MERLIN_BUILD_CPUS", ""))
+        root = os.environ.get("MERLIN_BUILD_SLOT_ROOT", "")
+        if cpus and not root:
+            raise ValueError("selected build CPU pool requires an explicit slot root")
+        pool = selected_pool(cpus, slot_root=Path(root) if cpus else None)
+    with pool:
         return subprocess.run(command, capture_output=True, text=True, check=False)
 
 

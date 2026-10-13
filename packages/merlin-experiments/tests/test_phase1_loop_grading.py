@@ -353,7 +353,24 @@ def test_native_lazy_selection_binds_descriptor_and_cache_per_invocation(tmp_pat
     assert authoring._grading_public_root(first, explicit) == explicit
 
 
-def test_fast_grade_uses_explicit_target_roots_and_withheld_tier(tmp_path, monkeypatch):
+@pytest.mark.parametrize("shared_compute", [False, True])
+def test_fast_grade_uses_explicit_target_roots_and_withheld_tier(tmp_path, monkeypatch, shared_compute):
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    if shared_compute:
+        cpu = min(os.sched_getaffinity(0))
+        monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+        monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "compute"))
+        actual_copytree = G.shutil.copytree
+
+        def copied(*args, **kwargs):
+            import fcntl
+            with (tmp_path / "compute" / f"cpu-{cpu}.lock").open("r+") as probe:
+                with pytest.raises(BlockingIOError):
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return actual_copytree(*args, **kwargs)
+
+        monkeypatch.setattr(G.shutil, "copytree", copied)
     from merlin_experiments.phase1.feedback import qa
 
     from merlin.targetgen import capsule_grade, capsule_runner
@@ -390,6 +407,12 @@ def test_fast_grade_uses_explicit_target_roots_and_withheld_tier(tmp_path, monke
     (inputs.public_root / "capsule.yaml").write_text("required_oracle_tiers: [L2, L3]\n")
 
     def grade(candidate, **kwargs):
+        # The parent copy/discovery leases have closed before this grade can
+        # invoke independent compiler/child owners requiring the same core.
+        if shared_compute:
+            import fcntl
+            with (tmp_path / "compute" / f"cpu-{cpu}.lock").open("r+") as probe:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
         seen.append(kwargs)
         assert candidate != str(ws / "submission")
 
