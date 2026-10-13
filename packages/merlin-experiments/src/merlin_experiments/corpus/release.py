@@ -406,6 +406,7 @@ def prepare(
     selected_variants: tuple[str, ...] | None = None,
     lean_toolchain_manifest: Path | None = None,
     host_index_bits: int | None = None,
+    native_timeout_s: int | None = None,
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
@@ -492,6 +493,7 @@ def prepare(
                 **({"selected_variants": selected_variants} if selected_variants is not None else {}),
                 lean_toolchain_manifest=lean_toolchain_manifest,
                 host_index_bits=host_index_bits,
+                native_timeout_s=native_timeout_s,
             )
             descriptor = payload / "experiment" / "target_experiment.yaml"
             checked = admission(descriptor, coverage_output=root / "private" / "workload-coverage.json")

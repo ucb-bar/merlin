@@ -59,6 +59,10 @@ The immutable selection and engine identity bind the selected resource limits.
 This resource selection does not change simulator arguments, cycle limits,
 numerical checks or qualification requirements. Callers must also allow enough
 time in their job and whole-model budgets; expiration remains unmeasured.
+The host corpus-release API accepts `native_timeout_s` during fresh preparation.
+It records the original Phase 0 contract digest and the separately selected
+resource fields and output digest before review and sealing. Existing releases
+remain immutable; numerical and hardware declarations retain their original meaning.
 
 ## Prepare a worker selection
 
