@@ -428,6 +428,8 @@ def validate_options(a: RunOptions) -> int | None:
     validate_preflight_options(a)
     if a.instruction_selection and (not a.private_full_model_spec or a.sandbox != "bwrap"):
         raise ValueError("instruction selection requires a sandboxed private full-model declaration")
+    if a.native_result_format_selection and (not a.private_full_model_spec or a.sandbox != "bwrap"):
+        raise ValueError("native result selection requires a sandboxed private full-model declaration")
     from .providers.codex_runtime import validate_options as validate_client
 
     validate_client(a)
@@ -767,6 +769,13 @@ def _prepare(
         prior=_environment_record.get("private_instruction_selection") if _resuming else None,
         resuming=_resuming,
     )
+    from .feedback import private_result_format_selection
+
+    _, _native_result_record = private_result_format_selection.freeze_for_run(
+        a.native_result_format_selection, target=context.target, run_dir=run_dir,
+        prior=_environment_record.get("native_result_format_selection") if _resuming else None,
+        resuming=_resuming,
+    )
 
     # Operator-side selfcheck brokers inherit the same pinned host build inputs as formal grading.
     # Install before authoring; preparing only during formal grading is too late for selfchecks.
@@ -936,6 +945,7 @@ def _prepare(
             "model_host_lane_snapshot": _model_host_lane_snapshot,
             "private_full_model_spec": _private_full_model_record,
             "private_instruction_selection": _instruction_record,
+            **({"native_result_format_selection": _native_result_record} if _native_result_record is not None else {}),
             "repo_sha": repo_sha(repo=context.repo),
             "bundle_id": bundle["bundle_id"],
             "condition": bundle.get("condition", "legacy"),
