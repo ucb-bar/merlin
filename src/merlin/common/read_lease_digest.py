@@ -25,11 +25,12 @@ try:
 except ImportError:  # Windows and other non-Linux hosts retain full hashing.
     fcntl = None
 
-MIN_BYTES = 1 << 20
-MAX_FILES = 1024
+MIN_BYTES = 256 << 10
+MAX_FILES = 4096
 FD_HEADROOM = 64
 _FD_OVERHEAD = 4  # Custodian channel, pending input, hash duplicate and IPC setup.
 _LOCK = threading.RLock()
+_CHANGED = threading.Condition(_LOCK)
 _CACHE = None
 _VERIFICATION = contextvars.ContextVar("read_lease_digest_verification", default=None)
 
@@ -63,8 +64,18 @@ class _Cache:
         self.pending = set()
         self.process, self.channel, self.disabled = None, None, False
         self.capacity = _descriptor_budget()
+        self.readers, self.retiring = 0, False
 
     def close(self, *, inherited=False):
+        # Callers hold _LOCK. Retirement forbids new readers before waiting;
+        # Condition releases the mutex so borrowed descriptors can drain.
+        self.retiring = True
+        if not inherited:
+            while self.readers:
+                _CHANGED.wait()
+        else:
+            # Other threads do not survive fork; close only inherited copies.
+            self.readers = 0
         for entry in self.entries.values():
             os.close(entry[0])
         for descriptor in self.pending:
@@ -122,19 +133,10 @@ class _Cache:
         except OSError:
             return False
 
-    def digest(self, path):
-        metadata = path.stat(follow_symlinks=False)
+    def digest(self, path, metadata):
+        """Admit a miss under the creation lock; existing hits borrow outside it."""
         key = metadata.st_dev, metadata.st_ino
-        if path in self.paths and self.paths[path] != key:
-            self.refuse()
-        entry = self.entries.get(key)
-        if entry is not None:
-            if not self.valid(path, entry):
-                self.refuse()
-            if len(self.paths) < MAX_FILES * 16:
-                self.paths[path] = key
-            return entry
-        if self.disabled or key in self.unsupported or len(self.entries) >= self.capacity:
+        if self.disabled or self.retiring or key in self.unsupported or len(self.entries) >= self.capacity:
             return None
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_size < MIN_BYTES:
             return None
@@ -185,18 +187,53 @@ def digest(path: Path):
     global _CACHE
     if not enabled():
         return None
+    path = Path(path)
+    metadata = path.stat(follow_symlinks=False)
+    key = metadata.st_dev, metadata.st_ino
     with _LOCK:
         if _CACHE is None:
             _CACHE = _Cache()
         if _CACHE.owner != os.getpid():
             _CACHE.close(inherited=True)
             _CACHE = _Cache()
-        path = Path(path)
-        entry = _CACHE.digest(path)
-        owner = _VERIFICATION.get()
-        if entry is not None and owner is not None and owner[:2] == (os.getpid(), threading.current_thread()):
-            owner[2][path] = _CACHE, entry
-        return None if entry is None else entry[1]
+        cache = _CACHE
+        if path in cache.paths and cache.paths[path] != key:
+            cache.refuse()
+        entry = cache.entries.get(key)
+        hit = entry is not None
+        if hit:
+            _borrow(cache)
+        else:
+            entry = cache.digest(path, metadata)
+    if hit:
+        good = False
+        try:
+            good = cache.valid(path, entry)
+        finally:
+            _return(cache, good, path=path, key=key)
+    owner = _VERIFICATION.get()
+    if entry is not None and owner is not None and owner[:2] == (os.getpid(), threading.current_thread()):
+        owner[2][path] = cache, entry
+    return None if entry is None else entry[1]
+
+
+def _borrow(cache):
+    # Only a short registry check/counter update holds the process-wide mutex.
+    if cache is not _CACHE or cache.owner != os.getpid():
+        raise RuntimeError("original snapshot read lease owner changed")
+    if cache.retiring or cache.disabled:
+        raise RuntimeError("original snapshot read lease custody changed")
+    cache.readers += 1
+
+
+def _return(cache, good, *, path=None, key=None):
+    with _LOCK:
+        cache.readers -= 1
+        _CHANGED.notify_all()
+        if not good or cache.retiring or cache.disabled or cache is not _CACHE:
+            cache.refuse()
+        if path is not None and len(cache.paths) < MAX_FILES * 16:
+            cache.paths[path] = key
 
 
 @contextlib.contextmanager
@@ -220,12 +257,19 @@ def validate(owner):
     """A previously used lease remains mandatory even after cache invalidation."""
     if owner is None:
         return
+    records = tuple(owner[2].items())
+    if not records:
+        return
+    cache = records[0][1][0]
     with _LOCK:
-        for path, (cache, entry) in owner[2].items():
-            if owner[:2] != (os.getpid(), threading.current_thread()) or cache is not _CACHE:
-                raise RuntimeError("original snapshot read lease owner changed")
-            if not cache.valid(path, entry):
-                cache.refuse()
+        if owner[:2] != (os.getpid(), threading.current_thread()) or any(row[1][0] is not cache for row in records):
+            raise RuntimeError("original snapshot read lease owner changed")
+        _borrow(cache)
+    good = False
+    try:
+        good = all(cache.valid(path, entry) for path, (_, entry) in records)
+    finally:
+        _return(cache, good)
 
 
 def close():
@@ -238,10 +282,11 @@ def close():
 
 
 def _after_fork():
-    global _CACHE, _LOCK
+    global _CACHE, _LOCK, _CHANGED
     if _CACHE is not None:
         _CACHE.close(inherited=True)
     _CACHE, _LOCK = None, threading.RLock()
+    _CHANGED = threading.Condition(_LOCK)
 
 
 def _custodian(channel_fd):

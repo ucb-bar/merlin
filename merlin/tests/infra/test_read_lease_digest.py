@@ -8,6 +8,7 @@ import json
 import mmap
 import os
 import signal
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -285,3 +286,141 @@ def test_fork_discards_parent_cache_without_releasing_parent_lease(payload):
     assert before and value == expected and child_custodian != parent_custodian
     assert L._CACHE.process.pid == parent_custodian
     assert L.digest(payload) == expected
+
+
+@pytest.mark.parametrize('tier', ['hit', 'used_checkpoint'])
+def test_independent_cached_validation_is_concurrent(payload, monkeypatch, tier):
+    expected = require_lease(payload)
+    cache = L._CACHE
+    original = cache.valid
+    meeting = threading.Barrier(2, timeout=3)
+    state = threading.local()
+
+    def simultaneous(path, entry):
+        if tier == 'hit' or getattr(state, 'checking_used', False):
+            meeting.wait()
+        return original(path, entry)
+
+    monkeypatch.setattr(cache, 'valid', simultaneous)
+
+    def verify(_):
+        if tier == 'hit':
+            return L.digest(payload)
+        with L.verification():
+            result = L.digest(payload)
+            state.checking_used = True
+        return result
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        assert list(workers.map(verify, range(2))) == [expected, expected]
+    assert cache.readers == 0
+
+
+def test_close_waits_for_borrowed_fd_and_refuses_inflight_result(payload, monkeypatch):
+    require_lease(payload)
+    cache = L._CACHE
+    descriptor = next(iter(cache.entries.values()))[0]
+    entered, finish, closing = threading.Event(), threading.Event(), threading.Event()
+    original_valid, original_close = cache.valid, cache.close
+
+    def paused(path, entry):
+        entered.set()
+        assert finish.wait(3)
+        return original_valid(path, entry)
+
+    def retiring(**kwargs):
+        closing.set()
+        return original_close(**kwargs)
+
+    monkeypatch.setattr(cache, 'valid', paused)
+    monkeypatch.setattr(cache, 'close', retiring)
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        validation = workers.submit(L.digest, payload)
+        assert entered.wait(3)
+        retirement = workers.submit(L.close)
+        assert closing.wait(3)
+        try:
+            with L._LOCK:
+                assert cache.retiring and cache.readers == 1
+            assert os.fstat(descriptor).st_size == payload.stat().st_size
+            assert not retirement.done()
+        finally:
+            finish.set()
+        with pytest.raises(RuntimeError, match='lease custody changed'):
+            validation.result(timeout=3)
+        retirement.result(timeout=3)
+    assert cache.readers == 0 and L._CACHE is None
+    with pytest.raises(OSError):
+        os.fstat(descriptor)
+
+
+def test_concurrent_lease_break_refuses_both_results(payload, monkeypatch):
+    require_lease(payload)
+    cache = L._CACHE
+    original = cache.valid
+    meeting = threading.Barrier(3, timeout=3)
+    finish = threading.Event()
+    accepted = []
+
+    def paused(path, entry):
+        meeting.wait()
+        assert finish.wait(3)
+        return original(path, entry)
+
+    monkeypatch.setattr(cache, 'valid', paused)
+
+    def verify():
+        with L.verification():
+            L.digest(payload)
+        accepted.append(True)
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        results = [workers.submit(verify) for _ in range(2)]
+        try:
+            meeting.wait()
+            break_lease(payload)
+            before = payload.stat()
+            with payload.open('r+b') as stream:
+                stream.write(b'y')
+            os.utime(payload, ns=(before.st_atime_ns, before.st_mtime_ns))
+        finally:
+            finish.set()
+        for result in results:
+            with pytest.raises(RuntimeError, match='lease custody changed'):
+                result.result(timeout=3)
+    assert not accepted and cache.readers == 0
+
+
+def test_fork_during_cached_validation_keeps_parent_lease(payload, monkeypatch):
+    expected = require_lease(payload)
+    cache = L._CACHE
+    original = cache.valid
+    entered, finish = threading.Event(), threading.Event()
+
+    def paused(path, entry):
+        entered.set()
+        assert finish.wait(3)
+        return original(path, entry)
+
+    monkeypatch.setattr(cache, 'valid', paused)
+    with ThreadPoolExecutor(max_workers=1) as workers:
+        result = workers.submit(L.digest, payload)
+        assert entered.wait(3)
+        read_fd, write_fd = os.pipe()
+        pid = os.fork()
+        if pid == 0:
+            os.close(read_fd)
+            try:
+                os.write(write_fd, b'fresh' if L._CACHE is None else b'stale')
+            finally:
+                os._exit(0)
+        os.close(write_fd)
+        try:
+            assert os.read(read_fd, 5) == b'fresh'
+        finally:
+            os.close(read_fd)
+            _, status = os.waitpid(pid, 0)
+            finish.set()
+        assert os.waitstatus_to_exitcode(status) == 0
+        assert result.result(timeout=3) == expected
+    assert L._CACHE is cache and cache.readers == 0 and L.digest(payload) == expected
