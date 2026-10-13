@@ -138,9 +138,14 @@ def Region.blocks : Region → List Block | .mk b => b
 def Block.args : Block → List Value | .mk a _ => a
 def Block.ops : Block → List Op | .mk _ o => o
 
-/-- A whole module: the ops of the top-level `builtin.module` body (normally `func.func` ops). -/
+/-- A whole module: the ops of the top-level `builtin.module` body (normally `func.func` ops), plus
+the top-level module's own discardable attributes (e.g. `prov.weights_file`) and properties (e.g.
+`sym_name` of `module @name`). Module attributes are data the semantics ignores unless a reviewed
+spec says otherwise; they are kept so export and round trip never drop them. -/
 structure Module where
   ops : List Op
+  attrs : List (String × Attr) := []
+  props : List (String × Attr) := []
   deriving Repr, Inhabited
 
 /-- A `func.func` view of a top-level op: symbol name, entry block, visibility. -/

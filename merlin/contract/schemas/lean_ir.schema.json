@@ -34,7 +34,9 @@
       "required": ["ops"],
       "additionalProperties": false,
       "properties": {
-        "ops": {"type": "array", "items": {"$ref": "#/$defs/op"}}
+        "ops": {"type": "array", "items": {"$ref": "#/$defs/op"}},
+        "attrs": {"$ref": "#/$defs/attrDict", "description": "Discardable attributes of the top-level builtin.module (e.g. prov.*)."},
+        "props": {"$ref": "#/$defs/attrDict", "description": "Inherent attributes of the top-level builtin.module (e.g. sym_name)."}
       }
     }
   },
