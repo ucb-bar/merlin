@@ -1,9 +1,12 @@
 """Hardware admission of actual typed source members, never a group's stored dtype."""
 
+from xdsl.dialects import builtin
+
 from merlin.common import mlir_query as mq
 from merlin.targetgen import eligibility as E
 from merlin.targetgen import semantic_families as SF
 from merlin.xdsl_dialects.lowering import compute_groups as CG
+from merlin_experiments.phase1.feedback.private_source_payload_roles import payload_roles
 
 
 def _formats(values):
@@ -12,9 +15,13 @@ def _formats(values):
         typ = value.type
         shape = typ.get_shape() if hasattr(typ, "get_shape") else None
         if shape is None:
-            continue
-        formats.append(CG._dtype_token(str(getattr(typ, "element_type", ""))))
-        ranks.append(len(shape))
+            if not isinstance(typ, (builtin.IntegerType, builtin.IndexType, builtin.AnyFloat)):
+                continue
+            formats.append(CG._dtype_token(str(typ)))
+            ranks.append(0)
+        else:
+            formats.append(CG._dtype_token(str(getattr(typ, "element_type", ""))))
+            ranks.append(len(shape))
     return tuple(formats), tuple(ranks)
 
 
@@ -49,21 +56,31 @@ def observe(member, stage, capability):
             return {"status": "unknown", "refusal": "missing_quantization_roles",
                     "basis": "actual_typed_source_and_selected_capability"}
         inputs = inputs[:1]
-    formats, ranks = _formats(inputs)
+    roles = payload_roles(member, inputs)
+    formats, ranks = _formats(roles["inputs"])
     outputs, result_ranks = _formats(member.results)
     # memref.copy has a destination operand instead of an SSA result.
     if name == "memref.copy" and len(formats) == 2:
         outputs, result_ranks = formats[1:], ranks[1:]
         formats, ranks = formats[:1], ranks[:1]
     form = SF.operation_form(name.rpartition(".")[2], carrier_op=name)
-    rank = result_ranks[0] if len(result_ranks) == 1 else ranks[0] if ranks else None
+    shaped_result = len(member.results) == 1 and hasattr(member.results[0].type, "get_shape")
+    rank = result_ranks[0] if shaped_result or name == "memref.copy" and len(result_ranks) == 1 else None
     record = {"basis": "actual_typed_source_and_selected_capability", "operation": name,
               "family": family, "input_formats": list(formats), "result_formats": list(outputs),
-              "rank": rank, "form": form, "layout": None}
+              "rank": rank, "form": form, "layout": None,
+              "input_role_basis": roles["basis"], "control_operand_indices": list(roles["control_indices"])}
     if (family is None or not formats or not all(formats)
         or len(outputs) != 1 or not outputs[0]):
         return {**record, "status": "unknown", "refusal": "missing_typed_source_observation"}
     caps = E.capability_map_from_contract(dict(capability))
+    if family != "contraction" and len(set(formats)) > 1:
+        checked, _ = E._family_support(family, caps)
+        # Every ins slot is actual data unless the closed SSA role proof above
+        # establishes control. A genuinely unsupported required payload width
+        # independently excludes a mixed body; no lowering form is consulted.
+        if checked and any(not E._dtype_ok(fmt, cap.dtypes) for cap in checked for fmt in formats):
+            return {**record, "status": "unsupported", "refusal": "input_dtype"}
     descriptor = E.RegionDescriptor(
         op=stage, family=family, in_dtype=formats[0],
         weight_dtype=formats[1] if family == "contraction" and len(formats) == 2 else None,
