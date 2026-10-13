@@ -594,6 +594,7 @@ def resolve_plan(
                 "MERLIN_GRADE_CPUS",
                 "MERLIN_GSIM_CPUS",
                 "MERLIN_GSIM_MAX_SLOTS",
+                "MERLIN_SPIKE_MAX_SLOTS",
                 "MERLIN_GSIM_SLOT_ROOT",
             ):
                 if key in os.environ:
