@@ -8,6 +8,7 @@ import subprocess
 import sys
 import zlib
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +19,7 @@ from merlin_experiments.phase1.feedback import compiler_profile_runtime as R
 from merlin_experiments.phase2 import campaign as C
 from merlin_experiments.phase2.contracts import StageGateError
 
+from merlin.common import bundle_snapshot as BW
 from merlin.common.paths import repo_root
 from merlin.targetgen import compiler_profile_admission as API
 from merlin.targetgen import package_runtime as P
@@ -76,7 +78,14 @@ def original(tmp_path, monkeypatch):
     spec.write_text(
         json.dumps({"package_dir": str(candidate), "target": target.target, "capsule": {"name": "synthetic"}})
     )
-    return SimpleNamespace(owner=owner, candidate=candidate, target=target, inputs=inputs, private=private, spec=spec)
+    frozen = next(
+        path for row in bundle["allowed"]
+        if (path := BW.snapshot_path(BW.bundle_snapshot_root(workspace), Path(row["path"]), repo)).is_file()
+        and path.stat().st_size > 1
+    )
+    return SimpleNamespace(
+        owner=owner, candidate=candidate, target=target, inputs=inputs, private=private, spec=spec, frozen=frozen,
+    )
 
 
 def _scope(original):
@@ -117,6 +126,104 @@ def test_actual_fresh_interpreter_restores_exact_original_profile_source_and_sea
     assert list((original.private / "compiler").iterdir()) == []
 
 
+def test_child_setup_batches_two_full_reads_then_reopens_original_checks(original):
+    prefix = """from pathlib import Path
+from merlin.common import bundle_snapshot as BW
+reads = []
+digest = BW.hashlib.file_digest
+def observe(stream, *args, **kwargs):
+    if Path(stream.name) == Path(PAYLOAD):
+        reads.append(stream.name)
+    return digest(stream, *args, **kwargs)
+BW.hashlib.file_digest = observe
+""".replace("PAYLOAD", repr(str(original.frozen)))
+    script = prefix + _CONTROL.replace(
+        "    assert P.active_package_executor() is not None", """    assert len(reads) == 2
+    assert BW._ACTIVE_VERIFICATION.get() is None
+    CHILD._owner_record(P.active_package_executor().owner)
+    assert len(reads) == 3
+    assert P.active_package_executor() is not None""",
+    )
+    with _scope(original):
+        with CHILD.prepare_model_child(
+            spec_path=original.spec, environment=dict(os.environ), package_dir=original.candidate,
+        ) as transport:
+            result = _run(transport, original, script=script)
+            assert result.returncode == 0, result.stderr
+            transport.verify_result(json.loads(result.stdout))
+
+
+@pytest.mark.parametrize("when", ["setup", "grading"])
+def test_child_same_size_restored_mtime_mutation_cannot_cross_its_boundary(original, when):
+    mutation = """def mutate():
+    path = Path(PAYLOAD)
+    metadata = path.stat()
+    path.chmod(0o600)
+    with path.open('r+b') as stream:
+        first = stream.read(1)
+        stream.seek(0)
+        stream.write(bytes([first[0] ^ 1]))
+    os.utime(path, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
+""".replace("PAYLOAD", repr(str(original.frozen)))
+    prefix = "import contextlib, os\nfrom pathlib import Path\n" + mutation
+    if when == "setup":
+        prefix += """from merlin_experiments.phase1.feedback import compiler_profile_runtime as R
+original_lifetime = R._original_execution_lifetime
+@contextlib.contextmanager
+def altered_lifetime(*args, **kwargs):
+    with original_lifetime(*args, **kwargs):
+        mutate()
+        yield
+R._original_execution_lifetime = altered_lifetime
+"""
+        script = prefix + _CONTROL.replace(
+            "    assert P.active_package_executor() is not None", "    print('GRADER ENTERED', flush=True)",
+        )
+    else:
+        script = prefix + _CONTROL.replace(
+            "    assert P.active_package_executor() is not None", """    print('GRADER ENTERED', flush=True)
+    mutate()
+    CHILD._owner_record(P.active_package_executor().owner)
+    print('MUTATED OWNER ACCEPTED', flush=True)""",
+        )
+    with pytest.raises((RuntimeError, ValueError), match="content differs"):
+        with _scope(original):
+            with CHILD.prepare_model_child(
+                spec_path=original.spec, environment=dict(os.environ), package_dir=original.candidate,
+            ) as transport:
+                result = _run(transport, original, script=script)
+                assert result.returncode != 0 and "content differs" in result.stderr
+                assert "MUTATED OWNER ACCEPTED" not in result.stdout
+                if when == "setup":
+                    assert not result.stdout.strip()
+                else:
+                    assert "GRADER ENTERED" in result.stdout
+
+
+def test_child_archive_mutation_after_setup_cannot_yield_grader_capability(original):
+    prefix = """import contextlib
+from merlin_experiments.phase1.feedback import compiler_profile_runtime as R
+original_lifetime = R._original_execution_lifetime
+@contextlib.contextmanager
+def changed_archive(service, **kwargs):
+    with original_lifetime(service, **kwargs):
+        service.bundle_manifest.write_bytes(service.bundle_manifest.read_bytes()+b'\\n')
+        yield
+R._original_execution_lifetime = changed_archive
+"""
+    script = prefix + _CONTROL.replace(
+        "    assert P.active_package_executor() is not None", "    print('GRADER ENTERED', flush=True)",
+    )
+    with pytest.raises(ValueError, match="changed"):
+        with _scope(original):
+            with CHILD.prepare_model_child(
+                spec_path=original.spec, environment=dict(os.environ), package_dir=original.candidate,
+            ) as transport:
+                result = _run(transport, original, script=script)
+                assert result.returncode != 0 and "authority changed" in result.stderr
+                assert not result.stdout.strip()
+
+
 def test_large_original_runtime_selection_restores_through_sealed_bounded_fd(original):
     surfaces = tuple(AnswerSurface("private runtime", original.private / f"member-{index:05d}", "file", "hidden")
                      for index in range(3000))
@@ -135,7 +242,8 @@ def test_large_original_runtime_selection_restores_through_sealed_bounded_fd(ori
 
 @pytest.mark.parametrize("payload", ["oversized", "truncated", "suffix"])
 def test_compressed_selection_refuses_expansion_and_unclosed_streams(payload):
-    compressed = zlib.compress(b"x" * (CHILD.MAX_SELECTION_BYTES + 1)) if payload == "oversized" else zlib.compress(b"{}")
+    compressed = (zlib.compress(b"x" * (CHILD.MAX_SELECTION_BYTES + 1))
+                  if payload == "oversized" else zlib.compress(b"{}"))
     if payload == "truncated":
         compressed = compressed[:-1]
     elif payload == "suffix":

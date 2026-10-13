@@ -18,7 +18,10 @@ import sys
 import zlib
 from pathlib import Path
 
+import yaml
+
 from merlin.common import invocation_record
+from merlin.common.bundle_snapshot import verified_snapshot_scope
 from merlin.common.digest import sha256_file
 from merlin.targetgen import compiler_profile_admission as API
 from merlin.targetgen import package_runtime as P
@@ -359,44 +362,53 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
     if _closure() != document["host_sources"] or _source(document["candidate"]) != document["candidate_sha256"]:
         raise StageGateError("model child resolved another host or compiler source revision")
     owner = document["owner"]
-    service = CommonTransformService(
-        workspace=_plain(owner["workspace"]),
-        bundle_manifest=_plain(owner["bundle_manifest"]["path"]),
-        repo=_plain(owner["repo"]),
-    )
-    if _owner_record(service) != owner:
-        raise StageGateError("model child original frozen archive/profile changed")
-    target = document["target"]
-    if _pin(target["descriptor"]["path"]) != target["descriptor"]:
-        raise StageGateError("model child original target descriptor changed")
-    te = load_target_experiment(
-        target["descriptor"]["path"], source_root=Path(target["source_root"]) if target["source_root"] else None
-    )
-    if _digest(te) != target["parsed_sha256"]:
-        raise StageGateError("model child target differs from original parsed selection")
-    spec = json.loads(spec_bytes)
-    if spec.get("package_dir") != document["candidate"] or spec.get("target") != te.target:
-        raise StageGateError("model child job selects another original compiler or target")
-    selected = document["resources"]
-    boundary = None
-    if selected is not None:
-        boundary = resources.prepare_external_resource_boundary(
-            cpu_ids=tuple(selected["cpu_ids"]),
-            ram_bytes=selected["ram_bytes"],
-            disk_bytes=selected["disk_bytes"],
-            writable_roots=tuple(_plain(value) for value in selected["writable_roots"]),
-        )
-        if boundary.verify(owner_pids=(os.getppid(),)) != selected["boundary_sha256"]:
-            raise StageGateError("model child did not inherit the original live kernel resource boundary")
-    with resources.executing_resource_boundary(boundary):
-        with R.original_compiler_execution(
-            service,
-            target_experiment=te,
-            candidate=_plain(document["candidate"]),
-            work_root=_plain(document["work_root"]),
-            sandbox_inputs=_restore_inputs(document["inputs"]),
-        ):
-            yield _receipt(document)
+    workspace, archive, repo = (_plain(owner[key]["path"] if key == "bundle_manifest" else owner[key])
+                                for key in ("workspace", "bundle_manifest", "repo"))
+    bundle = yaml.safe_load(archive.read_bytes())
+    with contextlib.ExitStack() as execution:
+        # Batch only exact-owner setup. Close its full final payload read before
+        # yielding the grader capability; actual calls and final checks stay fresh.
+        with verified_snapshot_scope(workspace, bundle, repo=repo):
+            service = CommonTransformService(
+                workspace=workspace,
+                bundle_manifest=archive,
+                repo=repo,
+            )
+            if _owner_record(service) != owner:
+                raise StageGateError("model child original frozen archive/profile changed")
+            target = document["target"]
+            if _pin(target["descriptor"]["path"]) != target["descriptor"]:
+                raise StageGateError("model child original target descriptor changed")
+            te = load_target_experiment(
+                target["descriptor"]["path"], source_root=Path(target["source_root"]) if target["source_root"] else None
+            )
+            if _digest(te) != target["parsed_sha256"]:
+                raise StageGateError("model child target differs from original parsed selection")
+            spec = json.loads(spec_bytes)
+            if spec.get("package_dir") != document["candidate"] or spec.get("target") != te.target:
+                raise StageGateError("model child job selects another original compiler or target")
+            selected = document["resources"]
+            boundary = None
+            if selected is not None:
+                boundary = resources.prepare_external_resource_boundary(
+                    cpu_ids=tuple(selected["cpu_ids"]),
+                    ram_bytes=selected["ram_bytes"],
+                    disk_bytes=selected["disk_bytes"],
+                    writable_roots=tuple(_plain(value) for value in selected["writable_roots"]),
+                )
+                if boundary.verify(owner_pids=(os.getppid(),)) != selected["boundary_sha256"]:
+                    raise StageGateError("model child did not inherit the original live kernel resource boundary")
+            execution.enter_context(resources.executing_resource_boundary(boundary))
+            execution.enter_context(R._original_execution_lifetime(
+                service,
+                target_experiment=te,
+                candidate=_plain(document["candidate"]),
+                work_root=_plain(document["work_root"]),
+                sandbox_inputs=_restore_inputs(document["inputs"]),
+            ))
+            if _owner_record(service) != owner:
+                raise StageGateError("model child original execution owner changed during setup")
+        yield _receipt(document)
     if _pin(spec_path) != document["spec"] or _source(document["candidate"]) != document["candidate_sha256"]:
         raise StageGateError("model child original source changed during grading")
     if _owner_record(service) != owner:
