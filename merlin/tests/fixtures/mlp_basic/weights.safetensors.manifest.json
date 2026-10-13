@@ -1,0 +1,57 @@
+{
+  "0": {
+    "weight": "fc1.weight",
+    "kind": "param",
+    "dtype": "float32",
+    "shape": [
+      32,
+      16
+    ]
+  },
+  "1": {
+    "weight": "fc1.bias",
+    "kind": "param",
+    "dtype": "float32",
+    "shape": [
+      32
+    ]
+  },
+  "2": {
+    "weight": "fc2.weight",
+    "kind": "param",
+    "dtype": "float32",
+    "shape": [
+      32,
+      32
+    ]
+  },
+  "3": {
+    "weight": "fc2.bias",
+    "kind": "param",
+    "dtype": "float32",
+    "shape": [
+      32
+    ]
+  },
+  "4": {
+    "weight": "fc3.weight",
+    "kind": "param",
+    "dtype": "float32",
+    "shape": [
+      8,
+      32
+    ]
+  },
+  "5": {
+    "weight": "fc3.bias",
+    "kind": "param",
+    "dtype": "float32",
+    "shape": [
+      8
+    ]
+  },
+  "6": {
+    "kind": "input",
+    "name": "x"
+  }
+}

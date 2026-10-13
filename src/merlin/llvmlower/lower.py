@@ -18,6 +18,7 @@ from merlin.common.ir_audit import IrAudit, audit_mode
 
 from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 from .codegen import build_host_shared, compile_ll
+from .kernel_link import find_kernel_uses, prepare_kernel_declarations
 from .concat_dps import ensure_registered as _register_concat_dps
 
 # Registering here, and not in `impr_features` itself, keeps the epilogue-fusion stage's definition
@@ -146,6 +147,12 @@ def lower_model(
         else:
             observed = audit.directory is not None or compile_trace.active() is not None
             upstream_text, stats = preprocess_text(mlir_text, audit=audit) if observed else preprocess_text(mlir_text)
+        # External kernels (model2MLIR prov.kernel calls): give their declarations one ABI whichever
+        # preprocess ran, before the pipeline sees them. () for every kernel-free model.
+        kernel_uses = find_kernel_uses(mlir_text)
+        if kernel_uses:
+            upstream_text = prepare_kernel_declarations(upstream_text, kernel_uses)
+            stats["kernel_uses"] = len(kernel_uses)
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
 
         audit.stage("upstream", upstream_text)

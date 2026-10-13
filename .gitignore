@@ -337,6 +337,13 @@ tmp
 # blobs were surfacing as untracked. Make it global, like every other rule in this section.
 **/*.safetensors
 **/*.safetensors.manifest.json
+# ...except the two ~10 KB whole-model bundles the external-kernel tests run on (an MLP with and
+# without a prov.kernel call). Tracked so those tests need no model2MLIR checkout; regenerate with
+# build_tools/scripts/gen_mlp_kernel_fixtures.py rather than editing them.
+!/merlin/tests/fixtures/mlp_basic/weights.safetensors
+!/merlin/tests/fixtures/mlp_basic/weights.safetensors.manifest.json
+!/merlin/tests/fixtures/mlp_basic_triton/weights.safetensors
+!/merlin/tests/fixtures/mlp_basic_triton/weights.safetensors.manifest.json
 
 # targetgen_evals grading rubrics + the declared holdout. A `golden/` DIRECTORY is an answer surface
 # (check_no_answer_keys.py matches it as a path component, as it already did for `hidden/`); the two

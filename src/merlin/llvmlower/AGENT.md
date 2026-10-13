@@ -479,6 +479,7 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
   is runner SOURCE (spliced into every runner variant, executed by the compiler's Python), not a module
   Merlin calls: keep it self-contained and its names `_ist_`-prefixed. It runs on the module as parsed,
   behind runner argv gate `ARGV_INDEX`, and must report once (`require_report`).
+- `kernel_table.py` + `kernel_link.py` — external kernels: model2MLIR `prov.kernel` calls are bound to a CPU body (`kernels/triton_llvmir/`, LLVM IR or llvm-dialect MLIR) and merged into the model's `.ll` by `lower_model`. See `docs/design/external_kernels.md`.
 - `custom_isa.py` — `merlin.inline_asm` → `llvm.inline_asm` 1:1 (custom ISA / `.insn` raw encodings; no LLVM fork). `passes_xdsl.lower_bf16_matmul_f32acc` rewrites bf16 matmuls to accumulate in f32.
 
 ## What does not belong here
@@ -504,6 +505,7 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
   and ABI glue belong in the selected OOT compiler backend. Reusable host code
   generation, packing, requantization and runtime stay in Merlin. A vectorization
   stage must be a parameterized compiler choice, not a model or accelerator-name fork.
+- Kernel declarations (`prov.kernel`) reach the upstream pipeline with `llvm.emit_c_interface` and `bufferization.access = "read"` on every argument, whichever preprocess path ran (`kernel_link.prepare_kernel_declarations`): the textual path otherwise gives them the expanded-descriptor ABI, and bufferization otherwise copies every weight before the call.
 - `buffer-results-to-out-params` MUST include `modify-public-functions hoist-static-allocs` — otherwise it silently skips the public `@forward` and the entry returns heap-allocated descriptors.
 - `quant_ext.*` parses as `builtin.unregistered`: match `op.op_name.data`, not `op.name`.
 - Weight tensors are never embedded in C arrays — pointers into the safetensors payload blob, offsets straight from the header (`weights_pack.pack`).
