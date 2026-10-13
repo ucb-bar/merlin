@@ -194,6 +194,31 @@ def test_cache_caps_descriptors_and_does_not_recycle_active_entries(payload, tmp
     assert L.digest(payload) is not None
 
 
+@pytest.mark.parametrize('available', [0, 1])
+def test_real_small_fd_budget_falls_back_and_prioritizes_largest(payload, tmp_path, monkeypatch, available):
+    import resource
+
+    larger = tmp_path / 'z-larger'
+    larger.write_bytes(b'z' * 16384)
+    with monkeypatch.context() as selected:
+        selected.setenv('MERLIN_SNAPSHOT_LEASE_CACHE', '0')
+        expected = S.snapshot_content(tmp_path)
+    original_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+    soft = len(os.listdir('/proc/self/fd')) + L.FD_HEADROOM + L._FD_OVERHEAD + available
+    try:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (soft, original_limit[1]))
+        assert S.snapshot_content(tmp_path) == expected
+        assert L._CACHE.capacity == available
+        assert len(L._CACHE.entries) == available
+        if available:
+            assert next(iter(L._CACHE.entries.values()))[2][2] == larger.stat().st_size
+        else:
+            assert L._CACHE.process is None
+    finally:
+        L.close()
+        resource.setrlimit(resource.RLIMIT_NOFILE, original_limit)
+
+
 def test_unsupported_kernel_keeps_independent_full_reads(tmp_path, monkeypatch):
     workspace, bundle, repo, path = frozen(tmp_path)
     L.close()

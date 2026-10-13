@@ -171,24 +171,29 @@ def snapshot_content(root: Path) -> tuple[str, int, int]:
             raise RuntimeError("original snapshot scope member roster changed")
         read_lease_digest.validate(getattr(issued, "leases", None))
         return issued.signature
+    ordered = enumerate(members)
+    if read_lease_digest.enabled():
+        # Spend a constrained descriptor budget on the largest immutable files.
+        ordered = sorted(ordered, key=lambda row: -(row[1][3] or 0))
     with read_lease_digest.verification():
-        for parts, path, kind, size in members:
+        for index, (parts, path, kind, size) in ordered:
             if kind != "file" or parts == (MARKER,):
                 continue
             identity = read_lease_digest.digest(path) if size >= read_lease_digest.MIN_BYTES else None
             if identity is None:
                 with path.open("rb") as stream:
                     identity = hashlib.file_digest(stream, "sha256").hexdigest()
-            rows.append(("/".join(parts), identity, path.stat().st_size))
+            rows.append((index, "/".join(parts), identity, path.stat().st_size))
+    rows.sort(key=lambda row: row[0])
     aggregate = hashlib.sha256()
-    for relative, identity, size in rows:
+    for _, relative, identity, size in rows:
         aggregate.update(relative.encode())
         aggregate.update(b"\0")
         aggregate.update(str(size).encode("ascii"))
         aggregate.update(b"\0")
         aggregate.update(identity.encode("ascii"))
         aggregate.update(b"\n")
-    return aggregate.hexdigest(), len(rows), sum(row[2] for row in rows)
+    return aggregate.hexdigest(), len(rows), sum(row[3] for row in rows)
 
 
 def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict:

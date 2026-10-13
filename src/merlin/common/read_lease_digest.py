@@ -25,8 +25,10 @@ try:
 except ImportError:  # Windows and other non-Linux hosts retain full hashing.
     fcntl = None
 
-MIN_BYTES = 8 << 20
-MAX_FILES = 128
+MIN_BYTES = 1 << 20
+MAX_FILES = 1024
+FD_HEADROOM = 64
+_FD_OVERHEAD = 4  # Custodian channel, pending input, hash duplicate and IPC setup.
 _LOCK = threading.RLock()
 _CACHE = None
 _VERIFICATION = contextvars.ContextVar("read_lease_digest_verification", default=None)
@@ -36,12 +38,31 @@ def _identity(metadata):
     return metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_uid, metadata.st_gid
 
 
+def _descriptor_budget():
+    import resource
+
+    try:
+        soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft == resource.RLIM_INFINITY:
+            return MAX_FILES
+        opened = len(os.listdir('/proc/self/fd'))
+        return max(0, min(MAX_FILES, soft - opened - FD_HEADROOM - _FD_OVERHEAD))
+    except OSError:
+        return 0
+
+
+def enabled():
+    return (os.environ.get("MERLIN_SNAPSHOT_LEASE_CACHE") == "1" and sys.platform == "linux"
+            and fcntl is not None and hasattr(fcntl, "F_SETLEASE"))
+
+
 class _Cache:
     def __init__(self):
         self.owner = os.getpid()
         self.entries, self.paths, self.unsupported = {}, {}, set()
         self.pending = set()
         self.process, self.channel, self.disabled = None, None, False
+        self.capacity = _descriptor_budget()
 
     def close(self, *, inherited=False):
         for entry in self.entries.values():
@@ -113,12 +134,14 @@ class _Cache:
             if len(self.paths) < MAX_FILES * 16:
                 self.paths[path] = key
             return entry
-        if self.disabled or key in self.unsupported or len(self.entries) >= MAX_FILES:
+        if self.disabled or key in self.unsupported or len(self.entries) >= self.capacity:
             return None
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_size < MIN_BYTES:
             return None
         if not path.is_absolute() or path.resolve() != path:
             raise RuntimeError("original snapshot read lease requires a canonical file")
+        if _descriptor_budget() < 1:
+            return None
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         self.pending.add(descriptor)
         try:
@@ -160,8 +183,7 @@ class _Cache:
 def digest(path: Path):
     """Return a leased SHA-256 or None for the caller's existing full-read path."""
     global _CACHE
-    if (os.environ.get("MERLIN_SNAPSHOT_LEASE_CACHE") != "1" or sys.platform != "linux"
-            or fcntl is None or not hasattr(fcntl, "F_SETLEASE")):
+    if not enabled():
         return None
     with _LOCK:
         if _CACHE is None:
@@ -227,6 +249,7 @@ def _custodian(channel_fd):
 
     channel = socket.socket(fileno=channel_fd)
     held = set()
+    capacity = _descriptor_budget()
 
     def release(*_):
         for descriptor in tuple(held):
@@ -250,7 +273,7 @@ def _custodian(channel_fd):
             for level, kind, data in ancillary:
                 if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
                     descriptors.frombytes(data[:len(data) - len(data) % descriptors.itemsize])
-            if message != b"add" or len(descriptors) != 1 or len(held) >= MAX_FILES:
+            if message != b"add" or len(descriptors) != 1 or len(held) >= capacity:
                 for descriptor in descriptors:
                     os.close(descriptor)
                 channel.send(b"unsupported")
