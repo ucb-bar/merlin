@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 
 import pytest
 from merlin_experiments.phase1.brokers import simjob
@@ -84,6 +85,27 @@ def test_inert_notes_edit_keeps_queued_source_eligible(tmp_path, monkeypatch):
     assert current.digest != request["submission_digest"]
     assert current.components == original.components
     assert admitted(ws, [path]) == [path]
+
+
+def test_repeated_identical_deferral_refreshes_after_matching_resume(tmp_path, monkeypatch):
+    ws, path, _ = queued(tmp_path, monkeypatch)
+    compiler = ws / "submission/compiler.py"
+    compiler.write_text("def main(): return 2\n")
+    assert admitted(ws, [path]) == []
+    note = path.parent / "simdefer_test.json"
+    first_document = note.read_bytes()
+    os.utime(note, ns=(1, 1))
+    compiler.write_text("def main(): return 1\n")
+    assert admitted(ws, [path]) == [path]
+    resume = path.parent / "simresume_test.json"
+    os.utime(resume, ns=(2, 2))
+    compiler.write_text("def main(): return 2\n")
+    assert admitted(ws, [path]) == []
+    assert note.read_bytes() == first_document
+    assert note.stat().st_mtime_ns > resume.stat().st_mtime_ns
+    refreshed = note.stat().st_mtime_ns
+    assert admitted(ws, [path]) == []
+    assert note.stat().st_mtime_ns == refreshed, "only the transition generates a metadata write"
 
 
 @pytest.mark.parametrize("instrument", [None, "changed", "c" * 64])

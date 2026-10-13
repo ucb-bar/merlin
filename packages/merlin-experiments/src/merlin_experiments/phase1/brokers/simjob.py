@@ -241,7 +241,18 @@ def _admitted_promotions(requests, ws, *, loop_tier, cert_tier, context):
                         "source_digest": request.get("submission_digest"),
                         "current_source_digest": current.digest if current is not None else None}
             previous = admission.read_note(note)
-            if previous != document:
+            # A return to exactly the same stale source still starts a NEW
+            # deferral after a recorded resume; do not leave the resume newer.
+            resume = path.parent / f"simresume_{jid}.json"
+            resumed = admission.read_note(resume)
+            after_resume = False
+            if (isinstance(resumed, dict) and resumed.get("state") == "admitted" and resumed.get("job_id") == jid
+                    and isinstance(resumed.get("current_source_digest"), str) and resumed["current_source_digest"]):
+                try:
+                    after_resume = resume.stat().st_mtime_ns >= note.stat().st_mtime_ns
+                except OSError:
+                    pass
+            if previous != document or after_resume:
                 admission.write_note(note, document)
                 print(f"[simjob] {jid} auto promotion deferred: {reason}", file=sys.stderr, flush=True)
             continue
