@@ -55,6 +55,50 @@ def _successful_expected_refusal(result: dict) -> bool:
             and isinstance(result.get("declined"), dict) and bool(result["declined"]))
 
 
+def _operator_structural_feedback(result, capsule, *, target):
+    """Qualification requires original applicable structure, independently of numerical screens."""
+    from merlin.targetgen.expected_refusal import validated_result
+    from merlin.targetgen.owned_host_leaf_execution import qualified_host_result, selected_host_leaf
+
+    if not isinstance(capsule, dict) or capsule.get("name") != result.get("capsule"):
+        return {"status": "unavailable", "component": "original_capsule_binding"}
+    if validated_result(capsule, result):
+        return {"status": "pass", "component": "original_expected_refusal"}
+    if (result.get("failure") or {}).get("category") == "host_compute_in_accelerator_group":
+        return {"status": "failed", "component": "host_accelerator_placement"}
+    if selected_host_leaf(capsule):
+        return {"status": "pass" if qualified_host_result(capsule, result, target=target) else "unavailable",
+                "component": "provided_host_infrastructure"}
+    trace = result.get("trace_check") or {}
+    requirement = trace.get("trace_requirement_status")
+    complete = trace.get("status") == "pass" and requirement in (None, "pass")
+    return {
+        "status": "pass" if complete else requirement or "failed",
+        "component": "instruction_trace",
+        "violations": [str(reason)[:240] for reason in (trace.get("violations") or [])[:8]],
+        "unavailable_requirements": list(trace.get("unavailable_requirements") or [])[:16],
+    }
+
+
+def _operator_feedback_state(result, capsule, *, target, barrier_status):
+    """Keep numerical screens separate from original applicable qualification."""
+    from merlin.targetgen.expected_refusal import validated_result
+
+    refusal = isinstance(capsule, dict) and validated_result(capsule, result)
+    structural = _operator_structural_feedback(result, capsule, target=target)
+    numeric_native_pass = result.get("status") == "pass" and barrier_status == "pass"
+    certified = refusal or (numeric_native_pass and structural["status"] == "pass")
+    failure = result.get("failure") or {}
+    selection_blocked = failure.get("category") == "NOT_RUN_IS_NOT_PASS" and failure.get("tier_status") == "unavailable"
+    ran = {tier: row.get("status") for tier, row in (result.get("tiers") or {}).items()
+           if isinstance(row, dict) and row.get("status") not in (None, "skipped", "unavailable")}
+    screened = not certified and (
+        (selection_blocked and bool(ran) and all(status == "pass" for status in ran.values())
+         and barrier_status in ("pass", None)) or numeric_native_pass
+    )
+    return certified, screened, refusal, structural
+
+
 def _public_candidate_emission_failure(result: dict) -> dict | None:
     """Expose only bounded structural compiler errors, never receipt payloads."""
     failure = result.get("candidate_emission_failure")
@@ -1215,6 +1259,16 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     rows, npass, ncert, nscreened = [], 0, 0, 0
     _results = sorted(cb_root.glob("*/capsule_result.json")) if cb_root.exists() else []
     closed_rows = _qc._per_capsule_from_results(runs_root)
+    try:
+        selected = CR.discover_capsules(
+            caps_root, labels={"public", "dev"},
+            contract=contract if contract is not None else context.repo / "merlin/contract",
+        )
+        original_capsules = {cap["name"]: cap for cap in selected}
+        if len(original_capsules) != len(selected):
+            raise ValueError("selected public capsule names are ambiguous")
+    except (OSError, ValueError, KeyError, TypeError):
+        selected, original_capsules = None, {}
     # Does the declared barrier EVER produce a verdict for this target? Two very different situations
     # look identical per-capsule, and only this whole-corpus view separates them:
     #   • the tier ran for some capsule but not this one -> this capsule genuinely fell short of the
@@ -1302,16 +1356,15 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         # submission was 22/25. An agent told it fails everything rewrites working code.
         #
         # So: `passed` = passed everything this selection could measure; `certified` = also cleared every
-        # mandatory tier. `all_pass` keys on certification, so a screen can never certify -- it may only
+        # mandatory tier and applicable original structural obligation. `all_pass` keys on certification -- it may only
         # eliminate. Derived from the capsule's own declared tiers and the adapters present; no engine or
         # target is named here.
-        _f = d.get("failure") or {}
-        _blocked_by_selection = _f.get("category") == "NOT_RUN_IS_NOT_PASS" and _f.get("tier_status") == "unavailable"
-        _ran = {t: v for t, v in tiers.items() if v not in (None, "skipped", "unavailable")}
-        _ran_clean = bool(_ran) and all(v == "pass" for v in _ran.values())
-        refused_as_required = _successful_expected_refusal(d)
-        certified = refused_as_required or ((d.get("status") == "pass") and (bar == "pass"))
-        screened = (not certified) and _blocked_by_selection and _ran_clean and bar in ("pass", None)
+        # Use the same original discovery/schema/name validation as grading,
+        # including its capsule-local source identity and inherited declarations.
+        _original = original_capsules.get(name)
+        certified, screened, refused_as_required, _structural = _operator_feedback_state(
+            d, _original, target=_tgt, barrier_status=bar,
+        )
         passed = certified or screened
         npass += int(passed)
         ncert += int(certified)
@@ -1344,6 +1397,8 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         row = {
             "capsule": name,
             "pass": passed,
+            "structural_qualification": _structural,
+            "numerical_execution_passed": (d.get("numeric") or {}).get("status") == "pass",
             "execution_digest": _qc._execution_digest_from_result(cr),
             "barrier_tier": bar_used,
             "barrier_declared": barrier_tier,
@@ -1430,11 +1485,8 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         rows.append(row)
     n_result = len(rows)
     try:
-        selected = CR.discover_capsules(
-            caps_root,
-            labels={"public", "dev"},
-            contract=contract if contract is not None else context.repo / "merlin/contract",
-        )
+        if selected is None:
+            raise ValueError("original public cohort could not be validated")
         requested_names = [cap["name"] for cap in selected]
         if len(set(requested_names)) != len(requested_names):
             raise ValueError("selected public capsule names are ambiguous")
@@ -1550,9 +1602,12 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         "scope": scope,
         "suite_size": suite_size,
         # `n_passed` is what this oracle selection could measure; `n_certified` is what cleared every
-        # mandatory tier. They differ exactly when the selection cannot reach a required tier, and
-        # `all_pass` keys on the second: a screen may eliminate, it may never certify.
+        # mandatory tier and applicable structural requirement. A missing tier or structural evidence
+        # leaves a numerical/native pass as a screen. `all_pass` keys on certification.
         "n_screened_only": nscreened,
+        "n_structural_unqualified": sum(
+            row.get("structural_qualification", {}).get("status") not in (None, "pass") for row in rows
+        ),
         "per_capsule": rows,
         "n_declined": n_declined,
         "note": (

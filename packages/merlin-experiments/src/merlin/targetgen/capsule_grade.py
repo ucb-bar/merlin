@@ -22,6 +22,7 @@ import argparse
 import hashlib
 import json
 import os
+from collections import Counter
 from pathlib import Path
 
 from merlin.perf import comparand as _comparand
@@ -1759,24 +1760,42 @@ def grade(
     score["n_structural_pass"] = n_pass + n_not_gradeable
     score["structural_pass"] = bool(not _empty and not _infra and (n_pass + n_not_gradeable) == len(graded))
     score["numeric_all_exact"] = None if _empty else all(_score_numeric_status(r) == "pass" for r in _execution_rows)
-    _trace_rows = [r for r in _execution_rows if r.get("kind") != "model"]
+    from . import owned_host_leaf_execution as _OH
+
+    _caps_by_name = {str(cap.get("name")): cap for cap in caps}
+    _host_rows = [r for r in _execution_rows if _OH.selected_host_leaf(_caps_by_name.get(r.get("capsule"), {}))]
+    _host_names = {r.get("capsule") for r in _host_rows}
+    _trace_rows = [r for r in _execution_rows if r.get("kind") != "model" and r.get("capsule") not in _host_names]
     _model_rows = [r for r in _execution_rows if r.get("kind") == "model"]
     score["trace_all_pass"] = (
         None if not _trace_rows else all(r.get("trace_check", {}).get("status") == "pass" for r in _trace_rows)
     )
+    _trace_requirements = Counter(
+        (r.get("trace_check") or {}).get("trace_requirement_status")
+        or ("pass" if (r.get("trace_check") or {}).get("status") == "pass" else "failed")
+        for r in _trace_rows
+    )
+    score["trace_requirement_summary"] = dict(sorted(_trace_requirements.items()))
     score["model_execution_all_pass"] = (
         None
         if not _model_rows
         else all(r.get("model_execution_check", {}).get("status") == "pass" for r in _model_rows)
     )
+    score["provided_host_execution_all_pass"] = (
+        None if not _host_rows else all(
+            _OH.qualified_host_result(_caps_by_name[r["capsule"]], r, target=target) for r in _host_rows
+        )
+    )
     score["structural_evidence_scope"] = {
         "n_instruction_trace_capsules": len(_trace_rows),
         "n_model_execution_capsules": len(_model_rows),
+        "n_provided_host_capsules": len(_host_rows),
     }
     score["structural_evidence_all_pass"] = bool(
         not _empty
         and (not _trace_rows or score["trace_all_pass"] is True)
         and (not _model_rows or score["model_execution_all_pass"] is True)
+        and (not _host_rows or score["provided_host_execution_all_pass"] is True)
     )
     if _empty:
         score["note"] = (

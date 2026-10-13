@@ -246,7 +246,12 @@ def test_a_withheld_mandatory_tier_reads_as_unknown_never_as_a_pass():
 def test_the_fast_verdict_may_conclude_only_when_nothing_was_withheld():
     __import__("merlin_experiments.phase1.authoring", fromlist=[""])
     red = {f"P{i}": {"status": "pass", "tiers": {"L2": "pass"}} for i in range(3)}
-    assert LG._fast_loop_verdict_doc(red, ["L2"], [])["all_pass"] is True
+    assert LG._fast_loop_verdict_doc(
+        red, ["L2"], [], structural_evidence=True, cohort_complete=True,
+    )["all_pass"] is True
+    assert LG._fast_loop_verdict_doc(red, ["L2"], [], structural_evidence=True)["all_pass"] is False
+    assert LG._fast_loop_verdict_doc(red, ["L2"], [])["all_pass"] is False
+    assert LG._fast_loop_verdict_doc(red, ["L2"], [], structural_evidence=False)["all_pass"] is False
     red["P0"]["status"] = "fail"
     assert LG._fast_loop_verdict_doc(red, ["L2"], [])["all_pass"] is False
     # an empty grade is not a pass either

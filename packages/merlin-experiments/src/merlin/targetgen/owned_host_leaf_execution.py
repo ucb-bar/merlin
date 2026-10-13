@@ -7,6 +7,7 @@ host arithmetic or accelerator support.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -37,6 +38,60 @@ def selected_host_leaf(capsule):
         and screen.get("status") == "admitted"
         and all(row.get("placement") == "host" and row.get("status") == "admitted" for row in decisions)
     )
+
+
+def _host_scope_record(capsule, record):
+    """Project only the original producer's completed source/ELF/native joins."""
+    required = sorted(set(capsule.get("required_oracle_tiers") or []))
+    native = record.get("native") or {}
+    structure = record["structure"]
+    elf_sha = structure["elf_sha256"]
+    if not set(required) & {"L2", "L3"} or any(
+        tier not in native or native[tier].get("numeric", {}).get("status") != "pass"
+        or native[tier].get("elf_sha256") != elf_sha
+        for tier in required if tier not in {"L0", "L1"}
+    ):
+        raise ValueError("provided host scope lacks every original required native execution")
+    if record["build"]["output"]["elf_sha256"] != elf_sha:
+        raise ValueError("provided host scope differs from its original build")
+    return {
+        "schema": "merlin.provided_host_structural_scope.v1", "status": "pass",
+        "capsule": capsule["name"], "required_tiers": required, "elf_sha256": elf_sha,
+        "source_identity_sha256": hashlib.sha256(
+            json.dumps(record["source_identity"], sort_keys=True, allow_nan=False).encode()
+        ).hexdigest(),
+        "scope": "Merlin host infrastructure only; no accelerator trace or compiler credit",
+    }
+
+
+def qualified_host_result(capsule, result, *, target):
+    """Reopen original capsule/source/ELF binding before structural applicability."""
+    try:
+        root = Path(capsule["__dir__"])
+        original = yaml.safe_load((root / "capsule.yaml").read_bytes())
+        if (not selected_host_leaf(original) or (original.get("semantic") or {}).get("must_accelerate")
+                or original.get("name") != result.get("capsule") or result.get("status") != "pass"):
+            return False
+        record = result["provided_host_qualification"]
+        if not {"capsule", "source", "golden"} <= set(record["source_identity"]["artifacts"]):
+            return False
+        checked = {**original, "__dir__": str(root)}
+        if _original_host_source(checked, target=target)[2] != record["source_eligibility"]:
+            return False
+        _verify_source_identity({**original, "__dir__": str(root)}, record["source_identity"])
+        inputs = record["structure_inputs"]
+        if inputs["target"] != target:
+            return False
+        facts = Path(inputs["rtl_facts"]["path"])
+        if file_sha256(facts) != inputs["rtl_facts"]["sha256"]:
+            return False
+        if _host_leaf_structure(record["build"], target=target, facts=facts) != record["structure"]:
+            return False
+        if file_sha256(Path(record["structure"]["elf"])) != record["structure"]["elf_sha256"]:
+            return False
+        return result.get("host_execution_check") == _host_scope_record(original, record)
+    except (KeyError, TypeError, ValueError, OSError):
+        return False
 
 
 def _original_host_source(capsule, *, target):
@@ -234,8 +289,8 @@ def grade_owned_host_leaf(
     from .capsule_runner import TierResult, _finalize_capsule_result, _resolve_model_host_lane
     from .owned_host_model_execution import (
         _functional_engine_for_facts,
-        _run_selected_functional,
         _numeric_full_output,
+        _run_selected_functional,
         _run_selected_rtl,
         _selected_facts,
         _selected_file,
@@ -293,6 +348,7 @@ def grade_owned_host_leaf(
             "source_eligibility": source,
             "source_identity": source_identity,
             "structure": structure,
+            "structure_inputs": {"target": target, "rtl_facts": {"path": str(facts), "sha256": file_sha256(facts)}},
             "scope": "platform host infrastructure qualification; no candidate host code or accelerator credit",
         }
         record_path = output / "qualification.json"
@@ -396,6 +452,13 @@ def grade_owned_host_leaf(
             else "pass"
         )
         record["lane_report"] = elf_lanes.lane_report_from_elf(capsule, elf, target=target)
+        if status == "pass":
+            # These are the original producer's fresh final source/build/native checks,
+            # not a zero-opcode count or a caller-supplied applicability assertion.
+            if _host_leaf_structure(receipt, target=target, facts=facts) != structure:
+                raise ValueError("provided host structure changed before scope publication")
+            _verify_source_identity(capsule, source_identity)
+            host_scope = _host_scope_record(capsule, record)
     except Exception as exc:
         status = "incomplete"
         failure = {
@@ -419,6 +482,7 @@ def grade_owned_host_leaf(
         cfg=cfg,
         extra={
             "provided_host_qualification": record,
+            **({"host_execution_check": host_scope} if status == "pass" else {}),
             **({"lane_report": record["lane_report"]} if "lane_report" in record else {}),
         },
     )

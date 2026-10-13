@@ -210,15 +210,18 @@ def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUI
     else:
         n_trace = scope.get("n_instruction_trace_capsules")
         n_model = scope.get("n_model_execution_capsules")
-        if any(not isinstance(v, int) or isinstance(v, bool) or v < 0 for v in (n_trace, n_model)):
+        n_host = scope.get("n_provided_host_capsules", 0)
+        if any(not isinstance(v, int) or isinstance(v, bool) or v < 0 for v in (n_trace, n_model, n_host)):
             reasons.append("structural_evidence_scope_counts_malformed")
         else:
-            if n_executable is not None and n_trace + n_model != n_executable:
+            if n_executable is not None and n_trace + n_model + n_host != n_executable:
                 reasons.append("structural_evidence_scope_denominator_mismatch")
             if n_trace > 0 and score.get("trace_all_pass") is not True:
                 reasons.append("trace_conformance_not_complete")
             if n_model > 0 and score.get("model_execution_all_pass") is not True:
                 reasons.append("model_execution_evidence_not_complete")
+            if n_host > 0 and score.get("provided_host_execution_all_pass") is not True:
+                reasons.append("provided_host_execution_evidence_not_complete")
     if score.get("structural_evidence_all_pass") is not True:
         reasons.append("structural_evidence_not_complete")
 
@@ -327,7 +330,9 @@ def _phase_manifest(score: Mapping, *, required_tier: str, functional_hidden: bo
         "trace_all_pass": score.get("trace_all_pass"),
         "model_execution_all_pass": score.get("model_execution_all_pass"),
         "structural_evidence_all_pass": score.get("structural_evidence_all_pass"),
+        "provided_host_execution_all_pass": score.get("provided_host_execution_all_pass"),
         "structural_evidence_scope": score.get("structural_evidence_scope"),
+        "trace_requirement_summary": score.get("trace_requirement_summary"),
         **({'expected_refusal_scope': score['expected_refusal_scope']} if 'expected_refusal_scope' in score else {}),
         "unmeasured_counts": {
             field: score.get(field)

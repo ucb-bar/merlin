@@ -40,6 +40,40 @@ from merlin_experiments.phase1.context import InvocationContext, add_context_arg
 _SAFE_NUMERIC = {"status", "policy", "mismatch_count"}
 
 
+def _original_cohort_complete(score: dict) -> bool:
+    """A measured denominator cannot discard an original required obligation."""
+    from merlin.targetgen.expected_refusal import execution_denominator
+
+    admission = score.get("cohort_admission")
+    if not isinstance(admission, dict):
+        return False
+    admitted = admission.get("n_admitted_capsules")
+    if type(admitted) is not int or admitted <= 0 or score.get("n_capsules") != admitted:
+        return False
+    if type(score.get("n_capsules")) is not int or type(score.get("n_passed")) is not int:
+        return False
+    if score["n_passed"] != admitted or execution_denominator(score)[1]:
+        return False
+    for field in (
+        "n_not_measured", "n_cert_not_measured", "n_infrastructure_fault", "n_gated_deferred",
+        "n_screened_only", "n_budget_exhausted", "n_incomplete", "n_not_gradeable_no_oracle",
+        "n_not_graded_ineligible",
+    ):
+        if type(score.get(field, 0)) is not int or score.get(field, 0) != 0:
+            return False
+    rows = score.get("per_capsule")
+    if type(rows) is not list or len(rows) != admitted:
+        return False
+    names = []
+    for row in rows:
+        if (not isinstance(row, dict) or row.get("status") != "pass"
+                or type(row.get("capsule")) is not str or not row["capsule"]):
+            return False
+        names.append(row["capsule"])
+    return (len(set(names)) == admitted
+            and admission.get("admitted_name_set_sha256") == CG._name_set_sha256(names))
+
+
 # Process-exit metadata is NOT capsule data and must survive the numeric scrub. MEASURED (gemmini arm-4,
 # 2026-08-19): 19 of nemotron's 20 capsules received a failure_detail of exactly 26 characters,
 # "emit_command_buffer rc=#:", for six consecutive rounds. The underlying fact was ``rc=0`` — the agent's
@@ -322,6 +356,13 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
                 else None
             ),
             "trace_status": (r.get("trace_check") or {}).get("status") if candidate_feedback is None else None,
+            "trace_requirement_status": (
+                (r.get("trace_check") or {}).get("trace_requirement_status") if candidate_feedback is None else None
+            ),
+            "trace_unavailable_requirements": (
+                list((r.get("trace_check") or {}).get("unavailable_requirements") or [])[:16]
+                if candidate_feedback is None else []
+            ),
             "trace_violations": (
                 list((r.get("trace_check") or {}).get("violations") or []) if candidate_feedback is None else []
             ),
@@ -881,6 +922,8 @@ def run(
                 "numeric_status": rich.get("numeric_status", pc.get("numeric")),
                 "mismatch_count": rich.get("mismatch_count"),
                 "trace_status": rich.get("trace_status", pc.get("trace")),
+                "trace_requirement_status": rich.get("trace_requirement_status"),
+                "trace_unavailable_requirements": rich.get("trace_unavailable_requirements", []),
                 "trace_violations": rich.get("trace_violations", []),
                 "tiers": rich.get("tiers", {})
                 if rich.get("candidate_native_verification") is not None
@@ -969,7 +1012,11 @@ def run(
             "qa_gate": "capsule_bench_v0_pilot",
             "gradeable": True,
             "labels_graded": score.get("labels_graded"),
-            "all_pass": bool(n_caps > 0 and n_pass == n_caps),
+            "all_pass": bool(_original_cohort_complete(score) and score.get("structural_evidence_all_pass") is True),
+            "original_cohort_complete": _original_cohort_complete(score),
+            "structural_evidence_complete": score.get("structural_evidence_all_pass") is True,
+            "structural_evidence_scope": score.get("structural_evidence_scope"),
+            "trace_requirement_summary": score.get("trace_requirement_summary"),
             "n_passed": n_pass,
             "n_capsules": n_caps,
             "integrity_status": score.get("integrity_status"),
@@ -990,6 +1037,9 @@ def run(
             "not_measured_status": score.get("not_measured_status"),
             "note": (
                 "This is a QA pass/fail signal only. It contains NO reference output values — there is no answer key. "
+                "Numerical/native pass counts are screens until applicable structural evidence is complete. "
+                "Unavailable original operand/schedule evidence is an infrastructure requirement, "
+                "not a numerical defect. "
                 "Fix failures by capsule + failure_plane + trace_violations; never hardcode outputs."
                 + (
                     f" {score['n_declined']} capsule(s) were DECLINED by your backend: it emitted no "

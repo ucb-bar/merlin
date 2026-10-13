@@ -386,7 +386,9 @@ def grade(
 # reading as SUCCESS is a recurring bug in this repo; this is not another instance of it.
 
 
-def _fast_loop_verdict_doc(red: dict, tiers_graded, tiers_withheld) -> dict:
+def _fast_loop_verdict_doc(
+    red: dict, tiers_graded, tiers_withheld, *, structural_evidence=None, cohort_complete=False,
+) -> dict:
     """Build the fast first verdict from the per-capsule readback. PURE, so its honesty is testable.
 
     `n_passed` counts capsules that passed THE TIERS THAT RAN, and the document says so. `all_pass` is a
@@ -407,6 +409,8 @@ def _fast_loop_verdict_doc(red: dict, tiers_graded, tiers_withheld) -> dict:
                 "numeric_status": info.get("numeric_status"),
                 "mismatch_count": info.get("mismatch_count"),
                 "trace_status": info.get("trace_status"),
+                "trace_requirement_status": info.get("trace_requirement_status"),
+                "trace_unavailable_requirements": info.get("trace_unavailable_requirements") or [],
                 "trace_violations": info.get("trace_violations") or [],
                 "failure_plane": info.get("failure_plane"),
                 "failure_category": info.get("failure_category"),
@@ -415,6 +419,9 @@ def _fast_loop_verdict_doc(red: dict, tiers_graded, tiers_withheld) -> dict:
         )
     graded, withheld = sorted(tiers_graded), sorted(tiers_withheld)
     complete = not withheld
+    # The grader joins original trace, provided-host, model and refusal scopes.
+    # A trace-only shortcut would invent obligations for host/refusal rows.
+    structural_complete = structural_evidence is True
     nc = len(rows)
     return {
         "qa_gate": "capsule_bench_v0_pilot",
@@ -424,7 +431,10 @@ def _fast_loop_verdict_doc(red: dict, tiers_graded, tiers_withheld) -> dict:
         "tiers_not_run": withheld,
         "mandatory_tiers_complete": complete,
         # UNKNOWN, never success: a mandatory tier that did not run may not be reported as passed.
-        "all_pass": (bool(nc > 0 and npass == nc) if complete else None),
+        "all_pass": (bool(nc > 0 and npass == nc and structural_complete and cohort_complete is True)
+                     if complete else None),
+        "original_cohort_complete": cohort_complete is True,
+        "structural_evidence_complete": structural_complete,
         "n_passed": npass,
         "n_capsules": nc,
         "per_capsule": rows,
@@ -574,7 +584,11 @@ def fast_grade(
     for row in _fast_score.get("per_capsule") or []:
         if row.get("background_deferred") and row.get("capsule") not in red:
             red[row["capsule"]] = {"status": "gated", "tiers": {}}
-    verdict = _fast_loop_verdict_doc(red, sorted(adapters), sorted(_withheld))
+    verdict = _fast_loop_verdict_doc(
+        red, sorted(adapters), sorted(_withheld),
+        structural_evidence=_fast_score.get("structural_evidence_all_pass"),
+        cohort_complete=_qc._original_cohort_complete(_fast_score),
+    )
     if background_guard.reason() is not None:
         verdict.update(all_pass=None, gradeable=False, mandatory_tiers_complete=False,
             background_grade={"status": "deferred",
