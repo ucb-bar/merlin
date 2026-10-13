@@ -66,7 +66,6 @@ class _Scope:
             raise ValueError("ordinary emission scope has no current original host admission")
         self.products.verify()
         admission, service = self.admission, self.service
-        admission.verify()
         if any(
             getattr(admission, field) != getattr(service, field) for field in ("workspace", "bundle_manifest", "repo")
         ) or (admission.profile != service.profile or admission.snapshot_sha256 != service.snapshot_digest):

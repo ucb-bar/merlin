@@ -327,6 +327,53 @@ def test_no_owner_or_different_owner_cannot_select_checks(ordinary):
                 pass
 
 
+def test_scope_reopens_snapshot_once_and_refuses_same_size_content_change(ordinary, monkeypatch):
+    import os
+
+    from merlin.common import bundle_snapshot
+
+    _, owner = ordinary
+    source = Path(owner.bundle["allowed"][0]["path"])
+    payload = bundle_snapshot.snapshot_path(bundle_snapshot.bundle_snapshot_root(owner.workspace), source, owner.repo)
+    original_bytes = payload.read_bytes()
+    original_stat = payload.stat()
+    with _scope(owner):
+        scope = X.active_emission_checks()
+        admission_type = type(scope.admission)
+        original_verify = admission_type.verify
+        calls = []
+
+        def verify(admission):
+            calls.append(admission)
+            return original_verify(admission)
+
+        monkeypatch.setattr(admission_type, "verify", verify)
+        scope.verify()
+        assert calls == [scope.admission]
+        calls.clear()
+        try:
+            payload.chmod(0o600)
+            payload.write_bytes(bytes([original_bytes[0] ^ 1]) + original_bytes[1:])
+            os.utime(payload, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+            with pytest.raises(RuntimeError, match="content differs"):
+                scope.verify()
+            assert calls == [scope.admission]
+        finally:
+            payload.write_bytes(original_bytes)
+            payload.chmod(original_stat.st_mode & 0o777)
+            os.utime(payload, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+
+
+def test_scope_refuses_a_different_live_admission_for_the_same_snapshot(ordinary):
+    _, owner = ordinary
+    with _scope(owner):
+        scope = X.active_emission_checks()
+        with owner.compiler_imports():
+            with pytest.raises(ValueError, match="current original host admission"):
+                scope.verify()
+        scope.verify()
+
+
 def test_historical_versioned_profile_keeps_lowering_memo_and_no_chain(emission, monkeypatch):
     owner = _owner(emission, monkeypatch, COMMON_SUBSTRATE_V1)
     memo = {}
