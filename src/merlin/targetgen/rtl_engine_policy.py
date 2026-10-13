@@ -66,8 +66,26 @@ def _gsim_cap_override() -> int | None:
     return value
 
 
+def _spike_cap_override() -> int | None:
+    """Explicit suite fan-out, bounded by physical and shared compute capacity."""
+    raw = os.environ.get("MERLIN_SPIKE_MAX_SLOTS", "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError("MERLIN_SPIKE_MAX_SLOTS must be a positive integer") from exc
+    if not 1 <= value <= (os.cpu_count() or 1):
+        raise ValueError(f"MERLIN_SPIKE_MAX_SLOTS={raw} must be between 1 and the host CPU count")
+    from merlin.common.cpu_pool import grading_cpus, shared_compute_enabled
+
+    return min(value, len(grading_cpus())) if shared_compute_enabled() else value
+
+
 if (_override := _gsim_cap_override()) is not None:
     CAPSULE_WORKER_CAP["gsim"] = _override
+if (_override := _spike_cap_override()) is not None:
+    CAPSULE_WORKER_CAP["spike"] = _override
 GSIM_RUNTIME_SLOT_PROTOCOL = "reentrant_per_thread_v1"
 
 # Host runners and selected backends may both guard the same synchronous native
