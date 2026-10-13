@@ -1,6 +1,7 @@
 """Original finite resource policy cannot be selected or relaxed by a request."""
 
 import copy
+import hashlib
 import json
 from types import SimpleNamespace
 
@@ -74,18 +75,87 @@ def test_only_verified_original_owner_supplies_request_budget():
         selected_budget(owner)
 
 
-def observation():
+def observation(*, linalg=False):
     records, rows = [], []
-    for index, (scale, variant) in enumerate([(1, "original"), (8, "tail-1"), (8, "tail+1")]):
+    roster = [(1, 0), (8, 0), (64, 0)] if linalg else [(1, 0), (8, 0), (8, -1), (8, 1), (64, 0)]
+    for index, (scale, tail) in enumerate(roster):
         digest = f"{index + 1:064x}"
+        variant = "original" if linalg else f"scale{scale}_tail{tail:+d}"
+        shape = [2 * scale + tail, 3 * scale + tail]
+        abi = {role: [{"name": name, "dtype": "i32", "shape": shape}]
+               for role, name in [("inputs", "A"), ("outputs", "Y")]}
+        derivation = {"basis": ("retained_public_source" if scale == 1 else "geometric_tensor_types") if linalg
+                      else ("retained_public_interface" if scale == 1 else "public_interface_shape_semantics"),
+                      "extent_ratio": scale, "host_index_bits": 64,
+                      "tensor_values_allocated": False, "goldens_allocated": False}
+        if not linalg:
+            derivation.update(variant=variant, extent_tail=tail, hardware_tail_edge=8, scale_family="MOVEMENT")
         records.append({"member": "public_a", "scale": scale, "source_sha256": digest,
-                        "derivation": {"variant": variant}})
+                        "original_abi": abi, "derivation": derivation})
         rows.append({"member": "public_a", "scale": scale, "variant": variant, "source_sha256": digest,
+                     "original_abi_sha256": hashlib.sha256(json.dumps(abi, sort_keys=True).encode()).hexdigest(),
                      "lowering_status": "emitted", "code_growth": {"lexical_complete": True},
                      "resource_budget": {"status": "accepted", "policy": policy()["device_ir_budget"],
                                          "exceeded": []}})
     return {"mode": "scale_emission_only", "source_manifest": {"cases": records, "unavailable": []},
             "cases": rows, "all_pass": False, "numeric": "not_attempted", "rtl": "not_attempted"}
+
+
+@pytest.mark.parametrize("linalg", [False, True])
+def test_original_only_or_omitted_geometric_source_never_completes_required_scale_domain(linalg):
+    complete = observation(linalg=linalg)
+    assert resources_complete(complete, policy())
+    for keep in ([0], [0, 1], list(range(len(complete["cases"]) - 1))):
+        result = copy.deepcopy(complete)
+        result["cases"] = [result["cases"][index] for index in keep]
+        result["source_manifest"]["cases"] = [result["source_manifest"]["cases"][index] for index in keep]
+        assert not resources_complete(result, policy())
+
+
+def test_retained_only_fake_growth_or_missing_hardware_tail_binding_cannot_complete():
+    for mutation in (lambda records: records[0]["derivation"].__setitem__("scale_family", "retained_only"),
+                     lambda records: [r["derivation"].__setitem__("hardware_tail_edge", None) for r in records],
+                     lambda records: records[1].__setitem__("original_abi", copy.deepcopy(records[0]["original_abi"])),
+                     lambda records: records[4].__setitem__("source_sha256", records[0]["source_sha256"])):
+        result = observation()
+        mutation(result["source_manifest"]["cases"])
+        assert not resources_complete(result, policy())
+
+
+@pytest.mark.parametrize("linalg", [False, True])
+def test_actual_original_producer_ladders_complete_their_explicit_shape_domain(tmp_path, linalg):
+    from merlin_experiments.phase0.public_scale_sources import derive
+
+    from merlin.targetgen.component_program import render
+    from merlin.targetgen.contract.interface_emit import emit_interface_mlir
+
+    cap = {"name": "public_a", "label": "public", "kind": "isa", "__dir__": str(tmp_path)}
+    if linalg:
+        program = {"inputs": [{"name": "A", "role": "input", "shape": [2, 3], "dtype": "operand"}],
+                   "nodes": [{"name": "P", "op": "copy", "inputs": ["A"]}],
+                   "outputs": [{"name": "Y", "value": "P"}]}
+        typed, source = render(program, operand_dtype="i8", accumulator_dtype="i32")
+        cap.update(linalg_mlir="source.mlir", component_program=typed,
+                   operation={"op": "component_program", "attributes": {"program": program}})
+    else:
+        cap["interface_mlir"] = "source.mlir"
+        source = emit_interface_mlir({"target": "fixture", "abi_version": "0.1",
+            "tensors": {"A": {"role": "input", "shape": [2, 3], "dtype": "i8"},
+                        "Y": {"role": "output", "shape": [2, 3], "dtype": "i32"}},
+            "commands": [{"opcode": "MOVEMENT", "operands": {"src": "A", "dst": "Y"}, "attributes": {}}]})
+    (tmp_path / "capsule.yaml").write_text(json.dumps(cap))
+    (tmp_path / "source.mlir").write_text(source)
+    cases, manifest = derive([cap], index_bits=64, tile_edge=8)
+    assert len(cases) == (3 if linalg else 5) and not manifest["unavailable"]
+    rows = []
+    for case in manifest["cases"]:
+        rows.append({"member": case["member"], "scale": case["scale"],
+            "variant": case["derivation"].get("variant", "original"), "source_sha256": case["source_sha256"],
+            "original_abi_sha256": hashlib.sha256(
+                json.dumps(case["original_abi"], sort_keys=True).encode()).hexdigest(),
+            "lowering_status": "emitted", "code_growth": {"lexical_complete": True},
+            "resource_budget": {"status": "accepted", "policy": policy()["device_ir_budget"], "exceeded": []}})
+    assert resources_complete({"mode": "scale_emission_only", "source_manifest": manifest, "cases": rows}, policy())
 
 
 def test_actual_complete_original_ladder_has_resource_acceptance_only():

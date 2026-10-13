@@ -48,6 +48,15 @@ obligation remains unproved; this diagnostic alone never establishes compiler
 or whole-model qualification. Counted-loop source lowering is still a backend
 responsibility, while Merlin supplies reusable loop transforms and observations.
 
+A required scale resource gate also demands complete shape coverage for each
+selected public member. Interface sources must retain the original, 8-fold and
+64-fold geometric extents and both tails at the selected positive hardware edge.
+The ordinary linalg producer supplies its original/8-fold/64-fold geometric
+domain, without claiming hardware-tail coverage. Larger actual tensor ABIs and
+distinct source identities remain bound to the observed rows. An unsupported
+exact-only source, omitted large shape or missing selected tail stays incomplete
+even when all available small emissions fit the budget.
+
 The request cannot choose source paths, ABI, index width, resource constraints,
 toolchain, compiler-library admission, instruction policy or proof results.
 The original archived bundle and immutable snapshot select the common service.
