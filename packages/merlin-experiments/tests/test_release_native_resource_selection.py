@@ -68,3 +68,41 @@ def test_changed_original_contract_refuses_before_publication(tmp_path):
     with pytest.raises(SpecError, match="differs from verified evidence"):
         _stage_capability_contract(source, digest, destination, 1800)
     assert not destination.exists()
+
+
+@pytest.mark.parametrize("mutation", [None, "numeric", "cycle", "spike", "unbounded", "extra_resource"])
+def test_reviewed_phase1_handoff_accepts_only_the_exact_resource_variant(tmp_path, monkeypatch, mutation):
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase0 import coverage_commitment
+    from merlin_experiments.phase1 import corpus_inputs
+
+    source, original = _source(tmp_path)
+    experiment = tmp_path / "release/payload/experiment"
+    destination = experiment / "contracts/selected.yaml"
+    _stage_capability_contract(source, sha256_file(source), destination, 1800)
+    selected = yaml.safe_load(destination.read_text())
+    block = selected["runner"]["chipyard_rocc"]
+    if mutation == "numeric":
+        selected["numeric_policy"]["kind"] = "approximate"
+    elif mutation == "cycle":
+        block["engines"]["gsim"]["argv"][-1] = "+max-cycles=40000000"
+    elif mutation == "spike":
+        block["engines"]["spike"]["max_timeout_s"] = 1800
+    elif mutation == "unbounded":
+        block["execution_resources"]["max_native_timeout_s"] = 3601
+    elif mutation == "extra_resource":
+        block["execution_resources"]["extra"] = 1
+    destination.write_text(yaml.safe_dump(selected))
+    bundle = experiment / "input_bundles/el4/input_bundle_manifest.yaml"
+    bundle.parent.mkdir(parents=True)
+    bundle.write_text("bundle_id: el4\n")
+    te = SimpleNamespace(path=experiment / "target_experiment.yaml", capsule_corpus=experiment / "corpus/isa",
+                         declared_contract_path=lambda: destination)
+    monkeypatch.setattr(coverage_commitment, "read_inputs", lambda _: {"capability_contract": original})
+    declaration = {"bundle_id": "el4", "allowed": [{"mode": "ro", "path": str(destination)}]}
+    if mutation is None:
+        corpus_inputs.require_reviewed_bundle(te, bundle, declaration)
+    else:
+        with pytest.raises(ValueError, match="differs from selected Phase 0"):
+            corpus_inputs.require_reviewed_bundle(te, bundle, declaration)

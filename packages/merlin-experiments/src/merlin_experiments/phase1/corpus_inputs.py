@@ -73,8 +73,19 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
                 "reviewed Phase 1 lacks a release-local Phase 0 capability contract; "
                 "freeze a new run and prepare a new release"
             )
-        if yaml.safe_load(path.read_bytes()) != selected:
-            raise ValueError("released capability contract differs from selected Phase 0 coverage inputs")
+        released = yaml.safe_load(path.read_bytes())
+        if released != selected:
+            from merlin.runtime.backends import chipyard_rocc_bound as runtime, rocc_selection
+
+            try:
+                block = released["runner"]["chipyard_rocc"]
+                resources = block["execution_resources"]
+                timeout = runtime._execution_timeout_ceiling({"execution_resources": resources})
+                expected_contract = rocc_selection.select_native_timeout(selected, timeout)
+            except (KeyError, TypeError, runtime.RoCCExecutionError) as error:
+                raise ValueError("released capability contract differs from selected Phase 0 coverage inputs") from error
+            if released != expected_contract:
+                raise ValueError("released capability contract differs from selected Phase 0 coverage inputs")
         grants = {
             row.get("path") for row in bundle.get("allowed", []) if isinstance(row, dict) and row.get("mode") == "ro"
         }

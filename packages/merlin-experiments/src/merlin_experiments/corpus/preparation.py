@@ -940,33 +940,18 @@ def _bundle_selection(optional_levels, selected_levels, selected_variants):
 def _stage_capability_contract(source, expected_sha256, destination, native_timeout_s):
     """Record a host resource selection separately from original Phase 0 bytes."""
     from merlin.common.digest import sha256_file
-    from merlin.runtime.backends import chipyard_rocc_bound as runtime
+    from merlin.runtime.backends import chipyard_rocc_bound as runtime, rocc_selection
 
     if native_timeout_s is None:
         return {"path": str(source), "sha256": copy_input(source, destination, expected_sha256=expected_sha256)}
     ordinary_tree(source)
     if sha256_file(source) != expected_sha256:
         raise SpecError("selected corpus input differs from verified evidence; prepare a new release")
-    selected = read_yaml(source)
-    runner = selected.get("runner") if type(selected) is dict else None
-    if type(runner) is not dict or runner.get("backend") != "chipyard_rocc":
-        raise SpecError("native resource selection requires a declared data-bound execution family")
-    block = runner.get("chipyard_rocc")
-    if type(block) is not dict or type(block.get("engines")) is not dict:
-        raise SpecError("native resource selection requires declared execution engines")
-    resources = {"max_native_timeout_s": native_timeout_s}
     try:
-        runtime._execution_timeout_ceiling({"execution_resources": resources})
-        native_engines = {name: engine for name, engine in block["engines"].items() if name in {"gsim", "verilator"}}
-        if not native_engines:
-            raise SpecError("native resource selection requires a declared native engine")
-        for engine in native_engines.values():
-            if type(engine) is not dict or "max_timeout_s" not in engine:
-                raise SpecError("native resource selection requires an existing engine deadline")
-            engine["max_timeout_s"] = native_timeout_s
-        block["execution_resources"] = resources
+        selected = rocc_selection.select_native_timeout(read_yaml(source), native_timeout_s)
     except runtime.RoCCExecutionError as error:
         raise SpecError(str(error)) from error
+    native_engines = set(selected["runner"]["chipyard_rocc"]["engines"]) & {"gsim", "verilator"}
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("x", encoding="utf-8") as output:
         yaml.safe_dump(selected, output, sort_keys=False)
