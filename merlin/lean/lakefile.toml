@@ -1,0 +1,19 @@
+name = "MerlinVerify"
+version = "0.1.0"
+defaultTargets = ["MerlinVerify"]
+# Generated output lives under the repo's out/ root (CLAUDE.md "Generated-output convention").
+packagesDir = "../../out/build/lean/packages"
+buildDir = "../../out/build/lean/build"
+
+[leanOptions]
+autoImplicit = false
+relaxedAutoImplicit = false
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4.git"
+rev = "v4.35.0"
+
+[[lean_lib]]
+name = "MerlinVerify"
+globs = ["MerlinVerify.+"]
