@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import stat
+import struct
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -390,9 +391,9 @@ class NativeLogicalMemoryReadback:
     """
 
     def __init__(self, *, facts_path: Path, policy) -> None:
-        from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, ReadbackPolicy
+        from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, COHERENT_PACKET_V1, ReadbackPolicy
 
-        if type(policy) is not ReadbackPolicy or policy.transport != COHERENT_DUMP_V1:
+        if type(policy) is not ReadbackPolicy or policy.transport not in {COHERENT_DUMP_V1, COHERENT_PACKET_V1}:
             raise ValueError("neutral memory reader requires explicit coherent full values")
         self.facts_path, self.policy, self._prepared = Path(facts_path), policy, None
 
@@ -409,7 +410,7 @@ class NativeLogicalMemoryReadback:
             type(backend) is not BoundRoCCBackend or simulator != "gsim"
             or not _same_selected_backend(backend, backends.get_backend(backend.target), simulator)
             or backend.engine_readback_policy(simulator) != self.policy
-            or backend.memory_readback_transport(simulator) != "gsim_coherent_dump_v1"
+            or backend.memory_readback_transport(simulator) != "gsim_" + self.policy.transport
         ):
             raise ValueError("neutral memory reader differs from the original selected engine")
         if (
@@ -447,7 +448,29 @@ class NativeLogicalMemoryReadback:
         raw = elf_path.read_bytes()
         if len(raw) < 18 or raw[16:18] != b"\x02\x00":
             raise ValueError("neutral memory reader requires a fixed-address ET_EXEC ELF")
-        symbols, _ = _elf_output_symbols(raw, {row["symbol"]: row["bytes"] for row in outputs})
+        expected_symbols = {row["symbol"]: row["bytes"] for row in outputs}
+        packet_storage = None
+        if self.policy.transport == "coherent_packet_v1":
+            from merlin.runtime.direct_kernel_harness import (
+                PACKET_ARENA_SYMBOL,
+                PACKET_BLOCK_WORDS,
+                PACKET_USED_SYMBOL,
+                packet_output_blocks,
+            )
+            from merlin.runtime.out_packet import out_bin_packet_capacity
+
+            capacity = out_bin_packet_capacity(tuple(frame for _, _, frame in packet_output_blocks(normalized)))
+            expected_symbols.update({PACKET_ARENA_SYMBOL: capacity, PACKET_USED_SYMBOL: 8})
+        symbols, _ = _elf_output_symbols(raw, expected_symbols)
+        if self.policy.transport == "coherent_packet_v1":
+            if symbols[PACKET_USED_SYMBOL] % 8:
+                raise ValueError("neutral packet publication word is not u64-aligned")
+            packet_storage = {
+                "capacity": capacity, "framing": "neutral_dense_blocks_out_bin_v1",
+                "block_words": PACKET_BLOCK_WORDS,
+                "regions": [{"base": symbols[PACKET_USED_SYMBOL], "bytes": 8},
+                            {"base": symbols[PACKET_ARENA_SYMBOL], "bytes": capacity}],
+            }
         for row in outputs:
             row["address"] = symbols[row["symbol"]]
             if row["address"] % row["physical_word_bytes"]:
@@ -459,7 +482,7 @@ class NativeLogicalMemoryReadback:
             "command_buffer_sha256": _sha(canonical_json(cb)), "rtl_facts_sha256": _sha(facts_raw),
             "backend_selection_sha256": _sha(backend._selection_json.encode()),
             "engine": backend.execution_engine_identity(simulator), "policy": self.policy.record(),
-            "outputs": outputs,
+            "outputs": outputs, **({"packet_storage": packet_storage} if packet_storage else {}),
         }
 
     def prepare(self, *, cb, target, elf_path, workdir, simulator, backend):
@@ -477,8 +500,10 @@ class NativeLogicalMemoryReadback:
             source / "command_buffer.json", source / "regions.txt", source / "output.dump"
         )
         cb_raw = canonical_json(cb)
-        regions = [{"base": row["address"], "bytes": row["bytes"]}
-                   for row in sorted(admission["outputs"], key=lambda row: row["address"])]
+        regions = admission["packet_storage"]["regions"] if "packet_storage" in admission else [
+            {"base": row["address"], "bytes": row["bytes"]}
+            for row in sorted(admission["outputs"], key=lambda row: row["address"])
+        ]
         regions_raw = "".join(f"{row['base']:#x} {row['bytes']}\n" for row in regions).encode("ascii")
         for path, raw in ((cb_path, cb_raw), (regions_path, regions_raw)):
             with path.open("xb") as output:
@@ -489,7 +514,7 @@ class NativeLogicalMemoryReadback:
         ):
             raise ValueError("neutral memory request changed during original preparation")
         request = {
-            "schema": "oracle_memory_readback_v1", "transport": "gsim_coherent_dump_v1",
+            "schema": "oracle_memory_readback_v1", "transport": "gsim_" + self.policy.transport,
             "elf_sha256": admission["elf_sha256"], "regions": regions,
             "regions_path": str(regions_path), "output_path": str(output_path),
         }
@@ -525,32 +550,84 @@ class NativeLogicalMemoryReadback:
         ):
             raise ValueError("neutral memory readback source or request changed")
         rows = current["outputs"]
-        expected = sorted((row["address"], row["bytes"]) for row in rows)
         path = state["output_path"]
         if path.is_symlink() or not path.is_file() or not stat.S_ISREG(path.stat().st_mode):
             raise ValueError("neutral memory output is not an ordinary complete dump")
-        expected_bytes = 48 + 16 * len(rows) + sum(row["bytes"] for row in rows)
-        raw = path.read_bytes()
-        if len(raw) != expected_bytes:
-            raise ValueError("neutral memory dump omits or adds output bytes")
-        parsed = read_dump(path, expected)
-        if parsed["source"] != "coherent" or path.read_bytes() != raw:
-            raise ValueError("neutral memory dump is not stable coherent output")
-        outputs = _decode_physical_regions(rows, parsed["regions"])
+        if "packet_storage" in current:
+            outputs, raw, payload_bytes = _decode_neutral_packet(path, current, state["cb"])
+        else:
+            expected = sorted((row["address"], row["bytes"]) for row in rows)
+            expected_bytes = 48 + 16 * len(rows) + sum(row["bytes"] for row in rows)
+            raw = path.read_bytes()
+            if len(raw) != expected_bytes:
+                raise ValueError("neutral memory dump omits or adds output bytes")
+            parsed = read_dump(path, expected)
+            if parsed["source"] != "coherent" or path.read_bytes() != raw:
+                raise ValueError("neutral memory dump is not stable coherent output")
+            outputs = _decode_physical_regions(rows, parsed["regions"])
+            payload_bytes = sum(row["bytes"] for row in rows)
         require_memory_value_roster(state["cb"], outputs)
         after = self._admit(state["cb"], state["backend"], state["simulator"], state["elf_path"])
-        if canonical_json(after) != canonical_json(current) or path.is_symlink() or path.read_bytes() != raw:
+        if "packet_storage" in current:
+            from .native_packet_readback import _bounded_dump_bytes
+
+            final_raw = _bounded_dump_bytes(path, 48 + current["packet_storage"]["capacity"])
+        else:
+            final_raw = path.read_bytes()
+        if canonical_json(after) != canonical_json(current) or path.is_symlink() or final_raw != raw:
             raise ValueError("neutral memory readback changed during decoding")
         return outputs, {
             "schema": "merlin.neutral_coherent_readback.v1", "status": "complete", "source": "coherent",
             "scope": "complete original dense values only; numeric and phase qualification remain caller obligations",
-            "transport": "gsim_coherent_dump_v1", "elf_sha256": current["elf_sha256"],
+            "transport": "gsim_" + self.policy.transport, "elf_sha256": current["elf_sha256"],
+            "payload_bytes": payload_bytes,
+            **({"packet_framing": current["packet_storage"]["framing"],
+                "block_words": current["packet_storage"]["block_words"]} if "packet_storage" in current else {}),
             "execution_mode": "original_selected_direct_process", "native_filesystem_view": None,
             "layout_admission_sha256": _sha(canonical_json(current)), "artifact_sha256": _sha(raw),
             "request_sha256": _sha(state["request_raw"]), "command_buffer_sha256": _sha(state["cb_raw"]),
             "console_sha256": _sha(console.encode()), "output_path": str(path),
             "outputs": [{"name": row["tensor"], "shape": row["logical_shape"], "bytes": row["bytes"]} for row in rows],
         }
+
+
+def _decode_neutral_packet(path, admission, cb):
+    """Decode a bounded native packet, then reassemble the exact logical roster."""
+    from merlin.runtime.direct_kernel_harness import packet_output_blocks
+    from merlin.runtime.harness_render import _roster
+    from merlin.runtime.out_packet import decode_out_bin_packet
+
+    from .native_packet_readback import _bounded_dump_bytes, _flatten
+
+    storage = admission["packet_storage"]
+    raw = _bounded_dump_bytes(path, 48 + storage["capacity"])
+    if raw[:8] != b"GSIMPKT1" or raw[-8:] != b"PKTEND1\n":
+        raise ValueError("neutral packet has no complete coherent native envelope")
+    metadata, arena, capacity, used = struct.unpack_from("<QQQQ", raw, 8)
+    if (
+        metadata != storage["regions"][0]["base"] or arena != storage["regions"][1]["base"]
+        or capacity != storage["capacity"] or not 0 < used <= capacity or len(raw) != 48 + used
+    ):
+        raise ValueError("neutral packet differs from original storage or exact used length")
+    normalized, _ = _roster(cb)
+    blocks = packet_output_blocks(normalized)
+    decoded = decode_out_bin_packet(raw[40:-8], tuple(frame for _, _, frame in blocks))
+    values = {row["tensor"]: [] for row in admission["outputs"]}
+    for name, start, frame in blocks:
+        output = decoded[frame.name]
+        flat = output.f32_bits if output.f32_bits is not None else tuple(_flatten(output.values))
+        if start != len(values[name]) or len(flat) != frame.cols:
+            raise ValueError("neutral packet blocks omit, repeat or reorder logical values")
+        values[name].extend(flat)
+    outputs = {}
+    for row in admission["outputs"]:
+        flat, cols = values[row["tensor"]], row["logical_shape"][-1]
+        if len(flat) * row["physical_word_bytes"] != row["bytes"]:
+            raise ValueError("neutral packet does not cover every original logical output")
+        outputs[row["tensor"]] = [flat[index:index + cols] for index in range(0, len(flat), cols)]
+    if _bounded_dump_bytes(path, 48 + storage["capacity"]) != raw:
+        raise ValueError("neutral packet changed during bounded decoding")
+    return outputs, raw, used
 
 
 def execute_memory_elf(

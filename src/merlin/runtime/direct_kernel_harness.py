@@ -13,7 +13,117 @@ import math
 from dataclasses import dataclass
 
 from merlin.common.quant_formats import get
-from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, FULL_VALUES_B64, ReadbackPolicy
+from merlin.targetgen.contract.readback_policy import (
+    COHERENT_DUMP_V1,
+    COHERENT_PACKET_V1,
+    FULL_VALUES_B64,
+    ReadbackPolicy,
+)
+
+# Transport blocks are independent of logical tensor geometry and actual values.
+# The original complete roster determines every block and its exact last extent.
+PACKET_BLOCK_WORDS = 256
+PACKET_ARENA_SYMBOL = "merlin_readback_packet"
+PACKET_USED_SYMBOL = "merlin_readback_packet_used"
+
+
+def packet_output_blocks(cb):
+    """Bind closed OUT_BIN frames to every dense original output in order."""
+    from .out_packet import ExpectedOutput, out_bin_packet_capacity
+
+    frames = []
+    for output_index, name in enumerate(cb["kernel_abi"]["outputs"]):
+        spec = cb["tensors"][name]
+        count, width, dtype = _layout(spec)
+        if not spec["shape"] or spec["dtype"] not in {"i8", "i16", "i32", "i64", "f32"}:
+            raise ValueError("neutral packet requires supported dense non-scalar outputs")
+        for start in range(0, count, PACKET_BLOCK_WORDS):
+            words = min(PACKET_BLOCK_WORDS, count - start)
+            frame = ExpectedOutput(
+                name=f"merlin_block_{output_index}_{start // PACKET_BLOCK_WORDS}",
+                rows=1, cols=words, logical_dtype=spec["dtype"],
+                container_signed=bool(dtype.signed and not dtype.is_float),
+                container_max_bytes=width, logical_shape=(words,),
+            )
+            frames.append((name, start, frame))
+            if len(frames) > 65536:
+                raise ValueError("neutral packet exceeds its bounded frame roster")
+    out_bin_packet_capacity(tuple(frame for _, _, frame in frames))
+    return tuple(frames)
+
+
+_PACKET_LOAD_C = """static uint64_t merlin_packet_load(const unsigned char *source, unsigned width, int sign){
+#if (defined(__GNUC__) || defined(__clang__)) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  /* Character arrays are original storage; may_alias permits aligned word reads. */
+  typedef uint16_t u16 __attribute__((__may_alias__));
+  typedef uint32_t u32 __attribute__((__may_alias__));
+  typedef uint64_t u64 __attribute__((__may_alias__));
+  uint64_t word=width==1 ? *source : width==2 ? *(const u16*)source :
+                width==4 ? *(const u32*)source : *(const u64*)source;
+#else
+  uint64_t word=0;
+  for(unsigned byte=0;byte<width;byte++) word|=(uint64_t)source[byte]<<(byte*8);
+#endif
+  if(sign && width<8 && (word & (UINT64_C(1)<<(width*8-1))))
+    word|=~((UINT64_C(1)<<(width*8))-1);
+  return word;
+}
+"""
+
+
+def _packet_publication(cb, slots):
+    """Encode actual completed output words, never input/reference values."""
+    lines = []
+    for output_index, name in enumerate(cb["kernel_abi"]["outputs"]):
+        index, _, (count, width, dtype) = slots[name]
+        signed = int(dtype.signed and not dtype.is_float)
+        i32 = cb["tensors"][name]["dtype"] == "i32"
+        lines.extend([
+            "  {",
+            f"    {'int32_t' if i32 else 'uint64_t'} words[{PACKET_BLOCK_WORDS}];",
+            f"    for(uint64_t start=0;start<UINT64_C({count});start+={PACKET_BLOCK_WORDS}){{",
+            f"      uint64_t count=UINT64_C({count})-start;",
+            f"      if(count>{PACKET_BLOCK_WORDS}) count={PACKET_BLOCK_WORDS};",
+            "      merlin_out_b64_range range;",
+            f"      merlin_out_b64_range_init(&range,count,{width},{signed});",
+            "      for(uint64_t i=0;i<count;i++){",
+            f"        uint64_t word=merlin_packet_load(tensor_{index}+(start+i)*{width},{width},{signed});",
+            f"        words[i]=({'int32_t' if i32 else 'uint64_t'})word;",
+            f"        if(!merlin_out_b64_range_{'signed' if signed else 'unsigned'}"
+            f"(&range,({'int64_t' if signed else 'uint64_t'})word)) htif_exit(2);",
+            "      }",
+            "      unsigned width=merlin_out_b64_range_width(&range);",
+            "      int sign=merlin_out_b64_range_wire_signed(&range);",
+            "      if(!width || sign<0) htif_exit(2);",
+            '      if(!merlin_out_bin_memory_cstr(&merlin_packet_sink,'
+            f'"OUT_BIN_BEGIN v1 merlin_block_{output_index}_") ||',
+            f"         !merlin_out_bin_memory_decimal(&merlin_packet_sink,start/{PACKET_BLOCK_WORDS}) ||",
+            '         !merlin_out_bin_memory_cstr(&merlin_packet_sink," 1 ") ||',
+            "         !merlin_out_bin_memory_decimal(&merlin_packet_sink,count) ||",
+            '         !merlin_out_bin_memory_cstr(&merlin_packet_sink," ") ||',
+            "         !merlin_out_bin_memory_decimal(&merlin_packet_sink,width) ||",
+            '         !merlin_out_bin_memory_cstr(&merlin_packet_sink,sign ? " s " : " u ") ||',
+            "         !merlin_out_bin_memory_decimal(&merlin_packet_sink,count*width) ||",
+            '         !merlin_out_bin_memory_cstr(&merlin_packet_sink,"\\n")) htif_exit(2);',
+            "      merlin_out_bin encoder;",
+            "      merlin_out_bin_init(&encoder,count,width,sign,merlin_packet_write);",
+        ])
+        lines.append("      if(!merlin_out_bin_words_i32(&encoder,words,count)) htif_exit(2);" if i32 else
+                     "      for(uint64_t i=0;i<count;i++) if(!merlin_out_bin_word(&encoder,words[i])) htif_exit(2);")
+        lines.extend([
+            "      if(!merlin_out_bin_finish(&encoder) ||",
+            '         !merlin_out_bin_memory_cstr(&merlin_packet_sink,"OUT_BIN_END v1 ") ||',
+            "         !merlin_out_bin_memory_hex16(&merlin_packet_sink,encoder.checksum) ||",
+            '         !merlin_out_bin_memory_cstr(&merlin_packet_sink,"\\n")) htif_exit(2);',
+            "    }", "  }",
+        ])
+    lines.extend([
+        '  if(!merlin_out_bin_memory_cstr(&merlin_packet_sink,"DONE\\n")) htif_exit(2);',
+        '#if defined(__riscv)', '  __asm__ volatile("fence rw,rw" ::: "memory");', '#endif',
+        "  if(!merlin_out_bin_memory_finish(&merlin_packet_sink)) htif_exit(2);",
+        '#if defined(__riscv)', '  __asm__ volatile("fence rw,rw" ::: "memory");', '#endif',
+    ])
+    return lines
 
 _OUTPUT_POISON_C = """static void merlin_poison_bytes(void *storage, uint64_t bytes, unsigned char byte){
   volatile unsigned char *cursor=(volatile unsigned char*)storage;
@@ -170,9 +280,13 @@ def render_direct_kernel(
     if type(readback_policy) is not ReadbackPolicy or readback_policy.transport not in (
         FULL_VALUES_B64,
         COHERENT_DUMP_V1,
+        COHERENT_PACKET_V1,
     ):
         raise ValueError("direct kernel harness requires complete B64 or coherent memory readback")
     memory = readback_policy.transport == COHERENT_DUMP_V1
+    packet = readback_policy.transport == COHERENT_PACKET_V1
+    if packet and abi.byte_order != "little":
+        raise ValueError("neutral coherent packet requires explicit little-endian storage")
     histories = ()
     if invocation_plan is not None:
         from .direct_kernel_invocation import DirectKernelInvocationPlan
@@ -260,6 +374,23 @@ def render_direct_kernel(
     ]
     if not memory:
         declarations.insert(2, '#include "out_b64.h"')
+    if packet:
+        from .out_packet import out_bin_packet_capacity
+
+        capacity = out_bin_packet_capacity(tuple(frame for _, _, frame in packet_output_blocks(cb)))
+        if {abi.entry_symbol, abi.completion_symbol, prelude_symbol} & {
+            PACKET_ARENA_SYMBOL, PACKET_USED_SYMBOL, "merlin_packet_sink", "merlin_packet_write", "merlin_packet_load"
+        }:
+            raise ValueError("neutral packet storage overlaps a selected entry symbol")
+        declarations.extend([
+            '#include "out_bin.h"', '#include "out_bin_memory.h"',
+            f"unsigned char {PACKET_ARENA_SYMBOL}[{capacity}] __attribute__((used,aligned(8)));",
+            f"volatile uint64_t {PACKET_USED_SYMBOL} __attribute__((used,aligned(8)));",
+            "static merlin_out_bin_memory merlin_packet_sink;",
+            "static int merlin_packet_write(const void *data,size_t size){",
+            "  return merlin_out_bin_memory_append(&merlin_packet_sink,data,size);", "}",
+            *_PACKET_LOAD_C.splitlines(),
+        ])
     if abi.completion_symbol:
         declarations.append(f"extern void {abi.completion_symbol}(void);")
     if prelude_symbol is not None:
@@ -306,6 +437,12 @@ def render_direct_kernel(
             ]
         )
     body.append("  console_init();")
+    if packet:
+        body.extend([
+            f"  merlin_out_bin_memory_init(&merlin_packet_sink,{PACKET_ARENA_SYMBOL},"
+            f"sizeof({PACKET_ARENA_SYMBOL}),&{PACKET_USED_SYMBOL});",
+            "  if(!merlin_packet_sink.valid) htif_exit(2);",
+        ])
     if phase_roster is not None:
         body.extend(phase_plan.end("console_setup", "  "))
         body.extend(phase_plan.store("console_setup", index="0", byte_order=abi.byte_order, indent="  "))
@@ -396,7 +533,9 @@ def render_direct_kernel(
         body.append("  }")
     # The selected coherent reader resolves these actual linked static objects.
     # It owns full-value admission; DONE alone supplies no output or effect proof.
-    for name in () if memory else outputs:
+    if packet:
+        body.extend(_packet_publication(cb, slots))
+    for name in () if memory or packet else outputs:
         index, _, (count, width, dtype) = slots[name]
         rows = math.prod(tensors[name]["shape"][:-1])
         cols = tensors[name]["shape"][-1] if tensors[name]["shape"] else 1
