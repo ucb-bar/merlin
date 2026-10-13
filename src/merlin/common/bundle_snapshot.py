@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import stat
+import threading
 import weakref
 from pathlib import Path
 
@@ -39,6 +40,25 @@ _ISSUED_VERIFICATIONS = weakref.WeakSet()
 
 class _Verification:
     pass
+
+
+def _current_verification(issued):
+    return (
+        type(issued) is _Verification
+        and issued in _ISSUED_VERIFICATIONS
+        and issued.process == os.getpid()
+        and issued.thread is threading.current_thread()
+    )
+
+
+@contextlib.contextmanager
+def independent_snapshot_reads():
+    """Retain an actual consumer's original fresh reads inside outer batching."""
+    previous = _ACTIVE_VERIFICATION.set(None)
+    try:
+        yield
+    finally:
+        _ACTIVE_VERIFICATION.reset(previous)
 
 
 def _policy_bytes(bundle):
@@ -110,6 +130,7 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
         root = bundle_snapshot_root(workspace)
         marker_bytes = (root / MARKER).read_bytes()
         issued = _Verification()
+        issued.process, issued.thread = os.getpid(), threading.current_thread()
         issued.root, issued.marker_bytes = root, marker_bytes
         issued.repo, issued.policy_bytes = repo, original_policy
         issued.members = _scanned_roster(_scanned_members(root))
@@ -137,7 +158,7 @@ def snapshot_content(root: Path) -> tuple[str, int, int]:
     rows = []
     members = _scanned_members(root)
     issued = _ACTIVE_VERIFICATION.get()
-    if type(issued) is _Verification and issued in _ISSUED_VERIFICATIONS and issued.root == root:
+    if _current_verification(issued) and issued.root == root:
         if (root / MARKER).read_bytes() != issued.marker_bytes:
             raise RuntimeError("original snapshot scope marker changed")
         if _scanned_roster(members) != issued.members:
@@ -167,8 +188,7 @@ def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict
     marker = root / MARKER
     issued = _ACTIVE_VERIFICATION.get()
     if (
-        type(issued) is _Verification
-        and issued in _ISSUED_VERIFICATIONS
+        _current_verification(issued)
         and issued.root == root
         and (issued.repo != repo or issued.policy_bytes != _policy_bytes(bundle))
     ):

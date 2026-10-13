@@ -300,6 +300,25 @@ def _save(root, report):
     path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 
 
+@contextlib.contextmanager
+def _operation_snapshot(scope):
+    """Batch pure custody reads, closing before any accepted product publication."""
+    from merlin.common.bundle_snapshot import verified_snapshot_scope
+    from merlin.targetgen.common_transforms import CommonTransformService
+
+    if (
+        type(scope) is not _Scope
+        or scope not in _ISSUED
+        or not scope.live
+        or type(scope.service) is not CommonTransformService
+    ):
+        raise ValueError("custody batching requires its live original emission owner")
+    service = scope.service
+    with verified_snapshot_scope(service.workspace, service.bundle, repo=service.repo):
+        scope.verify()
+        yield
+
+
 def observe_emission(function):
     """Observe the actual ordinary lower-interface call, without saved replay."""
     signature = inspect.signature(function)
@@ -326,9 +345,6 @@ def observe_emission(function):
         if declared:
             values["memo"] = None
         artifact = generated / values["artifact_name"]
-        with scope.lock:
-            scope.verify()
-            writer = scope.products.invalidate(artifact)
         products = (generated / "input.interface.mlir", generated / "command_buffer.json", artifact)
         with invocation_record.observe_call(
             evidence,
@@ -339,14 +355,18 @@ def observe_emission(function):
             outputs=products,
             dependencies=(*_package_sources(package), Path(inspect.getsourcefile(function))),
         ) as call:
-            output = function(*bound.args, **bound.kwargs)
+            with _operation_snapshot(scope):
+                with scope.lock:
+                    scope.verify()
+                    writer = scope.products.invalidate(artifact)
+                output = function(*bound.args, **bound.kwargs)
+                scope.verify()
+                with scope.lock:
+                    scope.products.verify_write(artifact, writer)
+                pin = E._pin(artifact)
+                if pin["sha256"] != hashlib.sha256(output[1].encode()).hexdigest():
+                    raise ValueError("ordinary emitted product differs from its actual caller result")
             call.returned(stdout=output[1])
-        scope.verify()
-        with scope.lock:
-            scope.products.verify_write(artifact, writer)
-        pin = E._pin(artifact)
-        if pin["sha256"] != hashlib.sha256(output[1].encode()).hexdigest():
-            raise ValueError("ordinary emitted product differs from its actual caller result")
         _save(
             evidence,
             {
@@ -404,7 +424,6 @@ def observe_object(function):
         work.mkdir(parents=True, exist_ok=True)
         evidence = work / ("emission-consumer-" + uuid.uuid4().hex)
         evidence.mkdir(mode=0o700)
-        pending = scope.matching(source)
         values["lowered_mlir_text"] = str(source)
         result = None
         report = {
@@ -415,79 +434,84 @@ def observe_object(function):
             "machine_semantics": "not_established",
         }
         try:
-            inputs = ()
-            if pending is not None:
-                from merlin.targetgen.host_optimization_admission import _original_entry
+            with _operation_snapshot(scope):
+                pending = scope.matching(source)
+                inputs = ()
+                if pending is not None:
+                    from merlin.targetgen.host_optimization_admission import _original_entry
 
-                entry, entry_source = _original_entry(scope.admission, values["target"], values["_build_service"])
-                if _manifest_identity(pending.package) != pending.manifest_sha256:
-                    raise ValueError("ordinary emission changed its original package declaration")
-                invocation_record.verify(pending.call.path)
-                if E._pin(pending.artifact) != pending.artifact_pin:
-                    raise ValueError("ordinary emitted product changed before its actual consumer")
-                from merlin.common.execution_deadline import selected_deadline
+                    entry, entry_source = _original_entry(scope.admission, values["target"], values["_build_service"])
+                    if _manifest_identity(pending.package) != pending.manifest_sha256:
+                        raise ValueError("ordinary emission changed its original package declaration")
+                    invocation_record.verify(pending.call.path)
+                    if E._pin(pending.artifact) != pending.artifact_pin:
+                        raise ValueError("ordinary emitted product changed before its actual consumer")
+                    from merlin.common.execution_deadline import selected_deadline
 
-                parent = selected_deadline(
-                    seconds=values["build_timeout_s"],
-                    parent=values["execution_deadline"],
-                    build_service=values["_build_service"],
-                )
-                if parent is not None:
-                    # The ordinary producer consumes the same aggregate build
-                    # deadline, including proof work, without resetting it.
-                    values["build_timeout_s"], values["execution_deadline"] = None, parent
-                remaining = (
-                    parent.remaining
-                    if parent is not None
-                    else _remaining(time.monotonic() + (values["build_timeout_s"] or pending.timeout_s))
-                )
-                result = E.check_emission_chain(
-                    selection=scope.selection,
-                    package=pending.package,
-                    original_source=pending.source,
-                    compiler_input=pending.compiler_input,
-                    emitted_artifact=pending.artifact,
-                    emission_invocation=pending.call,
-                    target_entry=entry,
-                    evidence_root=evidence / "proof",
-                    remaining=remaining,
-                )
-                report = result.record()
-                if E.reread_emitted_product(result, selection=scope.selection) != source:
-                    raise ValueError("actual ordinary object input changed its live emitted product")
-                inputs = (pending.artifact,)
-            with invocation_record.observe_call(
-                evidence,
-                stage="ordinary_emission_object_consumer",
-                function=observed,
-                arguments={"actual_input_sha256": hashlib.sha256(source.encode()).hexdigest()},
-                inputs=inputs,
-                outputs=(work / "kernel.llvm.mlir", work / "kernel.o"),
-                dependencies=(Path(inspect.getsourcefile(function)),),
-            ) as call:
-                obj = function(*bound.args, **bound.kwargs)
-                call.returned(stdout=str(obj))
-            scope.verify()
-            if result is not None:
-                report = E.consume_emission_chain(
-                    result,
-                    selection=scope.selection,
-                    object_invocation=call,
-                    object_path=obj,
-                    consumer_source=work / "kernel.llvm.mlir",
-                )
-                if _original_entry(scope.admission, values["target"], values["_build_service"]) != (
-                    entry,
-                    entry_source,
-                ):
-                    raise ValueError("ordinary object consumer changed its original ABI entry")
-                report["original_dispatch_entry"] = entry
-                report["source_relationship_scope"] = "one unambiguous current observed source"
-                # Generic host transformations and terminal translation keep
-                # their own provenance; this source relationship proves neither.
-                if (work / "kernel.host.mlir").is_file():
-                    report["selected_host_source"] = E._pin(work / "kernel.host.mlir")
-                    report["subsequent_host_transformations"] = "outside_this_emission_chain"
+                    parent = selected_deadline(
+                        seconds=values["build_timeout_s"],
+                        parent=values["execution_deadline"],
+                        build_service=values["_build_service"],
+                    )
+                    if parent is not None:
+                        # The ordinary producer consumes the same aggregate build
+                        # deadline, including proof work, without resetting it.
+                        values["build_timeout_s"], values["execution_deadline"] = None, parent
+                    remaining = (
+                        parent.remaining
+                        if parent is not None
+                        else _remaining(time.monotonic() + (values["build_timeout_s"] or pending.timeout_s))
+                    )
+                    result = E.check_emission_chain(
+                        selection=scope.selection,
+                        package=pending.package,
+                        original_source=pending.source,
+                        compiler_input=pending.compiler_input,
+                        emitted_artifact=pending.artifact,
+                        emission_invocation=pending.call,
+                        target_entry=entry,
+                        evidence_root=evidence / "proof",
+                        remaining=remaining,
+                    )
+                    report = result.record()
+                    if E.reread_emitted_product(result, selection=scope.selection) != source:
+                        raise ValueError("actual ordinary object input changed its live emitted product")
+                    inputs = (pending.artifact,)
+                with invocation_record.observe_call(
+                    evidence,
+                    stage="ordinary_emission_object_consumer",
+                    function=observed,
+                    arguments={"actual_input_sha256": hashlib.sha256(source.encode()).hexdigest()},
+                    inputs=inputs,
+                    outputs=(work / "kernel.llvm.mlir", work / "kernel.o"),
+                    dependencies=(Path(inspect.getsourcefile(function)),),
+                ) as call:
+                    from merlin.common.bundle_snapshot import independent_snapshot_reads
+
+                    with _operation_snapshot(scope), independent_snapshot_reads():
+                        obj = function(*bound.args, **bound.kwargs)
+                    call.returned(stdout=str(obj))
+                scope.verify()
+                if result is not None:
+                    report = E.consume_emission_chain(
+                        result,
+                        selection=scope.selection,
+                        object_invocation=call,
+                        object_path=obj,
+                        consumer_source=work / "kernel.llvm.mlir",
+                    )
+                    if _original_entry(scope.admission, values["target"], values["_build_service"]) != (
+                        entry,
+                        entry_source,
+                    ):
+                        raise ValueError("ordinary object consumer changed its original ABI entry")
+                    report["original_dispatch_entry"] = entry
+                    report["source_relationship_scope"] = "one unambiguous current observed source"
+                    # Generic host transformations and terminal translation keep
+                    # their own provenance; this source relationship proves neither.
+                    if (work / "kernel.host.mlir").is_file():
+                        report["selected_host_source"] = E._pin(work / "kernel.host.mlir")
+                        report["subsequent_host_transformations"] = "outside_this_emission_chain"
             _save(evidence, report)
             if pending is not None:
                 scope.complete(pending)

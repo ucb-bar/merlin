@@ -208,6 +208,9 @@ def test_expired_copied_context_cannot_reuse_original_custody(ordinary):
     assert set(E._LIVE) == original_live
     with pytest.raises(ValueError, match="current original host|host-issued"):
         copied.run(X.active_emission_checks)
+    with pytest.raises(ValueError, match="live original emission owner"):
+        with X._operation_snapshot(scope):
+            pytest.fail("expired operation owner admitted")
 
 
 def test_concurrent_same_byte_consumers_cannot_choose_another_source_obligation(ordinary):
@@ -371,7 +374,127 @@ def test_scope_refuses_a_different_live_admission_for_the_same_snapshot(ordinary
         with owner.compiler_imports():
             with pytest.raises(ValueError, match="current original host admission"):
                 scope.verify()
+            with pytest.raises(ValueError, match="current original host admission"):
+                with X._operation_snapshot(scope):
+                    pytest.fail("foreign operation owner admitted")
         scope.verify()
+
+
+def test_operation_batches_custody_reads_but_reopens_all_bytes_at_boundaries(ordinary, monkeypatch):
+    from merlin.common import bundle_snapshot
+
+    _, owner = ordinary
+    payload = bundle_snapshot.snapshot_path(
+        bundle_snapshot.bundle_snapshot_root(owner.workspace), Path(owner.bundle["allowed"][0]["path"]), owner.repo
+    )
+    with _scope(owner):
+        scope = X.active_emission_checks()
+        original = bundle_snapshot.hashlib.file_digest
+        calls = []
+
+        def digest(stream, *args):
+            if Path(stream.name) == payload:
+                calls.append(payload)
+            return original(stream, *args)
+
+        monkeypatch.setattr(bundle_snapshot.hashlib, "file_digest", digest)
+        with X._operation_snapshot(scope):
+            for _ in range(4):
+                scope.verify()
+            assert calls == [payload]
+        assert calls == [payload, payload]
+        scope.verify()
+        assert calls == [payload, payload, payload]
+
+
+@pytest.mark.parametrize("operation", ["emission", "object"])
+def test_changed_snapshot_cannot_publish_operation_completion(ordinary, monkeypatch, operation):
+    from merlin.common import bundle_snapshot
+    from merlin.llvmlower import codegen
+
+    fixture, owner = ordinary
+    payload = bundle_snapshot.snapshot_path(
+        bundle_snapshot.bundle_snapshot_root(owner.workspace), Path(owner.bundle["allowed"][0]["path"]), owner.repo
+    )
+    original_bytes, original_mode = payload.read_bytes(), payload.stat().st_mode & 0o777
+
+    def mutate():
+        payload.chmod(0o600)
+        payload.write_bytes(bytes([original_bytes[0] ^ 1]) + original_bytes[1:])
+
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        scope = X.active_emission_checks()
+        if operation == "emission":
+            run = _Executor.run_entrypoint
+
+            def changed(self, package, name, *args, **kwargs):
+                result = run(self, package, name, *args, **kwargs)
+                if name == "emit_target_artifact":
+                    mutate()
+                return result
+
+            monkeypatch.setattr(_Executor, "run_entrypoint", changed)
+            invoke = lambda: _lower(fixture)
+            output = fixture["tmp"] / "generated"
+        else:
+            _, artifact = _lower(fixture)
+            compile_ll = codegen.compile_ll
+
+            def changed(*args, **kwargs):
+                result = compile_ll(*args, **kwargs)
+                mutate()
+                return result
+
+            monkeypatch.setattr(codegen, "compile_ll", changed)
+            output = fixture["tmp"] / "build"
+            invoke = lambda: C.llvm_mlir_to_object(artifact, output)
+        try:
+            with pytest.raises(RuntimeError, match="content differs"):
+                invoke()
+            assert not _reports(output)
+            assert scope.completed == {}
+            stage = "ordinary_source_emission" if operation == "emission" else "ordinary_emission_object_consumer"
+            observations = [
+                json.loads(path.read_text())
+                for path in output.rglob("invocation.json")
+                if json.loads(path.read_text()).get("stage") == stage
+            ]
+            assert len(observations) == 1 and observations[0]["status"] == "interrupted"
+            assert "outcome" not in observations[0]
+            if operation == "emission":
+                assert scope.records == {}
+            else:
+                assert len(scope.records) == 1
+        finally:
+            payload.write_bytes(original_bytes)
+            payload.chmod(original_mode)
+
+
+def test_actual_proof_and_native_consumers_keep_independent_snapshot_reads(ordinary, monkeypatch):
+    from merlin.common import bundle_snapshot
+    from merlin.llvmlower import codegen
+
+    fixture, owner = ordinary
+    check, compile_ll = CommonTransformService.check, codegen.compile_ll
+    calls = []
+
+    def independent_check(*args, **kwargs):
+        assert bundle_snapshot._ACTIVE_VERIFICATION.get() is None
+        calls.append("proof")
+        return check(*args, **kwargs)
+
+    def independent_compile(*args, **kwargs):
+        assert bundle_snapshot._ACTIVE_VERIFICATION.get() is None
+        calls.append("object")
+        return compile_ll(*args, **kwargs)
+
+    monkeypatch.setattr(CommonTransformService, "check", independent_check)
+    monkeypatch.setattr(codegen, "compile_ll", independent_compile)
+    with _scope(owner), P.scoped_package_executor(_Executor()):
+        _, artifact = _lower(fixture)
+        C.llvm_mlir_to_object(artifact, fixture["tmp"] / "build")
+    assert calls == ["proof", "object"]
+    assert bundle_snapshot._ACTIVE_VERIFICATION.get() is None
 
 
 def test_historical_versioned_profile_keeps_lowering_memo_and_no_chain(emission, monkeypatch):

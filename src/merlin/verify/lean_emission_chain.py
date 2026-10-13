@@ -264,12 +264,15 @@ def check_emission_chain(
             # The service issues a LIVE original completion before returning its
             # sealed descriptive document. No stored common-check summary enters.
             selection.verify(package_root=package.directory, evidence_root=evidence_root)
-            checked = type(selection.service).check(
-                selection.service,
-                {"schema": "merlin.common_check_request.v1", "before_ir": before, "after_ir": after, "entry": entry},
-                work_root=evidence_root / f"edge-{index}",
-                timeout_s=max(1, int(remaining())),
-            )
+            from merlin.common.bundle_snapshot import independent_snapshot_reads
+
+            with independent_snapshot_reads():
+                checked = type(selection.service).check(
+                    selection.service,
+                    {"schema": "merlin.common_check_request.v1", "before_ir": before, "after_ir": after, "entry": entry},
+                    work_root=evidence_root / f"edge-{index}",
+                    timeout_s=max(1, int(remaining())),
+                )
         status = checked.get("status")
         if status not in {"verified", "unsupported"}:
             raise ValueError("covered transformation did not obtain a fresh original live proof: " + str(status))
