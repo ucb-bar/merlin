@@ -13,7 +13,7 @@ or the endpoint kind.
 
 from __future__ import annotations
 
-from .generalization_prompt import GENERAL_COMPILER_CONTRACT_V1
+from .generalization_prompt import GENERAL_COMPILER_CONTRACT_V2
 
 # How the 4th-entrypoint artifact is described to the agent, per codegen endpoint. Fork-free .insn on
 # stock LLVM is the default (see memory no-forked-toolchain-bringup); never prescribes a forked toolchain.
@@ -1199,7 +1199,7 @@ def render_prompt(te, manifest, experiment: str = "full", arm: str = "raw_baseli
     return _TEMPLATE.format(
         target=s["target"],
         scope_label=scope,
-        general_compiler_contract=GENERAL_COMPILER_CONTRACT_V1,
+        general_compiler_contract=GENERAL_COMPILER_CONTRACT_V2,
         corpus_families=families,
         tool_stem=s["tool_stem"],
         kernel_symbol=s["kernel_symbol"],
