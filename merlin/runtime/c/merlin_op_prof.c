@@ -214,6 +214,12 @@ void merlin_prof_mark(int32_t id) {
   merlin_prof_marks += 1;
 }
 
+/* MLIR's C interface lowering calls this wrapper for an external func.func.
+ * The profiler also keeps its direct C entry point for existing callers. */
+void _mlir_ciface_merlin_prof_mark(int32_t id) {
+  merlin_prof_mark(id);
+}
+
 /* Emitted by the harness after merlin_run returns: one line per op that accumulated any ticks,
  * plus a summary the driver uses to check the profiler accounted for the whole run. */
 void merlin_prof_dump(void) {
