@@ -611,3 +611,128 @@ def test_a_hang_bound_reaches_the_engine_through_the_variable_the_backend_names(
     with pytest.raises(PFX.ExecutionGateError, match="no hang-bound variable"):
         with PFX._engine_hang_bound(Backend, "spike", 5):
             pass
+
+
+@pytest.fixture
+def selected_engine_budget(tmp_path, monkeypatch):
+    """A selected process whose preparation advances an explicit wall clock."""
+    from types import SimpleNamespace
+
+    from merlin.common import execution_deadline as D
+    from merlin.compile import model_execution_inputs as MI
+    from merlin.runtime.backends import base
+
+    state = SimpleNamespace(now=100.0, preparation_s=0.0, calls=[], checks=[])
+    monkeypatch.setattr(D.time, "monotonic", lambda: state.now)
+    monkeypatch.setenv("MERLIN_RTL_FACTS", str(tmp_path / "selected-facts.json"))
+
+    class Backend:
+        @staticmethod
+        def available(engine):
+            return True
+
+        @staticmethod
+        def execution_timeout_limit(engine):
+            return 1800
+
+        @staticmethod
+        def run_elf(elf, **kwargs):
+            state.calls.append((elf, kwargs))
+            return b"selected console\n"
+
+    state.backend = Backend()
+    citation = {"selected": True}
+
+    def revalidate():
+        state.checks.append("engine")
+
+    class Command:
+        def revalidate(self):
+            state.checks.append("command")
+            return {"command_sha256": "c" * 64}
+
+        @staticmethod
+        def to_evidence():
+            return {"max_cycles": None}
+
+    def prepare(elf, **kwargs):
+        assert kwargs == {
+            "expected_elf_sha256": "f" * 64,
+            "expected_engine_provenance": citation,
+            "max_cycles": None,
+        }
+        state.now += state.preparation_s
+        return Command()
+
+    monkeypatch.setattr(MI, "selected_firrtl", lambda *args, **kwargs: {"sha256": "f" * 64})
+    monkeypatch.setattr(MI, "native_engine", lambda *args: (state.backend, citation, revalidate, prepare))
+    monkeypatch.setattr(base, "get_backend", lambda target: state.backend)
+    state.elf = tmp_path / "selected.elf"
+    state.elf.write_bytes(b"selected ELF")
+    return state
+
+
+@pytest.mark.parametrize("engine", ["gsim", "spike"])
+def test_private_execution_uses_selected_process_ceiling(selected_engine_budget, engine):
+    state = selected_engine_budget
+    result = PFX.run_engine(
+        state.elf, engine=engine, target="fixture", timeout_s=172800, max_cycles=None,
+        elf_sha256="f" * 64, rtl_config="Cfg", rtl_facts_sha256="f" * 64, capture_bytes=True,
+    )
+    assert state.calls == [(state.elf, {"simulator": engine, "timeout": 1800, "capture_bytes": True})]
+    assert result["console"] == b"selected console\n"
+    if engine == "gsim":
+        assert result["native_command_sha256"] == "c" * 64
+        assert state.checks == ["command", "engine", "command", "engine"]
+
+
+def test_private_preparation_consumes_job_budget(selected_engine_budget):
+    state = selected_engine_budget
+    state.preparation_s = 3590.0
+    PFX.run_engine(
+        state.elf, engine="gsim", target="fixture", timeout_s=3600, max_cycles=None,
+        elf_sha256="f" * 64, rtl_config="Cfg", rtl_facts_sha256="f" * 64,
+    )
+    assert state.calls[0][1]["timeout"] == 10
+
+
+def test_private_legacy_backend_retains_requested_ceiling(selected_engine_budget):
+    state = selected_engine_budget
+    del type(state.backend).execution_timeout_limit
+    PFX.run_engine(
+        state.elf, engine="spike", target="fixture", timeout_s=60, max_cycles=None,
+        elf_sha256="f" * 64, rtl_config=None, rtl_facts_sha256=None,
+    )
+    assert state.calls[0][1]["timeout"] == 60
+
+
+def test_expired_private_preparation_never_runs_or_passes(tmp_path, selected_engine_budget, monkeypatch):
+    from types import SimpleNamespace
+
+    state = selected_engine_budget
+    state.preparation_s = 61
+    golden = np.array([1.0], np.float32)
+    fixture = Fixture(tmp_path, golden=golden, integer=golden)
+    gate = _gate(
+        tmp_path, net__model=dict(EXECUTED, max_cycles=None),
+        policy__step={"deferred": "explicit fixture deferral"},
+    )
+    # Keep the prepared command's ELF pin equal to the actual static receipt.
+    from merlin.compile import model_execution_inputs as MI
+
+    def prepare(elf, **kwargs):
+        state.now += state.preparation_s
+        assert kwargs["expected_elf_sha256"] == _sha(elf)
+        return SimpleNamespace(
+            revalidate=lambda: {"command_sha256": "c" * 64},
+            to_evidence=lambda: {"max_cycles": None},
+        )
+
+    monkeypatch.setattr(MI, "native_engine", lambda *args: (state.backend, {}, lambda: None, prepare))
+    result = PFX.run(fixture.static, gate, target="fixture", static_out=fixture.static_out)
+    assert state.calls == []
+    assert result["passed"] is False
+    assert result["programs"][0]["status"] == PFX.FAIL
+    assert "wall budget expired" in result["programs"][0]["reason"]
+    assert "checks" not in result["programs"][0]
+    assert not PFX.complete(result, gate, static=fixture.static, candidate_sha256="c" * 64)
