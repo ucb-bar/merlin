@@ -139,7 +139,9 @@ def start_brokers(ws: Path, config: BrokerConfig):
                 argv += ["--rtl-facts", str(config.selected_rtl_facts)]
             if name == "merlin_experiments.phase1.brokers.simjob":
                 argv += ["--timing-file", str(config.timing_file)]
-            if config.compiler_bundle_manifest is not None and name == "merlin_experiments.phase1.brokers.selfcheck":
+            if config.compiler_bundle_manifest is not None and name in {
+                "merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob",
+            }:
                 argv += ["--compiler-bundle-manifest", str(config.compiler_bundle_manifest)]
             if name in {"merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob"}:
                 if capsules_root is not None:
