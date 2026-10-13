@@ -10,11 +10,13 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
+from contextlib import ExitStack, contextmanager
 from dataclasses import replace
 from pathlib import Path
 
@@ -32,6 +34,31 @@ from merlin_experiments.phase2.contracts import exact_tree_record, sha256_file
 SCHEMA = "merlin.public_compile_only_feedback.v1"
 ACTION = "compile-only"
 SCALE_PROBE_FLAG = "--scale-probe"
+
+
+@contextmanager
+def _snapshot_operation(owner):
+    """Batch custody reads within one original operation, never its grading lifetime."""
+    if type(owner) is not CommonTransformService:
+        raise ValueError("compile-only custody requires the exact original profile owner")
+    from merlin.common.bundle_snapshot import verified_snapshot_scope
+    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3
+
+    with ExitStack() as checks:
+        if owner.profile.get("common_substrate") == COMMON_SUBSTRATE_V3:
+            checks.enter_context(verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo))
+        yield checks.close
+
+
+@contextmanager
+def _compile_imports(owner):
+    """Issue one original namespace; each command still has independent freshness."""
+    with ExitStack() as lifetime:
+        with _snapshot_operation(owner):
+            lifetime.enter_context(owner.compiler_imports())
+        # No verified snapshot scope survives into the compilation body.
+        # The original import admission re-verifies again on lifetime exit.
+        yield
 
 
 def _emit_scale_case(candidate, source, output, *, contract, target, timeout_s, ir_budget):
@@ -166,7 +193,11 @@ class _Executor:
             raise ValueError("compile-only invocation lost its original package/protocol owner")
         if invocation_directory is None or not Path(invocation_directory).is_relative_to(self.output):
             raise ValueError("compile-only invocation escaped its private product owner")
-        with tempfile.TemporaryDirectory(prefix="call-", dir=self.output.parent) as directory:
+        if type(self) is not _Executor or P.active_package_executor() is not self:
+            raise ValueError("compile-only invocation lost its exact original scoped executor")
+        with _snapshot_operation(self.common_service) as finish_snapshot, tempfile.TemporaryDirectory(
+            prefix="call-", dir=self.output.parent
+        ) as directory:
             workspace = Path(directory)
             incoming = workspace / "input.mlir"
             from merlin_experiments.phase2.functional_guard_execution import copy_plain_file
@@ -184,24 +215,36 @@ class _Executor:
             from merlin_experiments.phase1.brokers.compiler_call_channel import compiler_call_transport
             from merlin_experiments.phase2 import normal_resource_launch as resources
 
-            with compiler_call_transport(self.common_service, workspace=workspace, package=pkg.directory,
-                    input_path=incoming, command_name=name, timeout_s=timeout) as transport:
-                shell = transport.env_prefix(shell) + 'exec "$@"'
-                with resources.bounded_normal_scratch(
-                    policy.argv, owner=invocation_directory, boundary=resources.resources.active_resource_boundary()
-                ) as prefix:
-                    process = invocation_record.run(
-                        [*prefix, "--chdir", str(self.candidate), "bash", "-c", shell, "compile-package", *argv],
-                        directory=invocation_directory,
-                        stage=name,
-                        inputs=(input_mlir,),
-                        dependencies=(Path(__file__),),
-                        capture_output=True,
-                        text=True,
-                        timeout=transport.remaining_timeout(),
-                    )
-            if outgoing is not None and (outgoing.exists() or outgoing.is_symlink()):
-                copy_plain_file(outgoing, output_json, output=True)
+            with ExitStack() as observations:
+                with compiler_call_transport(self.common_service, workspace=workspace, package=pkg.directory,
+                        input_path=incoming, command_name=name, timeout_s=timeout, borrow_compute=True) as transport:
+                    shell = transport.env_prefix(shell) + 'exec "$@"'
+                    with resources.bounded_normal_scratch(
+                        policy.argv, owner=invocation_directory, boundary=resources.resources.active_resource_boundary()
+                    ) as prefix:
+                        command = [*prefix, "--chdir", str(self.candidate), "bash", "-c", shell,
+                                   "compile-package", *argv]
+                        selected_env = dict(os.environ)
+                        observed = observations.enter_context(invocation_record.observe(
+                            invocation_directory, stage=name, argv=command, inputs=(input_mlir,),
+                            dependencies=(Path(__file__),), env=selected_env,
+                        ))
+                        process_started_ns, process_started = time.time_ns(), time.monotonic()
+                        process = subprocess.run(command, capture_output=True, text=True,
+                                                 timeout=transport.remaining_timeout(), env=selected_env)
+                        process_finished_ns, process_wall_s = time.time_ns(), time.monotonic() - process_started
+                # The real transport has reaped its proof helper and performed
+                # its independent final owner checks. Close full snapshot
+                # freshness before publishing either receipt or staged output.
+                self.common_service._verify()
+                finish_snapshot()
+                observed.document["process_timing"] = {
+                    "started_ns": process_started_ns, "finished_ns": process_finished_ns, "wall_s": process_wall_s,
+                    "scope": "actual candidate process only; transport and custody checks excluded",
+                }
+                observed.complete(process)
+                if outgoing is not None and (outgoing.exists() or outgoing.is_symlink()):
+                    copy_plain_file(outgoing, output_json, output=True)
             return process
 
 
@@ -324,151 +367,154 @@ def observe(
 
     if type(common_service) is not CommonTransformService:
         raise ValueError("compile-only requires the original admitted compiler tool profile")
-    common_service._verify()
-    original_profile = common_service.profile
-    emission_selection = None
-    if original_profile.get("common_substrate") == "merlin.common_compiler_substrate.v3":
-        from merlin.verify.lean_emission_chain import EmissionChainSelection
+    with _snapshot_operation(common_service):
+        common_service._verify()
+        original_profile = common_service.profile
+        emission_selection = None
+        if original_profile.get("common_substrate") == "merlin.common_compiler_substrate.v3":
+            from merlin.verify.lean_emission_chain import EmissionChainSelection
 
-        emission_selection = EmissionChainSelection(common_service)
-    if type(timeout_s) is not int or not 1 <= timeout_s <= 600:
-        raise ValueError("compile-only aggregate deadline must be 1..600 seconds")
-    candidate, contract, facts_path, work_root = map(Path, (candidate, contract, facts_path, work_root))
-    if any(path.resolve() != path or path.is_symlink() for path in (candidate, contract, facts_path, work_root)):
-        raise ValueError("compile-only requires canonical ordinary original owners")
-    if work_root.exists() or any(
-        work_root.is_relative_to(path) or path.is_relative_to(work_root)
-        for path in (candidate, contract, facts_path.parent)
-    ):
-        raise ValueError("compile-only products require a fresh separate host owner")
-    if type(scale_probe) is not bool:
-        raise ValueError("public scale mode is an original explicit selection")
-    facts_raw = facts_path.read_bytes()
-    facts = json.loads(facts_raw)
-    if (facts.get("facts") or {}).get("target") != target_experiment.target:
-        raise ValueError("compile-only selected facts identify another target")
-    if scale_probe:
-        from merlin_experiments.phase0 import public_scale_sources
+            emission_selection = EmissionChainSelection(common_service)
+        if type(timeout_s) is not int or not 1 <= timeout_s <= 600:
+            raise ValueError("compile-only aggregate deadline must be 1..600 seconds")
+        candidate, contract, facts_path, work_root = map(Path, (candidate, contract, facts_path, work_root))
+        if any(path.resolve() != path or path.is_symlink() for path in (candidate, contract, facts_path, work_root)):
+            raise ValueError("compile-only requires canonical ordinary original owners")
+        if work_root.exists() or any(
+            work_root.is_relative_to(path) or path.is_relative_to(work_root)
+            for path in (candidate, contract, facts_path.parent)
+        ):
+            raise ValueError("compile-only products require a fresh separate host owner")
+        if type(scale_probe) is not bool:
+            raise ValueError("public scale mode is an original explicit selection")
+        facts_raw = facts_path.read_bytes()
+        facts = json.loads(facts_raw)
+        if (facts.get("facts") or {}).get("target") != target_experiment.target:
+            raise ValueError("compile-only selected facts identify another target")
+        if scale_probe:
+            from merlin_experiments.phase0 import public_scale_sources
 
-        edges = {row.get("cols") for row in (facts.get("facts") or {}).get("arrays", [])
-                 if type(row.get("cols")) is int and row["cols"] > 0}
-        cases, source_manifest = public_scale_sources.derive(
-            capsules, selected=selected, index_bits=original_profile.get("host_index_bits"),
-            tile_edge=next(iter(edges)) if len(edges) == 1 else None,
+            edges = {row.get("cols") for row in (facts.get("facts") or {}).get("arrays", [])
+                     if type(row.get("cols")) is int and row["cols"] > 0}
+            cases, source_manifest = public_scale_sources.derive(
+                capsules, selected=selected, index_bits=original_profile.get("host_index_bits"),
+                tile_edge=next(iter(edges)) if len(edges) == 1 else None,
+            )
+        else:
+            cases, source_manifest = SOURCES.derive(
+                capsules, selected=selected, index_bits=original_profile.get("host_index_bits")
+            )
+        before = exact_tree_record(candidate)["sha256"]
+        work_root.mkdir(parents=True, mode=0o700)
+        sources = work_root / "sources"
+        sources.mkdir()
+        service = None if scale_probe else _build_service_for(target_experiment.target)
+        checker = None if scale_probe else _InstructionPolicy(
+            target_experiment.target, _roles(capsules), facts, facts_path)
+        pins = sorted(
+            set(
+                [
+                    Path(__file__),
+                    Path(isa_prohibition.__file__),
+                    Path(elf_lanes.__file__),
+                    facts_path,
+                    *(path for case in cases for path, _ in case.provenance),
+                ]
+            )
         )
-    else:
-        cases, source_manifest = SOURCES.derive(
-            capsules, selected=selected, index_bits=original_profile.get("host_index_bits")
+        admission = None if scale_probe else LinkedElfAdmissionService(
+            target_experiment.target, checker.evaluate, tuple((str(path), sha256_file(path)) for path in pins)
         )
-    before = exact_tree_record(candidate)["sha256"]
-    work_root.mkdir(parents=True, mode=0o700)
-    sources = work_root / "sources"
-    sources.mkdir()
-    service = None if scale_probe else _build_service_for(target_experiment.target)
-    checker = None if scale_probe else _InstructionPolicy(target_experiment.target, _roles(capsules), facts, facts_path)
-    pins = sorted(
-        set(
-            [
-                Path(__file__),
-                Path(isa_prohibition.__file__),
-                Path(elf_lanes.__file__),
-                facts_path,
-                *(path for case in cases for path, _ in case.provenance),
-            ]
-        )
-    )
-    admission = None if scale_probe else LinkedElfAdmissionService(
-        target_experiment.target, checker.evaluate, tuple((str(path), sha256_file(path)) for path in pins)
-    )
     deadline, rows = time.monotonic() + timeout_s, []
-    for index, case in enumerate(cases):
-        case.verify()
-        root, source = work_root / f"case-{index:03d}", sources / f"case-{index:03d}.mlir"
-        source.write_text(case.source_ir)
-        remaining = min(600, math.floor(deadline - time.monotonic()))
-        row = {
-            "member": case.member,
-            "scale": case.scale,
-            "variant": json.loads(case.derivation_json).get("variant", "original"),
-            "source_sha256": hashlib.sha256(case.source_ir.encode()).hexdigest(),
-            "original_abi_sha256": hashlib.sha256(
-                json.dumps(case.original_abi.record(), sort_keys=True).encode()
-            ).hexdigest(),
-            "compilation_status": "not_attempted",
-            "lowering_status": "not_attempted",
-            "numeric": "not_attempted",
-            "rtl": "not_attempted",
-            "static_obligations": {
-                key: "UNKNOWN"
-                for key in ("semantic_coverage", "index_bounds", "resource_legality", "complete_output_coverage")
-            },
-        }
-        if remaining < 1:
-            row["reason"] = "original aggregate compile budget exhausted"
-            rows.append(row)
-            continue
-        started = time.monotonic()
-        try:
-            executor = _Executor(
-                target_experiment, candidate, root, common_service=common_service, inputs=sandbox_inputs
-            )
-            with (
-                common_service.compiler_imports(),
-                P.scoped_package_executor(executor),
-                observed_facts(target_experiment.target, facts, facts_path),
-            ):
-                if scale_probe:
-                    row.update(_emit_scale_case(candidate, source, root, contract=contract,
-                        target=target_experiment.target, timeout_s=remaining, ir_budget=ir_budget))
-                    row["wall_seconds"] = time.monotonic() - started
-                    case.verify()
-                    rows.append(row)
-                    continue
-                CO.compile_source_only(
-                    package_dir=candidate,
-                    source=source,
-                    original_abi=case.original_abi,
-                    contract_root=contract,
-                    target=target_experiment.target,
-                    output_root=root,
-                    build_service=service,
-                    elf_admission=admission,
-                    readelf=readelf().resolve(),
-                    timeout_s=remaining,
-                    emission_verification=emission_selection,
-                )
-                actual = CO.verify_compile_only_report(
-                    root / "compile_only_result.json",
-                    build_service=service,
-                    elf_admission=admission,
-                    emission_verification=emission_selection,
-                )
-            row.update(
-                compilation_status=actual["compilation_status"],
-                retained_entry=actual["retained_entry"],
-                elf_sha256=actual["elf"]["sha256"],
-                instruction_policy=actual["instruction_policy"]["status"],
-                actual_product_sha256s={name: pin["sha256"] for name, pin in actual["products"].items()},
-                invocation_sha256s=[pin["sha256"] for pin in actual["invocations"]],
-                code_growth=_growth(actual),
-                emission_relationship={
-                    key: (actual.get("emission_proof_chain") or {}).get(key)
-                    for key in ("status", "scope", "outside_formal_coverage")
+    with _compile_imports(common_service):
+        for index, case in enumerate(cases):
+            case.verify()
+            root, source = work_root / f"case-{index:03d}", sources / f"case-{index:03d}.mlir"
+            source.write_text(case.source_ir)
+            remaining = min(600, math.floor(deadline - time.monotonic()))
+            row = {
+                "member": case.member,
+                "scale": case.scale,
+                "variant": json.loads(case.derivation_json).get("variant", "original"),
+                "source_sha256": hashlib.sha256(case.source_ir.encode()).hexdigest(),
+                "original_abi_sha256": hashlib.sha256(
+                    json.dumps(case.original_abi.record(), sort_keys=True).encode()
+                ).hexdigest(),
+                "compilation_status": "not_attempted",
+                "lowering_status": "not_attempted",
+                "numeric": "not_attempted",
+                "rtl": "not_attempted",
+                "static_obligations": {
+                    key: "UNKNOWN"
+                    for key in ("semantic_coverage", "index_bounds", "resource_legality", "complete_output_coverage")
                 },
-            )
-        except Exception as error:  # noqa: BLE001 - failures are incomplete observations, never grades
-            row.update(compilation_status="unavailable", reason=type(error).__name__)
-            if scale_probe:
-                row["lowering_status"] = "unavailable"
-            emitted = root / "generated/lowered.llvm.mlir"
-            if scale_probe and emitted.is_file() and not emitted.is_symlink():
-                # A timed-out/refused later stage must not hide already emitted
-                # growth. No lexical LLVM counts are inferred from MLIR text.
-                row["partial_emission"] = {"bytes": emitted.stat().st_size,
-                                           "sha256": sha256_file(emitted), "scope": "unverified retained MLIR bytes"}
-        row["wall_seconds"] = time.monotonic() - started
-        case.verify()
-        rows.append(row)
+            }
+            if remaining < 1:
+                row["reason"] = "original aggregate compile budget exhausted"
+                rows.append(row)
+                continue
+            started = time.monotonic()
+            try:
+                executor = _Executor(
+                    target_experiment, candidate, root, common_service=common_service, inputs=sandbox_inputs
+                )
+                with (
+                    P.scoped_package_executor(executor),
+                    observed_facts(target_experiment.target, facts, facts_path),
+                ):
+                    if scale_probe:
+                        row.update(_emit_scale_case(candidate, source, root, contract=contract,
+                            target=target_experiment.target, timeout_s=remaining, ir_budget=ir_budget))
+                        row["wall_seconds"] = time.monotonic() - started
+                        case.verify()
+                        rows.append(row)
+                        continue
+                    CO.compile_source_only(
+                        package_dir=candidate,
+                        source=source,
+                        original_abi=case.original_abi,
+                        contract_root=contract,
+                        target=target_experiment.target,
+                        output_root=root,
+                        build_service=service,
+                        elf_admission=admission,
+                        readelf=readelf().resolve(),
+                        timeout_s=remaining,
+                        emission_verification=emission_selection,
+                    )
+                    actual = CO.verify_compile_only_report(
+                        root / "compile_only_result.json",
+                        build_service=service,
+                        elf_admission=admission,
+                        emission_verification=emission_selection,
+                    )
+                row.update(
+                    compilation_status=actual["compilation_status"],
+                    retained_entry=actual["retained_entry"],
+                    elf_sha256=actual["elf"]["sha256"],
+                    instruction_policy=actual["instruction_policy"]["status"],
+                    actual_product_sha256s={name: pin["sha256"] for name, pin in actual["products"].items()},
+                    invocation_sha256s=[pin["sha256"] for pin in actual["invocations"]],
+                    code_growth=_growth(actual),
+                    emission_relationship={
+                        key: (actual.get("emission_proof_chain") or {}).get(key)
+                        for key in ("status", "scope", "outside_formal_coverage")
+                    },
+                )
+            except Exception as error:  # noqa: BLE001 - failures are incomplete observations, never grades
+                row.update(compilation_status="unavailable", reason=type(error).__name__)
+                if scale_probe:
+                    row["lowering_status"] = "unavailable"
+                emitted = root / "generated/lowered.llvm.mlir"
+                if scale_probe and emitted.is_file() and not emitted.is_symlink():
+                    # A timed-out/refused later stage must not hide already emitted
+                    # growth. No lexical LLVM counts are inferred from MLIR text.
+                    row["partial_emission"] = {"bytes": emitted.stat().st_size,
+                                               "sha256": sha256_file(emitted),
+                                               "scope": "unverified retained MLIR bytes"}
+            row["wall_seconds"] = time.monotonic() - started
+            case.verify()
+            rows.append(row)
     if before != exact_tree_record(candidate)["sha256"] or facts_path.read_bytes() != facts_raw:
         raise ValueError("compile-only compiler or frozen hardware inputs changed during original compilation")
     common_service._verify()
