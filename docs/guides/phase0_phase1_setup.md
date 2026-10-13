@@ -3,9 +3,9 @@ title: Set up Phase 0 and Phase 1
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-11
+last_verified: 2026-10-13
 related: [gsim_worker_setup, neutral_runtime_tooling, phase0_specification, target_resolution]
-code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py]
+code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/targetgen/generalization_prompt.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_demand.py]
 ---
 
 # Set up Phase 0 and Phase 1
@@ -283,6 +283,30 @@ the selected worker. Preserve their exact digests, selections and logs. A failur
 requires fixing the relevant input or tool and re-running its check, not editing
 a verdict. This permits a compiler author experiment; it does not guarantee its
 functional success or final performance.
+
+## Compiler completion requires full accelerator coverage
+
+Every computation that can legally execute on the selected accelerator under the
+original hardware and numerical contract must lower to it. Derive eligibility
+from the original source independently of the candidate's placement and available
+compiler forms. Missing compiler forms, large shapes, code-size limits and
+timeouts are compiler gaps; they do not justify supported computation on the
+host. Mixed groups may retain host orchestration and independently justified
+unsupported postprocessing while their supported tensor computation executes
+on the accelerator. Independently proved elimination may discharge source work.
+
+The whole-model source gate records demanded, requested, lowered and covered
+groups, justified host work and unresolved source work. Unknown eligibility or
+missing accelerator work prevents completion. Linked coverage, source-bound
+device evidence, numerical correctness and required structural checks are
+separate requirements. Passing small public cases alone establishes neither
+whole-model completion nor generality across unseen shapes and compositions.
+
+Use compile-only checks for large and unseen shapes without allocating tensor
+values or running simulations. Use bounded L2 execution for numerical checks
+and bounded L3 cases for required native modes, layouts, transfers, accumulation
+and tails. Whole-model L2 success remains distinct from whole-model RTL
+qualification; select and report each required scope explicitly.
 
 ## Reserve CPU pools before the fresh launch
 
