@@ -51,6 +51,8 @@ class GradingInputs:
     public_build_selection: dict | None = None
     public_build_budget_s: int = 0
     compiler_profile_service: object | None = None
+    verify_grade_inputs: Callable[[], None] | None = None
+    driver_grade_completed: Callable[[object], None] | None = None
 
 
 def compiler_execution(inputs, *, candidate, run_dir):
@@ -333,6 +335,15 @@ def grade(
                 print(f"  [promote] round grade -> {_cert}: {_p}", flush=True)
     except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
         print(f"  [promote] skipped: {type(_pe).__name__}: {_pe}", flush=True)
+
+    if inputs.driver_grade_completed is not None:
+        from .grade_reuse import retain_driver_grade
+
+        with shared_compute_pool(timeout_s=timeout):
+            receipt = retain_driver_grade(candidate=cand,
+                runs=run_dir / "_qa_work" / f"runs_{_key}", public=public_root,
+                verdict=verdict, inputs=inputs, run_dir=run_dir) if oot_commit is not None and not no_oracle else None
+        inputs.driver_grade_completed(receipt)
 
     # hand the redacted verdict to the agent for the next round
     qa_dir = ws / "qa"
