@@ -15,6 +15,7 @@ back in input order.
 from __future__ import annotations
 
 import heapq
+import os
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextvars import copy_context
@@ -78,8 +79,14 @@ def run_pipelined(
     while it keeps growing, up to ``calibration_cap`` of the cheapest ready members run first, alone,
     so the ladder learns its tier order before the fan-out (a member that passes ends calibration).
     A head member still running after ``calibration_budget_s`` ends calibration and the pool fans out
-    around it (``None`` waits for it).
+    around it (``None`` waits for it). Explicit ``MERLIN_CAPSULE_ORDER=operators-small-first``
+    prioritizes ready operators by ascending operand volume before models; absent selection
+    preserves legacy priorities. Neither profile bypasses dependencies or readiness gates.
     """
+    order = os.environ.get("MERLIN_CAPSULE_ORDER", "").strip()
+    if order not in ("", "legacy", "operators-small-first"):
+        raise ValueError("MERLIN_CAPSULE_ORDER must be legacy or operators-small-first")
+    small_operators_first = order == "operators-small-first"
     deps = dependencies(capsules)
     # Linux affinity is per thread. Keep grading preparation off the scheduler's
     # manager cores; actual build/simulator step owners lease shared compute slots.
@@ -112,15 +119,21 @@ def run_pipelined(
     heapq.heapify(ready)
 
     def take_ready(*, calibration=False):
-        if not calibration and can_start is None and priority is None:
+        if not calibration and can_start is None and priority is None and not small_operators_first:
             return heapq.heappop(ready) if ready else None
         selectable = [item for item in ready if
                       (can_start is None or can_start(capsules[item[1]])) and
                       (not calibration or calibration_eligible is None or calibration_eligible(capsules[item[1]]))]
         if not selectable:
             return None
-        item = min(selectable, key=(lambda entry: (-entry[0], entry[1])) if calibration else
+        if small_operators_first:
+            # Explicit feedback scheduling: only ready/admitted members compete.
+            # Keep models behind ready operators, then prefer smaller declared operands.
+            key = lambda entry: (capsules[entry[1]].get("kind") == "model", -entry[0], entry[1])
+        else:
+            key = ((lambda entry: (-entry[0], entry[1])) if calibration else
                    (lambda entry: ((priority(capsules[entry[1]]) if priority else 0), entry)))
+        item = min(selectable, key=key)
         ready.remove(item)
         heapq.heapify(ready)
         return item

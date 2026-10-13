@@ -48,7 +48,9 @@ Decoding full values grants no build, source, dispatch or hardware authority.
 `capsule_scheduling.run_pipelined` copies the selected caller context into each
 original calibration and grade worker. Keep original dependency order, full
 roster and worker joins; copied contexts carry existing package/resource owners,
-never new numerical or timing authority.
+never new numerical or timing authority. Explicit operator-small-first feedback
+ordering selects only ready/admitted operators before models and preserves immediate
+completion callbacks; absent selection keeps legacy ordering.
 
 The selected native component route spends one explicit wall deadline across
 package build, all ordinary lowering commands, source checks, object/link,
