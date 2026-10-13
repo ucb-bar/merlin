@@ -291,7 +291,15 @@ def render_harness(
     selected = validate_contract(contract)
     if readback_policy is None:
         readback_policy = selected.readback_policy
-    if type(readback_policy) is not ReadbackPolicy or readback_policy != selected.readback_policy:
+    engine_policies = {
+        ReadbackPolicy(block["readback_transport"])
+        for engine, block in (contract.get("runner", {}).get("chipyard_rocc", {}).get("engines", {})).items()
+        if engine == "gsim" and type(block) is dict and block.get("readback_transport") == COHERENT_DUMP_V1
+    }
+    if (
+        type(readback_policy) is not ReadbackPolicy
+        or readback_policy not in {selected.readback_policy, *engine_policies}
+    ):
         raise ValueError("neutral harness readback differs from its selected contract")
     if type(max_storage_bytes) is not int or not 0 < max_storage_bytes < 1 << 64:
         raise ValueError("neutral harness requires a positive complete storage budget")

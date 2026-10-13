@@ -434,6 +434,10 @@ def require_memory_completion(console: str, serial_outputs: Mapping[str, Any]) -
 
 def require_memory_value_roster(cb: Mapping[str, Any], outputs: Mapping[str, Any]) -> None:
     """Check complete logical geometry after the independent memory decoder."""
+    if "kernel_abi" not in cb:
+        from merlin.runtime.harness_render import _roster
+
+        cb, _ = _roster(dict(cb))
     abi = cb.get("kernel_abi") or {}
     names = abi.get("outputs")
     tensors = cb.get("tensors") or {}

@@ -1346,7 +1346,13 @@ def run_on_oracle(
     ):
         raise ValueError("memory readback build changed before output decoding")
     check_budget()
-    outputs, raw = backend.parse_output(console)
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+
+    outputs, raw = (
+        backend.parse_output(console, readback_policy=readback_policy)
+        if memory and type(backend) is BoundRoCCBackend
+        else backend.parse_output(console)
+    )
     check_budget()
     memory_evidence = memory_observation = None
     if memory:
