@@ -773,6 +773,9 @@ def enforce_model_execution_check(result: dict, capsule: dict | None, *, target:
     A wrong/missing requested engine is incomplete; malformed actual execution
     is a failure. Promote only after every source, numeric and tier gate passes.
     """
+    if result.get("status") == "gated":
+        # The scheduler never executed this model; retain its original deferral.
+        return result
     check = model_execution_check(
         result,
         capsule,
@@ -1397,7 +1400,7 @@ def grade(
         # explicit host-private root for later independent pin inspection.
         _caps_by_name = {str(cap.get("name")): cap for cap in caps}
         for result in results:
-            if result.get("kind") != "model":
+            if result.get("kind") != "model" or result.get("status") == "gated":
                 continue
             # Reopen under the same trusted adapter selection as the model
             # child. Candidate result records cannot choose their own codec.
