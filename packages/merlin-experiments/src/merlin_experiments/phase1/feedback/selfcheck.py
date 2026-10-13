@@ -73,7 +73,9 @@ def _operator_structural_feedback(result, capsule, *, target):
     requirement = trace.get("trace_requirement_status")
     complete = trace.get("status") == "pass" and requirement in (None, "pass")
     return {
-        "status": "pass" if complete else requirement or "failed",
+        "status": "pass" if complete else requirement or (
+            "failed" if trace.get("status") == "fail" else "unavailable_record"
+        ),
         "component": "instruction_trace",
         "violations": [str(reason)[:240] for reason in (trace.get("violations") or [])[:8]],
         "unavailable_requirements": list(trace.get("unavailable_requirements") or [])[:16],

@@ -1772,7 +1772,8 @@ def grade(
     )
     _trace_requirements = Counter(
         (r.get("trace_check") or {}).get("trace_requirement_status")
-        or ("pass" if (r.get("trace_check") or {}).get("status") == "pass" else "failed")
+        or ({"pass": "pass", "fail": "failed"}.get(
+            (r.get("trace_check") or {}).get("status"), "unavailable_record"))
         for r in _trace_rows
     )
     score["trace_requirement_summary"] = dict(sorted(_trace_requirements.items()))

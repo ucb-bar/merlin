@@ -204,6 +204,8 @@ def test_public_numeric_native_pass_is_only_a_screen_when_structure_is_unqualifi
     )
     assert counts["all_pass"] == counts["certified_complete"] == certified
     assert (structural["status"] == "pass") == certified
+    if status is None:
+        assert structural["status"] == "unavailable_record"
 
 
 def test_public_refusal_requires_original_binding_and_host_veto_never_certifies():
