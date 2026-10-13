@@ -10,16 +10,16 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 import stat
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 SCHEMA = "merlin.device_ir_scalability.v1"
-_WORDS = re.compile(rb"(?<![-\w.$%@])(callbr|invoke|call|asm)(?![-\w.$:])")
-_SPECIAL = re.compile(rb'[";\n]')
-_STRING_SPECIAL = re.compile(rb'["\\\n]')
+_IDENTIFIER_BYTES = frozenset(b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.$-")
+_LABEL_BYTES = _IDENTIFIER_BYTES | frozenset(b" \t:")
+_BEFORE_WORD = _IDENTIFIER_BYTES | frozenset(b"%@")
+_AFTER_WORD = _IDENTIFIER_BYTES | frozenset(b":")
 _LIMITS = {
     "bytes": "max_bytes",
     "function_code_bytes": "max_code_bytes",
@@ -29,6 +29,36 @@ _LIMITS = {
     "functions": "max_functions",
     "basic_blocks": "max_basic_blocks",
 }
+
+
+def _word_spans(data):
+    """Observe exact unquoted keywords, retaining LLVM identifier boundaries."""
+    for prefix in (b"call", b"invoke", b"asm"):
+        pos = 0
+        while (start := data.find(prefix, pos)) >= 0:
+            word = b"callbr" if prefix == b"call" and data.startswith(b"callbr", start) else prefix
+            end = start + len(word)
+            if (start == 0 or data[start - 1] not in _BEFORE_WORD) and (
+                end == len(data) or data[end] not in _AFTER_WORD
+            ):
+                yield start, end, word
+            pos = end
+
+
+def _define_prefix(prefix):
+    return prefix.startswith(b"define") and len(prefix) > 6 and prefix[6] in b" \t\r\f\v\n"
+
+
+def _next_special(chunk, positions, start, selected):
+    """Advance each fixed-character search monotonically within this chunk."""
+    result = len(chunk)
+    for char in selected:
+        found = positions[char]
+        if 0 <= found < start:
+            found = positions[char] = chunk.find(bytes((char,)), start)
+        if found >= 0:
+            result = min(result, found)
+    return result
 
 
 @dataclass(frozen=True)
@@ -94,16 +124,17 @@ class _Counts:
         self.prefix = (self.prefix + data)[:512]
         self.suffix = (self.suffix + data)[-512:]
         self.colons += data.count(b":")
-        self.label_chars &= re.fullmatch(rb"[-\w.$ \t:]*", data) is not None
+        if self.label_chars:
+            self.label_chars = all(char in _LABEL_BYTES for char in data)
         joined = self.prior + self.tail + data
         cut = len(joined) if final else max(1, len(joined) - 32)
-        matches = list(_WORDS.finditer(joined))
-        for match in matches:
-            if match.start() >= 1 and match.start() < cut < match.end():
-                cut = match.start()
-        for match in matches:
-            if 1 <= match.start() < cut and match.end() <= cut:
-                if match.group() == b"asm":
+        matches = list(_word_spans(joined))
+        for start, end, _word in matches:
+            if start >= 1 and start < cut < end:
+                cut = start
+        for start, end, word in matches:
+            if 1 <= start < cut and end <= cut:
+                if word == b"asm":
                     self.asms += 1
                 else:
                     self.calls += 1
@@ -111,7 +142,7 @@ class _Counts:
         if not final:
             return
         prefix, suffix = self.prefix.strip(), self.suffix.strip()
-        if self.in_function or self.pending or re.match(rb"define\s", prefix):
+        if self.in_function or self.pending or _define_prefix(prefix):
             self.function_code_bytes += self.raw_bytes
         else:
             self.module_bytes += self.raw_bytes
@@ -122,7 +153,7 @@ class _Counts:
             self.call_sites += self.calls
             if self.calls:
                 self.inline_asm_sites += self.asms
-        if re.match(rb"define\s", prefix):
+        if _define_prefix(prefix):
             self.functions += 1
             self.pending = True
         if self.pending and suffix.endswith(b"{"):
@@ -163,10 +194,11 @@ def analyze_device_ir(path):
             newlines += chunk.count(b"\n")
             last = chunk[-1]
             pos = 0
+            positions = {char: chunk.find(bytes((char,))) for char in (10, 34, 59, 92)}
             while pos < len(chunk):
                 if state == "comment":
-                    end = chunk.find(b"\n", pos)
-                    if end < 0:
+                    end = _next_special(chunk, positions, pos, (10,))
+                    if end == len(chunk):
                         counts.raw_bytes += len(chunk) - pos
                         break
                     counts.raw_bytes += end + 1 - pos
@@ -179,15 +211,15 @@ def analyze_device_ir(path):
                         escaped = False
                         pos += 1
                         continue
-                    match = _STRING_SPECIAL.search(chunk, pos)
-                    if match is None:
+                    end = _next_special(chunk, positions, pos, (10, 34, 92))
+                    if end == len(chunk):
                         counts.raw_bytes += len(chunk) - pos
                         quoted_bytes += len(chunk) - pos
                         break
-                    delta = match.start() + 1 - pos
+                    delta = end + 1 - pos
                     counts.raw_bytes += delta
                     quoted_bytes += delta
-                    pos = match.start()
+                    pos = end
                     char = chunk[pos]
                     pos += 1
                     if char == 34:
@@ -199,11 +231,10 @@ def analyze_device_ir(path):
                     else:
                         counts.feed(b"", final=True)
                 else:
-                    match = _SPECIAL.search(chunk, pos)
-                    end = len(chunk) if match is None else match.start()
+                    end = _next_special(chunk, positions, pos, (10, 34, 59))
                     counts.feed(chunk[pos:end])
                     counts.raw_bytes += end - pos
-                    if match is None:
+                    if end == len(chunk):
                         break
                     char, pos = chunk[end], end + 1
                     counts.raw_bytes += 1

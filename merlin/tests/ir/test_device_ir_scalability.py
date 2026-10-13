@@ -53,6 +53,41 @@ def test_long_constant_line_and_cross_chunk_quotes_are_bounded_and_not_code(tmp_
     assert analysis["function_code_bytes"] < 512
 
 
+@pytest.mark.parametrize("word", [b"call", b"callbr", b"invoke", b"asm"])
+def test_exact_keywords_split_at_chunk_boundary_keep_identifier_and_quote_exclusions(tmp_path, word):
+    header = b"define void @kernel() {\nentry:\n"
+    call = b"call" if word == b"asm" else word
+    instruction = call + b' void asm sideeffect "call asm", ""()\n'
+    offset = instruction.index(word)
+    padding = b" " * (1024 * 1024 - 2 - len(header) - offset)
+    source = header + padding + instruction + b"""  %callback = add i64 0, 0
+  %invoke = add i64 0, 0
+  %asm = add i64 0, 0
+  %x = ptrtoint ptr @asm to i64
+asm:
+  ; call invoke asm
+  ret void
+}
+"""
+    path = tmp_path / "split.ll"
+    path.write_bytes(source)
+    analysis = S.analyze_device_ir(path)
+    assert analysis["sha256"] == hashlib.sha256(source).hexdigest()
+    assert analysis["call_sites"] == 1 and analysis["inline_asm_sites"] == 1
+    assert analysis["functions"] == 1 and analysis["basic_blocks"] == 2
+
+
+@pytest.mark.parametrize("identifier", [b"%callback", b"@asm", b"%invoker", b"callbr_suffix"])
+def test_split_identifiers_do_not_become_instruction_keywords(tmp_path, identifier):
+    header = b"define void @kernel() {\n"
+    padding = b" " * (1024 * 1024 - 3 - len(header))
+    source = header + padding + identifier + b" = add i64 0, 0\n ret void\n}\n"
+    path = tmp_path / "identifier.ll"
+    path.write_bytes(source)
+    analysis = S.analyze_device_ir(path)
+    assert analysis["call_sites"] == 0 and analysis["inline_asm_sites"] == 0
+
+
 @pytest.mark.parametrize("field", ["max_bytes", "max_code_bytes", "max_inline_asm_sites", "max_lines"])
 def test_explicit_limits_refuse_expansion_while_default_is_report_only(tmp_path, field):
     path = tmp_path / "device.ll"
