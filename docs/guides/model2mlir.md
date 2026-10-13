@@ -204,6 +204,11 @@ named stages from preprocessing through MLIR LLVM dialect and LLVM IR. Host shar
 libraries and RISC-V objects are separate code-generation outputs; an object is
 not a linked platform executable and lowering alone does not execute a model.
 
+A capture that calls a registered custom kernel (model2MLIR emits it as a `func.call` tagged
+`prov.kernel`, e.g. `workloads/mlp_basic_triton`) needs a matching entry in
+`llvmlower/kernel_table.py`. `lower_model` then links that kernel's CPU body into the model's LLVM IR.
+See [external kernels](../design/external_kernels.md).
+
 MLIR parsing may normalize known printer differences or reprint custom assembly
 to generic form through the configured toolchain. Parse failures must remain
 actionable; an empty inventory is not an acceptable substitute. Check section

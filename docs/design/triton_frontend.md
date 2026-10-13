@@ -336,3 +336,8 @@ the standalone end-to-end result. `src/merlin/kernels/ingest/triton.py` already
 text-mines `@triton.jit` for the kernel index — that is mining, a different abstraction, and it stays
 untouched. `merlin.triton` also stays out of `frontends.registry`, which maps checkpoints to
 `CaptureBundle`s.
+
+Model kernel replacement has since landed on a different route: a model2MLIR capture's
+`torch.library.triton_op` call is linked against a CPU body exported by triton-cpu, rather than
+compiled through this frontend. See [external kernels](external_kernels.md). This frontend producing
+that body as linalg remains future work.

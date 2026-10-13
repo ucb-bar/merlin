@@ -93,8 +93,8 @@ export MERLIN_MLIR_TRANSLATE=$PWD/third_party/llvm-build/bin/mlir-translate
 
 That skips installing 4 GB of headers and static libraries you only need for the out-of-tree C++ path.
 
-Models that call an external kernel (a model2MLIR `prov.kernel` call,
-`llvmlower/kernel_link.py`) also need `llvm-link`, which merges the kernel body into
+Models that call an external kernel (a model2MLIR `prov.kernel` call, see
+[external kernels](../design/external_kernels.md)) also need `llvm-link`, which merges the kernel body into
 the model's LLVM IR. It takes seconds to build in the same tree:
 
 ```bash
