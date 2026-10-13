@@ -205,6 +205,56 @@ def _observe_pending(requests, claimed, queued_since, now):
     return pending
 
 
+def _admitted_promotions(requests, ws, *, loop_tier, cert_tier, context):
+    """Defer obsolete automatic work without cancelling requests or touching results."""
+    from merlin_experiments.phase1.feedback import promotion_admission as admission
+
+    observed = False
+    current = state = instrument = loop_instrument = None
+    snapshots = {}
+    for path in requests:
+        try:
+            request = json.loads(path.read_text())
+        except (OSError, ValueError):
+            yield path  # Existing dispatch owns malformed/direct request handling.
+            continue
+        if not isinstance(request, dict) or not request.get("promoted"):
+            yield path
+            continue
+        if not observed:
+            observed = True
+            try:
+                current = admission.observe_source(Path(ws))
+                state = _TP._tier_state(ws)
+                instrument = _TP.cert_instrument(cert_tier, context=context)
+                loop_instrument = _TP.cert_instrument(loop_tier, context=context)
+            except (OSError, ValueError):
+                current = None
+        reason = "current source identity unavailable" if current is None else admission.queued_reason(
+            Path(ws), request, loop_tier=loop_tier, cert_tier=cert_tier,
+            instrument=instrument, loop_instrument=loop_instrument, current=current, state=state, snapshots=snapshots,
+        )
+        jid = path.stem.removeprefix("simreq_")
+        note = path.parent / f"simdefer_{jid}.json"
+        if reason:
+            document = {"state": "deferred", "reason": reason, "job_id": jid,
+                        "source_digest": request.get("submission_digest"),
+                        "current_source_digest": current.digest if current is not None else None}
+            previous = admission.read_note(note)
+            if previous != document:
+                admission.write_note(note, document)
+                print(f"[simjob] {jid} auto promotion deferred: {reason}", file=sys.stderr, flush=True)
+            continue
+        # Scheduling metadata preserves the earlier reason when the original
+        # source/dependencies return; it grants no qualification authority.
+        if note.exists():
+            resume = path.parent / f"simresume_{jid}.json"
+            document = {"state": "admitted", "job_id": jid, "current_source_digest": current.digest}
+            if admission.read_note(resume) != document:
+                admission.write_note(resume, document)
+        yield path
+
+
 class VerilSlotsUnusable(RuntimeError):
     """The slot directory cannot be used at all -- distinct from every slot being busy."""
 
@@ -677,9 +727,12 @@ def main(
         # launch queued (respect local + global caps)
         queued = _observe_pending(ch.glob("simreq_*.json"), claimed, queued_since, time.monotonic())
         if len(running) < a.max_jobs:
-            for req in _current_source_first(
+            ordered = _current_source_first(
                 queued, ws, context=context, capsules_root=capsules_root,
                 cert_tier=_CERT_TIER, contract=contract,
+            )
+            for req in _admitted_promotions(
+                ordered, ws, loop_tier=_LOOP_TIER, cert_tier=_CERT_TIER, context=context,
             ):
                 jid = req.stem[len("simreq_") :]
                 if jid in claimed:
