@@ -33,6 +33,7 @@ class QARunner(Protocol):
         *,
         contract: Path | None = None,
         additional_forbidden: tuple[str, ...] = (),
+        defer_pending: Callable[[], str | None] | None = None,
     ) -> dict: ...
 
 

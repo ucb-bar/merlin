@@ -581,6 +581,7 @@ def main(
     )
     ap.add_argument("--ws", required=True)
     ap.add_argument("--rtl-facts", type=Path, help="Selected facts in the verified frozen input snapshot")
+    ap.add_argument("--compiler-bundle-manifest", type=Path, help="host-owned archived common compiler profile")
     ap.add_argument("--max-jobs", type=int, default=4)
     ap.add_argument("--veril-slots", type=int, default=2)
     ap.add_argument("--poll", type=float, default=0.5)
@@ -840,6 +841,8 @@ def main(
                 to = _job_timeout_s(sim, ncaps, vpc)
                 resp_tmp = ch / f"simtmp_{jid}.json"
                 worker_kwargs = {"rtl_facts": a.rtl_facts} if a.rtl_facts is not None else {}
+                if a.compiler_bundle_manifest is not None:
+                    worker_kwargs["compiler_bundle_manifest"] = a.compiler_bundle_manifest
                 argv2 = worker_command(context, capsules_root, contract, **worker_kwargs) + [
                     "--submission",
                     str(submission),

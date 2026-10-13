@@ -8,6 +8,7 @@ original child completion. No callback or Python namespace crosses processes.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
 import json
 import os
@@ -21,6 +22,7 @@ from pathlib import Path
 import yaml
 
 from merlin.common import cpu_pool
+from merlin.common.bundle_snapshot import verified_snapshot_scope
 from merlin.targetgen import package_runtime as P
 from merlin.targetgen import tier_policy
 from merlin.targetgen.contract.readback_policy import ReadbackPolicy
@@ -82,60 +84,76 @@ def _publish(path, row):
         temporary.unlink(missing_ok=True)
 
 
+@contextlib.contextmanager
+def _prepared_child(document):
+    """Batch only synchronous original-owner issuance; close custody before child launch."""
+    executor = P.active_package_executor()
+    if type(executor) is not R._Executor or type(executor.owner) is not CHILD.CommonTransformService:
+        raise StageGateError("operator child requires its original live profile owner")
+    owner = executor.owner
+    with contextlib.ExitStack() as lifetime:
+        with verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo):
+            root = CHILD.model_child_temporary_root()  # Retain original import/owner verification.
+            if root is None:
+                raise StageGateError("operator child lost its original profile owner")
+            private = Path(lifetime.enter_context(tempfile.TemporaryDirectory(prefix="operator-grade-", dir=root)))
+            spec, output = private / "spec.json", private / "result.json"
+            spec.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
+            environment = dict(os.environ)
+            if environment.get("MERLIN_PASS_LOG"):
+                environment["MERLIN_PASS_LOG_CAPSULE"] = str(document["capsule"]["name"])
+                environment["MERLIN_PASS_LOG_REQUIREMENTS"] = json.dumps(
+                    list(document["capsule"].get("pass_requirements") or []))
+            transport = lifetime.enter_context(CHILD.prepare_model_child(
+                spec_path=spec, environment=environment, package_dir=document["package_dir"]))
+            if transport is None:
+                raise StageGateError("operator child requires its original sealed capability")
+        # Final independent custody closes before exposing the transport to Popen. Its FD and
+        # temporary directory remain owned here until final child-result verification completes.
+        yield spec, output, environment, transport
+
+
 def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, adapters, timeout, workers, no_oracle):
     from merlin.targetgen import capsule_runner as runner
 
     selection = adapter_selection(adapters, target=target)
     if capsule.get("kind") == "model":
         raise StageGateError("operator child cannot replace the whole-model route")
-    root = CHILD.model_child_temporary_root()
-    if root is None:
-        raise StageGateError("operator child lost its original profile owner")
     costs = {tier: tier_policy.observed_cost(target, tier) for tier in selection}
-    with tempfile.TemporaryDirectory(prefix="operator-grade-", dir=root) as temporary:
-        private = Path(temporary)
-        spec, output = private / "spec.json", private / "result.json"
-        document = {
-            "grade_kind": "operator", "capsule": CHILD._data(capsule), "package_dir": str(package_dir),
-            "target": target, "runs_root": str(runs_root), "contract": str(contract) if contract else None,
-            "suite": suite, "dtype": dtype, "adapters": selection, "timeout": timeout,
-            "workers": workers, "no_oracle": no_oracle, "observed_costs_s": costs,
-        }
-        spec.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
-        environment = dict(os.environ)
-        if environment.get("MERLIN_PASS_LOG"):
-            environment["MERLIN_PASS_LOG_CAPSULE"] = str(capsule["name"])
-            environment["MERLIN_PASS_LOG_REQUIREMENTS"] = json.dumps(list(capsule.get("pass_requirements") or []))
-        with CHILD.prepare_model_child(spec_path=spec, environment=environment, package_dir=package_dir) as transport:
-            if transport is None:
-                raise StageGateError("operator child requires its original sealed capability")
-            command = [sys.executable, "-c", runner._CHILD_PREAMBLE,
-                       "--operator-grade", str(spec), "--operator-grade-out", str(output), *transport.argv]
-            process = subprocess.Popen(cpu_pool.worker_pool_command(command, environment), env=environment,
-                pass_fds=transport.pass_fds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                start_new_session=True)
-            try:
-                process.communicate(timeout=max(1, timeout) * (len(selection) + 6))
-            except BaseException:
-                runner._kill_tree(process.pid)
-                process.wait(timeout=10)
-                raise
-            if process.returncode != 0 or not output.is_file():
-                raise StageGateError(f"operator grade child exited {process.returncode} without a verified completion")
-            row = transport.verify_result(json.loads(output.read_bytes()))
-            if row.get("capsule") != capsule["name"] or adapter_selection(adapters, target=target) != selection:
-                raise StageGateError("operator child result or selected oracle changed")
-            for tier, value in (row.pop("operator_child_costs_s", {}) or {}).items():
-                tier_policy.record_cost(target, tier, value)
-            tier_policy.note_spend(target, row.pop("operator_child_spend_s", None))
-            row["operator_grade_process"] = {"pid": process.pid, "workers": workers, "mode": "fresh_sealed_child"}
-            cfg = runner._config_for_target(target, suite, dtype)
-            result_path = Path(runs_root) / "runs" / cfg.suite / capsule["name"] / "capsule_result.json"
-            manifest = yaml.safe_load((result_path.parent / ".operator_child_manifest.yaml").read_bytes())
-            manifest["metadata"]["original_compiler_child"] = row["original_compiler_child"]
-            _publish(result_path.parent / "run_manifest.yaml", manifest)
-            _publish(result_path, row)
-            return row
+    document = {
+        "grade_kind": "operator", "capsule": CHILD._data(capsule), "package_dir": str(package_dir),
+        "target": target, "runs_root": str(runs_root), "contract": str(contract) if contract else None,
+        "suite": suite, "dtype": dtype, "adapters": selection, "timeout": timeout,
+        "workers": workers, "no_oracle": no_oracle, "observed_costs_s": costs,
+    }
+    with _prepared_child(document) as (spec, output, environment, transport):
+        command = [sys.executable, "-c", runner._CHILD_PREAMBLE,
+                   "--operator-grade", str(spec), "--operator-grade-out", str(output), *transport.argv]
+        process = subprocess.Popen(cpu_pool.worker_pool_command(command, environment), env=environment,
+            pass_fds=transport.pass_fds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            start_new_session=True)
+        try:
+            process.communicate(timeout=max(1, timeout) * (len(selection) + 6))
+        except BaseException:
+            runner._kill_tree(process.pid)
+            process.wait(timeout=10)
+            raise
+        if process.returncode != 0 or not output.is_file():
+            raise StageGateError(f"operator grade child exited {process.returncode} without a verified completion")
+        row = transport.verify_result(json.loads(output.read_bytes()))
+        if row.get("capsule") != capsule["name"] or adapter_selection(adapters, target=target) != selection:
+            raise StageGateError("operator child result or selected oracle changed")
+        for tier, value in (row.pop("operator_child_costs_s", {}) or {}).items():
+            tier_policy.record_cost(target, tier, value)
+        tier_policy.note_spend(target, row.pop("operator_child_spend_s", None))
+        row["operator_grade_process"] = {"pid": process.pid, "workers": workers, "mode": "fresh_sealed_child"}
+        cfg = runner._config_for_target(target, suite, dtype)
+        result_path = Path(runs_root) / "runs" / cfg.suite / capsule["name"] / "capsule_result.json"
+        manifest = yaml.safe_load((result_path.parent / ".operator_child_manifest.yaml").read_bytes())
+        manifest["metadata"]["original_compiler_child"] = row["original_compiler_child"]
+        _publish(result_path.parent / "run_manifest.yaml", manifest)
+        _publish(result_path, row)
+        return row
 
 
 def main(argv):

@@ -139,7 +139,9 @@ def start_brokers(ws: Path, config: BrokerConfig):
                 argv += ["--rtl-facts", str(config.selected_rtl_facts)]
             if name == "merlin_experiments.phase1.brokers.simjob":
                 argv += ["--timing-file", str(config.timing_file)]
-            if config.compiler_bundle_manifest is not None and name == "merlin_experiments.phase1.brokers.selfcheck":
+            if config.compiler_bundle_manifest is not None and name in {
+                "merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob",
+            }:
                 argv += ["--compiler-bundle-manifest", str(config.compiler_bundle_manifest)]
             if name in {"merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob"}:
                 if capsules_root is not None:
@@ -358,6 +360,7 @@ def start_background(
     on_tick=None,
     grade_callback: IntervalGrade,
     fast_grade_callback: FastGrade,
+    foreground_has_priority=None,
 ):
     """Start the in-turn grader for ONE agent turn; returns a handle for `stop_background`.
 
@@ -379,6 +382,10 @@ def start_background(
         if not (ws / "qa" / "verdict.json").exists():
             landed, tries = False, 0
             while not stop.is_set():
+                if foreground_has_priority is not None and foreground_has_priority():
+                    if stop.wait(FIRST_GRADE_POLL_S):
+                        break
+                    continue
                 tries += 1
                 try:
                     v = fast_grade_callback(ws, run_dir, FIRST_BACKGROUND_TICK, min(cadence.qa_timeout, 900))
@@ -415,6 +422,8 @@ def start_background(
         t = 0
         previous_key = None
         while not stop.wait(max(30, int(cadence.grade_interval))):
+            if foreground_has_priority is not None and foreground_has_priority():
+                continue
             t += 1
             scratch_key = grade_key(round_index, t)
             try:

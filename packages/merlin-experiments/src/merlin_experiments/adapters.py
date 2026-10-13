@@ -458,6 +458,7 @@ ADAPTERS = {
             "oracle_timing": _INPUT,
             "private_full_model_spec": _INPUT,
             "instruction_selection": _INPUT,
+            "hidden_capsule_mode": Option(choices=('rtl', 'functional_spike')),
             "experiment": Option(choices=("full", "realistic")),
             "with_tool": Option("strings"),
             "without_tool": Option("strings"),

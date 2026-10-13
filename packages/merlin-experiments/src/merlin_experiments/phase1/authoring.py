@@ -167,6 +167,7 @@ def finalize_report(
     grade_callback,
     context,
     audit: AnswerAudit,
+    reuse_noop_grade=None,
 ) -> dict:
     """After convergence, give the agent ONE bounded turn — with the PASSING verdict — to finalize
     REPORT.md/docs to the verified result, WITHOUT touching code. Re-grade; if the agent regressed the
@@ -221,7 +222,9 @@ def finalize_report(
         tpath.write_text("")
 
     # re-grade: if the finalize turn broke the (passing) package, restore the snapshot
-    regrade = grade_callback(ws, run_dir, 90, False, timeout)
+    reused = (EX.resolve_driver(model, config=provider) == "codex" and reuse_noop_grade is not None
+              and reuse_noop_grade())
+    regrade = verdict if reused else grade_callback(ws, run_dir, 90, False, timeout)
     restored = False
     if not regrade.get("all_pass"):
         shutil.rmtree(ws / "submission")
@@ -232,6 +235,7 @@ def finalize_report(
     result = audit.audit_transcript(tpath, arm, workspace=ws)
     return {
         "agent_rc": rc,
+        **({"regrade_reused": True} if reused else {}),
         "regrade_all_pass": regrade.get("all_pass"),
         "restored_after_regression": restored,
         "status_line_stamped_by_driver": stamped,
@@ -292,6 +296,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     from .feedback.compiler_profile_runtime import selected_service
 
     compiler_profile_service = selected_service(workspace=ws, run_dir=run_dir, repo=context.repo)
+    _driver_grade_receipt = [None]
     grading_inputs = LG.GradingInputs(
         context=prepared.request.context,
         arm=arm,
@@ -306,6 +311,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         public_build_selection=public_build_selection,
         public_build_budget_s=a.public_object_build_budget_s,
         compiler_profile_service=compiler_profile_service,
+        verify_grade_inputs=_verify_implementation_sources,
+        driver_grade_completed=lambda receipt: _driver_grade_receipt.__setitem__(0, receipt),
     )
     _grade = T.timed(
         partial(
@@ -324,6 +331,9 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         treatment.on_duration,
     )
     _fast_grade = partial(LG.fast_grade, inputs=grading_inputs)
+    _background_grade = T.timed(partial(LG.grade, inputs=grading_inputs,
+        qa_runner=treatment.qa_runner, advisory_background=True), "qa", treatment.on_duration)
+    from .feedback.background_admission import foreground_active
     # realistic (abc2): the self-check tool the agent runs logs each invocation here (dev-trajectory /
     # soft-failure / tool-trigger record). T0 anchors wall-offset. Inherited by every claude subprocess.
     if a.experiment == "realistic":
@@ -661,8 +671,9 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             interval_grades=(a.schedule == "continuous"),
             round_index=rnd,
             on_tick=lambda t: _sink_telemetry_now(f"round {rnd} tick {t}"),
-            grade_callback=_grade,
+            grade_callback=_background_grade,
             fast_grade_callback=_fast_grade,
+            foreground_has_priority=partial(foreground_active, ws, grading_inputs),
         )
         try:
             if _operator_errata_record is not None:
@@ -908,13 +919,29 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
 
     # --- cycle-accurate cert checkpoint ------------------------------------------------------------
     # The loop gate is the fast functional tier; this is where kernels are validated on the real RTL.
-    def _verilator_grade(attempt: int, eligible: list, not_promoted: list) -> dict:
+    def _verilator_grade(attempt: int, eligible: list, not_promoted: list, *, driver_receipt=None) -> dict:
         _verify_implementation_sources()
         from merlin.targetgen import capsule_grade as _CG
         from merlin.targetgen import capsule_runner as _CR
         from merlin_experiments.phase1.feedback import qa as _qc
 
         _cert_tier = CERT._cert_tier_name(inputs=grading_inputs)
+        if driver_receipt is not None:
+            from merlin_experiments.phase1.feedback.grade_reuse import reuse_checkpoint
+
+            reused = reuse_checkpoint(driver_receipt, submission=ws / "submission",
+                inputs=grading_inputs, run_dir=run_dir, eligible=eligible, held=not_promoted,
+                cert_tier=_cert_tier, attempt=attempt)
+            if reused is not None:
+                callback = treatment.checkpoint_feedback
+                if callable(callback):
+                    try:
+                        dirs = CERT._pilot_capsule_dirs(inputs=grading_inputs)
+                        reused["rtl_checks"] = callback(driver_receipt.runs,
+                            capsule_roots=tuple(Path(dirs[name]) for name in eligible))
+                    except Exception as exc:  # noqa: BLE001 -- structural feedback remains advisory
+                        reused["rtl_checks"] = {"error": f"{type(exc).__name__}: {exc}"}
+                return reused
         vcand = run_dir / "_qa_work" / f"vcand_{attempt}" / "submission"
         if vcand.parent.exists():
             shutil.rmtree(vcand.parent)
@@ -980,9 +1007,10 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
                 f"[verilator attempt {attempt}] {len(_unresolved)} promoted capsule(s) have no "
                 f"directory in the pilot corpus — recorded not_promoted, NOT passed"
             )
+        _checkpoint_score = None
         try:
             with LG.compiler_execution(grading_inputs, candidate=vcand, run_dir=run_dir):
-                _CG.grade(
+                _checkpoint_score = _CG.grade(
                     str(vcand),
                     capsules_root=_roots,
                     runs_root=str(vruns),
@@ -1008,7 +1036,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         # Whole-corpus tally: graded rows plus the held-back ones. `all_pass` below is therefore
         # `n_passed == n_capsules` over the FULL corpus, so promoting a subset can never make a partial
         # run look certified.
-        per, npass, nc = CERT._l3_attempt_tally(_qc._per_capsule_from_results(vruns), not_promoted, _cert_tier)
+        _checkpoint_rows = CERT._checkpoint_refusal_rows(_qc._per_capsule_from_results(vruns), _checkpoint_score)
+        per, npass, nc = CERT._l3_attempt_tally(_checkpoint_rows, not_promoted, _cert_tier)
         # The Arm4 qa wrapper can derive the same answer-free RTL structural block from this attempt's
         # generated traces.  Carry it into the L3 fix verdict so that a fix round can obey (and prove) its
         # mandatory RTL-feedback readback instead of receiving a reduced verdict with that surface absent.
@@ -1024,6 +1053,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             "all_pass": npass == nc and nc > 0,
             "n_passed": npass,
             "n_capsules": nc,
+            "n_rtl_passed": sum(row.get('l3_status') == 'pass' for row in per),
+            "n_expected_refusal_passed": sum(row.get('validated_refusal') is True for row in per),
             "n_not_promoted": sum(1 for r in per if r.get("l3_status") == "not_promoted"),
             "cert_tier": _cert_tier,
             "per_capsule": per,
@@ -1076,10 +1107,12 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         while True:
             vatt += 1
             _vs = time.time()
-            vv = _verilator_grade(vatt, _l3_eligible, _l3_held)
+            vv = _verilator_grade(vatt, _l3_eligible, _l3_held, driver_receipt=_driver_grade_receipt[0])
             active_wall_s += time.time() - _vs
             verilator_attempts.append(
-                {k: vv.get(k) for k in ("attempt", "all_pass", "n_passed", "n_capsules", "n_not_promoted")}
+                {**{k: vv.get(k) for k in ("attempt", "all_pass", "n_passed", "n_capsules", "n_not_promoted",
+                                        "n_rtl_passed", "n_expected_refusal_passed")},
+                 **({"evidence_reuse": vv["evidence_reuse"]} if "evidence_reuse" in vv else {})}
             )
             (run_dir / "verilator_checkpoints.json").write_text(
                 json.dumps(
@@ -1092,7 +1125,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
                 )
             )
             print(
-                f"[verilator attempt {vatt}] {vv['n_passed']}/{vv['n_capsules']} pass "
+                f"[verilator attempt {vatt}] {vv['n_passed']}/{vv['n_capsules']} obligations passed; "
+                f"RTL passes={vv.get('n_rtl_passed', 0)}, refusals={vv.get('n_expected_refusal_passed', 0)} "
                 f"{vv.get('cert_tier')} (all_pass={vv['all_pass']}; "
                 f"{vv.get('n_not_promoted', 0)} not_promoted)"
             )
@@ -1231,6 +1265,9 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             context=context,
             audit=audit,
             grade_callback=_grade,
+            reuse_noop_grade=lambda: (_driver_grade_receipt[0] is not None
+                and _driver_grade_receipt[0].current(submission=ws / "submission",
+                    inputs=grading_inputs, run_dir=run_dir)),
         )
         active_wall_s += time.time() - _fin_start  # finalize is active work
         print(
@@ -1354,6 +1391,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             _manifest_doc["run_config"] = _environment_record.get("run_config", _run_config)
             _manifest_doc["feedback_health"] = feedback_health
             _manifest_path.write_text(yaml.safe_dump(_manifest_doc, sort_keys=False))
+        from merlin_experiments.phase1.feedback import hidden_capsule_policy as HCP
         from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
         from merlin_experiments.phase1.feedback import private_full_models as PFM
 
@@ -1365,6 +1403,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             execution_gate=PFX.gate_for(
                 context.descriptor, required_programs=PFM.program_requirements_for(context.descriptor)
             ),
+            hidden_capsule_mode=HCP.resolve(context.descriptor, getattr(a, 'hidden_capsule_mode', ''))['mode'],
         )
     elif wsub.exists() and not feedback_health["healthy"]:
         official_grade["failures"] = ["feedback_channel_unhealthy"]

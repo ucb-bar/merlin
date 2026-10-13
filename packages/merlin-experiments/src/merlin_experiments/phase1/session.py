@@ -218,6 +218,13 @@ class PreparedRun:
         return runtime
 
     def verify_inputs(self) -> None:
+        from .feedback import hidden_capsule_policy
+
+        hidden_capsule_policy.verify_record(
+            hidden_capsule_policy.resolve(self.request.context.descriptor,
+                                           getattr(self.request.options, 'hidden_capsule_mode', '')),
+            self.environment.get('hidden_capsule_validation'),
+        )
         verify_readback_record(self.request.context, self.environment.get("readback_policy"))
         _verify_public_build_budget(self.request.options, self.environment)
         _verify_client_selection(self.request.options, self.environment)
@@ -517,6 +524,9 @@ def _prepare(
         return 2
     _source_context = request.source_context
     _environment_path = run_dir / "environment.yaml"
+    from .feedback import hidden_capsule_policy
+
+    _hidden_capsule_policy = hidden_capsule_policy.resolve(context.descriptor, getattr(a, 'hidden_capsule_mode', ''))
     if _resuming:
         try:
             _environment_record = yaml.safe_load(_environment_path.read_text())
@@ -525,6 +535,9 @@ def _prepare(
         if not isinstance(_environment_record, dict):
             raise RuntimeError("resume refused: environment record is not a mapping")
         verify_readback_record(context, _environment_record.get("readback_policy"))
+        hidden_capsule_policy.verify_record(
+            _hidden_capsule_policy, _environment_record.get('hidden_capsule_validation'),
+        )
         _verify_public_build_budget(a, _environment_record)
         _verify_client_selection(a, _environment_record)
         _implementation_sources = _environment_record.get("implementation_sources")
@@ -797,6 +810,9 @@ def _prepare(
             treatment.stage_task(arm, ws, run_dir, sandbox=a.sandbox, bundle_dir=bundle_dir)
         else:
             stage_task(arm, ws, run_dir, sandbox=a.sandbox, task_scope=_task_scope_record, policy_root=_policy_root)
+        from .resource_prompt import append_resource_guidance
+
+        append_resource_guidance(ws, run_dir, a)
     elif not (ws / "TASK.md").is_file():
         raise RuntimeError("resume refused: sealed workspace TASK.md is missing")
 
@@ -881,6 +897,7 @@ def _prepare(
             "qa_loop": not bool(a.qualify_submission),
             **({"qualification_only": True} if a.qualify_submission else {}),
             "run_config": _run_config,
+            "hidden_capsule_validation": _hidden_capsule_policy,
             **({"codex_runtime_policy": _client_runtime.record()} if _client_runtime is not None else {}),
             **(
                 {"public_object_build_selection": _public_build_selection_record}

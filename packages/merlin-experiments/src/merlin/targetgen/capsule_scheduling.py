@@ -72,6 +72,7 @@ def run_pipelined(
     blocked_result: Callable[[dict], dict] | None = None,
     calibration_eligible: Callable[[dict], bool] | None = None,
     priority: Callable[[dict], int] | None = None,
+    defer_pending: Callable[[], str | None] | None = None,
 ) -> list[dict]:
     """Grade ``capsules`` with at most ``max_workers`` in flight, each as soon as its sibling finished.
 
@@ -112,6 +113,22 @@ def run_pipelined(
             children[parent].append(name)
     waiting = {name: len(parents) for name, parents in deps.items()}
     results: dict[int, dict] = {}
+    deferred = None
+
+    def should_defer():
+        nonlocal deferred
+        if deferred is None and defer_pending is not None:
+            reason = defer_pending()
+            deferred = reason if isinstance(reason, str) and reason else None
+        return deferred is not None
+
+    def deferred_results():
+        for i, cap in enumerate(capsules):
+            if i not in results:
+                results[i] = {"capsule": cap["name"], "kind": cap.get("kind"), "label": cap.get("label"),
+                              "status": "gated", "background_deferred": deferred,
+                              "failure": {"plane": "gate", "category": "BACKGROUND_DEFERRED", "detail": deferred}}
+        return [results[i] for i in range(len(capsules))]
     # LONGEST FIRST (by declared operand volume, then input order): the classical makespan rule. The
     # member that bounds the suite starts as soon as a worker is free instead of after the small ones.
     volume = {name: operand_volume(cap) for name, cap in zip(names, capsules, strict=True)}
@@ -155,6 +172,8 @@ def run_pipelined(
 
     if max_workers <= 1:
         while ready:
+            if should_defer():
+                return deferred_results()
             item = take_ready()
             if item is None:
                 finish_blocked()
@@ -168,6 +187,8 @@ def run_pipelined(
         if calibrate is not None and calibration_cap > 0:
             seen = calibrate()
             for _ in range(calibration_cap):
+                if should_defer():
+                    return deferred_results()
                 if not ready:
                     break
                 item = take_ready(calibration=True)
@@ -187,13 +208,16 @@ def run_pipelined(
                     break
                 seen = now
         while ready or running:
-            while ready and len(running) < max_workers:
+            should_defer()
+            while ready and not deferred and len(running) < max_workers:
                 item = take_ready()
                 if item is None:
                     break
                 *_, name = item
                 running[pool.submit(copy_context().run, run_one, capsules[index[name]], max_workers)] = name
             if not running:
+                if deferred:
+                    return deferred_results()
                 finish_blocked()
                 continue
             done, _ = wait(running, return_when=FIRST_COMPLETED)

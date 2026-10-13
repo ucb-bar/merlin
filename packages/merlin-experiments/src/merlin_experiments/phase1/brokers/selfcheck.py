@@ -21,6 +21,7 @@ Usage: selfcheck_broker.py --ws <workspace> [--poll 0.5]
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -563,7 +564,7 @@ def main(
                     MERLIN_SELFCHECK_PROMOTION_ROOT=str(promotion_capsules_root or capsules_root),
                     MERLIN_SELFCHECK_PROMOTION_SHA256=graded_digest,
                 )
-            with log_out.open("w") as fo, log_err.open("w") as fe:
+            with log_out.open("w") as fo, log_err.open("w") as fe, contextlib.ExitStack() as priority:
                 from merlin.common.cpu_pool import worker_pool_command
                 from merlin_experiments.frozen_python import inherited_python_command
 
@@ -571,6 +572,11 @@ def main(
                     worker_pool_command(inherited_python_command(argv2), worker_env),
                     cwd=str(ws), stdout=fo, stderr=fe, text=True, env=worker_env
                 )
+                from ..feedback.background_admission import active_full_selfcheck
+
+                priority.enter_context(active_full_selfcheck(ws=ws, process=proc, request=r,
+                    source_sha256=graded_digest, public=capsules_root, context=context,
+                    contract=contract, bundle_manifest=a.compiler_bundle_manifest, sim=sim))
                 while proc.poll() is None:
                     why = _abort_reason(ch, orig_ppid, req, deadline)
                     if why:

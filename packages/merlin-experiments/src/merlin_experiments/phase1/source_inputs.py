@@ -181,6 +181,7 @@ def paths(
         ("readback_policy", "merlin.targetgen.contract.readback_policy"),
         ("readback_codec", "merlin.runtime.out_b64"),
         ("binary_readback_codec", "merlin.runtime.out_bin"),
+        ("simulation_certificate", "merlin.targetgen.simulation_certificate"),
     ):
         inputs[f"phase1:startup:{key}"] = str(_source(module).resolve())
     try:
