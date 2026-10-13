@@ -587,6 +587,7 @@ def resolve_plan(
                 "MERLIN_CODEX_CPUS",
                 "MERLIN_COMPUTE_CPUS",
                 "MERLIN_COMPUTE_CPU_SLOTS",
+                "MERLIN_DEVICE_BUILD_JOBS",
                 "MERLIN_CAPSULE_ORDER",
                 "MERLIN_BUILD_CPUS",
                 "MERLIN_BUILD_SLOT_ROOT",

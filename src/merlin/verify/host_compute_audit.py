@@ -160,8 +160,17 @@ def audit_group(
     if not isinstance(address_arithmetic, int) or isinstance(address_arithmetic, bool) or address_arithmetic < 0:
         row.update(verdict=UNKNOWN, why="pointer-setup arithmetic has no derived execution count")
         return row
+    address_loop_arithmetic = activity.get("dynamic_address_loop_control_arithmetic", 0)
+    if type(address_loop_arithmetic) is not int or address_loop_arithmetic < 0:
+        row.update(verdict=UNKNOWN, why="address-loop control has no derived execution count")
+        return row
+    pointer_arithmetic = address_arithmetic
+    address_arithmetic += address_loop_arithmetic
     total_arithmetic = sum(int(dynamic.get(name, 0)) for name in _ARITHMETIC)
     arithmetic = total_arithmetic - address_arithmetic
+    if arithmetic < 0:
+        row.update(verdict=UNKNOWN, why="proved address/control counts exceed raw arithmetic")
+        return row
     value_arithmetic = sum(int(dynamic.get(name, 0)) for name in _VALUE_ONLY)
     payload = (activity.get("load_payload_bytes") or 0) + (activity.get("store_payload_bytes") or 0)
     preparation = None
@@ -181,9 +190,12 @@ def audit_group(
     top = (activity.get("block_signatures") or [{}])[0]
     row.update(
         arithmetic_basis="pointer_offset_provenance_v1",
+        address_loop_basis="closed_induction_address_uses_v1",
         host_arithmetic=arithmetic,
         host_total_arithmetic=total_arithmetic,
         host_address_arithmetic=address_arithmetic,
+        host_pointer_setup_arithmetic=pointer_arithmetic,
+        host_address_loop_control_arithmetic=address_loop_arithmetic,
         host_value_arithmetic=value_arithmetic,
         host_payload_bytes=payload,
         host_raw_payload_bytes=(activity.get("load_payload_bytes") or 0) + (activity.get("store_payload_bytes") or 0),

@@ -496,6 +496,10 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
     dynamic = Counter()
     pointer_setup = _pointer_setup_operations(function)
     dynamic_pointer_setup = 0
+    from .address_loop_control import address_loop_updates
+
+    address_updates = address_loop_updates(blocks, loops) if not problems else frozenset()
+    dynamic_address_updates = 0
     tasks = defaultdict(
         lambda: {"static": Counter(), "dynamic": Counter(), "load_payload_bytes": 0, "store_payload_bytes": 0}
     )
@@ -535,6 +539,8 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
                 task["dynamic"][category] += count
                 if operation in pointer_setup:
                     dynamic_pointer_setup += count
+                if operation in address_updates:
+                    dynamic_address_updates += count
             if category in {"load", "store"}:
                 ty = operation.results[0].type if category == "load" else operation.operands[0].type
                 payload = _payload_bytes(ty)
@@ -644,6 +650,7 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
         "static_operations": dict(static),
         "dynamic_operations": dict(dynamic) if not problems else None,
         "dynamic_pointer_setup_arithmetic": dynamic_pointer_setup if not problems else None,
+        "dynamic_address_loop_control_arithmetic": dynamic_address_updates if not problems else None,
         "load_payload_bytes": sum(row["load_payload_bytes"] for row in tasks.values()) if payload_known else None,
         "store_payload_bytes": sum(row["store_payload_bytes"] for row in tasks.values()) if payload_known else None,
         "unknown_memory_operation_indices": unknown_payload,
@@ -652,7 +659,9 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
         "allocations": allocations,
         "top_allocations_by_static_payload": top_allocations,
         "top_buffers_by_scalar_memory_payload": top_buffers,
-        "memory_hotspot_identity_scope": "buffer_root alloca index is function.walk operation index; exact SSA roots only",
+        "memory_hotspot_identity_scope": (
+            "buffer_root alloca index is function.walk operation index; exact SSA roots only"
+        ),
         "static_allocation_payload_bytes": sum(row["payload_bytes"] for row in allocations)
         if all(row["payload_bytes"] is not None for row in allocations)
         else None,

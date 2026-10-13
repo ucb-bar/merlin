@@ -23,7 +23,9 @@ from __future__ import annotations
 import hashlib
 import shutil
 import subprocess
+from collections import deque
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import FIRST_COMPLETED, wait
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -510,9 +512,11 @@ def _run_build_tool(argv: Sequence[str], *, timeout: int) -> subprocess.Complete
 
 def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output):
     from merlin.common import invocation_record
+    from merlin.common.cpu_pool import shared_compute_pool
 
-    with invocation_record.observe(
-        directory, stage=stage, argv=argv, inputs=inputs, outputs=(output,), dependencies=(Path(__file__),)
+    with shared_compute_pool(timeout_s=timeout), invocation_record.observe(
+        directory, stage=stage, argv=argv, inputs=inputs, outputs=(output,),
+        dependencies=(Path(__file__), Path(__file__).with_name("device_build_jobs.py")),
     ) as observed:
         result = _run_build_tool(argv, timeout=timeout)
         observed.complete(result)
@@ -613,12 +617,16 @@ def build_device_objects(
 
     By default every failure is recorded and skipped, so a diagnostic build reports all declined
     symbols. A caller that requires every object may request ``stop_on_first_failure``; its first
-    actual failure is retained, no subsequent symbol is attempted, and no shim is emitted.
+    actual failure is retained, no subsequent symbol is admitted, and no shim is emitted.
+    Already admitted external tool jobs drain and retain their genuine outputs. Package emission
+    stays sequential on its owner thread; independent LLVM/tool jobs use the declared shared
+    compute capacity (or explicit ``MERLIN_DEVICE_BUILD_JOBS``). Legacy callers default to one job.
     """
     from merlin.common.digest import sha256_text
     from merlin.targetgen import corpus_spec as CS
     from merlin.targetgen.package_runtime import load_package, run_entrypoint
 
+    from .device_build_jobs import ArtifactBuild, ArtifactCompiler, build_workers
     from .device_shim import (
         emit_logical_translation_unit,
         emit_translation_unit,
@@ -628,6 +636,7 @@ def build_device_objects(
     )
     from .toolchain import clang, mlir_translate
 
+    workers = build_workers()
     work = Path(workdir)
     if type(stop_on_first_failure) is not bool:
         raise ValueError("stop_on_first_failure must be a bool")
@@ -707,142 +716,157 @@ def build_device_objects(
     # The selected interface is still checked and emitted for every signature. Two
     # interfaces may nevertheless produce the same LLVM artifact; compile its raw
     # object once, then rename a separate copy for each shim entry.
-    compiled_by_artifact: dict[str, list[tuple[Path, Path]]] = {}
-    custody_by_raw = {}
     custody = {}
+    objects_by_symbol = {}
+    pending = deque()
 
     def dedup_receipt() -> dict[str, int]:
-        return {
-            "unique_artifacts": sum(map(len, compiled_by_artifact.values())),
-            "emitted_symbols": len(kernels),
-        }
+        return {"unique_artifacts": compiler.completed_count(), "emitted_symbols": len(kernels)}
 
-    for index, sym in enumerate(sorted(signatures)):
-        if stop_on_first_failure and skipped:
-            break
-        key = tuple(int(v) for v in signatures[sym])
-        entry, provenance, refusal = kernel_entry(sym, key, None if entries is None else entries.get(sym), device)
-        if entry is None:
-            skipped.append((sym, refusal))
-            continue
-        # A batched signature needs the SAME kernel as its unbatched form: the batch is a loop in the
-        # shim over disjoint slices, not a third axis the device sees. Building a separate kernel per
-        # batch size would mint one per B for identical work.
-        m, n, k = key[-3:] if len(key) in (3, 4) else (None, None, None)
-        want = kernel_symbol(abi.symbol, index)
-        stem = work / f"{sym}"
-        if expected_interfaces is None:
-            try:
-                _capsule, iface = CS.build(entry, binding)
-            except Exception as exc:  # noqa: BLE001
-                skipped.append((sym, f"interface capsule: {exc}"))
-                continue
-        else:
-            from merlin.targetgen.contract.resident_interface_abi import bind_single_resident_matmul
-
-            chosen = expected_interfaces[sym]
-            iface = chosen.get("mlir")
-            if not isinstance(iface, str) or sha256_text(iface) != chosen.get("sha256"):
-                raise ValueError(f"{sym} no longer matches its selected interface bytes")
-            resident = bind_single_resident_matmul(iface, target=device)
-            if (resident.m, resident.n, resident.k) != (m, n, k) or resident.dtypes != tuple(dtypes[sym]):
-                raise ValueError(f"{sym} selected interface disagrees with pointer ABI, device, shape, or precision")
-        if grouped:
-            buffers, refusal = logical_buffers(iface)
-            call = (call_buffers or {}).get(sym)
-            if buffers is None or call is None:
-                skipped.append((sym, refusal or "the group rewrite recorded no host call for this symbol"))
-                continue
-            group_buffers[sym] = (buffers, tuple(call))
-        elif logical_abi:
-            roles, refusal = logical_argument_roles(iface)
-            if roles is None:
-                skipped.append((sym, refusal))
-                continue
-            argument_roles[sym] = roles
-        ifc = stem.with_suffix(".iface.mlir")
-        ifc.write_text(iface, encoding="utf-8")
-
-        try:
-            r = run_entrypoint(pkg, "emit_target_artifact", ifc, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            skipped.append((sym, f"emit_target_artifact: timed out after {timeout} seconds"))
-            continue
-        if r.returncode != 0:
-            shape = f"{m}x{k}x{n}" if m is not None else str(entry.get("op") or "this program")
-            skipped.append((sym, f"package declined {shape}: {(r.stderr or '').strip()[:200]}"))
-            continue
-        if expected_interfaces is not None and f"llvm.func @{abi.symbol}(" not in r.stdout:
-            skipped.append((sym, "exact package artifact has no contract-named LLVM kernel entry"))
-            continue
-        art = stem.with_suffix(".device.mlir")
-        art.write_text(r.stdout, encoding="utf-8")
-        digest = hashlib.sha256(r.stdout.encode("utf-8")).hexdigest()
-        # Compare actual bytes as well, so a digest collision cannot merge kernels.
-        raw = next(
-            (base for source, base in compiled_by_artifact.get(digest, ()) if source.read_bytes() == art.read_bytes()),
-            None,
+    def compile_artifact(art, ll, raw, translate_command, compile_command):
+        t, translated_invocation = _observed_build_tool(
+            translate_command, timeout=timeout, directory=work,
+            stage="device_llvm_translation", inputs=(art,), output=ll,
         )
-        if raw is None:
-            ll = stem.with_suffix(".ll")
-            t, translated_invocation = _observed_build_tool(
-                [mlir_translate(), "--mlir-to-llvmir", str(art), "-o", str(ll)],
-                timeout=timeout,
-                directory=work,
-                stage="device_llvm_translation",
-                inputs=(art,),
-                output=ll,
-            )
-            if t.returncode != 0:
-                skipped.append((sym, f"mlir-translate: {(t.stderr or '').strip()[:200]}"))
-                continue
+        if t.returncode != 0:
+            return ArtifactBuild(refusal=f"mlir-translate: {(t.stderr or '').strip()[:200]}")
+        c, compiled_invocation = _observed_build_tool(
+            compile_command, timeout=timeout, directory=work,
+            stage="device_object_compilation", inputs=(ll,), output=raw,
+        )
+        if c.returncode != 0:
+            return ArtifactBuild(refusal=f"clang: {(c.stderr or '').strip()[:200]}")
+        return ArtifactBuild(raw, {"translation": translated_invocation, "compilation": compiled_invocation})
 
-            raw = stem.with_suffix(".raw.o")
-            c, compiled_invocation = _observed_build_tool(
-                [clang(), *_flags(codegen_target, cflags), "-c", str(ll), "-o", str(raw)],
-                timeout=timeout,
-                directory=work,
-                stage="device_object_compilation",
-                inputs=(ll,),
-                output=raw,
-            )
-            if c.returncode != 0:
-                skipped.append((sym, f"clang: {(c.stderr or '').strip()[:200]}"))
-                continue
-            compiled_by_artifact.setdefault(digest, []).append((art, raw))
-            custody_by_raw[raw] = {"translation": translated_invocation, "compilation": compiled_invocation}
-        else:
-            # Retain the exact shared translation beside every source interface.
-            # Consumers join each call separately even when codegen is deduplicated.
-            translated = raw.with_name(raw.name.removesuffix(".raw.o") + ".ll")
-            stem.with_suffix(".ll").write_bytes(translated.read_bytes())
-
+    def finish_one():
+        # Refill after any completed job: one slow group must not idle the other
+        # compute slots. Final collection below restores original symbol order.
+        wait([record[-1] for record in pending], return_when=FIRST_COMPLETED)
+        record = next(record for record in pending if record[-1].done())
+        pending.remove(record)
+        sym, provenance, want, stem, future = record
+        built = future.result()
+        if built.refusal:
+            skipped.append((sym, built.refusal))
+            return
+        raw = built.raw
+        translated = raw.with_name(raw.name.removesuffix(".raw.o") + ".ll")
+        ll = stem.with_suffix(".ll")
+        if translated != ll:
+            # Keep each selected interface beside its exact shared translation.
+            ll.write_bytes(translated.read_bytes())
         obj = stem.with_suffix(".o")
         if oc is None:
             skipped.append((sym, "no objcopy available to give this kernel a distinct symbol"))
-            continue
+            return
         rn, renamed_invocation = _observed_build_tool(
             [oc, f"--redefine-sym={abi.symbol}={want}", str(raw), str(obj)],
-            timeout=timeout,
-            directory=work,
-            stage="device_object_symbol_rename",
-            inputs=(raw,),
-            output=obj,
+            timeout=timeout, directory=work, stage="device_object_symbol_rename",
+            inputs=(raw,), output=obj,
         )
         if rn.returncode != 0:
             skipped.append((sym, f"symbol rename: {(rn.stderr or '').strip()[:200]}"))
-            continue
-
+            return
         objs.append(obj)
+        objects_by_symbol[sym] = obj
         kernels[sym] = want
-        custody[sym] = {**custody_by_raw[raw], "rename": renamed_invocation}
+        custody[sym] = {**built.custody, "rename": renamed_invocation}
         built_from[sym] = provenance
+
+    with ArtifactCompiler(workers) as compiler:
+        for index, sym in enumerate(sorted(signatures)):
+            if stop_on_first_failure and (skipped or compiler.has_failed()):
+                break
+            key = tuple(int(v) for v in signatures[sym])
+            entry, provenance, refusal = kernel_entry(sym, key, None if entries is None else entries.get(sym), device)
+            if entry is None:
+                skipped.append((sym, refusal))
+                continue
+            # A batched signature needs the SAME kernel as its unbatched form: the batch is a loop in the
+            # shim over disjoint slices, not a third axis the device sees. Building a separate kernel per
+            # batch size would mint one per B for identical work.
+            m, n, k = key[-3:] if len(key) in (3, 4) else (None, None, None)
+            want = kernel_symbol(abi.symbol, index)
+            stem = work / f"{sym}"
+            if expected_interfaces is None:
+                try:
+                    _capsule, iface = CS.build(entry, binding)
+                except Exception as exc:  # noqa: BLE001
+                    skipped.append((sym, f"interface capsule: {exc}"))
+                    continue
+            else:
+                from merlin.targetgen.contract.resident_interface_abi import bind_single_resident_matmul
+
+                chosen = expected_interfaces[sym]
+                iface = chosen.get("mlir")
+                if not isinstance(iface, str) or sha256_text(iface) != chosen.get("sha256"):
+                    raise ValueError(f"{sym} no longer matches its selected interface bytes")
+                resident = bind_single_resident_matmul(iface, target=device)
+                if (resident.m, resident.n, resident.k) != (m, n, k) or resident.dtypes != tuple(dtypes[sym]):
+                    raise ValueError(
+                        f"{sym} selected interface disagrees with pointer ABI, device, shape, or precision"
+                    )
+            if grouped:
+                buffers, refusal = logical_buffers(iface)
+                call = (call_buffers or {}).get(sym)
+                if buffers is None or call is None:
+                    skipped.append((sym, refusal or "the group rewrite recorded no host call for this symbol"))
+                    continue
+                group_buffers[sym] = (buffers, tuple(call))
+            elif logical_abi:
+                roles, refusal = logical_argument_roles(iface)
+                if roles is None:
+                    skipped.append((sym, refusal))
+                    continue
+                argument_roles[sym] = roles
+            ifc = stem.with_suffix(".iface.mlir")
+            ifc.write_text(iface, encoding="utf-8")
+
+            try:
+                r = run_entrypoint(pkg, "emit_target_artifact", ifc, timeout=timeout)
+            except subprocess.TimeoutExpired:
+                skipped.append((sym, f"emit_target_artifact: timed out after {timeout} seconds"))
+                continue
+            if r.returncode != 0:
+                shape = f"{m}x{k}x{n}" if m is not None else str(entry.get("op") or "this program")
+                skipped.append((sym, f"package declined {shape}: {(r.stderr or '').strip()[:200]}"))
+                continue
+            if expected_interfaces is not None and f"llvm.func @{abi.symbol}(" not in r.stdout:
+                skipped.append((sym, "exact package artifact has no contract-named LLVM kernel entry"))
+                continue
+            art = stem.with_suffix(".device.mlir")
+            art.write_text(r.stdout, encoding="utf-8")
+            digest = hashlib.sha256(r.stdout.encode("utf-8")).hexdigest()
+            ll = stem.with_suffix(".ll")
+            raw = stem.with_suffix(".raw.o")
+            # Resolve original tool selection on the caller thread. Workers receive only
+            # frozen external commands, not the package/executor's contextual services.
+            translate_command = [mlir_translate(), "--mlir-to-llvmir", str(art), "-o", str(ll)]
+            compile_command = [clang(), *_flags(codegen_target, cflags), "-c", str(ll), "-o", str(raw)]
+            future = compiler.submit(
+                art, digest,
+                lambda art=art, ll=ll, raw=raw, translate_command=translate_command, compile_command=compile_command:
+                    compile_artifact(art, ll, raw, translate_command, compile_command),
+            )
+            pending.append((sym, provenance, want, stem, future))
+            if len(pending) >= workers:
+                finish_one()
+        while pending:
+            finish_one()
+
+    objs[:] = [objects_by_symbol[sym] for sym in sorted(kernels)]
+    for records in (kernels, custody, built_from):
+        ordered = sorted(records.items())
+        records.clear()
+        records.update(ordered)
+    skipped.sort(key=lambda row: row[0])
 
     if stop_on_first_failure and skipped:
         return DeviceBuild(
             device=device,
             objects=tuple(objs),
             kernels=kernels,
+            custody=custody,
             built_from=built_from,
             skipped=tuple(skipped),
             object_dedup=dedup_receipt(),
@@ -887,8 +911,9 @@ def build_device_objects(
     shim_c = work / "device_shim.c"
     shim_c.write_text(unit.text, encoding="utf-8")
     shim_o = work / "device_shim.o"
-    s = _run_build_tool(
-        [clang(), *_flags(codegen_target, cflags), "-c", str(shim_c), "-o", str(shim_o)], timeout=timeout
+    s, _shim_invocation = _observed_build_tool(
+        [clang(), *_flags(codegen_target, cflags), "-c", str(shim_c), "-o", str(shim_o)],
+        timeout=timeout, directory=work, stage="device_shim_compilation", inputs=(shim_c,), output=shim_o,
     )
     if s.returncode != 0:
         skipped.append(("shim", f"clang: {(s.stderr or '').strip()[:300]}"))

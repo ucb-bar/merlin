@@ -384,7 +384,11 @@ def render_direct_kernel(
             raise ValueError("neutral packet storage overlaps a selected entry symbol")
         declarations.extend([
             '#include "out_bin.h"', '#include "out_bin_memory.h"',
-            f"unsigned char {PACKET_ARENA_SYMBOL}[{capacity}] __attribute__((used,aligned(8)));",
+            # The arena is scratch: only the complete published prefix is read.
+            # A nonzero initializer puts it in the original ELF data segment,
+            # so selected direct ELF preload avoids clearing unused capacity in
+            # the guest CRT. No initial arena byte is an output value.
+            f"unsigned char {PACKET_ARENA_SYMBOL}[{capacity}] __attribute__((used,aligned(8)))={{1}};",
             f"volatile uint64_t {PACKET_USED_SYMBOL} __attribute__((used,aligned(8)));",
             "static merlin_out_bin_memory merlin_packet_sink;",
             "static int merlin_packet_write(const void *data,size_t size){",

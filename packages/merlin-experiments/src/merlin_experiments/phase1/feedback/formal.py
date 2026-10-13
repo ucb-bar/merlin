@@ -41,7 +41,8 @@ FORMAL_REQUIRED_TIER = "L3"
 
 
 def _private_source_freeze_for_formal(
-    run_dir: Path, spec: Path, target: str, *, workspace: Path | None = None, repo: Path | None = None
+    run_dir: Path, spec: Path, target: str, *, workspace: Path | None = None, repo: Path | None = None,
+    descriptor: Path | None = None,
 ) -> dict | None:
     """Use only the host-owned fresh-run input record, never a caller's receipt."""
     environment_path = run_dir / "environment.yaml"
@@ -97,10 +98,22 @@ def _private_source_freeze_for_formal(
     host_inputs = {entry.get("path") for entry in effective.get("host_inputs", []) if isinstance(entry, Mapping)}
     masks = effective.get("private_validation_paths")
     denied = {entry.get("path") for entry in masks or [] if isinstance(entry, Mapping)}
+    required = [{"path": original, "kind": "file"} for original, _field in resolved]
+    if descriptor is not None:
+        from merlin.targetgen.target_experiment import load_target_experiment
+
+        from ..corpus_inputs import _reconcile_public_software_denial
+
+        selected = load_target_experiment(descriptor)
+        if selected.target != target:
+            raise ValueError("formal private source declaration names another target")
+        required = _reconcile_public_software_denial(
+            selected, effective, required, spec=spec, source_freeze=record, source_root=root,
+        )
     if (
         str(root) not in host_inputs
         or str(root) not in denied
-        or any(original not in denied for original, _field in resolved)
+        or any(entry["path"] not in denied for entry in required)
         or masks != private.get("masked_paths")
     ):
         raise ValueError("formal private authored sources are not frozen and masked")
@@ -197,15 +210,18 @@ def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUI
     else:
         n_trace = scope.get("n_instruction_trace_capsules")
         n_model = scope.get("n_model_execution_capsules")
-        if any(not isinstance(v, int) or isinstance(v, bool) or v < 0 for v in (n_trace, n_model)):
+        n_host = scope.get("n_provided_host_capsules", 0)
+        if any(not isinstance(v, int) or isinstance(v, bool) or v < 0 for v in (n_trace, n_model, n_host)):
             reasons.append("structural_evidence_scope_counts_malformed")
         else:
-            if n_executable is not None and n_trace + n_model != n_executable:
+            if n_executable is not None and n_trace + n_model + n_host != n_executable:
                 reasons.append("structural_evidence_scope_denominator_mismatch")
             if n_trace > 0 and score.get("trace_all_pass") is not True:
                 reasons.append("trace_conformance_not_complete")
             if n_model > 0 and score.get("model_execution_all_pass") is not True:
                 reasons.append("model_execution_evidence_not_complete")
+            if n_host > 0 and score.get("provided_host_execution_all_pass") is not True:
+                reasons.append("provided_host_execution_evidence_not_complete")
     if score.get("structural_evidence_all_pass") is not True:
         reasons.append("structural_evidence_not_complete")
 
@@ -314,7 +330,9 @@ def _phase_manifest(score: Mapping, *, required_tier: str, functional_hidden: bo
         "trace_all_pass": score.get("trace_all_pass"),
         "model_execution_all_pass": score.get("model_execution_all_pass"),
         "structural_evidence_all_pass": score.get("structural_evidence_all_pass"),
+        "provided_host_execution_all_pass": score.get("provided_host_execution_all_pass"),
         "structural_evidence_scope": score.get("structural_evidence_scope"),
+        "trace_requirement_summary": score.get("trace_requirement_summary"),
         **({'expected_refusal_scope': score['expected_refusal_scope']} if 'expected_refusal_scope' in score else {}),
         "unmeasured_counts": {
             field: score.get(field)
@@ -655,7 +673,8 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     if required_full_models and a.private_full_model_spec is not None:
         try:
             source_freeze = _private_source_freeze_for_formal(
-                run_dir, a.private_full_model_spec, context.target, workspace=a.workspace, repo=context.repo
+                run_dir, a.private_full_model_spec, context.target, workspace=a.workspace, repo=context.repo,
+                descriptor=context.descriptor,
             )
             if source_freeze is None:
                 raise ValueError("private full-model certification requires a fresh run-owned authored-source freeze")
@@ -707,7 +726,8 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             private_models["fact_reader_binding"] = facts_binding
             if (
                 _private_source_freeze_for_formal(
-                    run_dir, a.private_full_model_spec, context.target, workspace=a.workspace, repo=context.repo
+                    run_dir, a.private_full_model_spec, context.target, workspace=a.workspace, repo=context.repo,
+                    descriptor=context.descriptor,
                 )
                 != source_freeze
             ):
