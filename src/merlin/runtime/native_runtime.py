@@ -37,12 +37,16 @@ def _backend_data(backend):
 
     if type(backend) is BoundRoCCBackend:
         block = backend._engine("gsim")
+        argv = backend.execution_argv_template("gsim")
+        selection = backend._selection_json
+        if argv != tuple(block["argv"]):
+            selection = F.document({"backend_selection": selection, "effective_argv": argv})
         return {
             "engine": block["binary"]["path"],
             "cwd": block["cwd"],
             "environment": dict(block["environment"]),
-            "argv": tuple(block["argv"]),
-            "selection": backend._selection_json,
+            "argv": argv,
+            "selection": selection,
             "unlimited_stack": False,
             "text_mode": "utf8",
             "source": Path(inspect.getsourcefile(backend.run_elf)).resolve(),

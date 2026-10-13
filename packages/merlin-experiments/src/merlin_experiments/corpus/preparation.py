@@ -937,18 +937,23 @@ def _bundle_selection(optional_levels, selected_levels, selected_variants):
     return arms, variants
 
 
-def _stage_capability_contract(source, expected_sha256, destination, native_timeout_s):
-    """Record a host resource selection separately from original Phase 0 bytes."""
+def _stage_capability_contract(source, expected_sha256, destination, native_timeout_s, gsim_readback_transport=None):
+    """Record closed execution selections separately from original Phase 0 bytes."""
     from merlin.common.digest import sha256_file
-    from merlin.runtime.backends import chipyard_rocc_bound as runtime, rocc_selection
+    from merlin.runtime.backends import chipyard_rocc_bound as runtime
+    from merlin.runtime.backends import rocc_selection
 
-    if native_timeout_s is None:
+    if native_timeout_s is None and gsim_readback_transport is None:
         return {"path": str(source), "sha256": copy_input(source, destination, expected_sha256=expected_sha256)}
     ordinary_tree(source)
     if sha256_file(source) != expected_sha256:
         raise SpecError("selected corpus input differs from verified evidence; prepare a new release")
     try:
-        selected = rocc_selection.select_native_timeout(read_yaml(source), native_timeout_s)
+        selected = read_yaml(source)
+        if native_timeout_s is not None:
+            selected = rocc_selection.select_native_timeout(selected, native_timeout_s)
+        if gsim_readback_transport is not None:
+            selected = rocc_selection.select_gsim_readback(selected, gsim_readback_transport)
     except runtime.RoCCExecutionError as error:
         raise SpecError(str(error)) from error
     native_engines = set(selected["runner"]["chipyard_rocc"]["engines"]) & {"gsim", "verilator"}
@@ -956,15 +961,22 @@ def _stage_capability_contract(source, expected_sha256, destination, native_time
     with destination.open("x", encoding="utf-8") as output:
         yaml.safe_dump(selected, output, sort_keys=False)
     if sha256_file(source) != expected_sha256:
-        raise SpecError("selected original contract changed during resource selection")
-    return {
-        "path": str(source), "sha256": expected_sha256,
-        "execution_resource_selection": {
+        raise SpecError("selected original contract changed during execution selection")
+    record = {"path": str(source), "sha256": expected_sha256}
+    selected_sha256 = sha256_file(destination)
+    if native_timeout_s is not None:
+        record["execution_resource_selection"] = {
             "max_native_timeout_s": native_timeout_s,
-            "engines": sorted(native_engines), "selected_contract_sha256": sha256_file(destination),
+            "engines": sorted(native_engines), "selected_contract_sha256": selected_sha256,
             "scope": "host process resources only; original semantic and numerical declarations retained",
-        },
-    }
+        }
+    if gsim_readback_transport is not None:
+        record["execution_transport_selection"] = {
+            "engine": "gsim", "readback_transport": gsim_readback_transport,
+            "selected_contract_sha256": selected_sha256,
+            "scope": "complete output values only; original ABI, instruction and numerical declarations retained",
+        }
+    return record
 
 
 def scaffold(
@@ -982,6 +994,7 @@ def scaffold(
     lean_toolchain_manifest: Path | None = None,
     host_index_bits: int | None = None,
     native_timeout_s: int | None = None,
+    gsim_readback_transport: str | None = None,
 ) -> dict:
     """Stage only declared task/selfcheck/harness resources, never prior runs or bundles."""
     from merlin.common.digest import sha256_file
@@ -1031,13 +1044,15 @@ def scaffold(
     if selected_contract is not None:
         contract_source, contract_sha256 = selected_contract
         staged_contract = experiment / "contracts/target_contract.yaml"
-        contract_record = _stage_capability_contract(contract_source, contract_sha256, staged_contract, native_timeout_s)
+        contract_record = _stage_capability_contract(
+            contract_source, contract_sha256, staged_contract, native_timeout_s, gsim_readback_transport
+        )
         hardware["target_contract"] = str(staged_contract)
         inputs["capability_contract"] = contract_record
     elif te.declared_contract:
         raise SpecError("descriptor declares a capability contract without a selected Phase 0 export; freeze a new run")
-    elif native_timeout_s is not None:
-        raise SpecError("native resource selection requires an original Phase 0 contract")
+    elif native_timeout_s is not None or gsim_readback_transport is not None:
+        raise SpecError("execution selection requires an original Phase 0 contract")
     hardware_root = None
     if te.hwbringup_set:
         source = resolve_grant(te.hwbringup_set)

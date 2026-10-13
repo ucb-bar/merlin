@@ -23,7 +23,12 @@ from pathlib import Path
 from merlin.common import invocation_record as I
 from merlin.common.paths import checkout_root, python_source_dir
 from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
-from merlin.targetgen.contract.readback_policy import FULL_VALUES_B64
+from merlin.targetgen.contract.readback_policy import (
+    COHERENT_DUMP_V1,
+    COHERENT_PACKET_V1,
+    FULL_VALUES_B64,
+    ReadbackPolicy,
+)
 
 _RUNTIME = {
     "startup": "spike/crt.S",
@@ -248,7 +253,12 @@ def _execution_timeout_ceiling(block):
 
 def _validate_engine(engine, block, *, timeout_ceiling=600):
     required = {"binary", "argv", "environment", "cwd", "max_timeout_s", "max_console_bytes", "failure_markers"}
-    _fields(block, required | ({"receipt"} if engine in {"gsim", "verilator"} else set()))
+    _fields(block, required | ({"receipt"} if engine in {"gsim", "verilator"} else set()), {"readback_transport"})
+    if "readback_transport" in block:
+        _require(
+            engine == "gsim" and block["readback_transport"] in {COHERENT_DUMP_V1, COHERENT_PACKET_V1},
+            "selected readback override requires the coherent GSim full-value transport",
+        )
     _pin_shape(block["binary"])
     if engine in {"gsim", "verilator"}:
         _pin_shape(block["receipt"])
@@ -295,6 +305,12 @@ def _validate_readout(block):
             )
 
 
+def _gsim_startup_transport():
+    selected = os.environ.get("MERLIN_GSIM_STARTUP_PRELOAD")
+    _require(selected in {None, "", "0", "1"}, "selected gSIM startup preload must be 0 or 1")
+    return "original_dram_elf_preload_v1" if selected == "1" else None
+
+
 @dataclass(frozen=True)
 class BoundRoCCBackend:
     target: str
@@ -333,6 +349,34 @@ class BoundRoCCBackend:
         from merlin.runtime.harness_render import validate_contract
 
         return validate_contract(self._data()["contract"]).readback_policy
+
+    def engine_readback_policy(self, simulator, *, cb=None):
+        """Only an explicit sealed engine declaration overrides the default."""
+        block = self._engine(simulator)
+        transport = block.get("readback_transport", self.readback_policy().transport)
+        if transport in {COHERENT_DUMP_V1, COHERENT_PACKET_V1} and cb is not None:
+            from merlin.runtime.harness_render import _roster, _tensor
+
+            normalized, _ = _roster(cb)
+            if any(
+                not _tensor(normalized["tensors"][name])[0]
+                or normalized["tensors"][name]["dtype"] not in {"i8", "i16", "i32", "i64", "f32"}
+                for name in normalized["kernel_abi"]["outputs"]
+            ):
+                return self.readback_policy()
+        if transport == COHERENT_PACKET_V1:
+            _require(
+                {"htif", "out_b64", "out_bin", "out_bin_memory"}
+                <= {row["id"] for row in self._block()["toolchain"]["headers"]},
+                "selected packet transport omits its original complete codec header roster",
+            )
+        return ReadbackPolicy(transport)
+
+    def memory_readback_transport(self, simulator, *, policy_transport=None):
+        transport = self.engine_readback_policy(simulator).transport
+        if policy_transport not in (None, transport) or transport not in {COHERENT_DUMP_V1, COHERENT_PACKET_V1}:
+            return None
+        return "gsim_" + transport if simulator == "gsim" else None
 
     def readout_scalar_abi(self):
         return self._readout("scalar_abi")
@@ -436,6 +480,17 @@ class BoundRoCCBackend:
         """The immutable selected engine's process deadline ceiling."""
         return self._engine(simulator)["max_timeout_s"]
 
+    def execution_argv_template(self, simulator):
+        """Original command, optionally preloading this same verified ELF before hart release."""
+        argv = list(self._engine(simulator)["argv"])
+        if simulator == "gsim" and _gsim_startup_transport() is not None:
+            _require(not any(arg.startswith("+loadmem=") for arg in argv),
+                     "selected gSIM startup preload conflicts with another ELF selection")
+            # The original registered native harness writes only declared DRAM
+            # during load_program(). Later TSI/coherent reads remain live RTL.
+            argv.append("+loadmem={elf}")
+        return tuple(argv)
+
     def _engine_identity(self, engine):
         block = self._engine(engine)
         binary = _check_pin(block["binary"], executable=True)
@@ -444,6 +499,8 @@ class BoundRoCCBackend:
             "binary": block["binary"],
             "selection_sha256": hashlib.sha256(self._selection_json.encode()).hexdigest(),
         }
+        if "readback_transport" in block:
+            identity["readback_transport"] = block["readback_transport"]
         if "execution_resources" in self._block():
             identity["execution_resources"] = {
                 **self._block()["execution_resources"], "selected_engine_timeout_s": block["max_timeout_s"]
@@ -467,6 +524,10 @@ class BoundRoCCBackend:
                 "selected engine receipt identifies another executable",
             )
             identity["receipt"] = lineage
+            startup = _gsim_startup_transport()
+            if startup is not None:
+                self.execution_argv_template(engine)  # Refuse conflicting selected startup operands.
+                identity["startup_transport"] = startup
         elif engine == "verilator":
             from merlin.runtime.backends.rtl_build_receipt import validate
 
@@ -567,7 +628,7 @@ class BoundRoCCBackend:
     _spike_binary = spike_path
     _verilator_binary = verilator_path
 
-    def parse_output(self, console):
+    def parse_output(self, console, *, readback_policy=None):
         from merlin.runtime.backends.base import parse_console
 
         limit = max(row["max_console_bytes"] for row in self._block()["engines"].values())
@@ -598,7 +659,15 @@ class BoundRoCCBackend:
                 _require(len(parts) == 1, "selected output completion is malformed")
                 done = True
         outputs, raw = parse_console(text, error_cls=RoCCExecutionError)
-        if self._data()["contract"]["harness_abi"]["readback_transport"] == FULL_VALUES_B64:
+        selected = self.readback_policy() if readback_policy is None else readback_policy
+        _require(
+            type(selected) is ReadbackPolicy
+            and selected in {
+                self.readback_policy(), *(self.engine_readback_policy(e) for e in self._block()["engines"])
+            },
+            "selected output parser has no declared full-value policy",
+        )
+        if selected.transport == FULL_VALUES_B64:
             _require(bool(outputs), "selected execution omitted complete output values")
         return outputs, raw
 
@@ -612,7 +681,10 @@ class BoundRoCCBackend:
             elf, simulator="spike", timeout=timeout, capture_bytes=capture_bytes, declared_model_machine=True
         )
 
-    def run_elf(self, elf, *, simulator, timeout, capture_bytes=False, declared_model_machine=False, **kwargs):
+    def run_elf(
+        self, elf, *, simulator, timeout, capture_bytes=False, declared_model_machine=False,
+        memory_readback=None, **kwargs
+    ):
         _require(
             not kwargs and type(capture_bytes) is bool and type(declared_model_machine) is bool,
             "selected execution received unsupported options",
@@ -632,14 +704,50 @@ class BoundRoCCBackend:
         before = self._engine_identity(simulator)
         path = Path(elf)
         elf_sha = _digest(path)
+        export = None
+        if memory_readback is not None:
+            from merlin.runtime.backends import _chipyard_memory_readback
+            from merlin.runtime.native_runtime import active_native_runtime
+
+            _require(
+                active_native_runtime() is None,
+                "selected native filesystem view has no approved coherent-export mapping; "
+                "select the direct execution mode explicitly or retain the original console transport",
+            )
+            _require(
+                simulator == "gsim" and not capture_bytes and not declared_model_machine
+                and self.engine_readback_policy(simulator).transport in {COHERENT_DUMP_V1, COHERENT_PACKET_V1},
+                "selected engine has no declared coherent full-value transport",
+            )
+            export = _chipyard_memory_readback.prepare_memory_readback(path, simulator, memory_readback)
+            _require(export.elf_sha256 == elf_sha, "selected memory export differs from the original ELF")
+            _require(
+                memory_readback.get("transport") == self.memory_readback_transport(simulator),
+                "selected memory export differs from the declared engine transport",
+            )
         cwd = _path(block["cwd"])
         _require(
             cwd.resolve() == cwd and not any(p.is_symlink() for p in (cwd, *cwd.parents)) and cwd.is_dir(),
             "selected execution working directory is unavailable",
         )
         flags = before.get("extension", {}).get("flags", [])
-        argv = [block["binary"]["path"], *flags, *(str(path) if arg == "{elf}" else arg for arg in block["argv"])]
+        template = self.execution_argv_template(simulator)
+        _require(
+            (_gsim_startup_transport() if simulator == "gsim" else None) == before.get("startup_transport"),
+            "selected startup transport changed before execution",
+        )
+        argv = [block["binary"]["path"], *flags, *(arg.replace("{elf}", str(path)) for arg in template)]
+        if export is not None:
+            _require(
+                not any(arg.startswith(("+dump-", "+signature")) for arg in argv),
+                "selected engine repeats memory-export arguments",
+            )
+            argv.extend(export.argv_suffix)
         dependencies = [Path(__file__).resolve(), _path(block["binary"]["path"])]
+        process_inputs = [path]
+        if export is not None:
+            dependencies.append(Path(_chipyard_memory_readback.__file__).resolve())
+            process_inputs.append(export.regions_path)
         if declared_model_machine:
             from merlin.llvmlower import toolchain
             from merlin.runtime.backends import spike_model
@@ -683,7 +791,7 @@ class BoundRoCCBackend:
         from merlin.runtime.native_runtime import active_native_runtime, forget_native_observation, run_in_native_view
 
         forget_native_observation()
-        if simulator == "gsim" and active_native_runtime() is not None:
+        if simulator == "gsim" and export is None and active_native_runtime() is not None:
             from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
 
             with gsim_runtime_slot(wait_timeout_s=timeout):
@@ -719,13 +827,15 @@ class BoundRoCCBackend:
             argv=argv,
             cwd=cwd,
             env=block["environment"],
-            inputs=(path,),
+            inputs=tuple(process_inputs),
             dependencies=dependencies,
         ) as observed:
             from merlin.targetgen.rtl_engine_policy import simulation_runtime_slot
 
             slot = simulation_runtime_slot(simulator, wait_timeout_s=timeout)
             with slot:
+                if export is not None:
+                    export.revalidate()
                 result = _bounded_process(
                     argv,
                     cwd=cwd,
@@ -739,6 +849,8 @@ class BoundRoCCBackend:
                 self._engine_identity(simulator) == before and _digest(path) == elf_sha,
                 "selected engine or ELF changed during execution",
             )
+            if export is not None:
+                export.revalidate(completed=True)
             I.verify(observed.path)
             I.require_environment(observed.path, environment=block["environment"])
         data = result.stdout

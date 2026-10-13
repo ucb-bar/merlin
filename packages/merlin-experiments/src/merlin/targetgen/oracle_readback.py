@@ -26,14 +26,21 @@ def _digest_for_gsim() -> bool:
 
 
 def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy):
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
     from merlin.targetgen.contract import compile as oot_compile
     from merlin.targetgen.contract.readback_policy import MEMORY_TRANSPORTS, engine_readback
 
+    if policy is None and type(backend) is BoundRoCCBackend:
+        policy = backend.engine_readback_policy(sim, cb=cb)
     if policy is None:  # a serial console: the fastest exact readback, not text
         cb, policy = engine_readback(cb, sim, target=target, backend=backend)
     kwargs: dict[str, Any] = {"readback_policy": policy} if policy is not None else {}
     if policy is not None and policy.transport in MEMORY_TRANSPORTS:
-        from merlin_experiments.phase1.feedback.native_memory_readback import NativeMemoryReadback, select_memory_engine
+        from merlin_experiments.phase1.feedback.native_memory_readback import (
+            NativeLogicalMemoryReadback,
+            NativeMemoryReadback,
+            select_memory_engine,
+        )
 
         from merlin.targetgen.rtl.facts import rtl_facts_path
 
@@ -46,7 +53,8 @@ def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy):
             revalidate()
             return citation
 
-        kwargs["memory_readback"] = NativeMemoryReadback(facts_path=facts_path, policy=policy)
+        reader = NativeLogicalMemoryReadback if type(backend) is BoundRoCCBackend else NativeMemoryReadback
+        kwargs["memory_readback"] = reader(facts_path=facts_path, policy=policy)
         kwargs["oracle_revalidate"] = revalidate_memory_engine
     return oot_compile.run_on_oracle(
         cb, llvm_text, simulator=sim, target=target, workdir=workdir, timeout=timeout, **kwargs

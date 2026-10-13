@@ -14,7 +14,12 @@ import struct
 from dataclasses import dataclass
 
 from merlin.common.quant_formats import get
-from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, FULL_VALUES_B64, ReadbackPolicy
+from merlin.targetgen.contract.readback_policy import (
+    COHERENT_DUMP_V1,
+    COHERENT_PACKET_V1,
+    FULL_VALUES_B64,
+    ReadbackPolicy,
+)
 
 from .direct_kernel_harness import DirectKernelAbi, _identifier, render_direct_kernel
 
@@ -291,7 +296,16 @@ def render_harness(
     selected = validate_contract(contract)
     if readback_policy is None:
         readback_policy = selected.readback_policy
-    if type(readback_policy) is not ReadbackPolicy or readback_policy != selected.readback_policy:
+    engine_policies = {
+        ReadbackPolicy(block["readback_transport"])
+        for engine, block in (contract.get("runner", {}).get("chipyard_rocc", {}).get("engines", {})).items()
+        if engine == "gsim" and type(block) is dict
+        and block.get("readback_transport") in {COHERENT_DUMP_V1, COHERENT_PACKET_V1}
+    }
+    if (
+        type(readback_policy) is not ReadbackPolicy
+        or readback_policy not in {selected.readback_policy, *engine_policies}
+    ):
         raise ValueError("neutral harness readback differs from its selected contract")
     if type(max_storage_bytes) is not int or not 0 < max_storage_bytes < 1 << 64:
         raise ValueError("neutral harness requires a positive complete storage budget")
@@ -300,6 +314,11 @@ def render_harness(
     normalized, slots = _roster(cb, source_owned_mutables=source_owned_mutables)
     layouts = {name: _tensor(spec) for name, spec in normalized["tensors"].items()}
     total = sum(row[2] for row in layouts.values())
+    if readback_policy.transport == COHERENT_PACKET_V1:
+        from .direct_kernel_harness import packet_output_blocks
+        from .out_packet import out_bin_packet_capacity
+
+        total += 8 + out_bin_packet_capacity(tuple(frame for _, _, frame in packet_output_blocks(normalized)))
     if original_abi is not None:
         from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi
 

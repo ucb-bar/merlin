@@ -594,6 +594,7 @@ def resolve_plan(
                 "MERLIN_GRADE_CPUS",
                 "MERLIN_GSIM_CPUS",
                 "MERLIN_GSIM_MAX_SLOTS",
+                "MERLIN_GSIM_STARTUP_PRELOAD",
                 "MERLIN_SPIKE_MAX_SLOTS",
                 "MERLIN_OPERATOR_GRADE_PROCESSES",
                 "MERLIN_SNAPSHOT_LEASE_CACHE",

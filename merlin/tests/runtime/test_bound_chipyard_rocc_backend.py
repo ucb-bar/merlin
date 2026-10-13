@@ -17,7 +17,12 @@ from merlin.runtime import harness_render as H
 from merlin.runtime.backends import chipyard_rocc_bound as B
 from merlin.runtime.backends import rocc_selection as S
 from merlin.targetgen import gsim_emulator as GE
-from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, FULL_VALUES_B64, ReadbackPolicy
+from merlin.targetgen.contract.readback_policy import (
+    COHERENT_DUMP_V1,
+    COHERENT_PACKET_V1,
+    FULL_VALUES_B64,
+    ReadbackPolicy,
+)
 
 pytest_plugins = ("test_rtl_build_receipt",)
 
@@ -690,6 +695,352 @@ def test_readback_policy_is_typed_and_derived_only_from_frozen_selection(selecti
     assert type(policy) is ReadbackPolicy
     assert policy.transport == FULL_VALUES_B64
     assert policy.record() == bound.readback_policy().record()
+
+
+def test_engine_override_keeps_default_parser_and_spike_policy(selection, tmp_path):
+    contract, facts = copy.deepcopy(selection)
+    spike = copy.deepcopy(contract["runner"]["chipyard_rocc"]["engines"]["spike"])
+    engine, _, _ = _gsim((contract, facts), tmp_path)
+    contract["runner"]["chipyard_rocc"]["engines"]["spike"] = spike
+    engine["readback_transport"] = COHERENT_DUMP_V1
+    bound = B.bind(target="synthetic", contract=contract, facts=facts)
+    policy = bound.engine_readback_policy("gsim")
+    assert policy.transport == COHERENT_DUMP_V1
+    assert bound.engine_readback_policy("spike").transport == FULL_VALUES_B64
+    assert bound.readback_policy().transport == FULL_VALUES_B64
+    assert bound.execution_engine_identity("gsim")["readback_transport"] == COHERENT_DUMP_V1
+    assert bound.memory_readback_transport("gsim") == "gsim_coherent_dump_v1"
+    assert bound.memory_readback_transport("spike") is None
+    unsupported = _program()
+    unsupported["tensors"]["Y"]["dtype"] = "f64"
+    assert bound.engine_readback_policy("gsim", cb=unsupported).transport == FULL_VALUES_B64
+    with pytest.raises(ValueError, match="omitted complete output"):
+        bound.parse_output("DONE\n")
+    assert bound.parse_output("DONE\n", readback_policy=policy) == ({}, {})
+    text = bound.render_harness(_program(), target="synthetic", inputs={"X": [[1, 2]]}, readback_policy=policy)
+    assert 'htif_puts("DONE\\n")' in text and "OUT_B64_BEGIN" not in text
+    assert "tensor_1[2]" in text
+    with pytest.raises(ValueError, match="readback differs"):
+        H.render_harness(_program(), target="synthetic", inputs={"X": [[1, 2]]},
+                         contract=selection[0], readback_policy=policy)
+
+
+@pytest.fixture
+def logical_memory_case(selection, tmp_path, monkeypatch, request):
+    import shutil
+
+    from merlin_experiments.phase1.feedback.native_memory_readback import NativeLogicalMemoryReadback
+
+    from merlin.runtime.backends import base
+
+    engine, _, _ = _gsim(selection, tmp_path)
+    transport = getattr(request, "param", COHERENT_DUMP_V1)
+    engine["readback_transport"] = transport
+    if transport == COHERENT_PACKET_V1:
+        from merlin.runtime.direct_kernel_harness import packet_output_blocks
+        from merlin.runtime.harness_render import _roster
+        from merlin.runtime.out_packet import out_bin_packet_capacity
+
+        selection[0]["runner"]["chipyard_rocc"]["toolchain"]["headers"].extend(
+            _unit(name, B._HEADERS) for name in ("out_bin", "out_bin_memory")
+        )
+        normalized, _ = _roster(_program())
+        capacity = out_bin_packet_capacity(tuple(frame for _, _, frame in packet_output_blocks(normalized)))
+    bound = _bound(selection)
+    # Factory intentionally returns fresh genuine bound objects.
+    monkeypatch.setattr(base, "get_backend", lambda target: _bound(selection))
+    facts_path = tmp_path / "facts.json"
+    facts_path.write_text(json.dumps(selection[1]))
+    source = tmp_path / "objects.c"
+    packet_source = (f"unsigned char merlin_readback_packet[{capacity}];\n"
+                     "volatile unsigned long long merlin_readback_packet_used __attribute__((aligned(8)));\n"
+                     if transport == COHERENT_PACKET_V1 else "")
+    source.write_text(packet_source + "static volatile unsigned char tensor_0[2]={1,2};\n"
+                      "static volatile unsigned char tensor_1[2]={127,128};\n"
+                      "int main(void){return tensor_0[0]+tensor_1[0];}\n")
+    compiler = shutil.which("cc")
+    assert compiler, "layout controls need an actual host ELF compiler"
+    elf = tmp_path / "objects.elf"
+    subprocess.run([compiler, "-no-pie", "-O0", str(source), "-o", str(elf)], check=True, capture_output=True)
+    cb = _program()
+    del cb["kernel_abi"]
+    reader = NativeLogicalMemoryReadback(facts_path=facts_path, policy=ReadbackPolicy(transport))
+    request = reader.prepare(cb=cb, target="synthetic", elf_path=elf, workdir=tmp_path,
+                             simulator="gsim", backend=bound)["memory_readback"]
+    return reader, request, cb, bound, selection, facts_path, elf
+
+
+def _neutral_packet_dump(request, *, defect=None):
+    import struct
+
+    data, checksum = b"\x7f\x80", 0xCBF29CE484222325
+    for byte in data:
+        checksum = ((checksum ^ byte) * 0x100000001B3) & ((1 << 64) - 1)
+    packet = b"OUT_BIN_BEGIN v1 merlin_block_0_0 1 2 1 s 2\n" + data
+    packet += f"OUT_BIN_END v1 {checksum:016x}\nDONE\n".encode()
+    if defect == "checksum":
+        packet = packet.replace(f"{checksum:016x}".encode(), b"0000000000000000")
+    if defect == "wrong_roster":
+        packet = packet.replace(b"merlin_block_0_0", b"merlin_block_0_1")
+    metadata, arena = request["regions"]
+    raw = b"GSIMPKT1" + struct.pack("<QQQQ", metadata["base"] + int(defect == "address"),
+                                   arena["base"], arena["bytes"], len(packet) + int(defect == "used"))
+    raw += packet + b"PKTEND1\n"
+    if defect == "truncated":
+        raw = raw[:-1]
+    if defect == "extra":
+        raw += b"extra"
+    Path(request["output_path"]).write_bytes(raw)
+
+
+@pytest.mark.parametrize("logical_memory_case", [COHERENT_PACKET_V1], indirect=True)
+def test_neutral_packet_reader_preserves_original_full_output_roster(logical_memory_case):
+    reader, request, cb, bound, *_ = logical_memory_case
+    _neutral_packet_dump(request)
+    outputs, evidence = reader.decode("DONE\n")
+    assert outputs == {"Y": [[127, -128]]}
+    assert evidence["transport"] == "gsim_coherent_packet_v1" and evidence["status"] == "complete"
+    assert evidence["block_words"] == 256 and evidence["packet_framing"] == "neutral_dense_blocks_out_bin_v1"
+    assert evidence["native_filesystem_view"] is None
+    assert bound.engine_readback_policy("gsim", cb=cb).transport == COHERENT_PACKET_V1
+    assert bound.readback_policy().transport == FULL_VALUES_B64
+    assert request["regions"][0]["bytes"] == 8
+
+
+@pytest.mark.parametrize("logical_memory_case", [COHERENT_PACKET_V1], indirect=True)
+@pytest.mark.parametrize("defect", ["address", "used", "checksum", "wrong_roster", "truncated", "extra"])
+def test_neutral_packet_reader_refuses_malformed_full_value_envelope(logical_memory_case, defect):
+    reader, request, *_ = logical_memory_case
+    _neutral_packet_dump(request, defect=defect)
+    with pytest.raises(ValueError):
+        reader.decode("DONE\n")
+
+
+@pytest.mark.parametrize("logical_memory_case", [COHERENT_PACKET_V1], indirect=True)
+@pytest.mark.parametrize("mutation", ["elf", "facts", "cb", "policy", "request", "regions", "binary"])
+def test_neutral_packet_reader_reopens_original_source_authority(logical_memory_case, mutation):
+    reader, request, cb, bound, _selection, facts, elf = logical_memory_case
+    _neutral_packet_dump(request)
+    if mutation == "elf":
+        elf.write_bytes(elf.read_bytes() + b"changed")
+    elif mutation == "facts":
+        facts.write_text("{}")
+    elif mutation == "cb":
+        cb["tensors"]["Y"]["shape"] = [1, 3]
+    elif mutation == "policy":
+        reader.policy = ReadbackPolicy(COHERENT_DUMP_V1)
+    elif mutation == "request":
+        request["regions"][1]["bytes"] += 1
+    elif mutation == "regions":
+        Path(request["regions_path"]).write_text("0x1000 2\n")
+    else:
+        Path(bound._engine("gsim")["binary"]["path"]).write_text("changed")
+    with pytest.raises(ValueError):
+        reader.decode("DONE\n")
+
+
+@pytest.mark.parametrize("logical_memory_case", [COHERENT_PACKET_V1], indirect=True)
+def test_packet_process_uses_only_declared_original_mode(logical_memory_case, monkeypatch):
+    from merlin.targetgen import rtl_engine_policy
+
+    _reader, request, _cb, bound, *_ = logical_memory_case
+
+    def run(argv, *, observed, **kwargs):
+        assert argv[-1] == "+dump-mode=coherent-packet"
+        _neutral_packet_dump(request)
+        result = subprocess.CompletedProcess(argv, 0, stdout=b"DONE\n", stderr=b"")
+        observed.complete(result)
+        return result
+
+    monkeypatch.setattr(B, "_bounded_process", run)
+    monkeypatch.setattr(rtl_engine_policy, "simulation_runtime_slot", lambda *a, **k: nullcontext())
+    assert bound.run_elf(logical_memory_case[-1], simulator="gsim", timeout=5, memory_readback=request) == "DONE\n"
+
+
+@pytest.mark.parametrize("logical_memory_case", [COHERENT_PACKET_V1], indirect=True)
+def test_packet_process_cannot_downgrade_original_native_view(logical_memory_case, monkeypatch):
+    from merlin.runtime import native_runtime
+
+    _reader, request, _cb, bound, *_ = logical_memory_case
+    monkeypatch.setattr(native_runtime, "active_native_runtime", lambda: object())
+    monkeypatch.setattr(B, "_bounded_process", lambda *a, **k: pytest.fail("view was downgraded"))
+    with pytest.raises(ValueError, match="native filesystem view has no approved coherent-export mapping"):
+        bound.run_elf(logical_memory_case[-1], simulator="gsim", timeout=5, memory_readback=request)
+
+
+def test_packet_selection_refuses_missing_original_codec_pins(selection, tmp_path):
+    engine, *_ = _gsim(selection, tmp_path)
+    engine["readback_transport"] = COHERENT_PACKET_V1
+    bound = _bound(selection)
+    with pytest.raises(ValueError, match="complete codec header roster"):
+        bound.engine_readback_policy("gsim")
+
+
+@pytest.mark.parametrize("logical_memory_case", [COHERENT_PACKET_V1], indirect=True)
+def test_packet_process_refuses_a_different_native_transport(logical_memory_case, monkeypatch):
+    _reader, request, _cb, bound, *_ = logical_memory_case
+    request["transport"] = "gsim_coherent_dump_v1"
+    # A separately well-formed raw request cannot substitute for the selected packet mode.
+    request["regions"] = [request["regions"][1]]
+    Path(request["regions_path"]).write_text(
+        f"{request['regions'][0]['base']:#x} {request['regions'][0]['bytes']}\n"
+    )
+    monkeypatch.setattr(B, "_bounded_process", lambda *a, **k: pytest.fail("changed mode executed"))
+    with pytest.raises(ValueError, match="declared engine transport"):
+        bound.run_elf(logical_memory_case[-1], simulator="gsim", timeout=5, memory_readback=request)
+
+
+def _logical_dump(request, *, source=0, data=b"\x7f\x80", trailer=True):
+    import struct
+
+    region = request["regions"][0]
+    raw = b"GSIMDMP1" + struct.pack("<QQQQ", source, 1, region["base"], region["bytes"]) + data
+    if trailer:
+        raw += b"GSIMEND1" + struct.pack("<QQ", 1, len(data))
+    Path(request["output_path"]).write_bytes(raw)
+
+
+def test_neutral_coherent_reader_resolves_actual_symbols_and_complete_values(logical_memory_case):
+    reader, request, cb, *_ = logical_memory_case
+    _logical_dump(request)
+    outputs, evidence = reader.decode("DONE\n")
+    assert outputs == {"Y": [[127, -128]]}
+    assert evidence["status"] == "complete" and evidence["source"] == "coherent"
+    assert evidence["outputs"] == [{"name": "Y", "shape": [1, 2], "bytes": 2}]
+    with pytest.raises(ValueError, match="one original"):
+        reader.prepare(cb=cb, target="synthetic", elf_path=logical_memory_case[-1],
+                       workdir=Path(request["output_path"]).parent, simulator="gsim", backend=logical_memory_case[3])
+
+
+@pytest.mark.parametrize("mutation", ["elf", "facts", "cb_shape", "policy", "request", "regions", "binary"])
+def test_neutral_coherent_reader_rejects_changed_authority(logical_memory_case, mutation):
+    reader, request, cb, bound, selection, facts_path, elf = logical_memory_case
+    _logical_dump(request)
+    if mutation == "elf":
+        elf.write_bytes(elf.read_bytes() + b"changed")
+    elif mutation == "facts":
+        facts_path.write_text("{}")
+    elif mutation == "cb_shape":
+        cb["tensors"]["Y"]["shape"] = [1, 3]
+    elif mutation == "policy":
+        reader.policy = ReadbackPolicy(FULL_VALUES_B64)
+    elif mutation == "request":
+        request["regions"][0]["bytes"] = 3
+    elif mutation == "regions":
+        Path(request["regions_path"]).write_text("0x1000 2\n")
+    else:
+        Path(bound._engine("gsim")["binary"]["path"]).write_text("changed binary")
+    with pytest.raises(ValueError):
+        reader.decode("DONE\n")
+
+
+@pytest.mark.parametrize("defect", ["truncated", "backing_store", "extra_byte", "missing_done", "serial_values"])
+def test_neutral_coherent_reader_refuses_incomplete_or_noncoherent_values(logical_memory_case, defect):
+    reader, request, *_ = logical_memory_case
+    _logical_dump(request, source=1 if defect == "backing_store" else 0,
+                  trailer=defect != "truncated", data=b"\x7f\x80\x00" if defect == "extra_byte" else b"\x7f\x80")
+    console = "" if defect == "missing_done" else "OUT Y 1 2 1 2\nDONE\n" if defect == "serial_values" else "DONE\n"
+    with pytest.raises(ValueError):
+        reader.decode(console)
+
+
+def test_bound_memory_process_uses_original_command_and_revalidates_export(logical_memory_case, monkeypatch):
+    from merlin.targetgen import rtl_engine_policy
+
+    _reader, request, _cb, bound, *_ = logical_memory_case
+    seen = []
+
+    def run(argv, *, cwd, env, timeout, max_bytes, observed):
+        seen.append((argv, cwd, env, timeout, max_bytes))
+        assert argv[0] == str(bound.gsim_path())
+        assert argv[1] == str(logical_memory_case[-1])
+        assert argv[2:] == [f"+dump-regions={request['regions_path']}",
+                            f"+dump-out={request['output_path']}", "+dump-mode=coherent"]
+        _logical_dump(request)
+        result = subprocess.CompletedProcess(argv, 0, stdout=b"DONE\n", stderr=b"")
+        observed.complete(result)
+        return result
+
+    monkeypatch.setattr(B, "_bounded_process", run)
+    monkeypatch.setattr(rtl_engine_policy, "simulation_runtime_slot", lambda *a, **k: nullcontext())
+    assert bound.run_elf(logical_memory_case[-1], simulator="gsim", timeout=5, memory_readback=request) == "DONE\n"
+    assert len(seen) == 1 and 0 < seen[0][3] <= 5
+    # A preexisting result cannot be accepted as a fresh execution output.
+    with pytest.raises(ValueError, match="not fresh"):
+        bound.run_elf(logical_memory_case[-1], simulator="gsim", timeout=5, memory_readback=request)
+    assert len(seen) == 1
+
+
+def test_bound_memory_process_refuses_changed_regions_after_process(logical_memory_case, monkeypatch):
+    from merlin.targetgen import rtl_engine_policy
+
+    _reader, request, _cb, bound, *_ = logical_memory_case
+
+    def run(argv, *, observed, **kwargs):
+        _logical_dump(request)
+        Path(request["regions_path"]).write_text("0x1000 2\n")
+        result = subprocess.CompletedProcess(argv, 0, stdout=b"DONE\n", stderr=b"")
+        observed.complete(result)
+        return result
+
+    monkeypatch.setattr(B, "_bounded_process", run)
+    monkeypatch.setattr(rtl_engine_policy, "simulation_runtime_slot", lambda *a, **k: nullcontext())
+    with pytest.raises(ValueError, match="region manifest changed"):
+        bound.run_elf(logical_memory_case[-1], simulator="gsim", timeout=5, memory_readback=request)
+
+
+def test_bound_coherent_export_cannot_silently_downgrade_selected_native_view(logical_memory_case, monkeypatch):
+    from merlin.runtime import native_runtime
+
+    _reader, request, _cb, bound, *_ = logical_memory_case
+    monkeypatch.setattr(native_runtime, "active_native_runtime", lambda: object())
+    monkeypatch.setattr(B, "_bounded_process", lambda *a, **k: pytest.fail("selected view was downgraded"))
+    with pytest.raises(ValueError, match="native filesystem view has no approved coherent-export mapping"):
+        bound.run_elf(logical_memory_case[-1], simulator="gsim", timeout=5, memory_readback=request)
+    assert not Path(request["output_path"]).exists()
+
+
+def test_memory_backend_binding_rejects_foreign_or_derived_class(logical_memory_case):
+    from merlin_experiments.phase1.feedback.native_memory_readback import _same_selected_backend
+
+    _reader, _request, _cb, bound, selection, *_ = logical_memory_case
+    assert _same_selected_backend(bound, _bound(selection), "gsim")
+    replacement = copy.deepcopy(selection)
+    replacement[0]["runner"]["chipyard_rocc"]["engines"]["gsim"]["environment"]["EXTRA"] = "foreign"
+    assert not _same_selected_backend(bound, _bound(replacement), "gsim")
+
+    class Foreign(B.BoundRoCCBackend):
+        pass
+
+    derived = Foreign(bound.target, bound._selection_json, bound.rocc_semantics)
+    assert not _same_selected_backend(derived, bound, "gsim")
+
+
+def test_ordinary_oracle_resolves_engine_policy_without_changing_adapter_consensus(logical_memory_case, monkeypatch):
+    from merlin_experiments.phase1.feedback import native_memory_readback as MR
+
+    from merlin.targetgen import capsule_runner as CR
+    from merlin.targetgen import oracle_readback as OR
+    from merlin.targetgen.contract import compile as C
+    from merlin.targetgen.rtl import facts as F
+
+    _reader, _request, cb, bound, _selection, facts_path, _elf = logical_memory_case
+    monkeypatch.setattr(F, "rtl_facts_path", lambda target: facts_path)
+    monkeypatch.setattr(MR, "select_memory_engine", lambda **kwargs: ({"original": True}, lambda: {"original": True}))
+    calls = []
+    monkeypatch.setattr(C, "run_on_oracle", lambda *args, **kwargs: calls.append(kwargs) or {"status": "diagnostic"})
+    assert OR._run(cb, "original LLVM", sim="gsim", target=bound.target, backend=bound,
+                   workdir=facts_path.parent, timeout=5, policy=None) == {"status": "diagnostic"}
+    assert calls[-1]["readback_policy"].transport == COHERENT_DUMP_V1
+    assert type(calls[-1]["memory_readback"]) is MR.NativeLogicalMemoryReadback
+    # An explicit invocation choice still overrides engine defaults.
+    OR._run(cb, "original LLVM", sim="gsim", target=bound.target, backend=bound,
+            workdir=facts_path.parent, timeout=5, policy=ReadbackPolicy(FULL_VALUES_B64))
+    assert "memory_readback" not in calls[-1] and calls[-1]["readback_policy"].transport == FULL_VALUES_B64
+    adapters = {
+        tier: CR.simulator_adapter(engine, bound.target) for tier, engine in {"L2": "spike", "L3": "gsim"}.items()
+    }
+    assert CR._adapter_readback_policy(adapters) is None
 
 
 def _gsim(selection, tmp_path):

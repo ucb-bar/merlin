@@ -72,6 +72,57 @@ def select_native_timeout(contract, timeout_s):
     return selected
 
 
+def select_gsim_readback(contract, transport):
+    """Derive only the declared full-value gSIM transport, preserving semantics."""
+    backend._require(type(contract) is dict, "readback selection requires an original contract")
+    from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, COHERENT_PACKET_V1, FULL_VALUES_B64
+
+    backend._require(
+        type(transport) is str and transport in (COHERENT_DUMP_V1, COHERENT_PACKET_V1),
+        "readback selection requires complete coherent values",
+    )
+    selected = copy.deepcopy(contract)
+    runner = selected.get("runner")
+    backend._require(
+        type(runner) is dict and runner.get("backend") == "chipyard_rocc",
+        "readback selection requires a declared data-bound execution family",
+    )
+    block = runner.get("chipyard_rocc")
+    backend._require(
+        type(block) is dict and type(block.get("engines")) is dict,
+        "readback selection requires declared execution engines",
+    )
+    engine = block["engines"].get("gsim")
+    abi = selected.get("harness_abi")
+    backend._require(
+        type(engine) is dict and type(abi) is dict and abi.get("readback_transport") == FULL_VALUES_B64,
+        "readback selection requires an original B64 logical ABI and declared gSIM engine",
+    )
+    backend._require(
+        engine.get("readback_transport", transport) == transport,
+        "readback selection cannot replace another engine transport",
+    )
+    if transport == COHERENT_PACKET_V1:
+        toolchain = block.get("toolchain")
+        backend._require(type(toolchain) is dict, "packet selection requires the original declared toolchain")
+        headers = toolchain.get("headers")
+        backend._units(headers, backend._HEADERS)
+        backend._require(
+            {"htif", "out_b64"} <= {row["id"] for row in headers},
+            "packet selection requires the original B64 console header roster",
+        )
+        for identifier in ("out_bin", "out_bin_memory"):
+            matches = [row for row in headers if row["id"] == identifier]
+            if matches:
+                _resources(matches, backend._HEADERS)
+            else:
+                row = {"id": identifier}
+                _resources([row], backend._HEADERS)
+                headers.append(row)
+    engine["readback_transport"] = transport
+    return selected
+
+
 def prepare_contract(*, target, contract, facts):
     """Fill missing hashes and validate all selected members without execution.
 

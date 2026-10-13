@@ -75,15 +75,28 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
             )
         released = yaml.safe_load(path.read_bytes())
         if released != selected:
-            from merlin.runtime.backends import chipyard_rocc_bound as runtime, rocc_selection
+            from merlin.runtime.backends import chipyard_rocc_bound as runtime
+            from merlin.runtime.backends import rocc_selection
 
             try:
                 block = released["runner"]["chipyard_rocc"]
-                resources = block["execution_resources"]
-                timeout = runtime._execution_timeout_ceiling({"execution_resources": resources})
-                expected_contract = rocc_selection.select_native_timeout(selected, timeout)
+                runtime._require(type(block) is dict, "released execution selection must be a mapping")
+                expected_contract = selected
+                if "execution_resources" in block:
+                    timeout = runtime._execution_timeout_ceiling({"execution_resources": block["execution_resources"]})
+                    expected_contract = rocc_selection.select_native_timeout(expected_contract, timeout)
+                engines = block["engines"]
+                runtime._require(type(engines) is dict, "released engines must be a mapping")
+                gsim = engines.get("gsim", {})
+                runtime._require(type(gsim) is dict, "released gSIM selection must be a mapping")
+                if "readback_transport" in gsim:
+                    expected_contract = rocc_selection.select_gsim_readback(
+                        expected_contract, gsim["readback_transport"]
+                    )
             except (KeyError, TypeError, runtime.RoCCExecutionError) as error:
-                raise ValueError("released capability contract differs from selected Phase 0 coverage inputs") from error
+                raise ValueError(
+                    "released capability contract differs from selected Phase 0 coverage inputs"
+                ) from error
             if released != expected_contract:
                 raise ValueError("released capability contract differs from selected Phase 0 coverage inputs")
         grants = {
