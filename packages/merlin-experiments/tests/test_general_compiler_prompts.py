@@ -10,6 +10,7 @@ from merlin.targetgen import generate_prompt as GP
 from merlin.targetgen.generalization_prompt import (
     GENERAL_COMPILER_CONTRACT_V1,
     GENERAL_COMPILER_CONTRACT_V2,
+    GENERAL_COMPILER_CONTRACT_V3,
     append_general_compiler_contract,
 )
 
@@ -48,8 +49,8 @@ def test_rendered_tasks_serve_identical_requirements_for_every_level(monkeypatch
         level["bundle_arm"],
         granted_tools=grants,
     )
-    assert task.count(GENERAL_COMPILER_CONTRACT_V2) == 1
-    assert target in task and target not in GENERAL_COMPILER_CONTRACT_V2
+    assert task.count(GENERAL_COMPILER_CONTRACT_V3) == 1
+    assert target in task and target not in GENERAL_COMPILER_CONTRACT_V3
     assert "original numerical gate" in task
     assert grants == frozenset()
     assert "cannot need a smaller program" not in task
@@ -63,13 +64,13 @@ def test_explicit_tasks_keep_their_bytes_and_contract_is_not_duplicated():
     original = "operator-selected domain and tools\n"
     appended = append_general_compiler_contract(original)
     assert appended.startswith(original)
-    assert appended.count(GENERAL_COMPILER_CONTRACT_V2) == 1
+    assert appended.count(GENERAL_COMPILER_CONTRACT_V3) == 1
     assert append_general_compiler_contract(appended) == appended
 
 
 def test_actual_fresh_author_prompt_retains_shared_requirements_and_private_exclusions():
     prompt = render_fresh_phase1_prompt()
-    assert prompt.count(GENERAL_COMPILER_CONTRACT_V2) == 1
+    assert prompt.count(GENERAL_COMPILER_CONTRACT_V3) == 1
     assert "initial driver has no lowering" in prompt
     assert "Obey the admitted instruction policy" in prompt
     assert "No prior compiler" in prompt
@@ -83,3 +84,5 @@ def test_new_scale_acceptance_is_versioned_and_archived_explicit_contract_is_pre
     assert "preserve all work and outputs" in GENERAL_COMPILER_CONTRACT_V2
     original = "archived explicit task\n" + GENERAL_COMPILER_CONTRACT_V1
     assert append_general_compiler_contract(original) == original
+    archived_v2 = "archived explicit task\n" + GENERAL_COMPILER_CONTRACT_V2
+    assert append_general_compiler_contract(archived_v2) == archived_v2

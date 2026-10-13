@@ -123,6 +123,26 @@ def select_gsim_readback(contract, transport):
     return selected
 
 
+def select_operand_protocol(contract, selection):
+    """Select a pinned detached observer without changing original semantic data."""
+    backend._require(type(contract) is dict, "operand selection requires an original contract")
+    backend._require(
+        "rocc_operand_selection" not in contract and "rocc_operand_protocol" not in contract,
+        "operand selection cannot replace an existing selected observer",
+    )
+    from merlin.targetgen.rocc.selected_operand_protocol import _json, _read_pin, bind_selected_observer
+    from merlin.targetgen.rocc.semantics import BoundSemantics
+
+    selected = copy.deepcopy(contract)
+    if type(selection) is not dict or set(selection) != {"original_facts", "sidecar"}:
+        raise ValueError("operand selection requires only original facts and a pinned sidecar")
+    facts = _json(_read_pin(selection["original_facts"], 16 * 1024 * 1024), 16 * 1024 * 1024)
+    original = BoundSemantics(target=contract.get("name"), contract=contract, facts=facts)
+    bind_selected_observer(original, selection)
+    selected["rocc_operand_selection"] = copy.deepcopy(selection)
+    return selected
+
+
 def prepare_contract(*, target, contract, facts):
     """Fill missing hashes and validate all selected members without execution.
 

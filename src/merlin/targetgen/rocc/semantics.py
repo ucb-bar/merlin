@@ -612,4 +612,9 @@ class BoundSemantics:
 
 def bind(*, target, contract, facts):
     """Bind one selected contract/facts snapshot without native execution."""
-    return BoundSemantics(target=target, contract=contract, facts=facts)
+    original = BoundSemantics(target=target, contract=contract, facts=facts)
+    if "rocc_operand_selection" in contract:
+        from .selected_operand_protocol import bind_selected_observer
+
+        original.operand_observer = bind_selected_observer(original, contract["rocc_operand_selection"])
+    return original

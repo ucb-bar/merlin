@@ -51,7 +51,12 @@ def test_real_dequant_source_composition_remains_in_complete_demand():
 
 @pytest.mark.parametrize("refusal", ["no_device_form", "readout_epilogue_undeclared", "missing_scale",
                                     "readout_requires_scale", None])
-def test_compiler_form_or_unknown_readout_is_never_a_hardware_host_exclusion(refusal):
+def test_compiler_form_or_unknown_readout_is_never_a_hardware_host_exclusion(refusal, monkeypatch):
+    from merlin.targetgen import eligibility
+
+    caps = {family: SemanticCapability(family, dtypes=("int8",))
+            for family in ("contraction", "elementwise_map")}
+    monkeypatch.setattr(eligibility, "capability_map_from_contract", lambda contract: caps)
     groups, operations, verdicts = original_source()
     groups[0].placement, groups[0].refusal = CG.HOST, refusal
     with pytest.raises(demand.SourceDemandIncomplete) as error:
@@ -73,6 +78,8 @@ def test_host_reason_requires_actual_selected_hardware_exclusion(monkeypatch):
     original_groups = form_source_groups(parsed, "synthetic", oracle=Oracle())
     floating = next(group for group in original_groups if CG.CONTRACTION in group.stages)
     assert floating.in_dtype == "fp32" and floating.refusal == "input_dtype"
+    # This isolated group actually contains only floating contraction work.
+    # Separate dequantization groups still need their own output-format proof.
     assert demand._hardware_exclusion(floating, {"independent": "selected integer capability"})
 
 
@@ -127,6 +134,76 @@ def test_original_full_route_uses_source_group_types_instead_of_raw_placement(mo
     )["device_routing"]
     assert observed == [("int8", "int8")] and selected.require_complete_groups is True
     assert selected.select(None) is True and selected.granularity == "group"
+
+
+def test_original_negative_result_scope_ends_before_complete_group_routing(monkeypatch):
+    """Typed host exclusions are not re-admitted by the later composition planner."""
+    import sys
+    from hashlib import sha256
+    from types import ModuleType
+
+    from merlin.targetgen import capsule_source
+    from merlin.targetgen import eligibility as E
+    from merlin.targetgen import operation_accounting as OA
+
+    hardware = pytest.importorskip("merlin_experiments.phase1.feedback.private_source_member_hardware")
+    caps = {"contraction": SemanticCapability("contraction", dtypes=("int8",)),
+            "elementwise_map": SemanticCapability("elementwise_map", dtypes=("int8",),
+                                                   composed_with=("contraction",))}
+    calls = []
+    contract, facts = b"public original contract", b"public original facts"
+
+    class Proof:
+        def record(self):
+            return {"target": "synthetic", "contract_sha256": sha256(contract).hexdigest(),
+                    "facts_sha256": sha256(facts).hexdigest()}
+
+        def refusal(self, family, output, selected):
+            assert selected == caps
+            calls.append((family, output))
+            return {"negative_source_proof": True} if output == "fp32" else None
+
+        def revalidate_sources(self):
+            pass
+
+    evidence = ModuleType("merlin.targetgen.rtl.result_format_ceiling")
+    evidence.NativeResultFormatCeiling = Proof
+    monkeypatch.setitem(sys.modules, evidence.__name__, evidence)
+    monkeypatch.setattr(E, "capability_map_from_contract", lambda contract: caps)
+    original_ask = CG.TargetOracle.ask
+
+    class TypedOracle(Oracle):
+        def __init__(self):
+            super().__init__()
+            self._E, self.cap_map, self.undetermined, self.providers = E, caps, (), {}
+
+        def ask(self, **question):
+            # Exercise the production composition descriptor with the fixture's
+            # independently declared readout granularity rather than a registry.
+            typed = original_ask(self, **{**question, "granularity": None})
+            declared = super().ask(**question)
+            return typed if not typed.admitted else declared
+
+    monkeypatch.setattr(CG, "TargetOracle", lambda target: TypedOracle())
+    source = fake_quant_module(weight_dequantize="per_tensor")
+    parsed = mq.parse(source)
+    member = next(op for op in parsed.walk() if mq.op_name(op) == "quant_ext.dequantize_per_tensor")
+    with E.original_result_format_scope(Proof(), target="synthetic", original_contract_bytes=contract,
+                                        original_facts_bytes=facts):
+        assert hardware.observe(member, CG.DEQUANTIZE, {})["refusal"] == "result_dtype"
+        assert len(form_source_groups(parsed, "synthetic")) == 1
+    assert ("elementwise_map", "fp32") in calls
+    assert any(output is None for _, output in calls)
+    monkeypatch.setattr(OA, "admit_operation_row", lambda *args, **kwargs: pytest.fail("typed re-admission"))
+    monkeypatch.setattr(hardware, "observe", lambda *args, **kwargs: pytest.fail("typed re-admission"))
+    monkeypatch.setattr(capsule_source, "model_op_demands_checked",
+                        lambda *args: pytest.fail("raw placement must not narrow complete source demand"))
+    monkeypatch.setattr(complete_group_routing, "_accum_from_facts", lambda *args: "i32")
+    selected = route_before_build.plan_before_build(
+        "synthetic", source, datapath="int8", device_package="original-package",
+        granularity="group", require_all_accelerator_groups=True,
+    )["device_routing"]
+    assert selected.require_complete_groups is True and selected.select(None) is True
 
 
 def test_required_rewrite_refuses_before_compilation_when_one_requested_group_has_no_form(monkeypatch):

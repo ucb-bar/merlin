@@ -650,7 +650,7 @@ def _source_obligations(
     demand = source_demand.derive(
         groups, operations, raw_verdicts, source_sha256=source_sha, normalized_sha256=normalized_sha,
         capability=capability, software=software, facts_sha256=facts_sha256,
-        numeric_policy_sha256=numeric_policy_sha256,
+        numeric_policy_sha256=numeric_policy_sha256, source_operations=tuple(mq.walk(module)),
     )
     inventory = AI._application_operation_inventory(  # noqa: PLC2701 -- trusted exact inventory primitive
         source,
@@ -1008,6 +1008,7 @@ def run(
     source_freeze_root: str | Path | None = None,
     build_options: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
     linked_elf_admission=None,
+    native_result_format_selection=None,
 ) -> dict[str, Any]:
     """Build the frozen roster, one canonical partition, or a prebuilt diagnostic.
 
@@ -1025,6 +1026,13 @@ def run(
     from merlin.targetgen import target_registry
 
     instruction_selection = linked_policy.freeze(linked_elf_admission, target=target)
+    if native_result_format_selection is not None:
+        from .private_result_format_selection import FrozenSelection
+
+        if (type(native_result_format_selection) is not FrozenSelection
+            or native_result_format_selection.target != target):
+            raise ValueError("native result format selection has no matching original run owner")
+        native_result_format_selection.verify()
     spec = Path(private_spec)
     if spec.is_symlink() or not spec.is_file():
         raise ValueError("operator-private full-model specification is absent or indirect")
@@ -1073,6 +1081,7 @@ def run(
     base = Path(out)
     base.mkdir(mode=0o700, parents=True, exist_ok=True)
     results = []
+    native_result_ceilings = {}
     for row in rows:
         name = row["id"]
         if (diagnostic and name != diagnostic_model) or (selected_model is not None and name != selected_model):
@@ -1222,7 +1231,28 @@ def run(
                 program: control_support.selected_build_observation(host_package, catalog, board, target)
                 for program, board in program_boards.items()
             }
-            with target_registry.observed_contract(target, dict(capability), source_path=capability_path):
+            from contextlib import nullcontext
+
+            from merlin.targetgen.eligibility import original_result_format_scope
+
+            original_contract_bytes, original_facts_bytes = capability_path.read_bytes(), facts_path.read_bytes()
+            native_result_ceiling = None
+            if native_result_format_selection is not None:
+                binding = (sha256(original_contract_bytes).hexdigest(), sha256(original_facts_bytes).hexdigest())
+                if binding not in native_result_ceilings:
+                    native_result_ceilings[binding] = native_result_format_selection.issue(
+                        original_contract_bytes=original_contract_bytes, original_facts_bytes=original_facts_bytes,
+                    )
+                native_result_ceiling = native_result_ceilings[binding]
+            native_scope = (
+                original_result_format_scope(
+                    native_result_ceiling, target=target, original_contract_bytes=original_contract_bytes,
+                    original_facts_bytes=original_facts_bytes,
+                ) if native_result_ceiling is not None else nullcontext()
+            )
+            with (
+                target_registry.observed_contract(target, dict(capability), source_path=capability_path), native_scope,
+            ):
                 sources, unresolved_demands = {}, {}
                 for program, stage in programs:
                     try:
@@ -1230,6 +1260,10 @@ def run(
                             stage, target, software, capability, host, selected_index_observations[program],
                             facts_sha256=facts["sha256"], numeric_policy_sha256=recipe_proof["recipe_semantic_sha256"],
                         )
+                        if native_result_ceiling is not None:
+                            sources[program]["accelerator_source_demand"]["native_result_format_ceiling"] = (
+                                native_result_ceiling.record()
+                            )
                     except source_demand.SourceDemandIncomplete as error:
                         unresolved_demands[program] = error.receipt
                 if unresolved_demands:
@@ -1395,6 +1429,8 @@ def run(
             if diagnostic:
                 item["checks"]["prebuilt_receipts"] = diagnostic_receipts
             linked_policy.unchanged(instruction_selection)
+            if native_result_ceiling is not None:
+                native_result_ceiling.revalidate_sources()
             item["status"] = "diagnostic_static_checks_passed" if diagnostic else "pass"
         except Exception as exc:  # noqa: BLE001 -- one model's refusal must not hide the others
             item["reason"] = _public_failure_reason(exc)
@@ -1418,6 +1454,15 @@ def run(
         "full_model_numerical_equivalence": "not_run",
         "paper_accuracy": "not_claimed",
     }
+    if native_result_format_selection is not None:
+        native_result_format_selection.verify()
+        for ceiling in native_result_ceilings.values():
+            ceiling.revalidate_sources()
+        result["native_result_format_selection"] = {
+            "selection_sha256": native_result_format_selection.sha256,
+            "scope": "original source-bound negative native output exclusions only; no positive support",
+            "proofs": [ceiling.record() for ceiling in native_result_ceilings.values()],
+        }
     if file_sha256(spec) != spec_digest:
         raise ValueError("operator-private full-model specification changed during verification")
     result.update(source_freeze_api.claim_binding(spec.absolute(), source_freeze, source_freeze_root, target=target))

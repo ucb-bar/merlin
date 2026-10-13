@@ -33,6 +33,18 @@ _CONFIG = {"CONFIG_EX", "CONFIG_LD", "CONFIG_ST"}
 _MVIN = {"MVIN", "MVIN2", "MVIN3"}
 
 
+def requirements_complete(observation) -> bool:
+    """Applicable trace obligations need a pass and available selected evidence.
+
+    Historical observations without a selected requirement status retain their
+    existing meaning. An explicit unavailable/failed requirement cannot become
+    qualification just because the separately observed trace status is passing.
+    Applicability and original capsule/source ownership remain caller-owned.
+    """
+    return (isinstance(observation, dict) and observation.get("status") == "pass"
+            and observation.get("trace_requirement_status") in (None, "pass"))
+
+
 def _bound_trace_view(trace, target):
     """Reopen raw class identity and optional fields from the original selected decoder."""
     if not target:

@@ -83,6 +83,7 @@ class RunOptions:
     codex_auth_source: str = ""
     codex_home_root: str = ""
     hidden_capsule_mode: str = ""
+    native_result_format_selection: str = ""
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -340,6 +341,11 @@ def build_parser(
         default="",
         metavar="FILE",
         help="operator-private source-bound instruction policy for formal full-model grading",
+    )
+    ap.add_argument(
+        "--native-result-format-selection", default="", metavar="FILE",
+        help="original operator-only negative native output-format proof selection; "
+        "frozen privately for formal grading",
     )
     ap.add_argument(
         "--experiment",

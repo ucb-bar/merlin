@@ -1164,8 +1164,7 @@ def prepare_for_lowering(
             exact_selection=exact,
             catalog_manifest=catalog_manifest,
             catalog_object=catalog_object,
-            granularity=_grain,
-            capture=getattr(device, "capture", None),
+            granularity=_grain, capture=getattr(device, "capture", None),
             model=str(getattr(device, "model", "") or ""),
             **({"require_complete_groups": True} if getattr(device, "require_complete_groups", False) else {}),
         )

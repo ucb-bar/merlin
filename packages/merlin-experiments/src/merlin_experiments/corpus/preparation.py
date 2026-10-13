@@ -937,13 +937,14 @@ def _bundle_selection(optional_levels, selected_levels, selected_variants):
     return arms, variants
 
 
-def _stage_capability_contract(source, expected_sha256, destination, native_timeout_s, gsim_readback_transport=None):
+def _stage_capability_contract(source, expected_sha256, destination, native_timeout_s, gsim_readback_transport=None,
+                               *, operand_selection=None):
     """Record closed execution selections separately from original Phase 0 bytes."""
     from merlin.common.digest import sha256_file
     from merlin.runtime.backends import chipyard_rocc_bound as runtime
     from merlin.runtime.backends import rocc_selection
 
-    if native_timeout_s is None and gsim_readback_transport is None:
+    if native_timeout_s is None and gsim_readback_transport is None and operand_selection is None:
         return {"path": str(source), "sha256": copy_input(source, destination, expected_sha256=expected_sha256)}
     ordinary_tree(source)
     if sha256_file(source) != expected_sha256:
@@ -954,7 +955,9 @@ def _stage_capability_contract(source, expected_sha256, destination, native_time
             selected = rocc_selection.select_native_timeout(selected, native_timeout_s)
         if gsim_readback_transport is not None:
             selected = rocc_selection.select_gsim_readback(selected, gsim_readback_transport)
-    except runtime.RoCCExecutionError as error:
+        if operand_selection is not None:
+            selected = rocc_selection.select_operand_protocol(selected, operand_selection)
+    except (runtime.RoCCExecutionError, ValueError) as error:
         raise SpecError(str(error)) from error
     native_engines = set(selected["runner"]["chipyard_rocc"]["engines"]) & {"gsim", "verilator"}
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -976,6 +979,11 @@ def _stage_capability_contract(source, expected_sha256, destination, native_time
             "selected_contract_sha256": selected_sha256,
             "scope": "complete output values only; original ABI, instruction and numerical declarations retained",
         }
+    if operand_selection is not None:
+        record["operand_protocol_selection"] = {
+            **copy.deepcopy(operand_selection), "selected_contract_sha256": selected_sha256,
+            "scope": "source-derived operand observations only; original facts and semantic declarations retained",
+        }
     return record
 
 
@@ -995,6 +1003,7 @@ def scaffold(
     host_index_bits: int | None = None,
     native_timeout_s: int | None = None,
     gsim_readback_transport: str | None = None,
+    operand_protocol_selection: tuple[Path, str] | None = None,
 ) -> dict:
     """Stage only declared task/selfcheck/harness resources, never prior runs or bundles."""
     from merlin.common.digest import sha256_file
@@ -1041,17 +1050,39 @@ def scaffold(
     document.pop("contracts_root", None)
     document["capsule_corpus"] = str(corpus / te.capsule_corpus.name)
     hardware = document.get("hardware_spec") or {}
+    facts_root = None
+    if selected_facts is not None:
+        facts_root = experiment / "rtl_facts"
+        digest = copy_input(selected_facts, facts_root / "facts.json")
+        inputs["rtl_facts"] = {"path": str(selected_facts), "sha256": digest}
+    operand_selection = None
+    checker_inputs = ()
+    if operand_protocol_selection is not None:
+        from merlin.targetgen.rocc.selected_operand_protocol import selected_inputs
+
+        if (type(operand_protocol_selection) is not tuple or len(operand_protocol_selection) != 2
+                or not isinstance(operand_protocol_selection[0], Path) or facts_root is None):
+            raise SpecError("operand protocol selection requires a pinned sidecar and unchanged selected facts")
+        sidecar, sidecar_sha256 = operand_protocol_selection
+        staged_sidecar = experiment / "contracts/operand-protocol.json"
+        digest = copy_input(sidecar, staged_sidecar, expected_sha256=sidecar_sha256)
+        inputs["operand_protocol"] = {"path": str(sidecar), "sha256": digest}
+        operand_selection = {"original_facts": {"path": str(facts_root / "facts.json"),
+                                                "sha256": inputs["rtl_facts"]["sha256"]},
+                             "sidecar": {"path": str(staged_sidecar), "sha256": digest}}
+        checker_inputs = selected_inputs(operand_selection)
     if selected_contract is not None:
         contract_source, contract_sha256 = selected_contract
         staged_contract = experiment / "contracts/target_contract.yaml"
         contract_record = _stage_capability_contract(
-            contract_source, contract_sha256, staged_contract, native_timeout_s, gsim_readback_transport
+            contract_source, contract_sha256, staged_contract, native_timeout_s, gsim_readback_transport,
+            operand_selection=operand_selection,
         )
         hardware["target_contract"] = str(staged_contract)
         inputs["capability_contract"] = contract_record
     elif te.declared_contract:
         raise SpecError("descriptor declares a capability contract without a selected Phase 0 export; freeze a new run")
-    elif native_timeout_s is not None or gsim_readback_transport is not None:
+    elif native_timeout_s is not None or gsim_readback_transport is not None or operand_selection is not None:
         raise SpecError("execution selection requires an original Phase 0 contract")
     hardware_root = None
     if te.hwbringup_set:
@@ -1089,11 +1120,6 @@ def scaffold(
         source = te.resource_path(relative)
         digest, links = copy_curated_harness(source, experiment / relative)
         inputs[relative.as_posix()] = {"path": str(source), "sha256": digest, "materialized_file_links": links}
-    facts_root = None
-    if selected_facts is not None:
-        facts_root = experiment / "rtl_facts"
-        digest = copy_input(selected_facts, facts_root / "facts.json")
-        inputs["rtl_facts"] = {"path": str(selected_facts), "sha256": digest}
     resource_bound = (document.get("grading") or {}).get("resource_bound") or {}
     if resource_bound.get("derive") is not None:
         if resource_bound.get("derive") != DERIVED_RESOURCE_BOUND:
@@ -1146,7 +1172,8 @@ def scaffold(
             promoted,
             experiment / "input_bundles",
             variants=variants,
-            host_inputs=(str(private), *([str(corpus / "_phase0")] if (corpus / "_phase0").is_dir() else [])),
+            host_inputs=(str(private), *checker_inputs,
+                         *([str(corpus / "_phase0")] if (corpus / "_phase0").is_dir() else [])),
             python_source_root=python_source_dir(),
             llvm_toolchain_root=llvm_root if llvm_root != checkout_llvm else None,
             rtl_facts_root=facts_root,

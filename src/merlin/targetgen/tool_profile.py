@@ -135,6 +135,10 @@ AUTOMATIC_CHECKER_MODULES_V3 = (
     "merlin.common.bwrap_args",
     "merlin.llvmlower.host_optimization_request",
     "merlin.llvmlower.host_optimization_compile",
+    "merlin.targetgen.rocc.semantics",
+    "merlin.targetgen.rocc.normalized_operands",
+    "merlin.targetgen.rocc.selected_operand_protocol",
+    "merlin.targetgen.rtl.firrtl_operand_slices",
 )
 AUTOMATIC_CHECKER_DATA_V3 = (
     *AUTOMATIC_CHECKER_DATA,

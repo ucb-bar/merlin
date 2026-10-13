@@ -83,3 +83,8 @@ detached observer. Source subfields and closed conjunctions retain unknowns;
 they grant no selector validity, queue acceptance or schedule qualification.
 The caller must select the sidecar through the original-owned profile; this
 helper supplies neither original-owner authority nor ambient activation.
+Fresh original releases may explicitly select `rocc_operand_selection` with exact
+release-local original-facts and sidecar byte pins. The normal bound runtime
+factory consumes that selection; original raw decode/facts remain unchanged.
+The release freezes all semantic and FIRRTL sources as checker-only inputs, and
+the reviewed handoff rejects other contract changes or missing source closure.
