@@ -2,7 +2,8 @@
 
 ## Purpose
 
-Kernel abstraction mining: ingest -> features -> emit.
+Kernel abstraction mining: ingest -> features -> emit. Also holds the external kernel bodies
+(`triton_llvmir/`) that whole-model lowering links for model2MLIR `prov.kernel` calls.
 
 ## What belongs here
 

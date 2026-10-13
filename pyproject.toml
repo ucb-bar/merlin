@@ -119,6 +119,9 @@ merlin = [
     "semantic_compiler/egg_bridge/Cargo.lock",
     "semantic_compiler/egg_bridge/src/main.rs",
     "capture/workload_roster.json",
+    # External kernel bodies (llvmlower/kernel_table.py), read through importlib.resources.
+    "kernels/triton_llvmir/mlp2.ll",
+    "kernels/triton_llvmir/mlp2_llvm.mlir",
     "kernels/ceiling_drivers/baremetal_support.c",
     "kernels/ceiling_drivers/common.h",
     "kernels/ceiling_drivers/k1_harness/util.h",
