@@ -437,13 +437,19 @@ def support_ops(block, payload: set) -> set:
 
     An op with NO results can never qualify: it is kept out because a result-less op is how a side
     effect is spelled (a store, a copy), and silently dropping one changes what the program does.
+
+    Nor can an external kernel call (model2MLIR ``prov.kernel``): it is computation, not an init. In
+    ``mlp_basic_triton`` the fused fc1+relu+fc2+relu call feeds only fc3's matmul, so the fixpoint
+    alone classified it as support — materialization would have deleted two layers without a word.
     """
+    from merlin.common.kernel_calls import is_kernel_call
+
     support: set = set()
     changed = True
     while changed:
         changed = False
         for op in block.ops:
-            if op in support or op in payload or not op.results:
+            if op in support or op in payload or not op.results or is_kernel_call(op):
                 continue
             if all(use.operation in payload or use.operation in support for res in op.results for use in res.uses):
                 support.add(op)
@@ -651,6 +657,15 @@ def lower_to_interface(module):
         if isinstance(op, s.SelectInterfaceOp) and op.interface.data == "resident_packed_tensor":
             vis = op.visibility.data if op.visibility is not None else None
             selected[op.value] = vis
+    from merlin.common.kernel_calls import is_kernel_call, kernel_qualname
+    external = sorted({kernel_qualname(op) for op in module.walk() if is_kernel_call(op)})
+    if external:
+        # Named here rather than left to the payload-completeness guard, which would only report an
+        # unaccounted func.call: no dialect materializes an external kernel, its body is linked on the
+        # LLVM route (compile_core.choose_route sends such modules there).
+        raise LoweringError(
+            f"the module calls external kernel(s) {external}; interface materialization has no "
+            "dialect for them — compile it on the LLVM route, which links their bodies")
     fns = [op for op in module.walk() if op.name == "func.func"]
     if not fns:
         raise LoweringError("no func.func in module")

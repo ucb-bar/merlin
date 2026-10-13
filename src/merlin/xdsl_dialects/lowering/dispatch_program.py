@@ -25,7 +25,9 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from .._common import HAS_XDSL
-from .outline import OutlineError, OutlineResult, _external_declarations, outline_dispatches
+from merlin.common.kernel_calls import is_kernel_call, kernel_qualname
+
+from .outline import OutlineError, OutlineResult, _external_declarations, _prov, outline_dispatches
 
 # NOTE: a `VIEW_OPS` tuple used to sit here, claiming to name "driver-side glue ops the runtime can
 # evaluate directly". Nothing imported it, and it was WRONG in both directions against the only
@@ -48,8 +50,8 @@ class Buffer:
 
 @dataclass
 class Node:
-    kind: str  # "dispatch" | "view"
-    op: str  # symbol for dispatch, op name for view
+    kind: str  # "dispatch" | "external" | "view"
+    op: str  # symbol for dispatch, prov.kernel for external, op name for view
     inputs: list[str]  # ordered operand slots (including repeats), then additional region captures
     outputs: list[str]
     prov: dict[str, str] = field(default_factory=dict)
@@ -63,6 +65,12 @@ class Node:
     #: load-bearing: :func:`~.arena_plan.plan_arena` refuses to plan a region-carrying node whose
     #: capture set is unknown rather than assume the operand list is complete.
     captures: list[str] | None = None
+
+
+#: Node kinds that are computation (kept by pruning and slicing). ``external`` is a model2MLIR
+#: ``prov.kernel`` call: compute whose body is not an outlined dispatch but an external kernel linked in
+#: on the LLVM route, so no dispatch runtime here can execute it.
+COMPUTE_KINDS = ("dispatch", "external")
 
 
 @dataclass
@@ -260,6 +268,19 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward") -> D
             continue
         if op.name == "func.call":
             callee = op.callee.string_value()
+            if is_kernel_call(op):
+                # An external kernel (model2MLIR prov.kernel), not an outlined dispatch: named by its
+                # stable qualname, and it never consumes a dispatch-table entry.
+                nodes.append(
+                    Node(
+                        kind="external",
+                        op=kernel_qualname(op),
+                        inputs=resolve(op.operands, op),
+                        outputs=[bind(r, "intermediate") for r in op.results],
+                        prov=_prov(op),
+                    )
+                )
+                continue
             if callee in declarations:
                 # Explicit catalog calls are nodes in their original position, without consuming
                 # an outlined-kernel table entry or claiming the declaration is an implementation.
@@ -363,13 +384,13 @@ def prune_dead_nodes(prog: DispatchProgram) -> DispatchProgram:
     """
     needed: set[str] = set(prog.results)
     for node in prog.nodes:
-        if node.kind == "dispatch":
+        if node.kind in COMPUTE_KINDS:
             needed.update(node.inputs)
 
     keep = [False] * len(prog.nodes)
     for i in range(len(prog.nodes) - 1, -1, -1):
         node = prog.nodes[i]
-        if node.kind == "dispatch" or any(o in needed for o in node.outputs):
+        if node.kind in COMPUTE_KINDS or any(o in needed for o in node.outputs):
             keep[i] = True
             needed.update(node.inputs)
 
@@ -399,7 +420,7 @@ def slice_program(prog: DispatchProgram, region_ids, *, entry_suffix: str = "") 
     """
     want = set(region_ids)
     keep: set[int] = {
-        i for i, n in enumerate(prog.nodes) if n.kind == "dispatch" and n.prov.get("prov.region_id") in want
+        i for i, n in enumerate(prog.nodes) if n.kind in COMPUTE_KINDS and n.prov.get("prov.region_id") in want
     }
     if not keep:
         raise ValueError(f"slice_program: no dispatch nodes match region_ids {sorted(want)}")
@@ -434,7 +455,7 @@ def slice_program(prog: DispatchProgram, region_ids, *, entry_suffix: str = "") 
     for n in kept:
         for b in n.outputs:
             leaves = b in outside_consumed or b in prog_results
-            terminal = n.kind == "dispatch" and b not in consumed_anywhere and b not in prog_results
+            terminal = n.kind in COMPUTE_KINDS and b not in consumed_anywhere and b not in prog_results
             if (leaves or terminal) and b not in results:
                 results.append(b)
 

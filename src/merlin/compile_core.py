@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from merlin.common.kernel_calls import is_kernel_call, kernel_qualname
+
 # The interface-level op classes the staged pipeline can actually MATERIALIZE. This is a property of
 # `interface_lowering.lower_to_interface`, NOT of any target: a plan may legitimately declare
 # coverage for an op the interface layer cannot build, and routing on the INTERSECTION is what keeps
@@ -108,17 +110,28 @@ def payload_classes(module) -> tuple[str, ...]:
         found.append("matmul")
     if elementwise:
         found.append("elementwise")
-    if unaccounted_ops(block, payload):
+    # An external kernel call (model2MLIR prov.kernel) is its own class, not unclassified "generic"
+    # computation: its body is linked in later, and only the LLVM route links it (see choose_route).
+    # It stays in unaccounted_ops, so interface materialization still refuses to drop it.
+    unaccounted = unaccounted_ops(block, payload)
+    if any(is_kernel_call(op) for op in unaccounted):
+        found.append("kernel")
+    if any(not is_kernel_call(op) for op in unaccounted):
         found.append("generic")
     return tuple(found)
 
 
 def _entry_block(module):
-    """The entry function's block — the level the staged pipeline reasons at."""
-    fns = [op for op in module.walk() if op.name == "func.func"]
-    if not fns or not fns[0].body.blocks:
+    """The entry function's block — the level the staged pipeline reasons at. Body-less
+    declarations (external kernels a capture calls) are never the entry."""
+    fns = [op for op in module.walk() if op.name == "func.func" and op.body.blocks]
+    if not fns:
         return None
     return fns[0].body.blocks[0]
+
+
+def _kernel_qualnames(module) -> list[str]:
+    return sorted({kernel_qualname(op) for op in module.walk() if is_kernel_call(op)})
 
 
 def plan_interface_ops(plan: dict[str, Any] | None) -> tuple[str, ...]:
@@ -191,6 +204,11 @@ def choose_route(
         raise RoutingError("module has no recognizable payload to compile")
     covered = plan_interface_ops(plan)
     materializable = tuple(sorted(set(covered) & STAGED_MATERIALIZABLE))
+    if "kernel" in payload:
+        return Route(
+            kind="llvm", payload=payload, covered=covered, materializable=materializable,
+            reason=(f"the module calls external kernel(s) {_kernel_qualnames(module)}, whose bodies are "
+                    "linked only on the LLVM route (llvmlower.kernel_link) — no dialect claims them yet"))
 
     unstaged = [p for p in payload if p not in materializable]
     if unstaged:

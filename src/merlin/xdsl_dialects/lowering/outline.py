@@ -287,6 +287,15 @@ def outline_dispatches(
     from xdsl.ir import Block, Region
 
     declarations = _external_declarations(module, external_symbols)
+    # A model2MLIR external kernel (a declaration tagged `prov.kernel`) is retained without being
+    # named in `external_symbols`: it is a REGISTERED kernel whose body the LLVM route links
+    # (llvmlower.kernel_link), and that link is where object closure is enforced -- an unknown kernel
+    # or a missing body is refused there by name. The call stays in the driver as an opaque op.
+    from merlin.common.kernel_calls import is_external_decl
+
+    for op in module.body.block.ops:
+        if is_external_decl(op) and "prov.kernel" in op.attributes:
+            declarations.setdefault(op.sym_name.data, op)
     # DECLARATIONS ARE NOT DEFINITIONS. A capture that leaves an operation to an external symbol
     # (a `func.func private @…` with no body) prints that declaration FIRST, so picking `fns[0]`
     # blind used to select it and die on `fn.body.blocks[0]` with a bare IndexError -- naming

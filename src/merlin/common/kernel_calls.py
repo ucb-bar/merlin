@@ -8,7 +8,31 @@ on the IR (no text matching).
 """
 from __future__ import annotations
 
-__all__ = ["entry_function", "is_external_decl"]
+__all__ = ["ExternalKernelNotExecutable", "entry_function", "is_external_decl", "is_kernel_call",
+           "kernel_qualname"]
+
+
+class ExternalKernelNotExecutable(RuntimeError):
+    """Raised by a runtime that executes merlin's own dispatches when it meets an external kernel.
+
+    Those runtimes have no body for it: the body is linked only on the LLVM route
+    (``llvmlower.kernel_link``), which is where such a model has to be run."""
+
+    def __init__(self, qualname: str):
+        self.qualname = qualname
+        super().__init__(
+            f"external kernel {qualname!r} has no body in this runtime; its body is linked only on the "
+            "LLVM route (llvmlower.kernel_link) -- run the model through lower_model / spike_model")
+
+
+def is_kernel_call(op) -> bool:
+    """A call to an external kernel: ``func.call`` carrying model2MLIR's ``prov.kernel`` identity."""
+    return op.name == "func.call" and "prov.kernel" in op.attributes
+
+
+def kernel_qualname(op) -> str:
+    """The ``prov.kernel`` name (``"<ns>::<name>"``) of a kernel call or declaration."""
+    return op.attributes["prov.kernel"].data
 
 
 def is_external_decl(op) -> bool:
