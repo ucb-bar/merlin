@@ -1246,6 +1246,7 @@ def grade(
     model_snapshot_root: str | Path | None = None,
     on_capsule_complete=None,
     model_gate_continuations=(),
+    functional_hidden_tier: str | None = None,
 ) -> dict:
     """Run the capsule suite over a submitted package; return a score dict (also schema-checkable).
 
@@ -1259,6 +1260,11 @@ def grade(
     ``oracle_unavailable`` plane — so the report is honest and never claims a numeric pass. Graded runs
     (``no_oracle=False``) keep the ``not_run_is_not_pass`` behavior byte-for-byte."""
     labels = labels or {"public", "dev"}
+    if functional_hidden_tier is not None and (
+        functional_hidden_tier != 'L2' or labels != {'hidden'} or not capability_admission
+        or no_oracle or set(oracle_adapters or {}) != {'L2'}
+    ):
+        raise ValueError('functional hidden grading requires hidden-only admitted L2 oracle evaluation')
     # Source the target's own tooling paths before resolving any adapter, exactly as the harness does
     # for an arm. Without this a grade run outside the harness can lose a target's certifying-tier sim
     # and report the whole suite `incomplete` -- fail-closed, but describing the environment rather than
@@ -1396,6 +1402,22 @@ def grade(
             "admitted_name_set_sha256": _name_set_sha256(c.get("name") for c in caps),
         }
     workers = max_workers if max_workers and max_workers > 0 else default_grade_workers(len(caps))
+    if functional_hidden_tier is not None:
+        from .contract.materialize import _cap_required, _cap_tiers
+        from .expected_refusal import expects_refusal
+
+        selected = []
+        for capsule in caps:
+            if expects_refusal(capsule):
+                selected.append(capsule)  # A declared refusal has no invented execution obligation.
+                continue
+            required = capsule.get('required_oracle_tiers')
+            if (type(required) is not list or 'L2' not in required
+                    or any(tier not in _cap_tiers('L5') for tier in required)):
+                raise ValueError('functional hidden capsule has no declared L2 oracle obligation')
+            kept, _ = _cap_required(required, set(_cap_tiers('L2')))
+            selected.append({**capsule, 'required_oracle_tiers': kept, 'oracle_tier_ceiling': 'L2'})
+        caps = selected
     workers = _bounded_grade_workers(workers, oracle_adapters)
     import time as _time
 
@@ -1518,6 +1540,22 @@ def grade(
     deferred = [r for r in results if r.get("status") == "gated"]
     screened = [r for r in results if r.get("status") == "screened_only"]
     graded = [r for r in results if r.get("status") not in NOT_MEASURED_STATUSES]
+    from . import expected_refusal as _ER
+
+    _declared_refusals = {str(cap.get('name')): cap for cap in caps if _ER.expects_refusal(cap)}
+    _validated_refusals = sum(
+        sum(row.get('capsule') == name for row in results) == 1
+        and any(_ER.validated_result(cap, row) for row in results if row.get('capsule') == name)
+        for name, cap in _declared_refusals.items()
+    )
+    if _declared_refusals:
+        score['expected_refusal_scope'] = {
+            'binding': 'original_capsule_declaration_and_canonical_result_v1',
+            'n_admitted_capsules': len(caps), 'n_declared_refusals': len(_declared_refusals),
+            'n_validated_refusals': _validated_refusals,
+            'n_executable_capsules': len(caps) - len(_declared_refusals),
+        }
+    _execution_rows = [row for row in graded if str(row.get('capsule')) not in _declared_refusals]
     n_pass = sum(1 for r in graded if r["status"] == "pass")
     score["n_capsules"] = len(graded)
     score["n_passed"] = n_pass
@@ -1718,9 +1756,9 @@ def grade(
     score["n_not_gradeable_no_oracle"] = n_not_gradeable
     score["n_structural_pass"] = n_pass + n_not_gradeable
     score["structural_pass"] = bool(not _empty and not _infra and (n_pass + n_not_gradeable) == len(graded))
-    score["numeric_all_exact"] = None if _empty else all(_score_numeric_status(r) == "pass" for r in graded)
-    _trace_rows = [r for r in graded if r.get("kind") != "model"]
-    _model_rows = [r for r in graded if r.get("kind") == "model"]
+    score["numeric_all_exact"] = None if _empty else all(_score_numeric_status(r) == "pass" for r in _execution_rows)
+    _trace_rows = [r for r in _execution_rows if r.get("kind") != "model"]
+    _model_rows = [r for r in _execution_rows if r.get("kind") == "model"]
     score["trace_all_pass"] = (
         None if not _trace_rows else all(r.get("trace_check", {}).get("status") == "pass" for r in _trace_rows)
     )
@@ -1801,6 +1839,25 @@ def grade(
         return bool(name in _rtl_names) if flag is None else bool(flag)
 
     _passed = [r for r in graded if r.get("status") == "pass"]
+    if functional_hidden_tier is not None:
+        score['functional_hidden_evidence'] = {
+            'tier': 'L2', 'engine': 'spike', 'fidelity': 'functional_model',
+            'claim': 'functional_corroboration', 'n_admitted_capsules': len(caps),
+            'n_validated_refusals': _validated_refusals,
+            'n_spike_passed': sum(
+                row.get('status') == 'pass'
+                and _tier_status((row.get('tiers') or {}).get('L2')) == 'pass'
+                and _tier_field((row.get('tiers') or {}).get('L2'), 'engine') == 'spike'
+                and _tier_field((row.get('tiers') or {}).get('L2'), 'fidelity') == 'functional_model'
+                and _tier_field((row.get('tiers') or {}).get('L2'), 'derived_from_rtl') is False
+                for row in results
+            ),
+            'n_higher_tier_measured': sum(
+                _tier_status(value) in {'pass', 'fail'}
+                for row in results for tier, value in (row.get('tiers') or {}).items()
+                if tier in {'L3', 'L4', 'L5'}
+            ),
+        }
     _rtl_backed = [r for r in _passed if any(_is_rtl_pass(r, n, t) for n, t in (r.get("tiers") or {}).items())]
     # A pass that cleared a tier the ORACLE ITSELF called a model (fidelity != elaborated_rtl) and no RTL
     # tier beside it. Named separately because "not RTL-backed" reads as "did not run on hardware-grade
@@ -1936,6 +1993,10 @@ def grade(
             "trace": r.get("trace_check", {}).get("status"),
             "tiers": {t: _tier_status((r.get("tiers") or {}).get(t)) for t in tiers if t in (r.get("tiers") or {})},
         }
+        _original_refusal = _declared_refusals.get(str(r.get('capsule')))
+        if _original_refusal is not None and _ER.validated_result(_original_refusal, r):
+            entry.update(validated_refusal=True, qualification='expected_refusal', native_executed=False,
+                         expected_refusal=r['expected_refusal'])
         # WHY EACH TIER DID NOT PASS. The projection above renders a tier record as its bare status
         # STRING, and that projection is where the diagnosis died: the ladder writes a good sentence
         # onto every non-passing tier ("the console carries no completion witness", "injected operand

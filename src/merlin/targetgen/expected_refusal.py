@@ -35,6 +35,59 @@ def expects_refusal(capsule: Mapping[str, Any]) -> bool:
     return isinstance(expected, Mapping) and expected.get("outcome") == REFUSE
 
 
+def validated_result(capsule: Mapping[str, Any], result: Mapping[str, Any]) -> bool:
+    """A canonical successful refusal bound to its original capsule declaration.
+
+    A claimed ``met`` flag alone never changes an execution obligation. No numeric or native tier
+    pass is invented for a refusal, and an unavailable or violated refusal remains incomplete.
+    """
+    if not expects_refusal(capsule) or result.get("capsule") != capsule.get("name"):
+        return False
+    expected = (capsule.get("expected") or {}).get("refusal")
+    record, declined = result.get("expected_refusal"), result.get("declined")
+    if not isinstance(expected, Mapping) or any(
+        not isinstance(expected.get(key), str) or not expected[key] for key in ("reason", "evidence")
+    ):
+        return False
+    if not isinstance(record, Mapping) or not isinstance(declined, Mapping) or not declined:
+        return False
+    if (result.get("status") != "pass" or result.get("failure") is not None
+            or record.get("status") != "met" or record.get("expected") != expected
+            or record.get("declined") != declined):
+        return False
+    tiers = result.get("tiers")
+    if not isinstance(tiers, Mapping):
+        return False
+    return not any(
+        (tier.get("status") if isinstance(tier, Mapping) else tier) in ("pass", "fail")
+        for name, tier in tiers.items() if name in {"L2", "L3", "L4", "L5"}
+    )
+
+
+def execution_denominator(score: Mapping[str, Any]) -> tuple[int | None, list[str]]:
+    """Validate an official refusal applicability projection; absent means legacy all-executable."""
+    n = score.get("n_capsules")
+    if type(n) is not int or n < 0:
+        return None, []  # The caller already validates its overall denominator.
+    scope = score.get("expected_refusal_scope")
+    if scope is None:
+        return n, []
+    if not isinstance(scope, Mapping):
+        return n, ["expected_refusal_scope_malformed"]
+    fields = ("n_admitted_capsules", "n_declared_refusals", "n_validated_refusals", "n_executable_capsules")
+    if any(type(scope.get(key)) is not int or scope[key] < 0 for key in fields):
+        return n, ["expected_refusal_scope_counts_malformed"]
+    failures = []
+    if scope.get("binding") != "original_capsule_declaration_and_canonical_result_v1":
+        failures.append("expected_refusal_binding_invalid")
+    if (scope["n_admitted_capsules"] != n
+            or scope["n_declared_refusals"] + scope["n_executable_capsules"] != n):
+        failures.append("expected_refusal_scope_denominator_mismatch")
+    if scope["n_validated_refusals"] != scope["n_declared_refusals"]:
+        failures.append("expected_refusal_evidence_not_complete")
+    return scope["n_executable_capsules"], failures
+
+
 def declaration(*, stage: str | None = None, reason: str, evidence: str) -> dict[str, Any]:
     """The ``expected`` additions a must-refuse capsule carries."""
     if not reason or not evidence:

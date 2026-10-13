@@ -980,9 +980,10 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
                 f"[verilator attempt {attempt}] {len(_unresolved)} promoted capsule(s) have no "
                 f"directory in the pilot corpus — recorded not_promoted, NOT passed"
             )
+        _checkpoint_score = None
         try:
             with LG.compiler_execution(grading_inputs, candidate=vcand, run_dir=run_dir):
-                _CG.grade(
+                _checkpoint_score = _CG.grade(
                     str(vcand),
                     capsules_root=_roots,
                     runs_root=str(vruns),
@@ -1008,7 +1009,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         # Whole-corpus tally: graded rows plus the held-back ones. `all_pass` below is therefore
         # `n_passed == n_capsules` over the FULL corpus, so promoting a subset can never make a partial
         # run look certified.
-        per, npass, nc = CERT._l3_attempt_tally(_qc._per_capsule_from_results(vruns), not_promoted, _cert_tier)
+        _checkpoint_rows = CERT._checkpoint_refusal_rows(_qc._per_capsule_from_results(vruns), _checkpoint_score)
+        per, npass, nc = CERT._l3_attempt_tally(_checkpoint_rows, not_promoted, _cert_tier)
         # The Arm4 qa wrapper can derive the same answer-free RTL structural block from this attempt's
         # generated traces.  Carry it into the L3 fix verdict so that a fix round can obey (and prove) its
         # mandatory RTL-feedback readback instead of receiving a reduced verdict with that surface absent.
@@ -1024,6 +1026,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             "all_pass": npass == nc and nc > 0,
             "n_passed": npass,
             "n_capsules": nc,
+            "n_rtl_passed": sum(row.get('l3_status') == 'pass' for row in per),
+            "n_expected_refusal_passed": sum(row.get('validated_refusal') is True for row in per),
             "n_not_promoted": sum(1 for r in per if r.get("l3_status") == "not_promoted"),
             "cert_tier": _cert_tier,
             "per_capsule": per,
@@ -1079,7 +1083,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             vv = _verilator_grade(vatt, _l3_eligible, _l3_held)
             active_wall_s += time.time() - _vs
             verilator_attempts.append(
-                {k: vv.get(k) for k in ("attempt", "all_pass", "n_passed", "n_capsules", "n_not_promoted")}
+                {k: vv.get(k) for k in ("attempt", "all_pass", "n_passed", "n_capsules", "n_not_promoted",
+                                      "n_rtl_passed", "n_expected_refusal_passed")}
             )
             (run_dir / "verilator_checkpoints.json").write_text(
                 json.dumps(
@@ -1092,7 +1097,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
                 )
             )
             print(
-                f"[verilator attempt {vatt}] {vv['n_passed']}/{vv['n_capsules']} pass "
+                f"[verilator attempt {vatt}] {vv['n_passed']}/{vv['n_capsules']} obligations passed; "
+                f"RTL passes={vv.get('n_rtl_passed', 0)}, refusals={vv.get('n_expected_refusal_passed', 0)} "
                 f"{vv.get('cert_tier')} (all_pass={vv['all_pass']}; "
                 f"{vv.get('n_not_promoted', 0)} not_promoted)"
             )
@@ -1354,6 +1360,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             _manifest_doc["run_config"] = _environment_record.get("run_config", _run_config)
             _manifest_doc["feedback_health"] = feedback_health
             _manifest_path.write_text(yaml.safe_dump(_manifest_doc, sort_keys=False))
+        from merlin_experiments.phase1.feedback import hidden_capsule_policy as HCP
         from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
         from merlin_experiments.phase1.feedback import private_full_models as PFM
 
@@ -1365,6 +1372,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             execution_gate=PFX.gate_for(
                 context.descriptor, required_programs=PFM.program_requirements_for(context.descriptor)
             ),
+            hidden_capsule_mode=HCP.resolve(context.descriptor, getattr(a, 'hidden_capsule_mode', ''))['mode'],
         )
     elif wsub.exists() and not feedback_health["healthy"]:
         official_grade["failures"] = ["feedback_channel_unhealthy"]

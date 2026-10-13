@@ -27,6 +27,7 @@ from merlin_experiments.phase1.context import (
     verify_readback_record,
 )
 from merlin_experiments.phase1.feedback import freeze as freeze_run
+from merlin_experiments.phase1.feedback import hidden_capsule_policy as HCP
 from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
 from merlin_experiments.phase1.feedback import private_full_models as PFM
 from merlin_experiments.phase1.feedback import private_instruction_coordinator as instruction_coordinator
@@ -152,7 +153,8 @@ def _install_formal_model_simulator(target: str) -> tuple[dict, str | None]:
     return selected, inherited
 
 
-def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUIRED_TIER) -> tuple[bool, list[str]]:
+def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUIRED_TIER,
+                     functional_hidden: bool = False) -> tuple[bool, list[str]]:
     """Fail-closed completion predicate for one official grading phase.
 
     ``functional_pass`` alone is insufficient: an empty/mis-rooted suite used to look like ``0/0`` and
@@ -164,6 +166,10 @@ def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUI
         return False, ["score_missing_or_malformed"]
 
     reasons: list[str] = []
+    from merlin.targetgen.expected_refusal import execution_denominator
+
+    n_executable, refusal_failures = execution_denominator(score)
+    reasons.extend(refusal_failures)
     n_capsules = score.get("n_capsules")
     n_passed = score.get("n_passed")
     if not isinstance(n_capsules, int) or isinstance(n_capsules, bool) or n_capsules <= 0:
@@ -194,7 +200,7 @@ def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUI
         if any(not isinstance(v, int) or isinstance(v, bool) or v < 0 for v in (n_trace, n_model)):
             reasons.append("structural_evidence_scope_counts_malformed")
         else:
-            if isinstance(n_capsules, int) and not isinstance(n_capsules, bool) and n_trace + n_model != n_capsules:
+            if n_executable is not None and n_trace + n_model != n_executable:
                 reasons.append("structural_evidence_scope_denominator_mismatch")
             if n_trace > 0 and score.get("trace_all_pass") is not True:
                 reasons.append("trace_conformance_not_complete")
@@ -276,20 +282,25 @@ def phase_completion(score: Mapping | None, *, required_tier: str = FORMAL_REQUI
     tier_count = tier_reached.get(required_tier) if isinstance(tier_reached, Mapping) else None
     if not isinstance(tier_count, int) or isinstance(tier_count, bool):
         reasons.append(f"{required_tier}_count_missing_or_malformed")
-    elif isinstance(n_capsules, int) and not isinstance(n_capsules, bool) and tier_count != n_capsules:
+    elif n_executable is not None and tier_count != n_executable:
         reasons.append(f"not_all_capsules_reached_{required_tier}")
 
-    evidence = score.get("pass_evidence")
-    rtl_backed = evidence.get("rtl_backed") if isinstance(evidence, Mapping) else None
-    if not isinstance(rtl_backed, int) or isinstance(rtl_backed, bool):
-        reasons.append("rtl_backed_count_missing_or_malformed")
-    elif isinstance(n_capsules, int) and not isinstance(n_capsules, bool) and rtl_backed != n_capsules:
-        reasons.append("not_all_capsules_rtl_backed")
+    if functional_hidden:
+        if required_tier != 'L2':
+            reasons.append('functional_hidden_requires_L2')
+        reasons.extend(HCP.evidence_failures(score))
+    else:
+        evidence = score.get("pass_evidence")
+        rtl_backed = evidence.get("rtl_backed") if isinstance(evidence, Mapping) else None
+        if not isinstance(rtl_backed, int) or isinstance(rtl_backed, bool):
+            reasons.append("rtl_backed_count_missing_or_malformed")
+        elif n_executable is not None and rtl_backed != n_executable:
+            reasons.append("not_all_capsules_rtl_backed")
     return not reasons, reasons
 
 
-def _phase_manifest(score: Mapping, *, required_tier: str) -> dict:
-    complete, failures = phase_completion(score, required_tier=required_tier)
+def _phase_manifest(score: Mapping, *, required_tier: str, functional_hidden: bool = False) -> dict:
+    complete, failures = phase_completion(score, required_tier=required_tier, functional_hidden=functional_hidden)
     return {
         "passed": score.get("public_passed")
         or score.get("hidden_passed")
@@ -304,6 +315,7 @@ def _phase_manifest(score: Mapping, *, required_tier: str) -> dict:
         "model_execution_all_pass": score.get("model_execution_all_pass"),
         "structural_evidence_all_pass": score.get("structural_evidence_all_pass"),
         "structural_evidence_scope": score.get("structural_evidence_scope"),
+        **({'expected_refusal_scope': score['expected_refusal_scope']} if 'expected_refusal_scope' in score else {}),
         "unmeasured_counts": {
             field: score.get(field)
             for field in (
@@ -321,6 +333,9 @@ def _phase_manifest(score: Mapping, *, required_tier: str) -> dict:
         "cohort_admission": score.get("cohort_admission"),
         "formal_complete": complete,
         "completion_failures": failures,
+        **({'functional_hidden_evidence': score.get('functional_hidden_evidence'),
+            'validation_mode': 'functional_spike', 'required_tier': 'L2',
+            'claim': 'functional_corroboration', 'rtl_certified': False} if functional_hidden else {}),
     }
 
 
@@ -331,13 +346,21 @@ def _roots(spec: str) -> list[str]:
 
 
 def _score(
-    pkg, capsules, runs_root, labels, no_oracle, *, context: InvocationContext, contract=None, step_timeout_s=900
+    pkg, capsules, runs_root, labels, no_oracle, *, context: InvocationContext, contract=None, step_timeout_s=900,
+    hidden_capsule_mode='rtl',
 ):
     # Resolve the TARGET'S OWN oracle ladder from its contract (external_backend->program_oracle,
     # chipyard->spike/verilator, else arc) — never pass None here, which historically fell back to the
     # gemmini spike/verilator MLIR-lowering oracle and mis-graded atlas (torch-mlir run_lowering.py crash).
     # `{}` = honest no-oracle (L0/L1/trace only). sim_via is self-resolved from the contract.
     adapters = {} if no_oracle else CR.oracle_adapters(context.target, **readback_kwargs(context))
+    functional_hidden = hidden_capsule_mode == 'functional_spike'
+    if functional_hidden:
+        cfg = CR._config_for_target(context.target, None, 'i8xi8_i32')
+        if (labels != {'hidden'} or no_oracle or 'L2' not in adapters
+                or cfg.tier_sim.get('L2') != 'spike' or 'L2' in cfg.rtl_tiers):
+            raise RuntimeError('functional hidden policy requires the actual non-RTL Spike L2 adapter')
+        adapters = {'L2': adapters['L2']}
     return CG.grade(
         pkg,
         capsules_root=_roots(capsules),
@@ -353,6 +376,7 @@ def _score(
         # pool cannot reveal names there, so derive its hardware-capable cohort only here,
         # after freeze, outside the sandbox.  The score seals the source/admitted counts.
         capability_admission=labels == {"hidden"},
+        **({'functional_hidden_tier': 'L2'} if functional_hidden else {}),
     )
 
 
@@ -464,6 +488,8 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     )
     ap.add_argument("--no-oracle", action="store_true")
     ap.add_argument("--skip-hidden", action="store_true")
+    ap.add_argument('--hidden-capsule-mode', choices=HCP.MODES, default='',
+                    help='operator hidden validation after freeze; functional_spike supplies no RTL certification')
     ap.add_argument(
         "--private-full-model-spec",
         type=Path,
@@ -503,6 +529,13 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             ap.error("installed formal grading requires --hidden-capsules or explicit --skip-hidden")
     run_dir = Path(a.run_dir)
     _verify_formal_readback_policy(run_dir, context)
+    hidden_policy = HCP.resolve(context.descriptor, a.hidden_capsule_mode)
+    functional_hidden = hidden_policy['mode'] == 'functional_spike'
+    if functional_hidden and (a.no_oracle or a.skip_hidden):
+        ap.error('functional hidden corroboration requires the complete measured hidden phase')
+    environment_path = run_dir / 'environment.yaml'
+    environment = yaml.safe_load(environment_path.read_bytes()) if environment_path.is_file() else {}
+    HCP.verify_record(hidden_policy, environment.get('hidden_capsule_validation'))
     pkg = run_dir / "submission"
 
     # Pin whole-model tile certification to the simulator assigned to the formal RTL tier by the
@@ -561,6 +594,8 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         fj["hidden_grading_started_at"] = _dt.datetime.now(_dt.UTC).isoformat()
         fj["submission_sha256_recheck"] = recheck
         fj["workspace_mutable_after_freeze"] = bool(mutated)
+        if functional_hidden:
+            fj['hidden_capsule_validation'] = hidden_policy
         (run_dir / "freeze.json").write_text(json.dumps(fj, indent=2))
         if mutated:
             raise SystemExit(
@@ -577,11 +612,14 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             context=context,
             contract=a.contract,
             step_timeout_s=a.qa_timeout,
+            **({'hidden_capsule_mode': hidden_policy['mode']} if functional_hidden else {}),
         )
         (run_dir / "grading_hidden" / "score_capsule.json").write_text(json.dumps(hid, indent=2))
 
     public_phase = _phase_manifest(pub, required_tier=FORMAL_REQUIRED_TIER)
-    hidden_phase = _phase_manifest(hid, required_tier=FORMAL_REQUIRED_TIER)
+    hidden_phase = _phase_manifest(
+        hid, required_tier=hidden_policy['required_tier'], functional_hidden=functional_hidden,
+    )
     public_phase.update(
         {
             "numeric_all_exact": pub.get("numeric_all_exact"),
@@ -719,12 +757,15 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "integrity_exempt": pub.get("integrity_exempt"),
         "public_dev": public_phase,
         "hidden": hidden_phase,
+        **({'hidden_capsule_validation': hidden_policy} if functional_hidden else {}),
         "private_full_models": private_models,
         **({} if private_execution is None else {"private_full_model_execution": private_execution}),
         "completion": {
             "formal_grade_complete": formal_grade_complete,
             **({"phase1_authoring_complete": False} if qualification_only else {}),
             "required_tier": FORMAL_REQUIRED_TIER,
+            **({'hidden_required_tier': 'L2', 'hidden_validation_mode': 'functional_spike'}
+               if functional_hidden else {}),
             "required_full_models": list(required_full_models),
             "required_full_programs": {name: list(required_full_programs[name]) for name in required_full_models},
             "failures": completion_failures,
@@ -779,7 +820,8 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         f"- public/dev: functional_pass={manifest['public_dev']['functional_pass']} "
         f"passed={manifest['public_dev']['passed']} highest_tier={manifest['public_dev']['highest_tier']}",
         f"- hidden: {manifest['hidden']['passed']} (after freeze "
-        f"{frozen['submission_sha256'][:12] if frozen['submission_sha256'] else 'n/a'})",
+        f"{frozen['submission_sha256'][:12] if frozen['submission_sha256'] else 'n/a'})"
+        + ('; Spike L2 functional corroboration only, no RTL certification' if functional_hidden else ''),
         f"- process: wall={manifest['process']['wall_time_seconds']}s "
         f"tokens={manifest['process']['tokens_total']} {_cost_phrase(manifest['process'])} "
         f"tool_calls={manifest['process']['tool_calls']} (available={manifest['process']['metrics_available']})",

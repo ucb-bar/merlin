@@ -111,27 +111,49 @@ def _l3_checkpoint_should_run(run_l3: bool, workflow_conformant: bool, eligible)
     return bool(run_l3 and workflow_conformant and eligible)
 
 
+def _checkpoint_refusal_rows(red: dict, score: dict | None) -> dict:
+    """Join only THIS checkpoint's original-bound grade proof, never a raw/previous-loop claim."""
+    keys = ('validated_refusal', 'qualification', 'native_executed', 'expected_refusal')
+    rows = {name: {key: value for key, value in info.items() if key not in keys}
+            for name, info in red.items() if isinstance(info, Mapping)}
+    if isinstance(score, Mapping):
+        for row in score.get('per_capsule') or []:
+            name = row.get('capsule') if isinstance(row, Mapping) else None
+            if name in rows and row.get('validated_refusal') is True and all(key in row for key in keys):
+                rows[name].update({key: row[key] for key in keys})
+    return rows
+
+
 def _l3_attempt_tally(red: dict, not_promoted: list, cert_tier: str) -> tuple[list, int, int]:
     """``(rows, n_passed, n_capsules)`` for ONE checkpoint attempt, over the WHOLE corpus.
 
     ``red`` is the per-capsule readback for the capsules that WERE submitted; ``not_promoted`` are the
-    ones that were not. Only an explicit ``pass`` AT THE CERT TIER counts toward ``n_passed``: a missing
-    tier entry (the sim never ran, timed out, or the capsule was never submitted) reads as
-    ``not_promoted`` / ``None``, never as success. The denominator is the whole corpus, so an attempt
+    ones that were not. Execution requires an explicit ``pass`` AT THE CERT TIER. A refusal freshly
+    validated against its original declaration by THIS checkpoint satisfies a separate obligation,
+    with no native tier credit. A missing or unvalidated entry is never success. The whole denominator
     that certified every promoted capsule while capsules were held back still cannot reach
     ``n_passed == n_capsules``.
     """
     rows: list = []
     npass = 0
     for name, info in sorted(red.items()):
+        info = info if isinstance(info, Mapping) else {}
         status = ((info or {}).get("tiers") or {}).get(cert_tier)
-        npass += int(status == "pass")
+        refusal = (info.get('validated_refusal') is True and info.get('status') == 'pass'
+                   and info.get('qualification') == 'expected_refusal' and info.get('native_executed') is False
+                   and isinstance(info.get('expected_refusal'), Mapping)
+                   and info['expected_refusal'].get('status') == 'met'
+                   and not any(v in ('pass', 'fail') for t, v in (info.get('tiers') or {}).items()
+                               if t in {'L2', 'L3', 'L4', 'L5'}))
+        npass += int(refusal or status == "pass")
         rows.append(
             {
                 "capsule": name,
-                "l3_status": status,
+                "l3_status": 'not_applicable_expected_refusal' if refusal else status,
                 "cert_tier": cert_tier,
                 "failure_plane": (info or {}).get("failure_plane"),
+                **({'qualification': 'expected_refusal', 'native_executed': False,
+                    'validated_refusal': True} if refusal else {}),
             }
         )
     graded = {r["capsule"] for r in rows}
@@ -208,6 +230,7 @@ def _official_grade_result(
     required_models: Sequence[str] = (),
     required_programs: Mapping[str, Sequence[str]] | None = None,
     execution_gate: Mapping[str, Any] | None = None,
+    hidden_capsule_mode: str = 'rtl',
 ) -> dict:
     """Validate the official grader's exit status *and* its claim-bearing manifest.
 
@@ -218,6 +241,8 @@ def _official_grade_result(
     must be complete against it for the current candidate.
     """
     from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
+
+    from . import hidden_capsule_policy as HCP
 
     failures: list[str] = []
     if returncode != 0:
@@ -233,6 +258,10 @@ def _official_grade_result(
         failures.append("manifest_malformed")
 
     completion = manifest.get("completion")
+    try:
+        HCP.verify_record(HCP.record(hidden_capsule_mode), manifest.get('hidden_capsule_validation'))
+    except ValueError:
+        failures.append('hidden_capsule_validation_mismatch')
     if not isinstance(completion, Mapping):
         failures.append("completion_status_missing")
     else:
@@ -240,6 +269,11 @@ def _official_grade_result(
             failures.append("grader_reported_incomplete")
         if completion.get("required_tier") != required_tier:
             failures.append("required_tier_mismatch")
+        if hidden_capsule_mode == 'functional_spike' and (
+            completion.get('hidden_required_tier') != 'L2'
+            or completion.get('hidden_validation_mode') != 'functional_spike'
+        ):
+            failures.append('hidden_completion_policy_mismatch')
 
     # Recompute the candidate identity locally. A stale gate on an earlier
     # submission, or a hand-edited status field in the manifest, is not a grade.
@@ -291,7 +325,23 @@ def _official_grade_result(
         if not isinstance(phase, Mapping):
             failures.append(f"{phase_name}:status_missing")
             continue
+        if phase_name == 'hidden' and hidden_capsule_mode == 'functional_spike':
+            from .formal import phase_completion
+
+            if (phase.get('validation_mode') != 'functional_spike' or phase.get('required_tier') != 'L2'
+                    or phase.get('claim') != 'functional_corroboration' or phase.get('rtl_certified') is not False
+                    or phase.get('formal_complete') is not True):
+                failures.append('hidden:functional_policy_or_completion_malformed')
+            unmeasured = phase.get('unmeasured_counts')
+            score = {**phase, **(dict(unmeasured) if isinstance(unmeasured, Mapping) else {})}
+            _, hidden_failures = phase_completion(score, required_tier='L2', functional_hidden=True)
+            failures.extend(f'hidden:{reason}' for reason in hidden_failures)
+            continue
         n_capsules, n_passed = phase.get("n_capsules"), phase.get("n_passed")
+        from merlin.targetgen.expected_refusal import execution_denominator
+
+        n_executable, refusal_failures = execution_denominator(phase)
+        failures.extend(f'{phase_name}:{reason}' for reason in refusal_failures)
         if not isinstance(n_capsules, int) or isinstance(n_capsules, bool) or n_capsules <= 0:
             failures.append(f"{phase_name}:capsule_set_empty_or_malformed")
         if (
@@ -310,8 +360,22 @@ def _official_grade_result(
             failures.append(f"{phase_name}:integrity_not_clean")
         if phase.get("numeric_all_exact") is not True:
             failures.append(f"{phase_name}:numeric_exactness_not_complete")
-        if phase.get("trace_all_pass") is not True:
-            failures.append(f"{phase_name}:trace_conformance_not_complete")
+        scope = phase.get('structural_evidence_scope')
+        if not isinstance(scope, Mapping):
+            failures.append(f'{phase_name}:structural_evidence_scope_missing_or_malformed')
+        else:
+            trace_n, model_n = scope.get('n_instruction_trace_capsules'), scope.get('n_model_execution_capsules')
+            if any(type(v) is not int or v < 0 for v in (trace_n, model_n)):
+                failures.append(f'{phase_name}:structural_evidence_scope_counts_malformed')
+            else:
+                if trace_n + model_n != n_executable:
+                    failures.append(f'{phase_name}:structural_evidence_scope_denominator_mismatch')
+                if trace_n and phase.get('trace_all_pass') is not True:
+                    failures.append(f'{phase_name}:trace_conformance_not_complete')
+                if model_n and phase.get('model_execution_all_pass') is not True:
+                    failures.append(f'{phase_name}:model_execution_evidence_not_complete')
+        if phase.get('structural_evidence_all_pass') is not True:
+            failures.append(f'{phase_name}:structural_evidence_not_complete')
         unmeasured = phase.get("unmeasured_counts")
         for field in (
             "n_not_graded_ineligible",
@@ -324,10 +388,12 @@ def _official_grade_result(
             if not isinstance(unmeasured, Mapping) or unmeasured.get(field) != 0:
                 failures.append(f"{phase_name}:{field}_not_zero")
         tiers = phase.get("tier_reached")
-        if not isinstance(tiers, Mapping) or tiers.get(required_tier) != n_capsules:
+        if (not isinstance(tiers, Mapping) or type(tiers.get(required_tier)) is not int
+                or tiers.get(required_tier) != n_executable):
             failures.append(f"{phase_name}:not_all_capsules_reached_{required_tier}")
         evidence = phase.get("pass_evidence")
-        if not isinstance(evidence, Mapping) or evidence.get("rtl_backed") != n_capsules:
+        if (not isinstance(evidence, Mapping) or type(evidence.get('rtl_backed')) is not int
+                or evidence.get("rtl_backed") != n_executable):
             failures.append(f"{phase_name}:not_all_capsules_rtl_backed")
     return {
         "complete": not failures,

@@ -135,3 +135,40 @@ def test_a_must_refuse_entry_is_never_demoted_by_its_expected_refusal():
     decision = {"status": "unsupported"}
     assert entry_refusal_is_final(_entry(), decision)
     assert not entry_refusal_is_final(_entry(**_REFUSE), decision)
+
+
+def _measured_refusal():
+    capsule = {'name': 'refusal', 'expected': _REFUSE}
+    declined = {'reason': 'no integer shift'}
+    status, failure, record = ER.verdict(capsule, 'declined', None, declined)
+    return capsule, {'capsule': 'refusal', 'status': status, 'failure': failure,
+                     'expected_refusal': record, 'declined': declined, 'tiers': {}}
+
+
+def test_validated_refusal_binds_original_declaration_and_actual_decline():
+    capsule, result = _measured_refusal()
+    assert ER.validated_result(capsule, result)
+    assert not ER.validated_result({'name': 'refusal', 'expected': {'outcome': 'compute'}}, result)
+    assert not ER.validated_result({**capsule, 'name': 'other'}, result)
+    assert result['tiers'] == {}  # Validation never creates an execution measurement.
+
+
+@pytest.mark.parametrize('fault', ['unmeasured', 'violated', 'absent_decline', 'changed_expected',
+                                 'changed_decline', 'native_pass', 'missing_evidence', 'failure'])
+def test_invalid_refusal_cannot_exempt_an_execution_obligation(fault):
+    capsule, result = _measured_refusal()
+    if fault in {'unmeasured', 'violated'}:
+        result['expected_refusal']['status'] = fault
+    elif fault == 'absent_decline':
+        result.pop('declined')
+    elif fault == 'changed_expected':
+        result['expected_refusal']['expected'] = {'reason': 'unrelated', 'evidence': 'another target'}
+    elif fault == 'changed_decline':
+        result['expected_refusal']['declined'] = {'reason': 'unrelated'}
+    elif fault == 'native_pass':
+        result['tiers'] = {'L2': {'status': 'pass'}}
+    elif fault == 'missing_evidence':
+        capsule['expected'] = {'outcome': 'refuse', 'refusal': {'reason': 'no integer shift'}}
+    else:
+        result['failure'] = {'category': 'not measured'}
+    assert not ER.validated_result(capsule, result)

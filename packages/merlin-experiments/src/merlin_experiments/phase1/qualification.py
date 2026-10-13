@@ -10,7 +10,7 @@ from merlin.targetgen.sandbox import bwrap
 from merlin_experiments.corpus.preparation import private_json
 
 from . import formal_invocation, run_inputs
-from .feedback import certification, private_full_model_execution, private_full_models
+from .feedback import certification, hidden_capsule_policy, private_full_model_execution, private_full_models
 from .session import PreparedRun
 
 
@@ -56,6 +56,7 @@ def execute(prepared: PreparedRun) -> int:
         execution_gate=private_full_model_execution.gate_for(
             descriptor, required_programs=private_full_models.program_requirements_for(descriptor)
         ),
+        hidden_capsule_mode=hidden_capsule_policy.resolve(descriptor, options.hidden_capsule_mode)['mode'],
     )
     private_json(
         prepared.run_dir / "submission_qualification.json",

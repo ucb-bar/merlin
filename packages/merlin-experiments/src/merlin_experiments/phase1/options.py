@@ -82,6 +82,7 @@ class RunOptions:
     codex_binary: str = ""
     codex_auth_source: str = ""
     codex_home_root: str = ""
+    hidden_capsule_mode: str = ""
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -312,6 +313,8 @@ def build_parser(
     )
     ap.add_argument("--no-oracle", action="store_true", help="QA = L0+trace only (fast dev)")
     ap.add_argument("--skip-hidden", action="store_true")
+    ap.add_argument('--hidden-capsule-mode', choices=('rtl', 'functional_spike'), default='',
+                    help='operator hidden validation after freeze; functional_spike is L2 corroboration only')
     ap.add_argument(
         "--public-object-build-budget-s",
         type=_public_object_build_budget,
