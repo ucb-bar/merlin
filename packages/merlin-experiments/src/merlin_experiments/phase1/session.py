@@ -810,9 +810,24 @@ def _prepare(
             treatment.stage_task(arm, ws, run_dir, sandbox=a.sandbox, bundle_dir=bundle_dir)
         else:
             stage_task(arm, ws, run_dir, sandbox=a.sandbox, task_scope=_task_scope_record, policy_root=_policy_root)
+        from merlin.targetgen.public_codegen_budget import policy_from_profile, require_public_members
+
         from .resource_prompt import append_resource_guidance
 
-        append_resource_guidance(ws, run_dir, a)
+        resource_policy = policy_from_profile(bundle.get("compiler_tool_profile") or {})
+        if resource_policy is not None:
+            from merlin.targetgen.capsule_common import discover_capsules
+
+            public_members = discover_capsules(
+                [_policy_root] if _policy_root is not None else _te().graded_roots(),
+                labels={"public", "dev"}, contract=_contract_root or context.repo / "merlin/contract",
+            )
+            excluded = set(_te().effective_exclusions(row.get("name") for row in public_members))
+            require_public_members(resource_policy, (row.get("name") for row in public_members
+                                                    if row.get("name") not in excluded))
+        append_resource_guidance(ws, run_dir, a, **(
+            {"public_codegen_policy": resource_policy} if resource_policy is not None else {}
+        ))
     elif not (ws / "TASK.md").is_file():
         raise RuntimeError("resume refused: sealed workspace TASK.md is missing")
 

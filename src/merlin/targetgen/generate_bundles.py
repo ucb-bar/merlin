@@ -432,6 +432,7 @@ def generate_bundles(
     common_substrate: str | None = None,
     lean_toolchain_manifest: Path | None = None,
     host_index_bits: int | None = None,
+    public_codegen_resource_policy: dict | None = None,
 ) -> dict[str, dict]:
     """The bundle manifests for ``te``, keyed by bundle_id. Target-agnostic: the same code emits them
     for any target from its descriptor + derived paths (no hand-authored YAML).
@@ -445,6 +446,24 @@ def generate_bundles(
     """
     python_source_root = _python_source_selection(python_source_root)
     selected_facts = _selected_rtl_facts(te, rtl_facts_root)
+    from .public_codegen_budget import validate_policy
+
+    if public_codegen_resource_policy is None:
+        import yaml
+
+        declaration = yaml.safe_load(te.path.read_bytes()) or {}
+        public_codegen_resource_policy = (declaration.get("phase1_gates") or {}).get("public_codegen_scalability")
+    selected_policy = validate_policy(public_codegen_resource_policy)
+    if selected_policy is not None and common_substrate is None:
+        raise ValueError("selected public codegen resource policy requires an original compiler tool profile")
+    if selected_policy is not None:
+        from .capsule_common import discover_capsules
+        from .public_codegen_budget import require_public_members
+
+        members = discover_capsules(te.graded_roots(), labels={"public", "dev"})
+        excluded = set(te.effective_exclusions(row.get("name") for row in members))
+        require_public_members(selected_policy, (row.get("name") for row in members
+                                                if row.get("name") not in excluded))
     suffix = TR.cell_suffix(add_tools, drop_tools)
     wanted = arms or tuple(_ARMS)
     for a in wanted:
@@ -473,6 +492,7 @@ def generate_bundles(
                     python_source_root=python_source_root,
                     lean_toolchain_manifest=lean_toolchain_manifest,
                     host_index_bits=host_index_bits,
+                    public_codegen_resource_policy=selected_policy,
                 )
         elif lean_toolchain_manifest is not None:
             raise ValueError("selected Lean tooling requires the versioned common compiler substrate")
@@ -504,6 +524,7 @@ def generate_bundles(
                 software_spec_path=selected_software,
                 facts_path=selected_facts[0] / "facts.json" if selected_facts else None,
                 target=te.target,
+                public_codegen_resource_policy=selected_policy,
             )
             _select_python_grants(out[bid], python_source_root)
     return out
@@ -728,6 +749,7 @@ def materialize_bundles(
     common_substrate: str | None = None,
     lean_toolchain_manifest: Path | None = None,
     host_index_bits: int | None = None,
+    public_codegen_resource_policy: dict | None = None,
 ) -> list[Path]:
     """Write every generated bundle under ``dest/<bundle_id>/`` for each requested ``variant``:
     ``input_bundle_manifest.yaml`` (always, overwritten — the manifest is fully generated) plus the
@@ -786,6 +808,7 @@ def materialize_bundles(
             common_substrate=common_substrate,
             lean_toolchain_manifest=lean_toolchain_manifest,
             host_index_bits=host_index_bits,
+            public_codegen_resource_policy=public_codegen_resource_policy,
         )
         for bundle_id, manifest in bundles.items():
             bdir = dest / bundle_id
@@ -816,6 +839,8 @@ def _main(argv: list[str] | None = None) -> int:
     ``--dest`` defaults to a fresh versioned artifact product, never beside the descriptor."""
     import argparse
     from pathlib import Path
+
+    import yaml
 
     from .target_experiment import load_target_experiment
 
@@ -875,6 +900,8 @@ def _main(argv: list[str] | None = None) -> int:
         help="select versioned common transforms and strict covered-domain verification for a fresh release",
     )
     ap.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
+    ap.add_argument("--public-codegen-resource-policy", type=Path,
+                    help="original YAML resource selection copied into a fresh sealed compiler profile")
     ap.add_argument(
         "--host-index-bits",
         type=int,
@@ -925,6 +952,10 @@ def _main(argv: list[str] | None = None) -> int:
         common_substrate=a.common_substrate,
         lean_toolchain_manifest=a.lean_toolchain_manifest,
         host_index_bits=a.host_index_bits,
+        public_codegen_resource_policy=(
+            yaml.safe_load(a.public_codegen_resource_policy.read_bytes())
+            if a.public_codegen_resource_policy is not None else None
+        ),
     )
     if product is not None:
         for path in written:

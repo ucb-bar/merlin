@@ -576,6 +576,13 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         )
         os.environ[public_owned_host_selection.ENV] = json.dumps(public_host_selection, sort_keys=True)
 
+    from .public_scalability_gate import run_gate
+
+    public_resources = run_gate(
+        run_dir=run_dir, candidate=pkg, context=context, capsules_root=a.capsules,
+        contract=a.contract, facts_path=a.rtl_facts,
+    )
+
     # --- public/dev phase ---
     (run_dir / "grading_public").mkdir(parents=True, exist_ok=True)
     pub = _score(
@@ -742,17 +749,29 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     private_execution_complete = (
         execution_gate is None or execution_gate["required"] is False or (private_execution or {}).get("passed") is True
     )
+    public_resources_complete = (
+        public_resources.get("required") is False or public_resources.get("resource_complete") is True
+    )
+    if public_resources.get("required") is True:
+        from merlin_experiments.phase2.contracts import exact_tree_record
+
+        public_resources_complete = bool(
+            public_resources_complete
+            and exact_tree_record(pkg)["sha256"] == public_resources.get("candidate_sha256")
+        )
     formal_grade_complete = bool(
         public_phase["formal_complete"]
         and hidden_phase["formal_complete"]
         and private_models_complete
         and private_execution_complete
+        and public_resources_complete
     )
     completion_failures = [
         *(f"public:{reason}" for reason in public_phase["completion_failures"]),
         *(f"hidden:{reason}" for reason in hidden_phase["completion_failures"]),
         *([] if private_models_complete else ["private_full_models:incomplete"]),
         *([] if private_execution_complete else ["private_full_model_execution:incomplete"]),
+        *([] if public_resources_complete else ["public_codegen_resources:incomplete"]),
     ]
 
     # --- process metrics (from launcher), env, run_manifest ---
@@ -779,6 +798,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "hidden": hidden_phase,
         **({'hidden_capsule_validation': hidden_policy} if functional_hidden else {}),
         "private_full_models": private_models,
+        "public_codegen_resources": public_resources,
         **({} if private_execution is None else {"private_full_model_execution": private_execution}),
         "completion": {
             "formal_grade_complete": formal_grade_complete,

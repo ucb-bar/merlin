@@ -54,6 +54,7 @@ def test_unknown_shared_selection_or_out_of_boundary_pool_refuses(tmp_path):
 def test_selected_build_budget_and_public_commands_are_grounded_in_actual_tools(monkeypatch):
     from merlin_experiments.phase1.feedback import codegen_scalability, compile_only
 
+    monkeypatch.delattr(compile_only, "SCALE_PROBE_FLAG", raising=False)
     options = SimpleNamespace(public_object_build_budget_s=12)
     text = prompt.render_resource_block(options, environ={}, manager_cpus=(7,), grade_workers=2)
     assert "12 seconds per sample" in text
@@ -64,6 +65,19 @@ def test_selected_build_budget_and_public_commands_are_grounded_in_actual_tools(
     text = prompt.render_resource_block(options, environ={}, manager_cpus=(7,), grade_workers=2)
     assert "--compile-only --scale-probe --capsules PUBLIC_ID_1 --timeout 120" in text
     assert "No captured tensor values" in text and "required trace gates" in text
+
+
+def test_selected_original_public_resource_gate_is_visible_and_exact():
+    from merlin.targetgen.public_codegen_budget import validate_policy
+
+    policy = validate_policy({"required": True, "timeout_s": 91, "capsules": ["public_a", "public_b"],
+                              "device_ir_budget": {"mode": "enforce", "max_code_bytes": 12345,
+                                                   "max_inline_asm_sites": 37}})
+    text = prompt.render_resource_block(SimpleNamespace(), environ={}, manager_cpus=(7,), grade_workers=2,
+                                        public_codegen_policy=policy)
+    assert "max_code_bytes=12345" in text and "max_inline_asm_sites=37" in text
+    assert "--scale-probe --capsules public_a,public_b --timeout 91" in text
+    assert "mandatory for completion: **True**" in text and "requests cannot relax" in text
 
 
 @pytest.mark.parametrize("budget", [-1, 121, True])
