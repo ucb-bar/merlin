@@ -14,14 +14,17 @@ from merlin.llvmlower import toolchain
 from merlin.targetgen import target_registry
 
 
-@pytest.mark.parametrize("spike_cap", [None, "15"])
-def test_phase1_plan_freezes_only_explicit_spike_cap(tmp_path, monkeypatch, spike_cap):
+@pytest.mark.parametrize(("engine_key", "selected"), [
+    ("MERLIN_SPIKE_MAX_SLOTS", None), ("MERLIN_SPIKE_MAX_SLOTS", "15"),
+    ("MERLIN_GSIM_STARTUP_PRELOAD", None), ("MERLIN_GSIM_STARTUP_PRELOAD", "1"),
+])
+def test_phase1_plan_freezes_only_explicit_engine_controls(tmp_path, monkeypatch, engine_key, selected):
     monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
-    if spike_cap is None:
-        monkeypatch.delenv("MERLIN_SPIKE_MAX_SLOTS", raising=False)
+    if selected is None:
+        monkeypatch.delenv(engine_key, raising=False)
     else:
-        monkeypatch.setenv("MERLIN_SPIKE_MAX_SLOTS", spike_cap)
+        monkeypatch.setenv(engine_key, selected)
     monkeypatch.setenv("MERLIN_GSIM_MAX_SLOTS", "15")
     monkeypatch.setattr(target_registry, "effective_target_path", lambda: "fixture-support")
     monkeypatch.setattr(toolchain, "clang_for", lambda root, env: Path("clang"))
@@ -43,9 +46,9 @@ def test_phase1_plan_freezes_only_explicit_spike_cap(tmp_path, monkeypatch, spik
     plan = runner.resolve_plan(spec, phase="1", run_dir=tmp_path / "run")
     frozen = plan["phases"]["1"]["env"]
     assert frozen["MERLIN_GSIM_MAX_SLOTS"] == "15"
-    if spike_cap is None:
-        assert "MERLIN_SPIKE_MAX_SLOTS" not in frozen
+    if selected is None:
+        assert engine_key not in frozen
     else:
-        assert frozen["MERLIN_SPIKE_MAX_SLOTS"] == spike_cap
-        monkeypatch.setenv("MERLIN_SPIKE_MAX_SLOTS", "2")
-        assert frozen["MERLIN_SPIKE_MAX_SLOTS"] == "15"
+        assert frozen[engine_key] == selected
+        monkeypatch.setenv(engine_key, "0")
+        assert frozen[engine_key] == selected

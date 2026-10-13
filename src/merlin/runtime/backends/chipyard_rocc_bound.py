@@ -295,6 +295,12 @@ def _validate_readout(block):
             )
 
 
+def _gsim_startup_transport():
+    selected = os.environ.get("MERLIN_GSIM_STARTUP_PRELOAD")
+    _require(selected in {None, "", "0", "1"}, "selected gSIM startup preload must be 0 or 1")
+    return "original_dram_elf_preload_v1" if selected == "1" else None
+
+
 @dataclass(frozen=True)
 class BoundRoCCBackend:
     target: str
@@ -436,6 +442,17 @@ class BoundRoCCBackend:
         """The immutable selected engine's process deadline ceiling."""
         return self._engine(simulator)["max_timeout_s"]
 
+    def execution_argv_template(self, simulator):
+        """Original command, optionally preloading this same verified ELF before hart release."""
+        argv = list(self._engine(simulator)["argv"])
+        if simulator == "gsim" and _gsim_startup_transport() is not None:
+            _require(not any(arg.startswith("+loadmem=") for arg in argv),
+                     "selected gSIM startup preload conflicts with another ELF selection")
+            # The original registered native harness writes only declared DRAM
+            # during load_program(). Later TSI/coherent reads remain live RTL.
+            argv.append("+loadmem={elf}")
+        return tuple(argv)
+
     def _engine_identity(self, engine):
         block = self._engine(engine)
         binary = _check_pin(block["binary"], executable=True)
@@ -467,6 +484,10 @@ class BoundRoCCBackend:
                 "selected engine receipt identifies another executable",
             )
             identity["receipt"] = lineage
+            startup = _gsim_startup_transport()
+            if startup is not None:
+                self.execution_argv_template(engine)  # Refuse conflicting selected startup operands.
+                identity["startup_transport"] = startup
         elif engine == "verilator":
             from merlin.runtime.backends.rtl_build_receipt import validate
 
@@ -638,7 +659,12 @@ class BoundRoCCBackend:
             "selected execution working directory is unavailable",
         )
         flags = before.get("extension", {}).get("flags", [])
-        argv = [block["binary"]["path"], *flags, *(str(path) if arg == "{elf}" else arg for arg in block["argv"])]
+        template = self.execution_argv_template(simulator)
+        _require(
+            (_gsim_startup_transport() if simulator == "gsim" else None) == before.get("startup_transport"),
+            "selected startup transport changed before execution",
+        )
+        argv = [block["binary"]["path"], *flags, *(arg.replace("{elf}", str(path)) for arg in template)]
         dependencies = [Path(__file__).resolve(), _path(block["binary"]["path"])]
         if declared_model_machine:
             from merlin.llvmlower import toolchain
