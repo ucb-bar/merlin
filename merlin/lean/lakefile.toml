@@ -17,3 +17,13 @@ rev = "v4.35.0"
 [[lean_lib]]
 name = "MerlinVerify"
 globs = ["MerlinVerify.+"]
+
+# Checker driver: decode / round-trip / check subcommands (design §8.3).
+[[lean_exe]]
+name = "merlin-lean"
+root = "Main"
+
+# Guardrail audit: axioms, banned constructs, pinned statements (design §8.6).
+[[lean_exe]]
+name = "merlin-lean-audit"
+root = "Audit"
