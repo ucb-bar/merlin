@@ -247,6 +247,8 @@ def main(argv=None):
                     help="inspect original public emission without grading")
     ap.add_argument("--compile-only", action="store_true",
                     help="compile public scale/frontier tensor sources without executing a probe")
+    ap.add_argument("--scale-probe", action="store_true",
+                    help="with --compile-only, inspect public scale/tail emission before object compilation")
     ap.add_argument("--dynamic-census", action="store_true",
                     help="append bounded own-ELF activity after functional screening")
     ap.add_argument(
@@ -276,6 +278,8 @@ def main(argv=None):
         help="resume waiting on an in-flight request id instead of submitting a new one",
     )
     a = ap.parse_args(argv)
+    if a.scale_probe and not a.compile_only:
+        ap.error("--scale-probe requires --compile-only")
 
     policy_error = None if a.caller_layout or a.candidate_diagnostics or a.compile_only else _sim_policy_error(a.sim)
     if policy_error:
@@ -332,6 +336,7 @@ def main(argv=None):
                     "model_layers": bool(a.model_layers),
                     "candidate_diagnostics": bool(a.candidate_diagnostics),
                     "compile_only": bool(a.compile_only),
+                    "scale_probe": bool(a.scale_probe),
                     "dynamic_census": bool(a.dynamic_census),
                     "caller_layout": a.caller_layout,
                 }

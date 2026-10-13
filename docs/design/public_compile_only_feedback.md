@@ -3,7 +3,7 @@ title: Public scale compilation through the original brokers
 kind: design
 status: current
 owner: ir
-last_verified: 2026-10-12
+last_verified: 2026-10-13
 related: [verified_compiler_tooling, verified_compiler_roadmap, phase2_test_justification]
 code_refs: [packages/merlin-experiments/src/merlin_experiments/phase0/public_compile_sources.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compile_only.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py, packages/merlin-experiments/src/merlin_experiments/phase1/brokers/compiler_call_channel.py, packages/merlin-experiments/src/merlin_experiments/phase2/public_compile_only.py, src/merlin/targetgen/compile_only_execution.py, src/merlin/verify/lean_emission_chain.py]
 ---
@@ -24,6 +24,38 @@ These fixed source-metadata probes inspect code growth; they do not recommend a
 target schedule or use validation-model shapes. Existing public resource-frontier
 members retain their source types and derivation identity. Unsupported sources,
 dynamic shapes, captured values and exhausted metadata budgets remain unavailable.
+
+For faster feedback, `--compile-only --scale-probe --capsules PUBLIC_ID` stops
+after ordinary package lowering and stock LLVM translation. It builds no object,
+links no program and executes no simulator. Retained public integer interface
+matmul, movement and NHWC convolution sources gain a fixed scale ladder (8 and
+64), including tails on either side of an unambiguous selected hardware edge.
+The producer preserves original dtypes, convolution stride/padding/dilation,
+input joins and complete output geometry. Unsupported layouts, floating
+precision and compositions remain exact original sources. Existing linalg
+sources retain their ordinary source producer. No values or reference outputs
+are allocated, and no private model shape supplies a case.
+
+Scale feedback reports observed LLVM function/code bytes, inline assembly and
+call sites, source/product hashes and aggregate wall time. These lexical counts
+describe compiler resource cost, not instruction effects or correctness. A
+typed original-host `DeviceIRBudget` can refuse static expansion before object
+compilation; clients cannot supply or weaken its limits. Without such a closed
+host selection, feedback explicitly reports `resource_budget.mode=not_selected`.
+Later failures retain already-emitted byte counts as unverified partial output.
+Every numerical, device-resource, index, output-coverage and static semantic
+obligation remains unproved; this diagnostic alone never establishes compiler
+or whole-model qualification. Counted-loop source lowering is still a backend
+responsibility, while Merlin supplies reusable loop transforms and observations.
+
+A required scale resource gate also demands complete shape coverage for each
+selected public member. Interface sources must retain the original, 8-fold and
+64-fold geometric extents and both tails at the selected positive hardware edge.
+The ordinary linalg producer supplies its original/8-fold/64-fold geometric
+domain, without claiming hardware-tail coverage. Larger actual tensor ABIs and
+distinct source identities remain bound to the observed rows. An unsupported
+exact-only source, omitted large shape or missing selected tail stays incomplete
+even when all available small emissions fit the budget.
 
 The request cannot choose source paths, ABI, index width, resource constraints,
 toolchain, compiler-library admission, instruction policy or proof results.

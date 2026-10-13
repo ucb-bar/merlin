@@ -568,6 +568,7 @@ def build(
     from ...llvmlower.device_build import (
         admit_linked_device_elf,
         freeze_device_elf_admission,
+        freeze_device_ir_budget,
         require_device_elf_admission,
     )
     from ...llvmlower.link_supplier_trace import trace_symbol_flags
@@ -577,6 +578,7 @@ def build(
     device_admission_selection = freeze_device_elf_admission(device)
     if type(host_llvm_bitcode) is not bool:
         raise TypeError("host LLVM bitcode transport requires an explicit Boolean selection")
+    device_ir_budget = freeze_device_ir_budget(device)
     supplier_flags = () if math_archive_symbols is None else trace_symbol_flags(math_archive_symbols)
     (Path(work) / "execution_memory_admission.json").unlink(missing_ok=True)
     if host_llvm_transform_chain is not None:
@@ -970,6 +972,7 @@ def build(
                 expected_interfaces=_dev_side.get("expected_interfaces") or None,
                 package_sha256=_dev_side.get("package_sha256"),
                 call_buffers=_dev_args.get("call_buffers"),  # every pointer of a group's logical interface
+                device_ir_budget=device_ir_budget,
             )
         if exact is not None:
             exact.check_package(device.package_dir)
@@ -987,6 +990,7 @@ def build(
                     symbol: {
                         "kernel_symbol": kernel,
                         "custody": _dev_build.custody[symbol],
+                        "build_metrics": _dev_build.build_metrics.get(symbol),
                         "artifacts": {
                             role: {
                                 "path": str(path.absolute()),

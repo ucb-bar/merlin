@@ -76,6 +76,27 @@ def _te():
     )
 
 
+def test_original_public_resource_policy_is_in_frozen_profile(selected_sources, monkeypatch):
+    from merlin.targetgen import capsule_common
+    from merlin.targetgen.public_codegen_budget import FIELD
+    from merlin.targetgen.target_experiment import TargetExperiment
+
+    monkeypatch.setattr(capsule_common, "discover_capsules", lambda *a, **kw: [{"name": "public_scale_a"}])
+    monkeypatch.setattr(TargetExperiment, "effective_exclusions", lambda *a: [])
+    policy = {"required": True, "timeout_s": 120, "capsules": ["public_scale_a"],
+              "device_ir_budget": {"mode": "enforce", "max_code_bytes": 8192}}
+    selected = generate_bundles(_te(), common_substrate=COMMON_SUBSTRATE_V1,
+                               python_source_root=selected_sources, public_codegen_resource_policy=policy)
+    bundle = next(iter(selected.values()))
+    profile = verify_tool_profile(bundle)
+    assert profile[FIELD]["device_ir_budget"]["max_code_bytes"] == 8192
+    policy["device_ir_budget"]["max_code_bytes"] = 16384
+    assert verify_tool_profile(bundle) == profile
+    bundle["compiler_tool_profile"][FIELD]["device_ir_budget"]["max_code_bytes"] = 16384
+    with pytest.raises(ValueError, match="identity changed"):
+        verify_tool_profile(bundle)
+
+
 def _bundles(root, *, arms=(), lean=None):
     return generate_bundles(
         _te(),

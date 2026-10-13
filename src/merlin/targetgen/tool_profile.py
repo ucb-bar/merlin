@@ -316,6 +316,9 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
     width = profile.get("host_index_bits")
     if width is not None and (type(width) is not int or not 2 <= width <= 128):
         raise ValueError("compiler tool profile has an invalid reviewed host index width")
+    from .public_codegen_budget import policy_from_profile
+
+    policy_from_profile(profile)
     if profile["common_substrate"] == COMMON_SUBSTRATE_V3:
         from merlin.verify.lean_isa_semantics import validate_semantic_inputs
 
@@ -333,6 +336,7 @@ def attach_common_substrate(
     software_spec_path: Path | None = None,
     facts_path: Path | None = None,
     target: str | None = None,
+    public_codegen_resource_policy: dict | None = None,
 ) -> None:
     """Add reviewed common facilities while masking optional tools on every other level."""
     namespaces, public, automatic = substrate_inventory(version)
@@ -413,6 +417,10 @@ def attach_common_substrate(
     profile = {key: value for key, value in profile.items() if key != "sha256"}
     profile["lean_toolchain"] = toolchain
     profile["host_index_bits"] = host_index_bits
+    if public_codegen_resource_policy is not None:
+        from .public_codegen_budget import FIELD, validate_policy
+
+        profile[FIELD] = validate_policy(public_codegen_resource_policy)
     if version == COMMON_SUBSTRATE_V3:
         from merlin.verify.lean_isa_semantics import select_isa_semantics
 

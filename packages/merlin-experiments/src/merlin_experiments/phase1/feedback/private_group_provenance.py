@@ -97,6 +97,13 @@ def verify_routed_source_coverage(emitted: Mapping[str, Any], source: Mapping[st
     assigned = emitted.get("routed")
     if not isinstance(assigned, list) or not assigned:
         raise ValueError("linked roster differs from eligible source groups")
+    demand = source.get("accelerator_source_demand")
+    if (not isinstance(demand, Mapping) or demand.get("status") != "source_demand_derived"
+        or demand.get("n_unknown_host_groups") != 0 or demand.get("n_missing_direct_groups") != 0
+        or demand.get("n_unresolved_raw_regions") != 0
+        or demand.get("demanded_group_provenance") != source.get("eligible_group_provenance")
+        or demand.get("n_demanded_groups") != len(source.get("eligible_groups", []))):
+        raise ValueError("linked source coverage lacks complete independent accelerator demand")
     joined = join_routed_source_groups(assigned, source)
     skipped = emitted.get("skipped", [])
     if not isinstance(skipped, (list, tuple)) or any(

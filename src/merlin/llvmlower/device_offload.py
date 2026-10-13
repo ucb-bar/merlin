@@ -741,6 +741,7 @@ def rewrite_groups_to_device(
     oracle=None,
     capture: str | Path | None = None,
     sidecar_dir: str | Path | None = None,
+    require_complete_groups: bool = False,
 ) -> DeviceRewrite:
     """Replace each SELECTED closed COMPUTE GROUP with ONE call to ``device``'s kernel (see
     :func:`_rewrite_groups_to_device`). Under the logical kernel ABI a framework max-pool (a
@@ -761,6 +762,7 @@ def rewrite_groups_to_device(
             oracle=oracle,
             capture=capture,
             sidecar_dir=sidecar_dir,
+            require_complete_groups=require_complete_groups,
         )
 
 
@@ -774,6 +776,7 @@ def _rewrite_groups_to_device(
     oracle=None,
     capture: str | Path | None = None,
     sidecar_dir: str | Path | None = None,
+    require_complete_groups: bool = False,
 ) -> DeviceRewrite:
     """Replace each SELECTED closed COMPUTE GROUP with ONE call to ``device``'s kernel. Mutates ``module``.
 
@@ -819,6 +822,10 @@ def _rewrite_groups_to_device(
     )
     from .group_offload import capsule_entry_for
 
+    if type(require_complete_groups) is not bool:
+        raise TypeError("complete source group rewriting requires an original Boolean")
+    if require_complete_groups and select is None:
+        raise ValueError("complete source group rewriting has no original selection")
     if select is None:
         return DeviceRewrite(
             device=device,
@@ -830,6 +837,8 @@ def _rewrite_groups_to_device(
     # a different device. Without one the contract is the only source, and a device that declares no
     # datapath offloads nothing -- fail closed rather than route onto an unknown precision.
     if oracle is None and not device_dtype_triples(device):
+        if require_complete_groups:
+            raise ValueError("complete source group rewriting has no selected datapath")
         return DeviceRewrite(
             device=device,
             granularity=BY_GROUP,
@@ -845,7 +854,12 @@ def _rewrite_groups_to_device(
 
         weight_args = _stream_plan.weight_args_beside(capture)
 
-    groups = CG.form_groups(module, device, oracle=oracle)
+    if require_complete_groups:
+        from .source_compute_groups import form_source_groups
+
+        groups = form_source_groups(module, device, oracle=oracle)
+    else:
+        groups = CG.form_groups(module, device, oracle=oracle)
     # THE SHAPES ARE OBSERVED, NOT FILTERED FOR LEGALITY. `system.offload.offloadable_contractions`
     # answers "could this device take this contraction as it stands" -- and a captured layer does not
     # stand as an integer contraction at all: it arrives as a dequantize into an f32 matmul, which
@@ -1122,9 +1136,13 @@ def _rewrite_groups_to_device(
             )
         )
 
+    if require_complete_groups and (skipped or len(placed) != sum(g.placement != CG.HOST for g in groups)):
+        raise ValueError("complete source group rewrite has omitted or refused accelerator computation")
     prepack, why_no_prepack = _prepack_for(placed, capture)
     if why_no_prepack:
         skipped.append(("prepack", why_no_prepack))
+    if require_complete_groups and skipped:
+        raise ValueError("complete source group rewrite lacks its required preparation")
 
     out = DeviceRewrite(
         device=device,
@@ -1186,6 +1204,7 @@ def rewrite_prepared_file(
     capture: str | Path | None = None,
     catalog_manifest: str | Path | None = None,
     catalog_object: str | Path | None = None,
+    require_complete_groups: bool = False,
 ) -> DeviceRewrite:
     """Rewrite a prepared module ON DISK in place and record what it minted.
 
@@ -1214,6 +1233,8 @@ def rewrite_prepared_file(
 
     if granularity not in (BY_CONTRACTION, BY_GROUP):
         raise ValueError(f"{granularity!r} is neither {BY_CONTRACTION!r} nor {BY_GROUP!r}")
+    if type(require_complete_groups) is not bool or require_complete_groups and granularity != BY_GROUP:
+        raise ValueError("complete source group selection requires its original group rewrite")
     prepared, work = Path(prepared), Path(work)
     model_sha256 = hashlib.sha256(prepared.read_bytes()).hexdigest()
     if exact_selection is not None and exact_selection.model_sha256 != model_sha256:
@@ -1257,7 +1278,8 @@ def rewrite_prepared_file(
         )
         if granularity == BY_CONTRACTION
         else rewrite_groups_to_device(
-            module, device, select=select, weight_args=weight_args, model=model, capture=capture
+            module, device, select=select, weight_args=weight_args, model=model, capture=capture,
+            require_complete_groups=require_complete_groups,
         )
     )
     if rewrite.moved:

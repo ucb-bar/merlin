@@ -9,7 +9,8 @@ from merlin.common.cpu_pool import grading_cpus, parse_roster, shared_compute_en
 
 
 def render_resource_block(
-    options, *, environ=None, manager_cpus=None, grade_workers=None, boundary=None, device_ir_budget=None
+    options, *, environ=None, manager_cpus=None, grade_workers=None, boundary=None, device_ir_budget=None,
+    public_codegen_policy=None,
 ) -> str:
     environment = os.environ if environ is None else environ
     manager = tuple(sorted(os.sched_getaffinity(0))) if manager_cpus is None else tuple(manager_cpus)
@@ -117,12 +118,29 @@ def render_resource_block(
                            if name.startswith("max_") and value is not None)
         lines.append(f"- Selected device IR budget mode: `{selected['mode']}`; limits: `{limits or 'none selected'}`. "
                      "These limits constrain build resources and issue no correctness or execution credit.")
+    if public_codegen_policy is not None:
+        from merlin.targetgen.public_codegen_budget import validate_policy
+
+        policy = validate_policy(public_codegen_policy)
+        limits = ", ".join(f"{key}={value}" for key, value in policy["device_ir_budget"].items()
+                           if key.startswith("max_") and value is not None)
+        lines.append(
+            f"- Original public scale-emission resource policy: mode `{policy['device_ir_budget']['mode']}`, "
+            f"limits `{limits}`; mandatory for completion: **{policy['required']}**. "
+            f"Use `python3 agent_selfcheck.py --compile-only --scale-probe --capsules "
+            f"{','.join(policy['capsules'])} --timeout {policy['timeout_s']}`. "
+            "The harness supplies these limits; requests cannot relax them. Resource acceptance is separate "
+            "from object compilation, semantic placement, numerical and trace qualification."
+        )
     return "\n".join(lines) + "\n"
 
 
-def append_resource_guidance(ws: Path, run_dir: Path, options, *, device_ir_budget=None) -> None:
+def append_resource_guidance(ws: Path, run_dir: Path, options, *, device_ir_budget=None,
+                             public_codegen_policy=None) -> None:
     """Append before provenance, including when a treatment supplied its own task."""
     task = Path(ws) / "TASK.md"
     selected = {} if device_ir_budget is None else {"device_ir_budget": device_ir_budget}
+    if public_codegen_policy is not None:
+        selected["public_codegen_policy"] = public_codegen_policy
     task.write_text(task.read_text() + render_resource_block(options, **selected))
     (Path(run_dir) / "TASK.md").write_bytes(task.read_bytes())

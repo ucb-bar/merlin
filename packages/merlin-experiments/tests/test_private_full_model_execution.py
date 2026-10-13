@@ -93,6 +93,18 @@ def test_a_valid_declaration_is_normalized(tmp_path):
     assert entries[("policy", "step")]["engine"] == "spike" and entries[("policy", "step")]["max_cycles"] == 1000
 
 
+def test_original_descriptor_budget_is_validated_and_forwarded_without_candidate_options(tmp_path):
+    from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
+
+    budget = DeviceIRBudget(mode="enforce", max_inline_asm_sites=128)
+    gate = PFX.gate_for(_descriptor(tmp_path, _programs(net__model=dict(EXECUTED, device_ir_budget=budget.record()))),
+                        required_programs=ROSTER)
+    assert PFX.build_options(gate)["net"]["model"]["device_ir_budget"] == budget.record()
+    with pytest.raises(PFX.ExecutionGateError, match="device_ir_budget"):
+        PFX.gate_for(_descriptor(tmp_path, _programs(net__model=dict(EXECUTED, device_ir_budget={"mode": "enforce"}))),
+                     required_programs=ROSTER)
+
+
 @pytest.mark.parametrize(
     "programs,match",
     [

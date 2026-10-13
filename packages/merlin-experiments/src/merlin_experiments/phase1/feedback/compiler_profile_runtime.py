@@ -194,6 +194,10 @@ def selfcheck_compile_only(a, *, context):
         owner = CommonTransformService(workspace=Path.cwd(), bundle_manifest=a.compiler_bundle_manifest,
                                        repo=context.repo)
         owner._verify()
+        from .public_scalability_gate import selected_budget
+
+        scale_probe = bool(getattr(a, "scale_probe", False))
+        ir_budget = selected_budget(owner) if scale_probe else None
         temporary_root = a.compiler_bundle_manifest.parent / "compile-only-work"
         temporary_root.mkdir(mode=0o700, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="probe-", dir=temporary_root) as temporary:
@@ -204,7 +208,8 @@ def selfcheck_compile_only(a, *, context):
                 target_experiment=load_target_experiment(context.descriptor),
                 capsules_root=a.capsules_root, contract=a.contract, facts_path=a.rtl_facts,
                 common_service=owner, work_root=Path(temporary) / "products",
-                timeout_s=min(a.timeout, 600), selected=a.capsules)
+                timeout_s=min(a.timeout, 600), selected=a.capsules,
+                scale_probe=scale_probe, ir_budget=ir_budget)
         owner._verify()
     except Exception as error:
         result = {"schema": "merlin.public_compile_only_feedback.v1", "status": "unavailable",
