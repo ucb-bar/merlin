@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin.lean.ir.v1",
+  "title": "Merlin Lean IR interchange (merlin.lean.ir.v1)",
+  "description": "One MLIR module as parsed by MLIR's own parser and exported for the Lean checkers (docs/design/merlin_lean_verification.md, D9). Mirrors merlin/lean/MerlinVerify/Core/AST.lean. Generic op form: every op carries its full name, result types, operand ids, discardable attributes, properties (inherent attributes), regions and successor block indices. Value ids are unique within the module and assigned in program order (block arguments included).",
+  "type": "object",
+  "required": ["schema", "source", "producer", "module"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "merlin.lean.ir.v1"},
+    "source": {
+      "type": "object",
+      "required": ["sha256", "bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "bytes": {"type": "integer", "minimum": 0}
+      }
+    },
+    "producer": {
+      "type": "object",
+      "required": ["tool", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "tool": {"type": "string"},
+        "version": {"type": "string"},
+        "mlir_revision": {"type": "string"},
+        "executable_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "module": {
+      "type": "object",
+      "required": ["ops"],
+      "additionalProperties": false,
+      "properties": {
+        "ops": {"type": "array", "items": {"$ref": "#/$defs/op"}}
+      }
+    }
+  },
+  "$defs": {
+    "op": {
+      "type": "object",
+      "required": ["name", "results", "operands", "attrs", "props", "regions", "successors"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "results": {"type": "array", "items": {"$ref": "#/$defs/value"}},
+        "operands": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+        "attrs": {"$ref": "#/$defs/attrDict"},
+        "props": {"$ref": "#/$defs/attrDict"},
+        "regions": {"type": "array", "items": {"$ref": "#/$defs/region"}},
+        "successors": {"type": "array", "items": {"type": "integer", "minimum": 0}}
+      }
+    },
+    "region": {
+      "type": "object",
+      "required": ["blocks"],
+      "additionalProperties": false,
+      "properties": {"blocks": {"type": "array", "items": {"$ref": "#/$defs/block"}}}
+    },
+    "block": {
+      "type": "object",
+      "required": ["args", "ops"],
+      "additionalProperties": false,
+      "properties": {
+        "args": {"type": "array", "items": {"$ref": "#/$defs/value"}},
+        "ops": {"type": "array", "items": {"$ref": "#/$defs/op"}}
+      }
+    },
+    "value": {
+      "type": "object",
+      "required": ["id", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "integer", "minimum": 0},
+        "type": {"$ref": "#/$defs/type"}
+      }
+    },
+    "attrDict": {
+      "description": "Attribute name -> attribute. Keys in MLIR's (sorted) dictionary order.",
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/attr"}
+    },
+    "intString": {"type": "string", "pattern": "^-?[0-9]+$"},
+    "type": {
+      "oneOf": [
+        {"type": "object", "required": ["kind", "width"], "additionalProperties": false,
+         "properties": {"kind": {"enum": ["int", "sint", "uint"]}, "width": {"type": "integer", "minimum": 1}}},
+        {"type": "object", "required": ["kind"], "additionalProperties": false,
+         "properties": {"kind": {"enum": ["index", "none"]}}},
+        {"type": "object", "required": ["kind", "format"], "additionalProperties": false,
+         "properties": {"kind": {"const": "float"}, "format": {"enum": ["f16", "bf16", "f32", "f64"]}}},
+        {"type": "object", "required": ["kind", "shape", "element"], "additionalProperties": false,
+         "properties": {"kind": {"const": "tensor"},
+                        "shape": {"type": "array", "items": {"type": ["integer", "null"], "minimum": 0}},
+                        "element": {"$ref": "#/$defs/type"},
+                        "encoding": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/attr"}]}}},
+        {"type": "object", "required": ["kind", "shape", "element"], "additionalProperties": false,
+         "properties": {"kind": {"const": "memref"},
+                        "shape": {"type": "array", "items": {"type": ["integer", "null"], "minimum": 0}},
+                        "element": {"$ref": "#/$defs/type"},
+                        "layout": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/attr"}]},
+                        "memory_space": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/attr"}]}}},
+        {"type": "object", "required": ["kind", "shape", "scalable", "element"], "additionalProperties": false,
+         "properties": {"kind": {"const": "vector"},
+                        "shape": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+                        "scalable": {"type": "array", "items": {"type": "boolean"}},
+                        "element": {"$ref": "#/$defs/type"}}},
+        {"type": "object", "required": ["kind", "inputs", "results"], "additionalProperties": false,
+         "properties": {"kind": {"const": "function"},
+                        "inputs": {"type": "array", "items": {"$ref": "#/$defs/type"}},
+                        "results": {"type": "array", "items": {"$ref": "#/$defs/type"}}}},
+        {"type": "object", "required": ["kind", "text"], "additionalProperties": false,
+         "properties": {"kind": {"const": "opaque"}, "text": {"type": "string"}}}
+      ]
+    },
+    "affineExpr": {
+      "oneOf": [
+        {"type": "object", "required": ["kind", "pos"], "additionalProperties": false,
+         "properties": {"kind": {"enum": ["dim", "symbol"]}, "pos": {"type": "integer", "minimum": 0}}},
+        {"type": "object", "required": ["kind", "value"], "additionalProperties": false,
+         "properties": {"kind": {"const": "constant"}, "value": {"$ref": "#/$defs/intString"}}},
+        {"type": "object", "required": ["kind", "lhs", "rhs"], "additionalProperties": false,
+         "properties": {"kind": {"enum": ["add", "mul", "mod", "floordiv", "ceildiv"]},
+                        "lhs": {"$ref": "#/$defs/affineExpr"}, "rhs": {"$ref": "#/$defs/affineExpr"}}}
+      ]
+    },
+    "attr": {
+      "oneOf": [
+        {"type": "object", "required": ["kind"], "additionalProperties": false,
+         "properties": {"kind": {"const": "unit"}}},
+        {"type": "object", "required": ["kind", "value"], "additionalProperties": false,
+         "properties": {"kind": {"const": "bool"}, "value": {"type": "boolean"}}},
+        {"type": "object", "required": ["kind", "value", "type"], "additionalProperties": false,
+         "description": "IntegerAttr; value is an exact decimal string.",
+         "properties": {"kind": {"const": "int"}, "value": {"$ref": "#/$defs/intString"}, "type": {"$ref": "#/$defs/type"}}},
+        {"type": "object", "required": ["kind", "bits", "type"], "additionalProperties": false,
+         "description": "FloatAttr; bits is the IEEE bit pattern of the stored value as lowercase hex without prefix.",
+         "properties": {"kind": {"const": "float"}, "bits": {"type": "string", "pattern": "^[0-9a-f]+$"}, "type": {"$ref": "#/$defs/type"}}},
+        {"type": "object", "required": ["kind", "value"], "additionalProperties": false,
+         "properties": {"kind": {"const": "string"}, "value": {"type": "string"}}},
+        {"type": "object", "required": ["kind", "value"], "additionalProperties": false,
+         "properties": {"kind": {"const": "type"}, "value": {"$ref": "#/$defs/type"}}},
+        {"type": "object", "required": ["kind", "elements"], "additionalProperties": false,
+         "properties": {"kind": {"const": "array"}, "elements": {"type": "array", "items": {"$ref": "#/$defs/attr"}}}},
+        {"type": "object", "required": ["kind", "element", "values"], "additionalProperties": false,
+         "description": "DenseI*ArrayAttr / DenseBoolArrayAttr (bool as 0/1).",
+         "properties": {"kind": {"const": "dense_array"}, "element": {"$ref": "#/$defs/type"},
+                        "values": {"type": "array", "items": {"$ref": "#/$defs/intString"}}}},
+        {"type": "object", "required": ["kind", "type", "splat", "hex"], "additionalProperties": false,
+         "description": "DenseElementsAttr (or resolved dense resource). hex is the exact little-endian element storage, one element when splat. i1 elements are normalized to one byte (00/01) each.",
+         "properties": {"kind": {"const": "dense"}, "type": {"$ref": "#/$defs/type"}, "splat": {"type": "boolean"},
+                        "hex": {"type": "string", "pattern": "^([0-9a-f]{2})*$"}}},
+        {"type": "object", "required": ["kind", "dims", "symbols", "results"], "additionalProperties": false,
+         "properties": {"kind": {"const": "affine_map"}, "dims": {"type": "integer", "minimum": 0},
+                        "symbols": {"type": "integer", "minimum": 0},
+                        "results": {"type": "array", "items": {"$ref": "#/$defs/affineExpr"}}}},
+        {"type": "object", "required": ["kind", "dialect", "name", "value"], "additionalProperties": false,
+         "description": "Dialect enum attribute with a known printed form, e.g. #linalg.iterator_type<parallel>, #arith.fastmath<nnan,ninf>.",
+         "properties": {"kind": {"const": "enum"}, "dialect": {"type": "string"}, "name": {"type": "string"}, "value": {"type": "string"}}},
+        {"type": "object", "required": ["kind", "entries"], "additionalProperties": false,
+         "properties": {"kind": {"const": "dict"}, "entries": {"$ref": "#/$defs/attrDict"}}},
+        {"type": "object", "required": ["kind", "root", "nested"], "additionalProperties": false,
+         "properties": {"kind": {"const": "symbol_ref"}, "root": {"type": "string"},
+                        "nested": {"type": "array", "items": {"type": "string"}}}},
+        {"type": "object", "required": ["kind", "text"], "additionalProperties": false,
+         "description": "Any other attribute, by its printed form.",
+         "properties": {"kind": {"const": "opaque"}, "text": {"type": "string"}}}
+      ]
+    }
+  }
+}
