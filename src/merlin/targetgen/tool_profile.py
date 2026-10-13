@@ -15,6 +15,7 @@ from pathlib import Path
 
 from . import tool_registry as TR
 
+
 def _public_runtime_members(document: dict, resolve_member) -> set[str]:
     """Explicit selected OS runtime roles; never infer public grants from a prefix.
 
@@ -130,6 +131,7 @@ AUTOMATIC_CHECKER_MODULES_V3 = (
     "merlin.targetgen.host_optimization_admission",
     "merlin.targetgen.common_transforms",
     "merlin.common.bundle_snapshot",
+    "merlin.common.read_lease_digest",
     "merlin.common.bwrap_args",
     "merlin.llvmlower.host_optimization_request",
     "merlin.llvmlower.host_optimization_compile",

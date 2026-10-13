@@ -17,6 +17,7 @@ import threading
 import weakref
 from pathlib import Path
 
+from . import read_lease_digest
 from .path_relations import LexicalPathIndex
 
 MARKER = "snapshot.json"
@@ -118,15 +119,18 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
     """Batch payload reads for one protected operation, never across calls.
 
     Every ordinary verification still checks mapping, canonical paths and
-    membership. The full payload is reopened at both boundaries. The caller
-    must close this scope before publishing its output or accepted receipt.
+    membership. Both boundaries independently hash the payload by default.
+    With MERLIN_SNAPSHOT_LEASE_CACHE=1, large immutable files may instead reuse
+    their SHA-256 under freshly checked Linux read leases; all other files are
+    hashed normally. Close this scope before publishing any accepted output.
     """
     workspace, repo = Path(workspace), Path(repo)
     previous = _ACTIVE_VERIFICATION.set(None)
     issued = None
     try:
         original_policy = _policy_bytes(bundle)
-        document = verify_bundle_snapshot(workspace, bundle, repo=repo)
+        with read_lease_digest.verification() as leases:
+            document = verify_bundle_snapshot(workspace, bundle, repo=repo)
         root = bundle_snapshot_root(workspace)
         marker_bytes = (root / MARKER).read_bytes()
         issued = _Verification()
@@ -135,15 +139,17 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
         issued.repo, issued.policy_bytes = repo, original_policy
         issued.members = _scanned_roster(_scanned_members(root))
         issued.signature = tuple(document[key] for key in ("content_sha256", "n_files", "n_bytes"))
+        issued.leases = leases
         _ISSUED_VERIFICATIONS.add(issued)
         _ACTIVE_VERIFICATION.set(issued)
         try:
             yield document
         finally:
-            # Disable ALL outer/nested reuse before the mandatory final read.
+            # Disable ALL outer/nested scope reuse before the mandatory final verification.
             _ACTIVE_VERIFICATION.set(None)
             if _policy_bytes(bundle) != original_policy or (root / MARKER).read_bytes() != marker_bytes:
                 raise RuntimeError("original snapshot scope policy or marker changed")
+            read_lease_digest.validate(issued.leases)
             final = verify_bundle_snapshot(workspace, bundle, repo=repo)
             if final != document:
                 raise RuntimeError("original snapshot scope ownership changed")
@@ -163,13 +169,17 @@ def snapshot_content(root: Path) -> tuple[str, int, int]:
             raise RuntimeError("original snapshot scope marker changed")
         if _scanned_roster(members) != issued.members:
             raise RuntimeError("original snapshot scope member roster changed")
+        read_lease_digest.validate(getattr(issued, "leases", None))
         return issued.signature
-    for parts, path, kind, _ in members:
-        if kind != "file" or parts == (MARKER,):
-            continue
-        with path.open("rb") as stream:
-            identity = hashlib.file_digest(stream, "sha256").hexdigest()
-        rows.append(("/".join(parts), identity, path.stat().st_size))
+    with read_lease_digest.verification():
+        for parts, path, kind, size in members:
+            if kind != "file" or parts == (MARKER,):
+                continue
+            identity = read_lease_digest.digest(path) if size >= read_lease_digest.MIN_BYTES else None
+            if identity is None:
+                with path.open("rb") as stream:
+                    identity = hashlib.file_digest(stream, "sha256").hexdigest()
+            rows.append(("/".join(parts), identity, path.stat().st_size))
     aggregate = hashlib.sha256()
     for relative, identity, size in rows:
         aggregate.update(relative.encode())
