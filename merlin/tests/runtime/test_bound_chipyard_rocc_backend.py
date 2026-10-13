@@ -850,6 +850,17 @@ def test_bound_memory_process_refuses_changed_regions_after_process(logical_memo
         bound.run_elf(logical_memory_case[-1], simulator="gsim", timeout=5, memory_readback=request)
 
 
+def test_bound_coherent_export_cannot_silently_downgrade_selected_native_view(logical_memory_case, monkeypatch):
+    from merlin.runtime import native_runtime
+
+    _reader, request, _cb, bound, *_ = logical_memory_case
+    monkeypatch.setattr(native_runtime, "active_native_runtime", lambda: object())
+    monkeypatch.setattr(B, "_bounded_process", lambda *a, **k: pytest.fail("selected view was downgraded"))
+    with pytest.raises(ValueError, match="native filesystem view has no approved coherent-export mapping"):
+        bound.run_elf(logical_memory_case[-1], simulator="gsim", timeout=5, memory_readback=request)
+    assert not Path(request["output_path"]).exists()
+
+
 def test_memory_backend_binding_rejects_foreign_or_derived_class(logical_memory_case):
     from merlin_experiments.phase1.feedback.native_memory_readback import _same_selected_backend
 

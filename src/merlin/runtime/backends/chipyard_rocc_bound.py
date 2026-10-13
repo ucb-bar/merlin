@@ -695,7 +695,13 @@ class BoundRoCCBackend:
         export = None
         if memory_readback is not None:
             from merlin.runtime.backends import _chipyard_memory_readback
+            from merlin.runtime.native_runtime import active_native_runtime
 
+            _require(
+                active_native_runtime() is None,
+                "selected native filesystem view has no approved coherent-export mapping; "
+                "select the direct execution mode explicitly or retain the original console transport",
+            )
             _require(
                 simulator == "gsim" and not capture_bytes and not declared_model_machine
                 and self.engine_readback_policy(simulator).transport == COHERENT_DUMP_V1,

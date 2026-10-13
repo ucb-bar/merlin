@@ -545,6 +545,7 @@ class NativeLogicalMemoryReadback:
             "schema": "merlin.neutral_coherent_readback.v1", "status": "complete", "source": "coherent",
             "scope": "complete original dense values only; numeric and phase qualification remain caller obligations",
             "transport": "gsim_coherent_dump_v1", "elf_sha256": current["elf_sha256"],
+            "execution_mode": "original_selected_direct_process", "native_filesystem_view": None,
             "layout_admission_sha256": _sha(canonical_json(current)), "artifact_sha256": _sha(raw),
             "request_sha256": _sha(state["request_raw"]), "command_buffer_sha256": _sha(state["cb_raw"]),
             "console_sha256": _sha(console.encode()), "output_path": str(path),
