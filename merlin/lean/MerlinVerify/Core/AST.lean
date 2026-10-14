@@ -88,14 +88,13 @@ mutual
     | opaque (text : String)
 end
 
-deriving instance Repr for Ty, Attr
 deriving instance Inhabited for Ty
 deriving instance Inhabited for Attr
 
 structure Value where
   id : ValueId
   ty : Ty
-  deriving Repr, Inhabited
+  deriving Inhabited
 
 mutual
   /-- One MLIR operation in generic form. `attrs` are the discardable attributes; `props` are the
@@ -113,7 +112,6 @@ mutual
     | mk (args : List Value) (ops : List Op)
 end
 
-deriving instance Repr for Op, Region, Block
 deriving instance Inhabited for Op
 deriving instance Inhabited for Region
 deriving instance Inhabited for Block
@@ -146,7 +144,7 @@ structure Module where
   ops : List Op
   attrs : List (String × Attr) := []
   props : List (String × Attr) := []
-  deriving Repr, Inhabited
+  deriving Inhabited
 
 /-- A `func.func` view of a top-level op: symbol name, entry block, visibility. -/
 structure Func where
