@@ -18,6 +18,7 @@ from merlin.targetgen import target_registry
     ("MERLIN_SPIKE_MAX_SLOTS", None), ("MERLIN_SPIKE_MAX_SLOTS", "15"),
     ("MERLIN_GSIM_STARTUP_PRELOAD", None), ("MERLIN_GSIM_STARTUP_PRELOAD", "1"),
     ("MERLIN_PUBLIC_SCALE_BATCH_WORKERS", None), ("MERLIN_PUBLIC_SCALE_BATCH_WORKERS", "3"),
+    ("MERLIN_SELFCHECK_BROKER_JOBS", None), ("MERLIN_SELFCHECK_BROKER_JOBS", "2"),
 ])
 def test_phase1_plan_freezes_only_explicit_engine_controls(tmp_path, monkeypatch, engine_key, selected):
     monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))

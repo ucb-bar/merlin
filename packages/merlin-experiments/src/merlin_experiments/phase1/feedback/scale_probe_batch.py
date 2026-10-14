@@ -1,7 +1,7 @@
 """Original-issued public scale workers with one restored owner per sealed batch.
 
 Only process-local read leases persist. Every case and actual command retains
-its original checks; accepted results wait for the worker's final owner exit.
+its original checks; accepted results wait for parent final ownership checks.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from . import compiler_profile_runtime as R
 from . import scale_probe_child as S
 
 SCHEMA = "merlin.original_public_scale_batch.v1"
+CASE_SCHEMA = "merlin.original_public_scale_batch_case.v1"
 
 
 def _jobs(document, spec):
@@ -68,6 +69,35 @@ def _verify_payload(root, payload, budget):
         raise StageGateError("public scale batch supplied an unrecognized case observation")
 
 
+def _case_path(spec, index):
+    return spec.parent / f".scale_case_{index:03d}.json"
+
+
+def _read_case(spec, item, transport, worker, *, started, ended):
+    """Check case fields inside the freshly verified parent transport join.
+
+    This private helper does not issue owner freshness. The caller must retain
+    its original snapshot operation through final lifetime closure.
+    """
+    path = _case_path(spec, item["index"])
+    if not path.exists():
+        return None
+    if CHILD._plain(path) != path or path.stat().st_size > 8 << 20:
+        raise StageGateError("public scale case receipt is not its bounded original worker product")
+    row = json.loads(path.read_bytes())
+    if (type(row) is not dict or set(row) != {"schema", "index", "case", "spec", "observation",
+            "started_monotonic", "finished_monotonic", "original_case_checkpoint"}
+            or row["schema"] != CASE_SCHEMA or row["index"] != item["index"]
+            or row["case"] != item["case"] or row["spec"] != item["spec"]):
+        raise StageGateError("public scale case receipt substituted its original case/specification")
+    transport._verify_checkpoint_fields(row["original_case_checkpoint"], worker=worker)
+    if (any(type(row[name]) not in (int, float) or not math.isfinite(row[name])
+            for name in ("started_monotonic", "finished_monotonic"))
+            or not started <= row["started_monotonic"] <= row["finished_monotonic"] <= ended):
+        raise StageGateError("public scale case receipt has another worker observation interval")
+    return row
+
+
 def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract, facts_path,
                work_root, deadline, ir_budget, sandbox_inputs=None, timing=None):
     from merlin.targetgen.capsule_runner import _kill_tree
@@ -77,7 +107,7 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
     entered, entered_cpu = time.monotonic(), time.process_time()
     count = min(S.batch_workers(), len(cases)) if cases else 0
     rows, case_jobs = [C._case_row(case) for case in cases], []
-    groups, active, completed = [], [], []
+    groups, active, completed, worker_identities = [], [], [], {}
     with contextlib.ExitStack() as lifetime:
         with C._snapshot_operation(owner):
             lifetime.enter_context(R._original_execution_lifetime(owner,
@@ -120,6 +150,7 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                            "--result", str(result), *transport.argv]
                 process = subprocess.Popen(cpu_pool.worker_pool_command(command, environment), env=environment,
                     pass_fds=transport.pass_fds, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                worker_identities[process.pid] = CHILD._process(process.pid)
                 active.append((spec, result, transport, process, time.monotonic()))
             while active:
                 for item in tuple(active):
@@ -156,6 +187,11 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                             or result["schema"] != SCHEMA or type(result["observations"]) is not list
                             or len(result["observations"]) != len(jobs)):
                         raise StageGateError("public scale batch completion changed its original case roster")
+                else:
+                    # One fresh entry per actual worker, including interrupted
+                    # workers. Per-case fields reuse only this local parent join;
+                    # all source inputs/products and final custody remain checked.
+                    transport._verify_original()
                 for position, (item, case_spec, job) in enumerate(jobs):
                     if not 0 <= item["index"] < len(cases):
                         raise StageGateError("public scale batch has another original case index")
@@ -165,30 +201,41 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                     for name in ("source", "contract", "facts"):
                         if CHILD._digest(S._input_pin(job[name]["path"])) != CHILD._digest(job[name]):
                             raise StageGateError("public scale batch original case input changed before publication")
-                    if result is None:
+                    actual = _read_case(spec, item, transport, worker_identities[process.pid],
+                        started=started, ended=ended)
+                    if result is not None:
+                        final = result["observations"][position]
+                        if (type(final) is not dict or set(final) != {
+                                "index", "case", "observation", "started_monotonic", "finished_monotonic"}
+                                or final["index"] != index or final["case"] != cases[index].record()
+                                or actual is None or any(final[name] != actual[name] for name in final)):
+                            raise StageGateError("public scale batch completion disagrees with closed case custody")
+                    if actual is None or actual["finished_monotonic"] > deadline:
                         row.update(lowering_status="unavailable", reason=(
                             "original aggregate compile budget exhausted" if outcome == "original_compile_deadline"
                             else "original public scale batch refused"))
                     else:
-                        actual = result["observations"][position]
-                        if (set(actual) != {"index", "case", "observation", "started_monotonic", "finished_monotonic"}
-                                or actual["index"] != index or actual["case"] != cases[index].record()):
-                            raise StageGateError("public scale batch completed another original case")
-                        stamps = (actual["started_monotonic"], actual["finished_monotonic"])
-                        if (any(type(value) not in (int, float) or not math.isfinite(value) for value in stamps)
-                                or not started <= stamps[0] <= stamps[1] <= ended):
-                            raise StageGateError("public scale batch supplied an invalid case observation interval")
                         _verify_payload(case_spec.parent, actual["observation"], ir_budget)
                         row.update(actual["observation"])
                         row["case_observation"] = {"started_monotonic": actual["started_monotonic"],
-                            "finished_monotonic": actual["finished_monotonic"], "pending_until_worker_exit": False}
+                            "finished_monotonic": actual["finished_monotonic"],
+                            "pending_until_parent_custody": False, "scope": "closed original per-case checkpoint"}
                     cases[index].verify()
                     row["preparation_process"] = {"pid": process.pid, "started_monotonic": started,
-                        "finished_monotonic": ended, "mode": "original_sealed_persistent_batch", "outcome": outcome}
+                        "finished_monotonic": ended, "mode": "original_sealed_persistent_batch", "outcome": outcome,
+                        "worker_returncode": process.returncode}
                     row["wall_seconds"] = ended - started
             for row in rows:
                 if row["lowering_status"] == "not_attempted":
                     row["reason"] = "original aggregate compile budget exhausted"
+            if completed:
+                # All issued transports share the same original compiler,
+                # owner/target/host/environment selections. Reopen them once
+                # after every case, while retaining each distinct batch pin.
+                completed[0][2]._verify_original()
+                for spec, _, transport, *_ in completed:
+                    if CHILD._pin(spec) != transport.document["spec"]:
+                        raise StageGateError("public scale batch changed before final custody closure")
             lifetime.close()
     ended, ended_cpu = time.monotonic(), time.process_time()
     if timing is not None:
@@ -236,12 +283,22 @@ def main(argv=None):
             events.append({"index": item["index"], "case": item["case"], "event": "begin",
                 "at_monotonic": started, "at_utc_ns": time.time_ns(), "pid": os.getpid()})
             progress()
-            observation = S.observe_case(job, spec_path=spec, executor=executor, original_budget=budget)
-            if CHILD._pin(spec) != item["spec"]:
-                raise StageGateError("public scale case changed during worker consumption")
+            with CHILD.restored_case_checkpoint() as checkpoint:
+                observation = S.observe_case(job, spec_path=spec, executor=executor, original_budget=budget)
+                if CHILD._pin(spec) != item["spec"]:
+                    raise StageGateError("public scale case changed during worker consumption")
+                _verify_payload(spec.parent, observation, budget)
             finished = time.monotonic()
-            observations.append({"index": item["index"], "case": item["case"], "observation": observation,
-                "started_monotonic": started, "finished_monotonic": finished})
+            completed = {"index": item["index"], "case": item["case"], "observation": observation,
+                "started_monotonic": started, "finished_monotonic": finished}
+            # A later interrupted case cannot erase a closed case owner/product
+            # boundary. Parent final custody is still required for acceptance.
+            path = _case_path(args.spec, item["index"])
+            temporary = path.with_suffix(".pending")
+            S._write(temporary, {"schema": CASE_SCHEMA, **completed, "spec": item["spec"],
+                "original_case_checkpoint": checkpoint})
+            os.replace(temporary, path)
+            observations.append(completed)
             events.append({"index": item["index"], "case": item["case"], "event": "end",
                 "at_monotonic": finished, "at_utc_ns": time.time_ns(), "pid": os.getpid()})
             progress()

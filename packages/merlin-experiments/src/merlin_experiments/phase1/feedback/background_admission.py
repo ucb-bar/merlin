@@ -59,7 +59,8 @@ def _archive(path):
 
 
 @contextlib.contextmanager
-def active_full_selfcheck(*, ws, process, request, source_sha256, public, context, contract, bundle_manifest, sim):
+def active_full_selfcheck(*, ws, process, request, source_sha256, public, context, contract, bundle_manifest, sim,
+                         dispatcher_pid=None):
     """Publish only an actual ordinary full-ladder worker launched by this broker."""
     path, record = None, None
     try:
@@ -89,8 +90,14 @@ def active_full_selfcheck(*, ws, process, request, source_sha256, public, contex
                 adapters = {}
             full = set(CR.qa_checkpoint_adapters(target, via))
             if full and set(adapters) == full:
-                worker, broker, manager = _identity(process.pid), _identity(os.getpid()), _identity(os.getppid())
-                if worker["parent"] == broker["pid"] and broker["parent"] == manager["pid"]:
+                worker, broker = _identity(process.pid), _identity(os.getpid())
+                # Only the original one-request handler selects this extra hop;
+                # a request body or candidate environment cannot supply it.
+                dispatcher = _identity(dispatcher_pid) if dispatcher_pid is not None else None
+                manager = _identity(dispatcher["parent"] if dispatcher is not None else os.getppid())
+                parent = dispatcher if dispatcher is not None else manager
+                if (worker["parent"] == broker["pid"] and broker["parent"] == parent["pid"]
+                        and (dispatcher is None or dispatcher["parent"] == manager["pid"])):
                     path = _marker(ws, create=True)
                     if path is not None:
                         record = {
@@ -106,6 +113,8 @@ def active_full_selfcheck(*, ws, process, request, source_sha256, public, contex
                             "profile": _archive(bundle_manifest),
                             "tiers": sorted(full),
                         }
+                        if dispatcher is not None:
+                            record["dispatcher"] = dispatcher
                         temporary = path.with_suffix(f".{record['nonce']}.tmp")
                         temporary.write_text(json.dumps(record, sort_keys=True))
                         temporary.chmod(0o600)
@@ -121,6 +130,21 @@ def active_full_selfcheck(*, ws, process, request, source_sha256, public, contex
                     path.unlink()
             except (OSError, ValueError):
                 pass
+
+
+def _live_process_chain(record):
+    """Reopen every original process hop; dead/reparented owners grant no priority."""
+    manager, broker, worker = (record[key] for key in ("manager", "broker", "worker"))
+    if (manager != _identity(os.getpid()) or broker != _identity(broker["pid"])
+            or worker != _identity(worker["pid"])):
+        return False
+    parent = manager
+    dispatcher = record.get("dispatcher")
+    if dispatcher is not None:
+        if dispatcher != _identity(dispatcher["pid"]) or dispatcher["parent"] != manager["pid"]:
+            return False
+        parent = dispatcher
+    return broker["parent"] == parent["pid"] and worker["parent"] == broker["pid"]
 
 
 def foreground_covers(ws, source_sha256, public, inputs):
@@ -139,11 +163,7 @@ def foreground_covers(ws, source_sha256, public, inputs):
             == (str(Path(inputs.contract).resolve()) if inputs.contract is not None else None)
             and record.get("profile") == _archive(service.bundle_manifest)
             and record.get("tiers")
-            and record["manager"] == _identity(os.getpid())
-            and record["broker"] == _identity(record["broker"]["pid"])
-            and record["worker"] == _identity(record["worker"]["pid"])
-            and record["broker"]["parent"] == record["manager"]["pid"]
-            and record["worker"]["parent"] == record["broker"]["pid"]
+            and _live_process_chain(record)
         )
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return False

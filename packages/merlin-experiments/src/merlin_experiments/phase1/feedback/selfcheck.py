@@ -421,7 +421,9 @@ def _previously_failing() -> tuple:
     out = Path("selfcheck_out")
     latest, newest = None, -1.0
     try:
-        for cand in list(out.glob("*.json")) + [Path("selfcheck.json")]:
+        completed = [Path(".qa_channel") / f"resp_{done.name[len('done_'):]}.json"
+                     for done in Path(".qa_channel").glob("done_*")]
+        for cand in list(out.glob("*.json")) + [Path("selfcheck.json")] + completed:
             if cand.is_file() and cand.stat().st_mtime > newest:
                 latest, newest = cand, cand.stat().st_mtime
     except OSError:
@@ -764,6 +766,7 @@ def _model_layers(
     capsules: str = "all",
     context: InvocationContext,
     contract: Path | None = None,
+    artifact_root: Path | None = None,
 ) -> int:
     """The agent-facing model-layer report (see ``--model-layers``).
 
@@ -800,7 +803,7 @@ def _model_layers(
         # real directory of symlinked FILES: the bytes graded are the tracked ones, nothing is
         # copied per request, and discovery (`rglob`) finds them, which it does not do through a
         # symlinked directory.
-        narrowed = Path("selfcheck_out") / "model_layers" / "_subset"
+        narrowed = (artifact_root or Path("selfcheck_out")) / "model_layers" / "_subset"
         if narrowed.exists():
             shutil.rmtree(narrowed)
         for name in wanted:
@@ -814,7 +817,7 @@ def _model_layers(
     # layer. Every row names the tiers withheld, so a pass here reads as the screen it is.
     ladder = tier_policy.tier_depth_order(adapters)
     screen = {tier: adapters[tier] for tier in ladder[:1]}
-    runs_root = Path("selfcheck_out") / "model_layers"
+    runs_root = (artifact_root or Path("selfcheck_out")) / "model_layers"
     try:
         score = CG.grade(
             str(sub),
@@ -934,6 +937,30 @@ def _model_layers(
     return 0 if report.get("all_pass") else 1
 
 
+def _request_artifact_root(value: str, *, progress: str, output: str) -> Path:
+    """A broker output root belongs only to its exact original request channel."""
+    workspace = Path.cwd().resolve()
+    record = Path(progress)
+    if record.parent.resolve() != workspace / ".qa_channel" or not (
+        record.name.startswith("progress_") and record.name.endswith(".json")
+    ):
+        raise ValueError("artifact root requires the original request progress record")
+    rid = record.name[len("progress_"):-len(".json")]
+    if not rid or rid in {".", ".."}:
+        raise ValueError("artifact root requires a valid request identity")
+    staged = Path(output)
+    if staged.parent.resolve() != record.parent.resolve() or not (
+        staged.name.startswith(f".resp_{rid}.") and staged.name.endswith(".tmp")
+    ):
+        raise ValueError("artifact root differs from the original response identity")
+    expected = workspace / "selfcheck_out" / "requests" / rid
+    if Path(value).absolute() != expected or any(path.is_symlink() for path in (
+        workspace / "selfcheck_out", workspace / "selfcheck_out" / "requests", expected
+    )):
+        raise ValueError("artifact root must be the original per-request output directory")
+    return expected
+
+
 def main(argv=None, *, context=None, capsules_root: Path | None = None, contract: Path | None = None):
     ap = argparse.ArgumentParser(description="Agent self-check runner (redacted; spike/verilator/vcs).")
     add_context_arguments(ap)
@@ -961,6 +988,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--out", default="", help="optional: also write the redacted JSON here")
     ap.add_argument("--progress-out", default="", help=argparse.SUPPRESS)
+    ap.add_argument("--artifact-root", default="", help=argparse.SUPPRESS)
     ap.add_argument("--model-gate-voucher", action="append", default=[], help=argparse.SUPPRESS)
     ap.add_argument(
         "--caller-layout",
@@ -1014,6 +1042,12 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     ap.add_argument("--dynamic-census", action="store_true",
                     help="append bounded own-ELF activity after functional screen")
     a = ap.parse_args(argv)
+    if a.artifact_root:
+        try:
+            a.artifact_root = _request_artifact_root(
+                a.artifact_root, progress=a.progress_out, output=a.out)
+        except ValueError as error:
+            ap.error(str(error))
     if a.scale_probe and not a.compile_only:
         ap.error("--scale-probe requires --compile-only")
     if a.rtl_facts is not None:
@@ -1070,6 +1104,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                     capsules=a.capsules,
                     context=context,
                     contract=contract,
+                    artifact_root=a.artifact_root or None,
                 )
             if a.offload_census:
                 return _offload_census(
@@ -1257,8 +1292,8 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     # trace, console and redacted numeric detail. Candidate whole-model capsules instead use QA's
     # closed submitted-artifact projection: the runner-owned host graph and candidate ELF are distinct
     # programs, so its legacy trace, timing, console or failure must not be shown as candidate evidence.
-    out_dir = Path("selfcheck_out")
-    out_dir.mkdir(exist_ok=True)
+    out_dir = Path(a.artifact_root or "selfcheck_out")
+    out_dir.mkdir(parents=True, exist_ok=True)
     # Read results from the TARGET'S OWN suite dir. run_capsule writes under cfg.suite
     # (e.g. <target>-capsule-bench); globbing one target's SUITE literal here made every other target's
     # self-check return n_capsules:0 with per_capsule:[] — the agent's feedback loop went blind while

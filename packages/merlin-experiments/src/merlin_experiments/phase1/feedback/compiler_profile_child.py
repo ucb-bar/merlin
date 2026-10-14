@@ -9,12 +9,15 @@ This transports existing authority; it supplies no numerical or timing verdict.
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import dataclasses
 import fcntl
 import hashlib
 import json
 import os
 import sys
+import threading
+import weakref
 import zlib
 from pathlib import Path
 
@@ -34,6 +37,9 @@ from merlin_experiments.phase2.contracts import StageGateError
 from merlin_experiments.phase2.retained_revisions import source_inventory
 
 SCHEMA = "merlin.original_model_child.v1"
+CHECKPOINT_SCHEMA = "merlin.original_model_child_case_checkpoint.v1"
+_RESTORED_CHILD = contextvars.ContextVar("original_restored_child_checkpoint", default=None)
+_RESTORED_ISSUED = weakref.WeakSet()
 MAX_BYTES = 256 << 10
 MAX_SELECTION_BYTES = 4 << 20
 _COMPRESSED_SELECTION = b"merlin.original_model_child.zlib.v1\0"
@@ -262,6 +268,20 @@ class ModelChildTransport:
             raise StageGateError("model child did not complete under its original restored execution owner")
         return result
 
+    def verify_checkpoint(self, receipt, *, worker):
+        """Reopen parent custody for one closed case, never an entire batch."""
+        self._verify_original()
+        return self._verify_checkpoint_fields(receipt, worker=worker)
+
+    def _verify_checkpoint_fields(self, receipt, *, worker):
+        """Validate bound fields only; supplies no source/owner freshness authority."""
+        if (type(receipt) is not dict or set(receipt) != {"schema", "original_compiler_child", "worker"}
+                or receipt["schema"] != CHECKPOINT_SCHEMA
+                or receipt["original_compiler_child"] != _receipt(self.document)
+                or receipt["worker"] != worker):
+            raise StageGateError("original case checkpoint lost its sealed worker/owner selection")
+        return receipt
+
 
 def _receipt(document):
     return {
@@ -273,6 +293,72 @@ def _receipt(document):
         "environment_sha256": document["environment"]["sha256"],
         "scope": "restored original compiler execution selections; no numerical or timing authority",
     }
+
+
+class _RestoredChild:
+    def __init__(self, document, executor, boundary):
+        from merlin.verify import lean_emission_context as emission
+
+        self.document, self.executor, self.boundary = document, executor, boundary
+        self.admission, self.emission = API._ACTIVE.get(), emission._ACTIVE.get()
+        self.modules = self.admission.modules
+        self.worker, self.thread = _process(os.getpid()), threading.current_thread()
+
+    def verify(self):
+        """Check live ownership and small selections; parent reopens snapshot bytes.
+
+        Actual command invocations already close independent snapshot operations.
+        This checkpoint does not issue a reusable snapshot verification capability
+        or retain a verification operation across commands.
+        """
+        from merlin.verify import lean_emission_context as emission
+
+        document, owner = self.document, self.executor.owner
+        if (self not in _RESTORED_ISSUED or _RESTORED_CHILD.get() is not self
+                or threading.current_thread() is not self.thread or _process(os.getpid()) != self.worker
+                or P.active_package_executor() is not self.executor
+                or API._ACTIVE.get() is not self.admission or self.admission not in API._ISSUED
+                or self.admission.modules != self.modules or emission._ACTIVE.get() is not self.emission
+                or (self.emission is not None and (
+                    self.emission not in emission._ISSUED or not self.emission.live
+                    or self.emission.admission is not self.admission or self.emission.service is not owner))
+                or resources.active_resource_boundary() is not self.boundary):
+            raise StageGateError("original case checkpoint requires its live restored execution owner")
+        selected = document["owner"]
+        if (tuple(map(str, (owner.workspace, owner.bundle_manifest, owner.repo))) != (
+                    selected["workspace"], selected["bundle_manifest"]["path"], selected["repo"])
+                or owner.snapshot_digest != selected["snapshot_sha256"]
+                or _digest(owner.profile) != selected["profile_sha256"]
+                or (self.admission.workspace, self.admission.bundle_manifest, self.admission.repo) != (
+                    owner.workspace, owner.bundle_manifest, owner.repo)
+                or self.admission.profile != owner.profile
+                or self.admission.snapshot_sha256 != owner.snapshot_digest
+                or _pin(owner.bundle_manifest) != selected["bundle_manifest"]
+                or _pin(selected["snapshot_marker"]["path"]) != selected["snapshot_marker"]
+                or _pin(document["spec"]["path"]) != document["spec"]
+                or _source(document["candidate"]) != document["candidate_sha256"]
+                or _pin(document["target"]["descriptor"]["path"]) != document["target"]["descriptor"]
+                or _digest(self.executor.target) != document["target"]["parsed_sha256"]
+                or _closure() != document["host_sources"]
+                or invocation_record.environment_identity(os.environ) != document["environment"]):
+            raise StageGateError("original case checkpoint changed its sealed source/owner selection")
+        if self.boundary is not None and self.boundary.verify(
+                owner_pids=(document["parent"]["pid"],)) != document["resources"]["boundary_sha256"]:
+            raise StageGateError("original case checkpoint changed its kernel resource owner")
+
+
+@contextlib.contextmanager
+def restored_case_checkpoint():
+    """Publishable only after this actual restored worker's case scope closes."""
+    state = _RESTORED_CHILD.get()
+    if type(state) is not _RestoredChild:
+        raise StageGateError("original case checkpoint requires an inherited restored worker")
+    state.verify()
+    receipt = {}
+    yield receipt
+    state.verify()
+    receipt.update(schema=CHECKPOINT_SCHEMA, original_compiler_child=_receipt(state.document),
+                   worker=state.worker)
 
 
 @contextlib.contextmanager
@@ -478,7 +564,14 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
             ))
             if _owner_record(service) != owner:
                 raise StageGateError("model child original execution owner changed during setup")
-        yield _receipt(document)
+        state = _RestoredChild(document, R.active_original_execution(), boundary)
+        _RESTORED_ISSUED.add(state)
+        token = _RESTORED_CHILD.set(state)
+        try:
+            yield _receipt(document)
+        finally:
+            _RESTORED_CHILD.reset(token)
+            _RESTORED_ISSUED.discard(state)
     if _pin(spec_path) != document["spec"] or _source(document["candidate"]) != document["candidate_sha256"]:
         raise StageGateError("model child original source changed during grading")
     if _owner_record(service) != owner:
