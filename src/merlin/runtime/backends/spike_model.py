@@ -247,9 +247,8 @@ def _selected_libm_archive(gcc: Path, flags: list[str], link_flags: tuple[str, .
 #: The arena lives here (literal-addressed, inside the -m memory map this backend passes to spike).
 ARENA_BASE = 0xC0000000  # derived-ok: address chosen by this backend's own -m map, not read from a target
 DRAM_BASE = 0x80000000  # derived-ok: RISC-V platform DRAM base used by spike/fesvr; the -m map is passed explicitly
-#: Reserve ahead of the weights blob for everything that is NOT the model's static I/O: code,
-#: rodata, the stack and the runtime's own tables. The model-dependent part (embedded inputs + the
-#: static output buffer) and the lowered model object's bytes are added on top.
+#: Minimum region ahead of the weights blob for code, rodata, static I/O,
+#: stack, and runtime tables. Large generated objects can raise this floor.
 _CODE_RESERVE_FIXED = 64 * 1024 * 1024
 
 

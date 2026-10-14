@@ -209,7 +209,7 @@ def qualify(
             "output_dtype": output_dtype,
             "arena_mb": arena_mb,
             "timeout_s": timeout_s,
-            "code_reserve_policy": "board floor plus generated model object and static IO",
+            "code_reserve_policy": "maximum of board floor or generated object and static IO plus runtime headroom",
             "simulator": simulator,
         },
     }
