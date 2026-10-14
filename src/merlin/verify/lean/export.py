@@ -314,3 +314,40 @@ def round_trip(mlir_path: Path, workdir: Path, *, lean_exe: Path, mlir_opt: Path
         if x != y:
             return RoundTrip("different", f"line {i + 1}:\n  original: {x[:300]}\n  lean:     {y[:300]}")
     return RoundTrip("different", "outputs differ in length")
+
+
+# --- what a function-scoped verdict does not cover ------------------------------------------------
+
+
+def outside_function_changes(before: dict[str, Any], after: dict[str, Any], fn: str) -> list[str]:
+    """Differences between two exported modules that lie OUTSIDE function ``fn``'s body.
+
+    A C1 verdict is a claim about the meaning of ``fn``'s body only. Anything listed here (module
+    attributes, the function op's own attributes, other top-level ops) is outside that claim and
+    must be accounted for by another checker (e.g. the erasure check) or reported as unverified.
+    """
+    out: list[str] = []
+    mb, ma = before["module"], after["module"]
+    for key in ("attrs", "props"):
+        if mb.get(key, {}) != ma.get(key, {}):
+            keys = sorted(set(mb.get(key, {})) ^ set(ma.get(key, {})) | {
+                k for k in set(mb.get(key, {})) & set(ma.get(key, {})) if mb[key][k] != ma[key][k]})
+            out.append(f"module {key}: {', '.join(keys)}")
+
+    def sym(op: dict[str, Any]) -> str | None:
+        name = op["props"].get("sym_name") or op["attrs"].get("sym_name")
+        return name.get("value") if isinstance(name, dict) else None
+
+    tb = {(o["name"], sym(o)): o for o in mb["ops"]}
+    ta = {(o["name"], sym(o)): o for o in ma["ops"]}
+    for k in sorted(set(tb) ^ set(ta), key=str):
+        out.append(f"top-level op {'removed' if k in tb else 'added'}: {k[0]} @{k[1]}")
+    for k in sorted(set(tb) & set(ta), key=str):
+        ob, oa = tb[k], ta[k]
+        for key in ("attrs", "props"):
+            diff = sorted(x for x in set(ob[key]) | set(oa[key]) if ob[key].get(x) != oa[key].get(x))
+            if diff:
+                out.append(f"{k[0]} @{k[1]} {key}: {', '.join(diff)}")
+        if k[1] != fn and ob["regions"] != oa["regions"]:
+            out.append(f"{k[0]} @{k[1]}: body changed (not checked by this verdict)")
+    return out
