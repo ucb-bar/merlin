@@ -146,6 +146,51 @@ def test_frozen_public_policy_uses_only_original_read_only_grants(tmp_path, monk
         R.public_package_policy(policy, target=None, owner=owner)
 
 
+@pytest.mark.parametrize("reject", [False, True])
+def test_public_policy_preparation_leases_and_releases_real_shared_cpu(tmp_path, monkeypatch, reject):
+    import fcntl
+    import os
+
+    from merlin.common import cpu_pool
+    from merlin.targetgen.sandbox import bwrap as B
+
+    original_affinity = os.sched_getaffinity(0)
+    cpu = min(original_affinity)
+    slots = tmp_path / "slots"
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(slots))
+    owner = SimpleNamespace(workspace=tmp_path, bundle={}, repo=tmp_path)
+    policy = C.PackageSandboxPolicy(("box",), (), (), tmp_path, tmp_path, None)
+
+    def roots(selected):
+        assert selected is owner
+        assert cpu_pool.current_thread_owns_cpu_lease()
+        assert os.sched_getaffinity(0) == {cpu}
+        return (tmp_path,)
+
+    def masks(argv, *args, **kwargs):
+        assert cpu_pool.current_thread_owns_cpu_lease()
+        with cpu_pool.shared_compute_pool(timeout_s=0):
+            assert os.sched_getaffinity(0) == {cpu}
+        if reject:
+            raise RuntimeError("private runtime alias rejected")
+        return [*argv, "--tmpfs", str(tmp_path / "private")]
+
+    monkeypatch.setattr(R, "_public_python_roots", roots)
+    monkeypatch.setattr(B, "_bundle_mount_args", lambda *args: [])
+    monkeypatch.setattr(B, "apply_final_answer_masks", masks)
+    if reject:
+        with pytest.raises(RuntimeError, match="private runtime alias rejected"):
+            R.public_package_policy(policy, target=None, owner=owner)
+    else:
+        assert R.public_package_policy(policy, target=None, owner=owner).argv[-2:] == (
+            "--tmpfs", str(tmp_path / "private"))
+    assert os.sched_getaffinity(0) == original_affinity
+    assert not cpu_pool.current_thread_owns_cpu_lease()
+    with (slots / f"cpu-{cpu}.lock").open("rb") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 def test_actual_frozen_source_box_imports_selected_leaf_at_an_independent_root(tmp_path):
     """Real Linux mount/import control only; no compiler or deployment qualification."""
     import hashlib

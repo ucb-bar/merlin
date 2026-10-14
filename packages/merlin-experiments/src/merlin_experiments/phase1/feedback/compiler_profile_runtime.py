@@ -259,14 +259,19 @@ def public_package_policy(policy, *, target, owner):
     """Reapply exact original public grants without the original workspace mount."""
     from dataclasses import replace
 
+    from merlin.common.cpu_pool import shared_compute_pool
     from merlin.targetgen.sandbox import bwrap as BW
 
-    roots = _public_python_roots(owner)
-    prefix = [*policy.argv, *BW._bundle_mount_args(owner.workspace, owner.bundle, owner.repo)]
-    prefix = BW.apply_final_answer_masks(prefix, target, owner.workspace, owner.bundle, repo=owner.repo)
-    root = shlex.quote(":".join(map(str, roots)))
-    return replace(policy, argv=tuple(prefix),
-                   env_prefix=policy.env_prefix + f"export PYTHONPATH={root}:$PYTHONPATH; ")
+    # Alias discovery walks real runtime trees. Schedule this synchronous CPU
+    # work with compilation/simulation, and release its slot before any RPC or
+    # child wait. The original source and final privacy checks still run fresh.
+    with shared_compute_pool():
+        roots = _public_python_roots(owner)
+        prefix = [*policy.argv, *BW._bundle_mount_args(owner.workspace, owner.bundle, owner.repo)]
+        prefix = BW.apply_final_answer_masks(prefix, target, owner.workspace, owner.bundle, repo=owner.repo)
+        root = shlex.quote(":".join(map(str, roots)))
+        return replace(policy, argv=tuple(prefix),
+                       env_prefix=policy.env_prefix + f"export PYTHONPATH={root}:$PYTHONPATH; ")
 
 
 def active_public_package_policy(policy, *, target):
