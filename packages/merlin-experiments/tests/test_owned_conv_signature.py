@@ -32,3 +32,24 @@ def test_conv_empty_signature_requires_exact_geometry_and_typed_logical_abi():
         mutate(changed)
         with pytest.raises(ValueError):
             routed_kernel_symbols(changed)
+
+
+def test_source_stated_fused_convolution_requires_matching_bias_and_readout():
+    emitted = fixture()
+    entry = emitted["entries"]["kernel"]
+    entry.update(epilogue=["bias_add", "acc_scale"], acc_scale=0.125)
+    emitted["programs"] = {"kernel": {"entry": deepcopy(entry)}}
+    emitted["call_buffers"]["kernel"].insert(2, {"role": "bias_0", "shape": [16], "dtype": "i32"})
+    emitted["call_buffers"]["kernel"][-1]["dtype"] = "i8"
+    emitted["routed"][0]["dtypes"][-1] = "i8"
+    assert routed_kernel_symbols(emitted) == {"kernel"}
+    for mutate in (
+        lambda e: e["call_buffers"]["kernel"][2].update(shape=[4]),
+        lambda e: e["call_buffers"]["kernel"][2].update(dtype="i8"),
+        lambda e: e["entries"]["kernel"].update(acc_scale=0.25),
+        lambda e: e["entries"]["kernel"].update(epilogue=["relu", "bias_add", "acc_scale"]),
+    ):
+        changed = deepcopy(emitted)
+        mutate(changed)
+        with pytest.raises(ValueError):
+            routed_kernel_symbols(changed)

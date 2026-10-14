@@ -127,6 +127,53 @@ def _functions(module) -> dict[str, Any]:
     return found
 
 
+def _command_only_integer_orchestration(function: Any, target: str | None) -> bool:
+    """Prove a high instruction count cannot be host tensor computation.
+
+    A pointer-only kernel with no scalar memory access or value arithmetic can
+    spend many integer instructions calculating transfer addresses and command
+    operands. Its only effects must be target-owned RoCC commands and fences;
+    unrecognized inline assembly, helpers, scalar memory, or a scalar return
+    keeps the ordinary element-scale veto in force.
+    """
+    if target is None:
+        return False
+    from xdsl.dialects.builtin import UnitAttr
+    from xdsl.dialects.llvm import LLVMPointerType
+
+    from merlin.targetgen.rocc.decode import _asm_template, _parse_insn, isa_constants
+
+    try:
+        isa = isa_constants(target)
+        opcode, classes = isa["CUSTOM_OPCODE"], isa["FUNCT_CLASS"]
+    except (KeyError, TypeError, ValueError):
+        return False
+    blocks = tuple(function.body.blocks)
+    if not blocks or not blocks[0].args or not all(isinstance(arg.type, LLVMPointerType) for arg in blocks[0].args):
+        return False
+    commands = 0
+    for op in function.walk():
+        name = op.name
+        if name in {"llvm.load", "llvm.store", "llvm.alloca", "llvm.call", "llvm.call_intrinsic", "llvm.atomicrmw", "llvm.cmpxchg"}:
+            return False
+        if name == "llvm.return" and op.operands:
+            return False
+        if name != "llvm.inline_asm":
+            continue
+        if op.results or not isinstance(op.has_side_effects, UnitAttr) or "~{memory}" not in op.constraints.data.split(","):
+            return False
+        template = _asm_template(op)
+        if template == "fence":
+            if op.operands:
+                return False
+            continue
+        parsed = _parse_insn(template, opcode)
+        if parsed is None or not parsed[1] or parsed[0] not in classes or len(op.operands) != 2:
+            return False
+        commands += 1
+    return commands > 0
+
+
 def audit_group(
     site: GroupSite, function: Any | None, budget: Budget = Budget(), *, input_preparation=None, target=None
 ) -> dict[str, Any]:
@@ -187,9 +234,21 @@ def audit_group(
             if arithmetic < 0 or payload < 0:
                 row.update(verdict=UNKNOWN, why="input preparation counts exceed original raw accounting")
                 return row
+    command_only = (
+        site.placement != HOST
+        and arithmetic > site.elements * budget.arithmetic_per_element
+        and value_arithmetic == 0
+        and payload == 0
+        and _command_only_integer_orchestration(function, target)
+    )
+    if command_only:
+        # The raw dynamic count remains visible. Only the proven pointer-only
+        # command orchestration is removed from the tensor-compute budget.
+        row["host_command_orchestration_arithmetic"] = arithmetic
+        arithmetic = 0
     top = (activity.get("block_signatures") or [{}])[0]
     row.update(
-        arithmetic_basis="pointer_offset_provenance_v1",
+        arithmetic_basis=("pointer_only_target_commands_v1" if command_only else "pointer_offset_provenance_v1"),
         address_loop_basis="closed_induction_address_uses_v1",
         host_arithmetic=arithmetic,
         host_total_arithmetic=total_arithmetic,

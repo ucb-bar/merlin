@@ -122,19 +122,27 @@ def _conv_entry_signature_matches(emitted, symbol, row):
     buffers = emitted.get("call_buffers", {}).get(symbol)
     if emitted.get("granularity") != "group" or not isinstance(entry, Mapping) or entry.get("op") != "conv2d":
         return False
-    if entry.get("epilogue", []) != [] or entry.get("layout", "NHWC") != "NHWC":
+    epilogue = entry.get("epilogue", [])
+    if epilogue not in ([], ["acc_scale"], ["bias_add"], ["bias_add", "acc_scale"]):
+        return False
+    if entry.get("layout", "NHWC") != "NHWC":
         return False
     if entry.get("groups", 1) != 1 or type(entry.get("groups", 1)) is not int:
         return False
-    if not isinstance(buffers, list) or len(buffers) != 3:
+    biased = "bias_add" in epilogue
+    if not isinstance(buffers, list) or len(buffers) != (4 if biased else 3):
         return False
-    if [b.get("role") for b in buffers if isinstance(b, Mapping)] != ["input_0", "weight_0", "out_0"]:
+    if any(not isinstance(b, Mapping) for b in buffers):
+        return False
+    if [b.get("role") for b in buffers] != (
+        ["input_0", "weight_0", "bias_0", "out_0"] if biased else ["input_0", "weight_0", "out_0"]
+    ):
         return False
     program = emitted.get("programs", {}).get(symbol)
     stated = program.get("entry") if isinstance(program, Mapping) else None
     if not isinstance(stated, Mapping):
         return False
-    for key in ("op", "Himg", "Wimg", "ci", "kh", "kw", "N", "stride", "padding", "dilation", "epilogue"):
+    for key in ("op", "Himg", "Wimg", "ci", "kh", "kw", "N", "stride", "padding", "dilation", "epilogue", "acc_scale"):
         default = [1, 1] if key == "dilation" else [] if key == "epilogue" else None
         if entry.get(key, default) != stated.get(key, default):
             return False
@@ -160,14 +168,17 @@ def _conv_entry_signature_matches(emitted, symbol, row):
     if oh <= 0 or ow <= 0:
         return False
     m, n, k = batch * oh * ow, entry["N"], entry["kh"] * entry["kw"] * ci
-    # This supported logical ABI has an image, flattened stored weights, and a
-    # flattened contraction output. Other layouts/epilogue buffers fail closed.
+    # This supported logical ABI has an image, flattened stored weights,
+    # optional i32 bias, and a flattened committed output. Match the fused
+    # readout to the same source-stated epilogue rather than assuming a bare
+    # contraction whenever a convolution uses the logical NHWC interface.
     return (
         row.get("parallel") == [m, n]
         and row.get("reduction") == [k]
         and buffers[1].get("shape") == [k, n]
-        and buffers[2].get("shape") == [m, n]
-        and [b.get("dtype") for b in buffers] == row.get("dtypes")
+        and (not biased or (buffers[2].get("shape") == [n] and buffers[2].get("dtype") == "i32"))
+        and buffers[-1].get("shape") == [m, n]
+        and [buffers[i].get("dtype") for i in (0, 1, len(buffers) - 1)] == row.get("dtypes")
     )
 
 
