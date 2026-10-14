@@ -74,7 +74,11 @@ def _case_path(spec, index):
 
 
 def _read_case(spec, item, transport, worker, *, started, ended):
-    """Consume closed original case custody, never pending progress events."""
+    """Check case fields inside the freshly verified parent transport join.
+
+    This private helper does not issue owner freshness. The caller must retain
+    its original snapshot operation through final lifetime closure.
+    """
     path = _case_path(spec, item["index"])
     if not path.exists():
         return None
@@ -86,7 +90,7 @@ def _read_case(spec, item, transport, worker, *, started, ended):
             or row["schema"] != CASE_SCHEMA or row["index"] != item["index"]
             or row["case"] != item["case"] or row["spec"] != item["spec"]):
         raise StageGateError("public scale case receipt substituted its original case/specification")
-    transport.verify_checkpoint(row["original_case_checkpoint"], worker=worker)
+    transport._verify_checkpoint_fields(row["original_case_checkpoint"], worker=worker)
     if (any(type(row[name]) not in (int, float) or not math.isfinite(row[name])
             for name in ("started_monotonic", "finished_monotonic"))
             or not started <= row["started_monotonic"] <= row["finished_monotonic"] <= ended):
@@ -175,7 +179,6 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                 if CHILD._pin(spec) != transport.document["spec"]:
                     raise StageGateError("public scale original batch specification changed")
                 jobs = _jobs(json.loads(spec.read_bytes()), spec)
-                transport._verify_original()
                 result = None
                 if (process.returncode == 0 and output.is_file() and not output.is_symlink()
                         and output.stat().st_size <= 8 << 20):
@@ -184,6 +187,11 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                             or result["schema"] != SCHEMA or type(result["observations"]) is not list
                             or len(result["observations"]) != len(jobs)):
                         raise StageGateError("public scale batch completion changed its original case roster")
+                else:
+                    # One fresh entry per actual worker, including interrupted
+                    # workers. Per-case fields reuse only this local parent join;
+                    # all source inputs/products and final custody remain checked.
+                    transport._verify_original()
                 for position, (item, case_spec, job) in enumerate(jobs):
                     if not 0 <= item["index"] < len(cases):
                         raise StageGateError("public scale batch has another original case index")
@@ -220,6 +228,14 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
             for row in rows:
                 if row["lowering_status"] == "not_attempted":
                     row["reason"] = "original aggregate compile budget exhausted"
+            if completed:
+                # All issued transports share the same original compiler,
+                # owner/target/host/environment selections. Reopen them once
+                # after every case, while retaining each distinct batch pin.
+                completed[0][2]._verify_original()
+                for spec, _, transport, *_ in completed:
+                    if CHILD._pin(spec) != transport.document["spec"]:
+                        raise StageGateError("public scale batch changed before final custody closure")
             lifetime.close()
     ended, ended_cpu = time.monotonic(), time.process_time()
     if timing is not None:

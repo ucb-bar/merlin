@@ -112,6 +112,57 @@ def test_checkpoint_cannot_be_issued_outside_original_restored_worker():
             pytest.fail("foreign checkpoint scope was entered")
 
 
+def test_parent_verifies_each_transport_once_and_only_four_full_snapshot_reads(batch_setup, monkeypatch):
+    from merlin.common import bundle_snapshot as BW
+
+    digest, verify = BW.hashlib.file_digest, B.CHILD.ModelChildTransport._verify_original
+    reads, transports = [], []
+
+    def measured(stream, *args, **kwargs):
+        if str(stream.name) == str(batch_setup.frozen):
+            reads.append(stream.name)
+        return digest(stream, *args, **kwargs)
+
+    def reopened(transport):
+        transports.append(transport.document["spec"]["path"])
+        return verify(transport)
+
+    monkeypatch.setattr(BW.hashlib, "file_digest", measured)
+    monkeypatch.setattr(B.CHILD.ModelChildTransport, "_verify_original", reopened)
+    rows = emit(batch_setup)
+    assert all(row["lowering_status"] == "emitted" for row in rows)
+    # One setup issuance reopen, one entry per worker, one shared final reopen.
+    assert len(transports) == 4
+    assert len(reads) == 4  # Actual full setup pre/post and final custody pre/post.
+    assert BW._ACTIVE_VERIFICATION.get() is None
+
+
+def test_parent_final_transport_source_change_refuses_all_closed_cases(batch_setup, monkeypatch):
+    read, observed = B._read_case, 0
+
+    def changed(spec, item, transport, worker, **kwargs):
+        nonlocal observed
+        observed += 1
+        if observed == len(batch_setup.cases):
+            source = batch_setup.candidate / "tool.py"
+            source.write_text(source.read_text() + "# changed parent source\n")
+        return read(spec, item, transport, worker, **kwargs)
+
+    monkeypatch.setattr(B, "_read_case", changed)
+    with pytest.raises((StageGateError, ValueError), match="source|owner"):
+        emit(batch_setup)
+    assert not (batch_setup.output / "public_compile_only.json").exists()
+
+
+def test_public_checkpoint_verifier_always_reopens_original_owner(monkeypatch):
+    calls = []
+    monkeypatch.setattr(B.CHILD.ModelChildTransport, "_verify_original", lambda self: calls.append(self))
+    transport = B.CHILD.ModelChildTransport(fd=None, document={}, executor=None, boundary=None)
+    with pytest.raises(StageGateError, match="checkpoint"):
+        transport.verify_checkpoint({}, worker={})
+    assert calls == [transport]
+
+
 @pytest.mark.parametrize("changed", ["case", "worker", "product", "late"])
 def test_parent_reopens_case_receipt_worker_products_and_deadline(batch_setup, monkeypatch, changed):
     read = B._read_case

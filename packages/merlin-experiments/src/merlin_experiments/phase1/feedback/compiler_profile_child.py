@@ -271,6 +271,10 @@ class ModelChildTransport:
     def verify_checkpoint(self, receipt, *, worker):
         """Reopen parent custody for one closed case, never an entire batch."""
         self._verify_original()
+        return self._verify_checkpoint_fields(receipt, worker=worker)
+
+    def _verify_checkpoint_fields(self, receipt, *, worker):
+        """Validate bound fields only; supplies no source/owner freshness authority."""
         if (type(receipt) is not dict or set(receipt) != {"schema", "original_compiler_child", "worker"}
                 or receipt["schema"] != CHECKPOINT_SCHEMA
                 or receipt["original_compiler_child"] != _receipt(self.document)
