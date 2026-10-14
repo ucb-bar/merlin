@@ -277,37 +277,58 @@ class RoundTrip:
     detail: str = ""
 
 
-def canonical_generic(path: Path, mlir_opt: Path) -> subprocess.CompletedProcess:
+MLIR_EXPORT = Path(__file__).with_name("mlir_export.py")
+
+
+def export_file(mlir_path: Path, json_path: Path, *, backend: str = "mlir", m2m_python: Path | None = None) -> None:
+    """Export ``mlir_path`` to ``json_path``. ``backend="mlir"`` (authoritative, design D9) parses with
+    the MLIR the pipeline compiles with (``torch_mlir`` in the model2MLIR environment);
+    ``backend="xdsl"`` reads through Merlin's xDSL parser. Both sides of a boundary must use one backend."""
+    import json
+
+    if backend == "xdsl":
+        json_path.write_text(json.dumps(export_text(mlir_path.read_text())))
+        return
+    if m2m_python is None:
+        raise ExportError("the mlir backend needs the model2MLIR interpreter (m2m_python)")
+    proc = subprocess.run([str(m2m_python), str(MLIR_EXPORT), str(mlir_path), str(json_path)],
+                          capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise ExportError(proc.stderr.strip()[-800:])
+
+
+def canonical_generic(path: Path, *, backend: str, mlir_opt: Path | None = None,
+                      m2m_python: Path | None = None) -> subprocess.CompletedProcess:
+    if backend == "mlir":
+        return subprocess.run([str(m2m_python), str(MLIR_EXPORT), "--canonical", str(path)],
+                              capture_output=True, text=True, check=False)
     return subprocess.run(
         [str(mlir_opt), "--mlir-print-op-generic", "--allow-unregistered-dialect", str(path)],
-        capture_output=True,
-        text=True,
-        check=False,
+        capture_output=True, text=True, check=False,
     )
 
 
-def round_trip(mlir_path: Path, workdir: Path, *, lean_exe: Path, mlir_opt: Path) -> RoundTrip:
-    """Export ``mlir_path``, print it back through Lean, and compare MLIR's canonical prints."""
-    import json
-
+def round_trip(mlir_path: Path, workdir: Path, *, lean_exe: Path, mlir_opt: Path | None = None,
+               backend: str = "xdsl", m2m_python: Path | None = None) -> RoundTrip:
+    """Export ``mlir_path``, print it back through Lean, and compare canonical generic prints made by
+    the same MLIR (``mlir_opt`` for the xdsl backend; torch_mlir for the mlir backend)."""
     workdir.mkdir(parents=True, exist_ok=True)
-    source = mlir_path.read_bytes()
+    jpath = workdir / "export.json"
     try:
-        doc = export_text(source.decode())
+        export_file(mlir_path, jpath, backend=backend, m2m_python=m2m_python)
     except Exception as exc:  # the reason is the result
         return RoundTrip("export_failed", f"{type(exc).__name__}: {exc}")
-    jpath = workdir / "export.json"
-    jpath.write_text(json.dumps(doc))
     lpath = workdir / "lean.mlir"
     proc = subprocess.run([str(lean_exe), "print", str(jpath), str(lpath)], capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         return RoundTrip("tool_failed", f"merlin-lean print: {proc.stderr.strip()[:500]}")
-    a = canonical_generic(mlir_path, mlir_opt)
+    kw = {"backend": backend, "mlir_opt": mlir_opt, "m2m_python": m2m_python}
+    a = canonical_generic(mlir_path, **kw)
     if a.returncode != 0:
-        return RoundTrip("tool_failed", f"mlir-opt on original: {a.stderr.strip()[:500]}")
-    b = canonical_generic(lpath, mlir_opt)
+        return RoundTrip("tool_failed", f"canonical print of original: {a.stderr.strip()[-500:]}")
+    b = canonical_generic(lpath, **kw)
     if b.returncode != 0:
-        return RoundTrip("different", f"mlir-opt rejects the Lean print: {b.stderr.strip()[:500]}")
+        return RoundTrip("different", f"MLIR rejects the Lean print: {b.stderr.strip()[-500:]}")
     if a.stdout == b.stdout:
         return RoundTrip("identical")
     for i, (x, y) in enumerate(zip(a.stdout.splitlines(), b.stdout.splitlines())):
