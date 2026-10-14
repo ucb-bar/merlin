@@ -518,6 +518,37 @@ def test_real_prepare_retains_views_and_post_staging_tool_observation(project, m
     assert not storage_lifecycle.blockers(observed[0].workspace.parent, require_terminal=True)
 
 
+def test_public_only_prepare_pins_selected_facts_without_a_private_spec(project, monkeypatch):
+    from hashlib import sha256
+
+    from merlin_experiments.phase1.feedback import public_owned_host_selection as selection
+
+    _external_substitutes(monkeypatch)
+    facts_dir = project / "facts"
+    facts_dir.mkdir()
+    facts = facts_dir / "facts.json"
+    facts.write_text(json.dumps({"inputs": {"target": "fixture"}, "facts": {}}))
+    manifest = project / "input_bundles/fixture/input_bundle_manifest.yaml"
+    bundle = yaml.safe_load(manifest.read_bytes())
+    bundle["selected_rtl_facts_file"] = str(facts)
+    bundle["allowed"].append({"path": str(facts_dir) + "/"})
+    manifest.write_text(yaml.safe_dump(bundle))
+    install = selection.install_for_session
+    observed = []
+
+    def observe(spec, declaration, **kwargs):
+        assert spec is None and declaration is None
+        frozen = kwargs["selected_facts"]
+        assert frozen != facts and frozen.read_bytes() == facts.read_bytes()
+        assert kwargs["selected_facts_sha256"] == sha256(frozen.read_bytes()).hexdigest()
+        observed.append(frozen)
+        return install(spec, declaration, **kwargs)
+
+    monkeypatch.setattr(selection, "install_for_session", observe)
+    assert _run(_request(project), lambda prepared: 0) == 0
+    assert len(observed) == 1
+
+
 def test_reviewed_semantic_diagnostic_is_private_and_resume_bound(project, monkeypatch):
     _external_substitutes(monkeypatch)
     from merlin_experiments.corpus import release
