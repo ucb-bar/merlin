@@ -851,14 +851,18 @@ def build(
         )
     if output_sha256 and info.get("out_dt") != "f32":
         raise SpikeModelError("full-output SHA256 evidence requires f32 output")
-    # A board's code_reserve is a floor for the fixed runtime, not a complete bound on the
-    # generated image. The lowered model can put large constants in .rodata (the TinyLlama
-    # prefill object exceeds 1 GiB), and the C harness adds model-dependent static I/O.
-    # Reserve the actual model object's whole file size as a conservative upper bound on
-    # its loadable sections. The packed layout must account for all three before placing
-    # .weights; the historical unbounded Spike map does not use this reserve.
+    # The board's code_reserve is a floor for the entire linked code/static-I/O
+    # region, not an extra allocation on top of its measured contents. The
+    # lowered model may contain large .rodata (TinyLlama's object exceeds 1 GiB)
+    # and the C harness may embed a large input stream. Count both, leave a
+    # quarter of the board floor for the fixed runtime/shim, and honor the floor
+    # whenever the measured contents are smaller. The final link still checks
+    # the actual section addresses against this packed map.
     reserve_floor = int(code_reserve) if code_reserve is not None else _CODE_RESERVE_FIXED
-    reserve = reserve_floor + int(info.get("static_io_bytes", 0)) + (work / "model.o").stat().st_size
+    reserve = max(
+        reserve_floor,
+        int(info.get("static_io_bytes", 0)) + (work / "model.o").stat().st_size + reserve_floor // 4,
+    )
     lay = _layout(arena_bytes, info["weights_bytes"], dram_base=dram_base, dram_bytes=dram_bytes, code_reserve=reserve)
 
     # 3. weights.bin -> binary blob object (placed at the absolute weights address)
