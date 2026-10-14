@@ -89,10 +89,10 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
     with contextlib.ExitStack() as lifetime:
         # Setup closes before Popen. The original namespace remains parent-private;
         # every child issues a distinct restored namespace in its fresh interpreter.
-        lifetime.enter_context(R.original_compiler_execution(owner,
-            target_experiment=target_experiment, candidate=candidate,
-            work_root=work_root / "child-owner", sandbox_inputs=sandbox_inputs))
         with C._snapshot_operation(owner):
+            lifetime.enter_context(R._original_execution_lifetime(owner,
+                target_experiment=target_experiment, candidate=candidate,
+                work_root=work_root / "child-owner", sandbox_inputs=sandbox_inputs))
             for index, case in enumerate(cases):
                 case.verify()
                 root = work_root / f"case-{index:03d}"
@@ -200,6 +200,10 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                 row["wall_seconds"] = finished - started
                 row["preparation_process"] = {"pid": process.pid, "started_monotonic": started,
                     "finished_monotonic": finished, "mode": "fresh_original_sealed_child"}
+            # Only custody accessors and closed-descriptor/namespace cleanup
+            # remain. Include the namespace's last check in this operation,
+            # then perform its independent full exit before report publication.
+            lifetime.close()
     return rows
 
 

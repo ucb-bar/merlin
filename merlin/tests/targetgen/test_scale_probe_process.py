@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import time
+from contextlib import contextmanager
 
 import pytest
 from merlin_experiments.phase0 import public_scale_sources as SOURCES
@@ -11,6 +12,7 @@ from merlin_experiments.phase1.feedback import scale_probe_child as S
 from merlin_experiments.phase2.contracts import StageGateError
 from test_compiler_profile_child import original  # noqa: F401 -- existing exact original-owner fixture
 
+from merlin.common import bundle_snapshot as BW
 from merlin.common import cpu_pool
 from merlin.common.paths import repo_root
 
@@ -76,6 +78,7 @@ def setup(original, monkeypatch):  # noqa: F811
 
     def launch(command, **kwargs):
         assert cpu_pool._ACTIVE_LEASE.get() is None, "parent retained a compute lease before Popen"
+        assert BW._ACTIVE_VERIFICATION.get() is None, "setup snapshot reuse crossed into child execution"
         index = command.index("-m")
         command = [*command[:index], "-c", CONTROL, *command[index + 2:]]
         return popen(command, **kwargs)
@@ -158,3 +161,38 @@ def test_parent_reopens_products_before_accepting_child_completion(setup, monkey
 def test_child_cannot_add_numerical_or_static_qualification_claims(tmp_path):
     with pytest.raises(StageGateError, match="qualification claims"):
         S._verify_products(tmp_path, {"numeric": "pass"})
+
+
+def test_parent_batches_only_setup_and_final_join_with_independent_full_boundaries(setup, monkeypatch):
+    digest, calls = BW.hashlib.file_digest, []
+
+    def measured(stream, *args, **kwargs):
+        if os.fspath(stream.name) == str(setup.frozen):
+            calls.append(stream.name)
+        return digest(stream, *args, **kwargs)
+
+    monkeypatch.setattr(BW.hashlib, "file_digest", measured)
+    rows = emit(setup)
+    assert len(rows) == 2
+    assert len(calls) == 4  # Setup pre/post, final join/namespace cleanup pre/post; no grade-wide reuse.
+    assert BW._ACTIVE_VERIFICATION.get() is None
+
+
+def test_namespace_exit_mutation_refuses_at_final_full_boundary(setup, monkeypatch):
+    imports = type(setup.owner).compiler_imports
+
+    @contextmanager
+    def closing(owner):
+        with imports(owner) as namespace:
+            yield namespace
+        if owner is setup.owner:
+            path = setup.frozen
+            before, raw = path.stat(), path.read_bytes()
+            path.chmod(0o600)
+            path.write_bytes(bytes([raw[0] ^ 1]) + raw[1:])
+            os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+
+    monkeypatch.setattr(type(setup.owner), "compiler_imports", closing)
+    with pytest.raises((ValueError, RuntimeError), match="snapshot|frozen|changed|digest"):
+        emit(setup)
+    assert not (setup.output / "public_compile_only.json").exists()
