@@ -134,12 +134,16 @@ with the PyTorch eager golden, measured on `main` (`6f1acb6e6`) plus this work. 
 
 | variant | max abs err vs torch | spike `cycles` | `.text` | kernel body size |
 |---|---|---|---|---|
-| mlp_basic (no kernel) | 4.5e-8 | 16,180 | 10.3 KB | — |
+| mlp_basic (no kernel) | 4.5e-8 | 16,156 | 10.3 KB | — |
 | mlp_basic_triton, `llvm_ir` body | 3.0e-8 | 44,358 | 150 KB | 141 KB |
 | mlp_basic_triton, `llvm_mlir` body | 3.0e-8 | 15,558 | 46 KB | 37.6 KB |
 
 On spike, the `cycles` counter counts retired instructions, not timing. The two body forms produce
 bit-identical outputs.
+
+The `mlp_basic` row is from the bundles in `merlin/tests/data/mlp_bundles/` as regenerated from current
+model2MLIR, whose relu lowering is `cmpf`+`select` rather than `maximumf`. The bundle the 2026-10-14 report
+measured gave 16,180. The two `mlp_basic_triton` rows are unaffected: their relus are inside the kernel.
 
 The `llvm_ir` export was already optimized and unrolled for the x86 host it came from, with
 `<32 x float>` operations throughout. Legalized onto 128-bit RVV, it becomes 14.7k vector
