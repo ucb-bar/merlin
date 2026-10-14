@@ -35,3 +35,21 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
   reject or read differently. Exporting every boundary with MLIR's parser (design D9) surfaces it at
   the boundary where it appears.
 - **Status:** fixture corrected; the general risk is covered by MLIR-parser export of every stage.
+
+## F4 — Merlin's capture worker is out of step with model2MLIR HEAD
+
+- **Observed (2026-10-13, model2MLIR `905d2c9`):** `_m2m_capture_worker.py --materialize-bundle`
+  fails with `reused conversion weights must be the output bundle's exact weights file`, and
+  `--diagnostic-model-copy` fails expecting a `weights.safetensors` that is never written; both leave
+  an empty `linalg.mlir`. Calling `m2m.convert(..., quantization=QuantizationConfig("int8_dyn_act_int8_weight"))`
+  directly succeeds.
+- **Paper path:** blocks reproducing captures with the worker at this model2MLIR revision.
+- **Status:** open; needs the model2MLIR revision the paper captures were made with.
+
+## F5 — the torch_mlir route prints syntax Merlin's xDSL reader cannot parse
+
+- **Observed:** `m2m.convert(backend="auto")` takes the torch_mlir route and prints custom syntax;
+  xDSL fails on `tensor.expand_shape ... output_shape [...]`. A generic-form print by the same MLIR
+  is readable. That route also decomposes W8A8 quantization into `arith`/`linalg` (no `quant_ext`
+  ops) and emits `cf.assert`, so which Merlin rewrites fire depends on the capture route.
+- **Status:** open; the paper's capture route and recipe decide the denominator.
