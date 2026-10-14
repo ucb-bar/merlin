@@ -153,6 +153,48 @@ when the selected package or route enables them.
 | D6 | link layout: arena, weights, stack, `.bss`, IO | `spike_model._layout`, linker script | memory safety | C9 |
 | D7 | clang/ld → ELF | LLVM, GNU ld | — | trusted; execution evidence |
 
+### 2.1 The paper path, from code reading (2026-10-13; a measured run must confirm it)
+
+The Phase 1 private-model build is `private_full_models.py` → `compile_saved_model(run="none",
+device=plan_before_build(..., granularity=BY_GROUP))` with the scalar int8 host package. It uses
+`int8_compute=True`, `features=None`, `backend="scalar"`, so `lower_model_file(textual=False,
+vectorize=False)`.
+
+**Fires, in order:**
+
+1. `_prepare_model_mlir`:
+   - TorchAO affine lowering (U2), scalar squares (U3), over-rank collapse (U9);
+   - `_propagate_quant_inner`, then `qinner.lift` (U4);
+   - `apply_quant` with the default contraction/conv passes (U5);
+   - `lower_quant_ext`, `lower_bf16_matmul_f32acc`, the bool cast fixes, `scalarize_splat_inputs`
+     (new row);
+   - `require_initialized` (a check, not a transform).
+2. BY_GROUP device rewrite (U12, see C7a below), followed by `patch_declaration_arg_attrs`. This is a
+   *text* patch of the private device declarations and is a boundary of its own.
+3. `lower_model` xDSL preprocessing (U15). Its generic print `lower/model.mlir` is the hand-off to
+   upstream lowering.
+4. **`ciface_inline.inline_wide_ciface_implementations`** on the LLVM IR. It runs on every build and
+   belongs in D3.
+
+**Off on this path:**
+
+- U7 (hoist), U8 (round fusion, reduce vectorization);
+- U14 (requant fuse, destination reuse, im2col, per-op blocks, panels, entry projection);
+- U16 (textual route);
+- the static arena;
+- outlining (`outline_dispatches`). C2 drops out of Tier A, as explained under C7a.
+
+**Two corrections to the table above:**
+
+- Upstream lowering (D1/D2) runs in the MLIR **bundled with `torch_mlir`** inside the model2MLIR
+  environment (`run_lowering.py` via `compiler_python()`), not the standalone `mlir-opt`. D9 is
+  amended accordingly.
+- The captures come from Phase 0 recipe captures (`sealed_m2m`, a W8A8 recipe via the capture worker
+  `--recipe`), not model2MLIR's weight-only `int8`. Part of the numerical policy may therefore enter at
+  capture (U0) and part at U5, and the policy spec (C5) must describe their composition. The exact
+  recipe is operator-private. A public stand-in (`--dtype int8 --scheme int8_dyn_act_int8_weight`) is
+  acceptable for development only; paper numbers need the real recipe.
+
 ## 3. Architectural decisions
 
 Each decision records the alternatives and why we chose this one. They were made with the paper's
@@ -318,6 +360,18 @@ this is also the interface for the post-submission work.
   (documented printer skew).
 - **Fallback:** if building the C++ tool against the pinned LLVM proves impractical, rebuild that LLVM
   with `MLIR_ENABLE_BINDINGS_PYTHON=ON` and use the MLIR Python API. The local build has bindings off.
+- **Amendment (2026-10-13): the pipeline's MLIR is the authoritative parser.** The paper path lowers
+  with the MLIR bundled in the `torch_mlir` wheel (§2.1), not the llvm-project build.
+  - The exporter therefore parses with that MLIR, through its Python bindings (`torch_mlir.ir`), in
+    the same environment the pipeline uses. This needs no C++ build, and it guarantees the verified
+    reading is the compiled reading.
+  - Round trip uses that same MLIR's printer.
+  - The llvm-project build is only a cross-check, and a disagreement between the two parsers is a
+    finding.
+  - Receipts record the wheel's version and bundled MLIR revision.
+  - Caveat for the exporter: MLIR accepts inherent attributes inside the discardable dictionary, so
+    a props/attrs mix-up can still round-trip byte-identically. The exporter must therefore register
+    exactly the dialects the pipeline registers.
 
 ### D10. Receipts are byte-bound, chained, and composed in Lean
 
@@ -635,10 +689,21 @@ The theorem is conditional on the IEEE instance (D5), and the claim names that a
 
 ### 5.7 C7 — the device seam
 
-- **C7a — routing rewrite.** The after-program replaces `call @forward$kernel_i(args)` (or a single
-  contraction) by `call @dev_i(args)` with identical operands and result types. **Theorem:** under any
-  `Γ` with `Γ dev_i = ⟦kernel_i⟧`, the programs are equivalent. A device sidecar entry must exist for
-  every new symbol, and vice versa.
+- **C7a — routing rewrite.** On the paper path (BY_GROUP, §2.1) the rewrite replaces a group's ops
+  *directly* with `call @<stem>_N(live-ins)` and adds a private declaration. No outlined `$kernel_i`
+  function is created.
+  - The certificate names the group's ops.
+  - The checker re-extracts that subgraph from the before-program and checks that it is closed: its
+    live-ins and live-outs are exactly the call's operands and results.
+  - It defines the contract `Γ @<stem>_N := ⟦extracted group⟧`, a function from live-ins to
+    live-outs.
+  - **Theorem:** under any `Γ` meeting those contracts, the programs are equivalent. It follows from
+    congruence (C1) with the call as the replacement site.
+  - A device sidecar entry must exist for every new symbol, and vice versa.
+  - The subsequent text patch of declaration argument attributes is checked as an `erasure`-class
+    boundary (C3). Its attributes must be on the reviewed semantics-free list, or the boundary is
+    `abstracted`.
+  - The older route that outlines first (C2, then a call) is not on the paper path.
 - **C7b — entry fidelity.** `group_command.program` restates group *i* as a generator entry
   (contraction extents, stored operand, bias axis, epilogue, `acc_scale`, convolution geometry, output
   type).
@@ -1005,7 +1070,7 @@ Effort is in agent-days. "Accept" lists what must hold before the package merges
 | G0 | Interfaces frozen; inventory started | day 3 |
 | G1 | Walking skeleton, with all guards enforced | end of week 1–1.5 |
 | G2 | First full chain for the smallest validation program | end of week 3–4 |
-| G3 | **Tier A** for every validation program: U1–U15, C7a–c, C8, C9a, C10; qualification complete | end of week 5–6 |
+| G3 | **Tier A** for every validation program: every boundary the measured inventory puts on the paper path (per §2.1 currently U2–U5, U9, the added preparation rows, U12 and its declaration patch, U15 and the `ciface_inline` LLVM transform), plus C7b–c, C8, C9a and C10; qualification complete | end of week 5–6 |
 | G4 | Evidence frozen: coverage matrix, ledger, replay on a clean machine | G3 + ~1 week |
 
 - **Tier B** (C11 upstream tensor passes, frontend ATen specs, stack bound) runs in parallel from G1

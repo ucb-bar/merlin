@@ -370,3 +370,6 @@ merlin/tests/data/lit/.lit_test_times.txt
 
 # Lake workspace state of the Lean checker project (packages/build live under out/build/lean)
 /merlin/lean/.lake/
+
+# Per-agent git worktrees created by Claude Code sessions
+/.claude/worktrees/
