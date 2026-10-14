@@ -83,9 +83,11 @@ validation_notes: >-
   OPTIONAL `runner.backend: chipyard_rocc` selects shared runtime tooling before executable
   provider discovery. Its closed `runner.chipyard_rocc` v1 data pins the compiler, fixed core
   runtime units/headers, linker script, flags, load address and explicit Spike/gSIM engines.
-  Optional `execution_resources: {max_native_timeout_s: N}` selects a reviewed host
-  native process ceiling (integer 1..3600 seconds); omitted selection retains 600.
-  Native engine `max_timeout_s` must not exceed it; Spike remains bounded by 600.
+  Optional `execution_resources: {max_native_timeout_s: N,
+  max_model_spike_timeout_s?: M}` selects reviewed host process ceilings. N is an
+  integer 1..3600 seconds; M is an integer 1..172800 seconds. Omitted selection
+  retains 600 for each engine class. Native and Spike engine `max_timeout_s` must
+  not exceed their corresponding selected ceilings.
   gSIM requires its existing strict-v3 build receipt; Spike requires a pinned extension.
   No selected tool is executed during metadata binding, and no missing field inherits a
   provider or environment default. See docs/reference/neutral_runtime_tooling.md.

@@ -58,7 +58,8 @@ def select_native_timeout(contract, timeout_s):
         type(block) is dict and type(block.get("engines")) is dict,
         "native resource selection requires declared execution engines",
     )
-    resources = {"max_native_timeout_s": timeout_s}
+    resources = dict(block.get("execution_resources", {}))
+    resources["max_native_timeout_s"] = timeout_s
     backend._execution_timeout_ceiling({"execution_resources": resources})
     engines = {name: engine for name, engine in block["engines"].items() if name in {"gsim", "verilator"}}
     backend._require(bool(engines), "native resource selection requires a declared native engine")
@@ -68,6 +69,30 @@ def select_native_timeout(contract, timeout_s):
             "native resource selection requires an existing engine deadline",
         )
         engine["max_timeout_s"] = timeout_s
+    block["execution_resources"] = resources
+    return selected
+
+
+def select_model_spike_timeout(contract, timeout_s):
+    """Select a bounded whole-model Spike process budget without changing instructions or numerics."""
+    backend._require(type(contract) is dict, "model Spike resource selection requires an original contract")
+    selected = copy.deepcopy(contract)
+    runner = selected.get("runner")
+    backend._require(
+        type(runner) is dict and runner.get("backend") == "chipyard_rocc",
+        "model Spike resource selection requires a declared data-bound execution family",
+    )
+    block = runner.get("chipyard_rocc")
+    backend._require(
+        type(block) is dict and type(block.get("engines")) is dict
+        and type(block["engines"].get("spike")) is dict,
+        "model Spike resource selection requires a declared Spike engine",
+    )
+    resources = dict(block.get("execution_resources", {}))
+    resources.setdefault("max_native_timeout_s", 600)
+    resources["max_model_spike_timeout_s"] = timeout_s
+    backend._model_spike_timeout_ceiling({"execution_resources": resources})
+    block["engines"]["spike"]["max_timeout_s"] = timeout_s
     block["execution_resources"] = resources
     return selected
 

@@ -42,7 +42,7 @@ def selected(tmp_path, monkeypatch, *, llc):
 @pytest.mark.parametrize("explicit_cc", (False, True))
 def test_exact_original_three_child_boundaries_and_input_product_roles(tmp_path, monkeypatch, llc, explicit_cc):
     source, runtime, environment, calls = selected(tmp_path, monkeypatch, llc=llc)
-    selected_cc = str(tmp_path / "tools/clang") if explicit_cc else "cc"
+    selected_cc = str(tmp_path / ("tools/cc" if explicit_cc else "tools/clang"))
     if explicit_cc:
         monkeypatch.setenv("CC", selected_cc)
     result = codegen.build_host_shared(source, tmp_path / "model.so")

@@ -718,6 +718,32 @@ def test_private_legacy_backend_retains_requested_ceiling(selected_engine_budget
     assert state.calls[0][1]["timeout"] == 60
 
 
+def test_gemmini_full_model_spike_uses_declared_machine(selected_engine_budget, monkeypatch):
+    state = selected_engine_budget
+
+    def run_declared(elf, *, timeout, capture_bytes=False):
+        state.calls.append((elf, {"timeout": timeout, "capture_bytes": capture_bytes}))
+        return b"declared model console\n"
+
+    monkeypatch.setattr(type(state.backend), "run_declared_model_elf", staticmethod(run_declared), raising=False)
+    result = PFX.run_engine(
+        state.elf, engine="spike", target="gemmini", timeout_s=60, max_cycles=None,
+        elf_sha256="f" * 64, rtl_config=None, rtl_facts_sha256=None,
+    )
+    assert state.calls == [(state.elf, {"timeout": 60, "capture_bytes": False})]
+    assert result["console"] == "declared model console\n"
+
+
+def test_gemmini_full_model_spike_refuses_backend_without_declared_machine(selected_engine_budget):
+    state = selected_engine_budget
+    with pytest.raises(PFX.ExecutionGateError, match="declared machine"):
+        PFX.run_engine(
+            state.elf, engine="spike", target="gemmini", timeout_s=60, max_cycles=None,
+            elf_sha256="f" * 64, rtl_config=None, rtl_facts_sha256=None,
+        )
+    assert not state.calls
+
+
 def test_expired_private_preparation_never_runs_or_passes(tmp_path, selected_engine_budget, monkeypatch):
     from types import SimpleNamespace
 

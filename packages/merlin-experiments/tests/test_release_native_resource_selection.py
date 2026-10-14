@@ -57,6 +57,56 @@ def test_default_selection_keeps_exact_original_bytes(tmp_path):
     assert "execution_resource_selection" not in record
 
 
+def test_model_spike_budget_is_a_pinned_resource_variant_of_unchanged_phase0_contract(tmp_path):
+    source, original = _source(tmp_path)
+    before = source.read_bytes()
+    destination = tmp_path / "selected.yaml"
+    record = _stage_capability_contract(
+        source, sha256_file(source), destination, 1800, model_spike_timeout_s=172800
+    )
+    selected = yaml.safe_load(destination.read_text())
+    block = selected["runner"]["chipyard_rocc"]
+    assert block["execution_resources"] == {
+        "max_native_timeout_s": 1800, "max_model_spike_timeout_s": 172800,
+    }
+    assert block["engines"]["gsim"]["max_timeout_s"] == 1800
+    assert block["engines"]["spike"]["max_timeout_s"] == 172800
+    assert source.read_bytes() == before
+    assert record["model_spike_resource_selection"]["selected_contract_sha256"] == sha256_file(destination)
+    assert original["runner"]["chipyard_rocc"]["engines"]["spike"]["max_timeout_s"] == 600
+
+
+@pytest.mark.parametrize("mutate", [False, True])
+def test_reviewed_phase1_handoff_reconstructs_selected_model_spike_budget(tmp_path, monkeypatch, mutate):
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase0 import coverage_commitment
+    from merlin_experiments.phase1 import corpus_inputs
+
+    source, original = _source(tmp_path)
+    experiment = tmp_path / "release/payload/experiment"
+    destination = experiment / "contracts/selected.yaml"
+    _stage_capability_contract(
+        source, sha256_file(source), destination, 1800, model_spike_timeout_s=172800
+    )
+    if mutate:
+        selected = yaml.safe_load(destination.read_text())
+        selected["runner"]["chipyard_rocc"]["engines"]["spike"]["max_timeout_s"] = 172799
+        destination.write_text(yaml.safe_dump(selected))
+    bundle = experiment / "input_bundles/el4/input_bundle_manifest.yaml"
+    bundle.parent.mkdir(parents=True)
+    bundle.write_text("bundle_id: el4\n")
+    te = SimpleNamespace(path=experiment / "target_experiment.yaml", capsule_corpus=experiment / "corpus/isa",
+                         declared_contract_path=lambda: destination)
+    monkeypatch.setattr(coverage_commitment, "read_inputs", lambda _: {"capability_contract": original})
+    declaration = {"bundle_id": "el4", "allowed": [{"mode": "ro", "path": str(destination)}]}
+    if mutate:
+        with pytest.raises(ValueError, match="differs from selected Phase 0"):
+            corpus_inputs.require_reviewed_bundle(te, bundle, declaration)
+    else:
+        corpus_inputs.require_reviewed_bundle(te, bundle, declaration)
+
+
 @pytest.mark.parametrize("budget", [True, 0, -1, 3601, 1800.0])
 def test_invalid_resource_selection_publishes_no_contract(tmp_path, budget):
     source, _ = _source(tmp_path)

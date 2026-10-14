@@ -116,6 +116,13 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
                 if "execution_resources" in block:
                     timeout = runtime._execution_timeout_ceiling({"execution_resources": block["execution_resources"]})
                     expected_contract = rocc_selection.select_native_timeout(expected_contract, timeout)
+                    resources = block["execution_resources"]
+                    if "max_model_spike_timeout_s" in resources:
+                        expected_contract = rocc_selection.select_model_spike_timeout(
+                            expected_contract, runtime._model_spike_timeout_ceiling(
+                                {"execution_resources": resources}
+                            )
+                        )
                 engines = block["engines"]
                 runtime._require(type(engines) is dict, "released engines must be a mapping")
                 gsim = engines.get("gsim", {})
