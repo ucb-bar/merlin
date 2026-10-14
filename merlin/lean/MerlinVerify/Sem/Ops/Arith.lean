@@ -264,7 +264,7 @@ def sem : OpSem := fun ctx _ op args _ =>
   | "arith.index_castui" => do
     let w' ← widthOf ib op
     let nneg := hasUnit op "nonNeg"
-    un (intUn fun w x => if nneg && x.msb then .poison else bv w' (x.setWidth w'))
+    un (intUn fun _ x => if nneg && x.msb then .poison else bv w' (x.setWidth w'))
   | "arith.bitcast" =>
     match resultElt op with
     | some (.float k) => un fun

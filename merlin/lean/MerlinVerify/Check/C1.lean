@@ -79,7 +79,7 @@ theorem evalOps_cons_term (sem : OpSem) (ctx : Ctx) (call : CallSem) (env : Env)
       if rest.isEmpty then env.getAll op.operands else .stuck "ops after terminator" := by
   cases op with
   | mk name results operands attrs props regions succ =>
-    rw [evalOps.eq_2, if_pos h]
+    rw [evalOps.eq_2, ite_eq_left h]
     rfl
 
 theorem CallAgree.mono {callS callT : CallSem} {a b : List String} (h : CallAgree callS callT b)
@@ -100,7 +100,7 @@ theorem runScript_sound (callS callT : CallSem) (ctx : Ctx) :
       have hcS : ∀ c ∈ calleesOps (s :: ss), c ∈ calleesOps (s :: ss) ++ calleesOps (t :: ts) :=
         fun c hc' => List.mem_append_left _ hc'
       by_cases hs : s.isTerminator = true
-      · rw [if_pos hs] at h
+      · rw [ite_eq_left hs] at h
         simp only [Bool.and_eq_true, List.isEmpty_iff] at h
         obtain ⟨⟨rfl, rfl⟩, rfl⟩ := h
         have ht : t.isTerminator = true := hterm ▸ hs
@@ -109,7 +109,7 @@ theorem runScript_sound (callS callT : CallSem) (ctx : Ctx) :
         simp only [List.isEmpty_nil, ↓reduceIte]
         rw [Corr.getAll hc _ _ hmap]
         exact Or.inr (Or.inr rfl)
-      · rw [if_neg hs] at h
+      · rw [ite_eq_right hs] at h
         have hs' : s.isTerminator = false := by simpa using hs
         have ht' : t.isTerminator = false := hterm ▸ hs'
         rw [evalOps_cons_step _ _ _ _ _ _ hs', evalOps_cons_step _ _ _ _ _ _ ht']

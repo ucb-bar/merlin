@@ -15,7 +15,7 @@ open MerlinVerify
 
 def synthDce (ρ : Rho) : List Op → List Op → List Step
   | [], [] => []
-  | s :: ss, [] => .site Rules.Dce.rule 1 0 :: synthDce ρ ss []
+  | _ :: ss, [] => .site Rules.Dce.rule 1 0 :: synthDce ρ ss []
   | [], _ :: _ => [.same]
   | s :: ss, t :: ts =>
     match alphaOp ρ s t with

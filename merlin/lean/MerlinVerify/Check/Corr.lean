@@ -55,13 +55,13 @@ theorem Corr.extend {ρ : Rho} {envS envT : Env} (h : Corr ρ envS envT) :
     simp only [List.zip_cons_cons, List.cons_append, Env.get?, List.lookup]
     by_cases hx : x' = x
     · subst hx
-      simp only [beq_self_eq_true, ↓reduceIte, Option.some.injEq] at hl
+      simp only [beq_self_eq_true, Option.some.injEq] at hl
       subst hl
       simp
     · have hxb : (x' == x) = false := by simpa using hx
       rw [hxb] at hl
-      simp only [hxb, Bool.false_eq_true, ↓reduceIte]
-      simp only [Bool.false_eq_true, ↓reduceIte] at hl
+      simp only [hxb]
+      simp only at hl
       have hy : (y' == y) = false := by
         rcases lookup_zip_append_image hl with hin | ⟨p, hp, hp2⟩
         · have : y ∉ ys := (List.nodup_cons.1 hnd).1
@@ -70,7 +70,7 @@ theorem Corr.extend {ρ : Rho} {envS envT : Env} (h : Corr ρ envS envT) :
         · simp only [beq_eq_false_iff_ne]
           rintro rfl
           exact hfr y' (List.mem_cons_self ..) p hp hp2
-      simp only [hy, Bool.false_eq_true, ↓reduceIte]
+      simp only [hy]
       exact ih x' y' hl
   | [], _ :: _, _, h1, h2, _, _ => by simp at h1 h2; omega
   | _ :: _, [], _, h1, h2, _, _ => by simp at h1 h2; omega
@@ -89,8 +89,7 @@ theorem Corr.getAll {ρ : Rho} {envS envT : Env} (h : Corr ρ envS envT) :
       cases hxs : xs.mapM ρ.find with
       | none => simp [hx, hxs] at hm
       | some ys' =>
-        simp only [hx, hxs, Option.bind_some, Option.pure_def, bind, Option.bind,
-          Option.some.injEq] at hm
+        simp only [hx, hxs, Option.pure_def, bind, Option.bind, Option.some.injEq] at hm
         subst hm
         have ih := Corr.getAll h xs ys' hxs
         simp only [Env.getAll, Outcome.mapM] at ih ⊢

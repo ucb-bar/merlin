@@ -90,7 +90,7 @@ theorem toIdx_ofNat {s : List Nat} {pt : Idx} (h : Idx.InBounds s pt) :
     toIdx s (pt.map Int.ofNat) = some pt := by
   obtain ⟨hl, hb⟩ := h
   unfold toIdx
-  rw [if_neg (by simp [hl])]
+  rw [ite_eq_right (by simp [hl])]
   rw [mapM_eq_some_map _ (fun p => p.1.toNat) _ (fun p hp => by
     obtain ⟨k, hk, rfl⟩ := List.getElem_of_mem hp
     simp only [List.getElem_zip, List.getElem_map]
@@ -98,7 +98,7 @@ theorem toIdx_ofNat {s : List Nat} {pt : Idx} (h : Idx.InBounds s pt) :
     have hk2 : k < s.length := List.lt_length_right_of_zip hk
     have := hb k hk1 hk2
     simp only [Int.ofNat_eq_natCast, Int.toNat_natCast]
-    rw [if_pos ⟨by omega, by exact_mod_cast this⟩])]
+    rw [ite_eq_left ⟨by omega, by exact_mod_cast this⟩])]
   congr 1
   apply List.ext_getElem (by simp [hl])
   intro k h₁ h₂
@@ -130,7 +130,7 @@ theorem Outcome.mapM_length {α β : Type} (f : α → Outcome β) :
       | stuck _ => rw [hl] at h; cases h
       | ok bs =>
         rw [hl] at h
-        simp only [Outcome.bind, Outcome.ok.injEq] at h
+        simp only [Outcome.ok.injEq] at h
         subst h
         simp [Outcome.mapM_length f l bs hl]
 

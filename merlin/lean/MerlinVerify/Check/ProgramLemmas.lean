@@ -28,7 +28,7 @@ theorem evalOps_cons_nonterm (sem : OpSem) (ctx : Ctx) (call : CallSem) (env : E
   cases op with
   | mk name results operands attrs props regions succ =>
     rw [evalOps.eq_2]
-    rw [if_neg (by rw [h]; decide)]
+    rw [ite_eq_right (by rw [h]; decide)]
     rfl
 
 /-- Block evaluation splits at a terminator-free prefix. -/

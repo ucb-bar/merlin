@@ -157,9 +157,9 @@ mutual
           rw [hs, ht0, evalOps.eq_2, evalOps.eq_2, ← hs, ← ht0]
           by_cases ht : t.isTerminator = true
           · have hs : s.isTerminator = true := by rw [hterm]; exact ht
-            rw [if_pos hs, if_pos ht, alphaOps_isEmpty h, hga]
+            rw [ite_eq_left hs, ite_eq_left ht, alphaOps_isEmpty h, hga]
           · have hs : ¬ s.isTerminator = true := by rw [hterm]; exact ht
-            rw [if_neg hs, if_neg ht, hga,
+            rw [ite_eq_right hs, ite_eq_right ht, hga,
               alphaRegions_sound callS callT ρ regsS regsT envS envT hregs hc hcallR]
             cases envT.getAll opsT with
             | ub => rfl
