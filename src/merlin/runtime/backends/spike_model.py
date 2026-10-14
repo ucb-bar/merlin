@@ -841,7 +841,13 @@ def build(
             "entry_projection": entry_projection_plan,
             "entry_projection_source": entry_projection_source,
         }
-    info = c_runtime.generate(model_dir, cgen, inputs_npz, prepared_dir=work, **projection_options)
+    # The bare-metal driver executes merlin_prepare_step(0) exactly once. Embed
+    # only that step of a captured session: later stream inputs and trajectory
+    # references cannot be observed by this ELF, and rendering them as C
+    # literals makes large captures costly to compile (hundreds of MB of C).
+    info = c_runtime.generate(
+        model_dir, cgen, inputs_npz, prepared_dir=work, max_session_steps=1, **projection_options
+    )
     if full_readback:
         from ..whole_model_readback import render_outputs_header
 
