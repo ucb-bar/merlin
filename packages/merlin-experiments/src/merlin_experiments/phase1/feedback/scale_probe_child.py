@@ -21,7 +21,7 @@ from merlin.common import cpu_pool, invocation_record
 from merlin.common.digest import sha256_file
 from merlin.targetgen import package_runtime as P
 from merlin.targetgen.rtl.facts import observed_facts
-from merlin_experiments.phase2.contracts import StageGateError
+from merlin_experiments.phase2.contracts import StageGateError, exact_tree_record
 
 from . import compiler_profile_child as CHILD
 from . import compiler_profile_runtime as R
@@ -40,6 +40,13 @@ def workers():
 
 def _write(path, document):
     path.write_text(json.dumps(document, sort_keys=True, allow_nan=False), encoding="utf-8")
+
+
+def _input_pin(value):
+    path = CHILD._plain(value)
+    if path.is_dir():
+        return {"path": str(path), "kind": "directory", "tree": exact_tree_record(path)}
+    return CHILD._pin(path)
 
 
 def _verify_products(root, row):
@@ -101,7 +108,7 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                             if str(cap.get("name") or Path(cap["__dir__"]).name) == case.member]
                 document = {"schema": SCHEMA, "package_dir": str(candidate), "target": target_experiment.target,
                     "case": case.record(), "capsules": CHILD._data(selected), "source": CHILD._pin(source),
-                    "contract": CHILD._pin(contract), "facts": CHILD._pin(facts_path),
+                    "contract": _input_pin(contract), "facts": CHILD._pin(facts_path),
                     "output": str(root), "deadline": deadline,
                     "ir_budget": ir_budget.record() if ir_budget is not None else None}
                 _write(spec, document)
@@ -161,14 +168,21 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
         # encloses result joins, then closes before the aggregate is published.
         with C._snapshot_operation(owner):
             for item, process, started, finished in completed:
-                index, _, output, _, transport = item
+                index, spec, output, _, transport = item
+                if CHILD._pin(spec) != transport.document["spec"]:
+                    raise StageGateError("public scale child original specification changed")
+                original_inputs = json.loads(spec.read_bytes())
+                for name in ("source", "contract", "facts"):
+                    if CHILD._digest(_input_pin(original_inputs[name]["path"])) != CHILD._digest(original_inputs[name]):
+                        raise StageGateError("public scale child original input changed before parent publication")
                 row = rows[index]
                 if (process.returncode != 0 or not output.is_file() or output.is_symlink()
                         or output.stat().st_size > 1024 * 1024):
                     row.update(lowering_status="unavailable", reason="original public scale child refused")
                 else:
                     result = transport.verify_result(json.loads(output.read_bytes()))
-                    if (result.get("schema") != SCHEMA
+                    if (set(result) != {"schema", "case", "observation", "original_compiler_child"}
+                            or result.get("schema") != SCHEMA
                             or CHILD._digest(result.get("case")) != CHILD._digest(cases[index].record())):
                         raise StageGateError("public scale child completed another original case")
                     payload = result["observation"]
@@ -210,7 +224,7 @@ def main(argv=None):
         if job.get("schema") != SCHEMA or args.result != args.spec.parent / ".scale_child_result.json":
             raise StageGateError("public scale child has another protocol/output owner")
         for name in ("source", "contract", "facts"):
-            if CHILD._pin(job[name]["path"]) != job[name]:
+            if CHILD._digest(_input_pin(job[name]["path"])) != CHILD._digest(job[name]):
                 raise StageGateError("public scale child original input changed")
         facts = json.loads(Path(job["facts"]["path"]).read_bytes())
         edges = {row.get("cols") for row in (facts.get("facts") or {}).get("arrays", [])
@@ -240,7 +254,7 @@ def main(argv=None):
                     contract=Path(job["contract"]["path"]), target=target.target,
                     timeout_s=remaining, ir_budget=budget)
         for name in ("source", "contract", "facts"):
-            if CHILD._pin(job[name]["path"]) != job[name]:
+            if CHILD._digest(_input_pin(job[name]["path"])) != CHILD._digest(job[name]):
                 raise StageGateError("public scale child original input changed before completion")
         matched[0].verify()
     # Completion becomes visible only after the restored owner's fresh final checks.

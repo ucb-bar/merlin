@@ -59,9 +59,10 @@ def setup(original, monkeypatch):  # noqa: F811
     member = runpy.run_path(str(repo_root() / "packages/merlin-experiments/tests/test_public_scale_probe.py"))["member"]
     cap, _ = member(original.private)
     cases, _ = SOURCES.derive([cap], index_bits=64, tile_edge=16)
-    facts, contract = original.private / "facts.json", original.private / "contract.json"
+    facts, contract = original.private / "facts.json", original.private / "contracts"
     facts.write_text(json.dumps({"facts": {"target": original.target.target, "arrays": [{"cols": 16}]}}))
-    contract.write_text("{}")
+    contract.mkdir()
+    (contract / "contract.json").write_text("{}")
     output = original.private / "products"
     output.mkdir()
     (output / "sources").mkdir()
@@ -116,8 +117,8 @@ def test_child_source_mutation_refuses_before_aggregate_publication(setup, monke
         return original_popen(command, **kwargs)
 
     monkeypatch.setattr(S.subprocess, "Popen", launch)
-    rows = emit(setup)
-    assert rows[0]["lowering_status"] == "unavailable"
+    with pytest.raises(StageGateError, match="original input changed"):
+        emit(setup)
     assert not (setup.output / "case-000/.scale_child_result.json").exists()
     assert not (setup.output / "public_compile_only.json").exists()
 
