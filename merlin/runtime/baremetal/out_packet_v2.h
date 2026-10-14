@@ -97,13 +97,64 @@ static inline int merlin_out_packet_v2_word(merlin_out_packet_v2 *out,
   return 1;
 }
 
+/* Character-backed output arrays may contain i32 words written by a device.
+ * The alias-qualified load lets the same bulk encoder read those bytes without
+ * asserting a C effective type that the device never established. */
+#if defined(__GNUC__) || defined(__clang__)
+typedef int32_t merlin_out_packet_v2_i32_alias __attribute__((__may_alias__));
+#else
+typedef int32_t merlin_out_packet_v2_i32_alias;
+#endif
+
 static inline int merlin_out_packet_v2_words_i32(
-    merlin_out_packet_v2 *out, const int32_t *words, uint64_t count) {
+    merlin_out_packet_v2 *out, const merlin_out_packet_v2_i32_alias *words,
+    uint64_t count) {
   if (!out || (count && !words) || count > SIZE_MAX / sizeof(*words) ||
       !out->valid || out->width != 4u || !out->signed_words ||
       out->seen > out->expected || count > out->expected - out->seen) return 0;
-  for (uint64_t index = 0; index < count; ++index)
-    if (!merlin_out_packet_v2_word(out, (uint64_t)(int64_t)words[index])) return 0;
+  if (!out->escaped) {
+    for (uint64_t index = 0; index < count; ++index)
+      if (!merlin_out_packet_v2_word(out, (uint64_t)(int64_t)words[index])) return 0;
+    return 1;
+  }
+  /* Keep invariant fields and the hot byte cursor in registers. Only the
+   * uncommon full-word escape or a full buffer enters the slow path. */
+  uint64_t checksum = out->checksum;
+  unsigned buffered = out->buffered;
+  uint64_t start = out->seen;
+  for (uint64_t index = 0; index < count; ++index) {
+    int32_t value = words[index];
+    if (value >= -127 && value <= 127) {
+      unsigned char byte = (unsigned char)value;
+      out->buffer[buffered++] = byte;
+      checksum = (checksum ^ byte) * UINT64_C(0x100000001b3);
+      if (buffered == MERLIN_OUT_PACKET_V2_BUFFER) {
+        out->buffered = buffered;
+        out->checksum = checksum;
+        out->seen = start + index;
+        if (!merlin_out_packet_v2_flush(out)) return 0;
+        buffered = 0;
+      }
+    } else {
+      uint32_t bits = (uint32_t)value;
+      for (unsigned part = 0; part != 5u; ++part) {
+        unsigned char byte = part == 0u ? 0x80u :
+            (unsigned char)(bits >> (8u * (part - 1u)));
+        out->buffer[buffered++] = byte;
+        checksum = (checksum ^ byte) * UINT64_C(0x100000001b3);
+        if (buffered == MERLIN_OUT_PACKET_V2_BUFFER) {
+          out->buffered = buffered;
+          out->checksum = checksum;
+          out->seen = start + index;
+          if (!merlin_out_packet_v2_flush(out)) return 0;
+          buffered = 0;
+        }
+      }
+    }
+  }
+  out->buffered = buffered;
+  out->checksum = checksum;
+  out->seen = start + count;
   return 1;
 }
 

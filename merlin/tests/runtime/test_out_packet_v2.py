@@ -15,8 +15,13 @@ from merlin.runtime.out_packet import ExpectedOutput, OutPacketError
 from merlin.runtime.out_packet_v2 import decode_out_packet_v2, out_packet_v2_capacity
 
 
-def _build_packet(tmp_path: Path, words: list[int]) -> bytes:
+def _build_packet(tmp_path: Path, words: list[int], *, bulk: bool = True) -> bytes:
     values = ",".join(str(word) for word in words)
+    encode_line = (
+        f"  if(!merlin_out_packet_v2_words_i32(&codec,words,{len(words)})) return 3;\n"
+        if bulk else
+        f"  for(size_t i=0;i<{len(words)};i++) if(!merlin_out_packet_v2_word(&codec,(uint64_t)(int64_t)words[i])) return 3;\n"
+    )
     source = tmp_path / "packet.c"
     source.write_text(
         '#include <stdio.h>\n#include "out_bin_memory.h"\n#include "out_packet_v2.h"\n'
@@ -30,7 +35,7 @@ def _build_packet(tmp_path: Path, words: list[int]) -> bytes:
         f'  if(!merlin_out_bin_memory_cstr(&sink,"OUT_PKT_BEGIN v2 out 1 {len(words)} i32 4 s e\\n")) return 2;\n'
         "  merlin_out_packet_v2 codec;\n"
         f"  merlin_out_packet_v2_init(&codec,{len(words)},4,1,1,write_bytes);\n"
-        f"  if(!merlin_out_packet_v2_words_i32(&codec,words,{len(words)})) return 3;\n"
+        f"{encode_line}"
         "  if(!merlin_out_packet_v2_finish(&codec)) return 4;\n"
         '  if(!merlin_out_bin_memory_cstr(&sink,"OUT_PKT_END v2 ")) return 5;\n'
         "  if(!merlin_out_bin_memory_hex16(&sink,codec.checksum)) return 6;\n"
@@ -69,6 +74,16 @@ def test_large_common_case_is_exact_and_compact(tmp_path: Path) -> None:
     packet = _build_packet(tmp_path, words)
     assert len(packet) < 88_000
     assert decode_out_packet_v2(packet, _roster(len(words)))["out"].values == tuple(words)
+
+
+def test_bulk_i32_wire_matches_generic_for_all_boundary_classes(tmp_path: Path) -> None:
+    import random
+
+    rng = random.Random(73)
+    boundaries = [-2147483648, -129, -128, -127, -1, 0, 1, 127, 128, 255, 2147483647]
+    words = (boundaries * 103 + [rng.randint(-2147483648, 2147483647) for _ in range(1201)])
+    words += [rng.randint(-127, 127) for _ in range(2049)]
+    assert _build_packet(tmp_path, words) == _build_packet(tmp_path, words, bulk=False)
 
 
 def test_truncation_checksum_roster_escape_and_extra_bytes_refuse(tmp_path: Path) -> None:
@@ -171,7 +186,7 @@ def test_whole_model_readout_uses_one_exact_frame_per_output() -> None:
                        ReadbackPolicy(COHERENT_PACKET_V2), None)
     lines = "\n".join(readout.lines())
     assert lines.count("OUT_PKT_BEGIN v2") == 1
-    assert "merlin_out_packet_v2_word" in lines
+    assert "merlin_out_packet_v2_words_i32" in lines
     assert "merlin_out_b64_range" not in lines
     assert "out_packet_v2.h" in readout.includes()
     assert readout.packet_capacity == out_packet_v2_capacity(

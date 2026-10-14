@@ -154,6 +154,7 @@ def _packet_publication_v2(cb, slots):
         index, _, (count, width, dtype) = slots[name]
         signed = int(dtype.signed and not dtype.is_float)
         escaped = int(width > 1 and not dtype.is_float)
+        bulk_i32 = width == 4 and signed and escaped
         mode = "e" if escaped else "r"
         sign = "s" if signed else "u"
         c_header = f"OUT_PKT_BEGIN v2 {name} 1 {count} {cb['tensors'][name]['dtype']} {width} {sign} {mode}\\n"
@@ -162,10 +163,19 @@ def _packet_publication_v2(cb, slots):
             f'    if(!merlin_out_bin_memory_cstr(&merlin_packet_sink,"{c_header}")) htif_exit(2);',
             "    merlin_out_packet_v2 encoder;",
             f"    merlin_out_packet_v2_init(&encoder,UINT64_C({count}),{width},{signed},{escaped},merlin_packet_write);",
+            *(
+                [
+                    "#if (defined(__GNUC__) || defined(__clang__)) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__",
+                    f"    if(!merlin_out_packet_v2_words_i32(&encoder,(const merlin_out_packet_v2_i32_alias*)tensor_{index},UINT64_C({count}))) htif_exit(2);",
+                    "#else",
+                ]
+                if bulk_i32 else []
+            ),
             f"    for(uint64_t i=0;i<UINT64_C({count});i++){{",
             f"      uint64_t word=merlin_packet_load(tensor_{index}+i*{width},{width},{signed});",
             "      if(!merlin_out_packet_v2_word(&encoder,word)) htif_exit(2);",
             "    }",
+            *(["#endif"] if bulk_i32 else []),
             "    if(!merlin_out_packet_v2_finish(&encoder) ||",
             '       !merlin_out_bin_memory_cstr(&merlin_packet_sink,"OUT_PKT_END v2 ") ||',
             "       !merlin_out_bin_memory_hex16(&merlin_packet_sink,encoder.checksum) ||",

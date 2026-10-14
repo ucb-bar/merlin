@@ -865,13 +865,18 @@ class _Readout:
             if self.packet_v2:
                 mode = "e" if container.word_bytes > 1 and buf.dtype != "f32" else "r"
                 sign_char = "s" if container.signed else "u"
+                encode = (
+                    f"  if (!merlin_out_packet_v2_words_i32(&merlin_out_v2, {contiguous}, {count}ULL)) return 2;"
+                    if container.ctype == "int32_t" and contiguous is not None and mode == "e"
+                    else f"{loop} if (!merlin_out_packet_v2_word(&merlin_out_v2, (uint64_t)({element}))) return 2;"
+                )
                 return [
                     "  {",
                     f'  if (!merlin_out_bin_memory_cstr(&merlin_packet_sink, '
                     f'"OUT_PKT_BEGIN v2 {name} {rows} {cols} {buf.dtype} {container.word_bytes} {sign_char} {mode}\\n")) return 2;',
                     f"  merlin_out_packet_v2_init(&merlin_out_v2, {count}ULL, {container.word_bytes}, "
                     f"{sign}, {int(mode == 'e')}, merlin_packet_write);",
-                    f"{loop} if (!merlin_out_packet_v2_word(&merlin_out_v2, (uint64_t)({element}))) return 2;",
+                    encode,
                     "  if (!merlin_out_packet_v2_finish(&merlin_out_v2)) return 2;",
                     '  if (!merlin_out_bin_memory_cstr(&merlin_packet_sink, "OUT_PKT_END v2 ")) return 2;',
                     "  if (!merlin_out_bin_memory_hex16(&merlin_packet_sink, merlin_out_v2.checksum)) return 2;",
