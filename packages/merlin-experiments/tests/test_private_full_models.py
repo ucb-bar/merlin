@@ -873,6 +873,31 @@ def test_unknown_support_required_operation_is_not_waived():
         gate._noncompute_support({"disposition": "support_required", "mlir_operation": "tensor.future_unknown"})
 
 
+def test_only_source_proved_contraction_zero_init_fill_is_support():
+    from merlin.common import mlir_query as mq
+
+    def proven(value: str, consumer: str) -> bool:
+        source = f"""module {{
+          func.func @f(%a: tensor<2x2xf32>, %b: tensor<2x2xf32>) -> tensor<2x2xf32> {{
+            %e = tensor.empty() : tensor<2x2xf32>
+            %z = arith.constant {value} : f32
+            %i = linalg.fill ins(%z : f32) outs(%e : tensor<2x2xf32>) -> tensor<2x2xf32>
+            {consumer}
+          }}
+        }}"""
+        parsed = tuple(mq.walk(mq.parse(source)))
+        ordinal = next(i for i, op in enumerate(parsed) if op.name == "linalg.fill")
+        row = {"disposition": "support_required", "mlir_operation": "linalg.fill", "ordinals": [ordinal], "count": 1}
+        return gate._contraction_zero_init_fill(row, parsed)
+
+    matmul = """%r = linalg.matmul ins(%a, %b : tensor<2x2xf32>, tensor<2x2xf32>)
+                   outs(%i : tensor<2x2xf32>) -> tensor<2x2xf32>
+                return %r : tensor<2x2xf32>"""
+    assert proven("0.000000e+00", matmul)
+    assert not proven("1.000000e+00", matmul)
+    assert not proven("0.000000e+00", "return %i : tensor<2x2xf32>")
+
+
 def _transpose_module(*, permutation="1, 0", output="3x2xi8", body=None, operation="linalg.transpose"):
     from merlin.common import mlir_query as mq
 

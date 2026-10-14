@@ -14,6 +14,7 @@ arithmetic that ran and was wrong.
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from collections.abc import Iterable, Mapping
@@ -184,6 +185,82 @@ def instruction_use(artifacts: Iterable[str], *, target: str) -> dict[str, Any]:
     return {"status": "measured", **report}
 
 
+def _summary(*, target: str, rows: list[dict[str, Any]], artifacts: list[str],
+             audits: list[dict[str, Any]], execution: dict[str, Any]) -> dict[str, Any]:
+    outcomes: dict[str, int] = {}
+    for row in rows:
+        outcomes[row["outcome"]] = outcomes.get(row["outcome"], 0) + 1
+    return {
+        "schema": SCHEMA,
+        "target": target,
+        "execution": execution,
+        "programs": rows,
+        "outcomes": outcomes,
+        "routed_macs": sum(int(row.get("routed_macs") or 0) for row in rows),
+        "silent": [row["program"] for row in rows if row["outcome"] == "silent"],
+        "placement_undeclared": [
+            row["program"] for row in rows if row["outcome"] == "offloaded" and not row.get("placement_declared")
+        ],
+        "all_accounted": bool(rows) and not any(row["outcome"] in ("silent", "error") for row in rows),
+        "instruction_use": instruction_use(artifacts, target=target),
+        "host_compute": audits,
+        "host_compute_vetoed": [
+            row["program"] for row in audits if row["verdict"] == "host_compute_in_accelerator_group"
+        ],
+    }
+
+
+def census_from_graded_artifacts(*, target: str, capsules: Iterable[Mapping[str, Any]],
+                                 suite_runs: str | Path) -> dict[str, Any]:
+    """Read the current public grade's own emitted buffers, without running a compiler again.
+
+    The caller owns the grade's source identity and public-corpus selection. Missing or malformed
+    artifacts stay named errors in the fixed denominator; they cannot become evidence of offload.
+    Whole-model capstones without an interface are handled by their separate model placement audit.
+    """
+    root = Path(suite_runs)
+    selected = [dict(capsule) for capsule in capsules if capsule.get("interface_mlir")]
+    rows: list[dict[str, Any]] = []
+    artifacts: list[str] = []
+    audits: list[dict[str, Any]] = []
+    for capsule in selected:
+        name = str(capsule.get("name") or Path(str(capsule.get("__dir__", ""))).name)
+        generated = root / name / "generated"
+        buffer_path, artifact_path = generated / "command_buffer.json", generated / "lowered.llvm.mlir"
+        try:
+            result_path = root / name / "capsule_result.json"
+            if (not name or name in (".", "..") or "/" in name or "\\" in name
+                    or root.is_symlink() or (root / name).is_symlink() or generated.is_symlink()
+                    or buffer_path.is_symlink() or artifact_path.is_symlink() or result_path.is_symlink()):
+                raise ValueError("graded artifact path is indirect or invalid")
+            if not result_path.is_file():
+                raise FileNotFoundError("graded capsule result is absent")
+            if not buffer_path.is_file():
+                raise FileNotFoundError("graded command buffer is absent")
+            if not artifact_path.is_file():
+                raise FileNotFoundError("graded lowered host artifact is absent")
+            buffer = json.loads(buffer_path.read_text(encoding="utf-8"))
+            if not isinstance(buffer, dict):
+                raise ValueError("graded command buffer is not an object")
+            artifact = artifact_path.read_text(encoding="utf-8")
+            row = program_row(name, buffer)
+            audit = host_compute_row(name, buffer, artifact, row["outcome"])
+        except Exception as failure:  # noqa: BLE001 -- an unreadable artifact cannot establish offload
+            rows.append({
+                "program": name, "outcome": "error",
+                "reason": f"graded emission unavailable: {type(failure).__name__}: {str(failure)[:160]}",
+            })
+            continue
+        rows.append(row)
+        artifacts.append(artifact)
+        audits.append(audit)
+    return _summary(
+        target=target, rows=rows, artifacts=artifacts, audits=audits,
+        execution={"mode": "same_grade_artifacts", "programs_requested": len(selected),
+                   "programs_observed": len(artifacts)},
+    )
+
+
 def census(
     package: str | Path,
     *,
@@ -291,31 +368,10 @@ def census(
             if audit is not None:
                 audits.append(audit)
 
-    outcomes: dict[str, int] = {}
-    for row in rows:
-        outcomes[row["outcome"]] = outcomes.get(row["outcome"], 0) + 1
-    return {
-        "schema": SCHEMA,
-        "target": target,
-        "execution": {"workers": workers, "programs_requested": len(selected)},
-        "programs": rows,
-        "outcomes": outcomes,
-        "routed_macs": sum(int(row.get("routed_macs") or 0) for row in rows),
-        "silent": [row["program"] for row in rows if row["outcome"] == "silent"],
-        "placement_undeclared": [
-            row["program"] for row in rows if row["outcome"] == "offloaded" and not row.get("placement_declared")
-        ],
-        "all_accounted": not any(row["outcome"] in ("silent", "error") for row in rows),
-        # An instruction the hardware offers and no emitted program reaches for is invisible in every
-        # per-program number: each buffer is well formed and each gate passes.
-        "instruction_use": instruction_use(artifacts, target=target),
-        # A program can reach the unit and still do the unit's arithmetic in a host loop. Numerics
-        # and the command trace both pass on that program; only counting the host code shows it.
-        "host_compute": audits,
-        "host_compute_vetoed": [
-            row["program"] for row in audits if row["verdict"] == "host_compute_in_accelerator_group"
-        ],
-    }
+    return _summary(
+        target=target, rows=rows, artifacts=artifacts, audits=audits,
+        execution={"workers": workers, "programs_requested": len(selected)},
+    )
 
 
 def census_of_corpus(

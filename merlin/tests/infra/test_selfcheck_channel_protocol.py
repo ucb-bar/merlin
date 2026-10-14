@@ -173,6 +173,37 @@ def test_full_suite_channel_budget_cannot_expire_before_per_capsule_work(tmp_pat
     assert budget > per_capsule + 240
 
 
+def test_gsim_shim_default_allows_setup_before_original_native_limit(tmp_path, monkeypatch):
+    """The agent's whole-check clock must not cut off a healthy 1800 s gSIM run.
+
+    The original capacity convolution spent about five minutes preparing its ELF,
+    then completed native execution and coherent readback within 1800 s. A
+    1800 s default for the entire self-check killed the direct request before
+    readback finished; the independent promotion used a 3600 s outer clock and
+    passed. The native engine's own selected limit remains separate.
+    """
+    shim = _module("selfcheck_shim")
+    monkeypatch.setattr(shim, "__file__", str(tmp_path / "agent_selfcheck.py"))
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
+
+    class RequestCaptured(Exception):
+        def __init__(self, body):
+            self.body = body
+
+    def capture(_path, text):
+        raise RequestCaptured(json.loads(text))
+
+    monkeypatch.setattr(shim, "_atomic_write", capture)
+    for flags, expected in (([], 3600), (["--sim", "spike"], 1800), (["--timeout", "1800"], 1800)):
+        try:
+            shim.main(["--capsules", "SY_conv_operand_capacity_boundary", *flags])
+        except RequestCaptured as captured:
+            assert captured.body["timeout"] == expected
+            assert (captured.body["deadline_unix_ns"] - captured.body["requested_at_unix_ns"]) / 1e9 > expected
+        else:
+            raise AssertionError("the shim did not publish its request")
+
+
 def test_broker_child_deadline_honors_the_request_deadline():
     broker = _module("selfcheck_broker")
     request = {"timeout": 1800, "deadline_unix_ns": 20_000_000_000}
