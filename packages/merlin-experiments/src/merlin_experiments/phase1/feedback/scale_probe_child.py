@@ -80,10 +80,10 @@ def _verify_products(root, row):
 
 
 def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract, facts_path,
-               work_root, deadline, ir_budget, sandbox_inputs=None):
+               work_root, deadline, ir_budget, sandbox_inputs=None, timing=None):
     from . import compile_only as C
 
-    count = workers()
+    entered, count = time.monotonic(), workers()
     rows = [C._case_row(case) for case in cases]
     prepared, active = [], []
     with contextlib.ExitStack() as lifetime:
@@ -118,6 +118,7 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                 if transport is None:
                     raise StageGateError("public scale children require the original sealed owner")
                 prepared.append((index, spec, result, environment, transport))
+        setup_finished = time.monotonic()
         pending = iter(prepared)
 
         def launch(item):
@@ -166,6 +167,7 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                 process.wait(timeout=10)
         # No child or RPC is running here. A mandatory final full custody read
         # encloses result joins, then closes before the aggregate is published.
+        join_started = time.monotonic()
         with C._snapshot_operation(owner):
             for item, process, started, finished in completed:
                 index, spec, output, _, transport = item
@@ -179,6 +181,10 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                 if (process.returncode != 0 or not output.is_file() or output.is_symlink()
                         or output.stat().st_size > 1024 * 1024):
                     row.update(lowering_status="unavailable", reason="original public scale child refused")
+                    emitted = output.parent / "generated/lowered.llvm.mlir"
+                    if emitted.is_file() and not emitted.is_symlink():
+                        row["partial_emission"] = {"bytes": emitted.stat().st_size, "sha256": sha256_file(emitted),
+                                                   "scope": "unverified retained MLIR bytes"}
                 else:
                     result = transport.verify_result(json.loads(output.read_bytes()))
                     if (set(result) != {"schema", "case", "observation", "original_compiler_child"}
@@ -204,6 +210,14 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
             # remain. Include the namespace's last check in this operation,
             # then perform its independent full exit before report publication.
             lifetime.close()
+    finished = time.monotonic()
+    if timing is not None:
+        timing.update(parent_setup_s=setup_finished - entered,
+                      dispatch_wait_s=join_started - setup_finished,
+                      parent_final_join_s=finished - join_started,
+                      total_dispatch_s=finished - entered, workers=count,
+                      children_launched=len(completed),
+                      scope="actual parent stage wall times, including all custody checks")
     return rows
 
 

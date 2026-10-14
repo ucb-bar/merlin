@@ -89,14 +89,16 @@ def setup(original, monkeypatch):  # noqa: F811
     return original
 
 
-def emit(setup, *, timeout=20):
+def emit(setup, *, timeout=20, timing=None):
     return S.emit_cases(owner=setup.owner, candidate=setup.candidate, target_experiment=setup.target,
         capsules=setup.capsules, cases=setup.cases, contract=setup.contract, facts_path=setup.facts,
-        work_root=setup.output, deadline=time.monotonic() + timeout, ir_budget=None, sandbox_inputs=setup.inputs)
+        work_root=setup.output, deadline=time.monotonic() + timeout, ir_budget=None,
+        sandbox_inputs=setup.inputs, timing=timing)
 
 
 def test_two_actual_sealed_children_overlap_with_independent_owners_and_ordered_results(setup):
-    rows = emit(setup)
+    timing = {}
+    rows = emit(setup, timing=timing)
     assert len(rows) == 2 and all(row["lowering_status"] == "emitted" for row in rows)
     first, second = [row["preparation_process"] for row in rows]
     assert first["pid"] != second["pid"]
@@ -105,6 +107,9 @@ def test_two_actual_sealed_children_overlap_with_independent_owners_and_ordered_
     assert [row["variant"] for row in rows] == ["scale1_tail+0", "scale8_tail+0"]
     assert all(row["numeric"] == row["rtl"] == "not_attempted" for row in rows)
     assert cpu_pool._ACTIVE_LEASE.get() is None
+    assert timing["children_launched"] == 2
+    assert timing["total_dispatch_s"] == pytest.approx(sum(timing[key] for key in (
+        "parent_setup_s", "dispatch_wait_s", "parent_final_join_s")))
 
 
 def test_child_source_mutation_refuses_before_aggregate_publication(setup, monkeypatch):

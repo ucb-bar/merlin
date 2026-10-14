@@ -380,6 +380,7 @@ def observe(
     from merlin.targetgen import elf_lanes
     from merlin.targetgen.native_model_execution import _build_service_for
 
+    observation_started = time.monotonic()
     if type(common_service) is not CommonTransformService:
         raise ValueError("compile-only requires the original admitted compiler tool profile")
     with _snapshot_operation(common_service):
@@ -440,7 +441,9 @@ def observe(
         admission = None if scale_probe else LinkedElfAdmissionService(
             target_experiment.target, checker.evaluate, tuple((str(path), sha256_file(path)) for path in pins)
         )
-    deadline, rows = time.monotonic() + timeout_s, []
+    deadline_started = time.monotonic()
+    deadline, rows = deadline_started + timeout_s, []
+    dispatch_timing = {}
     from . import scale_probe_child
 
     parallel = scale_probe and scale_probe_child.workers() > 1
@@ -449,6 +452,7 @@ def observe(
             owner=common_service, candidate=candidate, target_experiment=target_experiment,
             capsules=capsules, cases=cases, contract=contract, facts_path=facts_path,
             work_root=work_root, deadline=deadline, ir_budget=ir_budget, sandbox_inputs=sandbox_inputs,
+            timing=dispatch_timing,
         )
     with nullcontext() if parallel else _compile_imports(common_service):
         for index, case in enumerate(() if parallel else cases):
@@ -523,6 +527,7 @@ def observe(
             row["wall_seconds"] = time.monotonic() - started
             case.verify()
             rows.append(row)
+    final_checks_started = time.monotonic()
     if before != exact_tree_record(candidate)["sha256"] or facts_path.read_bytes() != facts_raw:
         raise ValueError("compile-only compiler or frozen hardware inputs changed during original compilation")
     common_service._verify()
@@ -538,6 +543,15 @@ def observe(
         "numeric": "not_attempted",
         "rtl": "not_attempted",
         "timing_cycles": None,
+        "wall_timing": {
+            "initial_source_setup_s": deadline_started - observation_started,
+            "selected_compile_budget_s": timeout_s,
+            "dispatch": dispatch_timing if parallel else None,
+            "final_source_custody_s": time.monotonic() - final_checks_started,
+            "total_observation_s": time.monotonic() - observation_started,
+            "scope": "all original observation wall stages; compile deadline begins after source setup, "
+                     "final custody remains mandatory and separately recorded",
+        },
         "scope": "original public emission/code-growth only; no object/ABI/effects or execution proof" if scale_probe
                  else "original public structural compile-only; not correctness, generality or timing acceptance",
     }
