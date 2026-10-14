@@ -633,6 +633,7 @@ def _prepare(
     _corpus_review = None
     _semantic_model_snapshot = None
     _semantic_diagnostic = None
+    _selected_public_facts = None
     if a.sandbox == "bwrap":
         from merlin.common.bundle_snapshot import verified_snapshot_scope
 
@@ -661,7 +662,8 @@ def _prepare(
         _bundle_snapshot_record = _BWS.snapshot_record(ws)
         from .frozen_facts import select as select_frozen_facts
 
-        select_frozen_facts(ws, _BWS.frozen_selected_rtl_facts(ws, bundle, repo=context.repo))
+        _selected_public_facts = _BWS.frozen_selected_rtl_facts(ws, bundle, repo=context.repo)
+        select_frozen_facts(ws, _selected_public_facts)
         _corpus_view = CI.resolve(ws, bundle, _corpus_record, repo=context.repo, reviewed_roots=_reviewed_corpus_roots)
         _verify_phase0_handoff(_corpus_review, _corpus_view.workload_coverage)
         _public_root, _policy_root = _corpus_view.public, _corpus_view.policy
@@ -783,6 +785,8 @@ def _prepare(
 
     public_owned_host_selection.install_for_session(
         _private_full_model_spec, _instruction_selection, target=context.target, run_dir=run_dir,
+        selected_facts=_selected_public_facts,
+        selected_facts_sha256=file_sha256(_selected_public_facts) if _selected_public_facts is not None else None,
     )
 
     if _resuming and _environment_record.get("corpus_review") != _corpus_review:
