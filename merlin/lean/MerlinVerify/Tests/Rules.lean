@@ -3,7 +3,7 @@ Build-time tests of the typing rules: each rule must accept the typings the capt
 the ones its semantics would get stuck on. A rule that accepts nothing is trivially sound, so the
 acceptance tests are what make the soundness theorems meaningful (design §1.2 rule 7).
 -/
-import MerlinVerify.Check.RulesArith
+import MerlinVerify.Check.RulesLinalg
 import MerlinVerify.Tests.Semantics
 
 namespace MerlinVerify.Tests.Rules
@@ -128,5 +128,95 @@ def Γ : TEnv := [(0, s i32), (1, s i32)]
 #guard !checkOps book 0 Γ body [s i64]
 #guard !checkOps book 0 [(0, s i32)] body [s i32]
 #guard !checkOps book 0 Γ [mkOp "arith.addi" [v 2 i32] [0, 1] [("foo", .unit)], ret [2]] [s i32]
+
+/-! ### Affine bounds -/
+
+#guard affineBounds [4, 6] (.add (.mul (.dim 0) (.const 2)) (.dim 1)) == some (0, 11)
+#guard affineBounds [4, 6] (.mul (.const (-3)) (.dim 1)) == some (-15, 0)
+#guard affineBounds [4, 6] (.mod (.dim 1) (.const 4)) == some (0, 3)
+#guard affineBounds [4, 6] (.floordiv (.dim 1) (.const 4)) == some (0, 1)
+#guard affineBounds [4, 6] (.ceildiv (.dim 1) (.const 4)) == some (0, 2)
+#guard affineBounds [4, 6] (.sym 0) == none
+#guard affineBounds [4, 6] (.mul (.dim 0) (.dim 1)) == none
+#guard affineBounds [4, 6] (.mod (.dim 1) (.const 0)) == none
+#guard affineBounds [4, 6] (.dim 2) == none
+
+/-! ### Structured ops -/
+
+theorem fragment_sound : RuleSound 64 (firstRule [arithRule 64, linalgRule]) :=
+  firstRule_sound (by
+    simp only [List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff, implies_true, and_true]
+    exact ⟨arithRule_sound 64, linalgRule_sound 64⟩)
+
+def book2 : Rulebook Sem.Ops.opSem 64 := fragment_sound.book
+
+/-- The ops of the first function of a module. -/
+def funcBody (m : Module) : List Op :=
+  match m.ops with
+  | .mk _ _ _ _ _ [.mk [.mk _ ops]] _ :: _ => ops
+  | _ => []
+
+def mmΓ : TEnv := [(0, T [2, 3] i8), (1, T [3, 2] i8)]
+
+-- the i8 matmul of `Tests.Semantics`: `arith.constant` (dense splat), then `linalg.generic` with an
+-- arith body
+#guard checkOps book2 0 mmΓ (funcBody matmulModule) [T [2, 2] i32]
+#guard !checkOps book2 0 mmΓ (funcBody matmulModule) [T [2, 2] i8]
+
+/-- The matmul with `B` read through `(i, j, k) ↦ (j, k)`: `k < 3` overruns `B`'s second dim (2). -/
+def mmSwapped (maps : List Attr) (iters : List Attr) : List Op :=
+  let body : Region := .mk [.mk [v 10 i8, v 11 i8, v 12 i32] [
+      mkOp "arith.extsi" [v 13 i32] [10],
+      mkOp "arith.extsi" [v 14 i32] [11],
+      mkOp "arith.muli" [v 15 i32] [13, 14],
+      mkOp "arith.addi" [v 16 i32] [12, 15],
+      mkOp "linalg.yield" [] [16]]]
+  [mkOp "arith.constant" [v 2 (tensorTy [2, 2] i32)] [] []
+     [("value", .dense (tensorTy [2, 2] i32) true [0, 0, 0, 0])],
+   mkOp "linalg.generic" [v 3 (tensorTy [2, 2] i32)] [0, 1, 2] []
+     [("indexing_maps", .array maps), ("iterator_types", .array iters),
+      ("operandSegmentSizes", .denseArray (.int 32) [2, 1])] [body],
+   ret [3]]
+
+def mmIters : List Attr := [iter "parallel", iter "parallel", iter "reduction"]
+
+#guard checkOps book2 0 mmΓ (mmSwapped [amap 3 [0, 2], amap 3 [2, 1], amap 3 [0, 1]] mmIters)
+  [T [2, 2] i32]
+-- out-of-bounds read, missing loop, a map with the wrong number of dims
+#guard !checkOps book2 0 mmΓ (mmSwapped [amap 3 [0, 2], amap 3 [1, 2], amap 3 [0, 1]] mmIters)
+  [T [2, 2] i32]
+#guard !checkOps book2 0 mmΓ
+  (mmSwapped [amap 3 [0, 2], amap 3 [2, 1], amap 3 [0, 1]] (mmIters.take 2)) [T [2, 2] i32]
+#guard !checkOps book2 0 mmΓ (mmSwapped [amap 2 [0, 1], amap 3 [2, 1], amap 3 [0, 1]] mmIters)
+  [T [2, 2] i32]
+
+/-- `linalg.fill` of a scalar into an output argument. -/
+def fillOps : List Op :=
+  [mkOp "linalg.fill" [v 2 (tensorTy [4] i32)] [0, 1] []
+     [("operandSegmentSizes", .denseArray (.int 32) [1, 1])]
+     [.mk [.mk [v 10 i32, v 11 i32] [mkOp "linalg.yield" [] [10]]]],
+   ret [2]]
+
+#guard checkOps book2 0 [(0, s i32), (1, T [4] i32)] fillOps [T [4] i32]
+-- the value's type must be the body's first argument type
+#guard !checkOps book2 0 [(0, s i8), (1, T [4] i32)] fillOps [T [4] i32]
+
+/-- A 2-loop `linalg.generic` whose body reads `linalg.index` `k`. -/
+def indexOps (k : Int) : List Op :=
+  [mkOp "linalg.generic" [v 2 (tensorTy [2, 3] .index)] [1] []
+     [("indexing_maps", .array [amap 2 [0, 1]]),
+      ("iterator_types", .array [iter "parallel", iter "parallel"]),
+      ("operandSegmentSizes", .denseArray (.int 32) [0, 1])]
+     [.mk [.mk [v 10 .index] [
+        mkOp "linalg.index" [v 11 .index] [] [("dim", .int k i64)],
+        mkOp "linalg.yield" [] [11]]]],
+   ret [2]]
+
+#guard checkOps book2 0 [(1, T [2, 3] .index)] (indexOps 1) [T [2, 3] .index]
+#guard !checkOps book2 0 [(1, T [2, 3] .index)] (indexOps 2) [T [2, 3] .index]
+#guard !checkOps book2 0 [(1, T [2, 3] .index)] (indexOps (-1)) [T [2, 3] .index]
+-- outside a structured op there is no iteration point to read
+#guard !checkOps book2 0 [] [mkOp "linalg.index" [v 11 .index] [] [("dim", .int 0 i64)], ret [11]]
+  [s .index]
 
 end MerlinVerify.Tests.Rules
