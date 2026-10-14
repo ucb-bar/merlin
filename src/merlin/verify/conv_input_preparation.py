@@ -45,7 +45,7 @@ def _constant_zero_storage(address, function):
     typ, initializer = storage.global_type, storage.value
     if (
         not isinstance(storage.constant, UnitAttr)
-        or storage.linkage.linkage.data not in {"private", "internal", "linkonce_odr"}
+        or storage.linkage.linkage.data not in {"private", "internal"}
         or storage.body.blocks
         or storage.thread_local_ is not None
         or storage.section is not None

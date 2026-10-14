@@ -127,7 +127,7 @@ def test_observer_absence_width_and_unknown_state_refuse(monkeypatch):
         assert _proof(monkeypatch, copy, observer_patch=patch)["status"] == "unproven"
 
 
-ZERO_GLOBAL = """llvm.mlir.global linkonce_odr constant @padding(dense<0> : tensor<3xi8>)
+ZERO_GLOBAL = """llvm.mlir.global private constant @padding(dense<0> : tensor<3xi8>)
  {addr_space = 0 : i32, alignment = 8 : i64} : !llvm.array<3 x i8>"""
 
 
@@ -142,10 +142,10 @@ def _zero_global(text, declaration=ZERO_GLOBAL):
     )
 
 
-@pytest.mark.parametrize("offset", [0, 2])
-def test_constant_zero_global_proves_only_bounded_address_dma(monkeypatch, offset):
+@pytest.mark.parametrize("offset,linkage", [(0, "private"), (2, "internal")])
+def test_constant_zero_global_proves_only_bounded_address_dma(monkeypatch, offset, linkage):
     def transform(text):
-        return _zero_global(text).replace(
+        return _zero_global(text, ZERO_GLOBAL.replace("private", linkage)).replace(
             "%address = llvm.ptrtoint %scratch",
             f"%offset = llvm.getelementptr %scratch[{offset}] : (!llvm.ptr) -> !llvm.ptr, i8\n"
             "%address = llvm.ptrtoint %offset",
@@ -169,7 +169,9 @@ def test_constant_zero_global_proves_only_bounded_address_dma(monkeypatch, offse
         ZERO_GLOBAL.replace("!llvm.array<3 x i8>", "!llvm.array<4 x i8>"),
         ZERO_GLOBAL.replace("tensor<3xi8>", "tensor<3xi16>"),
         ZERO_GLOBAL.replace("addr_space = 0", "addr_space = 1"),
-        ZERO_GLOBAL.replace("linkonce_odr", "external"),
+        ZERO_GLOBAL.replace("private", "external"),
+        ZERO_GLOBAL.replace("private", "linkonce_odr"),
+        ZERO_GLOBAL.replace("private", "weak_odr"),
         ZERO_GLOBAL + "\n" + ZERO_GLOBAL,
     ],
 )
