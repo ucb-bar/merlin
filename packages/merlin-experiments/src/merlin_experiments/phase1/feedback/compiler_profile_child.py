@@ -206,6 +206,7 @@ def _closure():
             "merlin.targetgen.capsule_runner",
             "merlin_experiments.phase1.feedback.operator_child",
             "merlin_experiments.phase1.feedback.scale_probe_child",
+            "merlin_experiments.phase1.feedback.scale_probe_batch",
             "merlin_experiments.phase1.feedback.compile_only",
             "merlin.targetgen.simulation_certificate",
         )

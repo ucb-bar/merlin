@@ -446,7 +446,7 @@ def observe(
     dispatch_timing = {}
     from . import scale_probe_child
 
-    parallel = scale_probe and scale_probe_child.workers() > 1
+    parallel = scale_probe and scale_probe_child.batch_workers() is not None
     if parallel:
         rows = scale_probe_child.emit_cases(
             owner=common_service, candidate=candidate, target_experiment=target_experiment,

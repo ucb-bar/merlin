@@ -29,6 +29,18 @@ from . import compiler_profile_runtime as R
 SCHEMA = "merlin.original_public_scale_child.v1"
 
 
+def batch_workers():
+    """Trusted opt-in, bounded by the actual shared preparation selection."""
+    value = os.environ.get("MERLIN_PUBLIC_SCALE_BATCH_WORKERS")
+    if value is None:
+        return None
+    if not value.isdecimal() or int(value) < 1:
+        raise ValueError("public scale batch workers must be a positive original selection")
+    if not cpu_pool.shared_compute_enabled():
+        raise ValueError("public scale batch workers require an original shared compute pool")
+    return min(int(value), workers())
+
+
 def workers():
     if not cpu_pool.shared_compute_enabled():
         return 1
@@ -81,6 +93,13 @@ def _verify_products(root, row):
 
 def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract, facts_path,
                work_root, deadline, ir_budget, sandbox_inputs=None, timing=None):
+    if batch_workers() is not None:
+        from . import scale_probe_batch
+
+        return scale_probe_batch.emit_cases(owner=owner, candidate=candidate,
+            target_experiment=target_experiment, capsules=capsules, cases=cases, contract=contract,
+            facts_path=facts_path, work_root=work_root, deadline=deadline, ir_budget=ir_budget,
+            sandbox_inputs=sandbox_inputs, timing=timing)
     from . import compile_only as C
 
     entered, entered_cpu, count = time.monotonic(), time.process_time(), workers()
@@ -229,12 +248,58 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
     return rows
 
 
-def main(argv=None):
+def observe_case(job, *, spec_path, executor, original_budget):
+    """Reopen one original producer case; each actual command retains its boundary."""
     from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
-    from merlin.targetgen import capsule_runner as CR
     from merlin_experiments.phase0 import public_scale_sources
 
     from . import compile_only as C
+
+    owner, target = executor.owner, executor.target
+    expected = {"schema", "package_dir", "target", "case", "capsules", "source", "contract", "facts",
+                "output", "deadline", "ir_budget"}
+    if (set(job) != expected or job["schema"] != SCHEMA or job["target"] != target.target
+            or type(job["deadline"]) not in (int, float) or not math.isfinite(job["deadline"])
+            or CHILD._source(job["package_dir"]) != executor.source_sha256):
+        raise StageGateError("public scale case changed its original compiler/target/job selection")
+    for name in ("source", "contract", "facts"):
+        if CHILD._digest(_input_pin(job[name]["path"])) != CHILD._digest(job[name]):
+            raise StageGateError("public scale child original input changed")
+    facts = json.loads(Path(job["facts"]["path"]).read_bytes())
+    edges = {row.get("cols") for row in (facts.get("facts") or {}).get("arrays", [])
+             if type(row.get("cols")) is int and row["cols"] > 0}
+    cases, _ = public_scale_sources.derive(job["capsules"], selected=job["case"]["member"],
+        index_bits=owner.profile.get("host_index_bits"), tile_edge=next(iter(edges)) if len(edges) == 1 else None)
+    matched = [case for case in cases if case.record() == job["case"]]
+    if len(matched) != 1 or Path(job["source"]["path"]).read_text() != matched[0].source_ir:
+        raise StageGateError("public scale child is not the original producer-derived variant")
+    if CHILD._digest(job["ir_budget"]) != CHILD._digest(
+            original_budget.record() if original_budget is not None else None):
+        raise StageGateError("public scale child changed its original resource budget")
+    budget = DeviceIRBudget(**job["ir_budget"]) if job["ir_budget"] is not None else None
+    root, candidate = Path(job["output"]), Path(job["package_dir"])
+    if root != spec_path.parent:
+        raise StageGateError("public scale child products lost their original owner")
+    remaining = min(600, math.floor(job["deadline"] - time.monotonic()))
+    observation = {"lowering_status": "unavailable", "reason": "original aggregate compile budget exhausted"}
+    if remaining >= 1:
+        with (P.scoped_package_executor(C._Executor(target, candidate, root,
+                common_service=owner, inputs=executor.inputs)),
+              observed_facts(target.target, facts, job["facts"]["path"])):
+            observation = C._emit_scale_case(candidate, Path(job["source"]["path"]), root,
+                contract=Path(job["contract"]["path"]), target=target.target,
+                timeout_s=remaining, ir_budget=budget)
+    for name in ("source", "contract", "facts"):
+        if CHILD._digest(_input_pin(job[name]["path"])) != CHILD._digest(job[name]):
+            raise StageGateError("public scale child original input changed before completion")
+    matched[0].verify()
+    if CHILD._source(job["package_dir"]) != executor.source_sha256:
+        raise StageGateError("public scale case compiler source changed during emission")
+    return observation
+
+
+def main(argv=None):
+    from merlin.targetgen import capsule_runner as CR
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--spec", type=Path, required=True)
@@ -249,45 +314,15 @@ def main(argv=None):
         restored, restored_cpu = time.monotonic(), time.process_time()
         job = json.loads(raw)
         executor = R.active_original_execution()
-        owner, target = executor.owner, executor.target
+        owner = executor.owner
         if job.get("schema") != SCHEMA or args.result != args.spec.parent / ".scale_child_result.json":
             raise StageGateError("public scale child has another protocol/output owner")
-        for name in ("source", "contract", "facts"):
-            if CHILD._digest(_input_pin(job[name]["path"])) != CHILD._digest(job[name]):
-                raise StageGateError("public scale child original input changed")
-        facts = json.loads(Path(job["facts"]["path"]).read_bytes())
-        edges = {row.get("cols") for row in (facts.get("facts") or {}).get("arrays", [])
-                 if type(row.get("cols")) is int and row["cols"] > 0}
-        cases, _ = public_scale_sources.derive(job["capsules"], selected=job["case"]["member"],
-            index_bits=owner.profile.get("host_index_bits"), tile_edge=next(iter(edges)) if len(edges) == 1 else None)
-        matched = [case for case in cases if case.record() == job["case"]]
-        if len(matched) != 1 or Path(job["source"]["path"]).read_text() != matched[0].source_ir:
-            raise StageGateError("public scale child is not the original producer-derived variant")
         from .public_scalability_gate import selected_budget
 
         original_budget = selected_budget(owner)
-        if CHILD._digest(job["ir_budget"]) != CHILD._digest(
-                original_budget.record() if original_budget is not None else None):
-            raise StageGateError("public scale child changed its original resource budget")
-        budget = DeviceIRBudget(**job["ir_budget"]) if job["ir_budget"] is not None else None
-        root, candidate = Path(job["output"]), Path(job["package_dir"])
-        if root != args.spec.parent:
-            raise StageGateError("public scale child products lost their original owner")
-        remaining = min(600, math.floor(job["deadline"] - time.monotonic()))
-        observation = {"lowering_status": "unavailable", "reason": "original aggregate compile budget exhausted"}
         emitting, emitting_cpu = time.monotonic(), time.process_time()
-        if remaining >= 1:
-            with (P.scoped_package_executor(C._Executor(target, candidate, root,
-                    common_service=owner, inputs=executor.inputs)),
-                  observed_facts(target.target, facts, job["facts"]["path"])):
-                observation = C._emit_scale_case(candidate, Path(job["source"]["path"]), root,
-                    contract=Path(job["contract"]["path"]), target=target.target,
-                    timeout_s=remaining, ir_budget=budget)
+        observation = observe_case(job, spec_path=args.spec, executor=executor, original_budget=original_budget)
         emitted, emitted_cpu = time.monotonic(), time.process_time()
-        for name in ("source", "contract", "facts"):
-            if CHILD._digest(_input_pin(job[name]["path"])) != CHILD._digest(job[name]):
-                raise StageGateError("public scale child original input changed before completion")
-        matched[0].verify()
     finished, finished_cpu = time.monotonic(), time.process_time()
     _write(args.spec.parent / ".scale_child_timing.json", {
         "pid": os.getpid(), "started_monotonic": started, "finished_monotonic": finished,
