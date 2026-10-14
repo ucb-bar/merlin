@@ -1702,6 +1702,26 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             )
         ),
     }
+    if scope == "all" and selected is not None:
+        # The complete grade has already emitted the public operator buffers and
+        # lowered host artifacts. Read those exact source-bound outputs once for
+        # offload accounting instead of running every compiler entrypoint again.
+        # Missing artifacts remain named errors; model placement has its own
+        # submitted-artifact audit and is never inferred from an operator buffer.
+        from merlin.targetgen import offload_census as OC
+
+        try:
+            out["offload_census"] = OC.census_from_graded_artifacts(
+                target=_tgt, capsules=selected, suite_runs=cb_root,
+            )
+        except Exception as exc:  # noqa: BLE001 -- the grade remains authoritative
+            out["offload_census"] = {
+                "schema": OC.SCHEMA,
+                "execution": {"mode": "same_grade_artifacts"},
+                "all_accounted": False,
+                "status": "unavailable",
+                "reason": f"graded-artifact census failed: {type(exc).__name__}: {str(exc)[:200]}",
+            }
     txt = json.dumps(out, indent=2)
     print(txt)
     if a.out:

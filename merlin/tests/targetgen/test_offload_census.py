@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 
@@ -68,6 +69,50 @@ def test_instruction_use_is_measured_against_the_derived_table_or_says_why_not(m
     use = OC.instruction_use([artifact], target="synthetic")
     assert use["status"] == "measured"
     assert [row["name"] for row in use["unused"]] == ["COMPUTE", "SEQUENCER"]
+
+
+def test_full_grade_census_reuses_public_emissions_and_names_missing_artifacts(tmp_path) -> None:
+    root = tmp_path / "graded"
+    generated = root / "op_a" / "generated"
+    generated.mkdir(parents=True)
+    (root / "op_a" / "capsule_result.json").write_text('{"capsule":"op_a"}')
+    (generated / "command_buffer.json").write_text(json.dumps(_buffer(
+        [{"opcode": "MATMUL", "operands": {"lhs": "A", "rhs": "B", "dst": "C"}}],
+        placement=[{"lane": "mesh", "family": "contraction"}],
+    )))
+    (generated / "lowered.llvm.mlir").write_text("module {}")
+    (root / "op_b").mkdir()
+    (root / "op_b" / "capsule_result.json").write_text('{"capsule":"op_b"}')
+    report = OC.census_from_graded_artifacts(
+        target="synthetic",
+        capsules=[{"name": "op_a", "interface_mlir": "a.mlir"},
+                  {"name": "op_b", "interface_mlir": "b.mlir"},
+                  {"name": "capstone", "kind": "model"}],
+        suite_runs=root,
+    )
+    assert report["execution"] == {
+        "mode": "same_grade_artifacts", "programs_requested": 2, "programs_observed": 1,
+    }
+    assert report["outcomes"] == {"offloaded": 1, "error": 1}
+    assert report["programs"][0]["placement_declared"]
+    assert report["programs"][1]["program"] == "op_b"
+    assert not report["all_accounted"]
+
+
+def test_full_grade_census_refuses_indirect_candidate_output(tmp_path) -> None:
+    root = tmp_path / "graded"
+    generated = root / "op" / "generated"
+    generated.mkdir(parents=True)
+    (root / "op" / "capsule_result.json").write_text('{"capsule":"op"}')
+    outside = tmp_path / "outside.json"
+    outside.write_text(json.dumps(_buffer()))
+    (generated / "command_buffer.json").symlink_to(outside)
+    (generated / "lowered.llvm.mlir").write_text("module {}")
+    report = OC.census_from_graded_artifacts(
+        target="synthetic", capsules=[{"name": "op", "interface_mlir": "op.mlir"}], suite_runs=root,
+    )
+    assert report["outcomes"] == {"error": 1}
+    assert not report["all_accounted"]
 
 
 def test_installed_public_probes_do_not_require_legacy_package_shim(tmp_path) -> None:
