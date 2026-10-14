@@ -9,7 +9,8 @@ from collections import Counter
 from dataclasses import dataclass
 from math import prod
 
-from xdsl.dialects.builtin import IntegerType, UnitAttr
+from xdsl.dialects.builtin import DenseIntOrFPElementsAttr, IntegerType, ModuleOp, UnitAttr
+from xdsl.dialects.llvm import AddressOfOp, GlobalOp, LLVMArrayType, LLVMPointerType
 
 from merlin.perf.constant_control_cfg import integer_operation
 from merlin.perf.host_cfg_activity import _INTEGER, _payload_bytes
@@ -25,6 +26,50 @@ class _Pointer:
 @dataclass(frozen=True)
 class _Copy:
     origins: tuple
+
+
+def _constant_zero_storage(address, function):
+    """Resolve only an actual, closed read-only byte initializer in this module."""
+    module = function.parent_op()
+    if not isinstance(module, ModuleOp) or function.parent_block() is not module.body.block:
+        raise ValueError("zero padding has no enclosing original module storage")
+    if any(op.name not in {"llvm.mlir.global", "llvm.func"} for op in module.body.block.ops):
+        raise ValueError("zero padding module has unproved aliases or storage effects")
+    reference = address.global_name
+    if reference.nested_references.data:
+        raise ValueError("zero padding has nested or unknown symbol provenance")
+    name = reference.root_reference.data
+    definitions = [op for op in module.body.block.ops if getattr(op.properties.get("sym_name"), "data", None) == name]
+    if len(definitions) != 1 or not isinstance(storage := definitions[0], GlobalOp):
+        raise ValueError("zero padding global is missing or ambiguous")
+    typ, initializer = storage.global_type, storage.value
+    if (
+        not isinstance(storage.constant, UnitAttr)
+        or storage.linkage.linkage.data not in {"private", "internal"}
+        or storage.body.blocks
+        or storage.thread_local_ is not None
+        or storage.section is not None
+        or storage.attributes
+        or storage.addr_space.value.data != 0
+        or not isinstance(address.result.type, LLVMPointerType)
+        or getattr(address.result.type.addr_space, "data", 0) != 0
+        or not isinstance(typ, LLVMArrayType)
+        or typ.type != IntegerType(8)
+        or not 0 < typ.size.data <= 1 << 20
+        or not isinstance(initializer, DenseIntOrFPElementsAttr)
+        or initializer.get_element_type() != IntegerType(8)
+        or initializer.get_shape() != (typ.size.data,)
+        or len(initializer.data.data) != typ.size.data
+        or any(initializer.data.data)
+    ):
+        raise ValueError("zero padding global lacks bounded read-only all-zero byte storage")
+    # A second function could mutate or export an address. This finite proof
+    # covers only the actual kernel's interpreted pointer uses, not other code.
+    for op in module.walk():
+        if isinstance(op, AddressOfOp) and op.global_name.root_reference.data == name:
+            if op.global_name.nested_references.data or op.parent_op() is not function:
+                raise ValueError("zero padding global address escapes the proven kernel")
+    return storage, typ.size.data
 
 
 def _unpoisoned_pointer_add(op):
@@ -69,12 +114,19 @@ def _prove(function, activity, context, *, target):
     if semantics is None or getattr(semantics, "word_bits", None) != 64:
         raise ValueError("input preparation has no explicitly selected 64-bit operand observer")
     isa = semantics.isa_constants(target)
+    from merlin.targetgen.rtl.firrtl_load_states import LoadStateMapping
+
+    load_states = getattr(semantics, "load_states", None)
+    if load_states is not None and type(load_states) is not LoadStateMapping:
+        raise ValueError("input preparation load states lack typed original source evidence")
     values = {arg: _Pointer(i) for i, arg in enumerate(blocks[0].args)}
     capacity = {i: prod(b["shape"]) * (4 if b["dtype"] == "i32" else 1) for i, b in enumerate(buffers)}
     memory, consumed, initialized = {}, set(), set()
+    readonly = set()
     visited = Counter()
     arithmetic = payload = transfers = scratch_transfers = 0
-    load_stride = store_stride = None
+    load_strides = {}
+    store_stride = None
     block = blocks[0]
     incoming = ()
 
@@ -104,6 +156,11 @@ def _prove(function, activity, context, *, target):
                 result = constant_integer(op.results[0])
                 if result is None:
                     raise ValueError("input preparation contains noninteger constant")
+            elif isinstance(op, AddressOfOp):
+                storage, size = _constant_zero_storage(op, function)
+                capacity[storage] = size
+                readonly.add(storage)
+                result = _Pointer(storage)
             elif name == "llvm.alloca":
                 size = integer(args[0]) * _payload_bytes(op.properties["elem_type"])
                 if size <= 0 or size > 1 << 20:
@@ -149,6 +206,8 @@ def _prove(function, activity, context, *, target):
                     result = _Copy(tuple((0, pointer.offset + i) for i in range(width)))
                 elif pointer.root in {1, 2}:
                     raise ValueError("input preparation reads weights or output on CPU")
+                elif pointer.root in readonly:
+                    result = _Copy(("zero",) * width)
                 else:
                     result = _Copy(tuple(memory[(pointer.root, pointer.offset + i)] for i in range(width)))
                 payload += width
@@ -158,6 +217,8 @@ def _prove(function, activity, context, *, target):
                 bound(pointer, width)
                 if pointer.root in {0, 1, 2}:
                     raise ValueError("input preparation writes model input, weight or output on CPU")
+                if pointer.root in readonly:
+                    raise ValueError("input preparation writes read-only zero padding storage")
                 origins = value.origins if isinstance(value, _Copy) else ("zero",) * width if value == 0 else None
                 if origins is None or len(origins) != width:
                     raise ValueError("input scratch store is not an unchanged input copy or zero padding")
@@ -187,10 +248,10 @@ def _prove(function, activity, context, *, target):
                         for a in args
                     ]
                     klass, decoded = semantics.decode_instruction(parsed[0], *operands, isa)
-                    if klass in {"MVIN2", "MVIN3"}:
+                    if klass in {"MVIN2", "MVIN3"} and load_states is None:
                         raise ValueError("input preparation does not prove independent secondary load-port state")
                     pointer_args = [a for a in args if isinstance(a, _Pointer)]
-                    if klass in {"MVIN", "MVOUT"} and not pointer_args:
+                    if klass in {"MVIN", "MVIN2", "MVIN3", "MVOUT"} and not pointer_args:
                         raise ValueError("DRAM transfer has no bound declared pointer")
                     if klass == "UNKNOWN":
                         raise ValueError("input preparation contains undecoded command")
@@ -203,6 +264,12 @@ def _prove(function, activity, context, *, target):
                         ):
                             raise ValueError("pointer command lacks decoded DRAM operand role")
                         if klass in {"MVIN", "MVIN2", "MVIN3"}:
+                            if load_states is not None and decoded.get("is_acc_addr") is not False:
+                                raise ValueError("input transfer byte width has no selected scratchpad address proof")
+                            port = load_states.port(klass) if load_states is not None else 0
+                            if port is None:
+                                raise ValueError("input transfer has no source-selected load port")
+                            load_stride = load_strides.get(port)
                             if pointer.root == 2:
                                 raise ValueError("CPU output used as accelerator input")
                             rows, cols = decoded.get("rows"), decoded.get("cols")
@@ -216,7 +283,7 @@ def _prove(function, activity, context, *, target):
                                 for row_index in range(rows):
                                     for column in range(cols):
                                         key = pointer.root, pointer.offset + row_index * load_stride + column
-                                        if key not in memory:
+                                        if pointer.root not in readonly and key not in memory:
                                             raise ValueError("accelerator consumes uninitialized input scratch")
                                         consumed.add(key)
                             if pointer.root != 1:
@@ -238,9 +305,13 @@ def _prove(function, activity, context, *, target):
                             raise ValueError("input scratch/output pointer escapes decoded transfer role")
                     elif klass == "CONFIG_LD":
                         state = decoded.get("state_id")
-                        if type(state) is not int or state != 0:
+                        if type(state) is not int or state not in (load_states.states if load_states else (0,)):
                             raise ValueError("input preparation does not prove nonzero load-port state")
-                        load_stride = decoded.get("stride")
+                        stride = decoded.get("stride")
+                        if (type(stride) is not int or stride < 0
+                                or (load_states is not None and stride >= 1 << load_states.stride_width)):
+                            raise ValueError("input load stride differs from its actual source storage width")
+                        load_strides[state] = stride
                     elif klass == "CONFIG_ST":
                         store_stride = decoded.get("out_stride_bytes")
             elif name in {"llvm.br", "llvm.cond_br"}:
@@ -273,5 +344,6 @@ def _prove(function, activity, context, *, target):
         "payload_bytes": payload,
         "input_transfers": transfers,
         "scratch_input_transfers": scratch_transfers,
+        "readonly_zero_globals": len(readonly),
         "scope": "bounded input address/copy only; no tensor values evaluated",
     }

@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from merlin.perf.host_cfg_activity import analyze_host_cfg_activity
 from merlin.targetgen.rocc.decode import _parse_module
 from merlin.verify.conv_input_preparation import prove_input_preparation
@@ -123,3 +125,208 @@ def test_observer_absence_width_and_unknown_state_refuse(monkeypatch):
 
     for patch in (narrow, unknown_state):
         assert _proof(monkeypatch, copy, observer_patch=patch)["status"] == "unproven"
+
+
+ZERO_GLOBAL = """llvm.mlir.global private constant @padding(dense<0> : tensor<3xi8>)
+ {addr_space = 0 : i32, alignment = 8 : i64} : !llvm.array<3 x i8>"""
+
+
+def _zero_global(text, declaration=ZERO_GLOBAL):
+    return (
+        text.replace("builtin.module {", "builtin.module {\n" + declaration)
+        .replace(
+            "%scratch = llvm.alloca %one x i8 : (i64) -> !llvm.ptr",
+            "%scratch = llvm.mlir.addressof @padding : !llvm.ptr",
+        )
+        .replace("%value = llvm.load %input : !llvm.ptr -> i8", "")
+    )
+
+
+@pytest.mark.parametrize("offset,linkage", [(0, "private"), (2, "internal")])
+def test_constant_zero_global_proves_only_bounded_address_dma(monkeypatch, offset, linkage):
+    def transform(text):
+        return _zero_global(text, ZERO_GLOBAL.replace("private", linkage)).replace(
+            "%address = llvm.ptrtoint %scratch",
+            f"%offset = llvm.getelementptr %scratch[{offset}] : (!llvm.ptr) -> !llvm.ptr, i8\n"
+            "%address = llvm.ptrtoint %offset",
+        )
+
+    proof = _proof(monkeypatch, "", transform)
+    assert proof["status"] == "proven"
+    assert proof["readonly_zero_globals"] == 1
+    assert proof["input_transfers"] == 1
+    assert proof["scratch_input_transfers"] == 1
+    assert proof["payload_bytes"] == 0
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "",
+        ZERO_GLOBAL.replace(" constant", ""),
+        ZERO_GLOBAL.replace("dense<0>", "dense<1>"),
+        ZERO_GLOBAL.replace("dense<0> : tensor<3xi8>", ""),
+        ZERO_GLOBAL.replace("!llvm.array<3 x i8>", "!llvm.array<4 x i8>"),
+        ZERO_GLOBAL.replace("tensor<3xi8>", "tensor<3xi16>"),
+        ZERO_GLOBAL.replace("addr_space = 0", "addr_space = 1"),
+        ZERO_GLOBAL.replace("private", "external"),
+        ZERO_GLOBAL.replace("private", "linkonce_odr"),
+        ZERO_GLOBAL.replace("private", "weak_odr"),
+        ZERO_GLOBAL + "\n" + ZERO_GLOBAL,
+    ],
+)
+def test_unknown_mutable_nonzero_and_mismatched_globals_refuse(monkeypatch, declaration):
+    proof = _proof(monkeypatch, "", lambda text: _zero_global(text, declaration))
+    assert proof["status"] == "unproven"
+
+
+@pytest.mark.parametrize(
+    "effect",
+    [
+        "llvm.store %one, %scratch : i64, !llvm.ptr",
+        "%byte = llvm.mlir.constant(0) : i8\n llvm.store %byte, %scratch : i8, !llvm.ptr",
+        "llvm.call @escape(%scratch) : (!llvm.ptr) -> ()",
+        '"llvm.inline_asm"(%scratch) <{asm_string = "fence", constraints = "r,~{memory}",'
+        "has_side_effects}> : (!llvm.ptr) -> ()",
+        "%outside = llvm.getelementptr %scratch[3] : (!llvm.ptr) -> !llvm.ptr, i8\n"
+        "%bad = llvm.ptrtoint %outside : !llvm.ptr to i64\n"
+        '"llvm.inline_asm"(%bad, %one) <{asm_string = ".insn r 0x7b, 0x3, 0x2, x0, $0, $1",'
+        'constraints = "r,r,~{memory}", has_side_effects}> : (i64, i64) -> ()',
+    ],
+)
+def test_global_writes_escapes_and_outside_dma_refuse(monkeypatch, effect):
+    assert _proof(monkeypatch, effect, _zero_global)["status"] == "unproven"
+
+
+def test_zero_global_cannot_escape_through_another_function(monkeypatch):
+    def transform(text):
+        return _zero_global(text).replace(
+            "builtin.module {",
+            """builtin.module {
+ llvm.func @other() {
+  %escaped = llvm.mlir.addressof @padding : !llvm.ptr
+  llvm.return
+ }
+""",
+        )
+
+    assert _proof(monkeypatch, "", transform)["status"] == "unproven"
+
+
+def test_zero_global_unknown_module_alias_refuses(monkeypatch):
+    def transform(text):
+        return _zero_global(text).replace(
+            "builtin.module {", 'builtin.module {\n "unknown.alias"() {referenced = @padding} : () -> ()'
+        )
+
+    assert _proof(monkeypatch, "", transform)["status"] == "unproven"
+
+
+def _selected_two_port_observer(observer):
+    from merlin.targetgen.rtl.firrtl_load_states import LoadStateMapping
+
+    observer.load_states = LoadStateMapping(
+        "selected.fir", "0" * 64, "CONFIG_LD", (("MVIN", 0), ("MVIN2", 1)), (0, 1), 5
+    )
+    original = observer.decode_instruction
+
+    def decode(*args):
+        klass, fields = original(*args)
+        if klass == "CONFIG_LD":
+            fields["stride"] = args[2]["raw"]
+        if klass in {"MVIN", "MVIN2"}:
+            fields["rows"] = 2
+            fields["is_acc_addr"] = False
+        return klass, fields
+
+    observer.decode_instruction = decode
+    return observer
+
+
+def _two_port_input(text):
+    return (
+        text.replace("%one =", "%two = llvm.mlir.constant(2) : i64\n %one =")
+        .replace("llvm.alloca %one", "llvm.alloca %two")
+        .replace('"llvm.inline_asm"(%one, %one)', '"llvm.inline_asm"(%nine, %one)')
+        .replace(
+            '"llvm.inline_asm"(%address, %one)',
+            '"llvm.inline_asm"(%one, %two) <{asm_string = ".insn r 0x7b, 0x3, 0x0, x0, $0, $1",'
+            'constraints = "r,r,~{memory}", has_side_effects}> : (i64, i64) -> ()\n'
+            '"llvm.inline_asm"(%address, %one)',
+        )
+        .replace("0x2, x0", "0x1, x0")
+    )
+
+
+TWO_PORT_COPY = """%nine = llvm.mlir.constant(9) : i64
+ %zero = llvm.mlir.constant(0) : i8
+ %padding = llvm.getelementptr %scratch[1] : (!llvm.ptr) -> !llvm.ptr, i8
+ llvm.store %zero, %padding : i8, !llvm.ptr
+ llvm.store %value, %scratch : i8, !llvm.ptr"""
+
+
+def test_source_selected_ports_retain_separate_stride_configurations(monkeypatch):
+    proof = _proof(monkeypatch, TWO_PORT_COPY, _two_port_input, _selected_two_port_observer)
+    assert proof["status"] == "proven"
+    assert proof["scratch_input_transfers"] == 1
+
+
+@pytest.mark.parametrize(
+    "change", ["unconfigured", "outside_state", "stride_overflow", "foreign_mapping", "accumulator", "unknown_storage"]
+)
+def test_unconfigured_outside_and_truncated_selected_ports_refuse(monkeypatch, change):
+    def transform(text):
+        text = _two_port_input(text)
+        if change == "unconfigured":
+            text = text.replace('"llvm.inline_asm"(%nine, %one)', '"llvm.inline_asm"(%one, %one)')
+        elif change == "outside_state":
+            text = text.replace("constant(9)", "constant(25)")
+        elif change == "stride_overflow":
+            text = text.replace("constant(2)", "constant(32)")
+        return text
+
+    def patch(observer):
+        observer = _selected_two_port_observer(observer)
+        if change == "foreign_mapping":
+            observer.load_states = {"states": (0, 1), "stride_width": 64}
+        if change in {"accumulator", "unknown_storage"}:
+            original = observer.decode_instruction
+
+            def decode(*args):
+                klass, fields = original(*args)
+                if klass in {"MVIN", "MVIN2"}:
+                    fields["is_acc_addr"] = True if change == "accumulator" else None
+                return klass, fields
+
+            observer.decode_instruction = decode
+        return observer
+
+    assert _proof(monkeypatch, TWO_PORT_COPY, transform, patch)["status"] == "unproven"
+
+
+@pytest.mark.parametrize("klass,funct", [("MVIN2", 1), ("MVIN3", 14)])
+def test_known_secondary_port_raw_address_refuses_after_a_valid_transfer(monkeypatch, klass, funct):
+    from dataclasses import replace
+
+    def transform(text):
+        return _two_port_input(text).replace(
+            "llvm.return",
+            f'"llvm.inline_asm"(%one, %one) <{{asm_string = ".insn r 0x7b, 0x3, {funct}, x0, $0, $1",'
+            'constraints = "r,r,~{memory}", has_side_effects}> : (i64, i64) -> ()\n llvm.return',
+        )
+
+    def patch(observer):
+        observer = _selected_two_port_observer(observer)
+        observer.load_states = replace(observer.load_states, ports=(*observer.load_states.ports, ("MVIN3", 1)))
+        original = observer.decode_instruction
+
+        def decode(code, *args):
+            decoded_class, fields = original(code, *args)
+            return (klass, fields) if code == funct else (decoded_class, fields)
+
+        observer.decode_instruction = decode
+        return observer
+
+    proof = _proof(monkeypatch, TWO_PORT_COPY, transform, patch)
+    assert proof["status"] == "unproven"
+    assert proof["detail"] == "DRAM transfer has no bound declared pointer"

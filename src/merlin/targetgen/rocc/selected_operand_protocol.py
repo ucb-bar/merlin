@@ -125,8 +125,10 @@ def bind_original_operand_selection(original, *, original_facts_bytes, selection
     if type(selection_bytes) is not bytes or hashlib.sha256(selection_bytes).hexdigest() != expected_selection_sha256:
         raise ValueError("operand sidecar differs from its explicitly selected byte pin")
     selected = _json(selection_bytes, 2 * 1024 * 1024)
-    if (type(selected) is not dict or set(selected) != {
+    required = {
             "schema", "target", "original_facts_sha256", "source_pins", "layouts", "protocol"}
+    if (type(selected) is not dict or not required <= set(selected)
+            or set(selected) - required - {"load_state_selection"}
             or selected["schema"] != SCHEMA or selected["target"] != original._target):
         raise ValueError("operand sidecar is not a closed selection for the original target")
     original_facts = _json(original_facts_bytes, 16 * 1024 * 1024)
@@ -142,6 +144,13 @@ def bind_original_operand_selection(original, *, original_facts_bytes, selection
     observed_facts = apply_selected_layouts(original_facts, selected["layouts"])
     observer = BoundOperandObserver(target=original._target, protocol=selected["protocol"], facts=observed_facts,
                                     raw_isa=raw_isa, word_bits=width)
+    if "load_state_selection" in selected:
+        from merlin.targetgen.rtl.firrtl_load_states import derive_load_state_mapping
+
+        mapping = derive_load_state_mapping(selected["layouts"], selected["load_state_selection"],
+                                            observer.isa_constants(original._target))
+        observer = BoundOperandObserver(target=original._target, protocol=selected["protocol"], facts=observed_facts,
+                                        raw_isa=raw_isa, word_bits=width, load_states=mapping)
     _pins(selected["source_pins"])
     verify_selected_layout_source(selected["layouts"])
     if (original._facts != original_facts or original._target != selected["target"] or original._width != width

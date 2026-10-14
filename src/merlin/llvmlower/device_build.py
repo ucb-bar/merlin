@@ -536,6 +536,7 @@ def _run_build_tool(argv: Sequence[str], *, timeout: int) -> subprocess.Complete
 
 
 def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output, metrics=None, expected_input_sha256=None):
+    """Return a process, closed file-identity pin, and separate wall duration."""
     from merlin.common import invocation_record
     from merlin.common.cpu_pool import shared_compute_pool
 
@@ -564,8 +565,7 @@ def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output, met
         "path": str(path),
         "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "size_bytes": path.stat().st_size,
-        "elapsed_s": observed.document["tool_elapsed_s"],
-    }
+    }, observed.document["tool_elapsed_s"]
 
 
 def kernel_entry(
@@ -771,7 +771,7 @@ def build_device_objects(
         return {"unique_artifacts": compiler.completed_count(), "emitted_symbols": len(kernels)}
 
     def compile_artifact(art, ll, raw, translate_command, compile_command):
-        t, translated_invocation = _observed_build_tool(
+        t, translated_invocation, translation_s = _observed_build_tool(
             translate_command, timeout=timeout, directory=work,
             stage="device_llvm_translation", inputs=(art,), output=ll,
         )
@@ -781,7 +781,7 @@ def build_device_objects(
             report = inspect_device_ir(ll, budget)
         except (OSError, ValueError) as error:
             return ArtifactBuild(refusal=f"device_ir_analysis: {type(error).__name__}: {error}")
-        report["stages"] = {"translation_s": translated_invocation["elapsed_s"],
+        report["stages"] = {"translation_s": translation_s,
                             "analysis_s": report["analysis"]["elapsed_s"], "compilation_s": None}
         report["compiler_started"] = False
         report_path = ll.with_suffix(".build-cost.json")
@@ -791,7 +791,7 @@ def build_device_objects(
                                  refusal=f"{report['decision']['reason']}: {report['decision']['exceeded']}; "
                                          f"retain counted loops; report={report_path.name}")
         try:
-            c, compiled_invocation = _observed_build_tool(
+            c, compiled_invocation, compilation_s = _observed_build_tool(
                 compile_command, timeout=timeout, directory=work,
                 stage="device_object_compilation", inputs=(ll,), output=raw, metrics=report,
                 expected_input_sha256=report["analysis"]["sha256"],
@@ -802,7 +802,7 @@ def build_device_objects(
             return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
                                  refusal=str(error))
         report["compiler_started"] = True
-        report["stages"]["compilation_s"] = compiled_invocation["elapsed_s"]
+        report["stages"]["compilation_s"] = compilation_s
         report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
         if c.returncode != 0:
             return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
@@ -844,7 +844,7 @@ def build_device_objects(
         if oc is None:
             skipped.append((sym, "no objcopy available to give this kernel a distinct symbol"))
             return
-        rn, renamed_invocation = _observed_build_tool(
+        rn, renamed_invocation, _rename_s = _observed_build_tool(
             [oc, f"--redefine-sym={abi.symbol}={want}", str(raw), str(obj)],
             timeout=timeout, directory=work, stage="device_object_symbol_rename",
             inputs=(raw,), output=obj,
@@ -1000,7 +1000,7 @@ def build_device_objects(
     shim_c = work / "device_shim.c"
     shim_c.write_text(unit.text, encoding="utf-8")
     shim_o = work / "device_shim.o"
-    s, _shim_invocation = _observed_build_tool(
+    s, _shim_invocation, _shim_s = _observed_build_tool(
         [clang(), *_flags(codegen_target, cflags), "-c", str(shim_c), "-o", str(shim_o)],
         timeout=timeout, directory=work, stage="device_shim_compilation", inputs=(shim_c,), output=shim_o,
     )

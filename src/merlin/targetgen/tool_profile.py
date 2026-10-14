@@ -141,6 +141,7 @@ AUTOMATIC_CHECKER_MODULES_V3 = (
     "merlin.targetgen.rocc.normalized_operands",
     "merlin.targetgen.rocc.selected_operand_protocol",
     "merlin.targetgen.rtl.firrtl_operand_slices",
+    "merlin.targetgen.rtl.firrtl_load_states",
 )
 AUTOMATIC_CHECKER_DATA_V3 = (
     *AUTOMATIC_CHECKER_DATA,

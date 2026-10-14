@@ -116,7 +116,7 @@ def test_device_custody_reopens_real_translation_compile_and_symbol_only_rename(
         ),
     ]
     for role, stage, command, source, output in commands:
-        run, custody[role] = device_build._observed_build_tool(
+        run, custody[role], _elapsed_s = device_build._observed_build_tool(
             command, timeout=30, directory=tmp_path, stage=stage, inputs=(source,), output=output
         )
         assert run.returncode == 0, run.stderr

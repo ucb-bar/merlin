@@ -570,9 +570,13 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     from . import public_owned_host_selection
     os.environ.pop(public_owned_host_selection.ENV, None)
     if a.private_full_model_spec is not None and a.instruction_selection is not None:
+        from merlin.compile.model_execution_inputs import file_sha256
+
         public_host_selection = public_owned_host_selection.prepare(
             a.private_full_model_spec, a.instruction_selection, target=context.target,
             output=run_dir.absolute() / "public_owned_host_build_selection.json",
+            selected_facts=a.rtl_facts,
+            selected_facts_sha256=file_sha256(a.rtl_facts) if a.rtl_facts is not None else None,
         )
         os.environ[public_owned_host_selection.ENV] = json.dumps(public_host_selection, sort_keys=True)
 
