@@ -3,7 +3,7 @@ title: "Design: external kernels — linking model2MLIR prov.kernel calls into t
 kind: design
 status: current
 owner: runtime
-last_verified: 2026-10-13
+last_verified: 2026-10-14
 related: [triton_frontend, model2mlir, rvv_e2e, llvm_toolchain]
 code_refs:
   - src/merlin/llvmlower/kernel_table.py
@@ -109,7 +109,7 @@ and the shim trapped (`mcause=2` at its `unimp`). Strides are now written at `si
 by `merlin/tests/runtime/test_descriptor_layout.py`. `memrefCopy` reads the same positions, so it was
 exposed too.
 
-The `kernels/ceiling_drivers/*.c` microbenchmark drivers still use the field-wise pattern.
+The `kernels/ceiling_drivers/*.c` microbenchmark drivers still use the field-wise pattern. (`main` fixed `merlin_model.c` independently, with the same packing.)
 
 ## The staged (dialect) path
 
@@ -126,13 +126,14 @@ Until a backend dialect claims an external kernel, the staged passes treat the c
 ## Measured (spike rv64gcv, VLEN 128)
 
 `mlp_basic` (plain linalg) and `mlp_basic_triton` (fc1+relu+fc2+relu as the linked kernel), compared
-with the PyTorch eager golden. The report lives under `out/artifacts/measurements/spike_rv64gcv/mlp_basic_triton/`.
+with the PyTorch eager golden, measured on `main` (`6f1acb6e6`) plus this work. Reports live under
+`out/artifacts/measurements/spike_rv64gcv/mlp_basic_triton/`.
 
 | variant | max abs err vs torch | spike `cycles` | `.text` | kernel body size |
 |---|---|---|---|---|
-| mlp_basic (no kernel) | 4.5e-8 | 18,824 | 9.1 KB | — |
-| mlp_basic_triton, `llvm_ir` body | 3.0e-8 | 44,356 | 148 KB | 141 KB |
-| mlp_basic_triton, `llvm_mlir` body | 3.0e-8 | 15,556 | 45 KB | 37.6 KB |
+| mlp_basic (no kernel) | 4.5e-8 | 16,180 | 10.3 KB | — |
+| mlp_basic_triton, `llvm_ir` body | 3.0e-8 | 44,358 | 150 KB | 141 KB |
+| mlp_basic_triton, `llvm_mlir` body | 3.0e-8 | 15,558 | 46 KB | 37.6 KB |
 
 On spike, the `cycles` counter counts retired instructions, not timing. The two body forms produce
 bit-identical outputs.
@@ -144,12 +145,37 @@ and 2.9× faster. For a CPU target, prefer the pre-optimization `llvm_mlir` expo
 
 ## Limits and next steps
 
-- One result per kernel, static shapes only, and no `prov.kernel_args` passing. Each is refused by
-  name today.
-- Output-buffer (`mutates_args`) kernels. m2m rejects them at import; the planned destination-passing
-  design is in model2MLIR's notes.
-- `runtime.kernel_spike` cannot run these models: its harness links no allocator, and kernel-free
-  captures fail on `malloc` there too.
+Each gap below is refused by name today. None of them produces a silently wrong answer.
+
+- **Kernels that write into an argument** (`mutates_args`, e.g. a Triton kernel that stores into an
+  `out` tensor the caller passes in). `torch.export` wraps such an op in
+  `auto_functionalized_v2(op, **kwargs, _<arg>_base_index, _all_bases=[...])`, and model2MLIR
+  currently rejects a registered one at import.
+  - Planned model2MLIR side:
+    1. rebuild the schema argument list, taking the mutated argument from `_all_bases[...]` (v2) or
+       `kwargs` (v1);
+    2. refuse view arguments (`_<arg>_size`/`_stride`);
+    3. emit the call in destination-passing style: the buffer's initial value is an operand, and the
+       results are the op's own returns followed by one new value per mutated argument, tagged
+       `prov.kernel_mutated` and `prov.kernel_tied` (the operand each result aliases);
+    4. remap `getitem(af, k)` to those results.
+    5. Before building it, probe the slot layout for ops that both return tensors and mutate.
+  - merlin side: the shim must stop allocating tied results. It should copy the input into a fresh
+    buffer (or bufferize in place when `bufferization.access = "read-write"` allows it) and pass that
+    buffer to the body, and `AbiParam` needs a `tied` kind.
+- **Multiple results** per kernel. The C-interface result is then a struct of descriptors.
+- **`prov.kernel_args`** (non-tensor arguments such as `alpha` or block sizes). This needs an
+  `AbiParam` kind that reads a call-site attribute; the shim is per symbol, and m2m keys symbols by
+  shape only.
+- **Dynamic shapes**, and more than one **specialization per form**. A triton-cpu export bakes K, H1,
+  H2 and BLOCK_M, so the same qualname at another hidden size needs another body. The table holds one
+  specialization per form, so bodies should be keyed by `(form, specialization)`.
+- **Body export is not reproducible in this repo.** The triton-cpu exports came from an external
+  `ttir2linalg` checkout, and both files embed its absolute paths in debug locations.
+- `runtime.kernel_spike` cannot run these models (no allocator; kernel-free captures fail on
+  `malloc` there too). The host dispatch runtimes refuse external kernels, though they could link a
+  portable body into the host `.so`.
 - merlin's own Triton frontend ([triton_frontend](triton_frontend.md)) could produce a `linalg` body
   from the same `@triton.jit` source and inline it before lowering, instead of linking LLVM IR. That
-  would be a third body form on the same table.
+  would be a third body form on the same table. `_mlp2_kernel` needs five frontend features first:
+  transposed loads, `expand_dims` on loads, `arith.maxnumf`, `tt.dot` at grid > 1, and a runtime `M`.
