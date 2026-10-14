@@ -68,8 +68,8 @@ def main(argv: list[str] | None = None) -> int:
     for w in WORKLOADS:
         dst = args.out / w
         dst.mkdir(parents=True, exist_ok=True)
-        # model2MLIR records absolute paths (prov.weights_file, prov.kernel_source); a tracked fixture
-        # must not name a personal directory, so they become model2MLIR-checkout-relative.
+        # model2MLIR records an absolute prov.weights_file; a tracked fixture must not name a personal
+        # directory, so it becomes model2MLIR-checkout-relative.
         text = (src / w / f"{w}.mlir").read_text(encoding="utf-8").replace(root, "")
         if root.rstrip("/") in text:
             print(f"refusing: {w}.mlir still names {root!r} after relativizing", file=sys.stderr)

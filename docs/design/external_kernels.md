@@ -26,7 +26,7 @@ language; nothing runs on a GPU, and the body that gets linked is CPU code (rv64
 ```mlir
 func.func @forward(...) {
   %7 = func.call @triton_exp__fused_mlp2(%6, %0, %1, %2, %3) {prov.kernel = "triton_exp::fused_mlp2",
-         prov.kernel_operands = ["x", "w1", "b1", "w2", "b2"], prov.kernel_args = {}, ...}
+         prov.kernel_operands = ["x", "w1", "b1", "w2", "b2"], ...}
        : (tensor<4x16xf32>, ...) -> tensor<4x32xf32>
   ...
 }
@@ -34,7 +34,10 @@ func.func private @triton_exp__fused_mlp2(...) -> tensor<4x32xf32> attributes {p
 ```
 
 - `prov.kernel` is the identity. The symbol gets a `_1`, `_2`, … suffix per new shape, so it is never matched.
-- Tensor operands come in the op schema's order, named by `prov.kernel_operands`. Non-tensor arguments are in `prov.kernel_args`.
+- Tensor operands come in the op schema's order, named by `prov.kernel_operands`. Non-tensor arguments are in
+  `prov.kernel_args`, which is absent when the kernel has none.
+- That is the whole contract: m2m records nothing about where a kernel's code lives or what language it is in.
+  Those facts belong to merlin's kernel table.
 - The declaration has no body, and `@forward` is the only function with one.
 
 ## The flow
@@ -59,8 +62,8 @@ change. `spike_model.build(..., kernel_form=)` selects the body form and reports
 
 ## The kernel table (`llvmlower/kernel_table.py`)
 
-Keyed by `prov.kernel`, mirroring m2m's `KernelSpec`. `test_table_keys_match_m2m_registry` keeps the
-two tables in step. Each entry lists one or more `KernelBody`s:
+Keyed by `prov.kernel`, the same qualname as m2m's `KernelSpec`. `test_table_keys_match_m2m_registry` keeps
+the two tables in step. Each entry lists one or more `KernelBody`s:
 
 | field | meaning |
 |---|---|

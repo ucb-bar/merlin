@@ -7,8 +7,9 @@ for. This module is only the DATA — which body, in which file, called how. ``k
 
 **Keyed by ``prov.kernel``, never by symbol.** m2m suffixes the declaration's symbol (``_1``, ``_2``, …)
 each time the same kernel appears at a new shape, so the symbol is per-shape and the attribute is the
-identity. Entries mirror m2m's ``KernelSpec(qualname, backend, symbol, description)`` so the two tables
-read side by side; ``test_table_keys_match_m2m_registry`` keeps them in step.
+identity. Entries are keyed by the same qualname as m2m's ``KernelSpec``, and
+``test_table_keys_match_m2m_registry`` keeps the two tables in step. m2m emits only the identity and the
+operand binding; everything about the implementation (language, bodies, ABI) is recorded here.
 
 **``backend`` is the authoring language, not the execution target.** Triton is how the kernel was
 written; nothing here runs on a GPU. A body is LLVM IR (or its MLIR ``llvm`` dialect form) for a CPU.
