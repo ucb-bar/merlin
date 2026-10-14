@@ -599,6 +599,7 @@ def resolve_plan(
                 "MERLIN_SPIKE_MAX_SLOTS",
                 "MERLIN_OPERATOR_GRADE_PROCESSES",
                 "MERLIN_PUBLIC_SCALE_BATCH_WORKERS",
+                "MERLIN_SELFCHECK_BROKER_JOBS",
                 "MERLIN_SNAPSHOT_LEASE_CACHE",
                 "MERLIN_SIMULATION_CERT_CACHE",
                 "MERLIN_GSIM_SLOT_ROOT",
