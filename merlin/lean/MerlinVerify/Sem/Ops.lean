@@ -8,6 +8,7 @@ import MerlinVerify.Sem.Ops.Linalg
 import MerlinVerify.Sem.Ops.LinalgNamed
 import MerlinVerify.Sem.Ops.Tensor
 import MerlinVerify.Sem.Ops.Func
+import MerlinVerify.Spec.Annotations
 
 namespace MerlinVerify.Sem.Ops
 
@@ -42,11 +43,44 @@ def calleeOf (op : Op) : Option String :=
 def restrictCall (callee : Option String) (call : CallSem) : CallSem := fun name args =>
   if callee = some name then call name args else .stuck s!"op may not call @{name}"
 
-/-- Op meaning: dispatch on the blinded op with `call` restricted to its callee. By construction
-the meaning cannot depend on SSA identifiers (`opSem_blind`) or on functions the op does not name
-(`opSem_call_local`). -/
+/-- Attributes (discardable or inherent) each op's semantics reads. Anything else on an op makes it
+`stuck` unless `Spec.Annotations.semanticsFree` says it cannot affect the result: an attribute the
+semantics does not read may change MLIR's meaning of the op, so ignoring it would be unsound. -/
+def interpretedAttrs (name : String) : List String :=
+  match name with
+  | "arith.constant" => ["value"]
+  | "arith.cmpi" | "arith.cmpf" => ["predicate", "fastmath"]
+  | "arith.divsi" | "arith.divui" | "arith.shrsi" | "arith.shrui" => ["isExact"]
+  | "arith.extui" | "arith.uitofp" | "arith.index_castui" => ["nonNeg"]
+  | "arith.addi" | "arith.subi" | "arith.muli" | "arith.shli" | "arith.trunci" => ["overflowFlags"]
+  | "arith.addf" | "arith.subf" | "arith.mulf" | "arith.divf" | "arith.truncf" =>
+    ["fastmath", "roundingmode"]
+  | "linalg.generic" => ["indexing_maps", "iterator_types", "operandSegmentSizes"]
+  | "linalg.matmul" | "linalg.batch_matmul" => ["indexing_maps", "operandSegmentSizes", "cast"]
+  | "linalg.quantized_matmul" | "linalg.copy" | "linalg.fill" => ["operandSegmentSizes"]
+  | "linalg.index" => ["dim"]
+  | "linalg.transpose" => ["permutation"]
+  | "linalg.broadcast" | "linalg.reduce" => ["dimensions", "operandSegmentSizes"]
+  | "tensor.extract_slice" | "tensor.insert_slice" =>
+    ["static_offsets", "static_sizes", "static_strides", "operandSegmentSizes"]
+  | "tensor.collapse_shape" => ["reassociation"]
+  | "tensor.expand_shape" => ["reassociation", "static_output_shape"]
+  | "tensor.concat" => ["dim"]
+  | "func.call" => ["callee"]
+  | n => if n.startsWith "math." || n.startsWith "arith." then ["fastmath"] else []
+
+/-- The first attribute of `op` that its semantics neither reads nor may ignore, if any. -/
+def unmodelledAttr? (op : Op) : Option String :=
+  (op.props ++ op.attrs).findSome? fun (k, _) =>
+    if (interpretedAttrs op.name).contains k || Spec.Annotations.semanticsFree k then none else some k
+
+/-- Op meaning: dispatch on the blinded op with `call` restricted to its callee, after refusing any
+attribute the semantics would otherwise ignore. By construction the meaning cannot depend on SSA
+identifiers (`opSem_blind`) or on functions the op does not name (`opSem_call_local`). -/
 def opSem : OpSem := fun ctx call op args regions =>
-  dispatch ctx (restrictCall (calleeOf op.blind) call) op.blind args regions
+  match unmodelledAttr? op.blind with
+  | some k => .stuck s!"{op.blind.name}: unmodelled attribute {k}"
+  | none => dispatch ctx (restrictCall (calleeOf op.blind) call) op.blind args regions
 
 theorem opSem_blind {ctx : Ctx} {call : CallSem} {op op' : Op} {args : List RVal}
     {regions : List (Ctx → RegionSem)} (h : op.blind = op'.blind) :
@@ -58,12 +92,15 @@ theorem opSem_call_local {ctx : Ctx} {call call' : CallSem} {op : Op} {args : Li
     (h : ∀ c, calleeOf op.blind = some c → call c = call' c) :
     opSem ctx call op args regions = opSem ctx call' op args regions := by
   simp only [opSem]
-  congr 1
-  funext name xs
-  simp only [restrictCall]
   split
-  · next hc => rw [h name hc]
   · rfl
+  · have : restrictCall (calleeOf op.blind) call = restrictCall (calleeOf op.blind) call' := by
+      funext name xs
+      simp only [restrictCall]
+      split
+      · next hc => rw [h name hc]
+      · rfl
+    rw [this]
 
 /-- The meaning of function `name` in module `m` under Merlin's op semantics. -/
 def denote (ctx : Ctx) (m : Module) (name : String) (args : List RVal) : Outcome (List RVal) :=

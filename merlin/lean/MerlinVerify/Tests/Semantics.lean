@@ -124,6 +124,11 @@ def i8v (x : Int) : RVal := .scalar (.some (.bits 8 (BitVec.ofInt 8 x)))
 #guard readInts (Sem.Ops.denote ctx (scalarModule "arith.shrui") "f" [i8v (-128), i8v 7]) == some [[some 1]]
 #guard readInts (Sem.Ops.denote ctx (scalarModule "arith.maxsi") "f" [i8v (-3), i8v 2]) == some [[some 2]]
 #guard readInts (Sem.Ops.denote ctx (scalarModule "arith.maxui") "f" [i8v (-3), i8v 2]) == some [[some (-3)]]
+-- An attribute the semantics does not read makes the op stuck (fail closed) ...
+#guard isStuck (Sem.Ops.denote ctx (scalarModule "arith.addi" [("frobnicate", .unit)]) "f" [i8v 1, i8v 2])
+-- ... unless the reviewed annotation spec declares it semantics-free.
+#guard readInts (Sem.Ops.denote ctx (scalarModule "arith.addi" [("prov.fqn", .str "layer1")]) "f"
+    [i8v 1, i8v 2]) == some [[some 3]]
 -- An op outside the semantics is stuck, never a value.
 #guard isStuck (Sem.Ops.denote ctx (scalarModule "arith.frobnicate") "f" [i8v 1, i8v 2])
 
