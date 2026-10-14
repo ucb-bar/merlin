@@ -139,7 +139,7 @@ b["kernels"]          # ['triton_exp::fused_mlp2:llvm_ir'] -- empty for an ordin
 r = spike_model.run(b["elf"], mem_bytes=b["mem_bytes"], vlen=b.get("vlen"))
 ```
 
-`merlin/tests/fixtures/mlp_basic_triton` (fc1+relu+fc2+relu as one triton-cpu kernel) and its kernel-free
+`merlin/tests/data/mlp_bundles/mlp_basic_triton` (fc1+relu+fc2+relu as one triton-cpu kernel) and its kernel-free
 twin `mlp_basic` both reproduce the PyTorch golden on spike. Limits today: one result per kernel, static
 shapes, no non-tensor `prov.kernel_args`, and the body must be portable LLVM IR (no arch intrinsics) or
 written for rv64. `runtime.kernel_spike` cannot run these — its harness links no allocator.

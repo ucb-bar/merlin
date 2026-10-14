@@ -12,8 +12,9 @@ import numpy as np
 
 from merlin.common.paths import merlin_dir
 
-MLP_BASIC = merlin_dir() / "tests" / "fixtures" / "mlp_basic"
-MLP_BASIC_TRITON = merlin_dir() / "tests" / "fixtures" / "mlp_basic_triton"
+BUNDLES = merlin_dir() / "tests" / "data" / "mlp_bundles"
+MLP_BASIC = BUNDLES / "mlp_basic"
+MLP_BASIC_TRITON = BUNDLES / "mlp_basic_triton"
 
 
 def forward_args(bundle) -> list[np.ndarray]:

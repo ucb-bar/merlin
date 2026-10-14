@@ -1,6 +1,6 @@
 """Linking an external kernel body into a lowered model (``llvmlower.kernel_link``).
 
-The input is a real model2MLIR capture, ``fixtures/mlp_basic_triton`` (``gen_mlp_kernel_fixtures.py``),
+The input is a real model2MLIR capture, ``data/mlp_bundles/mlp_basic_triton`` (``gen_mlp_kernel_fixtures.py``),
 whose fc1+relu+fc2+relu is one ``prov.kernel = "triton_exp::fused_mlp2"`` call to a private declaration.
 Two facts measured on that capture motivate the first half of these tests:
 
@@ -20,8 +20,8 @@ from merlin.common.paths import merlin_dir
 from merlin.llvmlower import kernel_link as KL
 from merlin.llvmlower import toolchain
 
-FIXTURE = merlin_dir() / "tests" / "fixtures" / "mlp_basic_triton"
-KERNEL_FREE = merlin_dir() / "tests" / "fixtures" / "mlp_basic"
+FIXTURE = merlin_dir() / "tests" / "data" / "mlp_bundles" / "mlp_basic_triton"
+KERNEL_FREE = merlin_dir() / "tests" / "data" / "mlp_bundles" / "mlp_basic"
 SYMBOL = "triton_exp__fused_mlp2"
 
 needs_toolchain = pytest.mark.skipif(not toolchain.available(), reason="clang-23 / model2MLIR venv not available")
