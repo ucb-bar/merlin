@@ -851,14 +851,14 @@ def build(
         )
     if output_sha256 and info.get("out_dt") != "f32":
         raise SpikeModelError("full-output SHA256 evidence requires f32 output")
-    # The region ahead of the weights blob holds code, the stack, and the harness's STATIC I/O
-    # storage -- and that last term is a property of the model, not a constant: `static float
-    # OUT[MERLIN_OUT_ELEMS]` is 125 MiB of .bss for a 128x256000 logits output, four times what a
-    # 64 MB reserve leaves. Deriving it from `static_io_bytes` is the difference between a correct
-    # map and a link that fails with "section .weights VMA overlaps section .bss", which names
-    # neither the reserve nor the buffer that outgrew it. Only the packed (`dram_bytes`) map uses
-    # this; the spike map puts the blob at 0x2_0000_0000 with nothing in between.
-    reserve = int(code_reserve) if code_reserve else _CODE_RESERVE_FIXED + int(info.get("static_io_bytes", 0))
+    # A board's code_reserve is a floor for the fixed runtime, not a complete bound on the
+    # generated image. The lowered model can put large constants in .rodata (the TinyLlama
+    # prefill object exceeds 1 GiB), and the C harness adds model-dependent static I/O.
+    # Reserve the actual model object's whole file size as a conservative upper bound on
+    # its loadable sections. The packed layout must account for all three before placing
+    # .weights; the historical unbounded Spike map does not use this reserve.
+    reserve_floor = int(code_reserve) if code_reserve is not None else _CODE_RESERVE_FIXED
+    reserve = reserve_floor + int(info.get("static_io_bytes", 0)) + (work / "model.o").stat().st_size
     lay = _layout(arena_bytes, info["weights_bytes"], dram_base=dram_base, dram_bytes=dram_bytes, code_reserve=reserve)
 
     # 3. weights.bin -> binary blob object (placed at the absolute weights address)

@@ -224,6 +224,9 @@ def test_actual_normal_build_closes_heap_and_stack_before_completion(tmp_path, p
         options.update(dram_bytes=4 << 20, code_reserve=1 << 20)
         baseline = spike_model.build(bundle, tmp_path / "unselected", **options)
         built = spike_model.build(bundle, work, execution_memory_map=binding, **options)
+        assert built["weights_base"] - 0x80000000 >= (
+            options["code_reserve"] + built["static_io_bytes"] + (work / "model.o").stat().st_size
+        )
         assert built["execution_memory_admission"]["status"] == "pass"
         uses = built["execution_memory_admission"]["runtime_reservations"]
         assert {use["name"] for use in uses} == {"runtime-allocator", "runtime-stack"}
