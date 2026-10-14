@@ -19,6 +19,8 @@ from pathlib import Path
 _TRANSPORTS = {"spike": "htif_signature_v1", "gsim": "gsim_coherent_dump_v1"}
 _PACKET_POLICY = "coherent_packet_v1"
 _PACKET_TRANSPORT = "gsim_coherent_packet_v1"
+_PACKET_V2_POLICY = "coherent_packet_v2"
+_PACKET_V2_TRANSPORT = "gsim_coherent_packet_v2"
 _SCHEMA = "oracle_memory_readback_v1"
 _REGION_KEYS = frozenset({"base", "bytes"})
 _REQUEST_KEYS = frozenset({"schema", "transport", "output_path", "regions", "elf_sha256", "regions_path"})
@@ -33,6 +35,8 @@ def memory_readback_transport(simulator: str, *, policy_transport: str | None = 
     """The transport this backend implements for ``simulator`` (and the optional policy), or None."""
     if policy_transport == _PACKET_POLICY:
         return {"spike": _TRANSPORTS["spike"], "gsim": _PACKET_TRANSPORT}.get(simulator)
+    if policy_transport == _PACKET_V2_POLICY:
+        return {"spike": _TRANSPORTS["spike"], "gsim": _PACKET_V2_TRANSPORT}.get(simulator)
     if policy_transport is not None:
         return None
     return _TRANSPORTS.get(simulator)
@@ -147,7 +151,7 @@ def prepare_memory_readback(elf: str | Path, simulator: str, request: Mapping[st
         raise ValueError("memory readback request has an unknown or missing field")
     if simulator not in _TRANSPORTS:
         raise ValueError("memory readback simulator is unsupported")
-    packet = simulator == "gsim" and request["transport"] == _PACKET_TRANSPORT
+    packet = simulator == "gsim" and request["transport"] in (_PACKET_TRANSPORT, _PACKET_V2_TRANSPORT)
     if request["schema"] != _SCHEMA or (request["transport"] != memory_readback_transport(simulator) and not packet):
         raise ValueError("memory readback transport does not match the simulator")
     expected_sha = request["elf_sha256"]

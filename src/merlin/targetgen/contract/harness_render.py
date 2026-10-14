@@ -750,6 +750,7 @@ class _Readout:
         from merlin.targetgen.contract.readback_policy import (
             COHERENT_DUMP_V1,
             COHERENT_PACKET_V1,
+            COHERENT_PACKET_V2,
             FULL_VALUES_B64,
             FULL_VALUES_BIN,
             OUT_DIGEST_V1,
@@ -762,8 +763,9 @@ class _Readout:
         self.outputs = [b for b in buffers if b.kind == "output"]
         self.b64 = policy is not None and policy.transport == FULL_VALUES_B64
         self.binary = policy is not None and policy.transport == FULL_VALUES_BIN
-        self.packet = policy is not None and policy.transport == COHERENT_PACKET_V1
-        self.coherent = policy is not None and policy.transport in (COHERENT_DUMP_V1, COHERENT_PACKET_V1)
+        self.packet_v2 = policy is not None and policy.transport == COHERENT_PACKET_V2
+        self.packet = policy is not None and policy.transport in (COHERENT_PACKET_V1, COHERENT_PACKET_V2)
+        self.coherent = policy is not None and policy.transport in (COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2)
         self.digested = False
         self.packet_expected: list = []
         self.packet_capacity = None
@@ -789,9 +791,13 @@ class _Readout:
             self._lines += self._one(buf, rows, cols, container, element, contiguous)
         if self.packet:
             from merlin.runtime.out_packet import out_bin_packet_capacity
+            from merlin.runtime.out_packet_v2 import out_packet_v2_capacity
 
             try:
-                self.packet_capacity = out_bin_packet_capacity(self.packet_expected)
+                self.packet_capacity = (
+                    out_packet_v2_capacity(self.packet_expected) if self.packet_v2
+                    else out_bin_packet_capacity(self.packet_expected)
+                )
             except ValueError as exc:
                 raise HarnessRenderError(str(exc)) from exc
 
@@ -856,6 +862,22 @@ class _Readout:
                     logical_shape=tuple(buf.shape),
                 )
             )
+            if self.packet_v2:
+                mode = "e" if container.word_bytes > 1 and buf.dtype != "f32" else "r"
+                sign_char = "s" if container.signed else "u"
+                return [
+                    "  {",
+                    f'  if (!merlin_out_bin_memory_cstr(&merlin_packet_sink, '
+                    f'"OUT_PKT_BEGIN v2 {name} {rows} {cols} {buf.dtype} {container.word_bytes} {sign_char} {mode}\\n")) return 2;',
+                    f"  merlin_out_packet_v2_init(&merlin_out_v2, {count}ULL, {container.word_bytes}, "
+                    f"{sign}, {int(mode == 'e')}, merlin_packet_write);",
+                    f"{loop} if (!merlin_out_packet_v2_word(&merlin_out_v2, (uint64_t)({element}))) return 2;",
+                    "  if (!merlin_out_packet_v2_finish(&merlin_out_v2)) return 2;",
+                    '  if (!merlin_out_bin_memory_cstr(&merlin_packet_sink, "OUT_PKT_END v2 ")) return 2;',
+                    "  if (!merlin_out_bin_memory_hex16(&merlin_packet_sink, merlin_out_v2.checksum)) return 2;",
+                    '  if (!merlin_out_bin_memory_cstr(&merlin_packet_sink, "\\n")) return 2;',
+                    "  }",
+                ]
             pack = (
                 f"  if (!merlin_out_bin_words_i32(&merlin_out, {contiguous}, {count}ULL)) return 2;"
                 if container.ctype == "int32_t" and contiguous is not None
@@ -958,7 +980,8 @@ class _Readout:
                 "extern void printstr(const char *);\nextern int printbuf(const void *, size_t);\n"
             )
         if self.packet:
-            return '#include "out_b64.h"\n#include "out_bin.h"\n#include "out_bin_memory.h"\n'
+            includes = '#include "out_b64.h"\n#include "out_bin.h"\n#include "out_bin_memory.h"\n'
+            return includes + ('#include "out_packet_v2.h"\n' if self.packet_v2 else '')
         return ""
 
     def declarations(self) -> list[str]:
@@ -985,8 +1008,8 @@ class _Readout:
                 f"unsigned char merlin_readback_packet[{self.packet_capacity}] __attribute__((used));",
                 "volatile uint64_t merlin_readback_packet_used __attribute__((used));",
                 "static merlin_out_bin_memory merlin_packet_sink;",
-                "static merlin_out_bin merlin_out;",
-                "static merlin_out_b64_range merlin_out_range;",
+                "static merlin_out_packet_v2 merlin_out_v2;" if self.packet_v2 else "static merlin_out_bin merlin_out;",
+                *([] if self.packet_v2 else ["static merlin_out_b64_range merlin_out_range;"]),
                 "static int merlin_packet_write(const void *bytes, size_t count) {",
                 "  return merlin_out_bin_memory_append(&merlin_packet_sink, bytes, count);",
                 "}",

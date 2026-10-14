@@ -20,7 +20,8 @@ FULL_VALUES_B64 = "out_b64_v1"
 FULL_VALUES_BIN = "out_bin_v1"
 COHERENT_DUMP_V1 = "coherent_dump_v1"
 COHERENT_PACKET_V1 = "coherent_packet_v1"
-MEMORY_TRANSPORTS = (COHERENT_DUMP_V1, COHERENT_PACKET_V1)
+COHERENT_PACKET_V2 = "coherent_packet_v2"
+MEMORY_TRANSPORTS = (COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2)
 READBACK_TRANSPORTS = (FULL_VALUES_B64, FULL_VALUES_BIN, *MEMORY_TRANSPORTS)
 #: Not a full-value transport: one 64-bit digest of each output's bytes (``out_digest.h``). It is for an
 #: engine where reading values back costs hours, and is never offered where a full-value transport is
@@ -178,6 +179,8 @@ def _codec_names(policy: ReadbackPolicy | None) -> tuple[str, ...]:
     policy = selected(policy)
     if policy is not None and policy.transport == COHERENT_DUMP_V1:
         return ()
+    if policy is not None and policy.transport == COHERENT_PACKET_V2:
+        return ("out_b64.h", "out_bin.h", "out_bin_memory.h", "out_packet_v2.h")
     if policy is not None and policy.transport == COHERENT_PACKET_V1:
         return ("out_b64.h", "out_bin.h", "out_bin_memory.h")
     if policy is not None and policy.transport == OUT_DIGEST_V1:
@@ -186,6 +189,8 @@ def _codec_names(policy: ReadbackPolicy | None) -> tuple[str, ...]:
 
 
 def _receipt_schema(policy: ReadbackPolicy) -> str:
+    if policy.transport == COHERENT_PACKET_V2:
+        return "merlin_readback_build_v4"
     if policy.transport == COHERENT_PACKET_V1:
         return "merlin_readback_build_v3"
     return "merlin_readback_build_v2" if policy.transport == COHERENT_DUMP_V1 else "merlin_readback_build_v1"
@@ -228,7 +233,7 @@ def selected_build_inputs(
             **token,
             "readback_codecs": [{"path": str(path), "sha256": file_sha256(path)} for path in codecs],
         }
-    if policy is not None and policy.transport == COHERENT_PACKET_V1:
+    if policy is not None and policy.transport in (COHERENT_PACKET_V1, COHERENT_PACKET_V2):
         token = {**token, "readback_transport": policy.record()}
     if build_service is None:
         sources = build_cache.build_path(target)
@@ -294,7 +299,7 @@ def build_receipt(
     }
     if policy.transport == FULL_VALUES_BIN:
         body["staged_range_sha256"] = file_sha256(harness_path.parent / "out_b64.h")
-    elif policy.transport == COHERENT_PACKET_V1:
+    elif policy.transport in (COHERENT_PACKET_V1, COHERENT_PACKET_V2):
         body["staged_codecs"] = [
             {"name": name, "sha256": file_sha256(harness_path.parent / name)} for name in _codec_names(policy)
         ]
@@ -361,7 +366,7 @@ def require_build_receipt(
             != [item.get("sha256") for item in codecs if type(item) is dict]
         ):
             raise ValueError("readback build receipt does not bind selected codec bytes")
-    elif policy.transport == COHERENT_PACKET_V1:
+    elif policy.transport in (COHERENT_PACKET_V1, COHERENT_PACKET_V2):
         codecs = recipe_record.get("readback_codecs")
         staged = [{"name": name, "sha256": file_sha256(harness_path.parent / name)} for name in _codec_names(policy)]
         if (

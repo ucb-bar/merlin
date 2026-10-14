@@ -29,6 +29,7 @@ _TRANSPORTS = {
     ("spike", "htif_signature_v1"),
     ("gsim", "gsim_coherent_dump_v1"),
     ("gsim", "gsim_coherent_packet_v1"),
+    ("gsim", "gsim_coherent_packet_v2"),
 }
 
 
@@ -143,17 +144,17 @@ class NativeMemoryReadback:
         self._prepared: dict[str, Any] | None = None
 
     def _transport(self, backend: Any, simulator: str) -> str:
-        from merlin.targetgen.contract.readback_policy import COHERENT_PACKET_V1
+        from merlin.targetgen.contract.readback_policy import COHERENT_PACKET_V1, COHERENT_PACKET_V2
 
         declared = getattr(backend, "memory_readback_transport", None)
         if not callable(declared):
             raise ValueError("selected backend does not declare a memory readback transport")
-        packet = self.policy is not None and self.policy.transport == COHERENT_PACKET_V1
+        packet = self.policy is not None and self.policy.transport in (COHERENT_PACKET_V1, COHERENT_PACKET_V2)
         transport = declared(simulator, policy_transport=self.policy.transport) if packet else declared(simulator)
         expected = (
             "htif_signature_v1"
             if simulator == "spike"
-            else ("gsim_coherent_packet_v1" if packet else "gsim_coherent_dump_v1")
+            else ("gsim_" + self.policy.transport if packet else "gsim_coherent_dump_v1")
         )
         if type(transport) is not str or (simulator, transport) not in _TRANSPORTS or transport != expected:
             raise ValueError("selected backend cannot run the requested memory transport")
@@ -222,7 +223,7 @@ class NativeMemoryReadback:
                 facts_path=self.facts_path,
                 elf_path=elf_path,
             )
-        elif transport == "gsim_coherent_packet_v1":
+        elif transport in {"gsim_coherent_packet_v1", "gsim_coherent_packet_v2"}:
             from .native_packet_readback import admit_coherent_packet_storage
 
             packet_storage = admit_coherent_packet_storage(
@@ -232,6 +233,7 @@ class NativeMemoryReadback:
                 target=target,
                 facts_path=self.facts_path,
                 elf_path=elf_path,
+                version=2 if transport.endswith("_v2") else 1,
             )
         regions = (
             [{"base": bounds["begin"], "bytes": bounds["bytes"]}]
@@ -248,7 +250,7 @@ class NativeMemoryReadback:
             raise ValueError("memory readback output path is not fresh")
         regions_path = None
         regions_raw = None
-        if transport in {"gsim_coherent_dump_v1", "gsim_coherent_packet_v1"}:
+        if transport in {"gsim_coherent_dump_v1", "gsim_coherent_packet_v1", "gsim_coherent_packet_v2"}:
             regions_path = source / "regions.txt"
             # This is the existing GSim +dump-regions wire format, not a JSON
             # descriptor. The in-memory request below is still closed JSON.
@@ -342,6 +344,7 @@ class NativeMemoryReadback:
                 **source_kwargs,
                 packet_admission=state["packet_storage"],
                 dump_path=state["output_path"],
+                version=2 if state["transport"].endswith("_v2") else 1,
             )
             artifact_sha256 = values["dump_sha256"]
         else:
@@ -391,9 +394,9 @@ class NativeLogicalMemoryReadback:
     """
 
     def __init__(self, *, facts_path: Path, policy) -> None:
-        from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, COHERENT_PACKET_V1, ReadbackPolicy
+        from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2, ReadbackPolicy
 
-        if type(policy) is not ReadbackPolicy or policy.transport not in {COHERENT_DUMP_V1, COHERENT_PACKET_V1}:
+        if type(policy) is not ReadbackPolicy or policy.transport not in {COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2}:
             raise ValueError("neutral memory reader requires explicit coherent full values")
         self.facts_path, self.policy, self._prepared = Path(facts_path), policy, None
 
@@ -450,7 +453,7 @@ class NativeLogicalMemoryReadback:
             raise ValueError("neutral memory reader requires a fixed-address ET_EXEC ELF")
         expected_symbols = {row["symbol"]: row["bytes"] for row in outputs}
         packet_storage = None
-        if self.policy.transport == "coherent_packet_v1":
+        if self.policy.transport in ("coherent_packet_v1", "coherent_packet_v2"):
             from merlin.runtime.direct_kernel_harness import (
                 PACKET_ARENA_SYMBOL,
                 PACKET_BLOCK_WORDS,
@@ -459,15 +462,24 @@ class NativeLogicalMemoryReadback:
             )
             from merlin.runtime.out_packet import out_bin_packet_capacity
 
-            capacity = out_bin_packet_capacity(tuple(frame for _, _, frame in packet_output_blocks(normalized)))
+            if self.policy.transport == "coherent_packet_v2":
+                from merlin.runtime.direct_kernel_harness import packet_output_roster_v2
+                from merlin.runtime.out_packet_v2 import out_packet_v2_capacity
+
+                capacity = out_packet_v2_capacity(packet_output_roster_v2(normalized))
+            else:
+                capacity = out_bin_packet_capacity(tuple(frame for _, _, frame in packet_output_blocks(normalized)))
             expected_symbols.update({PACKET_ARENA_SYMBOL: capacity, PACKET_USED_SYMBOL: 8})
         symbols, _ = _elf_output_symbols(raw, expected_symbols)
-        if self.policy.transport == "coherent_packet_v1":
+        if self.policy.transport in ("coherent_packet_v1", "coherent_packet_v2"):
             if symbols[PACKET_USED_SYMBOL] % 8:
                 raise ValueError("neutral packet publication word is not u64-aligned")
             packet_storage = {
-                "capacity": capacity, "framing": "neutral_dense_blocks_out_bin_v1",
-                "block_words": PACKET_BLOCK_WORDS,
+                "capacity": capacity, "framing": (
+                    "neutral_dense_outputs_out_packet_v2" if self.policy.transport == "coherent_packet_v2"
+                    else "neutral_dense_blocks_out_bin_v1"
+                ),
+                "block_words": PACKET_BLOCK_WORDS if self.policy.transport == "coherent_packet_v1" else 0,
                 "regions": [{"base": symbols[PACKET_USED_SYMBOL], "bytes": 8},
                             {"base": symbols[PACKET_ARENA_SYMBOL], "bytes": capacity}],
             }
@@ -593,7 +605,7 @@ class NativeLogicalMemoryReadback:
 
 def _decode_neutral_packet(path, admission, cb):
     """Decode a bounded native packet, then reassemble the exact logical roster."""
-    from merlin.runtime.direct_kernel_harness import packet_output_blocks
+    from merlin.runtime.direct_kernel_harness import packet_output_blocks, packet_output_roster_v2
     from merlin.runtime.harness_render import _roster
     from merlin.runtime.out_packet import decode_out_bin_packet
 
@@ -610,8 +622,16 @@ def _decode_neutral_packet(path, admission, cb):
     ):
         raise ValueError("neutral packet differs from original storage or exact used length")
     normalized, _ = _roster(cb)
-    blocks = packet_output_blocks(normalized)
-    decoded = decode_out_bin_packet(raw[40:-8], tuple(frame for _, _, frame in blocks))
+    v2 = storage.get("framing") == "neutral_dense_outputs_out_packet_v2"
+    if v2:
+        from merlin.runtime.out_packet_v2 import decode_out_packet_v2
+
+        frames = packet_output_roster_v2(normalized)
+        decoded = decode_out_packet_v2(raw[40:-8], frames)
+        blocks = tuple((frame.name, 0, frame) for frame in frames)
+    else:
+        blocks = packet_output_blocks(normalized)
+        decoded = decode_out_bin_packet(raw[40:-8], tuple(frame for _, _, frame in blocks))
     values = {row["tensor"]: [] for row in admission["outputs"]}
     for name, start, frame in blocks:
         output = decoded[frame.name]
