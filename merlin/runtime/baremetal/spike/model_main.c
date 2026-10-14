@@ -54,7 +54,9 @@ int main(int hart) {
    * the console UART's clocks and baud divisor, without which printing hangs the core. */
   console_init();
   uint64_t c0;
-  __asm__ volatile("csrr %0, mcycle" : "=r"(c0));
+  /* Read the standard cycle CSR. Spike extensions can model this read, while
+   * bare-metal RISC-V targets expose the same counter through rdcycle. */
+  __asm__ volatile("rdcycle %0" : "=r"(c0));
 
   merlin_reset_session();
   merlin_prepare_step(0);
@@ -69,7 +71,7 @@ int main(int hart) {
 #endif
 
   uint64_t c1;
-  __asm__ volatile("csrr %0, mcycle" : "=r"(c1));
+  __asm__ volatile("rdcycle %0" : "=r"(c1));
 
   /* Output protocol:
    *   OUT <k> <bits...>     : the first k raw values (exact prefix).
