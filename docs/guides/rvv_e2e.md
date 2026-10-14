@@ -144,6 +144,10 @@ twin `mlp_basic` both reproduce the PyTorch golden on spike. Limits today: one r
 shapes, no non-tensor `prov.kernel_args`, and the body must be portable LLVM IR (no arch intrinsics) or
 written for rv64. `runtime.kernel_spike` cannot run these — its harness links no allocator.
 
+Both bundles are a snapshot of model2MLIR's output: regenerate them with
+`build_tools/scripts/gen_mlp_kernel_fixtures.py` (it captures fresh from model2MLIR's loaders), and
+`merlin/tests/infra/test_mlp_bundles_fresh.py` fails when they no longer match the configured model2MLIR.
+
 ## 4. Verify on the real K1 board (optional, cycle truth)
 
 The K1 backend (`mining/k1.py`) cross-compiles the kernel (`-march=rv64gcv -mabi=lp64d`, VLEN=256,
