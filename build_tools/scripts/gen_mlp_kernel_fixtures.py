@@ -20,6 +20,7 @@ Run it with the model2MLIR venv (it needs torch and the m2m workloads, not merli
     $MERLIN_M2M_VENV/bin/python build_tools/scripts/gen_mlp_kernel_fixtures.py \\
         --m2m $MERLIN_M2M_DIR --out merlin/tests/fixtures
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,8 +52,11 @@ def main(argv: list[str] | None = None) -> int:
     src = args.m2m / "workloads"
     payloads = {w: (src / w / f"{w}.safetensors").read_bytes() for w in WORKLOADS}
     if payloads["mlp_basic"] != payloads["mlp_basic_triton"]:
-        print("refusing: mlp_basic and mlp_basic_triton captured different weights; the shared "
-              "golden would be wrong for one of them. Re-capture both.", file=sys.stderr)
+        print(
+            "refusing: mlp_basic and mlp_basic_triton captured different weights; the shared "
+            "golden would be wrong for one of them. Re-capture both.",
+            file=sys.stderr,
+        )
         return 1
 
     model, (x,) = _load(src / "mlp_basic" / "loader.py", "mlp_basic_loader").get_model_and_inputs()
@@ -64,8 +68,7 @@ def main(argv: list[str] | None = None) -> int:
         dst.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src / w / f"{w}.mlir", dst / "model.mlir")
         shutil.copyfile(src / w / f"{w}.safetensors", dst / "weights.safetensors")
-        shutil.copyfile(src / w / f"{w}.safetensors.manifest.json",
-                        dst / "weights.safetensors.manifest.json")
+        shutil.copyfile(src / w / f"{w}.safetensors.manifest.json", dst / "weights.safetensors.manifest.json")
         np.savez(dst / "inputs.npz", in0=x.numpy().astype(np.float32))
         (dst / "input_order.json").write_text(json.dumps({"x": 0}) + "\n", encoding="utf-8")
         np.save(dst / "golden.npy", golden)

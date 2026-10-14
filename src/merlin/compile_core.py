@@ -206,9 +206,15 @@ def choose_route(
     materializable = tuple(sorted(set(covered) & STAGED_MATERIALIZABLE))
     if "kernel" in payload:
         return Route(
-            kind="llvm", payload=payload, covered=covered, materializable=materializable,
-            reason=(f"the module calls external kernel(s) {_kernel_qualnames(module)}, whose bodies are "
-                    "linked only on the LLVM route (llvmlower.kernel_link) — no dialect claims them yet"))
+            kind="llvm",
+            payload=payload,
+            covered=covered,
+            materializable=materializable,
+            reason=(
+                f"the module calls external kernel(s) {_kernel_qualnames(module)}, whose bodies are "
+                "linked only on the LLVM route (llvmlower.kernel_link) — no dialect claims them yet"
+            ),
+        )
 
     unstaged = [p for p in payload if p not in materializable]
     if unstaged:

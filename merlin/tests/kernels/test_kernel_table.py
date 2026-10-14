@@ -6,6 +6,7 @@ its registration claims (target-specific IR registered as portable), and an ABI 
 describe how the body is actually called (wrong answers rather than an error). The last is checked
 by DRIVING the body through its own ``abi`` on the host, so the table data itself is what is tested.
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -39,7 +40,7 @@ def test_body_by_unknown_form_lists_forms():
 def test_mlp2_has_both_forms():
     entry = KT.lookup("triton_exp::fused_mlp2")
     assert [b.form for b in entry.bodies] == ["llvm_ir", "llvm_mlir"]
-    assert entry.body().form == "llvm_ir"          # first body is the default
+    assert entry.body().form == "llvm_ir"  # first body is the default
 
 
 @pytest.mark.parametrize("qualname,body", _bodies(), ids=lambda v: getattr(v, "form", v))
@@ -52,8 +53,15 @@ def test_every_body_file_exists_and_is_portable(qualname, body):
     text = path.read_text(encoding="utf-8")
     assert body.entry in text
     if body.portable:
-        for marker in ("@llvm.x86.", "@llvm.nvvm.", "@llvm.amdgcn.", "@llvm.riscv.", "addrspace(",
-                       "inline_asm", " asm "):
+        for marker in (
+            "@llvm.x86.",
+            "@llvm.nvvm.",
+            "@llvm.amdgcn.",
+            "@llvm.riscv.",
+            "addrspace(",
+            "inline_asm",
+            " asm ",
+        ):
             assert marker not in text, f"{path.name} is registered portable but contains {marker!r}"
 
 
@@ -66,12 +74,18 @@ def _host_object(body, tmp_path):
         if not toolchain.mlir_translate().is_file():
             pytest.skip("mlir-translate not available")
         ll = tmp_path / "body.ll"
-        subprocess.run([str(toolchain.mlir_translate()), "--mlir-to-llvmir", str(src), "-o", str(ll)],
-                       check=True, capture_output=True)
+        subprocess.run(
+            [str(toolchain.mlir_translate()), "--mlir-to-llvmir", str(src), "-o", str(ll)],
+            check=True,
+            capture_output=True,
+        )
         src = ll
     obj, so = tmp_path / "body.o", tmp_path / "body.so"
-    subprocess.run([str(toolchain.clang()), "-O2", "-fPIC", "-Wno-override-module", "-c", str(src),
-                    "-o", str(obj)], check=True, capture_output=True)
+    subprocess.run(
+        [str(toolchain.clang()), "-O2", "-fPIC", "-Wno-override-module", "-c", str(src), "-o", str(obj)],
+        check=True,
+        capture_output=True,
+    )
     subprocess.run(["cc", "-shared", str(obj), "-o", str(so)], check=True, capture_output=True)
     return ctypes.CDLL(str(so))
 
@@ -83,11 +97,13 @@ def test_mlp2_body_abi_matches_numpy(body, m, tmp_path):
     the nn.Linear-layout MLP it stands for. M=20 exercises the partial last block (masking)."""
     lib = _host_object(body, tmp_path)
     rng = np.random.default_rng(0)
-    arrays = {"x": rng.standard_normal((m, 16), dtype=np.float32),
-              "w1": rng.standard_normal((32, 16), dtype=np.float32),
-              "b1": rng.standard_normal(32, dtype=np.float32),
-              "w2": rng.standard_normal((32, 32), dtype=np.float32),
-              "b2": rng.standard_normal(32, dtype=np.float32)}
+    arrays = {
+        "x": rng.standard_normal((m, 16), dtype=np.float32),
+        "w1": rng.standard_normal((32, 16), dtype=np.float32),
+        "b1": rng.standard_normal(32, dtype=np.float32),
+        "w2": rng.standard_normal((32, 32), dtype=np.float32),
+        "b2": rng.standard_normal(32, dtype=np.float32),
+    }
     out = np.full((m, 32), np.nan, dtype=np.float32)
     operand, axis, size = body.block
     grid = (arrays[operand].shape[axis] + size - 1) // size
@@ -120,9 +136,15 @@ def test_table_keys_match_m2m_registry():
     if not py.is_file():
         pytest.skip("model2MLIR venv not configured")
     got = subprocess.run(
-        [str(py), "-c", "from m2m.ir.kernel_registry import KERNEL_REGISTRY;"
-                        "print('\\n'.join(sorted(KERNEL_REGISTRY)))"],
-        cwd=str(toolchain.m2m_dir()), capture_output=True, text=True)
+        [
+            str(py),
+            "-c",
+            "from m2m.ir.kernel_registry import KERNEL_REGISTRY;print('\\n'.join(sorted(KERNEL_REGISTRY)))",
+        ],
+        cwd=str(toolchain.m2m_dir()),
+        capture_output=True,
+        text=True,
+    )
     if got.returncode != 0:
         pytest.skip(f"model2MLIR registry not importable: {got.stderr[-300:]}")
     m2m_keys = [k for k in got.stdout.split() if k]

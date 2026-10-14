@@ -24,9 +24,9 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from .._common import HAS_XDSL
 from merlin.common.kernel_calls import is_kernel_call, kernel_qualname
 
+from .._common import HAS_XDSL
 from .outline import OutlineError, OutlineResult, _external_declarations, _prov, outline_dispatches
 
 # NOTE: a `VIEW_OPS` tuple used to sit here, claiming to name "driver-side glue ops the runtime can

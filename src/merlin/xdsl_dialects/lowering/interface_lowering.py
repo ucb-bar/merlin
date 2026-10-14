@@ -658,6 +658,7 @@ def lower_to_interface(module):
             vis = op.visibility.data if op.visibility is not None else None
             selected[op.value] = vis
     from merlin.common.kernel_calls import is_kernel_call, kernel_qualname
+
     external = sorted({kernel_qualname(op) for op in module.walk() if is_kernel_call(op)})
     if external:
         # Named here rather than left to the payload-completeness guard, which would only report an
@@ -665,7 +666,8 @@ def lower_to_interface(module):
         # LLVM route (compile_core.choose_route sends such modules there).
         raise LoweringError(
             f"the module calls external kernel(s) {external}; interface materialization has no "
-            "dialect for them — compile it on the LLVM route, which links their bodies")
+            "dialect for them — compile it on the LLVM route, which links their bodies"
+        )
     fns = [op for op in module.walk() if op.name == "func.func"]
     if not fns:
         raise LoweringError("no func.func in module")

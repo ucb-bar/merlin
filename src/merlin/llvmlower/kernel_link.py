@@ -26,6 +26,7 @@ The body is read from ``kernels/triton_llvmir`` (``llvm_mlir`` bodies go through
 first), and ``llvm-link`` merges shim + model + body into ``model.linked.ll``, which every existing
 consumer (``codegen.compile_ll``, ``spike_model``, ``kernel_spike``) compiles unchanged.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -34,8 +35,16 @@ from pathlib import Path
 
 from . import kernel_table as KT
 
-__all__ = ["KernelLinkError", "KernelUse", "emit_shim", "find_kernel_uses", "link_arch", "link_kernels",
-           "prepare_kernel_declarations", "select_body"]
+__all__ = [
+    "KernelLinkError",
+    "KernelUse",
+    "emit_shim",
+    "find_kernel_uses",
+    "link_arch",
+    "link_kernels",
+    "prepare_kernel_declarations",
+    "select_body",
+]
 
 
 class KernelLinkError(RuntimeError):
@@ -79,9 +88,13 @@ def find_kernel_uses(mlir_text: str) -> tuple[KernelUse, ...]:
             callee = op.callee.root_reference.data
             names = op.attributes.get("prov.kernel_operands")
             args = op.attributes.get("prov.kernel_args")
-            calls.setdefault(callee, (
-                tuple(n.data for n in names.data) if names is not None else (),
-                {k: str(v) for k, v in args.data.items()} if args is not None else {}))
+            calls.setdefault(
+                callee,
+                (
+                    tuple(n.data for n in names.data) if names is not None else (),
+                    {k: str(v) for k, v in args.data.items()} if args is not None else {},
+                ),
+            )
         elif op.name == "func.func" and not op.body.blocks and "prov.kernel" in op.attributes:
             decls.append(op)
 
@@ -95,11 +108,16 @@ def find_kernel_uses(mlir_text: str) -> tuple[KernelUse, ...]:
             raise KernelLinkError(f"@{symbol}: {e}") from None
         names, kargs = calls.get(symbol, ((), {}))
         ftype = fn.function_type
-        uses.append(KernelUse(
-            symbol=symbol, qualname=qualname, operand_names=names,
-            arg_types=tuple((tuple(s), d) for s, d in map(type_shape_dtype, ftype.inputs.data)),
-            result_types=tuple((tuple(s), d) for s, d in map(type_shape_dtype, ftype.outputs.data)),
-            kernel_args=kargs))
+        uses.append(
+            KernelUse(
+                symbol=symbol,
+                qualname=qualname,
+                operand_names=names,
+                arg_types=tuple((tuple(s), d) for s, d in map(type_shape_dtype, ftype.inputs.data)),
+                result_types=tuple((tuple(s), d) for s, d in map(type_shape_dtype, ftype.outputs.data)),
+                kernel_args=kargs,
+            )
+        )
     return tuple(uses)
 
 
@@ -145,10 +163,10 @@ def prepare_kernel_declarations(upstream_text: str, uses: Sequence[KernelUse]) -
             continue
         open_paren = at + len(head) - 1
         close = out.find(")", open_paren)
-        inner = out[open_paren + 1:close]
+        inner = out[open_paren + 1 : close]
         if "bufferization.access" not in inner:
             annotated = ", ".join(f"{p} {_READ}" for p in _split_top_level(inner))
-            out = out[:open_paren + 1] + annotated + out[close:]
+            out = out[: open_paren + 1] + annotated + out[close:]
             close = open_paren + 1 + len(annotated)
         line_end = out.find("\n", close)
         line_end = len(out) if line_end < 0 else line_end
@@ -203,8 +221,10 @@ def link_arch(target: str) -> str:
     than with a name written here."""
     if target == "host":
         import platform
+
         return platform.machine()
     from .codegen import RISCV_FLAGS
+
     for flag in RISCV_FLAGS:
         if flag.startswith("--target="):
             return flag.partition("=")[2].partition("-")[0]
@@ -215,44 +235,51 @@ def _check_use(use: KernelUse, body: KT.KernelBody) -> None:
     """Refuse, by name, every use the body cannot compute correctly — before any code is generated."""
     where = f"@{use.symbol} ({use.qualname})"
     if len(use.result_types) != 1:
-        raise KernelLinkError(f"{where}: {len(use.result_types)} results; the shim supports exactly one "
-                              "result per kernel so far")
+        raise KernelLinkError(
+            f"{where}: {len(use.result_types)} results; the shim supports exactly one result per kernel so far"
+        )
     if use.kernel_args:
-        raise KernelLinkError(f"{where}: non-tensor kernel_args {sorted(use.kernel_args)} are not passed to "
-                              "kernel bodies yet")
+        raise KernelLinkError(
+            f"{where}: non-tensor kernel_args {sorted(use.kernel_args)} are not passed to kernel bodies yet"
+        )
     if len(use.operand_names) != len(use.arg_types):
-        raise KernelLinkError(f"{where}: {len(use.arg_types)} operands but prov.kernel_operands names "
-                              f"{len(use.operand_names)}")
+        raise KernelLinkError(
+            f"{where}: {len(use.arg_types)} operands but prov.kernel_operands names {len(use.operand_names)}"
+        )
     shapes = dict(zip(use.operand_names, use.arg_types))
     for name, (shape, dtype) in [*shapes.items(), *(("result", t) for t in use.result_types)]:
         if dtype != body.dtype:
-            raise KernelLinkError(f"{where}: {name} is {dtype} but the {body.form} body is compiled for "
-                                  f"{body.dtype}")
+            raise KernelLinkError(f"{where}: {name} is {dtype} but the {body.form} body is compiled for {body.dtype}")
         if any(d < 0 for d in shape):
             raise KernelLinkError(f"{where}: {name} has a dynamic shape {shape}; only static shapes link")
     for name, want in body.specialization:
         if name not in shapes:
-            raise KernelLinkError(f"{where}: the body is specialized on operand {name!r}, which this call "
-                                  f"does not have (operands: {list(use.operand_names)})")
+            raise KernelLinkError(
+                f"{where}: the body is specialized on operand {name!r}, which this call "
+                f"does not have (operands: {list(use.operand_names)})"
+            )
         got = shapes[name][0]
         if len(got) != len(want) or any(w is not None and w != g for w, g in zip(want, got)):
-            raise KernelLinkError(f"{where}: operand {name} is {list(got)} but the {body.form} body was "
-                                  f"compiled for {list(want)} (None = any)")
+            raise KernelLinkError(
+                f"{where}: operand {name} is {list(got)} but the {body.form} body was "
+                f"compiled for {list(want)} (None = any)"
+            )
 
 
 def _descriptor_type(rank: int) -> str:
     if rank == 0:
         return "typedef struct { void *allocated, *aligned; long offset; } merlin_kmr0;"
-    return (f"typedef struct {{ void *allocated, *aligned; long offset; long sizes[{rank}]; "
-            f"long strides[{rank}]; }} merlin_kmr{rank};")
+    return (
+        f"typedef struct {{ void *allocated, *aligned; long offset; long sizes[{rank}]; "
+        f"long strides[{rank}]; }} merlin_kmr{rank};"
+    )
 
 
 def _entry_source(use: KernelUse, body: KT.KernelBody) -> str:
     """One ``_mlir_ciface_<symbol>`` definition: validate layout, allocate the result, run the grid."""
     ranks = [len(s) for s, _ in use.arg_types]
-    (res_shape, res_dtype), = use.result_types
-    params = ", ".join([f"merlin_kmr{len(res_shape)} *res",
-                        *(f"merlin_kmr{r} *a{i}" for i, r in enumerate(ranks))])
+    ((res_shape, res_dtype),) = use.result_types
+    params = ", ".join([f"merlin_kmr{len(res_shape)} *res", *(f"merlin_kmr{r} *a{i}" for i, r in enumerate(ranks))])
     index = {n: i for i, n in enumerate(use.operand_names)}
     lines = [f"void _mlir_ciface_{use.symbol}({params}) {{"]
     for i, r in enumerate(ranks):
@@ -312,21 +339,23 @@ def emit_shim(uses: Sequence[KernelUse], target: str = "riscv", form: str | None
     for u in uses:
         _check_use(u, bodies[u.symbol])
     ranks = sorted({len(s) for u in uses for s, _ in (*u.arg_types, *u.result_types)})
-    out = ["/* Generated by merlin.llvmlower.kernel_link -- do not edit. */",
-           "#include <stdint.h>",
-           "extern void *malloc(unsigned long);",
-           *(_descriptor_type(r) for r in ranks),
-           "",
-           "/* Row-major and dense: the only layout a raw-pointer kernel body can index. */",
-           "static int merlin_k_dense(const long *sizes, const long *strides, int rank) {",
-           "  long expect = 1;",
-           "  for (int i = rank - 1; i >= 0; --i) {",
-           "    if (sizes[i] != 1 && strides[i] != expect) return 0;",
-           "    expect *= sizes[i];",
-           "  }",
-           "  return 1;",
-           "}",
-           ""]
+    out = [
+        "/* Generated by merlin.llvmlower.kernel_link -- do not edit. */",
+        "#include <stdint.h>",
+        "extern void *malloc(unsigned long);",
+        *(_descriptor_type(r) for r in ranks),
+        "",
+        "/* Row-major and dense: the only layout a raw-pointer kernel body can index. */",
+        "static int merlin_k_dense(const long *sizes, const long *strides, int rank) {",
+        "  long expect = 1;",
+        "  for (int i = rank - 1; i >= 0; --i) {",
+        "    if (sizes[i] != 1 && strides[i] != expect) return 0;",
+        "    expect *= sizes[i];",
+        "  }",
+        "  return 1;",
+        "}",
+        "",
+    ]
     seen: set[str] = set()
     for u in uses:
         b = bodies[u.symbol]
@@ -357,7 +386,8 @@ def select_body(use: KernelUse, target: str, form: str | None = None) -> KT.Kern
         raise KernelLinkError(
             f"{use.qualname}: {body.ir} is {body.triple or 'of no stated arch'} IR, not portable, so it "
             f"cannot be linked into a {arch} image; register a {arch} body or mark this one portable "
-            "only if it holds no arch intrinsics, inline asm or address spaces")
+            "only if it holds no arch intrinsics, inline asm or address spaces"
+        )
     return body
 
 
@@ -367,13 +397,17 @@ def _body_ll(body: KT.KernelBody, work, target: str) -> Path:
     import subprocess
 
     from . import toolchain
+
     src = KT.body_path(body)
     if not src.is_file():
         raise KernelLinkError(f"kernel body {src} is missing")
     if body.form == "llvm_mlir":
         out = Path(work) / f"{body.entry}.{body.form}.ll"
-        got = subprocess.run([str(toolchain.mlir_translate()), "--mlir-to-llvmir", str(src), "-o", str(out)],
-                             capture_output=True, text=True)
+        got = subprocess.run(
+            [str(toolchain.mlir_translate()), "--mlir-to-llvmir", str(src), "-o", str(out)],
+            capture_output=True,
+            text=True,
+        )
         if got.returncode != 0:
             raise KernelLinkError(f"mlir-translate failed on {src.name}:\n{got.stderr[-2000:]}")
         text = out.read_text(encoding="utf-8")
@@ -382,8 +416,9 @@ def _body_ll(body: KT.KernelBody, work, target: str) -> Path:
     else:
         raise KernelLinkError(f"{src.name}: unknown body form {body.form!r}")
     if body.portable:
-        text = "\n".join(line for line in text.splitlines()
-                         if not line.startswith(("target triple", "target datalayout")))
+        text = "\n".join(
+            line for line in text.splitlines() if not line.startswith(("target triple", "target datalayout"))
+        )
     else:
         arch = link_arch(target)
         found = _ir_triple(text)
@@ -394,8 +429,15 @@ def _body_ll(body: KT.KernelBody, work, target: str) -> Path:
     return out
 
 
-def link_kernels(model_ll, uses: Sequence[KernelUse], work, *, target: str = "riscv",
-                 form: str | None = None, out_name: str = "model.linked.ll") -> Path:
+def link_kernels(
+    model_ll,
+    uses: Sequence[KernelUse],
+    work,
+    *,
+    target: str = "riscv",
+    form: str | None = None,
+    out_name: str = "model.linked.ll",
+) -> Path:
     """Merge the lowered model, the generated shim and every kernel body into ``work/out_name``.
 
     The shim is compiled to IR with the same flags the target's objects get (``codegen``), and it goes
@@ -405,14 +447,18 @@ def link_kernels(model_ll, uses: Sequence[KernelUse], work, *, target: str = "ri
 
     from . import toolchain
     from .codegen import RISCV_FLAGS, X86_FLAGS
+
     work = Path(work)
     work.mkdir(parents=True, exist_ok=True)
     shim_c = work / "kernel_shim.c"
     shim_c.write_text(emit_shim(uses, target, form), encoding="utf-8")
     shim_ll = work / "kernel_shim.ll"
     flags = RISCV_FLAGS if target == "riscv" else X86_FLAGS
-    got = subprocess.run([str(toolchain.clang()), *flags, "-S", "-emit-llvm", str(shim_c), "-o", str(shim_ll)],
-                         capture_output=True, text=True)
+    got = subprocess.run(
+        [str(toolchain.clang()), *flags, "-S", "-emit-llvm", str(shim_c), "-o", str(shim_ll)],
+        capture_output=True,
+        text=True,
+    )
     if got.returncode != 0:
         raise KernelLinkError(f"the generated kernel shim did not compile:\n{got.stderr[-3000:]}")
     bodies: dict[str, Path] = {}
@@ -421,8 +467,7 @@ def link_kernels(model_ll, uses: Sequence[KernelUse], work, *, target: str = "ri
         if b.ir not in bodies:
             bodies[b.ir] = _body_ll(b, work, target)
     out = work / out_name
-    cmd = [str(toolchain.llvm_link()), "-S", str(shim_ll), str(model_ll), *map(str, bodies.values()),
-           "-o", str(out)]
+    cmd = [str(toolchain.llvm_link()), "-S", str(shim_ll), str(model_ll), *map(str, bodies.values()), "-o", str(out)]
     got = subprocess.run(cmd, capture_output=True, text=True)
     if got.returncode != 0 or not out.is_file():
         raise KernelLinkError(f"llvm-link failed:\n{' '.join(cmd)}\n{got.stderr[-3000:]}")

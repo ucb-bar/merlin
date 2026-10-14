@@ -6,10 +6,10 @@ time. Until then every pass that reasons about a module's functions or calls has
 that declaration apart from the entry function and from outlined dispatches — which is what these do,
 on the IR (no text matching).
 """
+
 from __future__ import annotations
 
-__all__ = ["ExternalKernelNotExecutable", "entry_function", "is_external_decl", "is_kernel_call",
-           "kernel_qualname"]
+__all__ = ["ExternalKernelNotExecutable", "entry_function", "is_external_decl", "is_kernel_call", "kernel_qualname"]
 
 
 class ExternalKernelNotExecutable(RuntimeError):
@@ -22,7 +22,8 @@ class ExternalKernelNotExecutable(RuntimeError):
         self.qualname = qualname
         super().__init__(
             f"external kernel {qualname!r} has no body in this runtime; its body is linked only on the "
-            "LLVM route (llvmlower.kernel_link) -- run the model through lower_model / spike_model")
+            "LLVM route (llvmlower.kernel_link) -- run the model through lower_model / spike_model"
+        )
 
 
 def is_kernel_call(op) -> bool:

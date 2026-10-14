@@ -5,11 +5,11 @@ the LLVM route (``llvmlower.kernel_link``). They must refuse it by name. Before 
 runtime treated the call as an outlined kernel and failed inside kernel extraction, and the program
 interpreter would have handed it to ``eval_view`` as if it were glue.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from mlp_bundles import MLP_BASIC_TRITON, forward_args
 
 from merlin.common.mlir_query import parse
@@ -28,6 +28,7 @@ def _program():
 @pytest.mark.skipif(not toolchain.available(), reason="clang-23 / model2MLIR venv not available")
 def test_execute_refuses_external_kernel(tmp_path):
     from merlin.runtime.dispatch_runtime import execute
+
     outlined = outline_dispatches(parse((MLP_BASIC_TRITON / "model.mlir").read_text()))
     with pytest.raises(ExternalKernelNotExecutable) as err:
         execute(outlined, forward_args(MLP_BASIC_TRITON), tmp_path)
@@ -37,18 +38,20 @@ def test_execute_refuses_external_kernel(tmp_path):
 
 def test_interpreter_refuses_external_node():
     from merlin.runtime.interpret import run_dispatch_program
+
     prog = _program()
-    inputs = {b.id: np.zeros(b.shape, dtype=np.float32)
-              for b in prog.buffers.values() if b.kind == "arg"}
+    inputs = {b.id: np.zeros(b.shape, dtype=np.float32) for b in prog.buffers.values() if b.kind == "arg"}
     with pytest.raises(ExternalKernelNotExecutable) as err:
-        run_dispatch_program(prog, inputs, invoke_kernel=lambda sym, vals: [vals[0]],
-                             eval_view=lambda op, vals, node: [np.zeros(1)])
+        run_dispatch_program(
+            prog, inputs, invoke_kernel=lambda sym, vals: [vals[0]], eval_view=lambda op, vals, node: [np.zeros(1)]
+        )
     assert err.value.qualname == QUALNAME
 
 
 def test_program_names_external_opcode():
     from merlin.runtime.program import build_program
+
     prog = build_program(_program())
     assert f"external:{QUALNAME}" in prog.opcodes
     assert f"dispatch:{QUALNAME}" not in prog.opcodes
-    assert QUALNAME not in prog.kernels              # not a merlin-compiled kernel
+    assert QUALNAME not in prog.kernels  # not a merlin-compiled kernel

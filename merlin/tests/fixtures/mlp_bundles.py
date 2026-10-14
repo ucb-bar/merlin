@@ -3,6 +3,7 @@
 Regenerate the bundles with ``build_tools/scripts/gen_mlp_kernel_fixtures.py``. They share weights,
 input and golden; ``mlp_basic_triton`` runs fc1+relu+fc2+relu as one external-kernel call.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,6 +20,7 @@ def forward_args(bundle) -> list[np.ndarray]:
     """@forward's arguments in signature order: weights from the safetensors blob (by manifest name),
     the input from ``inputs.npz``."""
     from merlin.llvmlower.weights_pack import load_safetensors_header
+
     header, payload_off = load_safetensors_header(bundle / "weights.safetensors")
     blob = (bundle / "weights.safetensors").read_bytes()[payload_off:]
     manifest = json.loads((bundle / "weights.safetensors.manifest.json").read_text())

@@ -9,13 +9,13 @@ runner (weights blob + the C runtime + the bare-metal allocator).
 run any whole capture (kernel-free ``mlp_basic`` fails to link on ``malloc``/``free`` too), and a kernel
 shim allocates its result.
 """
+
 from __future__ import annotations
 
 import shutil
 
 import numpy as np
 import pytest
-
 from mlp_bundles import MLP_BASIC, MLP_BASIC_TRITON, golden
 
 from merlin.common.kernel_calls import entry_function, is_external_decl
@@ -25,6 +25,7 @@ from merlin.common.mlir_query import parse
 def _spike_ready() -> bool:
     from merlin.llvmlower import toolchain
     from merlin.runtime.backends import spike
+
     return spike.available() and toolchain.available() and toolchain.llvm_link().is_file()
 
 
@@ -40,6 +41,7 @@ def test_entry_function_skips_declarations():
 
 def _whole_model(bundle, tmp_path, **kw):
     from merlin.runtime.backends import spike_model
+
     model = tmp_path / "model"
     shutil.copytree(bundle, model)
     build = spike_model.build(model, tmp_path / "work", **kw)

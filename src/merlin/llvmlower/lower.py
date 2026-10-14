@@ -18,7 +18,6 @@ from merlin.common.ir_audit import IrAudit, audit_mode
 
 from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 from .codegen import build_host_shared, compile_ll
-from .kernel_link import find_kernel_uses, link_kernels, prepare_kernel_declarations, select_body
 from .concat_dps import ensure_registered as _register_concat_dps
 
 # Registering here, and not in `impr_features` itself, keeps the epilogue-fusion stage's definition
@@ -27,6 +26,7 @@ from .concat_dps import ensure_registered as _register_concat_dps
 # entry exists. Idempotent, so a second import is a no-op.
 from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
 from .im2col_pack import ensure_registered as _register_im2col_panel_pack
+from .kernel_link import find_kernel_uses, link_kernels, prepare_kernel_declarations, select_body
 from .masked_contraction import MaskEffectContract
 from .named_broadcast_fold import ensure_registered as _register_named_broadcast_fold
 from .passes_xdsl import PREPROCESS_STAGES, preprocess_text

@@ -26,14 +26,14 @@ triple/datalayout and the IR is compiled for the model's target. ``test_every_bo
 portable`` checks the claim against the file. A body that is NOT portable must carry the arch it was
 written for in ``triple`` and is only linked for that arch.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 
-__all__ = ["AbiParam", "KERNEL_TABLE", "KernelBody", "KernelEntry", "KernelTableError",
-           "body_path", "lookup"]
+__all__ = ["AbiParam", "KERNEL_TABLE", "KernelBody", "KernelEntry", "KernelTableError", "body_path", "lookup"]
 
 
 class KernelTableError(LookupError):
@@ -93,25 +93,32 @@ class KernelEntry:
             if form is None or b.form == form:
                 return b
         raise KernelTableError(
-            f"kernel {self.qualname!r} has no {form!r} body (available: "
-            f"{[b.form for b in self.bodies] or 'none'})")
+            f"kernel {self.qualname!r} has no {form!r} body (available: {[b.form for b in self.bodies] or 'none'})"
+        )
 
 
 # triton-cpu's launch tail: every exported kernel takes these six after its own arguments.
-_TRITON_CPU_LAUNCH = (AbiParam("program_id", "int32_t", index=0), AbiParam("program_id", "int32_t", index=1),
-                      AbiParam("program_id", "int32_t", index=2), AbiParam("grid", "int32_t", index=0),
-                      AbiParam("grid", "int32_t", index=1), AbiParam("grid", "int32_t", index=2))
+_TRITON_CPU_LAUNCH = (
+    AbiParam("program_id", "int32_t", index=0),
+    AbiParam("program_id", "int32_t", index=1),
+    AbiParam("program_id", "int32_t", index=2),
+    AbiParam("grid", "int32_t", index=0),
+    AbiParam("grid", "int32_t", index=1),
+    AbiParam("grid", "int32_t", index=2),
+)
 
 # workloads/mlp_basic_triton/kernels.py:_mlp2_kernel — (x, w1, b1, w2, b2, out, M; K/H1/H2/BLOCK_M constexpr).
 # Weights are in nn.Linear's [out, in] layout; the kernel loads them transposed itself.
-_MLP2_ABI = (AbiParam("operand", "const float *", name="x"),
-             AbiParam("operand", "const float *", name="w1"),
-             AbiParam("operand", "const float *", name="b1"),
-             AbiParam("operand", "const float *", name="w2"),
-             AbiParam("operand", "const float *", name="b2"),
-             AbiParam("result", "float *", index=0),
-             AbiParam("dim", "int32_t", name="x", index=0),
-             *_TRITON_CPU_LAUNCH)
+_MLP2_ABI = (
+    AbiParam("operand", "const float *", name="x"),
+    AbiParam("operand", "const float *", name="w1"),
+    AbiParam("operand", "const float *", name="b1"),
+    AbiParam("operand", "const float *", name="w2"),
+    AbiParam("operand", "const float *", name="b2"),
+    AbiParam("result", "float *", index=0),
+    AbiParam("dim", "int32_t", name="x", index=0),
+    *_TRITON_CPU_LAUNCH,
+)
 _MLP2_SPEC = (("x", (None, 16)), ("w1", (32, 16)), ("b1", (32,)), ("w2", (32, 32)), ("b2", (32,)))
 
 _BUILTIN: tuple[KernelEntry, ...] = (
@@ -120,12 +127,26 @@ _BUILTIN: tuple[KernelEntry, ...] = (
         backend="triton",
         description="linear+relu+linear+relu in one Triton kernel (model2MLIR workloads/mlp_basic_triton)",
         bodies=(
-            KernelBody(form="llvm_ir", ir="triton_llvmir/mlp2.ll", entry="fused_mlp2_kernel",
-                       abi=_MLP2_ABI, specialization=_MLP2_SPEC, block=("x", 0, 16), portable=True,
-                       description="triton-cpu LLVM IR, optimized for the exporting x86 host"),
-            KernelBody(form="llvm_mlir", ir="triton_llvmir/mlp2_llvm.mlir", entry="fused_mlp2_kernel",
-                       abi=_MLP2_ABI, specialization=_MLP2_SPEC, block=("x", 0, 16), portable=True,
-                       description="triton-cpu llvm-dialect MLIR, before LLVM optimization"),
+            KernelBody(
+                form="llvm_ir",
+                ir="triton_llvmir/mlp2.ll",
+                entry="fused_mlp2_kernel",
+                abi=_MLP2_ABI,
+                specialization=_MLP2_SPEC,
+                block=("x", 0, 16),
+                portable=True,
+                description="triton-cpu LLVM IR, optimized for the exporting x86 host",
+            ),
+            KernelBody(
+                form="llvm_mlir",
+                ir="triton_llvmir/mlp2_llvm.mlir",
+                entry="fused_mlp2_kernel",
+                abi=_MLP2_ABI,
+                specialization=_MLP2_SPEC,
+                block=("x", 0, 16),
+                portable=True,
+                description="triton-cpu llvm-dialect MLIR, before LLVM optimization",
+            ),
         ),
     ),
 )
@@ -140,7 +161,8 @@ def lookup(qualname: str) -> KernelEntry:
     except KeyError:
         raise KernelTableError(
             f"no external kernel {qualname!r} in merlin's kernel table (known: {sorted(KERNEL_TABLE)}); "
-            "add an entry to src/merlin/llvmlower/kernel_table.py") from None
+            "add an entry to src/merlin/llvmlower/kernel_table.py"
+        ) from None
 
 
 def body_path(body: KernelBody) -> Path:

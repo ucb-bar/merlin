@@ -10,6 +10,7 @@ strides [0, 0]), and so does ``memrefCopy`` in ``abi/mlir_runtime.c`` on any run
 This compiles ``merlin_model.c`` on the host with a ``merlin_invoke`` that reads each descriptor exactly
 as MLIR would, so no simulator is needed.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -59,9 +60,11 @@ def test_descriptors_are_packed_for_their_rank(tmp_path):
     src = tmp_path / "probe.c"
     src.write_text(_PROBE, encoding="utf-8")
     exe = tmp_path / "probe"
-    subprocess.run(["cc", "-O1", "-I", str(rt), str(src), str(rt / "merlin_model.c"), "-o", str(exe)],
-                   check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["cc", "-O1", "-I", str(rt), str(src), str(rt / "merlin_model.c"), "-o", str(exe)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     lines = subprocess.run([str(exe)], check=True, capture_output=True, text=True).stdout.splitlines()
-    assert lines == ["arg0 sizes 4 16 strides 16 1",
-                     "arg1 sizes 32 strides 1",
-                     "arg2 sizes 2 3 5 strides 15 5 1"]
+    assert lines == ["arg0 sizes 4 16 strides 16 1", "arg1 sizes 32 strides 1", "arg2 sizes 2 3 5 strides 15 5 1"]
