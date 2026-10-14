@@ -4,7 +4,8 @@
 Writes ``<out>/mlp_basic/`` and ``<out>/mlp_basic_triton/`` (normally ``merlin/tests/fixtures/``), each a
 whole-model bundle in the layout ``llvmlower.c_runtime`` / ``runtime.backends.spike_model`` read:
 ``model.mlir``, ``weights.safetensors`` (+ ``.manifest.json``), ``inputs.npz`` (``in0``),
-``input_order.json`` and ``golden.npy``.
+``input_order.json`` and ``golden.npy``. Absolute paths model2MLIR records in the module are made
+relative to the model2MLIR checkout.
 
 Both come from model2MLIR's checked-in captures (``workloads/<name>/<name>.mlir``; re-run
 ``workloads/capture.py`` there first if the importer changed). The two models share seed, weights and
@@ -50,6 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     import torch
 
     src = args.m2m / "workloads"
+    root = str(args.m2m.resolve()) + "/"
     payloads = {w: (src / w / f"{w}.safetensors").read_bytes() for w in WORKLOADS}
     if payloads["mlp_basic"] != payloads["mlp_basic_triton"]:
         print(
@@ -66,7 +68,13 @@ def main(argv: list[str] | None = None) -> int:
     for w in WORKLOADS:
         dst = args.out / w
         dst.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src / w / f"{w}.mlir", dst / "model.mlir")
+        # model2MLIR records absolute paths (prov.weights_file, prov.kernel_source); a tracked fixture
+        # must not name a personal directory, so they become model2MLIR-checkout-relative.
+        text = (src / w / f"{w}.mlir").read_text(encoding="utf-8").replace(root, "")
+        if root.rstrip("/") in text:
+            print(f"refusing: {w}.mlir still names {root!r} after relativizing", file=sys.stderr)
+            return 1
+        (dst / "model.mlir").write_text(text, encoding="utf-8")
         shutil.copyfile(src / w / f"{w}.safetensors", dst / "weights.safetensors")
         shutil.copyfile(src / w / f"{w}.safetensors.manifest.json", dst / "weights.safetensors.manifest.json")
         np.savez(dst / "inputs.npz", in0=x.numpy().astype(np.float32))

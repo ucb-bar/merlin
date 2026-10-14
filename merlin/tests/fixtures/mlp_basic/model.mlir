@@ -1,4 +1,4 @@
-builtin.module attributes {prov.weights_file = "/home/grammy/blast/model2MLIR/workloads/mlp_basic/mlp_basic.safetensors", prov.level = "linalg-on-tensors"} {
+builtin.module attributes {prov.weights_file = "workloads/mlp_basic/mlp_basic.safetensors", prov.level = "linalg-on-tensors"} {
   func.func @forward(%0: tensor<32x16xf32>, %1: tensor<32xf32>, %2: tensor<32x32xf32>, %3: tensor<32xf32>, %4: tensor<8x32xf32>, %5: tensor<8xf32>, %6: tensor<4x16xf32>) -> tensor<4x8xf32> {
     %7 = tensor.empty() : tensor<16x32xf32>
     %8 = linalg.transpose ins(%0:tensor<32x16xf32>) outs(%7:tensor<16x32xf32>) permutation = [1, 0]
