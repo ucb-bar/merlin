@@ -149,17 +149,25 @@ def widthOf (indexBits : Nat) (op : Op) : Outcome Nat :=
   | some ty => Outcome.ofOption "non-scalar result type" (ty.bitWidth? indexBits)
   | none => .stuck "missing result type"
 
+/-- A unary elementwise op: one operand, lifted over scalars or one tensor. -/
+def unOp (op : Op) (args : List RVal) (f : Val → Outcome Val) : Outcome (List RVal) :=
+  match args with
+  | [a] => pureN op [a] fun | [x] => f x | _ => .stuck "arity"
+  | _ => .stuck s!"{op.name}: expected 1 operand"
+
+/-- A binary elementwise op: two operands, lifted over scalars or tensors of one shape. -/
+def binOp (op : Op) (args : List RVal) (f : Val → Val → Outcome Val) : Outcome (List RVal) :=
+  match args with
+  | [a, b] => pureN op [a, b] fun | [x, y] => f x y | _ => .stuck "arity"
+  | _ => .stuck s!"{op.name}: expected 2 operands"
+
 def sem : OpSem := fun ctx _ op args _ =>
   let M := ctx.M
   let ib := ctx.indexBits
   let flags := overflowFlags op
   let exact := hasUnit op "isExact"
-  let un (f : Val → Outcome Val) : Outcome (List RVal) := do
-    let [a] := args | .stuck s!"{op.name}: expected 1 operand"
-    pureN op [a] fun | [x] => f x | _ => .stuck "arity"
-  let bin (f : Val → Val → Outcome Val) : Outcome (List RVal) := do
-    let [a, b] := args | .stuck s!"{op.name}: expected 2 operands"
-    pureN op [a, b] fun | [x, y] => f x y | _ => .stuck "arity"
+  let un := unOp op args
+  let bin := binOp op args
   match op.name with
   | "arith.constant" =>
     match op.attr? "value", op.results with
