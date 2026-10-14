@@ -232,7 +232,13 @@ def main(argv=None):
     ap.add_argument("--tiers", default="")
     ap.add_argument("--capsules", default="all")
     ap.add_argument("--workers", type=int, default=0, help="0 uses the host's selected grading worker count")
-    ap.add_argument("--timeout", type=int, default=1800)
+    # This bounds the entire capsule check, including source setup, object builds,
+    # the functional screen, native RTL execution, coherent readback and audits.
+    # The selected gSIM native execution keeps its separate original 1800 s cap.
+    # A default of 1800 here cut off the capacity convolution during coherent
+    # readback after a 5-minute setup, even though native execution passed its
+    # own limit in the automatic promotion path.
+    ap.add_argument("--timeout", type=int, default=None)
     ap.add_argument("--out", default="")
     # Forwarded like every other flag. Without this the sandboxed agent -- which is EVERY real run --
     # gets "unrecognized arguments" and the shape-coverage report is unreachable exactly where it
@@ -278,6 +284,8 @@ def main(argv=None):
         help="resume waiting on an in-flight request id instead of submitting a new one",
     )
     a = ap.parse_args(argv)
+    if a.timeout is None:
+        a.timeout = 3600 if a.sim == "gsim" else 1800
     if a.scale_probe and not a.compile_only:
         ap.error("--scale-probe requires --compile-only")
 
