@@ -251,7 +251,7 @@ def _prove(function, activity, context, *, target):
                     if klass in {"MVIN2", "MVIN3"} and load_states is None:
                         raise ValueError("input preparation does not prove independent secondary load-port state")
                     pointer_args = [a for a in args if isinstance(a, _Pointer)]
-                    if klass in {"MVIN", "MVOUT"} and not pointer_args:
+                    if klass in {"MVIN", "MVIN2", "MVIN3", "MVOUT"} and not pointer_args:
                         raise ValueError("DRAM transfer has no bound declared pointer")
                     if klass == "UNKNOWN":
                         raise ValueError("input preparation contains undecoded command")

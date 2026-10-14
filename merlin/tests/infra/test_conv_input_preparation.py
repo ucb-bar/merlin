@@ -302,3 +302,31 @@ def test_unconfigured_outside_and_truncated_selected_ports_refuse(monkeypatch, c
         return observer
 
     assert _proof(monkeypatch, TWO_PORT_COPY, transform, patch)["status"] == "unproven"
+
+
+@pytest.mark.parametrize("klass,funct", [("MVIN2", 1), ("MVIN3", 14)])
+def test_known_secondary_port_raw_address_refuses_after_a_valid_transfer(monkeypatch, klass, funct):
+    from dataclasses import replace
+
+    def transform(text):
+        return _two_port_input(text).replace(
+            "llvm.return",
+            f'"llvm.inline_asm"(%one, %one) <{{asm_string = ".insn r 0x7b, 0x3, {funct}, x0, $0, $1",'
+            'constraints = "r,r,~{memory}", has_side_effects}> : (i64, i64) -> ()\n llvm.return',
+        )
+
+    def patch(observer):
+        observer = _selected_two_port_observer(observer)
+        observer.load_states = replace(observer.load_states, ports=(*observer.load_states.ports, ("MVIN3", 1)))
+        original = observer.decode_instruction
+
+        def decode(code, *args):
+            decoded_class, fields = original(code, *args)
+            return (klass, fields) if code == funct else (decoded_class, fields)
+
+        observer.decode_instruction = decode
+        return observer
+
+    proof = _proof(monkeypatch, TWO_PORT_COPY, transform, patch)
+    assert proof["status"] == "unproven"
+    assert proof["detail"] == "DRAM transfer has no bound declared pointer"
