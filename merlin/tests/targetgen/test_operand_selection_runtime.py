@@ -131,7 +131,8 @@ def test_release_contract_records_selection_without_changing_original_bytes(tmp_
         destination.read_bytes()).hexdigest()
 
 
-@pytest.mark.parametrize("mutation", [None, "numeric", "facts", "missing_host_source", "extra"])
+@pytest.mark.parametrize("mutation", [None, "formatting", "numeric", "facts", "raw_pin", "raw_duplicate",
+                                     "field_type", "missing_host_source", "extra"])
 def test_reviewed_handoff_requires_original_facts_complete_host_closure_and_exact_document(
     tmp_path, monkeypatch, mutation,
 ):
@@ -153,6 +154,14 @@ def test_reviewed_handoff_requires_original_facts_complete_host_closure_and_exac
         selected["numeric_policy"] = {"approximate": True}
     elif mutation == "facts":
         raw = raw.replace(b"selected_config", b"changed_config")
+    elif mutation == "formatting":
+        raw = (json.dumps(json.loads(raw), sort_keys=True, indent=2) + "\n").encode()
+    elif mutation == "raw_duplicate":
+        raw = b'{"inputs":null,' + raw[1:]
+    elif mutation == "field_type":
+        changed = json.loads(raw)
+        changed["facts"]["interfaces"][0]["legal_funct"] = [4.0]
+        raw = json.dumps(changed).encode()
     elif mutation == "missing_host_source":
         host.pop()
     elif mutation == "extra":
@@ -166,9 +175,11 @@ def test_reviewed_handoff_requires_original_facts_complete_host_closure_and_exac
                          declared_contract_path=lambda: contract_file)
     monkeypatch.setattr(coverage_commitment, "read_inputs", lambda _: {
         "capability_contract": contract, "raw_facts_utf8": raw.decode(),
+        "evidence": {"raw_facts_sha256": "0" * 64 if mutation == "raw_pin"
+                     else hashlib.sha256(raw).hexdigest()},
     })
     bundle = {"bundle_id": "el4", "allowed": [{"mode": "ro", "path": str(contract_file)}], "host_inputs": host}
-    if mutation is None:
+    if mutation in (None, "formatting"):
         corpus_inputs.require_reviewed_bundle(te, authored, bundle)
     else:
         with pytest.raises(ValueError):

@@ -76,7 +76,8 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
         released = yaml.safe_load(path.read_bytes())
         operand_selection = released.get("rocc_operand_selection") if isinstance(released, dict) else None
         if operand_selection is not None:
-            from merlin.targetgen.rocc.selected_operand_protocol import _read_pin, selected_inputs
+            from merlin.common.digest import sha256_bytes
+            from merlin.targetgen.rocc.selected_operand_protocol import _json, _read_pin, _sha, selected_inputs
 
             if (type(operand_selection) is not dict
                     or set(operand_selection) != {"original_facts", "sidecar"}
@@ -87,8 +88,19 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
                         te.path.parent / "contracts/operand-protocol.json")):
                 raise ValueError("reviewed operand selection must name its exact release-local facts and sidecar")
             raw_facts = (coverage_inputs or {}).get("raw_facts_utf8")
-            if (type(raw_facts) is not str
-                    or _read_pin(operand_selection["original_facts"], 16 * 1024 * 1024) != raw_facts.encode("utf-8")):
+            raw_pin = ((coverage_inputs or {}).get("evidence") or {}).get("raw_facts_sha256")
+            if type(raw_facts) is not str or sha256_bytes(raw_facts.encode("utf-8")) != _sha(raw_pin):
+                raise ValueError("reviewed operand selection lacks its exact original raw Phase 0 facts pin")
+            # The selected evidence exporter canonically serializes its loaded
+            # facts view. It preserves the complete original JSON document,
+            # though that export's byte pin differs from the intake byte pin.
+            # Parse both without duplicates/nonfinite numbers and compare their
+            # typed canonical forms, so true/1 or 1/1.0 cannot compare as equal.
+            raw_document = _json(raw_facts.encode("utf-8"), 16 * 1024 * 1024)
+            selected_document = _json(_read_pin(operand_selection["original_facts"], 16 * 1024 * 1024),
+                                      16 * 1024 * 1024)
+            canonical = {"sort_keys": True, "separators": (",", ":"), "allow_nan": False}
+            if json.dumps(raw_document, **canonical) != json.dumps(selected_document, **canonical):
                 raise ValueError("reviewed operand selection differs from unchanged original Phase 0 facts")
             original_only = {row.get("path") for row in bundle.get("host_inputs", []) if isinstance(row, dict)}
             if not set(selected_inputs(operand_selection)) <= original_only:
