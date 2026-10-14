@@ -85,3 +85,28 @@ def test_c1_verifies_real_dce_and_rejects_faults(tmp_path, monkeypatch):
         mutated = copy.deepcopy(after)
         fault(mutated)
         assert _check(tmp_path, before, mutated, name) == "abstracted", name
+
+
+@pytest.mark.skipif(not LEAN_EXE.exists() or not M2M_PYTHON.exists(),
+                    reason="merlin-lean or the model2MLIR interpreter (authoritative exporter) is missing")
+def test_receipts_for_real_preprocessing(tmp_path, monkeypatch):
+    import jsonschema
+
+    from merlin.verify.lean.check import check_stage
+
+    _record(tmp_path, monkeypatch)
+    stages = sorted(p for p in (tmp_path / "stages").iterdir())
+    # Chain continuity: each boundary consumes exactly what the previous one produced.
+    for prev, nxt in zip(stages, stages[1:]):
+        assert (prev / "after.mlir").read_bytes() == (nxt / "before.mlir").read_bytes()
+    schema = json.loads((repo_root() / "merlin" / "contract" / "schemas" / "lean_receipt.schema.json").read_text())
+    for stage in stages:
+        receipt = check_stage(stage, m2m_python=M2M_PYTHON)
+        jsonschema.validate(receipt, schema)
+        assert receipt["verdict"] == "verified", receipt.get("reason")
+        assert receipt["axioms"] == ["propext", "Classical.choice", "Quot.sound"]
+    # A wrong after-file must not verify.
+    pruned = next(s for s in stages if s.name.endswith("xdsl-pruned"))
+    text = (pruned / "after.mlir").read_text()
+    (pruned / "after.mlir").write_text(text.replace('"arith.muli"', '"arith.addi"', 1))
+    assert check_stage(pruned, m2m_python=M2M_PYTHON)["verdict"] != "verified"
