@@ -1,4 +1,4 @@
-builtin.module attributes {prov.weights_file = "workloads/mlp_basic_triton/mlp_basic_triton.safetensors", prov.level = "linalg-on-tensors"} {
+builtin.module attributes {prov.weights_file = "weights.safetensors", prov.level = "linalg-on-tensors"} {
   func.func @forward(%0: tensor<32x16xf32>, %1: tensor<32xf32>, %2: tensor<32x32xf32>, %3: tensor<32xf32>, %4: tensor<8x32xf32>, %5: tensor<8xf32>, %6: tensor<4x16xf32>) -> tensor<4x8xf32> {
     %7 = func.call @triton_exp__fused_mlp2(%6, %0, %1, %2, %3) {prov.kernel = "triton_exp::fused_mlp2", prov.kernel_operands = ["x", "w1", "b1", "w2", "b2"], prov.region_id = "triton_exp__fused_mlp2_0", prov._pattern_hint = "kernel", prov.op = "kernel", prov.family = "kernel", prov.aten = "triton_exp.fused_mlp2.default", prov.orig_dtype = "float32", prov.dispatch_id = "triton_exp__fused_mlp2_0"} : (tensor<4x16xf32>, tensor<32x16xf32>, tensor<32xf32>, tensor<32x32xf32>, tensor<32xf32>) -> tensor<4x32xf32>
     %8 = tensor.empty() : tensor<32x8xf32>
