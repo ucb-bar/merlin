@@ -546,6 +546,13 @@ def _prepare_model_mlir(
         # convert (nonzero-zp, embeddings).
         from ...llvmlower.quant_passes import apply_quant
 
+        if respect_captured_quantization_scope:
+            # A captured quantized contraction may carry bf16 dequantized
+            # operands. Promote its accumulator before selecting the i8 path,
+            # so the latter sees the f32 accumulator and can reuse the source
+            # i8 values/scales through their layout-only views.
+            lower_bf16_matmul_f32acc(module)
+
         # `prequant_gather` (the `quantize_before_gather` feature) moves the activation quantization
         # to BEFORE the im2col expansion. Reported, not silent: a pass that rewrote nothing and a
         # pass that could not reach anything both return 0, and only the counters separate them.
