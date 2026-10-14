@@ -16,3 +16,22 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
 - **Paper path:** captures and Merlin's stage prints are generic form, which carries the region
   explicitly, so both parsers read the same body. To be confirmed by the measured inventory.
 - **Status:** open; exporter will use MLIR's own parser (`torch_mlir.ir`) as the authority.
+
+## F2 — MLIR's Python bindings hide the properties of unregistered ops
+
+- **Observed (2026-10-13):** `torch_mlir.ir` exposes only discardable attributes of unregistered ops
+  such as `quant_ext.dequantize_per_tensor`; their properties (`quant_min`, `quant_max`, `axis`) are
+  invisible, so a naive exporter silently drops them. The round trip flagged all 8 affected files.
+- **Paper path:** yes — `quant_ext` ops are in the captures until `lower_quant_ext` (U15).
+- **Status:** fixed in `mlir_export.py` (the property dictionary is recovered from the op's own
+  generic print with a balanced, string-aware scan and parsed by MLIR; failure fails the export).
+
+## F3 — xDSL accepts IR that MLIR's verifier rejects
+
+- **Observed:** a fixture with an ill-typed `linalg.transpose` (result 16x16 for an 8x4 permutation)
+  parsed and passed through Merlin's xDSL preprocessing; MLIR rejects it
+  (`dim(result, 0) = 16 doesn't match dim(input, permutation[0]) = 8`).
+- **Why it matters:** Merlin's Python passes can operate on, and emit, IR the compiling MLIR would
+  reject or read differently. Exporting every boundary with MLIR's parser (design D9) surfaces it at
+  the boundary where it appears.
+- **Status:** fixture corrected; the general risk is covered by MLIR-parser export of every stage.
