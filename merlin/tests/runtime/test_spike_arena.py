@@ -29,3 +29,13 @@ def test_smaller_arena_uses_space_before_fixed_weights():
     layout = spike_session_layout(weights_bytes=900_000_000, arena_bytes=4 * GIB)
     assert layout["arena_base"] == 0xC0000000
     assert layout["arena_base"] + layout["arena_bytes"] <= layout["weights_base"]
+
+
+def test_linked_static_extent_moves_arena_above_program():
+    static_end = 0xC49108F0
+    layout = spike_session_layout(weights_bytes=4_400_000_000,
+                                  arena_bytes=2 * GIB, static_end=static_end)
+    assert layout["static_end"] == static_end
+    assert layout["arena_base"] == 0xD0000000
+    assert layout["arena_base"] >= static_end
+    assert layout["arena_base"] + layout["arena_bytes"] <= layout["weights_base"]

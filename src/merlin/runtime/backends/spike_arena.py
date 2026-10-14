@@ -54,16 +54,24 @@ def spike_session_layout(
     *, weights_bytes: int, arena_bytes: int,
     weights_base: int = 0x200000000, dram_base: int = 0x80000000,
     early_arena_base: int = 0xC0000000,
+    static_end: int | None = None,
 ) -> dict[str, int]:
-    """Keep a linked weight blob fixed and place a disjoint Spike arena."""
+    """Keep static data, the arena, and a linked weight blob disjoint."""
     if weights_bytes < 0 or arena_bytes <= 0 or weights_base <= early_arena_base:
         raise ValueError("invalid Spike weight or arena extent")
+    if static_end is not None:
+        if static_end < dram_base or static_end > weights_base:
+            raise ValueError("linked static extent overlaps fixed weights")
+        early_arena_base = max(early_arena_base, _round_up(static_end, 256 * MIB))
     weight_end = weights_base + weights_bytes
     if early_arena_base + arena_bytes <= weights_base:
         arena_base = early_arena_base
     else:
         arena_base = _round_up(weight_end, 256 * MIB)
     end = max(weight_end, arena_base + arena_bytes)
-    return {"arena_base": arena_base, "arena_bytes": arena_bytes,
-            "weights_base": weights_base,
-            "mem_bytes": _round_up(end - dram_base, GIB)}
+    layout = {"arena_base": arena_base, "arena_bytes": arena_bytes,
+              "weights_base": weights_base,
+              "mem_bytes": _round_up(end - dram_base, GIB)}
+    if static_end is not None:
+        layout["static_end"] = static_end
+    return layout
