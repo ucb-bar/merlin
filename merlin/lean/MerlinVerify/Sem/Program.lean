@@ -57,7 +57,7 @@ def Env.bindAll (e : Env) (vs : List Value) (rs : List RVal) : Outcome Env :=
   else .stuck "arity mismatch binding SSA values"
 
 def Env.getAll (e : Env) (ids : List ValueId) : Outcome (List RVal) :=
-  Outcome.mapM (fun v => Outcome.ofOption s!"unbound SSA value {v}" (e.get? v)) ids
+  Outcome.mapM (fun v => Outcome.ofOption "unbound SSA value" (e.get? v)) ids
 
 mutual
   /-- Run a block's ops in order; the terminator's operand values are the block's result. -/
