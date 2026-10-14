@@ -154,11 +154,11 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
     issued = None
     try:
         original_policy = _policy_bytes(bundle)
-        # The per-file lease validation and the 23k-member roster scan are
-        # CPU work too. End this slot before yielding to a compiler child.
+        with read_lease_digest.verification() as leases:
+            document = verify_bundle_snapshot(workspace, bundle, repo=repo)
+        # The 23k-member roster scan is CPU work too. Acquire only after the
+        # verifier's admission gate; end the slot before yielding to a child.
         with shared_compute_pool():
-            with read_lease_digest.verification() as leases:
-                document = verify_bundle_snapshot(workspace, bundle, repo=repo)
             root = bundle_snapshot_root(workspace)
             marker_bytes = (root / MARKER).read_bytes()
             members = _scanned_roster(_scanned_members(root))
@@ -180,7 +180,7 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
                 raise RuntimeError("original snapshot scope policy or marker changed")
             with shared_compute_pool():
                 read_lease_digest.validate(issued.leases)
-                final = verify_bundle_snapshot(workspace, bundle, repo=repo)
+            final = verify_bundle_snapshot(workspace, bundle, repo=repo)
             if final != document:
                 raise RuntimeError("original snapshot scope ownership changed")
     finally:
