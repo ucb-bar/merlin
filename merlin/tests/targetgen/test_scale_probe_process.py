@@ -201,3 +201,29 @@ def test_namespace_exit_mutation_refuses_at_final_full_boundary(setup, monkeypat
     with pytest.raises((ValueError, RuntimeError), match="snapshot|frozen|changed|digest"):
         emit(setup)
     assert not (setup.output / "public_compile_only.json").exists()
+
+
+def test_batch_setup_same_size_restored_mtime_mutation_refuses_before_any_child_launch(setup, monkeypatch):
+    pin, mutated, launched = S.CHILD._pin, False, []
+
+    def observed(path):
+        nonlocal mutated
+        result = pin(path)
+        if path == setup.output / "case-001/.scale_child_spec.json" and not mutated:
+            mutated = True
+            before, raw = setup.frozen.stat(), setup.frozen.read_bytes()
+            setup.frozen.chmod(0o600)
+            setup.frozen.write_bytes(bytes([raw[0] ^ 1]) + raw[1:])
+            os.utime(setup.frozen, ns=(before.st_atime_ns, before.st_mtime_ns))
+        return result
+
+    def launching(*args, **kwargs):
+        launched.append(args)
+        pytest.fail("mutation crossed the independent setup exit into child execution")
+
+    monkeypatch.setattr(S.CHILD, "_pin", observed)
+    monkeypatch.setattr(S.subprocess, "Popen", launching)
+    with pytest.raises((ValueError, RuntimeError), match="snapshot|frozen|changed|digest"):
+        emit(setup)
+    assert mutated and not launched
+    assert not (setup.output / "public_compile_only.json").exists()

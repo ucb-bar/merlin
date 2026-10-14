@@ -83,7 +83,7 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                work_root, deadline, ir_budget, sandbox_inputs=None, timing=None):
     from . import compile_only as C
 
-    entered, count = time.monotonic(), workers()
+    entered, entered_cpu, count = time.monotonic(), time.process_time(), workers()
     rows = [C._case_row(case) for case in cases]
     prepared, active = [], []
     with contextlib.ExitStack() as lifetime:
@@ -93,6 +93,8 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
             lifetime.enter_context(R._original_execution_lifetime(owner,
                 target_experiment=target_experiment, candidate=candidate,
                 work_root=work_root / "child-owner", sandbox_inputs=sandbox_inputs))
+            common_inputs = {"contract": _input_pin(contract), "facts": CHILD._pin(facts_path)}
+            jobs = []
             for index, case in enumerate(cases):
                 case.verify()
                 root = work_root / f"case-{index:03d}"
@@ -108,17 +110,19 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                             if str(cap.get("name") or Path(cap["__dir__"]).name) == case.member]
                 document = {"schema": SCHEMA, "package_dir": str(candidate), "target": target_experiment.target,
                     "case": case.record(), "capsules": CHILD._data(selected), "source": CHILD._pin(source),
-                    "contract": _input_pin(contract), "facts": CHILD._pin(facts_path),
+                    **common_inputs,
                     "output": str(root), "deadline": deadline,
                     "ir_budget": ir_budget.record() if ir_budget is not None else None}
                 _write(spec, document)
+                jobs.append((index, spec, result))
+            if jobs:
                 environment = dict(os.environ)
-                transport = lifetime.enter_context(CHILD.prepare_model_child(
-                    spec_path=spec, environment=environment, package_dir=candidate))
-                if transport is None:
-                    raise StageGateError("public scale children require the original sealed owner")
-                prepared.append((index, spec, result, environment, transport))
-        setup_finished = time.monotonic()
+                transports = lifetime.enter_context(CHILD.prepare_model_children(
+                    spec_paths=tuple(spec for _, spec, _ in jobs),
+                    environment=environment, package_dir=candidate))
+                prepared.extend((index, spec, result, environment, transport)
+                    for (index, spec, result), transport in zip(jobs, transports, strict=True))
+        setup_finished, setup_cpu = time.monotonic(), time.process_time()
         pending = iter(prepared)
 
         def launch(item):
@@ -167,7 +171,7 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                 process.wait(timeout=10)
         # No child or RPC is running here. A mandatory final full custody read
         # encloses result joins, then closes before the aggregate is published.
-        join_started = time.monotonic()
+        join_started, join_cpu = time.monotonic(), time.process_time()
         with C._snapshot_operation(owner):
             for item, process, started, finished in completed:
                 index, spec, output, _, transport = item
@@ -210,13 +214,17 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
             # remain. Include the namespace's last check in this operation,
             # then perform its independent full exit before report publication.
             lifetime.close()
-    finished = time.monotonic()
+    finished, finished_cpu = time.monotonic(), time.process_time()
     if timing is not None:
         timing.update(parent_setup_s=setup_finished - entered,
                       dispatch_wait_s=join_started - setup_finished,
                       parent_final_join_s=finished - join_started,
                       total_dispatch_s=finished - entered, workers=count,
                       children_launched=len(completed),
+                      parent_process_cpu_s={"setup": setup_cpu - entered_cpu,
+                          "dispatch_wait": join_cpu - setup_cpu, "final_join": finished_cpu - join_cpu,
+                          "total": finished_cpu - entered_cpu,
+                          "scope": "this original parent process only; excludes descendants"},
                       scope="actual parent stage wall times, including all custody checks")
     return rows
 
@@ -234,8 +242,11 @@ def main(argv=None):
     parser.add_argument("--original-profile-fd", type=int, required=True)
     args = parser.parse_args(argv)
     CR._die_with_parent()
+    started, started_cpu = time.monotonic(), time.process_time()
+    initial_cpus = sorted(os.sched_getaffinity(0))
     raw = args.spec.read_bytes()
     with CHILD.restore_model_child(args.original_profile_fd, spec_path=args.spec, spec_bytes=raw) as receipt:
+        restored, restored_cpu = time.monotonic(), time.process_time()
         job = json.loads(raw)
         executor = R.active_original_execution()
         owner, target = executor.owner, executor.target
@@ -264,6 +275,7 @@ def main(argv=None):
             raise StageGateError("public scale child products lost their original owner")
         remaining = min(600, math.floor(job["deadline"] - time.monotonic()))
         observation = {"lowering_status": "unavailable", "reason": "original aggregate compile budget exhausted"}
+        emitting, emitting_cpu = time.monotonic(), time.process_time()
         if remaining >= 1:
             with (P.scoped_package_executor(C._Executor(target, candidate, root,
                     common_service=owner, inputs=executor.inputs)),
@@ -271,10 +283,21 @@ def main(argv=None):
                 observation = C._emit_scale_case(candidate, Path(job["source"]["path"]), root,
                     contract=Path(job["contract"]["path"]), target=target.target,
                     timeout_s=remaining, ir_budget=budget)
+        emitted, emitted_cpu = time.monotonic(), time.process_time()
         for name in ("source", "contract", "facts"):
             if CHILD._digest(_input_pin(job[name]["path"])) != CHILD._digest(job[name]):
                 raise StageGateError("public scale child original input changed before completion")
         matched[0].verify()
+    finished, finished_cpu = time.monotonic(), time.process_time()
+    _write(args.spec.parent / ".scale_child_timing.json", {
+        "pid": os.getpid(), "started_monotonic": started, "finished_monotonic": finished,
+        "initial_allowed_cpus": initial_cpus, "final_allowed_cpus": sorted(os.sched_getaffinity(0)),
+        "wall_s": {"restore": restored - started, "producer_case": emitting - restored,
+            "emission": emitted - emitting, "final_custody": finished - emitted, "total": finished - started},
+        "process_cpu_s": {"restore": restored_cpu - started_cpu, "producer_case": emitting_cpu - restored_cpu,
+            "emission": emitted_cpu - emitting_cpu, "final_custody": finished_cpu - emitted_cpu,
+            "total": finished_cpu - started_cpu},
+        "scope": "observed process-only CPU/wall stages; descendants and CPU lease waits are not separately measured"})
     # Completion becomes visible only after the restored owner's fresh final checks.
     _write(args.result, {"schema": SCHEMA, "case": job["case"], "observation": observation,
                          "original_compiler_child": receipt})
