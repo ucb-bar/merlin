@@ -6,11 +6,11 @@ owner: runtime
 last_verified: 2026-10-13
 related: [triton_frontend, model2mlir, rvv_e2e, llvm_toolchain]
 code_refs:
-  - merlin/python/merlin/llvmlower/kernel_table.py
-  - merlin/python/merlin/llvmlower/kernel_link.py
-  - merlin/python/merlin/llvmlower/lower.py
-  - merlin/python/merlin/common/kernel_calls.py
-  - merlin/python/merlin/runtime/backends/spike_model.py
+  - src/merlin/llvmlower/kernel_table.py
+  - src/merlin/llvmlower/kernel_link.py
+  - src/merlin/llvmlower/lower.py
+  - src/merlin/common/kernel_calls.py
+  - src/merlin/runtime/backends/spike_model.py
   - merlin/runtime/c/merlin_model.c
 ---
 
@@ -65,7 +65,7 @@ two tables in step. Each entry lists one or more `KernelBody`s:
 | field | meaning |
 |---|---|
 | `form` | `llvm_ir` (textual `.ll`) or `llvm_mlir` (MLIR `llvm` dialect, `mlir-translate`d first) |
-| `ir` | path under `merlin/python/merlin/kernels/` (shipped as package data) |
+| `ir` | path under `src/merlin/kernels/` (shipped as package data) |
 | `entry` | the symbol the body defines |
 | `abi` | its parameters in order: `operand` (data pointer by name), `result`, `dim` (runtime extent), `program_id` / `grid` (launch coordinates), `null` |
 | `block` | `(operand, axis, size)`: one call per block of rows (the Triton program grid) |

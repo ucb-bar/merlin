@@ -127,16 +127,21 @@ def prepare_kernel_declarations(upstream_text: str, uses: Sequence[KernelUse]) -
     """Mark each kernel declaration ``llvm.emit_c_interface`` and its arguments read-only.
 
     Text in, text out, on the module that is about to enter the upstream pipeline, so it applies
-    after EITHER preprocess path. Anchored on the exact ``func.func private @<symbol>(`` this module
-    found and done with ``str`` operations — the discipline ``passes_opu.patch_declaration_arg_attrs``
-    uses for the same repair, and needed for the same reason: xDSL drops ``arg_attrs`` when it prints a
-    body-less declaration, so the annotation cannot be put on the IR object. Idempotent.
+    after EITHER preprocess path. Anchored on the exact symbol this module found and done with ``str``
+    operations — the discipline ``passes_opu.patch_declaration_arg_attrs`` uses for the same repair,
+    and needed for the same reason: xDSL drops ``arg_attrs`` when it prints a body-less declaration in
+    PRETTY form, so the annotation cannot be put on the IR object. Two spellings reach here: the
+    textual path keeps model2MLIR's pretty ``func.func private @<symbol>(...)``, and the xDSL path
+    prints GENERIC form (``"func.func"() <{sym_name = "<symbol>", ...}>``), where ``arg_attrs`` is an
+    ordinary property. Missing the second spelling silently brought the four weight copies back.
+    Idempotent.
     """
     out = upstream_text
     for use in uses:
         head = f"func.func private @{use.symbol}("
         at = out.find(head)
         if at < 0:
+            out = _prepare_generic_declaration(out, use)
             continue
         open_paren = at + len(head) - 1
         close = out.find(")", open_paren)
@@ -157,6 +162,27 @@ def prepare_kernel_declarations(upstream_text: str, uses: Sequence[KernelUse]) -
         else:
             out = out[:line_end] + " attributes {llvm.emit_c_interface}" + out[line_end:]
     return out
+
+
+def _prepare_generic_declaration(text: str, use: KernelUse) -> str:
+    """The generic-form branch of :func:`prepare_kernel_declarations` (one declaration, idempotent)."""
+    anchor = f'<{{sym_name = "{use.symbol}"'
+    at = text.find(anchor)
+    if at < 0 or text.rfind('"func.func"()', 0, at) < text.rfind("\n", 0, at):
+        return text
+    props_end = text.find("}>", at)
+    if "arg_attrs" not in text[at:props_end]:
+        read = ", ".join([_READ] * len(use.arg_types))
+        insert = at + len("<{")
+        text = text[:insert] + f"arg_attrs = [{read}], " + text[insert:]
+        props_end = text.find("}>", at)
+    # The discardable attributes follow the (empty) body region: `}>({\n  }) {...} : () -> ()`.
+    attrs_open = text.find("}) {", props_end)
+    attrs_close = text.find("} : () -> ()", attrs_open)
+    if attrs_open < 0 or attrs_close < 0 or "llvm.emit_c_interface" in text[attrs_open:attrs_close]:
+        return text
+    insert = attrs_open + len("}) {")
+    return text[:insert] + "llvm.emit_c_interface, " + text[insert:]
 
 
 # --------------------------------------------------------------------------- after the pipeline

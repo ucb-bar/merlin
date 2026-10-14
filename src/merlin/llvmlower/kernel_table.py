@@ -140,7 +140,7 @@ def lookup(qualname: str) -> KernelEntry:
     except KeyError:
         raise KernelTableError(
             f"no external kernel {qualname!r} in merlin's kernel table (known: {sorted(KERNEL_TABLE)}); "
-            "add an entry to merlin/python/merlin/llvmlower/kernel_table.py") from None
+            "add an entry to src/merlin/llvmlower/kernel_table.py") from None
 
 
 def body_path(body: KernelBody) -> Path:

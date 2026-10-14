@@ -68,6 +68,18 @@ def test_prepare_is_idempotent():
     assert KL.prepare_kernel_declarations(once, uses) == once
 
 
+def test_prepare_marks_generic_form_declaration():
+    """The xDSL preprocess prints the declaration generically; arg_attrs is a property there."""
+    from merlin.llvmlower.passes_xdsl import preprocess_text
+    upstream, _ = preprocess_text(_text())
+    uses = KL.find_kernel_uses(_text())
+    once = KL.prepare_kernel_declarations(upstream, uses)
+    at = once.index(f'sym_name = "{SYMBOL}"')
+    props = once[once.rfind("<{", 0, at):once.index("}>", at)]
+    assert props.count('{bufferization.access = "read"}') == 5
+    assert KL.prepare_kernel_declarations(once, uses) == once
+
+
 def test_prepare_leaves_kernel_free_text_alone():
     assert KL.prepare_kernel_declarations(_text(KERNEL_FREE), ()) == _text(KERNEL_FREE)
 
@@ -88,9 +100,12 @@ def test_both_paths_emit_ciface_call(textual, tmp_path):
 
 
 @needs_toolchain
-def test_weights_not_copied_before_kernel(tmp_path):
+@pytest.mark.parametrize("textual", [False, True], ids=["xdsl", "textual"])
+def test_weights_not_copied_before_kernel(textual, tmp_path):
+    """Both preprocess paths: the xDSL one prints the declaration in GENERIC form
+    (``"func.func"() <{sym_name = ...}>``), which a pretty-form-only patch silently missed."""
     from merlin.llvmlower.lower import lower_model
-    lower_model(_text(), tmp_path, targets=(), textual=True, vectorize=True)
+    lower_model(_text(), tmp_path, targets=(), textual=textual, vectorize=True)
     body = _forward_body((tmp_path / "model.ll").read_text(encoding="utf-8"))
     before_call = body[:body.index(f"@{SYMBOL}(")]
     assert "@llvm.memcpy" not in before_call
