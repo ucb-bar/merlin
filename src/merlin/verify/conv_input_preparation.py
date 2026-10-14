@@ -114,13 +114,19 @@ def _prove(function, activity, context, *, target):
     if semantics is None or getattr(semantics, "word_bits", None) != 64:
         raise ValueError("input preparation has no explicitly selected 64-bit operand observer")
     isa = semantics.isa_constants(target)
+    from merlin.targetgen.rtl.firrtl_load_states import LoadStateMapping
+
+    load_states = getattr(semantics, "load_states", None)
+    if load_states is not None and type(load_states) is not LoadStateMapping:
+        raise ValueError("input preparation load states lack typed original source evidence")
     values = {arg: _Pointer(i) for i, arg in enumerate(blocks[0].args)}
     capacity = {i: prod(b["shape"]) * (4 if b["dtype"] == "i32" else 1) for i, b in enumerate(buffers)}
     memory, consumed, initialized = {}, set(), set()
     readonly = set()
     visited = Counter()
     arithmetic = payload = transfers = scratch_transfers = 0
-    load_stride = store_stride = None
+    load_strides = {}
+    store_stride = None
     block = blocks[0]
     incoming = ()
 
@@ -242,7 +248,7 @@ def _prove(function, activity, context, *, target):
                         for a in args
                     ]
                     klass, decoded = semantics.decode_instruction(parsed[0], *operands, isa)
-                    if klass in {"MVIN2", "MVIN3"}:
+                    if klass in {"MVIN2", "MVIN3"} and load_states is None:
                         raise ValueError("input preparation does not prove independent secondary load-port state")
                     pointer_args = [a for a in args if isinstance(a, _Pointer)]
                     if klass in {"MVIN", "MVOUT"} and not pointer_args:
@@ -258,6 +264,12 @@ def _prove(function, activity, context, *, target):
                         ):
                             raise ValueError("pointer command lacks decoded DRAM operand role")
                         if klass in {"MVIN", "MVIN2", "MVIN3"}:
+                            if load_states is not None and decoded.get("is_acc_addr") is not False:
+                                raise ValueError("input transfer byte width has no selected scratchpad address proof")
+                            port = load_states.port(klass) if load_states is not None else 0
+                            if port is None:
+                                raise ValueError("input transfer has no source-selected load port")
+                            load_stride = load_strides.get(port)
                             if pointer.root == 2:
                                 raise ValueError("CPU output used as accelerator input")
                             rows, cols = decoded.get("rows"), decoded.get("cols")
@@ -293,9 +305,13 @@ def _prove(function, activity, context, *, target):
                             raise ValueError("input scratch/output pointer escapes decoded transfer role")
                     elif klass == "CONFIG_LD":
                         state = decoded.get("state_id")
-                        if type(state) is not int or state != 0:
+                        if type(state) is not int or state not in (load_states.states if load_states else (0,)):
                             raise ValueError("input preparation does not prove nonzero load-port state")
-                        load_stride = decoded.get("stride")
+                        stride = decoded.get("stride")
+                        if (type(stride) is not int or stride < 0
+                                or (load_states is not None and stride >= 1 << load_states.stride_width)):
+                            raise ValueError("input load stride differs from its actual source storage width")
+                        load_strides[state] = stride
                     elif klass == "CONFIG_ST":
                         store_stride = decoded.get("out_stride_bytes")
             elif name in {"llvm.br", "llvm.cond_br"}:

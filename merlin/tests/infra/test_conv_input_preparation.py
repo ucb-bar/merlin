@@ -220,3 +220,85 @@ def test_zero_global_unknown_module_alias_refuses(monkeypatch):
         )
 
     assert _proof(monkeypatch, "", transform)["status"] == "unproven"
+
+
+def _selected_two_port_observer(observer):
+    from merlin.targetgen.rtl.firrtl_load_states import LoadStateMapping
+
+    observer.load_states = LoadStateMapping(
+        "selected.fir", "0" * 64, "CONFIG_LD", (("MVIN", 0), ("MVIN2", 1)), (0, 1), 5
+    )
+    original = observer.decode_instruction
+
+    def decode(*args):
+        klass, fields = original(*args)
+        if klass == "CONFIG_LD":
+            fields["stride"] = args[2]["raw"]
+        if klass in {"MVIN", "MVIN2"}:
+            fields["rows"] = 2
+            fields["is_acc_addr"] = False
+        return klass, fields
+
+    observer.decode_instruction = decode
+    return observer
+
+
+def _two_port_input(text):
+    return (
+        text.replace("%one =", "%two = llvm.mlir.constant(2) : i64\n %one =")
+        .replace("llvm.alloca %one", "llvm.alloca %two")
+        .replace('"llvm.inline_asm"(%one, %one)', '"llvm.inline_asm"(%nine, %one)')
+        .replace(
+            '"llvm.inline_asm"(%address, %one)',
+            '"llvm.inline_asm"(%one, %two) <{asm_string = ".insn r 0x7b, 0x3, 0x0, x0, $0, $1",'
+            'constraints = "r,r,~{memory}", has_side_effects}> : (i64, i64) -> ()\n'
+            '"llvm.inline_asm"(%address, %one)',
+        )
+        .replace("0x2, x0", "0x1, x0")
+    )
+
+
+TWO_PORT_COPY = """%nine = llvm.mlir.constant(9) : i64
+ %zero = llvm.mlir.constant(0) : i8
+ %padding = llvm.getelementptr %scratch[1] : (!llvm.ptr) -> !llvm.ptr, i8
+ llvm.store %zero, %padding : i8, !llvm.ptr
+ llvm.store %value, %scratch : i8, !llvm.ptr"""
+
+
+def test_source_selected_ports_retain_separate_stride_configurations(monkeypatch):
+    proof = _proof(monkeypatch, TWO_PORT_COPY, _two_port_input, _selected_two_port_observer)
+    assert proof["status"] == "proven"
+    assert proof["scratch_input_transfers"] == 1
+
+
+@pytest.mark.parametrize(
+    "change", ["unconfigured", "outside_state", "stride_overflow", "foreign_mapping", "accumulator", "unknown_storage"]
+)
+def test_unconfigured_outside_and_truncated_selected_ports_refuse(monkeypatch, change):
+    def transform(text):
+        text = _two_port_input(text)
+        if change == "unconfigured":
+            text = text.replace('"llvm.inline_asm"(%nine, %one)', '"llvm.inline_asm"(%one, %one)')
+        elif change == "outside_state":
+            text = text.replace("constant(9)", "constant(25)")
+        elif change == "stride_overflow":
+            text = text.replace("constant(2)", "constant(32)")
+        return text
+
+    def patch(observer):
+        observer = _selected_two_port_observer(observer)
+        if change == "foreign_mapping":
+            observer.load_states = {"states": (0, 1), "stride_width": 64}
+        if change in {"accumulator", "unknown_storage"}:
+            original = observer.decode_instruction
+
+            def decode(*args):
+                klass, fields = original(*args)
+                if klass in {"MVIN", "MVIN2"}:
+                    fields["is_acc_addr"] = True if change == "accumulator" else None
+                return klass, fields
+
+            observer.decode_instruction = decode
+        return observer
+
+    assert _proof(monkeypatch, TWO_PORT_COPY, transform, patch)["status"] == "unproven"

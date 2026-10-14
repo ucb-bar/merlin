@@ -66,7 +66,12 @@ def _strict_layouts(facts, word_bits):
 class BoundOperandObserver:
     """Immutable selected normalized decode program; no ambient manifest/facts fallback."""
 
-    def __init__(self, *, target, protocol, facts, raw_isa, word_bits):
+    def __init__(self, *, target, protocol, facts, raw_isa, word_bits, load_states=None):
+        from merlin.targetgen.rtl.firrtl_load_states import LoadStateMapping
+
+        if load_states is not None and type(load_states) is not LoadStateMapping:
+            raise ValueError("operand observer requires typed original load-state evidence")
+        self._load_states = load_states
         _keys(protocol, {"version", "encoding", "roles"}, {"address_field"})
         if type(protocol["version"]) is not int or protocol["version"] != 1:
             raise ValueError("unsupported operand protocol version")
@@ -170,6 +175,10 @@ class BoundOperandObserver:
     @property
     def word_bits(self):
         return self._word_bits
+
+    @property
+    def load_states(self):
+        return self._load_states
 
     def isa_constants(self, target):
         if target != self._target:
