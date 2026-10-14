@@ -290,3 +290,84 @@ def test_expired_original_owner_cannot_issue_or_launch_operator_child(setup, mon
     with pytest.raises(StageGateError, match="original live profile owner"):
         grade(setup, "expired-owner")
     assert not launched and not list(setup.runs.glob("runs/*/*/capsule_result.json"))
+
+
+@pytest.mark.parametrize("failure", [None, "entry", "body", "exit"])
+def test_restoration_leases_only_entry_and_exit_and_releases_on_failure(tmp_path, monkeypatch, failure):
+    import fcntl
+
+    from merlin.common import cpu_pool
+
+    affinity = os.sched_getaffinity(0)
+    cpu = min(affinity)
+    slots = tmp_path / "cpu-slots"
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(slots))
+    stages = []
+
+    def leased(stage):
+        assert cpu_pool.current_thread_owns_cpu_lease()
+        assert os.sched_getaffinity(0) == {cpu}
+        with cpu_pool.shared_compute_pool(timeout_s=0):
+            assert os.sched_getaffinity(0) == {cpu}
+        stages.append(stage)
+
+    @contextlib.contextmanager
+    def restore(*args, **kwargs):
+        leased("entry")
+        if failure == "entry":
+            raise StageGateError("entry custody refused")
+        try:
+            yield {"original": "synthetic transport only"}
+        finally:
+            leased("exit")
+            if failure == "exit":
+                raise StageGateError("final custody refused")
+
+    monkeypatch.setattr(OC.CHILD, "restore_model_child", restore)
+
+    def exercise():
+        with OC._restored_child(9, spec_path=tmp_path / "spec", spec_bytes=b"{}"):
+            assert not cpu_pool.current_thread_owns_cpu_lease()
+            assert os.sched_getaffinity(0) == affinity
+            # Another case/command can acquire the only slot while this body runs.
+            with cpu_pool.shared_compute_pool(timeout_s=0):
+                stages.append("body-command")
+            if failure == "body":
+                raise StageGateError("body refused")
+
+    if failure:
+        with pytest.raises(StageGateError, match="refused"):
+            exercise()
+    else:
+        exercise()
+    assert stages == (["entry"] if failure == "entry" else ["entry", "body-command", "exit"])
+    assert os.sched_getaffinity(0) == affinity
+    assert not cpu_pool.current_thread_owns_cpu_lease()
+    with (slots / f"cpu-{cpu}.lock").open("rb") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def test_parent_preparation_releases_cpu_before_exposing_transport(setup, monkeypatch):
+    from merlin.common import cpu_pool
+
+    affinity = os.sched_getaffinity(0)
+    cpu = min(affinity)
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(setup.private / "cpu-slots"))
+    original_root = OC.CHILD.model_child_temporary_root
+
+    def root():
+        assert cpu_pool.current_thread_owns_cpu_lease()
+        assert os.sched_getaffinity(0) == {cpu}
+        return original_root()
+
+    monkeypatch.setattr(OC.CHILD, "model_child_temporary_root", root)
+    with _scope(setup):
+        document = {"package_dir": str(setup.candidate), "capsule": {"name": "synthetic"}}
+        with OC._prepared_child(document):
+            assert not cpu_pool.current_thread_owns_cpu_lease()
+            assert os.sched_getaffinity(0) == affinity
+            with cpu_pool.shared_compute_pool(timeout_s=0):
+                pass
+    assert not cpu_pool.current_thread_owns_cpu_lease()

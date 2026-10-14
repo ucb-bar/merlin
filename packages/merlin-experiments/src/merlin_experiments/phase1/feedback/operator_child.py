@@ -92,7 +92,7 @@ def _prepared_child(document):
         raise StageGateError("operator child requires its original live profile owner")
     owner = executor.owner
     with contextlib.ExitStack() as lifetime:
-        with verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo):
+        with cpu_pool.shared_compute_pool(), verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo):
             root = CHILD.model_child_temporary_root()  # Retain original import/owner verification.
             if root is None:
                 raise StageGateError("operator child lost its original profile owner")
@@ -111,6 +111,24 @@ def _prepared_child(document):
         # Final independent custody closes before exposing the transport to Popen. Its FD and
         # temporary directory remain owned here until final child-result verification completes.
         yield spec, output, environment, transport
+
+
+@contextlib.contextmanager
+def _restored_child(*args, **kwargs):
+    """Lease synchronous custody entry/exit, never the grader body or its waits."""
+    original = CHILD.restore_model_child(*args, **kwargs)
+    with cpu_pool.shared_compute_pool():
+        receipt = original.__enter__()
+    try:
+        yield receipt
+    except BaseException:
+        with cpu_pool.shared_compute_pool():
+            suppressed = original.__exit__(*sys.exc_info())
+        if not suppressed:
+            raise
+    else:
+        with cpu_pool.shared_compute_pool():
+            original.__exit__(None, None, None)
 
 
 def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, adapters, timeout, workers, no_oracle):
@@ -140,7 +158,8 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
             raise
         if process.returncode != 0 or not output.is_file():
             raise StageGateError(f"operator grade child exited {process.returncode} without a verified completion")
-        row = transport.verify_result(json.loads(output.read_bytes()))
+        with cpu_pool.shared_compute_pool():
+            row = transport.verify_result(json.loads(output.read_bytes()))
         if row.get("capsule") != capsule["name"] or adapter_selection(adapters, target=target) != selection:
             raise StageGateError("operator child result or selected oracle changed")
         for tier, value in (row.pop("operator_child_costs_s", {}) or {}).items():
@@ -168,7 +187,7 @@ def main(argv):
     runner._die_with_parent()
     raw = args.operator_grade.read_bytes()
     job = json.loads(raw)
-    with CHILD.restore_model_child(args.original_profile_fd, spec_path=args.operator_grade, spec_bytes=raw) as receipt:
+    with _restored_child(args.original_profile_fd, spec_path=args.operator_grade, spec_bytes=raw) as receipt:
         capsule, target = job["capsule"], job["target"]
         if job.get("grade_kind") != "operator" or capsule.get("kind") == "model" or selected_host_leaf(capsule):
             raise StageGateError("operator child requires the original accelerator capsule route")

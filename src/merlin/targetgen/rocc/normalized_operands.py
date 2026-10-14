@@ -192,7 +192,7 @@ class BoundOperandObserver:
         for operand in (rs1, rs2):
             if type(operand) is not dict:
                 raise ValueError("operand observation must retain its original identity")
-            observation = copy.deepcopy(operand)
+            observation = dict(operand)
             raw = observation.get("raw")
             if raw is not None:
                 if type(raw) is not int or not -(1 << (self.word_bits - 1)) <= raw < (1 << self.word_bits):

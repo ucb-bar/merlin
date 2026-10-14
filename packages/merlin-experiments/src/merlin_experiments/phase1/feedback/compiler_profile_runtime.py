@@ -385,18 +385,22 @@ class _Executor:
     @snapshot_scoped_entrypoint
     def run_entrypoint(self, pkg, name, input_mlir, output_json=None, *, timeout=600,
                       invocation_directory=None, write_bytecode=False, artifact_profile=None):
-        self._verify(pkg)
-        if write_bytecode:
-            raise ValueError("original profile execution cannot write Python bytecode into immutable compiler source")
-        # The caller owns the structural profile. It is never a compiler-selected
-        # runtime adapter, namespace grant, LLVM artifact or numerical admission.
-        P._admit_artifact_protocol(pkg, artifact_profile)
-        dependencies = ()
-        if artifact_profile is not None:
-            from merlin.targetgen.artifact_bundle import require_profile
+        from merlin.common import cpu_pool
 
-            require_profile(artifact_profile)
-            dependencies = (artifact_profile.path,)
+        with cpu_pool.shared_compute_pool():
+            self._verify(pkg)
+            if write_bytecode:
+                raise ValueError(
+                    "original profile execution cannot write Python bytecode into immutable compiler source")
+            # The caller owns the structural profile. It is never a compiler-selected
+            # runtime adapter, namespace grant, LLVM artifact or numerical admission.
+            P._admit_artifact_protocol(pkg, artifact_profile)
+            dependencies = ()
+            if artifact_profile is not None:
+                from merlin.targetgen.artifact_bundle import require_profile
+
+                require_profile(artifact_profile)
+                dependencies = (artifact_profile.path,)
         import sys
         from dataclasses import replace
 
@@ -406,13 +410,16 @@ class _Executor:
             workspace = Path(temporary)
             incoming = workspace / "input.mlir"
             outgoing = workspace / "output.json" if output_json is not None else None
-            copy_plain_file(input_mlir, incoming)
-            policy = self._policy(workspace, pkg.directory)
-            policy = replace(policy, argv=(*policy.argv, "--ro-bind", str(incoming), str(incoming)))
-            protocol = {} if artifact_profile is None else {"artifact_profile": artifact_profile}
-            argv = P._resolve_argv(pkg, name, incoming, outgoing, **protocol)
-            if P._needs_interpreter(pkg, argv):
-                argv = [sys.executable, *argv]
+            # Schedule source/input/policy preparation before borrowing the command
+            # CPU. Release this loan before its separate broker/command lifetime.
+            with cpu_pool.shared_compute_pool():
+                copy_plain_file(input_mlir, incoming)
+                policy = self._policy(workspace, pkg.directory)
+                policy = replace(policy, argv=(*policy.argv, "--ro-bind", str(incoming), str(incoming)))
+                protocol = {} if artifact_profile is None else {"artifact_profile": artifact_profile}
+                argv = P._resolve_argv(pkg, name, incoming, outgoing, **protocol)
+                if P._needs_interpreter(pkg, argv):
+                    argv = [sys.executable, *argv]
             from merlin_experiments.phase1.brokers.compiler_call_channel import compiler_call_transport
 
             with compiler_call_transport(self.owner, workspace=workspace, package=pkg.directory,
@@ -423,14 +430,16 @@ class _Executor:
                                       dependencies=dependencies)
             # Reopen both selections before publishing any staged output. A
             # profile changed during the process cannot authorize its stdout.
+            with cpu_pool.shared_compute_pool():
+                self._verify(pkg)
+                P._admit_artifact_protocol(pkg, artifact_profile)
+                if artifact_profile is not None:
+                    require_profile(artifact_profile)
+                finish_snapshot_invocation()
+                if outgoing is not None and (outgoing.exists() or outgoing.is_symlink()):
+                    copy_plain_file(outgoing, output_json, output=True)
+        with cpu_pool.shared_compute_pool():
             self._verify(pkg)
-            P._admit_artifact_protocol(pkg, artifact_profile)
-            if artifact_profile is not None:
-                require_profile(artifact_profile)
-            finish_snapshot_invocation()
-            if outgoing is not None and (outgoing.exists() or outgoing.is_symlink()):
-                copy_plain_file(outgoing, output_json, output=True)
-        self._verify(pkg)
         return result
 
 

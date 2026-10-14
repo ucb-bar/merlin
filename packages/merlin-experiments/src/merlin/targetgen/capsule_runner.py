@@ -78,6 +78,26 @@ _oracle_policy.bind_sim_oracle_adapters("chipyard", lambda target: _sim_engine_a
 # case where each early capsule is refuted by a different tier.
 _CALIBRATION_CAP = 3
 
+
+def _candidate_exception_diagnostic(exc: Exception, *, stage: str) -> dict:
+    """Keep a bounded, source-free stack when a model run fails before a receipt.
+
+    The public result already exposes the exception class and message. Frame
+    names and line numbers make failures such as RecursionError actionable
+    without copying source lines, arguments, or private artifact paths.
+    """
+    frames = [
+        {"module": Path(frame.f_code.co_filename).name, "function": frame.f_code.co_name, "line": line}
+        for frame, line in _traceback.walk_tb(exc.__traceback__)
+    ]
+    return {
+        "type": type(exc).__name__,
+        "detail": str(exc)[:2000],
+        "stage": stage,
+        "stack_depth": len(frames),
+        "stack": frames if len(frames) <= 20 else frames[:4] + frames[-16:],
+    }
+
 from ..runtime import commandbuffer as _CB
 from ..runtime.backends import base as _backends_mod
 from . import capsule_golden as CG
@@ -108,6 +128,20 @@ from .oot_runner import (
     run_entrypoint,
 )
 from .rocc import decode as RD
+
+
+def _grade_cpu_step(function, /, *args, **kwargs):
+    """Run one synchronous grader calculation under the shared compute lease.
+
+    Keep this scope around in-process work only. Compiler and oracle adapters
+    launch supervised children that acquire their own slots, so the capsule
+    runner must release the slot before invoking or waiting for either one.
+    """
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    with shared_compute_pool():
+        return function(*args, **kwargs)
+
 
 CONTRACT_VERSION = "0.1"
 
@@ -3011,6 +3045,7 @@ def _grade_owned_model_capsule_inline(
         return enforce_model_execution_check(result, capsule, target=target)
 
     readback_policy = None
+    stage = "prepare_model_package"
     try:
         # The child receives a JSON context, not a Python capability. Reconstruct
         # only the exact operator-selected policy record; absent means legacy.
@@ -3043,8 +3078,10 @@ def _grade_owned_model_capsule_inline(
             "source_interface": _digest(Path(capsule["__dir__"]) / capsule.get("interface_mlir", "capsule.interface.mlir")),
         }
 
+        stage = "prepare_runtime_bundle"
         with _model_runtime_bundle(capsule, timeout=timeout) as (bundle, provenance, verify):
             result["candidate_capture"] = provenance
+            stage = "owned_host_execution"
             result["owned_host_native_execution"] = execute_owned_host_model(
                 capsule=capsule,
                 candidate_package=package_dir,
@@ -3060,9 +3097,10 @@ def _grade_owned_model_capsule_inline(
                 readback_policy=readback_policy,
                 reachable_oracle_tiers=context.get("reachable_oracle_tiers"),
             )
+            stage = "verify_runtime_bundle"
             verify()
     except Exception as exc:  # noqa: BLE001 -- candidate exceptions cannot borrow a legacy pass
-        result["candidate_emission_failure"] = {"type": type(exc).__name__, "detail": str(exc)[:2000]}
+        result["candidate_emission_failure"] = _candidate_exception_diagnostic(exc, stage=stage)
         # A post-execution source/bundle verification failure invalidates even
         # a numerically green native receipt. Keep its durable run artifacts
         # for diagnosis, but never feed that receipt to the pass gate.
@@ -3119,6 +3157,7 @@ def _grade_public_program_capsule_inline(
         return enforce_model_execution_check(result, capsule, target=target)
 
     readback_policy = None
+    stage = "prepare_model_package"
     try:
         execution_kwargs = {}
         selection = context.get("public_program_execution")
@@ -3150,6 +3189,7 @@ def _grade_public_program_capsule_inline(
             dtype=context["dtype"],
             benchmark=capsule["name"],
         )
+        stage = "candidate_entrypoints"
         _, candidate_cb, candidate_llvm = run_entrypoints(
             selected_pkg,
             package_dir,
@@ -3175,9 +3215,11 @@ def _grade_public_program_capsule_inline(
             compiler_provenance="actual submitted whole-program command buffer; physical pricing remains independent",
         )
         bundle_kwargs = {"artifact_root": paths.run_path / ".private_runtime_bundle"} if selection is not None else {}
+        stage = "prepare_runtime_bundle"
         with _model_runtime_bundle(capsule, timeout=timeout, **bundle_kwargs) as (bundle, provenance, verify):
             result["candidate_capture"] = provenance
             policy_kwargs = {"readback_policy": readback_policy} if readback_policy is not None else {}
+            stage = "candidate_model_execution"
             result["candidate_native_execution"] = execute_candidate_model(
                 command_buffer=candidate_cb,
                 lowered_mlir_text=candidate_llvm,
@@ -3196,9 +3238,10 @@ def _grade_public_program_capsule_inline(
                 ),
                 **policy_kwargs,
             )
+            stage = "verify_runtime_bundle"
             verify()
     except Exception as exc:  # noqa: BLE001 -- candidate exceptions cannot borrow a legacy pass
-        result["candidate_emission_failure"] = {"type": type(exc).__name__, "detail": str(exc)[:2000]}
+        result["candidate_emission_failure"] = _candidate_exception_diagnostic(exc, stage=stage)
         # A post-execution source/bundle verification failure invalidates even
         # a numerically green native receipt. Keep its durable run artifacts
         # for diagnosis, but never feed that receipt to the pass gate.
@@ -5370,7 +5413,7 @@ def run_capsule(
         # the answer.
         direct_oracle_golden = independent_float or whole_program
         gsource = CG.golden_source(capsule, capsule_dir)
-        gold = CG.golden(capsule, capsule_dir)
+        gold = _grade_cpu_step(CG.golden, capsule, capsule_dir)
         # A linalg-on-tensors reference lowering names its output positionally ("out"); the readback base +
         # golden compare are keyed by the capsule's DECLARED output name (the merlin_iface grammar already
         # names it via the commit op). Rename the sole output leaf to the declared name so preload, kernel,
@@ -5544,8 +5587,8 @@ def run_capsule(
             # the ACTUAL exception rather than asserting one hardcoded cause — the interpreter models a
             # fixed op vocabulary, so an unmodeled op/operand-shape/name is one of several possible causes.
             try:
-                ref = reference_outputs(cb)
-                sim = simulate(cb)["outputs"]
+                ref = _grade_cpu_step(reference_outputs, cb)
+                sim = _grade_cpu_step(simulate, cb)["outputs"]
             except (ValueError, KeyError, IndexError, TypeError) as ce:
                 raise CertFailure(
                     "command_buffer",
@@ -5554,7 +5597,7 @@ def run_capsule(
                     f"({type(ce).__name__}: {ce}); check operand ranks/shapes and that each command's op "
                     f"is one the reference interpreter models (e.g. a windowed op lowered to a 2D matmul)",
                 ) from ce
-            nrep = CG.compare(gold, ref, capsule["numeric_policy"], golden_source=gsource)
+            nrep = _grade_cpu_step(CG.compare, gold, ref, capsule["numeric_policy"], golden_source=gsource)
             numeric = {
                 "status": nrep["status"],
                 "policy": nrep["policy"],
@@ -5591,7 +5634,7 @@ def run_capsule(
                     ),
                 )
 
-            l1_ok = _match_by_policy(ref, sim, policy)
+            l1_ok = _grade_cpu_step(_match_by_policy, ref, sim, policy)
             tiers["L1"] = TierResult(
                 "L1",
                 "pass" if l1_ok else "fail",
@@ -5616,13 +5659,17 @@ def run_capsule(
             # bytes in one grade; on a 29 MB artifact each costs about 44 s plus 5 s to verify, so the
             # plan evidence below is handed THIS module instead of parsing the text again. The decoder
             # keeps its own text path for an artifact that is not a parseable module.
-            _parsed_lowered_shared = RD._parse_module(llvm_text)
+            _parsed_lowered_shared = _grade_cpu_step(RD._parse_module, llvm_text)
             trace = (
-                RD.decode_module(
+                _grade_cpu_step(
+                    RD.decode_module,
                     _parsed_lowered_shared, target=eff_target, source=str(paths.generated / cfg.fourth_output_name)
                 )
                 if _parsed_lowered_shared is not None
-                else RD.decode_text(llvm_text, source=str(paths.generated / cfg.fourth_output_name), target=eff_target)
+                else _grade_cpu_step(
+                    RD.decode_text, llvm_text,
+                    source=str(paths.generated / cfg.fourth_output_name), target=eff_target
+                )
             )
             decoded_trace = trace  # hand to the advisory localizer on an oracle divergence
             # Validating OUR OWN decoder's output must never crash the capsule before the oracle runs: a
@@ -5680,7 +5727,8 @@ def run_capsule(
             # its address model is pointer_args: DRAM addresses must derive from the kernel's args, not be
             # baked. (A fixed-preload oracle — e.g. the program oracle — would pass "fixed_preload"; the
             # model is the harness's, derivable per oracle, not a target literal.)
-            trace_check_res = TCK.check(
+            trace_check_res = _grade_cpu_step(
+                TCK.check,
                 trace,
                 capsule.get("expected", {}),
                 cb=cb,
@@ -6271,7 +6319,7 @@ def run_capsule(
                 # this is the independent golden.yaml; for an explicit whole-program integer kernel it
                 # is the independently recomputed operation golden.  In both cases the measured answer
                 # comes only from the submitted ELF -- never from harness-side model arithmetic.
-                onrep = CG.compare(gold, res["outputs"], policy, golden_source=gsource)
+                onrep = _grade_cpu_step(CG.compare, gold, res["outputs"], policy, golden_source=gsource)
                 okt = onrep["status"] == "pass"
                 # The numeric verdict must ride the MANDATORY/gold tier, not an additive one: otherwise an
                 # additive tier later in the ladder (e.g. an approximate or unbuilt model) would overwrite
@@ -6296,9 +6344,9 @@ def run_capsule(
                     CG.write_numeric_report(paths.generated / "numeric_report.yaml", onrep)
             else:
                 okt = (
-                    _match_by_policy(res["outputs"], gold, policy)
-                    and _match_by_policy(res["outputs"], ref, policy)
-                    and _match_by_policy(res["outputs"], sim, policy)
+                    _grade_cpu_step(_match_by_policy, res["outputs"], gold, policy)
+                    and _grade_cpu_step(_match_by_policy, res["outputs"], ref, policy)
+                    and _grade_cpu_step(_match_by_policy, res["outputs"], sim, policy)
                 )
             # tier_sim is a display LABEL; a tier supplied by an adapter (e.g. arc L3) may have no static
             # label, so fall back to the adapter's oracle-provenance string, else the tier name.
@@ -6490,7 +6538,8 @@ def run_capsule(
     # program does no work", which on a perf bench means "infinitely fast". Both are lies.
     from merlin.perf.work_volume import command_buffer_evidence as _cb_evidence
 
-    _work_volume, _cb_artifact = _cb_evidence(cb, compiler_provenance="submission command-buffer contract entrypoint")
+    _work_volume, _cb_artifact = _grade_cpu_step(
+        _cb_evidence, cb, compiler_provenance="submission command-buffer contract entrypoint")
     _lane_extra: dict[str, Any] = {}
     if (
         whole_program
@@ -6505,10 +6554,11 @@ def run_capsule(
 
             _source_name = capsule.get("linalg_mlir") or capsule.get("interface_mlir")
             _source_path = Path(str(capsule.get("__dir__") or "")) / str(_source_name or "")
-            _candidate_digest = _hash_tree(Path(package_dir)).get("sha256")
+            _candidate_digest = _grade_cpu_step(_hash_tree, Path(package_dir)).get("sha256")
             if not isinstance(_candidate_digest, str):
                 raise ValueError("whole-program package has no content identity")
-            _plan_proof = verify_compiler_global_plan(
+            _plan_proof = _grade_cpu_step(
+                verify_compiler_global_plan,
                 source_text=_source_path.read_text(encoding="utf-8"),
                 lowered_text=llvm_text,
                 command_buffer=cb,
@@ -6538,7 +6588,8 @@ def run_capsule(
     # a zero reads as "this program moved no data", and on a roofline that means infinite intensity.
     from merlin.perf.movement_volume import movement_evidence as _mv_evidence
 
-    _movement_volume = _mv_evidence(cb, compiler_provenance="submission command-buffer contract entrypoint")
+    _movement_volume = _grade_cpu_step(
+        _mv_evidence, cb, compiler_provenance="submission command-buffer contract entrypoint")
     return _finalize_capsule_result(
         result_filename=".operator_child_result.json" if _defer_result_publication else "capsule_result.json",
         submission=submission_identity(package_dir, run_id=run_id),

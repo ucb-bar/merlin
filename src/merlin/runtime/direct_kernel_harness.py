@@ -16,6 +16,7 @@ from merlin.common.quant_formats import get
 from merlin.targetgen.contract.readback_policy import (
     COHERENT_DUMP_V1,
     COHERENT_PACKET_V1,
+    COHERENT_PACKET_V2,
     FULL_VALUES_B64,
     ReadbackPolicy,
 )
@@ -49,6 +50,26 @@ def packet_output_blocks(cb):
             if len(frames) > 65536:
                 raise ValueError("neutral packet exceeds its bounded frame roster")
     out_bin_packet_capacity(tuple(frame for _, _, frame in frames))
+    return tuple(frames)
+
+
+def packet_output_roster_v2(cb):
+    """One exact frame per declared output, without a shape-specific block size."""
+    from .out_packet import ExpectedOutput
+    from .out_packet_v2 import out_packet_v2_capacity
+
+    frames = []
+    for name in cb["kernel_abi"]["outputs"]:
+        spec = cb["tensors"][name]
+        count, width, dtype = _layout(spec)
+        if not spec["shape"] or spec["dtype"] not in {"i8", "i16", "i32", "i64", "f32"}:
+            raise ValueError("neutral packet v2 requires supported dense non-scalar outputs")
+        frames.append(ExpectedOutput(
+            name=name, rows=1, cols=count, logical_dtype=spec["dtype"],
+            container_signed=bool(dtype.signed and not dtype.is_float),
+            container_max_bytes=width, logical_shape=(count,),
+        ))
+    out_packet_v2_capacity(tuple(frames))
     return tuple(frames)
 
 
@@ -116,6 +137,50 @@ def _packet_publication(cb, slots):
             "         !merlin_out_bin_memory_hex16(&merlin_packet_sink,encoder.checksum) ||",
             '         !merlin_out_bin_memory_cstr(&merlin_packet_sink,"\\n")) htif_exit(2);',
             "    }", "  }",
+        ])
+    lines.extend([
+        '  if(!merlin_out_bin_memory_cstr(&merlin_packet_sink,"DONE\\n")) htif_exit(2);',
+        '#if defined(__riscv)', '  __asm__ volatile("fence rw,rw" ::: "memory");', '#endif',
+        "  if(!merlin_out_bin_memory_finish(&merlin_packet_sink)) htif_exit(2);",
+        '#if defined(__riscv)', '  __asm__ volatile("fence rw,rw" ::: "memory");', '#endif',
+    ])
+    return lines
+
+
+def _packet_publication_v2(cb, slots):
+    """Stream actual logical words once; no range scan or per-block framing."""
+    lines = []
+    for name in cb["kernel_abi"]["outputs"]:
+        index, _, (count, width, dtype) = slots[name]
+        signed = int(dtype.signed and not dtype.is_float)
+        escaped = int(width > 1 and not dtype.is_float)
+        bulk_i32 = width == 4 and signed and escaped
+        mode = "e" if escaped else "r"
+        sign = "s" if signed else "u"
+        c_header = f"OUT_PKT_BEGIN v2 {name} 1 {count} {cb['tensors'][name]['dtype']} {width} {sign} {mode}\\n"
+        lines.extend([
+            "  {",
+            f'    if(!merlin_out_bin_memory_cstr(&merlin_packet_sink,"{c_header}")) htif_exit(2);',
+            "    merlin_out_packet_v2 encoder;",
+            f"    merlin_out_packet_v2_init(&encoder,UINT64_C({count}),{width},{signed},{escaped},merlin_packet_write);",
+            *(
+                [
+                    "#if (defined(__GNUC__) || defined(__clang__)) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__",
+                    f"    if(!merlin_out_packet_v2_words_i32(&encoder,(const merlin_out_packet_v2_i32_alias*)tensor_{index},UINT64_C({count}))) htif_exit(2);",
+                    "#else",
+                ]
+                if bulk_i32 else []
+            ),
+            f"    for(uint64_t i=0;i<UINT64_C({count});i++){{",
+            f"      uint64_t word=merlin_packet_load(tensor_{index}+i*{width},{width},{signed});",
+            "      if(!merlin_out_packet_v2_word(&encoder,word)) htif_exit(2);",
+            "    }",
+            *(["#endif"] if bulk_i32 else []),
+            "    if(!merlin_out_packet_v2_finish(&encoder) ||",
+            '       !merlin_out_bin_memory_cstr(&merlin_packet_sink,"OUT_PKT_END v2 ") ||',
+            "       !merlin_out_bin_memory_hex16(&merlin_packet_sink,encoder.checksum) ||",
+            '       !merlin_out_bin_memory_cstr(&merlin_packet_sink,"\\n")) htif_exit(2);',
+            "  }",
         ])
     lines.extend([
         '  if(!merlin_out_bin_memory_cstr(&merlin_packet_sink,"DONE\\n")) htif_exit(2);',
@@ -281,10 +346,12 @@ def render_direct_kernel(
         FULL_VALUES_B64,
         COHERENT_DUMP_V1,
         COHERENT_PACKET_V1,
+        COHERENT_PACKET_V2,
     ):
         raise ValueError("direct kernel harness requires complete B64 or coherent memory readback")
     memory = readback_policy.transport == COHERENT_DUMP_V1
-    packet = readback_policy.transport == COHERENT_PACKET_V1
+    packet = readback_policy.transport in (COHERENT_PACKET_V1, COHERENT_PACKET_V2)
+    packet_v2 = readback_policy.transport == COHERENT_PACKET_V2
     if packet and abi.byte_order != "little":
         raise ValueError("neutral coherent packet requires explicit little-endian storage")
     histories = ()
@@ -375,15 +442,21 @@ def render_direct_kernel(
     if not memory:
         declarations.insert(2, '#include "out_b64.h"')
     if packet:
-        from .out_packet import out_bin_packet_capacity
+        if packet_v2:
+            from .out_packet_v2 import out_packet_v2_capacity
 
-        capacity = out_bin_packet_capacity(tuple(frame for _, _, frame in packet_output_blocks(cb)))
+            capacity = out_packet_v2_capacity(packet_output_roster_v2(cb))
+        else:
+            from .out_packet import out_bin_packet_capacity
+
+            capacity = out_bin_packet_capacity(tuple(frame for _, _, frame in packet_output_blocks(cb)))
         if {abi.entry_symbol, abi.completion_symbol, prelude_symbol} & {
             PACKET_ARENA_SYMBOL, PACKET_USED_SYMBOL, "merlin_packet_sink", "merlin_packet_write", "merlin_packet_load"
         }:
             raise ValueError("neutral packet storage overlaps a selected entry symbol")
         declarations.extend([
             '#include "out_bin.h"', '#include "out_bin_memory.h"',
+            *(['#include "out_packet_v2.h"'] if packet_v2 else []),
             # The arena is scratch: only the complete published prefix is read.
             # A nonzero initializer puts it in the original ELF data segment,
             # so selected direct ELF preload avoids clearing unused capacity in
@@ -538,7 +611,7 @@ def render_direct_kernel(
     # The selected coherent reader resolves these actual linked static objects.
     # It owns full-value admission; DONE alone supplies no output or effect proof.
     if packet:
-        body.extend(_packet_publication(cb, slots))
+        body.extend(_packet_publication_v2(cb, slots) if packet_v2 else _packet_publication(cb, slots))
     for name in () if memory or packet else outputs:
         index, _, (count, width, dtype) = slots[name]
         rows = math.prod(tensors[name]["shape"][:-1])

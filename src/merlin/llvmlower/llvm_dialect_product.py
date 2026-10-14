@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from merlin.common import invocation_record as I
+from merlin.common.cpu_pool import shared_compute_pool
 from merlin.common.jsonio import canonical_json
 
 SCHEMA = "merlin.serial_llvm_dialect_product.v1"
@@ -36,14 +37,19 @@ def _input(pin):
 
 
 def run_translation(command, *, timeout, audit, retention, source, runner, dependencies, scalar_stage, scalar_carrier):
-    """Keep the ordinary transport; observe products only for selected retention."""
+    """Run the native translator on one shared CPU; retain selected products."""
     try:
         if retention is not None:
-            return retention.run(command, source=source, runner=runner, dependencies=dependencies, timeout=timeout)
+            with shared_compute_pool(timeout_s=timeout):
+                return retention.run(command, source=source, runner=runner, dependencies=dependencies, timeout=timeout)
         if scalar_stage is None:
-            return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+            with shared_compute_pool(timeout_s=timeout):
+                return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
         from .source_stage_transport import run_command
 
+        # This transport serves an invocation-local callback while the native
+        # child waits. The callback may require its own slot, so its CPU custody
+        # must be handled inside that transport rather than across this call.
         return run_command(
             command,
             directory=scalar_stage,

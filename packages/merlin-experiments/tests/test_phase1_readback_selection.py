@@ -18,7 +18,7 @@ def invocation(root: Path, selection: str | None = None) -> C.InvocationContext:
     )
 
 
-@pytest.mark.parametrize("transport", ["out_b64_v1", "out_bin_v1", "coherent_dump_v1", "coherent_packet_v1"])
+@pytest.mark.parametrize("transport", ["out_b64_v1", "out_bin_v1", "coherent_dump_v1", "coherent_packet_v1", "coherent_packet_v2"])
 def test_context_and_worker_roundtrip_keep_explicit_policy(tmp_path, monkeypatch, transport):
     original = invocation(tmp_path, transport)
     command = selfcheck.worker_command(original, tmp_path / "capsules", tmp_path / "contract")
@@ -68,7 +68,7 @@ def test_capsule_console_records_binary_bytes_without_text_conversion(tmp_path):
     assert (tmp_path / text_name).read_text() == "DONE\n"
 
 
-@pytest.mark.parametrize("transport", ["out_b64_v1", "out_bin_v1", "coherent_dump_v1", "coherent_packet_v1"])
+@pytest.mark.parametrize("transport", ["out_b64_v1", "out_bin_v1", "coherent_dump_v1", "coherent_packet_v1", "coherent_packet_v2"])
 def test_selected_policy_is_typed_and_records_exactly(tmp_path, transport):
     context = invocation(tmp_path, transport)
     record = {"schema": "merlin_readback_policy_v1", "transport": transport}

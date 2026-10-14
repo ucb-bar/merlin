@@ -26,6 +26,7 @@ from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelSta
 from merlin.targetgen.contract.readback_policy import (
     COHERENT_DUMP_V1,
     COHERENT_PACKET_V1,
+    COHERENT_PACKET_V2,
     FULL_VALUES_B64,
     ReadbackPolicy,
 )
@@ -41,6 +42,7 @@ _HEADERS = {
     "out_b64": "out_b64.h",
     "out_bin": "out_bin.h",
     "out_bin_memory": "out_bin_memory.h",
+    "out_packet_v2": "out_packet_v2.h",
 }
 _CFLAGS = frozenset(
     {
@@ -256,7 +258,7 @@ def _validate_engine(engine, block, *, timeout_ceiling=600):
     _fields(block, required | ({"receipt"} if engine in {"gsim", "verilator"} else set()), {"readback_transport"})
     if "readback_transport" in block:
         _require(
-            engine == "gsim" and block["readback_transport"] in {COHERENT_DUMP_V1, COHERENT_PACKET_V1},
+            engine == "gsim" and block["readback_transport"] in {COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2},
             "selected readback override requires the coherent GSim full-value transport",
         )
     _pin_shape(block["binary"])
@@ -354,7 +356,7 @@ class BoundRoCCBackend:
         """Only an explicit sealed engine declaration overrides the default."""
         block = self._engine(simulator)
         transport = block.get("readback_transport", self.readback_policy().transport)
-        if transport in {COHERENT_DUMP_V1, COHERENT_PACKET_V1} and cb is not None:
+        if transport in {COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2} and cb is not None:
             from merlin.runtime.harness_render import _roster, _tensor
 
             normalized, _ = _roster(cb)
@@ -364,9 +366,12 @@ class BoundRoCCBackend:
                 for name in normalized["kernel_abi"]["outputs"]
             ):
                 return self.readback_policy()
-        if transport == COHERENT_PACKET_V1:
+        if transport in (COHERENT_PACKET_V1, COHERENT_PACKET_V2):
+            required = {"htif", "out_b64", "out_bin", "out_bin_memory"}
+            if transport == COHERENT_PACKET_V2:
+                required.add("out_packet_v2")
             _require(
-                {"htif", "out_b64", "out_bin", "out_bin_memory"}
+                required
                 <= {row["id"] for row in self._block()["toolchain"]["headers"]},
                 "selected packet transport omits its original complete codec header roster",
             )
@@ -374,7 +379,7 @@ class BoundRoCCBackend:
 
     def memory_readback_transport(self, simulator, *, policy_transport=None):
         transport = self.engine_readback_policy(simulator).transport
-        if policy_transport not in (None, transport) or transport not in {COHERENT_DUMP_V1, COHERENT_PACKET_V1}:
+        if policy_transport not in (None, transport) or transport not in {COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2}:
             return None
         return "gsim_" + transport if simulator == "gsim" else None
 
@@ -716,7 +721,7 @@ class BoundRoCCBackend:
             )
             _require(
                 simulator == "gsim" and not capture_bytes and not declared_model_machine
-                and self.engine_readback_policy(simulator).transport in {COHERENT_DUMP_V1, COHERENT_PACKET_V1},
+                and self.engine_readback_policy(simulator).transport in {COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2},
                 "selected engine has no declared coherent full-value transport",
             )
             export = _chipyard_memory_readback.prepare_memory_readback(path, simulator, memory_readback)

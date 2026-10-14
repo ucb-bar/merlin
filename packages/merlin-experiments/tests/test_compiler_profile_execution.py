@@ -117,6 +117,90 @@ def test_work_owner_cannot_be_candidate_or_alias(execution):
                 pass
 
 
+@pytest.mark.parametrize("failure", [None, "policy", "command", "source"])
+def test_entrypoint_preparation_owns_cpu_but_releases_before_command(execution, monkeypatch, failure):
+    import fcntl
+    import os
+    from contextlib import contextmanager
+
+    from merlin_experiments.phase1.brokers import compiler_call_channel
+
+    from merlin.common import cpu_pool
+
+    owner, candidate, work = execution
+    affinity = os.sched_getaffinity(0)
+    cpu = min(affinity)
+    slots = candidate.parent / "cpu-slots"
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(slots))
+    incoming, output = candidate.parent / "input.mlir", candidate.parent / "output.json"
+    incoming.write_text("module {}")
+    pkg = SimpleNamespace(directory=candidate, integrity_exempt=False, manifest={})
+    checks = []
+    original_verify = R._Executor._verify
+
+    def leased():
+        assert cpu_pool.current_thread_owns_cpu_lease()
+        assert os.sched_getaffinity(0) == {cpu}
+
+    def verify(self, package):
+        leased()
+        checks.append("source")
+        return original_verify(self, package)
+
+    def policy(target, workspace, package, *, inputs):
+        leased()
+        assert (workspace / "input.mlir").read_bytes() == incoming.read_bytes()
+        with cpu_pool.shared_compute_pool(timeout_s=0):
+            leased()
+        checks.append("policy")
+        if failure == "policy":
+            raise ValueError("policy preparation refused")
+        return C.PackageSandboxPolicy(("box",), (), (), workspace, package, target)
+
+    @contextmanager
+    def transport(*args, **kwargs):
+        assert not cpu_pool.current_thread_owns_cpu_lease()
+        assert os.sched_getaffinity(0) == affinity
+        assert kwargs["borrow_compute"] is True and kwargs["timeout_s"] == 17
+        checks.append("command-loan")
+        with cpu_pool.shared_compute_pool(timeout_s=0):
+            yield SimpleNamespace(env_prefix=lambda prefix: prefix, remaining_timeout=lambda: 17)
+        assert not cpu_pool.current_thread_owns_cpu_lease()
+
+    def invoke(self, policy, package, argv, **kwargs):
+        leased()
+        checks.append("command")
+        if failure == "command":
+            raise ValueError("command refused")
+        Path(argv[-1]).write_text("observed output")
+        if failure == "source":
+            path = candidate / "compiler.py"
+            before = path.stat()
+            path.write_text("compiler wrong!")
+            os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(R._Executor, "_verify", verify)
+    monkeypatch.setattr(C, "package_sandbox_policy", policy)
+    monkeypatch.setattr(P, "_resolve_argv", lambda pkg, name, inp, out: ["compiler", str(inp), str(out)])
+    monkeypatch.setattr(P, "_needs_interpreter", lambda *args: False)
+    monkeypatch.setattr(compiler_call_channel, "compiler_call_transport", transport)
+    monkeypatch.setattr(R._Executor, "_invoke", invoke)
+    with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
+        if failure:
+            with pytest.raises(ValueError, match="refused|another source"):
+                P.active_package_executor().run_entrypoint(pkg, "emit", incoming, output, timeout=17)
+        else:
+            assert P.active_package_executor().run_entrypoint(pkg, "emit", incoming, output, timeout=17).returncode == 0
+    assert "policy" in checks
+    assert output.exists() is (failure is None)
+    assert os.sched_getaffinity(0) == affinity
+    assert not cpu_pool.current_thread_owns_cpu_lease()
+    with (slots / f"cpu-{cpu}.lock").open("rb") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 def test_frozen_public_policy_uses_only_original_read_only_grants(tmp_path, monkeypatch):
     original = tmp_path / "original"
     selected = tmp_path / "other-source/merlin/transforms/client.py"

@@ -245,7 +245,13 @@ def verification():
         yield owner
     finally:
         try:
-            validate(owner)
+            # The surrounding snapshot verifier acquires admission before a
+            # compute slot. Lease only this synchronous custody recheck, so a
+            # verifier waiting on admission never reserves a CPU.
+            from .cpu_pool import shared_compute_pool
+
+            with shared_compute_pool():
+                validate(owner)
             parent = previous.old_value
             if parent is not contextvars.Token.MISSING and parent is not None and parent[:2] == owner[:2]:
                 parent[2].update(owner[2])
