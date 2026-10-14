@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from merlin.perf.host_cfg_activity import analyze_host_cfg_activity
 from merlin.targetgen.rocc.decode import _parse_module
 from merlin.verify.conv_input_preparation import prove_input_preparation
@@ -123,3 +125,96 @@ def test_observer_absence_width_and_unknown_state_refuse(monkeypatch):
 
     for patch in (narrow, unknown_state):
         assert _proof(monkeypatch, copy, observer_patch=patch)["status"] == "unproven"
+
+
+ZERO_GLOBAL = """llvm.mlir.global linkonce_odr constant @padding(dense<0> : tensor<3xi8>)
+ {addr_space = 0 : i32, alignment = 8 : i64} : !llvm.array<3 x i8>"""
+
+
+def _zero_global(text, declaration=ZERO_GLOBAL):
+    return (
+        text.replace("builtin.module {", "builtin.module {\n" + declaration)
+        .replace(
+            "%scratch = llvm.alloca %one x i8 : (i64) -> !llvm.ptr",
+            "%scratch = llvm.mlir.addressof @padding : !llvm.ptr",
+        )
+        .replace("%value = llvm.load %input : !llvm.ptr -> i8", "")
+    )
+
+
+@pytest.mark.parametrize("offset", [0, 2])
+def test_constant_zero_global_proves_only_bounded_address_dma(monkeypatch, offset):
+    def transform(text):
+        return _zero_global(text).replace(
+            "%address = llvm.ptrtoint %scratch",
+            f"%offset = llvm.getelementptr %scratch[{offset}] : (!llvm.ptr) -> !llvm.ptr, i8\n"
+            "%address = llvm.ptrtoint %offset",
+        )
+
+    proof = _proof(monkeypatch, "", transform)
+    assert proof["status"] == "proven"
+    assert proof["readonly_zero_globals"] == 1
+    assert proof["input_transfers"] == 1
+    assert proof["scratch_input_transfers"] == 1
+    assert proof["payload_bytes"] == 0
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "",
+        ZERO_GLOBAL.replace(" constant", ""),
+        ZERO_GLOBAL.replace("dense<0>", "dense<1>"),
+        ZERO_GLOBAL.replace("dense<0> : tensor<3xi8>", ""),
+        ZERO_GLOBAL.replace("!llvm.array<3 x i8>", "!llvm.array<4 x i8>"),
+        ZERO_GLOBAL.replace("tensor<3xi8>", "tensor<3xi16>"),
+        ZERO_GLOBAL.replace("addr_space = 0", "addr_space = 1"),
+        ZERO_GLOBAL.replace("linkonce_odr", "external"),
+        ZERO_GLOBAL + "\n" + ZERO_GLOBAL,
+    ],
+)
+def test_unknown_mutable_nonzero_and_mismatched_globals_refuse(monkeypatch, declaration):
+    proof = _proof(monkeypatch, "", lambda text: _zero_global(text, declaration))
+    assert proof["status"] == "unproven"
+
+
+@pytest.mark.parametrize(
+    "effect",
+    [
+        "llvm.store %one, %scratch : i64, !llvm.ptr",
+        "%byte = llvm.mlir.constant(0) : i8\n llvm.store %byte, %scratch : i8, !llvm.ptr",
+        "llvm.call @escape(%scratch) : (!llvm.ptr) -> ()",
+        '"llvm.inline_asm"(%scratch) <{asm_string = "fence", constraints = "r,~{memory}",'
+        "has_side_effects}> : (!llvm.ptr) -> ()",
+        "%outside = llvm.getelementptr %scratch[3] : (!llvm.ptr) -> !llvm.ptr, i8\n"
+        "%bad = llvm.ptrtoint %outside : !llvm.ptr to i64\n"
+        '"llvm.inline_asm"(%bad, %one) <{asm_string = ".insn r 0x7b, 0x3, 0x2, x0, $0, $1",'
+        'constraints = "r,r,~{memory}", has_side_effects}> : (i64, i64) -> ()',
+    ],
+)
+def test_global_writes_escapes_and_outside_dma_refuse(monkeypatch, effect):
+    assert _proof(monkeypatch, effect, _zero_global)["status"] == "unproven"
+
+
+def test_zero_global_cannot_escape_through_another_function(monkeypatch):
+    def transform(text):
+        return _zero_global(text).replace(
+            "builtin.module {",
+            """builtin.module {
+ llvm.func @other() {
+  %escaped = llvm.mlir.addressof @padding : !llvm.ptr
+  llvm.return
+ }
+""",
+        )
+
+    assert _proof(monkeypatch, "", transform)["status"] == "unproven"
+
+
+def test_zero_global_unknown_module_alias_refuses(monkeypatch):
+    def transform(text):
+        return _zero_global(text).replace(
+            "builtin.module {", 'builtin.module {\n "unknown.alias"() {referenced = @padding} : () -> ()'
+        )
+
+    assert _proof(monkeypatch, "", transform)["status"] == "unproven"
