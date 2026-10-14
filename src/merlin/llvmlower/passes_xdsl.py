@@ -629,8 +629,11 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
     if audit is not None:
         record_stage(audit, PREPROCESS_STAGES[0], module, generic=True)
     stats = {}
+    from ..verify.lean import stages as _lean_stages
+
     for statistic, stage, name in _PREPROCESS:
         transform = globals()[name]
+        before = _lean_stages.generic_text(module) if _lean_stages.enabled() else None
         stats[statistic] = (
             transform(module, on_rewrite=on_quant_rewrite)
             if statistic == "quant_ext_lowered" and on_quant_rewrite is not None
@@ -638,6 +641,8 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
         )
         if audit is not None:
             record_stage(audit, stage, module, generic=True)
+        if before is not None:
+            _lean_stages.record_boundary(stage, f"{__name__}.{name}", before, _lean_stages.generic_text(module))
         if statistic == "quant_ext_lowered" and _layer_norm_chunked_sums_selected():
             # Optional and default off, so an unselected build records the same stages and emits the same
             # module. Selecting the pass grants both of its numerical permissions; its rewrite lands in the
