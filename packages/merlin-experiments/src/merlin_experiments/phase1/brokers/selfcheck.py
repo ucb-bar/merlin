@@ -772,7 +772,8 @@ def main(
 
                 priority.enter_context(active_full_selfcheck(ws=ws, process=proc, request=r,
                     source_sha256=graded_digest, public=capsules_root, context=context,
-                    contract=contract, bundle_manifest=a.compiler_bundle_manifest, sim=sim))
+                    contract=contract, bundle_manifest=a.compiler_bundle_manifest, sim=sim,
+                    dispatcher_pid=orig_ppid if a.one_request is not None else None))
                 while proc.poll() is None:
                     why = _abort_reason(ch, orig_ppid, req, deadline, request_stop=a.request_stop)
                     if why:

@@ -3,6 +3,7 @@
 import contextlib
 import json
 import multiprocessing
+import os
 import subprocess
 import sys
 import threading
@@ -17,7 +18,8 @@ from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen.capsule_scheduling import run_pipelined
 
 
-def test_private_priority_is_bound_to_actual_live_broker_worker(tmp_path, monkeypatch):
+@pytest.mark.parametrize("dispatched", [False, True])
+def test_private_priority_is_bound_to_actual_live_broker_worker(tmp_path, monkeypatch, dispatched):
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     ws, public = tmp_path / "workspace", tmp_path / "public"
     ws.mkdir()
@@ -49,6 +51,7 @@ def test_private_priority_is_bound_to_actual_live_broker_worker(tmp_path, monkey
                 contract=None,
                 bundle_manifest=archive,
                 sim="gsim",
+                dispatcher_pid=os.getppid() if dispatched else None,
             ):
                 ready.set()
                 stop.wait(5)
@@ -56,7 +59,15 @@ def test_private_priority_is_bound_to_actual_live_broker_worker(tmp_path, monkey
             worker.terminate()
             worker.wait(timeout=2)
 
-    process = ctx.Process(target=broker)
+    def dispatcher():
+        handler = ctx.Process(target=broker)
+        handler.start()
+        handler.join(timeout=8)
+        if handler.is_alive():
+            handler.terminate()
+            handler.join(timeout=2)
+
+    process = ctx.Process(target=dispatcher if dispatched else broker)
     process.start()
     try:
         assert ready.wait(3)
@@ -65,6 +76,11 @@ def test_private_priority_is_bound_to_actual_live_broker_worker(tmp_path, monkey
         assert not admission.foreground_covers(ws, "a" * 64, tmp_path / "other", inputs)
         path = admission._marker(ws)
         record = json.loads(path.read_text())
+        assert record["manager"]["pid"] == os.getpid()
+        assert ("dispatcher" in record) is dispatched
+        if dispatched:
+            assert record["dispatcher"]["pid"] == process.pid
+            assert record["broker"]["parent"] == process.pid
         record["worker"]["birth"] = "wrong birth"
         path.write_text(json.dumps(record))
         assert not admission.foreground_covers(ws, "a" * 64, public, inputs)
@@ -74,6 +90,66 @@ def test_private_priority_is_bound_to_actual_live_broker_worker(tmp_path, monkey
         if process.is_alive():
             process.terminate()
             process.join(timeout=2)
+
+
+@pytest.mark.parametrize("dispatched", [False, True])
+@pytest.mark.parametrize("damage", ["expired", "birth", "parent", "namespace"])
+def test_foreground_priority_reopens_entire_original_process_chain(tmp_path, monkeypatch, dispatched, damage):
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    manager_pid, dispatcher_pid, broker_pid, worker_pid = 100, 101, 102, 103
+    monkeypatch.setattr(admission.os, "getpid", lambda: manager_pid)
+    owners = {
+        "manager": (manager_pid, 99),
+        "broker": (broker_pid, dispatcher_pid if dispatched else manager_pid),
+        "worker": (worker_pid, broker_pid),
+    }
+    if dispatched:
+        owners["dispatcher"] = (dispatcher_pid, manager_pid)
+    identities = {
+        name: {"pid": pid, "parent": parent, "birth": f"birth-{pid}",
+               "pid_namespace": "pid:[original]", "mount_namespace": "mnt:[original]"}
+        for name, (pid, parent) in owners.items()
+    }
+    live = {row["pid"]: dict(row) for row in identities.values()}
+
+    def identity(pid):
+        if pid not in live:
+            raise ProcessLookupError("original process ended")
+        return dict(live[pid])
+
+    monkeypatch.setattr(admission, "_identity", identity)
+    profile, descriptor = tmp_path / "profile", tmp_path / "descriptor"
+    profile.write_text("original profile")
+    descriptor.write_text("original descriptor")
+    inputs = SimpleNamespace(context=SimpleNamespace(descriptor=descriptor), contract=None,
+                             compiler_profile_service=SimpleNamespace(bundle_manifest=profile))
+    marker = admission._marker(tmp_path, create=True)
+    record = dict(identities, schema=admission.SCHEMA, source_sha256="a" * 64,
+                  public=str(tmp_path.resolve()), descriptor=admission._archive(descriptor),
+                  profile=admission._archive(profile), contract=None, tiers=["L2", "L3"])
+    marker.write_text(json.dumps(record))
+    assert admission.foreground_covers(tmp_path, "a" * 64, tmp_path, inputs)
+    # Check each hop, including the extra dispatcher. Mutating both the saved
+    # and current parent cannot make a different process tree gain priority.
+    for owner in owners:
+        saved = {pid: dict(row) for pid, row in live.items()}
+        selected = live[identities[owner]["pid"]]
+        if damage == "expired":
+            del live[selected["pid"]]
+        elif damage == "birth":
+            selected["birth"] = "replacement-birth"
+        elif damage == "namespace":
+            selected["mount_namespace"] = "mnt:[foreign]"
+        else:
+            selected["parent"] = 999
+        assert not admission.foreground_covers(tmp_path, "a" * 64, tmp_path, inputs), owner
+        if damage == "parent" and owner != "manager":
+            changed = json.loads(marker.read_text())
+            changed[owner]["parent"] = 999
+            marker.write_text(json.dumps(changed))
+            assert not admission.foreground_covers(tmp_path, "a" * 64, tmp_path, inputs), owner
+            marker.write_text(json.dumps(record))
+        live = saved
 
 
 def test_agent_visible_counts_do_not_admit_priority(tmp_path, monkeypatch):
