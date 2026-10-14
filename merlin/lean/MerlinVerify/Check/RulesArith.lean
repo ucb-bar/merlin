@@ -275,7 +275,7 @@ def selectTyped : List VTy → List VTy → Bool
     decide (sh' = sh ∧ x = .tensor sh e ∧ y = .tensor sh e)
   | _, _ => false
 
-def selectRule : OpRule := fun op argTys resTys =>
+def selectRule : OpRule := fun _ op argTys resTys =>
   if dialectOf op.name = "arith" ∧ op.name = "arith.select" ∧ selectTyped argTys resTys = true then
     some []
   else none
@@ -299,7 +299,7 @@ def constTyped (ib : Nat) (value : Option Attr) : List VTy → Bool
     | none => false
   | _ => false
 
-def constantRule (ib : Nat) : OpRule := fun op argTys resTys =>
+def constantRule (ib : Nat) : OpRule := fun _ op argTys resTys =>
   if dialectOf op.name = "arith" ∧ op.name = "arith.constant" ∧ argTys = [] ∧
       op.results.length = 1 ∧ constTyped ib (op.attr? "value") resTys = true then some []
   else none
@@ -316,18 +316,18 @@ def arithRule (ib : Nat) : OpRule :=
 /-! ### Soundness -/
 
 /-- Reduce an `arith`/`math` op's safety to the family semantics on the blinded op. -/
-theorem arith_safe_of {ib : Nat} {op : Op} {argTys resTys : List VTy}
+theorem arith_safe_of {ib d : Nat} {op : Op} {argTys resTys : List VTy}
     (hm : unmodelledAttr? op.blind = none)
     (hd : dialectOf op.name = "arith" ∨ dialectOf op.name = "math")
     (h : ∀ ctx call args regions, ctx.indexBits = ib → HasTys ib args argTys →
       Safe (HasTys ib · resTys) (Arith.sem ctx call op.blind args regions)) :
-    OpSafe opSem ib op argTys resTys [] := by
-  intro ctx call args regions hib hargs _
+    OpSafe opSem ib d op argTys resTys [] := by
+  intro ctx call args regions hib _ hargs _
   rw [opSem_modelled hm]
   rcases hd with hd | hd <;> simp only [dispatch, Op.blind_name, hd] <;> exact h ctx _ args regions hib hargs
 
 theorem intBinRule_sound (ib : Nat) : RuleSound ib (ewRule (intBinOk ib)) := by
-  intro op argTys resTys sigs hm h
+  intro d op argTys resTys sigs hm h
   obtain ⟨sh, elts, re, rfl, rfl, -, hres, hok, rfl⟩ := ewRule_spec h
   simp only [intBinOk, Bool.and_eq_true, decide_eq_true_eq] at hok
   obtain ⟨⟨hd, hn, rfl⟩, hw⟩ := hok
@@ -352,7 +352,7 @@ theorem intBinRule_sound (ib : Nat) : RuleSound ib (ewRule (intBinOk ib)) := by
         · exact intDiv_safe hw false _ (fun a b => by int_res hw) hx (hasTy_bits hw b)
 
 theorem cmpiRule_sound (ib : Nat) : RuleSound ib (ewRule (cmpiOk ib)) := by
-  intro op argTys resTys sigs hm h
+  intro d op argTys resTys sigs hm h
   obtain ⟨sh, elts, re, rfl, rfl, -, hres, hok, rfl⟩ := ewRule_spec h
   unfold cmpiOk at hok
   split at hok
@@ -368,7 +368,7 @@ theorem cmpiRule_sound (ib : Nat) : RuleSound ib (ewRule (cmpiOk ib)) := by
   · cases hok
 
 theorem fltBinRule_sound (ib : Nat) : RuleSound ib (ewRule fltBinOk) := by
-  intro op argTys resTys sigs hm h
+  intro d op argTys resTys sigs hm h
   obtain ⟨sh, elts, re, rfl, rfl, -, hres, hok, rfl⟩ := ewRule_spec h
   simp only [fltBinOk, Bool.and_eq_true, decide_eq_true_eq] at hok
   obtain ⟨⟨hd, hn, rfl⟩, hf⟩ := hok
@@ -382,7 +382,7 @@ theorem fltBinRule_sound (ib : Nat) : RuleSound ib (ewRule fltBinOk) := by
   all_goals exact binOp_safe hres hargs fun x y hx hy => fltBin_safe _ _ hx hy
 
 theorem negfRule_sound (ib : Nat) : RuleSound ib (ewRule negfOk) := by
-  intro op argTys resTys sigs hm h
+  intro d op argTys resTys sigs hm h
   obtain ⟨sh, elts, re, rfl, rfl, -, hres, hok, rfl⟩ := ewRule_spec h
   simp only [negfOk, Bool.and_eq_true, decide_eq_true_eq] at hok
   obtain ⟨⟨hd, hn, rfl⟩, hf⟩ := hok
@@ -394,7 +394,7 @@ theorem negfRule_sound (ib : Nat) : RuleSound ib (ewRule negfOk) := by
   exact unOp_safe hres hargs fun x hx => fltN_safe _ _ [x] (by simp) (by simpa using hx)
 
 theorem cmpfRule_sound (ib : Nat) : RuleSound ib (ewRule cmpfOk) := by
-  intro op argTys resTys sigs hm h
+  intro d op argTys resTys sigs hm h
   obtain ⟨sh, elts, re, rfl, rfl, -, hres, hok, rfl⟩ := ewRule_spec h
   unfold cmpfOk at hok
   split at hok
@@ -413,7 +413,7 @@ theorem cmpfRule_sound (ib : Nat) : RuleSound ib (ewRule cmpfOk) := by
 
 theorem intCastRule_sound (ib : Nat) :
     RuleSound ib (ewRule (castOk intCastNames (isInt ib) (isInt ib))) := by
-  intro op argTys resTys sigs hm h
+  intro d op argTys resTys sigs hm h
   obtain ⟨sh, elts, re, rfl, rfl, -, hres, hok, rfl⟩ := ewRule_spec h
   unfold castOk at hok
   split at hok
@@ -433,7 +433,7 @@ theorem intCastRule_sound (ib : Nat) :
 
 theorem fltCastRule_sound (ib : Nat) :
     RuleSound ib (ewRule (castOk ["arith.extf", "arith.truncf"] isFlt isFlt)) := by
-  intro op argTys resTys sigs hm h
+  intro d op argTys resTys sigs hm h
   obtain ⟨sh, elts, re, rfl, rfl, -, hres, hok, rfl⟩ := ewRule_spec h
   unfold castOk at hok
   split at hok
@@ -454,7 +454,7 @@ theorem fltCastRule_sound (ib : Nat) :
 
 theorem fptoiRule_sound (ib : Nat) :
     RuleSound ib (ewRule (castOk ["arith.fptosi", "arith.fptoui"] isFlt (isInt ib))) := by
-  intro op argTys resTys sigs hm h
+  intro d op argTys resTys sigs hm h
   obtain ⟨sh, elts, re, rfl, rfl, -, hres, hok, rfl⟩ := ewRule_spec h
   unfold castOk at hok
   split at hok
@@ -479,7 +479,7 @@ theorem fptoiRule_sound (ib : Nat) :
 
 theorem itofpRule_sound (ib : Nat) :
     RuleSound ib (ewRule (castOk ["arith.sitofp", "arith.uitofp"] (isInt ib) isFlt)) := by
-  intro op argTys resTys sigs hm h
+  intro d op argTys resTys sigs hm h
   obtain ⟨sh, elts, re, rfl, rfl, -, hres, hok, rfl⟩ := ewRule_spec h
   unfold castOk at hok
   split at hok
@@ -502,7 +502,7 @@ theorem itofpRule_sound (ib : Nat) :
   · cases hok
 
 theorem mathFltRule_sound (ib : Nat) : RuleSound ib (ewRule mathFltOk) := by
-  intro op argTys resTys sigs hm h
+  intro d op argTys resTys sigs hm h
   obtain ⟨sh, elts, re, rfl, rfl, hne, hres, hok, rfl⟩ := ewRule_spec h
   simp only [mathFltOk, Bool.and_eq_true, decide_eq_true_eq] at hok
   obtain ⟨⟨⟨hd, hall⟩, hs⟩, hf⟩ := hok
@@ -517,7 +517,7 @@ theorem mathFltRule_sound (ib : Nat) : RuleSound ib (ewRule mathFltOk) := by
   exact hne (List.eq_nil_of_length_eq_zero (List.Forall₂.length_eq hvs).symm)
 
 theorem absiRule_sound (ib : Nat) : RuleSound ib (ewRule absiOk) := by
-  intro op argTys resTys sigs hm h
+  intro d op argTys resTys sigs hm h
   obtain ⟨sh, elts, re, rfl, rfl, -, hres, hok, rfl⟩ := ewRule_spec h
   unfold absiOk at hok
   split at hok
@@ -553,7 +553,7 @@ theorem hasTy_full {ib : Nat} {sh : List Nat} {e : Ty} {v : Val} (h : Val.HasTy 
   ⟨rfl, rfl, fun i hi => by simp only [Tensor.full, Tensor.canon, hi, ↓reduceIte]; exact h⟩
 
 theorem selectRule_sound (ib : Nat) : RuleSound ib selectRule := by
-  intro op argTys resTys sigs hm h
+  intro d op argTys resTys sigs hm h
   simp only [selectRule] at h
   split at h
   · next hc =>
@@ -668,7 +668,7 @@ theorem denseTensor_safe {ib : Nat} {ty : Ty} {splat : Bool} {bytes : List UInt8
   · cases h
 
 theorem constantRule_sound (ib : Nat) : RuleSound ib (constantRule ib) := by
-  intro op argTys resTys sigs hm h
+  intro d op argTys resTys sigs hm h
   simp only [constantRule] at h
   split at h
   · next hc =>

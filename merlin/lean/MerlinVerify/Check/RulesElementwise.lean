@@ -57,13 +57,13 @@ theorem elementwise?_spec {argTys resTys : List VTy} {sh : Option (List Nat)} {e
 
 /-- An elementwise rule: accept when the op's result element type is `re` and `ok` holds of the op,
 its operand element types and `re`. -/
-def ewRule (ok : Op → List Ty → Ty → Bool) : OpRule := fun op argTys resTys =>
+def ewRule (ok : Op → List Ty → Ty → Bool) : OpRule := fun _ op argTys resTys =>
   match elementwise? argTys resTys with
   | some (_, elts, re) => if Arith.resultElt op = some re ∧ ok op elts re = true then some [] else none
   | none => none
 
 theorem ewRule_spec {ok : Op → List Ty → Ty → Bool} {op : Op} {argTys resTys : List VTy}
-    {sigs : List RegionSig} (h : ewRule ok op argTys resTys = some sigs) :
+    {sigs : List RegionSig} {d : Nat} (h : ewRule ok d op argTys resTys = some sigs) :
     ∃ sh elts re, argTys = elts.map (liftTy sh) ∧ resTys = [liftTy sh re] ∧ elts ≠ [] ∧
       Arith.resultElt op = some re ∧ ok op elts re = true ∧ sigs = [] := by
   simp only [ewRule] at h

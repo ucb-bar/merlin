@@ -22,7 +22,7 @@ def T (sh : List Nat) (t : Ty) : VTy := .tensor sh t
 def op1 (name : String) (ty : Ty) (attrs : List (String × Attr) := []) : Op :=
   mkOp name [v 9 ty] [] attrs
 
-def accepts (op : Op) (argTys resTys : List VTy) : Bool := (arithRule 64 op argTys resTys).isSome
+def accepts (op : Op) (argTys resTys : List VTy) : Bool := (arithRule 64 0 op argTys resTys).isSome
 
 /-! ### Integer arithmetic -/
 
@@ -123,10 +123,10 @@ def body : List Op := [
 
 def Γ : TEnv := [(0, s i32), (1, s i32)]
 
-#guard checkOps book Γ body [s i32]
+#guard checkOps book 0 Γ body [s i32]
 -- wrong yield type, unknown operand, an unmodelled attribute
-#guard !checkOps book Γ body [s i64]
-#guard !checkOps book [(0, s i32)] body [s i32]
-#guard !checkOps book Γ [mkOp "arith.addi" [v 2 i32] [0, 1] [("foo", .unit)], ret [2]] [s i32]
+#guard !checkOps book 0 Γ body [s i64]
+#guard !checkOps book 0 [(0, s i32)] body [s i32]
+#guard !checkOps book 0 Γ [mkOp "arith.addi" [v 2 i32] [0, 1] [("foo", .unit)], ret [2]] [s i32]
 
 end MerlinVerify.Tests.Rules

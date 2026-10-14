@@ -6,6 +6,11 @@ either refuses (`none`) or names the signature each of the op's regions must hav
 for an op semantics if, whenever it accepts, the op is *safe*: on operands of the given types and
 regions meeting their signatures, the op is not stuck and its results have the declared types.
 
+The checker also tracks the loop depth: inside a structured op's body the context carries the
+current iteration point (`ctx.loopIndex`), and an op that reads it (`linalg.index`) is safe only at
+a depth that provides the coordinate it reads. Each region signature names the depth its op runs
+the region at.
+
 `checkOps_progress`: if `checkOps` accepts a block under a typing environment that describes the
 runtime environment, the block's evaluation is not stuck, and what it yields has the expected
 types. The concrete rule for Merlin's op semantics, and its soundness, live in `Check/Rules*.lean`.
@@ -17,35 +22,39 @@ namespace MerlinVerify.Check
 
 open MerlinVerify
 
-/-- What a region must satisfy: its block argument types and the types its terminator yields. -/
+/-- What a region must satisfy: its block argument types, the types its terminator yields, and the
+loop depth it runs at (its op provides at least this many `ctx.loopIndex` coordinates). -/
 structure RegionSig where
   args : List VTy
   yields : List VTy
+  depth : Nat
 
 /-- A region meaning is safe for a signature: on typed arguments it is never stuck, and whatever it
-yields has the signature's types. Quantified over every context at index width `ib`. -/
+yields has the signature's types. Quantified over every context at index width `ib` providing the
+signature's loop depth. -/
 def RegionSafe (ib : Nat) (r : Ctx → RegionSem) (sig : RegionSig) : Prop :=
-  ∀ ctx, ctx.indexBits = ib → ∀ vals, HasTys ib vals sig.args →
+  ∀ ctx, ctx.indexBits = ib → sig.depth ≤ ctx.loopIndex.length → ∀ vals, HasTys ib vals sig.args →
     (r ctx vals).NotStuck ∧ ∀ ys, r ctx vals = .ok ys → HasTys ib ys sig.yields
 
-/-- An op is safe at the given operand/result types and region signatures. -/
-def OpSafe (sem : OpSem) (ib : Nat) (op : Op) (argTys resTys : List VTy) (sigs : List RegionSig) :
+/-- An op is safe at loop depth `d`, the given operand/result types and region signatures. -/
+def OpSafe (sem : OpSem) (ib d : Nat) (op : Op) (argTys resTys : List VTy) (sigs : List RegionSig) :
     Prop :=
-  ∀ ctx call args regions, ctx.indexBits = ib → HasTys ib args argTys →
+  ∀ ctx call args regions, ctx.indexBits = ib → d ≤ ctx.loopIndex.length → HasTys ib args argTys →
     List.Forall₂ (RegionSafe ib) regions sigs →
     (sem ctx call op args regions).NotStuck ∧
       ∀ rs, sem ctx call op args regions = .ok rs → HasTys ib rs resTys
 
-/-- A typing rule and its soundness for an op semantics. -/
+/-- A typing rule (at a loop depth) and its soundness for an op semantics. -/
 structure Rulebook (sem : OpSem) (ib : Nat) where
-  rule : Op → List VTy → List VTy → Option (List RegionSig)
-  sound : ∀ op argTys resTys sigs, rule op argTys resTys = some sigs → OpSafe sem ib op argTys resTys sigs
+  rule : Nat → Op → List VTy → List VTy → Option (List RegionSig)
+  sound : ∀ d op argTys resTys sigs, rule d op argTys resTys = some sigs →
+    OpSafe sem ib d op argTys resTys sigs
 
 variable {sem : OpSem} {ib : Nat}
 
 mutual
-  /-- Check a block's ops under `Γ`; its terminator must yield exactly `yields`. -/
-  def checkOps (R : Rulebook sem ib) (Γ : TEnv) : List Op → List VTy → Bool
+  /-- Check a block's ops at loop depth `d` under `Γ`; its terminator must yield exactly `yields`. -/
+  def checkOps (R : Rulebook sem ib) (d : Nat) (Γ : TEnv) : List Op → List VTy → Bool
     | [], _ => false
     | (op@(.mk _ results operands _ _ regions _)) :: rest, yields =>
       match operands.mapM (fun x => List.lookup x Γ) with
@@ -56,11 +65,11 @@ mutual
           match results.mapM (fun (r : Value) => vtyOf ib r.ty) with
           | none => false
           | some resTys =>
-            match R.rule op argTys resTys with
+            match R.rule d op argTys resTys with
             | none => false
             | some sigs =>
               checkRegions R Γ regions sigs &&
-                checkOps R ((results.map (fun (r : Value) => r.id)).zip resTys ++ Γ) rest yields
+                checkOps R d ((results.map (fun (r : Value) => r.id)).zip resTys ++ Γ) rest yields
 
   def checkRegions (R : Rulebook sem ib) (Γ : TEnv) : List Region → List RegionSig → Bool
     | [], [] => true
@@ -70,7 +79,7 @@ mutual
   def checkRegion (R : Rulebook sem ib) (Γ : TEnv) : Region → RegionSig → Bool
     | .mk [.mk args ops], sig =>
       args.mapM (fun (a : Value) => vtyOf ib a.ty) == some sig.args &&
-        checkOps R ((args.map (fun (a : Value) => a.id)).zip sig.args ++ Γ) ops sig.yields
+        checkOps R sig.depth ((args.map (fun (a : Value) => a.id)).zip sig.args ++ Γ) ops sig.yields
     | .mk _, _ => false
 end
 
@@ -118,11 +127,11 @@ theorem EnvTyped.extend {Γ : TEnv} {env : Env} (h : EnvTyped ib Γ env) :
     simp only [List.zip_cons_cons, List.cons_append, Env.get?, List.lookup]
     by_cases hyx : y = x
     · subst hyx
-      simp only [beq_self_eq_true, ↓reduceIte, Option.some.injEq] at hy ⊢
+      simp only [beq_self_eq_true, Option.some.injEq] at hy ⊢
       subst hy
       exact ⟨v, rfl, hvt⟩
     · have hb : (y == x) = false := by simpa using hyx
-      simp only [hb, Bool.false_eq_true, ↓reduceIte] at hy ⊢
+      simp only [hb] at hy ⊢
       exact ih y u hy
   | _ :: _, [], _ :: _, hv => by cases hv
   | _ :: _, _ :: _, [], hv => by cases hv
@@ -147,13 +156,15 @@ theorem bindAll_ok {env : Env} {vs : List Value} {rs : List RVal} (h : vs.length
   simp [Env.bindAll, h]
 
 mutual
-  theorem checkOps_progress (R : Rulebook sem ib) :
+  theorem checkOps_progress (R : Rulebook sem ib) (d : Nat) :
       ∀ (Γ : TEnv) (ops : List Op) (yields : List VTy) (ctx : Ctx) (call : CallSem) (env : Env),
-        checkOps R Γ ops yields = true → EnvTyped ib Γ env → ctx.indexBits = ib →
+        checkOps R d Γ ops yields = true → EnvTyped ib Γ env → ctx.indexBits = ib →
+        d ≤ ctx.loopIndex.length →
         (evalOps sem ctx call env ops).NotStuck ∧
           ∀ rs, evalOps sem ctx call env ops = .ok rs → HasTys ib rs yields
-    | _, [], _, _, _, _, h, _, _ => by simp [checkOps] at h
-    | Γ, (.mk n results operands as ps regions succ) :: rest, yields, ctx, call, env, h, hΓ, hib => by
+    | _, [], _, _, _, _, h, _, _, _ => by simp [checkOps] at h
+    | Γ, (.mk n results operands as ps regions succ) :: rest, yields, ctx, call, env, h, hΓ, hib,
+        hd => by
       simp only [checkOps] at h
       split at h
       · simp at h
@@ -162,13 +173,13 @@ mutual
         rw [evalOps.eq_2]
         split
         · next ht =>
-          rw [if_pos ht] at h
+          rw [ite_eq_left ht] at h
           simp only [Bool.and_eq_true, List.isEmpty_iff, beq_iff_eq] at h
           obtain ⟨rfl, rfl⟩ := h
           simp only [List.isEmpty_nil, ↓reduceIte, hvs]
           exact ⟨trivial, fun rs hrs => by cases hrs; exact hvt⟩
         · next ht =>
-          rw [if_neg ht] at h
+          rw [ite_eq_right ht] at h
           split at h
           · simp at h
           · next resTys hres =>
@@ -178,8 +189,8 @@ mutual
               simp only [Bool.and_eq_true] at h
               obtain ⟨hregs, hrest⟩ := h
               have hR := checkRegions_safe R Γ regions sigs call env hregs hΓ
-              have hsafe := R.sound _ argTys resTys sigs hrule ctx call vs
-                (evalRegions sem call env regions) hib hvt hR
+              have hsafe := R.sound d _ argTys resTys sigs hrule ctx call vs
+                (evalRegions sem call env regions) hib hd hvt hR
               rw [hvs, Outcome.bind_ok]
               cases hop : sem ctx call (Op.mk n results operands as ps regions succ) vs
                   (evalRegions sem call env regions) with
@@ -191,8 +202,8 @@ mutual
                   rw [← optionMapM_length _ _ _ hres]; exact (HasTys.length hrs).symm
                 simp only [Outcome.bind_ok, Op.results]
                 rw [bindAll_ok hlen, Outcome.bind_ok]
-                exact checkOps_progress R _ rest yields ctx call _ hrest
-                  (hΓ.extend _ rs resTys hrs) hib
+                exact checkOps_progress R d _ rest yields ctx call _ hrest
+                  (hΓ.extend _ rs resTys hrs) hib hd
 
   theorem checkRegions_safe (R : Rulebook sem ib) :
       ∀ (Γ : TEnv) (rs : List Region) (sigs : List RegionSig) (call : CallSem) (env : Env),
@@ -214,12 +225,13 @@ mutual
     | Γ, .mk [.mk args ops], sig, call, env, h, hΓ => by
       simp only [checkRegion, Bool.and_eq_true, beq_iff_eq] at h
       obtain ⟨hargs, hops⟩ := h
-      intro ctx hib vals hvals
+      intro ctx hib hd vals hvals
       have hlen : args.length = vals.length := by
         rw [← optionMapM_length _ _ _ hargs]; exact (HasTys.length hvals).symm
       simp only [evalRegion, evalBlocks, evalBlock]
       rw [bindAll_ok hlen, Outcome.bind_ok]
-      exact checkOps_progress R _ ops sig.yields ctx call _ hops (hΓ.extend _ vals sig.args hvals) hib
+      exact checkOps_progress R sig.depth _ ops sig.yields ctx call _ hops
+        (hΓ.extend _ vals sig.args hvals) hib hd
     | _, .mk [], _, _, _, h, _ => by cases h
     | _, .mk ((.mk _ _) :: _ :: _), _, _, _, h, _ => by cases h
 end
