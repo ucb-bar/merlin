@@ -127,4 +127,98 @@ def i8v (x : Int) : RVal := .scalar (.some (.bits 8 (BitVec.ofInt 8 x)))
 -- An op outside the semantics is stuck, never a value.
 #guard isStuck (Sem.Ops.denote ctx (scalarModule "arith.frobnicate") "f" [i8v 1, i8v 2])
 
+/-! ### Named ops and tensor ops -/
+
+def matmulBody : Region := .mk [.mk [v 10 i8, v 11 i8, v 12 i32] [
+    mkOp "arith.extsi" [v 13 i32] [10], mkOp "arith.extsi" [v 14 i32] [11],
+    mkOp "arith.muli" [v 15 i32] [13, 14], mkOp "arith.addi" [v 16 i32] [12, 15],
+    mkOp "linalg.yield" [] [16]]]
+
+/-- The same matmul as a named `linalg.matmul` over a `linalg.fill`-zeroed `tensor.empty`. -/
+def namedMatmul : Module :=
+  let a := v 0 (tensorTy [2, 3] i8)
+  let b := v 1 (tensorTy [3, 2] i8)
+  let fillBody : Region := .mk [.mk [v 20 i32, v 21 i32] [mkOp "linalg.yield" [] [20]]]
+  { ops := [func "mm" [a, b] [
+      mkOp "tensor.empty" [v 2 (tensorTy [2, 2] i32)] [],
+      mkOp "arith.constant" [v 3 i32] [] [] [("value", intAttr 0 i32)],
+      mkOp "linalg.fill" [v 4 (tensorTy [2, 2] i32)] [3, 2] []
+        [("operandSegmentSizes", .denseArray i32 [1, 1])] [fillBody],
+      mkOp "linalg.matmul" [v 5 (tensorTy [2, 2] i32)] [0, 1, 4] []
+        [("operandSegmentSizes", .denseArray i32 [2, 1])] [matmulBody],
+      ret [5]]] }
+
+#guard readInts (Sem.Ops.denote ctx namedMatmul "mm"
+    [intTensor [2, 3] 8 [1, -2, 3, 4, 5, -6], intTensor [3, 2] 8 [7, 8, -9, 10, 11, -12]])
+  == some [[some 58, some (-48), some (-83), some 154]]
+
+/-- Without the fill, the accumulator is `tensor.empty`: every result element is poison. -/
+def unfilledMatmul : Module :=
+  { ops := [func "mm" [v 0 (tensorTy [2, 3] i8), v 1 (tensorTy [3, 2] i8)] [
+      mkOp "tensor.empty" [v 2 (tensorTy [2, 2] i32)] [],
+      mkOp "linalg.matmul" [v 5 (tensorTy [2, 2] i32)] [0, 1, 2] []
+        [("operandSegmentSizes", .denseArray i32 [2, 1])] [matmulBody],
+      ret [5]]] }
+
+#guard readInts (Sem.Ops.denote ctx unfilledMatmul "mm"
+    [intTensor [2, 3] 8 [1, 2, 3, 4, 5, 6], intTensor [3, 2] 8 [1, 2, 3, 4, 5, 6]])
+  == some [[none, none, none, none]]
+
+def yieldIn : Region := .mk [.mk [v 30 i32, v 31 i32] [mkOp "linalg.yield" [] [30]]]
+
+/-- transpose(2x3 → 3x2), then collapse to 6, expand back to 3x2. -/
+def transposeReshape : Module :=
+  { ops := [func "f" [v 0 (tensorTy [2, 3] i32)] [
+      mkOp "tensor.empty" [v 1 (tensorTy [3, 2] i32)] [],
+      mkOp "linalg.transpose" [v 2 (tensorTy [3, 2] i32)] [0, 1] []
+        [("permutation", .denseArray (.int 64) [1, 0])] [yieldIn],
+      mkOp "tensor.collapse_shape" [v 3 (tensorTy [6] i32)] [2] []
+        [("reassociation", .array [.array [.int 0 (.int 64), .int 1 (.int 64)]])],
+      mkOp "tensor.expand_shape" [v 4 (tensorTy [3, 2] i32)] [3] []
+        [("reassociation", .array [.array [.int 0 (.int 64), .int 1 (.int 64)]]),
+         ("static_output_shape", .denseArray (.int 64) [3, 2])],
+      ret [3, 4]]] }
+
+#guard readInts (Sem.Ops.denote ctx transposeReshape "f" [intTensor [2, 3] 32 [1, 2, 3, 4, 5, 6]])
+  == some [[some 1, some 4, some 2, some 5, some 3, some 6],
+           [some 1, some 4, some 2, some 5, some 3, some 6]]
+
+/-- Row sums with `linalg.reduce` over dimension 1. -/
+def rowSum : Module :=
+  let addBody : Region := .mk [.mk [v 30 i32, v 31 i32] [
+    mkOp "arith.addi" [v 32 i32] [30, 31], mkOp "linalg.yield" [] [32]]]
+  { ops := [func "f" [v 0 (tensorTy [2, 3] i32)] [
+      mkOp "arith.constant" [v 1 (tensorTy [2] i32)] [] [] [("value", .dense (tensorTy [2] i32) true [0, 0, 0, 0])],
+      mkOp "linalg.reduce" [v 2 (tensorTy [2] i32)] [0, 1] []
+        [("dimensions", .denseArray (.int 64) [1])] [addBody],
+      ret [2]]] }
+
+#guard readInts (Sem.Ops.denote ctx rowSum "f" [intTensor [2, 3] 32 [1, 2, 3, 4, 5, 6]])
+  == some [[some 6, some 15]]
+
+def sliceAttrs (offs sizes strides : List Int) : List (String × Attr) :=
+  [("static_offsets", .denseArray (.int 64) offs), ("static_sizes", .denseArray (.int 64) sizes),
+   ("static_strides", .denseArray (.int 64) strides),
+   ("operandSegmentSizes", .denseArray i32 [1, 0, 0, 0])]
+
+/-- Rank-reducing slice row 1 of a 2x3 (→ tensor<3>), and a concat of two 1x3 slices. -/
+def slices : Module :=
+  { ops := [func "f" [v 0 (tensorTy [2, 3] i32)] [
+      mkOp "tensor.extract_slice" [v 1 (tensorTy [3] i32)] [0] [] (sliceAttrs [1, 0] [1, 3] [1, 1]),
+      mkOp "tensor.extract_slice" [v 2 (tensorTy [1, 3] i32)] [0] [] (sliceAttrs [0, 0] [1, 3] [1, 1]),
+      mkOp "tensor.extract_slice" [v 3 (tensorTy [1, 3] i32)] [0] [] (sliceAttrs [1, 0] [1, 3] [1, 1]),
+      mkOp "tensor.concat" [v 4 (tensorTy [1, 6] i32)] [3, 2] [] [("dim", .int 1 (.int 64))],
+      ret [1, 4]]] }
+
+#guard readInts (Sem.Ops.denote ctx slices "f" [intTensor [2, 3] 32 [1, 2, 3, 4, 5, 6]])
+  == some [[some 4, some 5, some 6], [some 4, some 5, some 6, some 1, some 2, some 3]]
+
+/-- A slice that leaves its source is stuck, not clamped. -/
+def badSlice : Module :=
+  { ops := [func "f" [v 0 (tensorTy [2, 3] i32)] [
+      mkOp "tensor.extract_slice" [v 1 (tensorTy [1, 3] i32)] [0] [] (sliceAttrs [2, 0] [1, 3] [1, 1]),
+      ret [1]]] }
+
+#guard isStuck (Sem.Ops.denote ctx badSlice "f" [intTensor [2, 3] 32 [1, 2, 3, 4, 5, 6]])
+
 end MerlinVerify.Tests.Semantics
