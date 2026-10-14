@@ -223,14 +223,14 @@ def sem : OpSem := fun ctx _ op args _ =>
       | .poison => match t with
         | .scalar _ => .ok [.scalar .poison]
         | .tensor tt => .ok [.tensor (Tensor.full tt.shape tt.elt .poison)]
-      | .some (.bits 1 b) => .ok [if b = 1 then t else f]
+      | .some (.bits 1 b) => .ok [(if b = 1 then t else f).canonize]
       | _ => .stuck "arith.select: condition is not i1"
     | [.tensor c, .tensor t, .tensor f] =>
       if c.shape == t.shape && t.shape == f.shape then
-        .ok [.tensor { shape := t.shape, elt := t.elt, get := fun i =>
-          (match c.get i with
-           | .some (.bits 1 b) => if b = 1 then t.get i else f.get i
-           | _ => .poison) }]
+        .ok [.tensor (Tensor.canon t.shape t.elt fun i =>
+          match c.get i with
+          | .some (.bits 1 b) => if b = 1 then t.get i else f.get i
+          | _ => .poison)]
       else .stuck "arith.select: shape mismatch"
     | _ => .stuck "arith.select: malformed operands"
   -- integer casts

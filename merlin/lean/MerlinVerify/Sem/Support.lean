@@ -9,7 +9,10 @@ API (stable; used by every op family):
 * `scalarOfAttr` — `arith.constant`-style scalar attribute → `Val`.
 * `denseTensor` — `DenseElementsAttr` bytes → `Tensor` (little-endian, element storage rounded up to
   whole bytes; i1 one byte; index 8 bytes).
-* `Tensor.full`, `Tensor.set`, `allPoints`, `linearIndex` — tensor utilities.
+* `Tensor.canon`, `Tensor.canonize`, `Tensor.full`, `Tensor.set`, `allPoints`, `linearIndex` — tensor
+  utilities. Every tensor an op produces is CANONICAL: `poison` outside its shape (`Tensor.canon`).
+  Out-of-bounds elements are never observable, and canonical tensors that agree in bounds are equal
+  (`Tensor.canon_ext`), which is what lets two constructions of one value be proved equal.
 * `liftN` — apply a poison-aware scalar function elementwise over equal-shape tensors.
 * `oneResult`, `expectArity` — result/arity plumbing.
 -/
@@ -119,8 +122,27 @@ def allPoints : List Nat → List Idx
   | [] => [[]]
   | d :: ds => (List.range d).flatMap fun i => (allPoints ds).map (i :: ·)
 
+/-- The canonical tensor with elements `f` in bounds and `poison` elsewhere. -/
+def Tensor.canon (shape : List Nat) (elt : Ty) (f : Idx → Val) : Tensor :=
+  { shape, elt, get := fun i => if Idx.InBounds shape i then f i else .poison }
+
+def Tensor.canonize (t : Tensor) : Tensor := Tensor.canon t.shape t.elt t.get
+
+def RVal.canonize : RVal → RVal
+  | .tensor t => .tensor t.canonize
+  | v => v
+
+theorem Tensor.canon_ext {shape : List Nat} {elt : Ty} {f g : Idx → Val}
+    (h : ∀ i, Idx.InBounds shape i → f i = g i) : Tensor.canon shape elt f = Tensor.canon shape elt g := by
+  unfold Tensor.canon
+  congr 1
+  funext i
+  split
+  · next hi => exact h i hi
+  · rfl
+
 def Tensor.full (shape : List Nat) (elt : Ty) (v : Val) : Tensor :=
-  { shape, elt, get := fun _ => v }
+  Tensor.canon shape elt fun _ => v
 
 def Tensor.set (t : Tensor) (i : Idx) (v : Val) : Tensor :=
   { t with get := fun j => if j = i then v else t.get j }
@@ -164,9 +186,9 @@ def denseTensor (indexBits : Nat) (ty : Ty) (splat : Bool) (bytes : List UInt8) 
       Outcome.ofOption "dense element decode"
         (scalarOfBits indexBits elt (leNat ((arr.extract (k * eb) (k * eb + eb)).toList)))
     let elemsArr := elems.toArray
-    pure { shape, elt, get := fun i => match elemsArr[linearIndex shape i]? with
-                                        | some s => .some s
-                                        | none => .poison }
+    pure (Tensor.canon shape elt fun i => match elemsArr[linearIndex shape i]? with
+                                           | some s => .some s
+                                           | none => .poison)
 
 /-! ### Results and elementwise lifting -/
 
@@ -185,8 +207,7 @@ def liftN (resultElt : Ty) (f : List Val → Val) (args : List RVal) : Outcome R
     match args.mapM (fun | .tensor t => some t | _ => none) with
     | some (t :: ts) =>
       if ts.all (·.shape == t.shape) then
-        .ok (.tensor { shape := t.shape, elt := resultElt,
-                       get := fun i => f ((t :: ts).map (·.get i)) })
+        .ok (.tensor (Tensor.canon t.shape resultElt fun i => f ((t :: ts).map (·.get i))))
       else .stuck "elementwise operands of different shapes"
     | _ => .stuck "elementwise operands are neither all scalars nor all tensors"
 
@@ -202,8 +223,7 @@ def liftEager (resultElt : Ty) (f : List Val → Outcome Val) (args : List RVal)
       if ts.all (·.shape == t.shape) then
         ((allPoints t.shape).mapM fun i => f ((t :: ts).map (·.get i))).bind fun vals =>
           let arr := vals.toArray
-          .ok (.tensor { shape := t.shape, elt := resultElt,
-                         get := fun i => arr[linearIndex t.shape i]?.getD .poison })
+          .ok (.tensor (Tensor.canon t.shape resultElt fun i => arr[linearIndex t.shape i]?.getD .poison))
       else .stuck "elementwise operands of different shapes"
     | _ => .stuck "elementwise operands are neither all scalars nor all tensors"
 

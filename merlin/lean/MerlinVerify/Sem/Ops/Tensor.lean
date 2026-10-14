@@ -93,7 +93,7 @@ def sem : OpSem := fun ctx _ op args _ =>
   | "tensor.cast" =>
     match resultTensorTy op, args with
     | some (shape, elt), [.tensor t] =>
-      if t.shape == shape && t.elt == elt then .ok [.tensor t] else .stuck "tensor.cast changes shape"
+      if t.shape == shape && t.elt == elt then .ok [.tensor t.canonize] else .stuck "tensor.cast changes shape"
     | _, _ => .stuck "malformed tensor.cast"
   | "tensor.collapse_shape" | "tensor.expand_shape" =>
     match resultTensorTy op, reassociation? op, args with
@@ -102,7 +102,7 @@ def sem : OpSem := fun ctx _ op args _ =>
       let ok := if op.name == "tensor.collapse_shape" then reassocValid groups t.shape shape
                 else reassocValid groups shape t.shape
       if ok && elt == t.elt then
-        .ok [.tensor { shape, elt, get := fun i => t.get (delinearize t.shape (linearIndex shape i)) }]
+        .ok [.tensor (Tensor.canon shape elt fun i => t.get (delinearize t.shape (linearIndex shape i)))]
       else .stuck s!"{op.name}: reassociation inconsistent with shapes"
     | _, _, _ => .stuck s!"malformed {op.name} (dynamic or missing reassociation)"
   | "tensor.extract_slice" =>
@@ -115,10 +115,10 @@ def sem : OpSem := fun ctx _ op args _ =>
       if (List.range n).any fun d =>
           sizes.getD d 0 ≠ 0 && offs.getD d 0 + (sizes.getD d 0 - 1) * strides.getD d 0 ≥ t.shape.getD d 0
       then .stuck "extract_slice outside the source" else
-      .ok [.tensor { shape := rshape, elt, get := fun r =>
-        (match expandReduced sizes rshape r with
-         | some f => t.get ((List.range n).map fun d => offs.getD d 0 + f.getD d 0 * strides.getD d 0)
-         | none => .poison) }]
+      .ok [.tensor (Tensor.canon rshape elt fun r =>
+        match expandReduced sizes rshape r with
+        | some f => t.get ((List.range n).map fun d => offs.getD d 0 + f.getD d 0 * strides.getD d 0)
+        | none => .poison)]
     | _, _, _, _, _ => .stuck "extract_slice with dynamic or missing offsets/sizes/strides"
   | "tensor.insert_slice" =>
     match staticArray? op "static_offsets", staticArray? op "static_sizes",
@@ -138,9 +138,10 @@ def sem : OpSem := fun ctx _ op args _ =>
           else none
         -- drop the coordinates of size-1 dims that the source does not have
         placeNonUnit src.shape ((f.zip sizes).filterMap fun (c, s) => if s = 1 then none else some c)
-      .ok [.tensor { dst with get := fun i => (match srcPos i with
-                                                | some j => src.get j
-                                                | none => dst.get i) }]
+      .ok [.tensor (Tensor.canon dst.shape dst.elt fun i =>
+        match srcPos i with
+        | some j => src.get j
+        | none => dst.get i)]
     | _, _, _, _ => .stuck "insert_slice with dynamic or missing offsets/sizes/strides"
   | "tensor.concat" =>
     match resultTensorTy op, attrInt? op "dim", args.mapM (fun | .tensor t => some t | _ => none) with
@@ -149,7 +150,7 @@ def sem : OpSem := fun ctx _ op args _ =>
       let parts := t :: ts
       if parts.any (fun p => p.shape.length ≠ shape.length) then .stuck "concat rank" else
       if parts.foldl (fun acc p => acc + p.shape.getD d 0) 0 ≠ shape.getD d 0 then .stuck "concat extent" else
-      .ok [.tensor { shape, elt, get := fun i => concatPick d i parts 0 }]
+      .ok [.tensor (Tensor.canon shape elt fun i => concatPick d i parts 0)]
     | _, _, _ => .stuck "malformed tensor.concat"
   | "tensor.extract" =>
     match args with
@@ -167,7 +168,7 @@ def sem : OpSem := fun ctx _ op args _ =>
       match idxs.mapM (fun | .scalar v => indexVal? v | _ => none) with
       | some is =>
         if is.length = t.shape.length ∧ (is.zip t.shape).all (fun (x, s) => 0 ≤ x ∧ x < s) then
-          .ok [.tensor (t.set (is.map Int.toNat) x)]
+          .ok [.tensor (t.set (is.map Int.toNat) x).canonize]
         else .ub
       | none => .ub
     | _ => .stuck "malformed tensor.insert"
@@ -176,7 +177,7 @@ def sem : OpSem := fun ctx _ op args _ =>
     | some (shape, elt), some vs =>
       if vs.length = shapeSize shape then
         let arr := vs.toArray
-        .ok [.tensor { shape, elt, get := fun i => arr[linearIndex shape i]?.getD .poison }]
+        .ok [.tensor (Tensor.canon shape elt fun i => arr[linearIndex shape i]?.getD .poison)]
       else .stuck "from_elements count"
     | _, _ => .stuck "malformed tensor.from_elements"
   | name =>
