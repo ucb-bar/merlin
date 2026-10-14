@@ -2,6 +2,7 @@ import MerlinVerify.Core.Json
 import MerlinVerify.Core.Print
 import MerlinVerify.Sem.Ops
 import MerlinVerify.Check.Types
+import MerlinVerify.Check.Synth
 
 open MerlinVerify
 
@@ -20,6 +21,16 @@ def main (args : List String) : IO UInt32 := do
     match Decode.module (← IO.FS.readFile inp) with
     | .ok m => IO.FS.writeFile out (Print.module m); return 0
     | .error e => IO.eprintln s!"decode error: {e}"; return 1
+  | ["check-c1", beforeJ, afterJ, fn] =>
+    -- Verdict of C1 (rule-instance checker) for one function; claim: `Check.c1Check_sound`.
+    match Decode.module (← IO.FS.readFile beforeJ), Decode.module (← IO.FS.readFile afterJ) with
+    | .ok src, .ok tgt =>
+      let input := Check.synthC1 src tgt fn
+      let sites := (input.script.filter fun | .site .. => true | .same => false).length
+      let ok := Check.c1Check input
+      IO.println s!"\{\"checker\": \"C1\", \"theorem\": \"MerlinVerify.Check.c1Check_sound\", \"claim_type\": \"refine\", \"function\": \"{fn}\", \"verdict\": \"{if ok then "verified" else "abstracted"}\", \"steps\": {input.script.length}, \"rule_sites\": {sites}}"
+      return (if ok then 0 else 1)
+    | .error e, _ | _, .error e => IO.eprintln s!"decode error: {e}"; return 2
   | _ =>
-    IO.eprintln "usage: merlin-lean decode <in.json> | print <in.json> <out.mlir>"
+    IO.eprintln "usage: merlin-lean decode <in.json> | print <in.json> <out.mlir> | check-c1 <before.json> <after.json> <fn>"
     return 2
