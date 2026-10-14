@@ -28,6 +28,8 @@ from .lean_emission_products import EmissionProducts, IssuedEmission
 
 _ACTIVE = contextvars.ContextVar("original_emission_checks", default=None)
 _ISSUED = weakref.WeakSet()
+_ACTIVE_CUSTODY_OPERATION = contextvars.ContextVar("original_emission_custody_operation", default=None)
+_ISSUED_CUSTODY_OPERATIONS = weakref.WeakKeyDictionary()
 _MAX_PENDING = 4096
 
 
@@ -42,6 +44,59 @@ class _Pending:
     manifest_sha256: str
     timeout_s: float
     product: IssuedEmission
+
+
+@dataclass(frozen=True, eq=False)
+class _CustodyOperation:
+    scope: object
+    pid: int
+    thread: threading.Thread
+    snapshot: object = None
+
+
+def _custody_selection(scope):
+    """Exact original selection remains fresh even while payload reads are batched."""
+    from .lean_contract import document_digest
+
+    admission, service = scope.admission, scope.service
+    return (
+        admission, service, scope.products,
+        admission.workspace, admission.bundle_manifest, admission.repo,
+        service.workspace, service.bundle_manifest, service.repo,
+        admission.bundle_manifest.read_bytes(), admission.bundle_bytes, service.bundle_bytes,
+        admission.bundle_identity, service.bundle_identity,
+        document_digest(admission.bundle), document_digest(service.bundle),
+        document_digest(admission.profile), document_digest(service.profile), admission.modules,
+        admission.snapshot_sha256, admission.snapshot_marker_sha256,
+        service.snapshot_digest, service.snapshot_marker_digest,
+    )
+
+
+def _operation_admission(scope):
+    operation = _ACTIVE_CUSTODY_OPERATION.get()
+    if operation is None:
+        return None
+    if type(operation) is not _CustodyOperation:
+        raise ValueError("custody operation has no original host issuer")
+    selected = _ISSUED_CUSTODY_OPERATIONS.get(operation)
+    if selected is not None and (operation.scope, operation.pid, operation.thread, operation.snapshot) != selected[:4]:
+        raise ValueError("custody operation changed its original process or thread issuer")
+    # Copied contexts remain usable, but foreign/expired tokens never reuse
+    # verification: the ordinary full admission path must run instead.
+    if (selected is None or operation.scope is not scope or operation.pid != os.getpid()
+            or operation.thread is not threading.current_thread()):
+        return None
+    from merlin.common import bundle_snapshot
+
+    snapshot = bundle_snapshot._ACTIVE_VERIFICATION.get()
+    if snapshot is not operation.snapshot or not bundle_snapshot._current_verification(snapshot):
+        return None
+    from merlin.targetgen.compiler_profile_admission import _issued_compiler_imports
+
+    admission = _issued_compiler_imports()
+    if admission is not scope.admission or _custody_selection(scope) != selected[4]:
+        raise ValueError("custody operation changed its exact original admission or product owner")
+    return admission
 
 
 def _manifest_identity(package):
@@ -62,7 +117,10 @@ class _Scope:
     def verify(self):
         from merlin.targetgen.compiler_profile_admission import active_compiler_imports
 
-        if self not in _ISSUED or not self.live or active_compiler_imports() is not self.admission:
+        admission = _operation_admission(self)
+        if admission is None:
+            admission = active_compiler_imports()
+        if self not in _ISSUED or not self.live or admission is not self.admission:
             raise ValueError("ordinary emission scope has no current original host admission")
         self.products.verify()
         admission, service = self.admission, self.service
@@ -314,9 +372,31 @@ def _operation_snapshot(scope):
     ):
         raise ValueError("custody batching requires its live original emission owner")
     service = scope.service
-    with verified_snapshot_scope(service.workspace, service.bundle, repo=service.repo):
-        scope.verify()
-        yield
+    previous = _ACTIVE_CUSTODY_OPERATION.set(None)
+    operation = None
+    try:
+        with verified_snapshot_scope(service.workspace, service.bundle, repo=service.repo):
+            scope.verify()
+            from merlin.common import bundle_snapshot
+
+            operation = _CustodyOperation(
+                scope, os.getpid(), threading.current_thread(), bundle_snapshot._ACTIVE_VERIFICATION.get(),
+            )
+            _ISSUED_CUSTODY_OPERATIONS[operation] = (
+                operation.scope, operation.pid, operation.thread, operation.snapshot, _custody_selection(scope),
+            )
+            _ACTIVE_CUSTODY_OPERATION.set(operation)
+            try:
+                yield
+            finally:
+                # Every actual command keeps its separate fresh entry/exit.
+                # Also reopen this operation's admission on all exit paths,
+                # before final snapshot custody and accepted publication.
+                _ACTIVE_CUSTODY_OPERATION.set(None)
+                _ISSUED_CUSTODY_OPERATIONS.pop(operation, None)
+                scope.verify()
+    finally:
+        _ACTIVE_CUSTODY_OPERATION.reset(previous)
 
 
 @contextlib.contextmanager

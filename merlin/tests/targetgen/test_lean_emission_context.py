@@ -390,7 +390,8 @@ def test_operation_batches_custody_reads_but_reopens_all_bytes_at_boundaries(ord
     with _scope(owner):
         scope = X.active_emission_checks()
         original = bundle_snapshot.hashlib.file_digest
-        calls = []
+        original_scan = bundle_snapshot._scanned_members
+        calls, scans = [], []
 
         def digest(stream, *args):
             if Path(stream.name) == payload:
@@ -398,13 +399,193 @@ def test_operation_batches_custody_reads_but_reopens_all_bytes_at_boundaries(ord
             return original(stream, *args)
 
         monkeypatch.setattr(bundle_snapshot.hashlib, "file_digest", digest)
+
+        def scan(root):
+            scans.append(root)
+            return original_scan(root)
+
+        monkeypatch.setattr(bundle_snapshot, "_scanned_members", scan)
         with X._operation_snapshot(scope):
             for _ in range(4):
                 scope.verify()
             assert calls == [payload]
         assert calls == [payload, payload]
+        # Independent entry/exit and original admission boundaries remain;
+        # four pure custody guards no longer each scan the complete SDK roster.
+        assert len(scans) == 5
         scope.verify()
         assert calls == [payload, payload, payload]
+        assert len(scans) == 6
+
+
+def test_copied_thread_and_ended_operation_never_reuse_admission(ordinary, monkeypatch):
+    _, owner = ordinary
+    with _scope(owner):
+        scope = X.active_emission_checks()
+        original, calls = type(scope.admission).verify, []
+
+        def verify(admission):
+            calls.append(admission)
+            return original(admission)
+
+        monkeypatch.setattr(type(scope.admission), "verify", verify)
+        with X._operation_snapshot(scope):
+            calls.clear()
+            scope.verify()
+            assert not calls
+            copied = copy_context()
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                pool.submit(copied.run, scope.verify).result()
+            assert calls == [scope.admission]
+            scope.verify()
+            assert len(calls) == 1
+        calls.clear()
+        copied.run(scope.verify)
+        assert calls == [scope.admission]
+
+
+def test_independent_or_nested_actual_snapshot_never_reuses_pure_custody(ordinary, monkeypatch):
+    from merlin.common import bundle_snapshot
+
+    _, owner = ordinary
+    with _scope(owner):
+        scope = X.active_emission_checks()
+        original, calls = type(scope.admission).verify, []
+
+        def verify(admission):
+            calls.append(admission)
+            return original(admission)
+
+        monkeypatch.setattr(type(scope.admission), "verify", verify)
+        with X._operation_snapshot(scope):
+            calls.clear()
+            scope.verify()
+            assert not calls
+            with bundle_snapshot.independent_snapshot_reads():
+                scope.verify()
+            with bundle_snapshot.verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo):
+                scope.verify()
+            assert calls == [scope.admission, scope.admission]
+            scope.verify()
+            assert len(calls) == 2
+
+
+def test_constructed_or_altered_thread_token_cannot_borrow_issuance(ordinary, monkeypatch):
+    import os
+    import threading
+
+    _, owner = ordinary
+    with _scope(owner):
+        scope = X.active_emission_checks()
+        original, calls = type(scope.admission).verify, []
+
+        def verify(admission):
+            calls.append(admission)
+            return original(admission)
+
+        monkeypatch.setattr(type(scope.admission), "verify", verify)
+        forged = X._CustodyOperation(scope, os.getpid(), threading.current_thread())
+        selected = X._ACTIVE_CUSTODY_OPERATION.set(forged)
+        try:
+            scope.verify()
+            assert calls == [scope.admission]
+        finally:
+            X._ACTIVE_CUSTODY_OPERATION.reset(selected)
+        with X._operation_snapshot(scope):
+            issued = X._ACTIVE_CUSTODY_OPERATION.get()
+            thread = issued.thread
+            other = threading.Thread()
+            # Reusing an OS TID/ident never makes this the actual issued Thread.
+            other._ident = thread.ident
+            object.__setattr__(issued, "thread", other)
+            try:
+                with pytest.raises(ValueError, match="original process or thread issuer"):
+                    scope.verify()
+            finally:
+                object.__setattr__(issued, "thread", thread)
+
+
+def test_copied_fork_cannot_reuse_original_operation(ordinary):
+    import os
+
+    _, owner = ordinary
+    with _scope(owner):
+        scope = X.active_emission_checks()
+        with X._operation_snapshot(scope):
+            read_fd, write_fd = os.pipe()
+            pid = os.fork()
+            if pid == 0:
+                os.close(read_fd)
+                try:
+                    scope.verify()
+                except ValueError:
+                    os.write(write_fd, b"refused")
+                else:
+                    os.write(write_fd, b"accepted")
+                os._exit(0)
+            os.close(write_fd)
+            try:
+                assert os.read(read_fd, 32) == b"refused"
+                assert os.waitpid(pid, 0)[1] == 0
+            finally:
+                os.close(read_fd)
+
+
+@pytest.mark.parametrize("change", ["admission", "product_owner", "archive"])
+def test_operation_rejects_changed_live_owner_binding(ordinary, change):
+    from merlin.verify.lean_emission_products import EmissionProducts
+
+    _, owner = ordinary
+    with _scope(owner):
+        scope = X.active_emission_checks()
+        with X._operation_snapshot(scope):
+            if change == "admission":
+                with owner.compiler_imports(), pytest.raises(ValueError, match="exact original admission"):
+                    scope.verify()
+            elif change == "product_owner":
+                original = scope.products
+                scope.products = EmissionProducts(1)
+                try:
+                    with pytest.raises(ValueError, match="product owner"):
+                        scope.verify()
+                finally:
+                    scope.products = original
+            else:
+                original = owner.bundle_manifest.read_bytes()
+                owner.bundle_manifest.write_bytes(original + b"\n")
+                try:
+                    with pytest.raises(ValueError, match="exact original admission"):
+                        scope.verify()
+                finally:
+                    owner.bundle_manifest.write_bytes(original)
+
+
+def test_exceptional_operation_closes_final_mutation_check_before_publication(ordinary):
+    import os
+
+    from merlin.common import bundle_snapshot
+
+    fixture, owner = ordinary
+    payload = bundle_snapshot.snapshot_path(
+        bundle_snapshot.bundle_snapshot_root(owner.workspace), Path(owner.bundle["allowed"][0]["path"]), owner.repo
+    )
+    contents, metadata = payload.read_bytes(), payload.stat()
+    accepted = fixture["tmp"] / "accepted"
+    with _scope(owner):
+        scope = X.active_emission_checks()
+        try:
+            with pytest.raises(RuntimeError, match="content differs"):
+                with X._operation_snapshot(scope):
+                    scope.verify()
+                    payload.chmod(0o600)
+                    payload.write_bytes(bytes([contents[0] ^ 1]) + contents[1:])
+                    os.utime(payload, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
+                    raise RuntimeError("original operation interrupted")
+                accepted.write_bytes(b"accepted")
+            assert not accepted.exists()
+        finally:
+            payload.write_bytes(contents)
+            payload.chmod(metadata.st_mode & 0o777)
 
 
 @pytest.mark.parametrize("operation", ["emission", "object"])

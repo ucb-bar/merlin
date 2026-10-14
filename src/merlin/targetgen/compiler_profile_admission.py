@@ -115,10 +115,19 @@ def original_compiler_imports(*, workspace: Path, bundle_manifest: Path, repo: P
         _ISSUED.discard(admission)
 
 
-def active_compiler_imports():
+def _issued_compiler_imports():
+    """Inspect issuer identity only; callers still own fresh input verification."""
     admission = _ACTIVE.get()
     if admission is not None:
         if type(admission) is not _Admission:
             raise ValueError("compiler import scope has no original issuer")
+        if admission not in _ISSUED:
+            raise ValueError("compiler imports require the original host-issued admission")
+    return admission
+
+
+def active_compiler_imports():
+    admission = _issued_compiler_imports()
+    if admission is not None:
         admission.verify()
     return admission
