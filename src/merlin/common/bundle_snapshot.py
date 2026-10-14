@@ -37,6 +37,29 @@ def snapshot_path(root: Path, source: Path, repo: Path) -> Path:
 
 _ACTIVE_VERIFICATION = contextvars.ContextVar("original_snapshot_verification", default=None)
 _ISSUED_VERIFICATIONS = weakref.WeakSet()
+_PREPARATION_PID = os.getpid()
+_PREPARATION_ADMISSION = threading.RLock()
+
+
+@contextlib.contextmanager
+def _snapshot_read_admission():
+    """Wait before leasing a CPU for process-local synchronous verification.
+
+    Metadata readers in one Python process cannot reserve the whole pool while
+    waiting on interpreter/namespace locks. A caller already holding a genuine
+    original CPU slot bypasses admission to avoid a lock/slot dependency cycle.
+    No input checks or invocation-boundary verification are skipped or cached.
+    """
+    from .cpu_pool import current_thread_owns_cpu_lease, shared_compute_enabled
+
+    if current_thread_owns_cpu_lease() or not shared_compute_enabled():
+        yield
+        return
+    global _PREPARATION_PID, _PREPARATION_ADMISSION
+    if _PREPARATION_PID != os.getpid():
+        _PREPARATION_PID, _PREPARATION_ADMISSION = os.getpid(), threading.RLock()
+    with _PREPARATION_ADMISSION:
+        yield
 
 
 class _Verification:
@@ -250,7 +273,7 @@ def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict
                 raise RuntimeError("original snapshot input source is missing or indirect")
     # This synchronous metadata/hash stage owns one shared compute CPU, then
     # releases it before returning to any compiler invocation or child wait.
-    with shared_compute_pool():
+    with _snapshot_read_admission(), shared_compute_pool():
         content = snapshot_content(root)
     observed = dict(zip(("content_sha256", "n_files", "n_bytes"), content, strict=True))
     if observed != {key: document.get(key) for key in observed}:

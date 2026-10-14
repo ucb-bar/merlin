@@ -67,6 +67,21 @@ def check_compiler_cpu():
         _verify_lease(lease)
 
 
+def current_thread_owns_cpu_lease():
+    """Observe a live original slot, never a copied thread/process context."""
+    lease = _ACTIVE_LEASE.get()
+    if lease is None:
+        return False
+    if type(lease) is not _Lease:
+        raise RuntimeError("CPU lease is not its unchanged live original thread owner")
+    if lease.pid != os.getpid() or lease.thread is not threading.current_thread():
+        return False
+    _verify_lease(lease)
+    if os.sched_getaffinity(0) != {lease.cpu}:
+        raise RuntimeError("original CPU lease differs from its current thread affinity")
+    return True
+
+
 def _birth(pid, tid=None):
     suffix = f"task/{tid}/stat" if tid is not None else "stat"
     return Path(f"/proc/{pid}/{suffix}").read_text().rsplit(")", 1)[1].split()[19]

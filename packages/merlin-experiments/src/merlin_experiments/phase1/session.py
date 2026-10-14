@@ -494,6 +494,8 @@ def _prepare(
     completion. Appending the acquired lease preserves uncertain-exit protection if
     preparation or the later continuation raises. No child or paid agent starts here.
     """
+    from merlin.compile.model_execution_inputs import file_sha256
+
     a, context, treatment = request.options, request.context, request.treatment
     refusal = validate_options(a)
     if refusal is not None:
@@ -739,8 +741,6 @@ def _prepare(
     _private_full_model_spec = None
     _private_full_model_record = None
     if a.private_full_model_spec:
-        from merlin.compile.model_execution_inputs import file_sha256
-
         _private_source = Path(a.private_full_model_spec).absolute()
         if _private_source.is_symlink() or not _private_source.is_file():
             raise RuntimeError("operator-private full-model specification is absent or indirect")

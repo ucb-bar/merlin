@@ -16,7 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import replace
 from pathlib import Path
 
@@ -34,6 +34,21 @@ from merlin_experiments.phase2.contracts import exact_tree_record, sha256_file
 SCHEMA = "merlin.public_compile_only_feedback.v1"
 ACTION = "compile-only"
 SCALE_PROBE_FLAG = "--scale-probe"
+
+
+def _case_row(case):
+    return {
+        "member": case.member, "scale": case.scale,
+        "variant": json.loads(case.derivation_json).get("variant", "original"),
+        "source_sha256": hashlib.sha256(case.source_ir.encode()).hexdigest(),
+        "original_abi_sha256": hashlib.sha256(
+            json.dumps(case.original_abi.record(), sort_keys=True).encode()).hexdigest(),
+        "compilation_status": "not_attempted", "lowering_status": "not_attempted",
+        "numeric": "not_attempted", "rtl": "not_attempted",
+        "static_obligations": {name: "UNKNOWN" for name in (
+            "semantic_coverage", "index_bounds", "resource_legality", "complete_output_coverage",
+        )},
+    }
 
 
 @contextmanager
@@ -365,6 +380,7 @@ def observe(
     from merlin.targetgen import elf_lanes
     from merlin.targetgen.native_model_execution import _build_service_for
 
+    observation_started = time.monotonic()
     if type(common_service) is not CommonTransformService:
         raise ValueError("compile-only requires the original admitted compiler tool profile")
     with _snapshot_operation(common_service):
@@ -425,30 +441,26 @@ def observe(
         admission = None if scale_probe else LinkedElfAdmissionService(
             target_experiment.target, checker.evaluate, tuple((str(path), sha256_file(path)) for path in pins)
         )
-    deadline, rows = time.monotonic() + timeout_s, []
-    with _compile_imports(common_service):
-        for index, case in enumerate(cases):
+    deadline_started = time.monotonic()
+    deadline, rows = deadline_started + timeout_s, []
+    dispatch_timing = {}
+    from . import scale_probe_child
+
+    parallel = scale_probe and scale_probe_child.batch_workers() is not None
+    if parallel:
+        rows = scale_probe_child.emit_cases(
+            owner=common_service, candidate=candidate, target_experiment=target_experiment,
+            capsules=capsules, cases=cases, contract=contract, facts_path=facts_path,
+            work_root=work_root, deadline=deadline, ir_budget=ir_budget, sandbox_inputs=sandbox_inputs,
+            timing=dispatch_timing,
+        )
+    with nullcontext() if parallel else _compile_imports(common_service):
+        for index, case in enumerate(() if parallel else cases):
             case.verify()
             root, source = work_root / f"case-{index:03d}", sources / f"case-{index:03d}.mlir"
             source.write_text(case.source_ir)
             remaining = min(600, math.floor(deadline - time.monotonic()))
-            row = {
-                "member": case.member,
-                "scale": case.scale,
-                "variant": json.loads(case.derivation_json).get("variant", "original"),
-                "source_sha256": hashlib.sha256(case.source_ir.encode()).hexdigest(),
-                "original_abi_sha256": hashlib.sha256(
-                    json.dumps(case.original_abi.record(), sort_keys=True).encode()
-                ).hexdigest(),
-                "compilation_status": "not_attempted",
-                "lowering_status": "not_attempted",
-                "numeric": "not_attempted",
-                "rtl": "not_attempted",
-                "static_obligations": {
-                    key: "UNKNOWN"
-                    for key in ("semantic_coverage", "index_bounds", "resource_legality", "complete_output_coverage")
-                },
-            }
+            row = _case_row(case)
             if remaining < 1:
                 row["reason"] = "original aggregate compile budget exhausted"
                 rows.append(row)
@@ -515,6 +527,7 @@ def observe(
             row["wall_seconds"] = time.monotonic() - started
             case.verify()
             rows.append(row)
+    final_checks_started = time.monotonic()
     if before != exact_tree_record(candidate)["sha256"] or facts_path.read_bytes() != facts_raw:
         raise ValueError("compile-only compiler or frozen hardware inputs changed during original compilation")
     common_service._verify()
@@ -530,6 +543,15 @@ def observe(
         "numeric": "not_attempted",
         "rtl": "not_attempted",
         "timing_cycles": None,
+        "wall_timing": {
+            "initial_source_setup_s": deadline_started - observation_started,
+            "selected_compile_budget_s": timeout_s,
+            "dispatch": dispatch_timing if parallel else None,
+            "final_source_custody_s": time.monotonic() - final_checks_started,
+            "total_observation_s": time.monotonic() - observation_started,
+            "scope": "all original observation wall stages; compile deadline begins after source setup, "
+                     "final custody remains mandatory and separately recorded",
+        },
         "scope": "original public emission/code-growth only; no object/ABI/effects or execution proof" if scale_probe
                  else "original public structural compile-only; not correctness, generality or timing acceptance",
     }

@@ -205,6 +205,9 @@ def _closure():
             resources.kernel.__name__,
             "merlin.targetgen.capsule_runner",
             "merlin_experiments.phase1.feedback.operator_child",
+            "merlin_experiments.phase1.feedback.scale_probe_child",
+            "merlin_experiments.phase1.feedback.scale_probe_batch",
+            "merlin_experiments.phase1.feedback.compile_only",
             "merlin.targetgen.simulation_certificate",
         )
     ]
@@ -236,7 +239,7 @@ class ModelChildTransport:
     def pass_fds(self):
         return (self.fd,)
 
-    def verify_result(self, result):
+    def _verify_original(self):
         original = self.document
         if (
             _pin(original["spec"]["path"]) != original["spec"]
@@ -251,6 +254,10 @@ class ModelChildTransport:
         if self.boundary is not None:
             if self.boundary.verify() != original["resources"]["boundary_sha256"]:
                 raise StageGateError("original model child kernel resource owner changed")
+
+    def verify_result(self, result):
+        original = self.document
+        self._verify_original()
         if result.get("original_compiler_child") != _receipt(original):
             raise StageGateError("model child did not complete under its original restored execution owner")
         return result
@@ -313,6 +320,12 @@ def prepare_model_child(*, spec_path, environment, package_dir):
             "writable_roots": [str(path) for path in boundary.writable_roots],
             "boundary_sha256": boundary.verify(writable_roots=(_plain(spec_path).parent,)),
         }
+    with _sealed_transport(document, executor=executor, boundary=boundary) as transport:
+        yield transport
+
+
+@contextlib.contextmanager
+def _sealed_transport(document, *, executor, boundary):
     raw = _encode_selection(document)
     fd = _memfd()
     readonly = None
@@ -328,6 +341,61 @@ def prepare_model_child(*, spec_path, environment, package_dir):
         for descriptor in (fd, readonly):
             if descriptor is not None:
                 os.close(descriptor)
+
+
+@contextlib.contextmanager
+def prepare_model_children(*, spec_paths, environment, package_dir):
+    """Issue distinct case capabilities from one live original setup operation.
+
+    Common selections are checked once, while every specification remains a
+    separately pinned, sealed descriptor with its own restored child namespace.
+    The caller must close its exact snapshot operation before launching children;
+    every child's restoration and each transport's final verifier stay unchanged.
+    """
+    from merlin.common import bundle_snapshot as BW
+
+    paths = tuple(_plain(path) for path in spec_paths)
+    roots = tuple(path.parent / "compiler" for path in paths)
+    if not paths or len(set(paths)) != len(paths) or len(set(roots)) != len(roots):
+        raise StageGateError("original child batch requires distinct specifications and work roots")
+    issued = BW._ACTIVE_VERIFICATION.get()
+    executor = P.active_package_executor()
+    if type(executor) is not R._Executor or type(executor.owner) is not CommonTransformService:
+        raise StageGateError("original child batch requires its exact original execution owner")
+    owner = executor.owner
+
+    def operation():
+        if (BW._ACTIVE_VERIFICATION.get() is not issued or not BW._current_verification(issued)
+                or issued.root != BW.bundle_snapshot_root(owner.workspace)
+                or issued.repo != owner.repo or issued.policy_bytes != BW._policy_bytes(owner.bundle)):
+            raise StageGateError("original child batch requires its live exact-owner snapshot operation")
+
+    operation()
+    with contextlib.ExitStack() as lifetime:
+        first = lifetime.enter_context(prepare_model_child(
+            spec_path=paths[0], environment=environment, package_dir=package_dir))
+        if first is None or first.executor is not executor:
+            raise StageGateError("original child batch lost its live execution owner")
+        if first.boundary is not None and first.boundary.verify(
+                writable_roots=tuple(path.parent for path in paths)) != first.document["resources"]["boundary_sha256"]:
+            raise StageGateError("original child batch changed its live resource boundary")
+        transports = [first]
+        for path, root in zip(paths[1:], roots[1:], strict=True):
+            document = {**first.document, "spec": _pin(path), "work_root": str(root)}
+            transports.append(lifetime.enter_context(_sealed_transport(
+                document, executor=executor, boundary=first.boundary)))
+        if len({transport.fd for transport in transports}) != len(transports):
+            raise StageGateError("original child batch reused a capability descriptor")
+        # Reopen shared source/closure/owner selections once at the end of this
+        # issuance operation; a mutated later spec cannot stale the first seal.
+        first._verify_original()
+        if invocation_record.environment_identity(environment) != first.document["environment"]:
+            raise StageGateError("original child batch changed its selected child environment")
+        for transport in transports:
+            if _pin(transport.document["spec"]["path"]) != transport.document["spec"]:
+                raise StageGateError("original child batch specification changed during issuance")
+        operation()
+        yield tuple(transports)
 
 
 @contextlib.contextmanager
