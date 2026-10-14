@@ -284,17 +284,20 @@ def selectRule : OpRule := fun op argTys resTys =>
 def denseOk (ty : Ty) (splat : Bool) (bytes : List UInt8) (sh : List Nat) (elt : Ty) : Bool :=
   match ty.staticTensor?, denseElemBytes elt with
   | some (sh', elt'), some eb =>
-    decide (sh' = sh ∧ elt' = elt ∧ eb ≠ 0 ∧ bytes.length = if splat then eb else shapeSize sh * eb)
+    decide (sh = sh' ∧ elt = elt' ∧ eb ≠ 0 ∧ bytes.length = if splat then eb else shapeSize sh * eb)
   | _, _ => false
 
 /-- `arith.constant`: the `value` attribute denotes a value of the result type. -/
-def constTyped (ib : Nat) : Option Attr → List VTy → Bool
-  | some (.dense ty splat bytes), [.tensor sh elt] => denseOk ty splat bytes sh elt
-  | some a, [.scalar t] =>
-    match scalarOfAttr ib a with
+def constTyped (ib : Nat) (value : Option Attr) : List VTy → Bool
+  | [.tensor sh elt] =>
+    match value with
+    | some (.dense ty splat bytes) => denseOk ty splat bytes sh elt
+    | _ => false
+  | [.scalar t] =>
+    match value.bind (scalarOfAttr ib) with
     | some s => s.conforms ib t
     | none => false
-  | _, _ => false
+  | _ => false
 
 def constantRule (ib : Nat) : OpRule := fun op argTys resTys =>
   if dialectOf op.name = "arith" ∧ op.name = "arith.constant" ∧ argTys = [] ∧
@@ -529,5 +532,187 @@ theorem absiRule_sound (ib : Nat) : RuleSound ib (ewRule absiOk) := by
     have hw : intWidth? ctx.indexBits (.int w) = some w := rfl
     exact unOp_safe hres hargs fun x hx => intUn_safe hw _ (fun a => by int_res hw) hx
   · cases hok
+
+/-! ### `arith.select` -/
+
+theorem hasTy_canonize {ib : Nat} {v : RVal} {t : VTy} (h : RVal.HasTy ib v t) :
+    RVal.HasTy ib v.canonize t := by
+  cases v with
+  | scalar x => exact h
+  | tensor x =>
+    cases t with
+    | scalar _ => exact (h : False).elim
+    | tensor sh e =>
+      obtain ⟨hs, he, hg⟩ := h
+      refine ⟨hs, he, fun i hi => ?_⟩
+      simp only [Tensor.canonize, Tensor.canon, hs, hi, ↓reduceIte]
+      exact hg i hi
+
+theorem hasTy_full {ib : Nat} {sh : List Nat} {e : Ty} {v : Val} (h : Val.HasTy ib e v) :
+    RVal.HasTy ib (.tensor (Tensor.full sh e v)) (.tensor sh e) :=
+  ⟨rfl, rfl, fun i hi => by simp only [Tensor.full, Tensor.canon, hi, ↓reduceIte]; exact h⟩
+
+theorem selectRule_sound (ib : Nat) : RuleSound ib selectRule := by
+  intro op argTys resTys sigs hm h
+  simp only [selectRule] at h
+  split at h
+  · next hc =>
+    obtain ⟨hd, hn, hty⟩ := hc
+    cases h
+    unfold selectTyped at hty
+    split at hty
+    · -- scalar condition
+      next x y r =>
+      simp only [decide_eq_true_eq] at hty
+      obtain ⟨hx, hy⟩ := hty
+      subst x y
+      refine arith_safe_of hm (.inl hd) fun ctx call args regions hib hargs => ?_
+      subst hib
+      obtain _ | ⟨hc, _ | ⟨ha, _ | ⟨hb, hnil⟩⟩⟩ := hargs
+      cases hnil
+      rename_i c a b
+      simp only [Arith.sem, Op.blind_name, hn]
+      cases c with
+      | tensor _ => exact (hc : False).elim
+      | scalar cv =>
+        rcases hasTy_intWidth (w := 1) rfl hc with rfl | ⟨bc, rfl⟩ <;> simp only
+        · cases a with
+          | scalar av =>
+            refine Safe.of_ok (List.Forall₂.cons ?_ List.Forall₂.nil)
+            cases r with
+            | scalar t => exact hasTy_poison ctx.indexBits t
+            | tensor _ _ => exact (ha : False).elim
+          | tensor ta =>
+            refine Safe.of_ok (List.Forall₂.cons ?_ List.Forall₂.nil)
+            cases r with
+            | scalar _ => exact (ha : False).elim
+            | tensor sh e =>
+              obtain ⟨hs, he, _⟩ := ha
+              rw [hs, he]
+              exact hasTy_full (hasTy_poison _ _)
+        · refine Safe.of_ok (List.Forall₂.cons ?_ List.Forall₂.nil)
+          split
+          · exact hasTy_canonize ha
+          · exact hasTy_canonize hb
+    · -- tensor condition of the operands' shape
+      next sh x y sh' e =>
+      simp only [decide_eq_true_eq] at hty
+      obtain ⟨hsh, hx, hy⟩ := hty
+      subst sh' x y
+      refine arith_safe_of hm (.inl hd) fun ctx call args regions hib hargs => ?_
+      subst hib
+      obtain _ | ⟨hc, _ | ⟨ha, _ | ⟨hb, hnil⟩⟩⟩ := hargs
+      cases hnil
+      rename_i c a b
+      cases c with
+      | scalar _ => exact (hc : False).elim
+      | tensor tc =>
+      cases a with
+      | scalar _ => exact (ha : False).elim
+      | tensor ta =>
+      cases b with
+      | scalar _ => exact (hb : False).elim
+      | tensor tb =>
+      obtain ⟨hcs, -, hcg⟩ := hc
+      obtain ⟨has, hae, hag⟩ := ha
+      obtain ⟨hbs, -, hbg⟩ := hb
+      simp only [Arith.sem, Op.blind_name, hn, hcs, has, hbs, beq_self_eq_true, Bool.and_self,
+        ↓reduceIte]
+      refine Safe.of_ok (List.Forall₂.cons ⟨rfl, hae, fun i hi => ?_⟩ List.Forall₂.nil)
+      simp only [Tensor.canon, hi, ↓reduceIte]
+      rcases hasTy_intWidth (w := 1) rfl (hcg i hi) with hci | ⟨bc, hci⟩ <;> rw [hci] <;> simp only
+      · exact hasTy_poison _ _
+      · split
+        · exact hag i hi
+        · exact hbg i hi
+    · cases hty
+  · cases h
+
+/-! ### `arith.constant` -/
+
+theorem scalarOfBits_conforms {ib eb : Nat} {elt : Ty} (he : denseElemBytes elt = some eb) (n : Nat) :
+    ∃ s, scalarOfBits ib elt n = some s ∧ s.conforms ib elt = true := by
+  cases elt <;> simp_all [denseElemBytes, scalarOfBits, Scalar.conforms]
+
+theorem denseTensor_safe {ib : Nat} {ty : Ty} {splat : Bool} {bytes : List UInt8} {sh : List Nat}
+    {elt : Ty} (h : denseOk ty splat bytes sh elt = true) :
+    Safe (fun t => RVal.HasTy ib (.tensor t) (.tensor sh elt)) (denseTensor ib ty splat bytes) := by
+  unfold denseOk at h
+  split at h
+  · next sh' elt' eb hst heb =>
+    simp only [decide_eq_true_eq] at h
+    obtain ⟨rfl, rfl, heb0, hlen⟩ := h
+    unfold denseTensor
+    simp only [hst, heb, heb0, ↓reduceIte, Outcome.bindOp_eq, Outcome.pure_eq]
+    cases splat with
+    | true =>
+      obtain ⟨s, hs, hc⟩ := scalarOfBits_conforms (ib := ib) heb (leNat bytes)
+      simp only [↓reduceIte] at hlen ⊢
+      simp only [hlen, ne_eq, not_true_eq_false, ↓reduceIte, hs]
+      exact Safe.of_ok (hasTy_full hc)
+    | false =>
+      simp only [Bool.false_eq_true, ↓reduceIte] at hlen ⊢
+      simp only [hlen, ne_eq, not_true_eq_false, ↓reduceIte]
+      refine Safe.bind (listMapM_safe _ (fun s => s.conforms ib elt = true) _ fun k _ => ?_)
+        fun elems helems => Safe.of_ok ⟨rfl, rfl, fun i hi => ?_⟩
+      · obtain ⟨s, hs, hc⟩ := scalarOfBits_conforms (ib := ib) heb
+          (leNat ((bytes.toArray.extract (k * eb) (k * eb + eb)).toList))
+        simp only [hs, Outcome.ofOption]
+        exact Safe.of_ok hc
+      · simp only [Tensor.canon, hi, ↓reduceIte]
+        split
+        · next s hs =>
+          rw [List.getElem?_toArray] at hs
+          exact helems s (List.mem_of_getElem? hs)
+        · exact hasTy_poison _ _
+  · cases h
+
+theorem constantRule_sound (ib : Nat) : RuleSound ib (constantRule ib) := by
+  intro op argTys resTys sigs hm h
+  simp only [constantRule] at h
+  split at h
+  · next hc =>
+    obtain ⟨hd, hn, rfl, hlen, hty⟩ := hc
+    cases h
+    obtain ⟨r, hr⟩ := List.length_eq_one_iff.1 hlen
+    refine arith_safe_of hm (.inl hd) fun ctx call args regions hib _ => ?_
+    subst hib
+    simp only [Arith.sem, Op.blind_name, hn, Op.blind_attr?, Op.blind_results, hr, List.map_cons,
+      List.map_nil]
+    match resTys, hty with
+    | [.tensor sh elt], hty =>
+      cases hv : op.attr? "value" with
+      | none => simp [constTyped, hv] at hty
+      | some a =>
+        cases a
+        all_goals simp only [constTyped, hv, Bool.false_eq_true] at hty
+        simp only [Outcome.bindOp_eq, Outcome.pure_eq]
+        exact Safe.bind (denseTensor_safe hty) fun t ht => Safe.of_ok (List.Forall₂.cons ht List.Forall₂.nil)
+    | [.scalar t], hty =>
+      cases hv : op.attr? "value" with
+      | none => simp [constTyped, hv] at hty
+      | some a =>
+        simp only [constTyped, hv, Option.bind_some] at hty
+        split at hty
+        · next s hs =>
+          -- the attribute is a scalar one, so the dense branch of `arith.constant` does not apply
+          cases a
+          all_goals first
+            | (simp [scalarOfAttr] at hs; done)
+            | (simp only [hs]; exact Safe.of_ok (List.Forall₂.cons hty List.Forall₂.nil))
+        · cases hty
+    | [], hty => simp [constTyped] at hty
+    | _ :: _ :: _, hty => simp [constTyped] at hty
+  · cases h
+
+/-! ### The family rule -/
+
+theorem arithRule_sound (ib : Nat) : RuleSound ib (arithRule ib) := by
+  apply firstRule_sound
+  simp only [List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff, implies_true, and_true]
+  exact ⟨constantRule_sound ib, selectRule_sound ib, intBinRule_sound ib, cmpiRule_sound ib,
+    fltBinRule_sound ib, negfRule_sound ib, cmpfRule_sound ib, intCastRule_sound ib,
+    fltCastRule_sound ib, fptoiRule_sound ib, itofpRule_sound ib, mathFltRule_sound ib,
+    absiRule_sound ib⟩
 
 end MerlinVerify.Check

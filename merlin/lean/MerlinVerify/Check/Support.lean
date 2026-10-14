@@ -49,6 +49,14 @@ theorem firstRule_sound {ib : Nat} {rules : List OpRule} (h : ∀ r ∈ rules, R
   obtain ⟨r, hmem, hsome⟩ := List.exists_of_findSome?_eq_some hr
   exact h r hmem op argTys resTys sigs hm hsome
 
+/-- The rulebook of a sound rule: an op with an unmodelled attribute is refused before the rule. -/
+def RuleSound.book {ib : Nat} {rule : OpRule} (h : RuleSound ib rule) : Rulebook opSem ib where
+  rule op argTys resTys := if unmodelledAttr? op.blind = none then rule op argTys resTys else none
+  sound op argTys resTys sigs hr := by
+    split at hr
+    · next hm => exact h op argTys resTys sigs hm hr
+    · cases hr
+
 /-! ### Family rules -/
 
 /-- `cf.assert %c`: one `i1` operand, no results, no regions. The dialect test is a hypothesis the
