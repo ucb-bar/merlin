@@ -382,6 +382,7 @@ def _layout(
     dram_base: int = DRAM_BASE,
     dram_bytes: int | None = None,
     code_reserve: int = 64 * 1024 * 1024,
+    spike_arena_base: int = ARENA_BASE,
 ) -> dict:
     """Absolute-address memory map for the bare-metal image.
 
@@ -396,12 +397,16 @@ def _layout(
     that addresses memory the chip does not have.
     """
     if dram_bytes is None:
-        weights_base = ARENA_BASE + arena_bytes
+        if spike_arena_base < dram_base or spike_arena_base % (1 << 20):
+            raise ValueError("Spike arena base must be in DRAM and MiB-aligned")
+        weights_base = spike_arena_base + arena_bytes
         weights_base = (weights_base + 0xFFFFFFF) & ~0xFFFFFFF  # 256MB align
         weights_base = max(weights_base, 0x200000000)
         mem_end = weights_base + weights_bytes
         mem_bytes = ((mem_end - DRAM_BASE) + 0x3FFFFFFF) & ~0x3FFFFFFF  # round to 1GB
-        return {"arena_base": ARENA_BASE, "weights_base": weights_base, "mem_bytes": mem_bytes}
+        return {"arena_base": spike_arena_base, "weights_base": weights_base, "mem_bytes": mem_bytes}
+    if spike_arena_base != ARENA_BASE:
+        raise ValueError("Spike arena base override is not valid for a board DRAM layout")
 
     align = 1 << 20  # 1 MB is enough for a blob base
     weights_base = (dram_base + code_reserve + align - 1) & ~(align - 1)
@@ -463,6 +468,7 @@ def build(
     auto_arena: bool = False,
     dram_base: int = DRAM_BASE,
     dram_bytes: int | None = None,
+    spike_arena_base: int = ARENA_BASE,
     int8_compute: bool = False,
     quant_passes: list[str] | None = None,
     backend: str = "rvv",
@@ -505,6 +511,9 @@ def build(
     ``auto_arena`` raises the Spike allocator size to a conservative estimate
     from the final LLVM IR's malloc sites. The estimate is not a proof of peak
     live allocation; execution must still check for a guest allocator failure.
+    ``spike_arena_base`` moves the absolute Spike allocator when linked static
+    data extends into its historical location. The linked stack end is checked
+    against that address before a runnable ELF is returned.
 
     ``host_math_policy`` defaults to emission-neutral ``native``. Explicit
     ``expf_via_double`` changes libm returned-value precision; callers must
@@ -888,7 +897,8 @@ def build(
     # neither the reserve nor the buffer that outgrew it. Only the packed (`dram_bytes`) map uses
     # this; the spike map puts the blob at 0x2_0000_0000 with nothing in between.
     reserve = int(code_reserve) if code_reserve else _CODE_RESERVE_FIXED + int(info.get("static_io_bytes", 0))
-    lay = _layout(arena_bytes, info["weights_bytes"], dram_base=dram_base, dram_bytes=dram_bytes, code_reserve=reserve)
+    lay = _layout(arena_bytes, info["weights_bytes"], dram_base=dram_base, dram_bytes=dram_bytes,
+                  code_reserve=reserve, spike_arena_base=spike_arena_base)
 
     # 3. weights.bin -> binary blob object (placed at the absolute weights address)
     compilation.run(
@@ -1236,11 +1246,19 @@ def build(
         raise SpikeModelError("selected cross compiler changed before build completion")
     if sha256_file(gcc) != libm_driver_sha256 or sha256_file(libm_archive) != libm_sha256:
         raise SpikeModelError("selected math-library driver or archive changed during link")
+    runtime_reservations = _model_memory_reservations(
+        elf, arena_base=lay["arena_base"], arena_bytes=arena_bytes, stack_bytes=stack_bytes
+    )
+    if dram_bytes is None:
+        stack = next(row for row in runtime_reservations if row.name == "runtime-stack")
+        static_end = stack.begin + stack.bytes
+        if static_end > lay["arena_base"]:
+            raise SpikeModelError(
+                f"linked code/static data/stack ends at {hex(static_end)}, overlapping "
+                f"the Spike arena at {hex(lay['arena_base'])}; choose a later spike_arena_base"
+            )
     memory_admission = None
     if execution_memory_map is not None:
-        runtime_reservations = _model_memory_reservations(
-            elf, arena_base=lay["arena_base"], arena_bytes=arena_bytes, stack_bytes=stack_bytes
-        )
         memory_admission = admit_execution_memory(
             elf, execution_memory_map, runtime_reservations + execution_memory_reservations
         )

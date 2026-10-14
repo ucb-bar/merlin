@@ -415,6 +415,20 @@ def test_the_baremetal_layout_is_packed_inside_the_boards_dram():
     assert spike_model._layout(64 * 1024 * 1024, 8 * 1024 * 1024)["arena_base"] == 0xC0000000
 
 
+def test_spike_layout_can_place_the_arena_after_large_linked_static_data():
+    """A large device catalog can put .bss above the historical Spike arena base."""
+    import pytest
+
+    from merlin.runtime.backends import spike_model
+
+    moved = spike_model._layout(5 << 30, 4 << 30, spike_arena_base=0xD0000000)
+    assert moved["arena_base"] == 0xD0000000
+    assert moved["weights_base"] >= moved["arena_base"] + 5 * (1 << 30)
+    with pytest.raises(ValueError, match="not valid for a board"):
+        spike_model._layout(5 << 30, 4 << 30, dram_bytes=16 << 30,
+                            spike_arena_base=0xD0000000)
+
+
 def test_an_image_too_big_for_the_board_fails_closed():
     """Better a build error here than a boot that dies before main on someone else's bench."""
     import pytest
