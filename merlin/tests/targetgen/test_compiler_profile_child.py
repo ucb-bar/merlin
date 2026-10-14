@@ -153,6 +153,31 @@ BW.hashlib.file_digest = observe
             transport.verify_result(json.loads(result.stdout))
 
 
+def test_completed_case_checkpoint_does_not_add_snapshot_reads_and_expires_with_worker(original):
+    prefix = """from pathlib import Path
+from merlin.common import bundle_snapshot as BW
+reads=[]
+digest=BW.hashlib.file_digest
+def measured(stream,*args,**kwargs):
+    if Path(stream.name)==Path(PAYLOAD): reads.append(stream.name)
+    return digest(stream,*args,**kwargs)
+BW.hashlib.file_digest=measured
+""".replace("PAYLOAD", repr(str(original.frozen)))
+    script = prefix + _CONTROL.replace("    assert P.active_package_executor() is not None", """    assert len(reads)==2
+    with CHILD.restored_case_checkpoint() as closed:
+        assert closed=={}
+    assert closed['original_compiler_child']==receipt
+    assert closed['worker']['pid']==os.getpid()
+    assert len(reads)==2, 'case checkpoint repeated a whole snapshot scan'
+    assert P.active_package_executor() is not None""")
+    with _scope(original):
+        with CHILD.prepare_model_child(spec_path=original.spec, environment=dict(os.environ),
+                package_dir=original.candidate) as transport:
+            result = _run(transport, original, script=script)
+            assert result.returncode == 0, result.stderr
+            transport.verify_result(json.loads(result.stdout))
+
+
 @pytest.mark.parametrize("when", ["setup", "grading"])
 def test_child_same_size_restored_mtime_mutation_cannot_cross_its_boundary(original, when):
     mutation = """def mutate():

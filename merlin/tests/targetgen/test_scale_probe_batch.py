@@ -83,6 +83,67 @@ def test_two_workers_restore_once_each_for_four_exact_cases_and_publish_after_fi
         assert progress["accepted"] is False
         assert [event["event"] for event in progress["events"]] == ["begin", "end", "begin", "end"]
     assert all(row["numeric"] == row["rtl"] == "not_attempted" for row in rows)
+    assert len(list(batch_setup.output.glob("worker-*/.scale_case_*.json"))) == 4
+    assert all(row["case_observation"]["pending_until_parent_custody"] is False for row in rows)
+
+
+def test_deadline_retains_closed_cases_but_never_interrupted_case_or_complete_roster(batch_setup, monkeypatch):
+    hanging = """if args[2].name in {'case-002','case-003'}:
+        time.sleep(30)"""
+    monkeypatch.setitem(globals(), "BATCH_CONTROL", BATCH_CONTROL.replace("# MUTATION_CONTROL", hanging))
+    rows = emit(batch_setup, timeout=3)
+    assert [row["lowering_status"] for row in rows] == ["emitted", "emitted", "unavailable", "unavailable"]
+    assert all(row["preparation_process"]["outcome"] == "original_compile_deadline" for row in rows)
+    assert not list(batch_setup.output.glob("worker-*/.scale_batch_result.json"))
+    assert len(list(batch_setup.output.glob("worker-*/.scale_case_*.json"))) == 2
+    assert all(row["numeric"] == row["rtl"] == "not_attempted" for row in rows)
+
+
+def test_progress_end_without_closed_case_receipt_never_counts_as_completion(tmp_path):
+    spec = tmp_path / ".scale_batch_spec.json"
+    (tmp_path / ".scale_batch_progress.json").write_text(json.dumps({
+        "events": [{"index": 0, "event": "end"}], "accepted": False}))
+    assert B._read_case(spec, {"index": 0}, None, None, started=1, ended=2) is None
+
+
+def test_checkpoint_cannot_be_issued_outside_original_restored_worker():
+    with pytest.raises(StageGateError, match="inherited restored worker"):
+        with B.CHILD.restored_case_checkpoint():
+            pytest.fail("foreign checkpoint scope was entered")
+
+
+@pytest.mark.parametrize("changed", ["case", "worker", "product", "late"])
+def test_parent_reopens_case_receipt_worker_products_and_deadline(batch_setup, monkeypatch, changed):
+    read = B._read_case
+
+    def altered(spec, item, transport, worker, **kwargs):
+        path = B._case_path(spec, item["index"])
+        record = json.loads(path.read_bytes())
+        if changed == "case":
+            record["case"]["member"] = "foreign"
+        elif changed == "worker":
+            record["original_case_checkpoint"]["worker"]["start_time"] = "foreign"
+        elif changed == "product":
+            root = B.CHILD._plain(item["spec"]["path"]).parent
+            (root / "generated/lowered.ll").write_text("changed original product")
+        else:
+            # Preserve valid artifacts/custody while making completion outside
+            # the original budget; removing the whole-batch result models a kill.
+            (spec.parent / ".scale_batch_result.json").unlink(missing_ok=True)
+            record["finished_monotonic"] = kwargs["ended"]
+        if changed != "product":
+            S._write(path, record)
+        return read(spec, item, transport, worker, **kwargs)
+
+    monkeypatch.setattr(B, "_read_case", altered)
+    if changed == "late":
+        # The separate interrupted-worker test covers deadline admission; this
+        # mutation would also disagree with an already verified final batch.
+        with pytest.raises(StageGateError, match="disagrees"):
+            emit(batch_setup)
+    else:
+        with pytest.raises((StageGateError, ValueError), match="case|worker|product"):
+            emit(batch_setup)
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "", "invalid"])
