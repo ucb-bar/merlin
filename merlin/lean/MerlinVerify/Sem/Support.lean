@@ -14,6 +14,7 @@ API (stable; used by every op family):
 * `oneResult`, `expectArity` — result/arity plumbing.
 -/
 import MerlinVerify.Sem.Program
+import MerlinVerify.Core.Eq
 
 namespace MerlinVerify
 
