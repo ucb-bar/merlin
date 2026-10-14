@@ -60,6 +60,16 @@ def operation_form(op: str | None, *, carrier_op: str | None = None) -> str | No
         return "permutation"
     if carrier_op in ("linalg.copy", "memref.copy", "merlin_iface.movement"):
         return "copy"
+    # These typed tensor operations carry distinct transfer geometries. A
+    # declaration for a plain copy does not establish indexed extraction,
+    # insertion into a larger tensor, or concatenation of many inputs.
+    tensor_forms = {
+        "tensor.extract_slice": "slice_extract",
+        "tensor.insert_slice": "slice_insert",
+        "tensor.concat": "concatenation",
+    }
+    if carrier_op in tensor_forms:
+        return tensor_forms[carrier_op]
     if carrier_op is not None:
         return None
     if op in ("transpose", "permute"):
