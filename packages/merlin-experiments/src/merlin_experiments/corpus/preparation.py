@@ -938,13 +938,14 @@ def _bundle_selection(optional_levels, selected_levels, selected_variants):
 
 
 def _stage_capability_contract(source, expected_sha256, destination, native_timeout_s, gsim_readback_transport=None,
-                               *, operand_selection=None):
+                               *, model_spike_timeout_s=None, operand_selection=None):
     """Record closed execution selections separately from original Phase 0 bytes."""
     from merlin.common.digest import sha256_file
     from merlin.runtime.backends import chipyard_rocc_bound as runtime
     from merlin.runtime.backends import rocc_selection
 
-    if native_timeout_s is None and gsim_readback_transport is None and operand_selection is None:
+    if (native_timeout_s is None and model_spike_timeout_s is None
+            and gsim_readback_transport is None and operand_selection is None):
         return {"path": str(source), "sha256": copy_input(source, destination, expected_sha256=expected_sha256)}
     ordinary_tree(source)
     if sha256_file(source) != expected_sha256:
@@ -953,6 +954,8 @@ def _stage_capability_contract(source, expected_sha256, destination, native_time
         selected = read_yaml(source)
         if native_timeout_s is not None:
             selected = rocc_selection.select_native_timeout(selected, native_timeout_s)
+        if model_spike_timeout_s is not None:
+            selected = rocc_selection.select_model_spike_timeout(selected, model_spike_timeout_s)
         if gsim_readback_transport is not None:
             selected = rocc_selection.select_gsim_readback(selected, gsim_readback_transport)
         if operand_selection is not None:
@@ -972,6 +975,12 @@ def _stage_capability_contract(source, expected_sha256, destination, native_time
             "max_native_timeout_s": native_timeout_s,
             "engines": sorted(native_engines), "selected_contract_sha256": selected_sha256,
             "scope": "host process resources only; original semantic and numerical declarations retained",
+        }
+    if model_spike_timeout_s is not None:
+        record["model_spike_resource_selection"] = {
+            "max_model_spike_timeout_s": model_spike_timeout_s,
+            "engine": "spike", "selected_contract_sha256": selected_sha256,
+            "scope": "whole-model host process budget only; original semantic and numerical declarations retained",
         }
     if gsim_readback_transport is not None:
         record["execution_transport_selection"] = {
@@ -1002,6 +1011,7 @@ def scaffold(
     lean_toolchain_manifest: Path | None = None,
     host_index_bits: int | None = None,
     native_timeout_s: int | None = None,
+    model_spike_timeout_s: int | None = None,
     gsim_readback_transport: str | None = None,
     operand_protocol_selection: tuple[Path, str] | None = None,
 ) -> dict:
@@ -1076,13 +1086,14 @@ def scaffold(
         staged_contract = experiment / "contracts/target_contract.yaml"
         contract_record = _stage_capability_contract(
             contract_source, contract_sha256, staged_contract, native_timeout_s, gsim_readback_transport,
-            operand_selection=operand_selection,
+            model_spike_timeout_s=model_spike_timeout_s, operand_selection=operand_selection,
         )
         hardware["target_contract"] = str(staged_contract)
         inputs["capability_contract"] = contract_record
     elif te.declared_contract:
         raise SpecError("descriptor declares a capability contract without a selected Phase 0 export; freeze a new run")
-    elif native_timeout_s is not None or gsim_readback_transport is not None or operand_selection is not None:
+    elif (native_timeout_s is not None or model_spike_timeout_s is not None
+          or gsim_readback_transport is not None or operand_selection is not None):
         raise SpecError("execution selection requires an original Phase 0 contract")
     hardware_root = None
     if te.hwbringup_set:

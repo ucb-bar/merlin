@@ -257,6 +257,23 @@ def _device_result(group, members, entry, result_type, *, elementwise: bool = Fa
     device_type = TensorType(element, device)
     if have == device or (batch and have == [*map(int, batch), *device]):
         return None, result_type, ""
+    if group.window_mean is not None and device[1] == 1 and have in ([1, device[0]], [device[0]]):
+        from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, i64
+
+        def relayout(value) -> list:
+            groups = ArrayAttr([ArrayAttr([IntegerAttr(i, i64) for i in (0, 1)])])
+            collapsed = tensor.CollapseShapeOp(
+                operands=[value], result_types=[TensorType(element, [device[0]])],
+                properties={"reassociation": groups},
+            )
+            if len(have) == 1:
+                return [collapsed]
+            expanded = tensor.ExpandShapeOp(
+                collapsed.results[0], (), groups, [1, device[0]], result_type
+            )
+            return [collapsed, expanded]
+
+        return relayout, device_type, ""
     transposes = [m for m in members if m.name == "linalg.transpose"]
     positions, features = device
     # A convolution group's own views and transpose take the device's rows to NCHW; an elementwise
@@ -326,6 +343,32 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
     named in the reason rather than dropped from the call."""
     from xdsl.dialects.builtin import IntegerType
 
+    if group.window_mean is not None:
+        from xdsl.dialects import tensor
+        from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, TensorType, i64
+
+        rows, window = int(group.window_mean["rows"]), int(group.window_mean["window"])
+        shape = _shape(pair[0])
+        if shape == [rows, window]:
+            activation, views = pair[0], []
+        elif len(shape) == 4 and shape[0] == 1 and shape[1] == rows and shape[2] * shape[3] == window:
+            groups = ArrayAttr([
+                ArrayAttr([IntegerAttr(i, i64) for i in (0, 1)]),
+                ArrayAttr([IntegerAttr(i, i64) for i in (2, 3)]),
+            ])
+            collapse = tensor.CollapseShapeOp(
+                operands=[pair[0]], result_types=[TensorType(pair[0].type.get_element_type(), [rows, window])],
+                properties={"reassociation": groups},
+            )
+            activation, views = collapse.results[0], [collapse]
+        else:
+            return None, (), (), f"window mean activation shape {shape} is not [{rows}, {window}]"
+        weight_row = (row or {}).get("weight") or {}
+        laid_out = arrays.get(weight_row.get("array")) if isinstance(weight_row.get("array"), str) else None
+        if laid_out is None or list(laid_out.shape) != [window, 1] or not bool((laid_out == 1).all()):
+            return None, (), (), "window mean prepack has no exact constant-one operand"
+        ones = _constant_tensor(laid_out, activation.type.get_element_type())
+        return [activation, ones.results[0]], [*views, ones], ["input_0", "weight_0"], ""
     if stated.stored_operand is None:
         return [pair[0], pair[1]], [], ["input_0", "input_1"], ""
     operands, constants, roles = [pair[0]], [], ["input_0", "weight_0"]

@@ -244,7 +244,7 @@ def _execution_timeout_ceiling(block):
     if "execution_resources" not in block:
         return 600
     resources = block["execution_resources"]
-    _fields(resources, {"max_native_timeout_s"})
+    _fields(resources, {"max_native_timeout_s"}, {"max_model_spike_timeout_s"})
     ceiling = resources["max_native_timeout_s"]
     _require(
         type(ceiling) is int and 0 < ceiling <= 3600,
@@ -253,7 +253,19 @@ def _execution_timeout_ceiling(block):
     return ceiling
 
 
-def _validate_engine(engine, block, *, timeout_ceiling=600):
+def _model_spike_timeout_ceiling(block):
+    """A separately selected process bound for whole-model functional Spike runs."""
+    _execution_timeout_ceiling(block)
+    resources = block.get("execution_resources", {})
+    ceiling = resources.get("max_model_spike_timeout_s", 600)
+    _require(
+        type(ceiling) is int and 0 < ceiling <= 172800,
+        "selected model Spike process ceiling must be an integer within 1..172800 seconds",
+    )
+    return ceiling
+
+
+def _validate_engine(engine, block, *, timeout_ceiling=600, spike_timeout_ceiling=600):
     required = {"binary", "argv", "environment", "cwd", "max_timeout_s", "max_console_bytes", "failure_markers"}
     _fields(block, required | ({"receipt"} if engine in {"gsim", "verilator"} else set()), {"readback_transport"})
     if "readback_transport" in block:
@@ -281,7 +293,7 @@ def _validate_engine(engine, block, *, timeout_ceiling=600):
     )
     _positive(block["max_timeout_s"])
     _require(
-        block["max_timeout_s"] <= (600 if engine == "spike" else timeout_ceiling),
+        block["max_timeout_s"] <= (spike_timeout_ceiling if engine == "spike" else timeout_ceiling),
         "execution deadline exceeds the bounded process limit",
     )
     _positive(block["max_console_bytes"])
@@ -478,7 +490,10 @@ class BoundRoCCBackend:
         selection = self._block()
         block = selection["engines"].get(engine)
         _require(block is not None, "requested execution engine is not selected")
-        _validate_engine(engine, block, timeout_ceiling=_execution_timeout_ceiling(selection))
+        _validate_engine(
+            engine, block, timeout_ceiling=_execution_timeout_ceiling(selection),
+            spike_timeout_ceiling=_model_spike_timeout_ceiling(selection),
+        )
         return block
 
     def execution_timeout_limit(self, simulator):
@@ -976,8 +991,11 @@ def bind(*, target, contract, facts):
         "RoCC execution requires explicitly supported engines",
     )
     timeout_ceiling = _execution_timeout_ceiling(block)
+    spike_timeout_ceiling = _model_spike_timeout_ceiling(block)
     for engine, engine_block in block["engines"].items():
-        _validate_engine(engine, engine_block, timeout_ceiling=timeout_ceiling)
+        _validate_engine(
+            engine, engine_block, timeout_ceiling=timeout_ceiling, spike_timeout_ceiling=spike_timeout_ceiling
+        )
     if "spike" in block["engines"]:
         extension = runner.get("spike_extension")
         _fields(extension, {"extension_name", "extlib", "sha256"})

@@ -649,7 +649,7 @@ def lower_contraction_int8(
     prequant_gather: bool = False,
     report_out: "dict | None" = None,
 ) -> int:
-    """Rewrite f32 contractions into i8×i8→i32 + dynamic act-quant + requant. Returns count.
+    """Rewrite f32-accumulator contractions into i8×i8→i32 + requant. Returns count.
 
     ``prequant_gather`` (default False, so the shipped datapath is byte-identical) turns on the
     ``quantize_before_gather`` feature: when a contraction's f32 activation operand is produced by a
@@ -666,7 +666,17 @@ def lower_contraction_int8(
     """
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
-    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, FloatAttr, TensorType, f32, i8, i32
+    from xdsl.dialects.builtin import (
+        AffineMapAttr,
+        ArrayAttr,
+        BFloat16Type,
+        Float16Type,
+        FloatAttr,
+        TensorType,
+        f32,
+        i8,
+        i32,
+    )
     from xdsl.dialects.linalg import ops as L
     from xdsl.ir import Block, Region
     from xdsl.ir.affine import AffineDimExpr, AffineMap
@@ -720,9 +730,17 @@ def lower_contraction_int8(
             continue
         if not all(isinstance(i.type, TensorType) for i in op.inputs):
             continue
-        # at least one f32 operand to quantize (else nothing to do)
+        # A floating input normally supplies the quantization work. A selected
+        # half-precision contraction can instead reuse captured i8 operands.
         if not any(i.type.element_type == f32 or _is_dequant(i.owner) for i in op.inputs):
-            continue
+            # A captured dequantized bf16/f16 contraction is promoted to an
+            # f32 accumulator before this pass. Its operands remain half
+            # precision, but the explicit source quantization path licenses
+            # the same integer contraction rewrite.
+            if not (select is not None and select(op) and any(
+                isinstance(i.type.element_type, (BFloat16Type, Float16Type)) for i in op.inputs
+            )):
+                continue
         targets.append((op, view))
     targets = _select_targets(targets, select, key=lambda t: t[0])
 
@@ -802,9 +820,27 @@ def lower_contraction_int8(
                     _bump(report_out, "static_activation_reshape_reused")
                 continue
             if operand.type.element_type != f32:
-                i8_inputs.append(operand)  # already integer
-                scale_vals.append((None, par_outpos))
-                continue
+                if isinstance(operand.type.element_type, (BFloat16Type, Float16Type)):
+                    # An uncalibrated half-precision input still needs the
+                    # existing dynamic activation quantizer. Extend it to f32
+                    # first; never reinterpret bf16/f16 bits as i8 payload.
+                    f32_t = TensorType(f32, shp)
+                    ext_e = tensor.EmptyOp((), f32_t)
+                    eb = Block(arg_types=[operand.type.element_type, f32])
+                    extended = arith.ExtFOp(eb.args[0], f32)
+                    eb.add_ops([extended, L.YieldOp(extended.result)])
+                    ext = L.GenericOp(
+                        inputs=(operand,), outputs=(ext_e.results[0],), body=Region(eb),
+                        indexing_maps=ArrayAttr([amap(r, AffineMap.identity(r).results)] * 2),
+                        iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * r),
+                        result_types=(f32_t,),
+                    )
+                    pre.extend([ext_e, ext])
+                    operand = ext.results[0]
+                else:
+                    i8_inputs.append(operand)  # already integer
+                    scale_vals.append((None, par_outpos))
+                    continue
 
             # QUANTIZE BEFORE THE GATHER, when the operand is one. `quantize(G(A)) == G(quantize(A))`
             # holds for a pure gather and a single shared scale, so the abs-max, the quantize and the

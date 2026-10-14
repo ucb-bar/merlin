@@ -12,8 +12,11 @@ from xdsl.dialects.llvm import ICmpPredicateFlag
 
 from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
 
-MAX_BLOCK_VISITS = 100_000
-MAX_OPERATIONS = 1_000_000
+# A tiled whole-model kernel can execute tens of millions of host instructions
+# while still having fully constant control. Keep a finite proof bound above
+# that scale; data-dependent branches remain unknown regardless of the bound.
+MAX_BLOCK_VISITS = 4_000_000
+MAX_OPERATIONS = 100_000_000
 
 
 def _width(value):

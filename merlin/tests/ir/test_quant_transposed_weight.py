@@ -4,6 +4,8 @@ import pytest
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower.passes_quant_int import lower_contraction_int8
+from merlin.llvmlower.passes_xdsl import lower_bf16_matmul_f32acc
+from merlin.llvmlower.quant_scope import captured_quantized_contraction
 
 IR = r"""builtin.module {
   func.func @forward(%aq: tensor<1x8xi8>, %as: tensor<f32>, %az: tensor<i64>,
@@ -107,4 +109,20 @@ def test_static_activation_keeps_scale_through_flatten_and_expand(zero_point):
     assert lower_contraction_int8(module, report_out=report) == 1
     assert report.get("static_activation_reshape_reused", 0) == int(zero_point == 0)
     assert sum(op.name == "math.roundeven" for op in module.walk()) == int(zero_point != 0)
+    module.verify()
+
+
+def test_captured_bf16_dequant_contraction_reaches_integer_path():
+    source = _per_tensor_ir(0)
+    for shape in ("1x8", "4x8", "8x4", "1x4"):
+        source = source.replace(f"tensor<{shape}xf32>", f"tensor<{shape}xbf16>")
+    source = source.replace("%z = arith.constant 0.0 : f32", "%z = arith.constant 0.0 : bf16")
+    source = source.replace("linalg.fill ins(%z : f32)", "linalg.fill ins(%z : bf16)")
+    module = parse_mlir_text(source)
+    assert lower_bf16_matmul_f32acc(module) == 1
+    report = {}
+    assert lower_contraction_int8(module, select=captured_quantized_contraction, report_out=report) == 1
+    assert report["transposed_quantized_weight_reused"] == 1
+    assert any(op.name == "linalg.generic" and
+               str(op.results[0].type) == "tensor<1x4xi32>" for op in module.walk() if op.results)
     module.verify()

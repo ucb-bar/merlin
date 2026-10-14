@@ -343,7 +343,13 @@ def run_engine(
         revalidate()
         started = time.monotonic()
         bounded = _selected_run_timeout(backend, engine, timeout_s, deadline)
-        console = backend.run_elf(elf, simulator=engine, timeout=bounded, capture_bytes=capture_bytes)
+        if engine == "spike" and target == "gemmini":
+            run_declared = getattr(backend, "run_declared_model_elf", None)
+            if not callable(run_declared):
+                raise ExecutionGateError("selected Gemmini backend cannot run the linked model's declared machine")
+            console = run_declared(elf, timeout=bounded, capture_bytes=capture_bytes)
+        else:
+            console = backend.run_elf(elf, simulator=engine, timeout=bounded, capture_bytes=capture_bytes)
         wall = time.monotonic() - started
         if command is not None:
             command.revalidate()

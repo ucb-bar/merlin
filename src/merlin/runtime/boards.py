@@ -81,7 +81,7 @@ class Board:
     #: PLL target for a UART console, or None to stay on the chip's reset clock. Also the clock a
     #: returned `METRIC cycles` should be divided by, which is why the image prints it.
     chip_freq_hz: int | None = None
-    #: Minimum code+stack bytes before weights; generated object and static I/O bytes add to this floor.
+    #: Minimum code/static-I/O/stack region before weights; large generated content raises this floor.
     code_reserve: int | None = None
     #: The merlin target whose RTL this board elaborates, when one is registered. Per-target environment
     #: names derive from it (``common.paths.target_env_name``) -- the Verilator binary override is

@@ -707,6 +707,21 @@ def _device_operands(group, stated) -> tuple[tuple[Any, Any] | None, str]:
     float with no dequantize behind it is refused rather than handed to an integer datapath.
     """
     root = group.root
+    if group.window_mean is not None:
+        from merlin.xdsl_dialects.lowering import compute_groups as CG
+
+        dequantizes = [
+            member for member in group.members
+            if (stage := CG.classify(member)) is not None and stage.kind == CG.DEQUANTIZE
+        ]
+        if len(dequantizes) != 1 or not dequantizes[0].operands:
+            return None, "the window mean has no unique integer activation source"
+        activation = dequantizes[0].operands[0]
+        if not _integer_element(activation.type):
+            return None, "the window mean's activation is not stored as integers"
+        # The other operand is the source-derived constant-one array supplied
+        # by the logical ABI prepack, not the float zero-init of linalg.reduce.
+        return (activation, activation), ""
     if len(list(root.operands)) < 2:
         return None, "this group's root reads fewer than two operands, so the kernel ABI has nothing to take"
     from merlin.xdsl_dialects.lowering import compute_groups as CG
@@ -957,6 +972,9 @@ def _rewrite_groups_to_device(
                 (name, "this group escapes as a float value, which the integer datapath it states cannot commit")
             )
             continue
+        if group.window_mean is not None and not logical:
+            skipped.append((name, "a window mean needs the logical ABI's constant-one operand"))
+            continue
         pair, why = _device_operands(group, stated)
         if pair is None:
             skipped.append((name, why))
@@ -1107,7 +1125,7 @@ def _rewrite_groups_to_device(
                 symbol=sym,
                 parallel=tuple(int(v) for v in shape.parallel),
                 reduction=tuple(int(v) for v in shape.reduction),
-                dtypes=tuple(_element_token(t) for t in (pair[0].type, pair[1].type, result_type)),  # type: ignore[arg-type]
+                dtypes=tuple(_element_token(t) for t in (operands[0].type, operands[1].type, result_type)),  # type: ignore[arg-type]
                 fqn=str(entry.get("source_reference", "")),
                 group=int(group.index),
                 source_region_id=region_id,

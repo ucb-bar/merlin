@@ -75,7 +75,7 @@ def test_absent_explicit_selection_preserves_historical_host_clang_commands(tmp_
         [Path("selected-clang"), "-O2", "-fPIC", "-c", tmp_path / "source.ll", "-o", tmp_path / "model.o"],
         {"inputs": (tmp_path / "source.ll",), "outputs": (tmp_path / "model.o",)},
     )
-    assert len(commands) == 3 and commands[1][0][0] == commands[2][0][0] == "cc"
+    assert len(commands) == 3 and commands[1][0][0] == commands[2][0][0] == Path("selected-clang")
 
 
 def test_selected_missing_object_compiler_never_falls_back_to_clang(tmp_path, monkeypatch):

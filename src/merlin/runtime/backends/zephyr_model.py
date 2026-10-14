@@ -480,6 +480,7 @@ def _prepare_model_mlir(
     op_counts_out: dict[str, int] | None = None,
     vec_lanes: int = _VEC_RANK_LANES,
     vec_max_rank: int = _VEC_RANK_MAX_RANK,
+    complete_group_device: Any | None = None,
 ) -> Path:
     """Apply the dispatch_runtime normalization passes to ``model.mlir`` and write the
     prepared module to ``work/model.prepared.mlir``. These make quantized / bf16 /
@@ -546,6 +547,13 @@ def _prepare_model_mlir(
         # convert (nonzero-zp, embeddings).
         from ...llvmlower.quant_passes import apply_quant
 
+        if respect_captured_quantization_scope:
+            # A captured quantized contraction may carry bf16 dequantized
+            # operands. Promote its accumulator before selecting the i8 path,
+            # so the latter sees the f32 accumulator and can reuse the source
+            # i8 values/scales through their layout-only views.
+            lower_bf16_matmul_f32acc(module)
+
         # `prequant_gather` (the `quantize_before_gather` feature) moves the activation quantization
         # to BEFORE the im2col expansion. Reported, not silent: a pass that rewrote nothing and a
         # pass that could not reach anything both return 0, and only the counters separate them.
@@ -585,6 +593,22 @@ def _prepare_model_mlir(
                     if k.startswith(("prequant_gather_mode_", "prequant_gather_refused_"))
                 )
             )
+    # Source-admitted groups must be routed while their quantize/dequantize
+    # boundaries still identify the integer computation. Lowering those
+    # boundaries first turns a quantized window mean into unrelated float
+    # generics and silently leaves that eligible group on the host.
+    early_group_rewrite = None
+    if complete_group_device is not None:
+        from ...llvmlower.device_offload import rewrite_groups_to_device
+
+        early_group_rewrite = rewrite_groups_to_device(
+            module,
+            complete_group_device.device,
+            select=complete_group_device.select,
+            capture=complete_group_device.capture,
+            model=complete_group_device.model,
+            require_complete_groups=True,
+        )
     lower_quant_ext(module)
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)
@@ -761,7 +785,21 @@ def _prepare_model_mlir(
     # mistaken for data and no model, quantization scheme or target is named.
     _qinner.require_initialized(module, where=str(mlir_path))
     out = work / "model.prepared.mlir"
-    out.write_text(to_text(module))
+    prepared_text = to_text(module)
+    if early_group_rewrite is not None:
+        from ...llvmlower.declaration_access import patch_declaration_arg_attrs, unpatched_declarations
+
+        by_access: dict[tuple[str, ...], list[str]] = {}
+        for symbol in early_group_rewrite.signatures:
+            by_access.setdefault(tuple(early_group_rewrite.arg_access[symbol]), []).append(symbol)
+        for access, symbols in by_access.items():
+            prepared_text = patch_declaration_arg_attrs(prepared_text, symbols, argument_access=access)
+        missing = unpatched_declarations(prepared_text, early_group_rewrite.signatures)
+        if missing:
+            raise RuntimeError(f"source-routed device declarations have no access attributes: {list(missing)}")
+        early_group_rewrite.write_sidecar(work)
+        print(f"[device] source-routed {early_group_rewrite.moved} complete group(s)")
+    out.write_text(prepared_text)
     if int8_compute:
         from ...common.digest import sha256_file
         from ...common.jsonio import write_pretty_json
@@ -986,6 +1024,14 @@ def prepare_for_lowering(
     from ...llvmlower.reduce_vec import FEATURE as _VEC_AMAX_REDUCTION
 
     _op_counts: dict[str, int] = {}
+    _early_complete_groups = device is not None and getattr(device, "require_complete_groups", False)
+    if _early_complete_groups and (
+        getattr(device, "prepared_transform", None) is not None
+        or getattr(device, "catalog_builder", None) is not None
+        or getattr(device, "catalog_manifest", None) is not None
+        or getattr(device, "exact_selection", None) is not None
+    ):
+        raise ValueError("complete source group routing cannot follow a prepared-source transform or catalog")
     prepared = _prepare_model_mlir(
         mlir_path,
         work,
@@ -1004,6 +1050,7 @@ def prepare_for_lowering(
         op_counts_out=_op_counts,
         vec_lanes=_lanes or _VEC_RANK_LANES,
         vec_max_rank=_max_rank or _VEC_RANK_MAX_RANK,
+        complete_group_device=device if _early_complete_groups else None,
     )
     # SAY SO when a requested lever cannot fire on this module. A transform schedule matches by op
     # name, and `transform.structured.match` on a name nothing carries yields an empty handle, so
@@ -1156,7 +1203,7 @@ def prepare_for_lowering(
         catalog_object = getattr(device, "catalog_object", None)
         if getattr(device, "catalog_builder", None) is not None:
             catalog_manifest, catalog_object = device.catalog_builder(Path(prepared), Path(work) / "device_catalog")
-        moved = _dev_rewrite(
+        moved = None if _early_complete_groups else _dev_rewrite(
             prepared,
             work,
             device.device,
@@ -1166,7 +1213,6 @@ def prepare_for_lowering(
             catalog_object=catalog_object,
             granularity=_grain, capture=getattr(device, "capture", None),
             model=str(getattr(device, "model", "") or ""),
-            **({"require_complete_groups": True} if getattr(device, "require_complete_groups", False) else {}),
         )
         from ...llvmlower.device_build import apply_post_offload_transform
         from ...llvmlower.device_offload import SIDECAR_NAME as _device_sidecar_name
@@ -1177,11 +1223,12 @@ def prepare_for_lowering(
             Path(work) / _device_sidecar_name,
             Path(work) / "device_host_abi",
         )
-        print(
-            f"[device] routed {moved.moved} {_grain}(s) to {device.device} across "
-            f"{len(moved.signatures)} signature(s)"
-            + (f"; declined: {[why for _s, why in moved.skipped]}" if moved.skipped else "")
-        )
+        if moved is not None:
+            print(
+                f"[device] routed {moved.moved} {_grain}(s) to {device.device} across "
+                f"{len(moved.signatures)} signature(s)"
+                + (f"; declined: {[why for _s, why in moved.skipped]}" if moved.skipped else "")
+            )
 
     # The register-group-width REQUEST, resolved for the same reason the per-op block table is: the
     # width is a property of the arithmetic this module actually contains, and the prepared IR is the

@@ -235,6 +235,42 @@ def test_pointer_derived_scalar_values_do_not_get_an_address_exemption(sink: str
     assert row["arithmetic_per_element"] == 2.0
 
 
+def test_pointer_only_target_commands_are_orchestration_but_unknown_asm_is_not(monkeypatch) -> None:
+    from xdsl.context import Context
+    from xdsl.dialects import builtin, llvm
+    from xdsl.parser import Parser
+    from merlin.targetgen.rocc import decode
+
+    monkeypatch.setattr(decode, "isa_constants", lambda target: {"CUSTOM_OPCODE": 123, "FUNCT_CLASS": {2: "MVIN"}})
+
+    text = '''module {
+      llvm.func @entry(%input: !llvm.ptr, %output: !llvm.ptr) {
+        %base = llvm.ptrtoint %input : !llvm.ptr to i64
+        %one = llvm.mlir.constant(1 : i64) : i64
+        %first = llvm.udiv %one, %one : i64
+        %remainder = llvm.urem %one, %one : i64
+        %offset = llvm.add %first, %remainder : i64
+        %second = llvm.add %base, %offset : i64
+        "llvm.inline_asm"(%second, %one) <{asm_string = ".insn r 0x7b, 0x3, 0x2, x0, $0, $1", constraints = "r,r,~{memory}", has_side_effects}> : (i64, i64) -> ()
+        llvm.return
+      }
+    }'''
+
+    def judge(source: str):
+        ctx = Context()
+        for dialect in (builtin.Builtin, llvm.LLVM):
+            ctx.load_dialect(dialect)
+        module = Parser(ctx, source).parse_module()
+        module.verify()
+        return HA.audit(module, [_site("entry", elements=1)], target="fixture")["groups"][0]
+
+    accepted = judge(text)
+    assert accepted["verdict"] == HA.CLEAN
+    assert accepted["arithmetic_basis"] == "pointer_only_target_commands_v1"
+    refused = judge(text.replace(".insn r 0x7b", ".insn r 0x0b"))
+    assert refused["verdict"] == HA.HOST_COMPUTE
+
+
 def _graded_run(tmp_path, name: str, artifact: str, buffer: dict):
     import json
 

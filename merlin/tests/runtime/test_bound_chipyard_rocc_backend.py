@@ -601,6 +601,25 @@ def test_native_extension_does_not_extend_functional_engine(selection):
         _bound(selection)
 
 
+def test_model_spike_resource_selection_extends_only_functional_process_budget(selection):
+    original, facts = selection
+    selected = S.select_model_spike_timeout(original, 172800)
+    assert original["runner"]["chipyard_rocc"]["engines"]["spike"]["max_timeout_s"] == 5
+    block = selected["runner"]["chipyard_rocc"]
+    assert block["execution_resources"] == {
+        "max_native_timeout_s": 600, "max_model_spike_timeout_s": 172800,
+    }
+    assert block["engines"]["spike"]["max_timeout_s"] == 172800
+    bound = B.bind(target="synthetic", contract=selected, facts=facts)
+    assert bound.execution_timeout_limit("spike") == 172800
+
+
+@pytest.mark.parametrize("budget", [True, 0, -1, 172801, 600.0])
+def test_model_spike_resource_selection_refuses_unbounded_or_nonnumeric_budget(selection, budget):
+    with pytest.raises(B.RoCCExecutionError, match="model Spike process ceiling"):
+        S.select_model_spike_timeout(selection[0], budget)
+
+
 def test_explicit_native_budget_keeps_frozen_selection_and_remaining_deadline(selection, tmp_path, monkeypatch):
     from merlin.common import execution_deadline as D
     from merlin.targetgen.contract.compile import _selected_run_timeout

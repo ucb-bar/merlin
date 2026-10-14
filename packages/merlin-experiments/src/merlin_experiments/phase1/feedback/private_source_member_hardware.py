@@ -70,17 +70,20 @@ def observe(member, stage, capability):
               "family": family, "input_formats": list(formats), "result_formats": list(outputs),
               "rank": rank, "form": form, "layout": None,
               "input_role_basis": roles["basis"], "control_operand_indices": list(roles["control_indices"])}
-    if (family is None or not formats or not all(formats)
-        or len(outputs) != 1 or not outputs[0]):
+    if family is None or not formats or not all(formats):
         return {**record, "status": "unknown", "refusal": "missing_typed_source_observation"}
     caps = E.capability_map_from_contract(dict(capability))
-    if family != "contraction" and len(set(formats)) > 1:
+    if family != "contraction":
         checked, _ = E._family_support(family, caps)
         # Every ins slot is actual data unless the closed SSA role proof above
-        # establishes control. A genuinely unsupported required payload width
-        # independently excludes a mixed body; no lowering form is consulted.
-        if checked and any(not E._dtype_ok(fmt, cap.dtypes) for cap in checked for fmt in formats):
+        # establishes control. An unsupported required payload width excludes
+        # the operation even when it has multiple results and their lowering
+        # form is unknown. All selected capabilities must exclude that width.
+        if checked and all(any(not E._dtype_ok(fmt, cap.dtypes) for fmt in formats)
+                           for cap in checked):
             return {**record, "status": "unsupported", "refusal": "input_dtype"}
+    if len(outputs) != 1 or not outputs[0]:
+        return {**record, "status": "unknown", "refusal": "missing_typed_source_observation"}
     descriptor = E.RegionDescriptor(
         op=stage, family=family, in_dtype=formats[0],
         weight_dtype=formats[1] if family == "contraction" and len(formats) == 2 else None,

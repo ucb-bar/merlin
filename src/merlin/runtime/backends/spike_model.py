@@ -247,9 +247,8 @@ def _selected_libm_archive(gcc: Path, flags: list[str], link_flags: tuple[str, .
 #: The arena lives here (literal-addressed, inside the -m memory map this backend passes to spike).
 ARENA_BASE = 0xC0000000  # derived-ok: address chosen by this backend's own -m map, not read from a target
 DRAM_BASE = 0x80000000  # derived-ok: RISC-V platform DRAM base used by spike/fesvr; the -m map is passed explicitly
-#: Reserve ahead of the weights blob for everything that is NOT the model's static I/O: code,
-#: rodata, the stack and the runtime's own tables. The model-dependent part (embedded inputs + the
-#: static output buffer) and the lowered model object's bytes are added on top.
+#: Minimum region ahead of the weights blob for code, rodata, static I/O,
+#: stack, and runtime tables. Large generated objects can raise this floor.
 _CODE_RESERVE_FIXED = 64 * 1024 * 1024
 
 
@@ -842,7 +841,13 @@ def build(
             "entry_projection": entry_projection_plan,
             "entry_projection_source": entry_projection_source,
         }
-    info = c_runtime.generate(model_dir, cgen, inputs_npz, prepared_dir=work, **projection_options)
+    # The bare-metal driver executes merlin_prepare_step(0) exactly once. Embed
+    # only that step of a captured session: later stream inputs and trajectory
+    # references cannot be observed by this ELF, and rendering them as C
+    # literals makes large captures costly to compile (hundreds of MB of C).
+    info = c_runtime.generate(
+        model_dir, cgen, inputs_npz, prepared_dir=work, max_session_steps=1, **projection_options
+    )
     if full_readback:
         from ..whole_model_readback import render_outputs_header
 
@@ -851,14 +856,18 @@ def build(
         )
     if output_sha256 and info.get("out_dt") != "f32":
         raise SpikeModelError("full-output SHA256 evidence requires f32 output")
-    # A board's code_reserve is a floor for the fixed runtime, not a complete bound on the
-    # generated image. The lowered model can put large constants in .rodata (the TinyLlama
-    # prefill object exceeds 1 GiB), and the C harness adds model-dependent static I/O.
-    # Reserve the actual model object's whole file size as a conservative upper bound on
-    # its loadable sections. The packed layout must account for all three before placing
-    # .weights; the historical unbounded Spike map does not use this reserve.
+    # The board's code_reserve is a floor for the entire linked code/static-I/O
+    # region, not an extra allocation on top of its measured contents. The
+    # lowered model may contain large .rodata (TinyLlama's object exceeds 1 GiB)
+    # and the C harness may embed a large input stream. Count both, leave a
+    # quarter of the board floor for the fixed runtime/shim, and honor the floor
+    # whenever the measured contents are smaller. The final link still checks
+    # the actual section addresses against this packed map.
     reserve_floor = int(code_reserve) if code_reserve is not None else _CODE_RESERVE_FIXED
-    reserve = reserve_floor + int(info.get("static_io_bytes", 0)) + (work / "model.o").stat().st_size
+    reserve = max(
+        reserve_floor,
+        int(info.get("static_io_bytes", 0)) + (work / "model.o").stat().st_size + reserve_floor // 4,
+    )
     lay = _layout(arena_bytes, info["weights_bytes"], dram_base=dram_base, dram_bytes=dram_bytes, code_reserve=reserve)
 
     # 3. weights.bin -> binary blob object (placed at the absolute weights address)
@@ -1217,7 +1226,9 @@ def build(
         listing = _run([str(toolchain.nm()), "-u", str(work / "model.o")]).stdout
         undefined = {line.split()[-1] for line in listing.splitlines() if line.split()}
         routed_rows = list(_dev_side.get("routed") or [])
-        group_callees = _group_callees(routed_rows, _dev_args.get("signatures") or {}, undefined)
+        group_callees = _group_callees(
+            routed_rows, _dev_args.get("signatures") or {}, undefined, _dev_args.get("call_buffers")
+        )
         (cgen / "merlin_group_profile.c").write_text(
             render_group_profile(group_callees, _group_names(routed_rows)), encoding="utf-8"
         )

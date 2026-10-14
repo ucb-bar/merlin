@@ -104,12 +104,22 @@ class GroupCallee:
 
     symbol: str
     #: ``expanded`` (three rank-r memrefs passed field by field, a rank-r memref returned) or
-    #: ``c_interface`` (result pointer, then three descriptor pointers).
+    #: ``c_interface`` (result pointer, then one descriptor per call buffer).
     abi: str
-    rank: int
+    #: None for a C-interface call with mixed operand ranks. Its ABI carries
+    #: descriptor pointers, so the wrapper does not inspect their pointees.
+    rank: int | None
+    #: Number of descriptor arguments, including the destination. Expanded
+    #: calls have the fixed three-buffer ABI; C interfaces may also pass bias.
+    buffers: int = 3
 
 
-def callees(routed: Sequence[Mapping[str, Any]], signatures: Mapping[str, Sequence[int]], undefined: set[str]):
+def callees(
+    routed: Sequence[Mapping[str, Any]],
+    signatures: Mapping[str, Sequence[int]],
+    undefined: set[str],
+    call_buffers: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+):
     """The group callees the model object actually references, in a stable order.
 
     ``undefined`` is the model object's undefined-symbol list; only a referenced name can be wrapped.
@@ -117,13 +127,37 @@ def callees(routed: Sequence[Mapping[str, Any]], signatures: Mapping[str, Sequen
     out: list[GroupCallee] = []
     for symbol in sorted({str(row.get("symbol")) for row in routed if row.get("symbol")}):
         key = signatures.get(symbol)
-        if key is None or len(key) not in (3, 4):
-            raise ReadbackError(f"routed symbol {symbol} has no 3- or 4-extent signature")
-        rank = len(key) - 1
+        if key is None:
+            raise ReadbackError(f"routed symbol {symbol} has no device signature")
         if symbol in undefined:
-            out.append(GroupCallee(symbol, "expanded", rank))
+            if len(key) not in (3, 4):
+                raise ReadbackError(f"routed symbol {symbol} has no 3- or 4-extent signature")
+            if call_buffers is not None and symbol in call_buffers and len(call_buffers[symbol]) != 3:
+                raise ReadbackError(f"expanded routed symbol {symbol} has a non-three-buffer call ABI")
+            out.append(GroupCallee(symbol, "expanded", len(key) - 1))
         elif f"_mlir_ciface_{symbol}" in undefined:
-            out.append(GroupCallee(f"_mlir_ciface_{symbol}", "c_interface", rank))
+            buffers = (call_buffers or {}).get(symbol)
+            if buffers is not None:
+                roles = [buf.get("role") if isinstance(buf, Mapping) else None for buf in buffers]
+                if not isinstance(buffers, (list, tuple)) or roles not in (
+                    ["input_0", "weight_0", "out_0"],
+                    ["input_0", "input_1", "out_0"],
+                    ["input_0", "weight_0", "bias_0", "out_0"],
+                ) or any(
+                    not isinstance(buf, Mapping)
+                    or not isinstance(buf.get("shape"), (list, tuple))
+                    or not buf["shape"]
+                    or any(not isinstance(dim, int) or dim < 1 for dim in buf["shape"])
+                    for buf in buffers
+                ):
+                    raise ReadbackError(f"routed symbol {symbol} has no complete call-buffer ABI")
+                rank = None
+                arity = len(buffers)
+            elif len(key) in (3, 4):
+                rank, arity = len(key) - 1, 3
+            else:
+                raise ReadbackError(f"routed symbol {symbol} has no complete call-buffer ABI")
+            out.append(GroupCallee(f"_mlir_ciface_{symbol}", "c_interface", rank, arity))
         else:
             raise ReadbackError(f"the model object references routed symbol {symbol} under no known name")
     return out
@@ -189,7 +223,7 @@ def render_group_profile(callees_: Sequence[GroupCallee], names: Sequence[tuple[
         "  }",
         "}",
     ]
-    for rank in sorted({c.rank for c in callees_}):
+    for rank in sorted({c.rank for c in callees_ if c.rank is not None}):
         lines += [
             "typedef struct {",
             "  void *allocated;",
@@ -200,7 +234,7 @@ def render_group_profile(callees_: Sequence[GroupCallee], names: Sequence[tuple[
             f"}} {_memref(rank)};",
         ]
     for index, callee in enumerate(callees_):
-        memref = _memref(callee.rank)
+        memref = _memref(callee.rank) if callee.rank is not None else None
         if callee.abi == "expanded":
             params, args = _expanded_params(callee.rank)
             lines += [
@@ -213,12 +247,15 @@ def render_group_profile(callees_: Sequence[GroupCallee], names: Sequence[tuple[
                 "}",
             ]
         else:
-            proto = f"{memref} *result, const {memref} *a, const {memref} *b, const {memref} *c"
+            pointer = f"const {memref} *" if memref is not None else "const void *"
+            args = [chr(ord('a') + i) for i in range(callee.buffers)]
+            proto = f"{memref} *result" if memref is not None else "void *result"
+            proto += ", " + ", ".join(f"{pointer}{arg}" for arg in args)
             lines += [
                 f"void __real_{callee.symbol}({proto});",
                 f"void __wrap_{callee.symbol}({proto}) {{",
                 "  uint64_t start = merlin_rdcycle();",
-                f"  __real_{callee.symbol}(result, a, b, c);",
+                f"  __real_{callee.symbol}(result, {', '.join(args)});",
                 f"  merlin_group_record({index}u, start, merlin_rdcycle());",
                 "}",
             ]
