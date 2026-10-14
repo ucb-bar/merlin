@@ -55,6 +55,27 @@ theorem elementwise?_spec {argTys resTys : List VTy} {sh : Option (List Nat)} {e
     · cases h
   · cases h
 
+/-- An elementwise rule: accept when the op's result element type is `re` and `ok` holds of the op,
+its operand element types and `re`. -/
+def ewRule (ok : Op → List Ty → Ty → Bool) : OpRule := fun op argTys resTys =>
+  match elementwise? argTys resTys with
+  | some (_, elts, re) => if Arith.resultElt op = some re ∧ ok op elts re = true then some [] else none
+  | none => none
+
+theorem ewRule_spec {ok : Op → List Ty → Ty → Bool} {op : Op} {argTys resTys : List VTy}
+    {sigs : List RegionSig} (h : ewRule ok op argTys resTys = some sigs) :
+    ∃ sh elts re, argTys = elts.map (liftTy sh) ∧ resTys = [liftTy sh re] ∧ elts ≠ [] ∧
+      Arith.resultElt op = some re ∧ ok op elts re = true ∧ sigs = [] := by
+  simp only [ewRule] at h
+  split at h
+  · next sh elts re hel =>
+    split at h
+    · next hc =>
+      obtain ⟨ha, hr, hne⟩ := elementwise?_spec hel
+      exact ⟨sh, elts, re, ha, hr, hne, hc.1, hc.2, (Option.some.inj h).symm⟩
+    · cases h
+  · cases h
+
 /-- Typed values of element types `elts` lifted to one shape. -/
 theorem hasTys_lift_scalar {ib : Nat} {args : List RVal} {elts : List Ty}
     (h : HasTys ib args (elts.map (liftTy none))) :
@@ -100,14 +121,12 @@ theorem toArray_getD_mem {α : Type} (l : List α) (k : Nat) (d : α) :
 
 /-- **Elementwise safety.** If the element function is never stuck on typed elements and yields
 typed elements, the lifted op is never stuck on typed operands and yields a typed result. -/
-theorem pureN_safe (ib : Nat) (op : Op) (args : List RVal) (g : List Val → Outcome Val)
-    (sh : Option (List Nat)) (elts : List Ty) (re : Ty) (hne : elts ≠ [])
+theorem pureN_safe {ib : Nat} {op : Op} {args : List RVal} {g : List Val → Outcome Val}
+    {sh : Option (List Nat)} {elts : List Ty} {re : Ty} (hne : elts ≠ [])
     (hres : Arith.resultElt op = some re)
     (hargs : HasTys ib args (elts.map (liftTy sh)))
-    (hg : ∀ vs, ValsTyped ib vs elts →
-      (g vs).NotStuck ∧ ∀ v, g vs = .ok v → Val.HasTy ib re v) :
-    (Arith.pureN op args g).NotStuck ∧
-      ∀ rs, Arith.pureN op args g = .ok rs → HasTys ib rs [liftTy sh re] := by
+    (hg : ∀ vs, ValsTyped ib vs elts → Safe (Val.HasTy ib re) (g vs)) :
+    Safe (HasTys ib · [liftTy sh re]) (Arith.pureN op args g) := by
   unfold Arith.pureN
   rw [hres]
   simp only [Outcome.bindOp_eq, Outcome.pure_eq]

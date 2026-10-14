@@ -8,6 +8,21 @@ namespace MerlinVerify.Check
 
 open MerlinVerify
 
+/-- An outcome is safe for `P`: it is not stuck, and every value it yields satisfies `P`. -/
+abbrev Safe {α : Type} (P : α → Prop) (o : Outcome α) : Prop := o.NotStuck ∧ ∀ a, o = .ok a → P a
+
+theorem Safe.of_ok {α : Type} {P : α → Prop} {a : α} (h : P a) : Safe P (.ok a) :=
+  ⟨trivial, fun _ h' => by cases h'; exact h⟩
+
+theorem Safe.of_ub {α : Type} {P : α → Prop} : Safe P (.ub : Outcome α) := ⟨trivial, fun _ h => nomatch h⟩
+
+theorem Safe.bind {α β : Type} {P : α → Prop} {Q : β → Prop} {o : Outcome α} {f : α → Outcome β}
+    (ho : Safe P o) (hf : ∀ a, P a → Safe Q (f a)) : Safe Q (o.bind f) := by
+  cases o with
+  | ub => exact Safe.of_ub
+  | stuck r => exact (ho.1 : False).elim
+  | ok a => exact hf a (ho.2 a rfl)
+
 /-- `List.mapM` in `Outcome`: if every element's step is not stuck and every `ok` value satisfies
 `P`, the whole map is not stuck and every produced value satisfies `P`. -/
 theorem listMapM_safe {α β : Type} (f : α → Outcome β) (P : β → Prop) :

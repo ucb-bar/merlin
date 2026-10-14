@@ -28,18 +28,38 @@ theorem opSem_modelled {ctx : Ctx} {call : CallSem} {op : Op} {args : List RVal}
 @[simp] theorem Op.blind_attr? (op : Op) (k : String) : op.blind.attr? k = op.attr? k := by
   cases op; rfl
 
+/-! ### Rules and their soundness -/
+
+/-- A typing rule: given an op and its operand/result types, the region signatures it requires. -/
+abbrev OpRule := Op → List VTy → List VTy → Option (List RegionSig)
+
+/-- A rule is sound for `opSem` at index width `ib`: on an op with no unmodelled attribute, every
+acceptance is backed by safety. -/
+def RuleSound (ib : Nat) (rule : OpRule) : Prop :=
+  ∀ op argTys resTys sigs, unmodelledAttr? op.blind = none → rule op argTys resTys = some sigs →
+    OpSafe opSem ib op argTys resTys sigs
+
+/-- Try rules in order; the first that accepts decides. -/
+def firstRule (rules : List OpRule) : OpRule := fun op argTys resTys =>
+  rules.findSome? fun r => r op argTys resTys
+
+theorem firstRule_sound {ib : Nat} {rules : List OpRule} (h : ∀ r ∈ rules, RuleSound ib r) :
+    RuleSound ib (firstRule rules) := by
+  intro op argTys resTys sigs hm hr
+  obtain ⟨r, hmem, hsome⟩ := List.exists_of_findSome?_eq_some hr
+  exact h r hmem op argTys resTys sigs hm hsome
+
 /-! ### Family rules -/
 
 /-- `cf.assert %c`: one `i1` operand, no results, no regions. The dialect test is a hypothesis the
 proof rewrites with (string functions are checked at run time, never evaluated in proofs). -/
-def cfRule (op : Op) (argTys resTys : List VTy) : Option (List RegionSig) :=
+def cfRule : OpRule := fun op argTys resTys =>
   if dialectOf op.name = "cf" ∧ op.name = "cf.assert" ∧ argTys = [.scalar (.int 1)] ∧ resTys = [] then
     some []
   else none
 
-theorem cfRule_sound (ib : Nat) (op : Op) (argTys resTys : List VTy) (sigs : List RegionSig)
-    (hm : unmodelledAttr? op.blind = none) (h : cfRule op argTys resTys = some sigs) :
-    OpSafe opSem ib op argTys resTys sigs := by
+theorem cfRule_sound (ib : Nat) : RuleSound ib cfRule := by
+  intro op argTys resTys sigs hm h
   simp only [cfRule] at h
   split at h
   · next hc =>
