@@ -8,16 +8,27 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from merlin.common.paths import out_dir, repo_root
 from merlin.llvmlower.passes_xdsl import preprocess_text
-from merlin.verify.lean.export import export_text
+from merlin.verify.lean.export import export_file
 
 FIXTURE = repo_root() / "merlin" / "tests" / "fixtures" / "lean_dce_forward.mlir"
 LEAN_EXE = out_dir() / "build" / "lean" / "build" / "bin" / "merlin-lean"
+# The authoritative exporter (design D9) parses with the pipeline's MLIR in the model2MLIR env.
+M2M_PYTHON = Path(os.environ.get("MERLIN_M2M_PYTHON", Path.home() / "Projects" / "model2MLIR" / ".venv" / "bin" / "python"))
+
+
+def _export(path, tmp_path, tag):
+    out = tmp_path / f"{tag}.json"
+    backend = "mlir" if M2M_PYTHON.exists() else "xdsl"
+    export_file(path, out, backend=backend, m2m_python=M2M_PYTHON)
+    return json.loads(out.read_text())
 
 
 def _record(tmp_path, monkeypatch):
@@ -50,8 +61,8 @@ def test_c1_verifies_real_dce_and_rejects_faults(tmp_path, monkeypatch):
     _record(tmp_path, monkeypatch)
     stage = next(p for p in (tmp_path / "stages").iterdir() if p.name.endswith("xdsl-pruned"))
     assert json.loads((stage / "meta.json").read_text())["changed"]
-    before = export_text((stage / "before.mlir").read_text())
-    after = export_text((stage / "after.mlir").read_text())
+    before = _export(stage / "before.mlir", tmp_path, "before")
+    after = _export(stage / "after.mlir", tmp_path, "after")
     assert len(_body(after)) < len(_body(before))
     assert _check(tmp_path, before, after, "real") == "verified"
 
