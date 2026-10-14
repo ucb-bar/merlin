@@ -2,7 +2,7 @@
   "MerlinVerify/Check/Types.lean": "82a91125c84e01aae06e1b97f5957e6e995d59b643417f5a2611fe35a4f15d50",
   "MerlinVerify/Core/AST.lean": "022cec55c189ddc40e1ee77e8cc9d8ede4f7734e4ce45a8848e98b96ee5643cd",
   "MerlinVerify/Sem/Float.lean": "6e30a0e7166c42019234d9d4f0216e57be1084fea19fb0a93d5aa1130dd1011d",
-  "MerlinVerify/Sem/Ops.lean": "6d80a2203d96ff342a394c0661d107aeaed281df15d5c01ff81cf167e29b3e99",
+  "MerlinVerify/Sem/Ops.lean": "ba76a1b30fddab7806a8c2bf84d1f07ff7c258c7b2d9521cb37a6ed7e361df51",
   "MerlinVerify/Sem/Outcome.lean": "c473abfe4fbc4b5ac8d40c093691276f69857810e03144a9b42919e9b6c12b62",
   "MerlinVerify/Sem/Program.lean": "a9ce2a01a5b0f28d2d1998b0f60507e41d032cb5b67196adb2d471fef66e57a4",
   "MerlinVerify/Sem/Refine.lean": "7bf390e18b372c7b46ece53efceffd345db763e53b0b364a34d2f64d66510e05",

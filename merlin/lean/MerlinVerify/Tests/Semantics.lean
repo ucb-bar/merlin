@@ -129,6 +129,13 @@ def i8v (x : Int) : RVal := .scalar (.some (.bits 8 (BitVec.ofInt 8 x)))
 -- ... unless the reviewed annotation spec declares it semantics-free.
 #guard readInts (Sem.Ops.denote ctx (scalarModule "arith.addi" [("prov.fqn", .str "layer1")]) "f"
     [i8v 1, i8v 2]) == some [[some 3]]
+-- cf.assert: a true condition is a no-op; a false or poison condition aborts (modelled as UB).
+def assertModule : Module := { ops := [func "f" [v 0 (.int 1), v 1 i8] [
+  mkOp "cf.assert" [] [0] [] [("msg", .str "must hold")], ret [1]]] }
+def i1v (b : Nat) : RVal := .scalar (.some (.bits 1 (BitVec.ofNat 1 b)))
+#guard readInts (Sem.Ops.denote ctx assertModule "f" [i1v 1, i8v 7]) == some [[some 7]]
+#guard isUb (Sem.Ops.denote ctx assertModule "f" [i1v 0, i8v 7])
+#guard isUb (Sem.Ops.denote ctx assertModule "f" [.scalar .poison, i8v 7])
 -- An op outside the semantics is stuck, never a value.
 #guard isStuck (Sem.Ops.denote ctx (scalarModule "arith.frobnicate") "f" [i8v 1, i8v 2])
 

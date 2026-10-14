@@ -8,6 +8,7 @@ import MerlinVerify.Sem.Ops.Linalg
 import MerlinVerify.Sem.Ops.LinalgNamed
 import MerlinVerify.Sem.Ops.Tensor
 import MerlinVerify.Sem.Ops.Func
+import MerlinVerify.Sem.Ops.Cf
 import MerlinVerify.Spec.Annotations
 
 namespace MerlinVerify.Sem.Ops
@@ -31,6 +32,7 @@ def dispatch : OpSem := fun ctx call op args regions =>
     else LinalgNamed.sem ctx call op args regions
   | "tensor" => Tensor.sem ctx call op args regions
   | "func" => Func.sem ctx call op args regions
+  | "cf" => Cf.sem ctx call op args regions
   | _ => .stuck s!"no semantics for dialect of {op.name}"
 
 /-- The flat `callee` symbol of an op, if it has one. -/
@@ -67,6 +69,7 @@ def interpretedAttrs (name : String) : List String :=
   | "tensor.expand_shape" => ["reassociation", "static_output_shape"]
   | "tensor.concat" => ["dim"]
   | "func.call" => ["callee"]
+  | "cf.assert" => ["msg"]
   | n => if n.startsWith "math." || n.startsWith "arith." then ["fastmath"] else []
 
 /-- The first attribute of `op` that its semantics neither reads nor may ignore, if any. -/
