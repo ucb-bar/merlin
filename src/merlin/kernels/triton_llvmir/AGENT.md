@@ -1,4 +1,4 @@
-# AGENT.md — merlin/python/merlin/kernels/triton_llvmir
+# AGENT.md — src/merlin/kernels/triton_llvmir
 
 ## Purpose
 

@@ -12,6 +12,7 @@ code_refs:
   - src/merlin/runtime/backends/spike_model.py
   - src/merlin/common/kernel_calls.py
   - build_tools/scripts/gen_mlp_kernel_fixtures.py
+  - build_tools/scripts/run_mlp_kernel_spike.py
 ---
 
 # Triton kernel integration (merlin side)
@@ -111,41 +112,28 @@ no longer match it.
 | `llvm_ir` (default: the table's first) | `kernels/triton_llvmir/mlp2.ll` | textual LLVM IR, already optimized for the x86 host that exported it |
 | `llvm_mlir` | `kernels/triton_llvmir/mlp2_llvm.mlir` | MLIR `llvm` dialect, before LLVM optimization; `mlir-translate`d, then optimized by clang for rv64gcv |
 
-```python
-# run_mlp.py — usage: .venv/bin/python run_mlp.py {llvm_ir|llvm_mlir} <workdir>
-import shutil, sys
-from pathlib import Path
-import numpy as np
-from merlin.common.paths import merlin_dir
-from merlin.runtime.backends import spike_model
-
-bundle = merlin_dir() / "tests" / "data" / "mlp_bundles" / "mlp_basic_triton"
-form, work = sys.argv[1], Path(sys.argv[2])
-model = work / "model"
-shutil.copytree(bundle, model)            # build() writes beside the bundle; keep the tracked one clean
-b = spike_model.build(model, work / "build", kernel_form=form)
-r = spike_model.run(b["elf"], mem_bytes=b["mem_bytes"], vlen=b.get("vlen"))
-out = np.asarray(r["outputs"], dtype=np.float32)
-err = np.abs(out - np.load(bundle / "golden.npy").ravel()).max()
-print(f"kernels={b['kernels']} cycles={r['metrics']['cycles']} max_abs_err={err:.2e}")
-```
+`build_tools/scripts/run_mlp_kernel_spike.py` copies a bundle to a work directory (the tracked one stays
+clean), builds it with `spike_model.build(..., kernel_form=)`, runs it with `spike_model.run` and compares
+the output with the bundle's golden:
 
 ```bash
-.venv/bin/python run_mlp.py llvm_ir   out/artifacts/probes/mlp_kernel/llvm_ir
-.venv/bin/python run_mlp.py llvm_mlir out/artifacts/probes/mlp_kernel/llvm_mlir
+.venv/bin/python build_tools/scripts/run_mlp_kernel_spike.py --form llvm_ir
+.venv/bin/python build_tools/scripts/run_mlp_kernel_spike.py --form llvm_mlir
+.venv/bin/python build_tools/scripts/run_mlp_kernel_spike.py --bundle mlp_basic     # the kernel-free twin
 ```
 
 Expected (spike `rv64gcv_zfh_zvfh`, VLEN 128):
 
 ```
-kernels=['triton_exp::fused_mlp2:llvm_ir'] cycles=44358 max_abs_err=2.98e-08
-kernels=['triton_exp::fused_mlp2:llvm_mlir'] cycles=15558 max_abs_err=2.98e-08
+variant=mlp_basic_triton_llvm_ir kernels=['triton_exp::fused_mlp2:llvm_ir'] cycles=44358 max_abs_err=2.98e-08
+variant=mlp_basic_triton_llvm_mlir kernels=['triton_exp::fused_mlp2:llvm_mlir'] cycles=15558 max_abs_err=2.98e-08
+variant=mlp_basic kernels=[] cycles=16156 max_abs_err=4.47e-08
 ```
 
-The kernel-free twin is the same script with `mlp_basic` and `kernel_form=None` (16,156 cycles,
-4.47e-08).
+It exits non-zero if the error exceeds 1e-5. Without `--form` the table's first body (`llvm_ir`) is
+linked. The work directory defaults to `out/artifacts/probes/mlp_kernel/<variant>/` (`--work` overrides).
 
-Files left in `<workdir>/build/`:
+Files left in `<work>/build/`:
 
 | path | what |
 |---|---|
@@ -208,7 +196,7 @@ Spike `rv64gcv_zfh_zvfh`, VLEN 128, against the PyTorch eager golden.
 
 ## Changes made
 
-Branch `feat/triton-integration2` (19 commits on `main` `6f1acb6e6`).
+Branch `feat/triton-integration2`, based on `main` `6f1acb6e6`.
 
 **Kernel table and bodies**
 - `src/merlin/llvmlower/kernel_table.py` (new): `KernelEntry` / `KernelBody` / `AbiParam`, keyed by
@@ -234,6 +222,7 @@ Branch `feat/triton-integration2` (19 commits on `main` `6f1acb6e6`).
 **Test data and tests**
 - `merlin/tests/data/mlp_bundles/` + `build_tools/scripts/gen_mlp_kernel_fixtures.py` (fresh capture,
   deterministic) + `merlin/tests/fixtures/mlp_bundles.py` (loader helper).
+- `build_tools/scripts/run_mlp_kernel_spike.py`: the end-to-end example above.
 - Tests: `kernels/test_kernel_table.py`, `rvv/test_kernel_link.py`, `ir/test_kernel_call_passes.py`,
   `runtime/test_external_kernel_spike.py`, `runtime/test_dispatch_external_kernel.py`,
   `runtime/test_descriptor_layout.py`, `infra/test_mlp_bundles_fresh.py`.
@@ -264,8 +253,8 @@ Every gap below is **refused by name**; none produces a silently wrong answer.
 
 ## Current state
 
-- **Branch.** `feat/triton-integration2` on ucb-bar/merlin is the only copy of this work; the newest
-  commits are local until pushed. No PR is open.
+- **Branch.** `feat/triton-integration2` on ucb-bar/merlin (pushed) is the only copy of this work. No PR
+  is open.
 - **Verified.** Both body forms on spike against PyTorch (above); both on the x86 host oracle; the
   kernel table driven through each body's ABI on the host against numpy at M = 4, 16 and 20; both
   preprocess paths (pretty and generic printed declarations); the staged-path refusals.

@@ -129,6 +129,7 @@ lowering links a CPU body for it (`llvmlower/kernel_link.py`, bodies listed in
 
 ```bash
 .venv/bin/ninja -C third_party/llvm-build llvm-link        # once; the link step needs it
+.venv/bin/python build_tools/scripts/run_mlp_kernel_spike.py --form llvm_mlir   # one bundle, vs its golden
 .venv/bin/python -m pytest merlin/tests/runtime/test_external_kernel_spike.py -q
 ```
 
