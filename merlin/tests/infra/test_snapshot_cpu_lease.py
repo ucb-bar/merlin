@@ -79,6 +79,32 @@ def test_snapshot_stage_reuses_exact_outer_step_lease(frozen, monkeypatch):
     assert C._ACTIVE_LEASE.get() is None
 
 
+def test_snapshot_scope_roster_and_lease_checks_release_before_child(frozen, monkeypatch):
+    workspace, bundle, repo, cpu, slots = frozen
+    original_affinity = os.sched_getaffinity(0)
+    scan, validate = S._scanned_members, S.read_lease_digest.validate
+    observed = []
+
+    def checked(stage, function, *args):
+        assert C._ACTIVE_LEASE.get() is not None
+        assert os.sched_getaffinity(0) == {cpu}
+        with (slots / f"cpu-{cpu}.lock").open("r+") as competing:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(competing, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        observed.append(stage)
+        return function(*args)
+
+    monkeypatch.setattr(S, "_scanned_members", lambda root: checked("roster", scan, root))
+    monkeypatch.setattr(S.read_lease_digest, "validate", lambda owner: checked("leases", validate, owner))
+    with S.verified_snapshot_scope(workspace, bundle, repo=repo):
+        assert C._ACTIVE_LEASE.get() is None
+        assert os.sched_getaffinity(0) == original_affinity
+    assert observed.count("roster") >= 3 and "leases" in observed
+    assert C._ACTIVE_LEASE.get() is None
+    with C.shared_compute_pool(timeout_s=0):
+        pass
+
+
 def test_hash_and_content_refusals_release_slot(frozen, monkeypatch):
     workspace, bundle, repo, cpu, slots = frozen
     original_affinity = os.sched_getaffinity(0)

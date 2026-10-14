@@ -147,20 +147,26 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
     their SHA-256 under freshly checked Linux read leases; all other files are
     hashed normally. Close this scope before publishing any accepted output.
     """
+    from .cpu_pool import shared_compute_pool
+
     workspace, repo = Path(workspace), Path(repo)
     previous = _ACTIVE_VERIFICATION.set(None)
     issued = None
     try:
         original_policy = _policy_bytes(bundle)
-        with read_lease_digest.verification() as leases:
-            document = verify_bundle_snapshot(workspace, bundle, repo=repo)
-        root = bundle_snapshot_root(workspace)
-        marker_bytes = (root / MARKER).read_bytes()
+        # The per-file lease validation and the 23k-member roster scan are
+        # CPU work too. End this slot before yielding to a compiler child.
+        with shared_compute_pool():
+            with read_lease_digest.verification() as leases:
+                document = verify_bundle_snapshot(workspace, bundle, repo=repo)
+            root = bundle_snapshot_root(workspace)
+            marker_bytes = (root / MARKER).read_bytes()
+            members = _scanned_roster(_scanned_members(root))
         issued = _Verification()
         issued.process, issued.thread = os.getpid(), threading.current_thread()
         issued.root, issued.marker_bytes = root, marker_bytes
         issued.repo, issued.policy_bytes = repo, original_policy
-        issued.members = _scanned_roster(_scanned_members(root))
+        issued.members = members
         issued.signature = tuple(document[key] for key in ("content_sha256", "n_files", "n_bytes"))
         issued.leases = leases
         _ISSUED_VERIFICATIONS.add(issued)
@@ -172,8 +178,9 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
             _ACTIVE_VERIFICATION.set(None)
             if _policy_bytes(bundle) != original_policy or (root / MARKER).read_bytes() != marker_bytes:
                 raise RuntimeError("original snapshot scope policy or marker changed")
-            read_lease_digest.validate(issued.leases)
-            final = verify_bundle_snapshot(workspace, bundle, repo=repo)
+            with shared_compute_pool():
+                read_lease_digest.validate(issued.leases)
+                final = verify_bundle_snapshot(workspace, bundle, repo=repo)
             if final != document:
                 raise RuntimeError("original snapshot scope ownership changed")
     finally:
@@ -184,6 +191,14 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
 
 def snapshot_content(root: Path) -> tuple[str, int, int]:
     """Same payload digest used by the freezer; marker bytes are bound separately."""
+    from .cpu_pool import shared_compute_pool
+
+    with shared_compute_pool():
+        return _snapshot_content_in_cpu_scope(root)
+
+
+def _snapshot_content_in_cpu_scope(root: Path) -> tuple[str, int, int]:
+    """Calculate one synchronous payload digest and validate every reused lease."""
     rows = []
     members = _scanned_members(root)
     issued = _ACTIVE_VERIFICATION.get()
