@@ -209,7 +209,7 @@ def qualify(
             "output_dtype": output_dtype,
             "arena_mb": arena_mb,
             "timeout_s": timeout_s,
-            "code_reserve_policy": "spike_model default: fixed base plus generated static IO",
+            "code_reserve_policy": "board floor plus generated model object and static IO",
             "simulator": simulator,
         },
     }

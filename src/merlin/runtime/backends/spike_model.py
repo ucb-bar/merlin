@@ -249,7 +249,7 @@ ARENA_BASE = 0xC0000000  # derived-ok: address chosen by this backend's own -m m
 DRAM_BASE = 0x80000000  # derived-ok: RISC-V platform DRAM base used by spike/fesvr; the -m map is passed explicitly
 #: Reserve ahead of the weights blob for everything that is NOT the model's static I/O: code,
 #: rodata, the stack and the runtime's own tables. The model-dependent part (embedded inputs + the
-#: static output buffer) is added on top, from `c_runtime.generate`'s `static_io_bytes`.
+#: static output buffer) and the lowered model object's bytes are added on top.
 _CODE_RESERVE_FIXED = 64 * 1024 * 1024
 
 
