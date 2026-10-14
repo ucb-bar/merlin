@@ -78,6 +78,26 @@ _oracle_policy.bind_sim_oracle_adapters("chipyard", lambda target: _sim_engine_a
 # case where each early capsule is refuted by a different tier.
 _CALIBRATION_CAP = 3
 
+
+def _candidate_exception_diagnostic(exc: Exception, *, stage: str) -> dict:
+    """Keep a bounded, source-free stack when a model run fails before a receipt.
+
+    The public result already exposes the exception class and message. Frame
+    names and line numbers make failures such as RecursionError actionable
+    without copying source lines, arguments, or private artifact paths.
+    """
+    frames = [
+        {"module": Path(frame.f_code.co_filename).name, "function": frame.f_code.co_name, "line": line}
+        for frame, line in _traceback.walk_tb(exc.__traceback__)
+    ]
+    return {
+        "type": type(exc).__name__,
+        "detail": str(exc)[:2000],
+        "stage": stage,
+        "stack_depth": len(frames),
+        "stack": frames if len(frames) <= 20 else frames[:4] + frames[-16:],
+    }
+
 from ..runtime import commandbuffer as _CB
 from ..runtime.backends import base as _backends_mod
 from . import capsule_golden as CG
@@ -3011,6 +3031,7 @@ def _grade_owned_model_capsule_inline(
         return enforce_model_execution_check(result, capsule, target=target)
 
     readback_policy = None
+    stage = "prepare_model_package"
     try:
         # The child receives a JSON context, not a Python capability. Reconstruct
         # only the exact operator-selected policy record; absent means legacy.
@@ -3043,8 +3064,10 @@ def _grade_owned_model_capsule_inline(
             "source_interface": _digest(Path(capsule["__dir__"]) / capsule.get("interface_mlir", "capsule.interface.mlir")),
         }
 
+        stage = "prepare_runtime_bundle"
         with _model_runtime_bundle(capsule, timeout=timeout) as (bundle, provenance, verify):
             result["candidate_capture"] = provenance
+            stage = "owned_host_execution"
             result["owned_host_native_execution"] = execute_owned_host_model(
                 capsule=capsule,
                 candidate_package=package_dir,
@@ -3060,9 +3083,10 @@ def _grade_owned_model_capsule_inline(
                 readback_policy=readback_policy,
                 reachable_oracle_tiers=context.get("reachable_oracle_tiers"),
             )
+            stage = "verify_runtime_bundle"
             verify()
     except Exception as exc:  # noqa: BLE001 -- candidate exceptions cannot borrow a legacy pass
-        result["candidate_emission_failure"] = {"type": type(exc).__name__, "detail": str(exc)[:2000]}
+        result["candidate_emission_failure"] = _candidate_exception_diagnostic(exc, stage=stage)
         # A post-execution source/bundle verification failure invalidates even
         # a numerically green native receipt. Keep its durable run artifacts
         # for diagnosis, but never feed that receipt to the pass gate.
@@ -3119,6 +3143,7 @@ def _grade_public_program_capsule_inline(
         return enforce_model_execution_check(result, capsule, target=target)
 
     readback_policy = None
+    stage = "prepare_model_package"
     try:
         execution_kwargs = {}
         selection = context.get("public_program_execution")
@@ -3150,6 +3175,7 @@ def _grade_public_program_capsule_inline(
             dtype=context["dtype"],
             benchmark=capsule["name"],
         )
+        stage = "candidate_entrypoints"
         _, candidate_cb, candidate_llvm = run_entrypoints(
             selected_pkg,
             package_dir,
@@ -3175,9 +3201,11 @@ def _grade_public_program_capsule_inline(
             compiler_provenance="actual submitted whole-program command buffer; physical pricing remains independent",
         )
         bundle_kwargs = {"artifact_root": paths.run_path / ".private_runtime_bundle"} if selection is not None else {}
+        stage = "prepare_runtime_bundle"
         with _model_runtime_bundle(capsule, timeout=timeout, **bundle_kwargs) as (bundle, provenance, verify):
             result["candidate_capture"] = provenance
             policy_kwargs = {"readback_policy": readback_policy} if readback_policy is not None else {}
+            stage = "candidate_model_execution"
             result["candidate_native_execution"] = execute_candidate_model(
                 command_buffer=candidate_cb,
                 lowered_mlir_text=candidate_llvm,
@@ -3196,9 +3224,10 @@ def _grade_public_program_capsule_inline(
                 ),
                 **policy_kwargs,
             )
+            stage = "verify_runtime_bundle"
             verify()
     except Exception as exc:  # noqa: BLE001 -- candidate exceptions cannot borrow a legacy pass
-        result["candidate_emission_failure"] = {"type": type(exc).__name__, "detail": str(exc)[:2000]}
+        result["candidate_emission_failure"] = _candidate_exception_diagnostic(exc, stage=stage)
         # A post-execution source/bundle verification failure invalidates even
         # a numerically green native receipt. Keep its durable run artifacts
         # for diagnosis, but never feed that receipt to the pass gate.
