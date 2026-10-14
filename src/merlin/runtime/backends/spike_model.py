@@ -780,6 +780,7 @@ def build(
                 entry_projection_source, work, model_dir, entry_weight_projection
             )
             compilation.bind_preparation("entry_weight_projection", work / "entry_weight_projection" / RECEIPT)
+        prof_capacity = None
         if op_profile:
             # Instrumented AFTER preparation, so the ids name the ops that actually run -- instrumenting
             # the raw module would number ops the rewrites go on to split, fuse or route away, and the
@@ -787,6 +788,9 @@ def build(
             from ...llvmlower import op_profile as _op_profile
 
             text, prof_table = _op_profile.instrument(Path(prepared_path).read_text(), structural=True)
+            if len(prof_table) > 1_000_000:
+                raise ValueError("operation profile exceeds one million operations")
+            prof_capacity = max(8192, 1 << (len(prof_table) - 1).bit_length())
             prepared_path = work / "model_prof.mlir"
             Path(prepared_path).write_text(text)
             _op_profile.write_table(prof_table, work / "op_profile_table.json")
@@ -1162,7 +1166,8 @@ def build(
     # bare metal); at this rig's ~15 Mcyc/s a 2e9 interval is a line every ~2 minutes of simulated time,
     # which is frequent enough to localise a stall and rare enough that the HTIF round-trips are noise.
     prof_defs = (
-        ["-DMERLIN_PROF_BAREMETAL", f"-DMERLIN_PROF_HEARTBEAT_CYCLES={int(prof_heartbeat_cycles)}", "-I", str(h)]
+        ["-DMERLIN_PROF_BAREMETAL", f"-DMERLIN_PROF_HEARTBEAT_CYCLES={int(prof_heartbeat_cycles)}",
+         f"-DMERLIN_PROF_MAX_OPS={prof_capacity}", "-I", str(h)]
         if op_profile
         else []
     )
