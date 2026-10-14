@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,34 @@ import pytest
 from merlin.common import invocation_record as I
 from merlin.llvmlower import llvm_dialect_product as P
 from merlin.llvmlower import pipeline
+
+
+def test_native_translation_child_uses_shared_compute_slot(tmp_path, monkeypatch):
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    cpu = min(os.sched_getaffinity(0))
+    original = os.sched_getaffinity(0)
+    slots = tmp_path / "slots"
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(slots))
+    script = f"""import fcntl, json, os
+with open(os.environ['MERLIN_COMPUTE_CPU_SLOTS'] + '/cpu-{cpu}.lock', 'r+') as probe:
+    try:
+        fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        held = False
+    except BlockingIOError:
+        held = True
+print(json.dumps({{'affinity': sorted(os.sched_getaffinity(0)), 'held': held}}))
+"""
+    result = P.run_translation(
+        [sys.executable, "-c", script], timeout=5, audit=None, retention=None,
+        source=tmp_path, runner=tmp_path, dependencies=(), scalar_stage=None, scalar_carrier=None,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"affinity": [cpu], "held": True}
+    assert os.sched_getaffinity(0) == original
+    with shared_compute_pool(timeout_s=0):
+        pass
 
 SCALAR = """module {
   func.func @forward(%x: i64, %y: i64) -> i64 {
