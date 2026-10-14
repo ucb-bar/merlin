@@ -53,3 +53,19 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
   is readable. That route also decomposes W8A8 quantization into `arith`/`linalg` (no `quant_ext`
   ops) and emits `cf.assert`, so which Merlin rewrites fire depends on the capture route.
 - **Status:** open; the paper's capture route and recipe decide the denominator.
+
+## F6 — `lower_quant_ext` does not preserve `dequantize_per_channel` for large zero points
+
+- **Observed (2026-10-14):** the op means PyTorch's `quantized_decomposed.dequantize_per_channel`,
+  which computes `(input - zero_points) * scales`: an INTEGER subtraction (int8 − int32 → int32),
+  then one conversion to float32, then the multiply. `lower_quant_ext` emits
+  `mulf(subf(sitofp(w), sitofp(zp)), scale)`: two conversions and a FLOAT subtraction.
+- **Counterexample (float32, checked against the PyTorch op):** `w = 1`, `zp = 16777217`,
+  `scale = 1.0` → PyTorch `-16777216.0`, Merlin's lowering `-16777215.0`.
+- **Scope:** the two agree whenever `|zp| < 2^24` and `|w - zp| < 2^24`, which holds for every int8/uint8
+  zero point, so compiled numbers on realistic models are unaffected. The rewrite is still not a
+  refinement for all inputs, so the boundary cannot be verified as is; under the parametric float
+  model it would also need IEEE exactness laws.
+- **Paper path:** only on the capture route that keeps `quant_ext` ops (FX-importer captures).
+- **Suggested fix (needs sign-off, it changes emitted IR):** emit `extsi` → `subi` → `sitofp` → `mulf`,
+  PyTorch's exact order; the rule then needs no float assumption and no input-domain restriction.
