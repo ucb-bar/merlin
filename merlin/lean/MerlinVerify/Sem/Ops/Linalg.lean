@@ -75,12 +75,35 @@ def writeAt (t : Tensor) (m : AffineMap) (pt : List Nat) (v : Val) : Outcome Ten
   | some i => .ok (t.set i v)
   | none => .stuck "structured-op write outside output shape"
 
+/-- The element values the body yields at point `pt`: it receives the input elements (read through
+`inMaps`) and the current output elements (read through `outMaps` from `cur`). -/
+def bodyAt (ctx : Ctx) (ins : List RVal) (inMaps outMaps : List AffineMap) (cur : List Tensor)
+    (body : Ctx → RegionSem) (pt : Idx) : Outcome (List Val) := do
+  let inVals ← (ins.zip inMaps).mapM fun (v, m) => readAt v m pt
+  let outVals ← (cur.zip outMaps).mapM fun (t, m) => readAt (.tensor t) m pt
+  let ys ← body { ctx with loopIndex := pt } ((inVals ++ outVals).map RVal.scalar)
+  if ys.length ≠ cur.length then .stuck "structured-op body yields wrong arity" else
+  ys.mapM fun
+    | .scalar v => .ok v
+    | .tensor _ => .stuck "structured-op body yields a tensor"
+
+/-- One iteration point: run the body, then write each yielded element through its output map. -/
+def loopStep (ctx : Ctx) (ins : List RVal) (inMaps outMaps : List AffineMap)
+    (body : Ctx → RegionSem) (cur : List Tensor) (pt : Idx) : Outcome (List Tensor) := do
+  let vs ← bodyAt ctx ins inMaps outMaps cur body pt
+  (vs.zip (cur.zip outMaps)).mapM fun (v, t, m) => writeAt t m pt v
+
+/-- The loop ranges of a structured op: one extent per loop, read off the operand shapes. -/
+def loopRanges (maps : List AffineMap) (shapes : List (List Nat)) (n : Nat) : Outcome (List Nat) :=
+  (List.range n).mapM fun d =>
+    Outcome.ofOption s!"loop {d} range not determined by any operand" (loopRange maps shapes d)
+
 /-- G0-FROZEN SIGNATURE. Loop-nest semantics of a structured op with explicit indexing maps
 (one per input then per output operand) and iterator kinds, applied to input and output (`outs`)
 values, with `body` the meaning of its single-block region (block args: one element per input, then
 per output; yields one element per output). Named ops (`LinalgNamed`) are defined by calling this
 with their OpDSL maps and their own region (design §4.3). Iteration is in lexicographic order of the
-iteration space; `body` runs with `ctx.loopIndex` set to the current point. -/
+iteration space; `body` runs with `ctx.loopIndex` set to the current point. Results are canonical. -/
 def genericSem (ctx : Ctx) (maps : List AffineMap) (iters : List IterKind)
     (ins outs : List RVal) (body : Ctx → RegionSem) : Outcome (List RVal) := do
   let n := iters.length
@@ -93,20 +116,9 @@ def genericSem (ctx : Ctx) (maps : List AffineMap) (iters : List IterKind)
   let outTs ← outs.mapM fun
     | .tensor t => .ok t
     | .scalar _ => .stuck "structured-op output must be a tensor"
-  let ranges ← (List.range n).mapM fun d =>
-    Outcome.ofOption s!"loop {d} range not determined by any operand" (loopRange maps shapes d)
-  let inMaps := maps.take ins.length
-  let outMaps := maps.drop ins.length
-  let final ← (allPoints ranges).foldlM (init := outTs) fun cur pt => do
-    let inVals ← (ins.zip inMaps).mapM fun (v, m) => readAt v m pt
-    let outVals ← (cur.zip outMaps).mapM fun (t, m) => readAt (.tensor t) m pt
-    let ys ← body { ctx with loopIndex := pt } ((inVals ++ outVals).map RVal.scalar)
-    if ys.length ≠ cur.length then .stuck "structured-op body yields wrong arity" else
-    ((ys.zip cur).zip outMaps).mapM fun ((y, t), m) =>
-      match y with
-      | .scalar v => writeAt t m pt v
-      | .tensor _ => .stuck "structured-op body yields a tensor"
-  pure (final.map RVal.tensor)
+  let ranges ← loopRanges maps shapes n
+  let final ← (allPoints ranges).foldlM (loopStep ctx ins (maps.take ins.length) (maps.drop ins.length) body) outTs
+  pure (final.map fun t => RVal.tensor t.canonize)
 
 /-! ### Attribute decoding -/
 
