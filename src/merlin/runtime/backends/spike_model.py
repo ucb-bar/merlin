@@ -1220,7 +1220,9 @@ def build(
         listing = _run([str(toolchain.nm()), "-u", str(work / "model.o")]).stdout
         undefined = {line.split()[-1] for line in listing.splitlines() if line.split()}
         routed_rows = list(_dev_side.get("routed") or [])
-        group_callees = _group_callees(routed_rows, _dev_args.get("signatures") or {}, undefined)
+        group_callees = _group_callees(
+            routed_rows, _dev_args.get("signatures") or {}, undefined, _dev_args.get("call_buffers")
+        )
         (cgen / "merlin_group_profile.c").write_text(
             render_group_profile(group_callees, _group_names(routed_rows)), encoding="utf-8"
         )

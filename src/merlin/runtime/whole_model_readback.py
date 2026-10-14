@@ -106,10 +106,17 @@ class GroupCallee:
     #: ``expanded`` (three rank-r memrefs passed field by field, a rank-r memref returned) or
     #: ``c_interface`` (result pointer, then three descriptor pointers).
     abi: str
-    rank: int
+    #: None for a C-interface call with mixed operand ranks. Its ABI carries
+    #: descriptor pointers, so the wrapper does not inspect their pointees.
+    rank: int | None
 
 
-def callees(routed: Sequence[Mapping[str, Any]], signatures: Mapping[str, Sequence[int]], undefined: set[str]):
+def callees(
+    routed: Sequence[Mapping[str, Any]],
+    signatures: Mapping[str, Sequence[int]],
+    undefined: set[str],
+    call_buffers: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+):
     """The group callees the model object actually references, in a stable order.
 
     ``undefined`` is the model object's undefined-symbol list; only a referenced name can be wrapped.
@@ -117,12 +124,26 @@ def callees(routed: Sequence[Mapping[str, Any]], signatures: Mapping[str, Sequen
     out: list[GroupCallee] = []
     for symbol in sorted({str(row.get("symbol")) for row in routed if row.get("symbol")}):
         key = signatures.get(symbol)
-        if key is None or len(key) not in (3, 4):
-            raise ReadbackError(f"routed symbol {symbol} has no 3- or 4-extent signature")
-        rank = len(key) - 1
+        if key is None:
+            raise ReadbackError(f"routed symbol {symbol} has no device signature")
         if symbol in undefined:
-            out.append(GroupCallee(symbol, "expanded", rank))
+            if len(key) not in (3, 4):
+                raise ReadbackError(f"routed symbol {symbol} has no 3- or 4-extent signature")
+            out.append(GroupCallee(symbol, "expanded", len(key) - 1))
         elif f"_mlir_ciface_{symbol}" in undefined:
+            if len(key) in (3, 4):
+                rank = len(key) - 1
+            else:
+                buffers = (call_buffers or {}).get(symbol)
+                if not isinstance(buffers, (list, tuple)) or len(buffers) != 3 or any(
+                    not isinstance(buf, Mapping)
+                    or not isinstance(buf.get("shape"), (list, tuple))
+                    or not buf["shape"]
+                    or any(not isinstance(dim, int) or dim < 1 for dim in buf["shape"])
+                    for buf in buffers
+                ):
+                    raise ReadbackError(f"routed symbol {symbol} has no complete three-buffer call ABI")
+                rank = None
             out.append(GroupCallee(f"_mlir_ciface_{symbol}", "c_interface", rank))
         else:
             raise ReadbackError(f"the model object references routed symbol {symbol} under no known name")
@@ -189,7 +210,7 @@ def render_group_profile(callees_: Sequence[GroupCallee], names: Sequence[tuple[
         "  }",
         "}",
     ]
-    for rank in sorted({c.rank for c in callees_}):
+    for rank in sorted({c.rank for c in callees_ if c.rank is not None}):
         lines += [
             "typedef struct {",
             "  void *allocated;",
@@ -200,7 +221,7 @@ def render_group_profile(callees_: Sequence[GroupCallee], names: Sequence[tuple[
             f"}} {_memref(rank)};",
         ]
     for index, callee in enumerate(callees_):
-        memref = _memref(callee.rank)
+        memref = _memref(callee.rank) if callee.rank is not None else None
         if callee.abi == "expanded":
             params, args = _expanded_params(callee.rank)
             lines += [
@@ -213,7 +234,10 @@ def render_group_profile(callees_: Sequence[GroupCallee], names: Sequence[tuple[
                 "}",
             ]
         else:
-            proto = f"{memref} *result, const {memref} *a, const {memref} *b, const {memref} *c"
+            proto = (
+                f"{memref} *result, const {memref} *a, const {memref} *b, const {memref} *c"
+                if memref is not None else "void *result, const void *a, const void *b, const void *c"
+            )
             lines += [
                 f"void __real_{callee.symbol}({proto});",
                 f"void __wrap_{callee.symbol}({proto}) {{",

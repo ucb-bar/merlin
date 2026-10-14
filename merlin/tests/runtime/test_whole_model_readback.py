@@ -94,6 +94,27 @@ def test_the_generated_profile_compiles_and_names_calls_by_program_order():
     assert proc.returncode == 0, proc.stderr
 
 
+def test_mixed_rank_convolution_group_is_wrapped_through_its_c_interface():
+    buffers = {"conv": [
+        {"role": "input_0", "shape": [1, 224, 224, 3], "dtype": "i8"},
+        {"role": "weight_0", "shape": [147, 64], "dtype": "i8"},
+        {"role": "out_0", "shape": [12544, 64], "dtype": "i32"},
+    ]}
+    routed = [{"symbol": "conv", "group": 3}]
+    symbols = W.callees(routed, {"conv": ()}, {"_mlir_ciface_conv"}, buffers)
+    assert [(c.symbol, c.abi, c.rank) for c in symbols] == [("_mlir_ciface_conv", "c_interface", None)]
+    source = W.render_group_profile(symbols, W.group_names(routed))
+    assert "void __wrap__mlir_ciface_conv(void *result, const void *a, const void *b, const void *c)" in source
+    compiler = shutil.which("cc") or shutil.which("gcc")
+    if compiler is not None:
+        proc = subprocess.run([compiler, "-fsyntax-only", "-x", "c", "-"], input=source, text=True, capture_output=True)
+        assert proc.returncode == 0, proc.stderr
+    with pytest.raises(W.ReadbackError, match="three-buffer call ABI"):
+        W.callees(routed, {"conv": ()}, {"_mlir_ciface_conv"})
+    with pytest.raises(W.ReadbackError, match="3- or 4-extent signature"):
+        W.callees(routed, {"conv": ()}, {"conv"}, buffers)
+
+
 def test_the_profile_lines_parse_into_groups_and_gaps():
     console = "\n".join(
         [
