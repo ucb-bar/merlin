@@ -49,6 +49,9 @@ def _engine(p: argparse.ArgumentParser) -> None:
     p.add_argument("--rtl-facts", type=Path, default=None, help="RTL facts matching --contract (default: the bundle's)")
     p.add_argument("--dram-base", type=lambda v: int(v, 0), default=0x80000000)
     p.add_argument("--dram-bytes", type=lambda v: int(v, 0), default=16 << 30)
+    p.add_argument(
+        "--no-cache", action="store_true", help="build every kernel and run every image (no kernel or replay cache)"
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:

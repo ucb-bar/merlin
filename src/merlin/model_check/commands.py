@@ -156,25 +156,42 @@ def _chunks(cases: Sequence[RP.ReplayCase]) -> list[list[RP.ReplayCase]]:
 
 
 def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, work: Path) -> dict[str, Any]:
+    from merlin.model_check import cache as KC
+
     catalog = bundle.catalog(model.name, program)
     cases = _cases(bundle, model.name, program, inputs, group=group, all_calls=all_calls)
     symbols = sorted({c.symbol for c in cases})
     toolchain = RP.toolchain_for(args.host_package)
+    use_cache = not getattr(args, "no_cache", False)
     started = time.monotonic()
-    built = RP.build_kernels(
-        catalog.target,
-        catalog.sidecar,
+    built = KC.build_kernels(
+        catalog,
         symbols,
         package_dir=args.submission,
         workdir=work / "device",
-        operand_dtype=catalog.routing["operand_dtype"],
-        accum_dtype=catalog.routing["accum_dtype"],
-        numeric_policy=catalog.routing["numeric_policy"],
         toolchain=toolchain,
+        build=RP.build_kernels,
+        enabled=use_cache,
     )
     build_seconds = time.monotonic() - started
-    refused = {str(sym): str(why) for sym, why in built.skipped}
-    objects = [o for o in built.objects if Path(o).name != "device_shim.o"]
+    refused, objects = built.refused, built.objects
+
+    def run(image_dir: Path, main_c: Path, data_s: Path, linked) -> tuple[str, float, dict[str, Any]]:
+        if args.engine != "spike":
+            raise RP.ReplayError("replay on gsim is not wired yet in this version")
+        return KC.replay_image(
+            image_dir,
+            main_c,
+            data_s,
+            linked,
+            toolchain,
+            target=catalog.target,
+            dram_base=args.dram_base,
+            dram_bytes=args.dram_bytes,
+            timeout=args.timeout_s,
+            enabled=use_cache,
+        )
+
     verdicts: list[dict[str, Any]] = []
     images: list[dict[str, Any]] = []
     runnable = [c for c in cases if c.symbol in built.kernels]
@@ -182,15 +199,17 @@ def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, w
         image_dir = work / f"image_{index}"
         image_dir.mkdir(parents=True, exist_ok=True)
         main_c, data_s, plan = RP._write_image_sources(image_dir, chunk, built.kernels, catalog.interfaces)  # noqa: SLF001
-        elf = RP.link_image(image_dir, main_c, data_s, objects, toolchain)
-        if args.engine == "spike":
-            console, wall = RP.run_image(
-                catalog.target, elf, dram_base=args.dram_base, dram_bytes=args.dram_bytes, timeout=args.timeout_s
-            )
-        else:
-            raise RP.ReplayError("replay on gsim is not wired yet in this version")
+        console, wall, record = run(image_dir, main_c, data_s, objects)
         verdicts += RP.judge_console(console, plan)
-        images.append({"cases": len(chunk), "engine": args.engine, "seconds": round(wall, 1), "elf": str(elf)})
+        images.append(
+            {
+                "cases": len(chunk),
+                "engine": args.engine,
+                "seconds": round(wall, 1),
+                "elf": record.get("elf"),
+                "cached": record["cached"],
+            }
+        )
     per_symbol: dict[str, dict[str, Any]] = {}
     for verdict in verdicts:
         row = per_symbol.setdefault(
@@ -210,7 +229,12 @@ def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, w
         kernels.append({**row, "status": status, "mismatches": row["mismatches"][:5]})
     return {
         "program": program,
-        "build": {"seconds": round(build_seconds, 1), "built": len(built.kernels), "refused": len(refused)},
+        "build": {
+            "seconds": round(build_seconds, 1),
+            "built": len(built.kernels),
+            "refused": len(refused),
+            "cache": built.stats,
+        },
         "kernels": kernels,
         "images": images,
         "refused": refused,
