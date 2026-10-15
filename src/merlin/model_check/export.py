@@ -201,7 +201,7 @@ def export_model(bundle, model, out_dir: Path, *, programs: Iterable[str] | None
             {
                 "program": program,
                 "routed": len(catalog.sidecar.get("routed") or ()),
-                "host_only": catalog.sidecar.get("host_only"),
+                "host_only": bool(catalog.sidecar.get("host_only")),
                 "census": {k: census.get(k) for k in ("denominator", "device", "host", "device_mac_fraction")},
                 "host_contractions": host_contractions(census),
                 "kernels": kernels,
