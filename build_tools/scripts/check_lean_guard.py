@@ -119,8 +119,10 @@ def build() -> bool:
 
 def run_audit() -> bool:
     env = _lake_env()
-    mods = sorted(str(p.relative_to(LEAN).with_suffix("")).replace("/", ".") for p in (LEAN / "MerlinVerify").rglob("*.lean"))
-    audit = subprocess.run(["lake", "exe", "merlin-lean-audit", *mods], cwd=LEAN, env=env, capture_output=True, text=True)
+    mods = sorted(str(p.relative_to(LEAN).with_suffix("")).replace("/", ".")
+                  for p in (LEAN / "MerlinVerify").rglob("*.lean"))
+    audit = subprocess.run(["lake", "exe", "merlin-lean-audit", *mods], cwd=LEAN, env=env, capture_output=True,
+                           text=True)
     if audit.returncode not in (0, 1):
         print("[FAIL] merlin-lean-audit error:\n" + audit.stderr[-2000:])
         return False

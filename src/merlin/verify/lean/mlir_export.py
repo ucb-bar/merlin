@@ -197,6 +197,12 @@ def _unregistered_props(o) -> dict:
     return {n.name: attr_json(n.attr) for n in sorted(d, key=lambda x: x.name)}
 
 
+def _attrs(attributes) -> dict:
+    """An op's attribute dictionary, keys sorted."""
+    names = sorted(attributes[i].name for i in range(len(attributes)))
+    return {n: attr_json(attributes[n]) for n in names}
+
+
 def export(text: str) -> dict:
     ctx = ir.Context()
     ctx.allow_unregistered_dialects = True
@@ -228,7 +234,7 @@ def export(text: str) -> dict:
                 "name": o.name,
                 "results": [{"id": ids[r], "type": type_json(r.type)} for r in o.results],
                 "operands": [ids[v] for v in o.operands],
-                "attrs": {n: attr_json(o.attributes[n]) for n in sorted(o.attributes[i].name for i in range(len(o.attributes)))},
+                "attrs": _attrs(o.attributes),
                 "props": props,
                 "regions": [{"blocks": [{"args": [{"id": ids[a], "type": type_json(a.type)} for a in b.arguments],
                                          "ops": [op_json(x) for x in b.operations]} for b in reg.blocks]}
@@ -243,7 +249,7 @@ def export(text: str) -> dict:
             "producer": {"tool": "merlin.verify.lean.mlir_export(torch_mlir)", "version": "1"},
             "module": {
                 "ops": [op_json(x) for x in module.body.operations],
-                "attrs": {n: attr_json(mod_op.attributes[n]) for n in sorted(mod_op.attributes[i].name for i in range(len(mod_op.attributes)))},
+                "attrs": _attrs(mod_op.attributes),
                 "props": {},
             },
         }
