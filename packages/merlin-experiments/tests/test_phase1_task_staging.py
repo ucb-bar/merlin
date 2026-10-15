@@ -11,6 +11,26 @@ from merlin_experiments.phase1.levels import LEVELS
 from merlin.targetgen.generalization_prompt import GENERAL_COMPILER_CONTRACT_V1
 
 
+def test_gemmini_full_model_task_is_short_and_allows_edits_during_checks(tmp_path, monkeypatch):
+    from merlin_experiments.phase1 import resource_prompt
+
+    conf = config(tmp_path / "operator", "gemmini")
+    conf = replace(conf, experiment="full", bundle_id="merlin_assisted_rtlchecks_hwbringup_v0")
+    (conf.bundle_dir / "tools.txt").write_text("xdsl_kit\ncca_spine\n")
+    monkeypatch.setattr(TS, "load_target_experiment", lambda _: object())
+    ws, run = conf.context.repo / "workspace", conf.context.repo / "run"
+    ws.mkdir()
+    run.mkdir()
+    TS.build_task("merlin_assisted", ws, run, config=conf,
+                  task_scope={"required_public_dev_capsules": 120, "held_out_capsules": 20})
+    resource_prompt.append_resource_guidance(ws, run, object())
+    task = (ws / "TASK.md").read_text()
+    assert len(task.encode()) <= 12 * 1024
+    assert all(name in task for name in ("ResNet50", "SmolVLA", "TinyLlama", "approximate_kernels"))
+    assert "You may continue editing while a self-check or grade runs" in task
+    assert task == (run / "TASK.md").read_text()
+
+
 def config(root, target="synthetic"):
     root.mkdir(parents=True)
     descriptor = root / "explicit-name.yaml"
