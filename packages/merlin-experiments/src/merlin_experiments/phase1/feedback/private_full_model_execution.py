@@ -544,22 +544,42 @@ def _fp32_sanity(values: list, quantized: list, fp32: list, sanity: Mapping[str,
     return {"passed": passed, "results": rows, "top1": top1}
 
 
-def host_execution_outputs(capture: Path, workdir: Path) -> list:
+def host_execution_outputs(capture: Path, workdir: Path, *, receipt: Mapping[str, Any] | None = None) -> list:
     """Every result of the saved program executed on the host, the independent reference for results
     the capture binds no reference for."""
     import numpy as np
 
     from merlin.runtime.dispatch_runtime import run_model
 
-    result = run_model(capture, workdir)
+    options: dict[str, Any] = {}
+    if receipt is not None:
+        from merlin.compile import model_execution_inputs as model_inputs
+        from merlin.mining.registry import load_rvv_package
+
+        inputs = receipt.get("inputs") or {}
+        package_path = Path(str(inputs.get("package") or ""))
+        expected_tree = inputs.get("package_tree")
+        if not package_path.is_dir() or model_inputs.strict_tree_sha256(package_path) != expected_tree:
+            raise ExecutionGateError("the host package changed since the linked program was built")
+        package = load_rvv_package(package_path)
+        if package.is_int8:
+            options["int8_compute"] = True
+            if inputs.get("respect_captured_quantization_scope"):
+                from merlin.llvmlower.quant_scope import captured_quantized_contraction
+
+                options["quant_passes"] = ["contraction_int8"]
+                options["quant_select"] = captured_quantized_contraction
+        elif inputs.get("respect_captured_quantization_scope"):
+            raise ExecutionGateError("captured quantization scope requires an INT8 host package")
+    result = run_model(capture, workdir, **options)
     return [np.asarray(value) for value in (result.get("outputs") or [result["output"]])]
 
 
-def _host_outputs_in_scratch(capture: Path) -> list:
+def _host_outputs_in_scratch(capture: Path, *, receipt: Mapping[str, Any] | None = None) -> list:
     import tempfile
 
     with tempfile.TemporaryDirectory(prefix="merlin-host-reference-") as scratch:
-        return host_execution_outputs(capture, Path(scratch))
+        return host_execution_outputs(capture, Path(scratch), receipt=receipt)
 
 
 def judge_full(
@@ -596,7 +616,12 @@ def judge_full(
     def host_values() -> list:
         nonlocal hosted
         if hosted is None:
-            hosted = (host_reference or _host_outputs_in_scratch)(capture)
+            if host_reference is not None:
+                hosted = host_reference(capture)
+            elif (receipt.get("inputs") or {}).get("package"):
+                hosted = _host_outputs_in_scratch(capture, receipt=receipt)
+            else:
+                hosted = _host_outputs_in_scratch(capture)
             if len(hosted) != len(values):
                 raise ExecutionGateError("the host execution has a different result roster than the program")
         return hosted
