@@ -176,7 +176,18 @@ def _chunks(cases: Sequence[RP.ReplayCase]) -> list[list[RP.ReplayCase]]:
 
 
 def _replay_program(
-    args, bundle, model, program, inputs, *, group, all_calls, work: Path, unique: bool = False, engine=None
+    args,
+    bundle,
+    model,
+    program,
+    inputs,
+    *,
+    group,
+    all_calls,
+    work: Path,
+    unique: bool = False,
+    engine=None,
+    deadline: float | None = None,
 ) -> dict[str, Any]:
     catalog = bundle.catalog(model.name, program)
     cases = _cases(bundle, model.name, program, inputs, group=group, all_calls=all_calls, unique=unique)
@@ -214,6 +225,7 @@ def _replay_program(
             jobs=getattr(args, "jobs", 1),
             max_cycles=getattr(args, "max_cycles", None),
             call_max_cycles=getattr(args, "call_max_cycles", None),
+            deadline=deadline,
             log=lambda line: print(line, file=sys.stderr, flush=True),
         )
     for index, chunk in enumerate(_chunks(runnable) if engine is None else ()):
@@ -268,8 +280,9 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
         inputs = inputs[:FAST_INPUTS]
     from merlin.common.paths import build_dir
 
-    engine = None
-    if args.engine == "gsim":
+    engine = deadline = None
+    if args.engine == "gsim":  # --timeout-s bounds the whole replay, so a caller's deadline holds
+        deadline = time.monotonic() + args.timeout_s
         if args.rtl_facts is None:
             raise B.BundleError("gsim replay needs the RTL facts: pass --rtl-facts or use a bundle that records them")
         engine = EN.GsimEngine(models.target, args.rtl_facts, board_catalog=getattr(args, "board_catalog", None))
@@ -290,6 +303,7 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
                 work=work / program,
                 unique=unique,
                 engine=engine,
+                deadline=deadline,
             )
         )
     kernels = [k for p in report["programs"] for k in p["kernels"]]
@@ -337,7 +351,7 @@ def _engine_gates(report: dict, kernels: Sequence[dict[str, Any]]) -> None:
                 "kind": "infrastructure",
                 "gate": "kernel_exact",
                 "symbol": kernel["symbol"],
-                "detail": "engine bound reached before: " + ", ".join(kernel["unfinished"]),
+                "detail": f"gsim did not finish {', '.join(kernel['unfinished'])}: {kernel.get('stopped')}",
             }
         )
     for kernel in judged:
@@ -359,7 +373,7 @@ def replay_kernel(args: argparse.Namespace, report: dict) -> dict:
         report,
         all_calls=bool(args.all_groups) or args.split != "visible",
         group=args.group,
-        unique=bool(getattr(args, "unique", False)),
+        unique=bool(getattr(args, "unique", False)) or args.engine == "gsim",  # RTL evidence is per kernel
     )
     report["gates"]["kernel_exact"]["partial"] = False
     return report
@@ -372,7 +386,7 @@ def check(args: argparse.Namespace, report: dict) -> dict:
     from merlin.model_check.approximations import declared
 
     approximations = declared(Path(args.submission))
-    report = _replay(args, report, all_calls=False, group=None)
+    report = _replay(args, report, all_calls=False, group=None, unique=args.engine == "gsim")
     report["gates"]["kernel_exact"]["partial"] = False
     if approximations:
         report["gates"]["model_numerics"] = {

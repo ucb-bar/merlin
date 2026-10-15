@@ -154,6 +154,80 @@ def test_a_reaped_engine_reports_its_cpu_time_and_a_late_one_is_killed():
     assert run.record()["cycles_per_cpu_second"] == 2000
 
 
+_FAKE_EMULATOR = """#!/bin/sh
+# argv: <elf> +max-cycles=N +loadmem=<elf>; behaviour chosen by the FAKE_MODE file next to this script
+mode=$(cat "$(dirname "$0")/FAKE_MODE")
+echo "MCCYC 0 0x10"
+echo "MCCASE 0 0 0x1 0x2"
+case "$mode" in
+  ok) echo MCDONE; echo "Cycles: 4242" >&2; exit 0 ;;
+  cap) echo "GSIM timeout: no RTL/TSI completion after 500 cycles" >&2; exit 124 ;;
+  assert) echo "Assertion failed: bad command" >&2; echo MCDONE; exit 0 ;;
+  trap) echo "TRAP mcause=2"; exit 7 ;;
+  harness) echo "GSIM harness error: invalid plusarg" >&2; exit 2 ;;
+  hang) sleep 30 ;;
+esac
+"""
+
+
+@pytest.mark.parametrize(
+    ("mode", "status"),
+    [("ok", "completed"), ("cap", "cycle_cap"), ("assert", "fault"), ("trap", "fault"), ("harness", "error")],
+)
+def test_a_gsim_run_says_whether_the_program_or_the_engine_stopped_it(tmp_path, monkeypatch, mode, status):
+    monkeypatch.setenv("MERLIN_GSIM_SLOT_ROOT", str(tmp_path / "slots"))
+    emulator = tmp_path / "emulator"
+    emulator.write_text(_FAKE_EMULATOR)
+    emulator.chmod(0o755)
+    (tmp_path / "FAKE_MODE").write_text(mode)
+    elf = tmp_path / "r.elf"
+    elf.write_bytes(b"\x7fELF")
+    engine = EN.GsimEngine.__new__(EN.GsimEngine)
+    engine.binary, engine.template, engine.environment = emulator, ("{elf}", "+max-cycles=1", "+loadmem={elf}"), {}
+    engine.failure_markers, engine._revalidate = ("TRAP ",), lambda: None
+    run = engine.run(elf, max_cycles=500, timeout_s=20, workdir=tmp_path)
+    assert run.status == status
+    assert "MCCASE 0 0 0x1 0x2" in run.console  # finished calls survive any stop
+    if mode == "ok":
+        assert run.cycles == 4242 and run.cpu_s is not None
+    if mode == "cap":
+        assert run.cycles == 500
+
+
+def test_the_wall_bound_kills_the_emulator_and_keeps_its_console(tmp_path, monkeypatch):
+    monkeypatch.setenv("MERLIN_GSIM_SLOT_ROOT", str(tmp_path / "slots"))
+    emulator = tmp_path / "emulator"
+    emulator.write_text(_FAKE_EMULATOR)
+    emulator.chmod(0o755)
+    (tmp_path / "FAKE_MODE").write_text("hang")
+    elf = tmp_path / "r.elf"
+    elf.write_bytes(b"\x7fELF")
+    engine = EN.GsimEngine.__new__(EN.GsimEngine)
+    engine.binary, engine.template, engine.environment = emulator, ("{elf}", "+max-cycles=1"), {}
+    engine.failure_markers, engine._revalidate = (), lambda: None
+    run = engine.run(elf, max_cycles=500, timeout_s=1.5, workdir=tmp_path)
+    assert run.status == "timeout" and "wall bound" in run.detail and run.wall_s < 15
+    assert "MCCASE" in run.console
+
+
+def test_a_spent_budget_is_reported_not_run(tmp_path, monkeypatch):
+    import time
+
+    job = _job([_case("a", 8, "a0")])
+    monkeypatch.setattr(EN, "build_images", lambda *a, **k: [job])
+    monkeypatch.setattr(EN, "run_spike", lambda *a, **k: pytest.fail("spike ran after the deadline"))
+    engine = type("E", (), {"board": _board(), "default_max_cycles": 1000})()
+    engine.run = lambda *a, **k: pytest.fail("gsim ran after the deadline")
+    monkeypatch.setattr(EN, "_sha256", lambda _p: "0" * 64)
+    monkeypatch.setattr(Path, "stat", lambda _p: type("S", (), {"st_size": 1})())
+    monkeypatch.setattr(Path, "write_text", lambda *_a, **_k: 0)
+    rows, records = EN.replay_on_board(
+        "t", engine, job.cases, {}, {}, [], None, tmp_path, timeout_s=60, deadline=time.monotonic() - 1
+    )
+    assert rows[0]["status"] == "timeout" and "budget was spent" in rows[0]["stopped"]
+    assert records[0]["gsim"]["status"] == "timeout"
+
+
 def test_replay_kernel_takes_unique_and_engine_bounds():
     args = cli.build_parser().parse_args(
         [

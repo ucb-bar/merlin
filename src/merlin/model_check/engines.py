@@ -39,6 +39,10 @@ BOOT_CYCLES = 2_000_000
 DIGEST_CYCLES_PER_BYTE = 4
 _ALIGN = 1 << 20  # a result/operand region base needs no finer alignment
 _PT_LOAD = 1  # ELF program header type of a loadable segment (ELF specification)
+#: What Merlin's gSIM harness prints when the harness itself fails (chipyard_harness/main.cpp).
+_HARNESS_ERROR = "GSIM harness error"
+#: Run statuses that say nothing about the program: a bound stopped it or the engine failed.
+UNFINISHED = frozenset({"timeout", "cycle_cap", "error"})
 
 
 class EngineError(RP.ReplayError):
@@ -214,7 +218,9 @@ def _unlimited_stack() -> None:  # pragma: no cover - runs in the child process
 @dataclass
 class EngineRun:
     engine: str
-    status: str  # completed | cycle_cap | timeout | error
+    #: completed | fault (the program trapped, exited non-zero or made the design assert: a verdict) |
+    #: timeout | cycle_cap | error (the engine itself failed): the last three are :data:`UNFINISHED`.
+    status: str
     console: str
     wall_s: float
     returncode: int | None
@@ -345,12 +351,16 @@ class GsimEngine:
             status, detail = "timeout", f"wall bound {timeout_s:.0f} s reached"
         elif code == chipyard_rocc._GSIM_CYCLE_CAP_EXIT:  # noqa: SLF001 -- the harness's cycle-cap status
             status, detail, cycles = "cycle_cap", f"+max-cycles={max_cycles} reached", max_cycles
-        elif asserted in stdout or asserted in stderr:
-            status, detail = "error", "the design asserted: " + stderr[-1200:]
-        elif code != 0 or "MCDONE" not in stdout:
-            status, detail = "error", f"exit {code}: {(stdout + stderr)[-1200:]}"
+        elif asserted in stdout or asserted in stderr:  # the program did something the design refuses
+            status, detail = "fault", "the design asserted: " + stderr[-1200:]
         elif any(marker in stdout + stderr for marker in self.failure_markers):
-            status, detail = "error", "a declared failure marker was printed: " + stdout[-1200:]
+            status, detail = "fault", "a declared failure marker was printed: " + stdout[-1200:]
+        elif code is None or code < 0 or (code != 0 and _HARNESS_ERROR in stderr):
+            status, detail = "error", f"the emulator failed (exit {code}): {stderr[-1200:]}"
+        elif code != 0:
+            status, detail = "fault", f"the program exited {code}: {(stdout + stderr)[-1200:]}"
+        elif "MCDONE" not in stdout:
+            status, detail = "error", f"the run ended without the image's completion line: {stdout[-1200:]}"
         return EngineRun("gsim", status, stdout, wall, code, cycles, detail, tuple(argv), cpu_s)
 
 
@@ -474,6 +484,8 @@ def _case_rows(job: ImageJob, gsim: EngineRun, spike: EngineRun, call_max_cycles
             if reported
             else None,
         }
+        if not reported and gsim.detail:
+            row["stopped"] = gsim.detail[:300]
         if call_max_cycles is not None and verdict.get("cycles") is not None:
             row["over_call_budget"] = verdict["cycles"] > call_max_cycles
         rows.append(row)
@@ -494,11 +506,14 @@ def replay_on_board(
     jobs: int = 1,
     max_cycles: int | None = None,
     call_max_cycles: int | None = None,
+    deadline: float | None = None,
     log: Callable[[str], None] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Build board images for ``cases``, run each on Spike then gSIM; ``(case rows, image records)``.
 
-    ``jobs`` images run at once (each holds one machine-wide gSIM slot while its emulator runs).
+    ``jobs`` images run at once (each holds one machine-wide gSIM slot while its emulator runs). Every
+    run is bounded by ``timeout_s`` and by ``deadline`` (``time.monotonic()``), whichever comes first; a
+    run the bound stops, or one never started because the budget was spent, reports why.
     """
     images = build_images(
         cases,
@@ -514,9 +529,21 @@ def replay_on_board(
     )
     lock = threading.Lock()
 
+    def remaining() -> float:
+        return timeout_s if deadline is None else min(timeout_s, deadline - time.monotonic())
+
+    def spent(name: str) -> EngineRun:
+        return EngineRun(name, "timeout", "", 0.0, None, None, "the --timeout-s budget was spent before this run")
+
     def run(job: ImageJob) -> tuple[list[dict], dict]:
-        spike = run_spike(target, job.elf, engine.board, timeout_s=timeout_s)
-        gsim = engine.run(job.elf, max_cycles=job.max_cycles, timeout_s=timeout_s, workdir=job.directory)
+        budget = remaining()
+        spike = run_spike(target, job.elf, engine.board, timeout_s=budget) if budget > 1 else spent("spike")
+        budget = remaining()
+        gsim = (
+            engine.run(job.elf, max_cycles=job.max_cycles, timeout_s=budget, workdir=job.directory)
+            if budget > 1
+            else spent("gsim")
+        )
         (job.directory / "spike.console").write_text(spike.console)
         rows = _case_rows(job, gsim, spike, call_max_cycles)
         record = {
@@ -569,10 +596,14 @@ def annotate_kernels(kernels: list[dict[str, Any]], rows: Sequence[Mapping[str, 
             kernel["spike_exact"] = sum(bool((r.get("spike") or {}).get("exact")) for r in mine)
         if mine[0].get("shapes"):
             kernel["shapes"] = mine[0]["shapes"]
-        unfinished = [r["label"] for r in mine if r.get("status") not in (None, "completed")]
+        unfinished = [r for r in mine if r.get("status") in UNFINISHED]
         if unfinished:
-            kernel["unfinished"] = unfinished[:5]
+            kernel["unfinished"] = [r["label"] for r in unfinished][:5]
+            kernel["stopped"] = unfinished[0].get("stopped", unfinished[0]["status"])
             if kernel.get("status") == "fail":
                 kernel["status"] = "unfinished"
+        faults = [r for r in mine if r.get("status") == "fault"]
+        if faults:
+            kernel["fault"] = faults[0].get("stopped", "fault")
         if any(r.get("over_call_budget") for r in mine):
             kernel["over_call_budget"] = sum(bool(r.get("over_call_budget")) for r in mine)

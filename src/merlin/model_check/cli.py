@@ -94,7 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
     replay.add_argument(
         "--unique",
         action="store_true",
-        help="of the selected calls, only one per kernel symbol (its recorded real shape); gsim: one image each",
+        help="of the selected calls, only one per kernel symbol (its recorded real shape); always so on gsim",
     )
     replay.add_argument("--split", choices=SPLITS, required=True)
     replay.add_argument("--engine", choices=ENGINES, default="spike")
