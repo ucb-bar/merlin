@@ -115,17 +115,77 @@ theorem splatRule_sound (ib : Nat) : RuleSound ib splatRule := by
     · cases h
   · cases h
 
+/-- Integer operations that are total on initialized operands when overflow flags are absent.
+Division, shifts, casts, and flagged arithmetic require separate obligations and are refused. -/
+def intBinaryNames : List String :=
+  ["arith.addi", "arith.subi", "arith.muli", "arith.andi", "arith.ori", "arith.xori",
+   "arith.maxsi", "arith.minsi", "arith.maxui", "arith.minui"]
+
+def intBinaryRule : Rule := fun op fs =>
+  match fs, op.results with
+  | [⟨.scalar (.int w), true⟩, ⟨.scalar (.int w'), true⟩], [r] =>
+    if dialectOf op.name = "arith" ∧ op.name ∈ intBinaryNames ∧ w' = w ∧
+        r.ty = .int w ∧ overflowFlags op = [] then some [⟨.scalar (.int w), true⟩]
+    else none
+  | _, _ => none
+
+theorem initialized_int {ib w : Nat} {v : RVal}
+    (h : Fact.Holds ib v ⟨.scalar (.int w), true⟩) :
+    ∃ x : BitVec w, v = .scalar (.some (.bits w x)) := by
+  cases v with
+  | tensor t => cases h.1
+  | scalar x =>
+    rcases hasTy_intWidth (t := .int w) rfl h.1 with hp | ⟨a, ha⟩
+    · exact (h.2 rfl hp).elim
+    · exact ⟨a, congrArg RVal.scalar ha⟩
+
+theorem intBinaryRule_sound (ib : Nat) : RuleSound ib intBinaryRule := by
+  intro op fs rs hm h ctx call args _ hargs
+  unfold intBinaryRule at h
+  split at h
+  · split at h
+    · next hc =>
+      obtain ⟨hd, hn, hw, hty, hflags⟩ := hc
+      subst hw
+      cases h
+      obtain _ | ⟨ha, hb⟩ := hargs
+      obtain _ | ⟨hb, hnil⟩ := hb
+      cases hnil
+      obtain ⟨x, rfl⟩ := initialized_int ha
+      obtain ⟨y, rfl⟩ := initialized_int hb
+      rename_i w r hr
+      have hresult : Arith.resultElt op.blind = some (.int w) := by
+        simp only [Arith.resultElt, Op.blind_results, hr, List.map_cons, List.map_nil, hty]
+      rw [opSem_modelled hm]
+      simp only [dispatch, Op.blind_name, hd]
+      simp only [intBinaryNames, List.mem_cons, List.not_mem_nil, or_false] at hn
+      rcases hn with hn | hn | hn | hn | hn | hn | hn | hn | hn | hn
+      all_goals
+        simp only [Arith.sem, Op.blind_name, hn, Arith.binOp, Arith.pureN, hresult,
+          Outcome.bindOp_eq,
+          show overflowFlags op.blind = [] from by simpa [overflowFlags, attrEnum?] using hflags]
+        rw [show [.scalar (.some (.bits w x)), .scalar (.some (.bits w y))] =
+          ([.some (.bits w x), .some (.bits w y)] : List Val).map RVal.scalar from rfl,
+          liftEager_scalars]
+        simp only [Arith.intBin, ↓reduceDIte, Arith.arithWithFlags, List.contains_nil,
+          Bool.false_and, Bool.false_eq_true, ↓reduceIte, Outcome.bind_ok, Arith.bv]
+        exact ⟨_, rfl, List.Forall₂.cons ⟨by simp [RVal.HasTy, Val.HasTy, Scalar.conforms],
+          by simp [RVal.Defined]⟩ .nil⟩
+    · cases h
+  · cases h
+
 def rules (ib : Nat) : Rule := fun op fs =>
-  [constantRule ib, emptyRule, splatRule].findSome? fun r => r op fs
+  [constantRule ib, emptyRule, splatRule, intBinaryRule].findSome? fun r => r op fs
 
 theorem rules_sound (ib : Nat) : RuleSound ib (rules ib) := by
   intro op fs rs hm hr
   obtain ⟨r, hmem, h⟩ := List.exists_of_findSome?_eq_some hr
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
-  rcases hmem with rfl | rfl | rfl
+  rcases hmem with rfl | rfl | rfl | rfl
   · exact constantRule_sound ib op fs rs hm h
   · exact emptyRule_sound ib op fs rs hm h
   · exact splatRule_sound ib op fs rs hm h
+  · exact intBinaryRule_sound ib op fs rs hm h
 
 def book (ib : Nat) : Book opSem ib where
   rule op fs := if unmodelledAttr? op.blind = none then rules ib op fs else none

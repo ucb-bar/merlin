@@ -56,4 +56,17 @@ def splat : Op := mkOp "tensor.splat" [v 2 (tensorTy [2] i32)] [0]
   [("value", .int 7 i32), ("review.unknown", .unit)], ret [0]] [] [.scalar i32]
 #guard !accepts [v 0 i32] [mkOp "arith.divsi" [v 1 i32] [0, 0], ret [1]] [.scalar i32] [.scalar i32]
 
+def binary (name : String) (attrs : List (String × Attr) := []) : Bool :=
+  accepts [v 0 i32, v 1 i32] [mkOp name [v 2 i32] [0, 1] attrs, ret [2]]
+    [.scalar i32, .scalar i32] [.scalar i32]
+
+#guard intBinaryNames.all binary
+#guard !binary "arith.addi" [("overflowFlags", .enum "arith" "overflow" "nsw")]
+#guard !binary "arith.muli" [("overflowFlags", .enum "arith" "overflow" "nuw")]
+#guard !binary "arith.shli"
+#guard !binary "arith.divui"
+#guard !accepts [v 0 i32, v 1 i8] [mkOp "arith.addi" [v 2 i32] [0, 1], ret [2]]
+  [.scalar i32, .scalar i8] [.scalar i32]
+#guard !accepts [v 0 i32] [mkOp "arith.addi" [v 2 i8] [0, 0], ret [2]] [.scalar i32] [.scalar i8]
+
 end MerlinVerify.Tests.Definedness
