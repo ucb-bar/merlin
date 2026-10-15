@@ -382,7 +382,7 @@ theorem rules_sound (ib : Nat) : RuleSound ib (rules ib) := by
   · exact denseConstantRule_sound ib op fs rs hm h
   · exact intCastRule_sound ib op fs rs hm h
 
-def book (ib : Nat) : Book opSem ib where
+def leafBook (ib : Nat) : Book opSem ib where
   rule _ op fs := if unmodelledAttr? op.blind = none ∧ op.regions = [] then rules ib op fs else none
   sound Γ op fs rs h ctx call env args hib _ ha := by
     split at h
@@ -392,9 +392,9 @@ def book (ib : Nat) : Book opSem ib where
     · cases h
 
 /-- Acceptance proves successful, nonpoison results for every typed, nonpoison input. -/
-theorem definedCheck_sound {ib : Nat} {m : Module} {f : String} {argTys resTys : List VTy}
-    (h : check (book ib) m f argTys resTys = true) :
+theorem leafCheck_sound {ib : Nat} {m : Module} {f : String} {argTys resTys : List VTy}
+    (h : check (leafBook ib) m f argTys resTys = true) :
     FuncDefined opSem (fun ctx => ctx.indexBits = ib)
-      (fun args => HasTys ib args argTys ∧ ResultsDefined args) m f := check_sound (book ib) h
+      (fun args => HasTys ib args argTys ∧ ResultsDefined args) m f := check_sound (leafBook ib) h
 
 end MerlinVerify.Check.Definedness

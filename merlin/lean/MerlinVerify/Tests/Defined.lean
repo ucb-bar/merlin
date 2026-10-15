@@ -1,7 +1,7 @@
 /- Regression statements for the distinction between support, refinement, and definedness. -/
 import MerlinVerify.Sem.Defined
 import MerlinVerify.Check.Typing
-import MerlinVerify.Check.DefinedRules
+import MerlinVerify.Check.DefinedLinalg
 import MerlinVerify.Tests.Semantics
 
 namespace MerlinVerify.Tests
@@ -144,5 +144,40 @@ def shadowedBody : Region := .mk [.mk [v 0 i32] [mkOp "linalg.yield" [] [0]]]
   [⟨.scalar i32, false⟩] [.scalar i32]
 #guard !checkRegion (book 64) [] shadowedBody [⟨.scalar i8, true⟩] [.scalar i32]
 #guard !checkRegion (book 64) [] (.mk [.mk [] [], .mk [] []]) [] []
+
+end MerlinVerify.Tests.Definedness
+
+namespace MerlinVerify.Tests.Definedness
+
+open MerlinVerify MerlinVerify.Check MerlinVerify.Check.Definedness MerlinVerify.Tests.Semantics
+
+-- An actual integer tensor contraction, including widening casts in its reduction body.
+#guard check (book 64) matmulModule "mm" [.tensor [2, 3] i8, .tensor [3, 2] i8] [.tensor [2, 2] i32]
+
+def fill (sh : List Nat) (body : Region) : Op :=
+  mkOp "linalg.fill" [v 2 (tensorTy sh i32)] [0, 1]
+    [("operandSegmentSizes", .denseArray i32 [1, 1])] [] [body]
+
+def fillBody (yieldId : Nat) : Region :=
+  .mk [.mk [v 10 i32, v 11 i32] [mkOp "linalg.yield" [] [yieldId]]]
+
+def fills (sh : List Nat) (body : Region) : Bool :=
+  accepts [v 0 i32] [mkOp "tensor.empty" [v 1 (tensorTy sh i32)] [], fill sh body, ret [2]]
+    [.scalar i32] [.tensor sh i32]
+
+#guard fills [2, 3] (fillBody 10)
+#guard fills [] (fillBody 10)
+#guard fills [0, 3] (fillBody 10)
+-- Reading the uninitialized destination cannot certify a fill.
+#guard !fills [2, 3] (fillBody 11)
+-- Captures use their actual enclosing facts.
+#guard fills [2, 3] (fillBody 0)
+#guard !fills [2, 3] (fillBody 99)
+#guard !fills [2, 3] (.mk [.mk [v 10 i32, v 11 i32]
+  [mkOp "arith.addi" [v 12 i32] [10, 11], mkOp "linalg.yield" [] [12]]])
+#guard fills [2, 3] (.mk [.mk [v 10 i32, v 11 i32]
+  [mkOp "arith.addi" [v 12 i32] [10, 0], mkOp "linalg.yield" [] [12]]])
+#guard !fills [2, 3] (.mk [.mk [v 10 i32] [mkOp "linalg.yield" [] [10]]])
+#guard !fills [2, 3] (.mk [.mk [v 10 i32, v 11 i32] [mkOp "linalg.yield" [] [10, 10]]])
 
 end MerlinVerify.Tests.Definedness

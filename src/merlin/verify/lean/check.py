@@ -64,7 +64,7 @@ class _Obligation:
 _MODULE = _Obligation("check-module", CHECKER, THEOREM, "refine_conditional", "MerlinVerify.Check.Module")
 _SUPPORT = _Obligation("check-support", SUPPORT_CHECKER, SUPPORT_THEOREM, "not_stuck", "MerlinVerify.Check.Rulebook")
 _DEFINED = _Obligation("check-definedness", DEFINED_CHECKER, DEFINED_THEOREM, "defined",
-                       "MerlinVerify.Check.DefinedRules", defined_inputs=True)
+                       "MerlinVerify.Check.DefinedLinalg", defined_inputs=True)
 
 
 def _sha(path: Path) -> str:

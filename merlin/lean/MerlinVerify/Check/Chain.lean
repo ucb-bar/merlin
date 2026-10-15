@@ -8,7 +8,7 @@ composes it into `FuncRefinesC mₙ m₀`, and `chain_refines` adds the support 
 (`supportCheck_sound`) to conclude strict refinement on typed inputs.
 -/
 import MerlinVerify.Check.Rulebook
-import MerlinVerify.Check.DefinedRules
+import MerlinVerify.Check.DefinedLinalg
 
 namespace MerlinVerify.Check
 

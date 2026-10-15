@@ -162,6 +162,27 @@ theorem clean_canonize {ib : Nat} : ∀ {ts : List Tensor} {tys : List VTy},
     change Idx.InBounds t.shape i at hi
     simpa only [Tensor.canonize, Tensor.canon, hi, ↓reduceIte] using ht.2 rfl i hi
 
+/-- Static bounds checks imply that the semantic evaluator accepts the runtime shapes. -/
+theorem structured_runtime {ib : Nat} {maps : List AffineMap} {n : Nat} {tys : List VTy}
+    {ranges : List Nat} {args : List RVal} (hs : StructuredOk maps n tys ranges)
+    (ht : HasTys ib args tys) :
+    maps.length = args.length ∧
+    maps.any (fun m => m.numDims ≠ n || m.numSyms ≠ 0) = false ∧
+    (maps.zip (args.map shapeOf)).any (fun p => p.1.results.length ≠ p.2.length) = false ∧
+    loopRanges maps (args.map shapeOf) n = .ok ranges := by
+  have hshapes := shapes_typed ht
+  refine ⟨hs.len.trans (HasTys.length ht).symm, ?_, ?_, ?_⟩
+  · rw [List.any_eq_false]
+    intro m hm
+    simp [(hs.dims m hm).1, (hs.dims m hm).2]
+  · rw [hshapes, List.zip_map_right, List.any_map, List.any_eq_false]
+    intro p hp
+    have hin := List.forall₂_iff_zip.1 hs.inBounds |>.2 hp
+    simp only [mapInBounds, Bool.and_eq_true, beq_iff_eq] at hin
+    simp [Function.comp, hin.1]
+  · rw [hshapes]
+    exact mapM_ofOption _ _ _ _ hs.loops
+
 /-- Initialized destinations stay initialized across every reduction step, including empty loops.
 Inputs may be uninitialized only when the checked body can still prove clean outputs. -/
 theorem genericSem_total {ib : Nat} {ctx : Ctx} (hib : ctx.indexBits = ib) {maps : List AffineMap}
@@ -177,22 +198,7 @@ theorem genericSem_total {ib : Nat} {ctx : Ctx} (hib : ctx.indexBits = ib) {maps
   have houtt := clean_typed houts
   obtain ⟨ts, rfl⟩ := tensors_of_typed houtt hout
   have hall := List.rel_append hint houtt
-  have hshapes := shapes_typed hall
-  have hL : maps.length = (ins ++ ts.map RVal.tensor).length := by rw [hs.len, HasTys.length hall]
-  have hD : maps.any (fun m => m.numDims ≠ iters.length || m.numSyms ≠ 0) = false := by
-    rw [List.any_eq_false]
-    intro m hm
-    simp [(hs.dims m hm).1, (hs.dims m hm).2]
-  have hR : (maps.zip ((ins ++ ts.map RVal.tensor).map shapeOf)).any
-      (fun p => p.1.results.length ≠ p.2.length) = false := by
-    rw [hshapes, List.zip_map_right, List.any_map, List.any_eq_false]
-    intro p hp
-    have hin := List.forall₂_iff_zip.1 hs.inBounds |>.2 hp
-    simp only [mapInBounds, Bool.and_eq_true, beq_iff_eq] at hin
-    simp [Function.comp, hin.1]
-  have hLR : loopRanges maps ((ins ++ ts.map RVal.tensor).map shapeOf) iters.length = .ok ranges := by
-    rw [hshapes]
-    exact mapM_ofOption _ _ _ _ hs.loops
+  obtain ⟨hL, hD, hR, hLR⟩ := structured_runtime hs hall
   have hk : ins.length = (inFacts.map (·.ty)).length := HasTys.length hint
   have hinM : MapsInBounds ranges (maps.take ins.length) (inFacts.map (·.ty)) := by
     have := List.forall₂_take (inFacts.map (·.ty)).length hs.inBounds
@@ -216,5 +222,234 @@ theorem genericSem_total {ib : Nat} {ctx : Ctx} (hib : ctx.indexBits = ib) {maps
     hR, Outcome.bindOp_eq]
   rw [mapM_tensors_total _ (by intro _; rfl) ts, Outcome.bind_ok, hLR, Outcome.bind_ok,
     hf, Outcome.bind_ok, Outcome.pure_eq]
+
+/-- A full identity-mapped overwrite initializes an empty destination. The body is checked with
+an explicitly uninitialized output argument, so reading that argument cannot certify the result. -/
+theorem fillSem_total {ib : Nat} {ctx : Ctx} (hib : ctx.indexBits = ib) {v : RVal} {vf : Fact}
+    {t : Tensor} {sh : List Nat} {e : Ty} {body : Ctx → RegionSem}
+    (hs : StructuredOk (fillMaps sh.length) sh.length [vf.ty, .tensor sh e] sh)
+    (hv : Fact.Holds ib v vf) (ht : RVal.HasTy ib (.tensor t) (.tensor sh e))
+    (hbody : BodyTotal ib body [elementFact vf, ⟨.scalar e, false⟩] [.scalar e]) :
+    ∃ rs, genericSem ctx (fillMaps sh.length) (List.replicate sh.length .parallel)
+      [v] [.tensor t] body = .ok rs ∧ FactsHold ib rs (clean [.tensor sh e]) := by
+  classical
+  have hshape := ht.1
+  have hall : HasTys ib [v, .tensor t] [vf.ty, .tensor sh e] := .cons hv.1 (.cons ht .nil)
+  obtain ⟨hL, hD, hR, hLR⟩ := structured_runtime hs hall
+  have hinM := hs.inBounds
+  cases hinM with
+  | cons hinM hrest =>
+    have hpoint : ∀ p, Idx.InBounds sh p → ∃ y,
+        bodyAt ctx [v] ((fillMaps sh.length).take 1) [identityMap sh.length] [t] body p = .ok [y] ∧
+        Val.HasTy ib e y ∧ y ≠ .poison := by
+      intro p hp
+      obtain ⟨x, hx, hxf⟩ := readAt_total hp hv hinM
+      have hp' : Idx.InBounds t.shape p := hshape ▸ hp
+      have hout := readAt_identity hp'
+      rw [hshape] at hout
+      have hfacts : FactsHold ib [.scalar x, .scalar (t.get p)]
+          [elementFact vf, ⟨.scalar e, false⟩] :=
+        .cons hxf (.cons ⟨ht.2.2 p hp, by simp⟩ .nil)
+      obtain ⟨ys, hy, hyt, hyd⟩ := hbody {ctx with loopIndex := p} hib _ hfacts
+      obtain _ | ⟨hyf, hnil⟩ := hyt
+      cases hnil
+      rename_i y
+      cases y with
+      | tensor _ => cases hyf
+      | scalar y =>
+        refine ⟨y, ?_, hyf, hyd _ (List.mem_cons_self ..)⟩
+        simp only [bodyAt, fillMaps, List.take_succ_cons, List.take_zero, List.zip_cons_cons,
+          List.zip_nil_left, List.mapM_cons, List.mapM_nil, Outcome.bindOp_eq, hx, hout,
+          Outcome.bind_ok, Outcome.pure_eq, List.singleton_append, List.map_cons, List.map_nil,
+          hy, List.length_cons, List.length_nil, ne_eq, not_true_eq_false, ↓reduceIte]
+    let F : Idx → Val := fun p => if hp : Idx.InBounds sh p then Classical.choose (hpoint p hp) else .poison
+    have hF : ∀ p, Idx.InBounds sh p →
+        bodyAt ctx [v] ((fillMaps sh.length).take 1) [identityMap sh.length] [t] body p = .ok [F p] ∧
+        Val.HasTy ib e (F p) ∧ F p ≠ .poison := by
+      intro p hp
+      simpa only [F, dite_eq_left hp] using Classical.choose_spec (hpoint p hp)
+    refine ⟨[.tensor (Tensor.canon sh t.elt F)], ?_, .cons ⟨⟨rfl, ht.2.1, ?_⟩, ?_⟩ .nil⟩
+    · apply genericSem_parallel1 ctx (fillMaps sh.length) (List.replicate sh.length .parallel)
+        [v] t body sh F hL
+      · simpa only [List.length_replicate] using hD
+      · exact hR
+      · simpa only [List.length_replicate, List.singleton_append] using hLR
+      · exact hshape
+      · rfl
+      · exact fun p hp => (hF p hp).1
+    · intro p hp
+      simpa only [Tensor.canon, hp, ↓reduceIte] using (hF p hp).2.1
+    · intro _ p hp
+      change Idx.InBounds sh p at hp
+      simpa only [Tensor.canon, hp, ↓reduceIte] using (hF p hp).2.2
+
+theorem splitInsOuts_facts {ib : Nat} {op : Op} {args : List RVal}
+    {fs ins outs : List Fact} (h : splitInsOuts op fs = some (ins, outs))
+    (ha : FactsHold ib args fs) : ∃ xs ys, splitInsOuts op args = some (xs, ys) ∧
+      FactsHold ib xs ins ∧ FactsHold ib ys outs := by
+  have hlen := List.Forall₂.length_eq ha
+  unfold splitInsOuts at h ⊢
+  split at h
+  · next ni no _ =>
+    split at h
+    · next hc =>
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      refine ⟨args.take ni.toNat, args.drop ni.toNat, ?_, List.forall₂_take _ ha,
+        List.forall₂_drop _ ha⟩
+      rw [ite_eq_left ⟨hc.1, hc.2.1, by rw [hlen]; exact hc.2.2⟩]
+    · cases h
+  · cases h
+
+def fillDefinedRule (ib : Nat) (Γ : FEnv) (op : Op) (fs : List Fact) : Option (List Fact) :=
+  if unmodelledAttr? op.blind = none ∧ dialectOf op.name = "linalg" ∧ op.name = "linalg.fill" then
+    match splitInsOuts op fs, op.regions with
+    | some ([vf], [⟨.tensor sh e, _⟩]), [body] =>
+      if op.results.length = 1 ∧
+          structuredRanges? (fillMaps sh.length) sh.length [vf.ty, .tensor sh e] = some sh ∧
+          checkRegion (leafBook ib) Γ body [elementFact vf, ⟨.scalar e, false⟩] [.scalar e] then
+        some (clean [.tensor sh e])
+      else none
+    | _, _ => none
+  else none
+
+theorem fillDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
+    fillDefinedRule ib Γ op fs = some rs → ∀ ctx call env args,
+    ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
+    ∃ vs, opSem ctx call op args (evalRegions opSem call env op.regions) = .ok vs ∧
+      FactsHold ib vs rs := by
+  intro Γ op fs rs h ctx call env args hib hΓ ha
+  unfold fillDefinedRule at h
+  split at h
+  · next hc =>
+    obtain ⟨hm, hd, hn⟩ := hc
+    split at h
+    · next vf sh e init body hsplit hregs =>
+      split at h
+      · next hc =>
+        obtain ⟨hres, hranges, hbody⟩ := hc
+        cases h
+        obtain ⟨xs, ys, hio, hxs, hys⟩ := splitInsOuts_facts hsplit ha
+        obtain _ | ⟨hv, hnil⟩ := hxs
+        cases hnil
+        obtain _ | ⟨ht, hnil⟩ := hys
+        cases hnil
+        rename_i v t
+        cases t with
+        | scalar _ => cases ht.1
+        | tensor t =>
+          have hb : BodyTotal ib (fun ctx => evalRegion opSem ctx call env body)
+              [elementFact vf, ⟨.scalar e, false⟩] [.scalar e] := by
+            intro ctx hib args ha
+            exact checkRegion_sound (leafBook ib) hbody hib hΓ ha
+          obtain ⟨rs, hsem, hrf⟩ := fillSem_total hib (structuredRanges?_spec hranges) hv ht.1 hb
+          dsimp only [fillMaps] at hsem
+          refine ⟨rs, ?_, hrf⟩
+          have hlen : rs.length = op.blind.results.length := by
+            rw [HasTys.length (clean_typed hrf), Op.blind_results, List.length_map, hres]
+            rfl
+          rw [linalg_sem_of hm hd (.inr (.inl hn))]
+          simp only [hregs, evalRegions, Linalg.sem, Op.blind_name, hn, splitInsOuts_blind, hio,
+            ht.1.1, Outcome.bindOp_eq, hsem, Outcome.bind_ok, hlen, ↓reduceIte, Outcome.pure_eq]
+      · cases h
+    · cases h
+  · cases h
+
+theorem facts_eq_clean (fs : List Fact) (h : ∀ f ∈ fs, f.initialized = true) :
+    fs = clean (fs.map (·.ty)) := by
+  induction fs with
+  | nil => rfl
+  | cons f fs ih =>
+    have hf := h f (List.mem_cons_self ..)
+    have hfs := ih (fun f hf => h f (List.mem_cons_of_mem _ hf))
+    rcases f with ⟨ty, init⟩
+    change init = true at hf
+    subst init
+    change _ = ⟨ty, true⟩ :: clean (fs.map (·.ty))
+    rw [← hfs]
+
+def genericDefinedRule (ib : Nat) (Γ : FEnv) (op : Op) (fs : List Fact) : Option (List Fact) :=
+  if unmodelledAttr? op.blind = none ∧ dialectOf op.name = "linalg" ∧ op.name = "linalg.generic" then
+    match splitInsOuts op fs, attrAffineMaps? op "indexing_maps", iterKinds? op, op.regions with
+    | some (ins, outs), some maps, some iters, [body] =>
+      if (∀ f ∈ outs, f.initialized = true) ∧ (∀ f ∈ outs, f.ty.isTensor = true) ∧
+          op.results.length = outs.length ∧
+          (structuredRanges? maps iters.length ((ins ++ outs).map (·.ty))).isSome ∧
+          checkRegion (leafBook ib) Γ body ((ins ++ outs).map elementFact)
+            (outs.map fun f => f.ty.eltScalar) then
+        some (clean (outs.map (·.ty)))
+      else none
+    | _, _, _, _ => none
+  else none
+
+theorem genericDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
+    genericDefinedRule ib Γ op fs = some rs → ∀ ctx call env args,
+    ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
+    ∃ vs, opSem ctx call op args (evalRegions opSem call env op.regions) = .ok vs ∧
+      FactsHold ib vs rs := by
+  intro Γ op fs rs h ctx call env args hib hΓ ha
+  unfold genericDefinedRule at h
+  split at h
+  · next hc =>
+    obtain ⟨hm, hd, hn⟩ := hc
+    split at h
+    · next ins outs maps iters body hsplit hmaps hiters hregs =>
+      split at h
+      · next hc =>
+        obtain ⟨hi, ht, hres, hranges, hbody⟩ := hc
+        obtain ⟨ranges, hranges⟩ := Option.isSome_iff_exists.1 hranges
+        cases h
+        obtain ⟨xs, ys, hio, hxs, hys⟩ := splitInsOuts_facts hsplit ha
+        have hclean := facts_eq_clean outs hi
+        have hys' : FactsHold ib ys (clean (outs.map (·.ty))) := hclean ▸ hys
+        have hb : BodyTotal ib (fun ctx => evalRegion opSem ctx call env body)
+            ((ins ++ clean (outs.map (·.ty))).map elementFact)
+            ((outs.map (·.ty)).map VTy.eltScalar) := by
+          intro ctx hib args ha
+          rw [← hclean] at ha
+          simpa only [List.map_map, Function.comp_def] using
+            checkRegion_sound (leafBook ib) hbody hib hΓ ha
+        have hs : StructuredOk maps iters.length (ins.map (·.ty) ++ outs.map (·.ty)) ranges := by
+          simpa only [List.map_append] using structuredRanges?_spec hranges
+        have hout : ∀ t ∈ outs.map (·.ty), t.isTensor = true := by
+          intro t ht'
+          obtain ⟨f, hf, rfl⟩ := List.mem_map.1 ht'
+          exact ht f hf
+        obtain ⟨rs, hsem, hrf⟩ := genericSem_total hib hs hout hxs hys' hb
+        refine ⟨rs, ?_, hrf⟩
+        have hlen : rs.length = op.blind.results.length := by
+          rw [HasTys.length (clean_typed hrf), List.length_map, Op.blind_results,
+            List.length_map, hres]
+        rw [linalg_sem_of hm hd (.inl hn)]
+        simp only [hregs, evalRegions, Linalg.sem, Op.blind_name, hn, splitInsOuts_blind, hio,
+          attrAffineMaps?_blind, hmaps, iterKinds?_blind, hiters, Outcome.bindOp_eq, hsem,
+          Outcome.bind_ok, hlen, ↓reduceIte, Outcome.pure_eq]
+      · cases h
+    · cases h
+  · cases h
+
+def book (ib : Nat) : Book opSem ib where
+  rule Γ op fs := match (leafBook ib).rule Γ op fs with
+    | some rs => some rs
+    | none => (fillDefinedRule ib Γ op fs).orElse (fun _ => genericDefinedRule ib Γ op fs)
+  sound Γ op fs rs h ctx call env args hib hΓ ha := by
+    split at h
+    · next _ hl =>
+      cases h
+      exact (leafBook ib).sound Γ op fs _ hl ctx call env args hib hΓ ha
+    · cases hf : fillDefinedRule ib Γ op fs with
+      | some fs' =>
+        simp only [hf, Option.orElse_some, Option.some.injEq] at h
+        subst h
+        exact fillDefinedRule_sound ib Γ op fs fs' hf ctx call env args hib hΓ ha
+      | none =>
+        simp only [hf, Option.orElse_none] at h
+        exact genericDefinedRule_sound ib Γ op fs rs h ctx call env args hib hΓ ha
+
+/-- Acceptance proves successful, nonpoison results for every typed, nonpoison input. -/
+theorem definedCheck_sound {ib : Nat} {m : Module} {f : String} {argTys resTys : List VTy}
+    (h : check (book ib) m f argTys resTys = true) :
+    FuncDefined opSem (fun ctx => ctx.indexBits = ib)
+      (fun args => HasTys ib args argTys ∧ ResultsDefined args) m f := check_sound (book ib) h
 
 end MerlinVerify.Check.Definedness

@@ -5,7 +5,7 @@ import MerlinVerify.Check.Types
 import MerlinVerify.Check.Synth
 import MerlinVerify.Check.Module
 import MerlinVerify.Check.Rulebook
-import MerlinVerify.Check.DefinedRules
+import MerlinVerify.Check.DefinedLinalg
 
 open MerlinVerify
 open Lean (Json toJson)

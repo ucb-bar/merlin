@@ -55,7 +55,7 @@ PINNED = {
     "MerlinVerify.Check.chain_refinesC": "MerlinVerify.Check.Chain",
     "MerlinVerify.Check.chain_refines": "MerlinVerify.Check.Chain",
     "MerlinVerify.Check.chain_defined_refines": "MerlinVerify.Check.Chain",
-    "MerlinVerify.Check.Definedness.definedCheck_sound": "MerlinVerify.Check.DefinedRules",
+    "MerlinVerify.Check.Definedness.definedCheck_sound": "MerlinVerify.Check.DefinedLinalg",
 }
 
 
