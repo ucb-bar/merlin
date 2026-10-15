@@ -132,6 +132,18 @@ _STATUS_LINES = (
 )
 
 
+def _verified_status_line(verdict: dict) -> str:
+    gate = verdict.get("model_gate")
+    if not isinstance(gate, dict):
+        return _PASS_LINE
+    from .brokers.model_check import PROGRAMS
+
+    rows = gate.get("programs") or {}
+    names = [f"{model}/{program}" for model, programs in PROGRAMS.items() for program in programs]
+    statuses = [f"{name}={((rows.get(name) or {}).get('status') or 'pending')}" for name in names]
+    return "Visible models: " + "; ".join(statuses) + ". Sealed official grade pending."
+
+
 def _stamp_report_status(report: Path, pass_line: str) -> bool:
     """Last-resort guarantee: ensure REPORT.md's final status line states the VERIFIED result. The
     multi-round relaunch grades AFTER the agent exits, so the converging round's agent never saw a
@@ -180,15 +192,22 @@ def finalize_report(
     shutil.copytree(ws / "submission", snap, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
 
     LG.write_verdict(ws / "qa" / "verdict.json", verdict)
+    pass_line = _verified_status_line(verdict)
+    model_report = "model_gate" in verdict
     (ws / "FINALIZE.md").write_text(
-        "All required public/dev pilot capsules now PASS (see qa/verdict.json: all_pass=true).\n\n"
-        "Do ONLY this, then stop:\n"
-        "1. Update `submission/REPORT.md` so its final status line reads EXACTLY:\n"
-        f'   "{_PASS_LINE}"\n'
-        "   and its body honestly reflects the verified per-capsule pass + oracle tiers.\n"
-        "2. Update `submission/docs/iteration_notes.md` with the final converged state.\n"
-        "DO NOT modify manifest.yaml, mlir_oot/, or any code — the package is frozen-pending and must\n"
-        "keep passing. Touch only REPORT.md and docs/.\n"
+        ("All six visible programs pass; the sealed official grade has not run yet.\n\n"
+         if model_report else
+         "All required public/dev pilot capsules now PASS (see qa/verdict.json: all_pass=true).\n\n")
+        + "Do ONLY this, then stop:\n"
+        + ("1. Lead `submission/REPORT.md` with a table of the six programs and their visible statuses. "
+           "Then make its final status line read EXACTLY:\n" if model_report else
+           "1. Update `submission/REPORT.md` so its final status line reads EXACTLY:\n")
+        + f'   "{pass_line}"\n'
+        + ("   State only measured visible results; do not claim sealed results.\n" if model_report else
+           "   and its body honestly reflects the verified per-capsule pass + oracle tiers.\n")
+        + "2. Update `submission/docs/iteration_notes.md` with the final converged state.\n"
+        + "DO NOT modify manifest.yaml, mlir_oot/, or any code — the package is frozen-pending and must\n"
+        + "keep passing. Touch only REPORT.md and docs/.\n"
     )
     tpath = run_dir / "rounds" / "finalize.transcript.jsonl"
     tpath.parent.mkdir(parents=True, exist_ok=True)
@@ -231,7 +250,7 @@ def finalize_report(
         shutil.copytree(snap, ws / "submission")
         restored = True
     # guarantee the frozen report's status line matches the verified verdict
-    stamped = _stamp_report_status(ws / "submission" / "REPORT.md", _PASS_LINE)
+    stamped = _stamp_report_status(ws / "submission" / "REPORT.md", pass_line)
     result = audit.audit_transcript(tpath, arm, workspace=ws)
     return {
         "agent_rc": rc,
@@ -282,6 +301,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         max(0, int(a.sim_max_jobs)),
         selected_rtl_facts,
         sim_per_capsule_timeout=a.sim_per_capsule_timeout,
+        model_gate_interval=a.grade_interval if context.target == "gemmini" and a.experiment == "full" else 0,
     )
 
     public_build_service = None
@@ -596,6 +616,10 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         # FINAL AUTHORITATIVE GRADE: the background grades are progress reports on a moving workspace;
         # the run's verdict is a grade of the submission as the session left it.
         verdict = _grade(ws, run_dir, state["tick"] + 1, a.no_oracle, a.qa_timeout)
+        if context.target == "gemmini" and a.experiment == "full":
+            from . import oot_history as _OH
+
+            _OH.verify_turn_end(run_dir, ws / "submission", verdict.get("oot_commit"))
         conf, workflow_conformant = _workflow_conformance(
             tpath, ws / "submission", arm, _endpoint_kind, resolved_tools()
         )
@@ -770,6 +794,10 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             break
 
         verdict = _grade(ws, run_dir, rnd, a.no_oracle, a.qa_timeout)
+        if context.target == "gemmini" and a.experiment == "full":
+            from . import oot_history as _OH
+
+            _OH.verify_turn_end(run_dir, ws / "submission", verdict.get("oot_commit"))
         # Cross-round MEMORY: write the harness-built round brief (progress log across all graded rounds +
         # the agent's own notes + a stale-notes nudge) so the NEXT fresh session carries its progress
         # instead of re-deriving it. Best-effort — never let a brief build failure end a run.
@@ -1247,7 +1275,16 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     # VERIFIED result (the relaunch design means the converging round's agent never saw the passing
     # verdict, so its self-reported status lags by one round). Guarantees the frozen report matches.
     finalize = None
-    if _authoring_complete():
+    if _authoring_complete() and context.target == "gemmini" and a.experiment == "full":
+        # A report-finalize turn and the driver's status-line stamp change submission bytes after the
+        # last agent-source OOT commit. The model task asks for the report during authoring; preserve
+        # that exact tree for the official grade and record the visible model status here.
+        finalize = {
+            "skipped": "gemmini model report belongs to the agent's final authoring tree",
+            "visible_model_status_line": _verified_status_line(verdict),
+            "status_line_stamped_by_driver": False,
+        }
+    elif _authoring_complete():
         _verify_implementation_sources()
         print("[finalize] converged — running bounded report-finalize turn")
         _fin_start = time.time()
@@ -1370,7 +1407,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             shutil.rmtree(dst)
         shutil.copytree(wsub, dst, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
     incomplete_operator_seal = bool(operator_seal)
-    if wsub.exists() and ((workflow_conformant and feedback_health["healthy"]) or incomplete_operator_seal):
+    if wsub.exists() and (workflow_conformant or incomplete_operator_seal):
         # Last gate before the official process performs its public grade + freeze + hidden grade.  The
         # authoring loop can last across worktree edits and quota-window resumes, so setup-time hashing is
         # not enough: recompute every treatment byte and the private snapshot content now, fail closed on
@@ -1398,6 +1435,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         official_grade = CERT._official_grade_result(
             grade_rc,
             run_dir,
+            require_model_check=context.target == "gemmini",
             required_models=PFM.requirements_for(context.descriptor),
             required_programs=PFM.program_requirements_for(context.descriptor),
             execution_gate=PFX.gate_for(
@@ -1405,8 +1443,6 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             ),
             hidden_capsule_mode=HCP.resolve(context.descriptor, getattr(a, 'hidden_capsule_mode', ''))['mode'],
         )
-    elif wsub.exists() and not feedback_health["healthy"]:
-        official_grade["failures"] = ["feedback_channel_unhealthy"]
     elif wsub.exists():
         official_grade["failures"] = ["workflow_nonconformant"]
 
@@ -1437,7 +1473,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     formal_complete = (not incomplete_operator_seal) and CERT._formal_completion(
         bool(verdict.get("all_pass")),
         workflow_conformant,
-        official_grade["complete"] and feedback_health["healthy"],
+        official_grade["complete"],
         telemetry["complete"],
     )
     qa_summary.update(

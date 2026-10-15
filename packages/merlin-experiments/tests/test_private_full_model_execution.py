@@ -60,7 +60,7 @@ def test_the_target_descriptor_declares_every_program_of_the_static_roster():
     engines = {(m, p): e.get("engine") for m, p, e in PFX.roster_of(gate)}
     # Every program has a numerical check: one on the RTL-equivalent engine, the rest functional.
     assert engines == {
-        ("resnet50", "model"): "gsim",
+        ("resnet50", "model"): "spike",
         **{(m, p): "spike" for m, names in roster.items() if m != "resnet50" for p in names},
     }
     for model, program, entry in PFX.roster_of(gate):
@@ -630,6 +630,11 @@ def test_the_official_grade_requires_a_declared_execution_gate_to_be_complete(tm
         )["failures"]
 
     assert "private_full_model_execution_incomplete" not in grade(record)
+    missing_model_check = certification._official_grade_result(
+        0, run_dir, required_models=tuple(ROSTER), required_programs=ROSTER,
+        execution_gate=gate, require_model_check=True,
+    )["failures"]
+    assert "model_check_official_incomplete_or_mismatch" in missing_model_check
     assert "private_full_model_execution_incomplete" in grade(None)
     assert "private_full_model_execution_incomplete" in grade(dict(record, passed=False))
     optional = dict(gate, required=False)

@@ -18,7 +18,7 @@ import heapq
 import os
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from contextvars import copy_context
+from contextvars import ContextVar, copy_context
 from math import prod
 from typing import Any
 
@@ -26,6 +26,12 @@ from typing import Any
 #: pays off when the head is cheap (a 0.29 s tier priced before 7 workers pay a 24.5 s one); a
 #: full-shape layer at the head of a perf corpus took hours, all of it with every other worker idle.
 CALIBRATION_BUDGET_S = 120.0
+_DEFER_PROBE: ContextVar[Callable[[], str | None] | None] = ContextVar("merlin_capsule_defer_probe", default=None)
+
+
+def active_defer_probe() -> Callable[[], str | None] | None:
+    """The scheduler's observed deferral reason for this worker, if it is a background grade."""
+    return _DEFER_PROBE.get()
 
 
 def dependencies(capsules: Sequence[Mapping]) -> dict[str, set[str]]:
@@ -115,6 +121,16 @@ def run_pipelined(
     waiting = {name: len(parents) for name, parents in deps.items()}
     results: dict[int, dict] = {}
     deferred = None
+
+    if defer_pending is not None:
+        original_run_one = run_one
+
+        def run_one(capsule, parallel):
+            token = _DEFER_PROBE.set(lambda: deferred)
+            try:
+                return original_run_one(capsule, parallel)
+            finally:
+                _DEFER_PROBE.reset(token)
 
     def should_defer():
         nonlocal deferred
@@ -221,7 +237,11 @@ def run_pipelined(
                     return deferred_results()
                 finish_blocked()
                 continue
-            done, _ = wait(running, return_when=FIRST_COMPLETED)
+            # A changed source can supersede a long native child without any
+            # other worker completing. Recheck the original guard periodically
+            # so an in-flight operator child can cooperatively release its slot.
+            done, _ = wait(running, timeout=5 if defer_pending is not None else None,
+                           return_when=FIRST_COMPLETED)
             for future in done:
                 finished(running.pop(future), future.result())
     return [results[i] for i in range(len(capsules))]

@@ -18,6 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 from merlin_experiments.phase1.brokers import cca, isa_tools, simjob
+from merlin_experiments.phase1.brokers import selfcheck as selfcheck_broker
 from merlin_experiments.phase1.context import InvocationContext
 
 from merlin.common.paths import module_source_path, python_import_roots
@@ -27,6 +28,24 @@ def _invocation(root, target="synthetic"):
     descriptor = root / f"{target}.yaml"
     descriptor.write_text(f"target: {target}\n")
     return InvocationContext(root, descriptor, root, target, root / "runs", root / "reports", root / "bundles", ())
+
+
+def test_selfcheck_snapshot_keeps_graded_bytes_while_author_edits(tmp_path, monkeypatch):
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    workspace = tmp_path / "workspace"
+    submission = workspace / "submission"
+    submission.mkdir(parents=True)
+    (submission / "manifest.yaml").write_text("commands: {}\n")
+    (submission / "compiler.py").write_text("VALUE = 1\n")
+    digest = selfcheck_broker._submission_digest(submission)
+    snapshot = selfcheck_broker._working_snapshot(workspace, digest)
+    try:
+        (submission / "compiler.py").write_text("VALUE = 2\n")
+        assert (snapshot / "submission/compiler.py").read_text() == "VALUE = 1\n"
+        assert selfcheck_broker._submission_digest(snapshot / "submission") == digest
+        assert selfcheck_broker._submission_digest(submission) != digest
+    finally:
+        shutil.rmtree(snapshot)
 
 
 def test_simjob_parallel_capsules_respect_global_verilator_slots(tmp_path, monkeypatch):
@@ -43,6 +62,20 @@ def test_simjob_parallel_capsules_respect_global_verilator_slots(tmp_path, monke
     simjob._release_veril_workers(first[1:])
     simjob._release_veril_workers(second)
     assert not list(tmp_path.glob("slot_*"))
+
+
+def test_simjob_dedupes_only_exact_source_capsule_engine_and_tier(tmp_path):
+    key = ("a" * 64, "SY_conv_operand_capacity_boundary", "gsim", "L3")
+    active = {"original": {"dedupe_key": key, "aliases": []}}
+    assert simjob._dedupe_sim_job(tmp_path, "duplicate", key, active, {})
+    assert active["original"]["aliases"] == ["duplicate"]
+    assert (tmp_path / "simrun_duplicate").is_file()
+    assert not simjob._dedupe_sim_job(tmp_path, "new_source", ("b" * 64, *key[1:]), active, {})
+    assert not simjob._dedupe_sim_job(tmp_path, "new_capsule", (key[0], "other", *key[2:]), active, {})
+    result = {"all_pass": True, "per_capsule": [{"capsule": key[1], "pass": True}]}
+    assert simjob._dedupe_sim_job(tmp_path, "after", key, {}, {key: ("original", result)})
+    assert json.loads((tmp_path / "simresp_after.json").read_text()) == result
+    assert (tmp_path / "simdone_after").is_file()
 
 
 def test_context_caches_models_per_invocation_but_reloads_schedule(tmp_path, monkeypatch):

@@ -40,6 +40,25 @@ from merlin_experiments.phase1.feedback.snapshots import recover_promotion_snaps
 PY = sys.executable
 
 
+def _dedupe_sim_job(ch: Path, jid: str, key: tuple[str, str, str, str],
+                    running: dict, completed: dict) -> bool:
+    """Attach an identical request to its one active or completed simulator job."""
+    equivalent = next((active_id for active_id, active in running.items()
+                       if active["dedupe_key"] == key), None)
+    if equivalent is not None:
+        running[equivalent].setdefault("aliases", []).append(jid)
+        (ch / f"simrun_{jid}").write_text(f"deduplicated with {equivalent}\n")
+        return True
+    if key in completed:
+        original, cached = completed[key]
+        (ch / f"simresp_{jid}.json").write_text(json.dumps(cached, indent=2))
+        (ch / (f"simerr_{jid}" if cached.get("error") else f"simdone_{jid}")).write_text(
+            f"deduplicated with {original}"
+        )
+        return True
+    return False
+
+
 def _freeze_direct_job_source(ws):
     """Run and promote one direct job from the same private immutable source."""
     from merlin_experiments.phase1.feedback.snapshots import create_promotion_snapshot
@@ -621,6 +640,7 @@ def main(
     print(f"[budget] per-capsule cert timeout {vpc}s: {_budget_why}", file=sys.stderr, flush=True)
 
     running: dict[str, dict] = {}  # jid -> {proc, slot, resp_tmp, sim}
+    completed_by_key: dict[tuple[str, str, str, str], tuple[str, dict]] = {}
     # One broker is created per round, but the channel and its queue survive across rounds.  Starting
     # from an empty set replays every historical request, including paid L3 work.  A response is the
     # durable commit record; a bare simrun marker is not (the previous broker may have died mid-job), so
@@ -689,6 +709,10 @@ def main(
                           file=sys.stderr, flush=True)
             resp.write_text(json.dumps(out, indent=2))
             (ch / (f"simerr_{jid}" if out.get("error") else f"simdone_{jid}")).write_text("ok")
+            completed_by_key[j["dedupe_key"]] = (jid, out)
+            for alias in j.get("aliases", []):
+                (ch / f"simresp_{alias}.json").write_text(json.dumps(out, indent=2))
+                (ch / (f"simerr_{alias}" if out.get("error") else f"simdone_{alias}")).write_text("deduplicated")
             # PROMOTE: a capsule that just passed the loop tier earns the cert tier now, not at a round
             # boundary hours away. Skipped for a job that WAS a promotion, so a cert verdict cannot
             # re-enqueue itself.
@@ -891,6 +915,12 @@ def main(
                     continue
                 if _tiers:  # validated downstream against the RESOLVED adapter map
                     argv2 += ["--tiers", _tiers]
+                dedupe_key = (launched_source_digest, capspec, sim, _tiers)
+                if _dedupe_sim_job(ch, jid, dedupe_key, running, completed_by_key):
+                    _release_veril_workers(slots)
+                    shutil.rmtree(snapshot_root, ignore_errors=True)
+                    claimed.add(jid)
+                    continue
                 (ch / f"simrun_{jid}").write_text("running")
                 # KEEP THE CHILD'S OUTPUT. This was stdout/stderr=DEVNULL, so when a job exited without
                 # writing its verdict file the only trace was the broker's own "no verdict produced" --
@@ -932,6 +962,8 @@ def main(
                     "source_digest": launched_source_digest,
                     "cert_instrument": launched_instrument,
                     "snapshot_root": snapshot_root,
+                    "dedupe_key": dedupe_key,
+                    "aliases": [],
                 }
                 claimed.add(jid)
         time.sleep(a.poll)

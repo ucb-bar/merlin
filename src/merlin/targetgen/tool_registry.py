@@ -122,6 +122,7 @@ COMMON_CLIENTS = (
     ("merlin_experiments.phase1.tools.selfcheck", "agent_selfcheck.py"),
     ("merlin_experiments.phase1.tools.simjob", "simjob.py"),
     ("merlin_experiments.phase1.tools.await_verdict", "await_verdict.py"),
+    ("merlin_experiments.phase1.tools.model_check", "agent_model_check.py"),
 )
 
 # Common feedback is not an ablatable tool treatment. Its host owners share the
@@ -129,6 +130,7 @@ COMMON_CLIENTS = (
 COMMON_BROKERS = (
     BrokerSpec(".qa_channel", "merlin_experiments.phase1.brokers.selfcheck", "broker.log", (COMMON_CLIENTS[0],)),
     BrokerSpec(".qa_channel", "merlin_experiments.phase1.brokers.simjob", "simjob_broker.log", (COMMON_CLIENTS[1],)),
+    BrokerSpec(".model_check_channel", "merlin_experiments.phase1.brokers.model_check", "model_check_broker.log", (COMMON_CLIENTS[3],)),
 )
 
 

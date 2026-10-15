@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import weakref
 from pathlib import Path
 
@@ -82,6 +83,31 @@ def _publish(path, row):
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _communicate_or_defer(process, *, timeout_s):
+    """Wait for an original child, or return the scheduler's observed deferral reason.
+
+    A direct/self-check grade has no deferral probe and keeps the ordinary single
+    wait. A background grade polls only while its original source guard exists;
+    the scheduler, not the candidate or child, decides when work is superseded.
+    """
+    from merlin.targetgen.capsule_scheduling import active_defer_probe
+
+    probe = active_defer_probe()
+    if probe is None:
+        process.communicate(timeout=timeout_s)
+        return None
+    deadline = time.monotonic() + timeout_s
+    while True:
+        if reason := probe():
+            return reason
+        try:
+            process.communicate(timeout=min(5.0, max(0.001, deadline - time.monotonic())))
+            return None
+        except subprocess.TimeoutExpired:
+            if time.monotonic() >= deadline:
+                raise
 
 
 @contextlib.contextmanager
@@ -151,7 +177,20 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
             pass_fds=transport.pass_fds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             start_new_session=True)
         try:
-            process.communicate(timeout=max(1, timeout) * (len(selection) + 6))
+            deferred = _communicate_or_defer(process, timeout_s=max(1, timeout) * (len(selection) + 6))
+            if deferred:
+                runner._kill_tree(process.pid)
+                process.wait(timeout=10)
+                row = {
+                    "capsule": capsule["name"], "kind": capsule.get("kind"), "label": capsule.get("label"),
+                    "status": "gated", "background_deferred": deferred,
+                    "failure": {"plane": "gate", "category": "BACKGROUND_DEFERRED", "detail": deferred},
+                }
+                cfg = runner._config_for_target(target, suite, dtype)
+                result_path = Path(runs_root) / "runs" / cfg.suite / capsule["name"] / "capsule_result.json"
+                result_path.parent.mkdir(parents=True, exist_ok=True)
+                _publish(result_path, row)
+                return row
         except BaseException:
             runner._kill_tree(process.pid)
             process.wait(timeout=10)

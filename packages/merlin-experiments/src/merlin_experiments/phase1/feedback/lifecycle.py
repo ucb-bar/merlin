@@ -100,7 +100,11 @@ def start_brokers(ws: Path, config: BrokerConfig):
     # round trip.
     for client_module, staged_as in _TR.COMMON_CLIENTS:
         stage_client(ws, module_source_path(client_module), staged_as)
-    broker_specs = [(spec.module, spec.log, spec.channel) for spec in _TR.COMMON_BROKERS]
+    broker_specs = [
+        (spec.module, spec.log, spec.channel)
+        for spec in _TR.COMMON_BROKERS
+        if spec.channel != ".model_check_channel" or config.context.target == "gemmini"
+    ]
     # Brokered TOOLS (the ISA assembler/disassembler/linter; the two mandated CCA calls) are part of the
     # arm's TREATMENT, so which ones start is read from the bundle's resolved tool set rather than from
     # the arm's name. That distinction matters twice over: the CIRCT arm runs under _ARM ==
@@ -164,7 +168,10 @@ def start_brokers(ws: Path, config: BrokerConfig):
                 argv += ["--max-jobs", str(config.sim_max_jobs)]
             if config.sim_per_capsule_timeout and name == "merlin_experiments.phase1.brokers.simjob":
                 argv += ["--per-capsule-timeout", str(config.sim_per_capsule_timeout)]
-            output = open(ch / log, "w")
+            channel_dir = ws / channel
+            channel_dir.mkdir(parents=True, exist_ok=True)
+            (channel_dir / "STOP").unlink(missing_ok=True)
+            output = open(channel_dir / log, "w")
             launch_error = None
             try:
                 from merlin_experiments.frozen_python import inherited_python_command
@@ -207,7 +214,8 @@ def stop_brokers(ws: Path, brokers, *, primary_error: BaseException | None = Non
     propagating provider/launch exception remains primary; callers pass it from
     their finally block. Cleanup details are attached to it, never substituted.
     """
-    _stop_brokers(ws, brokers, primary_error=primary_error, channels=(".qa_channel", ".isa_channel", ".cca_channel"))
+    _stop_brokers(ws, brokers, primary_error=primary_error,
+                  channels=(".qa_channel", ".model_check_channel", ".isa_channel", ".cca_channel"))
 
 
 def _stop_brokers(ws: Path, brokers, *, primary_error: BaseException | None, channels: tuple[str, ...]) -> None:
