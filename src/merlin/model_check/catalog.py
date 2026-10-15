@@ -262,6 +262,46 @@ def capture_arguments(stage: Path, inputs: Mapping[str, np.ndarray] | None, scra
     return resolve_forward_args(shadow)
 
 
+def record_calls(
+    catalog: ProgramCatalog,
+    arguments: Sequence[np.ndarray],
+    *,
+    blobs: BlobStore,
+    keep_call: Callable[[str, int], bool] | None = None,
+) -> list[dict[str, Any]]:
+    """The device calls of the rewritten program on ``arguments`` (operands and expected results)."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.runtime import linalg_numpy as LN
+
+    dev = parse_mlir_file(catalog.dev_prepared)
+    calls: list[dict[str, Any]] = []
+    counts: dict[str, int] = {}
+
+    def answer(symbol: str):
+        roles = catalog.roles(symbol)
+
+        def call(values):
+            results = KR.call_outputs(catalog.interfaces[symbol], values, roles)
+            ordinal = counts.get(symbol, 0)
+            counts[symbol] = ordinal + 1
+            if keep_call is None or keep_call(symbol, ordinal):
+                calls.append(
+                    {
+                        "symbol": symbol,
+                        "ordinal": ordinal,
+                        "roles": list(roles),
+                        "operands": [blobs.put(np.asarray(v)) for v in values],
+                        "expected": [blobs.put(np.asarray(r)) for r in results],
+                    }
+                )
+            return results
+
+        return call
+
+    LN.evaluate(dev, list(arguments)[: _function_arity(dev)], calls={s: answer(s) for s in catalog.interfaces})
+    return calls
+
+
 # ------------------------------------------------------------------------------------------- census
 
 

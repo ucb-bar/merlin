@@ -104,6 +104,9 @@ def _cases(
         region_of.setdefault(str(row.get("symbol")), set()).add(str(row.get("source_region_id")))
     cases: list[RP.ReplayCase] = []
     for input_id in inputs:
+        path = bundle.root / model / input_id / program / "calls.json"
+        if not path.is_file():  # an input whose references are still being built, or a host-only program
+            continue
         doc = bundle.calls(model, input_id, program)
         for call in doc["calls"]:
             symbol = call["symbol"]

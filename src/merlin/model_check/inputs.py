@@ -71,12 +71,28 @@ def _verify(path: Path, sha256: str) -> None:
         raise InputError(f"{path}: sha256 {actual} != pinned {sha256}")
 
 
-def run_worker(python: Path, task: str, request: dict[str, Any], scratch: Path) -> dict[str, Any]:
-    """Run one :mod:`input_worker` task in ``python``'s environment (isolated mode, no Merlin)."""
+def run_worker(
+    python: Path,
+    task: str,
+    request: dict[str, Any],
+    scratch: Path,
+    *,
+    worker: Path = WORKER,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Run one worker task in ``python``'s environment (isolated mode, no Merlin)."""
+    import os
+
     scratch.mkdir(parents=True, exist_ok=True)
     req, res = scratch / f"{task}.request.json", scratch / f"{task}.result.json"
     req.write_text(json.dumps({**request, "task": task, "result": str(res)}))
-    done = subprocess.run([str(python), "-I", str(WORKER), str(req)], capture_output=True, text=True, check=False)
+    done = subprocess.run(
+        [str(python), "-I", str(worker), str(req)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, **(env or {})},
+    )
     if done.returncode != 0:
         raise InputError(f"input worker {task} failed: {done.stderr[-2000:]}")
     return json.loads(res.read_text())

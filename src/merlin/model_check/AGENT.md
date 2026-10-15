@@ -18,6 +18,7 @@ Build, run and judge complete quantized models for a device submission.
 - `metrics.py` — The numerics policy's metrics and the ratio rule (contract §4).
 - `models.py` — The models file: which programs make up each model, how they chain, and what is judged.
 - `reference_worker.py` — The FP reference of each model, run INSIDE the model's own pinned environment (``python reference_worker.py``).
+- `references.py` — Per-input references of a bundle: FP outputs, the INT8 reference chain, its metrics, and device calls.
 - `replay.py` — Replay device kernels on frozen boundary inputs: one small image per batch of calls, judged exactly.
 - `report.py` — The ``model_check_report`` document: construction, agent view, validation and exit codes.
 
