@@ -58,6 +58,11 @@ OPERAND_SUM = "operand_sum"
 #: constant one with the reciprocal of the count in the readout's scale, so its input is quantized
 #: wherever contractions are and the readout multiplies.
 WINDOW_MEAN = "window_mean"
+#: A contraction of two RUN-TIME activations (attention's ``Q @ K^T`` and ``P @ V``, softmax
+#: probabilities included). Never derived by default: no readout fact distinguishes it from a
+#: weight contraction, so it is a numerical CHOICE a recipe opts into (:func:`with_activation_contractions`),
+#: and a recipe that does not list it keeps every such contraction in floating point.
+ACTIVATION_CONTRACTION = "activation_contraction"
 
 
 @dataclass(frozen=True)
@@ -328,6 +333,67 @@ def _operand_sum(recipe: QuantRecipe, facet: Any, *, activation_granularity: str
     )
 
 
+def with_activation_contractions(recipe: Mapping[str, Any]) -> dict[str, Any]:
+    """``recipe`` (a derived ``quant_recipe_v1`` document) that ALSO quantizes activation contractions.
+
+    The switch is the family :data:`ACTIVATION_CONTRACTION` in ``families``; everything else is the
+    recipe's own. Both operands of such a contraction take the recipe's activation spec, so for
+    attention ``Q``, ``K``, the softmax probabilities ``P`` and ``V`` each get one static, symmetric
+    scale per tensor (per call site, shared by every head), calibrated by the activation observer
+    like any other activation edge. The product of two per-tensor scales is again one scale, which
+    is what a readout that holds one scale per tensor applies; a finer scale on either operand is a
+    run-time vector the readout cannot hold. Only a static per-tensor integer recipe is extended:
+    any other form is refused with the reason, never approximated. The content digest changes with
+    the family, so a capture made under the variant is never served for one made without it.
+    """
+    if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
+        raise ValueError("only a derived quant_recipe_v1 can be extended")
+    activation = recipe.get("activation") or {}
+    families = list(recipe.get("families") or ())
+    refusal = (
+        "the recipe quantizes no contraction"
+        if CONTRACTION not in families
+        else f"activations are {activation.get('mode')!r}, not static"
+        if activation.get("mode") != "static"
+        else f"activation scales are per {activation.get('granularity')!r}, not one per tensor"
+        if activation.get("granularity") != "tensor"
+        else "the activation format is not a symmetric integer"
+        if not (activation.get("symmetric") and str(activation.get("dtype", "")).startswith("int"))
+        else None
+    )
+    if refusal is not None:
+        raise ValueError(f"activation contractions cannot extend this recipe: {refusal}")
+    body = json.loads(json.dumps(dict(recipe)))
+    if ACTIVATION_CONTRACTION not in families:
+        body["families"] = [*families, ACTIVATION_CONTRACTION]
+    (body.get("unquantized") or {}).pop(ACTIVATION_CONTRACTION, None)
+    body.setdefault("why", {})[ACTIVATION_CONTRACTION] = (
+        "opted in: a contraction of two run-time activations (attention scores and context) is "
+        "int8 x int8 into the accumulator with both operands on the activation spec, one static "
+        "scale per tensor each; the readout's one scale is their product"
+    )
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
+def _main(argv: Sequence[str] | None = None) -> int:
+    """``python -m merlin.targetgen.quant_recipe activation-contractions IN.json OUT.json``."""
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(prog="python -m merlin.targetgen.quant_recipe")
+    sub = parser.add_subparsers(dest="command", required=True)
+    variant = sub.add_parser("activation-contractions", help=with_activation_contractions.__doc__.splitlines()[0])
+    variant.add_argument("recipe", type=Path)
+    variant.add_argument("out", type=Path)
+    args = parser.parse_args(argv)
+    body = with_activation_contractions(json.loads(args.recipe.read_text(encoding="utf-8")))
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"{args.out}: recipe_sha256 {body['recipe_sha256']}")
+    return 0
+
+
 def for_target(
     target: str, *, facts: Mapping[str, Any] | None = None, prefer_activation_mode: str | None = None
 ) -> list[QuantRecipe]:
@@ -492,3 +558,7 @@ def candidates_for_target(
 def select(recipes: Sequence[QuantRecipe]) -> QuantRecipe | None:
     """The recipe a whole-model capture uses: the first derived one, else the first with its reasons."""
     return next((r for r in recipes if r.status == DERIVED), recipes[0] if recipes else None)
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

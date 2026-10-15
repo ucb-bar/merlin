@@ -81,6 +81,11 @@ class ProgramCatalog:
     def roles(self, symbol: str) -> tuple[str, ...]:
         return tuple(b["role"] for b in self.sidecar["call_buffers"][symbol])
 
+    def batch_shape(self, symbol: str) -> tuple[int, ...]:
+        """The leading batch of ``symbol``'s host call; its interface states ONE slice (``()``: unbatched)."""
+        program = (self.sidecar.get("programs") or {}).get(symbol) or {}
+        return tuple(int(v) for v in program.get("batch_shape") or ())
+
     def record(self) -> dict[str, Any]:
         return {
             "schema": CATALOG_SCHEMA,
@@ -187,27 +192,27 @@ class Evaluation:
         return rows
 
 
-def evaluate(
+def _answers(
     catalog: ProgramCatalog,
-    arguments: Sequence[np.ndarray],
+    calls: list[dict[str, Any]],
     *,
-    blobs: BlobStore | None = None,
-    keep_call: Callable[[str, int], bool] | None = None,
-) -> Evaluation:
-    """Both programs on ``arguments``; every (kept) device call's operands and expected results."""
-    from merlin.frontends.linalg_mlir import parse_mlir_file
-    from merlin.runtime import linalg_numpy as LN
+    blobs: BlobStore | None,
+    keep_call: Callable[[str, int], bool] | None,
+) -> dict[str, Callable]:
+    """Each routed symbol's host call answered by its interface reference, recording the device calls.
 
-    ref = parse_mlir_file(catalog.ref_prepared)
-    dev = parse_mlir_file(catalog.dev_prepared)
-    reference = LN.evaluate(ref, list(arguments)[: _function_arity(ref)])
-    calls: list[dict[str, Any]] = []
+    A BATCHED host call is a loop over its slices, one device call per slice: the interface states one
+    slice and the host shim calls the per-slice kernel once for each (``device_shim``'s logical ABI). So
+    each slice is evaluated, recorded and numbered as its own device call, and the host receives the
+    slices' results stacked back under the batch.
+    """
     counts: dict[str, int] = {}
 
     def answer(symbol: str):
         roles = catalog.roles(symbol)
+        batch = catalog.batch_shape(symbol)
 
-        def call(values):
+        def device_call(values):
             results = KR.call_outputs(catalog.interfaces[symbol], values, roles)
             ordinal = counts.get(symbol, 0)
             counts[symbol] = ordinal + 1
@@ -223,12 +228,44 @@ def evaluate(
                 )
             return results
 
+        def call(values):
+            if not batch:
+                return device_call(values)
+            count = math.prod(batch)
+            arrays = [np.asarray(v) for v in values]
+            if any(tuple(a.shape[: len(batch)]) != batch for a in arrays):
+                raise CatalogError(f"{symbol}: a host operand does not lead with the batch {list(batch)}")
+            sliced = [a.reshape(count, *a.shape[len(batch) :]) for a in arrays]
+            per_slice = [device_call([a[index] for a in sliced]) for index in range(count)]
+            return [
+                np.stack([results[j] for results in per_slice]).reshape(*batch, *per_slice[0][j].shape)
+                for j in range(len(per_slice[0]))
+            ]
+
         return call
 
+    return {symbol: answer(symbol) for symbol in catalog.interfaces}
+
+
+def evaluate(
+    catalog: ProgramCatalog,
+    arguments: Sequence[np.ndarray],
+    *,
+    blobs: BlobStore | None = None,
+    keep_call: Callable[[str, int], bool] | None = None,
+) -> Evaluation:
+    """Both programs on ``arguments``; every (kept) device call's operands and expected results."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.runtime import linalg_numpy as LN
+
+    ref = parse_mlir_file(catalog.ref_prepared)
+    dev = parse_mlir_file(catalog.dev_prepared)
+    reference = LN.evaluate(ref, list(arguments)[: _function_arity(ref)])
+    calls: list[dict[str, Any]] = []
     rewritten = LN.evaluate(
         dev,
         list(arguments)[: _function_arity(dev)],
-        calls={symbol: answer(symbol) for symbol in catalog.interfaces},
+        calls=_answers(catalog, calls, blobs=blobs, keep_call=keep_call),
     )
     return Evaluation([np.asarray(v) for v in reference], [np.asarray(v) for v in rewritten], calls)
 
@@ -275,30 +312,9 @@ def record_calls(
 
     dev = parse_mlir_file(catalog.dev_prepared)
     calls: list[dict[str, Any]] = []
-    counts: dict[str, int] = {}
-
-    def answer(symbol: str):
-        roles = catalog.roles(symbol)
-
-        def call(values):
-            results = KR.call_outputs(catalog.interfaces[symbol], values, roles)
-            ordinal = counts.get(symbol, 0)
-            counts[symbol] = ordinal + 1
-            if keep_call is None or keep_call(symbol, ordinal):
-                calls.append(
-                    {
-                        "symbol": symbol,
-                        "ordinal": ordinal,
-                        "roles": list(roles),
-                        "operands": [blobs.put(np.asarray(v)) for v in values],
-                        "expected": [blobs.put(np.asarray(r)) for r in results],
-                    }
-                )
-            return results
-
-        return call
-
-    LN.evaluate(dev, list(arguments)[: _function_arity(dev)], calls={s: answer(s) for s in catalog.interfaces})
+    LN.evaluate(
+        dev, list(arguments)[: _function_arity(dev)], calls=_answers(catalog, calls, blobs=blobs, keep_call=keep_call)
+    )
     return calls
 
 
@@ -369,12 +385,16 @@ def census(catalog: ProgramCatalog, *, refused: Mapping[str, str] | None = None)
         if not _is_contraction(op):
             continue
         nodes = _node_ids(op)
+        dtypes = [_dtype(v) for v in list(op.operands)[:2]]
         row = next((routed[n] for n in nodes if n in routed), None)
+        # A contraction the capture already integerized (int x int operands) was quantized by the recipe
+        # even though no dequantize feeds it; left on the host, that is a policy decision, not the recipe's.
+        integer = all(d[:1] in ("i", "u") and d[1:].isdigit() for d in dtypes)
         if row is not None and str(row.get("symbol")) not in refused:
             placement = "device"
         elif row is not None:
             placement = "host:compiler_refused"
-        elif not captured_quantized_contraction(op):
+        elif not (integer or captured_quantized_contraction(op)):
             placement = "host:not_quantized_by_recipe"
         else:
             placement = "host:policy_refused"
@@ -382,7 +402,7 @@ def census(catalog: ProgramCatalog, *, refused: Mapping[str, str] | None = None)
             {
                 "op": op.name,
                 "nodes": list(nodes),
-                "dtypes": [_dtype(v) for v in list(op.operands)[:2]],
+                "dtypes": dtypes,
                 "macs": _macs(op),
                 "placement": placement,
                 "symbol": row.get("symbol") if row else None,

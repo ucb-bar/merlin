@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.5**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.7**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -172,9 +172,13 @@ group's ops in float64 with every rounding and quantize step removed, in the out
 
 ### 4.5 Reference admission (bundles, not submissions)
 A bundle may be frozen only if its INT8 reference is close enough to FP on the visible inputs.
-Proposed (pending approval; the approved values are recorded in v1.1): ResNet50 top-1 agreement
-≥ 15/16 and logits cosine ≥ 0.99; TinyLlama mean `kl` ≤ 0.05 nats and top-1 agreement ≥ 90 %;
-SmolVLA per-dim `rel_rmse` ≤ 5 %. Calibration data is disjoint from every evaluation input.
+**Approved (1.7): ResNet50 top-1 agreement ≥ 15/16 and the logits cosine's mean over the inputs ≥ 0.99**,
+the worst image reported (one image's cosine is noisy). Proposed (pending approval): TinyLlama mean `kl`
+≤ 0.05 nats and top-1 agreement ≥ 90 %. **Approved (1.6): SmolVLA per action dim, `rel_rmse` ≤ 2 × the
+float noise of that dim**, worst input reported. Float noise = `rel_rmse` between the FP reference (§3)
+and the same float model run with vectorized ATen kernels, on the same inputs. A bf16 model's own float
+noise is several percent (SmolVLA: up to 6.8 % on the worst input), so a fixed 5 % bar sat at that floor.
+Calibration data is disjoint from every evaluation input.
 
 ### 4.6 Why ratios
 Bounding error relative to a reference implementation's own error, rather than by one absolute
@@ -346,3 +350,5 @@ Schema: `merlin/schemas/model_check_report.schema.yaml` (`merlin.model_check.rep
   console cache with `--no-cache`; report fields for kernel identity, census, diagnosis and model metrics
   (§9); FP reference pinned to capture-time numerics (§3); §8 states the bundle layout as built. Not yet
   wired: `--mode full`, `--engine gsim`, the model replay for declared approximations, `bundle-verify`.
+- 1.6 (2026-10-15): §4.5: SmolVLA's admission bar is 2 × its float noise per action dim (approved).
+- 1.7 (2026-10-15): §4.5: ResNet50's cosine bar is on the mean over inputs (approved).

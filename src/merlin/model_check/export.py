@@ -152,6 +152,10 @@ def describe(catalog, symbol: str) -> dict[str, Any]:
     for key in ("stored_operand", "transposed", "column_order"):
         if program.get(key) is not None:
             record[key] = program[key]
+    if program.get("batch_shape"):
+        # The host call carries this leading batch and the kernel states ONE slice: the host calls the
+        # kernel once per slice, so ``call_buffers`` lead with the batch and ``kernel_arguments`` do not.
+        record["batch_shape"] = [int(v) for v in program["batch_shape"]]
     if arguments is None:
         record["kernel_arguments_refusal"] = why
     return record
