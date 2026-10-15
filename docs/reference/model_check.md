@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.0**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.1**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -43,8 +43,8 @@ Every subcommand takes `--submission DIR`, optional `--models FILE` (default: th
 
 ```
 python -m merlin.model_check check --submission S --model M [--program P]
-        --split {visible|sealed|all} [--decode-steps K] [--jobs N] [--timeout-s T]
-        [--differential] [--agent-view] --out REPORT.json
+        --split {visible|sealed|all} [--mode {fast|full}] [--decode-steps K] [--jobs N]
+        [--timeout-s T] [--differential] [--agent-view] --out REPORT.json
 python -m merlin.model_check replay-kernel --submission S --model M --program P
         (--group SOURCE_REGION_ID | --all) --split {visible|sealed|all}
         [--engine {spike|gsim}] [--timeout-s T] [--agent-view] --out REPORT.json
@@ -53,15 +53,31 @@ python -m merlin.model_check binding --out RECEIPT.json
 python -m merlin.model_check bundle-verify [--bundle DIR] --out REPORT.json
 ```
 
-- `check`: build → census → replay every device group on the split's frozen boundary inputs →
-  full-chain Spike runs per input → model metrics. `--differential` adds an offload-disabled build and
-  requires bit-identical outputs (only for programs whose host-only run fits the timeout).
-  `--decode-steps K` below 32 is allowed for fast in-run feedback; the report then marks the gate
-  `partial: true`, and a partial gate is never an official pass.
-- `replay-kernel`: one minimal ELF per group carrying all of the split's boundary inputs; compares
-  every output bit for bit (§4.2), or by §4.3 for a declared approximate kernel. `--engine gsim` is the
-  RTL check per unique kernel; `spike` is the fast inner loop.
-- `census`: build only, no execution (§6).
+`check` has two modes. **`fast` is the default and the inner loop; it never builds or simulates a
+whole model:**
+
+1. Device grouping is Merlin's, not the submission's, so every model's group interface modules, kernel
+   ABI and INT8 boundary tensors are precomputed once into the frozen bundle (§8).
+2. For each **unique** kernel (distinct interface module) the submission's package lowers it once; a
+   minimal replay ELF runs it on Spike on a sample of its groups and the split's boundary inputs
+   (`fast`: up to 3 groups × 2 inputs per unique kernel; `--jobs` runs kernels in parallel).
+   Every output is compared bit for bit (§4.2), or by §4.3 for a declared approximate kernel.
+3. Model gate: when every kernel is exact, the integrated model computes exactly the INT8 reference, so
+   the model metrics are the bundle's precomputed INT8-reference metrics, reported as such. Declared
+   approximate kernels are the only case that runs a model replay: the INT8 program on the host
+   (`linalg_numpy`), with just those groups answered by the submission's kernel on Spike, then §4.4.
+4. Census from the bundle's grouping plus each kernel's outcome (lowered, or refused by the package).
+
+Target: minutes per model on one core per unique kernel. **`full`** additionally builds every program's
+linked ELF and runs the whole chain per input on Spike: the integration check (host code, ABI, memory
+layout, linking) for the official grade or a scheduled job, never the inner loop. `--differential`
+(full only) adds an offload-disabled build and requires bit-identical outputs.
+`--decode-steps K` below 32 marks the TinyLlama gate `partial: true`; a partial gate is never an
+official pass.
+
+- `replay-kernel`: the kernel step alone, for any group or all groups; `--engine gsim` is the RTL check
+  per unique kernel, `spike` the fast functional one.
+- `census`: grouping and per-kernel lowering outcome only; no execution (§6).
 - `binding`: the Spike↔RTL↔FireSim receipt (§7).
 - `--agent-view`: omit every per-input value of the `sealed` split, keeping only aggregate status per
   gate. Anything shown to an agent must be produced with it.
@@ -192,7 +208,11 @@ MANIFEST.json                        # sha256 of every file; generator/merlin/mo
 <model>/<split>/<id>/int8.npz        # INT8-reference outputs per program and chain step
 <model>/<split>/<id>/boundaries/<program>/<step>/<key>.npz
                                      # key = <source_region_id>@<normalized_source_sha256[:12]>
-                                     # arrays: in0..inN (storage form), out, fp_out
+                                     # arrays: in0..inN (device-call layout), out, fp_out
+<model>/kernels/<program>/<key>/interface.mlir   # the group's interface module (package input)
+<model>/kernels/<program>/<key>/abi.json         # symbol, call buffers, argument access, prepack
+<model>/kernels/unique.json                      # interface-module sha256 -> groups sharing it
+<model>/<split>/<id>/metrics_int8.json           # INT8-reference model metrics vs FP (§4.4)
 ```
 
 **Sealed data is never granted to an agent sandbox.** `/work/merlin/private/**` must appear in no
@@ -207,3 +227,5 @@ runs[]), `model_metrics`, `failures[]`, `timing`.
 
 ## Changelog
 - 1.0 (2026-10-15): initial contract.
+- 1.1 (2026-10-15): `check --mode fast` (default) judges kernels by replay and takes model metrics
+  from the reference when every kernel is exact; whole-model Spike runs move to `--mode full`.

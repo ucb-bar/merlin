@@ -16,6 +16,7 @@ from merlin.model_check.models import load as load_models
 
 SPLITS = ("visible", "sealed", "all")
 ENGINES = ("spike", "gsim")
+MODES = ("fast", "full")
 
 
 def tree_sha256(root: Path) -> str:
@@ -44,11 +45,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m merlin.model_check", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    check = sub.add_parser("check", help="build, replay kernels, run chains, judge the model")
+    check = sub.add_parser("check", help="replay kernels and judge the model (fast); --mode full also runs chains")
     _common(check)
     check.add_argument("--model", required=True)
     check.add_argument("--program", default=None)
     check.add_argument("--split", choices=SPLITS, required=True)
+    check.add_argument("--mode", choices=MODES, default="fast")
     check.add_argument("--decode-steps", type=int, default=None)
     check.add_argument("--jobs", type=int, default=1)
     check.add_argument("--timeout-s", type=float, default=None)
