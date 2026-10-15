@@ -65,9 +65,10 @@ READOUT_DOES_NOT_APPLY = "readout_does_not_apply"
 #: never "applies everything": assuming would put a stage on a store path nobody established applies
 #: it, which is the silent-discard defect :mod:`merlin.verify.epilogue_applicability` exists for.
 READOUT_UNDECLARED = "readout_epilogue_undeclared"
-# Round, clamp and cast are not independent command-buffer stages. They can ride a scaled store
-# only when the group actually contains an output scale; an unscaled i32 -> f32 cast is host work.
+# Round, clamp and cast require an absorbed output scale; an unscaled cast is host work.
 READOUT_REQUIRES_SCALE = "readout_requires_scale"
+#: The captured float readout has no exact integer-bias-and-scale representation.
+FLOAT_EPILOGUE_REASSOCIATION = "float_epilogue_reassociation"
 #: Growth stopped by a fact about the GRAPH rather than about the target: a value read outside the
 #: group, or a pad no pool consumes. Not a capability question and not a capability gap.
 STRUCTURAL = "graph_structure"
@@ -684,7 +685,8 @@ def _sole_user_is(op, consumers: set[int]) -> bool:
     return all(len(_users(result)) == 1 and id(_users(result)[0]) in consumers for result in op.results)
 
 
-def form_groups(module, target: str, *, oracle: TargetOracle | None = None, function: str | None = None) -> list[Group]:
+def form_groups(module, target: str, *, oracle: TargetOracle | None = None, function: str | None = None,
+                numeric_refusals: Mapping[int, str] | None = None) -> list[Group]:
     """Partition ``function``'s computation-carrying operations into compute groups."""
     oracle = oracle or TargetOracle(target)
     functions = [op for op in module.walk() if op.name == "func.func" and op.body.blocks]
@@ -703,7 +705,7 @@ def form_groups(module, target: str, *, oracle: TargetOracle | None = None, func
         stage = stage_of[id(root)]
         if stage is None or stage.kind != CONTRACTION or id(root) in taken:
             continue
-        group = _grow(root, oracle, stage_of, taken)
+        group = _grow(root, oracle, stage_of, taken, numeric_refusals or {})
         group.macs = extents.get(id(root))
         for member in group.members:
             taken[id(member)] = group
@@ -1112,7 +1114,8 @@ def _macs_by_op(module) -> dict[int, int]:
     return out
 
 
-def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], taken: Mapping[int, Group]) -> Group:
+def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], taken: Mapping[int, Group],
+          numeric_refusals: Mapping[int, str]) -> Group:
     group = Group(index=0, placement=HOST, root=root, members=[root])
 
     # The operands behind the dequantizes are what an integer unit is asked about.
@@ -1216,6 +1219,18 @@ def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], take
                 "scale; the conversion must remain on the host"
             )
             break
+        if stage.kind == BIAS_ADD and id(root) in numeric_refusals:
+            # Keep a raw device contraction and its unproved float chain on the host.
+            cast = (pending_cast[-1] if pending_cast is not None else
+                    next(member for member in members[converted_at:] if stage_of[id(member)].kind == CAST))
+            if converted_at is not None:
+                members = members[:converted_at]
+            pending_cast = None
+            converted_at = None
+            group.stopped_by, group.stopped_at = CAST, cast
+            group.refusal = FLOAT_EPILOGUE_REASSOCIATION
+            group.reason = numeric_refusals[id(root)]
+            break
         absorbable = oracle.absorbs(stage.kind)
         if not absorbable.admitted:
             group.stopped_by, group.stopped_at = stage.kind, pending_pad or user
@@ -1307,6 +1322,8 @@ def gap_class(refusal: str | None) -> str | None:
     if refusal == STRUCTURAL:
         # The graph, not the target. Nothing about the hardware is established, so no gap is owed.
         return None
+    if refusal == FLOAT_EPILOGUE_REASSOCIATION:
+        return "OG0"
     if refusal == READOUT_REQUIRES_SCALE:
         # The readout can carry a conversion only when a scale stage precedes it. This instance
         # lacks that required attachment; the owner is the same route/attachment class as fused_only.
