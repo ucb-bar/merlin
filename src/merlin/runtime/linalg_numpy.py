@@ -197,7 +197,13 @@ def _erf(x):
 
 
 def _predicate(op) -> int:
-    attr = op.properties.get("predicate") or op.attributes.get("predicate")
+    # An explicit None test: predicate 0 (``eq``) is an IntegerAttr that is falsy, so ``a or b`` would
+    # read it as absent.
+    attr = op.properties.get("predicate")
+    if attr is None:
+        attr = op.attributes.get("predicate")
+    if attr is None:
+        raise LinalgNumpyError(f"{op.name} has no predicate")
     return int(attr.value.data)
 
 
@@ -281,9 +287,19 @@ def _body_op(op, env: dict[int, Any], *, index_of: Callable[[int], np.ndarray] |
         fn = np.maximum if name == "arith.maxsi" else np.minimum
         return fn(fl(args[0]), fl(args[1])).astype(_compute_dtype(element))
     if name in ("arith.divsi", "arith.remsi"):
+        # Integer arithmetic throughout: a float quotient loses the low bits of any operand past 2**53.
         a, b = fl(args[0]).astype(np.int64), fl(args[1]).astype(np.int64)
-        quotient = np.trunc(a / b).astype(np.int64)
+        if np.any(b == 0):
+            raise LinalgNumpyError(f"{name} by zero is undefined")
+        floor = np.floor_divide(a, b)
+        quotient = floor + (((a - b * floor) != 0) & ((a < 0) != (b < 0)))  # round toward zero
         result = quotient if name == "arith.divsi" else a - b * quotient
+        return result.astype(_compute_dtype(element))
+    if name in ("arith.divui", "arith.remui"):
+        ua, ub = _unsigned(args[0], element), _unsigned(args[1], element)
+        if np.any(ub == 0):
+            raise LinalgNumpyError(f"{name} by zero is undefined")
+        result = ua // ub if name == "arith.divui" else ua % ub
         return result.astype(_compute_dtype(element))
     if name == "arith.floordivsi":
         a, b = fl(args[0]).astype(np.int64), fl(args[1]).astype(np.int64)
@@ -838,6 +854,19 @@ def evaluate_op(op, env: Mapping[int, Any]) -> list[Any]:
         return [destination]
     if name.startswith("arith.") or name.startswith("math."):
         return [_body_op(op, env)]
+    if name == "cf.assert":
+        # The program's own runtime check: evaluated, never skipped, so a violated bound stops the oracle
+        # exactly where the compiled program would trap.
+        if not np.all(np.asarray(env[id(op.operands[0])]).astype(np.bool_)):
+            message = op.properties.get("msg") or op.attributes.get("msg")
+            raise LinalgNumpyError(f"cf.assert failed: {getattr(message, 'data', message)}")
+        return []
+    if name == "tensor.dim":
+        source = np.asarray(env[id(op.operands[0])])
+        axis = int(env[id(op.operands[1])])
+        if not 0 <= axis < source.ndim:
+            raise LinalgNumpyError(f"tensor.dim index {axis} is outside rank {source.ndim}")
+        return [np.int64(source.shape[axis])]
     if name in (
         "tensor.collapse_shape",
         "tensor.expand_shape",
