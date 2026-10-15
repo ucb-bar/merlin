@@ -216,10 +216,15 @@ def census_from_graded_artifacts(*, target: str, capsules: Iterable[Mapping[str,
 
     The caller owns the grade's source identity and public-corpus selection. Missing or malformed
     artifacts stay named errors in the fixed denominator; they cannot become evidence of offload.
-    Whole-model capstones without an interface are handled by their separate model placement audit.
+    Whole-model capstones are handled by their separate model placement audit, including those
+    that carry an interface MLIR for their source model.
     """
     root = Path(suite_runs)
-    selected = [dict(capsule) for capsule in capsules if capsule.get("interface_mlir")]
+    all_capsules = [dict(capsule) for capsule in capsules]
+    model_capsules = [str(capsule.get("name")) for capsule in all_capsules
+                      if capsule.get("interface_mlir") and capsule.get("kind") == "model"]
+    selected = [capsule for capsule in all_capsules
+                if capsule.get("interface_mlir") and capsule.get("kind") != "model"]
     rows: list[dict[str, Any]] = []
     artifacts: list[str] = []
     audits: list[dict[str, Any]] = []
@@ -235,15 +240,59 @@ def census_from_graded_artifacts(*, target: str, capsules: Iterable[Mapping[str,
                 raise ValueError("graded artifact path is indirect or invalid")
             if not result_path.is_file():
                 raise FileNotFoundError("graded capsule result is absent")
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+            if (not isinstance(result, dict) or result.get("capsule") != name
+                    or result.get("kind") != capsule.get("kind") or result.get("status") != "pass"):
+                raise ValueError("graded capsule result does not prove a passing matching capsule")
+            if result.get("kind") == "model_slice" and not buffer_path.is_file():
+                # Provided host code has no candidate command buffer. Count it as host only
+                # only when the grade proves source ineligibility, host execution, and no
+                # device work in the linked ELF. A missing candidate artifact alone proves nothing.
+                qualification = result.get("provided_host_qualification")
+                eligibility = qualification.get("source_eligibility") if isinstance(qualification, dict) else None
+                completeness = eligibility.get("denominator_completeness") if isinstance(eligibility, dict) else None
+                host_check = result.get("host_execution_check")
+                lane = result.get("lane_report")
+                tiers = result.get("tiers")
+                scan = lane.get("elf_scan") if isinstance(lane, dict) else None
+                if (not isinstance(eligibility, dict) or eligibility.get("n_eligible") != 0
+                        or not isinstance(completeness, dict)
+                        or completeness.get("inventory_status") != "verified_against_parsed_contractions"
+                        or completeness.get("unmatched_contraction_macs") != 0
+                        or completeness.get("n_unpriceable_contractions") != 0
+                        or completeness.get("unverified_operand_format_contractions") != []
+                        or completeness.get("caveats") != []
+                        or not isinstance(host_check, dict) or host_check.get("status") != "pass"
+                        or not isinstance(lane, dict) or lane.get("required") != []
+                        or lane.get("violated") != [] or "on_mesh" not in lane.get("forbidden", [])
+                        or not isinstance(scan, dict) or scan.get("status") != "measured"
+                        or scan.get("n_hits") != 0 or not isinstance(tiers, dict)
+                        or any(not isinstance(tiers.get(tier), dict)
+                               or tiers[tier].get("status") != "pass" for tier in ("L0", "L1", "L2", "L3"))):
+                    raise ValueError("provided host result lacks passing source/placement/execution evidence")
+                rows.append({"program": name, "outcome": "host_only", "commands": 0,
+                             "routed_macs": 0, "host_regions": 1, "unit_regions": 0,
+                             "contraction_offload_fraction": 0.0, "placement_declared": True,
+                             "placement_basis": "provided_host_qualification"})
+                audits.append({"program": name, "verdict": "declared_host",
+                               "why": "passing provided-host qualification and linked ELF device-work scan"})
+                continue
             if not buffer_path.is_file():
                 raise FileNotFoundError("graded command buffer is absent")
-            if not artifact_path.is_file():
-                raise FileNotFoundError("graded lowered host artifact is absent")
             buffer = json.loads(buffer_path.read_text(encoding="utf-8"))
             if not isinstance(buffer, dict):
                 raise ValueError("graded command buffer is not an object")
-            artifact = artifact_path.read_text(encoding="utf-8")
             row = program_row(name, buffer)
+            if row["outcome"] == "declined":
+                refusal = result.get("expected_refusal")
+                if (not isinstance(refusal, dict) or refusal.get("status") != "met"
+                        or result.get("declined") != buffer.get("declined")):
+                    raise ValueError("graded refusal is not a matching expected refusal")
+                rows.append(row)
+                continue
+            if not artifact_path.is_file():
+                raise FileNotFoundError("graded lowered host artifact is absent")
+            artifact = artifact_path.read_text(encoding="utf-8")
             audit = host_compute_row(name, buffer, artifact, row["outcome"])
         except Exception as failure:  # noqa: BLE001 -- an unreadable artifact cannot establish offload
             rows.append({
@@ -257,7 +306,9 @@ def census_from_graded_artifacts(*, target: str, capsules: Iterable[Mapping[str,
     return _summary(
         target=target, rows=rows, artifacts=artifacts, audits=audits,
         execution={"mode": "same_grade_artifacts", "programs_requested": len(selected),
-                   "programs_observed": len(artifacts)},
+                   "programs_observed": sum(row["outcome"] != "error" for row in rows),
+                   "emitted_artifacts": len(artifacts),
+                   "model_capsules_separate_gate": model_capsules},
     )
 
 
@@ -287,6 +338,7 @@ def census(
             raise ValueError("MERLIN_GRADE_WORKERS must be a positive integer")
         workers = int(raw)
     compute_cpus = cpu_pool.grading_cpus()
+    preparation_cpus = cpu_pool.preparation_cpus()
     if cpu_pool.shared_compute_enabled():
         workers = min(workers, len(compute_cpus))
     selected = [dict(capsule) for capsule in capsules if capsule.get("interface_mlir")]
@@ -315,7 +367,7 @@ def census(
                     integrity_scan(pkg)
                 # The original executor owns the build and its child invocations.
                 # Holding our CPU lock here can deadlock a child common-service call.
-                with cpu_pool.selected_pool(compute_cpus):
+                with cpu_pool.selected_pool(preparation_cpus):
                     build_package(pkg)
             except Exception as failure:  # noqa: BLE001 -- reported for every unexecuted program
                 preparation_failure = failure
@@ -351,7 +403,7 @@ def census(
         def owned_case(index, capsule):
             # Base affinity is a pool, not a held slot. Actual bounded Python
             # stages lease one CPU; child/RPC owners can acquire theirs freely.
-            with cpu_pool.selected_pool(compute_cpus):
+            with cpu_pool.selected_pool(preparation_cpus):
                 return run_one(index, capsule)
 
         if workers == 1:
