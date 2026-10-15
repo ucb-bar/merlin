@@ -49,6 +49,21 @@ def _engine(p: argparse.ArgumentParser) -> None:
     p.add_argument("--rtl-facts", type=Path, default=None, help="RTL facts matching --contract (default: the bundle's)")
     p.add_argument("--dram-base", type=lambda v: int(v, 0), default=0x80000000)
     p.add_argument("--dram-bytes", type=lambda v: int(v, 0), default=16 << 30)
+    p.add_argument(
+        "--board-catalog",
+        type=Path,
+        default=None,
+        help="gsim: board catalog naming the RTL config's board (default: $MERLIN_BOARD_CATALOG, else the target's)",
+    )
+    p.add_argument(
+        "--max-cycles", type=int, default=None, help="gsim: hang bound per image (default: from --call-max-cycles)"
+    )
+    p.add_argument(
+        "--call-max-cycles",
+        type=int,
+        default=None,
+        help="gsim: cycle bound per kernel call; sizes the image bound when --max-cycles is absent",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -72,12 +87,18 @@ def build_parser() -> argparse.ArgumentParser:
     replay = sub.add_parser("replay-kernel", help="replay device kernels on frozen boundary inputs")
     _common(replay)
     replay.add_argument("--model", required=True)
-    replay.add_argument("--program", required=True)
+    replay.add_argument("--program", default=None, help="one program (default: every program of the model)")
     group = replay.add_mutually_exclusive_group(required=True)
-    group.add_argument("--group", dest="group", default=None, help="source_region_id of the group")
+    group.add_argument("--group", dest="group", default=None, help="source_region_id or symbol of the group")
     group.add_argument("--all", dest="all_groups", action="store_true")
+    replay.add_argument(
+        "--unique",
+        action="store_true",
+        help="of the selected calls, only one per kernel symbol (its recorded real shape); gsim: one image each",
+    )
     replay.add_argument("--split", choices=SPLITS, required=True)
     replay.add_argument("--engine", choices=ENGINES, default="spike")
+    replay.add_argument("--jobs", type=int, default=1, help="gsim: images run at once")
     replay.add_argument("--timeout-s", type=float, default=None)
     replay.add_argument("--agent-view", action="store_true")
     _engine(replay)

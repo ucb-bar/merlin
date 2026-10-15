@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from merlin.model_check import bundle as B
+from merlin.model_check import engines as EN
 from merlin.model_check import replay as RP
 from merlin.model_check.cli import register
 from merlin.model_check.models import load as load_models
@@ -94,15 +96,34 @@ def census(args: argparse.Namespace, report: dict) -> dict:
 
 
 def _cases(
-    bundle: B.Bundle, model: str, program: str, inputs: Sequence[str], *, group: str | None, all_calls: bool
+    bundle: B.Bundle,
+    model: str,
+    program: str,
+    inputs: Sequence[str],
+    *,
+    group: str | None,
+    all_calls: bool,
+    unique: bool = False,
 ) -> list[RP.ReplayCase]:
-    """Replay cases for ``program``: every call, or (fast) a few per symbol on a few inputs."""
+    """Replay cases for ``program``: every call, (fast) a few per symbol on a few inputs, or (``unique``)
+    one call per symbol at its recorded shape: the call with the fewest operand bytes, the first on ties."""
     blobs = bundle.blobs(model)
     catalog = bundle.catalog(model, program)
     region_of = {}
     for row in catalog.sidecar.get("routed") or ():
         region_of.setdefault(str(row.get("symbol")), set()).add(str(row.get("source_region_id")))
+
+    def case(input_id: str, call: dict) -> RP.ReplayCase:
+        return RP.ReplayCase(
+            symbol=call["symbol"],
+            label=f"{input_id}/{program}/{call['symbol']}#{call['ordinal']}",
+            roles=tuple(call["roles"]),
+            operands=tuple(blobs.get(k) for k in call["operands"]),
+            expected=tuple(blobs.get(k) for k in call["expected"]),
+        )
+
     cases: list[RP.ReplayCase] = []
+    picked: dict[str, tuple[int, str, dict]] = {}
     for input_id in inputs:
         path = bundle.root / model / input_id / program / "calls.json"
         if not path.is_file():  # an input whose references are still being built, or a host-only program
@@ -112,17 +133,16 @@ def _cases(
             symbol = call["symbol"]
             if group is not None and group != symbol and group not in region_of.get(symbol, ()):
                 continue
+            if unique:
+                size = sum((blobs.root / f"{k}.npy").stat().st_size for k in call["operands"])
+                if symbol not in picked or size < picked[symbol][0]:
+                    picked[symbol] = (size, input_id, call)
+                continue
             if not all_calls and call["ordinal"] >= FAST_CALLS_PER_SYMBOL:
                 continue
-            cases.append(
-                RP.ReplayCase(
-                    symbol=symbol,
-                    label=f"{input_id}/{program}/{symbol}#{call['ordinal']}",
-                    roles=tuple(call["roles"]),
-                    operands=tuple(blobs.get(k) for k in call["operands"]),
-                    expected=tuple(blobs.get(k) for k in call["expected"]),
-                )
-            )
+            cases.append(case(input_id, call))
+    if unique:
+        cases = [case(input_id, call) for _, (_, input_id, call) in sorted(picked.items())]
     return cases
 
 
@@ -139,9 +159,11 @@ def _chunks(cases: Sequence[RP.ReplayCase]) -> list[list[RP.ReplayCase]]:
     return [c for c in chunks if c]
 
 
-def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, work: Path) -> dict[str, Any]:
+def _replay_program(
+    args, bundle, model, program, inputs, *, group, all_calls, work: Path, unique: bool = False, engine=None
+) -> dict[str, Any]:
     catalog = bundle.catalog(model.name, program)
-    cases = _cases(bundle, model.name, program, inputs, group=group, all_calls=all_calls)
+    cases = _cases(bundle, model.name, program, inputs, group=group, all_calls=all_calls, unique=unique)
     symbols = sorted({c.symbol for c in cases})
     toolchain = RP.toolchain_for(args.host_package)
     started = time.monotonic()
@@ -162,17 +184,30 @@ def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, w
     verdicts: list[dict[str, Any]] = []
     images: list[dict[str, Any]] = []
     runnable = [c for c in cases if c.symbol in built.kernels]
-    for index, chunk in enumerate(_chunks(runnable)):
+    if engine is not None:  # board images, run on Spike then on the bound RTL engine
+        verdicts, images = EN.replay_on_board(
+            catalog.target,
+            engine,
+            runnable,
+            built.kernels,
+            catalog.interfaces,
+            objects,
+            toolchain,
+            work,
+            timeout_s=args.timeout_s,
+            jobs=getattr(args, "jobs", 1),
+            max_cycles=getattr(args, "max_cycles", None),
+            call_max_cycles=getattr(args, "call_max_cycles", None),
+            log=lambda line: print(line, file=sys.stderr, flush=True),
+        )
+    for index, chunk in enumerate(_chunks(runnable) if engine is None else ()):
         image_dir = work / f"image_{index}"
         image_dir.mkdir(parents=True, exist_ok=True)
         main_c, data_s, plan = RP._write_image_sources(image_dir, chunk, built.kernels, catalog.interfaces)  # noqa: SLF001
         elf = RP.link_image(image_dir, main_c, data_s, objects, toolchain)
-        if args.engine == "spike":
-            console, wall = RP.run_image(
-                catalog.target, elf, dram_base=args.dram_base, dram_bytes=args.dram_bytes, timeout=args.timeout_s
-            )
-        else:
-            raise RP.ReplayError("replay on gsim is not wired yet in this version")
+        console, wall = RP.run_image(
+            catalog.target, elf, dram_base=args.dram_base, dram_bytes=args.dram_bytes, timeout=args.timeout_s
+        )
         verdicts += RP.judge_console(console, plan)
         images.append({"cases": len(chunk), "engine": args.engine, "seconds": round(wall, 1), "elf": str(elf)})
     per_symbol: dict[str, dict[str, Any]] = {}
@@ -192,6 +227,7 @@ def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, w
         row = per_symbol.get(symbol, {"symbol": symbol, "cases": 0, "exact": 0, "mismatches": []})
         status = "pass" if row["cases"] and row["exact"] == row["cases"] else "fail"
         kernels.append({**row, "status": status, "mismatches": row["mismatches"][:5]})
+    EN.annotate_kernels(kernels, verdicts, cycles_kind="functional" if engine is None else "rtl")
     return {
         "program": program,
         "build": {"seconds": round(build_seconds, 1), "built": len(built.kernels), "refused": len(refused)},
@@ -201,7 +237,7 @@ def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, w
     }
 
 
-def _replay(args, report, *, all_calls: bool, group: str | None) -> dict:
+def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = False) -> dict:
     models = load_models(args.models)
     model = models.model(args.model)
     bundle = _bundle(args)
@@ -211,19 +247,39 @@ def _replay(args, report, *, all_calls: bool, group: str | None) -> dict:
     inputs = bundle.inputs(model.name, args.split)
     if not inputs:
         raise B.BundleError(f"bundle has no {args.split} inputs for {model.name}")
-    if not all_calls:
+    if not all_calls and not unique:
         inputs = inputs[:FAST_INPUTS]
     from merlin.common.paths import build_dir
 
-    work = Path(args.work or (build_dir() / "model_check")) / f"{model.name}-{int(time.time())}"
+    engine = None
+    if args.engine == "gsim":
+        if args.rtl_facts is None:
+            raise B.BundleError("gsim replay needs the RTL facts: pass --rtl-facts or use a bundle that records them")
+        engine = EN.GsimEngine(models.target, args.rtl_facts, board_catalog=getattr(args, "board_catalog", None))
+        report["engine"] = engine.identity()
+    # Absolute: the image's compilers run inside it. Unique per process: two replays may start together.
+    work = Path(args.work or (build_dir() / "model_check")).resolve() / f"{model.name}-{int(time.time())}-{os.getpid()}"
     programs = _programs(model, args)
     for program in programs:
         report["programs"].append(
-            _replay_program(args, bundle, model, program, inputs, group=group, all_calls=all_calls, work=work / program)
+            _replay_program(
+                args,
+                bundle,
+                model,
+                program,
+                inputs,
+                group=group,
+                all_calls=all_calls,
+                work=work / program,
+                unique=unique,
+                engine=engine,
+            )
         )
     kernels = [k for p in report["programs"] for k in p["kernels"]]
     refused = [k for k in kernels if k["status"] == "refused"]
-    failed = [k for k in kernels if k["status"] == "fail"]
+    failed = [k for k in kernels if k["status"] in ("fail", "unfinished")]
+    if engine is not None:
+        _engine_gates(report, kernels)
     report["gates"]["build"] = {
         "status": "pass" if not refused else "fail",
         "detail": f"{len(kernels) - len(refused)}/{len(kernels)} kernels built",
@@ -246,9 +302,47 @@ def _replay(args, report, *, all_calls: bool, group: str | None) -> dict:
     return report
 
 
+def _engine_gates(report: dict, kernels: Sequence[dict[str, Any]]) -> None:
+    """RTL replay: the same image must print the same digests on Spike and on the RTL engine, call by
+    call; a call an engine bound stopped is an infrastructure failure (exit 3), never a verdict."""
+    judged = [k for k in kernels if k["status"] != "refused"]
+    calls = sum(k.get("cases", 0) for k in judged)
+    agree = sum(k.get("engines_agree", 0) for k in judged)
+    unfinished = [k for k in judged if k.get("unfinished")]
+    report["gates"]["engine_agreement"] = {
+        "status": "pass" if judged and agree == calls and not unfinished else "fail",
+        "detail": f"{agree}/{calls} calls print identical digests on spike and gsim (same board image)",
+    }
+    for kernel in unfinished:
+        report["failures"].append(
+            {
+                "kind": "infrastructure",
+                "gate": "kernel_exact",
+                "symbol": kernel["symbol"],
+                "detail": "engine bound reached before: " + ", ".join(kernel["unfinished"]),
+            }
+        )
+    for kernel in judged:
+        if kernel.get("over_call_budget"):
+            report["failures"].append(
+                {
+                    "kind": "budget",
+                    "gate": None,
+                    "symbol": kernel["symbol"],
+                    "detail": f"{kernel['over_call_budget']} call(s) over --call-max-cycles ({kernel.get('cycles')})",
+                }
+            )
+
+
 @register("replay-kernel")
 def replay_kernel(args: argparse.Namespace, report: dict) -> dict:
-    report = _replay(args, report, all_calls=bool(args.all_groups) or args.split != "visible", group=args.group)
+    report = _replay(
+        args,
+        report,
+        all_calls=bool(args.all_groups) or args.split != "visible",
+        group=args.group,
+        unique=bool(getattr(args, "unique", False)),
+    )
     report["gates"]["kernel_exact"]["partial"] = False
     return report
 
