@@ -7,6 +7,7 @@ Build, run and judge complete quantized models for a device submission.
 ## Modules
 
 - `cli.py` — Command line of ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md`` §2).
+- `kernel_reference.py` — The expected result of one device-kernel call: the group's interface program evaluated in numpy.
 - `models.py` — The models file: which programs make up each model, how they chain, and what is judged.
 - `report.py` — The ``model_check_report`` document: construction, agent view, validation and exit codes.
 
