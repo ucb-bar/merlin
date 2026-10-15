@@ -1144,6 +1144,7 @@ def _split_fresh_local_deallocs(ctx, module):
             and len(op.operands) == 3 and len(op.results) == 1
             and str(op.results[0].type) == str(op.operands[2].type)
             and len(decl.arg_attrs) == 3
+            and all('bufferization.access' in attrs for attrs in decl.arg_attrs)
             and [str(attrs['bufferization.access']) for attrs in decl.arg_attrs]
             == ['"read"', '"read"', '"write"']
         )

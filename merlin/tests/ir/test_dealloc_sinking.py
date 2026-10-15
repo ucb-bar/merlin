@@ -268,6 +268,14 @@ def test_split_keeps_a_device_result_and_its_output_as_one_allocation(tmp_path):
     assert "0 fresh allocs" in foreign.stdout
     assert "bufferization.dealloc" in foreign.stdout
 
+    src.write_text(source.replace('bufferization.access = "write"', 'other.access = "write"'), encoding="utf-8")
+    missing_contract = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "0 fresh allocs" in missing_contract.stdout
+    assert "bufferization.dealloc" in missing_contract.stdout
+
     # A void foreign call can still retain the output, including inside a
     # region. No returned memref is needed for the aggregate split to be unsafe.
     capture = source.replace(
