@@ -165,6 +165,7 @@ def audit(run_dir: Path) -> dict:
         "gsim_pass_with_cycles": sum(r["cycles_measured"] for r in gsim_pass),
         "gsim_pass_complete": len(complete),
         "timing_ready": bool(gsim_pass) and len(complete) == len(gsim_pass),
+        "timing_target_scope": "selected_gsim_elaboration_only",
         "cycle_scope": "kernel entry through selected completion; excludes output publication",
         "records": rows,
     }

@@ -81,7 +81,8 @@ one row per `capsule_result.json`, including repeated paid executions:
 | `sim_provenance`, `derived_from_rtl`, `cycle_accurate`, `timing` | Simulator binary/provenance, L3 evidence class and host wall durations |
 
 `index.json` also contains `capsule_records`, `gsim_pass_records`,
-`gsim_pass_with_cycles`, `gsim_pass_complete`, and `timing_ready`. A consumer
+`gsim_pass_with_cycles`, `gsim_pass_complete`, `timing_ready`, and
+`timing_target_scope: selected_gsim_elaboration_only`. A consumer
 must verify tar members against indexed SHA256 values before use. The original
 ELF embeds the harness's exact input bytes; the archived `harness.c`,
 `input.interface.mlir`, `command_buffer.json`, result and logs expose the input
@@ -107,3 +108,24 @@ training code identities, the split manifest, holdout report, and the declared
 prediction scope. Phase 2 may use the tuned model only for that scope and must
 keep gSIM as the source of actual RTL timing evidence. Full-model executions are
 outside this capsule dataset.
+
+The compiler agent receives the selected Phase 1 contract and RTL facts through
+the frozen input bundle. The Gemmini task grant also contains
+`task/PHASE2_TARGET.md`, which names the planned full U250
+`FireSimGemminiRocketConfig` bitstream, board address map and ABI identity.
+Those facts are useful target context, but the current Phase 1 RTL facts describe
+`GemminiRocketConfig` and the capsule labels describe the selected gSIM design.
+The FireSim generator pin is a different revision. A model fitted to these labels
+must declare its gSIM design identity; transferring it to FireSim requires a
+reviewed fact comparison or a matching FireSim extraction and paired cycle
+measurements on the pinned bitstream. The FireSim board name alone does not
+qualify the timing model for Phase 2 board predictions.
+
+The preferred correction is to derive Phase 0 facts and the Phase 1 gSIM build
+from the **same pinned Gemmini generator revision** as the intended FireSim
+bitstream, with the ordinary `GemminiRocketConfig` chip inside the appropriate
+gSIM and FireSim wrappers. Pin the resulting FIRRTL, gSIM receipt, contract,
+Spike extension and FireSim bitstream separately. Verify the chip RTL/parameter
+and ABI match; then measure matched capsule ELFs on gSIM and the board to
+calibrate any wrapper/clock/transport difference. Reusing a configuration name
+or fitting old gSIM labels does not perform that verification.

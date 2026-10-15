@@ -296,6 +296,11 @@ a fixed-denominator offload census, and gSIM evidence for every distinct device 
 programs use. Public capsules remain a regression suite. `qa/verdict.json` reports your
 visible-input results. Sealed-input results appear only in the official grade.
 
+The frozen `task/PHASE2_TARGET.md` describes the planned FireSim deployment
+target and its relationship to this release's selected RTL facts. Read the
+selected facts and contract for the exact Phase 1 compilation target; retain
+their identities when reporting any timing observation.
+
 ## Deliverable
 
 Write a self-contained `submission/` with `manifest.yaml`, compiler sources, the four required
