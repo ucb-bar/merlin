@@ -36,6 +36,39 @@ theorem step_agrees {s v : Op} (ho : v.operands = s.operands) (hr : v.regions = 
     · rw [hs]; exact Or.inr (Or.inl ⟨r, rfl⟩)
     · rw [he]; exact Or.inr (Or.inr rfl)
 
+/-- Lift any checked one-operation simulation through the actual target's SSA renaming.
+Operand permutations may use this directly; expansions with unchanged operands use `step_agrees`. -/
+theorem site_of_step {ρ ρ' : Rho} {s v t : Op}
+    (hst : s.isTerminator = false) (htt : t.isTerminator = false)
+    (hr : v.regions = s.regions) (hcallee : calleeOf v.blind = none)
+    (halpha : alphaOp ρ v t = some ρ') (ctx : Ctx) (callS callT : CallSem) (envS envT : Env)
+    (hc : Corr ρ envS envT)
+    (hcall : CallAgree callS callT (calleesOps [s] ++ calleesOps [t]))
+    (hstep : stepOp opSem ctx callS envS s = .ub ∨
+      (∃ r, stepOp opSem ctx callS envS s = .stuck r) ∨
+      stepOp opSem ctx callS envS v = stepOp opSem ctx callS envS s) :
+    SiteRel ρ' (execOps opSem ctx callT envT [t]) (execOps opSem ctx callS envS [s]) := by
+  have hcallR : CallAgree callS callT (calleesRegions v.regions) := by
+    rw [hr]
+    intro c hm
+    apply hcall c
+    exact List.mem_append_left _ (by
+      rw [calleesOps_cons]
+      exact List.mem_append_left _ (List.mem_append_right _ hm))
+  rw [execOps_cons_step _ _ _ _ _ _ hst, execOps_cons_step _ _ _ _ _ _ htt]
+  rcases hstep with hu | ⟨r, hs⟩ | heq
+  · rw [hu]; exact Or.inl rfl
+  · rw [hs]; exact Or.inr (Or.inl ⟨r, rfl⟩)
+  · rw [← heq]
+    have hcallOp : ∀ c, calleeOf v.blind = some c → callS c = callT c := by
+      intro c h; rw [hcallee] at h; cases h
+    rcases alphaOp_step callS callT ctx halpha hc hcallOp hcallR with
+      ⟨hs, _⟩ | ⟨⟨r, hs⟩, _⟩ | ⟨eS, eT, hs, ht, hcorr⟩
+    · rw [hs]; exact Or.inl rfl
+    · rw [hs]; exact Or.inr (Or.inl ⟨r, rfl⟩)
+    · rw [hs, ht]
+      exact Or.inr (Or.inr ⟨eS, eT, rfl, rfl, hcorr⟩)
+
 def check (E : Expansion) (ρ : Rho) : List Op → List Op → Option Rho
   | [s], [t] => do
     let v ← E.expand s
@@ -57,26 +90,8 @@ theorem check_sound (E : Expansion) : ∀ ρ ss ts ρ', check E ρ ss ts = some 
       have htt : t.isTerminator = false := (isTerminator_of_opHeadEq (alphaOp_spec h).1) ▸ hvt
       refine ⟨by simpa using hst, by simpa using htt,
         fun ctx callS callT envS envT hc hcall => ?_⟩
-      have hcallR : CallAgree callS callT (calleesRegions v.regions) := by
-        rw [hr]
-        intro c hm
-        apply hcall c
-        exact List.mem_append_left _ (by
-          rw [calleesOps_cons]
-          exact List.mem_append_left _ (List.mem_append_right _ hm))
-      rw [execOps_cons_step _ _ _ _ _ _ hst, execOps_cons_step _ _ _ _ _ _ htt]
-      rcases step_agrees ho hr hv hsem ctx callS envS with hu | ⟨r, hs⟩ | heq
-      · rw [hu]; exact Or.inl rfl
-      · rw [hs]; exact Or.inr (Or.inl ⟨r, rfl⟩)
-      · rw [← heq]
-        have hcallOp : ∀ c, calleeOf v.blind = some c → callS c = callT c := by
-          intro c h; rw [hcallee] at h; cases h
-        rcases alphaOp_step callS callT ctx h hc hcallOp hcallR with
-          ⟨hs, _⟩ | ⟨⟨r, hs⟩, _⟩ | ⟨eS, eT, hs, ht, hcorr⟩
-        · rw [hs]; exact Or.inl rfl
-        · rw [hs]; exact Or.inr (Or.inl ⟨r, rfl⟩)
-        · rw [hs, ht]
-          exact Or.inr (Or.inr ⟨eS, eT, rfl, rfl, hcorr⟩)
+      exact site_of_step hst htt hr hcallee h ctx callS callT envS envT hc hcall
+        (step_agrees ho hr hv hsem ctx callS envS)
   | _, [], _, _, h => by simp [check] at h
   | _, _ :: _ :: _, _, _, h => by simp [check] at h
   | _, [_], [], _, h => by simp [check] at h
