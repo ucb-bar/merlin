@@ -99,15 +99,16 @@ class ToolchainPaths:
             if selected_llvm != repo / "third_party/llvm-install"
             else repo / "build/host-merlin-release/install"
         )
-        # Historical bundle manifests grant the package at merlin/python/merlin,
-        # while new releases grant the selected installed source at src/merlin.
-        # Both roots remain hidden by bwrap until exact grants are replayed;
-        # searching both makes the legacy and selected manifests executable
-        # without exposing an ungranted checkout tree.
+        # A frozen bundle may name a different checkout from the implementation
+        # running this manager. Search that declared checkout's curated source
+        # closure as well as the implementation source; bwrap still exposes only
+        # files admitted by the bundle.
         legacy_source = repo / "merlin/python"
-        import_roots = (
-            (str(legacy_source), str(python_source_dir())) if legacy_source.is_dir() else (str(python_source_dir()),)
-        )
+        import_roots = tuple(dict.fromkeys(str(path) for path in (
+            *((legacy_source,) if legacy_source.is_dir() else ()),
+            repo / "src",
+            python_source_dir(),
+        )))
         return cls(
             repo=repo,
             venv=str(selected_venv),

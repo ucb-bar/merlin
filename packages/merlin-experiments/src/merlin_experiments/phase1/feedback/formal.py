@@ -577,6 +577,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             output=run_dir.absolute() / "public_owned_host_build_selection.json",
             selected_facts=a.rtl_facts,
             selected_facts_sha256=file_sha256(a.rtl_facts) if a.rtl_facts is not None else None,
+            descriptor=context.descriptor,
         )
         os.environ[public_owned_host_selection.ENV] = json.dumps(public_host_selection, sort_keys=True)
 

@@ -258,6 +258,40 @@ def test_split_keeps_a_device_result_and_its_output_as_one_allocation(tmp_path):
     assert proc.stdout.count("memref.dealloc %alloc") == 1
     assert "bufferization.dealloc" not in proc.stdout
 
+    # A bias-bearing device group has three read-only inputs and the same
+    # writable, returned output contract. Its extra input must not prevent
+    # splitting every otherwise-owned allocation in a whole model.
+    biased = source.replace(
+        "@merlin_dev_test(%input, %input, %out)",
+        "@merlin_dev_test(%input, %input, %input, %out)",
+    ).replace(
+        "(memref<4xf32>, memref<4xf32>, memref<4xf32>) -> memref<4xf32>",
+        "(memref<4xf32>, memref<4xf32>, memref<4xf32>, memref<4xf32>) -> memref<4xf32>",
+    ).replace(
+        '        memref<4xf32> {bufferization.access = "write"})',
+        '        memref<4xf32> {bufferization.access = "read"},\n'
+        '        memref<4xf32> {bufferization.access = "write"})',
+    )
+    src.write_text(biased, encoding="utf-8")
+    bias_group = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "1 fresh allocs 1 device aliases" in bias_group.stdout
+    assert bias_group.stdout.count("memref.dealloc %alloc") == 1
+    assert "bufferization.dealloc" not in bias_group.stdout
+
+    src.write_text(biased.replace('bufferization.access = "read"},\n'
+                                  '        memref<4xf32> {bufferization.access = "write"}',
+                                  'bufferization.access = "write"},\n'
+                                  '        memref<4xf32> {bufferization.access = "write"}'), encoding="utf-8")
+    invalid_bias = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "0 fresh allocs" in invalid_bias.stdout
+    assert "bufferization.dealloc" in invalid_bias.stdout
+
     # A lookalike foreign call has no Merlin shim alias contract; retain the
     # aggregate so upstream's runtime ownership check remains authoritative.
     src.write_text(source.replace("merlin_dev_test", "foreign_test"), encoding="utf-8")

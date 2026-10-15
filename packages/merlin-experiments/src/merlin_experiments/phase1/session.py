@@ -787,6 +787,7 @@ def _prepare(
         _private_full_model_spec, _instruction_selection, target=context.target, run_dir=run_dir,
         selected_facts=_selected_public_facts,
         selected_facts_sha256=file_sha256(_selected_public_facts) if _selected_public_facts is not None else None,
+        descriptor=context.descriptor,
     )
 
     if _resuming and _environment_record.get("corpus_review") != _corpus_review:

@@ -247,8 +247,8 @@ def _execution_timeout_ceiling(block):
     _fields(resources, {"max_native_timeout_s"}, {"max_model_spike_timeout_s"})
     ceiling = resources["max_native_timeout_s"]
     _require(
-        type(ceiling) is int and 0 < ceiling <= 3600,
-        "selected native process ceiling must be an integer within 1..3600 seconds",
+        type(ceiling) is int and 0 < ceiling <= 7200,
+        "selected native process ceiling must be an integer within 1..7200 seconds",
     )
     return ceiling
 

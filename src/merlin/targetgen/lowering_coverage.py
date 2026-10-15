@@ -121,6 +121,7 @@ def probe_shape(
     timeout: int = 300,
     additional_forbidden: tuple[str, ...] = (),
     on_lowered: Callable[[str, Path], None] | None = None,
+    _prepared_package=None,
 ) -> tuple[str, str | None, int]:
     """Run ONLY the emit half of the contract for one shape; classify what came back.
 
@@ -149,7 +150,7 @@ def probe_shape(
         )
         try:
             _pkg, cb, _art = run_entrypoints(
-                None,
+                _prepared_package,
                 package,
                 capsule,
                 paths,
@@ -210,6 +211,23 @@ def sweep(
     tail_corners = TAIL_CORNERS if tail_corners is None else tail_corners
     results: list[CoverageResult] = []
     work: dict[str, int] = {}
+    # The eight corners use the same immutable submission. Build and scan it once;
+    # the per-corner path otherwise repeats a full package walk and build eight times.
+    # If preparation fails, let the existing per-corner path report the original
+    # integrity/build failure with its usual classification.
+    prepared = None
+    try:
+        from .package_runtime import build_package, integrity_scan, load_package
+
+        prepared = load_package(package, contract=contract)
+        integrity_scan(
+            prepared,
+            **({"additional_forbidden": additional_forbidden} if additional_forbidden else {}),
+        )
+        build_package(prepared)
+    except Exception:  # noqa: BLE001 -- preserve the original per-corner failure reporting
+        prepared = None
+    reuse = {"_prepared_package": prepared} if prepared is not None else {}
     for name, (fm, fk, fn) in corners.items():
         m, k, n = tile * fm, tile * fk, tile * fn
         outcome, detail, w = probe_shape(
@@ -223,6 +241,7 @@ def sweep(
             contract=contract,
             timeout=timeout,
             additional_forbidden=additional_forbidden,
+            **reuse,
         )
         work[name] = w
         results.append(CoverageResult(name, (m, k, n), outcome, detail, w))
@@ -239,6 +258,7 @@ def sweep(
             contract=contract,
             timeout=timeout,
             additional_forbidden=additional_forbidden,
+            **reuse,
         )
         work[name] = w
         results.append(CoverageResult(name, (m, k, n), outcome, detail, w))
