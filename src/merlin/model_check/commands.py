@@ -256,27 +256,60 @@ def _one_per_symbol(cases: Sequence[RP.ReplayCase]) -> list[RP.ReplayCase]:
 
 
 def _replay_cases(
-    args, catalog, cases: Sequence[RP.ReplayCase], work: Path, *, engine=None, deadline: float | None = None
+    args,
+    catalog,
+    cases: Sequence[RP.ReplayCase],
+    work: Path,
+    *,
+    cache_root: Path | None = None,
+    engine=None,
+    deadline: float | None = None,
 ) -> dict[str, Any]:
-    """Build the package's kernels for ``cases``' symbols, replay every case and judge it exactly
-    (``engine``: board images on Spike, then on that RTL engine, within ``deadline``)."""
+    """Build the package's kernels for ``cases``' symbols, replay every case and judge it exactly.
+
+    ``cache_root`` holds the stored kernel objects and replay consoles (default: the build tree's);
+    cases that must stay private (sealed variants) pass a private one. ``engine``: board images on
+    Spike, then on that RTL engine, within ``deadline``; those runs are never answered from the
+    console store, and a mismatch is not localized (each localizing run would be another RTL run).
+    """
+    from merlin.model_check import cache as KC
+    from merlin.model_check import diagnostics as DG
+    from merlin.model_check import export as EX
+
     symbols = sorted({c.symbol for c in cases})
     toolchain = RP.toolchain_for(args.host_package)
+    use_cache = not getattr(args, "no_cache", False)
     started = time.monotonic()
-    built = RP.build_kernels(
-        catalog.target,
-        catalog.sidecar,
+    built = KC.build_kernels(
+        catalog,
         symbols,
         package_dir=args.submission,
         workdir=work / "device",
-        operand_dtype=catalog.routing["operand_dtype"],
-        accum_dtype=catalog.routing["accum_dtype"],
-        numeric_policy=catalog.routing["numeric_policy"],
         toolchain=toolchain,
+        build=RP.build_kernels,
+        enabled=use_cache,
+        root=cache_root,
     )
     build_seconds = time.monotonic() - started
-    refused = {str(sym): str(why) for sym, why in built.skipped}
-    objects = [o for o in built.objects if Path(o).name != "device_shim.o"]
+    refused, objects = built.refused, built.objects
+
+    def run(image_dir: Path, main_c: Path, data_s: Path, linked) -> tuple[str, float, dict[str, Any]]:
+        if engine is not None or args.engine != "spike":
+            raise RP.ReplayError("only functional replays are linked and answered here (gsim: engines.py)")
+        return KC.replay_image(
+            image_dir,
+            main_c,
+            data_s,
+            linked,
+            toolchain,
+            target=catalog.target,
+            dram_base=args.dram_base,
+            dram_bytes=args.dram_bytes,
+            timeout=args.timeout_s,
+            enabled=use_cache,
+            root=cache_root,
+        )
+
     verdicts: list[dict[str, Any]] = []
     images: list[dict[str, Any]] = []
     runnable = [c for c in cases if c.symbol in built.kernels]
@@ -301,12 +334,17 @@ def _replay_cases(
         image_dir = work / f"image_{index}"
         image_dir.mkdir(parents=True, exist_ok=True)
         main_c, data_s, plan = RP._write_image_sources(image_dir, chunk, built.kernels, catalog.interfaces)  # noqa: SLF001
-        elf = RP.link_image(image_dir, main_c, data_s, objects, toolchain)
-        console, wall = RP.run_image(
-            catalog.target, elf, dram_base=args.dram_base, dram_bytes=args.dram_bytes, timeout=args.timeout_s
-        )
+        console, wall, record = run(image_dir, main_c, data_s, objects)
         verdicts += RP.judge_console(console, plan)
-        images.append({"cases": len(chunk), "engine": args.engine, "seconds": round(wall, 1), "elf": str(elf)})
+        images.append(
+            {
+                "cases": len(chunk),
+                "engine": args.engine,
+                "seconds": round(wall, 1),
+                "elf": record.get("elf"),
+                "cached": record["cached"],
+            }
+        )
     per_symbol: dict[str, dict[str, Any]] = {}
     for verdict in verdicts:
         row = per_symbol.setdefault(
@@ -318,16 +356,41 @@ def _replay_cases(
             row["mismatches"].append(verdict["label"])
     kernels = []
     for symbol in symbols:
-        identity = _kernel_identity(catalog, symbol)
+        identity = {**_kernel_identity(catalog, symbol), "form": EX.describe(catalog, symbol)["form"]}
         if symbol in refused:
-            kernels.append({"symbol": symbol, **identity, "status": "refused", "detail": refused[symbol][:300]})
+            kernels.append(
+                {
+                    "symbol": symbol,
+                    **identity,
+                    "status": "refused",
+                    "detail": refused[symbol][:300],
+                    "diagnosis": DG.refusal(catalog, symbol, refused[symbol]),
+                }
+            )
             continue
         row = per_symbol.get(symbol, {"symbol": symbol, "cases": 0, "exact": 0, "mismatches": []})
         status = "pass" if row["cases"] and row["exact"] == row["cases"] else "fail"
         kernels.append({**row, **identity, "status": status, "mismatches": row["mismatches"][:5]})
     EN.annotate_kernels(kernels, verdicts, cycles_kind="functional" if engine is None else "rtl")
+    if engine is None:
+        diagnoses = DG.localize(
+            runnable,
+            verdicts,
+            catalog=catalog,
+            kernels=built.kernels,
+            objects=objects,
+            work=work / "diagnose",
+            run=lambda *image: run(*image)[0],
+            image_bytes=IMAGE_BYTES,
+        )
+        DG.attach(kernels, diagnoses)
     return {
-        "build": {"seconds": round(build_seconds, 1), "built": len(built.kernels), "refused": len(refused)},
+        "build": {
+            "seconds": round(build_seconds, 1),
+            "built": len(built.kernels),
+            "refused": len(refused),
+            "cache": built.stats,
+        },
         "kernels": kernels,
         "images": images,
         "refused": refused,
@@ -383,7 +446,15 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
                 varied_cases = varied.cases(group=group)
                 if unique:
                     varied_cases = _one_per_symbol(varied_cases)
-                row = _replay_cases(args, varied.catalog, varied_cases, private, engine=engine, deadline=deadline)
+                row = _replay_cases(
+                    args,
+                    varied.catalog,
+                    varied_cases,
+                    private,
+                    cache_root=VAR.scratch(bundle.root, model.name) / "cache",
+                    engine=engine,
+                    deadline=deadline,
+                )
                 varied.annotate(row["kernels"])
                 report["programs"].append({"program": program, "split": "sealed", "source": VAR.SOURCE, **row})
     variant_calls = sum(k.get("cases", 0) for p in report["programs"] if p.get("source") for k in p["kernels"])
@@ -404,15 +475,18 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
         f"{variant_calls} shape variant(s); {len(failed)} kernel(s) differ or did not finish",
     }
     for kernel in failed:
-        report["failures"].append(
-            {
-                "kind": "gate",
-                "gate": "kernel_exact",
-                "symbol": kernel["symbol"],
-                "detail": ", ".join(kernel["mismatches"]),
-                **({"split": "sealed"} if "variant_of" in kernel else {}),
-            }
-        )
+        failure = {
+            "kind": "gate",
+            "gate": "kernel_exact",
+            "symbol": kernel["symbol"],
+            "detail": ", ".join(kernel["mismatches"]),
+            **({"split": "sealed"} if "variant_of" in kernel else {}),
+        }
+        if "diagnosis" in kernel:  # a visible input's: any other split's stays under the kernel's sealed key
+            from merlin.model_check.diagnostics import summary
+
+            failure["where"] = summary(kernel["diagnosis"])
+        report["failures"].append(failure)
     return report
 
 
@@ -501,6 +575,34 @@ def check(args: argparse.Namespace, report: dict) -> dict:
             if exact
             else "a kernel differs from its reference; the model gate cannot pass",
         }
+    return report
+
+
+@register("kernels-export")
+def kernels_export(args: argparse.Namespace, report: dict) -> dict:
+    from merlin.model_check import export as EX
+
+    models = load_models(args.models)
+    model = models.model(args.model)
+    bundle = _bundle(args)
+    report["bundle"] = {"path": str(bundle.root), "merlin_commit": bundle.manifest().get("merlin_commit")}
+    record = EX.export_model(bundle, model, args.out_dir, programs=_programs(model, args))
+    for program in record["programs"]:
+        report["programs"].append(
+            {
+                "program": program["program"],
+                "census": program["census"],
+                "kernels": [
+                    {k: kernel[k] for k in ("symbol", "form", "routed_groups", "interface_sha256", "path")}
+                    for kernel in program["kernels"]
+                ],
+            }
+        )
+    count = sum(len(p["kernels"]) for p in record["programs"])
+    report["gates"]["export"] = {
+        "status": "pass",
+        "detail": f"{count} kernel(s) of {len(record['programs'])} program(s) -> {Path(args.out_dir) / model.name}",
+    }
     return report
 
 
