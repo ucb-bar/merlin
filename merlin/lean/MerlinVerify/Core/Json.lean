@@ -3,7 +3,7 @@ Decoder: `merlin.lean.ir.v1` JSON (`merlin/contract/schemas/lean_ir.schema.json`
 
 Total (no `partial def`): recursion is bounded by an explicit fuel, the caller passes the input's
 byte length, which bounds the JSON nesting depth. Exhausted fuel is an error, never a truncation.
-Every field is validated; anything not matching the schema is rejected with a path in the message.
+Every field is validated; anything not matching the schema is rejected with a message naming it.
 `Lean.Json.parse` itself is part of the trusted base (design D11); the round trip (design D9)
 checks decode∘export against MLIR's own printer.
 -/
@@ -214,13 +214,45 @@ mutual
       return .mk args body :: (← blocks fuel js)
 end
 
+/-- An object with exactly the `required` keys plus any of the `optional` ones. -/
+def exactKeys (what : String) (j : Json) (required optional : List String) : D Unit := do
+  let kvs ← obj j
+  for (k, _) in kvs do
+    unless required.contains k || optional.contains k do throw s!"{what}: unexpected field '{k}'"
+  for k in required do
+    unless (kvs.lookup k).isSome do throw s!"{what}: missing field '{k}'"
+
+def sha256 (what : String) (j : Json) : D Unit := do
+  let s ← str j
+  unless s.length == 64 && s.all (fun c => c.isDigit || ('a' ≤ c && c ≤ 'f')) do
+    throw s!"{what}: expected a lowercase hex SHA-256"
+
+/-- `source`: the digest and size of the MLIR bytes the document was exported from. Only its form
+is checked here; that it names the bytes a verdict is about is checked by the receipt writer, which
+exports those bytes itself. -/
+def source (j : Json) : D Unit := do
+  exactKeys "source" j ["sha256", "bytes"] ["path"]
+  sha256 "source.sha256" (← field j "sha256")
+  let _ ← nat (← field j "bytes")
+  if let some p := optField j "path" then let _ ← str p
+
+def producer (j : Json) : D Unit := do
+  exactKeys "producer" j ["tool", "version"] ["mlir_revision", "executable_sha256"]
+  let _ ← str (← field j "tool")
+  let _ ← str (← field j "version")
+  if let some r := optField j "mlir_revision" then let _ ← str r
+  if let some e := optField j "executable_sha256" then sha256 "producer.executable_sha256" e
+
 /-- Decode a whole `merlin.lean.ir.v1` document. -/
 def module (text : String) : D Module := do
   let j ← match Json.parse text with
     | .ok j => pure j
     | .error e => throw s!"invalid JSON: {e}"
+  exactKeys "document" j ["schema", "source", "producer", "module"] []
   let schema ← str (← field j "schema")
   if schema ≠ "merlin.lean.ir.v1" then throw s!"unexpected schema '{schema}'"
+  source (← field j "source")
+  producer (← field j "producer")
   let fuel := text.utf8ByteSize + 1
   let m ← field j "module"
   let body ← ops fuel (← arr (← field m "ops"))
