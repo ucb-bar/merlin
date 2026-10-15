@@ -98,6 +98,9 @@ def ordinary_inputs(tmp_path, monkeypatch):
         return functional
 
     monkeypatch.setattr(FI, "inspect_stage_functional_run", inspect)
+    # This fixture substitutes external qualification and measurements; the
+    # real evidence reader has independent tests and never runs a simulator.
+    monkeypatch.setattr(FI, "require_formal_qualification", lambda functional, target: None)
     monkeypatch.setattr(FI, "verify_functional_host_lane_snapshot", lambda snapshot: None)
     monkeypatch.setattr(PC, "verify_private_input_snapshot", lambda run_dir, environment: None)
     certificate_path = tmp_path / "certificate.json"
@@ -267,6 +270,25 @@ def test_original_functional_refusal_cannot_be_replaced_with_a_saved_pass(ordina
     monkeypatch.setattr(FI, "inspect_stage_functional_run", refuse)
     with pytest.raises(StageGateError, match="original functional admission refused"):
         OS.prepare_ordinary_search_policy(**ordinary_inputs.arguments)
+    assert not ordinary_inputs.executions
+
+
+def test_formal_model_refusal_prevents_feedback_preparation(ordinary_inputs, monkeypatch):
+    def refuse(functional, target):
+        assert functional is ordinary_inputs.functional
+        raise StageGateError("Phase 1 formal qualification is incomplete")
+
+    monkeypatch.setattr(FI, "require_formal_qualification", refuse)
+    with pytest.raises(StageGateError, match="formal qualification"):
+        OS.prepare_ordinary_search_policy(**ordinary_inputs.arguments)
+    assert not ordinary_inputs.executions
+
+
+def test_ordinary_search_cannot_waive_functional_gaps(ordinary_inputs):
+    with pytest.raises(StageGateError, match="unwaived"):
+        OS.prepare_ordinary_search_policy(
+            **ordinary_inputs.arguments, waive_functional_gate=("phase_grade_incomplete",)
+        )
     assert not ordinary_inputs.executions
 
 

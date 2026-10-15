@@ -96,6 +96,15 @@ def test_repeated_artifacts_compile_once_but_keep_distinct_symbols(tmp_path, mon
     monkeypatch.setattr(corpus_spec, "build", lambda entry, binding: (None, entry["name"]))
     monkeypatch.setattr(package_runtime, "load_package", lambda path: SimpleNamespace(target="synthetic"))
     emitted = {"a": "same artifact", "b": "same artifact", "c": "different artifact"}
+    from merlin.targetgen import capsule_common
+
+    def lower(pkg, path, generated, **kwargs):
+        generated.mkdir(parents=True, exist_ok=True)
+        artifact = emitted[path.read_text()]
+        (generated / "lowered.llvm.mlir").write_text(artifact)
+        return {}, artifact
+
+    monkeypatch.setattr(capsule_common, "lower_interface", lower)
     monkeypatch.setattr(
         package_runtime,
         "run_entrypoint",
@@ -205,9 +214,20 @@ def test_required_whole_model_kernel_stops_after_first_tool_timeout(
     def tool(argv, *, timeout):
         if argv[0] == "clang":
             return subprocess.CompletedProcess(argv, 124, "", f"timed out after {timeout} seconds")
+        if argv[0] == "mlir-translate":
+            Path(argv[-1]).write_text("define void @kernel() { ret void }\n")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(package_runtime, "run_entrypoint", emit)
+    from merlin.targetgen import capsule_common
+
+    def lower(pkg, path, generated, **kwargs):
+        generated.mkdir(parents=True, exist_ok=True)
+        artifact = emit(pkg, "emit_target_artifact", path, **kwargs).stdout
+        (generated / "lowered.llvm.mlir").write_text(artifact)
+        return {}, artifact
+
+    monkeypatch.setattr(capsule_common, "lower_interface", lower)
     monkeypatch.setattr(DB, "_run_build_tool", tool)
     kwargs = {"stop_on_first_failure": True} if stop_on_first_failure else {}
     result = build_device_objects(

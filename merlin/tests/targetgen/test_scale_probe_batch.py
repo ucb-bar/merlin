@@ -260,4 +260,3 @@ def test_earlier_case_or_snapshot_mutation_cannot_publish_a_completed_batch(batc
     assert not (batch_setup.output / "public_compile_only.json").exists()
     progress = json.loads((batch_setup.output / "worker-000/.scale_batch_progress.json").read_bytes())
     assert progress["accepted"] is False
-

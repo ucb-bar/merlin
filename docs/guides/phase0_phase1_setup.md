@@ -3,7 +3,7 @@ title: Set up Phase 0 and Phase 1
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-13
+last_verified: 2026-10-14
 related: [gsim_worker_setup, neutral_runtime_tooling, phase0_specification, target_resolution]
 code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/targetgen/generalization_prompt.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_demand.py]
 ---
@@ -307,6 +307,42 @@ values or running simulations. Use bounded L2 execution for numerical checks
 and bounded L3 cases for required native modes, layouts, transfers, accumulation
 and tails. Whole-model L2 success remains distinct from whole-model RTL
 qualification; select and report each required scope explicitly.
+
+## Qualify the compiler before performance search
+
+Keep host compilation in Merlin: source normalization, host arithmetic and packing,
+intermediate buffers, dispatch, linking and runtime use the selected fixed host
+provider. The candidate supplies device implementations and target constraints.
+A mixed source function may need host-owned partitioning before its device regions
+can lower. Check connected public programs through this production path, including
+host/device dependencies, shared inputs and multiple outputs. A standalone device
+reader's refusal is distinct from a failure of the composed model compiler.
+
+Device-object builds use the same checked package lowering as capsule builds.
+The command-buffer schema, logical dtypes and explicit refusal are checked before
+an artifact reaches translation. An emitted LLVM stub or successful process exit
+cannot override a declared refusal. Numerical execution and source accounting
+remain necessary to detect incorrect accepted implementations.
+
+Public authoring readiness and formal qualification are separate results. Freeze
+the compiler before private validation. Require all declared validation programs,
+their linked images and their existing numerical contracts; preserve instruction
+policy, source placement and hardware qualification. Do not return private model
+diagnostics to the authoring loop.
+
+Normal retained-revision Phase 2 search reopens the original formal qualification
+against the descriptor selected by Phase 1. It requires complete model builds and
+execution of every required program, with no functional waivers or deferrals.
+It reads existing evidence without launching another model run. Historical
+capsule-only or explicitly waived diagnostics remain inspectable, but do not
+provide this normal search baseline. A copied compiler bundle without its run
+evidence is a diagnostic candidate, not a qualified handoff.
+
+On the experiment worker, use the existing preflight and launch commands linked
+above with a fresh run ID and the sealed release. After authoring, retain the
+complete formal run directory, compiler digest and frozen host/tool profile.
+Pass that exact run ID and digest to Phase 2. Compile-only checks, unit tests and
+synthetic receipts do not substitute for an executed compiler qualification.
 
 ## Reserve CPU pools before the fresh launch
 
