@@ -14,6 +14,7 @@ from typing import Any
 from merlin.model_check import bundle as B
 from merlin.model_check import metrics as M
 from merlin.model_check import replay as RP
+from merlin.model_check import variants as VAR
 from merlin.model_check.cli import register
 from merlin.model_check.models import load as load_models
 
@@ -92,6 +93,22 @@ def binding(args: argparse.Namespace, report: dict) -> dict:
     report["binding"] = {**BD.record(receipt), "receipt": receipt}
     report["gates"]["binding"] = BD.gate(receipt)
     report["failures"] += BD.failures(receipt)
+    return report
+
+
+@register("variants-build")
+def variants_build(args: argparse.Namespace, report: dict) -> dict:
+    model = load_models(args.models).model(args.model)
+    bundle = _bundle(args)
+    record = VAR.build(bundle, model.name, _programs(model, args), seed=args.seed)
+    report["bundle"] = {"path": str(bundle.root)}
+    report["programs"] = [{"program": name, "variants": row} for name, row in record["programs"].items()]
+    device = [row for row in record["programs"].values() if not row.get("host_only")]
+    report["gates"]["variants"] = {
+        "status": "pass" if device and all(row["variants"] for row in device) else "fail",
+        "detail": f"{sum(r['variants'] for r in device)} variant(s) of {sum(r['kernels'] for r in device)} "
+        f"unique kernel(s); {sum(r['skipped'] for r in device)} class(es) unreachable",
+    }
     return report
 
 
@@ -191,6 +208,11 @@ def _program_census(bundle, model: str, program: str, refused: dict[str, str]) -
 def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, work: Path) -> dict[str, Any]:
     catalog = bundle.catalog(model.name, program)
     cases = _cases(bundle, model.name, program, inputs, group=group, all_calls=all_calls)
+    return {"program": program, **_replay_cases(args, catalog, cases, work)}
+
+
+def _replay_cases(args, catalog, cases: Sequence[RP.ReplayCase], work: Path) -> dict[str, Any]:
+    """Build the package's kernels for ``cases``' symbols, replay every case and judge it exactly."""
     symbols = sorted({c.symbol for c in cases})
     toolchain = RP.toolchain_for(args.host_package)
     started = time.monotonic()
@@ -243,7 +265,6 @@ def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, w
         status = "pass" if row["cases"] and row["exact"] == row["cases"] else "fail"
         kernels.append({**row, **identity, "status": status, "mismatches": row["mismatches"][:5]})
     return {
-        "program": program,
         "build": {"seconds": round(build_seconds, 1), "built": len(built.kernels), "refused": len(refused)},
         "census": _program_census(bundle, model.name, program, refused),
         "kernels": kernels,
@@ -273,6 +294,15 @@ def _replay(args, report, *, all_calls: bool, group: str | None) -> dict:
         report["programs"].append(
             _replay_program(args, bundle, model, program, inputs, group=group, all_calls=all_calls, work=work / program)
         )
+        # The sealed split also carries the program's shape variants, judged like recorded calls.
+        if args.split != "visible":
+            varied = VAR.load(bundle.root, model.name, program, bundle.catalog(model.name, program))
+            if varied is not None:
+                private = VAR.scratch(bundle.root, model.name) / work.name / program
+                row = _replay_cases(args, varied.catalog, varied.cases(group=group), private)
+                varied.annotate(row["kernels"])
+                report["programs"].append({"program": program, "split": "sealed", "source": VAR.SOURCE, **row})
+    variant_calls = sum(k.get("cases", 0) for p in report["programs"] if p.get("source") for k in p["kernels"])
     kernels = [k for p in report["programs"] for k in p["kernels"]]
     refused = [k for k in kernels if k["status"] == "refused"]
     failed = [k for k in kernels if k["status"] == "fail"]
@@ -284,7 +314,7 @@ def _replay(args, report, *, all_calls: bool, group: str | None) -> dict:
         "status": "pass" if kernels and not failed and not refused else "fail",
         "partial": not all_calls,
         "detail": f"{sum(k.get('exact', 0) for k in kernels)}/{sum(k.get('cases', 0) for k in kernels)} calls "
-        f"bit-exact on {len(inputs)} input(s); {len(failed)} kernel(s) differ",
+        f"bit-exact on {len(inputs)} input(s) and {variant_calls} shape variant(s); {len(failed)} kernel(s) differ",
     }
     for kernel in failed:
         report["failures"].append(
@@ -293,6 +323,7 @@ def _replay(args, report, *, all_calls: bool, group: str | None) -> dict:
                 "gate": "kernel_exact",
                 "symbol": kernel["symbol"],
                 "detail": ", ".join(kernel["mismatches"]),
+                **({"split": "sealed"} if "variant_of" in kernel else {}),
             }
         )
     return report
