@@ -596,6 +596,8 @@ def annotate_kernels(kernels: list[dict[str, Any]], rows: Sequence[Mapping[str, 
             kernel["spike_exact"] = sum(bool((r.get("spike") or {}).get("exact")) for r in mine)
         if mine[0].get("shapes"):
             kernel["shapes"] = mine[0]["shapes"]
+        if cycles_kind == "rtl":  # which recorded call(s) the RTL engine ran, as <input>/<program>/<symbol>#<n>
+            kernel["replayed"] = [r["label"] for r in mine][:5]
         unfinished = [r for r in mine if r.get("status") in UNFINISHED]
         if unfinished:
             kernel["unfinished"] = [r["label"] for r in unfinished][:5]
