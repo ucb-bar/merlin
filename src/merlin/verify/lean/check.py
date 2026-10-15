@@ -35,7 +35,7 @@ THEOREM = "MerlinVerify.Check.moduleCheck_sound"
 CHECKER = "MerlinVerify.Check.moduleCheck"
 SUPPORT_THEOREM = "MerlinVerify.Check.supportCheck_sound"
 SUPPORT_CHECKER = "MerlinVerify.Check.supportCheck"
-LEDGER = ["A1", "A2", "A3", "A4", "A5", "A6", "T1", "T2", "T3", "T4", "T5", "T6"]
+LEDGER = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "T1", "T2", "T3", "T4", "T5", "T6"]
 
 
 def _sha(path: Path) -> str:
