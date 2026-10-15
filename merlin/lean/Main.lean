@@ -66,8 +66,7 @@ def main (args : List String) : IO UInt32 := do
         ("claim_type", toJson "refine_conditional"), ("obligation", toJson conditionalObligation),
         ("function", toJson fn), ("verdict", toJson (verdictOf ok)),
         ("steps", toJson input.script.length), ("rule_sites", toJson sites)] ++
-        (if ok then [] else [("reason", toJson
-          "no identity/DCE script relates the functions (a changed op, or an erased op that is used or not effect-free)")]))
+        (if ok then [] else [("reason", toJson ((Check.explainC1 input).getD "refused"))]))
         ok
     | .error e, _ | _, .error e => IO.eprintln s!"decode error: {e}"; return 2
   | ["check-module", beforeJ, afterJ] =>

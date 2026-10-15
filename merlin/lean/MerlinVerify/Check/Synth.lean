@@ -38,4 +38,43 @@ def synthC1 (src tgt : Module) (fn : String) : C1Input :=
     | _, _ => []
   { src, tgt, fn, script }
 
+/-! ### Diagnostics (reports only; no proof depends on them) -/
+
+/-- Why `runScript` refuses, at the first failing step (`none` when it accepts). -/
+def explainScript : Nat → Rho → List Step → List Op → List Op → Option String
+  | _, _, [], [], [] => none
+  | k, ρ, .same :: st, s :: ss, t :: ts =>
+    match alphaOp ρ s t with
+    | some ρ' =>
+      if s.isTerminator then
+        if ss.isEmpty && ts.isEmpty && st.isEmpty then none
+        else some s!"step {k}: ops or steps after the terminator"
+      else explainScript (k + 1) ρ' st ss ts
+    | none => some s!"step {k}: source {s.name} and target {t.name} differ (operands, attributes, types or regions)"
+  | k, ρ, .site R nS nT :: st, ss, ts =>
+    if (ss.take nS).length = nS ∧ (ts.take nT).length = nT then
+      match R.check ρ (ss.take nS) (ts.take nT) with
+      | some ρ' => explainScript (k + 1) ρ' st (ss.drop nS) (ts.drop nT)
+      | none =>
+        let names := (ss.take nS).map (·.name)
+        some s!"step {k}: rule {R.name} refuses {names} (a used result, or an op that is not effect-free)"
+    else some s!"step {k}: rule {R.name} needs more ops than remain"
+  | k, _, [], _, _ => some s!"step {k}: ops remain after the script ends"
+  | k, _, _, _, _ => some s!"step {k}: the script continues past the ops"
+
+/-- Why `c1Check` refuses `i` (`none` when it accepts). -/
+def explainC1 (i : C1Input) : Option String :=
+  match i.src.func? i.fn, i.tgt.func? i.fn with
+  | some fS, some fT =>
+    match fS.body, fT.body with
+    | .mk [.mk argsS opsS], .mk [.mk argsT opsT] =>
+      if fS.isDecl || fT.isDecl then some s!"@{i.fn} is a declaration"
+      else if argsS.map (·.ty) != argsT.map (·.ty) then some "argument types differ"
+      else if !freshIds [] (argsT.map (·.id)) then some "target arguments reuse ids"
+      else if !(calleesOps opsS ++ calleesOps opsT).all (fun c => isDeclIn i.src c && isDeclIn i.tgt c) then
+        some "a call to a function that is not a declaration in both modules"
+      else explainScript 0 ((argsS.map (·.id)).zip (argsT.map (·.id))) i.script opsS opsT
+    | _, _ => some "a body outside the single-block fragment"
+  | _, _ => some s!"no function @{i.fn} in both modules"
+
 end MerlinVerify.Check
