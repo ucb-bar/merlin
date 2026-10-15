@@ -370,6 +370,46 @@ def elf_load_segments(path: Path) -> list[tuple[int, int]]:
     return out
 
 
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+
+
+def csr_accesses(listing: str, names: Iterable[str]) -> list[dict[str, Any]]:
+    """Instructions of an ``objdump -d -M no-aliases`` listing that name one of the CSRs ``names``.
+
+    With aliases off every CSR instruction spells its CSR operand by name (``csrrs a0,time,zero``;
+    LLVM: ``csrrs a0, time, zero``). A line is ``<address>:<TAB><encoding><TAB><mnemonic><TAB><operands>``
+    under a ``<address> <function>:`` header; operands are split at commas, and a trailing ``# comment``
+    or `` <symbol>`` is not an operand. No mnemonic is assumed: any instruction naming the CSR touches it.
+    """
+    wanted = {str(n) for n in names}
+    function: str | None = None
+    hits: list[dict[str, Any]] = []
+    for line in listing.splitlines():
+        stripped = line.strip()
+        if stripped.endswith(">:") and " <" in stripped:
+            function = stripped[stripped.index(" <") + len(" <") : -len(">:")]
+            continue
+        address, colon, rest = line.partition(":")
+        address = address.strip()
+        if not colon or not address or not set(address) <= _HEX_DIGITS:
+            continue
+        fields = [f.strip() for f in rest.split("\t") if f.strip()]
+        if len(fields) < 3:
+            continue
+        operands = [part.strip().split(" ")[0] for part in fields[2].partition("#")[0].split(",")]
+        for operand in operands:
+            if operand in wanted:
+                hits.append(
+                    {
+                        "function": function,
+                        "address": address,
+                        "instruction": f"{fields[1]} {fields[2]}",
+                        "csr": operand,
+                    }
+                )
+    return hits
+
+
 # -------------------------------------------------------------------------------- CDE configuration sources
 
 
