@@ -728,6 +728,29 @@ def test_private_execution_uses_selected_process_ceiling(selected_engine_budget,
         assert state.checks == ["command", "engine", "command", "engine"]
 
 
+def test_private_bound_gsim_applies_declared_cycles_to_selected_command(selected_engine_budget, monkeypatch):
+    from merlin.compile import model_execution_inputs as MI
+    from merlin.runtime.backends import chipyard_rocc_bound as B
+
+    state = selected_engine_budget
+    monkeypatch.setattr(B, "BoundRoCCBackend", type(state.backend))
+    monkeypatch.setattr(
+        MI, "native_engine",
+        lambda *args: (state.backend, {"selected": True}, lambda: state.checks.append("engine"), None),
+    )
+    result = PFX.run_engine(
+        state.elf, engine="gsim", target="fixture", timeout_s=86400, max_cycles=150000000,
+        elf_sha256="f" * 64, rtl_config="Cfg", rtl_facts_sha256="f" * 64, capture_bytes=True,
+    )
+    assert state.calls == [(
+        state.elf,
+        {"simulator": "gsim", "timeout": 1800, "capture_bytes": True, "private_max_cycles": 150000000},
+    )]
+    assert result["max_cycles"] == 150000000
+    assert result["max_cycle_source"] == "frozen_private_execution_declaration"
+    assert state.checks == ["engine", "engine"]
+
+
 def test_private_preparation_consumes_job_budget(selected_engine_budget):
     state = selected_engine_budget
     state.preparation_s = 3590.0
@@ -804,3 +827,37 @@ def test_expired_private_preparation_never_runs_or_passes(tmp_path, selected_eng
     assert "wall budget expired" in result["programs"][0]["reason"]
     assert "checks" not in result["programs"][0]
     assert not PFX.complete(result, gate, static=fixture.static, candidate_sha256="c" * 64)
+
+
+def test_parallel_private_programs_overlap_and_keep_declared_order(tmp_path, monkeypatch):
+    from threading import Barrier
+
+    gate = {
+        "required": True,
+        "programs": {
+            "first": {"one": {"engine": "spike"}},
+            "second": {"two": {"engine": "spike"}},
+        },
+    }
+    static = {
+        "candidate_tree_sha256": "c" * 64,
+        "models": [
+            {"model": name, "status": PFX.PASS, "checks": {"build": {"programs": [{"program": program}]}}}
+            for name, program in (("first", "one"), ("second", "two"))
+        ],
+    }
+    rendezvous = Barrier(2)
+
+    def execute(model, program, *_args, **_kwargs):
+        rendezvous.wait(timeout=5)
+        if model == "first":
+            raise RuntimeError("independent program failed")
+        return {"status": PFX.PASS, "engine": "spike"}
+
+    monkeypatch.setattr(PFX, "_execute_program", execute)
+    result = PFX.run(static, gate, target="fixture", static_out=tmp_path, max_workers=2)
+    assert [(row["model"], row["status"]) for row in result["programs"]] == [
+        ("first", PFX.FAIL), ("second", PFX.PASS),
+    ]
+    assert result["parallel_workers"] == 2 and result["passed"] is False
+    assert "independent program failed" in result["programs"][0]["reason"]

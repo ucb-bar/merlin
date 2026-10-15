@@ -31,16 +31,17 @@ def _source(tmp_path):
     return path, document
 
 
-def test_explicit_resource_selection_preserves_source_and_all_nonresource_fields(tmp_path):
+@pytest.mark.parametrize("selected_timeout", [1800, 86400])
+def test_explicit_resource_selection_preserves_source_and_all_nonresource_fields(tmp_path, selected_timeout):
     source, original = _source(tmp_path)
     before = source.read_bytes()
     destination = tmp_path / "selected.yaml"
-    record = _stage_capability_contract(source, sha256_file(source), destination, 1800)
+    record = _stage_capability_contract(source, sha256_file(source), destination, selected_timeout)
     selected = yaml.safe_load(destination.read_text())
     restored = copy.deepcopy(selected)
     block = restored["runner"]["chipyard_rocc"]
-    assert block.pop("execution_resources") == {"max_native_timeout_s": 1800}
-    assert block["engines"]["gsim"]["max_timeout_s"] == 1800
+    assert block.pop("execution_resources") == {"max_native_timeout_s": selected_timeout}
+    assert block["engines"]["gsim"]["max_timeout_s"] == selected_timeout
     block["engines"]["gsim"]["max_timeout_s"] = 600
     assert restored == original
     assert source.read_bytes() == before
@@ -107,7 +108,7 @@ def test_reviewed_phase1_handoff_reconstructs_selected_model_spike_budget(tmp_pa
         corpus_inputs.require_reviewed_bundle(te, bundle, declaration)
 
 
-@pytest.mark.parametrize("budget", [True, 0, -1, 3601, 1800.0])
+@pytest.mark.parametrize("budget", [True, 0, -1, 86401, 1800.0])
 def test_invalid_resource_selection_publishes_no_contract(tmp_path, budget):
     source, _ = _source(tmp_path)
     destination = tmp_path / "selected.yaml"
@@ -146,7 +147,7 @@ def test_reviewed_phase1_handoff_accepts_only_the_exact_resource_variant(tmp_pat
     elif mutation == "spike":
         block["engines"]["spike"]["max_timeout_s"] = 1800
     elif mutation == "unbounded":
-        block["execution_resources"]["max_native_timeout_s"] = 3601
+        block["execution_resources"]["max_native_timeout_s"] = 86401
     elif mutation == "extra_resource":
         block["execution_resources"]["extra"] = 1
     destination.write_text(yaml.safe_dump(selected))

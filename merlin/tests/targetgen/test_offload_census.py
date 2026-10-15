@@ -75,23 +75,26 @@ def test_full_grade_census_reuses_public_emissions_and_names_missing_artifacts(t
     root = tmp_path / "graded"
     generated = root / "op_a" / "generated"
     generated.mkdir(parents=True)
-    (root / "op_a" / "capsule_result.json").write_text('{"capsule":"op_a"}')
+    (root / "op_a" / "capsule_result.json").write_text(
+        '{"capsule":"op_a","kind":"layer","status":"pass"}')
     (generated / "command_buffer.json").write_text(json.dumps(_buffer(
         [{"opcode": "MATMUL", "operands": {"lhs": "A", "rhs": "B", "dst": "C"}}],
         placement=[{"lane": "mesh", "family": "contraction"}],
     )))
     (generated / "lowered.llvm.mlir").write_text("module {}")
     (root / "op_b").mkdir()
-    (root / "op_b" / "capsule_result.json").write_text('{"capsule":"op_b"}')
+    (root / "op_b" / "capsule_result.json").write_text(
+        '{"capsule":"op_b","kind":"layer","status":"pass"}')
     report = OC.census_from_graded_artifacts(
         target="synthetic",
-        capsules=[{"name": "op_a", "interface_mlir": "a.mlir"},
-                  {"name": "op_b", "interface_mlir": "b.mlir"},
-                  {"name": "capstone", "kind": "model"}],
+        capsules=[{"name": "op_a", "kind": "layer", "interface_mlir": "a.mlir"},
+                  {"name": "op_b", "kind": "layer", "interface_mlir": "b.mlir"},
+                  {"name": "capstone", "kind": "model", "interface_mlir": "model.mlir"}],
         suite_runs=root,
     )
     assert report["execution"] == {
         "mode": "same_grade_artifacts", "programs_requested": 2, "programs_observed": 1,
+        "emitted_artifacts": 1, "model_capsules_separate_gate": ["capstone"],
     }
     assert report["outcomes"] == {"offloaded": 1, "error": 1}
     assert report["programs"][0]["placement_declared"]
@@ -103,15 +106,61 @@ def test_full_grade_census_refuses_indirect_candidate_output(tmp_path) -> None:
     root = tmp_path / "graded"
     generated = root / "op" / "generated"
     generated.mkdir(parents=True)
-    (root / "op" / "capsule_result.json").write_text('{"capsule":"op"}')
+    (root / "op" / "capsule_result.json").write_text(
+        '{"capsule":"op","kind":"layer","status":"pass"}')
     outside = tmp_path / "outside.json"
     outside.write_text(json.dumps(_buffer()))
     (generated / "command_buffer.json").symlink_to(outside)
     (generated / "lowered.llvm.mlir").write_text("module {}")
     report = OC.census_from_graded_artifacts(
-        target="synthetic", capsules=[{"name": "op", "interface_mlir": "op.mlir"}], suite_runs=root,
+        target="synthetic", capsules=[{"name": "op", "kind": "layer", "interface_mlir": "op.mlir"}], suite_runs=root,
     )
     assert report["outcomes"] == {"error": 1}
+    assert not report["all_accounted"]
+
+
+def test_full_grade_census_accounts_for_proven_host_and_expected_refusal(tmp_path) -> None:
+    root = tmp_path / "graded"
+    host = root / "host"
+    host.mkdir(parents=True)
+    host_result = {
+        "capsule": "host", "kind": "model_slice", "status": "pass",
+        "provided_host_qualification": {"source_eligibility": {
+            "n_eligible": 0,
+            "denominator_completeness": {
+                "inventory_status": "verified_against_parsed_contractions",
+                "unmatched_contraction_macs": 0, "n_unpriceable_contractions": 0,
+                "unverified_operand_format_contractions": [], "caveats": [],
+            },
+        }},
+        "host_execution_check": {"status": "pass"},
+        "lane_report": {"required": [], "violated": [], "forbidden": ["on_mesh"],
+                        "elf_scan": {"status": "measured", "n_hits": 0}},
+        "tiers": {tier: {"status": "pass"} for tier in ("L0", "L1", "L2", "L3")},
+    }
+    (host / "capsule_result.json").write_text(json.dumps(host_result))
+    refusal = root / "refusal"
+    generated = refusal / "generated"
+    generated.mkdir(parents=True)
+    declined = {"reason": "unsupported requant"}
+    (generated / "command_buffer.json").write_text(json.dumps(_buffer(declined=declined)))
+    refusal_result = {"capsule": "refusal", "kind": "layer", "status": "pass",
+                      "expected_refusal": {"status": "met"}, "declined": declined}
+    (refusal / "capsule_result.json").write_text(json.dumps(refusal_result))
+    capsules = [{"name": "host", "kind": "model_slice", "interface_mlir": "host.mlir"},
+                {"name": "refusal", "kind": "layer", "interface_mlir": "refusal.mlir"}]
+
+    report = OC.census_from_graded_artifacts(target="synthetic", capsules=capsules, suite_runs=root)
+    assert report["all_accounted"]
+    assert report["outcomes"] == {"host_only": 1, "declined": 1}
+    assert report["execution"]["emitted_artifacts"] == 0
+
+    host_result["provided_host_qualification"]["source_eligibility"]["n_eligible"] = 1
+    (host / "capsule_result.json").write_text(json.dumps(host_result))
+    refusal_result["expected_refusal"]["status"] = "unmet"
+    (refusal / "capsule_result.json").write_text(json.dumps(refusal_result))
+    report = OC.census_from_graded_artifacts(target="synthetic", capsules=capsules, suite_runs=root)
+    assert report["outcomes"] == {"error": 2}
     assert not report["all_accounted"]
 
 

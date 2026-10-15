@@ -247,8 +247,8 @@ def _execution_timeout_ceiling(block):
     _fields(resources, {"max_native_timeout_s"}, {"max_model_spike_timeout_s"})
     ceiling = resources["max_native_timeout_s"]
     _require(
-        type(ceiling) is int and 0 < ceiling <= 7200,
-        "selected native process ceiling must be an integer within 1..7200 seconds",
+        type(ceiling) is int and 0 < ceiling <= 86400,
+        "selected native process ceiling must be an integer within 1..86400 seconds",
     )
     return ceiling
 
@@ -703,11 +703,18 @@ class BoundRoCCBackend:
 
     def run_elf(
         self, elf, *, simulator, timeout, capture_bytes=False, declared_model_machine=False,
-        memory_readback=None, **kwargs
+        memory_readback=None, private_max_cycles=None, **kwargs
     ):
         _require(
             not kwargs and type(capture_bytes) is bool and type(declared_model_machine) is bool,
             "selected execution received unsupported options",
+        )
+        _require(
+            private_max_cycles is None or (
+                simulator == "gsim" and memory_readback is None
+                and type(private_max_cycles) is int and 0 < private_max_cycles <= (1 << 63) - 1
+            ),
+            "private gSIM cycle budget must be a positive declared integer",
         )
         _require(
             not declared_model_machine or simulator == "spike",
@@ -752,6 +759,16 @@ class BoundRoCCBackend:
         )
         flags = before.get("extension", {}).get("flags", [])
         template = self.execution_argv_template(simulator)
+        if private_max_cycles is not None:
+            cycle_args = [arg for arg in template if arg.startswith("+max-cycles=")]
+            _require(
+                len(cycle_args) == 1 and cycle_args[0].removeprefix("+max-cycles=").isdigit(),
+                "selected gSIM command has no unique source-bound cycle limit",
+            )
+            template = tuple(
+                f"+max-cycles={private_max_cycles}" if arg == cycle_args[0] else arg
+                for arg in template
+            )
         _require(
             (_gsim_startup_transport() if simulator == "gsim" else None) == before.get("startup_transport"),
             "selected startup transport changed before execution",

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from merlin.common.cpu_pool import grading_cpus, parse_roster, shared_compute_enabled
+from merlin.common.cpu_pool import grading_cpus, preparation_cpus, parse_roster, shared_compute_enabled
 
 
 def render_resource_block(
@@ -17,13 +17,14 @@ def render_resource_block(
     author = parse_roster(environment.get("MERLIN_CODEX_CPUS", ""))
     shared = shared_compute_enabled(environment)
     compute = grading_cpus(environment)
+    preparation = preparation_cpus(environment)
     if boundary is None:
         from merlin_experiments.phase2.external_resources import active_resource_boundary
 
         boundary = active_resource_boundary()
     if boundary is not None:
         boundary.verify()
-        if not set((*manager, *author, *compute)) <= set(boundary.cpu_ids):
+        if not set((*manager, *author, *compute, *preparation)) <= set(boundary.cpu_ids):
             raise ValueError("task CPU selections exceed the verified resource boundary")
     if grade_workers is None:
         from merlin.targetgen.capsule_grade import default_grade_workers
@@ -44,9 +45,11 @@ def render_resource_block(
         f"- Manager CPU affinity observed at task staging: `{roster(manager)}`.",
         f"- Configured Codex author/helper CPU pool: `{roster(author)}`. "
         "Helpers share this pool with the author; they do not receive additional CPUs.",
+        f"- Unleased preparation CPU affinity: `{roster(preparation)}`. "
+        "Build and simulator steps use their own explicit CPU leases.",
         f"- Configured {'shared compute' if shared else 'grading'} CPU pool: `{roster(compute)}`. "
         + (
-            "Preparation, compilation and simulator engines acquire stages from the same per-core lease pool."
+            "CPU-intensive preparation, compilation and simulation steps acquire per-core leases here."
             if shared
             else "Actual build and simulator allocations follow the selected runtime policy."
         ),
@@ -72,6 +75,10 @@ def render_resource_block(
         "- Keep one full-cohort request in flight for a compiler snapshot. Use its incremental progress "
         "instead of submitting a duplicate full sweep; the harness yields advisory background work "
         "to an authorized full selfcheck of the same source and cohort.",
+        "- A completed full public grade already includes the source-matched offload census from its "
+        "graded artifacts. Read that result first; a standalone offload-census request recompiles the "
+        "cohort and is only useful when the grade has no usable emission evidence. Model capstones use "
+        "their separate placement gate, and host-only slices use provided-host qualification.",
         "- For a repeated native timeout, request native progress/liveness diagnostics from the experiment "
         "operator before another long retry. A requested timeout does not override an executor's lower limit. "
         "A timeout remains unqualified, without a numerical correctness verdict.",

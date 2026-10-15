@@ -452,12 +452,12 @@ def start_background(
                     print(f"[in-turn grade {t}] on_tick skipped: {type(e).__name__}: {e}", flush=True)
 
     def _body() -> None:
-        from merlin.common.cpu_pool import parse_roster, selected_pool
+        from merlin.common.cpu_pool import preparation_cpus, selected_pool
 
         # A new thread inherits the manager's CPU pool. Establish the grading
         # base before callbacks create executors so nested build/sim leases
-        # restore grading CPUs, including between-capsule provenance work.
-        with selected_pool(parse_roster(os.environ.get("MERLIN_GRADE_CPUS", ""))):
+        # restore preparation CPUs, including between-capsule provenance work.
+        with selected_pool(preparation_cpus()):
             _grade_body()
 
     th = threading.Thread(target=_body, name="in-turn-grader", daemon=True)

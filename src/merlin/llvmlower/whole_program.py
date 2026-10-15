@@ -737,6 +737,12 @@ def whole_program_buffer(
     from merlin.xdsl_dialects.lowering import model_closure as MC
 
     groups = CG.form_groups(module, device, oracle=oracle)
+    if capture is not None:
+        from merlin.xdsl_dialects.lowering import group_exact_float as GEF
+
+        refused = GEF.refusals(groups, capture, weight_args=weight_args)
+        if refused:
+            groups = CG.form_groups(module, device, oracle=oracle, numeric_refusals=refused)
     if not open_model:
         MC.require_closed(groups, error=WholeProgramError)
     host_produced: dict[str, dict[str, Any]] = {}
