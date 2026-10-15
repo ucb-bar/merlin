@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "merlin.lean.chain.v1",
   "title": "Merlin Lean end-to-end chain (merlin.lean.chain.v1)",
-  "description": "End-to-end claim composed from per-boundary receipts and the capture's support receipt (docs/design/merlin_lean_verification.md, C10). Verified only if every boundary is verified, each boundary's before is the previous after (by SHA-256), and the support receipt is about the first before.",
+  "description": "Refinement evidence composed from replayed boundary and support receipts. Refinement permits source UB and poison. The overall verdict stays abstracted until a proved source-definedness checker is implemented (docs/design/merlin_lean_verification.md, section 4.5).",
   "type": "object",
-  "required": ["schema", "theorem", "function", "links", "support", "chained", "verdict", "assumptions"],
+  "required": ["schema", "theorem", "function", "links", "support", "chained", "refinement_verdict", "source_definedness", "verdict", "assumptions"],
   "additionalProperties": false,
   "properties": {
     "schema": {"const": "merlin.lean.chain.v1"},
@@ -38,7 +38,17 @@
     },
     "chained": {"type": "boolean", "description": "Every boundary's before is the previous boundary's after, the support subject is the first before, and (with a handoff) the last after is the handoff."},
     "handoff_sha256": {"$ref": "#/$defs/sha", "description": "SHA-256 of the file handed to the upstream lowering, when the chain was checked against it."},
-    "verdict": {"enum": ["verified", "abstracted", "unmeasured"]},
+    "refinement_verdict": {"enum": ["verified", "abstracted", "unmeasured"]},
+    "source_definedness": {
+      "type": "object",
+      "required": ["verdict", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": {"const": "unmeasured"},
+        "reason": {"type": "string"}
+      }
+    },
+    "verdict": {"enum": ["abstracted", "unmeasured"]},
     "reason": {"type": "string"},
     "assumptions": {"type": "array", "items": {"type": "string"}}
   },

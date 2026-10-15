@@ -401,12 +401,14 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     """Compose checked boundaries (``stage/receipt.json``, in order) and the capture's support
     receipt into ``out`` (schema ``merlin.lean.chain.v1``); returns the document.
 
-    ``verified`` means: every boundary verified, each boundary's ``before`` is the previous
-    ``after`` byte for byte, and the support receipt is about the first ``before`` -- the hypotheses
+    ``refinement_verdict == verified`` means: every boundary verified, each boundary's ``before``
+    is the previous ``after`` byte for byte, and support covers the first ``before`` -- the hypotheses
     of ``chain_refines`` -- and every receipt still describes the current bytes, checker build and
     ``SPEC_LOCK``. With ``handoff`` (the ``handoff.json`` the lowering recorded), the chain must also
     end at the exact bytes handed to the upstream lowering. Anything missing makes the chain
-    ``abstracted`` with the reasons."""
+    ``abstracted`` with the reasons. This refinement permits source UB and poison. The overall
+    verdict additionally needs a proved source-definedness check, which is not implemented yet;
+    it therefore remains abstracted even when the refinement obligation verifies."""
     links, reasons, assumptions = [], [], []
     receipts = []
     for index, stage in enumerate(stages):
@@ -443,6 +445,12 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
         reasons.append("no boundaries")
     elif not chained:
         reasons.append("the boundaries do not form a chain from the support subject")
+    refinement_verdict = "verified" if not reasons else "abstracted"
+    definedness = {
+        "verdict": "unmeasured",
+        "reason": "no proved source-definedness checker is implemented; NotStuck permits UB and poison",
+    }
+    reasons.append(f"source definedness: {definedness['reason']}")
     doc: dict[str, Any] = {
         "schema": "merlin.lean.chain.v1",
         "theorem": CHAIN_THEOREM,
@@ -451,12 +459,13 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
         "support": {"receipt_sha256": _sha(support), "subject_sha256": sup["subject"]["sha256"],
                     "verdict": sup["verdict"], "domain": sup["domain"]},
         "chained": chained,
+        "refinement_verdict": refinement_verdict,
+        "source_definedness": definedness,
         **({"handoff_sha256": handoff_sha} if handoff_sha is not None else {}),
-        "verdict": "verified" if not reasons else "abstracted",
+        "verdict": "abstracted",
+        "reason": "; ".join(reasons),
         "assumptions": assumptions,
     }
-    if reasons:
-        doc["reason"] = "; ".join(reasons)
     _atomic_json(out, doc)
     return doc
 

@@ -1,5 +1,6 @@
 """End-to-end composition (design C10): recorded preprocessing boundaries of a real Merlin pass run,
-each checked, plus the capture's support, compose into a verified chain; a broken link does not."""
+each checked, plus the capture's support, compose into verified refinement evidence. Overall
+correctness remains abstracted without the separate source-definedness proof."""
 
 from __future__ import annotations
 
@@ -32,7 +33,9 @@ def test_chain_composes_real_preprocessing(tmp_path, monkeypatch, lean_tools):
 
     doc = compose_chain(stages, tmp_path / "support" / "receipt.json", "forward", tmp_path / "chain.json")
     jsonschema.validate(doc, schema)
-    assert doc["chained"] and doc["verdict"] == "verified", doc.get("reason")
+    assert doc["chained"] and doc["refinement_verdict"] == "verified", doc.get("reason")
+    assert doc["verdict"] == "abstracted"
+    assert doc["source_definedness"]["verdict"] == "unmeasured"
     assert [link["boundary"] for link in doc["links"]] == [
         "xdsl-parse", "xdsl-pruned", "xdsl-quant-lowered", "xdsl-c-interface"]
 
@@ -40,7 +43,8 @@ def test_chain_composes_real_preprocessing(tmp_path, monkeypatch, lean_tools):
     broken = compose_chain([stages[0], *stages[2:]], tmp_path / "support" / "receipt.json", "forward",
                            tmp_path / "broken.json")
     jsonschema.validate(broken, schema)
-    assert not broken["chained"] and broken["verdict"] == "abstracted"
+    assert not broken["chained"] and broken["refinement_verdict"] == "abstracted"
+    assert broken["verdict"] == "abstracted"
 
     # The chain must end at the bytes handed to the lowering.
     support = tmp_path / "support" / "receipt.json"
@@ -50,11 +54,14 @@ def test_chain_composes_real_preprocessing(tmp_path, monkeypatch, lean_tools):
     handoff = tmp_path / "stages" / "handoff.json"
     ok = compose_chain(stages, support, "forward", tmp_path / "handoff-ok.json", handoff=handoff)
     jsonschema.validate(ok, schema)
-    assert ok["verdict"] == "verified" and ok["handoff_sha256"] == json.loads(handoff.read_text())["sha256"]
+    assert ok["refinement_verdict"] == "verified"
+    assert ok["verdict"] == "abstracted"
+    assert ok["handoff_sha256"] == json.loads(handoff.read_text())["sha256"]
     handed.write_text(handed.read_text() + "\n// edited after preprocessing\n")
     lean_stages.record_handoff(handed)
     other = compose_chain(stages, support, "forward", tmp_path / "handoff-bad.json", handoff=handoff)
-    assert not other["chained"] and other["verdict"] == "abstracted"
+    assert not other["chained"] and other["refinement_verdict"] == "abstracted"
+    assert other["verdict"] == "abstracted"
 
     # A receipt whose stage file changed after it was checked is stale.
     after = stages[1] / "after.mlir"
@@ -62,3 +69,4 @@ def test_chain_composes_real_preprocessing(tmp_path, monkeypatch, lean_tools):
     stale = compose_chain(stages, support, "forward", tmp_path / "stale.json")
     jsonschema.validate(stale, schema)
     assert stale["verdict"] == "abstracted" and "changed or missing" in stale["reason"]
+    assert stale["refinement_verdict"] == "abstracted"

@@ -109,7 +109,7 @@ def test_chain_replays_proof_obligations(tmp_path, lean_tools):
         return check.compose_chain([stage], support / "receipt.json", "forward", tmp_path / "chain.json",
                                    m2m_python=lean_tools.m2m_python)
 
-    assert compose()["verdict"] == "verified"
+    assert compose()["refinement_verdict"] == "verified"
     for keys, value in [
         (("claim_type",), "safety"), (("checker",), "unrelated.check"),
         (("theorem",), "unrelated.theorem"), (("axioms",), ["sorryAx"]),
@@ -122,7 +122,7 @@ def test_chain_replays_proof_obligations(tmp_path, lean_tools):
             target = target[key]
         target[keys[-1]] = value
         check._write(stage, mutated)
-        assert compose()["verdict"] != "verified", keys
+        assert compose().get("refinement_verdict") != "verified", keys
     check._write(stage, receipt)
 
     # Updating a tampered export's hash cannot substitute it for the source's actual meaning.
@@ -137,4 +137,46 @@ def test_chain_replays_proof_obligations(tmp_path, lean_tools):
     check._write(stage, receipt)
     result = compose()
     assert result["verdict"] == "abstracted"
+    assert result["refinement_verdict"] == "abstracted"
     assert "round trip" in result["reason"]
+
+
+@pytest.mark.parametrize("body", [
+    """%one = arith.constant 1 : i32
+    %zero = arith.constant 0 : i32
+    %r = arith.divsi %one, %zero : i32
+    return %r : i32""",
+    """%r = tensor.empty() : tensor<1xi32>
+    return %r : tensor<1xi32>""",
+])
+def test_support_is_not_a_source_definedness_proof(tmp_path, lean_tools, body):
+    import jsonschema
+
+    stage = _stage(tmp_path / "stage")
+    result_type = "tensor<1xi32>" if "tensor.empty" in body else "i32"
+    for name in ("before", "after"):
+        (stage / f"{name}.mlir").write_text(f"func.func @forward() -> {result_type} {{\n{body}\n}}\n")
+    assert check.check_stage(stage, m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    support = tmp_path / "support"
+    assert check.check_support(stage / "before.mlir", "forward", support,
+                               m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    result = check.compose_chain([stage], support / "receipt.json", "forward", tmp_path / "chain.json",
+                                 m2m_python=lean_tools.m2m_python)
+    schema = json.loads((repo_root() / "merlin/contract/schemas/lean_chain.schema.json").read_text())
+    jsonschema.validate(result, schema)
+    assert result["refinement_verdict"] == "verified"
+    assert result["verdict"] == "abstracted"
+    assert result["source_definedness"]["verdict"] == "unmeasured"
+    assert "NotStuck permits UB and poison" in result["reason"]
+    # Even a consumer that only validates the schema cannot treat this as an overall proof.
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({**result, "verdict": "verified"}, schema)
+
+
+def test_chain_failure_invalidates_previous_result(tmp_path):
+    output = tmp_path / "chain.json"
+    output.write_text('{"verdict":"verified"}')
+    result = check.compose_chain([], tmp_path / "missing.json", "forward", output,
+                                 m2m_python=tmp_path / "python")
+    assert result["verdict"] == "unmeasured"
+    assert json.loads(output.read_text()) == result

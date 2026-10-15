@@ -790,8 +790,14 @@ The chain checker:
 Implemented for refinement chains: `Check/Chain.lean` proves `chain_refinesC` (a chain of
 `FuncRefinesC` boundaries composes) and `chain_refines` (with the capture's support, strict
 refinement on typed inputs). `merlin.verify.lean.check.compose_chain` checks hash continuity from
-the support subject through every boundary and writes a `merlin.lean.chain.v1` document with the
-union of assumptions. Argument maps (`equiv_args`) and receipt replay are not composed yet.
+the support subject through every boundary, validates receipt metadata and provenance, and replays
+the round trips and Lean checks on the exact recorded exports. It writes a `merlin.lean.chain.v1`
+document with the union of assumptions and a separate `refinement_verdict`. This proves refinement
+under the recorded assumptions; source UB and poison are still permitted by that relation.
+The required source-definedness checker from §4.5 is not implemented. Consequently
+`source_definedness.verdict` is `unmeasured` and the overall `verdict` remains `abstracted`, even
+when refinement verifies. Argument maps (`equiv_args`) are not composed yet. No caller-provided
+definedness flag can discharge this missing obligation.
 
 ### 5.11 C11 — upstream tensor passes (Tier B) and bufferization (Tier C)
 
