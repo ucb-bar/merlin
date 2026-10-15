@@ -4,8 +4,26 @@ import MerlinVerify.Sem.Ops
 import MerlinVerify.Check.Types
 import MerlinVerify.Check.Synth
 import MerlinVerify.Check.Module
+import MerlinVerify.Check.Rulebook
 
 open MerlinVerify
+
+/-- A JSON string literal. -/
+def jsonStr (s : String) : String :=
+  "\"" ++ (s.toList.map fun c => match c with
+    | '"' => "\\\"" | '\\' => "\\\\" | '\n' => "\\n" | c => c.toString).foldl (· ++ ·) "" ++ "\""
+
+/-- Argument and result value types of function `fn`, from its `function_type` at index width `ib`. -/
+def funcSig? (ib : Nat) (m : Module) (fn : String) : Option (List Check.VTy × List Check.VTy) :=
+  m.ops.findSome? fun op =>
+    match op.asFunc?, op.attr? "function_type" with
+    | some f, some (.type (.function ins outs)) =>
+      if f.name == fn then
+        match ins.mapM (Check.vtyOf ib), outs.mapM (Check.vtyOf ib) with
+        | some a, some r => some (a, r)
+        | _, _ => none
+      else none
+    | _, _ => none
 
 /-- `merlin-lean`: checker driver (design §8.3).
 * `decode <in.json>` — validate a `merlin.lean.ir.v1` document and print a summary.
@@ -43,6 +61,21 @@ def main (args : List String) : IO UInt32 := do
       IO.println s!"\{\"checker\": \"module\", \"theorem\": \"MerlinVerify.Check.moduleCheck_sound\", \"claim_type\": \"refine\", \"functions\": {strs (Check.Module.definedNames src)}, \"functions_verified\": {ok}, \"abi_changes\": {strs out.abi}, \"unverified_changes\": {strs out.unverified}, \"verdict\": \"{if verified then "verified" else "abstracted"}\"}"
       return (if verified then 0 else 1)
     | .error e, _ | _, .error e => IO.eprintln s!"decode error: {e}"; return 2
+  | "check-support" :: inp :: fn :: rest =>
+    -- The capture is inside the proved fragment (`Check.supportCheck_sound`): never stuck on typed
+    -- inputs at index width `ib` (default 64).
+    let ib := (rest.head? >>= String.toNat?).getD 64
+    match Decode.module (← IO.FS.readFile inp) with
+    | .ok m =>
+      let (ok, why) := match funcSig? ib m fn with
+        | none => (false, s!"@{fn}: no function with a modelled signature")
+        | some (argTys, resTys) =>
+          let R := Check.merlinBook ib
+          if Check.supportCheck R m fn argTys resTys then (true, "")
+          else (false, (Check.diagnoseFunc R m fn argTys resTys).getD "refused")
+      IO.println s!"\{\"checker\": \"support\", \"theorem\": \"MerlinVerify.Check.supportCheck_sound\", \"claim_type\": \"not_stuck\", \"function\": {jsonStr fn}, \"index_bits\": {ib}, \"verdict\": \"{if ok then "verified" else "unsupported"}\", \"first_refusal\": {if ok then "null" else jsonStr why}}"
+      return (if ok then 0 else 1)
+    | .error e => IO.eprintln s!"decode error: {e}"; return 2
   | _ =>
-    IO.eprintln "usage: merlin-lean decode <in.json> | print <in.json> <out.mlir> | check-c1 <before.json> <after.json> <fn> | check-module <before.json> <after.json>"
+    IO.eprintln "usage: merlin-lean decode <in.json> | print <in.json> <out.mlir> | check-c1 <before.json> <after.json> <fn> | check-module <before.json> <after.json> | check-support <in.json> <fn> [index_bits]"
     return 2
