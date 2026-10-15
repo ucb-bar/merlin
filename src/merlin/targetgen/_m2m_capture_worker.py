@@ -1154,7 +1154,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         mdl = apply_quantization(mdl, q, **quant_trace_options)
         quant_stats = getattr(mdl, "_m2m_quantization_stats", None)
     integerization_receipt = None
-    if q is not None and q.scheme == "int8_static_act_int8_weight" and not a.already_quantized:
+    # A recipe whose dynamic block emitted every integer contraction leaves PT2E nothing to integerize.
+    pt2e_selected = not isinstance(quant_stats, dict) or quant_stats.get("annotated_contractions") != 0
+    if q is not None and q.scheme == "int8_static_act_int8_weight" and not a.already_quantized and pt2e_selected:
         # Account for every selected PT2E contraction: genuine integer work or
         # an explicitly preserved non-FP32 floating Q/DQ operation. Preserving
         # precision is not accelerator/host admission. The independent reference

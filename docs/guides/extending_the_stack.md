@@ -231,6 +231,16 @@ definition (the one the capture lowers it to) and puts the activation spec on bo
 of every activation x activation matmul whose reduction exceeds 16: `Q`, `K`, the softmax
 probabilities `P` and `V` each get one calibrated static scale per tensor.
 
+Run-time scales are a second opt-in, the recipe's `dynamic` block
+(`quant_recipe.with_dynamic_contractions`, CLI `dynamic-contractions`): the listed contraction
+families are rewritten by `_dynamic_contractions` before PT2E into plain `int8 x int8 -> i32`
+`_int_mm` calls with scales on non-reduction axes only (one per row of the streamed operand, one per
+column of the other, a stored weight's per output channel), rescaled on the host by their outer
+product. The block can split a softmax-produced operand into k int8 planes (k device matmuls, summed
+on the host) and subtract the other operand's mean over a softmax's axis (a shift the softmax
+ignores). The device still sees ordinary int8 matmuls; every scale, plane sum and shift is host work,
+counted in the capture's `quantization_stats.dynamic_contractions`.
+
 For a new format, first add its structural vocabulary and derivation rules, including
 granularity, packing, ranges, zero points, bias domain and rounding. Then extend the
 appropriate adapter using a public `Quantizer` or `AOBaseConfig`/registered-handler

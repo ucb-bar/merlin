@@ -266,6 +266,17 @@ def spell_attention(graph_module: Any) -> list[dict[str, Any]]:
     return rows
 
 
+def _dynamic_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Totals and sites of a dynamic rewrite, for the capture's stats."""
+    done = [r for r in rows if r.get("status") == "rewritten"]
+    return {
+        "rewritten": len(done),
+        "kept_in_float": [r for r in rows if r.get("status") != "rewritten"],
+        **{key: sum(int(r.get(key, 0)) for r in done) for key in ("int8_macs", "device_calls", "host_elements")},
+        "sites": done,
+    }
+
+
 def _has_floating_recipe_work(exported: Any, recipe: Mapping[str, Any]) -> bool:
     """Whether an integral-input graph still computes a floating recipe operation inside."""
     import torch
@@ -318,6 +329,9 @@ def build_quantizer(
     pairs = set(operators[ACTIVATION_CONTRACTION]) if ACTIVATION_CONTRACTION in listed else set()
     sums = set(operators["operand_sum"]) if "operand_sum" in listed else set()
     means = set(operators["window_mean"]) if "window_mean" in listed else set()
+    # Families the recipe's ``dynamic`` block takes out of static annotation (_dynamic_contractions).
+    dynamic_block = dict(recipe.get("dynamic") or {})
+    dynamic_families = set(dynamic_block.get("families") or ())
     if not targets and not pairs:
         raise RecipeError(f"the recipe quantizes {recipe.get('families')}, none of which this quantizer can annotate")
     #: What a value may pass through on its way to a reader without ceasing to be the same integers:
@@ -526,6 +540,49 @@ def build_quantizer(
             self.refused_by_placement: list[dict[str, str | None]] = []
             self.software_decisions = software_decisions
             self.fold_candidates = fold_candidates or []
+            self.dynamic_rows: list[dict[str, Any]] = []
+
+        def rewrite_dynamic(self, graph_module: Any) -> list[dict[str, Any]]:
+            """Rewrite the dynamic families' placed contractions into their integer form, in place.
+
+            Runs before PT2E sees the graph, so a rewritten contraction is never also annotated. One the
+            rewrite cannot express is left in floating point and listed, never approximated.
+            """
+            if not dynamic_families:
+                return []
+            import _dynamic_contractions as DC  # noqa: PLC0415 -- a sibling, by bare name
+
+            qmax = DC.qmax_of(recipe)
+            for node in list(graph_module.graph.nodes):
+                family = family_of(node) if node.op == "call_function" else None
+                if family not in dynamic_families or not eligible(node, family):
+                    continue
+                row = {"family": family, "owner": owner(node)}
+                weight = None
+                if family == "contraction":
+                    weight_node = node.args[1] if len(node.args) > 1 else None
+                    if node.target == torch.ops.aten.linear.default and getattr(weight_node, "op", None) == "get_attr":
+                        weight = graph_module
+                        for part in str(weight_node.target).split("."):
+                            weight = getattr(weight, part)
+                    if weight is None:
+                        self.dynamic_rows.append(
+                            {**row, "node": node.name, "status": "kept", "why": "no stored weight"}
+                        )
+                        continue
+                try:
+                    if weight is None:
+                        done = DC.rewrite_activation_contraction(graph_module, node, dynamic_block, qmax)
+                    else:
+                        done = DC.rewrite_weight_contraction(graph_module, node, weight, dynamic_block, qmax)
+                except ValueError as why:
+                    self.dynamic_rows.append({**row, "node": node.name, "status": "kept", "why": str(why)})
+                    continue
+                self.dynamic_rows.append({**row, **done, "status": "rewritten"})
+            if any(r["status"] == "rewritten" for r in self.dynamic_rows):
+                graph_module.graph.lint()
+                graph_module.recompile()
+            return self.dynamic_rows
 
         def transform_for_annotation(self, graph_module: Any) -> Any:
             # TorchAO calls this after folding Conv+BN and before inserting
@@ -543,6 +600,8 @@ def build_quantizer(
             self.left_in_float = sum(1 for n in nodes if (n.target in sums or n.target in means) and n not in kept)
             for node in nodes:
                 family = family_of(node)
+                if family in dynamic_families:
+                    continue  # rewritten by rewrite_dynamic, or listed there as kept in floating point
                 if family is not None and not eligible(node, family):
                     self.refused_by_placement.append(
                         {"node": node.name, "operator": str(node.target), "owner": owner(node), "family": family}
@@ -612,7 +671,8 @@ def build_quantizer(
             # this read one, so a model carrying only the operand sums or window means a recipe also
             # covers was refused with a message saying its families were not covered -- which was
             # false, and pointed a reader at the model rather than at this table.
-            if self.annotated + self.annotated_pairs + self.annotated_sums + self.annotated_means == 0:
+            rewritten = sum(r["status"] == "rewritten" for r in self.dynamic_rows)
+            if self.annotated + self.annotated_pairs + self.annotated_sums + self.annotated_means + rewritten == 0:
                 raise RecipeError(
                     f"the model has no operator the recipe's families cover "
                     f"(families={list(listed)}; annotated contractions=0, activation contractions=0, "
@@ -968,6 +1028,7 @@ def apply_recipe(
         eps=epsilon,
         fold_candidates=fold_candidates,
     )
+    dynamic = quantizer.rewrite_dynamic(exported)
     prepared = prepare_pt2e(exported, quantizer)
     samples = calibration_inputs if calibration_inputs is not None else (tuple(example_inputs),)
     calibrated = 0
@@ -1017,6 +1078,10 @@ def apply_recipe(
             if ACTIVATION_CONTRACTION in (recipe.get("families") or ())
             else {}
         ),
+        # Contractions the recipe's dynamic block rewrote into integer form (never PT2E-annotated), with
+        # the Phase 2 cost they carry: device int8 MACs and calls, and the host's elementwise work
+        # (absmax and mean passes, quantize, the outer-product rescale per output element and plane).
+        **({"dynamic_contractions": _dynamic_summary(dynamic)} if recipe.get("dynamic") else {}),
         "annotated_sums": quantizer.annotated_sums,
         "annotated_means": quantizer.annotated_means,
         # Sums and means the recipe's families cover and the graph does not requantize: left alone.

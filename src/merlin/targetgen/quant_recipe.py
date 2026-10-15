@@ -376,8 +376,88 @@ def with_activation_contractions(recipe: Mapping[str, Any]) -> dict[str, Any]:
     return body
 
 
+#: The recipe block that quantizes contractions with RUN-TIME scales (``recipe["dynamic"]``).
+DYNAMIC = "dynamic"
+DYNAMIC_SCHEMA = "dynamic_contractions_v1"
+#: Every scale sits on a NON-reduction axis: one per row of the streamed operand, one per column of the
+#: other (a stored weight: one per output channel, fixed at capture). Each int8 product is then summed
+#: exactly in the i32 accumulator and the scales apply afterwards as an outer product, on the host.
+NON_REDUCTION = "non_reduction"
+#: Plane selectors: an operand produced by a row softmax, and a stored weight.
+SOFTMAX_OUTPUT = "softmax_output"
+WEIGHT = "weight"
+#: The smooth shift: when a contraction reaches a softmax over its column axis only through scalar
+#: factors and masks, the other operand's mean over that axis is subtracted first. That shifts each
+#: score row by a constant, which the softmax ignores.
+SOFTMAX_AXIS = "softmax_axis"
+_MAX_PLANES = 4
+
+
+def with_dynamic_contractions(
+    recipe: Mapping[str, Any],
+    *,
+    families: Sequence[str] = (ACTIVATION_CONTRACTION,),
+    planes: Mapping[str, int] | None = None,
+    smooth: bool = False,
+    static_families: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """``recipe`` with a ``dynamic`` block: these families' contractions take run-time scales.
+
+    Three general mechanisms, each named by the block and none by a model:
+
+    * dynamic scales on non-reduction axes (:data:`NON_REDUCTION`): the host takes each row's absmax
+      at run time, quantizes, the device runs a plain int8 matmul, and the host rescales the i32
+      result by the outer product of the row and column scales. The readout holds one scale per
+      tensor, so these scales are host work by construction;
+    * planes: an operand selected by ``planes`` (:data:`SOFTMAX_OUTPUT`, :data:`WEIGHT`) is split into
+      k int8 planes, each the quantized residual of the ones before, with its own row scales: k
+      device matmuls against the same other operand, summed on the host;
+    * the smooth shift (:data:`SOFTMAX_AXIS`), applied only where it preserves the function.
+
+    ``families`` must be contraction families of this recipe (``activation_contraction`` is added
+    when asked for); ``static_families`` (default: the recipe's own) are the families still
+    quantized with the recipe's static spec. Families listed in both take the dynamic form.
+    """
+    if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
+        raise ValueError("only a derived quant_recipe_v1 can be extended")
+    activation = recipe.get("activation") or {}
+    if not (activation.get("symmetric") and str(activation.get("dtype", "")).startswith("int")):
+        raise ValueError("dynamic contractions need a symmetric integer activation format")
+    wanted = list(dict.fromkeys(families))
+    if not wanted or any(f not in (CONTRACTION, ACTIVATION_CONTRACTION) for f in wanted):
+        raise ValueError(f"dynamic scales apply to contraction families only, not {wanted}")
+    selected = dict(planes or {})
+    if any(
+        k not in (SOFTMAX_OUTPUT, WEIGHT) or type(v) is not int or not 1 <= v <= _MAX_PLANES
+        for k, v in selected.items()
+    ):
+        raise ValueError(f"planes take {SOFTMAX_OUTPUT!r}/{WEIGHT!r} -> 1..{_MAX_PLANES}, not {selected}")
+    kept = list(recipe.get("families") or ()) if static_families is None else list(static_families)
+    unknown = [f for f in kept if f not in (recipe.get("families") or ())]
+    if unknown:
+        raise ValueError(f"static families {unknown} are not the recipe's own")
+    body = json.loads(json.dumps(dict(recipe)))
+    body["families"] = list(dict.fromkeys([*kept, *wanted]))
+    for family in wanted:
+        (body.get("unquantized") or {}).pop(family, None)
+    body[DYNAMIC] = {
+        "schema": DYNAMIC_SCHEMA,
+        "families": wanted,
+        "scales": NON_REDUCTION,
+        "planes": dict(sorted(selected.items())),
+        "smooth": SOFTMAX_AXIS if smooth else None,
+    }
+    body.setdefault("why", {})[DYNAMIC] = (
+        "opted in: run-time scales on non-reduction axes (rows of the streamed operand, columns of the "
+        "other, a stored weight's output channels), applied by the host to the exact i32 accumulator "
+        "as an outer product; the readout's one scale cannot hold them"
+    )
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
 def _main(argv: Sequence[str] | None = None) -> int:
-    """``python -m merlin.targetgen.quant_recipe activation-contractions IN.json OUT.json``."""
+    """``python -m merlin.targetgen.quant_recipe {activation-contractions|dynamic-contractions} IN OUT``."""
     import argparse
     from pathlib import Path
 
@@ -386,8 +466,27 @@ def _main(argv: Sequence[str] | None = None) -> int:
     variant = sub.add_parser("activation-contractions", help=with_activation_contractions.__doc__.splitlines()[0])
     variant.add_argument("recipe", type=Path)
     variant.add_argument("out", type=Path)
+    dynamic = sub.add_parser("dynamic-contractions", help=with_dynamic_contractions.__doc__.splitlines()[0])
+    dynamic.add_argument("recipe", type=Path)
+    dynamic.add_argument("out", type=Path)
+    dynamic.add_argument("--families", default=ACTIVATION_CONTRACTION, help="comma-separated contraction families")
+    dynamic.add_argument("--planes", default="", help=f"selector=k pairs, e.g. {SOFTMAX_OUTPUT}=2")
+    dynamic.add_argument("--smooth", action="store_true", help="subtract the mean over a softmax's axis")
+    dynamic.add_argument("--static-families", default=None, help="families kept static (default: the recipe's)")
     args = parser.parse_args(argv)
-    body = with_activation_contractions(json.loads(args.recipe.read_text(encoding="utf-8")))
+    source = json.loads(args.recipe.read_text(encoding="utf-8"))
+    if args.command == "activation-contractions":
+        body = with_activation_contractions(source)
+    else:
+        planes = {k: int(v) for k, _, v in (p.partition("=") for p in args.planes.split(",") if p)}
+        static = None if args.static_families is None else [f for f in args.static_families.split(",") if f]
+        body = with_dynamic_contractions(
+            source,
+            families=[f for f in args.families.split(",") if f],
+            planes=planes,
+            smooth=args.smooth,
+            static_families=static,
+        )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"{args.out}: recipe_sha256 {body['recipe_sha256']}")
