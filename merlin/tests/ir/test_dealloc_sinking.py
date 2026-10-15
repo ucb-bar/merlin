@@ -22,6 +22,8 @@ result and MUST reject a free moved before a use -- including a use through an a
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from merlin.llvmlower import pipeline as P
@@ -146,6 +148,55 @@ def test_the_stage_frees_a_buffer_after_its_last_use():
     frees = [i for i, ln in enumerate(body) if ln.startswith("memref.dealloc")]
     assert len(frees) == 2
     assert min(frees) < last_matmul, "the first buffer is still freed after the last compute"
+
+
+@m2m
+def test_aggregate_owned_allocs_are_split_and_sunk(tmp_path, monkeypatch):
+    """A whole-function aggregate must not pin independent local buffers until return."""
+    monkeypatch.setenv("MERLIN_SPLIT_FRESH_DEALLOCS", "1")
+    aggregate = P.apply_passes(CHAIN, _BUFFERIZE + ",ownership-based-buffer-deallocation")
+    assert aggregate.count("bufferization.dealloc") == 1
+    src, dst, script = (tmp_path / name for name in ("aggregate.mlir", "split.mlir", "split.py"))
+    src.write_text(aggregate, encoding="utf-8")
+    script.write_text(
+        "import sys\nfrom torch_mlir import ir\n"
+        + P.SPLIT_FRESH_DEALLOCS_PRELUDE
+        + "ctx = ir.Context()\n"
+        + "with ctx:\n"
+        + "  module = ir.Module.parse(open(sys.argv[1]).read(), ctx)\n"
+        + "  _split_fresh_local_deallocs(ctx, module)\n"
+        + "  open(sys.argv[2], 'w').write(str(module.operation))\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src), str(dst)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "OK split_fresh_local_deallocs 2 fresh allocs" in proc.stdout
+    split = dst.read_text(encoding="utf-8")
+    assert split.count("memref.dealloc") == 2
+    # The input buffers remain under upstream's aggregate ownership logic.
+    assert split.count("bufferization.dealloc") == 1
+    sunk = P.apply_passes(
+        split,
+        "buffer-deallocation-simplification,bufferization-lower-deallocations,"
+        "canonicalize,func.func(optimize-allocation-liveness)",
+    )
+    assert P.dealloc_placement_violations(sunk) == []
+    body = [line.strip() for line in sunk.splitlines()]
+    assert min(i for i, line in enumerate(body) if line.startswith("memref.dealloc")) < max(
+        i for i, line in enumerate(body) if line.startswith("linalg.matmul")
+    )
+
+
+@m2m
+def test_split_switch_runs_through_the_real_lowering_runner(tmp_path, monkeypatch):
+    monkeypatch.setenv("MERLIN_SPLIT_FRESH_DEALLOCS", "1")
+    stages = P._dealloc_passes()
+    assert stages[1] == P.SPLIT_FRESH_DEALLOCS_MARKER
+    assert SINK in stages[-1]
+    lowered = P.lower_to_llvm_ir(CHAIN, workdir=tmp_path, pipeline=P._upstream_pipeline())
+    assert lowered.count("call void @free") == 2
 
 
 # --- the guard -------------------------------------------------------------------------------

@@ -65,9 +65,10 @@ def _dealloc_passes(sink: bool | None = None) -> list[str]:
     to rebuild both.
 
     ``MERLIN_SINK_DEALLOCS`` (or ``sink=True``) appends the sinking stage described in
-    :func:`_sink_dealloc_passes`, which moves each free from the end of the function to just after
-    the buffer's last use. Default OFF, so an unflagged build is byte-identical to the frozen
-    baseline.
+    :func:`_sink_dealloc_passes`, which moves direct frees from the end of the function to just
+    after the buffer's last use. An aggregate ``bufferization.dealloc`` can still pin many local
+    buffers until return; ``MERLIN_SPLIT_FRESH_DEALLOCS`` enables a guarded split for that case
+    and also enables the sinking and placement check. Both switches default OFF.
     """
     import os
 
@@ -78,8 +79,15 @@ def _dealloc_passes(sink: bool | None = None) -> list[str]:
         "buffer-deallocation-simplification",
         "bufferization-lower-deallocations",
     ]
+    # Aggregate bufferization.dealloc ops can keep hundreds of otherwise-dead allocations
+    # alive until function exit. Split only provably owned, unique alloc roots before the
+    # simplification/lowering passes so the ordinary liveness pass can place their frees.
+    if _split_fresh_deallocs():
+        passes.insert(1, SPLIT_FRESH_DEALLOCS_MARKER)
     if sink is None:
         sink = _sink_deallocs()
+    if _split_fresh_deallocs():
+        sink = True
     if sink:
         passes += _sink_dealloc_passes()
     return passes
@@ -95,6 +103,16 @@ def _sink_deallocs() -> bool:
     from .optional_passes import switched
 
     return switched("sink-deallocs", bool(os.environ.get("MERLIN_SINK_DEALLOCS")))
+
+
+SPLIT_FRESH_DEALLOCS_MARKER = "__merlin_split_fresh_deallocs__"
+
+
+def _split_fresh_deallocs() -> bool:
+    """Enable the guarded aggregate-dealloc split; kept opt-in during model qualification."""
+    import os
+
+    return bool(os.environ.get("MERLIN_SPLIT_FRESH_DEALLOCS"))
 
 
 #: The pass that moves a dealloc to its last user. Named once: the runner keys the placement CHECK
@@ -140,7 +158,9 @@ def _sink_dealloc_passes() -> list[str]:
     pipeline names the three passes individually — for the ``vector.mask`` reason in
     :func:`_dealloc_passes` — and lost that cleanup with them. Canonicalization folds the
     statically-true ``scf.if`` away, leaving the ``memref.dealloc`` a direct user of the alloc in the
-    alloc's own block, and the liveness pass then moves every one of them to its last use.
+    alloc's own block, and the liveness pass then moves those direct frees to their last uses.
+    Whole-model bufferization may instead form one aggregate ``bufferization.dealloc`` for
+    hundreds of allocations. The opt-in fresh-local split handles that separate case.
 
     ORDER IS LOAD-BEARING and is asserted by ``merlin/tests/ir/test_dealloc_sinking.py``:
     ``bufferization-lower-deallocations`` → ``canonicalize`` → ``optimize-allocation-liveness``.
@@ -1088,6 +1108,96 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
 DEALLOC_CHECK_TOKEN = "OK dealloc_placement"
 
 
+# The ownership pass can emit one aggregate dealloc for an entire model. Its operands are
+# base views produced by extract_strided_metadata, even when each base came from a distinct
+# local alloc and has a constant-true ownership condition. The upstream liveness pass cannot
+# move a free while it is hidden in that aggregate. This split only handles that narrow case;
+# everything else remains in the original aggregate and retains upstream's ownership logic.
+SPLIT_FRESH_DEALLOCS_PRELUDE = r"""
+def _split_fresh_local_deallocs(ctx, module):
+    from collections import Counter
+
+    targets = []
+    for func in module.body.operations:
+        if func.operation.name != 'func.func':
+            continue
+        for block in func.regions[0].blocks:
+            targets.extend(op for op in list(block.operations)
+                           if op.operation.name == 'bufferization.dealloc')
+
+    moved = 0
+    for old in targets:
+        # A retained value or an unrecognised operand layout changes the ownership
+        # contract; leave it to upstream instead of guessing.
+        if old.results or len(old.operands) % 2:
+            continue
+        n = len(old.operands) // 2
+        mems, conds = list(old.operands[:n]), list(old.operands[n:])
+        roots = []
+        for mem in mems:
+            owner = mem.owner
+            if not hasattr(owner, 'operation') or owner.operation.name != 'memref.extract_strided_metadata':
+                roots.append(None)
+                continue
+            base = owner.operands[0]
+            alloc = base.owner
+            roots.append(base if hasattr(alloc, 'operation') and
+                         alloc.operation.name == 'memref.alloc' else None)
+        counts = Counter(root for root in roots if root is not None)
+        fresh, keep = [], []
+        for mem, cond, root in zip(mems, conds, roots):
+            cond_op = cond.owner
+            owned = (hasattr(cond_op, 'operation') and
+                     cond_op.operation.name == 'arith.constant' and
+                     str(cond_op.attributes['value']) == 'true')
+            if root is not None and counts[root] == 1 and owned:
+                fresh.append(root)
+            else:
+                keep.append((mem, cond))
+        if not fresh:
+            continue
+        with ctx, old.location, ir.InsertionPoint(old):
+            for root in fresh:
+                ir.Operation.create('memref.dealloc', operands=[root])
+            if keep:
+                ir.Operation.create(
+                    'bufferization.dealloc',
+                    operands=[*(mem for mem, _ in keep), *(cond for _, cond in keep)],
+                    attributes={'operandSegmentSizes': ir.DenseI32ArrayAttr.get(
+                        [len(keep), len(keep), 0])})
+        old.operation.erase()
+        moved += len(fresh)
+    module.operation.verify()
+    print('OK split_fresh_local_deallocs', moved, 'fresh allocs')
+"""
+
+
+SPLIT_FRESH_DEALLOCS_RUNNER = r"""
+_SPLIT_ORIG_RUN_STAGES = _run_stages
+
+
+def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
+                pre_generalize=()):
+    passes = [p for p in pipeline.split(',') if p]
+    if '__merlin_split_fresh_deallocs__' not in passes:
+        return _SPLIT_ORIG_RUN_STAGES(ctx, module, pipeline, erase, mid, late,
+                                      post_openmp, pre_generalize)
+    if passes.count('__merlin_split_fresh_deallocs__') != 1:
+        raise RuntimeError('aggregate dealloc split marker must appear exactly once')
+    at = passes.index('__merlin_split_fresh_deallocs__')
+    head, tail = passes[:at], passes[at + 1:]
+    if 'ownership-based-buffer-deallocation' not in head:
+        raise RuntimeError('aggregate dealloc split must follow ownership analysis')
+    if any('buffer-loop-hoisting' in p or 'convert-scf-to-openmp' in p for p in head):
+        raise RuntimeError('aggregate dealloc split moved past a stage anchor')
+    _SPLIT_ORIG_RUN_STAGES(ctx, module, ','.join(head), 0, (), (), (),
+                           pre_generalize)
+    _split_fresh_local_deallocs(ctx, module)
+    _SPLIT_ORIG_RUN_STAGES(ctx, module, ','.join(tail), erase, mid, late,
+                           post_openmp, ())
+"""
+
+
 def apply_passes(mlir_text: str, pipeline: str, timeout: int = 600) -> str:
     """Run ``pipeline`` over ``mlir_text`` in the m2m venv and return the printed module.
 
@@ -1206,6 +1316,8 @@ from torch_mlir.dialects import llvm
     + _BROADCAST_MATH_HOIST_PRELUDE
     + DEALLOC_CHECK_PRELUDE
     + DEALLOC_CHECK_RUNNER
+    + SPLIT_FRESH_DEALLOCS_PRELUDE
+    + SPLIT_FRESH_DEALLOCS_RUNNER
     + r'''
 
 def _residual_vector_ops(module):
@@ -1333,6 +1445,8 @@ _RUNNER_ACT_POLY_TAIL = (
     + _BROADCAST_MATH_HOIST_PRELUDE
     + DEALLOC_CHECK_PRELUDE
     + DEALLOC_CHECK_RUNNER
+    + SPLIT_FRESH_DEALLOCS_PRELUDE
+    + SPLIT_FRESH_DEALLOCS_RUNNER
     + r"""
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
