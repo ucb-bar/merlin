@@ -170,12 +170,21 @@ esac
 """
 
 
+def _free_slot(monkeypatch) -> None:
+    """A slot that is always free: the machine-wide pool counts the host's real emulators."""
+    from contextlib import nullcontext
+
+    from merlin.targetgen import rtl_engine_policy
+
+    monkeypatch.setattr(rtl_engine_policy, "gsim_runtime_slot", lambda **_kw: nullcontext())
+
+
 @pytest.mark.parametrize(
     ("mode", "status"),
     [("ok", "completed"), ("cap", "cycle_cap"), ("assert", "fault"), ("trap", "fault"), ("harness", "error")],
 )
 def test_a_gsim_run_says_whether_the_program_or_the_engine_stopped_it(tmp_path, monkeypatch, mode, status):
-    monkeypatch.setenv("MERLIN_GSIM_SLOT_ROOT", str(tmp_path / "slots"))
+    _free_slot(monkeypatch)
     emulator = tmp_path / "emulator"
     emulator.write_text(_FAKE_EMULATOR)
     emulator.chmod(0o755)
@@ -195,7 +204,7 @@ def test_a_gsim_run_says_whether_the_program_or_the_engine_stopped_it(tmp_path, 
 
 
 def test_the_wall_bound_kills_the_emulator_and_keeps_its_console(tmp_path, monkeypatch):
-    monkeypatch.setenv("MERLIN_GSIM_SLOT_ROOT", str(tmp_path / "slots"))
+    _free_slot(monkeypatch)
     emulator = tmp_path / "emulator"
     emulator.write_text(_FAKE_EMULATOR)
     emulator.chmod(0o755)
