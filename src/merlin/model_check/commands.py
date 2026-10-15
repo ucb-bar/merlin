@@ -288,7 +288,8 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
         "status": "pass" if kernels and not failed and not refused else "fail",
         "partial": not all_calls,
         "detail": f"{sum(k.get('exact', 0) for k in kernels)}/{sum(k.get('cases', 0) for k in kernels)} calls "
-        f"bit-exact on {len(inputs)} input(s); {len(failed)} kernel(s) differ",
+        f"bit-exact on {'one recorded call per kernel' if unique else f'{len(inputs)} input(s)'}; "
+        f"{len(failed)} kernel(s) differ or did not finish",
     }
     for kernel in failed:
         report["failures"].append(

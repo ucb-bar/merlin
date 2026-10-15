@@ -344,7 +344,7 @@ class GsimEngine:
         if timed_out:
             status, detail = "timeout", f"wall bound {timeout_s:.0f} s reached"
         elif code == chipyard_rocc._GSIM_CYCLE_CAP_EXIT:  # noqa: SLF001 -- the harness's cycle-cap status
-            status, detail = "cycle_cap", f"+max-cycles={max_cycles} reached"
+            status, detail, cycles = "cycle_cap", f"+max-cycles={max_cycles} reached", max_cycles
         elif asserted in stdout or asserted in stderr:
             status, detail = "error", "the design asserted: " + stderr[-1200:]
         elif code != 0 or "MCDONE" not in stdout:
