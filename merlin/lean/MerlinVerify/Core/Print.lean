@@ -41,6 +41,22 @@ def affineMap (m : AffineMap) : String :=
     "[" ++ joinSep ", " ((List.range m.numSyms).map fun i => s!"s{i}") ++ "]"
   s!"({dims}){syms} -> ({joinSep ", " (m.results.map affineExpr)})"
 
+/-- MLIR's `bare-id`: a letter or `_`, then letters, digits, `_`, `$` or `.`. -/
+def bareId (s : String) : Bool :=
+  match s.toList with
+  | c :: cs => (c.isAlpha || c == '_') && cs.all fun c => c.isAlphanum || c == '_' || c == '$' || c == '.'
+  | [] => false
+
+/-- A symbol name or dictionary key: bare when MLIR's grammar allows, else a quoted string. -/
+def ident (s : String) : String := if bareId s then s else s!"\"{escape s}\""
+
+/-- Element literals nested by a static shape (row-major), as MLIR prints a dense literal. -/
+def nested : List Nat → List String → String
+  | [], lits => lits.headD ""
+  | d :: ds, lits =>
+    let inner := ds.foldl (· * ·) 1
+    "[" ++ joinSep ", " ((List.range d).map fun k => nested ds ((lits.drop (k * inner)).take inner)) ++ "]"
+
 def dim : Option Nat → String
   | some n => toString n
   | none => "?"
@@ -89,16 +105,18 @@ mutual
       else s!"array<{ty elt}: {joinSep ", " (vs.map toString)}>"
     | .dense t splat bytes =>
       match t with
-      | .tensor _ (.int 1) _ =>
-        -- i1 storage is printed as literals, one per stored element.
+      | .tensor shape (.int 1) _ =>
+        -- i1 storage is printed as literals, one per stored element, nested by the shape.
         let lits := bytes.map fun b => if b = 0 then "false" else "true"
         if splat then s!"dense<{joinSep ", " lits}> : {ty t}"
-        else s!"dense<[{joinSep ", " lits}]> : {ty t}"
+        else match shape.mapM id with
+          | some sh => s!"dense<{nested sh lits}> : {ty t}"
+          | none => s!"dense<[{joinSep ", " lits}]> : {ty t}"
       | _ => s!"dense<\"0x{String.join (bytes.map fun b => (hexDigits b.toNat 2).toUpper)}\"> : {ty t}"
     | .affineMap m => s!"affine_map<{affineMap m}>"
     | .enum d n v => s!"#{d}.{n}<{v}>"
     | .dict es => "{" ++ entries es ++ "}"
-    | .symbolRef r ns => String.join (("@" ++ r) :: ns.map fun n => "::@" ++ n)
+    | .symbolRef r ns => String.join (("@" ++ ident r) :: ns.map fun n => "::@" ++ ident n)
     | .opaque t => t
 
   def attrList : List Attr → String
@@ -112,8 +130,8 @@ mutual
     | e :: es => entry e ++ ", " ++ entries es
 
   def entry : String × Attr → String
-    | (k, .unit) => k
-    | (k, a) => k ++ " = " ++ attr a
+    | (k, .unit) => ident k
+    | (k, a) => ident k ++ " = " ++ attr a
 end
 
 abbrev TyEnv := List (ValueId × Ty)
@@ -137,7 +155,7 @@ mutual
         " (" ++ joinSep ", " (regionList (indent ++ "  ") env regions) ++ ")"
       let attrs := if as.isEmpty then "" else " {" ++ entries as ++ "}"
       let sig := s!"({joinSep ", " (operands.map (operandTy env))}) -> ({tys (results.map (·.ty))})"
-      (s!"{indent}{lhs}\"{name}\"({args}){succs}{props}{regs}{attrs} : {sig}",
+      (s!"{indent}{lhs}\"{escape name}\"({args}){succs}{props}{regs}{attrs} : {sig}",
        results.reverse.map (fun r => (r.id, r.ty)) ++ env)
 
   def opList (indent : String) (env : TyEnv) : List Op → List String

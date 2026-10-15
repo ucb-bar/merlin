@@ -219,6 +219,10 @@ def export(text: str) -> dict:
 
         def op_json(op) -> dict:
             o = op.operation
+            # The semantics models single-block regions only; refuse branches rather than export a
+            # representation that drops them (the round trip then fails and the boundary abstains).
+            if len(o.successors) or any(len(reg.blocks) > 1 for reg in o.regions):
+                raise ValueError(f"{o.name}: successors and multi-block regions are outside the exported fragment")
             props = {} if ctx.is_registered_operation(o.name) else _unregistered_props(o)
             return {
                 "name": o.name,

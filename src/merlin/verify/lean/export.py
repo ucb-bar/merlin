@@ -227,10 +227,11 @@ def _op_json(op, ids: dict[Any, int]) -> dict[str, Any]:
         # xDSL keeps an unregistered op as `builtin.unregistered` plus an `op_name__` attribute.
         name = op.op_name.data
         attributes.pop("op_name__", None)
-    successors = []
-    for s in op.successors:
-        parent = s.parent
-        successors.append(list(parent.blocks).index(s) if parent is not None else 0)
+    # The semantics models single-block regions only; refuse branches rather than export a
+    # representation the Lean printer cannot reproduce (the round trip then fails and the boundary
+    # abstains).
+    if op.successors or any(len(reg.blocks) > 1 for reg in op.regions):
+        raise ValueError(f"{name}: successors and multi-block regions are outside the exported fragment")
     return {
         "name": name,
         "results": [value(r) for r in op.results],
@@ -242,7 +243,7 @@ def _op_json(op, ids: dict[Any, int]) -> dict[str, Any]:
                         for bl in reg.blocks]}
             for reg in op.regions
         ],
-        "successors": successors,
+        "successors": [],
     }
 
 
