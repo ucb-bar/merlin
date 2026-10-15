@@ -3,7 +3,7 @@ title: Lean verification of the Merlin compilation path outside the OOT
 kind: design
 status: draft
 owner: verification
-last_verified: 2026-10-13
+last_verified: 2026-10-14
 related: [compiler_verification, verification, lowering_pipeline, host_device_compilation, gemmini_pass_catalog_plan]
 code_refs:
   - src/merlin/verify/receipts.py
@@ -534,6 +534,13 @@ initialized from `tensor.empty` for exactly this reason. We handle it two ways:
     that introduces an unmodelled construct into a modelled program still fails.
   - `FuncNotStuck(S0)` is established by a support checker. Its soundness rests on a *progress* lemma
     per op family: a supported, well-typed op never returns `stuck`.
+  - Implemented in `Check/Progress.lean` (`checkOps_progress`, generic in a per-op typing rule that
+    also tracks the loop depth `linalg.index` reads) and `Check/Rules*.lean`. The rules cover
+    `arith`/`math` elementwise ops, constants and `select`, `linalg.generic`, `linalg.fill`,
+    `linalg.index`, `linalg.transpose`, `tensor.empty`, `tensor.collapse_shape`/`expand_shape`, and
+    `cf.assert`. Structured-op accesses are proved in bounds by interval bounds of the indexing maps
+    over the iteration box (`Check/Affine.lean`). `Check/Rulebook.lean` assembles the rule and proves
+    `supportCheck_sound` and `funcRefines_of_support`, the strict end-to-end form.
 - **Value-dependent poison** (an out-of-range `fptosi`, `nsw` overflow) cannot be excluded under
   parametric floats. The checker enumerates these sites, and the claim carries them as the explicit
   precondition "for inputs on which these sites are defined".

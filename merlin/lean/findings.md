@@ -69,3 +69,19 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
 - **Paper path:** only on the capture route that keeps `quant_ext` ops (FX-importer captures).
 - **Suggested fix (needs sign-off, it changes emitted IR):** emit `extsi` → `subi` → `sitofp` → `mulf`,
   PyTorch's exact order; the rule then needs no float assumption and no input-domain restriction.
+
+## F7 — the torch_mlir route elides the weights, so the capture alone does not define the model
+
+- **Observed (2026-10-14):** `torch_mlir_bridge` prints the module with `large_resource_limit=16`, so
+  every weight is a `dense_resource<...>` constant whose blob is dropped (the file ends with an empty
+  `{-# #-}` resource section). The exporter emits these as opaque attributes and the semantics is
+  `stuck` on them, so `check-support` refuses the coverage_mlp capture at its first weight constant.
+- **With the weights bound as function arguments** (the FX-importer route's form, where the
+  safetensors manifest maps arguments to weights), the same capture passes `check-support`: all 67
+  `linalg.generic`s, their bodies, the reshapes, `linalg.transpose`, `linalg.fill`, `linalg.index`
+  and `cf.assert` are inside the proved fragment. Seeded faults (an out-of-bounds map, an integer op on
+  floats, a wrong result shape, a dropped iterator, an unknown attribute) are each refused.
+- **Paper path:** decides whether the end-to-end claim covers "for all weights" (weights as inputs or
+  as context data) or "for these weights" (materialized resource bytes).
+- **Status:** open; needs the capture-route decision.
+
