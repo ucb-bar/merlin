@@ -37,7 +37,7 @@ FROZEN = [
     "lean-toolchain",
     "lake-manifest.json",
 ]
-SCHEMAS = ["lean_ir.schema.json", "lean_cert.schema.json", "lean_receipt.schema.json"]
+SCHEMAS = ["lean_ir.schema.json", "lean_cert.schema.json", "lean_receipt.schema.json", "lean_chain.schema.json"]
 LOCKED_DIRS = ["MerlinVerify/Spec", "MerlinVerify/Claims", "MerlinVerify/Assumptions"]
 
 

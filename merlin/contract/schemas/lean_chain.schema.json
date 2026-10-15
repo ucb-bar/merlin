@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin.lean.chain.v1",
+  "title": "Merlin Lean end-to-end chain (merlin.lean.chain.v1)",
+  "description": "End-to-end claim composed from per-boundary receipts and the capture's support receipt (docs/design/merlin_lean_verification.md, C10). Verified only if every boundary is verified, each boundary's before is the previous after (by SHA-256), and the support receipt is about the first before.",
+  "type": "object",
+  "required": ["schema", "theorem", "function", "links", "support", "chained", "verdict", "assumptions"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "merlin.lean.chain.v1"},
+    "theorem": {"type": "string", "description": "Lean name of the composition theorem."},
+    "function": {"type": "string"},
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["boundary", "receipt_sha256", "before_sha256", "after_sha256", "verdict"],
+        "additionalProperties": false,
+        "properties": {
+          "boundary": {"type": "string"},
+          "receipt_sha256": {"$ref": "#/$defs/sha"},
+          "before_sha256": {"$ref": "#/$defs/sha"},
+          "after_sha256": {"$ref": "#/$defs/sha"},
+          "verdict": {"enum": ["verified", "refuted", "abstracted", "unmeasured"]}
+        }
+      }
+    },
+    "support": {
+      "type": "object",
+      "required": ["receipt_sha256", "subject_sha256", "verdict"],
+      "additionalProperties": false,
+      "properties": {
+        "receipt_sha256": {"$ref": "#/$defs/sha"},
+        "subject_sha256": {"$ref": "#/$defs/sha"},
+        "verdict": {"enum": ["verified", "refuted", "abstracted", "unmeasured"]},
+        "domain": {"type": "string"}
+      }
+    },
+    "chained": {"type": "boolean", "description": "Every boundary's before is the previous boundary's after, and the support subject is the first before."},
+    "verdict": {"enum": ["verified", "abstracted", "unmeasured"]},
+    "reason": {"type": "string"},
+    "assumptions": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

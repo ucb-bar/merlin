@@ -184,6 +184,57 @@ def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
     return _write(work, receipt)
 
 
+CHAIN_THEOREM = "MerlinVerify.Check.chain_refines"
+
+
+def compose_chain(stages: list[Path], support: Path, function: str, out: Path) -> dict[str, Any]:
+    """Compose checked boundaries (``stage/receipt.json``, in order) and the capture's support
+    receipt into ``out`` (schema ``merlin.lean.chain.v1``); returns the document.
+
+    ``verified`` means: every boundary verified, each boundary's ``before`` is the previous
+    ``after`` byte for byte, and the support receipt is about the first ``before`` -- the hypotheses
+    of ``chain_refines``. Anything missing makes the chain ``abstracted`` with the reasons."""
+    links, reasons, assumptions = [], [], []
+    receipts = []
+    for stage in stages:
+        path = stage / "receipt.json"
+        receipt = json.loads(path.read_text())
+        receipts.append(receipt)
+        links.append({"boundary": receipt["boundary"], "receipt_sha256": _sha(path),
+                      "before_sha256": receipt["before"]["sha256"], "after_sha256": receipt["after"]["sha256"],
+                      "verdict": receipt["verdict"]})
+        if receipt["verdict"] != "verified":
+            reasons.append(f"{receipt['boundary']}: {receipt['verdict']}: {receipt.get('reason', '')}")
+        assumptions += [a for a in receipt.get("assumptions", []) if a not in assumptions]
+    sup = json.loads(support.read_text())
+    if sup.get("claim_type") != "not_stuck" or sup.get("function") != function:
+        raise ValueError(f"{support} is not a not_stuck receipt for {function}")
+    if sup["verdict"] != "verified":
+        reasons.append(f"support: {sup['verdict']}: {sup.get('reason', '')}")
+    assumptions += [a for a in sup.get("assumptions", []) if a not in assumptions]
+    chained = bool(receipts) and sup["subject"]["sha256"] == receipts[0]["before"]["sha256"] and all(
+        a["after"]["sha256"] == b["before"]["sha256"] for a, b in zip(receipts, receipts[1:]))
+    if not receipts:
+        reasons.append("no boundaries")
+    elif not chained:
+        reasons.append("the boundaries do not form a chain from the support subject")
+    doc: dict[str, Any] = {
+        "schema": "merlin.lean.chain.v1",
+        "theorem": CHAIN_THEOREM,
+        "function": function,
+        "links": links,
+        "support": {"receipt_sha256": _sha(support), "subject_sha256": sup["subject"]["sha256"],
+                    "verdict": sup["verdict"], "domain": sup["domain"]},
+        "chained": chained,
+        "verdict": "verified" if not reasons else "abstracted",
+        "assumptions": assumptions,
+    }
+    if reasons:
+        doc["reason"] = "; ".join(reasons)
+    out.write_text(json.dumps(doc, indent=2, sort_keys=True))
+    return doc
+
+
 def _write(stage: Path, receipt: dict[str, Any]) -> dict[str, Any]:
     stage.mkdir(parents=True, exist_ok=True)
     (stage / "receipt.json").write_text(json.dumps(receipt, indent=2, sort_keys=True))
