@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -133,6 +134,36 @@ def test_visible_gate_publishes_all_six_program_rows(tmp_path, monkeypatch):
     assert result["programs"] == visible["model_gate"]["programs"]
     assert len(result["programs"]) == 6 and visible["model_gate"]["passed"]
     assert (run / "qa_history" / f"model_gate_{digest[:16]}" / "gate.json").is_file()
+
+
+def test_background_model_gate_reaches_agent_verdict_before_first_interval(tmp_path, monkeypatch):
+    ws, run = tmp_path / "workspace", tmp_path / "run"
+    source = ws / "submission"
+    source.mkdir(parents=True)
+    run.mkdir()
+    (source / "manifest.yaml").write_text("commands: {}\n")
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+
+    def check(_ws, request, **kwargs):
+        from merlin.common.tree_hash import hash_tree
+
+        model = request["model"]
+        return {"status": "pass", "source_sha256": hash_tree(kwargs["snapshot_source"])["sha256"],
+                "report": {"programs": {program: {"status": "pass"} for program in broker.PROGRAMS[model]}}}
+
+    monkeypatch.setattr(gate, "execute_visible", check)
+    handle = gate.start(ws, run, interval_s=30)
+    try:
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            verdict = json.loads((ws / "qa/verdict.json").read_text())
+            if verdict.get("model_gate", {}).get("complete"):
+                break
+            time.sleep(0.02)
+        assert verdict["model_gate"]["complete"] is True
+        assert len(verdict["model_gate"]["programs"]) == 6
+    finally:
+        gate.stop_gate(handle)
 
 
 def test_verified_status_line_leads_with_all_six_visible_programs():
