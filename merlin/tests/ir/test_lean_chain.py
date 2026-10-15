@@ -4,6 +4,7 @@ correctness remains abstracted without the separate source-definedness proof."""
 
 from __future__ import annotations
 
+import copy
 import json
 from functools import partial
 
@@ -70,3 +71,98 @@ def test_chain_composes_real_preprocessing(tmp_path, monkeypatch, lean_tools):
     jsonschema.validate(stale, schema)
     assert stale["verdict"] == "abstracted" and "changed or missing" in stale["reason"]
     assert stale["refinement_verdict"] == "abstracted"
+
+
+def test_defined_chain_replays_real_preprocessing(tmp_path, monkeypatch, lean_tools):
+    import jsonschema
+
+    from merlin.verify.lean.check import check_definedness, check_stage, check_support, compose_chain
+
+    monkeypatch.setenv("MERLIN_LEAN_STAGES", str(tmp_path / "stages"))
+    source = """func.func @forward(%a: i32, %b: i32) -> i32 {
+      %unused = arith.muli %a, %b : i32
+      %r = arith.addi %a, %b : i32
+      return %r : i32
+    }"""
+    preprocess_text(source)
+    stages = lean_stages.completed(tmp_path / "stages")
+    for stage in stages:
+        assert check_stage(stage, m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    capture = stages[0] / "before.mlir"
+    support = tmp_path / "support"
+    defined = tmp_path / "defined"
+    assert check_support(capture, "forward", support, m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    receipt = check_definedness(capture, "forward", defined, m2m_python=lean_tools.m2m_python)
+    assert receipt["verdict"] == "verified", receipt.get("reason")
+
+    def compose(path=defined / "receipt.json"):
+        return compose_chain(stages, support / "receipt.json", "forward", tmp_path / "chain.json",
+                             m2m_python=lean_tools.m2m_python, definedness=path)
+
+    result = compose()
+    jsonschema.validate(result, json.loads(SCHEMA.read_text()))
+    assert result["verdict"] == result["refinement_verdict"] == "verified", result.get("reason")
+    assert result["source_definedness"]["verdict"] == "verified"
+    assert result["theorem"] == "MerlinVerify.Check.chain_defined_refines"
+    assert result["domain"] == receipt["domain"] and result["domain"].startswith("nonpoison inputs")
+    assert "reason" not in result
+    missing = compose(None)
+    assert missing["verdict"] == "abstracted" and missing["refinement_verdict"] == "verified"
+    assert missing["source_definedness"]["verdict"] == "unmeasured"
+
+    # Support cannot be substituted for definedness, even for the same function and bytes.
+    wrong_obligation = compose(support / "receipt.json")
+    assert wrong_obligation["verdict"] == "abstracted"
+    assert "required proof obligation" in wrong_obligation["reason"]
+
+    for keys, value in [
+        (("domain",), "all inputs"), (("function",), "other"), (("index_bits",), 32),
+        (("axioms",), ["sorryAx"]), (("assumptions",), []),
+        (("exporter", "round_trip"), "not_run"), (("theorem",), "unrelated.theorem"),
+    ]:
+        altered = copy.deepcopy(receipt)
+        node = altered
+        for key in keys[:-1]:
+            node = node[key]
+        node[keys[-1]] = value
+        (defined / "receipt.json").write_text(json.dumps(altered))
+        assert compose()["verdict"] != "verified", keys
+    (defined / "receipt.json").write_text(json.dumps(receipt))
+
+    # A valid proof about another source is still irrelevant to this chain.
+    other = tmp_path / "other.mlir"
+    other.write_text("func.func @forward(%a: i32, %b: i32) -> i32 { return %a : i32 }")
+    assert check_definedness(other, "forward", tmp_path / "other-proof",
+                             m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    unrelated = compose(tmp_path / "other-proof/receipt.json")
+    assert unrelated["verdict"] == "abstracted" and "another source" in unrelated["reason"]
+
+
+def test_chain_rechecks_earlier_files_before_publication(tmp_path, monkeypatch, lean_tools):
+    from merlin.verify.lean import check
+
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    source = "func.func @forward(%a: i32) -> i32 { return %a : i32 }"
+    for name in ("before", "after"):
+        (stage / f"{name}.mlir").write_text(source)
+    (stage / "meta.json").write_text('{"boundary":"identity"}')
+    assert check.check_stage(stage, m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    support, defined = tmp_path / "support", tmp_path / "defined"
+    assert check.check_support(stage / "before.mlir", "forward", support,
+                               m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    assert check.check_definedness(stage / "before.mlir", "forward", defined,
+                                   m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    validate = check._validate_receipt
+
+    def edit_after_replay(receipt, **kwargs):
+        result = validate(receipt, **kwargs)
+        if kwargs["obligation"] == check._DEFINED:
+            (stage / "after.mlir").write_text(source + "\n// changed during a later replay\n")
+        return result
+
+    monkeypatch.setattr(check, "_validate_receipt", edit_after_replay)
+    result = check.compose_chain([stage], support / "receipt.json", "forward", tmp_path / "chain.json",
+                                 m2m_python=lean_tools.m2m_python, definedness=defined / "receipt.json")
+    assert result["verdict"] == result["refinement_verdict"] == "abstracted"
+    assert "changed or missing" in result["reason"]

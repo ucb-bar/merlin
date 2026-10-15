@@ -21,7 +21,7 @@
   "lakefile.toml": "6d9009180a567bf4fc7a6f8224d174963f8957a84e5702d864944383233fc99c",
   "lean-toolchain": "ca5f1f601d34c49079e38d7e7041eb0f2a9c227fbc1df0f404820069a052330c",
   "schemas/lean_cert.schema.json": "dcc8f540643d15ccb4f8d084b3f0fe5f7d659080287dfd2d3237abb1ed8de52f",
-  "schemas/lean_chain.schema.json": "3c52bd77cb70d95fe82e40cade79a7c3f6fcb2fbbfcb3894df954dc59d93cb21",
+  "schemas/lean_chain.schema.json": "a58cb3fc61ec0e08c97cc1453a49913f51a0a8a4893cc126155aaf86feb5367f",
   "schemas/lean_ir.schema.json": "1c4c73ed6f824b2d19dfaf4b3edb381ec156c8612d03f6877267478bc84a9644",
   "schemas/lean_receipt.schema.json": "a197b3dc6949ed7aad779d5199e9585c4ebfe0aabcaa225070847266a987c081",
   "statement:MerlinVerify.Check.Definedness.definedCheck_sound": "089f43188f28b3dc3d37003cc306a87ef162dd31823a365d71bd72f941ea2e90",

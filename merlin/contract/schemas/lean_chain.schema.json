@@ -2,13 +2,23 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "merlin.lean.chain.v1",
   "title": "Merlin Lean end-to-end chain (merlin.lean.chain.v1)",
-  "description": "Refinement evidence composed from replayed boundary and support receipts. Refinement permits source UB and poison. The overall verdict stays abstracted until a proved source-definedness checker is implemented (docs/design/merlin_lean_verification.md, section 4.5).",
+  "description": "Refinement and defined-execution evidence composed from replayed boundary, support, and source-definedness receipts. Overall verification requires source definedness on the stated typed, nonpoison input domain. Claims cover the recorded chain, not earlier capture or downstream lowering.",
   "type": "object",
-  "required": ["schema", "theorem", "function", "links", "support", "chained", "refinement_verdict", "source_definedness", "verdict", "assumptions"],
+  "required": ["schema", "theorem", "refinement_theorem", "domain", "function", "links", "support", "chained", "refinement_verdict", "source_definedness", "verdict", "assumptions"],
   "additionalProperties": false,
+  "allOf": [{
+    "if": {"properties": {"verdict": {"const": "verified"}}, "required": ["verdict"]},
+    "then": {"properties": {
+      "chained": {"const": true},
+      "refinement_verdict": {"const": "verified"},
+      "source_definedness": {"required": ["receipt_sha256"], "properties": {"verdict": {"const": "verified"}}}
+    }}
+  }],
   "properties": {
     "schema": {"const": "merlin.lean.chain.v1"},
-    "theorem": {"type": "string", "description": "Lean name of the composition theorem."},
+    "theorem": {"const": "MerlinVerify.Check.chain_defined_refines"},
+    "refinement_theorem": {"const": "MerlinVerify.Check.chain_refines"},
+    "domain": {"type": "string", "description": "The defined-execution claim requires typed, nonpoison inputs at the stated index width."},
     "function": {"type": "string"},
     "links": {
       "type": "array",
@@ -41,14 +51,18 @@
     "refinement_verdict": {"enum": ["verified", "abstracted", "unmeasured"]},
     "source_definedness": {
       "type": "object",
-      "required": ["verdict", "reason"],
+      "required": ["verdict", "checker", "theorem", "domain"],
       "additionalProperties": false,
       "properties": {
-        "verdict": {"const": "unmeasured"},
+        "verdict": {"enum": ["verified", "abstracted", "unmeasured"]},
+        "checker": {"const": "MerlinVerify.Check.Definedness.check"},
+        "theorem": {"const": "MerlinVerify.Check.Definedness.definedCheck_sound"},
+        "domain": {"type": "string"},
+        "receipt_sha256": {"$ref": "#/$defs/sha"},
         "reason": {"type": "string"}
       }
     },
-    "verdict": {"enum": ["abstracted", "unmeasured"]},
+    "verdict": {"enum": ["verified", "abstracted", "unmeasured"]},
     "reason": {"type": "string"},
     "assumptions": {"type": "array", "items": {"type": "string"}}
   },

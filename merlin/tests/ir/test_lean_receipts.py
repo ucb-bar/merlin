@@ -171,6 +171,13 @@ def test_support_is_not_a_source_definedness_proof(tmp_path, lean_tools, body):
     # Even a consumer that only validates the schema cannot treat this as an overall proof.
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate({**result, "verdict": "verified"}, schema)
+    defined = tmp_path / "defined"
+    assert check.check_definedness(stage / "before.mlir", "forward", defined,
+                                   m2m_python=lean_tools.m2m_python)["verdict"] == "abstracted"
+    result = check.compose_chain([stage], support / "receipt.json", "forward", tmp_path / "chain.json",
+                                 m2m_python=lean_tools.m2m_python, definedness=defined / "receipt.json")
+    assert result["refinement_verdict"] == "verified"
+    assert result["verdict"] == result["source_definedness"]["verdict"] == "abstracted"
 
 
 def test_chain_failure_invalidates_previous_result(tmp_path):

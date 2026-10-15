@@ -63,7 +63,8 @@ _DEFINED = _Obligation("check-definedness", DEFINED_CHECKER, DEFINED_THEOREM, "d
 
 
 def _sha(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def _file_ref(path: Path) -> dict[str, Any]:
@@ -330,6 +331,7 @@ def _finish(destination: Path, receipt: dict[str, Any]) -> dict[str, Any]:
 
 
 CHAIN_THEOREM = "MerlinVerify.Check.chain_refines"
+DEFINED_CHAIN_THEOREM = "MerlinVerify.Check.chain_defined_refines"
 
 
 def _result_identity(result: dict[str, Any], obligation: _Obligation) -> None:
@@ -411,7 +413,8 @@ def _domain(index_bits: int, *, defined_inputs: bool = False) -> str:
 
 
 def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
-                  handoff: Path | None = None, *, m2m_python: Path | None = None) -> dict[str, Any]:
+                  handoff: Path | None = None, *, m2m_python: Path | None = None,
+                  definedness: Path | None = None) -> dict[str, Any]:
     """Replay the proof premises before composing; a receipt is an untrusted hint."""
     pending = {"schema": "merlin.lean.attempt.v1", "verdict": "unmeasured", "reason": "chain replay incomplete"}
     _atomic_json(out, pending)
@@ -421,7 +424,7 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
 
             m2m_python = compiler_python()
         with tempfile.TemporaryDirectory(prefix=".lean-replay-", dir=out.parent) as scratch:
-            return _compose_chain(stages, support, function, out, handoff, m2m_python, Path(scratch))
+            return _compose_chain(stages, support, function, out, handoff, m2m_python, Path(scratch), definedness)
     except Exception as exc:
         result = {**pending, "reason": f"{type(exc).__name__}: {exc}"}
         _atomic_json(out, result)
@@ -429,7 +432,8 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
 
 
 def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
-                   handoff: Path | None, m2m_python: Path, work: Path) -> dict[str, Any]:
+                   handoff: Path | None, m2m_python: Path, work: Path,
+                   definedness: Path | None) -> dict[str, Any]:
     """Compose checked boundaries (``stage/receipt.json``, in order) and the capture's support
     receipt into ``out`` (schema ``merlin.lean.chain.v1``); returns the document.
 
@@ -439,23 +443,26 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     ``SPEC_LOCK``. With ``handoff`` (the ``handoff.json`` the lowering recorded), the chain must also
     end at the exact bytes handed to the upstream lowering. Anything missing makes the chain
     ``abstracted`` with the reasons. This refinement permits source UB and poison. The overall
-    verdict additionally needs a proved source-definedness check, which is not implemented yet;
-    it therefore remains abstracted even when the refinement obligation verifies."""
+    verdict additionally needs a replayed source-definedness receipt on the same source, function,
+    and index width. Its domain explicitly requires typed, nonpoison inputs."""
     links, reasons, assumptions = [], [], []
     receipts = []
+    witnesses = []
     for index, stage in enumerate(stages):
         path = stage / "receipt.json"
-        receipt = json.loads(path.read_text())
+        receipt, digest = _read_receipt(path)
+        witnesses.append((path, digest, receipt))
         reasons += _validate_receipt(receipt, obligation=_MODULE, function=function, m2m_python=m2m_python,
                                      work=work / f"stage_{index}")
         receipts.append(receipt)
-        links.append({"boundary": receipt["boundary"], "receipt_sha256": _sha(path),
+        links.append({"boundary": receipt["boundary"], "receipt_sha256": digest,
                       "before_sha256": receipt["before"]["sha256"], "after_sha256": receipt["after"]["sha256"],
                       "verdict": receipt["verdict"]})
         if receipt["verdict"] != "verified":
             reasons.append(f"{receipt['boundary']}: {receipt['verdict']}: {receipt.get('reason', '')}")
         assumptions += [a for a in receipt.get("assumptions", []) if a not in assumptions]
-    sup = json.loads(support.read_text())
+    sup, support_digest = _read_receipt(support)
+    witnesses.append((support, support_digest, sup))
     reasons += _validate_receipt(sup, obligation=_SUPPORT, function=function, m2m_python=m2m_python,
                                  work=work / "support")
     if sup["verdict"] != "verified":
@@ -465,10 +472,7 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
         a["after"]["sha256"] == b["before"]["sha256"] for a, b in zip(receipts, receipts[1:]))
     handoff_sha = None
     if handoff is not None:
-        bound = json.loads(handoff.read_text())
-        if (bound.get("schema") != "merlin.lean.handoff.v1" or
-                _file_ref(Path(bound["path"])) != {k: bound[k] for k in ("path", "sha256", "bytes")}):
-            reasons.append("handoff file changed or is not a valid recorded handoff")
+        bound, handoff_digest = _read_receipt(handoff)
         handoff_sha = bound["sha256"]
     if receipts and handoff_sha is not None and receipts[-1]["after"]["sha256"] != handoff_sha:
         chained = False
@@ -478,28 +482,67 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     elif not chained:
         reasons.append("the boundaries do not form a chain from the support subject")
     refinement_verdict = "verified" if not reasons else "abstracted"
-    definedness = {
-        "verdict": "unmeasured",
-        "reason": "no proved source-definedness checker is implemented; NotStuck permits UB and poison",
+    domain = _domain(sup["index_bits"], defined_inputs=True)
+    defined_info: dict[str, Any] = {
+        "verdict": "unmeasured", "checker": DEFINED_CHECKER, "theorem": DEFINED_THEOREM,
+        "domain": domain, "reason": "no source-definedness receipt was provided; NotStuck permits UB and poison",
     }
-    reasons.append(f"source definedness: {definedness['reason']}")
+    if definedness is not None:
+        defined_receipt, digest = _read_receipt(definedness)
+        failures = _validate_receipt(defined_receipt, obligation=_DEFINED, function=function,
+                                     m2m_python=m2m_python, work=work / "definedness")
+        if (defined_receipt.get("subject", {}).get("sha256") != sup["subject"]["sha256"] or
+                defined_receipt.get("index_bits") != sup["index_bits"]):
+            failures.append("definedness receipt has another source or index width")
+        failures += _receipt_freshness(definedness, digest, defined_receipt)
+        defined_info.update(verdict="abstracted" if failures else "verified", receipt_sha256=digest,
+                            reason="; ".join(failures))
+        assumptions += [a for a in defined_receipt.get("assumptions", []) if a not in assumptions]
+    if defined_info["verdict"] != "verified":
+        reasons.append(f"source definedness: {defined_info['reason']}")
+    # The definedness replay may take time too: recheck earlier witnesses before publishing.
+    for path, digest, receipt in witnesses:
+        failures = _receipt_freshness(path, digest, receipt)
+        if failures:
+            refinement_verdict = "abstracted"
+            reasons += failures
+    if handoff is not None:
+        if (bound.get("schema") != "merlin.lean.handoff.v1" or _sha(handoff) != handoff_digest or
+                _file_ref(Path(bound["path"])) != {k: bound[k] for k in ("path", "sha256", "bytes")}):
+            reasons.append("handoff file changed or is not a valid recorded handoff")
+            refinement_verdict = "abstracted"
     doc: dict[str, Any] = {
         "schema": "merlin.lean.chain.v1",
-        "theorem": CHAIN_THEOREM,
+        "theorem": DEFINED_CHAIN_THEOREM,
+        "refinement_theorem": CHAIN_THEOREM,
+        "domain": domain,
         "function": function,
         "links": links,
-        "support": {"receipt_sha256": _sha(support), "subject_sha256": sup["subject"]["sha256"],
+        "support": {"receipt_sha256": support_digest, "subject_sha256": sup["subject"]["sha256"],
                     "verdict": sup["verdict"], "domain": sup["domain"]},
         "chained": chained,
         "refinement_verdict": refinement_verdict,
-        "source_definedness": definedness,
+        "source_definedness": defined_info,
         **({"handoff_sha256": handoff_sha} if handoff_sha is not None else {}),
-        "verdict": "abstracted",
-        "reason": "; ".join(reasons),
+        "verdict": "abstracted" if reasons else "verified",
         "assumptions": assumptions,
     }
+    if reasons:
+        doc["reason"] = "; ".join(dict.fromkeys(reasons))
     _atomic_json(out, doc)
     return doc
+
+
+def _read_receipt(path: Path) -> tuple[dict[str, Any], str]:
+    data = path.read_bytes()
+    return json.loads(data), hashlib.sha256(data).hexdigest()
+
+
+def _receipt_freshness(path: Path, digest: str, receipt: dict[str, Any]) -> list[str]:
+    reasons = _stale(receipt, "chain receipt")
+    if _sha(path) != digest:
+        reasons.append("receipt changed during chain replay")
+    return reasons
 
 
 def _check_exit(proc: subprocess.CompletedProcess, result: dict[str, Any]) -> None:
