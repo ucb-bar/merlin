@@ -3,7 +3,7 @@ title: Lean verification of the Merlin compilation path outside the OOT
 kind: design
 status: draft
 owner: verification
-last_verified: 2026-10-14
+last_verified: 2026-10-15
 related: [compiler_verification, verification, lowering_pipeline, host_device_compilation, gemmini_pass_catalog_plan]
 code_refs:
   - src/merlin/verify/receipts.py
@@ -523,14 +523,25 @@ initialized from `tensor.empty` for exactly this reason. We handle it two ways:
   undefined source can reach a function result. This is a dataflow analysis over the IR with a Lean
   soundness proof. It is required of `S0` and of every `policy` input: those are the programs whose
   meaning the paper asserts.
-  - Initial implementation: `Check/Defined.lean` tracks value types and initialization facts for
+  - Current implementation: `Check/Defined.lean` tracks value types and initialization facts for
     straight-line, single-block programs. Every accepted operation must finish successfully, even
-    when its result is not initialized. Every returned value must be initialized.
+    when its result is not initialized. Every returned value must be initialized. Region arguments
+    shadow captures; captures must have justified facts in the actual enclosing environment.
     `Check/DefinedRules.lean` proves rules for scalar and dense tensor constants, ten unflagged
-    scalar integer binary operations, `tensor.empty` as an uninitialized intermediate,
-    `tensor.splat`, and static collapse/expand reshapes. The theorem explicitly requires typed,
-    nonpoison inputs. Regions, reductions, casts, division, shifts, and overflow-flagged arithmetic
-    remain outside this definedness fragment; operation support is broader.
+    scalar integer binary operations, legal unflagged `extsi`/`extui`/`trunci` casts,
+    `tensor.empty`, `tensor.splat`, and static collapse/expand reshapes.
+  - `Check/DefinedLoops.lean` proves total structured-loop execution. Initialized destinations stay
+    initialized across reduction steps, including empty iteration spaces. A separate complete-overwrite
+    proof allows a dirty destination only when the output map is identity, the loop box equals the
+    entire output shape, and the body yields initialized values even with a dirty output argument.
+    `Check/DefinedLinalg.lean` checks these conditions against actual `linalg.fill` and `linalg.generic`
+    IR. It accepts initialized integer matmul with widening casts, multiple-output reductions,
+    captured values, and single-output full overwrites. Structured bodies currently use the leaf
+    rulebook; nested structured operations, named matmul/transpose, direct tensor arithmetic,
+    division, shifts, and overflow-flagged arithmetic still lack definedness rules.
+  - The theorem requires typed, nonpoison inputs. The initialized-matmul fixture passes real xDSL
+    preprocessing and obtains a `verified` chain after independent source support/definedness checks.
+    This proves that recorded chain, not every model or every matmul lowering.
 - **Support, not just definedness (`NotStuck`).** The semantics returns `stuck` for anything it does
   not model. A per-boundary checker cannot know that the rest of the program is modelled, so each
   boundary claims *conditional* refinement:
@@ -614,14 +625,24 @@ induction over the block, with `ProgRefines.trans` for multiple sites.
 This is the main lever for parallelism: once the congruence theorem and the rule interface exist, rule
 families are independent work.
 
+**Implemented local rewrite families.** DCE and adjacent closed-expression CSE are proved in
+`Rules/Dce.lean` and `Rules/Cse.lean`. CSE merges two identical, pure, region-free, operand-free
+single-result operations and maintains both source SSA bindings. Qualification runs actual upstream
+MLIR CSE on duplicated constants, checks the resulting boundary and defined chain, and rejects a
+changed constant. Operand-dependent/non-adjacent CSE and other numerical or shape rewrites remain
+unsupported. The untrusted script synthesizer cannot bypass these checks.
+
 **Rule families for Tier A** (exact list fixed by WP-0):
 
 - dead pure-op elimination;
 - `quant_ext.dequantize_per_channel` → `linalg.generic`;
 - TorchAO affine quantize/dequantize lowering;
 - over-rank matmul collapse;
-- bool `sitofp`/`fptosi` fixes;
-- scalar-square canonicalization;
+- bool `sitofp`/`fptosi` fixes (frontend repairs: signed `i1` true means −1, whereas the intended
+  boolean-to-float value is +1; float-to-bool means nonzero, not an integer truncation);
+  these need independently declared frontend semantics rather than ordinary MLIR equivalence;
+- scalar-square canonicalization (`powf(x, 2)` to `mulf(x, x)` needs an independently justified
+  floating-point law; it is not provable for the current arbitrary `FloatModel`);
 - quant round/clamp/convert fusion;
 - capture-normalization transforms;
 - accumulator zero-fill (claim `refine`);
