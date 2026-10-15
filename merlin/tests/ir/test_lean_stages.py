@@ -12,6 +12,7 @@ import subprocess
 
 from merlin.common.paths import repo_root
 from merlin.llvmlower.passes_xdsl import preprocess_text
+from merlin.verify.lean import stages as lean_stages
 from merlin.verify.lean.export import export_file
 
 FIXTURE = repo_root() / "merlin" / "tests" / "fixtures" / "lean_dce_forward.mlir"
@@ -33,7 +34,7 @@ def test_recording_is_byte_neutral(tmp_path, monkeypatch):
     plain, _ = preprocess_text(FIXTURE.read_text())
     recorded, _ = _record(tmp_path, monkeypatch)
     assert recorded == plain
-    names = sorted(p.name.split("_", 1)[1] for p in (tmp_path / "stages").iterdir())
+    names = sorted(p.name.split("_", 1)[1] for p in lean_stages.completed(tmp_path / "stages"))
     assert names == ["xdsl-c-interface", "xdsl-parse", "xdsl-pruned", "xdsl-quant-lowered"]
 
 
@@ -51,7 +52,7 @@ def _check(tools, tmp_path, before, after, tag):
 
 def test_c1_verifies_real_dce_and_rejects_faults(tmp_path, monkeypatch, lean_tools):
     _record(tmp_path, monkeypatch)
-    stage = next(p for p in (tmp_path / "stages").iterdir() if p.name.endswith("xdsl-pruned"))
+    stage = next(p for p in lean_stages.completed(tmp_path / "stages") if p.name.endswith("xdsl-pruned"))
     assert json.loads((stage / "meta.json").read_text())["changed"]
     before = _export(lean_tools, stage / "before.mlir", tmp_path, "before")
     after = _export(lean_tools, stage / "after.mlir", tmp_path, "after")
@@ -85,7 +86,7 @@ def test_receipts_for_real_preprocessing(tmp_path, monkeypatch, lean_tools):
     from merlin.verify.lean.check import check_stage
 
     _record(tmp_path, monkeypatch)
-    stages = sorted(p for p in (tmp_path / "stages").iterdir())
+    stages = lean_stages.completed(tmp_path / "stages")
     # Chain continuity: each boundary consumes exactly what the previous one produced.
     for prev, nxt in zip(stages, stages[1:]):
         assert (prev / "after.mlir").read_bytes() == (nxt / "before.mlir").read_bytes()
@@ -100,3 +101,25 @@ def test_receipts_for_real_preprocessing(tmp_path, monkeypatch, lean_tools):
     text = (pruned / "after.mlir").read_text()
     (pruned / "after.mlir").write_text(text.replace('"arith.muli"', '"arith.addi"', 1))
     assert check_stage(pruned, m2m_python=lean_tools.m2m_python)["verdict"] != "verified"
+
+
+def test_concurrent_recorders_never_collide(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setenv("MERLIN_LEAN_STAGES", str(tmp_path / "stages"))
+
+    def record(worker):
+        for k in range(20):
+            lean_stages.record_boundary(f"w{worker}-{k}", "test", f"before {worker} {k}", f"after {worker} {k}")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(record, range(8)))
+    stages = lean_stages.completed(tmp_path / "stages")
+    assert len(stages) == 160
+    assert len({p.name.split("_", 1)[0] for p in stages}) == 160  # every sequence number used once
+    for p in stages:
+        meta = json.loads((p / "meta.json").read_text())
+        worker, k = meta["boundary"][1:].split("-")
+        assert (p / "before.mlir").read_text() == f"before {worker} {k}"
+        assert meta["run"] == lean_stages.RUN
+

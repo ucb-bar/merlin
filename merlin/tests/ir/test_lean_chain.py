@@ -7,6 +7,7 @@ import json
 
 from merlin.common.paths import repo_root
 from merlin.llvmlower.passes_xdsl import preprocess_text
+from merlin.verify.lean import stages as lean_stages
 
 FIXTURE = repo_root() / "merlin" / "tests" / "fixtures" / "lean_dce_forward.mlir"
 SCHEMA = repo_root() / "merlin" / "contract" / "schemas" / "lean_chain.schema.json"
@@ -19,7 +20,7 @@ def test_chain_composes_real_preprocessing(tmp_path, monkeypatch, lean_tools):
 
     monkeypatch.setenv("MERLIN_LEAN_STAGES", str(tmp_path / "stages"))
     preprocess_text(FIXTURE.read_text())
-    stages = sorted(p for p in (tmp_path / "stages").iterdir())
+    stages = lean_stages.completed(tmp_path / "stages")
     for stage in stages:
         assert check_stage(stage, m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
     capture = stages[0] / "before.mlir"
@@ -40,8 +41,6 @@ def test_chain_composes_real_preprocessing(tmp_path, monkeypatch, lean_tools):
     assert not broken["chained"] and broken["verdict"] == "abstracted"
 
     # The chain must end at the bytes handed to the lowering.
-    from merlin.verify.lean import stages as lean_stages
-
     support = tmp_path / "support" / "receipt.json"
     handed = tmp_path / "handed.mlir"
     handed.write_bytes((stages[-1] / "after.mlir").read_bytes())
