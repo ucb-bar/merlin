@@ -150,8 +150,12 @@ def build(
     settings: BuildSettings,
     directory: Path,
     admission=None,
+    offload: bool = True,
 ) -> dict[str, Any]:
     """Build ``stage``'s image under ``directory`` (reused when its record matches) and return its record.
+
+    ``offload=False`` builds the host twin: the same recipe and host code with every group on the host
+    and no device object of the submission (the differential's reference image).
 
     Two checks of one submission share the directory: the first builds while holding its lock, the
     second waits and reuses the record."""
@@ -161,16 +165,18 @@ def build(
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / ".lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return _build(stage, target, label, submission, submission_sha256, settings, directory, admission)
+        return _build(stage, target, label, submission, submission_sha256, settings, directory, admission, offload)
 
 
-def _build(stage, target, label, submission, submission_sha256, settings, directory: Path, admission):
+def _build(stage, target, label, submission, submission_sha256, settings, directory: Path, admission, offload):
     from merlin.compile.baremetal_model import compile_saved_model
 
     key = {
         "stage": str(Path(stage).resolve()),
-        "submission_sha256": submission_sha256,
+        # The host twin depends on no submission byte.
+        "submission_sha256": submission_sha256 if offload else None,
         "settings": settings.record(),
+        "offload": offload,
     }
     record_path = directory / "build.json"
     if record_path.is_file():
@@ -186,7 +192,7 @@ def _build(stage, target, label, submission, submission_sha256, settings, direct
 
         admission = service(target)
     started = time.monotonic()
-    device = _routing(target, Path(stage), Path(submission), label, settings, admission)
+    device = _routing(target, Path(stage), Path(submission), label, settings, admission) if offload else None
     receipt = compile_saved_model(
         capture=stage,
         package=settings.host_package,
