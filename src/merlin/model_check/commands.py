@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import time
 from collections.abc import Sequence
@@ -10,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.model_check import bundle as B
+from merlin.model_check import metrics as M
 from merlin.model_check import replay as RP
 from merlin.model_check.cli import register
 from merlin.model_check.models import load as load_models
@@ -94,8 +97,6 @@ def binding(args: argparse.Namespace, report: dict) -> dict:
 
 @register("census")
 def census(args: argparse.Namespace, report: dict) -> dict:
-    import json
-
     models = load_models(args.models)
     model = models.model(args.model)
     bundle = _bundle(args)
@@ -155,6 +156,38 @@ def _chunks(cases: Sequence[RP.ReplayCase]) -> list[list[RP.ReplayCase]]:
     return [c for c in chunks if c]
 
 
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _kernel_identity(catalog, symbol: str) -> dict[str, Any]:
+    """Which source groups a kernel serves, and its interface and call-shape identities (two kernels
+    with both digests equal are the same kernel, whichever program or group they came from)."""
+    regions = sorted(
+        {str(r.get("source_region_id")) for r in catalog.sidecar.get("routed") or () if r.get("symbol") == symbol}
+    )
+    return {
+        "source_region_id": regions[0] if regions else None,
+        "source_region_ids": regions,
+        "interface_sha256": _sha256(catalog.interfaces.get(symbol, "")),
+        "shape_sha256": _sha256(json.dumps(catalog.sidecar["call_buffers"].get(symbol), sort_keys=True)),
+    }
+
+
+def _program_census(bundle, model: str, program: str, refused: dict[str, str]) -> dict[str, Any]:
+    """The bundle's fixed-denominator census with the submission's refused kernels moved off the device."""
+    data = json.loads((bundle.program_dir(model, program) / "census.json").read_text())
+    rows = data["contractions"]
+    on_device = [r for r in rows if r.get("placement") == "device" and r.get("symbol") not in refused]
+    total = sum(int(r.get("macs") or 0) for r in rows)
+    return {
+        "denominator": int(data["denominator"]),
+        "device": len(on_device),
+        "refused": sum(1 for r in rows if r.get("placement") == "device" and r.get("symbol") in refused),
+        "device_mac_fraction": round(sum(int(r.get("macs") or 0) for r in on_device) / total, 6) if total else None,
+    }
+
+
 def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, work: Path) -> dict[str, Any]:
     catalog = bundle.catalog(model.name, program)
     cases = _cases(bundle, model.name, program, inputs, group=group, all_calls=all_calls)
@@ -202,15 +235,17 @@ def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, w
             row["mismatches"].append(verdict["label"])
     kernels = []
     for symbol in symbols:
+        identity = _kernel_identity(catalog, symbol)
         if symbol in refused:
-            kernels.append({"symbol": symbol, "status": "refused", "detail": refused[symbol][:300]})
+            kernels.append({"symbol": symbol, **identity, "status": "refused", "detail": refused[symbol][:300]})
             continue
         row = per_symbol.get(symbol, {"symbol": symbol, "cases": 0, "exact": 0, "mismatches": []})
         status = "pass" if row["cases"] and row["exact"] == row["cases"] else "fail"
-        kernels.append({**row, "status": status, "mismatches": row["mismatches"][:5]})
+        kernels.append({**row, **identity, "status": status, "mismatches": row["mismatches"][:5]})
     return {
         "program": program,
         "build": {"seconds": round(build_seconds, 1), "built": len(built.kernels), "refused": len(refused)},
+        "census": _program_census(bundle, model.name, program, refused),
         "kernels": kernels,
         "images": images,
         "refused": refused,
@@ -270,6 +305,22 @@ def replay_kernel(args: argparse.Namespace, report: dict) -> dict:
     return report
 
 
+def _reference_metrics(bundle: B.Bundle, model: str, split: str) -> dict[str, Any]:
+    """The model metrics when every kernel is exact: the INT8 reference's own, per input and worst case."""
+    per_input = []
+    for input_id in bundle.inputs(model, split):
+        path = bundle.root / model / input_id / "metrics_int8.json"
+        if path.is_file():
+            row = {k: v for k, v in json.loads(path.read_text()).items() if k != "per_channel"}
+            per_input.append({"split": input_id.partition("/")[0], "id": input_id, **row})
+    return {
+        "source": "int8_reference",
+        "inputs": len(per_input),
+        "per_input": per_input,
+        "worst": M.worst_of(per_input),
+    }
+
+
 @register("check")
 def check(args: argparse.Namespace, report: dict) -> dict:
     if args.mode != "fast":
@@ -286,6 +337,8 @@ def check(args: argparse.Namespace, report: dict) -> dict:
         }
     else:
         exact = report["gates"]["kernel_exact"]["status"] == "pass"
+        if exact:
+            report["model_metrics"] = _reference_metrics(_bundle(args), args.model, args.split)
         report["gates"]["model_numerics"] = {
             "status": "pass" if exact else "fail",
             "detail": "every kernel exact, so the model computes its INT8 reference"
