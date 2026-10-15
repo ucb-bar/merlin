@@ -263,14 +263,13 @@ def _device_result(group, members, entry, result_type, *, elementwise: bool = Fa
         def relayout(value) -> list:
             groups = ArrayAttr([ArrayAttr([IntegerAttr(i, i64) for i in (0, 1)])])
             collapsed = tensor.CollapseShapeOp(
-                operands=[value], result_types=[TensorType(element, [device[0]])],
+                operands=[value],
+                result_types=[TensorType(element, [device[0]])],
                 properties={"reassociation": groups},
             )
             if len(have) == 1:
                 return [collapsed]
-            expanded = tensor.ExpandShapeOp(
-                collapsed.results[0], (), groups, [1, device[0]], result_type
-            )
+            expanded = tensor.ExpandShapeOp(collapsed.results[0], (), groups, [1, device[0]], result_type)
             return [collapsed, expanded]
 
         return relayout, device_type, ""
@@ -352,12 +351,15 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
         if shape == [rows, window]:
             activation, views = pair[0], []
         elif len(shape) == 4 and shape[0] == 1 and shape[1] == rows and shape[2] * shape[3] == window:
-            groups = ArrayAttr([
-                ArrayAttr([IntegerAttr(i, i64) for i in (0, 1)]),
-                ArrayAttr([IntegerAttr(i, i64) for i in (2, 3)]),
-            ])
+            groups = ArrayAttr(
+                [
+                    ArrayAttr([IntegerAttr(i, i64) for i in (0, 1)]),
+                    ArrayAttr([IntegerAttr(i, i64) for i in (2, 3)]),
+                ]
+            )
             collapse = tensor.CollapseShapeOp(
-                operands=[pair[0]], result_types=[TensorType(pair[0].type.get_element_type(), [rows, window])],
+                operands=[pair[0]],
+                result_types=[TensorType(pair[0].type.get_element_type(), [rows, window])],
                 properties={"reassociation": groups},
             )
             activation, views = collapse.results[0], [collapse]
@@ -370,7 +372,14 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
         ones = _constant_tensor(laid_out, activation.type.get_element_type())
         return [activation, ones.results[0]], [*views, ones], ["input_0", "weight_0"], ""
     if stated.stored_operand is None:
-        return [pair[0], pair[1]], [], ["input_0", "input_1"], ""
+        # AN ACTIVATION IN THE STATIONARY SLOT binds where a weight would (as the whole-program route binds
+        # it): a contraction stated with a stationary activation holds its right operand in the weight
+        # role, packed and evicted within the call, so the call hands this per-inference tensor over as
+        # that operand. Any other two-input group (a residual add) states both operands as inputs.
+        from merlin.xdsl_dialects.lowering import group_command as GC
+
+        second = "weight_0" if GC.stationary_is_activation(entry) else "input_1"
+        return [pair[0], pair[1]], [], ["input_0", second], ""
     operands, constants, roles = [pair[0]], [], ["input_0", "weight_0"]
     weight_row = (row or {}).get("weight") or {}
     laid_out = arrays.get(weight_row.get("array")) if isinstance(weight_row.get("array"), str) else None
