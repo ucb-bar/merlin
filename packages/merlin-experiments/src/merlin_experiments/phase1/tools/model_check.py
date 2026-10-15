@@ -56,6 +56,8 @@ def main(argv=None) -> int:
         output = Path(args.out)
         if output.is_absolute() or ".." in output.parts or output.is_symlink():
             parser.error("--out must be a relative workspace file")
+        if not output.resolve().is_relative_to(ws.resolve()):
+            parser.error("--out must stay inside the workspace")
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result))

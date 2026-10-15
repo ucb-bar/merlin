@@ -10,11 +10,11 @@ import sysconfig
 
 import pytest
 import yaml
-
+from merlin_experiments.phase1 import oot_history as OH
 from merlin_experiments.phase1 import run_inputs as RI
 
-from merlin.common.paths import module_source_path
 from merlin.common import oot_repo as O
+from merlin.common.paths import module_source_path
 
 
 def test_installed_run_input_records_seed_and_private_drift(tmp_path):
@@ -154,3 +154,18 @@ def test_r40_style_arbitrary_seed_is_rejected_before_copy(tmp_path):
     with pytest.raises(RuntimeError, match="final submission"):
         RI.seed_submission(ws, source, run, require_lineage=True)
     assert not (ws / "submission").exists()
+
+
+def test_turn_end_refuses_bytes_outside_final_oot_commit(tmp_path):
+    run, submission = tmp_path / "run", tmp_path / "submission"
+    run.mkdir()
+    submission.mkdir()
+    (submission / "manifest.yaml").write_text("commands: {}\n")
+    OH.start(run)
+    committed = OH.commit_graded(run, submission, label="round", key="1")
+    assert committed is not None
+    assert OH.verify_turn_end(run, submission, committed.commit)["matched"] is True
+    (submission / "manifest.yaml").write_text("commands: {changed: true}\n")
+    with pytest.raises(O.OotRepoError, match="submission changed"):
+        OH.verify_turn_end(run, submission, committed.commit)
+    assert json.loads((run / "turn_end_provenance.json").read_text())["matched"] is False

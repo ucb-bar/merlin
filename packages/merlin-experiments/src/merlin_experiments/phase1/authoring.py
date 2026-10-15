@@ -132,6 +132,18 @@ _STATUS_LINES = (
 )
 
 
+def _verified_status_line(verdict: dict) -> str:
+    gate = verdict.get("model_gate")
+    if not isinstance(gate, dict):
+        return _PASS_LINE
+    from .brokers.model_check import PROGRAMS
+
+    rows = gate.get("programs") or {}
+    names = [f"{model}/{program}" for model, programs in PROGRAMS.items() for program in programs]
+    statuses = [f"{name}={((rows.get(name) or {}).get('status') or 'pending')}" for name in names]
+    return "Visible models: " + "; ".join(statuses) + ". Sealed official grade pending."
+
+
 def _stamp_report_status(report: Path, pass_line: str) -> bool:
     """Last-resort guarantee: ensure REPORT.md's final status line states the VERIFIED result. The
     multi-round relaunch grades AFTER the agent exits, so the converging round's agent never saw a
@@ -180,15 +192,22 @@ def finalize_report(
     shutil.copytree(ws / "submission", snap, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
 
     LG.write_verdict(ws / "qa" / "verdict.json", verdict)
+    pass_line = _verified_status_line(verdict)
+    model_report = "model_gate" in verdict
     (ws / "FINALIZE.md").write_text(
-        "All required public/dev pilot capsules now PASS (see qa/verdict.json: all_pass=true).\n\n"
-        "Do ONLY this, then stop:\n"
-        "1. Update `submission/REPORT.md` so its final status line reads EXACTLY:\n"
-        f'   "{_PASS_LINE}"\n'
-        "   and its body honestly reflects the verified per-capsule pass + oracle tiers.\n"
-        "2. Update `submission/docs/iteration_notes.md` with the final converged state.\n"
-        "DO NOT modify manifest.yaml, mlir_oot/, or any code — the package is frozen-pending and must\n"
-        "keep passing. Touch only REPORT.md and docs/.\n"
+        ("All six visible programs pass; the sealed official grade has not run yet.\n\n"
+         if model_report else
+         "All required public/dev pilot capsules now PASS (see qa/verdict.json: all_pass=true).\n\n")
+        + "Do ONLY this, then stop:\n"
+        + ("1. Lead `submission/REPORT.md` with a table of the six programs and their visible statuses. "
+           "Then make its final status line read EXACTLY:\n" if model_report else
+           "1. Update `submission/REPORT.md` so its final status line reads EXACTLY:\n")
+        + f'   "{pass_line}"\n'
+        + ("   State only measured visible results; do not claim sealed results.\n" if model_report else
+           "   and its body honestly reflects the verified per-capsule pass + oracle tiers.\n")
+        + "2. Update `submission/docs/iteration_notes.md` with the final converged state.\n"
+        + "DO NOT modify manifest.yaml, mlir_oot/, or any code — the package is frozen-pending and must\n"
+        + "keep passing. Touch only REPORT.md and docs/.\n"
     )
     tpath = run_dir / "rounds" / "finalize.transcript.jsonl"
     tpath.parent.mkdir(parents=True, exist_ok=True)
@@ -231,7 +250,7 @@ def finalize_report(
         shutil.copytree(snap, ws / "submission")
         restored = True
     # guarantee the frozen report's status line matches the verified verdict
-    stamped = _stamp_report_status(ws / "submission" / "REPORT.md", _PASS_LINE)
+    stamped = _stamp_report_status(ws / "submission" / "REPORT.md", pass_line)
     result = audit.audit_transcript(tpath, arm, workspace=ws)
     return {
         "agent_rc": rc,
@@ -597,6 +616,10 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         # FINAL AUTHORITATIVE GRADE: the background grades are progress reports on a moving workspace;
         # the run's verdict is a grade of the submission as the session left it.
         verdict = _grade(ws, run_dir, state["tick"] + 1, a.no_oracle, a.qa_timeout)
+        if context.target == "gemmini" and a.experiment == "full":
+            from . import oot_history as _OH
+
+            _OH.verify_turn_end(run_dir, ws / "submission", verdict.get("oot_commit"))
         conf, workflow_conformant = _workflow_conformance(
             tpath, ws / "submission", arm, _endpoint_kind, resolved_tools()
         )
@@ -771,6 +794,10 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             break
 
         verdict = _grade(ws, run_dir, rnd, a.no_oracle, a.qa_timeout)
+        if context.target == "gemmini" and a.experiment == "full":
+            from . import oot_history as _OH
+
+            _OH.verify_turn_end(run_dir, ws / "submission", verdict.get("oot_commit"))
         # Cross-round MEMORY: write the harness-built round brief (progress log across all graded rounds +
         # the agent's own notes + a stale-notes nudge) so the NEXT fresh session carries its progress
         # instead of re-deriving it. Best-effort — never let a brief build failure end a run.
@@ -1248,7 +1275,16 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     # VERIFIED result (the relaunch design means the converging round's agent never saw the passing
     # verdict, so its self-reported status lags by one round). Guarantees the frozen report matches.
     finalize = None
-    if _authoring_complete():
+    if _authoring_complete() and context.target == "gemmini" and a.experiment == "full":
+        # A report-finalize turn and the driver's status-line stamp change submission bytes after the
+        # last agent-source OOT commit. The model task asks for the report during authoring; preserve
+        # that exact tree for the official grade and record the visible model status here.
+        finalize = {
+            "skipped": "gemmini model report belongs to the agent's final authoring tree",
+            "visible_model_status_line": _verified_status_line(verdict),
+            "status_line_stamped_by_driver": False,
+        }
+    elif _authoring_complete():
         _verify_implementation_sources()
         print("[finalize] converged — running bounded report-finalize turn")
         _fin_start = time.time()
