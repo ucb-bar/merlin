@@ -8,9 +8,13 @@ import subprocess
 import sys
 import sysconfig
 
+import pytest
+import yaml
+
 from merlin_experiments.phase1 import run_inputs as RI
 
 from merlin.common.paths import module_source_path
+from merlin.common import oot_repo as O
 
 
 def test_installed_run_input_records_seed_and_private_drift(tmp_path):
@@ -112,3 +116,41 @@ def test_run_input_module_has_no_native_controller_facade():
     assert RI.seed_submission.__module__ == "merlin_experiments.phase1.run_inputs"
     assert RI.verify_persisted_run_inputs.__module__ == "merlin_experiments.phase1.run_inputs"
     assert "_common" not in RI.__dict__
+
+
+def test_authoring_seed_requires_same_lineage_final_oot_tree(tmp_path):
+    previous = tmp_path / "previous-run"
+    source = previous / "submission"
+    source.mkdir(parents=True)
+    (source / "manifest.yaml").write_text("commands: {}\n")
+    (source / "compiler.py").write_text("VALUE = 1\n")
+    (previous / "environment.yaml").write_text(yaml.safe_dump({
+        "run_id": "r53", "lineage_id": "r53",
+    }))
+    O.init(previous / "oot")
+    commit = O.commit_candidate(previous / "oot", source, label="freeze", when=1, run_id="r53")
+    O.tag(previous / "oot", O.FROZEN_TAG, commit.commit)
+    ws, run = tmp_path / "workspace", tmp_path / "new-run"
+    ws.mkdir()
+    run.mkdir()
+    record = RI.seed_submission(ws, source, run, require_lineage=True)
+    assert record["lineage"] == {
+        "lineage_id": "r53", "source_run_id": "r53", "source_commit": commit.commit,
+        "source_tree_sha256": O.tree_digest(previous / "oot", commit.commit),
+    }
+    RI.verify_seed_submission(ws, run, record)
+    (source / "compiler.py").write_text("operator edit\n")
+    with pytest.raises(RuntimeError, match="final oot commit tree"):
+        RI.verify_seed_submission(ws, run, record)
+
+
+def test_r40_style_arbitrary_seed_is_rejected_before_copy(tmp_path):
+    source = tmp_path / "r40-tap-final-submission"
+    source.mkdir()
+    (source / "manifest.yaml").write_text("commands: {}\n")
+    ws, run = tmp_path / "workspace", tmp_path / "run"
+    ws.mkdir()
+    run.mkdir()
+    with pytest.raises(RuntimeError, match="final submission"):
+        RI.seed_submission(ws, source, run, require_lineage=True)
+    assert not (ws / "submission").exists()
