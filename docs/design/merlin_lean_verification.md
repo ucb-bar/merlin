@@ -648,6 +648,35 @@ unsupported. The untrusted script synthesizer cannot bypass these checks.
 - accumulator zero-fill (claim `refine`);
 - the post-offload feature rewrites that WP-0 finds enabled.
 
+### 5.1.1 Ordered upstream rewrite implementation
+
+Implement one independently qualified family at a time. Each family needs a soundness theorem,
+acceptance of actual pass output, independently corrupted negative outputs, source-definedness
+coverage for its demonstration, receipt replay, and a separate commit. Compilation below the
+model/tensor layer is outside this sequence.
+
+| Order | Family | Proof obligation and completion criterion |
+|---|---|---|
+| 1 | Named contraction generalization | Expand `linalg.matmul`/`batch_matmul` using their declared maps, iterator order, and unchanged body/casts; qualify actual MLIR generalization and a defined chain. |
+| 2 | Exact integer arithmetic | Add operand canonicalization, then cast/constant simplifications with checked widths, signedness, flags, and poison behavior. Accept actual canonicalizer output. |
+| 3 | Valid static shape rewrites | Prove reshape cancellation/composition and indexing equivalence, including zero extents, reassociation, element type, and all escaping uses. |
+| 4 | Rewrites inside operation bodies | Lift proved local rules into actual linalg region closures with captures and block-argument shadowing; preserve reduction order and unchanged computation. |
+| 5 | Exact quantization expansion | Check dequantization and already-declared quantization operations against independent software semantics. Preserve broadcast/granularity maps, zero points, widths, rounding, clamps, and floating operation order. |
+| 6 | Numerical policies and frontend repairs | Add policy-specific claims for dynamic W8A8/approximations and frontend-intent claims for capture repairs. Compose only after independent policy review and qualification on complete upstream runs. |
+
+`Rules/OneOp.lean` provides a reusable expansion contract: preserve operands, result bindings,
+and actual region closures; prove the candidate agrees on every modeled, defined source execution.
+Its soundness theorem lifts this contract through the existing SSA/region correspondence and C1
+interface. A constructor is not proof evidence: semantic checks decode its proposed operation again.
+Named generalization has a separate success-transfer theorem so source-definedness cannot be inferred
+from a target that merely repairs an undefined or unsupported source.
+
+Over-rank matmul capture repair is **not** an ordinary shape equivalence obligation. Its source is
+explicitly invalid linalg (`collapse_overrank_matmul`), so proving refinement against its unsupported
+MLIR meaning is insufficient. It belongs with independently declared frontend semantics in order 6.
+Boolean cast repairs have the same distinction. Quantization policy authors must use independently
+declared software contracts/references rather than reconstruct the policy from the implementing pass.
+
 ### 5.2 C2 — outlining (inline-and-compare)
 
 A generalization of `verify/outline_ir.py`, with these steps:
