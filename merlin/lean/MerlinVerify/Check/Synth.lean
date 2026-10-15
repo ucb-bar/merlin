@@ -3,12 +3,14 @@ UNTRUSTED script synthesis for C1. A certificate is a hint (design D2): this mod
 the two programs by greedy alignment, and `c1Check` re-checks every step. A wrong or incomplete
 synthesis can only make the boundary `abstracted`, never `verified`.
 
-Current alignment tries adjacent closed-expression CSE, alpha-equivalent `same` steps, and DCE.
+Current alignment tries alpha-equivalent prefixes, closed-expression CSE, proved operation
+expansions, and DCE.
 Rules that need certificates from the pass (rewrites that create ops)
 add their own synthesis or read the pass's certificate.
 -/
 import MerlinVerify.Rules.Dce
 import MerlinVerify.Rules.Cse
+import MerlinVerify.Rules.Generalize
 
 namespace MerlinVerify.Check
 
@@ -34,9 +36,12 @@ def synthLocal (ρ : Rho) : List Op → List Op → List Step
       match Rules.Cse.check ρ ((s :: ss).take 2) [t] with
       | some ρ' => .site Rules.Cse.rule 2 1 :: synthLocal ρ' (ss.drop 1) ts
       | none =>
-        match alphaOp ρ s t with
-        | some ρ' => .same :: synthLocal ρ' ss ts
-        | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss (t :: ts)
+        match Rules.Generalize.rule.check ρ [s] [t] with
+        | some ρ' => .site Rules.Generalize.rule 1 1 :: synthLocal ρ' ss ts
+        | none =>
+          match alphaOp ρ s t with
+          | some ρ' => .same :: synthLocal ρ' ss ts
+          | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss (t :: ts)
   termination_by ss ts => ss.length + ts.length
   decreasing_by
     all_goals simp_all
