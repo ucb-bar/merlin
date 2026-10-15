@@ -138,6 +138,22 @@ def test_gsim_argv_keeps_the_bound_template_and_preloads_the_same_elf():
         engine.argv(Path("/w/r.elf"), max_cycles=0)
 
 
+def test_a_reaped_engine_reports_its_cpu_time_and_a_late_one_is_killed():
+    import subprocess
+    import sys
+    import time
+
+    quick = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
+    cpu = EN._reap(quick, deadline=time.monotonic() + 30)  # noqa: SLF001
+    assert cpu is not None and cpu >= 0 and quick.returncode == 0
+    slow = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True)
+    assert EN._reap(slow, deadline=time.monotonic() + 0.3) is None  # noqa: SLF001
+    EN._kill_group(slow)  # noqa: SLF001
+    assert slow.returncode is not None
+    run = EN.EngineRun("gsim", "completed", "", 10.0, 0, 3000, cpu_s=1.5)
+    assert run.record()["cycles_per_cpu_second"] == 2000
+
+
 def test_replay_kernel_takes_unique_and_engine_bounds():
     args = cli.build_parser().parse_args(
         [

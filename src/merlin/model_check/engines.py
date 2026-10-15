@@ -221,6 +221,7 @@ class EngineRun:
     cycles: int | None  # the engine's own count for the whole run (gSIM harness), when it prints one
     detail: str = ""
     argv: tuple[str, ...] = ()
+    cpu_s: float | None = None  # the engine process's own CPU time, when it was reaped
 
     def record(self) -> dict[str, Any]:
         row = {"engine": self.engine, "status": self.status, "seconds": round(self.wall_s, 1)}
@@ -228,6 +229,10 @@ class EngineRun:
             row["returncode"] = self.returncode
         if self.cycles is not None:
             row["cycles"] = self.cycles
+        if self.cpu_s is not None:
+            row["cpu_seconds"] = round(self.cpu_s, 1)
+            if self.cycles:
+                row["cycles_per_cpu_second"] = round(self.cycles / max(self.cpu_s, 1e-3))
         if self.detail:
             row["detail"] = self.detail[-1500:]
         return row
@@ -319,9 +324,8 @@ class GsimEngine:
                 start_new_session=True,
                 preexec_fn=_unlimited_stack,  # noqa: PLW1509 -- no threads touch the child before exec
             )
-            try:
-                proc.wait(timeout=timeout_s)
-            except subprocess.TimeoutExpired:
+            cpu_s = _reap(proc, deadline=started + timeout_s)
+            if cpu_s is None:
                 timed_out = True
                 _kill_group(proc)
             wall = time.monotonic() - started
@@ -347,7 +351,22 @@ class GsimEngine:
             status, detail = "error", f"exit {code}: {(stdout + stderr)[-1200:]}"
         elif any(marker in stdout + stderr for marker in self.failure_markers):
             status, detail = "error", "a declared failure marker was printed: " + stdout[-1200:]
-        return EngineRun("gsim", status, stdout, wall, code, cycles, detail, tuple(argv))
+        return EngineRun("gsim", status, stdout, wall, code, cycles, detail, tuple(argv), cpu_s)
+
+
+def _reap(proc: subprocess.Popen, *, deadline: float) -> float | None:
+    """Wait for ``proc`` until ``deadline``; its CPU seconds when it exited, ``None`` at the deadline.
+
+    The CPU time is the load-independent cost of the run: on a shared host the wall time is not.
+    """
+    while True:
+        pid, status, usage = os.wait4(proc.pid, os.WNOHANG)
+        if pid:
+            proc.returncode = os.waitstatus_to_exitcode(status)
+            return usage.ru_utime + usage.ru_stime
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.25)
 
 
 def _kill_group(proc: subprocess.Popen) -> None:
