@@ -89,6 +89,15 @@ def agent_view(report: Mapping[str, Any]) -> dict:
         program["runs"] = [r for r in program.get("runs", []) if r.get("split") != "sealed"]
         for kernel in program.get("kernels", []):
             kernel.pop("sealed", None)
+        if program.get("split") == "sealed":
+            # Sealed shape variants: per-status counts only (no symbol, label or refusal text).
+            statuses: dict[str, int] = {}
+            for kernel in program.pop("kernels", []):
+                statuses[kernel.get("status", "unknown")] = statuses.get(kernel.get("status", "unknown"), 0) + 1
+            program.pop("refused", None)
+            program.pop("images", None)
+            program["kernels"] = []
+            program["summary"] = statuses
     metrics = view.get("model_metrics")
     if isinstance(metrics, dict):
         metrics["per_input"] = [m for m in metrics.get("per_input", []) if m.get("split") != "sealed"]

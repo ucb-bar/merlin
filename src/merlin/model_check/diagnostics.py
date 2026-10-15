@@ -13,7 +13,8 @@ regions, interface opcodes, buffers, stated entry and epilogue, from :func:`merl
 and, per result, the first differing element by flat and multi-index with the expected and the produced
 value. A refused kernel's diagnosis is its form and the package's or build's refusal text.
 
-A diagnosis taken on a sealed input goes under the entry's ``sealed`` key, which the agent view removes.
+A diagnosis is shown at the top of the entry only for a visible input's call; any other (a sealed input, a sealed
+shape variant) goes under the entry's ``sealed`` key, which the agent view removes.
 """
 
 from __future__ import annotations
@@ -446,12 +447,13 @@ def summary(diagnosis: Mapping[str, Any]) -> str:
 
 
 def attach(rows: Sequence[dict[str, Any]], diagnoses: Mapping[str, Mapping[str, Any]]) -> None:
-    """Put each diagnosis on its kernel row: ``diagnosis``, or ``sealed.diagnosis`` for a sealed input."""
+    """Put each diagnosis on its kernel row: ``diagnosis`` for a visible input's call; any other call's
+    (a sealed input, a sealed shape variant) under ``sealed.diagnosis``, which the agent view removes."""
     for row in rows:
         diagnosis = diagnoses.get(row.get("symbol"))
         if diagnosis is None:
             continue
-        if diagnosis.get("split") == "sealed":
-            row.setdefault("sealed", {})["diagnosis"] = dict(diagnosis)
-        else:
+        if diagnosis.get("split") == "visible":
             row["diagnosis"] = dict(diagnosis)
+        else:
+            row.setdefault("sealed", {})["diagnosis"] = dict(diagnosis)

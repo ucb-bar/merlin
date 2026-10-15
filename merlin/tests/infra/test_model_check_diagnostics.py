@@ -152,10 +152,18 @@ def test_a_reproducible_result_and_a_silent_image_are_reported_as_such():
 
 
 def test_a_sealed_diagnosis_is_kept_from_the_agent_view():
-    rows = [{"symbol": "a", "status": "fail"}, {"symbol": "b", "status": "fail"}]
-    DG.attach(rows, {"a": {"split": "visible", "kind": "mismatch"}, "b": {"split": "sealed", "kind": "mismatch"}})
+    rows = [{"symbol": "a", "status": "fail"}, {"symbol": "b", "status": "fail"}, {"symbol": "c", "status": "fail"}]
+    DG.attach(
+        rows,
+        {
+            "a": {"split": "visible", "kind": "mismatch"},
+            "b": {"split": "sealed", "kind": "mismatch"},
+            "c": {"split": "sealed_variants", "kind": "mismatch"},  # any split but visible stays private
+        },
+    )
     assert rows[0]["diagnosis"]["split"] == "visible"
     assert "diagnosis" not in rows[1] and rows[1]["sealed"]["diagnosis"]["split"] == "sealed"
+    assert "diagnosis" not in rows[2] and rows[2]["sealed"]["diagnosis"]["split"] == "sealed_variants"
     report = R.new_report("check", model="m", split="all", submission={})
     report["programs"] = [{"program": "p", "kernels": rows, "runs": []}]
     view = R.agent_view(report)

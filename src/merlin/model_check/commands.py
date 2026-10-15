@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import time
 from collections.abc import Sequence
@@ -10,7 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from merlin.model_check import bundle as B
+from merlin.model_check import metrics as M
 from merlin.model_check import replay as RP
+from merlin.model_check import variants as VAR
 from merlin.model_check.cli import register
 from merlin.model_check.models import load as load_models
 
@@ -92,10 +96,24 @@ def binding(args: argparse.Namespace, report: dict) -> dict:
     return report
 
 
+@register("variants-build")
+def variants_build(args: argparse.Namespace, report: dict) -> dict:
+    model = load_models(args.models).model(args.model)
+    bundle = _bundle(args)
+    record = VAR.build(bundle, model.name, _programs(model, args), seed=args.seed)
+    report["bundle"] = {"path": str(bundle.root)}
+    report["programs"] = [{"program": name, "variants": row} for name, row in record["programs"].items()]
+    device = [row for row in record["programs"].values() if not row.get("host_only")]
+    report["gates"]["variants"] = {
+        "status": "pass" if device and all(row["variants"] for row in device) else "fail",
+        "detail": f"{sum(r['variants'] for r in device)} variant(s) of {sum(r['kernels'] for r in device)} "
+        f"unique kernel(s); {sum(r['skipped'] for r in device)} class(es) unreachable",
+    }
+    return report
+
+
 @register("census")
 def census(args: argparse.Namespace, report: dict) -> dict:
-    import json
-
     models = load_models(args.models)
     model = models.model(args.model)
     bundle = _bundle(args)
@@ -155,13 +173,57 @@ def _chunks(cases: Sequence[RP.ReplayCase]) -> list[list[RP.ReplayCase]]:
     return [c for c in chunks if c]
 
 
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _kernel_identity(catalog, symbol: str) -> dict[str, Any]:
+    """Which source groups a kernel serves, and its interface and call-shape identities (two kernels
+    with both digests equal are the same kernel, whichever program or group they came from)."""
+    regions = sorted(
+        {str(r.get("source_region_id")) for r in catalog.sidecar.get("routed") or () if r.get("symbol") == symbol}
+    )
+    return {
+        "source_region_id": regions[0] if regions else None,
+        "source_region_ids": regions,
+        "interface_sha256": _sha256(catalog.interfaces.get(symbol, "")),
+        "shape_sha256": _sha256(json.dumps(catalog.sidecar["call_buffers"].get(symbol), sort_keys=True)),
+    }
+
+
+def _program_census(bundle, model: str, program: str, refused: dict[str, str]) -> dict[str, Any]:
+    """The bundle's fixed-denominator census with the submission's refused kernels moved off the device."""
+    data = json.loads((bundle.program_dir(model, program) / "census.json").read_text())
+    rows = data["contractions"]
+    on_device = [r for r in rows if r.get("placement") == "device" and r.get("symbol") not in refused]
+    total = sum(int(r.get("macs") or 0) for r in rows)
+    return {
+        "denominator": int(data["denominator"]),
+        "device": len(on_device),
+        "refused": sum(1 for r in rows if r.get("placement") == "device" and r.get("symbol") in refused),
+        "device_mac_fraction": round(sum(int(r.get("macs") or 0) for r in on_device) / total, 6) if total else None,
+    }
+
+
 def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, work: Path) -> dict[str, Any]:
+    catalog = bundle.catalog(model.name, program)
+    cases = _cases(bundle, model.name, program, inputs, group=group, all_calls=all_calls)
+    row = _replay_cases(args, catalog, cases, work)
+    return {"program": program, **row, "census": _program_census(bundle, model.name, program, row["refused"])}
+
+
+def _replay_cases(
+    args, catalog, cases: Sequence[RP.ReplayCase], work: Path, *, cache_root: Path | None = None
+) -> dict[str, Any]:
+    """Build the package's kernels for ``cases``' symbols, replay every case and judge it exactly.
+
+    ``cache_root`` holds the stored kernel objects and replay consoles (default: the build tree's);
+    cases that must stay private (sealed variants) pass a private one.
+    """
     from merlin.model_check import cache as KC
     from merlin.model_check import diagnostics as DG
     from merlin.model_check import export as EX
 
-    catalog = bundle.catalog(model.name, program)
-    cases = _cases(bundle, model.name, program, inputs, group=group, all_calls=all_calls)
     symbols = sorted({c.symbol for c in cases})
     toolchain = RP.toolchain_for(args.host_package)
     use_cache = not getattr(args, "no_cache", False)
@@ -174,6 +236,7 @@ def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, w
         toolchain=toolchain,
         build=RP.build_kernels,
         enabled=use_cache,
+        root=cache_root,
     )
     build_seconds = time.monotonic() - started
     refused, objects = built.refused, built.objects
@@ -192,6 +255,7 @@ def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, w
             dram_bytes=args.dram_bytes,
             timeout=args.timeout_s,
             enabled=use_cache,
+            root=cache_root,
         )
 
     verdicts: list[dict[str, Any]] = []
@@ -223,13 +287,12 @@ def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, w
             row["mismatches"].append(verdict["label"])
     kernels = []
     for symbol in symbols:
-        form = EX.describe(catalog, symbol)
-        context = {k: form[k] for k in ("form", "source_region_ids", "interface_sha256")}
+        identity = {**_kernel_identity(catalog, symbol), "form": EX.describe(catalog, symbol)["form"]}
         if symbol in refused:
             kernels.append(
                 {
                     "symbol": symbol,
-                    **context,
+                    **identity,
                     "status": "refused",
                     "detail": refused[symbol][:300],
                     "diagnosis": DG.refusal(catalog, symbol, refused[symbol]),
@@ -238,7 +301,7 @@ def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, w
             continue
         row = per_symbol.get(symbol, {"symbol": symbol, "cases": 0, "exact": 0, "mismatches": []})
         status = "pass" if row["cases"] and row["exact"] == row["cases"] else "fail"
-        kernels.append({**row, **context, "status": status, "mismatches": row["mismatches"][:5]})
+        kernels.append({**row, **identity, "status": status, "mismatches": row["mismatches"][:5]})
     diagnoses = DG.localize(
         runnable,
         verdicts,
@@ -251,7 +314,6 @@ def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, w
     )
     DG.attach(kernels, diagnoses)
     return {
-        "program": program,
         "build": {
             "seconds": round(build_seconds, 1),
             "built": len(built.kernels),
@@ -285,6 +347,21 @@ def _replay(args, report, *, all_calls: bool, group: str | None) -> dict:
         report["programs"].append(
             _replay_program(args, bundle, model, program, inputs, group=group, all_calls=all_calls, work=work / program)
         )
+        # The sealed split also carries the program's shape variants, judged like recorded calls.
+        if args.split != "visible":
+            varied = VAR.load(bundle.root, model.name, program, bundle.catalog(model.name, program))
+            if varied is not None:
+                private = VAR.scratch(bundle.root, model.name) / work.name / program
+                row = _replay_cases(
+                    args,
+                    varied.catalog,
+                    varied.cases(group=group),
+                    private,
+                    cache_root=VAR.scratch(bundle.root, model.name) / "cache",
+                )
+                varied.annotate(row["kernels"])
+                report["programs"].append({"program": program, "split": "sealed", "source": VAR.SOURCE, **row})
+    variant_calls = sum(k.get("cases", 0) for p in report["programs"] if p.get("source") for k in p["kernels"])
     kernels = [k for p in report["programs"] for k in p["kernels"]]
     refused = [k for k in kernels if k["status"] == "refused"]
     failed = [k for k in kernels if k["status"] == "fail"]
@@ -296,7 +373,7 @@ def _replay(args, report, *, all_calls: bool, group: str | None) -> dict:
         "status": "pass" if kernels and not failed and not refused else "fail",
         "partial": not all_calls,
         "detail": f"{sum(k.get('exact', 0) for k in kernels)}/{sum(k.get('cases', 0) for k in kernels)} calls "
-        f"bit-exact on {len(inputs)} input(s); {len(failed)} kernel(s) differ",
+        f"bit-exact on {len(inputs)} input(s) and {variant_calls} shape variant(s); {len(failed)} kernel(s) differ",
     }
     for kernel in failed:
         failure = {
@@ -304,8 +381,9 @@ def _replay(args, report, *, all_calls: bool, group: str | None) -> dict:
             "gate": "kernel_exact",
             "symbol": kernel["symbol"],
             "detail": ", ".join(kernel["mismatches"]),
+            **({"split": "sealed"} if "variant_of" in kernel else {}),
         }
-        if "diagnosis" in kernel:  # a visible input's: a sealed one stays under the kernel's sealed key
+        if "diagnosis" in kernel:  # a visible input's: any other split's stays under the kernel's sealed key
             from merlin.model_check.diagnostics import summary
 
             failure["where"] = summary(kernel["diagnosis"])
@@ -318,6 +396,22 @@ def replay_kernel(args: argparse.Namespace, report: dict) -> dict:
     report = _replay(args, report, all_calls=bool(args.all_groups) or args.split != "visible", group=args.group)
     report["gates"]["kernel_exact"]["partial"] = False
     return report
+
+
+def _reference_metrics(bundle: B.Bundle, model: str, split: str) -> dict[str, Any]:
+    """The model metrics when every kernel is exact: the INT8 reference's own, per input and worst case."""
+    per_input = []
+    for input_id in bundle.inputs(model, split):
+        path = bundle.root / model / input_id / "metrics_int8.json"
+        if path.is_file():
+            row = {k: v for k, v in json.loads(path.read_text()).items() if k != "per_channel"}
+            per_input.append({"split": input_id.partition("/")[0], "id": input_id, **row})
+    return {
+        "source": "int8_reference",
+        "inputs": len(per_input),
+        "per_input": per_input,
+        "worst": M.worst_of(per_input),
+    }
 
 
 @register("check")
@@ -336,6 +430,8 @@ def check(args: argparse.Namespace, report: dict) -> dict:
         }
     else:
         exact = report["gates"]["kernel_exact"]["status"] == "pass"
+        if exact:
+            report["model_metrics"] = _reference_metrics(_bundle(args), args.model, args.split)
         report["gates"]["model_numerics"] = {
             "status": "pass" if exact else "fail",
             "detail": "every kernel exact, so the model computes its INT8 reference"

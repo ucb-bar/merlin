@@ -28,6 +28,10 @@ from merlin.model_check.models import Model
 
 REFERENCE_WORKER = Path(__file__).with_name("reference_worker.py")
 FP_TASK = {"logits": "fp_resnet", "next_token_distribution": "fp_tiny_llama", "per_channel": "fp_smolvla"}
+#: The FP reference runs with the numerics a sealed capture has: ATen's portable kernels (the capture
+#: sandbox exposes no CPU capabilities, so ATen falls back to them) on one thread. A bf16 model's FP
+#: output otherwise moves by ~1% between two valid hosts, and the reference would depend on the machine.
+FP_NUMERICS_ENV = {"ATEN_CPU_CAPABILITY": "default", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
 
 
 def input_ids(private: Path, model: str, splits: tuple[str, ...]) -> list[tuple[str, str]]:
@@ -75,12 +79,17 @@ def build(
     if kind == "next_token_distribution":
         request.update(prefill_tokens=int(model.chain["prefill_tokens"]), decode_steps=int(model.chain["decode_steps"]))
     INP.run_worker(
-        fp_python, FP_TASK[kind], request, bundle.root / model.name / ".fp_work", worker=REFERENCE_WORKER, env=fp_env
+        fp_python,
+        FP_TASK[kind],
+        request,
+        bundle.root / model.name / ".fp_work",
+        worker=REFERENCE_WORKER,
+        env={**fp_env, **FP_NUMERICS_ENV},
     )
     log(f"[references] {model.name}: FP reference for {len(ids)} inputs in {time.monotonic() - started:.0f} s")
     catalogs = {p.name: bundle.catalog(model.name, p.name) for p in model.programs}
     blobs = bundle.blobs(model.name)
-    summary: dict[str, Any] = {"model": model.name, "inputs": {}}
+    summary: dict[str, Any] = {"model": model.name, "fp_numerics_env": FP_NUMERICS_ENV, "inputs": {}}
     for split, ident in ids:
         t0 = time.monotonic()
         with np.load(_derived(private, model.name, split, ident)) as data:

@@ -122,6 +122,12 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--contract", type=Path, required=True, help="target contract binding the simulators")
     build.add_argument("--rtl-facts", type=Path, required=True, help="RTL facts matching --contract")
 
+    variants = sub.add_parser("variants-build", help="seeded shape variants of every unique kernel (sealed cases)")
+    _common(variants, submission=False)
+    variants.add_argument("--model", required=True)
+    variants.add_argument("--program", default=None)
+    variants.add_argument("--seed", type=int, required=True, help="private rule seed (never shown to an agent)")
+
     prep = sub.add_parser("inputs-prepare", help="select and preprocess a model's evaluation/calibration inputs")
     _common(prep, submission=False)
     prep.add_argument("--model", required=True)

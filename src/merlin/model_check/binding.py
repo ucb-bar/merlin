@@ -72,7 +72,8 @@ class Engine:
 
     ``canonical_isa`` expands an ISA string to the extension set the toolchain gives it (implied
     extensions included); ``image_arch`` reads the ISA an ELF records; ``spike_argv`` is the bound
-    backend's Spike command for an image; ``run`` executes a command and returns (code, console).
+    backend's Spike command for an image; ``run`` executes a command and returns (code, console);
+    ``disassemble`` lists an image's code with every instruction in its canonical (non-alias) form.
     """
 
     canonical_isa: Callable[[str], list[str]]
@@ -81,6 +82,7 @@ class Engine:
     run: Callable[[Sequence[str]], tuple[int, str]]
     probe_image: Callable[[], Path]
     march: str | None = None
+    disassemble: Callable[[Path], str] | None = None
 
 
 def toolchain_engine(
@@ -147,7 +149,22 @@ def toolchain_engine(
         run=run,
         probe_image=probe,
         march=marches[0] if len(marches) == 1 else None,
+        disassemble=lambda elf: disassemble(toolchain.gcc, elf),
     )
+
+
+def disassemble(compiler: Path, elf: Path) -> str:
+    """``objdump -d -M no-aliases`` of ``elf`` by the disassembler the image's compiler driver names."""
+    named = subprocess.run([str(compiler), "-print-prog-name=objdump"], capture_output=True, text=True, check=False)
+    objdump = Path(named.stdout.strip())
+    if named.returncode != 0 or not objdump.is_file():
+        raise S.SourceReadError(f"{compiler} names no installed objdump ({named.stdout.strip()!r})")
+    done = subprocess.run(
+        [str(objdump), "-d", "-M", "no-aliases", str(elf)], capture_output=True, text=True, check=False
+    )
+    if done.returncode != 0:
+        raise S.SourceReadError(f"{objdump.name} failed on {elf}: {done.stderr.strip()[-300:]}")
+    return done.stdout
 
 
 # ------------------------------------------------------------------------------------------- the receipt
@@ -270,6 +287,7 @@ def receipt(
     resolve = _resolver(checkout)
     with out.guard("spec_citations"):
         _citations(out, spec.get("citations") or (), resolve)
+    partial = _partial_extensions(out, spec.get("partial_extensions") or {}, resolve)
 
     # -- the functional simulator and its accelerator extension, against the contract's pins
     runner = contract.get("runner") or {}
@@ -395,12 +413,18 @@ def receipt(
         out.file("host_package_knobs", Path(host_package) / "knobs.yaml")
         out.file("host_package_manifest", Path(host_package) / "manifest.yaml")
     probe = None
-    if engine is not None and not images:
+    if engine is not None:  # the replay probe image is always checked, beside any image passed in
         with out.guard("probe_image"):
             probe = engine.probe_image()
             out.file("probe_image", probe)
-            images = [probe]
-    _isa_checks(out, engine, dts_isa, images, contract_argv=_dig(block, ("engines", "spike", "argv")) or [])
+            images = [probe, *images]
+    for image in images:
+        if image != probe:
+            out.file(f"image:{image}", image)
+    _isa_checks(
+        out, engine, dts_isa, images, contract_argv=_dig(block, ("engines", "spike", "argv")) or [], partial=partial
+    )
+    _csr_checks(out, engine, images, partial)
 
     # -- DRAM: board span vs Spike -m vs the FPGA target's memory
     fpga_span = _fpga_memory(out, fpga, source.get("config"), resolve, boards)
@@ -432,27 +456,47 @@ def _cited_value(path: Path, key: Sequence[str]) -> Any:
     return _dig(yaml.safe_load(path.read_text()), [str(k) for k in key])
 
 
+def _reread(out: _Builder, rows: Sequence[Mapping[str, Any]], resolve) -> tuple[list[str], list[str]]:
+    """``(missing, changed)`` citations among ``rows``.
+
+    A citation is ``line`` + ``contains`` (the text is on that line), ``key`` + ``equals``/``contains``
+    (a YAML/JSON value), or ``absent`` (the text occurs nowhere in the file: what a source does not do).
+    """
+    missing, changed = [], []
+    for row in rows:
+        path = resolve(row["file"])
+        if "line" in row:
+            where = f"{path}:{row['line']}"
+        elif "key" in row:
+            where = f"{path}: {'.'.join(map(str, row['key']))}"
+        else:
+            where = f"{path}: nowhere {row.get('absent')!r}"
+        if path is None or not path.is_file():
+            missing.append(f"{where} ({row['claim']})")
+            continue
+        out.file(f"cited:{path}", path)
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if "line" in row:
+            lines = text.splitlines()
+            held = 0 < int(row["line"]) <= len(lines) and str(row["contains"]) in lines[int(row["line"]) - 1]
+        elif "key" in row:
+            value = _cited_value(path, row["key"])
+            held = value == row["equals"] if "equals" in row else str(row["contains"]) in str(value or "")
+        elif "absent" in row:
+            held = bool(str(row["absent"])) and str(row["absent"]) not in text
+        else:
+            held = False
+        if not held:
+            changed.append(f"{where} ({row['claim']})")
+    return missing, changed
+
+
 def _citations(out: _Builder, rows: Sequence[Mapping[str, Any]], resolve) -> None:
     """Re-read every citation of the spec: a missing source is unknown, a changed one fails."""
     if not rows:
         out.check("spec_citations", UNKNOWN, "the binding spec cites no source for its assertions")
         return
-    missing, changed = [], []
-    for row in rows:
-        path = resolve(row["file"])
-        where = f"{path}:{row['line']}" if "line" in row else f"{path}: {'.'.join(map(str, row['key']))}"
-        if path is None or not path.is_file():
-            missing.append(f"{where} ({row['claim']})")
-            continue
-        out.file(f"cited:{path}", path)
-        if "line" in row:
-            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-            held = 0 < int(row["line"]) <= len(lines) and str(row["contains"]) in lines[int(row["line"]) - 1]
-        else:
-            value = _cited_value(path, row["key"])
-            held = value == row["equals"] if "equals" in row else str(row["contains"]) in str(value or "")
-        if not held:
-            changed.append(f"{where} ({row['claim']})")
+    missing, changed = _reread(out, rows, resolve)
     status = UNKNOWN if missing else (FAIL if changed else PASS)
     out.check(
         "spec_citations",
@@ -463,6 +507,53 @@ def _citations(out: _Builder, rows: Sequence[Mapping[str, Any]], resolve) -> Non
         missing=missing,
         changed=changed,
     )
+
+
+def _partial_extensions(out: _Builder, declared: Mapping[str, Any], resolve) -> dict[str, list[str]]:
+    """``{extension: absent CSRs}`` for each extension the hardware implements in part, as its cited sources say.
+
+    An extension whose citations do not all hold is left out, so an ISA check that needs it fails or
+    stays unknown exactly as if nothing had been declared.
+    """
+    accepted: dict[str, list[str]] = {}
+    for extension, entry in declared.items():
+        with out.guard(f"partial.{extension}"):
+            absent = [str(c) for c in entry.get("absent_csrs") or ()]
+            rows = entry.get("citations") or ()
+            missing, changed = _reread(out, rows, resolve) if rows else ([], [])
+            if not rows or not absent:
+                status, detail = UNKNOWN, f"{extension} is declared partial without citations and absent CSRs"
+            elif missing or changed:
+                status = UNKNOWN if missing else FAIL
+                detail = f"{extension}: citations missing {missing}, no longer say it {changed}"
+            else:
+                status = PASS
+                detail = f"{extension} is implemented in part ({len(rows)} citations hold); absent CSRs {absent}"
+                accepted[str(extension)] = absent
+            out.check(f"partial.{extension}", status, detail, absent_csrs=absent, missing=missing, changed=changed)
+    return accepted
+
+
+def _csr_checks(out: _Builder, engine: Engine | None, images: Sequence[Path], partial: Mapping[str, list[str]]) -> None:
+    """No image touches a CSR that a partially implemented extension leaves out (it would trap on hardware)."""
+    absent = sorted({csr for csrs in partial.values() for csr in csrs})
+    if not absent:
+        return
+    for index, image in enumerate(images):
+        with out.guard(f"csr_absent[{index}]"):
+            if engine is None or engine.disassemble is None:
+                raise BindingError("no disassembler: the image's CSR accesses cannot be read")
+            hits = S.csr_accesses(engine.disassemble(image), absent)
+            functions = sorted({h["function"] or "?" for h in hits})
+            out.check(
+                f"csr_absent[{index}]",
+                FAIL if hits else PASS,
+                f"{image.name}: "
+                + (f"accesses {sorted({h['csr'] for h in hits})} in {functions}" if hits else f"no access to {absent}"),
+                image=image,
+                absent_csrs=absent,
+                hits=hits[:20],
+            )
 
 
 def _fpga_identity(out: _Builder, fpga: Mapping[str, Any], resolve) -> None:
@@ -675,7 +766,9 @@ def _isa_checks(
     images: Sequence[Path],
     *,
     contract_argv: Sequence[str],
+    partial: Mapping[str, list[str]] | None = None,
 ) -> None:
+    partial = dict(partial or {})
     if engine is None:
         out.check("isa", UNKNOWN, "no host package: the replay toolchain and Spike command cannot be derived")
         return
@@ -691,15 +784,18 @@ def _isa_checks(
         if available is None:
             out.check(name, UNKNOWN, "the DTS ISA is unavailable", **values)
             return
-        missing = sorted(required[1] - available[1])
+        beyond = sorted(required[1] - available[1])
+        cited = [e for e in beyond if e in partial]  # implemented in part; its absent CSRs are checked per image
+        missing = [e for e in beyond if e not in partial]
         same_xlen = required[0] == available[0]
         status = PASS if same_xlen and not missing else FAIL
-        detail = (
-            f"{label} within the DTS ISA"
-            if status == PASS
-            else (f"{label} needs {missing or ['XLEN ' + required[0]]} that the DTS riscv,isa does not declare")
-        )
-        out.check(name, status, detail, required=required[1], missing=missing, **values)
+        if status == PASS:
+            detail = f"{label} within the DTS ISA" + (
+                f" (cited partial: {', '.join(f'{e} without {partial[e]}' for e in cited)})" if cited else ""
+            )
+        else:
+            detail = f"{label} needs {missing or ['XLEN ' + required[0]]} that the DTS riscv,isa does not declare"
+        out.check(name, status, detail, required=required[1], missing=missing, cited_partial=cited, **values)
 
     with out.guard("isa.host_package"):
         if engine.march is None:
