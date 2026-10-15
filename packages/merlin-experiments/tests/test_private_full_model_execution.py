@@ -65,10 +65,7 @@ def test_the_target_descriptor_declares_every_program_of_the_static_roster():
     }
     for model, program, entry in PFX.roster_of(gate):
         if entry["engine"] == "spike":
-            assert entry["board"] == (
-                "gemmini_rocket_spike_functional_16g" if model == "smolvla"
-                else "gemmini_rocket_spike_functional"
-            )
+            assert entry["board"] == "gemmini_rocket_spike_functional"
         else:
             assert entry["board"] == "gemmini_rocket_verilator" and entry["max_cycles"] > 0
         assert entry["group_profile"] is True and entry["timeout_s"] > 0

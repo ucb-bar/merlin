@@ -25,25 +25,6 @@ boards:
   gemmini_rocket_spike_functional:
     target: gemmini
     host_dts_sha256: a45460168248bd08e47a237f78eb1256d589b5410c046f0031e648207a83dfc3
-    dram_bytes: 4 GiB
-    dram_base: 0x80000000
-    harts: 1
-    vector_harts: 0
-    console: htif
-    flow: baremetal
-    code_reserve: 64 MiB
-    notes: >-
-      The functional instruction-set model of the same GemminiRocketConfig host (the CPU ISA roster
-      is read from the same DTS), run with the target's accelerator extension and a declared 4 GiB
-      memory span starting at 0x80000000. The span is this model's declared memory, not the RTL
-      board's 256 MiB: it exists so whole models whose weights exceed the RTL board (about 0.5 and
-      1.03 GB of int8 weights) execute for functional numerics. The image states the span in its
-      symbol table and the runner sizes the simulated memory from it. Not cycle-accurate and not
-      RTL-derived: results are a functional numerics check, never certification or timing.
-
-  gemmini_rocket_spike_functional_16g:
-    target: gemmini
-    host_dts_sha256: a45460168248bd08e47a237f78eb1256d589b5410c046f0031e648207a83dfc3
     dram_bytes: 16 GiB
     dram_base: 0x80000000
     harts: 1
@@ -52,11 +33,14 @@ boards:
     flow: baremetal
     code_reserve: 64 MiB
     notes: >-
-      Functional Gemmini/Rocket Spike map for whole models whose measured
-      allocation demand exceeds the smaller functional map. This is the
-      non-vector Rocket ISA from the selected DTS with an explicitly declared
-      16 GiB simulated memory span. It is not evidence of FireSim physical
-      capacity, RTL correctness, or cycle timing.
+      The functional instruction-set model of the same GemminiRocketConfig host
+      (the CPU ISA roster is read from the selected DTS), run with the target's
+      accelerator extension and a declared 16 GiB memory span starting at
+      0x80000000. This spans larger whole models without treating the Verilator
+      board's 256 MiB DTS limit as a functional-memory limit. The image states
+      the span in its symbol table and the runner sizes the simulated memory
+      from it. This is not evidence of FireSim physical capacity, RTL correctness,
+      or cycle timing.
 
   firesim_gemmini_rocket_u250_30mhz:
     target: gemmini
