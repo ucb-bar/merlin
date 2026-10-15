@@ -537,11 +537,13 @@ initialized from `tensor.empty` for exactly this reason. We handle it two ways:
     `Check/DefinedLinalg.lean` checks these conditions against actual `linalg.fill` and `linalg.generic`
     IR. It accepts initialized integer matmul with widening casts, multiple-output reductions,
     captured values, and single-output full overwrites. Structured bodies currently use the leaf
-    rulebook; nested structured operations, named matmul/transpose, direct tensor arithmetic,
+    rulebook; nested structured operations, named transpose, direct tensor arithmetic,
     division, shifts, and overflow-flagged arithmetic still lack definedness rules.
   - The theorem requires typed, nonpoison inputs. The initialized-matmul fixture passes real xDSL
     preprocessing and obtains a `verified` chain after independent source support/definedness checks.
-    This proves that recorded chain, not every model or every matmul lowering.
+    This proves that recorded chain, not every model or every matmul lowering. Named matmul and
+    batch-matmul also have definedness rules: their proved generic expansions are checked, then a
+    separate success-transfer theorem proves successful execution of the actual named source.
 - **Support, not just definedness (`NotStuck`).** The semantics returns `stuck` for anything it does
   not model. A per-boundary checker cannot know that the rest of the program is modelled, so each
   boundary claims *conditional* refinement:
@@ -625,12 +627,15 @@ induction over the block, with `ProgRefines.trans` for multiple sites.
 This is the main lever for parallelism: once the congruence theorem and the rule interface exist, rule
 families are independent work.
 
-**Implemented local rewrite families.** DCE and adjacent closed-expression CSE are proved in
-`Rules/Dce.lean` and `Rules/Cse.lean`. CSE merges two identical, pure, region-free, operand-free
-single-result operations and maintains both source SSA bindings. Qualification runs actual upstream
-MLIR CSE on duplicated constants, checks the resulting boundary and defined chain, and rejects a
-changed constant. Operand-dependent/non-adjacent CSE and other numerical or shape rewrites remain
-unsupported. The untrusted script synthesizer cannot bypass these checks.
+**Implemented local rewrite families.** DCE, adjacent closed-expression CSE, named contraction
+generalization, and unflagged integer operand commutation are proved in `Rules/`. Generalization
+checks matmul/batch-matmul indexing maps and iterator order and preserves the original region body,
+including signed/unsigned casts and floating operation order. Integer commutation covers add,
+multiply, AND, OR, and XOR, with scalar and tensor semantics; floats and overflow flags are refused.
+Qualification runs actual MLIR generalization/canonicalization/CSE, verifies defined chains on the
+supported integer fragment, and rejects altered maps, body operations, casts, constants, and flags.
+Operand-dependent/non-adjacent CSE and other numerical or shape rewrites remain unsupported.
+The untrusted script synthesizer cannot bypass these checks.
 
 **Rule families for Tier A** (exact list fixed by WP-0):
 
@@ -658,7 +663,7 @@ model/tensor layer is outside this sequence.
 | Order | Family | Proof obligation and completion criterion |
 |---|---|---|
 | 1 | Named contraction generalization | Expand `linalg.matmul`/`batch_matmul` using their declared maps, iterator order, and unchanged body/casts; qualify actual MLIR generalization and a defined chain. |
-| 2 | Exact integer arithmetic | Add operand canonicalization, then cast/constant simplifications with checked widths, signedness, flags, and poison behavior. Accept actual canonicalizer output. |
+| 2 | Exact integer arithmetic | Add operand canonicalization; introduce typed local obligations before width-dependent cast/constant simplifications. Check widths, signedness, flags, poison, and actual canonicalizer output. |
 | 3 | Valid static shape rewrites | Prove reshape cancellation/composition and indexing equivalence, including zero extents, reassociation, element type, and all escaping uses. |
 | 4 | Rewrites inside operation bodies | Lift proved local rules into actual linalg region closures with captures and block-argument shadowing; preserve reduction order and unchanged computation. |
 | 5 | Exact quantization expansion | Check dequantization and already-declared quantization operations against independent software semantics. Preserve broadcast/granularity maps, zero points, widths, rounding, clamps, and floating operation order. |
@@ -670,6 +675,12 @@ Its soundness theorem lifts this contract through the existing SSA/region corres
 interface. A constructor is not proof evidence: semantic checks decode its proposed operation again.
 Named generalization has a separate success-transfer theorem so source-definedness cannot be inferred
 from a target that merely repairs an undefined or unsupported source.
+
+**Typed local obligations.** The current C1 site interface quantifies over every runtime environment.
+Type annotations alone do not establish runtime operand widths or canonical tensor representation.
+Cast/shape elimination rules must carry proved local typing/canonicality facts under an explicit
+input domain, or establish correctness without those assumptions. Do not weaken the existing
+universal theorem or assume well-typed operands merely because an IR annotation says so.
 
 Over-rank matmul capture repair is **not** an ordinary shape equivalence obligation. Its source is
 explicitly invalid linalg (`collapse_overrank_matmul`), so proving refinement against its unsupported
