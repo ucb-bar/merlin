@@ -55,7 +55,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -340,7 +340,13 @@ def run_engine(
         backend = backends.get_backend(target)
         if not backend.available(engine):
             raise ExecutionGateError(f"{target} backend reports {engine} unavailable")
-    with _engine_hang_bound(backend, engine, max_cycles):
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+
+    private_bound_gsim = engine == "gsim" and max_cycles is not None and isinstance(backend, BoundRoCCBackend)
+    if private_bound_gsim:
+        evidence["max_cycles"] = max_cycles
+        evidence["max_cycle_source"] = "frozen_private_execution_declaration"
+    with (nullcontext() if private_bound_gsim else _engine_hang_bound(backend, engine, max_cycles)):
         revalidate()
         started = time.monotonic()
         bounded = _selected_run_timeout(backend, engine, timeout_s, deadline)
@@ -350,7 +356,10 @@ def run_engine(
                 raise ExecutionGateError("selected Gemmini backend cannot run the linked model's declared machine")
             console = run_declared(elf, timeout=bounded, capture_bytes=capture_bytes)
         else:
-            console = backend.run_elf(elf, simulator=engine, timeout=bounded, capture_bytes=capture_bytes)
+            options = {"private_max_cycles": max_cycles} if private_bound_gsim else {}
+            console = backend.run_elf(
+                elf, simulator=engine, timeout=bounded, capture_bytes=capture_bytes, **options
+            )
         wall = time.monotonic() - started
         if command is not None:
             command.revalidate()

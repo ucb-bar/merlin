@@ -573,7 +573,7 @@ def test_job_budget_respects_selected_process_ceiling(selection, monkeypatch):
 
 @pytest.mark.parametrize("resources", [None, {}, {"max_native_timeout_s": True},
     {"max_native_timeout_s": 0}, {"max_native_timeout_s": -1},
-    {"max_native_timeout_s": 3601}, {"max_native_timeout_s": 1800.0},
+    {"max_native_timeout_s": 86401}, {"max_native_timeout_s": 1800.0},
     {"max_native_timeout_s": 1800, "extra": 1}])
 def test_native_resource_selection_refuses_malformed_bounds(selection, resources):
     selection[0]["runner"]["chipyard_rocc"]["execution_resources"] = resources
@@ -657,6 +657,36 @@ def test_selected_extended_native_budget_reaches_actual_process(selection, tmp_p
     assert bound.run_elf(elf, simulator="gsim", timeout=1200) == _console()
     with pytest.raises(B.RoCCExecutionError, match="bounded deadline"):
         bound.run_elf(elf, simulator="gsim", timeout=1801)
+
+
+def test_private_gsim_cycle_budget_reaches_actual_process_without_changing_selection(
+    selection, tmp_path, monkeypatch
+):
+    from merlin.targetgen import rtl_engine_policy
+
+    engine, _, _ = _gsim(selection, tmp_path)
+    engine["argv"].append("+max-cycles=20000000")
+    monkeypatch.setattr(rtl_engine_policy, "gsim_runtime_slot", lambda **kwargs: nullcontext())
+    bound = _bound(selection)
+    selected = bound.execution_engine_identity("gsim")
+    elf = _file(tmp_path, "requested.elf", "owned original executable")
+    assert bound.run_elf(elf, simulator="gsim", timeout=2, private_max_cycles=150000000) == _console()
+    record = I.verify(next(tmp_path.glob("invocations/*/invocation.json")))
+    assert record["argv"][-1] == "+max-cycles=150000000"
+    assert bound.execution_engine_identity("gsim") == selected
+    with pytest.raises(ValueError, match="cycle budget"):
+        bound.run_elf(elf, simulator="gsim", timeout=2, private_max_cycles=0)
+    with pytest.raises(ValueError, match="cycle budget"):
+        bound.run_elf(elf, simulator="gsim", timeout=2, private_max_cycles=True)
+
+
+def test_private_gsim_cycle_budget_requires_source_bound_cycle_argument(selection, tmp_path):
+    _gsim(selection, tmp_path)
+    bound = _bound(selection)
+    elf = _file(tmp_path, "requested.elf", "owned original executable")
+    with pytest.raises(ValueError, match="unique source-bound cycle limit"):
+        bound.run_elf(elf, simulator="gsim", timeout=2, private_max_cycles=150000000)
+    assert not list(tmp_path.glob("invocations/*/invocation.json"))
 
 
 def test_expired_job_budget_refuses_before_selected_process(selection, monkeypatch):
