@@ -173,10 +173,14 @@ def start(ws: Path, run_dir: Path, *, interval_s: int = 120, timeout_s: int = 54
                                     return hash_tree(source)["sha256"] == before
                                 except (OSError, ValueError):
                                     return False
-                            check_snapshot(ws, run_dir, snapshot, digest, stop=stop, timeout_s=timeout_s,
-                                           source_current=source_current)
+                            gate = check_snapshot(ws, run_dir, snapshot, digest, stop=stop, timeout_s=timeout_s,
+                                                  source_current=source_current)
                             if source_current():
-                                last_source = digest
+                                # A stable numeric failure is a result for these bytes; an
+                                # infrastructure failure must be retried at the next interval.
+                                if all(row["status"] in {"pass", "fail"}
+                                       for row in gate["programs"].values()):
+                                    last_source = digest
                             else:
                                 stop.wait(1)
                                 continue
