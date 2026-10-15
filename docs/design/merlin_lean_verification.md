@@ -787,6 +787,12 @@ The chain checker:
 4. Emits the claim with its explicit lists of assumed sites, trusted boundaries, named float laws, and
    value-dependent poison preconditions.
 
+Implemented for refinement chains: `Check/Chain.lean` proves `chain_refinesC` (a chain of
+`FuncRefinesC` boundaries composes) and `chain_refines` (with the capture's support, strict
+refinement on typed inputs). `merlin.verify.lean.check.compose_chain` checks hash continuity from
+the support subject through every boundary and writes a `merlin.lean.chain.v1` document with the
+union of assumptions. Argument maps (`equiv_args`) and receipt replay are not composed yet.
+
 ### 5.11 C11 — upstream tensor passes (Tier B) and bufferization (Tier C)
 
 **C11 (Tier B).** Upstream `canonicalize`/`cse`/`linalg-fuse-elementwise-ops`/

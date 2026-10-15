@@ -92,10 +92,11 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
   In one build process, `prepare_for_lowering` parses the capture, and `preprocess_text` parses the
   prepared text again; the second parse renames every weight
   (`torch_tensor_4_torch.float32` → `..._1`, `torch_tensor_8_torch.float32` → `..._3`, ...).
-- **Measured on coverage_mlp (torch_mlir route):** of 19 recorded boundaries from the capture to
-  the upstream lowering, all are chained (each `before` is the previous `after`); 18 verify,
+- **Measured on coverage_mlp (torch_mlir route):** the 18 recorded boundaries from the capture to
+  the upstream lowering form one chain (each `before` is the previous `after`); 17 verify,
   including the parse/print round trips and `c-interface` (ABI only, T4); `xdsl-parse` does not,
-  because the renamed constants are different opaque attributes.
+  because the renamed constants are different opaque attributes. The composed chain
+  (`compose_chain`) is therefore `abstracted`, for this rename and for F7.
 - **Why it matters:** with the blobs elided (F7) a key is the only link from a constant to its
   weights, so whatever binds weights by key binds them differently after the rename. The new keys
   are fresh (no constant is renamed onto another's key), so nothing is swapped within the module.
