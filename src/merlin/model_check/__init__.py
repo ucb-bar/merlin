@@ -10,5 +10,5 @@ Models, programs, chains and judged outputs are data (``examples/<target>/numeri
 nothing here names a model or a target.
 """
 
-CONTRACT_VERSION = "1.5"
+CONTRACT_VERSION = "1.6"
 REPORT_SCHEMA = "merlin.model_check.report.v1"
