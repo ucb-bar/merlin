@@ -89,6 +89,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     binding = sub.add_parser("binding", help="Spike / RTL / FireSim binding receipt")
     _common(binding, submission=False)
+    _engine(binding)
+    binding.add_argument("--board", default=None, help="board whose memory span Spike models (default: the spec's)")
+    binding.add_argument("--spec", type=Path, default=None, help="binding spec (default: binding.yaml by --models)")
+    binding.add_argument("--image", type=Path, action="append", default=[], help="replay image to check (repeatable)")
 
     verify = sub.add_parser("bundle-verify", help="check every file of a numerics bundle")
     _common(verify, submission=False)
@@ -102,6 +106,12 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--host-package", type=Path, required=True, help="host package replays are built with")
     build.add_argument("--contract", type=Path, required=True, help="target contract binding the simulators")
     build.add_argument("--rtl-facts", type=Path, required=True, help="RTL facts matching --contract")
+
+    variants = sub.add_parser("variants-build", help="seeded shape variants of every unique kernel (sealed cases)")
+    _common(variants, submission=False)
+    variants.add_argument("--model", required=True)
+    variants.add_argument("--program", default=None)
+    variants.add_argument("--seed", type=int, required=True, help="private rule seed (never shown to an agent)")
 
     prep = sub.add_parser("inputs-prepare", help="select and preprocess a model's evaluation/calibration inputs")
     _common(prep, submission=False)

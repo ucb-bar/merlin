@@ -208,7 +208,7 @@ def _write_image_sources(work: Path, cases, kernels, interfaces) -> tuple[Path, 
     externs += (
         "\nconst void *volatile mc_ptr[] = {"
         + ", ".join(f"{_c_name(i)}" for i in range(len(blob_files)))
-        + (", 0" if not blob_files else "")
+        + ("0" if not blob_files else "")  # an image with no operands still needs a non-empty table
         + "};"
     )
     kernel_decls = "\n".join(

@@ -298,3 +298,21 @@ func.func @forward(%x: tensor<2xi64>, %y: i64) -> tensor<2xi64> {
     assert out.tolist() == [1, 2]
     with pytest.raises(LN.LinalgNumpyError, match="index in bounds"):
         _evaluate(text, x, np.int64(9))
+
+
+def test_a_tensor_dim_reads_the_extent_and_refuses_an_index_past_the_rank() -> None:
+    """``tensor.dim`` answers the operand's extent along a constant or runtime index; an index outside the
+    rank is undefined and stops the oracle."""
+    text = """
+func.func @forward(%x: tensor<2x3xi64>, %i: index) -> (index, index) {
+  %c1 = arith.constant 1 : index
+  %d = tensor.dim %x, %c1 : tensor<2x3xi64>
+  %e = tensor.dim %x, %i : tensor<2x3xi64>
+  return %d, %e : index, index
+}
+"""
+    x = np.zeros((2, 3), np.int64)
+    fixed, read = _evaluate(text, x, np.int64(0))
+    assert (int(fixed), int(read)) == (3, 2)
+    with pytest.raises(LN.LinalgNumpyError, match="outside rank 2"):
+        _evaluate(text, x, np.int64(2))
