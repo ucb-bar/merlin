@@ -56,6 +56,27 @@ def test_sealed_or_private_report_never_reaches_agent(tmp_path, monkeypatch):
     assert broker._safe_report({"path": "/work/merlin/private/gemmini/numerics/v1"}) is False
 
 
+def test_missing_model_check_report_is_unavailable_not_numeric_failure(tmp_path, monkeypatch):
+    ws = tmp_path / "workspace"
+    (ws / "submission").mkdir(parents=True)
+    (ws / "submission/manifest.yaml").write_text("commands: {}\n")
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+
+    class Missing:
+        returncode = 1
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def poll(self):
+            return 1
+
+    monkeypatch.setattr(broker.subprocess, "Popen", Missing)
+    result = broker.execute_visible(ws, {"action": "check", "model": "resnet50", "split": "visible"})
+    assert result["status"] == "unavailable"
+    assert gate._program_row("resnet50", "model", result)["status"] == "unavailable"
+
+
 def test_model_check_client_refuses_output_through_workspace_symlink(tmp_path, monkeypatch):
     ws, outside = tmp_path / "workspace", tmp_path / "outside"
     ws.mkdir()

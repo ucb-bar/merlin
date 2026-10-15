@@ -87,7 +87,7 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
         if report is not None and not _safe_report(report):
             return {"status": "error", "error": "model-check report contained sealed or private data",
                     "model": model, "source_sha256": digest}
-        return {"status": "pass" if process.returncode == 0 and report is not None else "fail",
+        return {"status": "unavailable" if report is None else "pass" if process.returncode == 0 else "fail",
                 "model": model, "action": action, "source_sha256": digest,
                 "returncode": process.returncode, "report": report,
                 **({"error": stderr[-2000:]} if process.returncode and report is None else {})}
