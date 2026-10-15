@@ -6,7 +6,11 @@ Build, run and judge complete quantized models for a device submission.
 
 ## Modules
 
+- `approximations.py` — A submission's declared approximate kernels (``manifest.yaml`` key ``numerics.approximations``).
+- `bundle.py` — A numerics bundle on disk: per model, the program catalogs, the census and every input's device calls.
+- `catalog.py` — Everything about one captured program that does not depend on a submission, computed once.
 - `cli.py` — Command line of ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md`` §2).
+- `commands.py` — The subcommands behind ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md``).
 - `kernel_reference.py` — The expected result of one device-kernel call: the group's interface program evaluated in numpy.
 - `models.py` — The models file: which programs make up each model, how they chain, and what is judged.
 - `replay.py` — Replay device kernels on frozen boundary inputs: one small image per batch of calls, judged exactly.

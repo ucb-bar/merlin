@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.2**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.3**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -51,7 +51,17 @@ python -m merlin.model_check replay-kernel --submission S --model M --program P
 python -m merlin.model_check census --submission S --model M [--program P] --out REPORT.json
 python -m merlin.model_check binding --out RECEIPT.json
 python -m merlin.model_check bundle-verify [--bundle DIR] --out REPORT.json
+python -m merlin.model_check bundle-build --captures DIR --model M [--program P] [--keep {all|sample}]
+        --host-package DIR --contract FILE --rtl-facts FILE [--bundle DIR] --out REPORT.json
 ```
+
+`check` and `replay-kernel` also take `--host-package` (the host package whose compilers and `-march`
+build the replay image), `--contract` and `--rtl-facts` (they bind the simulator engines) and
+`--dram-base`/`--dram-bytes`; each defaults to what the bundle was built with (`MANIFEST.json`
+`engine`). `bundle-build` prepares every program of a model, writes its catalog and census, and records
+the device calls of the capture's own inputs as the input `visible/capture`; its `consistency` gate
+fails when the device-rewritten program does not reproduce the INT8 reference bit for bit (a Merlin
+defect, never charged to a submission).
 
 `check` has two modes. **`fast` is the default and the inner loop; it never builds or simulates a
 whole model:**
@@ -246,3 +256,6 @@ runs[]), `model_metrics`, `failures[]`, `timing`.
   from the reference when every kernel is exact; whole-model Spike runs move to `--mode full`.
 - 1.2 (2026-10-15): §4.7: the policy judges Spike and gSIM results alike and applies to Phase 2 —
   a performance number counts only with a passing numerics report for the same build.
+- 1.3 (2026-10-15): `bundle-build`; `check`/`replay-kernel` take `--host-package`, `--contract`,
+  `--rtl-facts`, `--dram-base`, `--dram-bytes`, defaulting to the bundle's. Not yet wired: `--mode full`,
+  `--engine gsim`, the model replay for declared approximations, `binding`, `bundle-verify`.
