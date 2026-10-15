@@ -121,6 +121,9 @@ class DeviceRewrite:
     #: ``{"role", "shape", "dtype"}`` (activation, stored weight, folded bias, destinations). Empty
     #: for a call that passes the fixed (lhs, rhs, out) triple.
     call_buffers: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    #: The laid-out weights bound as trailing ``@forward`` arguments (:mod:`merlin.llvmlower.blob_weights`),
+    #: or ``None`` when they stayed constants.
+    blob_weights: Any = None
 
     @property
     def moved(self) -> int:
@@ -176,6 +179,8 @@ class DeviceRewrite:
     def write_sidecar(self, directory: str | Path) -> Path:
         path = Path(directory) / SIDECAR_NAME
         path.write_text(json.dumps(self.to_sidecar(), indent=1), encoding="utf-8")
+        if self.blob_weights is not None:
+            self.blob_weights.write(directory)
         return path
 
 
@@ -481,7 +486,8 @@ def rewrite_contractions_to_device(
         conversion_source = catalog_source_conversion(catalog_manifest_data, device)
     candidates = (
         catalog_source_contractions(module, device, conversion_source)
-        if conversion_source is not None else offloadable_contractions(module, device)
+        if conversion_source is not None
+        else offloadable_contractions(module, device)
     )
     if selected_ops is not None and not selected_ops.issubset({op for op, _shape in candidates}):
         raise ValueError("selected operation is not eligible on this device; host fallback must be explicit")
@@ -711,7 +717,8 @@ def _device_operands(group, stated) -> tuple[tuple[Any, Any] | None, str]:
         from merlin.xdsl_dialects.lowering import compute_groups as CG
 
         dequantizes = [
-            member for member in group.members
+            member
+            for member in group.members
             if (stage := CG.classify(member)) is not None and stage.kind == CG.DEQUANTIZE
         ]
         if len(dequantizes) != 1 or not dequantizes[0].operands:
@@ -757,16 +764,24 @@ def rewrite_groups_to_device(
     capture: str | Path | None = None,
     sidecar_dir: str | Path | None = None,
     require_complete_groups: bool = False,
+    blob_weights: bool | None = None,
 ) -> DeviceRewrite:
     """Replace each SELECTED closed COMPUTE GROUP with ONE call to ``device``'s kernel (see
     :func:`_rewrite_groups_to_device`). Under the logical kernel ABI a framework max-pool (a
     NaN-propagating select-max window) is recognized as the readout's maxpool stage: the device's
-    pool takes integer readout values, which cannot be NaN, so it is the same maximum."""
+    pool takes integer readout values, which cannot be NaN, so it is the same maximum.
+
+    ``blob_weights`` binds each laid-out weight as a blob argument instead of a constant; by default
+    it is what the enclosing build requested (:func:`merlin.llvmlower.blob_weights.requested`)."""
     from merlin.xdsl_dialects.lowering import contraction_coverage as CC
 
     from .device_shim import kernel_abi_for
 
     abi = kernel_abi_for(device)
+    if blob_weights is None:
+        from .blob_weights import is_requested
+
+        blob_weights = is_requested()
     with CC.select_max_is_max(abi is not None and getattr(abi, "version", 1) == 2):
         return _rewrite_groups_to_device(
             module,
@@ -778,6 +793,7 @@ def rewrite_groups_to_device(
             capture=capture,
             sidecar_dir=sidecar_dir,
             require_complete_groups=require_complete_groups,
+            blob_weights=blob_weights,
         )
 
 
@@ -792,6 +808,7 @@ def _rewrite_groups_to_device(
     capture: str | Path | None = None,
     sidecar_dir: str | Path | None = None,
     require_complete_groups: bool = False,
+    blob_weights: bool = False,
 ) -> DeviceRewrite:
     """Replace each SELECTED closed COMPUTE GROUP with ONE call to ``device``'s kernel. Mutates ``module``.
 
@@ -908,6 +925,11 @@ def _rewrite_groups_to_device(
         prepack_rows, prepack_arrays, why_no_arrays = _prepack_arrays(
             [g for g in groups if g.placement != CG.HOST and g.root is not None], capture
         )
+    weight_binder = None
+    if blob_weights and logical:
+        from .blob_weights import WeightArgs
+
+        weight_binder = WeightArgs(module)
     call_buffers: dict[str, list[dict[str, Any]]] = {}
     views: list = []  # the relayouts this route inserts, for cancel_relayouts below
     symbols: dict[str, str] = {}  # kernel identity -> symbol
@@ -1043,6 +1065,7 @@ def _rewrite_groups_to_device(
                 prepack_arrays,
                 why_no_arrays,
                 weight_rows=gather["rows"] if restated else None,
+                bind_weight=weight_binder,
             )
             if operands is None:
                 skipped.append((name, why))
@@ -1148,6 +1171,8 @@ def _rewrite_groups_to_device(
         # ONE RELAYOUT PER TRUE HOST BOUNDARY. Between device groups the device's own layout is carried:
         # a result read back to NCHW and handed straight over in NHWC is the same tensor twice.
         cancel_relayouts(views)
+    if weight_binder is not None:
+        weight_binder.finish()
     body = module.body.block
     for sym in minted:
         # `bufferization.access` is load-bearing: without it one-shot-bufferize defensively copies the
@@ -1183,6 +1208,7 @@ def _rewrite_groups_to_device(
         prepack=prepack,
         arg_access=access,
         call_buffers=call_buffers,
+        blob_weights=weight_binder,
     )
     if sidecar_dir is not None:
         out.write_sidecar(sidecar_dir)
@@ -1306,7 +1332,12 @@ def rewrite_prepared_file(
         )
         if granularity == BY_CONTRACTION
         else rewrite_groups_to_device(
-            module, device, select=select, weight_args=weight_args, model=model, capture=capture,
+            module,
+            device,
+            select=select,
+            weight_args=weight_args,
+            model=model,
+            capture=capture,
             require_complete_groups=require_complete_groups,
         )
     )

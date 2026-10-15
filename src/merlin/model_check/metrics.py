@@ -11,6 +11,8 @@ RATIO = 1.1
 FLOOR_INT8_WORST = 0.5  # LSB
 FLOOR_REL = 2.0**-20
 FLOOR_KL = 1e-6
+#: Metrics where larger is better (agreement); every other float metric is an error, smaller is better.
+AGREEMENT = frozenset({"top1_agree", "top5_agree", "cosine"})
 
 
 def rel_rmse(y: np.ndarray, y_fp: np.ndarray) -> float:
@@ -92,3 +94,18 @@ def ratio_rule(value: float, reference: float, floor: float, ratio: float = RATI
     """``value <= max(ratio * reference, floor)`` with the threshold it was held to."""
     threshold = max(ratio * reference, floor)
     return {"value": value, "reference": reference, "threshold": threshold, "pass": bool(value <= threshold)}
+
+
+def worst_of(rows: Sequence[dict[str, Any]]) -> dict[str, float]:
+    """Each float metric's worst value over ``rows``: the minimum of an agreement, the maximum of an error."""
+    keys = sorted({k for row in rows for k, v in row.items() if isinstance(v, float)})
+    return {
+        key: (min if key in AGREEMENT else max)(row[key] for row in rows if isinstance(row.get(key), float))
+        for key in keys
+    }
+
+
+def mean_of(rows: Sequence[dict[str, Any]]) -> dict[str, float]:
+    """Each float metric's mean over ``rows`` (a per-input agreement of 0 or 1 averages to the split's rate)."""
+    keys = sorted({k for row in rows for k, v in row.items() if isinstance(v, float)})
+    return {key: float(np.mean([row[key] for row in rows if isinstance(row.get(key), float)])) for key in keys}
