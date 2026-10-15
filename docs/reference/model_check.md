@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.3**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.4**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -28,7 +28,7 @@ each program, the outputs that are judged, and the metric kind. v1 declares:
 | model | programs (chain order) | chain kind | judged outputs |
 |---|---|---|---|
 | `resnet50` | `model` | `single` | logits [1, 1000] |
-| `smolvla` | `prefix_encode`, `flow_denoise`, `action_decode` | `flow`: prefix once → flow ×10 (t = 1.0, dt = −0.1, state carried) → action_decode | actions [1, 50, 32], joints 0–13 (14–31 padding) |
+| `smolvla` | `prefix_encode`, `flow_denoise`, `action_decode` | `flow`: prefix once → flow ×10 (t = 1.0, dt = −0.1, state carried) → action_decode | actions [1, 50, 32], dims 0–5 (the checkpoint's action shape is [6]; 6–31 padding) |
 | `tiny_llama` | `prefill`, `decode` | `causal`: prefill 128 tokens → decode ×K teacher-forced on the input's next K tokens (K = 32 official) | prefill last-position logits + K decode logits |
 
 Each program is compiled once per submission. Per input, only the embedded-input object is regenerated
@@ -147,13 +147,13 @@ group's ops in float64 with every rounding and quantize step removed, in the out
 |---|---|
 | `resnet50` | §4.3 on `rel_rmse` and `worst` of the logits; top-1 and top-5 agreement with FP ≥ the INT8 reference's |
 | `tiny_llama` | §4.3 on `kl`, worst distribution; top-1 agreement with FP over all distributions ≥ the INT8 reference's |
-| `smolvla` | §4.3 on `rel_rmse` and `worst`, **per joint** (0–13), over the 50-step chunk |
+| `smolvla` | §4.3 on `rel_rmse` and `worst`, **per action dim** (0–5), over the 50-step chunk |
 
 ### 4.5 Reference admission (bundles, not submissions)
 A bundle may be frozen only if its INT8 reference is close enough to FP on the visible inputs.
 Proposed (pending approval; the approved values are recorded in v1.1): ResNet50 top-1 agreement
 ≥ 15/16 and logits cosine ≥ 0.99; TinyLlama mean `kl` ≤ 0.05 nats and top-1 agreement ≥ 90 %;
-SmolVLA per-joint `rel_rmse` ≤ 5 %. Calibration data is disjoint from every evaluation input.
+SmolVLA per-dim `rel_rmse` ≤ 5 %. Calibration data is disjoint from every evaluation input.
 
 ### 4.6 Why ratios
 Bounding error relative to a reference implementation's own error, rather than by one absolute
@@ -259,3 +259,5 @@ runs[]), `model_metrics`, `failures[]`, `timing`.
 - 1.3 (2026-10-15): `bundle-build`; `check`/`replay-kernel` take `--host-package`, `--contract`,
   `--rtl-facts`, `--dram-base`, `--dram-bytes`, defaulting to the bundle's. Not yet wired: `--mode full`,
   `--engine gsim`, the model replay for declared approximations, `binding`, `bundle-verify`.
+- 1.4 (2026-10-15): SmolVLA is judged on action dims 0–5: `smolvla_base`'s action feature shape is [6], so
+  dims 6–13 carry no trained prediction (their FP values are ~0 and a relative metric there is undefined).

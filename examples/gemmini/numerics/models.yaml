@@ -51,7 +51,7 @@ models:
       kind: per_channel
       outputs: [{program: action_decode, output: 0}]
       channel_axis: -1
-      channels: {first: 0, last: 13}     # ALOHA joints; 14..31 are zero padding
+      channels: {first: 0, last: 5}      # the checkpoint's action feature shape is [6]; 6..31 are padding
 
   tiny_llama:
     workload: tiny_llama
