@@ -363,8 +363,12 @@ def grade(
     # hand the redacted verdict to the agent for the next round
     qa_dir = ws / "qa"
     qa_dir.mkdir(exist_ok=True)
-    if background_guard is None or (background_guard.deferred is None and background_guard.current()):
-        write_verdict(qa_dir / "verdict.json", verdict)
+    if background_guard is not None:
+        verdict["graded_source_sha256"] = background_guard.source
+        verdict["snapshot_current"] = background_guard.current()
+    # The immutable snapshot has a valid result even when the agent has since edited
+    # its source. Suppressing that result left R52 without qa/verdict.json for hours.
+    write_verdict(qa_dir / "verdict.json", verdict)
     if oot_commit is None:
         return verdict
     OH.record_round(run_dir, oot_commit, label=label, key=_key, verdict=verdict)
@@ -597,8 +601,9 @@ def fast_grade(
     out.parent.mkdir(parents=True, exist_ok=True)
     verdict = write_verdict(out, verdict)
     (ws / "qa").mkdir(exist_ok=True)
-    if background_guard.deferred is None and background_guard.current():
-        write_verdict(ws / "qa" / "verdict.json", verdict)
+    verdict["graded_source_sha256"] = background_guard.source
+    verdict["snapshot_current"] = background_guard.current()
+    write_verdict(ws / "qa" / "verdict.json", verdict)
     _record_plateau(run_dir)  # operator-side; deliberately not in the agent's verdict
     FL.record_channel_health(ws, run_dir)
     # The first successful loop verdict unlocks cert work immediately. The existing
