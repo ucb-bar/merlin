@@ -137,3 +137,8 @@ def test_step_outputs_compare_integers_exactly_and_record_float_distance():
 def test_npz_arrays_are_read_in_numeric_key_order(tmp_path):
     np.savez(tmp_path / "a.npz", **{f"out{i}": np.array([i]) for i in range(12)})
     assert [int(a[0]) for a in F._ordered(tmp_path / "a.npz")] == list(range(12))
+
+
+def test_inputs_run_concurrently_by_default_but_never_more_than_there_are():
+    assert F.default_jobs(1) == 1
+    assert 1 <= F.default_jobs(64) <= 64
