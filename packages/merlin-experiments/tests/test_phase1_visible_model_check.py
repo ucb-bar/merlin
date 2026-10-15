@@ -230,6 +230,42 @@ def test_background_model_gate_reaches_agent_verdict_before_first_interval(tmp_p
         gate.stop_gate(handle)
 
 
+def test_background_gate_restarts_superseded_snapshot_without_waiting_interval(tmp_path, monkeypatch):
+    from merlin.common.tree_hash import hash_tree
+
+    ws, run = tmp_path / "workspace", tmp_path / "run"
+    source = ws / "submission"
+    source.mkdir(parents=True)
+    run.mkdir()
+    (source / "manifest.yaml").write_text("commands: {}\n")
+    (source / "compiler.py").write_text("VERSION = 1\n")
+    checked = []
+
+    def check(_ws, request, **kwargs):
+        digest = hash_tree(kwargs["snapshot_source"])["sha256"]
+        checked.append((request["model"], digest))
+        if len(checked) == 1:
+            (source / "compiler.py").write_text("VERSION = 2\n")
+        return {"status": "pass", "source_sha256": digest, "report": {
+            "programs": [{"program": program} for program in broker.PROGRAMS[request["model"]]]}}
+
+    monkeypatch.setattr(gate, "execute_visible", check)
+    handle = gate.start(ws, run, interval_s=30)
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            verdict = json.loads((ws / "qa/verdict.json").read_text())
+            if verdict.get("model_gate", {}).get("complete"):
+                break
+            time.sleep(0.02)
+        assert verdict["model_gate"]["complete"] is True
+        assert len(checked) == 4  # one obsolete check, then all three models on the new source
+        assert checked[0][1] != checked[1][1]
+        assert verdict["model_gate"]["source_sha256"] == hash_tree(source)["sha256"]
+    finally:
+        gate.stop_gate(handle)
+
+
 def test_verified_status_line_leads_with_all_six_visible_programs():
     rows = {key: {"status": "pass"} for key in gate._rows(None)}
     line = authoring._verified_status_line({"model_gate": {"programs": rows}})
