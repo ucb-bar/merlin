@@ -20,6 +20,7 @@ import pytest
 from merlin_experiments.phase1.brokers import cca, isa_tools, simjob
 from merlin_experiments.phase1.brokers import selfcheck as selfcheck_broker
 from merlin_experiments.phase1.context import InvocationContext
+from merlin_experiments.phase1.tools import simjob as simjob_client
 
 from merlin.common.paths import module_source_path, python_import_roots
 
@@ -106,6 +107,22 @@ def test_simjob_cancellation_stops_process_group_and_releases_slots(tmp_path):
         assert json.loads((ch / "simtiming_job.json").read_text())["state"] == "cancelled"
     finally:
         simjob._stop_sim_process(process)
+
+
+def test_simjob_poll_reports_completed_capsules_while_long_tail_is_pending(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(simjob_client, "CH", tmp_path)
+    (tmp_path / "simreq_job.json").write_text("{}")
+    (tmp_path / "simrun_job").write_text("running")
+    progress = {"status": "running", "n_expected": 2, "n_finished": 1, "n_remaining": 1,
+                "per_capsule": [{"capsule": "A", "status": "pass"}]}
+    (tmp_path / "progress_job.json").write_text(json.dumps(progress))
+    assert simjob_client.main(["poll", "--job-id", "job"]) == 0
+    observed = json.loads(capsys.readouterr().out)
+    assert observed["state"] == "pending" and observed["result"] == progress
+    (tmp_path / "simresp_job.json").write_text(json.dumps({"all_pass": True}))
+    (tmp_path / "simdone_job").write_text("ok")
+    assert simjob_client.main(["poll", "--job-id", "job"]) == 0
+    assert json.loads(capsys.readouterr().out)["state"] == "done"
 
 
 def test_context_caches_models_per_invocation_but_reloads_schedule(tmp_path, monkeypatch):

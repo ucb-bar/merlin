@@ -931,6 +931,8 @@ def main(
                     str(to),
                     "--out",
                     str(resp_tmp),
+                    "--progress-out",
+                    str(ch / f"progress_{jid}.json"),
                 ]
                 if sim != _NEUTRAL_SIM:  # --sim is meaningless where the contract picks the tier
                     argv2 += ["--sim", sim]
