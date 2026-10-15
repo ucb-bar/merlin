@@ -6,6 +6,9 @@ from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower.passes_quant_int import lower_contraction_int8
 from merlin.llvmlower.passes_xdsl import lower_bf16_matmul_f32acc
 from merlin.llvmlower.quant_scope import captured_quantized_contraction
+from merlin.runtime.backends.zephyr_model import _prepare_model_mlir
+from merlin.runtime.dispatch_runtime import _normalize_model_module
+from merlin.xdsl_dialects._common import text as mlir_text
 
 IR = r"""builtin.module {
   func.func @forward(%aq: tensor<1x8xi8>, %as: tensor<f32>, %az: tensor<i64>,
@@ -126,3 +129,24 @@ def test_captured_bf16_dequant_contraction_reaches_integer_path():
     assert any(op.name == "linalg.generic" and
                str(op.results[0].type) == "tensor<1x4xi32>" for op in module.walk() if op.results)
     module.verify()
+
+
+def test_captured_bf16_host_reference_matches_compiled_preparation(tmp_path):
+    source = _per_tensor_ir(0)
+    for shape in ("1x8", "4x8", "8x4", "1x4"):
+        source = source.replace(f"tensor<{shape}xf32>", f"tensor<{shape}xbf16>")
+    source = source.replace("%z = arith.constant 0.0 : f32", "%z = arith.constant 0.0 : bf16")
+    source = source.replace("linalg.fill ins(%z : f32)", "linalg.fill ins(%z : bf16)")
+    model = tmp_path / "model.mlir"
+    model.write_text(source)
+
+    host = parse_mlir_text(source)
+    _normalize_model_module(
+        host,
+        int8_compute=True,
+        quant_passes=["contraction_int8"],
+        quant_select=captured_quantized_contraction,
+        prequant_gather=False,
+    )
+    compiled = _prepare_model_mlir(model, tmp_path, int8_compute=True, respect_captured_quantization_scope=True)
+    assert mlir_text(host, generic=True) == mlir_text(parse_mlir_text(compiled.read_text()), generic=True)

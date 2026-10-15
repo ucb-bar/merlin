@@ -178,6 +178,36 @@ def _as_list(value) -> list:
     return [np.asarray(v, np.float32) for v in value] if isinstance(value, list) else [np.asarray(value, np.float32)]
 
 
+def test_host_reference_uses_the_linked_programs_quantization_policy(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from merlin.llvmlower.quant_scope import captured_quantized_contraction
+
+    package = tmp_path / "package"
+    package.mkdir()
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    calls = []
+
+    def run_model(model_dir, workdir, **options):
+        calls.append(options)
+        return {"outputs": [np.array([3.0], np.float32)]}
+
+    monkeypatch.setattr("merlin.compile.model_execution_inputs.strict_tree_sha256", lambda path: {"sha256": "bound"})
+    monkeypatch.setattr("merlin.mining.registry.load_rvv_package", lambda path: SimpleNamespace(is_int8=True))
+    monkeypatch.setattr("merlin.runtime.dispatch_runtime.run_model", run_model)
+    receipt = {"inputs": {"package": str(package), "package_tree": {"sha256": "bound"},
+                          "respect_captured_quantization_scope": True}}
+    outputs = PFX.host_execution_outputs(capture, tmp_path / "work", receipt=receipt)
+    assert outputs[0].tolist() == [3.0]
+    assert calls == [{"int8_compute": True, "quant_passes": ["contraction_int8"],
+                      "quant_select": captured_quantized_contraction}]
+
+    receipt["inputs"]["package_tree"] = {"sha256": "changed"}
+    with pytest.raises(PFX.ExecutionGateError, match="host package changed"):
+        PFX.host_execution_outputs(capture, tmp_path / "work", receipt=receipt)
+
+
 def _capture(root: Path, *, golden, integer=None, fp32=None, host=None, results=None) -> Path:
     """A capture: golden.npy and (when given) integer-reference.json bound by its receipt; the float
     model's float_reference.json beside it, unbound, as the capture worker writes it."""

@@ -3,13 +3,14 @@ title: Normal compiler search and diagnostic feedback
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-12
+last_verified: 2026-10-14
 related: [phase2_corpus_search, phase2_cpu_timing_study, independent_performance_feedback]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_observations.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/candidate_census.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_fast_feedback.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/functional_inputs.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_calibration.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_screen_features.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_queue_calibration.py
@@ -29,6 +30,13 @@ code_refs:
 ---
 
 # Normal compiler search and diagnostic feedback
+
+Ordinary search starts from the original formally qualified Phase 1 compiler and
+its fixed host configuration. Admission reuses the original formal evidence reader
+with the same target descriptor, complete model/program roster and numerical
+execution obligations. Capsule-only success, deferred programs, stale evidence and
+functional waivers cannot admit ordinary search. This check reads existing records;
+it never launches private validation or exposes private diagnostics to the agent.
 
 The normal route reuses Phase 1's selected public target,
 specification, ISA, toolchain, neutral runtime and observers. Candidate diagnostics

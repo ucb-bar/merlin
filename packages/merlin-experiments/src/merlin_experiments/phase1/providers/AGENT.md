@@ -44,3 +44,6 @@ to both initial and continued user prompts, with the same recorded concurrency b
 Helpers implement disjoint compiler changes; the parent joins changes before candidate
 freezing or self-checks. This grants no additional tools, access or model selection.
 Omitting the option preserves the existing prompt bytes exactly.
+
+`codex_usage` owns the pure token-subset conversion. Unreported usage remains
+unknown; the provider preserves its existing public conversion import.

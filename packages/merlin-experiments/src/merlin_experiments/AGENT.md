@@ -45,3 +45,6 @@ stays at the caller. V4 binds explicit ownership and full file/directory members
 Verification/bootstrap is standard-library-only and never discovers a live checkout.
 Old seals remain inspectable but require a fresh freeze for this verifier's execution;
 never rewrite an archive or substitute current code for its historical verifier.
+
+`runner_process` owns bounded process/group inspection and shutdown; `runner`
+retains its existing imports and overrides at plan execution boundaries.

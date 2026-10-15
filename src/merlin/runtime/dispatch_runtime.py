@@ -1279,6 +1279,12 @@ def _normalize_model_module(
     _propagate_quant_inner(module)
     if int8_compute:
         from ..llvmlower.quant_passes import apply_quant, compute_passes
+        from ..llvmlower.quant_scope import captured_quantized_contraction
+
+        # Match the compiled captured-scope path: a BF16 dequantized operand
+        # needs an F32 accumulator before the INT8 contraction selector runs.
+        if quant_select is captured_quantized_contraction:
+            lower_bf16_matmul_f32acc(module)
 
         extra = {"prequant_gather": True} if prequant_gather else {}
         apply_quant(module, list(compute_passes(quant_passes)), select=quant_select, **extra)

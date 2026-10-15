@@ -7,10 +7,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from merlin.common.paths import data_path
-
 from merlin_experiments.phase1.context import InvocationContext
 from merlin_experiments.phase1.feedback import qa, selfcheck
+
+from merlin.common.paths import data_path
 
 SENTINEL = "PRIVATE_OR_LEGACY_PROGRAM_SENTINEL"
 
@@ -197,6 +197,9 @@ def test_main_selfcheck_uses_only_selected_tier_console(
             "kind": "op",
             "status": "pass" if passing_case else "fail",
             "numeric": {"status": "pass"},
+            # This console-selection control supplies its original independent
+            # structural verdict; numerical screens alone cannot certify it.
+            "trace_check": {"status": "pass", "trace_requirement_status": "pass"},
             "tiers": {"L2": {"status": l2_status, "console_log": "l2_console.log"}},
             "failure": {"category": "TESTBENCH_TIMEOUT", "tier": "L3"},
         }

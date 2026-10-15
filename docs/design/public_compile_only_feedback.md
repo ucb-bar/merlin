@@ -3,7 +3,7 @@ title: Public scale compilation through the original brokers
 kind: design
 status: current
 owner: ir
-last_verified: 2026-10-13
+last_verified: 2026-10-14
 related: [verified_compiler_tooling, verified_compiler_roadmap, phase2_test_justification]
 code_refs: [packages/merlin-experiments/src/merlin_experiments/phase0/public_compile_sources.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compile_only.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py, packages/merlin-experiments/src/merlin_experiments/phase1/brokers/compiler_call_channel.py, packages/merlin-experiments/src/merlin_experiments/phase2/public_compile_only.py, src/merlin/targetgen/compile_only_execution.py, src/merlin/verify/lean_emission_chain.py]
 ---
@@ -17,9 +17,15 @@ commands, stock LLVM translation, object compiler and no-data linker, and reopen
 the actual products and invocation records. No reference tensors, captured
 weights, numerical harness or simulator are used.
 
-`phase0.public_compile_sources` preserves arbitrary public compositions exactly.
-For a single original integer contraction/copy supported by the existing generic
-source producer, it also constructs type-only siblings at extent ratios 8 and 64.
+`phase0.public_compile_sources` v2 constructs type-only siblings at extent ratios
+8 and 64 for a single original integer contraction/copy and for independently
+replayed component programs made of matmul, add, copy, transpose, cast, alias and
+update. It scales public input dimensions and rederives all intermediate shapes,
+dependencies, storage epochs and ordered outputs through the original producer.
+The retained source must match that producer exactly. Reductions and arbitrary
+public compositions retain their exact source until a separate shape rule exists.
+Every constructed component tensor's byte extent must fit the selected host index
+width, including intermediates absent from the output ABI. No tensor data is allocated.
 These fixed source-metadata probes inspect code growth; they do not recommend a
 target schedule or use validation-model shapes. Existing public resource-frontier
 members retain their source types and derivation identity. Unsupported sources,

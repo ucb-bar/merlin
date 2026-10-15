@@ -396,6 +396,7 @@ def test_native_entry_guard_accepts_registered_pretty_llvm_definition(tmp_path, 
     """The production mixed-program spelling must reach the next native ABI check."""
     from merlin.runtime.backends import base as backends
 
+    monkeypatch.setattr(backends, "get_backend", lambda _target: SimpleNamespace())
     monkeypatch.setattr(
         backends,
         "harness_build_recipe",
@@ -420,9 +421,10 @@ def test_native_entry_guard_accepts_registered_pretty_llvm_definition(tmp_path, 
         capture_bundle=capture,
         target="synthetic",
         out_dir=tmp_path / "output",
+        complete_call_timing=False,
     )
     assert result["status"] == "incomplete"
-    assert "one declared whole-model output is required" in result["failure"]["detail"]
+    assert "complete unique whole-model outputs are required" in result["failure"]["detail"]
 
 
 def test_native_binding_refusal_code_is_preserved_in_durable_receipt(tmp_path, monkeypatch):
@@ -430,6 +432,7 @@ def test_native_binding_refusal_code_is_preserved_in_durable_receipt(tmp_path, m
     from merlin.targetgen import golden_store
     from merlin.targetgen import native_model_execution as native
 
+    monkeypatch.setattr(backends, "get_backend", lambda _target: SimpleNamespace())
     monkeypatch.setattr(
         backends,
         "harness_build_recipe",
@@ -460,6 +463,7 @@ def test_native_binding_refusal_code_is_preserved_in_durable_receipt(tmp_path, m
         target="synthetic",
         out_dir=out,
         numeric_policy={"compare": "exact_int"},
+        complete_call_timing=False,
     )
     assert result["status"] == "incomplete"
     assert result["failure"]["code"] == code
@@ -795,7 +799,10 @@ def test_kernel_inventory_requires_symbol_scoped_derived_command_words(tmp_path,
     def disassemble(argv, **kwargs):
         commands.append(argv)
         return subprocess.CompletedProcess(
-            argv, 0, "Disassembly of section .text:\n00000000 <kernel>:\n  0: 0800002b <unknown>\n  4: 1000002b <unknown>\n", ""
+            argv,
+            0,
+            "Disassembly of section .text:\n00000000 <kernel>:\n  0: 0800002b <unknown>\n  4: 1000002b <unknown>\n",
+            "",
         )
 
     monkeypatch.setattr(subprocess, "run", disassemble)
@@ -1649,7 +1656,6 @@ def test_candidate_child_reloads_selected_package_without_racing_suite_build(tmp
         lambda *a, **k: SimpleNamespace(generated=tmp_path / "generated", run_path=tmp_path / "run"),
     )
 
-    from contextlib import contextmanager
     from merlin.targetgen import owned_host_model_execution as owned
 
     @contextmanager
@@ -1664,7 +1670,11 @@ def test_candidate_child_reloads_selected_package_without_racing_suite_build(tmp
         raise ValueError("synthetic owned host build refusal")
 
     monkeypatch.setattr(owned, "execute_owned_host_model", stop_owned_build)
-    monkeypatch.setattr(runner, "run_entrypoints", lambda *a, **k: pytest.fail("candidate whole-program host emission is forbidden"))
+    monkeypatch.setattr(
+        runner,
+        "run_entrypoints",
+        lambda *a, **k: pytest.fail("candidate whole-program host emission is forbidden"),
+    )
     context = {
         "runs_root": str(tmp_path),
         "run_id": "M",
@@ -1694,19 +1704,30 @@ def test_kernel_inventory_refuses_absent_or_zero_function_extent(tmp_path, size,
         _kernel_command_inventory(path,symbol="kernel",table={})
 
 
-def test_kernel_inventory_refuses_instruction_crossing_extent(tmp_path,monkeypatch):
+def test_kernel_inventory_refuses_instruction_crossing_extent(tmp_path, monkeypatch):
     import subprocess
+
     from merlin.llvmlower import toolchain
-    path=tmp_path/"kernel.o";path.write_bytes(_kernel_symbol_elf(size=2))
-    tool=tmp_path/"llvm-objdump";tool.write_bytes(b"selected tool")
-    monkeypatch.setattr(toolchain,"objdump",lambda:tool)
-    monkeypatch.setattr(subprocess,"run",lambda argv,**kwargs:subprocess.CompletedProcess(argv,0,"00000000 <kernel>:\n  0: 0800002b <unknown>\n",""))
-    with pytest.raises(NativeModelExecutionError,match="crosses"):
-        _kernel_command_inventory(path,symbol="kernel",table={})
+
+    path = tmp_path / "kernel.o"
+    path.write_bytes(_kernel_symbol_elf(size=2))
+    tool = tmp_path / "llvm-objdump"
+    tool.write_bytes(b"selected tool")
+    monkeypatch.setattr(toolchain, "objdump", lambda: tool)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda argv, **kwargs: subprocess.CompletedProcess(
+            argv, 0, "00000000 <kernel>:\n  0: 0800002b <unknown>\n", ""
+        ),
+    )
+    with pytest.raises(NativeModelExecutionError, match="crosses"):
+        _kernel_command_inventory(path, symbol="kernel", table={})
 
 
 def test_kernel_inventory_keeps_work_after_interior_relocation_label(tmp_path, monkeypatch):
     import subprocess
+
     from merlin.llvmlower import toolchain
 
     path = tmp_path / "kernel.o"

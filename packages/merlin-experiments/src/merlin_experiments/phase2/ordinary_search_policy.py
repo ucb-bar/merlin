@@ -635,6 +635,8 @@ def prepare_ordinary_search_policy(
         or feedback_round < 0
     ):
         raise StageGateError("ordinary search requires normal frozen corpus, target and edit authority")
+    if waive_functional_gate:
+        raise StageGateError("ordinary search requires an unwaived Phase 1 qualification")
     candidate = _real(candidate, label="candidate")
     baseline = _real(baseline, label="functional baseline")
     contract_root = _real(contract_root, label="contract resources")
@@ -651,6 +653,7 @@ def prepare_ordinary_search_policy(
         waive=frozenset(waive_functional_gate),
     )
     _phase1_target(mapping_file(functional.run_dir / "environment.yaml", yaml_file=True), target_experiment)
+    FI.require_formal_qualification(functional, target_experiment)
     if not PC.check_fork(PC.functional_fork(functional), baseline).ok:
         raise StageGateError("ordinary search baseline is not the original admitted functional fork")
     FI._require_read_only_tree(baseline, label="ordinary search functional baseline")

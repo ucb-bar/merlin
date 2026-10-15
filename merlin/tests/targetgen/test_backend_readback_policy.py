@@ -170,7 +170,9 @@ def test_default_oracle_uses_complete_roster_and_postrun_build_recheck(ordinary,
         return compiler.link_elf(_cb, obj, work, target=kwargs["target"], inputs=kwargs["inputs"])
 
     def substitute_execution(elf, **kwargs):
-        assert kwargs == {"simulator": "spike", "timeout": 600}
+        assert set(kwargs) == {"simulator", "timeout"}
+        assert kwargs["simulator"] == "spike"
+        assert 0 < kwargs["timeout"] <= 600
         if fault == "receipt":
             path = tmp_path / readback.BUILD_RECEIPT
             data = json.loads(path.read_text())

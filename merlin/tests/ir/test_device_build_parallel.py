@@ -18,7 +18,7 @@ from merlin.llvmlower import device_build_jobs as jobs
 def synthetic_build(tmp_path, monkeypatch):
     from merlin.compile import mesh
     from merlin.llvmlower import device_shim, toolchain
-    from merlin.targetgen import corpus_spec, package_runtime
+    from merlin.targetgen import capsule_common, corpus_spec, package_runtime
 
     monkeypatch.setattr(DB, "objects_buildable", lambda _device: None)
     monkeypatch.setattr(DB, "_objcopy", lambda: "objcopy")
@@ -47,6 +47,17 @@ def synthetic_build(tmp_path, monkeypatch):
         return SimpleNamespace(returncode=0, stdout=artifacts.get(name, name), stderr="")
 
     monkeypatch.setattr(package_runtime, "run_entrypoint", emit)
+    original_lower = capsule_common.lower_interface
+
+    def lower(package, interface, generated, *, timeout, **kwargs):
+        result = emit(package, "emit_target_artifact", interface, timeout=timeout)
+        if result.returncode:
+            raise ValueError(result.stderr)
+        generated.mkdir(parents=True, exist_ok=True)
+        (generated / "lowered.llvm.mlir").write_text(result.stdout)
+        return {}, result.stdout
+
+    monkeypatch.setattr(capsule_common, "lower_interface", lower)
 
     def tool(argv, *, timeout):
         calls.append((argv[0], Path(argv[-1]).name, threading.get_ident()))
@@ -68,6 +79,7 @@ def synthetic_build(tmp_path, monkeypatch):
             **kwargs,
         )
 
+    build.original_lower_interface = original_lower
     return build, tool, emitted, calls, artifacts, owner
 
 
@@ -97,6 +109,37 @@ def test_independent_tools_overlap_and_emission_stays_on_original_owner(syntheti
     assert list(result.kernels) == emitted
     assert all(tid != owner for name, path, tid in calls if name == "translate" or path.endswith(".raw.o"))
     assert all(set(record) == {"translation", "compilation", "rename"} for record in result.custody.values())
+
+
+def test_checked_emission_and_object_input_share_storage(synthetic_build):
+    build, _, _, _, _, _ = synthetic_build
+    result = build(names=("a",))
+    work = result.objects[0].parent
+    assert (work / "a.device.mlir").samefile(work / "a.lowering" / "lowered.llvm.mlir")
+
+
+def test_declined_command_buffer_cannot_compile_an_emitted_stub(synthetic_build, monkeypatch):
+    import json
+
+    from merlin.targetgen import capsule_common, package_runtime
+
+    build, _, _, calls, _, _ = synthetic_build
+    monkeypatch.setattr(capsule_common, "lower_interface", build.original_lower_interface)
+    package = SimpleNamespace(manifest={"commands": {"emit_analysis_bundle": {"argv": []}}})
+    monkeypatch.setattr(package_runtime, "load_package", lambda _path: package)
+
+    def invoke(_package, command, source, output=None, **kwargs):
+        if command == "emit_analysis_bundle":
+            output.write_text(json.dumps({
+                "abi_version": "0.1", "target": "synthetic", "tensors": {}, "commands": [],
+                "params": {}, "declined": {"reason": "unsupported connected source"},
+            }))
+        return SimpleNamespace(returncode=0, stdout="module { llvm.func @kernel() { llvm.return } }", stderr="")
+
+    monkeypatch.setattr(package_runtime, "run_entrypoint", invoke)
+    result = build(names=("a",), stop_on_first_failure=True)
+    assert not result.ok and "BackendDeclined" in result.skipped[0][1]
+    assert not result.objects and not calls and result.shim_object is None
 
 
 def test_required_failure_stops_admission_but_drains_real_inflight_outputs(synthetic_build, monkeypatch):

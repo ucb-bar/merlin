@@ -63,15 +63,49 @@ def test_public_scale_and_frontier_cases_allocate_only_source_text(tmp_path):
     assert not list(tmp_path.rglob("*.npz")) and not list(tmp_path.rglob("*.npy"))
 
 
-def test_public_composition_stays_exact_and_hidden_source_is_not_opened(tmp_path):
+def test_replayed_composition_scales_without_opening_hidden_source(tmp_path):
     original = capsule(tmp_path, graph=True)
     hidden = {"name": "withheld", "label": "hidden", "__dir__": str(tmp_path / "absent-private")}
     cases, manifest = SOURCES.derive([original, hidden])
-    assert len(cases) == 1 and cases[0].scale == 1
+    assert [case.scale for case in cases] == list(SOURCES.SCALES)
     assert cases[0].source_ir == (Path(original["__dir__"]) / "source.mlir").read_text()
+    assert all("linalg.generic" in case.source_ir and "linalg.copy" in case.source_ir for case in cases)
+    assert cases[-1].original_abi.outputs[0].shape == (3 * 64, 5 * 64)
     assert manifest["unavailable"] == []
     with pytest.raises(ValueError, match="non-public"):
         SOURCES.derive([original, hidden], selected="withheld")
+
+
+def test_composition_scaling_preserves_dependencies_aliases_and_multiple_outputs(tmp_path):
+    original = capsule(tmp_path)
+    program = original["operation"]["attributes"]["program"]
+    program["inputs"].append({"name": "B", "role": "bias", "shape": [3, 5], "dtype": "accumulator"})
+    program["nodes"].extend([
+        {"name": "S", "op": "add", "inputs": ["P", "B"]},
+        {"name": "L", "op": "alias", "inputs": ["S"]},
+        {"name": "U", "op": "update", "inputs": ["L", "B"]},
+        {"name": "T", "op": "transpose", "inputs": ["U"]},
+    ])
+    program["outputs"] = [{"name": "Y", "value": "T"}, {"name": "Z", "value": "P"}]
+    typed, source = component_program.render(program, operand_dtype="i8", accumulator_dtype="i32")
+    original["component_program"] = typed
+    root = Path(original["__dir__"])
+    (root / "capsule.yaml").write_text(json.dumps({k: v for k, v in original.items() if k != "__dir__"}))
+    (root / "source.mlir").write_text(source)
+    cases, manifest = SOURCES.derive([original], index_bits=64)
+    assert not manifest["unavailable"] and len(cases) == 3
+    for case in cases:
+        assert [slot.shape for slot in case.original_abi.outputs] == [(5 * case.scale, 3 * case.scale),
+                                                                    (3 * case.scale, 5 * case.scale)]
+        assert "arith.addi" in case.source_ir and "linalg.transpose" in case.source_ir
+        assert case.record()["derivation"]["tensor_values_allocated"] is False
+
+
+def test_internal_tensor_byte_extent_cannot_overflow_selected_index_width(tmp_path):
+    original = capsule(tmp_path, size=24000, graph=True)
+    # Inputs fit signed 32-bit byte offsets, but the i32 intermediate does not.
+    cases, manifest = SOURCES.derive([original], scales=(1,), index_bits=32)
+    assert not cases and manifest["unavailable"]
 
 
 def test_original_source_and_metadata_cannot_change_after_case_selection(tmp_path):

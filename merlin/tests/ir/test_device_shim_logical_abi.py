@@ -30,6 +30,34 @@ pytestmark = pytest.mark.target("gemmini")
 _CC = shutil.which("cc") or shutil.which("gcc")
 
 
+@pytest.fixture(autouse=True)
+def _synthetic_capabilities(monkeypatch):
+    from logical_device_target import install
+
+    install(monkeypatch)
+
+
+@pytest.fixture
+def native_device_tools():
+    from logical_device_target import require_native_tools
+
+    require_native_tools(device=True)
+
+
+@pytest.fixture
+def native_host_tools():
+    from logical_device_target import require_native_tools
+
+    require_native_tools(host=True)
+
+
+@pytest.fixture
+def native_c_tools():
+    from logical_device_target import require_native_tools
+
+    require_native_tools()
+
+
 def _resident(order):
     tensors = {
         "W": {"shape": [8, 6], "dtype": "i8", "role": "weight"},
@@ -191,7 +219,7 @@ static void run_{sym}(FILE *in, FILE *out) {{
 
 
 @pytest.mark.skipif(_CC is None, reason="no host C compiler")
-def test_a_logical_abi_device_build_computes_off_edge_contractions_exactly(tmp_path):
+def test_a_logical_abi_device_build_computes_off_edge_contractions_exactly(tmp_path, native_device_tools):
     from merlin.llvmlower.device_build import build_device_objects
 
     pkg = tmp_path / "pkg"
@@ -214,8 +242,6 @@ def test_a_logical_abi_device_build_computes_off_edge_contractions_exactly(tmp_p
         cflags=["-O1", "-fPIC"],
         timeout=300,
     )
-    if not built.kernels:
-        pytest.skip(f"device build unavailable here: {built.skipped}")
     assert set(built.kernels) == set(signatures), built.skipped
     shim = built.shim_object.with_suffix(".c").read_text(encoding="utf-8")
     assert "_a[" not in shim and "pointer order of the logical kernel ABI for this group: rhs, lhs, out" in shim
@@ -483,15 +509,20 @@ def _rne(values):
 def _fused_route(capture: str, work: str, package: str, model: str = "two") -> dict:
     """The group route and device build of the capture at ``capture``, as plain data.
 
-    Run in a CHILD PROCESS with the gemmini support selected (the route reads which readout stages
-    the target closes from that contract): selecting a support loads its plugin for the life of the
-    process, and the rest of the suite runs with none selected."""
+    The child selects the same explicit synthetic capabilities as the parent;
+    no real target facts or execution support is required."""
     from pathlib import Path
 
     from merlin.common import mlir_query as mq
+    from merlin.common.paths import merlin_dir
     from merlin.llvmlower.device_build import build_device_objects
     from merlin.llvmlower.device_offload import rewrite_groups_to_device
     from merlin.xdsl_dialects._common import text as to_text
+
+    sys.path.insert(0, str(merlin_dir() / "tests" / "fixtures"))
+    from logical_device_target import install
+
+    install(pytest.MonkeyPatch())
 
     module = mq.parse((Path(capture) / "model.mlir").read_text(encoding="utf-8"))
     rewrite = rewrite_groups_to_device(
@@ -526,7 +557,7 @@ def _fused_route(capture: str, work: str, package: str, model: str = "two") -> d
 
 
 @pytest.mark.skipif(_CC is None, reason="no host C compiler")
-def test_a_fused_bias_scale_relu_whole_model_runs_exactly_under_the_logical_abi(tmp_path):
+def test_a_fused_bias_scale_relu_whole_model_runs_exactly_under_the_logical_abi(tmp_path, native_host_tools):
     """Two chained quantized linear layers, each bias_add + acc_scale + relu + quantize: the route
     rewrites each into ONE call passing the activation, the stored weight, the folded bias and the
     destination; the device build matches each to the kernel's logical interface (W, A0, B, Y0) and
@@ -568,7 +599,7 @@ def test_a_fused_bias_scale_relu_whole_model_runs_exactly_under_the_logical_abi(
 
     work = tmp_path / "work"
     work.mkdir()
-    env = dict(os.environ, MERLIN_TARGET_PATH=str(repo_root() / "examples" / "gemmini" / "support"))
+    env = dict(os.environ, MERLIN_TARGET_PATH="")
     script = (
         "import json, sys; sys.path.insert(0, sys.argv[1]); from test_device_shim_logical_abi import _fused_route; "
         "print(json.dumps(_fused_route(*sys.argv[2:])))"
@@ -628,7 +659,7 @@ int main(void) {
 
 
 @pytest.mark.skipif(_CC is None, reason="no host C compiler")
-def test_a_two_result_group_passes_both_results_and_runs_exactly(tmp_path):
+def test_a_two_result_group_passes_both_results_and_runs_exactly(tmp_path, native_host_tools):
     """One resident weight read by two contractions, each committing its own result: the call passes
     both activations, the weight and BOTH destinations (in an order unlike the kernel's), and both
     results come back through Merlin's host lowering, exact."""
@@ -721,7 +752,7 @@ int main(void) {{
 
 
 @pytest.mark.skipif(_CC is None, reason="no host C compiler")
-def test_a_batched_call_runs_the_slice_kernel_once_per_disjoint_slice(tmp_path):
+def test_a_batched_call_runs_the_slice_kernel_once_per_disjoint_slice(tmp_path, native_c_tools):
     """A batch is a loop: the host passes [B, ...] buffers, the kernel takes one slice's logical tensors."""
     buffers = (
         DS.LogicalBuffer("A", "input", "input_0", (2, 4), "i8"),
@@ -1097,11 +1128,9 @@ def _write_capture(directory: Path, text: str, stored: dict) -> None:
 def _routed_in_child(tmp_path, capture: Path, model: str) -> tuple[dict, Path]:
     import os
 
-    from merlin.common.paths import repo_root
-
     work = tmp_path / "work"
     work.mkdir()
-    env = dict(os.environ, MERLIN_TARGET_PATH=str(repo_root() / "examples" / "gemmini" / "support"))
+    env = dict(os.environ, MERLIN_TARGET_PATH="")
     script = (
         "import json, sys; sys.path.insert(0, sys.argv[1]); from test_device_shim_logical_abi import _fused_route; "
         "print(json.dumps(_fused_route(*sys.argv[2:])))"
@@ -1125,7 +1154,7 @@ def _routed_in_child(tmp_path, capture: Path, model: str) -> tuple[dict, Path]:
     ids=["3x3_s1_pad1", "3x3_s2_pad1", "1x1_s1", "1x1_s2"],
 )
 def test_a_captured_convolution_is_routed_from_its_image_and_runs_exactly(
-    tmp_path, channels, side, features, kernel, stride, pad
+    tmp_path, channels, side, features, kernel, stride, pad, native_host_tools
 ):
     """A convolution the capture lowered on the HOST (strided slices of the padded NCHW image, an
     NCHW->NHWC transpose per tap, concatenated into a patch matrix for an integer matmul, then an NCHW
@@ -1185,7 +1214,7 @@ int main(void) {{
 
 
 @pytest.mark.skipif(_CC is None, reason="no host C compiler")
-def test_a_chain_of_device_groups_carries_the_device_layout_between_them(tmp_path):
+def test_a_chain_of_device_groups_carries_the_device_layout_between_them(tmp_path, native_host_tools):
     """conv 3x3 -> conv 1x1 -> residual add of the two -> conv 3x3 stride 2, every layer on the device.
 
     The capture's tensors between layers are NCHW; the device's are NHWC / [positions, features]. A
@@ -1306,7 +1335,7 @@ static m1 d1(void *p, intptr_t a) { m1 r = {p, p, 0, {a}, {1}}; return r; }
 
 
 @pytest.mark.skipif(_CC is None, reason="no host C compiler")
-def test_a_pooled_convolution_routes_its_whole_readout_including_the_max_pool(tmp_path):
+def test_a_pooled_convolution_routes_its_whole_readout_including_the_max_pool(tmp_path, native_host_tools):
     """A stem-shaped layer -- conv 5x5 stride 2, bias, relu, a framework max-pool (-inf pad, NaN
     propagating window max) and a quantize. The target's narrowing readout declares maxpool, so the
     whole readout is the device group's: no host readout and no relayout around the pool remain."""
@@ -1351,7 +1380,7 @@ int main(void) {{
 
 
 @pytest.mark.skipif(_CC is None, reason="no host C compiler")
-def test_a_weight_the_host_would_transpose_every_inference_is_read_from_the_prepack(tmp_path):
+def test_a_weight_the_host_would_transpose_every_inference_is_read_from_the_prepack(tmp_path, native_host_tools):
     """A linear layer stores its weight [out, in] and the capture transposes it on the host before the
     contraction. The call reads the prepack's copy of the transposed weight instead -- the same bytes,
     laid out once -- so the host program keeps no transpose at all."""

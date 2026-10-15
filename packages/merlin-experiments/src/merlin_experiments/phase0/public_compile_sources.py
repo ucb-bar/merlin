@@ -2,7 +2,8 @@
 
 No tensor values, reference outputs, captured weights or candidate declarations
 are read.  Geometric siblings are restricted to the existing generic source
-builder's integer matmul/copy semantics; arbitrary compositions stay exact.
+builder's integer semantics. Replayed shape-homogeneous compositions retain
+their full dataflow, storage epochs and outputs; arbitrary source stays exact.
 Resource-frontier cases already present in the public corpus retain their full
 original types.  Source construction establishes neither device residence nor
 index, output-store, numerical or physical legality.
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,10 +21,11 @@ from merlin.targetgen import component_program
 from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor
 from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
 
-SCHEMA = "merlin.public_compile_sources.v1"
+SCHEMA = "merlin.public_compile_sources.v2"
 SCALES = (1, 8, 64)
 MAX_SOURCE_BYTES = 256 * 1024
 MAX_CASES = 256
+SCALABLE_COMPONENT_OPS = frozenset({"matmul", "add", "copy", "transpose", "alias", "update", "cast"})
 
 
 def _digest(value):
@@ -179,18 +182,16 @@ def derive(capsules, *, selected="all", scales=SCALES, index_bits=None):
             siblings = _siblings(parsed)
             if typed is not None:
                 program = capsule["operation"]["attributes"]["program"]
-                if len(program["nodes"]) == len(program["outputs"]) == 1 and program["nodes"][0]["op"] in {
-                    "matmul",
-                    "copy",
-                }:
+                if program["nodes"] and all(node["op"] in SCALABLE_COMPONENT_OPS for node in program["nodes"]):
                     # The original producer replay above establishes these
-                    # generic mixed-width bodies; do not infer their meaning
-                    # from an authored linalg.generic name or operation tag.
+                    # bodies. These operations have homogeneous shape rules;
+                    # render rederives every internal shape. Fixed-size
+                    # reduction axes require a separate rule.
                     siblings = program, storage["operand"], storage["accumulator"]
             for scale in scales if siblings is not None else (1,):
                 if len(cases) >= MAX_CASES:
                     raise ValueError("public compile case roster exceeds its member budget")
-                emitted, abi = source, _abi(parsed, typed)
+                emitted, abi, original = source, _abi(parsed, typed), typed
                 if scale != 1:
                     import copy
 
@@ -206,6 +207,12 @@ def derive(capsules, *, selected="all", scales=SCALES, index_bits=None):
                         program, operand_dtype=operand, accumulator_dtype=accumulator
                     )
                     abi = _abi(parse_linalg_mlir(emitted), original)
+                if original is not None and index_bits is not None:
+                    limit = 1 << (index_bits - 1)
+                    tensors = original["inputs"] + original["nodes"] + original["outputs"]
+                    if any(math.prod(row["shape"]) * ((int(row["dtype"][1:]) + 7) // 8) >= limit
+                           for row in tensors):
+                        raise ValueError("public compile tensor byte extent exceeds reviewed host index range")
                 derivation = {
                     "basis": "retained_public_source" if scale == 1 else "geometric_tensor_types",
                     "extent_ratio": scale,
