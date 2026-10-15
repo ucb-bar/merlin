@@ -295,6 +295,34 @@ def check(args: argparse.Namespace, report: dict) -> dict:
     return report
 
 
+@register("kernels-export")
+def kernels_export(args: argparse.Namespace, report: dict) -> dict:
+    from merlin.model_check import export as EX
+
+    models = load_models(args.models)
+    model = models.model(args.model)
+    bundle = _bundle(args)
+    report["bundle"] = {"path": str(bundle.root), "merlin_commit": bundle.manifest().get("merlin_commit")}
+    record = EX.export_model(bundle, model, args.out_dir, programs=_programs(model, args))
+    for program in record["programs"]:
+        report["programs"].append(
+            {
+                "program": program["program"],
+                "census": program["census"],
+                "kernels": [
+                    {k: kernel[k] for k in ("symbol", "form", "routed_groups", "interface_sha256", "path")}
+                    for kernel in program["kernels"]
+                ],
+            }
+        )
+    count = sum(len(p["kernels"]) for p in record["programs"])
+    report["gates"]["export"] = {
+        "status": "pass",
+        "detail": f"{count} kernel(s) of {len(record['programs'])} program(s) -> {Path(args.out_dir) / model.name}",
+    }
+    return report
+
+
 @register("inputs-prepare")
 def inputs_prepare(args: argparse.Namespace, report: dict) -> dict:
     from merlin.common.paths import build_dir

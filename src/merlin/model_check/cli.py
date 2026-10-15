@@ -82,6 +82,13 @@ def build_parser() -> argparse.ArgumentParser:
     replay.add_argument("--agent-view", action="store_true")
     _engine(replay)
 
+    export = sub.add_parser("kernels-export", help="interface modules, call ABI and entries of a model's kernels")
+    _common(export, submission=False)
+    export.add_argument("--model", required=True)
+    export.add_argument("--program", default=None)
+    export.add_argument("--split", choices=("visible",), default="visible", help="only the visible split exports")
+    export.add_argument("--out-dir", type=Path, required=True, help="directory to write <model>/ and index.md")
+
     census = sub.add_parser("census", help="build only; classify every contraction")
     _common(census)
     census.add_argument("--model", required=True)
