@@ -13,6 +13,8 @@ from merlin.model_check import cli
 from merlin.model_check import engines as EN
 from merlin.model_check import replay as RP
 
+pytestmark = pytest.mark.target("gemmini")
+
 MIB = 1 << 20
 
 
