@@ -316,20 +316,71 @@ theorem denseConstantRule_sound (ib : Nat) : RuleSound ib denseConstantRule := b
     · cases h
   · cases h
 
+/-- Width-changing integer casts are total only in their legal direction and without
+poison-producing overflow/nonnegative promises. -/
+def intCastRule : Rule := fun op fs =>
+  match fs, op.results with
+  | [⟨.scalar (.int w), true⟩], [r] =>
+    match r.ty with
+    | .int w' =>
+      if dialectOf op.name = "arith" ∧
+          ((op.name = "arith.extsi" ∧ w < w') ∨ (op.name = "arith.extui" ∧ w < w') ∨
+            (op.name = "arith.trunci" ∧ w' < w)) ∧
+          overflowFlags op = [] ∧ hasUnit op "nonNeg" = false then
+        some [⟨.scalar (.int w'), true⟩]
+      else none
+    | _ => none
+  | _, _ => none
+
+theorem intCastRule_sound (ib : Nat) : RuleSound ib intCastRule := by
+  intro op fs rs hm h ctx call args _ hargs
+  unfold intCastRule at h
+  split at h
+  · split at h
+    · split at h
+      · next hc =>
+        obtain ⟨hd, hn, hflags, hnneg⟩ := hc
+        cases h
+        obtain _ | ⟨hv, hnil⟩ := hargs
+        cases hnil
+        obtain ⟨x, rfl⟩ := initialized_int hv
+        rename_i w r hr _ w' hty
+        have hresult : Arith.resultElt op.blind = some (.int w') := by
+          simp only [Arith.resultElt, Op.blind_results, hr, List.map_cons, List.map_nil, hty]
+        have hf : overflowFlags op.blind = [] := by simpa [overflowFlags, attrEnum?] using hflags
+        have hn' : hasUnit op.blind "nonNeg" = false := by simpa [hasUnit] using hnneg
+        rw [opSem_modelled hm]
+        simp only [dispatch, Op.blind_name, hd]
+        rcases hn with ⟨hn, hw⟩ | ⟨hn, hw⟩ | ⟨hn, hw⟩
+        all_goals
+          simp only [Arith.sem, Op.blind_name, hn, Arith.widthOf, hresult, Ty.bitWidth?,
+            Outcome.ofOption, Outcome.bindOp_eq, Outcome.bind_ok, Arith.unOp, Arith.pureN, hf, hn']
+          rw [show [.scalar (.some (.bits w x))] = ([.some (.bits w x)] : List Val).map RVal.scalar from rfl,
+            liftEager_scalars]
+          simp only [Arith.intUn, List.contains_nil,
+            Bool.false_and, Bool.false_eq_true, ↓reduceIte, ite_eq_right (Nat.not_le_of_lt hw),
+            Outcome.bind_ok, Arith.bv]
+          exact ⟨_, rfl, List.Forall₂.cons ⟨by simp [RVal.HasTy, Val.HasTy, Scalar.conforms],
+            by simp [RVal.Defined]⟩ .nil⟩
+      · cases h
+    · cases h
+  · cases h
+
 def rules (ib : Nat) : Rule := fun op fs =>
-  [constantRule ib, emptyRule, splatRule, intBinaryRule, reshapeRule, denseConstantRule].findSome? fun r => r op fs
+  [constantRule ib, emptyRule, splatRule, intBinaryRule, reshapeRule, denseConstantRule, intCastRule].findSome? fun r => r op fs
 
 theorem rules_sound (ib : Nat) : RuleSound ib (rules ib) := by
   intro op fs rs hm hr
   obtain ⟨r, hmem, h⟩ := List.exists_of_findSome?_eq_some hr
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
-  rcases hmem with rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hmem with rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact constantRule_sound ib op fs rs hm h
   · exact emptyRule_sound ib op fs rs hm h
   · exact splatRule_sound ib op fs rs hm h
   · exact intBinaryRule_sound ib op fs rs hm h
   · exact reshapeRule_sound ib op fs rs hm h
   · exact denseConstantRule_sound ib op fs rs hm h
+  · exact intCastRule_sound ib op fs rs hm h
 
 def book (ib : Nat) : Book opSem ib where
   rule op fs := if unmodelledAttr? op.blind = none then rules ib op fs else none

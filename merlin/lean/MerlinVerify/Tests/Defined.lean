@@ -101,3 +101,23 @@ def dense (splat : Bool) (bytes : List UInt8) (shape : List Nat := [2]) : Op :=
   [dense false [255, 255, 255, 255, 2, 0, 0, 0], ret [0]]] } "f" []) == some [[some (-1), some 2]]
 
 end MerlinVerify.Tests.Definedness
+
+namespace MerlinVerify.Tests.Definedness
+
+open MerlinVerify MerlinVerify.Check MerlinVerify.Tests.Semantics
+
+def cast (name : String) (src dst : Nat) (attrs : List (String × Attr) := []) : Bool :=
+  accepts [v 0 (.int src)] [mkOp name [v 1 (.int dst)] [0] attrs, ret [1]]
+    [.scalar (.int src)] [.scalar (.int dst)]
+
+#guard cast "arith.extsi" 8 32
+#guard cast "arith.extui" 8 32
+#guard cast "arith.trunci" 32 8
+#guard !cast "arith.extsi" 32 8
+#guard !cast "arith.extui" 8 8
+#guard !cast "arith.trunci" 8 32
+#guard !cast "arith.extui" 8 32 [("nonNeg", .unit)]
+#guard !cast "arith.trunci" 32 8 [("overflowFlags", .enum "arith" "overflow" "nsw")]
+#guard !cast "arith.trunci" 32 8 [("overflowFlags", .enum "arith" "overflow" "nuw")]
+
+end MerlinVerify.Tests.Definedness

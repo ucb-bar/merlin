@@ -35,6 +35,15 @@ def test_total_integer_operations(tmp_path, lean_tools, name):
     assert result["verdict"] == "verified", result.get("reason")
 
 
+@pytest.mark.parametrize("name,src,dst", [("extsi", 8, 32), ("extui", 8, 32), ("trunci", 32, 8)])
+def test_defined_integer_casts(tmp_path, lean_tools, name, src, dst):
+    result = _check(tmp_path, lean_tools, f"""func.func @forward(%a: i{src}) -> i{dst} {{
+      %r = arith.{name} %a : i{src} to i{dst}
+      return %r : i{dst}
+    }}""")
+    assert result["verdict"] == "verified", result.get("reason")
+
+
 @pytest.mark.parametrize("text", [
     "func.func @forward(%a: tensor<2xi32>) -> tensor<2xi32> { return %a : tensor<2xi32> }",
     "func.func @forward() -> i32 { %c = arith.constant 7 : i32 return %c : i32 }",
