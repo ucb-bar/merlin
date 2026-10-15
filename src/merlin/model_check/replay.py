@@ -230,7 +230,8 @@ def _write_image_sources(
     # table of absolute 64-bit addresses (R_RISCV_64) is how the code reaches them.
     pointers = [_c_name(i) for i in range(len(blob_files))] + (["mc_results"] if preload_outputs else [])
     externs = "\n".join(f"extern const unsigned char {name}[];" for name in pointers)
-    externs += "\nconst void *volatile mc_ptr[] = {" + ", ".join(pointers) + (", 0" if not pointers else "") + "};"
+    # an image with no operands still needs a non-empty table
+    externs += "\nconst void *volatile mc_ptr[] = {" + (", ".join(pointers) or "0") + "};"
     kernel_decls = "\n".join(
         f"extern void {k}({', '.join('void *' for _ in range(n))});" for k, n in sorted(used_kernels.items())
     )

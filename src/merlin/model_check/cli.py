@@ -110,6 +110,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     binding = sub.add_parser("binding", help="Spike / RTL / FireSim binding receipt")
     _common(binding, submission=False)
+    _engine(binding)
+    binding.add_argument("--board", default=None, help="board whose memory span Spike models (default: the spec's)")
+    binding.add_argument("--spec", type=Path, default=None, help="binding spec (default: binding.yaml by --models)")
+    binding.add_argument("--image", type=Path, action="append", default=[], help="replay image to check (repeatable)")
 
     verify = sub.add_parser("bundle-verify", help="check every file of a numerics bundle")
     _common(verify, submission=False)

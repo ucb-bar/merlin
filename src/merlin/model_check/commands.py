@@ -60,6 +60,10 @@ def bundle_build(args: argparse.Namespace, report: dict) -> dict:
     bundle = _bundle(args)
     keep = None if args.keep == "all" else (lambda _symbol, ordinal: ordinal < FAST_CALLS_PER_SYMBOL)
     engine = {"host_package": str(args.host_package), "contract": str(args.contract), "rtl_facts": str(args.rtl_facts)}
+    from merlin.model_check import binding as BD
+
+    binding = BD.write(BD.receipt_for(args), bundle.root / "binding.json")
+    report["binding"] = {k: binding[k] for k in ("receipt_sha256", "status")}
     record = B.build(
         bundle,
         model,
@@ -68,6 +72,7 @@ def bundle_build(args: argparse.Namespace, report: dict) -> dict:
         programs=_programs(model, args),
         keep_call=keep,
         engine=engine,
+        binding=binding,
     )
     report["bundle"] = {"path": str(bundle.root)}
     report["programs"] = [{"program": name, **row} for name, row in record["programs"].items()]
@@ -75,6 +80,17 @@ def bundle_build(args: argparse.Namespace, report: dict) -> dict:
         "status": "pass" if all(row["consistent"] for row in record["programs"].values()) else "fail",
         "detail": "device-rewritten program == INT8 reference, bit for bit, on the capture's inputs",
     }
+    return report
+
+
+@register("binding")
+def binding(args: argparse.Namespace, report: dict) -> dict:
+    from merlin.model_check import binding as BD
+
+    receipt = BD.receipt_for(args)
+    report["binding"] = {**BD.record(receipt), "receipt": receipt}
+    report["gates"]["binding"] = BD.gate(receipt)
+    report["failures"] += BD.failures(receipt)
     return report
 
 
@@ -244,6 +260,7 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
     manifest = bundle.manifest()
     _bind_engine_inputs(args, manifest)
     report["bundle"] = {"path": str(bundle.root), "merlin_commit": manifest.get("merlin_commit")}
+    report["binding"] = manifest.get("binding")
     inputs = bundle.inputs(model.name, args.split)
     if not inputs:
         raise B.BundleError(f"bundle has no {args.split} inputs for {model.name}")
