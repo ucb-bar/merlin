@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.4**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.5**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -49,7 +49,11 @@ python -m merlin.model_check replay-kernel --submission S --model M --program P
         (--group SOURCE_REGION_ID | --all) --split {visible|sealed|all}
         [--engine {spike|gsim}] [--timeout-s T] [--agent-view] --out REPORT.json
 python -m merlin.model_check census --submission S --model M [--program P] --out REPORT.json
-python -m merlin.model_check binding --out RECEIPT.json
+python -m merlin.model_check binding [--contract C] [--rtl-facts F] [--host-package H] [--bundle B]
+        [--board NAME] [--spec FILE] [--image ELF]... [--dram-base A] [--dram-bytes N] --out RECEIPT.json
+python -m merlin.model_check kernels-export --bundle B --model M [--program P] [--split visible]
+        --out-dir DIR --out REPORT.json
+python -m merlin.model_check variants-build --model M [--program P] --seed S [--bundle B] --out REPORT.json
 python -m merlin.model_check bundle-verify [--bundle DIR] --out REPORT.json
 python -m merlin.model_check bundle-build --captures DIR --model M [--program P] [--keep {all|sample}]
         --host-package DIR --contract FILE --rtl-facts FILE [--bundle DIR] --out REPORT.json
@@ -87,8 +91,22 @@ official pass.
 
 - `replay-kernel`: the kernel step alone, for any group or all groups; `--engine gsim` is the RTL check
   per unique kernel, `spike` the fast functional one.
+- `--split sealed|all` on `check` and `replay-kernel` also replays every sealed shape variant of each
+  program (§8.1), all of them even in `fast` mode, judged by §4.2; the `build` and `kernel_exact` gates
+  include them.
 - `census`: grouping and per-kernel lowering outcome only; no execution (§6).
-- `binding`: the Spike↔RTL↔FireSim receipt (§7).
+- `binding`: the Spike↔RTL↔FireSim receipt (§7). Missing inputs come from the `--bundle` manifest, then
+  `MERLIN_TARGET_CONTRACT`/`MERLIN_RTL_FACTS`; the spec defaults to `binding.yaml` next to the models file.
+- `kernels-export`: per model, every kernel's interface module and call ABI plus an index of the forms
+  (`DIR/index.md`, `DIR/<model>/{index.md,kernels.json}`,
+  `DIR/<model>/kernels/<program>/<symbol>/{interface.mlir,abi.json}`). It reads only catalogs, sidecars
+  and censuses, carries no tensor data and no paths, and accepts only the visible split: it is what a
+  harness stages into an agent sandbox.
+- `variants-build`: seeds and stores the sealed shape variants (§8.1); operator only.
+- Cache: `check` and `replay-kernel` reuse kernel objects (keyed by package content, interface sha256,
+  compile flags, tool identities, target contract and facts, and Merlin's build sources) and replay
+  consoles (keyed by image sources, operand bytes, linked objects, toolchain and simulator) under
+  `build_dir()/model_check/cache`. `--no-cache` disables both; **an official grade passes `--no-cache`**.
 - `--agent-view`: omit every per-input value of the `sealed` split, keeping only aggregate status per
   gate. Anything shown to an agent must be produced with it.
 
@@ -116,7 +134,10 @@ leave the epilogue on the host.
 The capture's `integer-reference.json` (a PyTorch fake-quant interpreter) is **not** the reference.
 
 The **FP reference** is the original float model (PyTorch eager, checkpoint weights, no quantization)
-on the same inputs and saved noise, chained as in §1.
+on the same inputs and saved noise, chained as in §1. It runs with the numerics a sealed capture has:
+`ATEN_CPU_CAPABILITY=default` (ATen's portable kernels) on one thread (`OMP_NUM_THREADS=1`,
+`MKL_NUM_THREADS=1`), recorded per model as `fp_numerics_env`. Vectorized ATen kernels round bf16
+differently: SmolVLA's final flow state moves by ~1% between two valid hosts otherwise.
 
 ## 4. Numerics policy
 
@@ -208,10 +229,20 @@ Counts and MAC-weighted fractions per program. The census is a measurement; it n
 - `spike`: functional ISA model with the accelerator extension. Numbers only; cycles are labelled
   `functional`. `--isa` and `-m` come from the ELF's declared board, never Spike defaults.
 - `gsim`: RTL-equivalent native simulator; used by `replay-kernel --engine gsim`.
-- `binding` receipt: sha256 of Spike's accelerator params header, of the params header from the
-  elaboration behind the selected FIRRTL, of the spike binary and of the extension library; the ISA
-  string; Spike `-m`; the FireSim target's DRAM size. A mismatch, or a program footprint that does not
-  fit, fails the receipt.
+- `binding` receipt (schema `merlin.model_check.binding.v1`): sha256 of the spike binary and the
+  extension library against the contract's pins; Spike's accelerator params header against the one
+  generated by the elaboration behind the selected FIRRTL; mesh, scratchpad, accumulator and scale types
+  of that header against the RTL facts and the contract; the DTS ISA against Spike's `--isa`, the host
+  package's `-march` and each image's recorded ISA; the board's DRAM against Spike `-m` and the FireSim
+  target's memory (read from the config sources); each image's footprint. Every check is listed by name;
+  a mismatch or an `unknown` fails the receipt. Which file plays which role, with structured citations
+  the receipt re-reads, is data: `examples/<target>/numerics/binding.yaml`.
+- **Cited partial extensions.** An extension Spike enables but the hardware implements only in part (e.g.
+  counters without the `time` CSR) passes only while its citations hold, and every checked image
+  (`--image`, plus a replay probe image the receipt builds) is disassembled and must access none of the
+  missing CSRs, read by name from the disassembly.
+- Reports of `check`/`replay-kernel` copy the bundle's receipt as `binding {receipt_sha256, status,
+  receipt}`.
 
 ## 8. Inputs and bundle layout
 
@@ -227,28 +258,77 @@ never holds a holdout. The public `MANIFEST.json` commits to them by sha256 only
 verifiable when it is released.
 Frozen bundle (generated, private): `/work/merlin/private/<target>/numerics/<version>/`
 ```
-MANIFEST.json                        # sha256 of every file; generator/merlin/model2mlir commits;
-                                     # capture hashes; policy constants
-<model>/<split>/<id>/fp.npz          # FP outputs per program and chain step
-<model>/<split>/<id>/int8.npz        # INT8-reference outputs per program and chain step
-<model>/<split>/<id>/boundaries/<program>/<step>/<key>.npz
-                                     # key = <source_region_id>@<normalized_source_sha256[:12]>
-                                     # arrays: in0..inN (device-call layout), out, fp_out
-<model>/kernels/<program>/<key>/interface.mlir   # the group's interface module (package input)
-<model>/kernels/<program>/<key>/abi.json         # symbol, call buffers, argument access, prepack
-<model>/kernels/unique.json                      # interface-module sha256 -> groups sharing it
+MANIFEST.json                        # generator/merlin/model2mlir commits, capture hashes, engine inputs
+                                     # (host package, contract, RTL facts), binding {receipt, sha256, status},
+                                     # per model sealed_variants {rule, programs{p: {variants, sha256}}}
+binding.json                         # the binding receipt (§7)
+<model>/programs/<program>/catalog.json          # stage, prepared programs, routing, interfaces by symbol
+<model>/programs/<program>/ref/                  # the prepared INT8 program (§3)
+<model>/programs/<program>/dev/device_signatures.json
+                                     # sidecar: signatures, routed groups, call buffers by symbol
+<model>/programs/<program>/census.json           # §6, per contraction of the original capture
+<model>/blobs/                       # content-addressed arrays (a weight shared by every call is stored once)
+<model>/<split>/<id>/<program>/calls.json        # the program's device calls (first step): symbol,
+                                                 # ordinal, roles, operand and expected blob keys
+<model>/<split>/<id>/fp.npz          # FP judged outputs (§3)
+<model>/<split>/<id>/int8.npz        # INT8-reference judged outputs
 <model>/<split>/<id>/metrics_int8.json           # INT8-reference model metrics vs FP (§4.4)
+<model>/reference_quality.json       # per-input reference metrics and fp_numerics_env
+<model>/sealed_variants/{blobs/, <program>/variants.json, <program>/calls.json}   # §8.1
 ```
+Replays of sealed variants build in `<bundle>.sealed_variants-work/`, beside the private bundle, never
+in the shared build directory.
 
 **Sealed data is never granted to an agent sandbox.** `/work/merlin/private/**` must appear in no
 grant; the harness tests its bwrap arguments for it.
 
+### 8.1 Sealed shape variants (rule v1)
+For every unique device kernel of every program, the sealed split adds one seeded variant in each of four
+classes; a class a kernel cannot reach within the caps is recorded as skipped. A variant keeps the
+kernel's form (op, epilogue stages and order, convolution kernel size, stride, padding and dilation,
+stationary operand, operand/accumulator/output dtypes, host-call roles); only sizes change. Bounds come
+from the target's RTL facts: E = array edge, S_op and S_acc = operand-store and accumulator-store
+capacity in elements.
+
+- `sub_tile`: every non-unit extent below E (a convolution: channel counts and output pixel count; its
+  output stays at least 2×2 when the kernel's is).
+- `aspect`: each extent moves by a non-zero offset smaller than E (a spatial extent down by at most half),
+  then all scale down together until the work caps hold.
+- `accumulator_spill`: the result holds 1.25–2× S_acc elements per batch.
+- `operand_spill`: the live operands hold 1.25–2× S_op elements.
+
+In every class a non-unit extent is never a multiple of E and never the kernel's own; a unit extent stays
+1; a convolution's input is non-square and larger than its padding, and its output pixel count is not a
+multiple of E; a batched form gets a different batch count in [2, 2B+1]. Each variant does at most 2²⁴
+multiply-accumulates over at most 2²² operand elements. A declared `acc_scale` moves by 0.5–3 % (random
+sign), rounded to 12 significant bits. Operands are uniform over the operand dtype's full range with both
+extremes present, ranges capped so the exact accumulator stays within half its range (narrowed so a
+typical result is about a quarter of the output range when the output is narrower than the accumulator).
+Expected results are the interface program evaluated exactly. Variants and the seed are never released.
+
 ## 9. Report
 
 Schema: `merlin/schemas/model_check_report.schema.yaml` (`merlin.model_check.report.v1`). Top level:
-`schema`, `command`, `status` (`pass|fail|error`), `tool`, `submission`, `model`, `split`, `bundle`,
-`binding`, `gates` (name → `{status, partial, detail}`), `programs[]` (build, census, kernels[],
-runs[]), `model_metrics`, `failures[]`, `timing`.
+`schema`, `command`, `status` (`pass|fail|error`), `exit_code`, `tool`, `submission`, `model`, `split`,
+`agent_view`, `bundle`, `binding`, `gates` (name → `{status, partial, detail}`), `programs[]`,
+`model_metrics`, `failures[]`, `timing`.
+
+- `programs[]`: `program`; `build {seconds, built, refused, cache {enabled, hits, misses, stored}}`
+  (`full` adds `status: linked`); `census {denominator, device, refused, device_mac_fraction}` (the
+  bundle's census with the submission's refused kernels moved off the device); `kernels[]`; `images[]`
+  (`cases`, `engine`, `seconds`, `cached`, `elf`); `full` adds `runs[]` (`engine`, `status`, `split`).
+  A sealed variant row has `split: sealed`, `source: sealed_variants`, kernels with `variant_of` and
+  `variant_class`; the agent view reduces it to `summary {status: count}`.
+- `kernels[]`: `symbol`, `form`, `status` (`pass|fail|refused`), `cases`, `exact`, `mismatches`,
+  `source_region_id` (the first of `source_region_ids`), `interface_sha256`, `shape_sha256` (two kernels
+  with both equal are the same kernel), and on failure `diagnosis` (`mismatch`: `results[]` with the
+  first wrong element `{index, expected, got, position}`, counts, rows/cols hit, a 32-cell map, a `hint`
+  when elements were never written; `refused`: the package's `refusal`). A diagnosis from a non-visible
+  call sits under `kernels[].sealed`, which the agent view drops.
+- `model_metrics`: `source` (`int8_reference` when every kernel is exact), `inputs`, `per_input[]`
+  (`split`, `id`, the §4.1 metrics), `worst` (per metric over `per_input`: the minimum of an agreement,
+  the maximum of an error) and `mean` (per metric; a per-input agreement of 0 or 1 averages to the
+  split's agreement rate, which the agreement gates of §4.4 compare).
 
 ## Changelog
 - 1.0 (2026-10-15): initial contract.
@@ -261,3 +341,8 @@ runs[]), `model_metrics`, `failures[]`, `timing`.
   `--engine gsim`, the model replay for declared approximations, `binding`, `bundle-verify`.
 - 1.4 (2026-10-15): SmolVLA is judged on action dims 0–5: `smolvla_base`'s action feature shape is [6], so
   dims 6–13 carry no trained prediction (their FP values are ~0 and a relative metric there is undefined).
+- 1.5 (2026-10-15): `binding` wired (§7, cited partial extensions, CSR scan); `kernels-export`;
+  `variants-build` and sealed shape variants (§8.1) replayed by `--split sealed|all`; kernel-object and
+  console cache with `--no-cache`; report fields for kernel identity, census, diagnosis and model metrics
+  (§9); FP reference pinned to capture-time numerics (§3); §8 states the bundle layout as built. Not yet
+  wired: `--mode full`, `--engine gsim`, the model replay for declared approximations, `bundle-verify`.

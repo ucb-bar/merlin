@@ -103,3 +103,9 @@ def worst_of(rows: Sequence[dict[str, Any]]) -> dict[str, float]:
         key: (min if key in AGREEMENT else max)(row[key] for row in rows if isinstance(row.get(key), float))
         for key in keys
     }
+
+
+def mean_of(rows: Sequence[dict[str, Any]]) -> dict[str, float]:
+    """Each float metric's mean over ``rows`` (a per-input agreement of 0 or 1 averages to the split's rate)."""
+    keys = sorted({k for row in rows for k, v in row.items() if isinstance(v, float)})
+    return {key: float(np.mean([row[key] for row in rows if isinstance(row.get(key), float)])) for key in keys}

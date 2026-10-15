@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -419,8 +420,13 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
             raise B.BundleError("gsim replay needs the RTL facts: pass --rtl-facts or use a bundle that records them")
         engine = EN.GsimEngine(models.target, args.rtl_facts, board_catalog=getattr(args, "board_catalog", None))
         report["engine"] = engine.identity()
-    # Absolute: the image's compilers run inside it. Unique per process: two replays may start together.
-    work = Path(args.work or (build_dir() / "model_check")).resolve() / f"{model.name}-{int(time.time())}-{os.getpid()}"
+    # A run gets its own directory: two checks of one model started in the same second shared one and
+    # overwrote each other's replay images. Absolute: the image's compilers and the emulator run inside
+    # it, and every gSIM file (image, console, emulator logs) lives under it.
+    root = Path(args.work or (build_dir() / "model_check")).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    work = Path(tempfile.mkdtemp(prefix=f"{model.name}-{stamp}-", dir=root))
     programs = _programs(model, args)
     for program in programs:
         report["programs"].append(
@@ -548,6 +554,7 @@ def _reference_metrics(bundle: B.Bundle, model: str, split: str) -> dict[str, An
         "inputs": len(per_input),
         "per_input": per_input,
         "worst": M.worst_of(per_input),
+        "mean": M.mean_of(per_input),
     }
 
 
