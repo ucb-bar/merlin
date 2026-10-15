@@ -3,7 +3,7 @@ Build-time tests of the typing rules: each rule must accept the typings the capt
 the ones its semantics would get stuck on. A rule that accepts nothing is trivially sound, so the
 acceptance tests are what make the soundness theorems meaningful (design §1.2 rule 7).
 -/
-import MerlinVerify.Check.RulesLinalg
+import MerlinVerify.Check.Rulebook
 import MerlinVerify.Tests.Semantics
 
 namespace MerlinVerify.Tests.Rules
@@ -297,5 +297,73 @@ def perm (xs : List Int) : List (String × Attr) := [("permutation", .denseArray
 #guard !checkOps book2 0 [(0, T [2, 3] f32), (1, T [3, 2] f32)]
   [mkOp "linalg.transpose" [v 2 (tensorTy [3, 2] f32)] [0, 1] (perm [1, 1]) [] [copyBody], ret [2]]
   [T [3, 2] f32]
+
+/-! ### Tensor ops (with the full rulebook) -/
+
+def book3 : Rulebook Sem.Ops.opSem 64 := merlinBook 64
+
+def arr (xs : List Int) : Attr := .denseArray i64 xs
+def slice (offs sizes strides : List Int) : List (String × Attr) :=
+  [("static_offsets", arr offs), ("static_sizes", arr sizes), ("static_strides", arr strides),
+   ("operandSegmentSizes", .denseArray (.int 32) [1, 0, 0, 0])]
+
+-- rows 1..2 (stride 1) and columns 0, 2 (stride 2) of a 4x3 tensor
+#guard checkOps book3 0 [(0, T [4, 3] f32)]
+  [mkOp "tensor.extract_slice" [v 1 (tensorTy [2, 2] f32)] [0] (slice [1, 0] [2, 2] [1, 2]), ret [1]]
+  [T [2, 2] f32]
+-- rank-reducing: one row of a 4x3 tensor as a 3-vector
+#guard checkOps book3 0 [(0, T [4, 3] f32)]
+  [mkOp "tensor.extract_slice" [v 1 (tensorTy [3] f32)] [0] (slice [2, 0] [1, 3] [1, 1]), ret [1]]
+  [T [3] f32]
+-- a slice past the end, and a result shape that does not match the sizes
+#guard !checkOps book3 0 [(0, T [4, 3] f32)]
+  [mkOp "tensor.extract_slice" [v 1 (tensorTy [2, 2] f32)] [0] (slice [3, 0] [2, 2] [1, 2]), ret [1]]
+  [T [2, 2] f32]
+#guard !checkOps book3 0 [(0, T [4, 3] f32)]
+  [mkOp "tensor.extract_slice" [v 1 (tensorTy [2, 3] f32)] [0] (slice [1, 0] [2, 2] [1, 2]), ret [1]]
+  [T [2, 3] f32]
+
+def islice (offs sizes strides : List Int) : List (String × Attr) :=
+  [("static_offsets", arr offs), ("static_sizes", arr sizes), ("static_strides", arr strides),
+   ("operandSegmentSizes", .denseArray (.int 32) [1, 1, 0, 0, 0])]
+
+#guard checkOps book3 0 [(0, T [3] f32), (1, T [4, 3] f32)]
+  [mkOp "tensor.insert_slice" [v 2 (tensorTy [4, 3] f32)] [0, 1] (islice [2, 0] [1, 3] [1, 1]), ret [2]]
+  [T [4, 3] f32]
+#guard !checkOps book3 0 [(0, T [3] f32), (1, T [4, 3] f32)]
+  [mkOp "tensor.insert_slice" [v 2 (tensorTy [4, 3] f32)] [0, 1] (islice [4, 0] [1, 3] [1, 1]), ret [2]]
+  [T [4, 3] f32]
+#guard !checkOps book3 0 [(0, T [3] i32), (1, T [4, 3] f32)]
+  [mkOp "tensor.insert_slice" [v 2 (tensorTy [4, 3] f32)] [0, 1] (islice [2, 0] [1, 3] [1, 1]), ret [2]]
+  [T [4, 3] f32]
+
+#guard checkOps book3 0 [(0, T [2, 3] f32), (1, T [5, 3] f32)]
+  [mkOp "tensor.concat" [v 2 (tensorTy [7, 3] f32)] [0, 1] [("dim", .int 0 i64)], ret [2]]
+  [T [7, 3] f32]
+-- extents along the concatenated dim must add up; the others must agree
+#guard !checkOps book3 0 [(0, T [2, 3] f32), (1, T [5, 3] f32)]
+  [mkOp "tensor.concat" [v 2 (tensorTy [8, 3] f32)] [0, 1] [("dim", .int 0 i64)], ret [2]]
+  [T [8, 3] f32]
+#guard !checkOps book3 0 [(0, T [2, 3] f32), (1, T [5, 4] f32)]
+  [mkOp "tensor.concat" [v 2 (tensorTy [7, 3] f32)] [0, 1] [("dim", .int 0 i64)], ret [2]]
+  [T [7, 3] f32]
+
+#guard checkOps book3 0 [(0, s f32)]
+  [mkOp "tensor.splat" [v 1 (tensorTy [2, 2] f32)] [0], ret [1]] [T [2, 2] f32]
+#guard checkOps book3 0 [(0, T [2, 2] f32)]
+  [mkOp "tensor.cast" [v 1 (tensorTy [2, 2] f32)] [0], ret [1]] [T [2, 2] f32]
+#guard !checkOps book3 0 [(0, T [2, 3] f32)]
+  [mkOp "tensor.cast" [v 1 (tensorTy [3, 2] f32)] [0], ret [1]] [T [3, 2] f32]
+
+#guard checkOps book3 0 [(0, T [2, 3] f32), (1, s .index), (2, s .index)]
+  [mkOp "tensor.extract" [v 3 f32] [0, 1, 2], ret [3]] [s f32]
+#guard !checkOps book3 0 [(0, T [2, 3] f32), (1, s .index)]
+  [mkOp "tensor.extract" [v 3 f32] [0, 1], ret [3]] [s f32]
+#guard checkOps book3 0 [(0, s f32), (1, T [2, 3] f32), (2, s .index), (3, s .index)]
+  [mkOp "tensor.insert" [v 4 (tensorTy [2, 3] f32)] [0, 1, 2, 3], ret [4]] [T [2, 3] f32]
+#guard checkOps book3 0 [(0, s i32), (1, s i32)]
+  [mkOp "tensor.from_elements" [v 2 (tensorTy [2] i32)] [0, 1], ret [2]] [T [2] i32]
+#guard !checkOps book3 0 [(0, s i32), (1, s i32)]
+  [mkOp "tensor.from_elements" [v 2 (tensorTy [3] i32)] [0, 1], ret [2]] [T [3] i32]
 
 end MerlinVerify.Tests.Rules
