@@ -8,6 +8,8 @@ import copy
 import json
 from functools import partial
 
+import pytest
+
 from merlin.common.paths import repo_root
 from merlin.llvmlower.passes_xdsl import preprocess_text
 from merlin.verify.lean import stages as lean_stages
@@ -136,9 +138,14 @@ def test_defined_chain_replays_real_preprocessing(tmp_path, monkeypatch, lean_to
                              m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
     unrelated = compose(tmp_path / "other-proof/receipt.json")
     assert unrelated["verdict"] == "abstracted" and "another source" in unrelated["reason"]
+    assert check_definedness(capture, "forward", tmp_path / "width32",
+                             m2m_python=lean_tools.m2m_python, index_bits=32)["verdict"] == "verified"
+    another_width = compose(tmp_path / "width32/receipt.json")
+    assert another_width["verdict"] == "abstracted" and "another source or index width" in another_width["reason"]
 
 
-def test_chain_rechecks_earlier_files_before_publication(tmp_path, monkeypatch, lean_tools):
+@pytest.mark.parametrize("artifact", ["ir", "receipt", "handoff"])
+def test_chain_rechecks_earlier_files_before_publication(tmp_path, monkeypatch, lean_tools, artifact):
     from merlin.verify.lean import check
 
     stage = tmp_path / "stage"
@@ -153,16 +160,51 @@ def test_chain_rechecks_earlier_files_before_publication(tmp_path, monkeypatch, 
                                m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
     assert check.check_definedness(stage / "before.mlir", "forward", defined,
                                    m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    monkeypatch.setenv("MERLIN_LEAN_STAGES", str(tmp_path / "recorded"))
+    handed = tmp_path / "handed.mlir"
+    handed.write_text(source)
+    lean_stages.record_handoff(handed)
+    handoff = tmp_path / "recorded/handoff.json"
     validate = check._validate_receipt
 
     def edit_after_replay(receipt, **kwargs):
         result = validate(receipt, **kwargs)
         if kwargs["obligation"] == check._DEFINED:
-            (stage / "after.mlir").write_text(source + "\n// changed during a later replay\n")
+            if artifact == "ir":
+                (stage / "after.mlir").write_text(source + "\n// changed during a later replay\n")
+            elif artifact == "receipt":
+                path = stage / "receipt.json"
+                path.write_text(path.read_text() + "\n")
+            else:
+                handed.write_text(source + "\n// changed during a later replay\n")
         return result
 
     monkeypatch.setattr(check, "_validate_receipt", edit_after_replay)
     result = check.compose_chain([stage], support / "receipt.json", "forward", tmp_path / "chain.json",
-                                 m2m_python=lean_tools.m2m_python, definedness=defined / "receipt.json")
+                                 m2m_python=lean_tools.m2m_python, definedness=defined / "receipt.json",
+                                 handoff=handoff)
     assert result["verdict"] == result["refinement_verdict"] == "abstracted"
-    assert "changed or missing" in result["reason"]
+    assert "changed" in result["reason"]
+
+
+def test_dense_tensor_preprocessing_chain_is_defined(tmp_path, monkeypatch, lean_tools):
+    from merlin.verify.lean.check import check_definedness, check_stage, check_support, compose_chain
+
+    monkeypatch.setenv("MERLIN_LEAN_STAGES", str(tmp_path / "stages"))
+    preprocess_text("""func.func @forward() -> tensor<6xi32> {
+      %unused = tensor.empty() : tensor<4xi32>
+      %weights = arith.constant dense<[[1, 2, 3], [4, 5, 6]]> : tensor<2x3xi32>
+      %r = tensor.collapse_shape %weights [[0, 1]] : tensor<2x3xi32> into tensor<6xi32>
+      return %r : tensor<6xi32>
+    }""")
+    stages = lean_stages.completed(tmp_path / "stages")
+    for stage in stages:
+        assert check_stage(stage, m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    capture = stages[0] / "before.mlir"
+    assert check_support(capture, "forward", tmp_path / "support",
+                         m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    assert check_definedness(capture, "forward", tmp_path / "defined",
+                             m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    result = compose_chain(stages, tmp_path / "support/receipt.json", "forward", tmp_path / "chain.json",
+                           m2m_python=lean_tools.m2m_python, definedness=tmp_path / "defined/receipt.json")
+    assert result["verdict"] == "verified", result.get("reason")

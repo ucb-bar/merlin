@@ -523,6 +523,14 @@ initialized from `tensor.empty` for exactly this reason. We handle it two ways:
   undefined source can reach a function result. This is a dataflow analysis over the IR with a Lean
   soundness proof. It is required of `S0` and of every `policy` input: those are the programs whose
   meaning the paper asserts.
+  - Initial implementation: `Check/Defined.lean` tracks value types and initialization facts for
+    straight-line, single-block programs. Every accepted operation must finish successfully, even
+    when its result is not initialized. Every returned value must be initialized.
+    `Check/DefinedRules.lean` proves rules for scalar and dense tensor constants, ten unflagged
+    scalar integer binary operations, `tensor.empty` as an uninitialized intermediate,
+    `tensor.splat`, and static collapse/expand reshapes. The theorem explicitly requires typed,
+    nonpoison inputs. Regions, reductions, casts, division, shifts, and overflow-flagged arithmetic
+    remain outside this definedness fragment; operation support is broader.
 - **Support, not just definedness (`NotStuck`).** The semantics returns `stuck` for anything it does
   not model. A per-boundary checker cannot know that the rest of the program is modelled, so each
   boundary claims *conditional* refinement:
@@ -541,12 +549,13 @@ initialized from `tensor.empty` for exactly this reason. We handle it two ways:
     `cf.assert`. Structured-op accesses are proved in bounds by interval bounds of the indexing maps
     over the iteration box (`Check/Affine.lean`). `Check/Rulebook.lean` assembles the rule and proves
     `supportCheck_sound` and `funcRefines_of_support`, the strict end-to-end form.
-- **Value-dependent poison** (an out-of-range `fptosi`, `nsw` overflow) cannot be excluded under
-  parametric floats. The checker enumerates these sites, and the claim carries them as the explicit
+- **Value-dependent poison** (an out-of-range `fptosi`, `nsw` overflow) cannot generally be excluded
+  without additional input assumptions. The initial definedness checker refuses these operations.
+  The planned extension enumerates these sites, and the claim carries them as the explicit
   precondition "for inputs on which these sites are defined".
-  - For the W8A8 quantize chain (`roundeven → clamp → fptosi`), a lemma under named `FloatLaws` (clamp
-    range on non-NaN) shows the conversion is defined for non-NaN activations.
-  - The domain `D` then excludes NaN activations, and the claim says so.
+  - The planned W8A8 extension (`roundeven → clamp → fptosi`) needs a lemma under named
+    `FloatLaws` (clamp range on non-NaN) showing the conversion is defined for non-NaN activations.
+  - Its domain `D` would then exclude NaN activations, and the claim must say so.
 
 ### 4.6 Argument and result maps
 
@@ -794,10 +803,14 @@ the support subject through every boundary, validates receipt metadata and prove
 the round trips and Lean checks on the exact recorded exports. It writes a `merlin.lean.chain.v1`
 document with the union of assumptions and a separate `refinement_verdict`. This proves refinement
 under the recorded assumptions; source UB and poison are still permitted by that relation.
-The required source-definedness checker from §4.5 is not implemented. Consequently
-`source_definedness.verdict` is `unmeasured` and the overall `verdict` remains `abstracted`, even
-when refinement verifies. Argument maps (`equiv_args`) are not composed yet. No caller-provided
-definedness flag can discharge this missing obligation.
+`check_definedness` writes a separate `defined` receipt for the initial fragment from §4.5.
+Passing its path as `compose_chain(..., definedness=...)` requires replay of that proof on the same
+source, function, and index width. `chain_defined_refines` then establishes refinement and successful,
+nonpoison target execution on typed, nonpoison inputs. Without that receipt, or outside its fragment,
+the overall verdict remains `abstracted`. Earlier receipts, sources, and the handoff are checked
+again before publication. Argument maps (`equiv_args`) and numerical policies are not composed yet.
+This claim covers the recorded chain, not the entire compilation pipeline. No caller-provided
+definedness flag can replace the proof.
 
 ### 5.11 C11 — upstream tensor passes (Tier B) and bufferization (Tier C)
 

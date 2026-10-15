@@ -17,6 +17,11 @@ or ``abstracted`` with its reason, never ``verified``.
 check-support`` (theorem ``MerlinVerify.Check.supportCheck_sound``) proves the function is never
 ``stuck`` on inputs of its declared types, which turns the chain's conditional refinements into
 strict ones (``MerlinVerify.Check.funcRefines_of_support``).
+
+:func:`check_definedness` proves successful, nonpoison results on explicitly typed, nonpoison
+inputs for the supported straight-line fragment. With this separate receipt, :func:`compose_chain`
+can establish defined execution as well as refinement of the recorded source. The claim covers
+the recorded chain and stated assumptions, not capture, numerical policies, or downstream codegen.
 """
 
 from __future__ import annotations
