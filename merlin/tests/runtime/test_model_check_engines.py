@@ -39,6 +39,16 @@ def test_the_rtl_config_selects_its_board_from_the_target_catalog():
         EN.board_for("gemmini", "NoSuchConfig", catalog=catalog)
 
 
+def test_a_release_can_name_the_rtl_board(monkeypatch):
+    catalog = repo_root() / "examples" / "gemmini" / "platform" / "board-catalog.yaml"
+    monkeypatch.setenv(EN.RTL_BOARD_ENV, "firesim_gemmini_rocket_u250_30mhz")
+    board = EN.board_for("gemmini", "AnyConfig", catalog=catalog)
+    assert board.name == "firesim_gemmini_rocket_u250_30mhz" and board.dram_bytes == 16 << 30
+    monkeypatch.setenv(EN.RTL_BOARD_ENV, "no_such_board")
+    with pytest.raises(EN.EngineError):
+        EN.board_for("gemmini", "GemminiRocketConfig", catalog=catalog)
+
+
 def test_board_symbols_declare_the_span_spike_must_model():
     from merlin.runtime.backends import spike_model
 

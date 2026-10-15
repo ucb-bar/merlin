@@ -42,6 +42,8 @@ _ALIGN = 1 << 20  # a result/operand region base needs no finer alignment
 _PT_LOAD = 1  # ELF program header type of a loadable segment (ELF specification)
 #: What Merlin's gSIM harness prints when the harness itself fails (chipyard_harness/main.cpp).
 _HARNESS_ERROR = "GSIM harness error"
+#: Selects the RTL engine's board by name instead of by the RTL facts' config.
+RTL_BOARD_ENV = "MERLIN_RTL_BOARD"
 #: Run statuses that say nothing about the program: a bound stopped it or the engine failed.
 UNFINISHED = frozenset({"timeout", "cycle_cap", "error"})
 
@@ -115,13 +117,20 @@ def board_catalog_path(target: str, catalog: str | Path | None = None) -> Path:
 
 
 def board_for(target: str, config: str, *, catalog: str | Path | None = None) -> BoardImage:
-    """The one bare-metal HTIF board of ``target`` whose RTL simulation config is ``config``."""
+    """The one bare-metal HTIF board of ``target`` whose RTL simulation config is ``config``, or the board
+    ``$MERLIN_RTL_BOARD`` names (a release whose gSIM models a board the catalog keys differently)."""
     from merlin.runtime import boards
 
     path = board_catalog_path(target, catalog)
-    found = [b for b in boards.load_boards(path).values() if b.target == target and b.rtl_sim_config == config]
+    named = os.environ.get(RTL_BOARD_ENV, "").strip()
+    found = [
+        b
+        for b in boards.load_boards(path).values()
+        if b.target == target and (b.name == named if named else b.rtl_sim_config == config)
+    ]
     if len(found) != 1:
-        raise EngineError(f"{path}: {len(found)} boards of {target} declare rtl_sim_config {config!r}; need one")
+        which = f"named {named!r}" if named else f"declaring rtl_sim_config {config!r}"
+        raise EngineError(f"{path}: {len(found)} boards of {target} {which}; need one")
     board = found[0]
     if board.flow != boards.FLOW_BAREMETAL or board.console != boards.CONSOLE_HTIF or not board.code_reserve:
         raise EngineError(f"board {board.name} is not a bare-metal HTIF board with a code reserve")
