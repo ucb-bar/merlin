@@ -126,4 +126,3 @@ def test_shared_source_spec_and_host_closure_reopen_before_issuance_completes(or
         with pytest.raises(StageGateError, match="changed"):
             with batch(original, paths):
                 pytest.fail("mutated original selection completed issuance")
-
