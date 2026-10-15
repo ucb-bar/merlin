@@ -14,17 +14,29 @@ namespace MerlinVerify.Check
 
 open MerlinVerify
 
+/-- Prefer the unchanged prefix when both next operations still match. This prevents a valid
+identity boundary with repeated constants from being mistaken for a CSE boundary. -/
+def samePrefix? (ρ : Rho) : List Op → List Op → Option Rho
+  | s :: s' :: _, t :: t' :: _ => do
+    let ρ' ← alphaOp ρ s t
+    let _ ← alphaOp ρ' s' t'
+    return ρ'
+  | _, _ => none
+
 def synthLocal (ρ : Rho) : List Op → List Op → List Step
   | [], [] => []
   | _ :: ss, [] => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss []
   | [], _ :: _ => [.same]
   | s :: ss, t :: ts =>
-    match Rules.Cse.check ρ ((s :: ss).take 2) [t] with
-    | some ρ' => .site Rules.Cse.rule 2 1 :: synthLocal ρ' (ss.drop 1) ts
+    match samePrefix? ρ (s :: ss) (t :: ts) with
+    | some ρ' => .same :: synthLocal ρ' ss ts
     | none =>
-      match alphaOp ρ s t with
-      | some ρ' => .same :: synthLocal ρ' ss ts
-      | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss (t :: ts)
+      match Rules.Cse.check ρ ((s :: ss).take 2) [t] with
+      | some ρ' => .site Rules.Cse.rule 2 1 :: synthLocal ρ' (ss.drop 1) ts
+      | none =>
+        match alphaOp ρ s t with
+        | some ρ' => .same :: synthLocal ρ' ss ts
+        | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss (t :: ts)
   termination_by ss ts => ss.length + ts.length
   decreasing_by
     all_goals simp_all

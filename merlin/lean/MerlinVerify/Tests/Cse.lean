@@ -13,6 +13,8 @@ def src : Module := { ops := [func "f" [] [constant 0 7, constant 1 7, ret [0, 1
 def target (n : Int := 7) : Module := { ops := [func "f" [] [constant 9 n, ret [9, 9]]] }
 
 #guard moduleCheck src (target 7)
+#guard moduleCheck src src
+#guard moduleCheck src { ops := [func "f" [] [constant 10 7, constant 11 7, ret [10, 11]]] }
 #guard !moduleCheck src (target 8)
 #guard !moduleCheck { ops := [func "f" [] [constant 0 7, constant 1 8, ret [0, 1]]] } (target 7)
 #guard !moduleCheck src { ops := [func "f" [] [constant 9 7 i8, ret [9, 9]]] }
