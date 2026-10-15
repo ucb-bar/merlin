@@ -68,7 +68,11 @@ def _output_root(path: str | Path) -> Path:
 
 
 def _saved_reference(
-    capture: Path, name: str | None, *, execution: bool, materialized_inputs=None,
+    capture: Path,
+    name: str | None,
+    *,
+    execution: bool,
+    materialized_inputs=None,
 ) -> np.ndarray | None:
     verification = (
         {"status": "verified_materialized"}
@@ -88,8 +92,11 @@ def _saved_reference(
     if (capture / "goldens.npz").exists() or (capture / "output_order.json").exists():
         raise BaremetalModelError("multi-output captures have no complete bare-metal OUT gate")
     reference = capture / name
-    recorded = (materialized_inputs.verify(capture) if materialized_inputs is not None else
-                json.loads((capture / "capture_receipt.json").read_text()).get("artifacts") or {})
+    recorded = (
+        materialized_inputs.verify(capture)
+        if materialized_inputs is not None
+        else json.loads((capture / "capture_receipt.json").read_text()).get("artifacts") or {}
+    )
     if not reference.is_file() or reference.is_symlink() or (recorded.get(name) or {}).get("sha256") != _sha(reference):
         raise BaremetalModelError(f"reference {name!r} is absent or not bound by the capture receipt")
     golden = np.load(reference, allow_pickle=False)
@@ -101,7 +108,10 @@ def _saved_reference(
 
 
 def _full_references(
-    capture: Path, reference_file: str | None, *, materialized_inputs=None,
+    capture: Path,
+    reference_file: str | None,
+    *,
+    materialized_inputs=None,
 ) -> list[tuple[str, np.ndarray | None]]:
     """``[(name, reference or None)]`` in forward-result order for a full-readback execution.
 
@@ -112,8 +122,11 @@ def _full_references(
     capture tree whose digest this compilation records."""
     from merlin.llvmlower.c_runtime import _out_specs
 
-    recorded = (materialized_inputs.verify(capture) if materialized_inputs is not None else
-                json.loads((capture / "capture_receipt.json").read_text()).get("artifacts") or {})
+    recorded = (
+        materialized_inputs.verify(capture)
+        if materialized_inputs is not None
+        else json.loads((capture / "capture_receipt.json").read_text()).get("artifacts") or {}
+    )
 
     def present(name: str, *, receipt_bound: bool) -> Path:
         path = capture / name
@@ -291,8 +304,12 @@ def compile_saved_model(
     materialized_inputs=None,
     respect_captured_quantization_scope: bool = False,
     host_llvm_bitcode: bool = False,
+    blob_weights: bool = False,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
+
+    ``blob_weights`` stores each routed weight once: the device-layout copy goes to the weights blob and
+    the original the device alone read is dropped (:mod:`merlin.llvmlower.blob_weights`).
 
     ``readback="full"`` builds the image to print every forward result complete
     (:mod:`merlin.runtime.whole_model_readback`); execution then holds each result to the capture's
@@ -320,6 +337,8 @@ def compile_saved_model(
         raise BaremetalModelError("captured quantization scope must be an explicit Boolean")
     if type(host_llvm_bitcode) is not bool:
         raise BaremetalModelError("host LLVM bitcode transport must be an explicit Boolean")
+    if type(blob_weights) is not bool:
+        raise BaremetalModelError("blob weights must be an explicit Boolean")
     if type(arena_mb) is not int or arena_mb < 1 or type(timeout_s) is not int or timeout_s < 1:
         raise BaremetalModelError("arena_mb and timeout_s must be positive integers")
     paths = [Path(capture), Path(package), Path(board_catalog), Path(dts)]
@@ -364,6 +383,7 @@ def compile_saved_model(
             "readback": readback,
             "group_profile": bool(group_profile),
             "tolerance": tolerance,
+            "blob_weights": blob_weights,
         },
     }
     try:
@@ -372,16 +392,21 @@ def compile_saved_model(
         catalog_sha, dts_sha = _sha(catalog_path), _sha(dts_path)
         if materialized_inputs is not None:
             from merlin.compile.materialized_model_inputs import MaterializedModelInputs
+
             if type(materialized_inputs) is not MaterializedModelInputs:
                 raise BaremetalModelError("explicit trusted materialized model binding required")
             materialized_inputs.verify(capture_path)
             receipt["inputs"]["materialization"] = materialized_inputs.record()
         golden = _saved_reference(
-            capture_path, reference_file, execution=run != "none" and not full, materialized_inputs=materialized_inputs,
+            capture_path,
+            reference_file,
+            execution=run != "none" and not full,
+            materialized_inputs=materialized_inputs,
         )
         references = (
             _full_references(capture_path, reference_file, materialized_inputs=materialized_inputs)
-            if full and run != "none" else None
+            if full and run != "none"
+            else None
         )
         boards = load_boards(catalog_path)
         selected = boards.get(board)
@@ -449,25 +474,28 @@ def compile_saved_model(
             from merlin.llvmlower.quant_scope import FEATURE as captured_quantization_scope
 
             build_options["features"] = frozenset({captured_quantization_scope})
-        built = spike_model.build(
-            capture_path,
-            output_path / "build",
-            arena_mb=arena_mb,
-            dram_base=selected.dram_base,
-            dram_bytes=selected.dram_bytes,
-            code_reserve=selected.code_reserve,
-            int8_compute=bool(pkg.is_int8),
-            backend=pkg.backend,
-            rvv_schedule=pkg.schedule_text if pkg.backend == "rvv" else None,
-            cflags_override=list(pkg.cflags),
-            vlen=selected.vlen if pkg.backend == "rvv" else None,
-            console=selected.console,
-            device=device,
-            full_readback=full,
-            group_profile=bool(group_profile),
-            **({"host_llvm_bitcode": True} if host_llvm_bitcode else {}),
-            **build_options,
-        )
+        from merlin.llvmlower.blob_weights import requested as blob_weights_requested
+
+        with blob_weights_requested(blob_weights):
+            built = spike_model.build(
+                capture_path,
+                output_path / "build",
+                arena_mb=arena_mb,
+                dram_base=selected.dram_base,
+                dram_bytes=selected.dram_bytes,
+                code_reserve=selected.code_reserve,
+                int8_compute=bool(pkg.is_int8),
+                backend=pkg.backend,
+                rvv_schedule=pkg.schedule_text if pkg.backend == "rvv" else None,
+                cflags_override=list(pkg.cflags),
+                vlen=selected.vlen if pkg.backend == "rvv" else None,
+                console=selected.console,
+                device=device,
+                full_readback=full,
+                group_profile=bool(group_profile),
+                **({"host_llvm_bitcode": True} if host_llvm_bitcode else {}),
+                **build_options,
+            )
         if not isinstance(built.get("build_hash"), str) or not built["build_hash"]:
             raise BaremetalModelError("bare-metal build returned no citable build hash")
         if (

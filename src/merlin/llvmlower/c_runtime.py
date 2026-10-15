@@ -201,6 +201,15 @@ def generate(
         # the model contract nor necessary for the runtime: qinner/stub bytes, if any, are appended
         # below exactly as for an ordinary blob.
         hdr, payload_off, blob = {}, 0, b""
+    # BLOB WEIGHTS (merlin.llvmlower.blob_weights): device-layout weights the preparation bound as
+    # trailing arguments, and the original arguments only they replaced, whose bytes are dropped here.
+    from . import blob_weights as _blob_weights
+
+    blob_plan = _blob_weights.read(prepared_dir)
+    if blob_plan.args and entry_projection is not None:
+        raise ValueError("blob weights and an entry weight projection cannot share one argument table")
+    if blob_plan.dead_args:
+        hdr, blob = _blob_weights.compact(hdr, blob, man, blob_plan.dead_args)
     inputs = np.load(inputs_npz)
     extra_path = extra_npz or (model_dir / "extra.npz")
     extra = np.load(extra_path) if Path(extra_path).is_file() else {}
@@ -310,6 +319,12 @@ def generate(
         for arg, arr in zip(qinner_args, _qinner.resolve(extra, qinner_args)):
             begin = _append_blob(np.ascontiguousarray(arr).tobytes())
             rows.append(("MERLIN_WEIGHT", begin, len(arg.shape), list(arg.shape), DT_BYTES[arg.dtype], arg.dtype))
+    # The device group rewrite binds its blob weights after qinner's arguments and before quant-hoist's.
+    for arg, data in blob_plan.arrays():
+        begin = _append_blob(data)
+        rows.append(
+            ("MERLIN_WEIGHT", begin, len(arg["shape"]), list(arg["shape"]), DT_BYTES[arg["dtype"]], arg["dtype"])
+        )
     # BUILD-TIME WEIGHT-INVARIANT RESULTS. `quant_hoist.apply` appends these after qinner's
     # arguments in the prepared @forward signature. The plan and bytes live in `prepared_dir`
     # because they are products of preparation, not capture or C generation. Reading either without
@@ -349,7 +364,7 @@ def generate(
                 )
             begin = _append_blob(arr.tobytes())
             rows.append(("MERLIN_WEIGHT", begin, len(arg.shape), list(arg.shape), DT_BYTES[arg.dtype], arg.dtype))
-    n_sig_args = len(sig) + len(qinner_args) + len(quant_hoist_args)
+    n_sig_args = len(sig) + len(qinner_args) + len(blob_plan.args) + len(quant_hoist_args)
     # Output rows follow the input/weight rows in MLIR result order. Keeping every result is what
     # lets a captured decoder/LSTM expose its updated state instead of the runtime silently dropping
     # all but result zero.
