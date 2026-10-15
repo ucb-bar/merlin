@@ -121,3 +121,28 @@ def cast (name : String) (src dst : Nat) (attrs : List (String × Attr) := []) :
 #guard !cast "arith.trunci" 32 8 [("overflowFlags", .enum "arith" "overflow" "nuw")]
 
 end MerlinVerify.Tests.Definedness
+
+namespace MerlinVerify.Tests.Definedness
+
+open MerlinVerify MerlinVerify.Check MerlinVerify.Check.Definedness MerlinVerify.Tests.Semantics
+
+def capturedBody : Region := .mk [.mk [v 1 i32]
+  [mkOp "arith.addi" [v 2 i32] [0, 1], mkOp "linalg.yield" [] [2]]]
+
+#guard checkRegion (book 64) [(0, ⟨.scalar i32, true⟩)] capturedBody
+  [⟨.scalar i32, true⟩] [.scalar i32]
+#guard !checkRegion (book 64) [] capturedBody [⟨.scalar i32, true⟩] [.scalar i32]
+#guard !checkRegion (book 64) [(0, ⟨.scalar i32, false⟩)] capturedBody
+  [⟨.scalar i32, true⟩] [.scalar i32]
+
+-- The evaluator and analysis must both give block arguments precedence over captures.
+def shadowedBody : Region := .mk [.mk [v 0 i32] [mkOp "linalg.yield" [] [0]]]
+
+#guard checkRegion (book 64) [(0, ⟨.scalar i32, false⟩)] shadowedBody
+  [⟨.scalar i32, true⟩] [.scalar i32]
+#guard !checkRegion (book 64) [(0, ⟨.scalar i32, true⟩)] shadowedBody
+  [⟨.scalar i32, false⟩] [.scalar i32]
+#guard !checkRegion (book 64) [] shadowedBody [⟨.scalar i8, true⟩] [.scalar i32]
+#guard !checkRegion (book 64) [] (.mk [.mk [] [], .mk [] []]) [] []
+
+end MerlinVerify.Tests.Definedness

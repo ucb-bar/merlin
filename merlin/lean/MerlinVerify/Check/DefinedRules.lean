@@ -383,10 +383,12 @@ theorem rules_sound (ib : Nat) : RuleSound ib (rules ib) := by
   · exact intCastRule_sound ib op fs rs hm h
 
 def book (ib : Nat) : Book opSem ib where
-  rule op fs := if unmodelledAttr? op.blind = none then rules ib op fs else none
-  sound op fs rs h := by
+  rule _ op fs := if unmodelledAttr? op.blind = none ∧ op.regions = [] then rules ib op fs else none
+  sound Γ op fs rs h ctx call env args hib _ ha := by
     split at h
-    · next hm => exact rules_sound ib op fs rs hm h
+    · next hc =>
+      obtain ⟨hm, hregs⟩ := hc
+      simpa only [hregs, evalRegions] using rules_sound ib op fs rs hm h ctx call args hib ha
     · cases h
 
 /-- Acceptance proves successful, nonpoison results for every typed, nonpoison input. -/

@@ -4,7 +4,7 @@ element is initialized. A false initialization fact permits poison, but never pe
 execution. Thus an uninitialized temporary can be fully overwritten without tainting the output.
 
 Soundness obligation: acceptance implies `FuncDefined` on typed, nonpoison inputs. Every op rule
-must prove successful execution and preservation of its output facts. Unsupported ops and regions
+must prove successful execution and preservation of its output facts. Unsupported operations and region bodies
 are refused; no verdict or certificate can supply a missing proof.
 -/
 import MerlinVerify.Check.Progress
@@ -30,13 +30,13 @@ abbrev FEnv := List (ValueId × Fact)
 def EnvHolds (ib : Nat) (Γ : FEnv) (env : Env) : Prop :=
   ∀ x f, Γ.lookup x = some f → ∃ v, env.get? x = some v ∧ f.Holds ib v
 
-/-- A total rule: even an output with `initialized = false` must be returned by successful execution.
-The checker only calls the rule for ops with no regions or successors. -/
+/-- A total rule: even an output with `initialized = false` must be returned successfully.
+Rules see the enclosing facts and must account for the actual region closures, including captures. -/
 structure Book (sem : OpSem) (ib : Nat) where
-  rule : Op → List Fact → Option (List Fact)
-  sound : ∀ op fs rs, rule op fs = some rs → ∀ ctx call args,
-    ctx.indexBits = ib → FactsHold ib args fs →
-    ∃ vs, sem ctx call op args [] = .ok vs ∧ FactsHold ib vs rs
+  rule : FEnv → Op → List Fact → Option (List Fact)
+  sound : ∀ Γ op fs rs, rule Γ op fs = some rs → ∀ ctx call env args,
+    ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
+    ∃ vs, sem ctx call op args (evalRegions sem call env op.regions) = .ok vs ∧ FactsHold ib vs rs
 
 theorem FactsHold.typed {ib : Nat} {vs : List RVal} {fs : List Fact} (h : FactsHold ib vs fs) :
     HasTys ib vs (fs.map (·.ty)) := by
@@ -119,8 +119,8 @@ def checkOps {sem : OpSem} {ib : Nat} (R : Book sem ib) (Γ : FEnv) : List Op �
     | some fs =>
       if op.isTerminator then
         rest.isEmpty && fs.all (·.initialized) && fs.map (·.ty) == yields
-      else if op.regions.isEmpty && op.successors.isEmpty then
-        match R.rule op fs with
+      else if op.successors.isEmpty then
+        match R.rule Γ op fs with
         | none => false
         | some rs => rs.length == op.results.length &&
           checkOps R ((op.results.map (·.id)).zip rs ++ Γ) rest yields
@@ -131,7 +131,7 @@ theorem checkOps_sound {sem : OpSem} {ib : Nat} (R : Book sem ib) :
       ctx.indexBits = ib → ∃ vs, evalOps sem ctx call env ops = .ok vs ∧
         HasTys ib vs yields ∧ ResultsDefined vs
   | _, [], _, _, _, _, h, _, _ => by cases h
-  | Γ, op@(.mk n results operands attrs props regions successors) :: rest, yields, ctx, call, env,
+  | Γ, (.mk n results operands attrs props regions successors) :: rest, yields, ctx, call, env,
       h, hΓ, hib => by
     simp only [checkOps] at h
     split at h
@@ -150,28 +150,59 @@ theorem checkOps_sound {sem : OpSem} {ib : Nat} (R : Book sem ib) :
         rw [ite_eq_right ht] at h
         split at h
         · next hempty =>
-          simp only [Bool.and_eq_true, List.isEmpty_iff] at hempty
-          obtain ⟨rfl, _⟩ := hempty
           split at h
           · cases h
           · next rs hrule =>
             simp only [Bool.and_eq_true, beq_iff_eq] at h
             obtain ⟨hlen, hrest⟩ := h
-            obtain ⟨vs, hop, hv⟩ := R.sound _ fs rs hrule ctx call args hib hfacts
-            simp only [hargs, Outcome.bind_ok, evalRegions, hop, Op.results]
+            obtain ⟨vs, hop, hv⟩ := R.sound Γ _ fs rs hrule ctx call env args hib hΓ hfacts
+            simp only [Op.regions] at hop
+            simp only [hargs, Outcome.bind_ok, hop, Op.results]
             have hb : results.length = vs.length := hlen.symm.trans (List.Forall₂.length_eq hv).symm
             rw [bindAll_ok hb, Outcome.bind_ok]
             exact checkOps_sound R _ rest yields ctx call _ hrest (hΓ.extend _ vs rs hv) hib
         · cases h
 
+/-- Check one region under the actual enclosing facts. Block arguments shadow captured values,
+just as they do in the evaluator. The body can use only captures present in `Γ`. -/
+def checkRegion {sem : OpSem} {ib : Nat} (R : Book sem ib) (Γ : FEnv)
+    (region : Region) (args : List Fact) (yields : List VTy) : Bool :=
+  match region with
+  | .mk [.mk bargs ops] => bargs.mapM (fun a => vtyOf ib a.ty) == some (args.map (·.ty)) &&
+    checkOps R ((bargs.map (·.id)).zip args ++ Γ) ops yields
+  | _ => false
+
+theorem checkRegion_sound {sem : OpSem} {ib : Nat} (R : Book sem ib) {Γ : FEnv}
+    {region : Region} {argFacts : List Fact} {yields : List VTy}
+    (h : checkRegion R Γ region argFacts yields = true) {ctx : Ctx} {call : CallSem} {env : Env}
+    (hib : ctx.indexBits = ib) (hΓ : EnvHolds ib Γ env) {args : List RVal}
+    (ha : FactsHold ib args argFacts) : ∃ vs, evalRegion sem ctx call env region args = .ok vs ∧
+      HasTys ib vs yields ∧ ResultsDefined vs := by
+  cases region with
+  | mk blocks =>
+    cases blocks with
+    | nil => simp [checkRegion] at h
+    | cons b bs =>
+      cases bs with
+      | cons b' bs => cases b; simp [checkRegion] at h
+      | nil =>
+        cases b with
+        | mk bargs ops =>
+          simp only [checkRegion, Bool.and_eq_true, beq_iff_eq] at h
+          obtain ⟨ht, hops⟩ := h
+          have hlen : bargs.length = args.length := by
+            have htlen := optionMapM_length _ _ _ ht
+            rw [List.length_map] at htlen
+            exact htlen.symm.trans (List.Forall₂.length_eq ha).symm
+          simp only [evalRegion, evalBlocks, evalBlock]
+          rw [bindAll_ok hlen, Outcome.bind_ok]
+          exact checkOps_sound R _ ops yields ctx call _ hops (hΓ.extend _ args _ ha) hib
+
 /-- Function arguments are explicitly required to be typed and nonpoison. -/
 def check {sem : OpSem} {ib : Nat} (R : Book sem ib) (m : Module) (f : String)
     (argTys resTys : List VTy) : Bool :=
   match m.func? f with
-  | some fn => !fn.isDecl && match fn.body with
-    | .mk [.mk args ops] => args.mapM (fun a => vtyOf ib a.ty) == some argTys &&
-      checkOps R ((args.map (·.id)).zip (argTys.map fun t => ⟨t, true⟩)) ops resTys
-    | _ => false
+  | some fn => !fn.isDecl && checkRegion R [] fn.body (argTys.map fun t => ⟨t, true⟩) resTys
   | none => false
 
 theorem check_sound {sem : OpSem} {ib : Nat} (R : Book sem ib) {m : Module} {f : String}
@@ -183,31 +214,11 @@ theorem check_sound {sem : OpSem} {ib : Nat} (R : Book sem ib) {m : Module} {f :
   · next fn hfn =>
     simp only [Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true] at h
     obtain ⟨hnd, hb⟩ := h
-    cases he : fn.body with
-    | mk blocks =>
-      cases blocks with
-      | nil => simp [he] at hb
-      | cons b bs =>
-        cases bs with
-        | cons b' bs => simp [he] at hb
-        | nil =>
-          cases b with
-          | mk bargs ops =>
-            simp only [he, Bool.and_eq_true, beq_iff_eq] at hb
-            obtain ⟨ht, hops⟩ := hb
-            intro ctx hib args ha
-            have hlen : bargs.length = args.length :=
-              (optionMapM_length _ _ _ ht).symm.trans (HasTys.length ha.1).symm
-            have hnil : EnvHolds ib [] [] := fun _ _ h => by cases h
-            have henv := hnil.extend (bargs.map (·.id)) args _ (inputFacts ha.1 ha.2)
-            simp only [List.append_nil] at henv
-            obtain ⟨vs, hv, _, hd⟩ := checkOps_sound R _ ops resTys ctx
-              (evalFunc sem ctx m m.funcs.length) _ hops henv hib
-            refine ⟨vs, ?_, hd⟩
-            simp only [denote, evalFunc, hfn, hnd, Bool.false_eq_true, ↓reduceIte, he,
-              evalRegion, evalBlocks, evalBlock]
-            rw [bindAll_ok hlen, Outcome.bind_ok]
-            simpa only [List.append_nil] using hv
+    intro ctx hib args ha
+    have hnil : EnvHolds ib [] [] := fun _ _ h => by cases h
+    obtain ⟨vs, hv, _, hd⟩ := checkRegion_sound R hb hib hnil (inputFacts ha.1 ha.2)
+    refine ⟨vs, ?_, hd⟩
+    simpa only [denote, evalFunc, hfn, hnd, Bool.false_eq_true, ↓reduceIte] using hv
   · cases h
 
 end MerlinVerify.Check.Definedness
