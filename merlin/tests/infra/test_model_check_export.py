@@ -175,6 +175,26 @@ def test_the_subcommand_writes_a_report_and_takes_only_the_visible_split(tmp_pat
         cli.build_parser().parse_args([*argv, "--split", "sealed", "--out-dir", "x", "--out", "o.json"])
 
 
+def test_a_batched_kernel_states_its_slice_and_the_host_batch():
+    """Attention over heads: the host call leads with the batch, the kernel lowers one slice."""
+    from types import SimpleNamespace
+
+    interface = KR.interface_for(_ENTRIES["k_act"], target=TARGET, operand_dtype="int8", accum_dtype="int32")
+    per_slice = _call_buffers(interface)
+    sidecar = {
+        "entries": {"k_pv": _ENTRIES["k_act"]},
+        "call_buffers": {"k_pv": [{**b, "shape": [15, *b["shape"]]} for b in per_slice]},
+        "programs": {"k_pv": {"batch_shape": [15], "notes": []}},
+        "routed": [{"symbol": "k_pv", "source_region_id": "matmul_380", "group": 4}],
+    }
+    record = EX.describe(SimpleNamespace(sidecar=sidecar, interfaces={"k_pv": interface}), "k_pv")
+    assert record["batch_shape"] == [15]
+    assert [b["shape"][0] for b in record["call_buffers"]] == [15, 15, 15]
+    assert sorted(a["shape"] for a in record["kernel_arguments"]) == sorted(b["shape"] for b in per_slice)
+    unbatched = {**sidecar, "programs": {"k_pv": {"notes": []}}}
+    assert "batch_shape" not in EX.describe(SimpleNamespace(sidecar=unbatched, interfaces={"k_pv": interface}), "k_pv")
+
+
 def load_models(tmp_path: Path):
     path = tmp_path / "models.yaml"
     if not path.is_file():
