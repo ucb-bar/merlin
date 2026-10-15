@@ -92,6 +92,7 @@ def build(
     programs: Iterable[str] | None = None,
     keep_call: Callable[[str, int], bool] | None = None,
     engine: dict[str, str] | None = None,
+    binding: dict[str, Any] | None = None,
     log: Callable[[str], None] = print,
 ) -> dict[str, Any]:
     """Catalog, census and the capture's own inputs (``visible/capture``) for every program of ``model``.
@@ -146,6 +147,8 @@ def build(
         manifest.update({"target": target, "captures": str(captures), "merlin_commit": _git_commit(repo_root())})
         if engine:
             manifest["engine"] = dict(engine)
+        if binding:  # the Spike/RTL/FPGA binding receipt this bundle's engine inputs produced
+            manifest["binding"] = dict(binding)
         merged = manifest["models"].setdefault(model.name, {"model": model.name, "programs": {}})
         merged["programs"].update(record["programs"])
         manifest_path.write_text(json.dumps(manifest, indent=1) + "\n")
