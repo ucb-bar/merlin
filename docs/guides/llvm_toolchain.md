@@ -3,7 +3,7 @@ title: Building the pinned LLVM/MLIR toolchain (third_party/llvm-install)
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-08-10
+last_verified: 2026-10-14
 related: [getting_started, llvm_integration, reproducibility, model2mlir, zephyr, targetgen]
 code_refs: [src/merlin/llvmlower/toolchain.py, src/merlin/llvmlower/pipeline.py,
             src/merlin/targetgen/contract/toolchain.py, src/merlin/runtime/backends/zephyr_model.py]
@@ -164,6 +164,30 @@ RISCV target compiled in; a host-only clang configures fine and then fails at th
 The single-model Python paths are more forgiving, but there is no version check that will tell you politely.
 
 ## Verify it
+
+### Scalar compilation without Python MLIR bindings
+
+The scalar host pipeline can explicitly use the selected installation's
+`mlir-opt` and `mlir-translate`:
+
+```sh
+export MERLIN_MLIR_INSTALL=/path/to/llvm-install
+export MERLIN_COMPILER_DRIVER=stock-cli
+export MERLIN_FUSION_GUARD=0
+```
+
+This route uses the ordinary scalar upstream pass pipeline and shared host
+object/link/runtime code. It records the actual native lowering and translation
+commands and their products. It does not import Python MLIR bindings.
+
+The Python driver remains the default. Stock CLI selection refuses runner-only
+features, guarded fusion, checked deallocation sinking, vector/parallel schedules,
+per-pass inspection, proof callbacks and serial product-retention requests.
+Fusion requires the explicit deselection above; no check is silently omitted.
+An unsupported request or failed native build is an error. A missing explicitly
+selected LLVM installation never falls back to a different clang installation.
+
+### Resolve and compile
 
 ```bash
 # what merlin will actually resolve, which is the only question that matters
