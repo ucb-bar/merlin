@@ -544,6 +544,12 @@ initialized from `tensor.empty` for exactly this reason. We handle it two ways:
     This proves that recorded chain, not every model or every matmul lowering. Named matmul and
     batch-matmul also have definedness rules: their proved generic expansions are checked, then a
     separate success-transfer theorem proves successful execution of the actual named source.
+  - `linalg.map` now passes the input elements followed by the destination element, matching the
+    installed post-LLVM-f5e175f contract. Its progress rule reuses generic safety; its definedness
+    rule distinguishes initialized destination reads from complete overwrites of dirty storage.
+    Rank-zero/empty tensors and captured values are qualified. The semantic correction is recorded
+    in `SPEC_LOCK` and ledger A6. See [the differential guide](../guides/lean_differential_tests.md)
+    for compiler provenance, native comparisons, and the separate bufferization-order regression.
 - **Support, not just definedness (`NotStuck`).** The semantics returns `stuck` for anything it does
   not model. A per-boundary checker cannot know that the rest of the program is modelled, so each
   boundary claims *conditional* refinement:
@@ -635,6 +641,10 @@ multiply, AND, OR, and XOR, with scalar and tensor semantics; floats and overflo
 Qualification runs actual MLIR generalization/canonicalization/CSE, verifies defined chains on the
 supported integer fragment, and rejects altered maps, body operations, casts, constants, and flags.
 Operand-dependent/non-adjacent CSE and other numerical or shape rewrites remain unsupported.
+Map-to-generic rewrite certification also remains unsupported: map's modeled loop rank comes from
+the runtime destination, while generic's rank is fixed in attributes. C1 currently has no typed
+runtime context to justify that rank. Map support/definedness and passing differential comparisons
+do not discharge this rewrite obligation; actual map-to-generic boundaries remain `abstracted`.
 The untrusted script synthesizer cannot bypass these checks.
 
 **Rule families for Tier A** (exact list fixed by WP-0):
