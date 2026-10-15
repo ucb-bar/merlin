@@ -198,6 +198,7 @@ def grade(
         public = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
         background_guard = BackgroundGuard(ws, public, inputs, source_digest(ws))
     oot_commit = None
+    snapshot_digest = None
     cand = run_dir / "_qa_work" / f"cand_{_key}" / "submission"
     if cand.exists():
         shutil.rmtree(cand.parent)
@@ -232,10 +233,11 @@ def grade(
         with shared_compute_pool(timeout_s=timeout):
             shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
             RI.strip_build_state(cand)  # clean, relocatable build per grade (abc9 L3-build bug)
+            snapshot_digest = hash_tree(cand)["sha256"]
         # The harness commits exactly the bytes about to be graded; the agent never touches the repo.
         oot_commit = OH.commit_graded(run_dir, cand, label=label, key=_key, sandbox_roots=(ws.parent,))
         with shared_compute_pool(timeout_s=timeout):
-            candidate_sha256 = hash_tree(cand)["sha256"] if inputs.public_build_service is not None else None
+            candidate_sha256 = snapshot_digest if inputs.public_build_service is not None else None
         public_root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
         out = run_dir / "qa_history" / f"verdict_{label}_{_key}.json"
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -274,6 +276,7 @@ def grade(
                                       "source_sha256": background_guard.source})
             if candidate_sha256 is not None:
                 verdict["graded_candidate_sha256"] = candidate_sha256
+            verdict["graded_source_sha256"] = snapshot_digest
             verdict = write_verdict(out, verdict)
             _write_stage_ledger(
                 run_dir,
@@ -364,11 +367,11 @@ def grade(
     qa_dir = ws / "qa"
     qa_dir.mkdir(exist_ok=True)
     if background_guard is not None:
-        verdict["graded_source_sha256"] = background_guard.source
+        verdict["graded_request_sha256"] = background_guard.source
         verdict["snapshot_current"] = background_guard.current()
     # The immutable snapshot has a valid result even when the agent has since edited
     # its source. Suppressing that result left R52 without qa/verdict.json for hours.
-    write_verdict(qa_dir / "verdict.json", verdict)
+    verdict = write_verdict(qa_dir / "verdict.json", verdict)
     if oot_commit is None:
         return verdict
     OH.record_round(run_dir, oot_commit, label=label, key=_key, verdict=verdict)
@@ -533,6 +536,7 @@ def fast_grade(
             shutil.rmtree(cand.parent)
         shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
         RI.strip_build_state(cand)
+    snapshot_digest = hash_tree(cand)["sha256"]
     fruns = run_dir / "_qa_work" / f"fruns_{tick}"
     te = load_target_experiment(inputs.context.descriptor)
     adapters = _CR.qa_loop_adapters(
@@ -593,6 +597,7 @@ def fast_grade(
         structural_evidence=_fast_score.get("structural_evidence_all_pass"),
         cohort_complete=_qc._original_cohort_complete(_fast_score),
     )
+    verdict["graded_source_sha256"] = snapshot_digest
     if background_guard.reason() is not None:
         verdict.update(all_pass=None, gradeable=False, mandatory_tiers_complete=False,
             background_grade={"status": "deferred",
@@ -601,9 +606,9 @@ def fast_grade(
     out.parent.mkdir(parents=True, exist_ok=True)
     verdict = write_verdict(out, verdict)
     (ws / "qa").mkdir(exist_ok=True)
-    verdict["graded_source_sha256"] = background_guard.source
+    verdict["graded_request_sha256"] = background_guard.source
     verdict["snapshot_current"] = background_guard.current()
-    write_verdict(ws / "qa" / "verdict.json", verdict)
+    verdict = write_verdict(ws / "qa" / "verdict.json", verdict)
     _record_plateau(run_dir)  # operator-side; deliberately not in the agent's verdict
     FL.record_channel_health(ws, run_dir)
     # The first successful loop verdict unlocks cert work immediately. The existing
@@ -893,6 +898,10 @@ def write_verdict(path: Path, verdict: dict) -> dict:
     """
     verdict = dict(verdict)
     verdict.setdefault("graded_at", _dt.datetime.now(_dt.UTC).isoformat())
+    if path.name == "verdict.json" and path.parent.name == "qa":
+        from .visible_model_gate import publish
+
+        return publish(path, verdict)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(verdict, indent=2))
     return verdict

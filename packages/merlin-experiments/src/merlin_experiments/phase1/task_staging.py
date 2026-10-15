@@ -302,8 +302,8 @@ Write a self-contained `submission/` with `manifest.yaml`, compiler sources, the
 - `python agent_selfcheck.py --help`: focused public capsule checks.
 - `python simjob.py --help`: asynchronous public RTL jobs.
 - `python await_verdict.py --help`: wait for a new harness verdict.
-- `python -m merlin.model_check check --submission submission --model MODEL --split visible --out REPORT.json`: visible model check through the broker.
-- `python -m merlin.model_check replay-kernel --submission submission --model MODEL --group GROUP --split visible --engine gsim`: visible kernel replay through the broker.
+- `python agent_model_check.py check --model MODEL --out REPORT.json`: visible model check through the broker.
+- `python agent_model_check.py replay-kernel --model MODEL --group GROUP --engine gsim`: visible kernel replay through the broker. A pending reply includes a `wait --job-id` command.
 
 Selected treatment tools:
 """ + (tools or "- No additional treatment tools are selected.") + """
