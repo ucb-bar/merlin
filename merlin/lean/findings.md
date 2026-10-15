@@ -85,3 +85,20 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
   as context data) or "for these weights" (materialized resource bytes).
 - **Status:** open; needs the capture-route decision.
 
+## F8 — re-parsing in one process renames every `dense_resource` key
+
+- **Observed (2026-10-14):** xDSL 0.73's builtin resource storage (`op_asm.declare_resource`)
+  outlives a parse and de-duplicates every key it sees against keys an earlier parse registered.
+  In one build process, `prepare_for_lowering` parses the capture, and `preprocess_text` parses the
+  prepared text again; the second parse renames every weight
+  (`torch_tensor_4_torch.float32` → `..._1`, `torch_tensor_8_torch.float32` → `..._3`, ...).
+- **Measured on coverage_mlp (torch_mlir route):** of 19 recorded boundaries from the capture to
+  the upstream lowering, all are chained (each `before` is the previous `after`); 18 verify,
+  including the parse/print round trips and `c-interface` (ABI only, T4); `xdsl-parse` does not,
+  because the renamed constants are different opaque attributes.
+- **Why it matters:** with the blobs elided (F7) a key is the only link from a constant to its
+  weights, so whatever binds weights by key binds them differently after the rename. The new keys
+  are fresh (no constant is renamed onto another's key), so nothing is swapped within the module.
+- **Status:** open. Fix candidates: a fresh resource storage per parse, or weights bound as
+  arguments (the FX route), which also resolves F7.
+
