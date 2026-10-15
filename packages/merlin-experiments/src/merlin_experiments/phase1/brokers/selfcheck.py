@@ -26,9 +26,11 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -36,12 +38,13 @@ from merlin_experiments.phase1.context import add_context_arguments, context_arg
 from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worker_command
 
 
-def _freeze_passed_source(ws: Path, expected_digest: str):
+def _freeze_passed_source(ws: Path, expected_digest: str, *, source_ws: Path | None = None):
     """Bind asynchronous promotion to the source just graded, before releasing the author."""
     from merlin_experiments.phase1.feedback import snapshots
 
     token, error = snapshots.create_promotion_snapshot(
-        ws, ws, expected_digest, submission_digest=lambda root: _submission_digest(Path(root) / "submission")
+        ws, source_ws or ws, expected_digest,
+        submission_digest=lambda root: _submission_digest(Path(root) / "submission")
     )
     if error:
         raise RuntimeError(error)
@@ -49,6 +52,25 @@ def _freeze_passed_source(ws: Path, expected_digest: str):
     if source is None or _submission_digest(source / "submission") != expected_digest:
         raise RuntimeError("passed selfcheck source snapshot differs from graded identity")
     return source
+
+
+def _working_snapshot(ws: Path, expected_digest: str) -> Path:
+    """Copy one request's source under the task temp root before launching the grader."""
+    source = ws / "submission"
+    if source.is_symlink() or any(path.is_symlink() for path in source.rglob("*")):
+        raise ValueError("self-check source contains a symlink")
+    tmpdir = os.environ.get("TMPDIR")
+    if not tmpdir or not Path(tmpdir).is_absolute():
+        raise ValueError("self-check requires a task-owned TMPDIR")
+    root = Path(tempfile.mkdtemp(prefix="merlin_selfcheck_", dir=tmpdir))
+    try:
+        shutil.copytree(source, root / "submission", ignore=shutil.ignore_patterns(*_DIGEST_IGNORES))
+        if _submission_digest(root / "submission") != expected_digest:
+            raise ValueError("submission changed while taking self-check snapshot")
+        return root
+    except Exception:
+        shutil.rmtree(root)
+        raise
 
 #: request key -> the real self-check's flag, for every probe that replaces the capsule suite. The
 #: shim writes the keys, this broker turns them back into flags; a probe missing here is one a
@@ -736,6 +758,7 @@ def main(
             argv2.extend(("--caller-layout", str(r["caller_layout"])))
         if a.one_request is not None:
             argv2 += ["--artifact-root", str(ws / "selfcheck_out" / "requests" / rid)]
+        snapshot_root = None
         try:
             # Run the REAL self-check OUTSIDE the sandbox (oracle available); cwd=ws so the agent's own
             # artifacts land in <ws>/selfcheck_out/ (visible to the agent through the bind mount).
@@ -748,13 +771,12 @@ def main(
             staged_resp = ch / f".resp_{rid}.{os.getpid()}.tmp"
             staged_resp.unlink(missing_ok=True)
             aborted = False
-            # Trusted worker callbacks may certify completed capsules while the
-            # request is still running. Freeze before launching, not after done.
-            streaming_source = None
+            # Every check grades a private request snapshot. The author can keep
+            # editing, and the response stays bound to the selected digest.
+            snapshot_root = _working_snapshot(ws, graded_digest)
+            argv2[argv2.index("--submission") + 1] = str(snapshot_root / "submission")
             worker_env = dict(os.environ)
             if not r.get("caller_layout") and not any(r.get(key) for key in FORWARDED_PROBES):
-                streaming_source = _freeze_passed_source(ws, graded_digest)
-                argv2[argv2.index("--submission") + 1] = str(streaming_source / "submission")
                 worker_env.update(
                     MERLIN_SELFCHECK_PROMOTION_WS=str(ws),
                     MERLIN_SELFCHECK_PROMOTION_ROOT=str(promotion_capsules_root or capsules_root),
@@ -802,25 +824,11 @@ def main(
                     time.sleep(a.poll)
             if not aborted:
                 completed_ns = time.time_ns()
-                completed_digest = _submission_digest(ws / "submission")
-                if completed_digest != graded_digest:
-                    staged_resp.unlink(missing_ok=True)
-                    doc = _decorate_response(
-                        json.dumps(
-                            {"error": "broker: submission changed during grading; retry the check", "all_pass": False}
-                        ),
-                        r,
-                        rid,
-                        completed_digest,
-                        started_ns=started_ns,
-                        completed_ns=completed_ns,
-                    )
-                    _atomic_write(resp, json.dumps(doc))
-                elif staged_resp.exists():
+                if staged_resp.exists():
                     raw = staged_resp.read_text(encoding="utf-8", errors="replace")
                     staged_resp.unlink(missing_ok=True)
                     doc = _decorate_response(
-                        raw, r, rid, completed_digest, started_ns=started_ns, completed_ns=completed_ns
+                        raw, r, rid, graded_digest, started_ns=started_ns, completed_ns=completed_ns
                     )
                     _atomic_write(resp, json.dumps(doc))
                 else:
@@ -830,7 +838,7 @@ def main(
                         out or json.dumps({"error": err, "all_pass": False}),
                         r,
                         rid,
-                        completed_digest,
+                        graded_digest,
                         started_ns=started_ns,
                         completed_ns=completed_ns,
                     )
@@ -852,9 +860,11 @@ def main(
             if resp.exists():
                 passed = json.loads(resp.read_text())
                 if not passed.get("error") and any(row.get("pass") is True for row in passed.get("per_capsule", [])):
-                    promotion_source = _freeze_passed_source(ws, graded_digest)
+                    promotion_source = _freeze_passed_source(ws, graded_digest, source_ws=snapshot_root)
         except Exception as exc:
             print(f"[promote] source freeze refused: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+        if snapshot_root is not None:
+            shutil.rmtree(snapshot_root, ignore_errors=True)
         # COMPLETE THE CALLER'S REQUEST before optional promotion.  The shim deliberately waits for both
         # response and done; publishing the verdict and then running promotion first made a slow or wedged
         # promotion indistinguishable from a lost response even though the verdict was already durable.
