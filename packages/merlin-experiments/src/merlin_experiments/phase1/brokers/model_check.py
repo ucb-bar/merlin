@@ -60,7 +60,7 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
             before = hash_tree(source)["sha256"]
             shutil.copytree(source, snapshot, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
             strip_build_state(snapshot)
-            if hash_tree(snapshot)["sha256"] != before or hash_tree(source)["sha256"] != before:
+            if hash_tree(source)["sha256"] != before:
                 return {"status": "pending", "error": "submission changed while taking model-check snapshot"}
 
         digest = hash_tree(snapshot)["sha256"]

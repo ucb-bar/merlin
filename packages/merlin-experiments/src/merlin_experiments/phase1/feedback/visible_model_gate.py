@@ -136,7 +136,7 @@ def start(ws: Path, run_dir: Path, *, interval_s: int = 120, timeout_s: int = 54
                                         ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
                         strip_build_state(snapshot)
                         digest = hash_tree(snapshot)["sha256"]
-                        if digest != before or hash_tree(source)["sha256"] != before:
+                        if hash_tree(source)["sha256"] != before:
                             raise ValueError("submission changed while taking model snapshot")
                         if digest != last_source:
                             check_snapshot(ws, run_dir, snapshot, digest, stop=stop, timeout_s=timeout_s)

@@ -83,6 +83,33 @@ def test_replay_request_uses_contract_program_and_report_file(tmp_path, monkeypa
     assert missing_program["status"] == "rejected"
 
 
+def test_visible_check_accepts_stable_source_with_generated_build_state(tmp_path, monkeypatch):
+    ws = tmp_path / "workspace"
+    source = ws / "submission"
+    source.mkdir(parents=True)
+    (source / "manifest.yaml").write_text("commands: {}\n")
+    (source / "CMakeCache.txt").write_text("generated cache\n")
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+
+    class Completed:
+        returncode = 0
+
+        def __init__(self, argv, **kwargs):
+            snapshot = Path(argv[argv.index("--submission") + 1])
+            assert not (snapshot / "CMakeCache.txt").exists()
+            Path(argv[argv.index("--out") + 1]).write_text(json.dumps({
+                "schema": broker.REPORT_SCHEMA, "command": "check", "model": "resnet50",
+                "split": "visible", "agent_view": True, "status": "pass", "exit_code": 0,
+            }))
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(broker.subprocess, "Popen", Completed)
+    result = broker.execute_visible(ws, {"action": "check", "model": "resnet50", "split": "visible"})
+    assert result["status"] == "pass"
+
+
 def test_sealed_or_private_report_never_reaches_agent(tmp_path, monkeypatch):
     ws = tmp_path / "workspace"
     (ws / "submission").mkdir(parents=True)
@@ -178,6 +205,7 @@ def test_background_model_gate_reaches_agent_verdict_before_first_interval(tmp_p
     source.mkdir(parents=True)
     run.mkdir()
     (source / "manifest.yaml").write_text("commands: {}\n")
+    (source / "CMakeCache.txt").write_text("generated cache\n")
     monkeypatch.setenv("TMPDIR", str(tmp_path))
 
     def check(_ws, request, **kwargs):
