@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.1**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.2**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -153,6 +153,21 @@ that of the PyTorch implementation in the same precision, both against an fp32 r
 calibration set (https://arxiv.org/abs/2210.17323); MLPerf Inference sets accuracy targets relative to
 the FP32 reference. The 1.1× factor is our engineering choice, not a value validated by those works.
 
+### 4.7 Where the policy applies: every phase, every engine
+The numerics policy is not a Phase 1 gate only. It is the definition of a correct result wherever a
+result is produced:
+
+- **Engines.** A kernel's output is judged by §4.2/§4.3 whether it came from Spike (`spike`) or from
+  the RTL-equivalent simulator (`gsim`), through the same judging code; only the engine that produced
+  the bytes differs. A Spike pass is not evidence for gSIM or the reverse: each engine's result is
+  judged on its own.
+- **Phase 1** (functional compiler): `check` is the correctness gate; capsule exactness stays as is.
+- **Phase 2** (performance): a cycle count, speedup or any other performance number counts only when
+  the SAME build (same submission tree digest, same ELF digest for whole-model runs) carries a passing
+  numerics report. An optimization that changes any number must be declared under §5 and stay inside
+  §4.3; an undeclared change is a correctness failure, not a performance result. Performance reports
+  embed the numerics report's digest.
+
 ## 5. Declaring approximate kernels (submission `manifest.yaml`)
 
 ```yaml
@@ -229,3 +244,5 @@ runs[]), `model_metrics`, `failures[]`, `timing`.
 - 1.0 (2026-10-15): initial contract.
 - 1.1 (2026-10-15): `check --mode fast` (default) judges kernels by replay and takes model metrics
   from the reference when every kernel is exact; whole-model Spike runs move to `--mode full`.
+- 1.2 (2026-10-15): §4.7: the policy judges Spike and gSIM results alike and applies to Phase 2 —
+  a performance number counts only with a passing numerics report for the same build.
