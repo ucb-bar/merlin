@@ -109,16 +109,26 @@ def test_gsim_alignment_requires_firesim_source_and_exact_receipts(tmp_path, mon
 
 def test_source_variant_refuses_any_other_source_change(tmp_path, monkeypatch):
     source = {"revision": "patched", "config_file": A.CONFIG_SOURCE,
-              "config_sha256": A.CONFIG_SOURCE_SHA256}
+              "config_sha256": A.CONFIG_SOURCE_SHA256,
+              "submodules": {name: name + "-commit" for name in A.BUILD_SUBMODULES}}
     changes = [A.CONFIG_SOURCE]
 
     def run(argv, **kwargs):
         if "merge-base" in argv:
             return subprocess.CompletedProcess(argv, 0, b"", b"")
+        if "ls-tree" in argv:
+            name = argv[-1]
+            return subprocess.CompletedProcess(argv, 0, f"160000 commit {name}-commit\t{name}\n", "")
         return subprocess.CompletedProcess(argv, 0, "\n".join(changes) + "\n", "")
 
     monkeypatch.setattr(A.subprocess, "run", run)
     assert A._source_variant(tmp_path, "base", source) is True
+    del source["submodules"]["generators/saturn"]
+    assert A._source_variant(tmp_path, "base", source) is False
+    source["submodules"]["generators/saturn"] = "generators/saturn-commit"
+    source["submodules"]["sims/firesim"] = "substitute-commit"
+    assert A._source_variant(tmp_path, "base", source) is False
+    source["submodules"]["sims/firesim"] = "sims/firesim-commit"
     changes.append("generators/gemmini/src/main/scala/gemmini/Configs.scala")
     assert A._source_variant(tmp_path, "base", source) is False
 

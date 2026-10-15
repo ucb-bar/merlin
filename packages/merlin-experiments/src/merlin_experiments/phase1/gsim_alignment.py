@@ -26,6 +26,7 @@ DRAM_BASE = 0x80000000
 DRAM_BYTES = 16 * (1 << 30)
 CONFIG_SOURCE = "generators/firechip/chip/src/main/scala/GemminiGsimFireSimAlignedConfig.scala"
 CONFIG_SOURCE_SHA256 = "5392120d1ed547b3a70c3786dd5a3d3d697f7817f9ce55e1ffc25b6c2ff6b2ec"
+BUILD_SUBMODULES = ("generators/gemmini", "generators/saturn", "sims/firesim")
 
 
 def _sha256(path: Path) -> str:
@@ -74,7 +75,7 @@ def _dts_identity(path: Path) -> dict:
 
 
 def _source_variant(root: Path, base_revision: str, source: dict) -> bool:
-    """Accept only the recorded FireSim tree plus the pinned gSIM config file."""
+    """Accept only the recorded FireSim tree and its build submodules plus the gSIM config."""
     revision = source.get("revision")
     if source.get("config_file") != CONFIG_SOURCE or source.get("config_sha256") != CONFIG_SOURCE_SHA256:
         return False
@@ -90,7 +91,27 @@ def _source_variant(root: Path, base_revision: str, source: dict) -> bool:
         ["git", "-C", str(root), "diff", "--name-only", base_revision, revision],
         capture_output=True, text=True, check=True,
     )
-    return changed.stdout.splitlines() == [CONFIG_SOURCE]
+    if changed.stdout.splitlines() != [CONFIG_SOURCE]:
+        return False
+    selected_submodules = source.get("submodules")
+    if not isinstance(selected_submodules, dict):
+        return False
+    for name in BUILD_SUBMODULES:
+        gitlink = subprocess.run(
+            ["git", "-C", str(root), "ls-tree", base_revision, "--", name],
+            capture_output=True, text=True, check=True,
+        )
+        metadata, separator, selected_name = gitlink.stdout.strip().partition("\t")
+        fields = metadata.split()
+        if (
+            not separator
+            or selected_name != name
+            or len(fields) != 3
+            or fields[:2] != ["160000", "commit"]
+            or selected_submodules.get(name) != fields[2]
+        ):
+            return False
+    return True
 
 
 def audit(

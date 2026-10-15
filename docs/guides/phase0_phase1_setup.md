@@ -337,9 +337,12 @@ classes absent from that commit, and its Saturn gitlink
 `e16a301d261fa4b5a374eb7069b78107a8c9aefb` is unavailable from the
 recorded public submodule URL. Obtain the exact source overlay and Saturn
 commit from the original U250 checkout, review and pin their bytes, then update
-the source-variant audit to admit only that captured overlay. A provisional
-local build using substitute classes or another Saturn revision is useful for
-testing, but cannot produce a qualifying source receipt.
+the source-variant audit to admit only that captured overlay. The alignment
+gate also requires Gemmini, Saturn and FireSim submodule receipts at the exact
+Git links in Chipyard `009e85b`; omitting an unavailable submodule does not
+qualify a substitute build. A provisional local build using substitute classes
+or another Saturn revision is useful for testing, but cannot produce a
+qualifying source receipt.
 Supply a reproduced source-to-FIRRTL elaboration
 receipt to the RTL source selection, then build the gSIM emulator with a strict
 v3 receipt. Before launch, check the complete chain:
