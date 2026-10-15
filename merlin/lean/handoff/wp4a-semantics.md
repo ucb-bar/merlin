@@ -1,5 +1,8 @@
 # WP-4a handoff: scalar arith/math, linalg.generic/fill/index, func.call, IEEE instance
 
+> **Historical (2026-10-15).** A work-package handoff from before the code landed; its status
+> lines are out of date. The current state is the code under `merlin/lean/` and the design doc.
+
 Status: **not started in code.** Stopped on request (token budget) after reading the design doc,
 every G0-frozen file and the Arith spec. `Sem/Ops/{Arith,Linalg,Func}.lean` are still the G0 stubs
 (every op `stuck`). No helper modules or tests exist yet. Nothing is proved.

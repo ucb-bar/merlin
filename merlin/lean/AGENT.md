@@ -30,17 +30,20 @@ output convention. Never commit anything from there.
 | `MerlinVerify/Sem/Ops/{Arith,Linalg,Func}.lean` | op semantics: scalar `arith`/`math`, `linalg.generic`/`fill`/`index`, `func.call` | WP-4a |
 | `MerlinVerify/Sem/Ops/{Tensor,LinalgNamed}.lean` | `tensor.*`, named linalg ops via their OpDSL generic form | WP-4b |
 | `MerlinVerify/Check/Types.lean` | **G0-frozen** `ClaimType`, `Verdict`, `Checker` | lead |
-| `MerlinVerify/Check/*` (other) | checker framework: graph diff, rules, congruence, `Defined₀`, C1 | WP-6 |
+| `MerlinVerify/Check/{Alpha,Corr,Step,C1,Synth,Module}.lean` | per-boundary refinement checkers (C1, module) | WP-6 |
+| `MerlinVerify/Check/{Typing,Progress,Support}.lean` | value types and the progress checker (`checkOps_progress`) | WP-6 |
+| `MerlinVerify/Check/Rules*.lean`, `Check/Affine.lean` | per-family typing rules with safety proofs; affine bounds | WP-6 |
+| `MerlinVerify/Check/{Rulebook,Chain}.lean` | assembled rulebook, `supportCheck`, end-to-end `chain_refines` | WP-12 |
 | `MerlinVerify/Rules/<Family>.lean` | rewrite-rule families and their theorems | per family WP |
 | `MerlinVerify/Spec/` | reviewed specifications (policy, entry, annotations). Barrier-authored. | per spec WP, human review |
-| `MerlinVerify/Claims/` | pinned top-level theorem statements | review only |
+| `MerlinVerify/Claims/` | reviewed claim files (empty: claim statements are pinned by the guard's `PINNED` list) | review only |
 | `MerlinVerify/Assumptions/` | the ONLY place an `axiom` may appear; each listed in the ledger | review only |
-| `exporter/` | C++ `merlin-mlir-export` (MLIR's own parser → `merlin.lean.ir.v1`) | WP-2 |
+| `src/merlin/verify/lean/mlir_export.py` | authoritative exporter: the pipeline's MLIR (via `torch_mlir`) → `merlin.lean.ir.v1` | WP-2 |
 
 **G0-frozen** files change only by an interface change request to the lead. Additive lemmas about
 frozen definitions go in a file you own, never in the frozen file.
 
-## Rules (design §1.2 — enforced by `lean-guard` once WP-3 lands)
+## Rules (design §1.2 — enforced by `build_tools/scripts/check_lean_guard.py`)
 
 1. No `sorry`, `admit`, new `axiom` outside `Assumptions/`, `native_decide`, `@[implemented_by]`,
    `@[extern]`, `unsafe`, or `partial def` anywhere under `MerlinVerify/`. `#print axioms` of every

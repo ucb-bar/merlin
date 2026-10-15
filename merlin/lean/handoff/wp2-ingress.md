@@ -1,5 +1,8 @@
 # WP-2 handoff: IR ingress (exporter, decoder, printer, round trip)
 
+> **Historical (2026-10-15).** A work-package handoff from before the code landed; its status
+> lines are out of date. The current state is the code under `merlin/lean/` and the design doc.
+
 Status: **nothing implemented or committed yet** — work stopped during the survey/design step. This
 note records what was established so the next owner starts from it.
 

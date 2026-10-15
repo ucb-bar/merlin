@@ -1,5 +1,8 @@
 # Handoff: tensor ops and named linalg ops
 
+> **Historical (2026-10-15).** A work-package handoff from before the code landed; its status
+> lines are out of date. The current state is the code under `merlin/lean/` and the design doc.
+
 Scope: `Sem/Ops/Tensor.lean`, `Sem/Ops/LinalgNamed.lean` (+ helpers under `Sem/Tensor/`,
 `Sem/Named/`; tests `Tests/{Tensor,LinalgNamed}.lean`). Spec: design §4.3.
 

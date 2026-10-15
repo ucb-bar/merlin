@@ -1,5 +1,8 @@
 # WP-0 inventory handoff (stopped early: token budget)
 
+> **Historical (2026-10-15).** A work-package handoff from before the code landed; its status
+> lines are out of date. The current state is the code under `merlin/lean/` and the design doc.
+
 ## Done and committed
 - Nothing beyond this note. No code was written: `stages.py`, `inventory.py`, the recorder call
   sites, `test_lean_stages.py` and `paper_denominator.json` do not exist yet. No capture was run.
