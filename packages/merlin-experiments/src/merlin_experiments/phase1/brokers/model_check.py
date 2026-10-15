@@ -19,7 +19,8 @@ from merlin_experiments.phase1.run_inputs import strip_build_state
 PROGRAMS = {"resnet50": ("model",),
             "smolvla": ("prefix_encode", "flow_denoise", "action_decode"),
             "tiny_llama": ("prefill", "decode")}
-_GROUP = re.compile(r"[A-Za-z0-9_]+\Z")
+_GROUP = re.compile(r"[A-Za-z0-9_.@-]+\Z")
+REPORT_SCHEMA = "merlin.model_check.report.v1"
 
 
 def _safe_report(report: object) -> bool:
@@ -35,33 +36,41 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
     action, model = request.get("action"), request.get("model")
     if action not in {"check", "replay-kernel"} or model not in PROGRAMS or request.get("split") != "visible":
         return {"status": "rejected", "error": "only declared visible model checks are admitted"}
-    group, engine = request.get("group"), request.get("engine")
-    if action == "replay-kernel" and (not isinstance(group, str) or not _GROUP.fullmatch(group)
-                                        or engine not in {"spike", "gsim"}):
-        return {"status": "rejected", "error": "replay requires a group and spike or gsim engine"}
-    if action == "check" and (group is not None or engine is not None):
+    group, engine, program = request.get("group"), request.get("engine"), request.get("program")
+    if action == "replay-kernel" and (
+        program not in PROGRAMS[model] or not isinstance(group, str) or len(group) > 200
+        or not _GROUP.fullmatch(group) or engine not in {"spike", "gsim"}
+    ):
+        return {"status": "rejected", "error": "replay requires a declared program, group, and engine"}
+    if action == "check" and (group is not None or engine is not None or program is not None):
         return {"status": "rejected", "error": "check accepts only a model"}
     source = snapshot_source if snapshot_source is not None else ws / "submission"
     if source.is_symlink() or not (source / "manifest.yaml").is_file():
         return {"status": "pending", "error": "no stable submission manifest"}
+    if any(path.is_symlink() for path in source.rglob("*")):
+        return {"status": "rejected", "error": "model-check source contains a symlink"}
     tmpdir = os.environ.get("TMPDIR")
     if not tmpdir or not Path(tmpdir).is_absolute():
         return {"status": "error", "error": "host TMPDIR is not task-owned"}
     with tempfile.TemporaryDirectory(prefix="model-check-", dir=tmpdir) as scratch:
         snapshot = Path(scratch) / "submission" if snapshot_source is None else snapshot_source
+        from merlin.common.tree_hash import hash_tree
+
         if snapshot_source is None:
+            before = hash_tree(source)["sha256"]
             shutil.copytree(source, snapshot, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
             strip_build_state(snapshot)
-        from merlin.common.tree_hash import hash_tree
+            if hash_tree(snapshot)["sha256"] != before or hash_tree(source)["sha256"] != before:
+                return {"status": "pending", "error": "submission changed while taking model-check snapshot"}
 
         digest = hash_tree(snapshot)["sha256"]
         report_path = Path(scratch) / "report.json"
         argv = [sys.executable, "-m", "merlin.model_check", action, "--submission", str(snapshot),
-                "--model", model, "--split", "visible"]
-        if action == "check":
-            argv += ["--out", str(report_path)]
-        else:
-            argv += ["--group", group, "--engine", engine]
+                "--model", model, "--split", "visible", "--agent-view", "--out", str(report_path),
+                "--work", str(Path(scratch) / "work"),
+                "--bundle", "/work/merlin/private/gemmini/numerics/v1"]
+        if action == "replay-kernel":
+            argv += ["--program", program, "--group", group, "--engine", engine]
         stdout_path, stderr_path = Path(scratch) / "stdout", Path(scratch) / "stderr"
         with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
             process = subprocess.Popen(argv, cwd=ws, stdout=stdout_file, stderr=stderr_file,
@@ -78,16 +87,26 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
                     return {"status": "cancelled" if stop is not None and stop() else "timeout",
                             "model": model, "source_sha256": digest}
                 time.sleep(0.25)
-        stdout = stdout_path.read_text(encoding="utf-8", errors="replace")
         stderr = stderr_path.read_text(encoding="utf-8", errors="replace")
         try:
-            report = json.loads(report_path.read_text(encoding="utf-8")) if action == "check" else json.loads(stdout)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             report = None
+        if report is not None and (
+            not isinstance(report, dict) or report.get("schema") != REPORT_SCHEMA
+            or report.get("command") != action or report.get("model") != model
+            or report.get("split") != "visible" or report.get("agent_view") is not True
+            or report.get("status") not in {"pass", "fail", "error"}
+        ):
+            return {"status": "error", "error": "model-check report identity or schema mismatch",
+                    "model": model, "source_sha256": digest}
         if report is not None and not _safe_report(report):
             return {"status": "error", "error": "model-check report contained sealed or private data",
                     "model": model, "source_sha256": digest}
-        return {"status": "unavailable" if report is None else "pass" if process.returncode == 0 else "fail",
+        status = "unavailable" if report is None or report.get("status") == "error" else report["status"]
+        if report is not None and report.get("exit_code") != process.returncode:
+            status = "error"
+        return {"status": status,
                 "model": model, "action": action, "source_sha256": digest,
                 "returncode": process.returncode, "report": report,
                 **({"error": stderr[-2000:]} if process.returncode and report is None else {})}

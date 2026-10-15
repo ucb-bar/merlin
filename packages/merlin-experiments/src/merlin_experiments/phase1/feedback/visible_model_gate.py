@@ -68,15 +68,26 @@ def publish(path: Path, update: dict) -> dict:
 def _program_row(model: str, program: str, result: dict) -> dict:
     report = result.get("report") or {}
     programs = report.get("programs") if isinstance(report, dict) else None
-    item = programs.get(program) if isinstance(programs, dict) else None
-    if not isinstance(item, dict):
+    item = next((row for row in programs if isinstance(row, dict) and row.get("program") == program), None) \
+        if isinstance(programs, list) else None
+    present = isinstance(item, dict)
+    if not present:
         item = {}
-    status = item.get("status") if result.get("status") == "pass" else result.get("status")
-    if status not in {"pass", "fail"}:
+    status = result.get("status")
+    if not present:
+        status = "unavailable"
+    elif status not in {"pass", "fail"}:
         status = "unavailable" if status not in {"pending", "timeout", "cancelled"} else status
+    runs = item.get("runs") or []
+    cycles = [run.get("cycles_functional") for run in runs if isinstance(run, dict)
+              and run.get("cycles_functional") is not None]
+    failures = report.get("failures") or []
+    first_bad = next((row.get("first_bad_group") for row in failures if isinstance(row, dict)
+                      and row.get("program") == program and row.get("first_bad_group") is not None), None)
     return {"model": model, "program": program, "status": status,
-            "census": item.get("census"), "metrics": item.get("metrics"),
-            "cycles": item.get("cycles"), "first_bad_group": item.get("first_bad_group")}
+            "build": item.get("build"), "census": item.get("census"),
+            "metrics": report.get("model_metrics"), "cycles": cycles,
+            "first_bad_group": first_bad}
 
 
 def check_snapshot(ws: Path, run_dir: Path, snapshot: Path, source_sha256: str, *,

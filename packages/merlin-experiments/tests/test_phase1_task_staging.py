@@ -26,7 +26,7 @@ def test_gemmini_full_model_task_is_short_and_allows_edits_during_checks(tmp_pat
     resource_prompt.append_resource_guidance(ws, run, object())
     task = (ws / "TASK.md").read_text()
     assert len(task.encode()) <= 12 * 1024
-    assert all(name in task for name in ("ResNet50", "SmolVLA", "TinyLlama", "approximate_kernels"))
+    assert all(name in task for name in ("ResNet50", "SmolVLA", "TinyLlama", "numerics.approximations"))
     assert "You may continue editing while a self-check or grade runs" in task
     assert task == (run / "TASK.md").read_text()
 

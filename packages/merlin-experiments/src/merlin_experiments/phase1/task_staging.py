@@ -291,11 +291,19 @@ Build the compiler in `submission/` from the empty starting directory. The requi
 | SmolVLA | `prefix_encode`, `flow_denoise`, `action_decode` |
 | TinyLlama | `prefill`, `decode` |
 
-Success requires all six programs to compile, link and pass the model numerics policy on Spike, a fixed-denominator offload census, and gSIM evidence for every distinct device kernel those programs use. Public capsules remain a regression suite. `qa/verdict.json` reports your visible-input results. Sealed-input results appear only in the official grade.
+Success requires all six programs to compile, link and pass the model numerics policy on Spike,
+a fixed-denominator offload census, and gSIM evidence for every distinct device kernel those
+programs use. Public capsules remain a regression suite. `qa/verdict.json` reports your
+visible-input results. Sealed-input results appear only in the official grade.
 
 ## Deliverable
 
-Write a self-contained `submission/` with `manifest.yaml`, compiler sources, the four required parse/lower/emit/LLVM entrypoints defined by the admitted contract, and `REPORT.md` stating measured results and limitations. The manifest may declare `approximate_kernels:` as specified by the model-check contract. Undeclared device kernels must match the integer reference exactly. Declared approximate kernels and host f32 work must meet the contract's error policy.
+Write a self-contained `submission/` with `manifest.yaml`, compiler sources, the four required
+parse/lower/emit/LLVM entrypoints defined by the admitted contract, and `REPORT.md` stating
+measured results and limitations. The model-check contract uses `numerics.approximations` in the
+manifest for declared approximate kernels. Undeclared device kernels must match the integer
+reference exactly. Declared approximate kernels and host f32 work must meet the contract's
+error policy.
 
 ## Available tools
 
@@ -303,21 +311,31 @@ Write a self-contained `submission/` with `manifest.yaml`, compiler sources, the
 - `python simjob.py --help`: asynchronous public RTL jobs.
 - `python await_verdict.py --help`: wait for a new harness verdict.
 - `python agent_model_check.py check --model MODEL --out REPORT.json`: visible model check through the broker.
-- `python agent_model_check.py replay-kernel --model MODEL --group GROUP --engine gsim`: visible kernel replay through the broker. A pending reply includes a `wait --job-id` command.
+- `python agent_model_check.py replay-kernel --model MODEL --program PROGRAM`
+  `--group SOURCE_REGION_ID --engine gsim`: visible kernel replay through the broker.
+  A pending reply includes a `wait --job-id` command.
 
 Selected treatment tools:
 """ + (tools or "- No additional treatment tools are selected.") + """
 
 ## Sandbox and enforced rules
 
-- Use only the frozen inputs and tools granted in this workspace. Do not access hidden inputs, goldens, prior backend submissions, or operator-private paths.
-- `integrity_exempt: false`; the compiler must be agent-authored and use the selected xDSL/Python language and CLI contract. Do not import Merlin's reference or simulator implementation into the submission, or substitute C compute kernels for emitted device code.
-- Keep `manifest.yaml` and the four entrypoints valid. The harness checks package integrity, public capsules, whole-model numerics, the offload census, and unique-kernel RTL replay. A pending or unavailable check is not a pass.
-- The harness grades immutable snapshots. You may continue editing while a self-check or grade runs. A verdict names the snapshot it graded; check its source digest before treating it as current.
+- Use only the frozen inputs and tools granted in this workspace. Do not access hidden inputs,
+  goldens, prior backend submissions, or operator-private paths.
+- `integrity_exempt: false`; the compiler must be agent-authored and use the selected xDSL/Python
+  language and CLI contract. Do not import Merlin's reference or simulator implementation into
+  the submission, or substitute C compute kernels for emitted device code.
+- Keep `manifest.yaml` and the four entrypoints valid. The harness checks package integrity,
+  public capsules, whole-model numerics, the offload census, and unique-kernel RTL replay.
+  A pending or unavailable check is not a pass.
+- The harness grades immutable snapshots. You may continue editing while a self-check or grade runs.
+  A verdict names the snapshot it graded; check its source digest before treating it as current.
 
 ## Final status
 
-Lead with a table of all six programs: model, program, compile/link, numerics, census, and RTL status. Then name the submission path, test artifacts, and remaining failures. Report only measured results.
+Lead with a table of all six programs: model, program, compile/link, numerics, census, and RTL
+status. Then name the submission path, test artifacts, and remaining failures. Report only
+measured results.
 """
     body += task_runtime_scope_block(load_target_experiment(config.context.descriptor), sandbox,
                                      context=config.context, scope=scope)

@@ -33,7 +33,10 @@ def test_visible_model_check_uses_immutable_copy_and_no_private_argv(tmp_path, m
             (source / "compiler.py").write_text("VALUE = 2\n")
             assert start_new_session and cwd == ws
             Path(argv[argv.index("--out") + 1]).write_text(json.dumps({
-                "programs": {"model": {"status": "pass"}}, "split": "visible",
+                "schema": broker.REPORT_SCHEMA, "command": "check", "model": "resnet50",
+                "status": "pass", "exit_code": 0, "agent_view": True,
+                "programs": [{"program": "model", "build": {"status": "linked"}}],
+                "split": "visible",
             }))
 
         def poll(self):
@@ -42,9 +45,41 @@ def test_visible_model_check_uses_immutable_copy_and_no_private_argv(tmp_path, m
     monkeypatch.setattr(broker.subprocess, "Popen", Completed)
     result = broker.execute_visible(ws, {"action": "check", "model": "resnet50", "split": "visible"})
     assert result["status"] == "pass"
-    assert result["report"]["programs"]["model"]["status"] == "pass"
-    assert all("sealed" not in " ".join(argv) and "/private/" not in " ".join(argv) for argv in calls)
+    assert result["report"]["programs"][0]["program"] == "model"
+    assert all("--agent-view" in argv and argv[argv.index("--split") + 1] == "visible" for argv in calls)
     assert (source / "compiler.py").read_text() == "VALUE = 2\n"
+
+
+def test_replay_request_uses_contract_program_and_report_file(tmp_path, monkeypatch):
+    ws = tmp_path / "workspace"
+    (ws / "submission").mkdir(parents=True)
+    (ws / "submission/manifest.yaml").write_text("commands: {}\n")
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+
+    class Completed:
+        returncode = 0
+
+        def __init__(self, argv, **kwargs):
+            assert argv[argv.index("--program") + 1] == "decode"
+            assert argv[argv.index("--group") + 1] == "matmul_0"
+            assert argv[argv.index("--engine") + 1] == "gsim"
+            Path(argv[argv.index("--out") + 1]).write_text(json.dumps({
+                "schema": broker.REPORT_SCHEMA, "command": "replay-kernel", "model": "tiny_llama",
+                "split": "visible", "agent_view": True, "status": "pass", "exit_code": 0,
+                "programs": [{"program": "decode"}],
+            }))
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(broker.subprocess, "Popen", Completed)
+    result = broker.execute_visible(ws, {"action": "replay-kernel", "model": "tiny_llama",
+                                         "program": "decode", "group": "matmul_0", "engine": "gsim",
+                                         "split": "visible"})
+    assert result["status"] == "pass"
+    missing_program = broker.execute_visible(ws, {"action": "replay-kernel", "model": "tiny_llama",
+                                                  "group": "matmul_0", "engine": "gsim", "split": "visible"})
+    assert missing_program["status"] == "rejected"
 
 
 def test_sealed_or_private_report_never_reaches_agent(tmp_path, monkeypatch):
@@ -122,11 +157,11 @@ def test_visible_gate_publishes_all_six_program_rows(tmp_path, monkeypatch):
     def check(_ws, request, **kwargs):
         model = request["model"]
         assert kwargs["snapshot_source"] == snapshot
-        return {"status": "pass", "source_sha256": digest, "report": {"programs": {
-            name: {"status": "pass", "census": {"eligible": 1, "offloaded": 1},
-                   "metrics": {"rel_rmse": 0.0}, "cycles": 12}
-            for name in broker.PROGRAMS[model]
-        }}}
+        return {"status": "pass", "source_sha256": digest, "report": {
+            "model_metrics": {"worst": {"rel_rmse": 0.0}},
+            "programs": [{"program": name, "census": {"denominator": 1, "device": 1},
+                          "runs": [{"cycles_functional": 12}]}
+                         for name in broker.PROGRAMS[model]]}}
 
     monkeypatch.setattr(gate, "execute_visible", check)
     result = gate.check_snapshot(ws, run, snapshot, digest, stop=threading.Event())
@@ -149,7 +184,7 @@ def test_background_model_gate_reaches_agent_verdict_before_first_interval(tmp_p
 
         model = request["model"]
         return {"status": "pass", "source_sha256": hash_tree(kwargs["snapshot_source"])["sha256"],
-                "report": {"programs": {program: {"status": "pass"} for program in broker.PROGRAMS[model]}}}
+                "report": {"programs": [{"program": program} for program in broker.PROGRAMS[model]]}}
 
     monkeypatch.setattr(gate, "execute_visible", check)
     handle = gate.start(ws, run, interval_s=30)

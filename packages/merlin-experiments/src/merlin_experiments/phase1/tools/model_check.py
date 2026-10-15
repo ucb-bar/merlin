@@ -15,6 +15,7 @@ def main(argv=None) -> int:
     parser.add_argument("action", choices=("check", "replay-kernel", "wait"))
     parser.add_argument("--submission", default="submission")
     parser.add_argument("--model")
+    parser.add_argument("--program")
     parser.add_argument("--group")
     parser.add_argument("--split", default="visible", choices=("visible",))
     parser.add_argument("--engine", choices=("spike", "gsim"))
@@ -26,8 +27,8 @@ def main(argv=None) -> int:
         parser.error("submission must be the workspace submission; wait budget must be 0..540 seconds")
     if args.action != "wait" and not args.model:
         parser.error("--model is required")
-    if args.action == "replay-kernel" and not args.group:
-        parser.error("replay-kernel requires --group")
+    if args.action == "replay-kernel" and (not args.group or not args.program):
+        parser.error("replay-kernel requires --program and --group")
     if args.action == "wait" and not args.job_id:
         parser.error("wait requires --job-id")
     ws = Path.cwd()
@@ -38,7 +39,7 @@ def main(argv=None) -> int:
     if not all(c.isascii() and (c.isalnum() or c == "_") for c in job_id):
         parser.error("invalid job id")
     if args.action != "wait":
-        request = {"action": args.action, "model": args.model, "group": args.group,
+        request = {"action": args.action, "model": args.model, "program": args.program, "group": args.group,
                    "engine": args.engine, "split": "visible"}
         target = channel / f"req_{job_id}.json"
         with target.open("x", encoding="utf-8") as stream:
