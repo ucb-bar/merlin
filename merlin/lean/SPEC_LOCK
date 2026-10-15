@@ -2,6 +2,7 @@
   "MerlinVerify/Check/Types.lean": "82a91125c84e01aae06e1b97f5957e6e995d59b643417f5a2611fe35a4f15d50",
   "MerlinVerify/Check/Typing.lean": "79f9f69b85c5077e0252bf5e527fb28399306a2aab656b6c13ce1f095484a50f",
   "MerlinVerify/Core/AST.lean": "022cec55c189ddc40e1ee77e8cc9d8ede4f7734e4ce45a8848e98b96ee5643cd",
+  "MerlinVerify/Sem/Defined.lean": "6c0e0357a4c07ad960e16744ec34f7fd81253caf6a4370ed388d93d24ffbe05b",
   "MerlinVerify/Sem/Float.lean": "6e30a0e7166c42019234d9d4f0216e57be1084fea19fb0a93d5aa1130dd1011d",
   "MerlinVerify/Sem/Ops.lean": "ba76a1b30fddab7806a8c2bf84d1f07ff7c258c7b2d9521cb37a6ed7e361df51",
   "MerlinVerify/Sem/Ops/Arith.lean": "cdf786fe633185dfd54f4209aece5b46ab579bfaa90feacc4ece9994c90a5ff1",
