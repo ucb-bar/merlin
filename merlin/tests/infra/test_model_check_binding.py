@@ -7,6 +7,7 @@ breaks one binding at a time. The toolchain and Spike are replaced by a fake :cl
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import struct
@@ -138,11 +139,59 @@ class PlatformConfig extends Config(new Config((_, _, _) => { case HostMemNumCha
 """
 
 
+# Disassembly listings in the two spellings the toolchains print with aliases off (captured from
+# riscv64-unknown-elf-objdump and llvm-objdump on the same object).
+GNU_READS_CYCLE = """
+probe.elf:     file format elf64-littleriscv
+
+
+Disassembly of section .text:
+
+0000000080000000 <_start>:
+    80000000:\t00000297          \tauipc\tt0,0x0
+    80000004:\t02028293          \taddi\tt0,t0,32 # 80000020 <read_cycle>
+
+0000000080000020 <read_cycle>:
+    80000020:\tc0002573          \tcsrrs\ta0,cycle,zero
+    80000024:\t8082                \tc.jr\tra
+"""
+
+GNU_READS_TIME = (
+    GNU_READS_CYCLE
+    + """
+0000000080000026 <read_time>:
+    80000026:\tc0102573          \tcsrrs\ta0,time,zero
+    8000002a:\t8082                \tc.jr\tra
+"""
+)
+
+LLVM_READS_TIME = """
+csr.o:\tfile format elf64-littleriscv
+
+Disassembly of section .text:
+
+0000000000000000 <read_time>:
+       0: c0102573     \tcsrrs\ta0, time, zero
+       4: 8082         \tc.jr\tra
+
+0000000000000006 <read_cycle>:
+       6: c0002573     \tcsrrs\ta0, cycle, zero
+"""
+
+
 class FakeEngine:
     """The toolchain and Spike, as data: ISA strings split into the tokens a toolchain would record."""
 
-    def __init__(self, tmp: Path, *, spike_isa: str, memory: str, image: list[tuple[int, int]] | None = None):
-        self.tmp, self.spike_isa, self.memory = tmp, spike_isa, memory
+    def __init__(
+        self,
+        tmp: Path,
+        *,
+        spike_isa: str,
+        memory: str,
+        image: list[tuple[int, int]] | None = None,
+        listing: str = GNU_READS_CYCLE,
+    ):
+        self.tmp, self.spike_isa, self.memory, self.listing = tmp, spike_isa, memory, listing
         self.segments = image or [(BASE, 0x2000)]
 
     def engine(self) -> BD.Engine:
@@ -153,6 +202,7 @@ class FakeEngine:
             run=lambda argv: (0, "MCCASE\nMCDONE\n"),
             probe_image=lambda: _elf(self.tmp / "probe.elf", self.segments),
             march="rv64imafdc_zicsr",
+            disassemble=lambda elf: self.listing,
         )
 
 
@@ -168,6 +218,7 @@ def world(
     elab_dts_bytes: int = 0x10000000,
     elaboration_header: bool = True,
     cite_line: str = "def x(args: Any*): BigInt",
+    partial_cite: str | None = None,
 ) -> dict:
     checkout = tmp / "checkout"
     for sub in ("spike", "elab", "gen", "bin", "lib", "scala"):
@@ -299,13 +350,26 @@ def world(
             },
         },
     }
+    if partial_cite is not None:  # the CPU implements zicntr in part, as a cited CSR file says
+        (checkout / "csr.scala").write_text("read_mapping += CSRs.cycle -> reg_cycle\n")
+        spec["partial_extensions"] = {
+            "zicntr": {
+                "absent_csrs": ["time", "timeh"],
+                "citations": [
+                    {"claim": "cycle is read", "file": "csr.scala", "line": 1, "contains": partial_cite},
+                    {"claim": "time is not", "file": "csr.scala", "absent": "CSRs.time"},
+                ],
+            }
+        }
     spec_path = tmp / "binding.yaml"
     spec_path.write_text(yaml.safe_dump(spec))
     return {"contract_path": contract_path, "facts_path": facts_path, "spec_path": spec_path, "checkout": checkout}
 
 
 def make(tmp: Path, w: dict, *, spike_isa="rv64imafdc_zicsr", memory=f"-m{hex(BASE)}:{hex(16 * GIB)}", **kw) -> dict:
-    fake = FakeEngine(tmp, spike_isa=spike_isa, memory=memory, image=kw.pop("image", None))
+    fake = FakeEngine(
+        tmp, spike_isa=spike_isa, memory=memory, image=kw.pop("image", None), listing=kw.pop("listing", GNU_READS_CYCLE)
+    )
     return BD.receipt(
         target=TARGET,
         contract_path=w["contract_path"],
@@ -388,6 +452,93 @@ def test_a_missing_source_is_unknown_and_fails_closed(tmp_path, monkeypatch):
     # with no elaboration header and no recorded width, nothing on the RTL side states acc_scale_t
     assert checks["param.acc_scale_t"]["status"] == "unknown"
     assert checks["param.DIM"]["status"] == "pass"  # the RTL facts still state DIM
+
+
+ZICNTR_SPIKE = "rv64imafdc_zicntr_zicsr"
+
+
+def test_a_cited_partial_extension_binds_when_images_only_read_cycle(tmp_path, monkeypatch):
+    w = world(tmp_path, monkeypatch, partial_cite="CSRs.cycle -> reg_cycle")
+    doc = make(tmp_path, w, spike_isa=ZICNTR_SPIKE, listing=GNU_READS_CYCLE)
+    checks = by_name(doc)
+    assert doc["status"] == "pass", [c for c in doc["checks"] if c["status"] != "pass"]
+    assert checks["partial.zicntr"]["status"] == "pass"
+    assert checks["isa.spike[0]"]["values"]["cited_partial"] == ["zicntr"]
+    assert checks["csr_absent[0]"]["status"] == "pass"
+
+
+def test_an_image_that_reads_time_fails_and_names_the_function(tmp_path, monkeypatch):
+    w = world(tmp_path, monkeypatch, partial_cite="CSRs.cycle -> reg_cycle")
+    given = _elf(tmp_path / "given.elf", [(BASE, 0x100)])
+    doc = make(tmp_path, w, spike_isa=ZICNTR_SPIKE, listing=GNU_READS_TIME, images=[given])
+    checks = by_name(doc)
+    assert doc["status"] == "fail"
+    # the probe image and the image passed in are both scanned
+    for index in (0, 1):
+        check = checks[f"csr_absent[{index}]"]
+        assert check["status"] == "fail" and "read_time" in check["detail"] and "time" in check["detail"]
+        assert [h["function"] for h in check["values"]["hits"]] == ["read_time"]
+    assert checks["isa.spike[0]"]["status"] == "pass"  # the ISA is cited; the image is what fails
+
+
+def test_a_partial_extension_whose_citation_changed_is_not_accepted(tmp_path, monkeypatch):
+    w = world(tmp_path, monkeypatch, partial_cite="CSRs.cycle -> something_else")
+    doc = make(tmp_path, w, spike_isa=ZICNTR_SPIKE)
+    checks = by_name(doc)
+    assert checks["partial.zicntr"]["status"] == "fail"
+    assert checks["isa.spike[0]"]["status"] == "fail" and checks["isa.spike[0]"]["values"]["missing"] == ["zicntr"]
+    assert not any(name.startswith("csr_absent") for name in checks)
+
+
+def test_no_disassembler_leaves_the_csr_scan_unknown(tmp_path, monkeypatch):
+    w = world(tmp_path, monkeypatch, partial_cite="CSRs.cycle -> reg_cycle")
+    fake = FakeEngine(tmp_path, spike_isa=ZICNTR_SPIKE, memory=f"-m{hex(BASE)}:{hex(16 * GIB)}")
+    engine = dataclasses.replace(fake.engine(), disassemble=None)
+    doc = BD.receipt(
+        target=TARGET,
+        contract_path=w["contract_path"],
+        facts_path=w["facts_path"],
+        spec_path=w["spec_path"],
+        board=None,
+        host_package=None,
+        dram_base=BASE,
+        dram_bytes=16 * GIB,
+        work=tmp_path / "work",
+        engine=engine,
+    )
+    assert by_name(doc)["csr_absent[0]"]["status"] == "unknown" and doc["status"] == "fail"
+
+
+def test_csr_accesses_reads_both_objdump_spellings():
+    gnu = S.csr_accesses(GNU_READS_TIME, ["time", "timeh"])
+    assert [(h["function"], h["address"], h["csr"]) for h in gnu] == [("read_time", "80000026", "time")]
+    llvm = S.csr_accesses(LLVM_READS_TIME, ["time"])
+    assert [(h["function"], h["csr"]) for h in llvm] == [("read_time", "time")]
+    assert S.csr_accesses(GNU_READS_CYCLE, ["time"]) == []
+    assert [h["function"] for h in S.csr_accesses(LLVM_READS_TIME, ["cycle"])] == ["read_cycle"]
+
+
+def test_the_toolchain_disassembly_names_the_csr(tmp_path):
+    """The real path: compile one counter read each, disassemble with the driver's own objdump."""
+    import subprocess
+
+    from merlin.runtime.backends import spike as spike_backend
+
+    gcc = spike_backend.gcc_path()
+    if not gcc.is_file():
+        pytest.skip("no RISC-V toolchain on this host")
+    source = tmp_path / "counters.c"
+    source.write_text(
+        'unsigned long read_time(void) { unsigned long t; __asm__ volatile("rdtime %0" : "=r"(t)); return t; }\n'
+        'unsigned long read_cycle(void) { unsigned long c; __asm__ volatile("rdcycle %0" : "=r"(c)); return c; }\n'
+    )
+    obj = tmp_path / "counters.o"
+    subprocess.run(
+        [str(gcc), "-O2", "-march=rv64gc_zicntr", "-mabi=lp64d", "-c", str(source), "-o", str(obj)], check=True
+    )
+    listing = BD.disassemble(gcc, obj)
+    assert [h["function"] for h in S.csr_accesses(listing, ["time", "timeh"])] == ["read_time"]
+    assert [h["function"] for h in S.csr_accesses(listing, ["cycle"])] == ["read_cycle"]
 
 
 def test_a_changed_citation_fails(tmp_path, monkeypatch):
