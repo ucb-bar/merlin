@@ -109,26 +109,48 @@ prediction scope. Phase 2 may use the tuned model only for that scope and must
 keep gSIM as the source of actual RTL timing evidence. Full-model executions are
 outside this capsule dataset.
 
+The annotated Spike model at
+[`806ec0adda22`](https://github.com/copparihollmann/riscv-isa-sim-gemmini/tree/806ec0adda2242597b253ebf17adfaa5cdb395e3)
+accepts a `counter_pc_pair` scope binding with exact `elf_sha256`,
+`input_sha256`, `scope_sha256`, opening/closing counter PCs, occurrence and an
+independent boundary-review digest. The current timing archive retains the ELF,
+generated caller, input interface and selected counter semantics, but does not
+issue that binding or a separately defined digest of the embedded input tensor
+bytes. The Phase 2 importer must verify the archived artifacts, define and
+rederive that input digest, inspect the linked ELF to bind the two counter PCs
+around `kernel_entry` through the selected completion call, and retain the
+independent review evidence. A whole-program Spike estimate or a consecutive
+counter-pair guess is not the capsule label's scope.
+
+The branch's shipped `examples/gemmini/timing/stock_u250.json` targets archive
+SHA256 `a9a190b9…`, whereas this experiment selects the 30 MHz archive
+`0af6f26e…`. Its primitive prices and queue capacities are unknown. Re-export
+and pin a profile for the selected `0af6f26e…` bitstream before fitting or
+deploying it; matching ABI header `3758ae96…` does not make the two bitstreams
+one timing target. Launch Spike with the selected 16 GiB map beginning at
+`0x80000000` for these ELFs. Gemmini's local `address_bits: 32` parameter is
+not the Rocket physical-memory size. The model's README example `-m64` is a
+small test allocation, not this board's memory selection.
+
 The compiler agent receives the selected Phase 1 contract and RTL facts through
 the frozen input bundle. The Gemmini task grant also contains
 `task/PHASE2_TARGET.md`, which names the planned full U250
 `FireSimGemminiRocketConfig` bitstream, board address map and ABI identity.
-Those facts are useful target context, but the current Phase 1 RTL facts describe
-`GemminiRocketConfig` and the capsule labels describe the selected gSIM design.
-The FireSim generator pin is a different revision. A model fitted to these labels
-must declare its gSIM design identity; transferring it to FireSim requires a
-reviewed fact comparison or a matching FireSim extraction and paired cycle
-measurements on the pinned bitstream. The FireSim board name alone does not
-qualify the timing model for Phase 2 board predictions.
+Those facts are useful target context. Historical Phase 1 facts describe the
+older `GemminiRocketConfig` elaboration. The next release must instead select
+facts and capsule labels from the pinned FireSim-source
+`GemminiGsimFireSimAlignedConfig` gSIM build. A model fitted to those labels
+must declare its exact gSIM design identity; transferring it to FireSim still
+requires a reviewed chip comparison and paired cycle measurements on the pinned
+bitstream. The FireSim board name alone does not qualify Phase 2 predictions.
 
-The preferred correction is to derive Phase 0 facts and the Phase 1 gSIM build
-from the **same pinned Gemmini generator revision** as the intended FireSim
-bitstream, with the ordinary `GemminiRocketConfig` chip inside the appropriate
-gSIM and FireSim wrappers. Pin the resulting FIRRTL, gSIM receipt, contract,
-Spike extension and FireSim bitstream separately. Verify the chip RTL/parameter
-and ABI match; then measure matched capsule ELFs on gSIM and the board to
-calibrate any wrapper/clock/transport difference. Reusing a configuration name
-or fitting old gSIM labels does not perform that verification.
+Derive Phase 0 facts and the Phase 1 gSIM build from the **same pinned Gemmini
+generator revision** as the intended FireSim bitstream, with the FireSim chip
+tweaks inside the gSIM harness. Pin the resulting FIRRTL, gSIM receipt,
+contract, Spike extension and FireSim bitstream separately. Verify the chip
+RTL/parameter and ABI match; then measure matched capsule ELFs on gSIM and the
+board to calibrate any wrapper/clock/transport difference. Reusing a
+configuration name or fitting old gSIM labels does not perform that verification.
 
 The six whole-model Spike programs in the authored Phase 1 descriptor now select
 `firesim_gemmini_rocket_u250_30mhz` directly. A fresh private model specification

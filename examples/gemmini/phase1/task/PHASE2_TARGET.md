@@ -48,12 +48,12 @@ bitstream before Phase 0 derivation. Add the exact
 `build_tools/chipyard/GemminiGsimFireSimAlignedConfig.scala` file to a clean
 descendant of the recorded Chipyard revision and keep the Gemmini gitlink at
 its recorded revision. This new configuration composes the FireSim chip tweaks
-with the gSIM clock and serial adapters while omitting FireSim bridges. Elaborate
+and IO cell models with the gSIM clock and serial adapters. Elaborate
 `GemminiGsimFireSimAlignedConfig` from that committed source; regenerate RTL facts from that exact
 TestHarness FIRRTL, the gSIM executable and its strict build receipt, and the
 selected execution contract together. The source-to-FIRRTL elaboration receipt
-must bind the selected configuration, the one-file Chipyard descendant and the
-exact Gemmini revision.
+must bind the selected configuration, the reviewed Chipyard descendant and the
+exact Gemmini, Saturn and FireSim submodule revisions.
 The configuration must retain the gSIM clock/serial harness adapters while
 matching FireSim's 16 GiB address map, CPU ISA and chip-visible bus/peripheral
 settings. `GemminiGsimSerialClkConfig` alone retains the older chip settings.
@@ -62,8 +62,8 @@ At the recorded Chipyard revision, `FireSimGemminiRocketConfig` composes
 16 GiB external memory, 1 GHz bus frequencies, SerialTL width 4, UART policy,
 debug/clock-gating/monitor policy, trace IO and block-device presence. The new
 gSIM configuration must carry each chip-visible setting that changes the
-elaboration and replace only the FireSim harness/bridge pieces with the gSIM
-clock instantiator and serial-clock punchthrough. Review the resulting generated
+elaboration while selecting the gSIM TestHarness clock instantiator and
+serial-clock punchthrough. Review the resulting generated
 DTS and RTL differences; a shared base class does not make them equivalent.
 Compare the chip portion of that elaboration with the FireSim build and record
 the Gemmini parameters and ABI header identity.
