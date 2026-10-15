@@ -1142,12 +1142,12 @@ def _split_fresh_local_deallocs(ctx, module):
         decl = declarations.get(name)
         return (
             name.startswith('merlin_dev_') and decl is not None
-            and len(op.operands) == 3 and len(op.results) == 1
-            and str(op.results[0].type) == str(op.operands[2].type)
-            and len(decl.arg_attrs) == 3
+            and len(op.operands) >= 3 and len(op.results) == 1
+            and str(op.results[0].type) == str(op.operands[-1].type)
+            and len(decl.arg_attrs) == len(op.operands)
             and all('bufferization.access' in attrs for attrs in decl.arg_attrs)
             and [str(attrs['bufferization.access']) for attrs in decl.arg_attrs]
-            == ['"read"', '"read"', '"write"']
+            == ['"read"'] * (len(op.operands) - 1) + ['"write"']
         )
 
     def nested_operations(parent):
@@ -1175,9 +1175,10 @@ def _split_fresh_local_deallocs(ctx, module):
             for op in nested_operations(func)
         )
         for block in func.regions[0].blocks:
-            # Merlin's generated device shim returns precisely its third, writable
-            # output descriptor. The other two operands are read-only, and the shim
-            # does not retain any pointer. Check that exact declaration contract.
+            # Merlin's generated device shim returns its last, writable output
+            # descriptor. Earlier operands are read-only, including extra group
+            # inputs such as a bias; the shim retains no pointer. Check the exact
+            # declaration contract before treating the result as an alias.
             call_alias = {}
             for op in block.operations:
                 if op.operation.name != 'func.call' or not any(
@@ -1185,7 +1186,7 @@ def _split_fresh_local_deallocs(ctx, module):
                 ):
                     continue
                 if is_device_output_alias(op, declarations):
-                    call_alias[op.results[0]] = op.operands[2]
+                    call_alias[op.results[0]] = op.operands[-1]
             for old in list(block.operations):
                 if old.operation.name != 'bufferization.dealloc' or old.results or len(old.operands) % 2:
                     continue

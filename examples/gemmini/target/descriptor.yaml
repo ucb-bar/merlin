@@ -104,7 +104,7 @@ phase1_gates:
         smolvla:
           prefix_encode:
             engine: spike
-            board: gemmini_rocket_spike_functional
+            board: gemmini_rocket_spike_functional_16g
             timeout_s: 86400
             integer_reference: [integer-reference.json]
             require_integer_reference: true
@@ -113,7 +113,7 @@ phase1_gates:
             group_profile: true
           flow_denoise:
             engine: spike
-            board: gemmini_rocket_spike_functional
+            board: gemmini_rocket_spike_functional_16g
             timeout_s: 86400
             integer_reference: [integer-reference.json]
             require_integer_reference: true
@@ -122,7 +122,7 @@ phase1_gates:
             group_profile: true
           action_decode:
             engine: spike
-            board: gemmini_rocket_spike_functional
+            board: gemmini_rocket_spike_functional_16g
             timeout_s: 14400
             integer_reference: [integer-reference.json]
             require_integer_reference: false
