@@ -120,14 +120,33 @@ def prepare(stage: Path, directory: Path, *, target: str) -> ProgramCatalog:
     ref = _prepare_model_mlir(
         stage / "model.mlir", directory / "ref", int8_compute=True, respect_captured_quantization_scope=True
     )
-    route = routing(
-        target,
-        (stage / "linalg.mlir").read_text(),
-        str(stage),
-        capture=str(stage),
-        model=stage.name,
-        linked_elf_admission=None,
-    )
+    try:
+        route = routing(
+            target,
+            (stage / "linalg.mlir").read_text(),
+            str(stage),
+            capture=str(stage),
+            model=stage.name,
+            linked_elf_admission=None,
+        )
+    except ValueError as error:
+        if "no admitted accelerator groups" not in str(error):
+            raise
+        # A program with nothing to route (a pure slice, say) runs on the host only: its rewritten form IS
+        # its reference, and it has no device call to judge.
+        sidecar = {"signatures": {}, "entries": {}, "call_buffers": {}, "routed": [], "host_only": str(error)}
+        (directory / "dev" / "device_signatures.json").write_text(json.dumps(sidecar, indent=1) + "\n")
+        catalog = ProgramCatalog(
+            target,
+            stage,
+            Path(ref),
+            Path(ref),
+            {"operand_dtype": None, "accum_dtype": None, "numeric_policy": None},
+            sidecar,
+            {},
+        )
+        (directory / "catalog.json").write_text(json.dumps(catalog.record(), indent=1) + "\n")
+        return catalog
     dev = _prepare_model_mlir(
         stage / "model.mlir",
         directory / "dev",
@@ -212,6 +231,35 @@ def evaluate(
         calls={symbol: answer(symbol) for symbol in catalog.interfaces},
     )
     return Evaluation([np.asarray(v) for v in reference], [np.asarray(v) for v in rewritten], calls)
+
+
+def capture_arguments(stage: Path, inputs: Mapping[str, np.ndarray] | None, scratch: Path) -> list[np.ndarray]:
+    """Every ``@forward`` argument of ``stage``, with its model inputs replaced by ``inputs`` (``in0``...).
+
+    Weights, buffers and lifted constants still come from the capture: the call binds a shadow of the
+    capture directory whose files are links to the capture's, except ``inputs.npz``.
+    """
+    from merlin.runtime.dispatch_runtime import resolve_forward_args
+
+    stage = Path(stage)
+    if inputs is None:
+        return resolve_forward_args(stage)
+    shadow = Path(scratch)
+    shadow.mkdir(parents=True, exist_ok=True)
+    for item in stage.iterdir():
+        link = shadow / item.name
+        if item.name == "inputs.npz" or link.exists() or link.is_symlink():
+            continue
+        link.symlink_to(item.resolve())
+    expected = np.load(stage / "inputs.npz")
+    missing = sorted(set(expected.files) - set(inputs))
+    if missing:
+        raise CatalogError(f"inputs for {stage.name} lack {missing}")
+    for key in expected.files:
+        if tuple(np.asarray(inputs[key]).shape) != tuple(expected[key].shape):
+            raise CatalogError(f"input {key}: shape {np.asarray(inputs[key]).shape} != capture {expected[key].shape}")
+    np.savez(shadow / "inputs.npz", **{k: np.asarray(inputs[k]) for k in expected.files})
+    return resolve_forward_args(shadow)
 
 
 # ------------------------------------------------------------------------------------------- census

@@ -1,0 +1,67 @@
+# Evaluation and calibration inputs for `python -m merlin.model_check` (contract:
+# docs/reference/model_check.md §8). Every source is pinned by revision and sha256; every selection is a
+# deterministic rule over that source, so anyone with the same files gets the same inputs.
+# Visible inputs are committed under inputs/<model>/visible/; sealed inputs are produced by the same rules
+# into the private bundle and are committed here only as sha256 (MANIFEST.json).
+schema: merlin.model_check.sources.v1
+target: gemmini
+
+models:
+  resnet50:
+    source:
+      name: imagenette2-320
+      url: https://s3.amazonaws.com/fast-ai-imageclas/imagenette2-320.tgz
+      sha256: 569b4497c98db6dd29f335d1f109cf315fe127053cedf69010d047f0188e158c
+      license: Apache-2.0
+      note: fast.ai ImageNet subset; 10 classes, each an ImageNet-1k synset
+    # ImageNet-1k index of each synset, so top-1 can also be read against the label.
+    classes:
+      n01440764: 0
+      n02102040: 217
+      n02979186: 482
+      n03000684: 491
+      n03028079: 497
+      n03394916: 566
+      n03417042: 569
+      n03425413: 571
+      n03445777: 574
+      n03888257: 701
+    preprocessing: torchvision ResNet50_Weights.IMAGENET1K_V2 (resize 232 bilinear antialias, crop 224, normalize)
+    stored_form: image.npz, 224x224 RGB uint8 after resize+crop; normalization is applied in numpy
+    visible: {split: val, classes: [0, 8], rank: 0}     # classes sorted by synset: indices [0, 8); first image (sorted name)
+    sealed: {split: val, classes: [2, 10], rank: 1}     # classes [2, 10); second image: different items
+    calibration: {split: train, per_class: 26}           # first 26 images per class (sorted name): 260
+
+  tiny_llama:
+    source:
+      name: wikitext-2-raw-v1
+      dataset: Salesforce/wikitext
+      revision: b08601e04326c79dfdd32d625aee71d232d685c3
+      files:
+        test: {path: wikitext-2-raw-v1/test-00000-of-00001.parquet, sha256: 5f1bea067869d04849c0f975a2b29c4ff47d867f484f5010ea5e861eab246d91}
+        validation: {path: wikitext-2-raw-v1/validation-00000-of-00001.parquet, sha256: 204929b7ff9d6184953f867dedb860e40aa69c078fc1e54b3baaa8fb28511c4c}
+        train: {path: wikitext-2-raw-v1/train-00000-of-00001.parquet, sha256: e83889baabc497075506f91975be5fac0d45c5290b6b20582c8cd1e853d0c9f7}
+      license: CC-BY-SA-3.0 / GFDL
+    tokenizer: the TinyLlama checkpoint's own tokenizer, no special tokens
+    segment_tokens: 160                                   # 128 prefill + 32 teacher-forced decode
+    # An article is the text between consecutive top-level " = Title = " headings; its segment is the first
+    # 160 tokens of its body. Articles are taken in file order, skipping those shorter than 160 tokens.
+    visible: {split: test, articles: [0, 8]}
+    sealed: {split: validation, articles: [0, 8]}
+    calibration: {split: train, articles: [0, 128]}
+
+  smolvla:
+    source:
+      name: aloha_sim_insertion_human
+      dataset: lerobot/aloha_sim_insertion_human
+      revision: cc571a3c661df81b566dbfde3d5c1e85fcdf7884
+      license: MIT (LeRobot dataset card)
+      local_root: /work/merlin/tasks/p0-gaps/private-inputs/fullmodel/inputs/aloha_sim_insertion_human
+    policy: {repo_id: lerobot/smolvla_base, revision: c83c3163b8ca9b7e67c509fffd9121e66cb96205}
+    vlm: {repo_id: HuggingFaceTB/SmolVLM2-500M-Video-Instruct, revision: 7b375e1b73b11138ff12fe22c8f2822d8fe03467}
+    preprocessing: LeRobot 0.6 SmolVLA processors (image resize-with-pad 512, state normalization, task tokens)
+    stored_form: frame.npz (raw top-camera uint8 frame, raw state) + observation.json (task, seed); noise from torch.randn with the input's seed
+    judged_joints: [0, 14]                                # ALOHA's 14 joints; dims 14..31 are padding
+    visible: {episodes: [0, 8], frame: 100, noise_seed_base: 1000}
+    sealed: {episodes: [25, 33], frame: 100, noise_seed_base: 2000}
+    calibration: {episodes: [40, 50], frames: [0, 100, 200, 300, 400], noise_seed_base: 3000}

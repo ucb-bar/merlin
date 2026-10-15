@@ -18,6 +18,7 @@ MODELS_SCHEMA = "merlin.model_check.models.v1"
 
 CHAIN_KINDS = {"single", "flow", "causal"}
 JUDGED_KINDS = {"logits", "next_token_distribution", "per_channel"}
+BINDING_SOURCES = ("input", "tokens", "output", "constant")
 
 
 class ModelsFileError(ValueError):
@@ -28,6 +29,8 @@ class ModelsFileError(ValueError):
 class Program:
     name: str
     stage: str | None  # capture sub-stage directory; None when the capture root is the program
+    inputs: tuple[dict[str, Any], ...] = ()  # @forward model inputs in order (see the models file header)
+    steps: int = 1
 
 
 @dataclass(frozen=True)
@@ -99,9 +102,25 @@ def load(path: str | os.PathLike | None = None) -> ModelsFile:
         if chain.get("kind") not in CHAIN_KINDS:
             raise ModelsFileError(f"{where}.chain.kind must be one of {sorted(CHAIN_KINDS)}")
         programs = tuple(
-            Program(name=str(_require(p, "name", f"{where}.programs")), stage=p.get("stage"))
+            Program(
+                name=str(_require(p, "name", f"{where}.programs")),
+                stage=p.get("stage"),
+                inputs=tuple(dict(i) for i in p.get("inputs") or ()),
+                steps=int(p.get("steps", 1)),
+            )
             for p in _require(entry, "programs", where)
         )
+        names_so_far: set[str] = set()
+        for program in programs:
+            for binding in program.inputs:
+                source = binding.get("from")
+                if source not in BINDING_SOURCES:
+                    raise ModelsFileError(
+                        f"{where}.{program.name}: input source {source!r} is not one of {BINDING_SOURCES}"
+                    )
+                if source == "output" and binding.get("program") not in names_so_far | {program.name}:
+                    raise ModelsFileError(f"{where}.{program.name}: binds an output of a later or unknown program")
+            names_so_far.add(program.name)
         if not programs:
             raise ModelsFileError(f"{where}: no programs")
         judged = dict(_require(entry, "judged", where))

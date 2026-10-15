@@ -9,10 +9,15 @@ Build, run and judge complete quantized models for a device submission.
 - `approximations.py` — A submission's declared approximate kernels (``manifest.yaml`` key ``numerics.approximations``).
 - `bundle.py` — A numerics bundle on disk: per model, the program catalogs, the census and every input's device calls.
 - `catalog.py` — Everything about one captured program that does not depend on a submission, computed once.
+- `chain.py` — Run a model's programs as a chain on one input, following the models file's input bindings.
 - `cli.py` — Command line of ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md`` §2).
 - `commands.py` — The subcommands behind ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md``).
+- `input_worker.py` — Model-side input preparation, run INSIDE a model's own pinned environment (``python input_worker.py``).
+- `inputs.py` — Evaluation and calibration inputs: deterministic selection from pinned sources, small stored forms.
 - `kernel_reference.py` — The expected result of one device-kernel call: the group's interface program evaluated in numpy.
+- `metrics.py` — The numerics policy's metrics and the ratio rule (contract §4).
 - `models.py` — The models file: which programs make up each model, how they chain, and what is judged.
+- `reference_worker.py` — The FP reference of each model, run INSIDE the model's own pinned environment (``python reference_worker.py``).
 - `replay.py` — Replay device kernels on frozen boundary inputs: one small image per batch of calls, judged exactly.
 - `report.py` — The ``model_check_report`` document: construction, agent view, validation and exit codes.
 

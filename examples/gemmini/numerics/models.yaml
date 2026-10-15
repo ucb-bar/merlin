@@ -1,6 +1,13 @@
 # Models judged by `python -m merlin.model_check` for this target.
-# Contract: docs/reference/model_check.md. State carried between chain steps comes from each capture's
-# session_contract.yaml; this file only states the chain kind, the programs and what is judged.
+# Contract: docs/reference/model_check.md. Each program lists its @forward model inputs (in0, in1, ...) in
+# order, each taken from:
+#   {from: input, key: K}                         the input's model-ready array K
+#   {from: tokens, slice: prefill|next}            token ids [1, prefill_tokens] / the step's next token [1, 1]
+#   {from: output, program: P, output: i}          output i of program P's last step
+#   {from: constant, value: [...], dtype: D}       a fixed tensor
+# plus `carry: j` -- from the second step on, the program's own output j of the previous step (a state).
+# The bindings restate each capture's session contract (session_contract.yaml); a program with `steps`
+# runs that many times.
 schema: merlin.model_check.models.v1
 target: gemmini
 
@@ -9,7 +16,9 @@ models:
     workload: resnet50_v1_5
     chain: {kind: single}
     programs:
-      - {name: model, stage: null}
+      - name: model
+        stage: null
+        inputs: [{from: input, key: in0}]
     judged:
       kind: logits
       outputs: [{program: model, output: 0}]
@@ -17,29 +26,47 @@ models:
 
   smolvla:
     workload: smolvla
-    chain:
-      kind: flow
-      steps: 10                # checkpoint config num_steps
-      timestep: {start: 1.0, delta: -0.1}
+    chain: {kind: flow, steps: 10}       # checkpoint config num_steps; t = 1.0, dt = -0.1 inside the program
     programs:
-      - {name: prefix_encode, stage: prefix_encode}
-      - {name: flow_denoise, stage: flow_denoise}
-      - {name: action_decode, stage: action_decode}
+      - name: prefix_encode
+        stage: prefix_encode
+        inputs:
+          - {from: input, key: image}
+          - {from: input, key: image_mask}
+          - {from: input, key: language_tokens}
+          - {from: input, key: language_mask}
+          - {from: input, key: state}
+      - name: flow_denoise
+        stage: flow_denoise
+        steps: 10
+        inputs:
+          - {from: output, program: prefix_encode, output: 0}
+          - {from: output, program: prefix_encode, output: 1, carry: 1}
+          - {from: input, key: noise, carry: 0}
+          - {from: constant, value: [1.0], dtype: float32, carry: 2}
+      - name: action_decode
+        stage: action_decode
+        inputs: [{from: output, program: flow_denoise, output: 0}]
     judged:
       kind: per_channel
       outputs: [{program: action_decode, output: 0}]
       channel_axis: -1
-      channels: {first: 0, last: 13}   # ALOHA joints; 14..31 are zero padding
+      channels: {first: 0, last: 13}     # ALOHA joints; 14..31 are zero padding
 
   tiny_llama:
     workload: tiny_llama
-    chain:
-      kind: causal
-      prefill_tokens: 128
-      decode_steps: 32         # teacher-forced on the input's next tokens
+    chain: {kind: causal, prefill_tokens: 128, decode_steps: 32}
     programs:
-      - {name: prefill, stage: prefill}
-      - {name: decode, stage: decode}
+      - name: prefill
+        stage: prefill
+        inputs: [{from: tokens, slice: prefill}]
+      - name: decode
+        stage: decode
+        steps: 32                          # teacher-forced on the input's next tokens
+        inputs:
+          - {from: tokens, slice: next}
+          - {from: output, program: prefill, output: 1, carry: 1}
+          - {from: output, program: prefill, output: 2, carry: 2}
     judged:
       kind: next_token_distribution
       outputs: [{program: prefill, output: 0}, {program: decode, output: 0}]
