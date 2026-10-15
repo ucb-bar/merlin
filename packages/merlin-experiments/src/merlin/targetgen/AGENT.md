@@ -75,3 +75,10 @@ Candidates provide no host arithmetic. Keep complete typed inputs/outputs, actua
 host compiler/object/link custody, whole-ELF accelerator prohibition and every
 frozen numerical tier; missing native execution never passes. This grants no
 candidate accelerator or host-code authorship credit.
+
+`capsule_tier_result` owns the stable tier record serialization; the runner keeps
+its historical class import/pickle identity. `capsule_lane_evidence` judges only
+recorded execution, with the legacy counter map supplied by the runner.
+`capsule_perf_ledger` publishes observations, taking current grader callbacks;
+`native_model_values` decodes only frozen leaf bytes with the caller's error type.
+All four are evaluator implementations and remain masked by common.access.

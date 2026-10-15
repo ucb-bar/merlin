@@ -35,72 +35,23 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from .capsule_lane_evidence import dispatch_boundary_report as dispatch_boundary_report
+from .capsule_lane_evidence import lane_report as _lane_report
+from .capsule_lane_evidence import whole_program_completion_lane_report as whole_program_completion_lane_report
+from .capsule_tier_result import TierResult as TierResult
+
 if TYPE_CHECKING:
     from aet.core.run_paths import RunPaths
 
 from merlin.targetgen.package_runtime import NotMeasuredFailure
 from merlin.targetgen.tier_integrity import CERT_NOT_MEASURED
 
-from . import oracle_policy as _oracle_policy
-from . import partial_console as _partial_console
-from . import tier_policy as _tier_policy
-from .oracle_policy import (  # noqa: F401 — stable public/legacy registry identity
-    _SIM_ORACLES,
-    _bespoke_sim_via,
-    _chipyard_available,
-    _endpoint_of,
-    _ensure_sim_oracles_discovered,
-    _screen_tiers_of,
-    _sim_oracle_lock,
-    _SimOracle,
-    chipyard_l3_selection,
-    describe_l3_engine,
-    register_sim_oracle,
-    sim_oracle_caps,
-)
-from .runner_config import (  # noqa: F401 — shared config and stable legacy identities
-    CONVENTIONAL_RTL_TIERS as _RTL_TIERS,
-)
-from .runner_config import (
-    CONVENTIONAL_TIER_SIM as _TIER_SIM,  # noqa: F401 — stable legacy export
-)
-from .runner_config import (
-    _config_for_target,
-    _default_config,  # noqa: F401 — stable legacy export
-)
-
-# Core owns metadata. This optional evaluator supplies concrete adapters through
-# injection; late lookup preserves existing monkeypatches of _sim_engine_adapters.
-_oracle_policy.bind_sim_oracle_adapters("chipyard", lambda target: _sim_engine_adapters("chipyard", target))
-
-# Most capsules the suite will run SERIALLY to price the tier ladder before fanning out. Small:
-# the loop stops as soon as a capsule prices nothing new, and this only bounds the pathological
-# case where each early capsule is refuted by a different tier.
-_CALIBRATION_CAP = 3
-
-
-def _candidate_exception_diagnostic(exc: Exception, *, stage: str) -> dict:
-    """Keep a bounded, source-free stack when a model run fails before a receipt.
-
-    The public result already exposes the exception class and message. Frame
-    names and line numbers make failures such as RecursionError actionable
-    without copying source lines, arguments, or private artifact paths.
-    """
-    frames = [
-        {"module": Path(frame.f_code.co_filename).name, "function": frame.f_code.co_name, "line": line}
-        for frame, line in _traceback.walk_tb(exc.__traceback__)
-    ]
-    return {
-        "type": type(exc).__name__,
-        "detail": str(exc)[:2000],
-        "stage": stage,
-        "stack_depth": len(frames),
-        "stack": frames if len(frames) <= 20 else frames[:4] + frames[-16:],
-    }
-
 from ..runtime import commandbuffer as _CB
 from ..runtime.backends import base as _backends_mod
 from . import capsule_golden as CG
+from . import oracle_policy as _oracle_policy
+from . import partial_console as _partial_console
+from . import tier_policy as _tier_policy
 from . import trace_check as TCK
 
 # shared, target-agnostic capsule I/O (also re-exported: callers use CR.discover_capsules/load_capsule)
@@ -125,9 +76,66 @@ from .oot_runner import (
     build_package,
     integrity_scan,
     load_package,
-    run_entrypoint,
+)
+from .oot_runner import (
+    run_entrypoint as run_entrypoint,
+)
+from .oracle_policy import (  # noqa: F401 — stable public/legacy registry identity
+    _SIM_ORACLES,
+    _bespoke_sim_via,
+    _chipyard_available,
+    _endpoint_of,
+    _ensure_sim_oracles_discovered,
+    _screen_tiers_of,
+    _sim_oracle_lock,
+    _SimOracle,
+    chipyard_l3_selection,
+    describe_l3_engine,
+    register_sim_oracle,
+    sim_oracle_caps,
 )
 from .rocc import decode as RD
+from .runner_config import (  # noqa: F401 — shared config and stable legacy identities
+    CONVENTIONAL_RTL_TIERS as _RTL_TIERS,
+)
+from .runner_config import (
+    CONVENTIONAL_TIER_SIM as _TIER_SIM,  # noqa: F401 — stable legacy export
+)
+from .runner_config import (
+    _config_for_target,
+    _default_config,  # noqa: F401 — stable legacy export
+)
+
+# Core owns metadata. This optional evaluator supplies concrete adapters through
+# injection; late lookup preserves existing monkeypatches of _sim_engine_adapters.
+
+# Most capsules the suite will run SERIALLY to price the tier ladder before fanning out. Small:
+# the loop stops as soon as a capsule prices nothing new, and this only bounds the pathological
+# case where each early capsule is refuted by a different tier.
+_CALIBRATION_CAP = 3
+
+_oracle_policy.bind_sim_oracle_adapters("chipyard", lambda target: _sim_engine_adapters("chipyard", target))
+
+
+def _candidate_exception_diagnostic(exc: Exception, *, stage: str) -> dict:
+    """Keep a bounded, source-free stack when a model run fails before a receipt.
+
+    The public result already exposes the exception class and message. Frame
+    names and line numbers make failures such as RecursionError actionable
+    without copying source lines, arguments, or private artifact paths.
+    """
+    frames = [
+        {"module": Path(frame.f_code.co_filename).name, "function": frame.f_code.co_name, "line": line}
+        for frame, line in _traceback.walk_tb(exc.__traceback__)
+    ]
+    return {
+        "type": type(exc).__name__,
+        "detail": str(exc)[:2000],
+        "stage": stage,
+        "stack_depth": len(frames),
+        "stack": frames if len(frames) <= 20 else frames[:4] + frames[-16:],
+    }
+
 
 
 def _grade_cpu_step(function, /, *args, **kwargs):
@@ -145,207 +153,8 @@ def _grade_cpu_step(function, /, *args, **kwargs):
 
 CONTRACT_VERSION = "0.1"
 
-
-@dataclasses.dataclass
-class TierResult:
-    tier: str
-    status: str  # pass | fail | skipped | unavailable
-    mandatory: bool
-    reason: str | None = None
-    cache_unavailable: str = ""  # why this tier's certificate could not even be LOOKED UP.
-    # Distinct from a lookup that missed: both used to render as an
-    # absence, which is how a certificate cache that had never once
-    # fired for two of three targets went unnoticed. Rides the
-    # result so a reader sees it without re-deriving anything.
-    cycles: int | None = None
-    derived_from_rtl: bool = False
-    cycle_accurate: bool = False
-    evidence: str | None = None
-    timing: dict | None = None  # {build_s, sim_active_s, oracle_wait_s} — active vs waiting
-    gflops: float | None = None  # perf (SIMT); None -> omitted so systolic output is unchanged
-    pct_fp_peak: float | None = None
-    timing_observations: list | None = None
-    # FINER TIMING THE ORACLE COULD ACTUALLY SEE: a list of
-    # {quantity, value, unit, concurrent, note} entries (per-unit
-    # busy, per-op latency, per-cycle activity). Every functional
-    # run already executes on a real oracle, and discarding what it
-    # timed throws away calibration evidence the run already paid
-    # for. An adapter with NO timing capability emits nothing here
-    # — not the key, not a list of zeros, because "not reported"
-    # and "cost nothing" are different facts. None -> omitted, so
-    # an adapter that carries none is byte-identical to before.
-    counters: dict | None = None  # COUNTS the oracle reported alongside the cycle total — bytes
-    # moved, reuse hits, commits. Deliberately NOT `utilization`:
-    # those are fractions of a cycle window and these are integers
-    # of a different kind, and filing a byte count under a name
-    # that means "fraction of time" is how a number gets read as
-    # something it is not. A model that computes these and an
-    # adapter that drops them are indistinguishable downstream,
-    # which is what happened: the arc oracle has reported movement
-    # and residency counts all along and the adapter returned only
-    # cycles. None -> omitted, so a target reporting none is
-    # byte-identical to before.
-    utilization: dict | None = None  # WHERE THE TIME WENT, as fractions of the oracle's own cycle
-    # window (warp occupancy, per-unit busy, memory conflicts).
-    # Latency says a kernel is slow; this says why, which is the
-    # difference between an actionable result and a number. Shape is
-    # the target's to define; None -> omitted, so a target whose
-    # oracle reports no counters is byte-identical to before.
-    oracle_ceiling: dict | None = None
-    # WHY THIS TIER WAS NOT BOUGHT, when a per-capsule oracle-tier
-    # ceiling declined it: the cap, where it came from (declared /
-    # derived from measured cost / unpriced), the budget that set it,
-    # the `extends` sibling the claim rests on, and the affordability
-    # calculation. A capped tier is ALWAYS recorded -- `skipped` with
-    # this block -- never omitted: a tier with no record is not
-    # evidence, and an absent key is what made two model capsules read
-    # as though they had never been graded.
-    # See merlin.targetgen.tier_policy.oracle_ceiling.
-    not_applicable: bool = False  # tier honestly N/A for this capsule's datatype (e.g. the integer
-    # L0/L1 floor on a float datapath) — a legitimate skip, not a
-    # not_run_is_not_pass violation (unlike an unavailable RTL oracle)
-    budget_deferred: bool = False  # tier APPLIED and was DELIBERATELY NOT PAID FOR: this capsule is
-    # outside the derived covering set and the certify budget is gone.
-    # Never a pass, never a fail — the capsule was screened, not
-    # certified, and it says so by name.
-    fidelity: str | None = None  # WHAT THE ORACLE ACTUALLY WAS, in the oracle's own words:
-    # elaborated_rtl | rtl_derived_model | functional_model. The tier
-    # NAME cannot carry this — one target's L3 is Verilator and
-    # another's is a model — so a reader of the record could not tell
-    # a hardware verdict from a model one.
-
-    concurrency: dict | None = None  # WHAT ELSE THE HOST WAS DOING WHILE THIS WAS MEASURED --
-    # {workers, nproc, load_avg, serial}, stamped at the moment of
-    # measurement. CYCLES are concurrency-invariant (verified:
-    # identical serial and at 16 workers); WALL TIMES are not (the
-    # same query measured 3.7 s serial and 23.4 s at 16 workers, a
-    # 6.3x spread). So every ``timing`` block is only interpretable
-    # next to the concurrency it was taken at, and a block without
-    # one is not comparable with any other. Absent -> the run
-    # predates the stamp; see merlin.perf.observations.
-    # concurrency_of, which marks that rather than assuming it.
-    submission: dict | None = None  # WHICH SUBMISSION these numbers are about, stated rather than
-    # inferred from where the file sits. Cycles are a property of
-    # the submission, not of the capsule: the SAME capsule has
-    # measured 1090 / 3078 / 8889 across three submissions of one
-    # task, an 8.2x spread on identical inputs. A path heuristic
-    # that mis-keys them pools three different programs into one
-    # "latency", so the field is explicit and the heuristic becomes
-    # the fallback it should always have been.
-    timing_capability: dict | None = None
-    # WHAT THE INSTRUMENT COULD AND COULD NOT SEE, beside the
-    # observations it produced: which units went unread, whether
-    # its buckets partition the timeline, its alias accounting, and
-    # everything it refused. An unread signal is UNMEASURED, never
-    # zero, and this is where that distinction is recorded.
-
-    engine: str | None = None  # WHICH SIMULATOR ANSWERED, as a first-class field.
-    # It was recorded nowhere: the only trace of it was the `evidence`
-    # FILENAME (`<engine>_console.log`), so telling a GSIM cert from a
-    # Verilator one meant string-parsing a path, and every consumer
-    # that did not (the verdict, the perf ledger, cert_cost) simply
-    # could not see which engine produced the seconds it was fitting.
-    # A cert tier is a fidelity, not a simulator -- which is exactly
-    # why the simulator has to be written down.
-    engine_selection: dict | None = None
-    # HOW that engine was chosen and what it was chosen OVER, from
-    # `rtl_engine_policy.select`: {engine, fidelity, reason,
-    # passed_over, considered}. Falling back to the slow engine was
-    # SILENT -- the run recorded a cert and not the fact that the fast
-    # one was unavailable, so nobody learned there was anything to fix.
-    sim_provenance: dict | None = None
-    # WHICH BUILD of that simulator: binary digest, and the build
-    # receipt binding it to an RTL revision when one exists. A result
-    # that claims a hardware verdict must record which hardware
-    # revision it came from, and a prebuilt simulator binary is the
-    # one input to that verdict nothing else in the record identifies.
-    console_log: str | None = None  # The sim console FILE (name under the capsule's artifacts dir) and
-    console_bytes: int | None = None  # its size. `evidence` already names it, but only by convention;
-    # a perf-tuning pass reading these records should not have to
-    # reconstruct the filename to find the log it needs.
-
-    carried: dict | None = None  # THIS TIER WAS NOT EXECUTED IN THIS RUN. Present only on a record
-    # whose verdict was CARRIED from an earlier execution of the same
-    # program on the same instrument (merlin.targetgen.tier_cache):
-    # it names the execution identity and instrument digest the
-    # verdict was earned under, when, and by which run. A reused
-    # certificate reported as a fresh measurement is not a saving, it
-    # is a false claim about what this run did -- so the record says
-    # so, and `to_dict` additionally stamps `measured_now: false` on
-    # a carried record and `true` on every executed one, so the
-    # distinction survives into anything that reads only the JSON.
-    toolchain: str | None = None  # WHICH PROGRAM was graded, as reported by the adapter. A block-
-    # scaled MX capsule is graded on the harness's own reference MX
-    # kernel rather than the submission, so a pass there measures the
-    # fixture. Recording it keeps a score decomposable instead of
-    # silently overstating the backend by the size of the MX set.
-
-    def to_dict(self) -> dict:
-        d = {
-            "status": self.status,
-            "mandatory": self.mandatory,
-            "not_run_is_not_pass": True,
-            "reason": self.reason,
-            "cycles": self.cycles,
-            "derived_from_rtl": self.derived_from_rtl,
-            "cycle_accurate": self.cycle_accurate,
-            "evidence": self.evidence,
-            "timing": self.timing,
-        }
-        if self.cache_unavailable:
-            d["cache_unavailable"] = self.cache_unavailable
-        if self.not_applicable:
-            d["not_applicable"] = True
-        if self.budget_deferred:
-            d["budget_deferred"] = True
-        if self.oracle_ceiling:
-            d["oracle_ceiling"] = dict(self.oracle_ceiling)
-        if self.fidelity:
-            d["fidelity"] = self.fidelity
-        # perf fields ride the result ONLY when populated (SIMT) — keeps systolic output byte-identical.
-        if self.gflops is not None:
-            d["gflops"] = self.gflops
-        if self.pct_fp_peak is not None:
-            d["pct_fp_peak"] = self.pct_fp_peak
-        if self.counters:
-            d["counters"] = dict(self.counters)
-        if self.utilization:
-            d["utilization"] = dict(self.utilization)
-        if self.timing_observations:
-            d["timing_observations"] = list(self.timing_observations)
-        if self.timing_capability:
-            d["timing_capability"] = dict(self.timing_capability)
-        # Concurrency and submission ride the record ONLY when they were established. An absent
-        # field is "unrecorded", which is the honest state for every run taken before the stamp
-        # existed; a defaulted one would be a claim.
-        if self.concurrency:
-            d["concurrency"] = dict(self.concurrency)
-        if self.submission:
-            d["submission"] = dict(self.submission)
-        # unchanged. This is what separates "the submission passed" from "the harness fixture passed":
-        # a block-scaled MX capsule is graded on the reference MX kernel, not the submitted backend.
-        if self.toolchain:
-            d["toolchain"] = self.toolchain
-        # SIMULATOR TELEMETRY. Omitted when unset, so a record from an adapter that reports none is
-        # byte-identical to before; present, it is what a perf-tuning pass reads to know which engine
-        # produced these cycles and seconds, which build of it, and where its console went.
-        if self.engine:
-            d["engine"] = self.engine
-        if self.engine_selection:
-            d["engine_selection"] = dict(self.engine_selection)
-        if self.sim_provenance:
-            d["sim_provenance"] = dict(self.sim_provenance)
-        if self.console_log:
-            d["console_log"] = self.console_log
-        if self.console_bytes is not None:
-            d["console_bytes"] = self.console_bytes
-        # WAS THIS MEASURED NOW? Stamped on EVERY record, not only on a carried one: a reader that has
-        # to infer "measured" from the ABSENCE of a key cannot tell a fresh record from one written by
-        # a version that did not know about carrying. Both states are asserted.
-        d["measured_now"] = self.carried is None
-        if self.carried:
-            d["carried"] = dict(self.carried)
-        return d
+# Preserve historical pickle/import identity.
+TierResult.__module__ = __name__
 
 
 def concurrency_stamp(workers: int | None = None) -> dict:
@@ -374,7 +183,7 @@ def concurrency_stamp(workers: int | None = None) -> dict:
     }
 
 
-def _graded_program(res: Any, package_dir: "str | Path") -> "str | None":
+def _graded_program(res: Any, package_dir: str | Path) -> str | None:
     """WHICH PROGRAM produced this tier's cycle count, or ``None`` when it cannot be established.
 
     Only an adapter that BUILT AND RAN AN ELF from the package under grade may claim the submission,
@@ -394,7 +203,7 @@ def _graded_program(res: Any, package_dir: "str | Path") -> "str | None":
     return str(pkg.resolve()) if pkg.exists() else str(pkg)
 
 
-def submission_identity(package_dir: "str | Path", *, run_id: str | None = None) -> dict:
+def submission_identity(package_dir: str | Path, *, run_id: str | None = None) -> dict:
     """WHICH SUBMISSION a measurement belongs to, stated explicitly.
 
     The harvest layer has had to infer this from where a file sits (the parent of the nearest
@@ -536,7 +345,7 @@ def _did_not_halt_reason(msg: str) -> str:
     return f"did not halt (ran to the cycle cap): {msg[-240:]}"
 
 
-def _did_not_halt_failure(msg: str) -> "CertFailure":
+def _did_not_halt_failure(msg: str) -> CertFailure:
     """The agent-facing failure for a program that ran to the cap without halting — one construction
     shared by every endpoint, so the verdict reads identically however the endpoint reported it."""
     return CertFailure(
@@ -1032,7 +841,7 @@ def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target
 def record_tier_certificate(
     capsule_name: str,
     tier: str,
-    result: "TierResult",
+    result: TierResult,
     *,
     target,
     generated,
@@ -1226,7 +1035,7 @@ def oracle_adapters(target: str, sim_via: str | None = None, *, readback_policy=
         # its own try/except (OracleUnavailable) so an absent runner reads back as ``unavailable``, never
         # fabricated; the REQUIRED/gold tier stays the cosim (L3) — the functional tier is ADDITIVE.
         plan = _oracle_policy.program_tier_plan(target, model_ext)
-        from .program_oracle import program_functional_adapter, program_oracle_adapter, program_verilator_adapter
+        from .program_oracle import program_oracle_adapter, program_verilator_adapter
 
         # A tier index is a FIDELITY, not a simulator: L2 is the model tier, L3 is elaborated RTL. The
         # arc cosim is a model compiled FROM the RTL (`rtl_derived_model`, `derived_from_rtl: False`), so
@@ -1762,6 +1571,17 @@ _LANE_COUNTERS: dict[str, tuple[str, str]] = {
 }
 
 
+def lane_report(
+    capsule: dict, routing_plan: dict | None, mesh_execution: dict | None = None,
+    host_execution: dict | None = None, lane_execution: dict | None = None,
+) -> dict | None:
+    """Retain the original counter-map override at the runner boundary."""
+    return _lane_report(
+        capsule, routing_plan, mesh_execution, host_execution, lane_execution, lane_counters=_LANE_COUNTERS,
+    )
+
+
+
 def forbids_accelerator(capsule: dict) -> bool:
     """Does this capsule declare that work must NOT reach the accelerator?"""
     return _ACCELERATOR_LANE in [str(x) for x in ((capsule.get("lanes") or {}).get("forbid") or ())]
@@ -1793,255 +1613,10 @@ def accelerator_lane_violated(capsule: dict, trace) -> bool:
 #: never pass, reported to the submission as a malformed report it did not produce.
 from .elf_lanes import (  # noqa: E402 -- historical public identities
     EXECUTED_LANE_EVIDENCE,
-    WHOLE_PROGRAM_COMPLETION_EVIDENCE,
 )
-
-
-def whole_program_completion_lane_report(
-    capsule: dict,
-    command_buffer: dict,
-    *,
-    global_plan_proof: dict,
-    numeric: dict,
-    tiers: dict,
-    decoded_trace: dict | None,
-) -> dict | None:
-    """Credit compulsory mixed-program tasks only after the complete ELF actually passes.
-
-    A compiler plan alone remains intent and earns nothing.  This evidence rung requires all three
-    independent pieces: the host's source/ABI/CFG verifier proved every task occurs on every returning
-    path; a mandatory oracle observed that complete kernel return with the exact semantic output; and
-    the decoded artifact contains accelerator work before an ``on_mesh`` task is credited.  The task
-    list is bound into ``global_plan_proof.plan_digest``, so this function never accepts an unverified
-    free-standing lane claim.
-    """
-    lanes = capsule.get("lanes") or {}
-    required = [str(x) for x in (lanes.get("require") or [])]
-    forbidden = [str(x) for x in (lanes.get("forbid") or [])]
-    if not required and not forbidden:
-        return None
-    if (
-        (command_buffer.get("kernel_abi") or {}).get("kind") != "whole_program"
-        or numeric.get("status") != "pass"
-        or global_plan_proof.get("status") != "verified"
-        or (global_plan_proof.get("control_flow") or {}).get("status") != "verified"
-    ):
-        return None
-
-    def _tier_passed(value) -> bool:
-        status = value.get("status") if isinstance(value, dict) else getattr(value, "status", None)
-        mandatory = value.get("mandatory") if isinstance(value, dict) else getattr(value, "mandatory", False)
-        return bool(mandatory and status == "pass")
-
-    if not any(_tier_passed(value) for value in tiers.values()):
-        return None
-    tasks = ((command_buffer.get("params") or {}).get("global_program_plan") or {}).get("tasks") or []
-    emitted = global_plan_proof.get("emitted_operations_by_task") or {}
-    if not isinstance(tasks, list) or not tasks or any(not isinstance(row, dict) for row in tasks):
-        return None
-    completed: list[int] = []
-    lane_counts: dict[str, int] = {}
-    for row in tasks:
-        ident, kind = row.get("task_index"), row.get("kind")
-        count = emitted.get(ident, emitted.get(str(ident), 0))
-        if (
-            isinstance(ident, bool)
-            or not isinstance(ident, int)
-            or isinstance(count, bool)
-            or not isinstance(count, int)
-            or count <= 0
-            or kind not in ("contraction", "host")
-        ):
-            return None
-        completed.append(ident)
-        lane = _ACCELERATOR_LANE if kind == "contraction" else "scalar_rvv_lane"
-        lane_counts[lane] = lane_counts.get(lane, 0) + 1
-
-    # A claimed contraction task is not enough: the actual lowered artifact must carry accelerator
-    # work. Absence is unmeasured because the decoder does not recognize every possible spelling.
-    if lane_counts.get(_ACCELERATOR_LANE):
-        try:
-            if decoded_trace is None or not TCK.drives_accelerator(decoded_trace):
-                lane_counts.pop(_ACCELERATOR_LANE, None)
-        except Exception:  # noqa: BLE001 -- decoder uncertainty earns no credit
-            lane_counts.pop(_ACCELERATOR_LANE, None)
-
-    observed = sorted(lane for lane in {*required, *forbidden} if lane_counts.get(lane, 0) > 0)
-    known_task_lanes = {_ACCELERATOR_LANE, "scalar_rvv_lane"}
-    evidence = {
-        lane: (
-            WHOLE_PROGRAM_COMPLETION_EVIDENCE
-            if lane in observed or (lane in forbidden and lane in known_task_lanes)
-            else "unmeasured"
-        )
-        for lane in (*required, *forbidden)
-    }
-    report = {
-        "required": required,
-        "observed": observed,
-        "unexercised": [lane for lane in required if lane not in observed],
-        "evidence": evidence,
-        "completed_tasks": completed,
-        "task_lane_counts": dict(sorted(lane_counts.items())),
-        "global_plan_proof": {
-            key: global_plan_proof.get(key)
-            for key in ("schema", "source_sha256", "plan_digest", "candidate_lowered_sha256")
-            if global_plan_proof.get(key) is not None
-        },
-        "judged_by": WHOLE_PROGRAM_COMPLETION_EVIDENCE,
-        "host_contractions_ran": None,
-    }
-    if forbidden:
-        report["forbidden"] = forbidden
-        report["violated"] = [lane for lane in forbidden if lane in observed]
-        unmeasured = [lane for lane in forbidden if evidence[lane] == "unmeasured"]
-        if unmeasured:
-            report["unmeasured_forbidden"] = unmeasured
-    # A caller-supplied report tells the finalizer that this path OWNS the verdict. Hand it over only
-    # when this rung judged every declaration; a partial report would suppress the finalizer's
-    # LANE_CONTRACT_NOT_EVALUATED refusal.
-    if report["unexercised"] or report.get("unmeasured_forbidden"):
-        return None
-    return report
-
-
-def lane_report(
-    capsule: dict,
-    routing_plan: dict | None,
-    mesh_execution: dict | None = None,
-    host_execution: dict | None = None,
-    lane_execution: dict | None = None,
-) -> dict | None:
-    """Verify an INTEROP capsule's declared lanes against what the compiler actually DID.
-
-    Returns ``None`` when the capsule declares neither ``lanes.require`` nor ``lanes.forbid``.
-
-    THE EVIDENCE LADDER, strongest first. Each lane is judged on the best evidence available FOR THAT
-    LANE, and the rung it was judged on is reported per lane -- a single label for the whole report had
-    to lie about at least one of them.
-
-    1. ``dispatch_ledger`` -- the ordered, runner-owned record of COMPLETED calls, each naming its lane.
-       This is the only evidence that can prove a negative: if the ledger exists, a lane it does not
-       name carried nothing, full stop. It is also the only rung with an open vocabulary, because the
-       lane names come from the runtime's own entries rather than from anything written here.
-    2. aggregate per-lane counters -- ``lane_execution`` (supplied by whoever ran the model, and able to
-       name lanes this module has never heard of) then :data:`_LANE_COUNTERS` over the two legacy
-       records. Real execution, but a total rather than a sequence.
-    3. the routing plan -- INTENT ONLY. ``plan["on_mesh"]`` lists the ops the router ASSIGNED to the
-       mesh; whether they ran there is a different fact. Measured on one submission: 15 matmuls assigned
-       to the mesh, 15 host fallbacks at run time. A plan can satisfy a *required* lane only with the
-       caveat recorded, and can never satisfy a *forbidden* one.
-
-    Two shapes this must not fall into, both of which produced a hollow pass on the first capsule to use
-    it:
-
-    * **Not every key of the plan is a lane.** The plan also carries ``n_mesh_ops``, ``n_scalar_ops``,
-      ``mesh_matmul_extents`` and ``note``; scanning it for truthy keys reported those as lanes that
-      "carried work". A lane entry is a MAPPING of op -> count, so only dict-valued keys are lanes.
-    * **A FORBIDDEN LANE IS JUDGED ONLY ON EXECUTION.** "The router planned no work here" is not "the
-      compiler put no work here", and a negative assertion is exactly where plan-only evidence is most
-      dangerous: absence of a plan entry is the DEFAULT state, so believing it would make the assertion
-      vacuously true for free. A forbidden lane with no execution evidence is neither violated nor
-      satisfied -- it is unmeasured, and reported as such.
-
-    ``in_contract_vector_scalar`` is the lane this ladder is built for. The dispatch runtime has one
-    device branch and executes those ops on the host ``.so``, so no rung above the plan can speak for it
-    yet, and it stays plan-evidenced rather than being quietly promoted alongside the lanes that can be
-    measured. When the runtime learns to name it in the ledger, it acquires evidence with no edit here.
-    """
-    _lanes_decl = capsule.get("lanes") or {}
-    req = [str(x) for x in (_lanes_decl.get("require") or [])]
-    forbid = [str(x) for x in (_lanes_decl.get("forbid") or [])]
-    both = sorted(set(req) & set(forbid))
-    if both:
-        raise ValueError(
-            f"capsule lanes {both} are both required and forbidden; one of the two assertions can never hold"
-        )
-    if not req and not forbid:
-        return None
-    plan = routing_plan or {}
-    planned = {k for k, v in plan.items() if isinstance(v, dict) and v}
-    me = mesh_execution or {}
-    he = host_execution or {}
-
-    def _measured(value) -> int | None:
-        """A real count, or None for 'nobody could tell'. ``UNKNOWN`` is a sentinel, not a number."""
-        if value is None or isinstance(value, str):
-            return None
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
-
-    # rung 1 -- completed calls, by lane
-    ledger = me.get("dispatch_ledger")
-    has_ledger = isinstance(ledger, list)
-    ledger_counts: dict[str, int] = {}
-    if has_ledger:
-        for e in ledger:
-            if isinstance(e, dict) and e.get("status") == "pass" and e.get("lane"):
-                ln = str(e["lane"])
-                ledger_counts[ln] = ledger_counts.get(ln, 0) + 1
-    # The ledger speaks for the lanes it names AND for the lanes the runtime is known to log; reading a
-    # silent zero for any OTHER lane would assert a negative the ledger never measured.
-    ledger_scope = (set(ledger_counts) | set(_LANE_COUNTERS)) if has_ledger else set()
-
-    # rung 2 -- aggregate counters, caller-supplied first
-    _records = {"mesh": me, "host": he}
-    agg = {lane: _measured(_records.get(rec, {}).get(key)) for lane, (rec, key) in _LANE_COUNTERS.items()}
-    for lane, value in (lane_execution or {}).items():
-        agg[str(lane)] = _measured(value)
-
-    # A PLAN NEVER CREDITS A LANE. Only the executed rungs can put a lane in `carried`: an assignment is
-    # not a completed call, and a lane the plan merely names must not be able to authorize itself. What
-    # the plan still buys is the distinction between "measured, and nothing ran" and "nobody measured" --
-    # both leave the lane unexercised, but only the second is reported in `plan_only_lanes`, which the
-    # grader turns into `incomplete` rather than `fail`.
-    evidence: dict[str, str] = {}
-    carried: set[str] = set()
-    for ln in sorted({*req, *forbid}):
-        if ln in ledger_scope:
-            evidence[ln], n = "dynamic_dispatch_ledger", ledger_counts.get(ln, 0)
-        elif agg.get(ln) is not None:
-            evidence[ln], n = "execution", int(agg[ln])
-        else:
-            evidence[ln], n = "routing_plan", 0
-        if n > 0:
-            carried.add(ln)
-
-    unexercised = [ln for ln in req if ln not in carried]
-    violated = [ln for ln in forbid if evidence.get(ln) in EXECUTED_LANE_EVIDENCE and ln in carried]
-    unmeasured_forbid = [ln for ln in forbid if evidence.get(ln) not in EXECUTED_LANE_EVIDENCE]
-    out = {
-        "required": req,
-        "observed": sorted(carried),
-        "unexercised": unexercised,
-        # The lanes this report is ABOUT. `carried` is only ever filled from the declared set above,
-        # so `observed` is silent about a lane the capsule never named -- it is not a claim that no
-        # such lane ran. The grader cross-checks this report against the dispatch ledger, which sees
-        # every lane; without the scope stated here it compared a declared-only set to a ledger-wide
-        # one and any capsule that dispatched on more lanes than it declared could never agree.
-        "scope": sorted({*req, *forbid}),
-        "evidence": {ln: evidence[ln] for ln in (*req, *forbid)},
-        # Contractions apart from kernels: the host lane is mostly norms and activations, so a bare
-        # kernel count is satisfied by any model at all. Reported rather than gated -- a capsule may
-        # legitimately put only elementwise work on the host.
-        "host_contractions_ran": _measured(he.get("contractions_ran")),
-    }
-    if forbid:
-        out["forbidden"] = forbid
-        out["violated"] = violated
-        if unmeasured_forbid:
-            out["unmeasured_forbidden"] = unmeasured_forbid
-    plan_only = [ln for ln in req if evidence[ln] == "routing_plan"]
-    if plan_only:
-        out["caveat"] = (
-            f"no execution accounting was recorded for {plan_only}, so those lanes report "
-            f"what the router PLANNED, not what ran; a lane can appear here and still have "
-            f"executed nothing"
-        )
-        out["plan_only_lanes"] = plan_only
-    return out
+from .elf_lanes import (  # noqa: E402 -- historical public identity
+    WHOLE_PROGRAM_COMPLETION_EVIDENCE as WHOLE_PROGRAM_COMPLETION_EVIDENCE,
+)
 
 
 def _tier_field(record, key, default=None):
@@ -2082,7 +1657,7 @@ def carried_verdict_is_attributed(record, execution_identity) -> bool:
     return str(earned) == str(execution_identity)
 
 
-def graded_execution_identity(*, target, generated, shas) -> "str | None":
+def graded_execution_identity(*, target, generated, shas) -> str | None:
     """The content identity of what this run would execute, or ``None`` when it cannot be formed.
 
     The same function the certificate cache keys on, called on the bytes present NOW, so comparing it
@@ -2222,44 +1797,6 @@ def credit_executed_required_lanes(report: dict | None, capsule: dict, lane_exec
             out.pop("caveat", None)
     out["execution_evidence"] = provenance
     return out
-
-
-def dispatch_boundary_report(mesh_execution: dict | None) -> dict:
-    """Classify the *executed* host/accelerator sequence from the runtime ledger."""
-    from . import boundary as _bd
-    from .elf_lanes import native_host_execution
-
-    ledger = (mesh_execution or {}).get("dispatch_ledger")
-    if not isinstance(ledger, list):
-        return {
-            "status": "missing",
-            "boundary": _bd.UNKNOWN,
-            "contains": [],
-            "detail": "runner-owned dynamic dispatch ledger is missing",
-        }
-    sequence: list[str] = []
-    unresolved = 0
-    for entry in ledger:
-        lane = entry.get("lane") if isinstance(entry, dict) else None
-        if lane == "on_mesh":
-            sequence.append(_bd.ACCEL)
-        elif lane in ("scalar_rvv_lane", "host_fallback", "mesh_unavailable") or native_host_execution(entry):
-            sequence.append(_bd.HOST)
-        else:
-            unresolved += 1
-    segs = _bd.segments(sequence)
-    return {
-        "status": "pass" if sequence and not unresolved else "fail",
-        "boundary": _bd.classify_sequence(sequence),
-        "contains": sorted(_bd.patterns_in_sequence(sequence)),
-        "n_dynamic_calls": len(ledger),
-        "n_accel_calls": sum(x == _bd.ACCEL for x in sequence),
-        "n_host_calls": sum(x == _bd.HOST for x in sequence),
-        "n_unresolved": unresolved,
-        "accel_segments": sum(k == _bd.ACCEL for k, _ in segs),
-        "host_segments": sum(k == _bd.HOST for k, _ in segs),
-        "detail": "derived only from completed calls in the runner-owned dispatch ledger",
-    }
 
 
 def _absent_outputs(nrep: dict) -> list[str]:
@@ -2474,7 +2011,7 @@ def rtl_tiers_of(target: str | None) -> frozenset[str]:
     return _rtl_tiers_of(target)
 
 
-def model_citable_rtl_tier(declared: "list[str] | tuple[str, ...]", target: str | None) -> str | None:
+def model_citable_rtl_tier(declared: list[str] | tuple[str, ...], target: str | None) -> str | None:
     """The ONE tier a whole-model capsule can be CITED at on ``target``, or ``None`` if there is none.
 
     A model capsule never enters the tier ladder: :func:`_model_tier_map` synthesises its tier block
@@ -2572,7 +2109,7 @@ def _model_tier_map(
     tile_exec: dict | None = None,
     *,
     measurement: dict | None = None,
-) -> "dict[str, TierResult]":
+) -> dict[str, TierResult]:
     """The tier block for a WHOLE-MODEL capsule, derived from the model's OWN layer accounting.
 
     A model capsule used to carry no tier block at all on most paths -- the derivation ran only when
@@ -3017,7 +2554,7 @@ def _grade_owned_model_capsule_inline(
     enforced the candidate-only source, native and mandatory-tier checks.
     """
     from .capsule_grade import enforce_model_execution_check
-    from .native_model_execution import _digest, execute_candidate_model, independent_frozen_source_eligibility
+    from .native_model_execution import _digest, independent_frozen_source_eligibility
 
     attrs = (capsule.get("operation") or {}).get("attributes") or {}
     result: dict = {
@@ -3075,7 +2612,9 @@ def _grade_owned_model_capsule_inline(
         from .owned_host_model_execution import execute_owned_host_model
         result["owned_host_source"] = {
             "capsule_declaration": _digest(Path(capsule["__dir__"]) / "capsule.yaml"),
-            "source_interface": _digest(Path(capsule["__dir__"]) / capsule.get("interface_mlir", "capsule.interface.mlir")),
+            "source_interface": _digest(
+                Path(capsule["__dir__"]) / capsule.get("interface_mlir", "capsule.interface.mlir")
+            ),
         }
 
         stage = "prepare_runtime_bundle"
@@ -3129,7 +2668,7 @@ def _grade_public_program_capsule_inline(
     enforced the candidate-only source, native and mandatory-tier checks.
     """
     from .capsule_grade import enforce_model_execution_check
-    from .native_model_execution import _digest, execute_candidate_model, independent_frozen_source_eligibility
+    from .native_model_execution import _digest, independent_frozen_source_eligibility
 
     attrs = (capsule.get("operation") or {}).get("attributes") or {}
     result: dict = {
@@ -3578,8 +3117,11 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int, artifact_root: Path | 
         loader_profile = None
         if profile_name is not None or profile_sha is not None:
             loader_profile = _model_asset(root, profile_name, "selected loader profile")
-            if (loader_profile != loader.with_name("profile.json")
-                    or not isinstance(profile_sha, str) or hashlib.sha256(loader_profile.read_bytes()).hexdigest() != profile_sha):
+            if (
+                loader_profile != loader.with_name("profile.json")
+                or not isinstance(profile_sha, str)
+                or hashlib.sha256(loader_profile.read_bytes()).hexdigest() != profile_sha
+            ):
                 raise ValueError("selected loader profile differs from its immutable capsule binding")
         elif loader.with_name("profile.json").exists():
             raise ValueError("adjacent loader profile has no immutable capsule binding")
@@ -4488,7 +4030,9 @@ def _grade_model_capsule_inline(
                     engine,
                     run_where,
                     _v,
-                    "nothing was compared ON THE ACCELERATOR: no declared tier ran, so the host-side number is not a verdict about this backend. A comparison that did not happen is not a passing comparison.",
+                    "nothing was compared ON THE ACCELERATOR: no declared tier ran, so the host-side number "
+                    "is not a verdict about this backend. A comparison that did not happen is not a "
+                    "passing comparison.",
                 ),
                 failure={
                     "plane": "model",
@@ -4642,7 +4186,9 @@ def _grade_model_capsule_inline(
                 engine,
                 run_where,
                 _v,
-                "nothing was compared ON THE ACCELERATOR: no declared tier ran, so the host-side number is not a verdict about this backend. A comparison that did not happen is not a passing comparison.",
+                "nothing was compared ON THE ACCELERATOR: no declared tier ran, so the host-side number "
+                    "is not a verdict about this backend. A comparison that did not happen is not a "
+                    "passing comparison.",
             ),
             failure={
                 "plane": "model",
@@ -4930,7 +4476,10 @@ def _finalize_capsule_result(
             failure = failure or {
                 "plane": "not_gradeable_no_oracle",
                 "category": "NOT_GRADEABLE_NO_ORACLE",
-                "detail": f"--no-oracle built no linked program, so the prohibited-role scan did not run: {_isa.get('detail')}",
+                "detail": (
+                    "--no-oracle built no linked program, so the prohibited-role scan did not run: "
+                    f"{_isa.get('detail')}"
+                ),
             }
         else:
             status, failure = apply_prohibited_instruction_rule(status, failure, _isa)
@@ -5184,7 +4733,7 @@ def run_capsule(
             json.dumps(
                 {
                     "capsule": name,
-                    "started_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+                    "started_at": _dt.datetime.now(_dt.UTC).isoformat(),
                     "model_budget_s": _budget,
                     "step_timeout_s": timeout,
                     "note": "whole-model capsule; absent capsule_result.json means it is still running or was killed",
@@ -5861,7 +5410,7 @@ def run_capsule(
         # record, and the FIRST failure is raised once the loop completes. Costs the later tiers on a
         # failing capsule, which is the price of being able to say what every tier thought.
         _complete_ladder = _full_ladder_enabled()
-        _first_cert_failure: "CertFailure | None" = None
+        _first_cert_failure: CertFailure | None = None
         # THE EXECUTABLE THIS LADDER MEASURES MUST BE THIS RUN'S. See the note above
         # `_clear_stale_executable`: a reused run directory holds the previous grade's ELF, and every
         # consumer that content-addresses "the program this capsule ran" would answer with it.
@@ -6643,7 +6192,7 @@ def _write_run_manifest(
         "target": target,
         "benchmark": name,
         "status": status,
-        "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "created_at": _dt.datetime.now(_dt.UTC).isoformat(),
         "codegen_backend": "oot_package",
         "metadata": {
             "kind": capsule.get("kind"),
