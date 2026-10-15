@@ -19,7 +19,7 @@ Judged:
 
 from __future__ import annotations
 
-import json
+import os
 import time
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -249,11 +249,34 @@ def _outputs_rows(model: Model, run: CH.ChainRun, ref: CH.ChainRun, specs) -> di
     return out
 
 
+def default_jobs(inputs: int) -> int:
+    """Inputs run concurrently when ``--jobs`` is not given: one per input, up to half the CPUs (a Spike run
+    and a relink are single-threaded; the other half is left to the machine)."""
+    return max(1, min(inputs, (os.cpu_count() or 2) // 2))
+
+
+def _kernels(bundle: B.Bundle, model: str, program: str, build: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The program's device kernels (the bundle's grouping, which the build routed) with their identities."""
+    from merlin.model_check.commands import _kernel_identity
+
+    catalog = bundle.catalog(model, program)
+    status = "linked" if build.get("device_routed") else "host"
+    return [{"symbol": symbol, **_kernel_identity(catalog, symbol), "status": status} for symbol in catalog.interfaces]
+
+
 def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=print) -> dict:
-    """Fill ``report`` with the full-mode judgement of ``args.model`` on ``args.split``."""
+    """Fill ``report`` with the full-mode judgement of ``args.model`` on ``args.split``.
+
+    ``args.timeout_s`` bounds the whole check (builds, references and every Spike run); a step that would
+    start past it is not run and the report says so. ``admission`` replaces model_check's structural
+    linked-image admission (:mod:`merlin.model_check.admission`) with the caller's."""
     from merlin.common.paths import build_dir
     from merlin.llvmlower.c_runtime import _out_specs
+    from merlin.model_check.commands import _program_census
 
+    started_check = time.monotonic()
+    budget = float(args.timeout_s)
+    deadline = started_check + budget - min(120.0, 0.05 * budget)  # leave time to judge and write the report
     model = models.model(args.model)
     if getattr(args, "differential", False):
         raise ModelsFileError("check --differential (an offload-disabled twin build) is not wired in this version")
@@ -290,48 +313,63 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
     report["gates"]["build"] = {"status": "pass", "detail": f"{len(builds)} program image(s) linked"}
 
     def one(input_id: str) -> dict[str, Any]:
-        arrays = _arrays(derived_input(bundle, model.name, input_id))
-        started = time.monotonic()
-        ref = reference_chain(model, bundle, arrays, counts, work / "references" / input_id)
-        reference_seconds = time.monotonic() - started
-        started = time.monotonic()
-        run, rows = run_input(
-            model,
-            target=models.target,
-            builds=builds,
-            stages=stages,
-            specs=specs,
-            arrays=arrays,
-            counts=counts,
-            work=work / "runs" / input_id,
-            timeout_s=args.timeout_s,
-            log=log,
-        )
-        chain_seconds = time.monotonic() - started
-        fp = _ordered(bundle.root / model.name / input_id / "fp.npz")
-        frozen = _ordered(bundle.root / model.name / input_id / "int8.npz")
-        ours, base = judged_metrics(model, run, fp), judged_metrics(model, ref, fp)
-        recomputed = CH.judged_outputs(model, ref)
-        consistent = all(np.array_equal(a, b) for a, b in zip(recomputed, frozen, strict=False))
-        return {
-            "input": input_id,
-            "rows": rows,
-            "outputs": _outputs_rows(model, run, ref, specs),
-            "metrics": ours,
-            "reference": base,
-            "gate": model_gate(model.judged["kind"], ours, base),
-            "reference_consistent": consistent,
-            "reference_seconds": round(reference_seconds, 1),
-            "chain_seconds": round(chain_seconds, 1),
-        }
+        result: dict[str, Any] = {"input": input_id, "rows": []}
+        try:
+            arrays = _arrays(derived_input(bundle, model.name, input_id))
+            started = time.monotonic()
+            ref = reference_chain(model, bundle, arrays, counts, work / "references" / input_id)
+            result["reference_seconds"] = round(time.monotonic() - started, 1)
+            started = time.monotonic()
+            run = run_input(
+                model,
+                target=models.target,
+                builds=builds,
+                stages=stages,
+                specs=specs,
+                arrays=arrays,
+                counts=counts,
+                work=work / "runs" / input_id,
+                deadline=deadline,
+                rows=result["rows"],
+                log=log,
+            )
+            result["chain_seconds"] = round(time.monotonic() - started, 1)
+            fp = _ordered(bundle.root / model.name / input_id / "fp.npz")
+            frozen = _ordered(bundle.root / model.name / input_id / "int8.npz")
+            ours, base = judged_metrics(model, run, fp), judged_metrics(model, ref, fp)
+            recomputed = CH.judged_outputs(model, ref)
+            result.update(
+                outputs=_outputs_rows(model, run, ref, specs),
+                metrics=ours,
+                reference=base,
+                gate=model_gate(model.judged["kind"], ours, base),
+                reference_consistent=all(np.array_equal(a, b) for a, b in zip(recomputed, frozen, strict=False)),
+            )
+        except Exception as error:  # noqa: BLE001 -- one input's failure is reported, the others still judged
+            result["error"] = f"{type(error).__name__}: {error}"[:2000]
+            log(f"[full] {model.name} {input_id}: {result['error']}")
+        return result
 
-    with ThreadPoolExecutor(max_workers=max(1, int(args.jobs or 1))) as pool:
+    jobs = int(args.jobs) if getattr(args, "jobs", None) else default_jobs(len(inputs))
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
         results = list(pool.map(one, inputs))
+    timing["jobs"] = jobs
 
     exact_rows = integer_bad = float_exact = float_total = 0
     per_input = []
     for result in results:
-        split = result["input"].split("/")[0]
+        split = result["input"].partition("/")[0]
+        if "error" in result:
+            report["failures"].append(
+                {
+                    "kind": "infrastructure",
+                    "gate": None,
+                    "input": result["input"],
+                    "split": split,
+                    "detail": result["error"],
+                }
+            )
+            continue
         for row in result["rows"]:
             outputs = result["outputs"][(row["program"], row["step"])]
             row["outputs"] = outputs
@@ -357,8 +395,8 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
                     float_exact += int(out["exact"])
         per_input.append(
             {
-                "input": result["input"],
                 "split": split,
+                "id": result["input"],
                 **{k: v for k, v in result["metrics"].items() if k != "per_channel"},
                 **({"per_channel": result["metrics"]["per_channel"]} if "per_channel" in result["metrics"] else {}),
                 "reference": result["reference"],
@@ -378,12 +416,21 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
                     "detail": f"fails {failed}",
                 }
             )
+        if not result["reference_consistent"]:
+            report["failures"].append(
+                {
+                    "kind": "infrastructure",
+                    "gate": None,
+                    "input": result["input"],
+                    "split": split,
+                    "detail": "the recomputed INT8 reference chain differs from the bundle's",
+                }
+            )
         timing["reference_seconds"] += result["reference_seconds"]
         timing["chain_seconds"][result["input"]] = result["chain_seconds"]
 
     for program in model.programs:
         build = builds[program.name]
-        census = bundle.program_dir(model.name, program.name) / "census.json"
         report["programs"].append(
             {
                 "program": program.name,
@@ -392,52 +439,35 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
                     for k in ("status", "elf_sha256", "elf_bytes", "sections", "build_hash", "seconds", "reused")
                 }
                 | {"dedup_weights": build["dedup_weights"], "device_routed": build["device_routed"]},
-                "census": {k: v for k, v in json.loads(census.read_text()).items() if k != "contractions"}
-                if census.is_file()
-                else None,
-                "kernels": [],
+                "census": _program_census(bundle, model.name, program.name, {}),
+                "kernels": _kernels(bundle, model.name, program.name, build),
                 "runs": [
-                    {"input": r["input"], "split": r["input"].split("/")[0], **row}
+                    {"input": r["input"], "split": r["input"].partition("/")[0], **row}
                     for r in results
                     for row in r["rows"]
                     if row["program"] == program.name
                 ],
             }
         )
+    judged = len(per_input) == len(results)
     report["gates"]["step_outputs"] = {
-        "status": "pass" if integer_bad == 0 else "fail",
+        "status": "pass" if integer_bad == 0 and judged else "fail",
         "partial": partial,
         "detail": f"{exact_rows - integer_bad}/{exact_rows} integer step outputs bit-exact vs the INT8 reference "
         f"chain; {float_exact}/{float_total} float step outputs bit-exact (the judged ones are held to FP by "
-        "model_numerics, the others have no FP reference)",
+        f"model_numerics, the others have no FP reference); {len(per_input)}/{len(results)} input(s) completed",
     }
     report["gates"]["model_numerics"] = {
-        "status": "pass" if all(row["pass"] for row in per_input) else "fail",
+        "status": "pass" if judged and all(row["pass"] for row in per_input) else "fail",
         "partial": partial,
-        "detail": f"contract §4.4 ({model.judged['kind']}) on {len(per_input)} input(s)"
+        "detail": f"contract §4.4 ({model.judged['kind']}) on {len(per_input)}/{len(results)} input(s)"
         + (f", first {counts} steps only" if partial else ""),
     }
-    report["model_metrics"] = {"per_input": per_input, "worst": _worst(model.judged["kind"], per_input)}
-    if not all(row["reference_consistent"] for row in per_input):
-        report["failures"].append(
-            {"kind": "infrastructure", "gate": None, "detail": "the INT8 reference chain differs from the bundle's"}
-        )
+    report["model_metrics"] = {
+        "source": "measured",
+        "inputs": len(per_input),
+        "per_input": per_input,
+        "worst": M.worst_of(per_input),
+    }
     report["timing"].update({k: (round(v, 1) if isinstance(v, float) else v) for k, v in timing.items()})
     return report
-
-
-def _worst(kind: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
-    if not rows:
-        return {}
-    if kind == "next_token_distribution":
-        worst = max(rows, key=lambda r: r["kl_worst"])
-        return {"input": worst["input"], "kl": worst["kl_worst"], "kl_ref": worst["reference"]["kl_worst"]}
-    if kind == "logits":
-        worst = max(rows, key=lambda r: r["rel_rmse"])
-        return {"input": worst["input"], "rel_rmse": worst["rel_rmse"], "rel_rmse_ref": worst["reference"]["rel_rmse"]}
-    worst = max(rows, key=lambda r: r["rel_rmse_worst"])
-    return {
-        "input": worst["input"],
-        "rel_rmse": worst["rel_rmse_worst"],
-        "rel_rmse_ref": worst["reference"]["rel_rmse_worst"],
-    }

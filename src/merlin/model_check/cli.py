@@ -69,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--mode", choices=MODES, default="fast")
     check.add_argument("--decode-steps", type=int, default=None)
     check.add_argument("--input", dest="inputs", action="append", default=None, help="full: judge only these inputs")
-    check.add_argument("--jobs", type=int, default=1)
+    check.add_argument("--jobs", type=int, default=None, help="full: inputs run at once (default: per CPU)")
     check.add_argument("--timeout-s", type=float, default=None)
     check.add_argument("--differential", action="store_true")
     check.add_argument("--agent-view", action="store_true")
