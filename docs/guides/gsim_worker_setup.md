@@ -71,6 +71,15 @@ documents `cxxwrap_portable.sh`, the build prerequisites and the native Chipyard
 `cxxwrap.sh` is host-specific receipt input; do not reuse it on a new worker or modify an old receipt
 to make a new build appear identical.
 
+For the FireSim-aligned Gemmini configuration with 16 GiB DRAM, apply the
+[task patch](../../build_tools/gsim/fire_aligned_16gib.patch) to a fresh
+task-local checkout of that gSIM commit before building. The native adapter
+then accepts 35-bit AXI addresses and 64-bit address pins, maps the declared
+16 GiB lazily, and drives the top-level TestHarness clock at one nominal cycle
+per 1,000 ps. It refuses block-device requests because Phase 1's bare-metal
+programs have no attached block image. The receipt binds the patched source
+bytes; retain the patch and the checkout with the resulting emulator.
+
 ## Build and select a new native model
 
 Supply the **complete selected** `TestHarness` FIRRTL, a matching Chipyard checkout with initialized

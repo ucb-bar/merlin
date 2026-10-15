@@ -5,6 +5,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 from merlin_experiments.phase1 import gsim_alignment as A
 
@@ -120,3 +121,21 @@ def test_source_variant_refuses_any_other_source_change(tmp_path, monkeypatch):
     assert A._source_variant(tmp_path, "base", source) is True
     changes.append("generators/gemmini/src/main/scala/gemmini/Configs.scala")
     assert A._source_variant(tmp_path, "base", source) is False
+
+
+def test_elaboration_refuses_untracked_scala_source(tmp_path):
+    root = tmp_path / "chipyard"
+    root.mkdir()
+    config = root / "SelectedConfig.scala"
+    config.write_text("class SelectedConfig\n")
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "add", config.name], check=True)
+    subprocess.run([
+        "git", "-C", str(root), "-c", "user.name=Test", "-c", "user.email=test@example.org",
+        "commit", "-qm", "selected source",
+    ], check=True)
+    revision = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+    assert A.elaboration._source(root, revision, config.name, "SelectedConfig", {})["revision"] == revision
+    (root / "UntrackedHelper.scala").write_text("class UntrackedHelper\n")
+    with pytest.raises(ValueError, match="untracked files"):
+        A.elaboration._source(root, revision, config.name, "SelectedConfig", {})

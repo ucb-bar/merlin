@@ -307,6 +307,33 @@ changes. This configuration must preserve the gSIM harness
 clock and serial adapter while matching FireSim's chip-visible 16 GiB memory
 map, Rocket ISA and execution-relevant bus/peripheral settings. The older
 `GemminiGsimSerialClkConfig` only fixes the harness clock path and is not enough.
+The aligned config also includes `WithDefaultFireSimBridges` so the chip uses
+FireSim's IO cell models, and gives the TestHarness a block-device port binder.
+Generate the TestHarness FIRRTL with the `firechip` SBT project and the Chipyard
+generator:
+
+```sh
+make -C "$CHIPYARD_ROOT/sims/verilator" firrtl \
+  SBT_PROJECT=firechip GENERATOR_PACKAGE=chipyard \
+  CONFIG_PACKAGE=firechip.chip CONFIG=GemminiGsimFireSimAlignedConfig
+```
+
+For the native gSIM build, apply the
+[16 GiB harness patch](../../build_tools/gsim/fire_aligned_16gib.patch) to a
+task-local checkout of gSIM `f38de1704dac25b540d1552fbe1d23fc48463212`.
+It widens SimDRAM's AXI addresses and refuses block-device requests when no
+block image is attached. The selected bare-metal Phase 1 programs do not use
+block storage. Preserve the patched C++ source with the native build receipt.
+
+The public Chipyard commit currently cannot supply a verified elaboration on
+this worker by itself: `TargetConfigs.scala` refers to six OPU/Kodiak config
+classes absent from that commit, and its Saturn gitlink
+`e16a301d261fa4b5a374eb7069b78107a8c9aefb` is unavailable from the
+recorded public submodule URL. Obtain the exact source overlay and Saturn
+commit from the original U250 checkout, review and pin their bytes, then update
+the source-variant audit to admit only that captured overlay. A provisional
+local build using substitute classes or another Saturn revision is useful for
+testing, but cannot produce a qualifying source receipt.
 Supply a reproduced source-to-FIRRTL elaboration
 receipt to the RTL source selection, then build the gSIM emulator with a strict
 v3 receipt. Before launch, check the complete chain:

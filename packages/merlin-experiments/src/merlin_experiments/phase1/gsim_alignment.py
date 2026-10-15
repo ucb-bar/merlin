@@ -25,7 +25,7 @@ GSIM_CONFIG = "GemminiGsimFireSimAlignedConfig"
 DRAM_BASE = 0x80000000
 DRAM_BYTES = 16 * (1 << 30)
 CONFIG_SOURCE = "generators/firechip/chip/src/main/scala/GemminiGsimFireSimAlignedConfig.scala"
-CONFIG_SOURCE_SHA256 = "50c902c7322806ddeefddfd4d35e8e662ff5d47e14072e6f7f97acc46d697bf5"
+CONFIG_SOURCE_SHA256 = "5392120d1ed547b3a70c3786dd5a3d3d697f7817f9ce55e1ffc25b6c2ff6b2ec"
 
 
 def _sha256(path: Path) -> str:
