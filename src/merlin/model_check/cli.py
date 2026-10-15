@@ -41,6 +41,12 @@ def _common(p: argparse.ArgumentParser, *, submission: bool = True) -> None:
     p.add_argument("--out", type=Path, required=True, help="report JSON")
 
 
+def _no_cache(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--no-cache", action="store_true", help="build every kernel and run every image (no kernel or replay cache)"
+    )
+
+
 def _engine(p: argparse.ArgumentParser) -> None:
     p.add_argument("--host-package", type=Path, default=None, help="host package (default: the bundle's)")
     p.add_argument(
@@ -49,9 +55,6 @@ def _engine(p: argparse.ArgumentParser) -> None:
     p.add_argument("--rtl-facts", type=Path, default=None, help="RTL facts matching --contract (default: the bundle's)")
     p.add_argument("--dram-base", type=lambda v: int(v, 0), default=0x80000000)
     p.add_argument("--dram-bytes", type=lambda v: int(v, 0), default=16 << 30)
-    p.add_argument(
-        "--no-cache", action="store_true", help="build every kernel and run every image (no kernel or replay cache)"
-    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -71,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--agent-view", action="store_true")
     check.add_argument("--engine", choices=ENGINES, default="spike")
     _engine(check)
+    _no_cache(check)
 
     replay = sub.add_parser("replay-kernel", help="replay device kernels on frozen boundary inputs")
     _common(replay)
@@ -84,6 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     replay.add_argument("--timeout-s", type=float, default=None)
     replay.add_argument("--agent-view", action="store_true")
     _engine(replay)
+    _no_cache(replay)
 
     export = sub.add_parser("kernels-export", help="interface modules, call ABI and entries of a model's kernels")
     _common(export, submission=False)
