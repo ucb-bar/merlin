@@ -133,13 +133,20 @@ def build(
             "seconds": round(time.monotonic() - started, 1),
         }
         log(f"[bundle] {model.name}/{program}: {json.dumps(record['programs'][program])}")
+    import fcntl
+
     manifest_path = bundle.root / "MANIFEST.json"
-    manifest = (
-        json.loads(manifest_path.read_text()) if manifest_path.is_file() else {"schema": MANIFEST_SCHEMA, "models": {}}
-    )
-    manifest.update({"target": target, "captures": str(captures), "merlin_commit": _git_commit(repo_root())})
-    if engine:
-        manifest["engine"] = dict(engine)
-    manifest["models"][model.name] = record
-    manifest_path.write_text(json.dumps(manifest, indent=1) + "\n")
+    with (bundle.root / ".manifest.lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)  # two models' builds may finish together
+        manifest = (
+            json.loads(manifest_path.read_text())
+            if manifest_path.is_file()
+            else {"schema": MANIFEST_SCHEMA, "models": {}}
+        )
+        manifest.update({"target": target, "captures": str(captures), "merlin_commit": _git_commit(repo_root())})
+        if engine:
+            manifest["engine"] = dict(engine)
+        merged = manifest["models"].setdefault(model.name, {"model": model.name, "programs": {}})
+        merged["programs"].update(record["programs"])
+        manifest_path.write_text(json.dumps(manifest, indent=1) + "\n")
     return record
