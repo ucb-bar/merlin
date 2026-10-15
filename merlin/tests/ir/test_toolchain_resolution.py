@@ -30,6 +30,11 @@ def test_clang_for_another_checkout_reads_that_checkout_not_this_process(tmp_pat
 
 
 def test_selected_mlir_install_is_used_consistently(tmp_path, monkeypatch):
+    from merlin.common import paths
+
+    # A task checkout may intentionally pin MERLIN_CLANG in its local .env;
+    # this test's selected-install case needs an empty dotenv selection.
+    monkeypatch.setattr(paths, "_dotenv", lambda: {})
     install = tmp_path / "llvm"
     monkeypatch.setenv("MERLIN_MLIR_INSTALL", str(install))
     for name in (

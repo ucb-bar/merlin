@@ -15,6 +15,10 @@ from merlin.llvmlower import pipeline, toolchain
 def stock(monkeypatch):
     monkeypatch.setenv("MERLIN_COMPILER_DRIVER", "stock-cli")
     monkeypatch.setenv("MERLIN_FUSION_GUARD", "0")
+    # The stock transport explicitly refuses the Python runner's checked
+    # deallocation rewrite. Select the plain scalar pipeline for these tests.
+    monkeypatch.setenv("MERLIN_SPLIT_FRESH_DEALLOCS", "0")
+    monkeypatch.setenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT", "0")
     monkeypatch.delenv("MERLIN_PASSES", raising=False)
     monkeypatch.delenv("MERLIN_SINK_DEALLOCS", raising=False)
 
