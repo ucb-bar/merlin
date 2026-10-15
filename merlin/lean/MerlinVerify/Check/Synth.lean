@@ -11,6 +11,7 @@ add their own synthesis or read the pass's certificate.
 import MerlinVerify.Rules.Dce
 import MerlinVerify.Rules.Cse
 import MerlinVerify.Rules.Generalize
+import MerlinVerify.Rules.Commutative
 
 namespace MerlinVerify.Check
 
@@ -25,6 +26,11 @@ def samePrefix? (ρ : Rho) : List Op → List Op → Option Rho
     return ρ'
   | _, _ => none
 
+/-- The synthesizer proposes a single-op rule; the C1 checker independently rechecks it. -/
+def localRewrite? (ρ : Rho) (s t : Op) : Option (Rule × Rho) :=
+  [Rules.Generalize.rule, Rules.Commutative.rule].findSome? fun r =>
+    (r.check ρ [s] [t]).map fun ρ' => (r, ρ')
+
 def synthLocal (ρ : Rho) : List Op → List Op → List Step
   | [], [] => []
   | _ :: ss, [] => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss []
@@ -36,8 +42,8 @@ def synthLocal (ρ : Rho) : List Op → List Op → List Step
       match Rules.Cse.check ρ ((s :: ss).take 2) [t] with
       | some ρ' => .site Rules.Cse.rule 2 1 :: synthLocal ρ' (ss.drop 1) ts
       | none =>
-        match Rules.Generalize.rule.check ρ [s] [t] with
-        | some ρ' => .site Rules.Generalize.rule 1 1 :: synthLocal ρ' ss ts
+        match localRewrite? ρ s t with
+        | some (r, ρ') => .site r 1 1 :: synthLocal ρ' ss ts
         | none =>
           match alphaOp ρ s t with
           | some ρ' => .same :: synthLocal ρ' ss ts
