@@ -67,3 +67,22 @@ def test_a_well_formed_approximation_is_returned(tmp_path):
 def test_a_malformed_declaration_is_refused(tmp_path, text):
     with pytest.raises(ApproximationError):
         declared(_manifest(tmp_path, text))
+
+
+def test_census_counts_a_generic_contraction_by_its_iteration_domain():
+    from merlin.common import mlir_query as mq
+
+    text = """
+func.func @forward(%a: tensor<2x8x5xf32>, %b: tensor<2x5x6xf32>, %c: tensor<2x8x6xf32>) -> tensor<2x8x6xf32> {
+  %r = linalg.generic {indexing_maps = [affine_map<(b, m, n, k) -> (b, m, k)>, affine_map<(b, m, n, k) -> (b, k, n)>, affine_map<(b, m, n, k) -> (b, m, n)>], iterator_types = ["parallel", "parallel", "parallel", "reduction"]} ins(%a, %b : tensor<2x8x5xf32>, tensor<2x5x6xf32>) outs(%c : tensor<2x8x6xf32>) {
+  ^bb0(%x: f32, %y: f32, %z: f32):
+    %p = arith.mulf %x, %y : f32
+    %s = arith.addf %z, %p : f32
+    linalg.yield %s : f32
+  } -> tensor<2x8x6xf32>
+  return %r : tensor<2x8x6xf32>
+}
+"""
+    op = next(o for o in mq.parse(text).walk() if o.name == "linalg.generic")
+    assert CAT._is_contraction(op)
+    assert CAT._macs(op) == 2 * 8 * 6 * 5

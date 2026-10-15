@@ -329,9 +329,20 @@ def _macs(op) -> int:
         return int(shapes[0][0] * shapes[0][1] * shapes[1][-1])
     if op.name == "linalg.batch_matmul" and len(shapes[0]) == 3:
         return int(shapes[0][0] * shapes[0][1] * shapes[0][2] * shapes[1][-1])
-    # A generic or conv: output elements times the reduction extent read off the first input.
-    reduced = max(1, int(math.prod(shapes[0])) // max(1, int(math.prod(out)))) if shapes and out else 1
-    return int(math.prod(out)) * reduced if out else 0
+    if op.name.startswith("linalg.conv_") and len(shapes) >= 2 and out:
+        # Output elements times the filter's reduced extent (every filter dim but its output channels).
+        filt = shapes[1]
+        return int(math.prod(out)) * int(math.prod(filt)) // max(1, int(out[-1] if "hwcf" in op.name else filt[0]))
+    # A generic: the size of its iteration domain, each loop dim's extent read off the operand that
+    # indexes it directly (one multiply-accumulate per point of the domain).
+    maps = getattr(op.properties.get("indexing_maps"), "data", ())
+    extent: dict[int, int] = {}
+    for amap, shape in zip(maps, shapes, strict=False):
+        for axis, expr in enumerate(getattr(amap.data, "results", ())):
+            position = getattr(expr, "position", None)
+            if position is not None and axis < len(shape):
+                extent[position] = int(shape[axis])
+    return int(math.prod(extent.values())) if extent else 0
 
 
 def _dtype(value) -> str:
