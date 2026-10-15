@@ -86,7 +86,7 @@ def audit(
     block = runner["chipyard_rocc"]
     spike = block["engines"]["spike"]["binary"]
     extension = runner["spike_extension"]
-    if block["config"] != "GemminiRocketConfig" or extension["extension_name"] != "gemmini":
+    if block["config"] != "GemminiGsimSerialClkConfig" or extension["extension_name"] != "gemmini":
         raise ValueError("Phase 1 Spike selection names another Gemmini chip or extension")
     selected_spike = Path(spike["path"])
     selected_extension = Path(extension["extlib"])

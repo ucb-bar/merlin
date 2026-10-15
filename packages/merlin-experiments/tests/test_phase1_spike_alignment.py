@@ -53,7 +53,7 @@ def test_spike_alignment_requires_firesim_board_dts_and_source(tmp_path, monkeyp
         "dram_base": 0x80000000, "host_dts_sha256": _sha(dts),
     }}})
     contract = write("contract.yaml", {"runner": {
-        "chipyard_rocc": {"config": "GemminiRocketConfig", "engines": {
+        "chipyard_rocc": {"config": "GemminiGsimSerialClkConfig", "engines": {
             "spike": {"binary": {"path": str(spike), "sha256": _sha(spike)}}}},
         "spike_extension": {"extension_name": "gemmini", "extlib": str(extension), "sha256": _sha(extension)},
     }})

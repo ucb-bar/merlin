@@ -28,12 +28,11 @@ it supports full-width accumulator readout. The historical lean U250 design
 has a different ABI and is a different target.
 
 Phase 1 capsule timing is measured on its selected gSIM elaboration. The
-retained `gemmini_gsim_model_testharness` pin names
-`GemminiGsimMonitorsConfig`, whose chip configuration derives from
-`GemminiRocketConfig`; its source FIRRTL SHA256 is
-`477e16d0615508b434d373f9e4dcce1ebff6ec25041e534079f3d068044aedb7`.
-An actual run uses the simulator and contract in its sealed release; these
-retained pins do not override that selection.
+currently installed emulator uses `GemminiGsimSerialClkConfig` and FIRRTL
+SHA256 `089d053b62523b5047e71ccca31dfbbe27d4e5daeab24050227a923e7b4628c8`.
+That emulator is based on the older `gemmini_rtl` revision. It is not an
+equivalence witness for the FireSim bitstream. The older hand-edited
+`gemmini_gsim_model_testharness` pin is also unsuitable for this new run.
 
 The current Phase 0 RTL facts come from a `GemminiRocketConfig` Verilator
 elaboration. The planned FireSim bitstream uses a different generator revision.
@@ -45,11 +44,13 @@ labels describe only the selected gSIM design and must carry its identity.
 
 For the next experiment intended to feed this FireSim model, select the
 `gemmini_rocket_chipyard` / `gemmini_rocket_rtl` source revisions of the pinned
-bitstream before Phase 0 derivation. Elaborate `GemminiRocketConfig` and the
-gSIM harness configuration from those same source bytes; regenerate RTL facts,
-the gSIM executable and its strict build receipt, and the selected execution
-contract together. Compare the chip portion of those elaborations with the
-FireSim build and record the Gemmini parameters and ABI header identity.
+bitstream before Phase 0 derivation. Elaborate `GemminiGsimSerialClkConfig`
+from committed source at those revisions; regenerate RTL facts from that exact
+TestHarness FIRRTL, the gSIM executable and its strict build receipt, and the
+selected execution contract together. The source-to-FIRRTL elaboration receipt
+must bind the selected configuration and exact Chipyard/Gemmini revisions.
+Compare the chip portion of that elaboration with the FireSim build and record
+the Gemmini parameters and ABI header identity.
 Require a passing matched-ELF capsule check on gSIM and FireSim before fitting
 any transfer from gSIM cycles to board cycles. A FireSim wrapper is not a drop-in
 gSIM executable, even when it encloses the same chip configuration.
@@ -68,3 +69,19 @@ Use the release-selected contract, `examples/gemmini/phase2/whole-model-machines
 `merlin/contract/hardware_pins.yaml`, the release-selected board catalog and
 private full-model specification. A passing report proves those selected Spike,
 ABI, board and DTS identities align; its `rtl_equivalence_proven: false` is deliberate.
+
+Before launch, run the independent gSIM alignment check with the selected
+release contract and facts:
+
+```sh
+python -m merlin_experiments.phase1.gsim_alignment \
+  --contract CONTRACT --rtl-facts FACTS \
+  --chipyard-root CHIPYARD --hardware-pins PINS
+```
+
+Require `gsim_source_aligned: true`. This verifies the reproduced elaboration
+receipt, source commits recorded for the FireSim bitstream, facts FIRRTL and
+strict emulator build receipt. The historical bitstream's build-time source
+state was not completely preserved, so matching commits alone cannot prove
+chip equivalence. Structural comparison and matched-ELF measurements are still
+required before timing transfer.

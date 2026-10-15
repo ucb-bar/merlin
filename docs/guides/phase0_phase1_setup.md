@@ -28,7 +28,7 @@ diagnostic prototypes. Do not copy their legacy harness includes, issue order,
 padding or preferred lowering into a fresh compiler experiment.
 
 The [deployment template](../../examples/gemmini/phase0/execution-declaration.template.yaml)
-illustrates `FireSimGemminiRocketConfig`. It is deliberately incomplete:
+selects `GemminiGsimSerialClkConfig` for the capsule TestHarness. It is deliberately incomplete:
 replace every marked field and attach freshly derived capability declarations.
 Its facts must describe that exact configuration; the diagnostic example's
 `GemminiRocketConfig` elaboration cannot qualify it. The checked-in templates
@@ -294,6 +294,25 @@ board declaration, and every model row's board/DTS/catalog pins. It does not
 prove gSIM/FireSim RTL equivalence or that the FPGA can use the entire declared
 memory span; qualify those independently. A missing pinned checkout or DTS is a
 failed selection, not a reason to reuse the Verilator DTS.
+
+For capsule execution, select `GemminiGsimSerialClkConfig` in the Phase 0
+execution contract and derive facts from its exact TestHarness FIRRTL. Build it
+from committed Chipyard and Gemmini sources at the **same revisions** as the
+selected FireSim bitstream. Supply a reproduced source-to-FIRRTL elaboration
+receipt to the RTL source selection, then build the gSIM emulator with a strict
+v3 receipt. Before launch, check the complete chain:
+
+```sh
+python -m merlin_experiments.phase1.gsim_alignment \
+  --contract "$PREPARED_CONTRACT" --rtl-facts "$PREPARED_FACTS" \
+  --chipyard-root "$FIRESIM_CHIPYARD_ROOT" \
+  --hardware-pins merlin/contract/hardware_pins.yaml
+```
+
+Require `gsim_source_aligned: true`. The current installed gSIM uses the older
+Gemmini source and cannot satisfy this gate for the FireSim target. A passing
+source gate still needs an explicit chip comparison and matched-ELF gSIM/FireSim
+checks before its cycles can be treated as representative board timing.
 
 Then run ordinary `--preflight-only` with the released descriptor, seal, regenerated
 bundle and oracle timing. Run the fresh Codex client canary in the same sandbox
