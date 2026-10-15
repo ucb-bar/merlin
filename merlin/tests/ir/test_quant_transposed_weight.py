@@ -126,8 +126,11 @@ def test_captured_bf16_dequant_contraction_reaches_integer_path():
     report = {}
     assert lower_contraction_int8(module, select=captured_quantized_contraction, report_out=report) == 1
     assert report["transposed_quantized_weight_reused"] == 1
-    assert any(op.name == "linalg.generic" and
-               str(op.results[0].type) == "tensor<1x4xi32>" for op in module.walk() if op.results)
+    assert any(
+        op.name == "linalg.generic" and str(op.results[0].type) == "tensor<1x4xi32>"
+        for op in module.walk()
+        if op.results
+    )
     module.verify()
 
 
@@ -150,3 +153,55 @@ def test_captured_bf16_host_reference_matches_compiled_preparation(tmp_path):
     )
     compiled = _prepare_model_mlir(model, tmp_path, int8_compute=True, respect_captured_quantization_scope=True)
     assert mlir_text(host, generic=True) == mlir_text(parse_mlir_text(compiled.read_text()), generic=True)
+
+
+_WIDEN = """    %{out} = linalg.generic {{indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+                                              affine_map<(d0, d1) -> (d0, d1)>],
+                             iterator_types = ["parallel", "parallel"]}}
+        ins(%{src} : tensor<{shape}xbf16>) outs(%{empty} : tensor<{shape}xf32>) {{
+    ^bb0(%x: bf16, %y: f32):
+      %v = arith.extf %x : bf16 to f32
+      linalg.yield %v : f32
+    }} -> tensor<{shape}xf32>
+"""
+
+
+def _widened_ir():
+    """The f32 matmul a frontend writes for a half-precision one: both captured operands are
+    dequantized to bf16 (the weight then transposed), and an identity generic holding one
+    ``arith.extf`` widens each in front of the contraction."""
+    source = IR.replace("-> tensor<1x8xf32>\n    %w =", "-> tensor<1x8xbf16>\n    %w =")
+    source = source.replace("-> tensor<4x8xf32>\n    %e =", "-> tensor<4x8xbf16>\n    %e =")
+    source = source.replace(
+        "    %e = tensor.empty() : tensor<8x4xf32>\n"
+        "    %wt = linalg.transpose ins(%w : tensor<4x8xf32>)\n"
+        "      outs(%e : tensor<8x4xf32>) permutation = [1, 0]\n",
+        "    %e = tensor.empty() : tensor<8x4xbf16>\n"
+        "    %wt = linalg.transpose ins(%w : tensor<4x8xbf16>)\n"
+        "      outs(%e : tensor<8x4xbf16>) permutation = [1, 0]\n"
+        "    %ea = tensor.empty() : tensor<1x8xf32>\n"
+        + _WIDEN.format(out="a32", src="a", empty="ea", shape="1x8")
+        + "    %ew = tensor.empty() : tensor<8x4xf32>\n"
+        + _WIDEN.format(out="wt32", src="wt", empty="ew", shape="8x4"),
+    )
+    widened = source.replace("ins(%a, %wt : tensor<1x8xf32>", "ins(%a32, %wt32 : tensor<1x8xf32>")
+    assert widened != IR and "%a32, %wt32" in widened
+    return widened
+
+
+def test_captured_operands_behind_exact_widenings_reuse_their_bytes():
+    """Each widening is value preserving, so the selector admits the f32 matmul and the integer
+    lowering peels the widenings: the captured weight bytes and their static scales are reused, and
+    only the block-argument activation is quantized dynamically, exactly as without the widenings."""
+    module = parse_mlir_text(_widened_ir())
+    matmul = next(op for op in module.walk() if op.name == "linalg.matmul")
+    assert captured_quantized_contraction(matmul)
+    report = {}
+    assert lower_contraction_int8(module, select=captured_quantized_contraction, report_out=report) == 1
+    assert report["transposed_quantized_weight_reused"] == 1
+    assert sum(op.name == "math.roundeven" for op in module.walk()) == 1
+    transposed = next(
+        op for op in module.walk() if op.name == "linalg.transpose" and str(op.results[0].type) == "tensor<8x4xi8>"
+    )
+    assert str(transposed.operands[0].type) == "tensor<4x8xi8>"
+    module.verify()
