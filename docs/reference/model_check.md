@@ -327,7 +327,8 @@ Schema: `merlin/schemas/model_check_report.schema.yaml` (`merlin.model_check.rep
   call sits under `kernels[].sealed`, which the agent view drops.
 - `model_metrics`: `source` (`int8_reference` when every kernel is exact), `inputs`, `per_input[]`
   (`split`, `id`, the §4.1 metrics), `worst` (per metric over `per_input`: the minimum of an agreement,
-  the maximum of an error).
+  the maximum of an error) and `mean` (per metric; a per-input agreement of 0 or 1 averages to the
+  split's agreement rate, which the agreement gates of §4.4 compare).
 
 ## Changelog
 - 1.0 (2026-10-15): initial contract.
