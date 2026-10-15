@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import yaml
 
 from merlin.common.paths import repo_root
 from merlin.model_check import chain as CH
@@ -43,6 +44,18 @@ def test_every_model_declares_how_its_full_mode_image_is_built():
         settings = FB.BuildSettings.of(models, model, Path("/host"))
         assert settings.arena_mb > 0 and settings.board and settings.dedup_weights
         assert settings.board_catalog.is_file()
+
+
+def test_full_mode_and_binding_select_the_fire_aligned_16gib_board():
+    models = _models()
+    settings = FB.BuildSettings.of(models, models.model("resnet50"), Path("/host"))
+    binding = yaml.safe_load((repo_root() / "examples/gemmini/numerics/binding.yaml").read_text())
+    catalog = yaml.safe_load(settings.board_catalog.read_text())["boards"]
+    assert settings.board == binding["board"] == "firesim_gemmini_rocket_u250_30mhz"
+    assert catalog[settings.board]["dram_bytes"] == "16 GiB"
+    assert settings.host_dts.name == "firechip.chip.FireSim.FireSimGemminiRocketConfig.dts"
+    assert binding["elaboration"]["dts"].endswith("GemminiGsimFireSimAlignedConfig.dts")
+    assert binding["fpga"]["dts"].endswith(settings.host_dts.name)
 
 
 def test_the_check_parser_takes_an_input_filter():

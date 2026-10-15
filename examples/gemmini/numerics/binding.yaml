@@ -11,9 +11,8 @@ schema: merlin.model_check.binding_spec.v1
 target: gemmini
 
 board_catalog: {repo: examples/gemmini/platform/board-catalog.yaml}
-# The board whose memory span the functional model runs replay images on (board-catalog.yaml key
-# boards.gemmini_rocket_spike_functional).
-board: gemmini_rocket_spike_functional
+# The same 16 GiB FireSim board selected for the Phase 1 whole-model Spike images.
+board: firesim_gemmini_rocket_u250_30mhz
 
 spike:
   # The header the Spike extension library is compiled with (citations: libgemmini gemmini.h:8,
@@ -24,9 +23,9 @@ spike:
 elaboration:
   # The generated-src directory of the elaboration behind the selected FIRRTL. Bound by content at run
   # time: its FIRRTL must equal the selected FIRRTL byte for byte, its DTS the board's pinned sha256.
-  directory: sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig
-  firrtl: chipyard.harness.TestHarness.GemminiRocketConfig.fir
-  dts: chipyard.harness.TestHarness.GemminiRocketConfig.dts
+  directory: sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig
+  firrtl: chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig.fir
+  dts: chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig.dts
   # The header the generator writes while elaborating (citations: Controller.scala:29,
   # GemminiConfigs.scala:103 and :512).
   params_header: generators/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h
@@ -47,9 +46,8 @@ fpga:
   # What the target sees: the external memory port; FASED serves it from host DRAM channels.
   target_memory: {key: ExtMem, base: base, bytes: size}
   host_memory: {channel_key: HostMemChannelKey, channel_bytes: size, channels_key: HostMemNumChannels}
-  # The FireSim build's own DTS when this host has it (the FPGA board entry pins its sha256). It is not on
-  # this host; the receipt derives the target memory from the configuration sources instead.
-  dts: null
+  # The FireSim build's own DTS, pinned by the board entry. Missing bytes refuse this receipt.
+  dts: sims/firesim-staging/generated-src/firechip.chip.FireSim.FireSimGemminiRocketConfig/firechip.chip.FireSim.FireSimGemminiRocketConfig.dts
   # The parameter header the FPGA build's elaboration generated, as the machine registry records it.
   params_header_sha256:
     file: {repo: examples/gemmini/phase2/whole-model-machines.yaml}
