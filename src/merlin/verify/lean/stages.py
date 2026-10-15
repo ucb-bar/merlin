@@ -42,6 +42,31 @@ def boundary(name: str, pass_entry: str, module) -> Iterator[None]:
         record_boundary(name, pass_entry, before, generic_text(module))
 
 
+def run(name: str, fn, module, *args, **kwargs):
+    """``fn(module, *args, **kwargs)``, recording ``module`` around the call as boundary ``name``."""
+    with boundary(name, f"{fn.__module__}.{fn.__qualname__}", module):
+        return fn(module, *args, **kwargs)
+
+
+def parse_recorded(name: str, path):
+    """Parse the MLIR file ``path`` with Merlin's reader, recording the file's text against the parsed
+    module as boundary ``name``."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+
+    module = parse_mlir_file(path)
+    if enabled():
+        record_boundary(name, "merlin.frontends.linalg_mlir.parse_mlir_file", Path(path).read_text(),
+                        generic_text(module))
+    return module
+
+
+def write_recorded(name: str, path: Path, text: str, module) -> None:
+    """Write ``text``, a print of ``module``, to ``path``, recording the module against it."""
+    path.write_text(text)
+    if enabled():
+        record_boundary(name, "merlin.xdsl_dialects._common.text", generic_text(module), text)
+
+
 def record_boundary(boundary: str, pass_entry: str, before: str, after: str, *, extra: dict | None = None) -> Path:
     """Write one boundary's before/after texts; returns the boundary directory."""
     root = _dir()
