@@ -1,9 +1,10 @@
 /-
 Rule: dead-op elimination (`prune_dead_pure_tensor_ops` and friends).
 
-Site: one source op, no target ops. Instance check: the op is not a terminator and none of its
-results is already mapped by `ρ`. "Dead" needs no separate analysis: the removed results get no
-target counterpart, so any later use fails the lockstep alpha check in C1.
+Site: one source op, no target ops. Instance check: the op is not a terminator, it only computes
+its results (`pureOp`), and none of its results is already mapped by `ρ`. "Dead" needs no separate
+analysis: the removed results get no target counterpart, so any later use fails the lockstep alpha
+check in C1.
 
 Soundness: if the source op is UB or stuck the site relation holds trivially (a UB source permits
 anything; this is why removing a possibly-UB op is a refinement). Otherwise the source binds fresh
@@ -15,9 +16,45 @@ namespace MerlinVerify.Rules.Dce
 
 open MerlinVerify MerlinVerify.Check MerlinVerify.Sem.Ops
 
+/-- Dialects whose ops (on tensors) only compute their results. -/
+def pureDialects : List String := ["arith", "math", "tensor", "linalg"]
+
+/-- A value type an effect-free op may produce: a scalar or a tensor (never a memref, whose ops
+write memory). -/
+def valueTy : Ty → Bool
+  | .int _ | .sint _ | .uint _ | .index | .float _ | .tensor .. => true
+  | _ => false
+
+mutual
+  /-- `op` only computes its results: an op of a pure dialect with at least one result, all of
+  value types, whose nested ops are pure (or the terminators that yield from their regions). An op
+  with no results exists only for its effect, so it is never pure. -/
+  def pureOp : Op → Bool
+    | .mk name results _ _ _ regions _ =>
+      pureDialects.contains (dialectOf name) && !results.isEmpty && results.all (valueTy ·.ty) &&
+        pureRegions regions
+
+  def pureRegions : List Region → Bool
+    | [] => true
+    | (.mk bs) :: rs => pureBlocks bs && pureRegions rs
+
+  def pureBlocks : List Block → Bool
+    | [] => true
+    | (.mk _ ops) :: bs => pureNested ops && pureBlocks bs
+
+  def pureNested : List Op → Bool
+    | [] => true
+    | op :: ops => (op.isTerminator || pureOp op) && pureNested ops
+end
+
+/-- Erase one op. The model has no memory, trace or external state, so only an op that does
+nothing but compute its results (`pureOp`) may be erased: a call, an assertion or a store has an
+effect the model cannot see, and the refinement theorem would say nothing about it. -/
 def check (ρ : Rho) : List Op → List Op → Option Rho
   | [op], [] =>
-    if op.isTerminator = false ∧ op.results.all (fun r => ρ.find r.id == none) then some ρ else none
+    if op.isTerminator = false ∧ pureOp op = true ∧ op.results.all (fun r => ρ.find r.id == none) then
+      some ρ
+    else none
   | _, _ => none
 
 theorem lookup_zip_append_not_mem {α : Type} (x : ValueId) :
@@ -63,7 +100,7 @@ theorem check_sound : ∀ ρ siteS siteT ρ', check ρ siteS siteT = some ρ' �
     · next hc =>
       simp only [Option.some.injEq] at h
       subst h
-      obtain ⟨hterm, hfresh⟩ := hc
+      obtain ⟨hterm, -, hfresh⟩ := hc
       refine ⟨by simpa using hterm, by simp, fun ctx callS callT envS envT hcorr _ => ?_⟩
       rw [execOps_cons_step _ _ _ _ _ _ hterm]
       cases hst : stepOp opSem ctx callS envS op with

@@ -76,7 +76,10 @@ mutual
     | .mk [.mk argsS opsS], .mk [.mk argsT opsT] =>
       argsS.map (·.ty) == argsT.map (·.ty) && freshIds ρ (argsT.map (·.id)) &&
         alphaOps ((argsS.map (·.id)).zip (argsT.map (·.id)) ++ ρ) opsS opsT
-    | .mk bs, .mk bs' => bs.length != 1 && bs'.length != 1
+    -- Outside the single-block fragment only two empty regions match: different multi-block
+    -- bodies would both be unmodelled (`stuck`), and that is no evidence the programs agree.
+    | .mk [], .mk [] => true
+    | _, _ => false
 end
 
 mutual
@@ -225,11 +228,11 @@ mutual
           (Corr.extend hc _ _ vals (by simpa using hk) (by simpa [← hl] using hk) hnd hfr) hcallO
       · rw [bindAll_eq_stuck hk, bindAll_eq_stuck (fun e => hk (hl ▸ e))]
         rfl
-    -- Not both single-block: `alphaRegion` demands neither is, and both evaluate to `stuck`.
+    -- Two empty regions: both evaluate to `stuck`.
     | _, .mk [], .mk [], _, _, _, _, _, _ => rfl
-    | _, .mk [], .mk (_ :: _ :: _), _, _, _, _, _, _ => rfl
-    | _, .mk (_ :: _ :: _), .mk [], _, _, _, _, _, _ => rfl
-    | _, .mk (_ :: _ :: _), .mk (_ :: _ :: _), _, _, _, _, _, _ => rfl
+    | _, .mk [], .mk (_ :: _ :: _), _, _, _, h, _, _ => by simp [alphaRegion] at h
+    | _, .mk (_ :: _ :: _), .mk [], _, _, _, h, _, _ => by simp [alphaRegion] at h
+    | _, .mk (_ :: _ :: _), .mk (_ :: _ :: _), _, _, _, h, _, _ => by simp [alphaRegion] at h
     | _, .mk [], .mk [_], _, _, _, h, _, _ => by simp [alphaRegion] at h
     | _, .mk [_], .mk [], _, _, _, h, _, _ => by simp [alphaRegion] at h
     | _, .mk [_], .mk (_ :: _ :: _), _, _, _, h, _, _ => by simp [alphaRegion] at h

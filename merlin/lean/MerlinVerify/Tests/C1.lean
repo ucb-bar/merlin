@@ -79,4 +79,35 @@ def tgtCallUndeclared : Module := { ops := [func "f" [i32v 7] [callOp (i32v 8) [
 -- Rejected: the target calls a symbol it does not declare.
 #guard !c1Check { src := srcCall, tgt := tgtCallUndeclared, fn := "f", script := [.same, .same] }
 
+/-! ### DCE erases only ops that compute nothing but their results -/
+
+/-- f(a) = a, with a dead call to the external `@dev` (its result unused). -/
+def srcDeadCall : Module := { ops := [decl "dev", func "f" [i32v 0] [callOp (i32v 1) [0], ret [0]]] }
+def tgtNoCall : Module := { ops := [decl "dev", func "f" [i32v 7] [ret [7]]] }
+
+-- Rejected: the call may have effects the model does not see.
+#guard !c1Check { src := srcDeadCall, tgt := tgtNoCall, fn := "f",
+                  script := [.site Rules.Dce.rule 1 0, .same] }
+
+def memrefTy : Ty := .memref [some 4] i32 none none
+
+/-- f(m, a) = a, with a store into `m` and an op of an unknown dialect, both without results. -/
+def srcEffects (eff : Op) : Module := { ops := [func "f" [v 0 memrefTy, i32v 1] [eff, ret [1]]] }
+def tgtNoEffect : Module := { ops := [func "f" [v 10 memrefTy, i32v 11] [ret [11]]] }
+
+#guard !c1Check { src := srcEffects (mkOp "memref.store" [] [1, 0]), tgt := tgtNoEffect, fn := "f",
+                  script := [.site Rules.Dce.rule 1 0, .same] }
+#guard !c1Check { src := srcEffects (mkOp "review.effect" [] [1]), tgt := tgtNoEffect, fn := "f",
+                  script := [.site Rules.Dce.rule 1 0, .same] }
+-- even an arith op is not erased when it produces no result
+#guard !c1Check { src := srcEffects (mkOp "arith.addi" [] [1, 1]), tgt := tgtNoEffect, fn := "f",
+                  script := [.site Rules.Dce.rule 1 0, .same] }
+
+/-! ### Regions outside the single-block fragment never match -/
+
+#guard !alphaRegion [] (.mk [.mk [] [mkOp "review.a" [] []], .mk [] []])
+  (.mk [.mk [] [mkOp "review.b" [] []], .mk [] []])
+#guard !alphaRegion [] (.mk [.mk [] [], .mk [] []]) (.mk [.mk [] [], .mk [] []])
+#guard alphaRegion [] (.mk []) (.mk [])
+
 end MerlinVerify.Tests.C1
