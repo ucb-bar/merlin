@@ -28,6 +28,7 @@ the emitted record could not tell a skipped tier from one that ran and was overw
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 from phase1_feedback import feedback_source
@@ -535,7 +536,19 @@ def _ladder(monkeypatch, tmp_path):
     whether the ladder pays for a tier it already holds a certificate for.
     """
     from merlin.runtime import reference, simulator
+    from merlin.targetgen import target_experiment
     from merlin.targetgen.contract import schemas
+
+    # The synthetic adapters use fixed-address buffers. Declare that transport
+    # explicitly rather than discovering an installed accelerator contract.
+    real_manifest = target_experiment.load_capability_manifest
+    monkeypatch.setattr(
+        target_experiment,
+        "load_capability_manifest",
+        lambda target: SimpleNamespace(contract={"name": "cachetest"})
+        if target == "cachetest"
+        else real_manifest(target),
+    )
 
     cb = {
         "abi_version": "0.1",
