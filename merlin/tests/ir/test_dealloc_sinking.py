@@ -250,6 +250,28 @@ def test_split_keeps_a_device_result_and_its_output_as_one_allocation(tmp_path):
     assert "0 fresh allocs" in foreign.stdout
     assert "bufferization.dealloc" in foreign.stdout
 
+    # A void foreign call can still retain the output, including inside a
+    # region. No returned memref is needed for the aggregate split to be unsafe.
+    capture = source.replace(
+        "        %base, %off, %size:1, %stride:1 =",
+        "        scf.if %true {\n"
+        "          func.call @foreign_capture(%out) : (memref<4xf32>) -> ()\n"
+        "          scf.yield\n"
+        "        }\n"
+        "        %base, %off, %size:1, %stride:1 =",
+    ).replace(
+        "      func.func private @merlin_dev_test(",
+        "      func.func private @foreign_capture(memref<4xf32>)\n"
+        "      func.func private @merlin_dev_test(",
+    )
+    src.write_text(capture, encoding="utf-8")
+    captured = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "0 fresh allocs" in captured.stdout
+    assert "bufferization.dealloc" in captured.stdout
+
 
 # --- the guard -------------------------------------------------------------------------------
 

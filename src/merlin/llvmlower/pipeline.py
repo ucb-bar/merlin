@@ -1135,6 +1135,25 @@ def _split_fresh_local_deallocs(ctx, module):
         owner = value.owner
         return hasattr(owner, 'operation') and owner.operation.name == 'memref.alloc'
 
+    def is_device_output_alias(op, declarations):
+        name = str(op.attributes['callee']).lstrip('@')
+        decl = declarations.get(name)
+        return (
+            name.startswith('merlin_dev_') and decl is not None
+            and len(op.operands) == 3 and len(op.results) == 1
+            and str(op.results[0].type) == str(op.operands[2].type)
+            and len(decl.arg_attrs) == 3
+            and [str(attrs['bufferization.access']) for attrs in decl.arg_attrs]
+            == ['"read"', '"read"', '"write"']
+        )
+
+    def nested_operations(parent):
+        for region in parent.regions:
+            for block in region.blocks:
+                for op in block.operations:
+                    yield op
+                    yield from nested_operations(op)
+
     declarations = {
         str(op.attributes['sym_name']).strip('"'): op
         for op in module.body.operations if op.operation.name == 'func.func'
@@ -1143,31 +1162,27 @@ def _split_fresh_local_deallocs(ctx, module):
     for func in module.body.operations:
         if func.operation.name != 'func.func' or not func.regions[0].blocks:
             continue
+        # An unrecognized callee may retain a memref even when it returns void.
+        # Search nested regions too: a call in a branch can outlive a top-level
+        # aggregate dealloc just as a direct call can.
+        unknown_memref_call = any(
+            op.operation.name == 'func.call'
+            and any(str(value.type).startswith('memref') for value in (*op.operands, *op.results))
+            and not is_device_output_alias(op, declarations)
+            for op in nested_operations(func)
+        )
         for block in func.regions[0].blocks:
             # Merlin's generated device shim returns precisely its third, writable
             # output descriptor. The other two operands are read-only, and the shim
             # does not retain any pointer. Check that exact declaration contract.
             call_alias = {}
-            unknown_memref_call = False
             for op in block.operations:
                 if op.operation.name != 'func.call' or not any(
                     str(result.type).startswith('memref') for result in op.results
                 ):
                     continue
-                name = str(op.attributes['callee']).lstrip('@')
-                decl = declarations.get(name)
-                valid = (
-                    name.startswith('merlin_dev_') and decl is not None
-                    and len(op.operands) == 3 and len(op.results) == 1
-                    and str(op.results[0].type) == str(op.operands[2].type)
-                    and len(decl.arg_attrs) == 3
-                    and [str(attrs['bufferization.access']) for attrs in decl.arg_attrs]
-                    == ['"read"', '"read"', '"write"']
-                )
-                if valid:
+                if is_device_output_alias(op, declarations):
                     call_alias[op.results[0]] = op.operands[2]
-                else:
-                    unknown_memref_call = True
             for old in list(block.operations):
                 if old.operation.name != 'bufferization.dealloc' or old.results or len(old.operands) % 2:
                     continue
