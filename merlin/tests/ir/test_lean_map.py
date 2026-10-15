@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from merlin.verify.lean.check import check_definedness, check_support
+from merlin.verify.lean.check import check_definedness, check_stage, check_support, compose_chain
 from merlin.verify.lean.export import export_file
 
 
@@ -62,6 +62,50 @@ def test_map_reading_dirty_destination_is_not_defined(tmp_path, lean_tools):
                          m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
     receipt = check_definedness(source, "forward", tmp_path / "defined",
                                m2m_python=lean_tools.m2m_python)
+    assert receipt["verdict"] == "abstracted", receipt.get("reason")
+
+
+def test_map_identity_chain_has_independent_definedness(tmp_path, lean_tools):
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    source = map_source(read_output=True)
+    for name in ["before.mlir", "after.mlir"]:
+        (stage / name).write_text(source)
+    (stage / "meta.json").write_text(json.dumps({"boundary": "map-identity"}))
+    assert check_stage(stage, m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    before = stage / "before.mlir"
+    assert check_support(before, "forward", tmp_path / "support",
+                         m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    assert check_definedness(before, "forward", tmp_path / "defined",
+                             m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    chain = compose_chain([stage], tmp_path / "support/receipt.json", "forward", tmp_path / "chain.json",
+                          m2m_python=lean_tools.m2m_python, definedness=tmp_path / "defined/receipt.json")
+    assert chain["verdict"] == "verified", chain.get("reason")
+
+
+def test_map_generalization_waits_for_typed_rewrite_context(tmp_path, lean_tools):
+    # The current C1 theorem quantifies over arbitrary runtime shapes. A map derives its loop rank
+    # from the destination; generic has a fixed rank. Source annotations alone cannot justify that
+    # rank in this interface. Do not silently normalize exports or certify this boundary yet.
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    before, after = stage / "before.mlir", stage / "after.mlir"
+    before.write_text(map_source(read_output=True))
+    program = """
+import sys
+from pathlib import Path
+from torch_mlir import ir, passmanager
+with ir.Context():
+    m = ir.Module.parse(Path(sys.argv[1]).read_text())
+    passmanager.PassManager.parse('builtin.module(func.func(linalg-generalize-named-ops))').run(m.operation)
+    Path(sys.argv[2]).write_text(str(m))
+"""
+    result = subprocess.run([str(lean_tools.m2m_python), "-c", program, str(before), str(after)],
+                            capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+    assert "linalg.generic" in after.read_text()
+    (stage / "meta.json").write_text(json.dumps({"boundary": "map-generalization"}))
+    receipt = check_stage(stage, m2m_python=lean_tools.m2m_python)
     assert receipt["verdict"] == "abstracted", receipt.get("reason")
 
 
