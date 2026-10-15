@@ -215,8 +215,9 @@ def run_input(
                 console, wall = FB.run(target, elf, timeout_s=max(1.0, deadline - time.monotonic()))
             finally:
                 FB.discard(step_dir)  # the relinked image and its generated inputs; the bound inputs stay
+            (step_dir / "console.bin").write_bytes(console)  # kept only when it cannot be read back
             values, info = FB.read(console, stages[program.name], builds[program.name]["build_hash"])
-            (step_dir / "console.bin").write_bytes(console)
+            (step_dir / "console.bin").unlink()
             np.savez(step_dir / "outputs.npz", **{f"out{i}": v for i, v in enumerate(values)})
             cycles = info["metrics"].get("cycles")
             row.update(
