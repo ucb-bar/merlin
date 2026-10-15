@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -341,7 +342,12 @@ def _replay(args, report, *, all_calls: bool, group: str | None) -> dict:
         inputs = inputs[:FAST_INPUTS]
     from merlin.common.paths import build_dir
 
-    work = Path(args.work or (build_dir() / "model_check")) / f"{model.name}-{int(time.time())}"
+    # A run gets its own directory: two checks of one model started in the same second shared one and
+    # overwrote each other's replay images.
+    root = Path(args.work or (build_dir() / "model_check"))
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    work = Path(tempfile.mkdtemp(prefix=f"{model.name}-{stamp}-", dir=root))
     programs = _programs(model, args)
     for program in programs:
         report["programs"].append(
@@ -411,6 +417,7 @@ def _reference_metrics(bundle: B.Bundle, model: str, split: str) -> dict[str, An
         "inputs": len(per_input),
         "per_input": per_input,
         "worst": M.worst_of(per_input),
+        "mean": M.mean_of(per_input),
     }
 
 

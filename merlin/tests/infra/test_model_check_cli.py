@@ -103,6 +103,13 @@ def test_worst_case_takes_min_agreement_and_max_error():
     assert worst_of(rows) == {"kl_mean": 0.04, "top1_agree": 0.90}
 
 
+def test_mean_of_a_per_input_agreement_is_the_split_rate():
+    from merlin.model_check.metrics import mean_of
+
+    rows = [{"top1_agree": 1.0}, {"top1_agree": 0.0}, {"top1_agree": 1.0}, {"top1_agree": 1.0}]
+    assert mean_of(rows) == {"top1_agree": 0.75}
+
+
 def test_census_moves_refused_kernels_off_the_device(tmp_path):
     from merlin.model_check import commands as C
     from merlin.model_check.bundle import Bundle
