@@ -177,6 +177,85 @@ def test_an_original_read_only_by_a_dead_value_chain_is_dropped() -> None:
     assert binder.dead_args == (1,), "the generic still reads %w, but nothing reads the generic"
 
 
+_CALL = """builtin.module {
+  func.func @forward(%x: tensor<2x4xi8>, %w: tensor<3x4xi8>) -> tensor<2x3xi32> {
+    %e = tensor.empty() : tensor<4x3xi8>
+    %t = linalg.transpose ins(%w : tensor<3x4xi8>) outs(%e : tensor<4x3xi8>) permutation = [1, 0]
+    %d = tensor.empty() : tensor<2x3xi32>
+    %r = func.call @merlin_dev_0(%x, %t, %d) : (tensor<2x4xi8>, tensor<4x3xi8>, tensor<2x3xi32>) -> tensor<2x3xi32>
+    func.return %r : tensor<2x3xi32>
+  }
+  func.func private @merlin_dev_0(tensor<2x4xi8>, tensor<4x3xi8>, tensor<2x3xi32>) -> tensor<2x3xi32>
+}
+"""
+
+
+WC = np.arange(-6, 6, dtype=np.int8).reshape(3, 4)
+
+
+def _device(values):
+    """A stand-in kernel: the int8 contraction its interface states, exact in int32."""
+    x, w = (np.asarray(v, np.int64) for v in values[:2])
+    return [(x @ w).astype(np.int32)]
+
+
+def _routed(blob: bool):
+    """The group route's two ways of passing the laid-out weight: a constant, or a blob argument."""
+    from xdsl.dialects.builtin import IntegerType
+
+    from merlin.llvmlower.group_host_call import _constant_tensor
+
+    module = mq.parse(_CALL)
+    func = next(op for op in module.walk() if op.name == "func.func" and op.body.blocks)
+    call = next(op for op in func.body.blocks[0].ops if op.name == "func.call")
+    laid = np.ascontiguousarray(WC.T)
+    binder = BW.WeightArgs(module) if blob else None
+    if blob:
+        call.operands[1] = binder(laid, IntegerType(8))
+    else:
+        constant = _constant_tensor(laid, IntegerType(8))
+        func.body.blocks[0].insert_op_before(constant, call)
+        call.operands[1] = constant.results[0]
+    transpose = next(op for op in func.body.blocks[0].ops if op.name == "linalg.transpose")
+    transpose.detach()
+    transpose.erase()
+    if binder is not None:
+        binder.finish()
+    return module, binder
+
+
+def test_a_small_model_computes_the_same_bits_with_blob_weights() -> None:
+    """The routed call receives the same weight bytes whether they are a constant or a blob argument,
+    so the model's outputs are bit-identical; the original only the device read is dead."""
+    from merlin.runtime import linalg_numpy as LN
+
+    x = np.array([[1, -2, 3, 4], [5, 6, -7, 8]], np.int8)
+    constant, _ = _routed(blob=False)
+    blob, binder = _routed(blob=True)
+    seen = {}
+
+    def device(tag):
+        def call(values):
+            seen[tag] = [np.asarray(v).copy() for v in values[:2]]
+            return _device(values)
+
+        return call
+
+    want = LN.evaluate(constant, [x, WC], calls={"merlin_dev_0": device("constant")})
+    got = LN.evaluate(blob, [x, WC, binder.values["w0"]], calls={"merlin_dev_0": device("blob")})
+    assert [a.tobytes() for a in got] == [a.tobytes() for a in want]
+    assert all(a.tobytes() == b.tobytes() for a, b in zip(seen["blob"], seen["constant"], strict=True))
+    assert binder.dead_args == (1,)
+
+
+def test_the_whole_model_build_stores_weights_once_by_default() -> None:
+    import inspect
+
+    from merlin.compile.baremetal_model import compile_saved_model
+
+    assert inspect.signature(compile_saved_model).parameters["blob_weights"].default is True
+
+
 def test_a_dropped_tensor_stays_inside_the_final_blob() -> None:
     header = {
         "a": {"dtype": "I8", "shape": [1], "data_offsets": [0, 1]},
