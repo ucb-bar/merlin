@@ -131,6 +131,9 @@ one timing target. Launch Spike with the selected 16 GiB map beginning at
 `0x80000000` for these ELFs. Gemmini's local `address_bits: 32` parameter is
 not the Rocket physical-memory size. The model's README example `-m64` is a
 small test allocation, not this board's memory selection.
+The Phase 1 numerical oracle remains the selected stock functional Spike and
+Gemmini extension; the annotated observer is a separate Phase 2 timing consumer
+of the archived ELF/input records.
 
 The compiler agent receives the selected Phase 1 contract and RTL facts through
 the frozen input bundle. The Gemmini task grant also contains
