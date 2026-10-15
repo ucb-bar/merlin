@@ -324,6 +324,12 @@ task-local checkout of gSIM `f38de1704dac25b540d1552fbe1d23fc48463212`.
 It widens SimDRAM's AXI addresses and refuses block-device requests when no
 block image is attached. The selected bare-metal Phase 1 programs do not use
 block storage. Preserve the patched C++ source with the native build receipt.
+The [16 GiB DRAM smoke](../../build_tools/gsim/high_dram_16gib.S) has a
+[reproducible ELF build script](../../build_tools/gsim/build_high_dram_16gib.sh).
+It writes and reads 0x100001000 and 0x47ffff000, crossing the 32-bit boundary
+and touching the final mapped 4 KiB page. Run the exact resulting ELF on gSIM,
+Spike with the selected 16 GiB map, and the U250 bitstream; record each exit
+status and the ELF hash.
 
 The public Chipyard commit currently cannot supply a verified elaboration on
 this worker by itself: `TargetConfigs.scala` refers to six OPU/Kodiak config
