@@ -229,19 +229,107 @@ theorem reshapeRule_sound (ib : Nat) : RuleSound ib reshapeRule := by
     · cases h
   · cases h
 
+theorem listMapM_total {α β : Type} (f : α → Outcome β) :
+    ∀ (l : List α), (∀ x ∈ l, ∃ y, f x = .ok y) → ∃ ys : List β, l.mapM f = .ok ys
+  | [], _ => ⟨[], rfl⟩
+  | x :: xs, h => by
+    obtain ⟨y, hy⟩ := h x (List.mem_cons_self ..)
+    obtain ⟨ys, hys⟩ := listMapM_total f xs (fun x hx => h x (List.mem_cons_of_mem _ hx))
+    exact ⟨y :: ys, by simp only [List.mapM_cons, Outcome.bindOp_eq, hy, hys,
+      Outcome.bind_ok, Outcome.pure_eq]⟩
+
+/-- Exact byte counts and a supported element decoder imply successful, fully initialized dense
+constants. The array lookup fallback cannot occur at an in-bounds tensor index. -/
+theorem denseTensor_defined {ib : Nat} {ty : Ty} {splat : Bool} {bytes : List UInt8}
+    {sh : List Nat} {elt : Ty} (h : denseOk ty splat bytes sh elt = true) :
+    ∃ t, denseTensor ib ty splat bytes = .ok t ∧
+      Fact.Holds ib (.tensor t) ⟨.tensor sh elt, true⟩ := by
+  have hsafety := denseTensor_safe (ib := ib) h
+  have htotal : ∃ t, denseTensor ib ty splat bytes = .ok t ∧ (RVal.tensor t).Defined := by
+    unfold denseOk at h
+    split at h
+    · next sh' elt' eb hst heb =>
+      simp only [decide_eq_true_eq] at h
+      obtain ⟨rfl, rfl, heb0, hlen⟩ := h
+      unfold denseTensor
+      simp only [hst, heb, heb0, ↓reduceIte, Outcome.bindOp_eq, Outcome.pure_eq]
+      cases splat with
+      | true =>
+        obtain ⟨s, hs, _⟩ := scalarOfBits_conforms (ib := ib) heb (leNat bytes)
+        simp only [↓reduceIte] at hlen ⊢
+        simp only [hlen, ne_eq, not_true_eq_false, ↓reduceIte, hs]
+        refine ⟨_, rfl, fun i hi => ?_⟩
+        change Idx.InBounds sh i at hi
+        simp [MerlinVerify.Tensor.full, MerlinVerify.Tensor.canon, hi]
+      | false =>
+        simp only [Bool.false_eq_true, ↓reduceIte] at hlen ⊢
+        simp only [hlen, ne_eq, not_true_eq_false, ↓reduceIte]
+        let decode := fun k => Outcome.ofOption "dense element decode"
+          (scalarOfBits ib elt (leNat ((bytes.toArray.extract (k * eb) (k * eb + eb)).toList)))
+        obtain ⟨elems, hm⟩ := listMapM_total decode (List.range (shapeSize sh)) (fun k _ => by
+          obtain ⟨s, hs, _⟩ := scalarOfBits_conforms (ib := ib) heb
+            (leNat ((bytes.toArray.extract (k * eb) (k * eb + eb)).toList))
+          exact ⟨s, by simp only [decode, hs, Outcome.ofOption]⟩)
+        change ∃ t, ((List.range (shapeSize sh)).mapM decode).bind _ = .ok t ∧ _
+        rw [hm, Outcome.bind_ok]
+        refine ⟨_, rfl, fun i hi => ?_⟩
+        change Idx.InBounds sh i at hi
+        have hk : linearIndex sh i < elems.length := by
+          rw [listMapM_length decode _ _ hm, List.length_range]
+          exact linearIndex_lt _ _ hi
+        simp [MerlinVerify.Tensor.canon, hi, List.getElem?_toArray, List.getElem?_eq_getElem hk]
+    · cases h
+  obtain ⟨t, ht, hd⟩ := htotal
+  exact ⟨t, ht, hsafety.2 t ht, fun _ => hd⟩
+
+def denseConstantRule : Rule := fun op fs =>
+  if dialectOf op.name = "arith" ∧ op.name = "arith.constant" ∧ fs = [] then
+    match op.results, op.attr? "value" with
+    | [r], some (.dense ty splat bytes) =>
+      match r.ty.staticTensor? with
+      | some (sh, e) => if denseOk ty splat bytes sh e then some [⟨.tensor sh e, true⟩] else none
+      | none => none
+    | _, _ => none
+  else none
+
+theorem denseConstantRule_sound (ib : Nat) : RuleSound ib denseConstantRule := by
+  intro op fs rs hm h ctx call args hib hargs
+  unfold denseConstantRule at h
+  split at h
+  · next hc =>
+    obtain ⟨hd, hn, rfl⟩ := hc
+    cases hargs
+    split at h
+    · split at h
+      · split at h
+        · next hok =>
+          cases h
+          obtain ⟨t, ht, hf⟩ := denseTensor_defined (ib := ib) hok
+          refine ⟨[.tensor t], ?_, List.Forall₂.cons hf .nil⟩
+          rw [opSem_modelled hm]
+          simp only [dispatch, Op.blind_name, hd]
+          rename_i r ty splat bytes hr ha _ sh e hs
+          simp only [Arith.sem, Op.blind_name, hn, Op.blind_attr?, ha, Op.blind_results, hr,
+            List.map_cons, List.map_nil, hib, ht, Outcome.bindOp_eq, Outcome.bind_ok, Outcome.pure_eq]
+        · cases h
+      · cases h
+    · cases h
+  · cases h
+
 def rules (ib : Nat) : Rule := fun op fs =>
-  [constantRule ib, emptyRule, splatRule, intBinaryRule, reshapeRule].findSome? fun r => r op fs
+  [constantRule ib, emptyRule, splatRule, intBinaryRule, reshapeRule, denseConstantRule].findSome? fun r => r op fs
 
 theorem rules_sound (ib : Nat) : RuleSound ib (rules ib) := by
   intro op fs rs hm hr
   obtain ⟨r, hmem, h⟩ := List.exists_of_findSome?_eq_some hr
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
-  rcases hmem with rfl | rfl | rfl | rfl | rfl
+  rcases hmem with rfl | rfl | rfl | rfl | rfl | rfl
   · exact constantRule_sound ib op fs rs hm h
   · exact emptyRule_sound ib op fs rs hm h
   · exact splatRule_sound ib op fs rs hm h
   · exact intBinaryRule_sound ib op fs rs hm h
   · exact reshapeRule_sound ib op fs rs hm h
+  · exact denseConstantRule_sound ib op fs rs hm h
 
 def book (ib : Nat) : Book opSem ib where
   rule op fs := if unmodelledAttr? op.blind = none then rules ib op fs else none

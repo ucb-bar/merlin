@@ -82,4 +82,22 @@ def reshape (name : String) (src dst : List Nat) (groups : List (List Nat)) : Bo
 #guard !reshape "tensor.collapse_shape" [2, 3] [6] [[1, 0]]
 #guard !reshape "tensor.expand_shape" [6] [2, 3] [[0], [1]]
 
+def dense (splat : Bool) (bytes : List UInt8) (shape : List Nat := [2]) : Op :=
+  mkOp "arith.constant" [v 0 (tensorTy shape i32)] []
+    [("value", .dense (tensorTy shape i32) splat bytes)]
+
+#guard accepts [] [dense true [7, 0, 0, 0], ret [0]] [] [.tensor [2] i32]
+#guard accepts [] [dense false [1, 0, 0, 0, 2, 0, 0, 0], ret [0]] [] [.tensor [2] i32]
+#guard accepts [] [dense false [] [0], ret [0]] [] [.tensor [0] i32]
+#guard !accepts [] [dense true [7, 0, 0], ret [0]] [] [.tensor [2] i32]
+#guard !accepts [] [dense false [1, 0, 0, 0], ret [0]] [] [.tensor [2] i32]
+#guard !accepts [] [dense false [1, 0, 0, 0, 2, 0, 0, 0, 0], ret [0]] [] [.tensor [2] i32]
+#guard !accepts [] [mkOp "arith.constant" [v 0 (tensorTy [3] i32)] []
+  [("value", .dense (tensorTy [2] i32) true [7, 0, 0, 0])], ret [0]] [] [.tensor [3] i32]
+
+#guard readInts (Sem.Ops.denote ctx { ops := [func "f" [] [dense true [7, 0, 0, 0], ret [0]]] } "f" [])
+  == some [[some 7, some 7]]
+#guard readInts (Sem.Ops.denote ctx { ops := [func "f" []
+  [dense false [255, 255, 255, 255, 2, 0, 0, 0], ret [0]]] } "f" []) == some [[some (-1), some 2]]
+
 end MerlinVerify.Tests.Definedness

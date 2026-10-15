@@ -50,6 +50,19 @@ def test_total_integer_operations(tmp_path, lean_tools, name):
       return %a, %b : i32, i32
     }""",
     "func.func @forward() { return }",
+    # Dense constants now have a totality and initialization proof, including the byte-count check.
+    """func.func @forward() -> tensor<2xi32> {
+      %r = arith.constant dense<7> : tensor<2xi32>
+      return %r : tensor<2xi32>
+    }""",
+    """func.func @forward() -> tensor<2xi32> {
+      %r = arith.constant dense<[-1, 2]> : tensor<2xi32>
+      return %r : tensor<2xi32>
+    }""",
+    """func.func @forward() -> tensor<2xf32> {
+      %r = arith.constant dense<[1.0, -2.0]> : tensor<2xf32>
+      return %r : tensor<2xf32>
+    }""",
     """func.func @forward(%a: tensor<2x3xi32>) -> tensor<6xi32> {
       %r = tensor.collapse_shape %a [[0, 1]] : tensor<2x3xi32> into tensor<6xi32>
       return %r : tensor<6xi32>
@@ -70,7 +83,6 @@ def test_defined_sources(tmp_path, lean_tools, text):
     ("%r = arith.shli %a, %b : i32 return %r : i32", "i32"),
     ("%r = arith.addi %a, %b overflow<nsw> : i32 return %r : i32", "i32"),
     ("%r = arith.muli %a, %b overflow<nuw> : i32 return %r : i32", "i32"),
-    ("%r = arith.constant dense<7> : tensor<2xi32> return %r : tensor<2xi32>", "tensor<2xi32>"),
     ("%r = arith.constant 7 : i32 %t = tensor.empty() : tensor<2xi32> "
      "return %r, %t : i32, tensor<2xi32>", "(i32, tensor<2xi32>)"),
 ])
