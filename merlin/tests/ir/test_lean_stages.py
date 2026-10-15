@@ -8,26 +8,19 @@ from __future__ import annotations
 
 import copy
 import json
-import os
 import subprocess
-from pathlib import Path
 
-import pytest
-
-from merlin.common.paths import out_dir, repo_root
+from merlin.common.paths import repo_root
 from merlin.llvmlower.passes_xdsl import preprocess_text
 from merlin.verify.lean.export import export_file
 
 FIXTURE = repo_root() / "merlin" / "tests" / "fixtures" / "lean_dce_forward.mlir"
-LEAN_EXE = out_dir() / "build" / "lean" / "build" / "bin" / "merlin-lean"
-# The authoritative exporter (design D9) parses with the pipeline's MLIR in the model2MLIR env.
-M2M_PYTHON = Path(os.environ.get("MERLIN_M2M_PYTHON", Path.home() / "Projects" / "model2MLIR" / ".venv" / "bin" / "python"))
 
 
-def _export(path, tmp_path, tag):
+def _export(tools, path, tmp_path, tag):
+    # The authoritative exporter (design D9): the pipeline's own MLIR, never a fallback reader.
     out = tmp_path / f"{tag}.json"
-    backend = "mlir" if M2M_PYTHON.exists() else "xdsl"
-    export_file(path, out, backend=backend, m2m_python=M2M_PYTHON)
+    export_file(path, out, backend="mlir", m2m_python=tools.m2m_python)
     return json.loads(out.read_text())
 
 
@@ -48,23 +41,22 @@ def _body(doc):
     return next(o for o in doc["module"]["ops"] if o["name"] == "func.func")["regions"][0]["blocks"][0]["ops"]
 
 
-def _check(tmp_path, before, after, tag):
+def _check(tools, tmp_path, before, after, tag):
     (tmp_path / "b.json").write_text(json.dumps(before))
     (tmp_path / f"{tag}.json").write_text(json.dumps(after))
-    proc = subprocess.run([str(LEAN_EXE), "check-c1", str(tmp_path / "b.json"), str(tmp_path / f"{tag}.json"), "forward"],
-                          capture_output=True, text=True, check=False)
+    proc = subprocess.run([str(tools.lean_exe), "check-c1", str(tmp_path / "b.json"), str(tmp_path / f"{tag}.json"),
+                           "forward"], capture_output=True, text=True, check=False)
     return json.loads(proc.stdout)["verdict"]
 
 
-@pytest.mark.skipif(not LEAN_EXE.exists(), reason="merlin-lean not built (cd merlin/lean && lake build)")
-def test_c1_verifies_real_dce_and_rejects_faults(tmp_path, monkeypatch):
+def test_c1_verifies_real_dce_and_rejects_faults(tmp_path, monkeypatch, lean_tools):
     _record(tmp_path, monkeypatch)
     stage = next(p for p in (tmp_path / "stages").iterdir() if p.name.endswith("xdsl-pruned"))
     assert json.loads((stage / "meta.json").read_text())["changed"]
-    before = _export(stage / "before.mlir", tmp_path, "before")
-    after = _export(stage / "after.mlir", tmp_path, "after")
+    before = _export(lean_tools, stage / "before.mlir", tmp_path, "before")
+    after = _export(lean_tools, stage / "after.mlir", tmp_path, "after")
     assert len(_body(after)) < len(_body(before))
-    assert _check(tmp_path, before, after, "real") == "verified"
+    assert _check(lean_tools, tmp_path, before, after, "real") == "verified"
 
     def generic(doc):
         return next(o for o in _body(doc) if o["name"] == "linalg.generic")
@@ -84,12 +76,10 @@ def test_c1_verifies_real_dce_and_rejects_faults(tmp_path, monkeypatch):
     for name, fault in [("drop_fill", drop_fill), ("to_parallel", to_parallel), ("swap", swap_operands)]:
         mutated = copy.deepcopy(after)
         fault(mutated)
-        assert _check(tmp_path, before, mutated, name) == "abstracted", name
+        assert _check(lean_tools, tmp_path, before, mutated, name) == "abstracted", name
 
 
-@pytest.mark.skipif(not LEAN_EXE.exists() or not M2M_PYTHON.exists(),
-                    reason="merlin-lean or the model2MLIR interpreter (authoritative exporter) is missing")
-def test_receipts_for_real_preprocessing(tmp_path, monkeypatch):
+def test_receipts_for_real_preprocessing(tmp_path, monkeypatch, lean_tools):
     import jsonschema
 
     from merlin.verify.lean.check import check_stage
@@ -101,7 +91,7 @@ def test_receipts_for_real_preprocessing(tmp_path, monkeypatch):
         assert (prev / "after.mlir").read_bytes() == (nxt / "before.mlir").read_bytes()
     schema = json.loads((repo_root() / "merlin" / "contract" / "schemas" / "lean_receipt.schema.json").read_text())
     for stage in stages:
-        receipt = check_stage(stage, m2m_python=M2M_PYTHON)
+        receipt = check_stage(stage, m2m_python=lean_tools.m2m_python)
         jsonschema.validate(receipt, schema)
         assert receipt["verdict"] == "verified", receipt.get("reason")
         assert receipt["axioms"] == ["propext", "Classical.choice", "Quot.sound"]
@@ -109,4 +99,4 @@ def test_receipts_for_real_preprocessing(tmp_path, monkeypatch):
     pruned = next(s for s in stages if s.name.endswith("xdsl-pruned"))
     text = (pruned / "after.mlir").read_text()
     (pruned / "after.mlir").write_text(text.replace('"arith.muli"', '"arith.addi"', 1))
-    assert check_stage(pruned, m2m_python=M2M_PYTHON)["verdict"] != "verified"
+    assert check_stage(pruned, m2m_python=lean_tools.m2m_python)["verdict"] != "verified"

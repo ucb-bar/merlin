@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import out_dir, repo_root
+from merlin.common.paths import out_dir
 from merlin.verify.lean.export import export_text, round_trip
 
 LEAN_EXE = out_dir() / "build" / "lean" / "build" / "bin" / "merlin-lean"
@@ -50,3 +50,49 @@ def test_round_trip_identical(tmp_path):
     src.write_text(SAMPLE)
     result = round_trip(src, tmp_path / "work", lean_exe=LEAN_EXE, mlir_opt=MLIR_OPT)
     assert result.status == "identical", result.detail
+
+
+# Forms the Lean printer must reproduce exactly through the authoritative exporter, and a form outside
+# the exported fragment that must be refused rather than exported lossily.
+AUTHORITATIVE = {
+    "sample": SAMPLE,
+    "shaped_i1": """
+func.func @f() -> tensor<2x2xi1> {
+  %0 = arith.constant dense<[[true, false], [false, true]]> : tensor<2x2xi1>
+  return %0 : tensor<2x2xi1>
+}
+""",
+    "quoted_symbols": """
+func.func private @"with space"(i32) -> i32
+func.func @"quote\\"name"(%a: i32) -> i32 {
+  %0 = func.call @"with space"(%a) {"odd key" = 1 : i32} : (i32) -> i32
+  return %0 : i32
+}
+""",
+}
+
+
+@pytest.mark.parametrize("name", sorted(AUTHORITATIVE))
+def test_authoritative_round_trip(tmp_path, lean_tools, name):
+    src = tmp_path / f"{name}.mlir"
+    src.write_text(AUTHORITATIVE[name])
+    result = round_trip(src, tmp_path / "work", lean_exe=lean_tools.lean_exe, backend="mlir",
+                        m2m_python=lean_tools.m2m_python)
+    assert result.status == "identical", result.detail
+
+
+def test_branches_are_refused(tmp_path, lean_tools):
+    src = tmp_path / "branch.mlir"
+    src.write_text("""
+func.func @f(%c: i1, %a: i32) -> i32 {
+  cf.cond_br %c, ^bb1, ^bb2
+^bb1:
+  return %a : i32
+^bb2:
+  return %a : i32
+}
+""")
+    result = round_trip(src, tmp_path / "work", lean_exe=lean_tools.lean_exe, backend="mlir",
+                        m2m_python=lean_tools.m2m_python)
+    assert result.status == "export_failed" and "outside the exported fragment" in result.detail
+

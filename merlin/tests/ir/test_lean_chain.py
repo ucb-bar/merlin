@@ -4,23 +4,15 @@ each checked, plus the capture's support, compose into a verified chain; a broke
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
 
-import pytest
-
-from merlin.common.paths import out_dir, repo_root
+from merlin.common.paths import repo_root
 from merlin.llvmlower.passes_xdsl import preprocess_text
 
 FIXTURE = repo_root() / "merlin" / "tests" / "fixtures" / "lean_dce_forward.mlir"
-LEAN_EXE = out_dir() / "build" / "lean" / "build" / "bin" / "merlin-lean"
-M2M_PYTHON = Path(os.environ.get("MERLIN_M2M_PYTHON", Path.home() / "Projects" / "model2MLIR" / ".venv" / "bin" / "python"))
 SCHEMA = repo_root() / "merlin" / "contract" / "schemas" / "lean_chain.schema.json"
 
 
-@pytest.mark.skipif(not LEAN_EXE.exists() or not M2M_PYTHON.exists(),
-                    reason="merlin-lean or the model2MLIR interpreter (authoritative exporter) is missing")
-def test_chain_composes_real_preprocessing(tmp_path, monkeypatch):
+def test_chain_composes_real_preprocessing(tmp_path, monkeypatch, lean_tools):
     import jsonschema
 
     from merlin.verify.lean.check import check_stage, check_support, compose_chain
@@ -29,10 +21,10 @@ def test_chain_composes_real_preprocessing(tmp_path, monkeypatch):
     preprocess_text(FIXTURE.read_text())
     stages = sorted(p for p in (tmp_path / "stages").iterdir())
     for stage in stages:
-        assert check_stage(stage, m2m_python=M2M_PYTHON)["verdict"] == "verified"
+        assert check_stage(stage, m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
     capture = stages[0] / "before.mlir"
     assert capture.read_text() == FIXTURE.read_text()
-    check_support(capture, "forward", tmp_path / "support", m2m_python=M2M_PYTHON)
+    check_support(capture, "forward", tmp_path / "support", m2m_python=lean_tools.m2m_python)
     schema = json.loads(SCHEMA.read_text())
 
     doc = compose_chain(stages, tmp_path / "support" / "receipt.json", "forward", tmp_path / "chain.json")
