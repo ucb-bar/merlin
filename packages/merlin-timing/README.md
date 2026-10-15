@@ -74,5 +74,8 @@ python3 /path/to/provider-source/build_provider.py \
 
 Compilation uses one C++17 compiler process, pins the source bundle and generic
 runtime headers before and after building, and publishes a new library inode.
-Target sources and facts belong in the target repository's examples. The shared
-builder supplies no kernel, schedule, timing prices or calibration evidence.
+Target simulator sources and facts belong in the simulator repository's examples,
+independently of the generated OOT compiler. The shared builder supplies no
+kernel, schedule, timing prices or calibration evidence. Candidate grants expose
+reviewed runtime endpoints through the broker; simulator sources remain operator
+build inputs.

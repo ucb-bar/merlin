@@ -19,9 +19,12 @@ supply target prices.
 
 The generic timing engine, source-bundle verifier, provider build orchestration
 and calibration tools live in `merlin-timing`. Instruction semantics, device
-configuration facts and optional observers live in the target repository's
-`examples/` directory. Observers are separate from the functional extension and
-the compiler under evaluation.
+configuration facts and optional observers live in the simulator repository's
+`examples/` directory, independently of the compiler under evaluation. Observers
+load separately from the functional extension. Phase 1 produces the target OOT
+compiler from scratch; these trusted tools require no handwritten compiler or
+generated compiler code. Candidate grants expose runtime endpoints through the
+broker, without simulator source, vendor headers or selfcheck fixtures.
 
 A target exporter calls `merlin_timing.provider_bundle.export_bundle` with its
 source bytes and selected C++ entrypoint. It receives a closed, hashed bundle
