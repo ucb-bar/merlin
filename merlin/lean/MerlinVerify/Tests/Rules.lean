@@ -219,4 +219,83 @@ def indexOps (k : Int) : List Op :=
 #guard !checkOps book2 0 [] [mkOp "linalg.index" [v 11 .index] [] [("dim", .int 0 i64)], ret [11]]
   [s .index]
 
+/-! ### Named structured ops -/
+
+/-- The i8 × i8 → i32 multiply-accumulate body named matmuls carry in generic form. -/
+def macBody : Region := .mk [.mk [v 10 i8, v 11 i8, v 12 i32] [
+    mkOp "arith.extsi" [v 13 i32] [10],
+    mkOp "arith.extsi" [v 14 i32] [11],
+    mkOp "arith.muli" [v 15 i32] [13, 14],
+    mkOp "arith.addi" [v 16 i32] [12, 15],
+    mkOp "linalg.yield" [] [16]]]
+
+def seg (n m : Int) : List (String × Attr) := [("operandSegmentSizes", .denseArray (.int 32) [n, m])]
+
+def mm (name : String) (outTy : Ty) (operands : List ValueId) (n : Int) : List Op :=
+  [mkOp name [v 3 outTy] operands (seg n 1) [] [macBody], ret [3]]
+
+#guard checkOps book2 0 [(0, T [2, 3] i8), (1, T [3, 4] i8), (2, T [2, 4] i32)]
+  (mm "linalg.matmul" (tensorTy [2, 4] i32) [0, 1, 2] 2) [T [2, 4] i32]
+-- the contraction runs over A's 5 columns but B has only 3 rows: B would be read out of bounds
+#guard !checkOps book2 0 [(0, T [2, 5] i8), (1, T [3, 4] i8), (2, T [2, 4] i32)]
+  (mm "linalg.matmul" (tensorTy [2, 4] i32) [0, 1, 2] 2) [T [2, 4] i32]
+#guard checkOps book2 0 [(0, T [5, 2, 3] i8), (1, T [5, 3, 4] i8), (2, T [5, 2, 4] i32)]
+  (mm "linalg.batch_matmul" (tensorTy [5, 2, 4] i32) [0, 1, 2] 2) [T [5, 2, 4] i32]
+-- the batch loop runs over A's 6 batches but B has 5
+#guard !checkOps book2 0 [(0, T [6, 2, 3] i8), (1, T [5, 3, 4] i8), (2, T [6, 2, 4] i32)]
+  (mm "linalg.batch_matmul" (tensorTy [6, 2, 4] i32) [0, 1, 2] 2) [T [6, 2, 4] i32]
+
+/-- `quantized_matmul` with scalar zero points: the body receives `a, b, azp, bzp, acc`. -/
+def qmmOps : List Op :=
+  [mkOp "linalg.quantized_matmul" [v 5 (tensorTy [2, 4] i32)] [0, 1, 2, 3, 4] (seg 4 1) []
+     [.mk [.mk [v 10 i8, v 11 i8, v 12 i32, v 13 i32, v 14 i32] [
+        mkOp "arith.extsi" [v 15 i32] [10],
+        mkOp "arith.subi" [v 16 i32] [15, 12],
+        mkOp "arith.extsi" [v 17 i32] [11],
+        mkOp "arith.subi" [v 18 i32] [17, 13],
+        mkOp "arith.muli" [v 19 i32] [16, 18],
+        mkOp "arith.addi" [v 20 i32] [14, 19],
+        mkOp "linalg.yield" [] [20]]]],
+   ret [5]]
+
+#guard checkOps book2 0
+  [(0, T [2, 3] i8), (1, T [3, 4] i8), (2, s i32), (3, s i32), (4, T [2, 4] i32)] qmmOps [T [2, 4] i32]
+-- a zero point given as a vector is not read at every point
+#guard !checkOps book2 0
+  [(0, T [2, 3] i8), (1, T [3, 4] i8), (2, T [3] i32), (3, s i32), (4, T [2, 4] i32)] qmmOps
+  [T [2, 4] i32]
+
+def copyBody : Region := .mk [.mk [v 10 f32, v 11 f32] [mkOp "linalg.yield" [] [10]]]
+
+#guard checkOps book2 0 [(0, T [3, 2] f32), (1, T [3, 2] f32)]
+  [mkOp "linalg.copy" [v 2 (tensorTy [3, 2] f32)] [0, 1] (seg 1 1) [] [copyBody], ret [2]] [T [3, 2] f32]
+#guard !checkOps book2 0 [(0, T [2, 3] f32), (1, T [3, 2] f32)]
+  [mkOp "linalg.copy" [v 2 (tensorTy [3, 2] f32)] [0, 1] (seg 1 1) [] [copyBody], ret [2]] [T [3, 2] f32]
+
+def dims (xs : List Int) : List (String × Attr) := [("dimensions", .denseArray i64 xs)]
+
+#guard checkOps book2 0 [(0, T [4] f32), (1, T [3, 4] f32)]
+  [mkOp "linalg.broadcast" [v 2 (tensorTy [3, 4] f32)] [0, 1] (dims [0]) [] [copyBody], ret [2]]
+  [T [3, 4] f32]
+-- with `dimensions = [1]` the 4-vector feeds loop 0, whose range (4, read off the input) overruns
+-- the output's 3 rows; a rank mismatch is refused outright
+#guard !checkOps book2 0 [(0, T [4] f32), (1, T [3, 4] f32)]
+  [mkOp "linalg.broadcast" [v 2 (tensorTy [3, 4] f32)] [0, 1] (dims [1]) [] [copyBody], ret [2]]
+  [T [3, 4] f32]
+#guard !checkOps book2 0 [(0, T [4] f32), (1, T [3, 4] f32)]
+  [mkOp "linalg.broadcast" [v 2 (tensorTy [3, 4] f32)] [0, 1] (dims []) [] [copyBody], ret [2]]
+  [T [3, 4] f32]
+
+def perm (xs : List Int) : List (String × Attr) := [("permutation", .denseArray i64 xs)]
+
+#guard checkOps book2 0 [(0, T [2, 3] f32), (1, T [3, 2] f32)]
+  [mkOp "linalg.transpose" [v 2 (tensorTy [3, 2] f32)] [0, 1] (perm [1, 0]) [] [copyBody], ret [2]]
+  [T [3, 2] f32]
+#guard !checkOps book2 0 [(0, T [2, 3] f32), (1, T [3, 2] f32)]
+  [mkOp "linalg.transpose" [v 2 (tensorTy [3, 2] f32)] [0, 1] (perm [0, 1]) [] [copyBody], ret [2]]
+  [T [3, 2] f32]
+#guard !checkOps book2 0 [(0, T [2, 3] f32), (1, T [3, 2] f32)]
+  [mkOp "linalg.transpose" [v 2 (tensorTy [3, 2] f32)] [0, 1] (perm [1, 1]) [] [copyBody], ret [2]]
+  [T [3, 2] f32]
+
 end MerlinVerify.Tests.Rules

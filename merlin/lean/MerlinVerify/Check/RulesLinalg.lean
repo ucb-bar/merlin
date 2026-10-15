@@ -507,15 +507,19 @@ theorem natArray?_blind (op : Op) (k : String) :
     LinalgNamed.natArray? op.blind k = LinalgNamed.natArray? op k := by
   simp only [LinalgNamed.natArray?, attrDenseArray?, Op.blind_attr?]
 
+theorem mapsOr_blind (op : Op) (dflt : List AffineMap) :
+    LinalgNamed.mapsOr op.blind dflt = LinalgNamed.mapsOr op dflt := by
+  simp only [LinalgNamed.mapsOr, attrAffineMaps?_blind]
+
 /-- Reduce a named `linalg` op's safety to `LinalgNamed.sem` on the blinded op. -/
 theorem named_sem_of {ctx : Ctx} {call : CallSem} {op : Op} {args : List RVal}
     {regions : List (Ctx → RegionSem)} (hm : unmodelledAttr? op.blind = none)
-    (hd : dialectOf op.name = "linalg") (hn : op.name = "linalg.transpose") :
+    (hd : dialectOf op.name = "linalg")
+    (hn : (op.name == "linalg.generic" || op.name == "linalg.fill" || op.name == "linalg.index") = false) :
     opSem ctx call op args regions =
       LinalgNamed.sem ctx (restrictCall (calleeOf op.blind) call) op.blind args regions := by
   rw [opSem_modelled hm]
-  simp only [dispatch, Op.blind_name, hd]
-  simp [hn]
+  simp only [dispatch, Op.blind_name, hd, hn, Bool.false_eq_true, ↓reduceIte]
 
 /-- A named op runs its generic form and checks the result count. -/
 theorem run_safe {ib : Nat} {ctx : Ctx} (hib : ctx.indexBits = ib) {op : Op} {maps : List AffineMap}
@@ -532,21 +536,209 @@ theorem run_safe {ib : Nat} {ctx : Ctx} (hib : ctx.indexBits = ib) {op : Op} {ma
   rw [ite_eq_left (by rw [HasTys.length hrs, hres])]
   exact Safe.of_ok hrs
 
+/-- A named op whose generic form runs `maps` and `iters` over inputs of types `inTys` and outputs
+of types `outTys`: `genericRule`'s conditions, with the maps the op's definition fixes. -/
+def namedOk (maps : List AffineMap) (iters : List IterKind) (inTys outTys : List VTy) (op : Op)
+    (resTys : List VTy) : Option (List RegionSig) :=
+  if (∀ t ∈ outTys, t.isTensor = true) ∧ resTys = outTys ∧ op.results.length = outTys.length ∧
+      (structuredRanges? maps iters.length (inTys ++ outTys)).isSome then
+    some [⟨(inTys ++ outTys).map VTy.eltScalar, outTys.map VTy.eltScalar, iters.length⟩]
+  else none
+
+theorem namedOk_safe {ib : Nat} {ctx : Ctx} (hib : ctx.indexBits = ib) {maps : List AffineMap}
+    {iters : List IterKind} {inTys outTys : List VTy} {op : Op} {resTys : List VTy}
+    {sigs : List RegionSig} (h : namedOk maps iters inTys outTys op resTys = some sigs)
+    {ins outs : List RVal} {regions : List (Ctx → RegionSem)} (hins : HasTys ib ins inTys)
+    (houts : HasTys ib outs outTys) (hregs : List.Forall₂ (RegionSafe ib) regions sigs) :
+    ∃ body, regions = [body] ∧
+      Safe (HasTys ib · resTys) (LinalgNamed.run ctx op.blind maps iters ins outs body) := by
+  unfold namedOk at h
+  split at h
+  · next hc =>
+    obtain ⟨hout, rfl, hres, hsr⟩ := hc
+    obtain ⟨ranges, hranges⟩ := Option.isSome_iff_exists.1 hsr
+    cases h
+    obtain _ | ⟨hbody, hnil⟩ := hregs
+    cases hnil
+    exact ⟨_, rfl, run_safe hib (structuredRanges?_spec hranges) hout hins houts hbody
+      (by rw [Op.blind_results, List.length_map, hres])⟩
+  · cases h
+
+theorem shapeOf_typed {ib : Nat} {v : RVal} {t : VTy} (h : RVal.HasTy ib v t) : shapeOf v = t.shape := by
+  simpa using shapes_typed (vs := [v]) (tys := [t]) (List.Forall₂.cons h .nil)
+
+/-- `linalg.matmul`: `C(m,n) += A(m,k) · B(k,n)`, or the op's own `indexing_maps`. -/
+def matmulRule : OpRule := fun _ op argTys resTys =>
+  if dialectOf op.name = "linalg" ∧ op.name = "linalg.matmul" then
+    match splitInsOuts op argTys with
+    | some ([ta, tb], [tc]) =>
+      namedOk (LinalgNamed.mapsOr op
+          [LinalgNamed.mapOf 3 [0, 2], LinalgNamed.mapOf 3 [2, 1], LinalgNamed.mapOf 3 [0, 1]])
+        [.parallel, .parallel, .reduction] [ta, tb] [tc] op resTys
+    | _ => none
+  else none
+
+theorem matmulRule_sound (ib : Nat) : RuleSound ib matmulRule := by
+  intro d op argTys resTys sigs hm h
+  simp only [matmulRule] at h
+  split at h
+  · next hc =>
+    obtain ⟨hd, hn⟩ := hc
+    split at h
+    · next ta tb tc hsplit =>
+      intro ctx call args regions hib _ hargs hregs
+      obtain ⟨ins, outs, hio, hins, houts⟩ := splitInsOuts_typed hsplit hargs
+      obtain _ | ⟨ha, _ | ⟨hb, _ | _⟩⟩ := hins
+      obtain _ | ⟨hc', _ | _⟩ := houts
+      obtain ⟨body, rfl, hsafe⟩ := namedOk_safe hib h (.cons ha (.cons hb .nil)) (.cons hc' .nil) hregs
+      rw [named_sem_of hm hd (by simp [hn])]
+      simp only [LinalgNamed.sem, Op.blind_name, hn, splitInsOuts_blind, hio, mapsOr_blind]
+      exact hsafe
+    · cases h
+  · cases h
+
+/-- `linalg.batch_matmul`: `C(b,m,n) += A(b,m,k) · B(b,k,n)`, or the op's own `indexing_maps`. -/
+def batchMatmulRule : OpRule := fun _ op argTys resTys =>
+  if dialectOf op.name = "linalg" ∧ op.name = "linalg.batch_matmul" then
+    match splitInsOuts op argTys with
+    | some ([ta, tb], [tc]) =>
+      namedOk (LinalgNamed.mapsOr op [LinalgNamed.mapOf 4 [0, 1, 3], LinalgNamed.mapOf 4 [0, 3, 2],
+          LinalgNamed.mapOf 4 [0, 1, 2]])
+        [.parallel, .parallel, .parallel, .reduction] [ta, tb] [tc] op resTys
+    | _ => none
+  else none
+
+theorem batchMatmulRule_sound (ib : Nat) : RuleSound ib batchMatmulRule := by
+  intro d op argTys resTys sigs hm h
+  simp only [batchMatmulRule] at h
+  split at h
+  · next hc =>
+    obtain ⟨hd, hn⟩ := hc
+    split at h
+    · next ta tb tc hsplit =>
+      intro ctx call args regions hib _ hargs hregs
+      obtain ⟨ins, outs, hio, hins, houts⟩ := splitInsOuts_typed hsplit hargs
+      obtain _ | ⟨ha, _ | ⟨hb, _ | _⟩⟩ := hins
+      obtain _ | ⟨hc', _ | _⟩ := houts
+      obtain ⟨body, rfl, hsafe⟩ := namedOk_safe hib h (.cons ha (.cons hb .nil)) (.cons hc' .nil) hregs
+      rw [named_sem_of hm hd (by simp [hn])]
+      simp only [LinalgNamed.sem, Op.blind_name, hn, splitInsOuts_blind, hio, mapsOr_blind]
+      exact hsafe
+    · cases h
+  · cases h
+
+/-- `linalg.quantized_matmul`: `C(m,n) += (A(m,k) - azp) · (B(k,n) - bzp)`, zero points read at
+every point. -/
+def quantizedMatmulRule : OpRule := fun _ op argTys resTys =>
+  if dialectOf op.name = "linalg" ∧ op.name = "linalg.quantized_matmul" then
+    match splitInsOuts op argTys with
+    | some ([ta, tb, tazp, tbzp], [tc]) =>
+      namedOk [LinalgNamed.mapOf 3 [0, 2], LinalgNamed.mapOf 3 [2, 1], LinalgNamed.mapOf 3 [],
+          LinalgNamed.mapOf 3 [], LinalgNamed.mapOf 3 [0, 1]]
+        [.parallel, .parallel, .reduction] [ta, tb, tazp, tbzp] [tc] op resTys
+    | _ => none
+  else none
+
+theorem quantizedMatmulRule_sound (ib : Nat) : RuleSound ib quantizedMatmulRule := by
+  intro d op argTys resTys sigs hm h
+  simp only [quantizedMatmulRule] at h
+  split at h
+  · next hc =>
+    obtain ⟨hd, hn⟩ := hc
+    split at h
+    · next ta tb tazp tbzp tc hsplit =>
+      intro ctx call args regions hib _ hargs hregs
+      obtain ⟨ins, outs, hio, hins, houts⟩ := splitInsOuts_typed hsplit hargs
+      obtain _ | ⟨ha, _ | ⟨hb, _ | ⟨hza, _ | ⟨hzb, _ | _⟩⟩⟩⟩ := hins
+      obtain _ | ⟨hc', _ | _⟩ := houts
+      obtain ⟨body, rfl, hsafe⟩ := namedOk_safe hib h (.cons ha (.cons hb (.cons hza (.cons hzb .nil))))
+        (.cons hc' .nil) hregs
+      rw [named_sem_of hm hd (by simp [hn])]
+      simp only [LinalgNamed.sem, Op.blind_name, hn, splitInsOuts_blind, hio]
+      exact hsafe
+    · cases h
+  · cases h
+
+/-- `linalg.copy`: the input and output read and written at the same point. -/
+def copyRule : OpRule := fun _ op argTys resTys =>
+  if dialectOf op.name = "linalg" ∧ op.name = "linalg.copy" then
+    match splitInsOuts op argTys with
+    | some ([ti], [tout]) =>
+      namedOk [identityMap tout.shape.length, identityMap tout.shape.length]
+        (LinalgNamed.parallel tout.shape.length) [ti] [tout] op resTys
+    | _ => none
+  else none
+
+theorem copyRule_sound (ib : Nat) : RuleSound ib copyRule := by
+  intro d op argTys resTys sigs hm h
+  simp only [copyRule] at h
+  split at h
+  · next hc =>
+    obtain ⟨hd, hn⟩ := hc
+    split at h
+    · next ti tout hsplit =>
+      intro ctx call args regions hib _ hargs hregs
+      obtain ⟨ins, outs, hio, hins, houts⟩ := splitInsOuts_typed hsplit hargs
+      obtain _ | ⟨hi, _ | _⟩ := hins
+      obtain _ | ⟨ho, _ | _⟩ := houts
+      obtain ⟨body, rfl, hsafe⟩ := namedOk_safe hib h (.cons hi .nil) (.cons ho .nil) hregs
+      rw [named_sem_of hm hd (by simp [hn])]
+      simp only [LinalgNamed.sem, Op.blind_name, hn, splitInsOuts_blind, hio, shapeOf_typed ho]
+      exact hsafe
+    · cases h
+  · cases h
+
+/-- `linalg.broadcast ins(%i) outs(%init) dimensions = dims`: the input reads the output dims not in
+`dims`, which must be as many as the input's rank. -/
+def broadcastRule : OpRule := fun _ op argTys resTys =>
+  if dialectOf op.name = "linalg" ∧ op.name = "linalg.broadcast" then
+    match argTys, LinalgNamed.natArray? op "dimensions" with
+    | [ti, tout], some dims =>
+      if ((List.range tout.shape.length).filter (fun d => !(dims.contains d))).length =
+          ti.shape.length then
+        namedOk [LinalgNamed.mapOf tout.shape.length
+            ((List.range tout.shape.length).filter (fun d => !(dims.contains d))),
+          identityMap tout.shape.length]
+          (LinalgNamed.parallel tout.shape.length) [ti] [tout] op resTys
+      else none
+    | _, _ => none
+  else none
+
+theorem broadcastRule_sound (ib : Nat) : RuleSound ib broadcastRule := by
+  intro d op argTys resTys sigs hm h
+  simp only [broadcastRule] at h
+  split at h
+  · next hc =>
+    obtain ⟨hd, hn⟩ := hc
+    split at h
+    · next ti tout dims hdims =>
+      split at h
+      · next hk =>
+        intro ctx call args regions hib _ hargs hregs
+        obtain _ | ⟨hi, _ | ⟨ho, _ | _⟩⟩ := hargs
+        obtain ⟨body, rfl, hsafe⟩ := namedOk_safe hib h (.cons hi .nil) (.cons ho .nil) hregs
+        rw [named_sem_of hm hd (by simp [hn])]
+        simp only [LinalgNamed.sem, Op.blind_name, hn, natArray?_blind, hdims, shapeOf_typed hi,
+          shapeOf_typed ho, hk, ne_eq, not_true_eq_false, ↓reduceIte]
+        exact hsafe
+      · cases h
+    · cases h
+  · cases h
+
 /-- The input map of `linalg.transpose`: input dim `p` reads the loop `i` with `permutation[i] = p`. -/
 def transposeInMap (n : Nat) (perm : List Nat) : AffineMap :=
   LinalgNamed.mapOf n ((List.range n).map fun p => (perm.findIdx? (· = p)).getD 0)
 
-/-- `linalg.transpose ins(%i) outs(%init) permutation = perm`: a permutation of the output's rank,
-in-bounds maps, and a body from the input element type to the output's. -/
+/-- `linalg.transpose ins(%i) outs(%init) permutation = perm`: `perm` is a permutation of the
+output's rank. -/
 def transposeRule : OpRule := fun _ op argTys resTys =>
   if dialectOf op.name = "linalg" ∧ op.name = "linalg.transpose" then
     match argTys, LinalgNamed.natArray? op "permutation" with
-    | [it, .tensor sh e], some perm =>
-      if ¬(perm.length ≠ sh.length ∨ (List.range sh.length).any (fun p => !(perm.contains p))) ∧
-          resTys = [.tensor sh e] ∧ op.results.length = 1 ∧
-          (structuredRanges? [transposeInMap sh.length perm, identityMap sh.length] sh.length
-            [it, .tensor sh e]).isSome then
-        some [⟨[it.eltScalar, .scalar e], [.scalar e], sh.length⟩]
+    | [ti, tout], some perm =>
+      if ¬(perm.length ≠ tout.shape.length ∨
+          (List.range tout.shape.length).any (fun p => !(perm.contains p))) then
+        namedOk [transposeInMap tout.shape.length perm, identityMap tout.shape.length]
+          (LinalgNamed.parallel tout.shape.length) [ti] [tout] op resTys
       else none
     | _, _ => none
   else none
@@ -558,48 +750,31 @@ theorem transposeRule_sound (ib : Nat) : RuleSound ib transposeRule := by
   · next hc =>
     obtain ⟨hd, hn⟩ := hc
     split at h
-    · next it sh e perm hperm =>
+    · next ti tout perm hperm =>
       split at h
-      · next hc2 =>
-        obtain ⟨hcond, rfl, hres, hsr⟩ := hc2
-        obtain ⟨ranges, hranges⟩ := Option.isSome_iff_exists.1 hsr
-        cases h
+      · next hcond =>
         intro ctx call args regions hib _ hargs hregs
-        obtain _ | ⟨hbody, hnil⟩ := hregs
-        cases hnil
-        rename_i body
-        obtain _ | ⟨hi, _ | ⟨ht, hnil'⟩⟩ := hargs
-        cases hnil'
-        rename_i i x
-        cases x with
-        | scalar _ => exact (ht : False).elim
-        | tensor t =>
-        have hts : t.shape = sh := ht.1
-        subst hts
-        rw [named_sem_of hm hd hn]
-        simp only [LinalgNamed.sem, Op.blind_name, hn, natArray?_blind, hperm, shapeOf]
+        obtain _ | ⟨hi, _ | ⟨ho, _ | _⟩⟩ := hargs
+        obtain ⟨body, rfl, hsafe⟩ := namedOk_safe hib h (.cons hi .nil) (.cons ho .nil) hregs
+        rw [named_sem_of hm hd (by simp [hn])]
+        simp only [LinalgNamed.sem, Op.blind_name, hn, natArray?_blind, hperm, shapeOf_typed ho]
         simp only [hcond, ↓reduceIte]
-        have hs : StructuredOk [transposeInMap t.shape.length perm, identityMap t.shape.length]
-            (LinalgNamed.parallel t.shape.length).length ([it] ++ [VTy.tensor t.shape e]) ranges := by
-          rw [LinalgNamed.parallel, List.length_replicate]; exact structuredRanges?_spec hranges
-        have hbody' : RegionSafe ib body
-            ⟨([it] ++ [VTy.tensor t.shape e]).map VTy.eltScalar,
-              [VTy.tensor t.shape e].map VTy.eltScalar,
-              (LinalgNamed.parallel t.shape.length).length⟩ := by
-          rw [LinalgNamed.parallel, List.length_replicate]; exact hbody
-        exact run_safe (ins := [i]) (outs := [.tensor t]) hib hs (by simp [VTy.isTensor])
-          (List.Forall₂.cons hi .nil) (List.Forall₂.cons ht .nil) hbody'
-          (by rw [Op.blind_results, List.length_map, hres]; rfl)
+        exact hsafe
       · cases h
     · cases h
   · cases h
 
-/-- The `linalg` typing rule (structured ops with explicit maps, `fill`, `index`, `transpose`). -/
-def linalgRule : OpRule := firstRule [genericRule, fillRule, indexRule, transposeRule]
+/-- The `linalg` typing rule: structured ops with explicit maps, `fill`, `index`, and the named ops
+defined by their generic form. -/
+def linalgRule : OpRule :=
+  firstRule [genericRule, fillRule, indexRule, matmulRule, batchMatmulRule, quantizedMatmulRule,
+    copyRule, broadcastRule, transposeRule]
 
 theorem linalgRule_sound (ib : Nat) : RuleSound ib linalgRule := by
   apply firstRule_sound
   simp only [List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff, implies_true, and_true]
-  exact ⟨genericRule_sound ib, fillRule_sound ib, indexRule_sound ib, transposeRule_sound ib⟩
+  exact ⟨genericRule_sound ib, fillRule_sound ib, indexRule_sound ib, matmulRule_sound ib,
+    batchMatmulRule_sound ib, quantizedMatmulRule_sound ib, copyRule_sound ib, broadcastRule_sound ib,
+    transposeRule_sound ib⟩
 
 end MerlinVerify.Check
