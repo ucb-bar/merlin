@@ -50,6 +50,14 @@ def test_total_integer_operations(tmp_path, lean_tools, name):
       return %a, %b : i32, i32
     }""",
     "func.func @forward() { return }",
+    """func.func @forward(%a: tensor<2x3xi32>) -> tensor<6xi32> {
+      %r = tensor.collapse_shape %a [[0, 1]] : tensor<2x3xi32> into tensor<6xi32>
+      return %r : tensor<6xi32>
+    }""",
+    """func.func @forward(%a: tensor<6xi32>) -> tensor<2x3xi32> {
+      %r = tensor.expand_shape %a [[0, 1]] output_shape [2, 3] : tensor<6xi32> into tensor<2x3xi32>
+      return %r : tensor<2x3xi32>
+    }""",
 ])
 def test_defined_sources(tmp_path, lean_tools, text):
     result = _check(tmp_path, lean_tools, text)

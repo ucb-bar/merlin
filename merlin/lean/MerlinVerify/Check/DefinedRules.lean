@@ -174,18 +174,74 @@ theorem intBinaryRule_sound (ib : Nat) : RuleSound ib intBinaryRule := by
     · cases h
   · cases h
 
+/-- Static reassociation preserves initialization because every result element reads an in-bounds
+source element. Reuse the existing reassociation validator and size/bounds proofs. -/
+def reshapeRule : Rule := fun op fs =>
+  if dialectOf op.name = "tensor" ∧
+      (op.name = "tensor.collapse_shape" ∨ op.name = "tensor.expand_shape") then
+    match fs, Sem.Ops.Tensor.resultTensorTy op, Sem.Ops.Tensor.reassociation? op with
+    | [⟨.tensor sh e, true⟩], some (shape, elt), some groups =>
+      if e = elt ∧ reshapeValid op groups sh shape = true then some [⟨.tensor shape elt, true⟩]
+      else none
+    | _, _, _ => none
+  else none
+
+theorem reshapeRule_sound (ib : Nat) : RuleSound ib reshapeRule := by
+  intro op fs rs hm h ctx call args _ hargs
+  unfold reshapeRule at h
+  split at h
+  · next hc =>
+    obtain ⟨hd, hn⟩ := hc
+    split at h
+    · split at h
+      · next hc =>
+        obtain ⟨he, hvalid⟩ := hc
+        subst he
+        cases h
+        obtain _ | ⟨hv, hnil⟩ := hargs
+        cases hnil
+        rename_i a
+        cases a with
+        | scalar _ => cases hv.1
+        | tensor t =>
+          obtain ⟨hts, hte, htg⟩ := hv.1
+          have hdefined := hv.2 rfl
+          subst hts hte
+          rename_i shape groups hr hg
+          have hsize := reshapeValid_size hvalid
+          rw [tensor_sem_of hm hd]
+          have hsem : Sem.Ops.Tensor.sem ctx (restrictCall (calleeOf op.blind) call) op.blind
+              [.tensor t] [] =
+              .ok [.tensor (MerlinVerify.Tensor.canon shape t.elt fun i =>
+                t.get (Sem.Ops.Tensor.delinearize t.shape (linearIndex shape i)))] := by
+            unfold reshapeValid at hvalid
+            rcases hn with hn | hn <;>
+              simp_all [Sem.Ops.Tensor.sem, Op.blind_name, resultTensorTy_blind, reassociation?_blind]
+          refine ⟨_, hsem, List.Forall₂.cons ⟨⟨rfl, rfl, ?_⟩, ?_⟩ .nil⟩
+          · intro i hi
+            simp only [MerlinVerify.Tensor.canon, hi, ↓reduceIte]
+            exact htg _ (delinearize_inBounds _ _ (hsize ▸ linearIndex_lt _ _ hi))
+          · intro _ i hi
+            change Idx.InBounds shape i at hi
+            simp only [MerlinVerify.Tensor.canon, hi, ↓reduceIte]
+            exact hdefined _ (delinearize_inBounds _ _ (hsize ▸ linearIndex_lt _ _ hi))
+      · cases h
+    · cases h
+  · cases h
+
 def rules (ib : Nat) : Rule := fun op fs =>
-  [constantRule ib, emptyRule, splatRule, intBinaryRule].findSome? fun r => r op fs
+  [constantRule ib, emptyRule, splatRule, intBinaryRule, reshapeRule].findSome? fun r => r op fs
 
 theorem rules_sound (ib : Nat) : RuleSound ib (rules ib) := by
   intro op fs rs hm hr
   obtain ⟨r, hmem, h⟩ := List.exists_of_findSome?_eq_some hr
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
-  rcases hmem with rfl | rfl | rfl | rfl
+  rcases hmem with rfl | rfl | rfl | rfl | rfl
   · exact constantRule_sound ib op fs rs hm h
   · exact emptyRule_sound ib op fs rs hm h
   · exact splatRule_sound ib op fs rs hm h
   · exact intBinaryRule_sound ib op fs rs hm h
+  · exact reshapeRule_sound ib op fs rs hm h
 
 def book (ib : Nat) : Book opSem ib where
   rule op fs := if unmodelledAttr? op.blind = none then rules ib op fs else none

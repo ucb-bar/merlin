@@ -69,4 +69,17 @@ def binary (name : String) (attrs : List (String × Attr) := []) : Bool :=
   [.scalar i32, .scalar i8] [.scalar i32]
 #guard !accepts [v 0 i32] [mkOp "arith.addi" [v 2 i8] [0, 0], ret [2]] [.scalar i32] [.scalar i8]
 
+def reshape (name : String) (src dst : List Nat) (groups : List (List Nat)) : Bool :=
+  accepts [v 0 (tensorTy src i32)]
+    [mkOp name [v 1 (tensorTy dst i32)] [0]
+      [("reassociation", .array (groups.map fun g => .array (g.map fun d => .int d (.int 64))))], ret [1]]
+    [.tensor src i32] [.tensor dst i32]
+
+#guard reshape "tensor.collapse_shape" [2, 3] [6] [[0, 1]]
+#guard reshape "tensor.expand_shape" [6] [2, 3] [[0, 1]]
+#guard reshape "tensor.collapse_shape" [0, 3] [0] [[0, 1]]
+#guard !reshape "tensor.collapse_shape" [2, 3] [5] [[0, 1]]
+#guard !reshape "tensor.collapse_shape" [2, 3] [6] [[1, 0]]
+#guard !reshape "tensor.expand_shape" [6] [2, 3] [[0], [1]]
+
 end MerlinVerify.Tests.Definedness
