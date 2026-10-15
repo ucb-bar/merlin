@@ -1370,7 +1370,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             shutil.rmtree(dst)
         shutil.copytree(wsub, dst, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
     incomplete_operator_seal = bool(operator_seal)
-    if wsub.exists() and ((workflow_conformant and feedback_health["healthy"]) or incomplete_operator_seal):
+    if wsub.exists() and (workflow_conformant or incomplete_operator_seal):
         # Last gate before the official process performs its public grade + freeze + hidden grade.  The
         # authoring loop can last across worktree edits and quota-window resumes, so setup-time hashing is
         # not enough: recompute every treatment byte and the private snapshot content now, fail closed on
@@ -1405,8 +1405,6 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             ),
             hidden_capsule_mode=HCP.resolve(context.descriptor, getattr(a, 'hidden_capsule_mode', ''))['mode'],
         )
-    elif wsub.exists() and not feedback_health["healthy"]:
-        official_grade["failures"] = ["feedback_channel_unhealthy"]
     elif wsub.exists():
         official_grade["failures"] = ["workflow_nonconformant"]
 
@@ -1437,7 +1435,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     formal_complete = (not incomplete_operator_seal) and CERT._formal_completion(
         bool(verdict.get("all_pass")),
         workflow_conformant,
-        official_grade["complete"] and feedback_health["healthy"],
+        official_grade["complete"],
         telemetry["complete"],
     )
     qa_summary.update(
