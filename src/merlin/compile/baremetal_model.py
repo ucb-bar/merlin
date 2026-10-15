@@ -304,7 +304,7 @@ def compile_saved_model(
     materialized_inputs=None,
     respect_captured_quantization_scope: bool = False,
     host_llvm_bitcode: bool = False,
-    blob_weights: bool = False,
+    blob_weights: bool = True,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
