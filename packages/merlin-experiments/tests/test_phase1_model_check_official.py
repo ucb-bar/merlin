@@ -78,6 +78,13 @@ def test_official_gate_runs_distinct_rtl_kernels_in_bounded_parallel(tmp_path, m
     assert [row["group"] for row in summary["rtl"]] == ["conv_0", "conv_1"]
 
 
+def test_official_rtl_workers_respect_configured_gsim_slots(tmp_path, monkeypatch):
+    (tmp_path / "submission").mkdir()
+    monkeypatch.setenv("MERLIN_GSIM_MAX_SLOTS", "2")
+    summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {})
+    assert summary["rtl_workers"] == 2
+
+
 def test_official_gate_marks_unstarted_rtl_pending_when_budget_expires(tmp_path, monkeypatch):
     (tmp_path / "submission").mkdir()
     (tmp_path / "submission/manifest.yaml").write_text("commands: {}\n")

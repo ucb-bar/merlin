@@ -66,11 +66,16 @@ def run_gate(submission: Path, run_dir: Path, required_programs: dict[str, tuple
     root = run_dir / "grading_model_check"
     root.mkdir(parents=True, exist_ok=True)
     source_sha256 = hash_tree(submission)["sha256"]
+    configured_slots = os.environ.get("MERLIN_GSIM_MAX_SLOTS", "").strip()
+    try:
+        slot_cap = max(1, int(configured_slots)) if configured_slots else 4
+    except ValueError:
+        slot_cap = 1
     summary = {"schema": "merlin.phase1.model_check_official.v1", "passed": False,
                "split": "sealed", "bundle": str(bundle), "submission_sha256": source_sha256,
                "models": {}, "rtl": [],
                "unique_kernel_count": 0, "rtl_complete": False,
-               "rtl_workers": max(1, min(int(rtl_workers), 4))}
+               "rtl_workers": max(1, min(int(rtl_workers), 4, slot_cap))}
     selected: dict[tuple, tuple[str, str, str]] = {}
     for model, programs in required_programs.items():
         result = _invoke("check", submission=submission, model=model,
