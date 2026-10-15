@@ -3,7 +3,7 @@ title: Extending the compiler stack
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-06
+last_verified: 2026-10-15
 related: [phase0_specification, model_lowering, model2mlir, triton_kernels, target_resolution, llvm_integration, simulator_selection]
 code_refs:
   - src/merlin/targetgen/software_spec.py
@@ -220,6 +220,16 @@ Functional arithmetic a container owns between its children (a residual add, for
 planned per operation; an operation whose owner cannot be established is refused.
 Module eligibility is a first filter, not complete proof of arbitrary functional-operator
 or fused-region placement.
+
+A contraction of two run-time activations (attention's `Q @ K^T` and `P @ V`) has no
+stored weight, so a derived recipe leaves it in floating point. Quantizing it is a numerical
+choice, never a derived default: `quant_recipe.with_activation_contractions` (CLI:
+`python -m merlin.targetgen.quant_recipe activation-contractions IN.json OUT.json`) adds
+the `activation_contraction` family to a derived static per-tensor integer recipe. The
+static quantizer then spells each fused `scaled_dot_product_attention` as its math
+definition (the one the capture lowers it to) and puts the activation spec on both operands
+of every activation x activation matmul whose reduction exceeds 16: `Q`, `K`, the softmax
+probabilities `P` and `V` each get one calibrated static scale per tensor.
 
 For a new format, first add its structural vocabulary and derivation rules, including
 granularity, packing, ranges, zero points, bias domain and rounding. Then extend the
