@@ -298,6 +298,25 @@ def grading_cpus(environ: Mapping[str, str] | None = None) -> tuple[int, ...]:
     return selected[0] if selected is not None else parse_roster(environment.get("MERLIN_GRADE_CPUS", ""))
 
 
+def preparation_cpus(environ: Mapping[str, str] | None = None) -> tuple[int, ...]:
+    """Affinity for unleased preparation; compute steps still take shared slots.
+
+    An explicit preparation roster must not overlap the leased compute roster.
+    Legacy callers without a separate roster retain the existing behavior.
+    """
+    environment = os.environ if environ is None else environ
+    raw = environment.get("MERLIN_PREPARATION_CPUS", "").strip()
+    if not raw:
+        return grading_cpus(environment)
+    cpus = parse_roster(raw)
+    if not cpus:
+        raise ValueError("preparation CPU roster must be nonempty")
+    selected = _shared_compute_selection(environment)
+    if selected is not None and set(cpus) & set(selected[0]):
+        raise ValueError("preparation CPUs overlap leased compute CPUs")
+    return cpus
+
+
 @contextmanager
 def shared_compute_pool(*, timeout_s: float | None = None):
     """Lease one compute CPU for a supervised build/simulator or bounded preparation step.
@@ -316,12 +335,12 @@ def shared_compute_pool(*, timeout_s: float | None = None):
 
 
 def worker_pool_command(command: list[str], env: dict[str, str]) -> list[str]:
-    """Select shared/legacy grading affinity before the worker interpreter imports code.
+    """Select unleased preparation affinity before the worker interpreter imports code.
 
     This parent-side command owns no CPU slot: actual child step owners acquire
     theirs after launch, so waiting parent workers cannot exhaust the pool.
     """
-    cpus = grading_cpus(env)
+    cpus = preparation_cpus(env)
     if not cpus:
         return command
     return ["taskset", "--cpu-list", ",".join(map(str, cpus)), *command]

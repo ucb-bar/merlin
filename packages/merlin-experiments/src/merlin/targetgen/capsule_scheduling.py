@@ -89,20 +89,21 @@ def run_pipelined(
         raise ValueError("MERLIN_CAPSULE_ORDER must be legacy or operators-small-first")
     small_operators_first = order == "operators-small-first"
     deps = dependencies(capsules)
-    # Linux affinity is per thread. Keep grading preparation off the scheduler's
+    # Linux affinity is per thread. Keep unleased preparation on the selected
     # manager cores; actual build/simulator step owners lease shared compute slots.
     # Never hold a capsule-wide lease across a child/RPC wait. Restore affinity
     # on every exit; shared mode takes precedence over the legacy grading pool.
-    from merlin.common.cpu_pool import grading_cpus, selected_pool, shared_compute_enabled
+    from merlin.common.cpu_pool import grading_cpus, preparation_cpus, selected_pool, shared_compute_enabled
 
     grade_cpus = grading_cpus()
+    prep_cpus = preparation_cpus()
     if shared_compute_enabled():
         max_workers = max(1, min(max_workers, len(grade_cpus)))
-    if grade_cpus:
+    if prep_cpus:
         unpinned_run_one = run_one
 
         def run_one(capsule, parallel):
-            with selected_pool(grade_cpus):
+            with selected_pool(prep_cpus):
                 return unpinned_run_one(capsule, parallel)
 
     names = [str(cap["name"]) for cap in capsules]
