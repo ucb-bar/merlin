@@ -1364,10 +1364,15 @@ def run_on_oracle(
         _oracle["provenance"] = _prov
     if memory_engine is not None:
         _oracle["memory_engine"] = memory_engine
+    observed_cycles = raw.get("cycles")
+    if type(observed_cycles) is not int or observed_cycles <= 0:
+        observed_cycles = None
     result = {
         "outputs": outputs,
         "raw_metrics": raw,
-        "cycles": raw.get("cycles", 0),
+        # A completed oracle can have no cycle marker (for example a coherent
+        # memory-readback harness). Absence is unmeasured, never a zero-cycle run.
+        "cycles": observed_cycles,
         "oracle": _oracle,
         "elf": str(elf),
         "console": console,
