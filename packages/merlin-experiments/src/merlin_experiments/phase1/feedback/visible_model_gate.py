@@ -7,6 +7,8 @@ import json
 import os
 import shutil
 import threading
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 from merlin.common.tree_hash import hash_tree
@@ -91,23 +93,50 @@ def _program_row(model: str, program: str, result: dict) -> dict:
 
 
 def check_snapshot(ws: Path, run_dir: Path, snapshot: Path, source_sha256: str, *,
-                   stop: threading.Event, timeout_s: int = 540) -> dict:
+                   stop: threading.Event, timeout_s: int = 540,
+                   source_current: Callable[[], bool] | None = None) -> dict:
     gate = {"source_sha256": source_sha256, "split": "visible", "programs": _rows(source_sha256)}
     verdict = ws / "qa" / "verdict.json"
     publish(verdict, {"model_gate": gate})
     artifact = run_dir / "qa_history" / f"model_gate_{source_sha256[:16]}"
     artifact.mkdir(parents=True, exist_ok=True)
-    for model, programs in PROGRAMS.items():
+    last_probe = 0.0
+    current = True
+
+    def fresh_current() -> bool:
+        if source_current is None:
+            return True
+        try:
+            return bool(source_current())
+        except (OSError, ValueError):
+            return False
+
+    def stopped() -> bool:
+        nonlocal last_probe, current
         if stop.is_set():
+            return True
+        now = time.monotonic()
+        if source_current is not None and now - last_probe >= 2:
+            last_probe = now
+            current = fresh_current()
+        return not current
+
+    for model, programs in PROGRAMS.items():
+        if stopped():
             break
         result = execute_visible(ws, {"action": "check", "model": model, "split": "visible"},
-                                 snapshot_source=snapshot, timeout_s=timeout_s, stop=stop.is_set)
+                                 snapshot_source=snapshot, timeout_s=timeout_s, stop=stopped)
         if result.get("source_sha256") != source_sha256 or hash_tree(snapshot)["sha256"] != source_sha256:
             result = {"status": "error", "model": model,
                       "error": "model check did not bind the selected snapshot"}
         (artifact / f"{model}.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
         for program in programs:
             gate["programs"][f"{model}/{program}"] = _program_row(model, program, result)
+        publish(verdict, {"model_gate": gate})
+        if stopped() or not fresh_current():
+            break
+    gate["superseded"] = not fresh_current()
+    if gate["superseded"]:
         publish(verdict, {"model_gate": gate})
     (artifact / "gate.json").write_text(json.dumps(gate, indent=2) + "\n", encoding="utf-8")
     return gate
@@ -136,11 +165,25 @@ def start(ws: Path, run_dir: Path, *, interval_s: int = 120, timeout_s: int = 54
                                         ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
                         strip_build_state(snapshot)
                         digest = hash_tree(snapshot)["sha256"]
-                        if digest != before or hash_tree(source)["sha256"] != before:
+                        if hash_tree(source)["sha256"] != before:
                             raise ValueError("submission changed while taking model snapshot")
                         if digest != last_source:
-                            check_snapshot(ws, run_dir, snapshot, digest, stop=stop, timeout_s=timeout_s)
-                            last_source = digest
+                            def source_current():
+                                try:
+                                    return hash_tree(source)["sha256"] == before
+                                except (OSError, ValueError):
+                                    return False
+                            gate = check_snapshot(ws, run_dir, snapshot, digest, stop=stop, timeout_s=timeout_s,
+                                                  source_current=source_current)
+                            if source_current():
+                                # A stable numeric failure is a result for these bytes; an
+                                # infrastructure failure must be retried at the next interval.
+                                if all(row["status"] in {"pass", "fail"}
+                                       for row in gate["programs"].values()):
+                                    last_source = digest
+                            else:
+                                stop.wait(1)
+                                continue
                     except (OSError, ValueError) as exc:
                         print(f"[model-gate] snapshot unavailable: {type(exc).__name__}: {exc}", flush=True)
             stop.wait(max(30, interval_s))

@@ -8,9 +8,11 @@ import signal
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from merlin.common.tree_hash import hash_tree
+from merlin.model_check.models import default_models_path
 
 REPORT_SCHEMA = "merlin.model_check.report.v1"
 DEFAULT_BUNDLE = Path("/work/merlin/private/gemmini/numerics/v1")
@@ -22,6 +24,7 @@ def _invoke(command: str, *, submission: Path, model: str, output: Path, bundle:
     output.unlink(missing_ok=True)
     argv = [sys.executable, "-m", "merlin.model_check", command, "--submission", str(submission),
             "--model", model, "--split", "sealed", "--bundle", str(bundle),
+            "--models", str(default_models_path("gemmini")),
             "--work", str(output.with_suffix(".work")), "--out", str(output), "--timeout-s", str(timeout_s)]
     if command == "check":
         argv += ["--mode", "full"]
@@ -57,15 +60,22 @@ def _invoke(command: str, *, submission: Path, model: str, output: Path, bundle:
 
 def run_gate(submission: Path, run_dir: Path, required_programs: dict[str, tuple[str, ...]], *,
              bundle: Path = DEFAULT_BUNDLE, model_timeout_s: int = 7200,
-             rtl_budget_s: int = 7200, kernel_timeout_s: int = 300) -> dict:
+             rtl_budget_s: int = 7200, kernel_timeout_s: int = 300,
+             rtl_workers: int = 4) -> dict:
     """Require sealed full-chain Spike and every observed unique device kernel on gSIM."""
     root = run_dir / "grading_model_check"
     root.mkdir(parents=True, exist_ok=True)
     source_sha256 = hash_tree(submission)["sha256"]
+    configured_slots = os.environ.get("MERLIN_GSIM_MAX_SLOTS", "").strip()
+    try:
+        slot_cap = max(1, int(configured_slots)) if configured_slots else 4
+    except ValueError:
+        slot_cap = 1
     summary = {"schema": "merlin.phase1.model_check_official.v1", "passed": False,
                "split": "sealed", "bundle": str(bundle), "submission_sha256": source_sha256,
                "models": {}, "rtl": [],
-               "unique_kernel_count": 0, "rtl_complete": False}
+               "unique_kernel_count": 0, "rtl_complete": False,
+               "rtl_workers": max(1, min(int(rtl_workers), 4, slot_cap))}
     selected: dict[tuple, tuple[str, str, str]] = {}
     for model, programs in required_programs.items():
         result = _invoke("check", submission=submission, model=model,
@@ -102,17 +112,26 @@ def run_gate(submission: Path, run_dir: Path, required_programs: dict[str, tuple
                 selected.setdefault(key, (model, program, group))
     summary["unique_kernel_count"] = len(selected)
     deadline = time.monotonic() + rtl_budget_s
-    for index, (model, program, group) in enumerate(selected.values()):
-        remaining = int(deadline - time.monotonic())
+
+    def replay(entry: tuple[int, tuple[str, str, str]]) -> dict:
+        index, (model, program, group) = entry
+        # The host wait may exceed the CLI timeout by 30 seconds, followed by termination grace.
+        # Reserve that time inside the global budget so unfinished kernels become pending.
+        remaining = int(deadline - time.monotonic()) - 40
         if remaining < 1:
-            summary["rtl"].append({"model": model, "program": program, "group": group,
-                                   "status": "pending", "reason": "RTL budget exhausted"})
-            continue
-        result = _invoke("replay-kernel", submission=submission, model=model, program=program,
-                         group=group, output=root / "rtl" / f"kernel_{index:05d}.json", bundle=bundle,
-                         timeout_s=min(kernel_timeout_s, remaining))
+            return {"model": model, "program": program, "group": group,
+                    "status": "pending", "reason": "RTL budget exhausted"}
+        try:
+            result = _invoke("replay-kernel", submission=submission, model=model, program=program,
+                             group=group, output=root / "rtl" / f"kernel_{index:05d}.json", bundle=bundle,
+                             timeout_s=min(kernel_timeout_s, remaining))
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            result = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"}
         result.pop("body", None)
-        summary["rtl"].append({"model": model, "program": program, "group": group, **result})
+        return {"model": model, "program": program, "group": group, **result}
+
+    with ThreadPoolExecutor(max_workers=summary["rtl_workers"]) as executor:
+        summary["rtl"] = list(executor.map(replay, enumerate(selected.values())))
     summary["rtl_complete"] = len(summary["rtl"]) == len(selected) and all(
         row["status"] == "pass" for row in summary["rtl"])
     summary["passed"] = bool(required_programs) and all(

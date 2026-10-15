@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 from merlin_experiments.phase1.feedback import model_check_official as official
@@ -52,6 +53,57 @@ def test_official_gate_refuses_missing_kernel_evidence(tmp_path, monkeypatch):
     assert summary["rtl_complete"] is True and summary["unique_kernel_count"] == 0
 
 
+def test_official_gate_runs_distinct_rtl_kernels_in_bounded_parallel(tmp_path, monkeypatch):
+    (tmp_path / "submission").mkdir()
+    (tmp_path / "submission/manifest.yaml").write_text("commands: {}\n")
+    rendezvous = threading.Barrier(2, timeout=2)
+    replayed = []
+
+    def invoke(command, **kwargs):
+        if command == "check":
+            return {"status": "pass", "body": {"programs": [{
+                "program": "model", "census": {"device": 2},
+                "kernels": [{"source_region_id": "conv_0"}, {"source_region_id": "conv_1"}],
+            }]}}
+        replayed.append(kwargs["group"])
+        rendezvous.wait()
+        return {"status": "pass", "body": {}, "report": str(kwargs["output"])}
+
+    monkeypatch.setattr(official, "_invoke", invoke)
+    summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {"resnet50": ("model",)},
+                                rtl_workers=2)
+    assert summary["passed"] and summary["rtl_complete"]
+    assert summary["rtl_workers"] == 2
+    assert replayed == ["conv_0", "conv_1"]
+    assert [row["group"] for row in summary["rtl"]] == ["conv_0", "conv_1"]
+
+
+def test_official_rtl_workers_respect_configured_gsim_slots(tmp_path, monkeypatch):
+    (tmp_path / "submission").mkdir()
+    monkeypatch.setenv("MERLIN_GSIM_MAX_SLOTS", "2")
+    summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {})
+    assert summary["rtl_workers"] == 2
+
+
+def test_official_gate_marks_unstarted_rtl_pending_when_budget_expires(tmp_path, monkeypatch):
+    (tmp_path / "submission").mkdir()
+    (tmp_path / "submission/manifest.yaml").write_text("commands: {}\n")
+
+    def invoke(command, **kwargs):
+        assert command == "check"
+        return {"status": "pass", "body": {"programs": [{
+            "program": "model", "census": {"device": 1},
+            "kernels": [{"source_region_id": "conv_0"}],
+        }]}}
+
+    monkeypatch.setattr(official, "_invoke", invoke)
+    summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {"resnet50": ("model",)},
+                                rtl_budget_s=1)
+    assert summary["rtl"] == [{"model": "resnet50", "program": "model", "group": "conv_0",
+                               "status": "pending", "reason": "RTL budget exhausted"}]
+    assert summary["passed"] is False and summary["rtl_complete"] is False
+
+
 def test_official_invocation_uses_sealed_full_mode_and_bounded_rtl(tmp_path, monkeypatch):
     calls = []
 
@@ -80,6 +132,7 @@ def test_official_invocation_uses_sealed_full_mode_and_bounded_rtl(tmp_path, mon
                                 bundle=tmp_path / "bundle", timeout_s=13)
     assert checked["status"] == replayed["status"] == "pass"
     assert all(argv[argv.index("--split") + 1] == "sealed" for argv in calls)
+    assert all(Path(argv[argv.index("--models") + 1]).is_file() for argv in calls)
     assert calls[0][calls[0].index("--mode") + 1] == "full"
     assert calls[1][calls[1].index("--engine") + 1] == "gsim"
     assert calls[1][calls[1].index("--timeout-s") + 1] == "13"

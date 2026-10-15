@@ -33,6 +33,7 @@ def test_visible_model_check_uses_immutable_copy_and_no_private_argv(tmp_path, m
             (source / "compiler.py").write_text("VALUE = 2\n")
             assert start_new_session and cwd == ws
             assert argv[argv.index("--mode") + 1] == "fast"
+            assert Path(argv[argv.index("--models") + 1]).is_file()
             Path(argv[argv.index("--out") + 1]).write_text(json.dumps({
                 "schema": broker.REPORT_SCHEMA, "command": "check", "model": "resnet50",
                 "status": "pass", "exit_code": 0, "agent_view": True,
@@ -81,6 +82,33 @@ def test_replay_request_uses_contract_program_and_report_file(tmp_path, monkeypa
     missing_program = broker.execute_visible(ws, {"action": "replay-kernel", "model": "tiny_llama",
                                                   "group": "matmul_0", "engine": "gsim", "split": "visible"})
     assert missing_program["status"] == "rejected"
+
+
+def test_visible_check_accepts_stable_source_with_generated_build_state(tmp_path, monkeypatch):
+    ws = tmp_path / "workspace"
+    source = ws / "submission"
+    source.mkdir(parents=True)
+    (source / "manifest.yaml").write_text("commands: {}\n")
+    (source / "CMakeCache.txt").write_text("generated cache\n")
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+
+    class Completed:
+        returncode = 0
+
+        def __init__(self, argv, **kwargs):
+            snapshot = Path(argv[argv.index("--submission") + 1])
+            assert not (snapshot / "CMakeCache.txt").exists()
+            Path(argv[argv.index("--out") + 1]).write_text(json.dumps({
+                "schema": broker.REPORT_SCHEMA, "command": "check", "model": "resnet50",
+                "split": "visible", "agent_view": True, "status": "pass", "exit_code": 0,
+            }))
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(broker.subprocess, "Popen", Completed)
+    result = broker.execute_visible(ws, {"action": "check", "model": "resnet50", "split": "visible"})
+    assert result["status"] == "pass"
 
 
 def test_sealed_or_private_report_never_reaches_agent(tmp_path, monkeypatch):
@@ -178,6 +206,7 @@ def test_background_model_gate_reaches_agent_verdict_before_first_interval(tmp_p
     source.mkdir(parents=True)
     run.mkdir()
     (source / "manifest.yaml").write_text("commands: {}\n")
+    (source / "CMakeCache.txt").write_text("generated cache\n")
     monkeypatch.setenv("TMPDIR", str(tmp_path))
 
     def check(_ws, request, **kwargs):
@@ -198,6 +227,42 @@ def test_background_model_gate_reaches_agent_verdict_before_first_interval(tmp_p
             time.sleep(0.02)
         assert verdict["model_gate"]["complete"] is True
         assert len(verdict["model_gate"]["programs"]) == 6
+    finally:
+        gate.stop_gate(handle)
+
+
+def test_background_gate_restarts_superseded_snapshot_without_waiting_interval(tmp_path, monkeypatch):
+    from merlin.common.tree_hash import hash_tree
+
+    ws, run = tmp_path / "workspace", tmp_path / "run"
+    source = ws / "submission"
+    source.mkdir(parents=True)
+    run.mkdir()
+    (source / "manifest.yaml").write_text("commands: {}\n")
+    (source / "compiler.py").write_text("VERSION = 1\n")
+    checked = []
+
+    def check(_ws, request, **kwargs):
+        digest = hash_tree(kwargs["snapshot_source"])["sha256"]
+        checked.append((request["model"], digest))
+        if len(checked) == 1:
+            (source / "compiler.py").write_text("VERSION = 2\n")
+        return {"status": "pass", "source_sha256": digest, "report": {
+            "programs": [{"program": program} for program in broker.PROGRAMS[request["model"]]]}}
+
+    monkeypatch.setattr(gate, "execute_visible", check)
+    handle = gate.start(ws, run, interval_s=30)
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            verdict = json.loads((ws / "qa/verdict.json").read_text())
+            if verdict.get("model_gate", {}).get("complete"):
+                break
+            time.sleep(0.02)
+        assert verdict["model_gate"]["complete"] is True
+        assert len(checked) == 4  # one obsolete check, then all three models on the new source
+        assert checked[0][1] != checked[1][1]
+        assert verdict["model_gate"]["source_sha256"] == hash_tree(source)["sha256"]
     finally:
         gate.stop_gate(handle)
 

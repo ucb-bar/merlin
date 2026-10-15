@@ -28,6 +28,7 @@ The schemas are the cross-workstream coordination contract (see [Contracts](cont
 | `llvm_extension_plan` | LLVM Extension Plan | Records whether and how a target needs LLVM-project changes. The default posture is out-of-tree (TableGen fragments / intrinsic headers / runtime calls) with… |
 | `llvm_requirement` | LLVM Requirement | Whether a mined abstraction needs LLVM-project (backend/MC) support — the L8 record. Emitted by kernel mining per interface candidate, feeding TargetGen's ll… |
 | `metrics` | Metrics | The Merlin-owned common metrics schema. All backends and target adapters normalize their raw counters into these common names so results are comparable acros… |
+| `model_check_report` | Full-Model Check Report | One judgement of a device submission on complete quantized models: build and link status, the fixed-denominator offload census, per-kernel exactness on froze… |
 | `paper_run_result` | Frozen Compiler Paper Run Result | One lifecycle-complete cell in the K1 paper matrix. A cell distinguishes build, execution, correctness, task quality, exact timing scope, peak memory, execut… |
 | `paper_study` | Frozen Compiler Paper Study | Versioned input contract for a holdout-safe compiler comparison. Development workloads and paper models are disjoint; the compiler policy is frozen before an… |
 | `policy_rule` | Policy Rule | A compiler heuristic distilled from kernel evidence: when a condition holds, take these scheduling actions. Owned by kernel-mining; consumed by DSE and (late… |

@@ -118,6 +118,8 @@ REQUIRED_SCHEMAS = [
     "quant_format",
     # Per-form exactness contract every whole-model gate enforces (merlin.perf.exactness).
     "exactness_contract",
+    # Full-model check report (merlin.model_check): build, census, kernel exactness, model metrics.
+    "model_check_report",
 ]
 
 REQUIRED_DOCS = [
