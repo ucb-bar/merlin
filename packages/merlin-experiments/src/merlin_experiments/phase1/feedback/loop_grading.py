@@ -575,7 +575,7 @@ def fast_grade(
                 defer_pending=background_guard.reason,
                 **({"on_capsule_complete": lambda row: completed_promotion(row)
                     if background_guard.reason() is None else None} if completed_promotion is not None else {}),
-            )
+            ) or {}
     except Exception as e:  # noqa: BLE001 — a partial readback is still feedback, and every tier the
         # grade did not reach stays UNKNOWN in the document below rather than reading as clean.
         print(f"[first-grade] grade error: {type(e).__name__}: {str(e)[:200]}", flush=True)

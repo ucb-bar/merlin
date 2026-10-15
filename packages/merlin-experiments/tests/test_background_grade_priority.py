@@ -1,4 +1,4 @@
-"""Foreground priority never creates qualification or interrupts verified cases."""
+"""Foreground priority never creates qualification; obsolete native work may be deferred."""
 
 import contextlib
 import json
@@ -12,10 +12,12 @@ from types import SimpleNamespace
 import pytest
 from merlin_experiments.phase1.feedback import background_admission as admission
 from merlin_experiments.phase1.feedback import loop_grading as LG
+from merlin_experiments.phase1.feedback import operator_child as OC
 from merlin_experiments.phase1.feedback import selfcheck
 
 from merlin.targetgen import capsule_runner as CR
-from merlin.targetgen.capsule_scheduling import run_pipelined
+from merlin.targetgen import capsule_scheduling as CS
+from merlin.targetgen.capsule_scheduling import active_defer_probe, run_pipelined
 
 
 @pytest.mark.parametrize("dispatched", [False, True])
@@ -227,6 +229,101 @@ def test_deferral_drains_running_cases_and_retains_original_denominator(tmp_path
     assert all(row["status"] == "pass" for row in rows[:workers])
     assert all(row["status"] == "gated" and row["background_deferred"] for row in rows[workers:])
     assert not (tmp_path / "c.result").exists() and not (tmp_path / "d.result").exists()
+
+
+def test_background_scheduler_notifies_inflight_workers_without_a_completion():
+    started = threading.Barrier(3)
+    superseded = threading.Event()
+    attempts = []
+
+    def trigger():
+        started.wait(timeout=2)
+        superseded.set()
+
+    observer = threading.Thread(target=trigger)
+    observer.start()
+
+    def run(cap, parallel):
+        attempts.append(cap["name"])
+        probe = active_defer_probe()
+        assert probe is not None
+        started.wait(timeout=2)
+        while not (reason := probe()):
+            superseded.wait(0.02)
+        return {"capsule": cap["name"], "status": "gated", "background_deferred": reason}
+
+    try:
+        rows = run_pipelined(
+            [{"name": name, "kind": "operator"} for name in ("a", "b", "c")], run,
+            max_workers=2, defer_pending=lambda: "background source superseded" if superseded.is_set() else None,
+        )
+    finally:
+        observer.join(timeout=2)
+    assert set(attempts) == {"a", "b"}
+    assert len(rows) == 3
+    assert active_defer_probe() is None
+    assert all(row["status"] == "gated" and row["background_deferred"] == "background source superseded"
+               for row in rows)
+
+
+def test_operator_child_wait_releases_superseded_work_and_preserves_direct_wait(monkeypatch):
+    reason = {"value": None}
+
+    class Process:
+        def __init__(self):
+            self.timeouts = []
+
+        def communicate(self, *, timeout):
+            self.timeouts.append(timeout)
+            if len(self.timeouts) == 1:
+                reason["value"] = "background source superseded"
+                raise subprocess.TimeoutExpired("selected operator child", timeout)
+            return ("", "")
+
+    watched = Process()
+    monkeypatch.setattr(CS, "active_defer_probe", lambda: lambda: reason["value"])
+    assert OC._communicate_or_defer(watched, timeout_s=60) == "background source superseded"
+    assert len(watched.timeouts) == 1 and watched.timeouts[0] <= 5
+
+    direct = Process()
+    direct.communicate = lambda *, timeout: direct.timeouts.append(timeout)
+    monkeypatch.setattr(CS, "active_defer_probe", lambda: None)
+    assert OC._communicate_or_defer(direct, timeout_s=60) is None
+    assert direct.timeouts == [60]
+
+
+def test_superseded_operator_child_is_killed_and_persisted_as_deferred(tmp_path, monkeypatch):
+    @contextlib.contextmanager
+    def prepared(document):
+        yield tmp_path / "spec.json", tmp_path / "output.json", {}, SimpleNamespace(argv=(), pass_fds=())
+
+    killed = []
+    waited = []
+
+    class Process:
+        pid = 417
+
+        def wait(self, *, timeout):
+            waited.append(timeout)
+            return -9
+
+    monkeypatch.setattr(OC, "_prepared_child", prepared)
+    monkeypatch.setattr(OC, "adapter_selection", lambda *args, **kwargs: {"L3": {"engine": "gsim"}})
+    monkeypatch.setattr(OC.tier_policy, "observed_cost", lambda *args: None)
+    monkeypatch.setattr(OC.cpu_pool, "worker_pool_command", lambda command, environment: command)
+    monkeypatch.setattr(OC.subprocess, "Popen", lambda *args, **kwargs: Process())
+    monkeypatch.setattr(OC, "_communicate_or_defer", lambda *args, **kwargs: "background source superseded")
+    monkeypatch.setattr(CR, "_kill_tree", killed.append)
+    monkeypatch.setattr(CR, "_config_for_target", lambda *args: SimpleNamespace(suite="fixture-suite"))
+    row = OC.grade(
+        {"name": "capacity", "kind": "layer"}, tmp_path / "submission", runs_root=tmp_path / "runs",
+        contract=None, target="fixture", suite=None, dtype="i8", adapters={}, timeout=60,
+        workers=2, no_oracle=False,
+    )
+    saved = tmp_path / "runs/runs/fixture-suite/capacity/capsule_result.json"
+    assert row["status"] == "gated" and row["background_deferred"] == "background source superseded"
+    assert row == json.loads(saved.read_text())
+    assert killed == [417] and waited == [10]
 
 
 def test_superseded_source_is_sticky_and_never_current(tmp_path):
