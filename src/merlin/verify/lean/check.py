@@ -154,6 +154,8 @@ def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
     ``verified`` means the function is never ``stuck`` on inputs of its declared types in any
     context with ``index_bits``-bit ``index`` (``supportCheck_sound``); an op outside the proved
     fragment makes it ``abstracted``, with the first refused op as the reason."""
+    if type(index_bits) is not int or index_bits <= 0:
+        raise ValueError("index_bits must be a positive integer")
     receipt: dict[str, Any] = {
         "schema": "merlin.lean.receipt.v1",
         "boundary": f"support:{program.name}",
@@ -162,6 +164,7 @@ def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
         "theorem": SUPPORT_THEOREM,
         "subject": _file_ref(program),
         "function": function,
+        "index_bits": index_bits,
         "domain": f"inputs of the declared argument types; contexts with {index_bits}-bit index",
         "exporter": _exporter_block(m2m_python),
         "lean": _lean_block(),
@@ -185,6 +188,9 @@ def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
         receipt.update(verdict="unmeasured", reason=f"checker error: {proc.stderr.strip()[-300:]}")
         return _write(work, receipt)
     result = json.loads(proc.stdout)
+    if result.get("index_bits") != index_bits:
+        receipt.update(verdict="unmeasured", reason="checker used a different index width")
+        return _write(work, receipt)
     if result["verdict"] == "verified":
         receipt["verdict"] = "verified"
     else:
