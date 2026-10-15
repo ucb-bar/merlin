@@ -157,6 +157,8 @@ def _chunks(cases: Sequence[RP.ReplayCase]) -> list[list[RP.ReplayCase]]:
 
 def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, work: Path) -> dict[str, Any]:
     from merlin.model_check import cache as KC
+    from merlin.model_check import diagnostics as DG
+    from merlin.model_check import export as EX
 
     catalog = bundle.catalog(model.name, program)
     cases = _cases(bundle, model.name, program, inputs, group=group, all_calls=all_calls)
@@ -221,12 +223,33 @@ def _replay_program(args, bundle, model, program, inputs, *, group, all_calls, w
             row["mismatches"].append(verdict["label"])
     kernels = []
     for symbol in symbols:
+        form = EX.describe(catalog, symbol)
+        context = {k: form[k] for k in ("form", "source_region_ids", "interface_sha256")}
         if symbol in refused:
-            kernels.append({"symbol": symbol, "status": "refused", "detail": refused[symbol][:300]})
+            kernels.append(
+                {
+                    "symbol": symbol,
+                    **context,
+                    "status": "refused",
+                    "detail": refused[symbol][:300],
+                    "diagnosis": DG.refusal(catalog, symbol, refused[symbol]),
+                }
+            )
             continue
         row = per_symbol.get(symbol, {"symbol": symbol, "cases": 0, "exact": 0, "mismatches": []})
         status = "pass" if row["cases"] and row["exact"] == row["cases"] else "fail"
-        kernels.append({**row, "status": status, "mismatches": row["mismatches"][:5]})
+        kernels.append({**row, **context, "status": status, "mismatches": row["mismatches"][:5]})
+    diagnoses = DG.localize(
+        runnable,
+        verdicts,
+        catalog=catalog,
+        kernels=built.kernels,
+        objects=objects,
+        work=work / "diagnose",
+        run=lambda *image: run(*image)[0],
+        image_bytes=IMAGE_BYTES,
+    )
+    DG.attach(kernels, diagnoses)
     return {
         "program": program,
         "build": {
@@ -276,14 +299,17 @@ def _replay(args, report, *, all_calls: bool, group: str | None) -> dict:
         f"bit-exact on {len(inputs)} input(s); {len(failed)} kernel(s) differ",
     }
     for kernel in failed:
-        report["failures"].append(
-            {
-                "kind": "gate",
-                "gate": "kernel_exact",
-                "symbol": kernel["symbol"],
-                "detail": ", ".join(kernel["mismatches"]),
-            }
-        )
+        failure = {
+            "kind": "gate",
+            "gate": "kernel_exact",
+            "symbol": kernel["symbol"],
+            "detail": ", ".join(kernel["mismatches"]),
+        }
+        if "diagnosis" in kernel:  # a visible input's: a sealed one stays under the kernel's sealed key
+            from merlin.model_check.diagnostics import summary
+
+            failure["where"] = summary(kernel["diagnosis"])
+        report["failures"].append(failure)
     return report
 
 
