@@ -22,18 +22,22 @@ running a third of its layers on the device read exactly like one running all of
 from __future__ import annotations
 
 import pytest
-import selected_driver
+from logical_device_target import install
 
 from merlin.common import mlir_query as mq
 from merlin.llvmlower import group_offload as GO
 
 pytestmark = pytest.mark.target("gemmini")
 
-#: A target that closes a quantized linear layer's readout onto its unit. The route under test is
-#: target-agnostic -- the device is a parameter throughout -- but a test of "did two layers become
-#: two device calls" needs a target whose oracle actually admits them, so one real target is named
-#: here and nowhere in the library code it exercises.
+#: Retain this symbol/ABI identity while supplying explicit synthetic capabilities below.
+#: These unit tests exercise shared routing, not target hardware qualification.
 _TARGET = "gemmini"
+
+
+@pytest.fixture(autouse=True)
+def _synthetic_capabilities(monkeypatch):
+    install(monkeypatch)
+
 
 _ID = "affine_map<(d0, d1) -> (d0, d1)>"
 _COL = "affine_map<(d0, d1) -> (d1)>"
@@ -471,7 +475,6 @@ def test_the_call_takes_the_stored_integers_and_commits_the_integer_the_layer_do
     assert "(tensor<4x8xi8>, tensor<8x16xi8>, tensor<16xi32>, tensor<4x16xi8>) -> tensor<4x16xi8>" in text
 
 
-@selected_driver.requires_support(_TARGET)
 def test_a_bias_with_no_host_source_is_declined_by_name() -> None:
     """Without the capture's weights there is no folded bias to pass, and the group says so."""
     rewrite, _text = _rewritten(_two_layers())

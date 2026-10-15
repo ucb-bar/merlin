@@ -27,6 +27,7 @@ from pathlib import Path
 
 from merlin.common import compile_trace
 
+from .llvm_dialect_product import _residual_vector_dialect_ops as _residual_vector_dialect_ops
 from .llvm_dialect_product import run_translation, select_retention
 from .sliced_elementwise_output import PRELUDE as SLICED_OUTPUT_PRELUDE
 from .sliced_elementwise_output import RUNNER as SLICED_OUTPUT_RUNNER
@@ -1671,53 +1672,6 @@ class PipelineError(RuntimeError):
     pass
 
 
-#: Lexical pieces of an MLIR operation name, for the textual census below. Op names are ASCII
-#: by construction; the left-hand guard uses the wider identifier test so a non-ASCII letter
-#: abutting the prefix still reads as "this continues a word", not as a name boundary.
-_VECTOR_OP_PREFIX = "vector."
-_OP_NAME_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
-
-
-def _continues_identifier(ch: str) -> bool:
-    """True when ``ch`` would make the following character part of the same word."""
-    return ch.isalnum() or ch == "_"
-
-
-def _residual_vector_dialect_ops(path: Path) -> tuple[str, ...]:
-    """Return vector-dialect operation names left at the translation boundary.
-
-    The OpenMP route writes LLVM-dialect MLIR and invokes ``mlir-translate`` in a
-    second process.  A masked contraction that escaped the lowering pipeline used
-    to fail there with a generic translation error, after an expensive whole-model
-    compile.  Read the actual boundary artifact and fail closed with the operation
-    names instead.  This is deliberately a textual census: the producer already
-    succeeded, while parsing the mixed LLVM/OpenMP dialect in the host process is
-    the transport hazard this route exists to avoid.
-
-    The census is scanned structurally, not matched with a pattern (repo rule: no
-    regex in library code).  A name is a ``vector.`` occurrence that does not
-    continue an identifier to its left and carries at least one identifier
-    character to its right, and occurrences do not overlap -- so ``%vector.mask``
-    and ``llvm.vector.reduce`` are names, ``myvector.mask`` and a bare ``vector.``
-    are not, and ``vector.vector.x`` reads as the one name it spells.
-    """
-    text = path.read_text(encoding="utf-8")
-    found: set[str] = set()
-    at = text.find(_VECTOR_OP_PREFIX)
-    while at >= 0:
-        resume = at + 1
-        tail = at + len(_VECTOR_OP_PREFIX)
-        if at == 0 or not _continues_identifier(text[at - 1]):
-            end = tail
-            while end < len(text) and text[end] in _OP_NAME_CHARS:
-                end += 1
-            if end > tail:
-                found.add(text[at:end])
-                resume = end
-        at = text.find(_VECTOR_OP_PREFIX, resume)
-    return tuple(sorted(found))
-
-
 @host_admitted
 def lower_to_llvm_ir(
     mlir_text: str,
@@ -1855,6 +1809,26 @@ def lower_to_llvm_ir(
         source_observation_effects.validate()
     elif source_observation_effects is not None:
         raise PipelineError("source observation effects supplied without selected discovery feature")
+    from .toolchain import _env
+
+    driver = _env("MERLIN_COMPILER_DRIVER", "python")
+    if driver not in {"python", "stock-cli"}:
+        raise PipelineError(f"unknown upstream compiler driver: {driver!r}")
+    if driver == "stock-cli":
+        from .stock_cli import lower as lower_stock_cli
+
+        return lower_stock_cli(
+            mlir_text, work=work, pipeline=pipeline, features=feats, timeout=timeout,
+            audit=audit, data_layout=data_layout, index_bits=index_bits,
+            lowering_selection=lowering_selection,
+            unsupported={
+                "vectorize": vectorize, "transform_schedule": transform_schedule is not None,
+                "parallel": parallel, "parallel_harts": parallel_harts is not None,
+                "parallel_chunks": parallel_chunks is not None, "hoist_static_allocs=False": not hoist_static_allocs,
+                "source_scalar_carrier": source_scalar_carrier is not None,
+                "retain_llvm_dialect": retain_llvm_dialect,
+            },
+        )
     from .llvm_loop_outline import (
         FEATURE as _OUTLINE_LOOPS,
     )

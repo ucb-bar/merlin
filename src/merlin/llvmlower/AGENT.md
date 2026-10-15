@@ -2,6 +2,14 @@
 
 ## Purpose
 
+`stock_cli` is an explicitly selected scalar transport through stock upstream
+tools, using the ordinary scalar pass pipeline and shared object/link/runtime
+code. Python remains the default. Runner-only rewrites, guarded fusion, checked
+deallocation sinking, vector/parallel schedules, per-pass inspection, callbacks
+and serial product-retention requests refuse. Preserve the total deadline and
+actual tool input/output records; this transport issues no semantic, deployment
+or hardware qualification. A failed selected tool never triggers another driver.
+
 `host_optimization_request` separates original semantic/runtime permissions
 from bounded, source-bound author choices. The ordinary target object producer
 selects the exact original executor context. Logical graph choices run only

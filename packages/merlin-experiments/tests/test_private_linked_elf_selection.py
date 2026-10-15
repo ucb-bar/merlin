@@ -116,10 +116,17 @@ def _attempt(tmp_path, monkeypatch, *, fault=None, selected=True, eligible=True)
     monkeypatch.setattr(
         PFM, "_authored_file", lambda spec, row, field, frozen: PFM._file(spec, row[field], row[field + "_sha256"])
     )
-    monkeypatch.setattr(PFM, "_recipe_derivation", lambda *a, **k: ({"diagnostic": True}, {}, {}))
+    monkeypatch.setattr(
+        PFM, "_recipe_derivation", lambda *a, **k: ({"diagnostic": True, "recipe_semantic_sha256": "d" * 64}, {}, {})
+    )
     monkeypatch.setattr(PFM, "_selected_admission_views", lambda *a, **k: ({"target": target}, {}))
     monkeypatch.setattr(PFM.control_support, "selected_build_observation", lambda *a: {})
-    monkeypatch.setattr(PFM, "_source_obligations", lambda *a: {"eligible_groups": [0] if eligible else []})
+    monkeypatch.setattr(
+        PFM, "_source_obligations", lambda *a, **k: {
+            "eligible_groups": [0] if eligible else [],
+            "accelerator_source_demand": {"n_demanded_groups": int(eligible), "n_requested_groups": 0},
+        }
+    )
     monkeypatch.setattr(PFM.linkage_support, "symbols", lambda source: [])
     monkeypatch.setattr(target_registry, "observed_contract", lambda *a, **k: nullcontext())
     monkeypatch.setattr(
@@ -131,7 +138,13 @@ def _attempt(tmp_path, monkeypatch, *, fault=None, selected=True, eligible=True)
 
     def plan(*args, **kwargs):
         seen["plans"].append(kwargs)
-        route = DeviceRouting(target, package, "i8", "i32", linked_elf_admission=kwargs.get("linked_elf_admission"))
+        from merlin.compile.complete_group_routing import select_complete_group
+
+        route = DeviceRouting(
+            target, package, "i8", "i32", linked_elf_admission=kwargs.get("linked_elf_admission"),
+            require_complete_groups=kwargs["require_all_accelerator_groups"], select=select_complete_group,
+            granularity=kwargs["granularity"],
+        )
         if fault == "missing_on_route":
             route = replace(route, linked_elf_admission=None)
         elif fault == "other_service_on_route":
@@ -186,7 +199,7 @@ def _attempt(tmp_path, monkeypatch, *, fault=None, selected=True, eligible=True)
 
 def test_selected_policy_reaches_each_actual_automatic_build_unchanged(tmp_path, monkeypatch):
     result, seen, service = _attempt(tmp_path, monkeypatch)
-    assert len(seen["plans"]) == len(seen["builds"]) == len(seen["verification"]) == 2
+    assert len(seen["plans"]) == len(seen["builds"]) == len(seen["verification"]) == 2, result
     assert all(row["linked_elf_admission"] is service for row in seen["plans"])
     assert all(row["device"].linked_elf_admission is service for row in seen["builds"])
     assert all("no qualification" in row["reason"] for row in result["models"])

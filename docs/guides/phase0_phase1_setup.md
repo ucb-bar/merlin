@@ -257,8 +257,11 @@ export MERLIN_M2M_PYTHON="$MODEL_PYTHON"
 
 Set `MODEL_PYTHON` to the reviewed model runtime on this worker. Phase 1 probes
 and records that interpreter before authoring. `MERLIN_COMPILER_PYTHON` separately
-selects the candidate compiler interpreter; both selections must be explicit when
-the deployment uses both roles.
+selects the interpreter for upstream host MLIR bindings; both selections must be
+explicit when the deployment uses both roles. The explicit scalar
+[stock tool transport](llvm_toolchain.md#scalar-compilation-without-python-mlir-bindings)
+can compile host IR without those bindings. It refuses Python-runner-only options
+and does not change the candidate compiler's own interpreter or qualification.
 
 The RTL authoring tools also require an executable named `FileCheck` on the host
 and sandbox PATH. Some LLVM distributions omit it or install only a versioned

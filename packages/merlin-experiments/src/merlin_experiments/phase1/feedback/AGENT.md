@@ -307,3 +307,10 @@ the protected worker. Broker-only context enables the same durable per-capsule
 completion promotion for loop-only requests; public progress files never authorize
 certification. The worker checks that frozen source digest before scheduling,
 and omits this extra handoff when its own selected adapters already execute cert.
+
+`private_model_inputs` owns exact selected-input, capture-tree and recipe bindings;
+the full-model coordinator supplies its current digest and pinned-file callbacks.
+`promotion_sources` owns conservative package import/literal closure; promotion
+retains component attribution, cache identity and certification decisions.
+`selfcheck_results` projects already closed results, census and telemetry with
+unchanged redaction and refusal semantics; it does not execute a grade.

@@ -653,23 +653,44 @@ def test_native_postrun_build_mutation_cannot_retain_a_numerical_pass(monkeypatc
     monkeypatch.setattr(backends, "harness_build_recipe", lambda _target: recipe)
     monkeypatch.setattr(native_model_execution, "_build_service_for", lambda *_args, **_kw: service)
 
+    from merlin.common.paths import runtime_dir
+
+    policy = ReadbackPolicy(FULL_VALUES_B64)
+    recipe_record = {
+        "recipe": "selected",
+        "readback_codec": {"sha256": readback.file_sha256(runtime_dir() / "baremetal" / "out_b64.h")},
+    }
+
     def compile_selected(_cb, _lowered, work, **_kwargs):
         work.mkdir()
-        (work / "kernel.o").write_bytes(b"object")
-        (work / "harness.c").write_text("original\n")
+        obj = work / "kernel.o"
+        obj.write_bytes(b"object")
+        harness_path = work / "harness.c"
+        harness_path.write_text("original\n")
         elf = work / "model.elf"
         elf.write_bytes(b"ELF")
+        readback.stage_codec_header(work, policy=policy)
+        receipt = readback.build_receipt(
+            policy=policy,
+            cb=_cb,
+            target="fixture",
+            recipe_record=recipe_record,
+            source_pins=[],
+            object_path=obj,
+            harness_path=harness_path,
+            elf_path=elf,
+        )
+        (work / readback.BUILD_RECEIPT).write_text(json.dumps(receipt))
         return elf
 
     monkeypatch.setattr(compiler, "compile_lowered_to_elf", compile_selected)
-    monkeypatch.setattr(readback, "selected_build_inputs", lambda *_args, **_kwargs: ({"recipe": "selected"}, []))
+    monkeypatch.setattr(readback, "selected_build_inputs", lambda *_args, **_kwargs: (recipe_record, []))
     checks = []
+    original_receipt_check = readback.require_build_receipt
 
-    def receipt_check(_path, **kwargs):
+    def receipt_check(path, **kwargs):
         checks.append(kwargs["harness_path"].read_text())
-        if checks[-1] != "original\n":
-            raise ValueError("readback build receipt changed during native run")
-        return {"schema": "merlin_readback_build_v1"}
+        return original_receipt_check(path, **kwargs)
 
     monkeypatch.setattr(readback, "require_build_receipt", receipt_check)
     monkeypatch.setattr(
@@ -698,6 +719,7 @@ def test_native_postrun_build_mutation_cannot_retain_a_numerical_pass(monkeypatc
         run_elf=mutate_after_run,
         parse_output=lambda _console: pytest.fail("numeric parsing preceded the post-run build join"),
     )
+    monkeypatch.setattr(backends, "get_backend", lambda _target: backend)
     monkeypatch.setattr(
         model_execution_inputs,
         "native_engine",
@@ -723,10 +745,11 @@ def test_native_postrun_build_mutation_cannot_retain_a_numerical_pass(monkeypatc
         rtl_facts="selected-facts",
         board_config="selected-board",
         numeric_policy={"compare": "exact_int"},
-        readback_policy=ReadbackPolicy(FULL_VALUES_B64),
+        readback_policy=policy,
     )
     assert checks == ["original\n", "mutated\n"]
     assert result["status"] == "incomplete" and result["failure"]["type"] == "ValueError"
+    assert "readback build receipt does not bind" in result["failure"]["detail"]
     assert result.get("tiers", {}).get("L3", {}).get("status") != "pass"
 
 

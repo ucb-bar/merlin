@@ -703,3 +703,7 @@ the byte-bound `phase2-deferred.json` ledger and preserve it during release
 preparation. Deferred claims are neither written members nor Phase 2 readiness;
 omission retains historical full generation. Do not reuse this selector to omit
 other mandatory obligations or change sealed capture freshness.
+
+`capture_recipe` reads only the selected frozen software recipe index, checks
+exact bytes and semantic digests, and refuses ambiguous selections. Generation
+retains its callback alias; this helper cannot supply a hardware-only default.
