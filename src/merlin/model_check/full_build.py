@@ -68,39 +68,6 @@ def elf_sections(path: Path) -> dict[str, int]:
     return out
 
 
-# ------------------------------------------------------------------------------- linked ELF admission
-
-
-def admit_structural(*, elf: Path, evidence_root: Path) -> dict[str, Any]:
-    """model_check's own linked-image admission: records the image's digest and declared ISA, accepts.
-
-    ``compile_saved_model`` already holds the image's ISA to the board's DTS. An instruction policy (which
-    accelerator commands a submission may issue) is the caller's to impose: pass its admission service
-    to :func:`build` instead of this one."""
-    from merlin.runtime.backends.spike_model import arch_extensions
-
-    evidence_root = Path(evidence_root)
-    evidence_root.mkdir(parents=True, exist_ok=True)
-    report = {
-        "schema": "merlin.model_check.elf_admission.v1",
-        "status": "accepted",
-        "elf_sha256": sha256(Path(elf)),
-        "arch_extensions": arch_extensions(Path(elf)),
-        "scope": "structural: digest and declared ISA; no instruction policy",
-    }
-    path = evidence_root / "admission.json"
-    path.write_text(json.dumps(report, indent=1) + "\n")
-    return {**report, "report_path": str(path.resolve()), "report_sha256": sha256(path)}
-
-
-def admission_service(target: str):
-    from merlin.targetgen.contract.build_service import file_digest
-    from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
-
-    owner = Path(__file__).resolve()
-    return LinkedElfAdmissionService(target, admit_structural, ((str(owner), file_digest(owner)),))
-
-
 # ------------------------------------------------------------------------------------------- settings
 
 
@@ -203,7 +170,10 @@ def build(
     if image.exists():
         shutil.rmtree(image)
     directory.mkdir(parents=True, exist_ok=True)
-    admission = admission or admission_service(target)
+    if admission is None:
+        from merlin.model_check.admission import service
+
+        admission = service(target)
     started = time.monotonic()
     device = _routing(target, Path(stage), Path(submission), label, settings, admission)
     receipt = compile_saved_model(
