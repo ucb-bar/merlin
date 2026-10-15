@@ -566,6 +566,7 @@ def replay_on_board(
             "cases": len(job.cases),
             "symbols": sorted({c.symbol for c in job.cases}),
             "engine": "gsim",
+            "cached": False,  # an RTL run is never answered from the console store
             "elf": str(job.elf),
             "elf_sha256": _sha256(job.elf),
             "elf_bytes": job.elf.stat().st_size,
