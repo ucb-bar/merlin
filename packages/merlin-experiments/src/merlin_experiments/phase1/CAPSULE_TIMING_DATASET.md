@@ -129,3 +129,11 @@ Spike extension and FireSim bitstream separately. Verify the chip RTL/parameter
 and ABI match; then measure matched capsule ELFs on gSIM and the board to
 calibrate any wrapper/clock/transport difference. Reusing a configuration name
 or fitting old gSIM labels does not perform that verification.
+
+The six whole-model Spike programs in the authored Phase 1 descriptor now select
+`firesim_gemmini_rocket_u250_30mhz` directly. A fresh private model specification
+must select that board, its FireSim DTS SHA256 and the updated board-catalog
+SHA256. The operator `phase1.spike_alignment` check compares those inputs with
+the full-U250 machine and exact Spike executable/extension, source commits and
+ABI header before launch. Old R53b specifications still select the Verilator-DTS
+functional board and cannot qualify this new selection.

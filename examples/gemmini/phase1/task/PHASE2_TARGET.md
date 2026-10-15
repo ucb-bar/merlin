@@ -18,6 +18,9 @@ That pin records a FireSim generator revision distinct from the older
 The FireSim board catalog declares one non-vector Rocket hart and 16 GiB of
 DRAM mapped at `0x80000000`; the selected DTS SHA256 is
 `c4a2009a405945ea98f731713e0f4e7dc483031ab8cd5156d871e4eb7594f1df`.
+All six Phase 1 whole-model Spike programs select this same board entry for
+their host build. The private model specification must pin this FireSim DTS;
+the historical Verilator-DTS Spike board is retained only for old runs.
 The memory span is an address-map declaration, not a measured usable-capacity
 certificate. The full design's ABI header SHA256 is
 `3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924`;
@@ -52,9 +55,16 @@ any transfer from gSIM cycles to board cycles. A FireSim wrapper is not a drop-i
 gSIM executable, even when it encloses the same chip configuration.
 
 The operator can check the Phase 1 Spike executable, extension, source revisions
-and full-board ABI against the Phase 2 machine with
-`python -m merlin_experiments.phase1.spike_alignment --contract CONTRACT
---chipyard-root CHIPYARD --machines MACHINES --hardware-pins PINS`.
+and full-board ABI, DTS and private program board selection against the Phase 2
+machine with:
+
+```sh
+python -m merlin_experiments.phase1.spike_alignment \
+  --contract CONTRACT --chipyard-root CHIPYARD \
+  --machines MACHINES --hardware-pins PINS \
+  --board-catalog CATALOG --private-model-spec SPEC
+```
 Use the release-selected contract, `examples/gemmini/phase2/whole-model-machines.yaml`,
-and `merlin/contract/hardware_pins.yaml`. A passing report proves those selected
-Spike and ABI identities align; its `rtl_equivalence_proven: false` is deliberate.
+`merlin/contract/hardware_pins.yaml`, the release-selected board catalog and
+private full-model specification. A passing report proves those selected Spike,
+ABI, board and DTS identities align; its `rtl_equivalence_proven: false` is deliberate.

@@ -272,6 +272,29 @@ binary, then keep it on PATH for preflight and authoring:
 export PATH="$FILECHECK_BIN:$PATH"
 ```
 
+For the Gemmini six-program full-model gate, the authored descriptor now selects
+the full FireSim board even when the program executes on Spike. Prepare a **new**
+private model specification using that board, its FireSim DTS and the newly
+frozen board catalog. Before launch, run the operator alignment check on the
+FireSim source checkout selected for the pinned U250 bitstream:
+
+```sh
+python -m merlin_experiments.phase1.spike_alignment \
+  --contract "$PREPARED_CONTRACT" \
+  --chipyard-root "$FIRESIM_CHIPYARD_ROOT" \
+  --machines examples/gemmini/phase2/whole-model-machines.yaml \
+  --hardware-pins merlin/contract/hardware_pins.yaml \
+  --board-catalog examples/gemmini/platform/board-catalog.yaml \
+  --private-model-spec "$PRIVATE_MODEL_SPEC"
+```
+
+Require `spike_aligned: true`. This checks the exact Spike executable and Gemmini
+extension, their source commits, full-design ABI header, FireSim DTS and 16 GiB
+board declaration, and every model row's board/DTS/catalog pins. It does not
+prove gSIM/FireSim RTL equivalence or that the FPGA can use the entire declared
+memory span; qualify those independently. A missing pinned checkout or DTS is a
+failed selection, not a reason to reuse the Verilator DTS.
+
 Then run ordinary `--preflight-only` with the released descriptor, seal, regenerated
 bundle and oracle timing. Run the fresh Codex client canary in the same sandbox
 with the same provider/model/tool selections and a separate fresh run ID. See

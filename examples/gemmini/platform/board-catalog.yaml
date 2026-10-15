@@ -33,17 +33,17 @@ boards:
     flow: baremetal
     code_reserve: 64 MiB
     notes: >-
-      The functional instruction-set model of the same GemminiRocketConfig host
-      (the CPU ISA roster is read from the selected DTS), run with the target's
+      Retained functional instruction-set model of the GemminiRocketConfig host;
+      newly prepared Phase 1 full-model programs select the FireSim board below.
+      The model's CPU ISA roster is read from this selected DTS. It uses the
       accelerator extension and a declared 16 GiB memory span starting at
       0x80000000. This spans larger whole models without treating the Verilator
-      board's 256 MiB DTS limit as a functional-memory limit. The image states
-      the span in its symbol table and the runner sizes the simulated memory
-      from it. This is not evidence of FireSim physical capacity, RTL correctness,
-      or cycle timing.
+      board's 256 MiB DTS limit as a functional-memory limit. It is not evidence
+      of FireSim physical capacity, RTL correctness, or cycle timing.
 
   firesim_gemmini_rocket_u250_30mhz:
     target: gemmini
+    rtl_sim_config: FireSimGemminiRocketConfig
     bitstream: alveo_u250_firesim_gemmini_rocket_30mhz
     host_dts_sha256: c4a2009a405945ea98f731713e0f4e7dc483031ab8cd5156d871e4eb7594f1df
     dram_bytes: 16 GiB
