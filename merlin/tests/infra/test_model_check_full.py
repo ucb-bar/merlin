@@ -142,3 +142,30 @@ def test_npz_arrays_are_read_in_numeric_key_order(tmp_path):
 def test_inputs_run_concurrently_by_default_but_never_more_than_there_are():
     assert F.default_jobs(1) == 1
     assert 1 <= F.default_jobs(64) <= 64
+
+
+def test_the_differential_holds_every_output_to_every_bit():
+    ours = [np.array([1.0, -0.0], np.float32), np.array([3], np.int64), np.array([True])]
+    assert F._same(ours, [a.copy() for a in ours]) == []
+    flipped = [np.array([1.0, 0.0], np.float32), np.array([3], np.int64), np.array([True])]
+    assert F._same(ours, flipped) == [0], "a sign bit is a difference"
+    assert F._same(ours, [ours[0], np.array([3], np.int32), ours[2]]) == [1], "so is a dtype"
+
+
+def test_images_are_built_below_the_out_root_whatever_the_work_directory(tmp_path, monkeypatch):
+    """A harness passes ``--work`` outside this checkout; a whole-model build may only write below out/."""
+    out = tmp_path / "out"
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(out))
+    inside = out / "build" / "model_check" / "w"
+    assert F.build_root(inside, "m") == inside
+    elsewhere = F.build_root(tmp_path / "run" / "check.work", "m")
+    assert elsewhere.is_relative_to(out) and elsewhere.is_dir() and elsewhere.name.startswith("m-")
+    assert F.build_root(tmp_path / "run" / "check.work", "m") != elsewhere, "each check its own directory"
+
+
+def test_full_mode_takes_the_differential_and_refuses_a_program():
+    import argparse
+
+    F.validate(argparse.Namespace(differential=True, program=None))
+    with pytest.raises(ModelsFileError):
+        F.validate(argparse.Namespace(differential=False, program="decode"))

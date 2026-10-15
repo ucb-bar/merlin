@@ -6,15 +6,16 @@ them (:func:`merlin.model_check.chain.bind`); every step is one run of its progr
 that step's bound inputs -- a recurrent program's state is an input like any other, carried by the chain
 from the previous step's read-back outputs, so every step's outputs are observed whole.
 
-Judged:
+Judged (the fast kernel replay runs first and contributes ``build`` and ``kernel_exact``):
 
-- ``step_outputs`` -- every output of every program step against the INT8 reference chain (the same
-  chain evaluated by :mod:`merlin.runtime.linalg_numpy` on the same input): integer outputs bit for bit.
-  Float outputs are recorded (exact or their distance to the INT8 reference); those the model judges are
-  held to the FP reference by ``model_numerics``, the others have no FP reference and gate nothing.
-- ``model_numerics`` -- the model gate of §4.4 on the judged outputs, against the FP reference and the
-  INT8 reference's own metrics (ratio rule, §4.3). ``--decode-steps K`` below a recurrent program's
-  declared steps judges the first K steps only and marks the gate partial.
+- ``differential`` -- THE integration gate. Each program with device groups also has a host twin: the
+  same recipe and host code with every group on the host and no submission object. Every step's exact
+  bound inputs run on both, and every output (integer and float) must be bit-identical. What the twin
+  and the submission share -- Merlin's host code -- cannot be charged to the submission.
+- Reported, not gated: ``model_metrics.numerics`` (contract §4.4 on the measured judged outputs, ratio
+  rule vs FP) and ``model_metrics.host_drift`` with each output's ``host_drift`` (Merlin's compiled host
+  code against the numpy INT8 reference chain). ``--decode-steps K`` below a recurrent program's declared
+  steps judges the first K steps only and marks the gates partial.
 """
 
 from __future__ import annotations
@@ -186,11 +187,43 @@ def judged_metrics(model: Model, run: CH.ChainRun, fp: list[np.ndarray]) -> dict
 # ---------------------------------------------------------------------------------------- one input
 
 
+def execute(target: str, record: Mapping[str, Any], stage: Path, inputs, step_dir: Path, deadline: float) -> dict:
+    """One program step: ``record``'s image relinked with ``inputs``, run on Spike, every output read back."""
+    started = time.monotonic()
+    elf = FB.relink(record, stage, inputs, step_dir)
+    out: dict[str, Any] = {"relink_seconds": round(time.monotonic() - started, 1), "elf_bytes": elf.stat().st_size}
+    try:
+        console, wall = FB.run(target, elf, timeout_s=max(1.0, deadline - time.monotonic()))
+    finally:
+        FB.discard(step_dir)  # the relinked image and its generated inputs; the bound inputs stay
+    (step_dir / "console.bin").write_bytes(console)  # kept only when it cannot be read back
+    values, info = FB.read(console, stage, record["build_hash"])
+    (step_dir / "console.bin").unlink()
+    np.savez(step_dir / "outputs.npz", **{f"out{i}": v for i, v in enumerate(values)})
+    cycles = info["metrics"].get("cycles")
+    out.update(
+        seconds=round(wall, 1),
+        cycles_functional=int(cycles) if str(cycles).isdigit() else None,
+        group_profile=info.get("group_profile"),
+    )
+    return {"values": values, "row": out}
+
+
+def _same(values: Sequence[np.ndarray], twin: Sequence[np.ndarray]) -> list[int]:
+    """Indices of the outputs whose bytes (dtype, shape, every bit) differ."""
+    return [
+        i
+        for i, (a, b) in enumerate(zip(values, twin, strict=True))
+        if a.dtype != b.dtype or a.shape != b.shape or a.tobytes() != b.tobytes()
+    ]
+
+
 def run_input(
     model: Model,
     *,
     target: str,
     builds: Mapping[str, dict[str, Any]],
+    twins: Mapping[str, dict[str, Any] | None],
     stages: Mapping[str, Path],
     specs: Mapping[str, list[tuple[list[int], str]]],
     arrays: Mapping[str, np.ndarray],
@@ -198,44 +231,54 @@ def run_input(
     work: Path,
     deadline: float,
     rows: list[dict[str, Any]],
+    twin_pool,
     log=print,
 ) -> CH.ChainRun:
     """The submission's chain on one input: every step relinked, run on Spike and read back (each
-    completed step appended to ``rows``). Every step must finish before ``deadline`` (monotonic)."""
+    completed step appended to ``rows``). Every step must finish before ``deadline`` (monotonic).
+
+    The differential: each step's exact bound inputs also run on the program's host twin (submitted to
+    ``twin_pool`` before the step itself, so the two overlap), and the step's row records whether every
+    output is bit-identical."""
     run = CH.ChainRun()
+    pending = []
     for program in model.programs:
         run.steps[program.name] = []
+        stage, twin = stages[program.name], twins.get(program.name)
         for step in range(counts[program.name]):
             if deadline - time.monotonic() < 1:
                 raise FullCheckError(f"the time budget ran out before {program.name}#{step}")
-            row: dict[str, Any] = {"program": program.name, "step": step, "engine": "spike"}
             inputs = CH.bind(program, model, arrays, step, run)
-            started = time.monotonic()
-            elf = FB.relink(builds[program.name], stages[program.name], inputs, work / f"{program.name}.{step}")
-            row["relink_seconds"] = round(time.monotonic() - started, 1)
-            row["elf_bytes"] = elf.stat().st_size
-            step_dir = work / f"{program.name}.{step}"
-            try:
-                console, wall = FB.run(target, elf, timeout_s=max(1.0, deadline - time.monotonic()))
-            finally:
-                FB.discard(step_dir)  # the relinked image and its generated inputs; the bound inputs stay
-            (step_dir / "console.bin").write_bytes(console)  # kept only when it cannot be read back
-            values, info = FB.read(console, stages[program.name], builds[program.name]["build_hash"])
-            (step_dir / "console.bin").unlink()
-            np.savez(step_dir / "outputs.npz", **{f"out{i}": v for i, v in enumerate(values)})
-            cycles = info["metrics"].get("cycles")
-            row.update(
-                status="completed",
-                seconds=round(wall, 1),
-                cycles_functional=int(cycles) if str(cycles).isdigit() else None,
-                group_profile=info.get("group_profile"),
-            )
+            future = None
+            if twin is not None:
+                future = twin_pool.submit(
+                    execute, target, twin, stage, inputs, work / f"{program.name}.{step}.host", deadline
+                )
+            done = execute(target, builds[program.name], stage, inputs, work / f"{program.name}.{step}", deadline)
+            row = {"program": program.name, "step": step, "engine": "spike", "status": "completed", **done["row"]}
             elements = [dt for _shape, dt in specs[program.name]]
+            values = done["values"]
             run.steps[program.name].append(
                 [v if dt in INTEGER else np.asarray(v, np.float32) for v, dt in zip(values, elements, strict=True)]
             )
             rows.append(row)
+            pending.append((row, values, future))
             log(f"[full] {model.name} {program.name}#{step}: {row['cycles_functional']} cycles, {row['seconds']} s")
+    for row, values, future in pending:
+        if future is None:
+            row["differential"] = {"status": "identical", "detail": "a host-only program is its own host twin"}
+            continue
+        try:
+            twin = future.result()
+        except Exception as error:  # noqa: BLE001 -- the step is reported, never silently skipped
+            row["differential"] = {"status": "error", "detail": f"{type(error).__name__}: {error}"[:1000]}
+            continue
+        differing = _same(values, twin["values"])
+        row["differential"] = {
+            "status": "differs" if differing else "identical",
+            "differing_outputs": differing,
+            "twin": {k: twin["row"][k] for k in ("seconds", "cycles_functional", "relink_seconds", "elf_bytes")},
+        }
     return run
 
 
@@ -252,6 +295,20 @@ def _outputs_rows(model: Model, run: CH.ChainRun, ref: CH.ChainRun, specs) -> di
                 for i, (v, e) in enumerate(zip(values, expected, strict=True))
             ]
     return out
+
+
+def build_root(work: Path, model: str) -> Path:
+    """Where the whole-model images are built: ``work`` when it lies below the out root (the only place a
+    whole-model build may write), else a fresh directory of this check's own under it. Runs, references and
+    every other product stay in ``work``."""
+    from merlin.common.paths import build_dir, out_dir
+
+    if Path(work).resolve().is_relative_to(out_dir().resolve()):
+        return Path(work)
+    root = build_dir() / "model_check" / "full"
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    return Path(tempfile.mkdtemp(prefix=f"{model}-{stamp}-", dir=root))
 
 
 def default_jobs(inputs: int) -> int:
@@ -271,8 +328,6 @@ def _kernels(bundle: B.Bundle, model: str, program: str, build: Mapping[str, Any
 
 def validate(args) -> None:
     """Refuse the options full mode does not take (a usage error, before anything runs)."""
-    if getattr(args, "differential", False):
-        raise ModelsFileError("check --differential (an offload-disabled twin build) is not wired in this version")
     if getattr(args, "program", None):
         raise ModelsFileError("check --mode full runs a model's whole chain; --program selects nothing here")
 
@@ -299,6 +354,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
     inputs = judged_inputs(bundle, model.name, args.split, getattr(args, "inputs", None))
     submission_sha = report["submission"]["tree_sha256"]
     work = Path(args.work or (build_dir() / "model_check" / "full")) / submission_sha[:16] / model.name
+    images = build_root(work, model.name)
     settings = FB.BuildSettings.of(models, model, args.host_package)
     stages = {p.name: B.stage_dir(captures, model, p.name) for p in model.programs}
     specs = {name: _out_specs(stage / "model.mlir") for name, stage in stages.items()}
@@ -319,16 +375,33 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
             submission=args.submission,
             submission_sha256=submission_sha,
             settings=settings,
-            directory=work / "programs" / program.name,
+            directory=images / "programs" / program.name,
             admission=admission,
         )
         timing["build_seconds"] += 0 if builds[program.name]["reused"] else builds[program.name]["seconds"]
         log(f"[full] {model.name}/{program.name}: {builds[program.name]['elf_bytes']} B image")
+    # The differential's host twins: the same recipe with every group on the host, no submission object.
+    twins: dict[str, dict[str, Any] | None] = {}
+    for program in model.programs:
+        if not builds[program.name]["device_routed"]:
+            twins[program.name] = None  # already host only: the image is its own twin
+            continue
+        twins[program.name] = FB.build(
+            stages[program.name],
+            target=models.target,
+            label=f"{model.name}:{program.name}",
+            submission=args.submission,
+            submission_sha256=submission_sha,
+            settings=settings,
+            directory=images / "host" / program.name,
+            offload=False,
+        )
+        timing["build_seconds"] += 0 if twins[program.name]["reused"] else twins[program.name]["seconds"]
     kernels_built = report["gates"].get("build")  # the kernel replay's, when it ran first
     report["gates"]["build"] = {
         "status": kernels_built["status"] if kernels_built else "pass",
-        "detail": f"{len(builds)} program image(s) linked"
-        + (f"; kernel replay: {kernels_built['detail']}" if kernels_built else ""),
+        "detail": f"{len(builds)} program image(s) and {sum(t is not None for t in twins.values())} host twin(s) "
+        "linked" + (f"; kernel replay: {kernels_built['detail']}" if kernels_built else ""),
     }
 
     def one(input_id: str) -> dict[str, Any]:
@@ -343,6 +416,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
                 model,
                 target=models.target,
                 builds=builds,
+                twins=twins,
                 stages=stages,
                 specs=specs,
                 arrays=arrays,
@@ -350,6 +424,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
                 work=runs / input_id,
                 deadline=deadline,
                 rows=result["rows"],
+                twin_pool=twin_pool,
                 log=log,
             )
             result["chain_seconds"] = round(time.monotonic() - started, 1)
@@ -370,11 +445,13 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
         return result
 
     jobs = int(args.jobs) if getattr(args, "jobs", None) else default_jobs(len(inputs))
-    with ThreadPoolExecutor(max_workers=jobs) as pool:
+    with ThreadPoolExecutor(max_workers=jobs) as twin_pool, ThreadPoolExecutor(max_workers=jobs) as pool:
         results = list(pool.map(one, inputs))
     timing["jobs"] = jobs
 
     exact_rows = integer_bad = float_exact = float_total = 0
+    steps = identical = 0
+    drift: list[float] = []
     per_input = []
     for result in results:
         split = result["input"].partition("/")[0]
@@ -390,28 +467,38 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
             )
             continue
         for row in result["rows"]:
-            outputs = result["outputs"][(row["program"], row["step"])]
-            row["outputs"] = outputs
-            for out in outputs:
+            # Host drift: how far Merlin's compiled host code is from the numpy INT8 reference. Information
+            # only -- the same drift is in the host twin, so the differential never charges it to a submission.
+            row["outputs"] = [
+                {"output": o["output"], "dtype": o["dtype"], "shape": o["shape"], "host_drift": o}
+                for o in result["outputs"][(row["program"], row["step"])]
+            ]
+            for out in row["outputs"]:
+                drifted = out["host_drift"]
                 if out["dtype"] in INTEGER:
                     exact_rows += 1
-                    if not out["exact"]:
-                        integer_bad += 1
-                        report["failures"].append(
-                            {
-                                "kind": "gate",
-                                "gate": "step_outputs",
-                                "input": result["input"],
-                                "split": split,
-                                "program": row["program"],
-                                "step": row["step"],
-                                "detail": f"output {out['output']} ({out['dtype']}): "
-                                f"{out.get('mismatched')} elements differ",
-                            }
-                        )
+                    integer_bad += int(not drifted["exact"])
                 else:
                     float_total += 1
-                    float_exact += int(out["exact"])
+                    float_exact += int(drifted["exact"])
+                    drift.append(float(drifted.get("rel_rmse_vs_int8") or 0.0))
+            differential = row.get("differential") or {"status": "error", "detail": "no host twin ran"}
+            steps += 1
+            identical += int(differential["status"] == "identical")
+            if differential["status"] != "identical":
+                report["failures"].append(
+                    {
+                        "kind": "gate" if differential["status"] == "differs" else "infrastructure",
+                        "gate": "differential",
+                        "input": result["input"],
+                        "split": split,
+                        "program": row["program"],
+                        "step": row["step"],
+                        "detail": f"outputs {differential.get('differing_outputs')} differ from the host twin"
+                        if differential["status"] == "differs"
+                        else differential.get("detail"),
+                    }
+                )
         per_input.append(
             {
                 "split": split,
@@ -424,17 +511,6 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
                 "reference_consistent": result["reference_consistent"],
             }
         )
-        if not result["gate"]["pass"]:
-            failed = [k for k, c in result["gate"]["checks"].items() if not c["pass"]]
-            report["failures"].append(
-                {
-                    "kind": "gate",
-                    "gate": "model_numerics",
-                    "input": result["input"],
-                    "split": split,
-                    "detail": f"fails {failed}",
-                }
-            )
         if not result["reference_consistent"]:
             report["failures"].append(
                 {
@@ -474,18 +550,11 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
             }
         )
     judged = len(per_input) == len(results)
-    report["gates"]["step_outputs"] = {
-        "status": "pass" if integer_bad == 0 and judged else "fail",
+    report["gates"]["differential"] = {
+        "status": "pass" if judged and steps and identical == steps else "fail",
         "partial": partial,
-        "detail": f"{exact_rows - integer_bad}/{exact_rows} integer step outputs bit-exact vs the INT8 reference "
-        f"chain; {float_exact}/{float_total} float step outputs bit-exact (the judged ones are held to FP by "
-        f"model_numerics, the others have no FP reference); {len(per_input)}/{len(results)} input(s) completed",
-    }
-    report["gates"]["model_numerics"] = {
-        "status": "pass" if judged and all(row["pass"] for row in per_input) else "fail",
-        "partial": partial,
-        "detail": f"contract §4.4 ({model.judged['kind']}) on {len(per_input)}/{len(results)} input(s)"
-        + (f", first {counts} steps only" if partial else ""),
+        "detail": f"{identical}/{steps} program steps bit-identical (every output) to the host twin on the same "
+        f"inputs; {len(per_input)}/{len(results)} input(s) completed",
     }
     report["model_metrics"] = {
         "source": "measured",
@@ -493,6 +562,19 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
         "per_input": per_input,
         "worst": M.worst_of(per_input),
         "mean": M.mean_of(per_input),
+        # Reported, not a gate: on the measured outputs, which the differential ties to the host twin.
+        "numerics": {
+            "status": "pass" if judged and all(row["pass"] for row in per_input) else "fail",
+            "partial": partial,
+            "detail": f"contract §4.4 ({model.judged['kind']}) on {len(per_input)}/{len(results)} input(s)"
+            + (f", first {counts} steps only" if partial else ""),
+        },
+        "host_drift": {
+            "integer_outputs_exact": f"{exact_rows - integer_bad}/{exact_rows}",
+            "float_outputs_exact": f"{float_exact}/{float_total}",
+            "float_rel_rmse_worst": max(drift) if drift else 0.0,
+            "detail": "Merlin's compiled host code against the numpy INT8 reference chain; information only",
+        },
     }
     report["timing"].update({k: (round(v, 1) if isinstance(v, float) else v) for k, v in timing.items()})
     return report
