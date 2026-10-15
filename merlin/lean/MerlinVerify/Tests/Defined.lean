@@ -181,3 +181,26 @@ def fills (sh : List Nat) (body : Region) : Bool :=
 #guard !fills [2, 3] (.mk [.mk [v 10 i32, v 11 i32] [mkOp "linalg.yield" [] [10, 10]]])
 
 end MerlinVerify.Tests.Definedness
+
+namespace MerlinVerify.Tests.Definedness
+
+open MerlinVerify MerlinVerify.Check MerlinVerify.Check.Definedness MerlinVerify.Tests.Semantics
+
+def overwrite (inputExtent outputExtent : Nat) (outputMap : Attr) (yieldId : Nat) : Bool :=
+  accepts [v 0 (tensorTy [inputExtent] i32)]
+    [mkOp "tensor.empty" [v 1 (tensorTy [outputExtent] i32)] [],
+     mkOp "linalg.generic" [v 2 (tensorTy [outputExtent] i32)] [0, 1]
+       [("indexing_maps", .array [amap 1 [0], outputMap]),
+        ("iterator_types", .array [iter "parallel"]),
+        ("operandSegmentSizes", .denseArray i32 [1, 1])] []
+       [.mk [.mk [v 10 i32, v 11 i32] [mkOp "linalg.yield" [] [yieldId]]]], ret [2]]
+    [.tensor [inputExtent] i32] [.tensor [outputExtent] i32]
+
+#guard overwrite 3 3 (amap 1 [0]) 10
+#guard overwrite 0 0 (amap 1 [0]) 10
+#guard !overwrite 2 3 (amap 1 [0]) 10
+#guard !overwrite 0 3 (amap 1 [0]) 10
+#guard !overwrite 3 3 (.affineMap ⟨1, 0, [.const 0]⟩) 10
+#guard !overwrite 3 3 (amap 1 [0]) 11
+
+end MerlinVerify.Tests.Definedness

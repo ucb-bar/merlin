@@ -225,6 +225,65 @@ theorem genericSem_total {ib : Nat} {ctx : Ctx} (hib : ctx.indexBits = ib) {maps
 
 /-- A full identity-mapped overwrite initializes an empty destination. The body is checked with
 an explicitly uninitialized output argument, so reading that argument cannot certify the result. -/
+theorem overwriteSem_total {ib : Nat} {ctx : Ctx} (hib : ctx.indexBits = ib)
+    {ins : List RVal} {inFacts : List Fact} {maps : List AffineMap} {iters : List IterKind}
+    {t : Tensor} {sh : List Nat} {e : Ty} {body : Ctx → RegionSem}
+    (hs : StructuredOk maps iters.length (inFacts.map (·.ty) ++ [.tensor sh e]) sh)
+    (hout : maps.drop inFacts.length = [identityMap sh.length])
+    (hins : FactsHold ib ins inFacts) (ht : RVal.HasTy ib (.tensor t) (.tensor sh e))
+    (hbody : BodyTotal ib body ((inFacts ++ [(⟨.tensor sh e, false⟩ : Fact)]).map elementFact) [.scalar e]) :
+    ∃ rs, genericSem ctx maps iters ins [.tensor t] body = .ok rs ∧
+      FactsHold ib rs (clean [.tensor sh e]) := by
+  classical
+  have hshape := ht.1
+  have hall : HasTys ib (ins ++ [.tensor t]) (inFacts.map (·.ty) ++ [.tensor sh e]) :=
+    List.rel_append hins.typed (.cons ht .nil)
+  obtain ⟨hL, hD, hR, hLR⟩ := structured_runtime hs hall
+  have hk : ins.length = inFacts.length := List.Forall₂.length_eq hins
+  have hinM : MapsInBounds sh (maps.take ins.length) (inFacts.map (·.ty)) := by
+    have := List.forall₂_take (inFacts.map (·.ty)).length hs.inBounds
+    rw [List.take_left] at this
+    simpa only [List.length_map, ← hk] using this
+  have hpoint : ∀ p, Idx.InBounds sh p → ∃ y,
+      bodyAt ctx ins (maps.take ins.length) [identityMap sh.length] [t] body p = .ok [y] ∧
+      Val.HasTy ib e y ∧ y ≠ .poison := by
+    intro p hp
+    obtain ⟨xs, hx, hxf⟩ := mapM_read_total hp id (fun (v, m) => readAt v m p)
+      (by intro _ _; rfl) ins (maps.take ins.length) inFacts (by simpa using hins) hinM
+    have hp' : Idx.InBounds t.shape p := hshape ▸ hp
+    have houtRead := readAt_identity hp'
+    rw [hshape] at houtRead
+    have hfacts : FactsHold ib ((xs ++ [t.get p]).map RVal.scalar)
+        ((inFacts ++ [(⟨.tensor sh e, false⟩ : Fact)]).map elementFact) := by
+      rw [List.map_append, List.map_append]
+      exact List.rel_append hxf (.cons ⟨ht.2.2 p hp, by simp [elementFact]⟩ .nil)
+    obtain ⟨ys, hy, hyt, hyd⟩ := hbody {ctx with loopIndex := p} hib _ hfacts
+    obtain _ | ⟨hyf, hnil⟩ := hyt
+    cases hnil
+    rename_i y
+    cases y with
+    | tensor _ => cases hyf
+    | scalar y =>
+      refine ⟨y, ?_, hyf, hyd _ (List.mem_cons_self ..)⟩
+      simp only [bodyAt, List.zip_cons_cons, List.zip_nil_left, List.mapM_cons, List.mapM_nil,
+        Outcome.bindOp_eq, hx, houtRead, Outcome.bind_ok, Outcome.pure_eq, hy,
+        List.length_cons, List.length_nil, ne_eq, not_true_eq_false, ↓reduceIte]
+  let F : Idx → Val := fun p => if hp : Idx.InBounds sh p then Classical.choose (hpoint p hp) else .poison
+  have hF : ∀ p, Idx.InBounds sh p →
+      bodyAt ctx ins (maps.take ins.length) [identityMap sh.length] [t] body p = .ok [F p] ∧
+      Val.HasTy ib e (F p) ∧ F p ≠ .poison := by
+    intro p hp
+    simpa only [F, dite_eq_left hp] using Classical.choose_spec (hpoint p hp)
+  refine ⟨[.tensor (Tensor.canon sh t.elt F)], ?_, .cons ⟨⟨rfl, ht.2.1, ?_⟩, ?_⟩ .nil⟩
+  · exact genericSem_parallel1 ctx maps iters ins t body sh F
+      (by simpa only [List.length_append, List.length_cons, List.length_nil] using hL)
+      hD hR hLR hshape (hk ▸ hout) (fun p hp => (hF p hp).1)
+  · intro p hp
+    simpa only [Tensor.canon, hp, ↓reduceIte] using (hF p hp).2.1
+  · intro _ p hp
+    change Idx.InBounds sh p at hp
+    simpa only [Tensor.canon, hp, ↓reduceIte] using (hF p hp).2.2
+
 theorem fillSem_total {ib : Nat} {ctx : Ctx} (hib : ctx.indexBits = ib) {v : RVal} {vf : Fact}
     {t : Tensor} {sh : List Nat} {e : Ty} {body : Ctx → RegionSem}
     (hs : StructuredOk (fillMaps sh.length) sh.length [vf.ty, .tensor sh e] sh)
@@ -232,56 +291,12 @@ theorem fillSem_total {ib : Nat} {ctx : Ctx} (hib : ctx.indexBits = ib) {v : RVa
     (hbody : BodyTotal ib body [elementFact vf, ⟨.scalar e, false⟩] [.scalar e]) :
     ∃ rs, genericSem ctx (fillMaps sh.length) (List.replicate sh.length .parallel)
       [v] [.tensor t] body = .ok rs ∧ FactsHold ib rs (clean [.tensor sh e]) := by
-  classical
-  have hshape := ht.1
-  have hall : HasTys ib [v, .tensor t] [vf.ty, .tensor sh e] := .cons hv.1 (.cons ht .nil)
-  obtain ⟨hL, hD, hR, hLR⟩ := structured_runtime hs hall
-  have hinM := hs.inBounds
-  cases hinM with
-  | cons hinM hrest =>
-    have hpoint : ∀ p, Idx.InBounds sh p → ∃ y,
-        bodyAt ctx [v] ((fillMaps sh.length).take 1) [identityMap sh.length] [t] body p = .ok [y] ∧
-        Val.HasTy ib e y ∧ y ≠ .poison := by
-      intro p hp
-      obtain ⟨x, hx, hxf⟩ := readAt_total hp hv hinM
-      have hp' : Idx.InBounds t.shape p := hshape ▸ hp
-      have hout := readAt_identity hp'
-      rw [hshape] at hout
-      have hfacts : FactsHold ib [.scalar x, .scalar (t.get p)]
-          [elementFact vf, ⟨.scalar e, false⟩] :=
-        .cons hxf (.cons ⟨ht.2.2 p hp, by simp⟩ .nil)
-      obtain ⟨ys, hy, hyt, hyd⟩ := hbody {ctx with loopIndex := p} hib _ hfacts
-      obtain _ | ⟨hyf, hnil⟩ := hyt
-      cases hnil
-      rename_i y
-      cases y with
-      | tensor _ => cases hyf
-      | scalar y =>
-        refine ⟨y, ?_, hyf, hyd _ (List.mem_cons_self ..)⟩
-        simp only [bodyAt, fillMaps, List.take_succ_cons, List.take_zero, List.zip_cons_cons,
-          List.zip_nil_left, List.mapM_cons, List.mapM_nil, Outcome.bindOp_eq, hx, hout,
-          Outcome.bind_ok, Outcome.pure_eq, List.singleton_append, List.map_cons, List.map_nil,
-          hy, List.length_cons, List.length_nil, ne_eq, not_true_eq_false, ↓reduceIte]
-    let F : Idx → Val := fun p => if hp : Idx.InBounds sh p then Classical.choose (hpoint p hp) else .poison
-    have hF : ∀ p, Idx.InBounds sh p →
-        bodyAt ctx [v] ((fillMaps sh.length).take 1) [identityMap sh.length] [t] body p = .ok [F p] ∧
-        Val.HasTy ib e (F p) ∧ F p ≠ .poison := by
-      intro p hp
-      simpa only [F, dite_eq_left hp] using Classical.choose_spec (hpoint p hp)
-    refine ⟨[.tensor (Tensor.canon sh t.elt F)], ?_, .cons ⟨⟨rfl, ht.2.1, ?_⟩, ?_⟩ .nil⟩
-    · apply genericSem_parallel1 ctx (fillMaps sh.length) (List.replicate sh.length .parallel)
-        [v] t body sh F hL
-      · simpa only [List.length_replicate] using hD
-      · exact hR
-      · simpa only [List.length_replicate, List.singleton_append] using hLR
-      · exact hshape
-      · rfl
-      · exact fun p hp => (hF p hp).1
-    · intro p hp
-      simpa only [Tensor.canon, hp, ↓reduceIte] using (hF p hp).2.1
-    · intro _ p hp
-      change Idx.InBounds sh p at hp
-      simpa only [Tensor.canon, hp, ↓reduceIte] using (hF p hp).2.2
+  apply overwriteSem_total hib (inFacts := [vf])
+  · simpa only [List.length_replicate, List.map_cons, List.map_nil, List.singleton_append] using hs
+  · rfl
+  · exact .cons hv .nil
+  · exact ht
+  · exact hbody
 
 theorem splitInsOuts_facts {ib : Nat} {op : Op} {args : List RVal}
     {fs ins outs : List Fact} (h : splitInsOuts op fs = some (ins, outs))
@@ -428,23 +443,76 @@ theorem genericDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
     · cases h
   · cases h
 
+/-- Single-output generics may start from an uninitialized destination when their output map is
+identity and the iteration box is exactly the output shape. The body must be total even on a dirty
+output element. This is a coverage proof, not an assumption that parallel iterators imply coverage. -/
+def overwriteDefinedRule (ib : Nat) (Γ : FEnv) (op : Op) (fs : List Fact) : Option (List Fact) :=
+  if unmodelledAttr? op.blind = none ∧ dialectOf op.name = "linalg" ∧ op.name = "linalg.generic" then
+    match splitInsOuts op fs, attrAffineMaps? op "indexing_maps", iterKinds? op, op.regions with
+    | some (ins, [⟨.tensor sh e, _⟩]), some maps, some iters, [body] =>
+      if op.results.length = 1 ∧ maps.drop ins.length = [identityMap sh.length] ∧
+          structuredRanges? maps iters.length (ins.map (·.ty) ++ [.tensor sh e]) = some sh ∧
+          checkRegion (leafBook ib) Γ body ((ins ++ [(⟨.tensor sh e, false⟩ : Fact)]).map elementFact) [.scalar e] then
+        some (clean [.tensor sh e])
+      else none
+    | _, _, _, _ => none
+  else none
+
+theorem overwriteDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
+    overwriteDefinedRule ib Γ op fs = some rs → ∀ ctx call env args,
+    ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
+    ∃ vs, opSem ctx call op args (evalRegions opSem call env op.regions) = .ok vs ∧
+      FactsHold ib vs rs := by
+  intro Γ op fs rs h ctx call env args hib hΓ ha
+  unfold overwriteDefinedRule at h
+  split at h
+  · next hc =>
+    obtain ⟨hm, hd, hn⟩ := hc
+    split at h
+    · next ins sh e init maps iters body hsplit hmaps hiters hregs =>
+      split at h
+      · next hc =>
+        obtain ⟨hres, hout, hranges, hbody⟩ := hc
+        cases h
+        obtain ⟨xs, ys, hio, hxs, hys⟩ := splitInsOuts_facts hsplit ha
+        obtain _ | ⟨ht, hnil⟩ := hys
+        cases hnil
+        rename_i t
+        cases t with
+        | scalar _ => cases ht.1
+        | tensor t =>
+          have hb : BodyTotal ib (fun ctx => evalRegion opSem ctx call env body)
+              ((ins ++ [(⟨.tensor sh e, false⟩ : Fact)]).map elementFact) [.scalar e] := by
+            intro ctx hib args ha
+            exact checkRegion_sound (leafBook ib) hbody hib hΓ ha
+          obtain ⟨rs, hsem, hrf⟩ := overwriteSem_total hib (structuredRanges?_spec hranges) hout hxs ht.1 hb
+          refine ⟨rs, ?_, hrf⟩
+          have hlen : rs.length = op.blind.results.length := by
+            rw [HasTys.length (clean_typed hrf), Op.blind_results, List.length_map, hres]
+            rfl
+          rw [linalg_sem_of hm hd (.inl hn)]
+          simp only [hregs, evalRegions, Linalg.sem, Op.blind_name, hn, splitInsOuts_blind, hio,
+            attrAffineMaps?_blind, hmaps, iterKinds?_blind, hiters, Outcome.bindOp_eq, hsem,
+            Outcome.bind_ok, hlen, ↓reduceIte, Outcome.pure_eq]
+      · cases h
+    · cases h
+  · cases h
+
 def book (ib : Nat) : Book opSem ib where
   rule Γ op fs := match (leafBook ib).rule Γ op fs with
     | some rs => some rs
-    | none => (fillDefinedRule ib Γ op fs).orElse (fun _ => genericDefinedRule ib Γ op fs)
+    | none => [fillDefinedRule ib, genericDefinedRule ib, overwriteDefinedRule ib].findSome? fun r => r Γ op fs
   sound Γ op fs rs h ctx call env args hib hΓ ha := by
     split at h
     · next _ hl =>
       cases h
       exact (leafBook ib).sound Γ op fs _ hl ctx call env args hib hΓ ha
-    · cases hf : fillDefinedRule ib Γ op fs with
-      | some fs' =>
-        simp only [hf, Option.orElse_some, Option.some.injEq] at h
-        subst h
-        exact fillDefinedRule_sound ib Γ op fs fs' hf ctx call env args hib hΓ ha
-      | none =>
-        simp only [hf, Option.orElse_none] at h
-        exact genericDefinedRule_sound ib Γ op fs rs h ctx call env args hib hΓ ha
+    · obtain ⟨r, hmem, hr⟩ := List.exists_of_findSome?_eq_some h
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
+      rcases hmem with rfl | rfl | rfl
+      · exact fillDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
+      · exact genericDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
+      · exact overwriteDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
 
 /-- Acceptance proves successful, nonpoison results for every typed, nonpoison input. -/
 theorem definedCheck_sound {ib : Nat} {m : Module} {f : String} {argTys resTys : List VTy}

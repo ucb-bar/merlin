@@ -93,3 +93,33 @@ def test_initialized_matmul_chain(tmp_path, monkeypatch, lean_tools):
     jsonschema.validate(chain, json.loads(schema.read_text()))
     assert chain["verdict"] == chain["refinement_verdict"] == "verified", chain.get("reason")
     assert chain["source_definedness"]["verdict"] == "verified"
+
+
+def _elementwise(shape, *, source_extent=None, output_map="d0", read_destination=False, scalar="i32"):
+    tensor = f"tensor<{shape}x{scalar}>"
+    source_type = f"tensor<{source_extent if source_extent is not None else shape}x{scalar}>"
+    value = "%acc" if read_destination else "%x"
+    return f"""func.func @forward(%a: {source_type}) -> {tensor} {{
+      %e = tensor.empty() : {tensor}
+      %r = linalg.generic {{indexing_maps = [affine_map<(d0)->(d0)>, affine_map<(d0)->({output_map})>],
+        iterator_types = ["parallel"]}} ins(%a : {source_type}) outs(%e : {tensor}) {{
+      ^bb0(%x: {scalar}, %acc: {scalar}):
+        linalg.yield {value} : {scalar}
+      }} -> {tensor}
+      return %r : {tensor}
+    }}"""
+
+
+@pytest.mark.parametrize("extent,scalar", [(3, "i32"), (0, "i32"), (3, "f32")])
+def test_elementwise_full_overwrite(tmp_path, lean_tools, extent, scalar):
+    receipt = _check(tmp_path, lean_tools, _elementwise(extent, scalar=scalar))
+    assert receipt["verdict"] == "verified", receipt.get("reason")
+
+
+@pytest.mark.parametrize("fault", ["partial_box", "repeated_write", "read_destination"])
+def test_elementwise_overwrite_requires_coverage(tmp_path, lean_tools, fault):
+    source = _elementwise(3, source_extent=2 if fault == "partial_box" else None,
+                          output_map="0" if fault == "repeated_write" else "d0",
+                          read_destination=fault == "read_destination")
+    receipt = _check(tmp_path, lean_tools, source)
+    assert receipt["verdict"] == "abstracted", receipt.get("reason")
