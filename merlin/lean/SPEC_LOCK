@@ -1,11 +1,19 @@
 {
   "MerlinVerify/Check/Types.lean": "82a91125c84e01aae06e1b97f5957e6e995d59b643417f5a2611fe35a4f15d50",
+  "MerlinVerify/Check/Typing.lean": "79f9f69b85c5077e0252bf5e527fb28399306a2aab656b6c13ce1f095484a50f",
   "MerlinVerify/Core/AST.lean": "022cec55c189ddc40e1ee77e8cc9d8ede4f7734e4ce45a8848e98b96ee5643cd",
   "MerlinVerify/Sem/Float.lean": "6e30a0e7166c42019234d9d4f0216e57be1084fea19fb0a93d5aa1130dd1011d",
   "MerlinVerify/Sem/Ops.lean": "ba76a1b30fddab7806a8c2bf84d1f07ff7c258c7b2d9521cb37a6ed7e361df51",
+  "MerlinVerify/Sem/Ops/Arith.lean": "cdf786fe633185dfd54f4209aece5b46ab579bfaa90feacc4ece9994c90a5ff1",
+  "MerlinVerify/Sem/Ops/Cf.lean": "25dc7727f833f0b55fca9df13b33c70176de87306c49020d9ad76c88352aa587",
+  "MerlinVerify/Sem/Ops/Func.lean": "3edcd85ac2bb0e69cca0b020b43868599736b46de26708980bc933809f1deef4",
+  "MerlinVerify/Sem/Ops/Linalg.lean": "763a0ca674fb09034ec6ad1fe30d5554c88b45940a60660d7aa61394e846cec1",
+  "MerlinVerify/Sem/Ops/LinalgNamed.lean": "1c0ce248fe62a27f50b5616ca5238219e9dcef1a537d4eb41491c91745343d4d",
+  "MerlinVerify/Sem/Ops/Tensor.lean": "836ac7dd2cee73630b2e8d3c47da68b1fb54506786930862a16ce69e10e6a732",
   "MerlinVerify/Sem/Outcome.lean": "c473abfe4fbc4b5ac8d40c093691276f69857810e03144a9b42919e9b6c12b62",
   "MerlinVerify/Sem/Program.lean": "a9ce2a01a5b0f28d2d1998b0f60507e41d032cb5b67196adb2d471fef66e57a4",
   "MerlinVerify/Sem/Refine.lean": "7bf390e18b372c7b46ece53efceffd345db763e53b0b364a34d2f64d66510e05",
+  "MerlinVerify/Sem/Support.lean": "35c431533dc68e3c9fd4c12c219a09fbc0efd98c22407dc77345719dcc9117dd",
   "MerlinVerify/Sem/Value.lean": "70f3a86242c13f97a13fac365fa9bd01a41757a63b5353d8ca9c84f8e7229412",
   "MerlinVerify/Spec/Annotations.lean": "17febb602da964d15134efdc647bd4271d5bfb30b9d3944dcfbb7aef4f492d7a",
   "lake-manifest.json": "483e372c6cd8ee69b2f3e40b6454651140fdc0f6c4e3de3fa208591d4a14677d",
@@ -14,5 +22,12 @@
   "schemas/lean_cert.schema.json": "dcc8f540643d15ccb4f8d084b3f0fe5f7d659080287dfd2d3237abb1ed8de52f",
   "schemas/lean_chain.schema.json": "ed3d465b3429f74685d762e3348434846c9d4dde5158147dbe606fd9774e9a84",
   "schemas/lean_ir.schema.json": "1c4c73ed6f824b2d19dfaf4b3edb381ec156c8612d03f6877267478bc84a9644",
-  "schemas/lean_receipt.schema.json": "8b87545a992dbadaebdd51c61fe89923779aa927fa0fd9a9aefd64370fc132b3"
+  "schemas/lean_receipt.schema.json": "8b87545a992dbadaebdd51c61fe89923779aa927fa0fd9a9aefd64370fc132b3",
+  "statement:MerlinVerify.Check.c1Check_sound": "62ae1580fe183e4c72ea3ce7ec32eec663fda2693cfc4ec95002dd9e546274ab",
+  "statement:MerlinVerify.Check.chain_refines": "1e02dc52b52fc1c08c6147cf5c2d3f32ccacd10c94cdd7f0a93b167b566ef763",
+  "statement:MerlinVerify.Check.chain_refinesC": "06c9bb3fb48d98f2cdcfdf9ef7319c2e1f2f9deee383dacb19954c38c16a0322",
+  "statement:MerlinVerify.Check.funcRefines_of_support": "acab6fae9591d825d59ab1c2fe05266d95d2dc1c7450be044a145498f1ac24c8",
+  "statement:MerlinVerify.Check.moduleCheck_sound": "351695da5f4d1377d0c7a5c9beebcab10117903abcc6153bae8e4bd77ba1c81e",
+  "statement:MerlinVerify.Check.supportCheck_safe": "b59b52d6b9bf4cba339111b4a65d64a62bb68c217838acd84cba58bc8962011f",
+  "statement:MerlinVerify.Check.supportCheck_sound": "5d04b5409b2343452edd58190b1cf7b8186447637dc52e3dcac22d89333d1ac9"
 }

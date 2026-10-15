@@ -12,6 +12,8 @@ import Lean
 * no `unsafe` or `partial` constants, and none carrying `@[implemented_by]` or `@[extern]`, so the
   compiled checker is the function the theorems are about (design D11).
 `merlin-lean-audit --axioms <decl> <module>...` prints one declaration's axioms as JSON.
+`merlin-lean-audit --statements <decl>,<decl>,... <module>...` prints each declaration's elaborated
+statement (its type, fully explicit) as JSON, so the guard can pin what each claim theorem says.
 Exit status: 0 clean, 1 violations, 2 usage/import error.
 -/
 
@@ -40,21 +42,49 @@ def axiomsOf (env : Environment) (n : Name) : IO (Array Name) := do
     { fileName := "<audit>", fileMap := default, maxHeartbeats := 0 } { env }
   return r
 
-def jsonStrList (xs : List String) : String :=
-  "[" ++ ", ".intercalate (xs.map fun x => "\"" ++ x ++ "\"") ++ "]"
+/-- A statement with every binder renamed by its depth (`x0`, `x1`, ...) and metadata dropped.
+Binder names do not change what a statement says, and hygienic names carry hashes that unrelated
+edits can change, which would make pinned statements fail spuriously; depth names keep distinct
+variables distinct in the printed form. -/
+def canonBinders (depth : Nat) : Expr → Expr
+  | .forallE _ t b bi =>
+    .forallE (.mkSimple s!"x{depth}") (canonBinders depth t) (canonBinders (depth + 1) b) bi
+  | .lam _ t b bi => .lam (.mkSimple s!"x{depth}") (canonBinders depth t) (canonBinders (depth + 1) b) bi
+  | .letE _ t v b nd =>
+    .letE (.mkSimple s!"x{depth}") (canonBinders depth t) (canonBinders depth v)
+      (canonBinders (depth + 1) b) nd
+  | .app f a => .app (canonBinders depth f) (canonBinders depth a)
+  | .mdata _ e => canonBinders depth e
+  | .proj s i e => .proj s i (canonBinders depth e)
+  | e => e
+
+def jsonStrListJson (xs : List String) : Json := Json.arr (xs.toArray.map Json.str)
+
+def jsonStrList (xs : List String) : String := (jsonStrListJson xs).compress
 
 def main (args : List String) : IO UInt32 := do
   initSearchPath (← findSysroot)
-  let (axiomTarget, mods) := match args with
-    | "--axioms" :: d :: ms => (some d, ms)
-    | ms => (none, ms)
+  let (axiomTarget, statementTargets, mods) := match args with
+    | "--axioms" :: d :: ms => (some d, [], ms)
+    | "--statements" :: ds :: ms => (none, ds.splitOn ",", ms)
+    | ms => (none, [], ms)
   if mods.isEmpty then
-    IO.eprintln "usage: merlin-lean-audit [--axioms <decl>] <module>..."
+    IO.eprintln "usage: merlin-lean-audit [--axioms <decl> | --statements <decl>,...] <module>..."
     return 2
   let env ← importModules (mods.toArray.map fun m => { module := m.toName }) {} (loadExts := false)
   if let some d := axiomTarget then
     let axs ← axiomsOf env d.toName
-    IO.println s!"\{\"decl\": \"{d}\", \"axioms\": {jsonStrList (axs.toList.map toString)}}"
+    IO.println (Json.mkObj [("decl", d), ("axioms", jsonStrListJson (axs.toList.map toString))]).compress
+    return 0
+  if !statementTargets.isEmpty then
+    let mut out : Array (String × Json) := #[]
+    for d in statementTargets do
+      match env.find? d.toName with
+      | some ci => out := out.push (d, Json.str (toString (canonBinders 0 ci.type)))
+      | none =>
+        IO.eprintln s!"unknown declaration {d}"
+        return 2
+    IO.println (Json.mkObj [("statements", Json.mkObj out.toList)]).compress
     return 0
   let mut violations : Array String := #[]
   let mut theorems := 0

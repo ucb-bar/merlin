@@ -5,9 +5,12 @@
    theorem depending on an axiom beyond {propext, Classical.choice, Quot.sound} (so ``sorry``,
    native_decide/bv_decide axioms), any ``axiom`` outside ``MerlinVerify.Assumptions``, and any
    opaque/partial/unsafe/implemented_by/extern constant (the compiled checker must be the proved one).
-2. Lock: ``merlin/lean/SPEC_LOCK`` pins the SHA-256 of every frozen interface file and every file
-   under ``Spec/``, ``Claims/`` and ``Assumptions/``. Any change fails until the lock is regenerated
-   with ``--update-lock``, which is the reviewed action (it prints what changed).
+2. Lock: ``merlin/lean/SPEC_LOCK`` pins the SHA-256 of every frozen interface file, every semantics
+   file under ``Sem/`` (the meaning of every claim), the typed-input domain (``Check/Typing.lean``)
+   and every file under ``Spec/``, ``Claims/`` and ``Assumptions/``; and the elaborated statement of
+   every claim theorem (``PINNED``), so a theorem that still compiles but says something else fails.
+   Any change fails until the lock is regenerated with ``--update-lock``, which prints what changed
+   for review. ``--lock-only`` checks the files only (statements need the built checker).
 
 Usage: check_lean_guard.py [--lock-only] [--update-lock]
 """
@@ -33,12 +36,25 @@ FROZEN = [
     "MerlinVerify/Sem/Program.lean",
     "MerlinVerify/Sem/Ops.lean",
     "MerlinVerify/Check/Types.lean",
+    "MerlinVerify/Check/Typing.lean",
     "lakefile.toml",
     "lean-toolchain",
     "lake-manifest.json",
 ]
 SCHEMAS = ["lean_ir.schema.json", "lean_cert.schema.json", "lean_receipt.schema.json", "lean_chain.schema.json"]
-LOCKED_DIRS = ["MerlinVerify/Spec", "MerlinVerify/Claims", "MerlinVerify/Assumptions"]
+LOCKED_DIRS = ["MerlinVerify/Sem", "MerlinVerify/Spec", "MerlinVerify/Claims", "MerlinVerify/Assumptions"]
+# Proof-only files under a locked directory: their changes cannot alter what any claim means.
+PROOF_ONLY = {"MerlinVerify/Sem/Facts.lean", "MerlinVerify/Sem/OutcomeLaws.lean"}
+# Claim theorems whose elaborated statements are pinned, with a module that declares each.
+PINNED = {
+    "MerlinVerify.Check.c1Check_sound": "MerlinVerify.Check.C1",
+    "MerlinVerify.Check.moduleCheck_sound": "MerlinVerify.Check.Module",
+    "MerlinVerify.Check.supportCheck_sound": "MerlinVerify.Check.Rulebook",
+    "MerlinVerify.Check.supportCheck_safe": "MerlinVerify.Check.Rulebook",
+    "MerlinVerify.Check.funcRefines_of_support": "MerlinVerify.Check.Rulebook",
+    "MerlinVerify.Check.chain_refinesC": "MerlinVerify.Check.Chain",
+    "MerlinVerify.Check.chain_refines": "MerlinVerify.Check.Chain",
+}
 
 
 def locked_files() -> dict[str, str]:
@@ -47,12 +63,32 @@ def locked_files() -> dict[str, str]:
         files[f"schemas/{s}"] = ROOT / "merlin" / "contract" / "schemas" / s
     for d in LOCKED_DIRS:
         for p in sorted((LEAN / d).rglob("*.lean")) if (LEAN / d).exists() else []:
-            files[str(p.relative_to(LEAN))] = p
+            if str(p.relative_to(LEAN)) not in PROOF_ONLY:
+                files[str(p.relative_to(LEAN))] = p
     return {k: hashlib.sha256(p.read_bytes()).hexdigest() for k, p in sorted(files.items()) if p.exists()}
 
 
-def check_lock(update: bool) -> bool:
-    current = locked_files()
+def _lake_env() -> dict[str, str]:
+    env = dict(os.environ)
+    env["PATH"] = f"{Path.home() / '.elan' / 'bin'}:{env.get('PATH', '')}"
+    return env
+
+
+def pinned_statements() -> dict[str, str] | None:
+    """SHA-256 of each pinned theorem's elaborated statement (needs a built checker)."""
+    mods = sorted(set(PINNED.values()))
+    proc = subprocess.run(["lake", "exe", "merlin-lean-audit", "--statements", ",".join(PINNED), *mods],
+                          cwd=LEAN, env=_lake_env(), capture_output=True, text=True)
+    if proc.returncode != 0:
+        print("[FAIL] could not read pinned statements:\n" + proc.stderr[-2000:])
+        return None
+    stmts = json.loads(proc.stdout.strip().splitlines()[-1])["statements"]
+    return {f"statement:{d}": hashlib.sha256(stmts[d].encode()).hexdigest() for d in PINNED}
+
+
+def check_lock(update: bool, statements: dict[str, str] | None) -> bool:
+    """Compare files (and, when given, pinned statements) with the lock; ``update`` rewrites it."""
+    current = locked_files() | (statements or {})
     if update:
         LOCK.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
         print(f"wrote {LOCK.relative_to(ROOT)} ({len(current)} files)")
@@ -61,20 +97,25 @@ def check_lock(update: bool) -> bool:
         print("[FAIL] merlin/lean/SPEC_LOCK missing; run with --update-lock after review")
         return False
     pinned = json.loads(LOCK.read_text())
+    if statements is None:  # files only
+        pinned = {k: v for k, v in pinned.items() if not k.startswith("statement:")}
     changed = sorted(k for k in set(current) | set(pinned) if current.get(k) != pinned.get(k))
     for k in changed:
         state = "added" if k not in pinned else "removed" if k not in current else "changed"
-        print(f"[FAIL] locked file {state}: {k} (review, then --update-lock)")
+        what = "pinned statement" if k.startswith("statement:") else "locked file"
+        print(f"[FAIL] {what} {state}: {k} (review, then --update-lock)")
     return not changed
 
 
+def build() -> bool:
+    proc = subprocess.run(["lake", "build"], cwd=LEAN, env=_lake_env(), capture_output=True, text=True)
+    if proc.returncode != 0:
+        print("[FAIL] lake build failed:\n" + proc.stdout[-2000:] + proc.stderr[-2000:])
+    return proc.returncode == 0
+
+
 def run_audit() -> bool:
-    env = dict(os.environ)
-    env["PATH"] = f"{Path.home() / '.elan' / 'bin'}:{env.get('PATH', '')}"
-    build = subprocess.run(["lake", "build"], cwd=LEAN, env=env, capture_output=True, text=True)
-    if build.returncode != 0:
-        print("[FAIL] lake build failed:\n" + build.stdout[-2000:] + build.stderr[-2000:])
-        return False
+    env = _lake_env()
     mods = sorted(str(p.relative_to(LEAN).with_suffix("")).replace("/", ".") for p in (LEAN / "MerlinVerify").rglob("*.lean"))
     audit = subprocess.run(["lake", "exe", "merlin-lean-audit", *mods], cwd=LEAN, env=env, capture_output=True, text=True)
     if audit.returncode not in (0, 1):
@@ -89,9 +130,16 @@ def run_audit() -> bool:
 
 def main(argv: list[str]) -> int:
     update = "--update-lock" in argv
-    ok = check_lock(update)
-    if "--lock-only" not in argv and not update:
-        ok = run_audit() and ok
+    if "--lock-only" in argv and not update:
+        ok = check_lock(False, None)
+        print("pinned statements not checked (--lock-only)")
+    elif not build():
+        ok = False
+    else:
+        statements = pinned_statements()
+        ok = statements is not None and check_lock(update, statements)
+        if not update:
+            ok = run_audit() and ok
     print("lean guard: OK" if ok else "lean guard: FAILED")
     return 0 if ok else 1
 
