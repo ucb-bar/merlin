@@ -1300,7 +1300,7 @@ def promote(
     promoted = []
     _sim = cert_sim(cert_tier, context=context)
     _instrument = cert_instrument(cert_tier, context=context)
-    from . import promotion_admission as admission
+    from merlin_experiments.phase1.feedback import promotion_admission as admission
 
     try:
         current_source = admission.observe_source(Path(ws)) if want else None
