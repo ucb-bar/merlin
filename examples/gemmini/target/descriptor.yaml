@@ -92,8 +92,8 @@ phase1_gates:
       programs:
         resnet50:
           model:
-            engine: gsim
-            board: gemmini_rocket_verilator
+            engine: spike
+            board: gemmini_rocket_spike_functional
             max_cycles: 150000000
             timeout_s: 86400
             integer_reference: [integer-reference.json]

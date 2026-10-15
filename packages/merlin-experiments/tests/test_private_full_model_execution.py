@@ -60,7 +60,7 @@ def test_the_target_descriptor_declares_every_program_of_the_static_roster():
     engines = {(m, p): e.get("engine") for m, p, e in PFX.roster_of(gate)}
     # Every program has a numerical check: one on the RTL-equivalent engine, the rest functional.
     assert engines == {
-        ("resnet50", "model"): "gsim",
+        ("resnet50", "model"): "spike",
         **{(m, p): "spike" for m, names in roster.items() if m != "resnet50" for p in names},
     }
     for model, program, entry in PFX.roster_of(gate):
