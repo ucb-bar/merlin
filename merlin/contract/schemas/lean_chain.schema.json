@@ -36,7 +36,8 @@
         "domain": {"type": "string"}
       }
     },
-    "chained": {"type": "boolean", "description": "Every boundary's before is the previous boundary's after, and the support subject is the first before."},
+    "chained": {"type": "boolean", "description": "Every boundary's before is the previous boundary's after, the support subject is the first before, and (with a handoff) the last after is the handoff."},
+    "handoff_sha256": {"$ref": "#/$defs/sha", "description": "SHA-256 of the file handed to the upstream lowering, when the chain was checked against it."},
     "verdict": {"enum": ["verified", "abstracted", "unmeasured"]},
     "reason": {"type": "string"},
     "assumptions": {"type": "array", "items": {"type": "string"}}

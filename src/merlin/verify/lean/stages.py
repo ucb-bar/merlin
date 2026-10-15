@@ -67,6 +67,18 @@ def write_recorded(name: str, path: Path, text: str, module) -> None:
         record_boundary(name, "merlin.xdsl_dialects._common.text", generic_text(module), text)
 
 
+def record_handoff(path: Path) -> None:
+    """Record the file the upstream lowering reads, so a chain can be checked to end at those exact
+    bytes (``<dir>/handoff.json``)."""
+    if enabled():
+        data = Path(path).read_bytes()
+        root = _dir()
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "handoff.json").write_text(json.dumps(
+            {"schema": "merlin.lean.handoff.v1", "path": str(path), "sha256": hashlib.sha256(data).hexdigest(),
+             "bytes": len(data)}, indent=2, sort_keys=True))
+
+
 def record_boundary(boundary: str, pass_entry: str, before: str, after: str, *, extra: dict | None = None) -> Path:
     """Write one boundary's before/after texts; returns the boundary directory."""
     root = _dir()

@@ -127,6 +127,9 @@ def check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
     jb, ja = work / "before.json", work / "after.json"
     export_file(before, jb, backend="mlir", m2m_python=m2m_python)
     export_file(after, ja, backend="mlir", m2m_python=m2m_python)
+    if not _exported_from(jb, before) or not _exported_from(ja, after):
+        receipt.update(verdict="unmeasured", reason="an export does not name the bytes of its stage file")
+        return _write(stage, receipt)
     proc = subprocess.run([str(lean_exe()), "check-module", str(jb), str(ja)], capture_output=True, text=True,
                           check=False)
     if proc.returncode not in (0, 1):
@@ -173,6 +176,9 @@ def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
         return _write(work, receipt)
     exported = work / "program.json"
     export_file(program, exported, backend="mlir", m2m_python=m2m_python)
+    if not _exported_from(exported, program):
+        receipt.update(verdict="unmeasured", reason="the export does not name the program's bytes")
+        return _write(work, receipt)
     proc = subprocess.run([str(lean_exe()), "check-support", str(exported), function, str(index_bits)],
                           capture_output=True, text=True, check=False)
     if proc.returncode not in (0, 1):
@@ -186,16 +192,43 @@ def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
     return _write(work, receipt)
 
 
+def _exported_from(exported: Path, source: Path) -> bool:
+    """The export's recorded source digest and size are those of ``source``'s bytes."""
+    doc = json.loads(exported.read_text())
+    return doc["source"]["sha256"] == _sha(source) and doc["source"]["bytes"] == source.stat().st_size
+
+
+def _stale(receipt: dict[str, Any], what: str) -> list[str]:
+    """Why a receipt no longer describes the current bytes, checker and lock (empty when fresh)."""
+    reasons = []
+    for key in ("before", "after", "subject"):
+        ref = receipt.get(key)
+        if ref is None:
+            continue
+        path = Path(ref.get("path", ""))
+        if not path.is_file() or _sha(path) != ref["sha256"]:
+            reasons.append(f"{what}: {key} file changed or missing since it was checked")
+    if receipt["lean"]["checker_sha256"] != _sha(lean_exe()):
+        reasons.append(f"{what}: checked by a different merlin-lean build")
+    if receipt["lean"].get("spec_lock_sha256") != _sha(lean_root() / "SPEC_LOCK"):
+        reasons.append(f"{what}: checked under a different SPEC_LOCK")
+    return reasons
+
+
 CHAIN_THEOREM = "MerlinVerify.Check.chain_refines"
 
 
-def compose_chain(stages: list[Path], support: Path, function: str, out: Path) -> dict[str, Any]:
+def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
+                  handoff: Path | None = None) -> dict[str, Any]:
     """Compose checked boundaries (``stage/receipt.json``, in order) and the capture's support
     receipt into ``out`` (schema ``merlin.lean.chain.v1``); returns the document.
 
     ``verified`` means: every boundary verified, each boundary's ``before`` is the previous
     ``after`` byte for byte, and the support receipt is about the first ``before`` -- the hypotheses
-    of ``chain_refines``. Anything missing makes the chain ``abstracted`` with the reasons."""
+    of ``chain_refines`` -- and every receipt still describes the current bytes, checker build and
+    ``SPEC_LOCK``. With ``handoff`` (the ``handoff.json`` the lowering recorded), the chain must also
+    end at the exact bytes handed to the upstream lowering. Anything missing makes the chain
+    ``abstracted`` with the reasons."""
     links, reasons, assumptions = [], [], []
     receipts = []
     for stage in stages:
@@ -203,6 +236,7 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path) -
         receipt = json.loads(path.read_text())
         if receipt.get("claim_type") != "refine_conditional":
             raise ValueError(f"{path} is not a boundary receipt (claim_type {receipt.get('claim_type')!r})")
+        reasons += _stale(receipt, receipt["boundary"])
         receipts.append(receipt)
         links.append({"boundary": receipt["boundary"], "receipt_sha256": _sha(path),
                       "before_sha256": receipt["before"]["sha256"], "after_sha256": receipt["after"]["sha256"],
@@ -215,9 +249,14 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path) -
         raise ValueError(f"{support} is not a not_stuck receipt for {function}")
     if sup["verdict"] != "verified":
         reasons.append(f"support: {sup['verdict']}: {sup.get('reason', '')}")
+    reasons += _stale(sup, "support")
     assumptions += [a for a in sup.get("assumptions", []) if a not in assumptions]
     chained = bool(receipts) and sup["subject"]["sha256"] == receipts[0]["before"]["sha256"] and all(
         a["after"]["sha256"] == b["before"]["sha256"] for a, b in zip(receipts, receipts[1:]))
+    handoff_sha = json.loads(handoff.read_text())["sha256"] if handoff is not None else None
+    if receipts and handoff_sha is not None and receipts[-1]["after"]["sha256"] != handoff_sha:
+        chained = False
+        reasons.append("the chain does not end at the bytes handed to the upstream lowering")
     if not receipts:
         reasons.append("no boundaries")
     elif not chained:
@@ -230,6 +269,7 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path) -
         "support": {"receipt_sha256": _sha(support), "subject_sha256": sup["subject"]["sha256"],
                     "verdict": sup["verdict"], "domain": sup["domain"]},
         "chained": chained,
+        **({"handoff_sha256": handoff_sha} if handoff_sha is not None else {}),
         "verdict": "verified" if not reasons else "abstracted",
         "assumptions": assumptions,
     }

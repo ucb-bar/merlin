@@ -46,3 +46,26 @@ def test_chain_composes_real_preprocessing(tmp_path, monkeypatch):
                            tmp_path / "broken.json")
     jsonschema.validate(broken, schema)
     assert not broken["chained"] and broken["verdict"] == "abstracted"
+
+    # The chain must end at the bytes handed to the lowering.
+    from merlin.verify.lean import stages as lean_stages
+
+    support = tmp_path / "support" / "receipt.json"
+    handed = tmp_path / "handed.mlir"
+    handed.write_bytes((stages[-1] / "after.mlir").read_bytes())
+    lean_stages.record_handoff(handed)
+    handoff = tmp_path / "stages" / "handoff.json"
+    ok = compose_chain(stages, support, "forward", tmp_path / "handoff-ok.json", handoff=handoff)
+    jsonschema.validate(ok, schema)
+    assert ok["verdict"] == "verified" and ok["handoff_sha256"] == json.loads(handoff.read_text())["sha256"]
+    handed.write_text(handed.read_text() + "\n// edited after preprocessing\n")
+    lean_stages.record_handoff(handed)
+    other = compose_chain(stages, support, "forward", tmp_path / "handoff-bad.json", handoff=handoff)
+    assert not other["chained"] and other["verdict"] == "abstracted"
+
+    # A receipt whose stage file changed after it was checked is stale.
+    after = stages[1] / "after.mlir"
+    after.write_text(after.read_text() + "\n")
+    stale = compose_chain(stages, support, "forward", tmp_path / "stale.json")
+    jsonschema.validate(stale, schema)
+    assert stale["verdict"] == "abstracted" and "changed or missing" in stale["reason"]

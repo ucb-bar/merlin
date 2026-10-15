@@ -108,7 +108,10 @@ def check_lock(update: bool, statements: dict[str, str] | None) -> bool:
 
 
 def build() -> bool:
-    proc = subprocess.run(["lake", "build"], cwd=LEAN, env=_lake_env(), capture_output=True, text=True)
+    # The library alone is the default target; the checker and audit executables must be rebuilt
+    # too, or receipts would be written by a stale checker.
+    proc = subprocess.run(["lake", "build", "MerlinVerify", "merlin-lean", "merlin-lean-audit"], cwd=LEAN,
+                          env=_lake_env(), capture_output=True, text=True)
     if proc.returncode != 0:
         print("[FAIL] lake build failed:\n" + proc.stdout[-2000:] + proc.stderr[-2000:])
     return proc.returncode == 0

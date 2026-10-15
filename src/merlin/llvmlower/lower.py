@@ -16,6 +16,7 @@ from typing import Any
 from merlin.common import compile_trace
 from merlin.common.ir_audit import IrAudit, audit_mode
 
+from ..verify.lean import stages as _lean_stages
 from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 from .codegen import build_host_shared, compile_ll
 from .concat_dps import ensure_registered as _register_concat_dps
@@ -147,6 +148,7 @@ def lower_model(
             observed = audit.directory is not None or compile_trace.active() is not None
             upstream_text, stats = preprocess_text(mlir_text, audit=audit) if observed else preprocess_text(mlir_text)
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
+        _lean_stages.record_handoff(work / "model.upstream.mlir")
 
         audit.stage("upstream", upstream_text)
         lowering_selection: dict[str, Any] = {}
