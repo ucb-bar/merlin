@@ -16,6 +16,7 @@ by its cycle or wall bound still reports every call it finished (the image flush
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -319,7 +320,18 @@ class GsimEngine:
         self._revalidate()
         stdout_path, stderr_path = workdir / "gsim.stdout", workdir / "gsim.stderr"
         timed_out = False
-        with gsim_runtime_slot(wait_timeout_s=timeout_s), stdout_path.open("wb") as out, stderr_path.open("wb") as err:
+        asked = time.monotonic()
+        with contextlib.ExitStack() as stack:
+            try:  # the machine-wide gSIM slot: its wait is part of the same budget
+                stack.enter_context(gsim_runtime_slot(wait_timeout_s=timeout_s))
+            except TimeoutError as error:
+                waited = time.monotonic() - asked
+                return EngineRun(
+                    "gsim", "timeout", "", waited, None, None, f"no gSIM slot became free in {waited:.0f} s: {error}"
+                )
+            waited = time.monotonic() - asked
+            out = stack.enter_context(stdout_path.open("wb"))
+            err = stack.enter_context(stderr_path.open("wb"))
             started = time.monotonic()
             proc = subprocess.Popen(  # noqa: S603 -- argv is the bound engine and our own ELF
                 argv,
@@ -330,7 +342,7 @@ class GsimEngine:
                 start_new_session=True,
                 preexec_fn=_unlimited_stack,  # noqa: PLW1509 -- no threads touch the child before exec
             )
-            cpu_s = _reap(proc, deadline=started + timeout_s)
+            cpu_s = _reap(proc, deadline=asked + timeout_s)
             if cpu_s is None:
                 timed_out = True
                 _kill_group(proc)
@@ -348,7 +360,10 @@ class GsimEngine:
         status, detail = "completed", ""
         asserted = chipyard_rocc._RTL_ASSERTION_MARKER  # noqa: SLF001 -- the design's own assertion text
         if timed_out:
-            status, detail = "timeout", f"wall bound {timeout_s:.0f} s reached"
+            status, detail = (
+                "timeout",
+                f"wall bound {timeout_s:.0f} s reached ({waited:.0f} s of it waiting for a slot)",
+            )
         elif code == chipyard_rocc._GSIM_CYCLE_CAP_EXIT:  # noqa: SLF001 -- the harness's cycle-cap status
             status, detail, cycles = "cycle_cap", f"+max-cycles={max_cycles} reached", max_cycles
         elif asserted in stdout or asserted in stderr:  # the program did something the design refuses

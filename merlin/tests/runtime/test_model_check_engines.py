@@ -210,6 +210,26 @@ def test_the_wall_bound_kills_the_emulator_and_keeps_its_console(tmp_path, monke
     assert "MCCASE" in run.console
 
 
+def test_a_busy_slot_pool_is_a_reported_timeout_not_a_crash(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    from merlin.targetgen import rtl_engine_policy
+
+    @contextmanager
+    def busy(**_kw):
+        raise TimeoutError("all 5 GSim slots stayed busy")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(rtl_engine_policy, "gsim_runtime_slot", busy)
+    elf = tmp_path / "r.elf"
+    elf.write_bytes(b"\x7fELF")
+    engine = EN.GsimEngine.__new__(EN.GsimEngine)
+    engine.binary, engine.template, engine.environment = Path("/bin/false"), ("{elf}", "+max-cycles=1"), {}
+    engine.failure_markers, engine._revalidate = (), lambda: None
+    run = engine.run(elf, max_cycles=500, timeout_s=5, workdir=tmp_path)
+    assert run.status == "timeout" and "no gSIM slot" in run.detail and "stayed busy" in run.detail
+
+
 def test_a_spent_budget_is_reported_not_run(tmp_path, monkeypatch):
     import time
 
