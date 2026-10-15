@@ -162,3 +162,60 @@ def test_replay_kernel_takes_unique_and_engine_bounds():
     )
     assert args.unique and args.all_groups and args.program is None and args.jobs == 2
     assert args.call_max_cycles == 1_000_000 and args.max_cycles is None
+
+
+def _bundle(tmp_path: Path):
+    """A one-program bundle: symbol ``s0`` called three times (two groups), ``s1`` once, on two inputs."""
+    import json
+
+    from merlin.model_check import bundle as B
+    from merlin.model_check import catalog as CAT
+
+    root = tmp_path / "bundle"
+    program = root / "m" / "programs" / "p"
+    (program / "dev").mkdir(parents=True)
+    (program / "catalog.json").write_text(
+        json.dumps(
+            {
+                "schema": CAT.CATALOG_SCHEMA,
+                "target": "t",
+                "stage": "s",
+                "ref_prepared": "r",
+                "dev_prepared": "d",
+                "routing": {},
+                "interfaces": {"s0": "", "s1": ""},
+            }
+        )
+    )
+    routed = [{"symbol": "s0", "source_region_id": "g0"}, {"symbol": "s0", "source_region_id": "g1"}]
+    (program / "dev" / "device_signatures.json").write_text(json.dumps({"routed": routed}))
+    blobs = CAT.BlobStore(root / "m" / "blobs")
+    for input_id, scale in (("visible/a", 1), ("visible/b", 2)):
+        calls = []
+        for ordinal, (symbol, n) in enumerate((("s0", 64), ("s0", 8), ("s1", 4), ("s0", 8))):
+            weight = blobs.put(np.full(n * scale, ordinal, np.int8))
+            calls.append(
+                {
+                    "symbol": symbol,
+                    "ordinal": ordinal,
+                    "roles": ["weight_0", "out_0"],
+                    "operands": [weight, blobs.put(np.zeros(1, np.int32))],
+                    "expected": [blobs.put(np.zeros(1, np.int32))],
+                }
+            )
+        CAT.write_calls(root / "m" / input_id / "p" / "calls.json", calls)
+    return B.Bundle(root)
+
+
+def test_unique_keeps_one_recorded_call_per_symbol_and_never_reshapes_it(tmp_path):
+    from merlin.model_check import commands
+
+    bundle = _bundle(tmp_path)
+    inputs = bundle.inputs("m", "visible")
+    cases = commands._cases(bundle, "m", "p", inputs, group=None, all_calls=True, unique=True)  # noqa: SLF001
+    assert [(c.symbol, c.label) for c in cases] == [("s0", "visible/a/p/s0#1"), ("s1", "visible/a/p/s1#2")]
+    assert cases[0].operands[0].shape == (8,)  # the recorded operand, as recorded
+    only = commands._cases(bundle, "m", "p", inputs, group="g1", all_calls=True, unique=True)  # noqa: SLF001
+    assert [c.symbol for c in only] == ["s0"]
+    every = commands._cases(bundle, "m", "p", inputs, group=None, all_calls=True)  # noqa: SLF001
+    assert len(every) == 8
