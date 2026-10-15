@@ -80,6 +80,13 @@ def _program_row(model: str, program: str, result: dict) -> dict:
         status = "unavailable"
     elif status not in {"pass", "fail"}:
         status = "unavailable" if status not in {"pending", "timeout", "cancelled"} else status
+    elif status == "pass":
+        census = item.get("census")
+        metrics = report.get("model_metrics")
+        if (not isinstance(census, dict) or not isinstance(census.get("denominator"), int)
+                or not isinstance(census.get("device"), int) or not isinstance(metrics, dict)
+                or not isinstance(metrics.get("worst"), dict)):
+            status = "unavailable"
     runs = item.get("runs") or []
     cycles = [run.get("cycles_functional") for run in runs if isinstance(run, dict)
               and run.get("cycles_functional") is not None]
