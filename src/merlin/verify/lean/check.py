@@ -21,10 +21,14 @@ strict ones (``MerlinVerify.Check.funcRefines_of_support``).
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 import subprocess
+import tempfile
+import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -96,7 +100,30 @@ def _lean_block() -> dict[str, Any]:
     }
 
 
+def _attempt(destination: Path, run: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+    """Invalidate a previous result before running; serialize attempts and publish failures too.
+
+    An incomplete attempt deliberately is not a proof receipt. Readers must never mistake a
+    previously successful receipt for the outcome of a crashed or interrupted rerun.
+    """
+    destination.mkdir(parents=True, exist_ok=True)
+    with (destination / ".receipt.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        pending = {"schema": "merlin.lean.attempt.v1", "attempt": uuid.uuid4().hex,
+                   "verdict": "unmeasured", "reason": "verification attempt has not completed"}
+        _write(destination, pending)
+        try:
+            return run()
+        except Exception as exc:
+            return _write(destination, {**pending, "reason": f"{type(exc).__name__}: {exc}"})
+
+
 def check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
+    """Check a stage, publishing an explicit unmeasured attempt on tool or input failure."""
+    return _attempt(stage, lambda: _check_stage(stage, m2m_python=m2m_python))
+
+
+def _check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
     """Check one stage directory and write ``stage/receipt.json``; returns the receipt."""
     meta = json.loads((stage / "meta.json").read_text())
     before, after = stage / "before.mlir", stage / "after.mlir"
@@ -136,6 +163,7 @@ def check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
         receipt.update(verdict="unmeasured", reason=f"checker error: {proc.stderr.strip()[-300:]}")
         return _write(stage, receipt)
     result = json.loads(proc.stdout)
+    _check_exit(proc, result)
     receipt["verdict"] = result["verdict"]
     receipt["assumptions"] += [f"ABI change handled by trusted lowering (T4): {c}" for c in result["abi_changes"]]
     if result["verdict"] != "verified":
@@ -148,6 +176,17 @@ def check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
 
 def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
                   index_bits: int = 64) -> dict[str, Any]:
+    """Check source support; an unavailable check records unmeasured rather than an old verdict."""
+    if type(index_bits) is not int or index_bits <= 0:
+        _write(work, {"schema": "merlin.lean.attempt.v1", "verdict": "unmeasured",
+                      "reason": "index_bits must be a positive integer"})
+        raise ValueError("index_bits must be a positive integer")
+    return _attempt(work, lambda: _check_support(program, function, work, m2m_python=m2m_python,
+                                               index_bits=index_bits))
+
+
+def _check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
+                   index_bits: int) -> dict[str, Any]:
     """Check that ``function`` of ``program`` is inside the proved fragment and write
     ``work/receipt.json``; returns the receipt.
 
@@ -188,6 +227,7 @@ def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
         receipt.update(verdict="unmeasured", reason=f"checker error: {proc.stderr.strip()[-300:]}")
         return _write(work, receipt)
     result = json.loads(proc.stdout)
+    _check_exit(proc, result)
     if result.get("index_bits") != index_bits:
         receipt.update(verdict="unmeasured", reason="checker used a different index width")
         return _write(work, receipt)
@@ -285,7 +325,21 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     return doc
 
 
+def _check_exit(proc: subprocess.CompletedProcess, result: dict[str, Any]) -> None:
+    if (proc.returncode, result.get("verdict")) not in {
+        (0, "verified"), (1, "abstracted"), (1, "unsupported"),
+    }:
+        raise ValueError("checker exit status disagrees with its verdict")
+
+
 def _write(stage: Path, receipt: dict[str, Any]) -> dict[str, Any]:
     stage.mkdir(parents=True, exist_ok=True)
-    (stage / "receipt.json").write_text(json.dumps(receipt, indent=2, sort_keys=True))
+    with tempfile.NamedTemporaryFile(mode="w", dir=stage, prefix=".receipt-", delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            stream.write(json.dumps(receipt, indent=2, sort_keys=True))
+            stream.flush()
+            os.replace(temporary, stage / "receipt.json")
+        finally:
+            temporary.unlink(missing_ok=True)
     return receipt
