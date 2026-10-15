@@ -423,8 +423,12 @@ def _reference_metrics(bundle: B.Bundle, model: str, split: str) -> dict[str, An
 
 @register("check")
 def check(args: argparse.Namespace, report: dict) -> dict:
-    if args.mode != "fast":
-        raise RP.ReplayError("check --mode full is not wired yet in this version")
+    if args.mode == "full":
+        from merlin.model_check import full
+
+        bundle = _bundle(args)
+        _bind_engine_inputs(args, bundle.manifest())
+        return full.check(args, report, models=load_models(args.models), bundle=bundle)
     from merlin.model_check.approximations import declared
 
     approximations = declared(Path(args.submission))
