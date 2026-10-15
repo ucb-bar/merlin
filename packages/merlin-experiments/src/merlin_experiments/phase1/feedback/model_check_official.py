@@ -86,11 +86,22 @@ def run_gate(submission: Path, run_dir: Path, required_programs: dict[str, tuple
                     if isinstance(row, dict) and isinstance(row.get("program"), str)}
         if set(observed) != set(programs):
             result["status"] = "unavailable" if result["status"] == "pass" else result["status"]
+        metrics = (body or {}).get("model_metrics")
+        if not isinstance(metrics, dict) or not isinstance(metrics.get("worst"), dict):
+            result["status"] = "unavailable" if result["status"] == "pass" else result["status"]
         for program in programs:
             item = observed.get(program, {})
+            build = item.get("build")
             census = item.get("census") or {}
             kernels = item.get("kernels") or []
-            if (not isinstance(census, dict) or not isinstance(census.get("device"), int)
+            runs = item.get("runs") or []
+            if (not isinstance(build, dict) or build.get("status") != "linked"
+                    or not isinstance(census, dict)
+                    or not isinstance(census.get("denominator"), int)
+                    or not isinstance(census.get("device"), int)
+                    or not 0 <= census["device"] <= census["denominator"]
+                    or not any(isinstance(run, dict) and run.get("engine") == "spike"
+                               and run.get("status") == "completed" for run in runs)
                     or census["device"] > 0 and not any(
                         isinstance(row, dict) and isinstance(row.get("source_region_id"), str)
                         for row in kernels)):
@@ -99,6 +110,8 @@ def run_gate(submission: Path, run_dir: Path, required_programs: dict[str, tuple
             program: {"build": observed.get(program, {}).get("build"),
                       "census": observed.get(program, {}).get("census")}
             for program in programs}}
+        if result["status"] != "pass":
+            continue  # no RTL cost can turn an incomplete full-chain check into an official pass
         for program in programs:
             for kernel in observed.get(program, {}).get("kernels", []):
                 if not isinstance(kernel, dict) or not isinstance(kernel.get("source_region_id"), str):
@@ -132,10 +145,11 @@ def run_gate(submission: Path, run_dir: Path, required_programs: dict[str, tuple
 
     with ThreadPoolExecutor(max_workers=summary["rtl_workers"]) as executor:
         summary["rtl"] = list(executor.map(replay, enumerate(selected.values())))
-    summary["rtl_complete"] = len(summary["rtl"]) == len(selected) and all(
+    models_complete = bool(required_programs) and all(
+        row["status"] == "pass" for row in summary["models"].values())
+    summary["rtl_complete"] = models_complete and len(summary["rtl"]) == len(selected) and all(
         row["status"] == "pass" for row in summary["rtl"])
-    summary["passed"] = bool(required_programs) and all(
-        row["status"] == "pass" for row in summary["models"].values()) and summary["rtl_complete"]
+    summary["passed"] = models_complete and summary["rtl_complete"]
     if hash_tree(submission)["sha256"] != source_sha256:
         summary["passed"] = False
         summary["source_changed_during_grade"] = True

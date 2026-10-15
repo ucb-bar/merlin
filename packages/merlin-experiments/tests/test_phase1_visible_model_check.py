@@ -142,6 +142,13 @@ def test_missing_model_check_report_is_unavailable_not_numeric_failure(tmp_path,
     assert gate._program_row("resnet50", "model", result)["status"] == "unavailable"
 
 
+def test_model_pass_without_census_or_metrics_does_not_pass_visible_verdict():
+    result = {"status": "pass", "report": {"programs": [{
+        "program": "model", "build": {"built": 25}, "kernels": [{"symbol": "conv_0", "status": "pass"}],
+    }], "model_metrics": None}}
+    assert gate._program_row("resnet50", "model", result)["status"] == "unavailable"
+
+
 def test_model_check_client_refuses_output_through_workspace_symlink(tmp_path, monkeypatch):
     ws, outside = tmp_path / "workspace", tmp_path / "outside"
     ws.mkdir()
@@ -214,7 +221,9 @@ def test_background_model_gate_reaches_agent_verdict_before_first_interval(tmp_p
 
         model = request["model"]
         return {"status": "pass", "source_sha256": hash_tree(kwargs["snapshot_source"])["sha256"],
-                "report": {"programs": [{"program": program} for program in broker.PROGRAMS[model]]}}
+                "report": {"model_metrics": {"worst": {}},
+                           "programs": [{"program": program, "census": {"denominator": 1, "device": 1}}
+                                        for program in broker.PROGRAMS[model]]}}
 
     monkeypatch.setattr(gate, "execute_visible", check)
     handle = gate.start(ws, run, interval_s=30)
@@ -248,7 +257,9 @@ def test_background_gate_restarts_superseded_snapshot_without_waiting_interval(t
         if len(checked) == 1:
             (source / "compiler.py").write_text("VERSION = 2\n")
         return {"status": "pass", "source_sha256": digest, "report": {
-            "programs": [{"program": program} for program in broker.PROGRAMS[request["model"]]]}}
+            "model_metrics": {"worst": {}},
+            "programs": [{"program": program, "census": {"denominator": 1, "device": 1}}
+                         for program in broker.PROGRAMS[request["model"]]]}}
 
     monkeypatch.setattr(gate, "execute_visible", check)
     handle = gate.start(ws, run, interval_s=30)

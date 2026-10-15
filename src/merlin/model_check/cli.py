@@ -41,6 +41,16 @@ def _common(p: argparse.ArgumentParser, *, submission: bool = True) -> None:
     p.add_argument("--out", type=Path, required=True, help="report JSON")
 
 
+def _engine(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--host-package", type=Path, default=None, help="host package (default: the bundle's)")
+    p.add_argument(
+        "--contract", type=Path, default=None, help="target contract binding the simulators (default: the bundle's)"
+    )
+    p.add_argument("--rtl-facts", type=Path, default=None, help="RTL facts matching --contract (default: the bundle's)")
+    p.add_argument("--dram-base", type=lambda v: int(v, 0), default=0x80000000)
+    p.add_argument("--dram-bytes", type=lambda v: int(v, 0), default=16 << 30)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m merlin.model_check", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -56,6 +66,8 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--timeout-s", type=float, default=None)
     check.add_argument("--differential", action="store_true")
     check.add_argument("--agent-view", action="store_true")
+    check.add_argument("--engine", choices=ENGINES, default="spike")
+    _engine(check)
 
     replay = sub.add_parser("replay-kernel", help="replay device kernels on frozen boundary inputs")
     _common(replay)
@@ -68,6 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
     replay.add_argument("--engine", choices=ENGINES, default="spike")
     replay.add_argument("--timeout-s", type=float, default=None)
     replay.add_argument("--agent-view", action="store_true")
+    _engine(replay)
 
     census = sub.add_parser("census", help="build only; classify every contraction")
     _common(census)
@@ -79,6 +92,31 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify = sub.add_parser("bundle-verify", help="check every file of a numerics bundle")
     _common(verify, submission=False)
+
+    build = sub.add_parser("bundle-build", help="catalog, census and reference calls for a model's programs")
+    _common(build, submission=False)
+    build.add_argument("--captures", type=Path, required=True, help="sealed capture root (<model>/run/capture)")
+    build.add_argument("--model", required=True)
+    build.add_argument("--program", default=None)
+    build.add_argument("--keep", choices=("all", "sample"), default="all", help="which device calls to record")
+    build.add_argument("--host-package", type=Path, required=True, help="host package replays are built with")
+    build.add_argument("--contract", type=Path, required=True, help="target contract binding the simulators")
+    build.add_argument("--rtl-facts", type=Path, required=True, help="RTL facts matching --contract")
+
+    prep = sub.add_parser("inputs-prepare", help="select and preprocess a model's evaluation/calibration inputs")
+    _common(prep, submission=False)
+    prep.add_argument("--model", required=True)
+    prep.add_argument("--sources", type=Path, default=None, help="sources.yaml (default: the target's)")
+    prep.add_argument("--data", type=Path, required=True, help="directory holding the pinned source files")
+    prep.add_argument("--private", type=Path, required=True, help="private root (sealed and derived inputs)")
+    prep.add_argument("--python", type=Path, required=True, help="the model's pinned environment interpreter")
+    prep.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="model-specific inputs, e.g. tokenizer_path=..., rows_python=..., policy_path=...",
+    )
     return parser
 
 
@@ -101,7 +139,11 @@ def register(name: str):
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from merlin.model_check import commands as _commands  # noqa: F401 -- registers the subcommands
+
     args = build_parser().parse_args(argv)
+    if getattr(args, "timeout_s", "unset") is None:
+        args.timeout_s = 3600.0
     submission = {}
     if getattr(args, "submission", None) is not None:
         root = args.submission

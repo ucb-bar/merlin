@@ -18,9 +18,11 @@ def test_official_gate_dedupes_explicit_same_shape_kernels(tmp_path, monkeypatch
         calls.append((command, kwargs))
         if command == "replay-kernel":
             return {"status": "pass", "body": {"status": "pass"}, "report": str(kwargs["output"])}
-        return {"status": "pass", "report": str(kwargs["output"]), "body": {"programs": [
+        return {"status": "pass", "report": str(kwargs["output"]), "body": {
+            "model_metrics": {"worst": {}}, "programs": [
             {"program": program, "build": {"status": "linked"},
              "census": {"device": 1, "denominator": 1},
+             "runs": [{"engine": "spike", "status": "completed"}],
              "kernels": [{"source_region_id": f"group_{program}",
                           "interface_sha256": "a" * 64, "shape_sha256": "b" * 64}]}
             for program in ("prefill", "decode")
@@ -50,7 +52,25 @@ def test_official_gate_refuses_missing_kernel_evidence(tmp_path, monkeypatch):
     summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {"resnet50": ("model",)})
     assert summary["passed"] is False
     assert summary["models"]["resnet50"]["status"] == "unavailable"
-    assert summary["rtl_complete"] is True and summary["unique_kernel_count"] == 0
+    assert summary["rtl_complete"] is False and summary["unique_kernel_count"] == 0
+
+
+def test_official_gate_refuses_pass_without_full_chain_metrics_and_spike_runs(tmp_path, monkeypatch):
+    (tmp_path / "submission").mkdir()
+    (tmp_path / "submission/manifest.yaml").write_text("commands: {}\n")
+
+    def invoke(command, **kwargs):
+        assert command == "check"
+        return {"status": "pass", "body": {"programs": [{
+            "program": "model", "build": {"status": "linked"},
+            "census": {"device": 1, "denominator": 1},
+            "kernels": [{"source_region_id": "conv_0"}], "runs": [],
+        }], "model_metrics": None}}
+
+    monkeypatch.setattr(official, "_invoke", invoke)
+    summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {"resnet50": ("model",)})
+    assert summary["models"]["resnet50"]["status"] == "unavailable"
+    assert summary["unique_kernel_count"] == 0 and summary["passed"] is False
 
 
 def test_official_gate_runs_distinct_rtl_kernels_in_bounded_parallel(tmp_path, monkeypatch):
@@ -61,8 +81,10 @@ def test_official_gate_runs_distinct_rtl_kernels_in_bounded_parallel(tmp_path, m
 
     def invoke(command, **kwargs):
         if command == "check":
-            return {"status": "pass", "body": {"programs": [{
-                "program": "model", "census": {"device": 2},
+            return {"status": "pass", "body": {"model_metrics": {"worst": {}}, "programs": [{
+                "program": "model", "build": {"status": "linked"},
+                "census": {"device": 2, "denominator": 2},
+                "runs": [{"engine": "spike", "status": "completed"}],
                 "kernels": [{"source_region_id": "conv_0"}, {"source_region_id": "conv_1"}],
             }]}}
         replayed.append(kwargs["group"])
@@ -91,8 +113,10 @@ def test_official_gate_marks_unstarted_rtl_pending_when_budget_expires(tmp_path,
 
     def invoke(command, **kwargs):
         assert command == "check"
-        return {"status": "pass", "body": {"programs": [{
-            "program": "model", "census": {"device": 1},
+        return {"status": "pass", "body": {"model_metrics": {"worst": {}}, "programs": [{
+            "program": "model", "build": {"status": "linked"},
+            "census": {"device": 1, "denominator": 1},
+            "runs": [{"engine": "spike", "status": "completed"}],
             "kernels": [{"source_region_id": "conv_0"}],
         }]}}
 

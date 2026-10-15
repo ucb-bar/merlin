@@ -22,6 +22,8 @@ attention/batched generics); anything else is left for the f32 fallback (``lower
 
 from __future__ import annotations
 
+from .quant_scope import prequantized_source
+
 
 def _carry_prov(src, **roles) -> None:
     """Copy ``src``'s ``prov.*`` onto every op the rewrite split it into, each tagged with its role.
@@ -737,9 +739,11 @@ def lower_contraction_int8(
             # f32 accumulator before this pass. Its operands remain half
             # precision, but the explicit source quantization path licenses
             # the same integer contraction rewrite.
-            if not (select is not None and select(op) and any(
-                isinstance(i.type.element_type, (BFloat16Type, Float16Type)) for i in op.inputs
-            )):
+            if not (
+                select is not None
+                and select(op)
+                and any(isinstance(i.type.element_type, (BFloat16Type, Float16Type)) for i in op.inputs)
+            ):
                 continue
         targets.append((op, view))
     targets = _select_targets(targets, select, key=lambda t: t[0])
@@ -758,6 +762,7 @@ def lower_contraction_int8(
         i8_inputs = []
         scale_vals = []  # (ssa, [output-positions]) per operand
         for oi, operand in enumerate(op.inputs):
+            operand = prequantized_source(operand)  # reuse captured bytes behind an exact widening
             dims = in_maps[oi]  # iterator dims this operand indexes
             red_pos = [p for p, d in enumerate(dims) if red_flags[d]]  # positions in operand
             par_pos = [p for p, d in enumerate(dims) if not red_flags[d]]
@@ -830,7 +835,9 @@ def lower_contraction_int8(
                     extended = arith.ExtFOp(eb.args[0], f32)
                     eb.add_ops([extended, L.YieldOp(extended.result)])
                     ext = L.GenericOp(
-                        inputs=(operand,), outputs=(ext_e.results[0],), body=Region(eb),
+                        inputs=(operand,),
+                        outputs=(ext_e.results[0],),
+                        body=Region(eb),
                         indexing_maps=ArrayAttr([amap(r, AffineMap.identity(r).results)] * 2),
                         iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * r),
                         result_types=(f32_t,),
