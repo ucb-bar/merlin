@@ -1502,11 +1502,19 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     _cd = yaml.safe_load(_cy.read_text()) or {}
     _cd["exit_code"] = 0 if formal_complete else 1
     _cy.write_text(yaml.safe_dump(_cd, sort_keys=False))
+    from .capsule_timing_archive import finalize_run
+
+    _capsule_timing = finalize_run(run_dir)
+    qa_summary["capsule_timing"] = _capsule_timing
+    (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(qa_summary, sort_keys=False))
+    if _manifest_path.is_file():
+        _manifest_doc["capsule_timing"] = _capsule_timing
+        _manifest_path.write_text(yaml.safe_dump(_manifest_doc, sort_keys=False))
     print(
         f"\nrun complete: {run_dir}  numeric_all_pass={verdict.get('all_pass')} "
         f"workflow_conformant={workflow_conformant} "
         f"official_grade_complete={official_grade['complete']} formal_complete={formal_complete} "
-        f"rounds={len(rounds_summary)}"
+        f"rounds={len(rounds_summary)} capsule_timing_ready={_capsule_timing['timing_ready']}"
     )
     return 0 if formal_complete else 1
 
