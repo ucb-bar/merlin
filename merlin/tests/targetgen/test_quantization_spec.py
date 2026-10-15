@@ -357,6 +357,26 @@ def test_capture_recipe_is_scoped_without_manually_authored_framework_bookkeepin
         capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
 
 
+def test_an_authored_calibration_count_reaches_the_recipe_and_its_digest():
+    """The number of calibration samples changes the scales, so it is a recipe field (see
+    test_recipe_calibration_count.py); absent, the recipe and its digest are what they were."""
+    spec = _spec()
+    unchanged = capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))[0]["recipe"]
+    assert "calibration_count" not in unchanged["framework_capture_policy"]
+    spec["quantization"]["formats"][0]["framework"] = {"calibration_count": 260}
+    recipe = capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))[0]["recipe"]
+    assert recipe["framework_capture_policy"]["calibration_count"] == 260
+    assert recipe["recipe_sha256"] == quant_recipe.digest(recipe) != unchanged["recipe_sha256"]
+
+
+@pytest.mark.parametrize("bad", [0, 1.5, "all", True])
+def test_an_unusable_calibration_count_is_refused_at_derivation(bad):
+    spec = _spec()
+    spec["quantization"]["formats"][0]["framework"] = {"calibration_count": bad}
+    with pytest.raises(ValueError, match="calibration_count"):
+        capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
+
+
 def test_fp8_capture_recipe_uses_supported_observer_default():
     spec = _spec()
     spec["numerical_semantics"].update(operand_dtype="fp8_e4m3", accumulator_dtype="bf16", readout_dtype="bf16")
