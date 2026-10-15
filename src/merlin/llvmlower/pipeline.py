@@ -69,8 +69,9 @@ def _dealloc_passes(sink: bool | None = None) -> list[str]:
     ``MERLIN_SINK_DEALLOCS`` (or ``sink=True``) appends the sinking stage described in
     :func:`_sink_dealloc_passes`, which moves direct frees from the end of the function to just
     after the buffer's last use. An aggregate ``bufferization.dealloc`` can still pin many local
-    buffers until return; ``MERLIN_SPLIT_FRESH_DEALLOCS`` enables a guarded split for that case
-    and also enables the sinking and placement check. Both switches default OFF.
+    buffers until return; ``MERLIN_SPLIT_FRESH_DEALLOCS`` controls a guarded split for that case
+    and also enables the sinking and placement check. The guarded split and output-slice rewrite
+    are enabled by default; set either switch to ``0`` for an A/B build.
     """
     import os
 
@@ -113,20 +114,20 @@ SPLIT_FRESH_DEALLOCS_MARKER = "__merlin_split_fresh_deallocs__"
 
 
 def _split_fresh_deallocs() -> bool:
-    """Enable the guarded aggregate-dealloc split; kept opt-in during model qualification."""
+    """Enable the guarded aggregate-dealloc split, with ``0`` as an A/B escape hatch."""
     import os
 
-    return bool(os.environ.get("MERLIN_SPLIT_FRESH_DEALLOCS"))
+    return os.environ.get("MERLIN_SPLIT_FRESH_DEALLOCS", "1") == "1"
 
 
 SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER = "__merlin_slice_unused_elementwise_output__"
 
 
 def _slice_unused_elementwise_outputs() -> bool:
-    """Enable the guarded output-slice rewrite during full-model qualification."""
+    """Enable the guarded output-slice rewrite, with ``0`` as an A/B escape hatch."""
     import os
 
-    return bool(os.environ.get("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT"))
+    return os.environ.get("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT", "1") == "1"
 
 
 #: The pass that moves a dealloc to its last user. Named once: the runner keys the placement CHECK

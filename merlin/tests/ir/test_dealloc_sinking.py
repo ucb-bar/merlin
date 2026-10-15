@@ -33,6 +33,13 @@ m2m = pytest.mark.skipif(
     not toolchain.m2m_python().is_file(), reason="model2MLIR venv (torch-mlir pass registry) not present"
 )
 
+
+@pytest.fixture(autouse=True)
+def legacy_memory_pipeline_for_stage_comparisons(monkeypatch):
+    """Keep individual upstream-stage controls comparable to the old pipeline."""
+    monkeypatch.setenv("MERLIN_SPLIT_FRESH_DEALLOCS", "0")
+    monkeypatch.setenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT", "0")
+
 LOWER = "bufferization-lower-deallocations"
 SINK = "optimize-allocation-liveness"
 
@@ -75,8 +82,8 @@ def _stages(text: str) -> list[str]:
 # --- the pass list ---------------------------------------------------------------------------
 
 
-def test_the_sinking_stage_is_off_by_default(monkeypatch):
-    """An unflagged build must emit the frozen baseline byte for byte, so nothing is added."""
+def test_the_legacy_sinking_stage_can_be_disabled_for_comparison(monkeypatch):
+    """The A/B controls preserve the frozen upstream pass list."""
     monkeypatch.delenv("MERLIN_SINK_DEALLOCS", raising=False)
     assert P._dealloc_passes() == ["ownership-based-buffer-deallocation", "buffer-deallocation-simplification", LOWER]
     for text in (
@@ -85,6 +92,15 @@ def test_the_sinking_stage_is_off_by_default(monkeypatch):
         P.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset()),
     ):
         assert SINK not in text
+
+
+def test_safe_memory_passes_run_in_an_unflagged_build(monkeypatch):
+    monkeypatch.delenv("MERLIN_SPLIT_FRESH_DEALLOCS")
+    monkeypatch.delenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT")
+    stages = P._dealloc_passes()
+    assert P.SPLIT_FRESH_DEALLOCS_MARKER in stages
+    assert P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in stages
+    assert any(SINK in stage for stage in stages)
 
 
 def test_the_env_flag_turns_the_stage_on(monkeypatch):
@@ -190,11 +206,13 @@ def test_aggregate_owned_allocs_are_split_and_sunk(tmp_path, monkeypatch):
 
 
 @m2m
-def test_split_switch_runs_through_the_real_lowering_runner(tmp_path, monkeypatch):
-    monkeypatch.setenv("MERLIN_SPLIT_FRESH_DEALLOCS", "1")
+def test_default_memory_passes_run_through_the_real_lowering_runner(tmp_path, monkeypatch):
+    monkeypatch.delenv("MERLIN_SPLIT_FRESH_DEALLOCS")
+    monkeypatch.delenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT")
     stages = P._dealloc_passes()
     assert stages[1] == P.SPLIT_FRESH_DEALLOCS_MARKER
-    assert SINK in stages[-1]
+    assert P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in stages
+    assert any(SINK in stage for stage in stages)
     lowered = P.lower_to_llvm_ir(CHAIN, workdir=tmp_path, pipeline=P._upstream_pipeline())
     assert lowered.count("call void @free") == 2
 

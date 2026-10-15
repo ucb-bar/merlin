@@ -79,6 +79,8 @@ def test_second_consumer_preserves_full_computation(tmp_path):
 
 def test_switch_is_explicit_and_present_in_every_runner(monkeypatch):
     monkeypatch.delenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT", raising=False)
+    assert P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in P._upstream_pipeline()
+    monkeypatch.setenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT", "0")
     assert P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER not in P._upstream_pipeline()
     monkeypatch.setenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT", "1")
     assert P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in P._dealloc_passes()
