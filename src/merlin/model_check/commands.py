@@ -423,12 +423,13 @@ def _reference_metrics(bundle: B.Bundle, model: str, split: str) -> dict[str, An
 
 @register("check")
 def check(args: argparse.Namespace, report: dict) -> dict:
-    if args.mode == "full":
+    if args.mode == "full":  # fast's kernel replay, then every program's linked image and chain
         from merlin.model_check import full
 
-        bundle = _bundle(args)
-        _bind_engine_inputs(args, bundle.manifest())
-        return full.check(args, report, models=load_models(args.models), bundle=bundle)
+        full.validate(args)
+        report = _replay(args, report, all_calls=False, group=None)
+        report["gates"]["kernel_exact"]["partial"] = False
+        return full.check(args, report, models=load_models(args.models), bundle=_bundle(args))
     from merlin.model_check.approximations import declared
 
     approximations = declared(Path(args.submission))

@@ -265,6 +265,14 @@ def _kernels(bundle: B.Bundle, model: str, program: str, build: Mapping[str, Any
     return [{"symbol": symbol, **_kernel_identity(catalog, symbol), "status": status} for symbol in catalog.interfaces]
 
 
+def validate(args) -> None:
+    """Refuse the options full mode does not take (a usage error, before anything runs)."""
+    if getattr(args, "differential", False):
+        raise ModelsFileError("check --differential (an offload-disabled twin build) is not wired in this version")
+    if getattr(args, "program", None):
+        raise ModelsFileError("check --mode full runs a model's whole chain; --program selects nothing here")
+
+
 def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=print) -> dict:
     """Fill ``report`` with the full-mode judgement of ``args.model`` on ``args.split``.
 
@@ -279,10 +287,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
     budget = float(args.timeout_s)
     deadline = started_check + budget - min(120.0, 0.05 * budget)  # leave time to judge and write the report
     model = models.model(args.model)
-    if getattr(args, "differential", False):
-        raise ModelsFileError("check --differential (an offload-disabled twin build) is not wired in this version")
-    if getattr(args, "program", None):
-        raise ModelsFileError("check --mode full runs a model's whole chain; --program selects nothing here")
+    validate(args)
     manifest = bundle.manifest()
     captures = Path(manifest.get("captures") or "")
     counts = step_counts(model, args.decode_steps)
@@ -311,7 +316,12 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
         )
         timing["build_seconds"] += 0 if builds[program.name]["reused"] else builds[program.name]["seconds"]
         log(f"[full] {model.name}/{program.name}: {builds[program.name]['elf_bytes']} B image")
-    report["gates"]["build"] = {"status": "pass", "detail": f"{len(builds)} program image(s) linked"}
+    kernels_built = report["gates"].get("build")  # the kernel replay's, when it ran first
+    report["gates"]["build"] = {
+        "status": kernels_built["status"] if kernels_built else "pass",
+        "detail": f"{len(builds)} program image(s) linked"
+        + (f"; kernel replay: {kernels_built['detail']}" if kernels_built else ""),
+    }
 
     def one(input_id: str) -> dict[str, Any]:
         result: dict[str, Any] = {"input": input_id, "rows": []}
@@ -430,18 +440,23 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
         timing["reference_seconds"] += result["reference_seconds"]
         timing["chain_seconds"][result["input"]] = result["chain_seconds"]
 
+    replayed = {row.get("program"): row for row in report["programs"]}
+    report["programs"] = [row for row in report["programs"] if row.get("program") not in builds]
     for program in model.programs:
         build = builds[program.name]
+        fast = replayed.get(program.name) or {}
         report["programs"].append(
             {
+                **{k: v for k, v in fast.items() if k not in ("build", "census", "kernels")},
                 "program": program.name,
+                "kernel_build": fast.get("build"),
                 "build": {
                     k: build[k]
                     for k in ("status", "elf_sha256", "elf_bytes", "sections", "build_hash", "seconds", "reused")
                 }
                 | {"dedup_weights": build["dedup_weights"], "device_routed": build["device_routed"]},
-                "census": _program_census(bundle, model.name, program.name, {}),
-                "kernels": _kernels(bundle, model.name, program.name, build),
+                "census": fast.get("census") or _program_census(bundle, model.name, program.name, {}),
+                "kernels": fast.get("kernels") or _kernels(bundle, model.name, program.name, build),
                 "runs": [
                     {"input": r["input"], "split": r["input"].partition("/")[0], **row}
                     for r in results
