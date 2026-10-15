@@ -273,3 +273,36 @@ def check(args: argparse.Namespace, report: dict) -> dict:
             else "a kernel differs from its reference; the model gate cannot pass",
         }
     return report
+
+
+@register("inputs-prepare")
+def inputs_prepare(args: argparse.Namespace, report: dict) -> dict:
+    from merlin.common.paths import build_dir
+    from merlin.model_check import inputs as INP
+
+    models = load_models(args.models)
+    models.model(args.model)
+    sources = args.sources or models.path.with_name("sources.yaml")
+    extra: dict[str, Any] = {}
+    for item in args.set:
+        key, sep, value = item.partition("=")
+        if not sep:
+            raise INP.InputError(f"--set expects KEY=VALUE, got {item!r}")
+        extra[key] = Path(value) if key.endswith("_python") else value
+    record = INP.prepare(
+        args.model,
+        sources,
+        data_root=args.data,
+        public=sources.parent,
+        private=args.private,
+        python=args.python,
+        scratch=build_dir() / "model_check" / "inputs",
+        **extra,
+    )
+    report["programs"].append({"inputs": {k: len(v) for k, v in record.items() if isinstance(v, dict)}})
+    size = INP.stored_bytes(sources.parent)
+    report["gates"]["inputs"] = {
+        "status": "pass" if size <= INP.PUBLIC_BUDGET else "fail",
+        "detail": f"public example holds {size} bytes (budget {INP.PUBLIC_BUDGET})",
+    }
+    return report
