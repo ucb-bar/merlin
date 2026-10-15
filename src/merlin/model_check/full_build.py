@@ -151,10 +151,22 @@ def build(
     directory: Path,
     admission=None,
 ) -> dict[str, Any]:
-    """Build ``stage``'s image under ``directory`` (reused when its record matches) and return its record."""
-    from merlin.compile.baremetal_model import compile_saved_model
+    """Build ``stage``'s image under ``directory`` (reused when its record matches) and return its record.
+
+    Two checks of one submission share the directory: the first builds while holding its lock, the
+    second waits and reuses the record."""
+    import fcntl
 
     directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / ".lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _build(stage, target, label, submission, submission_sha256, settings, directory, admission)
+
+
+def _build(stage, target, label, submission, submission_sha256, settings, directory: Path, admission):
+    from merlin.compile.baremetal_model import compile_saved_model
+
     key = {
         "stage": str(Path(stage).resolve()),
         "submission_sha256": submission_sha256,
@@ -169,7 +181,6 @@ def build(
     image = directory / "image"
     if image.exists():
         shutil.rmtree(image)
-    directory.mkdir(parents=True, exist_ok=True)
     if admission is None:
         from merlin.model_check.admission import service
 
@@ -213,7 +224,9 @@ def build(
         "seconds": round(seconds, 1),
         "reused": False,
     }
-    record_path.write_text(json.dumps(record, indent=1) + "\n")
+    pending = record_path.with_suffix(".pending")
+    pending.write_text(json.dumps(record, indent=1) + "\n")
+    pending.replace(record_path)
     return record
 
 

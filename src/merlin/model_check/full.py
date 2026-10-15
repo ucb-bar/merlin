@@ -20,6 +20,8 @@ Judged:
 from __future__ import annotations
 
 import os
+import tempfile
+import threading
 import time
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -117,7 +119,9 @@ def reference_chain(model: Model, bundle: B.Bundle, arrays, counts: dict[str, in
             args = CAT.capture_arguments(catalog.stage, inputs, cache / "shadow" / program.name)
             values = CH.to_compute([np.asarray(v) for v in LN.evaluate(module, args[:arity])], elements)
             cache.mkdir(parents=True, exist_ok=True)
-            np.savez(path, **{f"out{i}": v for i, v in enumerate(values)})
+            pending = path.with_name(f"{path.stem}.{os.getpid()}.{threading.get_ident()}.pending.npz")
+            np.savez(pending, **{f"out{i}": v for i, v in enumerate(values)})
+            pending.replace(path)  # another check of this input may read the cache concurrently
             run.steps[program.name].append(values)
     return run
 
@@ -301,6 +305,10 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
     report["bundle"] = {"path": str(bundle.root), "merlin_commit": manifest.get("merlin_commit")}
     timing: dict[str, Any] = {"build_seconds": 0.0, "reference_seconds": 0.0, "chain_seconds": {}}
 
+    # This check's own runs (two checks of one model may run at once); builds and references are shared.
+    (work / "runs").mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    runs = Path(tempfile.mkdtemp(prefix=f"{args.split}-{stamp}-", dir=work / "runs"))
     builds: dict[str, dict[str, Any]] = {}
     for program in model.programs:
         log(f"[full] {model.name}/{program.name}: building")
@@ -339,7 +347,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
                 specs=specs,
                 arrays=arrays,
                 counts=counts,
-                work=work / "runs" / input_id,
+                work=runs / input_id,
                 deadline=deadline,
                 rows=result["rows"],
                 log=log,
@@ -484,6 +492,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
         "inputs": len(per_input),
         "per_input": per_input,
         "worst": M.worst_of(per_input),
+        "mean": M.mean_of(per_input),
     }
     report["timing"].update({k: (round(v, 1) if isinstance(v, float) else v) for k, v in timing.items()})
     return report
