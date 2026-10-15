@@ -3,7 +3,7 @@ title: Set up Phase 0 and Phase 1
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-14
+last_verified: 2026-10-15
 related: [gsim_worker_setup, neutral_runtime_tooling, phase0_specification, target_resolution]
 code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/targetgen/generalization_prompt.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_demand.py]
 ---
@@ -331,21 +331,28 @@ and touching the final mapped 4 KiB page. Run the exact resulting ELF on gSIM,
 Spike with the selected 16 GiB map, and the U250 bitstream; record each exit
 status and the ELF hash.
 
-The public Chipyard commit currently cannot supply a verified elaboration on
-this worker by itself: `TargetConfigs.scala` refers to six OPU/Kodiak config
-classes absent from that commit, and its Saturn gitlink
-`e16a301d261fa4b5a374eb7069b78107a8c9aefb` is unavailable from the
-recorded public submodule URL. Obtain the exact source overlay and Saturn
-commit from the original U250 checkout, review and pin their bytes, then update
-the source-variant audit to admit only that captured overlay. The alignment
-gate also requires Gemmini, Saturn and FireSim submodule receipts at the exact
-Git links in Chipyard `009e85b`; omitting an unavailable submodule does not
-qualify a substitute build. A provisional local build using substitute classes
-or another Saturn revision is useful for testing, but cannot produce a
-qualifying source receipt.
-Supply a reproduced source-to-FIRRTL elaboration
-receipt to the RTL source selection, then build the gSIM emulator with a strict
-v3 receipt. Before launch, check the complete chain:
+The U250 source handoff supplies the exact Saturn Git commit
+`e16a301d261fa4b5a374eb7069b78107a8c9aefb` as a complete bundle
+(SHA256 `8d7ee0b552e80548d3c2d9754a21fce280ec0f478097533cb89c8c2bb5c2fb75`)
+and a source-only archive (SHA256
+`683de65b0c7ed56621a84657f0bd67bf0ae452e3c5a5b17f6c9b761ce1616bad`).
+Verify the archive with its `verify.py`, import the bundle into the task-local
+Saturn submodule, and check the three exact Chipyard Git links for Gemmini,
+Saturn and FireSim. These sources replace the temporary OPU/Kodiak compile
+stubs. The source-only archive excludes the bitstream, driver and large
+generated RTL. It also does not prove the complete historical dirty FireSim
+source state of the bitstream.
+
+On the receiving worker, the clean pinned source plus the one committed gSIM
+configuration addition reproduced FIRRTL SHA256
+`6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149`.
+The gSIM DTS exactly matched the handoff FireSim DTS SHA256
+`c4a2009a405945ea98f731713e0f4e7dc483031ab8cd5156d871e4eb7594f1df`.
+A local diagnostic alignment audit passed all seven source, facts, host-map and
+native-receipt checks. Reproduce this chain with the prepared release contract:
+issue the two-run source-to-FIRRTL elaboration receipt, pass it to the RTL source
+selection, derive facts, and bind the strict v3 native gSIM receipt. Before
+launch, check the complete chain:
 
 ```sh
 python -m merlin_experiments.phase1.gsim_alignment \
@@ -358,9 +365,8 @@ python -m merlin_experiments.phase1.gsim_alignment \
 
 Require `gsim_source_aligned: true`. This checks the generated gSIM and FireSim
 DTS memory maps and ISA as well as source/FIRRTL/emulator identities. The
-current installed gSIM uses the older Gemmini source, and the available
-`GemminiRocketConfig` DTS declares only 256 MiB, so it cannot satisfy this gate.
-A passing source gate still needs an
+system-installed gSIM and old `GemminiRocketConfig` DTS cannot satisfy this
+selection; use the pinned aligned build. A passing source gate still needs an
 explicit chip comparison and matched-ELF gSIM/FireSim checks before its cycles
 can be treated as representative board timing.
 
