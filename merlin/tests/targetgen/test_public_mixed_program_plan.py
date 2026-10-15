@@ -156,6 +156,15 @@ def test_public_preflight_accepts_structural_plan_without_claiming_execution():
     assert validate_mixed_program_plan(SOURCE, cb, LOWERED)["ok"]
 
 
+@pytest.mark.parametrize("extent", [[0], [-1, 0], [0, "1"], [0, 0, 0]])
+def test_local_schema_range_references_reject_invalid_extents(extent):
+    cb = _buffer()
+    cb["params"]["global_program_plan"]["prologue_instruction_range"] = extent
+    result = validate_mixed_program_plan(SOURCE, cb)
+    assert not result["ok"]
+    assert any("plan schema $.prologue_instruction_range" in finding for finding in result["findings"])
+
+
 def test_output_writer_requires_one_task_owning_its_exact_source_result():
     assert validate_mixed_program_plan(SOURCE, _split_output_tasks(writers=(1,)))["ok"]
     for writers in ((), (0,), (0, 1)):
