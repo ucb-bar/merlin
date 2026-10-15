@@ -16,6 +16,7 @@ flagged ops are different functions.
 
 Tensor operands are evaluated elementwise and eagerly: the op is UB (stuck) if any element is.
 -/
+import MerlinVerify.Core.Print
 import MerlinVerify.Sem.Support
 
 namespace MerlinVerify.Sem.Ops.Arith
@@ -24,20 +25,36 @@ open MerlinVerify
 
 /-! ### Float keys -/
 
-def fastmathBit : String → Nat
-  | "reassoc" => 1 | "nnan" => 2 | "ninf" => 4 | "nsz" => 8 | "arcp" => 16 | "contract" => 32
-  | "afn" => 64 | "fast" => 127 | _ => 0
+def fastmathBit : String → Option Nat
+  | "none" => some 0 | "reassoc" => some 1 | "nnan" => some 2 | "ninf" => some 4 | "nsz" => some 8
+  | "arcp" => some 16 | "contract" => some 32 | "afn" => some 64 | "fast" => some 127 | _ => none
 
-def fastmathMask (op : Op) : Nat :=
+/-- The fast-math part of a float key: the flag set as a mask, so flag order and `fast` versus its
+expansion do not matter. A flag or attribute form that is not recognized is kept verbatim, so it
+never shares a key with a recognized one. -/
+def fastmathKey (op : Op) : String :=
   match op.attr? "fastmath" with
-  | some (.enum "arith" "fastmath" s) => (flagList s).foldl (fun m f => m ||| fastmathBit f) 0
-  | _ => 0
+  | none => "0"
+  | some (.enum "arith" "fastmath" s) =>
+    let flags := flagList s
+    let mask := flags.foldl (fun m f => m ||| (fastmathBit f).getD 0) 0
+    let unknown := flags.filter fun f => (fastmathBit f).isNone
+    if unknown.isEmpty then toString mask else s!"{mask}+{repr unknown}"
+  | some a => s!"attr {Print.attr a}"
 
-/-- The uninterpreted-function key of a float op: name + every numerics-relevant attribute. -/
+/-- An attribute as part of a float key: absent, or its exact printed form. -/
+def attrKey (op : Op) (key : String) : String :=
+  match op.attr? key with
+  | none => "none"
+  | some a => s!"attr {Print.attr a}"
+
+/-- The uninterpreted-function key of a float op: name + every numerics-relevant attribute, each
+part length-prefixed so that distinct attributes never give the same key. -/
 def floatKey (op : Op) : FloatOpKey :=
-  let rm := match attrInt? op "roundingmode" with | some v => toString v | none => "none"
-  let pred := match attrInt? op "predicate" with | some v => toString v | none => "none"
-  { op := op.name, modifiers := s!"fm={fastmathMask op};rm={rm};pred={pred}" }
+  let part (tag v : String) := s!"{tag}{v.length}:{v}"
+  { op := op.name,
+    modifiers := part "fm" (fastmathKey op) ++ part ";rm" (attrKey op "roundingmode") ++
+      part ";pred" (attrKey op "predicate") }
 
 /-! ### Scalar helpers -/
 
@@ -81,7 +98,7 @@ def intDiv (signed : Bool) (f : (w : Nat) → BitVec w → BitVec w → Val) : V
     | .some (.bits w' x) =>
       if h : w' = w then
         let x := h ▸ x
-        if signed && x = BitVec.intMin w && y = BitVec.allOnes w && w > 1 then .ub else .ok (f w x y)
+        if signed && x = BitVec.intMin w && y = BitVec.allOnes w then .ub else .ok (f w x y)
       else .stuck "integer width mismatch"
     | .some (.flt ..) => .stuck "integer op on float operand"
   | _, .some (.flt ..) => .stuck "integer op on float operand"

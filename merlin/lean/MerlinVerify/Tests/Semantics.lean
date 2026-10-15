@@ -108,6 +108,36 @@ def i8v (x : Int) : RVal := .scalar (.some (.bits 8 (BitVec.ofInt 8 x)))
 #guard isUb (Sem.Ops.denote ctx (scalarModule "arith.divsi") "f" [i8v 5, i8v 0])
 #guard isUb (Sem.Ops.denote ctx (scalarModule "arith.divsi") "f" [i8v (-128), i8v (-1)])
 #guard readInts (Sem.Ops.denote ctx (scalarModule "arith.divsi") "f" [i8v (-7), i8v 2]) == some [[some (-3)]]
+
+-- Signed division overflow is UB at every width, i1 included: INT_MIN = -1 there, and
+-- (-1) / (-1) = 1 is not an i1.
+def i1s (x : Int) : RVal := .scalar (.some (.bits 1 (BitVec.ofInt 1 x)))
+def i1Module (name : String) : Module :=
+  { ops := [func "f" [v 0 (.int 1), v 1 (.int 1)] [mkOp name [v 2 (.int 1)] [0, 1], ret [2]]] }
+#guard isUb (Sem.Ops.denote ctx (i1Module "arith.divsi") "f" [i1s (-1), i1s (-1)])
+#guard isUb (Sem.Ops.denote ctx (i1Module "arith.floordivsi") "f" [i1s (-1), i1s (-1)])
+#guard isUb (Sem.Ops.denote ctx (i1Module "arith.ceildivsi") "f" [i1s (-1), i1s (-1)])
+#guard readInts (Sem.Ops.denote ctx (i1Module "arith.divui") "f" [i1s (-1), i1s (-1)]) == some [[some (-1)]]
+
+/-! ### Float keys: distinct numerics attributes are distinct functions -/
+
+def addf (attrs : List (String × Attr)) : Op := mkOp "arith.addf" [v 2 (.float .f32)] [0, 1] attrs
+def rmInt (n : Int) : List (String × Attr) := [("roundingmode", .int n (.int 32))]
+def fm (s : String) : List (String × Attr) := [("fastmath", .enum "arith" "fastmath" s)]
+
+#guard Sem.Ops.Arith.floatKey (addf (rmInt 0)) != Sem.Ops.Arith.floatKey (addf (rmInt 3))
+#guard Sem.Ops.Arith.floatKey (addf (rmInt 0)) != Sem.Ops.Arith.floatKey (addf [])
+#guard Sem.Ops.Arith.floatKey (addf [("roundingmode", .enum "arith" "roundingmode" "to_nearest_even")]) !=
+  Sem.Ops.Arith.floatKey (addf [("roundingmode", .enum "arith" "roundingmode" "toward_zero")])
+#guard Sem.Ops.Arith.floatKey (addf [("roundingmode", .enum "arith" "roundingmode" "to_nearest_even")]) !=
+  Sem.Ops.Arith.floatKey (addf (rmInt 0))
+-- the fast-math flag set is order-insensitive, `fast` is its expansion, an unknown flag is kept
+#guard Sem.Ops.Arith.floatKey (addf (fm "nnan,ninf")) == Sem.Ops.Arith.floatKey (addf (fm "ninf,nnan"))
+#guard Sem.Ops.Arith.floatKey (addf (fm "fast")) ==
+  Sem.Ops.Arith.floatKey (addf (fm "reassoc,nnan,ninf,nsz,arcp,contract,afn"))
+#guard Sem.Ops.Arith.floatKey (addf (fm "none")) == Sem.Ops.Arith.floatKey (addf [])
+#guard Sem.Ops.Arith.floatKey (addf (fm "nnan,frobnicate")) != Sem.Ops.Arith.floatKey (addf (fm "nnan"))
+#guard Sem.Ops.Arith.floatKey (addf [("fastmath", .int 2 (.int 32))]) != Sem.Ops.Arith.floatKey (addf [])
 #guard readInts (Sem.Ops.denote ctx (scalarModule "arith.remsi") "f" [i8v (-7), i8v 2]) == some [[some (-1)]]
 #guard readInts (Sem.Ops.denote ctx (scalarModule "arith.remsi") "f" [i8v (-128), i8v (-1)]) == some [[some 0]]
 #guard readInts (Sem.Ops.denote ctx (scalarModule "arith.floordivsi") "f" [i8v (-7), i8v 2]) == some [[some (-4)]]
