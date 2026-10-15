@@ -40,6 +40,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.liveness` | HW-agnostic *liveness / progress* oracle — an L2.5 tier between functional (L2) and RTL (L3). |
 | `merlin.llvmlower` | Whole-model lowering: linalg-on-tensors MLIR -> LLVM IR -> RVV objects. |
 | `merlin.mining` | RVV target-package machinery: fork an iteration of the RVV codegen (a transform-dialect SCHEDULE + cflags, captured as data), build it in isolation, measure it on coupled targets (spike correctness +… |
+| `merlin.model_check` | Build, run and judge complete quantized models for a device submission. |
 | `merlin.perf` | The performance layer: what a target's legal choices cost. |
 | `merlin.perf.deps` | Dependence primitives: what an instruction defines and uses, what is live, and what that costs. |
 | `merlin.perf.layer_bench` | Per-layer RTL evidence: build one small layer program, run it on a cycle-accurate engine, keep the receipt. |
