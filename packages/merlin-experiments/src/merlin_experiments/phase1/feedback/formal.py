@@ -739,6 +739,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                             execution_gate,
                             target=context.target,
                             static_out=run_dir / "grading_private_full_models",
+                            max_workers=int(os.environ.get("MERLIN_PRIVATE_EXECUTION_WORKERS", "1")),
                         )
                     except Exception as exc:  # noqa: BLE001 -- an execution refusal is an incomplete gate
                         private_execution = PFX.not_run(execution_gate, f"{type(exc).__name__}: {exc}")

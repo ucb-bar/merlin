@@ -54,6 +54,7 @@ import os
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -843,6 +844,7 @@ def run(
     static_out: str | Path,
     selected_model: str | None = None,
     execute: Callable[..., Mapping[str, Any]] | None = None,
+    max_workers: int = 1,
 ) -> dict[str, Any]:
     """Execute every declared program of the static gate's passing models; one record per program.
 
@@ -851,6 +853,8 @@ def run(
     declaration); a deferred program is recorded as deferred with its declared reason."""
     execute = execute or run_engine
     static_out = Path(static_out)
+    if type(max_workers) is not int or not 1 <= max_workers <= 15:
+        raise ExecutionGateError("private program workers must be an integer from 1 to 15")
     if selected_model is not None:
         from . import private_full_models as models
         from . import private_source_freeze
@@ -877,11 +881,11 @@ def run(
         ):
             raise ExecutionGateError("canonical execution partition differs from the complete original static roster")
     built = _static_programs(static)
-    rows: list[dict[str, Any]] = []
     started = time.monotonic()
-    for model, program, entry in roster_of(gate):
-        if selected_model is not None and model != selected_model:
-            continue
+    roster = [item for item in roster_of(gate) if selected_model is None or item[0] == selected_model]
+
+    def evaluate(item: tuple[str, str, Mapping[str, Any]]) -> dict[str, Any]:
+        model, program, entry = item
         row: dict[str, Any] = {"model": model, "program": program}
         if "deferred" in entry:
             row.update(status=DEFERRED, reason=entry["deferred"], estimate=entry.get("estimate"))
@@ -902,7 +906,16 @@ def run(
                 )
             except Exception as exc:  # noqa: BLE001 -- one program's refusal must not hide the others
                 row.update(status=FAIL, engine=entry["engine"], reason=f"{type(exc).__name__}: {exc}")
-        rows.append(row)
+        return row
+
+    workers = min(max_workers, len(roster)) if selected_model is None else 1
+    if workers > 1:
+        # Independent program receipts and ELF paths allow concurrent execution. map() retains
+        # the declared roster order even when simulations complete in a different order.
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="private-program") as pool:
+            rows = list(pool.map(evaluate, roster))
+    else:
+        rows = [evaluate(item) for item in roster]
     executed = [row for row in rows if row["status"] != DEFERRED]
     deferred = [f"{row['model']}:{row['program']}" for row in rows if row["status"] == DEFERRED]
     passed = bool(executed) and all(row["status"] == PASS for row in executed)
@@ -921,6 +934,7 @@ def run(
         ),
         "per_group_exactness": PER_GROUP_SCOPE,
         "wall_s": round(time.monotonic() - started, 1),
+        "parallel_workers": workers,
     }
     if selected_model is not None:
         result.update(

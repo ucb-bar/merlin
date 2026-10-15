@@ -804,3 +804,37 @@ def test_expired_private_preparation_never_runs_or_passes(tmp_path, selected_eng
     assert "wall budget expired" in result["programs"][0]["reason"]
     assert "checks" not in result["programs"][0]
     assert not PFX.complete(result, gate, static=fixture.static, candidate_sha256="c" * 64)
+
+
+def test_parallel_private_programs_overlap_and_keep_declared_order(tmp_path, monkeypatch):
+    from threading import Barrier
+
+    gate = {
+        "required": True,
+        "programs": {
+            "first": {"one": {"engine": "spike"}},
+            "second": {"two": {"engine": "spike"}},
+        },
+    }
+    static = {
+        "candidate_tree_sha256": "c" * 64,
+        "models": [
+            {"model": name, "status": PFX.PASS, "checks": {"build": {"programs": [{"program": program}]}}}
+            for name, program in (("first", "one"), ("second", "two"))
+        ],
+    }
+    rendezvous = Barrier(2)
+
+    def execute(model, program, *_args, **_kwargs):
+        rendezvous.wait(timeout=5)
+        if model == "first":
+            raise RuntimeError("independent program failed")
+        return {"status": PFX.PASS, "engine": "spike"}
+
+    monkeypatch.setattr(PFX, "_execute_program", execute)
+    result = PFX.run(static, gate, target="fixture", static_out=tmp_path, max_workers=2)
+    assert [(row["model"], row["status"]) for row in result["programs"]] == [
+        ("first", PFX.FAIL), ("second", PFX.PASS),
+    ]
+    assert result["parallel_workers"] == 2 and result["passed"] is False
+    assert "independent program failed" in result["programs"][0]["reason"]
