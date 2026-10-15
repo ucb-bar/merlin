@@ -175,3 +175,15 @@ def test_an_original_read_only_by_a_dead_value_chain_is_dropped() -> None:
     ret.operands[0] = bound
     binder.finish()
     assert binder.dead_args == (1,), "the generic still reads %w, but nothing reads the generic"
+
+
+def test_a_dropped_tensor_stays_inside_the_final_blob() -> None:
+    header = {
+        "a": {"dtype": "I8", "shape": [1], "data_offsets": [0, 1]},
+        "b": {"dtype": "I8", "shape": [8], "data_offsets": [1, 9]},
+    }
+    manifest = {"0": {"kind": "param", "weight": "a"}, "1": {"kind": "param", "weight": "b"}}
+    kept, _ = BW.compact(header, bytes(9), manifest, frozenset({1}))
+    assert kept["b"]["data_offsets"] != [0, 0], "larger than the whole remaining blob: kept"
+    dropped, blob = BW.compact(header, bytes(9), manifest, frozenset({1}), appended=8)
+    assert dropped["b"]["data_offsets"] == [0, 0] and len(blob) == 1, "its device copy is appended after"

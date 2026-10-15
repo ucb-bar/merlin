@@ -209,7 +209,7 @@ def generate(
     if blob_plan.args and entry_projection is not None:
         raise ValueError("blob weights and an entry weight projection cannot share one argument table")
     if blob_plan.dead_args:
-        hdr, blob = _blob_weights.compact(hdr, blob, man, blob_plan.dead_args)
+        hdr, blob = _blob_weights.compact(hdr, blob, man, blob_plan.dead_args, appended=blob_plan.nbytes)
     inputs = np.load(inputs_npz)
     extra_path = extra_npz or (model_dir / "extra.npz")
     extra = np.load(extra_path) if Path(extra_path).is_file() else {}

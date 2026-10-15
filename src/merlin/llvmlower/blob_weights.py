@@ -182,6 +182,11 @@ class Plan:
     dead_args: frozenset[int] = frozenset()
     directory: Path | None = None
 
+    @property
+    def nbytes(self) -> int:
+        """Bytes the trailing arguments add to the blob."""
+        return sum(int(np.prod(a["shape"])) * np.dtype(_NUMPY[a["dtype"]]).itemsize for a in self.args)
+
     def arrays(self):
         """``(arg, bytes)`` per trailing argument, in argument order."""
         if not self.args:
@@ -206,13 +211,16 @@ def read(directory: str | Path) -> Plan:
     return Plan(tuple(doc.get("args") or ()), frozenset(int(i) for i in doc.get("dead_args") or ()), directory)
 
 
-def compact(header: dict, payload: bytes, manifest: dict, dead_args: frozenset[int]) -> tuple[dict, bytes]:
+def compact(
+    header: dict, payload: bytes, manifest: dict, dead_args: frozenset[int], *, appended: int = 0
+) -> tuple[dict, bytes]:
     """``(header, payload)`` without the tensors only ``dead_args`` read.
 
     A tensor stays when any live argument names it (a tied weight read by host code keeps its bytes).
     Kept tensors are re-placed ``ALIGNMENT``-aligned in their original order; a dropped tensor's offsets
-    become ``(0, 0)``, so its never-read descriptor points at the blob's base. A tensor larger than
-    what remains is kept, so even a dead read that survived into the object stays inside the image."""
+    become ``(0, 0)``, so its never-read descriptor points at the blob's base. A tensor larger than the
+    final blob (what remains plus the ``appended`` bytes generation adds after it) is kept, so even a dead
+    read that survived into the object stays inside the image."""
     readers: dict[str, set[bool]] = {}
     for key, meta in manifest.items():
         if key.isdigit() and isinstance(meta, dict) and meta.get("weight") in header:
@@ -226,7 +234,7 @@ def compact(header: dict, payload: bytes, manifest: dict, dead_args: frozenset[i
     remaining = sum(size(n) for n, m in header.items() if isinstance(m, dict) and "data_offsets" in m) - sum(
         size(n) for n in dropped
     )
-    dropped = {name for name in dropped if size(name) <= remaining}
+    dropped = {name for name in dropped if size(name) <= remaining + appended}
     out, blob = {}, bytearray()
     for name, meta in sorted(
         ((n, m) for n, m in header.items() if isinstance(m, dict) and "data_offsets" in m),
