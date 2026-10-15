@@ -54,6 +54,7 @@ class ModelsFile:
     path: Path
     target: str
     models: dict[str, Model]
+    full: dict[str, Any] = field(default_factory=dict)  # how check --mode full builds a program's image
 
     def model(self, name: str) -> Model:
         if name not in self.models:
@@ -141,4 +142,4 @@ def load(path: str | os.PathLike | None = None) -> ModelsFile:
         )
     if not models:
         raise ModelsFileError(f"{path}: declares no models")
-    return ModelsFile(path=path, target=str(target), models=models)
+    return ModelsFile(path=path, target=str(target), models=models, full=dict(data.get("full") or {}))

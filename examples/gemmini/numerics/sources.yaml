@@ -61,7 +61,7 @@ models:
     vlm: {repo_id: HuggingFaceTB/SmolVLM2-500M-Video-Instruct, revision: 7b375e1b73b11138ff12fe22c8f2822d8fe03467}
     preprocessing: LeRobot 0.6 SmolVLA processors (image resize-with-pad 512, state normalization, task tokens)
     stored_form: frame.npz (raw top-camera uint8 frame, raw state) + observation.json (task, seed); noise from torch.randn with the input's seed
-    judged_joints: [0, 14]                                # ALOHA's 14 joints; dims 14..31 are padding
+    judged_joints: [0, 6]                                 # smolvla_base's action feature shape is [6]
     visible: {episodes: [0, 8], frame: 100, noise_seed_base: 1000}
     sealed: {episodes: [25, 33], frame: 100, noise_seed_base: 2000}
     calibration: {episodes: [40, 50], frames: [0, 100, 200, 300, 400], noise_seed_base: 3000}

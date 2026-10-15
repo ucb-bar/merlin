@@ -41,6 +41,12 @@ def _common(p: argparse.ArgumentParser, *, submission: bool = True) -> None:
     p.add_argument("--out", type=Path, required=True, help="report JSON")
 
 
+def _no_cache(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--no-cache", action="store_true", help="build every kernel and run every image (no kernel or replay cache)"
+    )
+
+
 def _engine(p: argparse.ArgumentParser) -> None:
     p.add_argument("--host-package", type=Path, default=None, help="host package (default: the bundle's)")
     p.add_argument(
@@ -49,6 +55,21 @@ def _engine(p: argparse.ArgumentParser) -> None:
     p.add_argument("--rtl-facts", type=Path, default=None, help="RTL facts matching --contract (default: the bundle's)")
     p.add_argument("--dram-base", type=lambda v: int(v, 0), default=0x80000000)
     p.add_argument("--dram-bytes", type=lambda v: int(v, 0), default=16 << 30)
+    p.add_argument(
+        "--board-catalog",
+        type=Path,
+        default=None,
+        help="gsim: board catalog naming the RTL config's board (default: $MERLIN_BOARD_CATALOG, else the target's)",
+    )
+    p.add_argument(
+        "--max-cycles", type=int, default=None, help="gsim: hang bound per image (default: from --call-max-cycles)"
+    )
+    p.add_argument(
+        "--call-max-cycles",
+        type=int,
+        default=None,
+        help="gsim: cycle bound per kernel call; sizes the image bound when --max-cycles is absent",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -62,25 +83,41 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--split", choices=SPLITS, required=True)
     check.add_argument("--mode", choices=MODES, default="fast")
     check.add_argument("--decode-steps", type=int, default=None)
-    check.add_argument("--jobs", type=int, default=1)
+    check.add_argument("--input", dest="inputs", action="append", default=None, help="full: judge only these inputs")
+    check.add_argument("--jobs", type=int, default=None, help="full: inputs run at once (default: per CPU)")
     check.add_argument("--timeout-s", type=float, default=None)
     check.add_argument("--differential", action="store_true")
     check.add_argument("--agent-view", action="store_true")
     check.add_argument("--engine", choices=ENGINES, default="spike")
     _engine(check)
+    _no_cache(check)
 
     replay = sub.add_parser("replay-kernel", help="replay device kernels on frozen boundary inputs")
     _common(replay)
     replay.add_argument("--model", required=True)
-    replay.add_argument("--program", required=True)
+    replay.add_argument("--program", default=None, help="one program (default: every program of the model)")
     group = replay.add_mutually_exclusive_group(required=True)
-    group.add_argument("--group", dest="group", default=None, help="source_region_id of the group")
+    group.add_argument("--group", dest="group", default=None, help="source_region_id or symbol of the group")
     group.add_argument("--all", dest="all_groups", action="store_true")
+    replay.add_argument(
+        "--unique",
+        action="store_true",
+        help="of the selected calls, only one per kernel symbol (its recorded real shape); always so on gsim",
+    )
     replay.add_argument("--split", choices=SPLITS, required=True)
     replay.add_argument("--engine", choices=ENGINES, default="spike")
+    replay.add_argument("--jobs", type=int, default=1, help="gsim: images run at once")
     replay.add_argument("--timeout-s", type=float, default=None)
     replay.add_argument("--agent-view", action="store_true")
     _engine(replay)
+    _no_cache(replay)
+
+    export = sub.add_parser("kernels-export", help="interface modules, call ABI and entries of a model's kernels")
+    _common(export, submission=False)
+    export.add_argument("--model", required=True)
+    export.add_argument("--program", default=None)
+    export.add_argument("--split", choices=("visible",), default="visible", help="only the visible split exports")
+    export.add_argument("--out-dir", type=Path, required=True, help="directory to write <model>/ and index.md")
 
     census = sub.add_parser("census", help="build only; classify every contraction")
     _common(census)
@@ -89,6 +126,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     binding = sub.add_parser("binding", help="Spike / RTL / FireSim binding receipt")
     _common(binding, submission=False)
+    _engine(binding)
+    binding.add_argument("--board", default=None, help="board whose memory span Spike models (default: the spec's)")
+    binding.add_argument("--spec", type=Path, default=None, help="binding spec (default: binding.yaml by --models)")
+    binding.add_argument("--image", type=Path, action="append", default=[], help="replay image to check (repeatable)")
 
     verify = sub.add_parser("bundle-verify", help="check every file of a numerics bundle")
     _common(verify, submission=False)
@@ -102,6 +143,12 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--host-package", type=Path, required=True, help="host package replays are built with")
     build.add_argument("--contract", type=Path, required=True, help="target contract binding the simulators")
     build.add_argument("--rtl-facts", type=Path, required=True, help="RTL facts matching --contract")
+
+    variants = sub.add_parser("variants-build", help="seeded shape variants of every unique kernel (sealed cases)")
+    _common(variants, submission=False)
+    variants.add_argument("--model", required=True)
+    variants.add_argument("--program", default=None)
+    variants.add_argument("--seed", type=int, required=True, help="private rule seed (never shown to an agent)")
 
     prep = sub.add_parser("inputs-prepare", help="select and preprocess a model's evaluation/calibration inputs")
     _common(prep, submission=False)

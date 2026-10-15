@@ -39,6 +39,7 @@ from typing import Any
 
 from merlin.common import mlir_query as mq
 from merlin.kernels import shapes as KS
+from merlin.llvmlower.quant_scope import value_preserving_input
 from merlin.xdsl_dialects.lowering import contraction_coverage as CC
 
 from .scale_geometry import _axis_through as _axis_through
@@ -646,12 +647,11 @@ def _input_chain(value) -> tuple[list[Any], Any | None, str | None]:
         if owner is None or not hasattr(owner, "operands"):
             break
         stage = classify(owner)
-        if stage is None:
-            break
-        if stage.kind == DEQUANTIZE:
+        if stage is not None and stage.kind == DEQUANTIZE:
             _, dtype = mq.type_shape_dtype(owner.operands[0].type)
             return adapters, owner, dtype
-        if stage.kind not in (PAD, MOVEMENT, VIEW) or not owner.operands:
+        passes = stage is not None and stage.kind in (PAD, MOVEMENT, VIEW)  # or a copy / exact widening
+        if not (passes or value_preserving_input(owner) is not None) or not owner.operands:
             break
         adapters.append(owner)
         value = owner.operands[0]

@@ -332,14 +332,16 @@ def _erase_dead(ops) -> None:
         pending.extend(producer for producer in producers if producer is not None)
 
 
-def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack, *, weight_rows=None):
+def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack, *, weight_rows=None, bind_weight=None):
     """``(operands, constants, roles, "")`` -- what a logical-ABI group call passes besides its
     destination, in call order -- or ``(None, (), (), reason)``.
 
     The activation and the stored weight come from the module (the weight as the device program holds
     it: the prepack's laid-out copy when the program transposes or reorders the stored tensor); a fused
     bias is the prepack's folded accumulator-domain constant. An interface value with no host source is
-    named in the reason rather than dropped from the call."""
+    named in the reason rather than dropped from the call. ``bind_weight(array, element_type)``, when
+    given, supplies the laid-out weight as a value (:class:`merlin.llvmlower.blob_weights.WeightArgs`)
+    instead of an ``arith.constant``."""
     from xdsl.dialects.builtin import IntegerType
 
     if group.window_mean is not None:
@@ -396,9 +398,12 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
     # is read from the prepack's copy: the same bytes, computed once from the same weights file.
     computed_on_host = not isinstance(pair[1], BlockArgument)
     if laid_out is not None and (relaid or computed_on_host or list(laid_out.shape) != list(pair[1].type.get_shape())):
-        constant = _constant_tensor(laid_out, pair[1].type.get_element_type())
-        constants.append(constant)
-        operands.append(constant.results[0])
+        if bind_weight is not None:
+            operands.append(bind_weight(laid_out, pair[1].type.get_element_type()))
+        else:
+            constant = _constant_tensor(laid_out, pair[1].type.get_element_type())
+            constants.append(constant)
+            operands.append(constant.results[0])
     elif relaid:
         why = weight_row.get("refused") or why_no_prepack or "the prepack laid out no weight for this group"
         return None, (), (), f"interface value weight_0 has no host source in the program's layout: {why}"

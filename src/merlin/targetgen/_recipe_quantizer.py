@@ -34,6 +34,17 @@ from typing import Any
 RECIPE_SCHEMA = "quant_recipe_v1"
 DEFAULT_OBSERVER_EPSILON = 2**-12
 
+#: The recipe family of a contraction between two RUN-TIME activations (attention's ``Q @ K^T`` and
+#: ``P @ V``). Spelled as :data:`merlin.targetgen.quant_recipe.ACTIVATION_CONTRACTION`; repeated
+#: because the capture venv imports this file without merlin. Both operands take the recipe's
+#: ACTIVATION spec: neither is a stored weight, so the weight observer and range would describe an
+#: operand the model never supplied.
+ACTIVATION_CONTRACTION = "activation_contraction"
+#: At or below this reduction extent an activation x activation product is an outer product (a
+#: rotary frequency table is one), not a contraction worth an int8 operand. TorchAO declines a Linear
+#: on the same rule; mirrored from ``_activation_contractions.MIN_REDUCTION``.
+MIN_ACTIVATION_REDUCTION = 16
+
 #: Recipe dtype -> the torch dtype a spec is built with. A dtype absent here is refused, not mapped
 #: to a neighbour: the recipe states the hardware's element format and a near miss is a different
 #: datapath.
@@ -135,6 +146,13 @@ def _recipe_operators(torch: Any) -> dict[str, tuple[Any, ...]]:
             torch.ops.aten.mm.default,
             torch.ops.aten.bmm.default,
         ),
+        # The same contraction spellings, between two run-time activations: annotated only when the
+        # recipe lists this family, with the activation spec on BOTH operands.
+        ACTIVATION_CONTRACTION: (
+            torch.ops.aten.matmul.default,
+            torch.ops.aten.mm.default,
+            torch.ops.aten.bmm.default,
+        ),
         "operand_sum": (torch.ops.aten.add.Tensor, torch.ops.aten.add_.Tensor),
         "window_mean": (
             torch.ops.aten.adaptive_avg_pool2d.default,
@@ -143,6 +161,109 @@ def _recipe_operators(torch: Any) -> dict[str, tuple[Any, ...]]:
         ),
     }
     return operators
+
+
+#: ``aten.scaled_dot_product_attention`` argument names, in schema order.
+_SDPA_FIELDS = ("query", "key", "value", "attn_mask", "dropout_p", "is_causal", "scale", "enable_gqa")
+#: Metadata a spelled-out attention step inherits from the fused call it replaces: ownership (the
+#: quantizer's placement rule reads it) and source lineage (the capture trace reads it).
+_INHERITED_META = ("nn_module_stack", "source_fn_stack", "stack_trace", "from_node")
+
+
+def spell_attention(graph_module: Any) -> list[dict[str, Any]]:
+    """Rewrite each fused attention call as its math definition, two matmuls around a softmax, in place.
+
+    ``scaled_dot_product_attention`` hides both of its contractions from an operator annotation, so
+    a recipe that quantizes activation x activation contractions would see none. The rewrite is the
+    math reference the capture itself lowers the fused call to: half-precision operands are computed
+    in f32 and the result cast back; ``Q @ K^T`` times the scale; a floating mask is added and a
+    boolean mask fills the excluded scores with ``-inf``; a softmax over the key axis, where a row
+    with no admitted key is zero (SDPA's rule; a plain softmax would give NaN); and ``P @ V``. A call
+    outside that definition is LEFT FUSED and reported, never approximated: dropout, a causal flag
+    and a grouped-query broadcast. Returns one row per call: ``{"node", "status", "why"}`` with
+    status ``spelled`` or ``kept``.
+    """
+    import math
+
+    import torch
+    from torch._guards import detect_fake_mode
+
+    aten = torch.ops.aten
+    half = (torch.float16, torch.bfloat16)
+    graph = graph_module.graph
+    rows: list[dict[str, Any]] = []
+    for node in list(graph.nodes):
+        if node.op != "call_function" or node.target != aten.scaled_dot_product_attention.default:
+            continue
+        bound = dict(zip(_SDPA_FIELDS, node.args))
+        bound.update(node.kwargs)
+        query, key, value, mask = bound["query"], bound["key"], bound["value"], bound.get("attn_mask")
+        vals = [x.meta.get("val") if isinstance(x, torch.fx.Node) else None for x in (query, key, value, mask)]
+        why = None
+        if float(bound.get("dropout_p") or 0.0) != 0.0:
+            why = "dropout"
+        elif bound.get("is_causal"):
+            why = "causal flag"
+        elif bound.get("enable_gqa"):
+            why = "grouped-query broadcast"
+        elif not all(isinstance(v, torch.Tensor) and v.is_floating_point() and v.dim() >= 2 for v in vals[:3]):
+            why = "operands are not observed floating tensors of rank >= 2"
+        elif mask is not None and not isinstance(vals[3], torch.Tensor):
+            why = "mask is not an observed tensor"
+        if why is not None:
+            rows.append({"node": node.name, "status": "kept", "why": why})
+            continue
+        scale = bound.get("scale")
+        scale = float(scale) if scale is not None else 1.0 / math.sqrt(int(vals[0].shape[-1]))
+        mode = detect_fake_mode([v for v in vals if v is not None])
+        custom = dict(node.meta.get("custom") or {})
+        lineage = sorted(
+            {*(custom.get("m2m_lineage") or ()), *([custom["m2m_node_id"]] if "m2m_node_id" in custom else [])}
+        )
+
+        def emit(target, *args, _node=node, _mode=mode, _lineage=lineage):
+            created = graph.call_function(target, args)
+            created.meta.update({k: _node.meta[k] for k in _INHERITED_META if k in _node.meta})
+            if _lineage:
+                created.meta["custom"] = {
+                    "m2m_lineage": list(_lineage),
+                    "m2m_transform": "attention_spelled_as_matmuls",
+                }
+            observed = [a.meta["val"] if isinstance(a, torch.fx.Node) else a for a in args]
+            with _mode:
+                created.meta["val"] = target(*observed)
+            return created
+
+        out_dtype = vals[0].dtype
+        boolean = mask is not None and vals[3].dtype == torch.bool
+        with graph.inserting_before(node):
+            if out_dtype in half:
+                query, key, value = (emit(aten.to.dtype, x, torch.float32) for x in (query, key, value))
+                if mask is not None and not boolean and vals[3].dtype != torch.float32:
+                    mask = emit(aten.to.dtype, mask, torch.float32)
+            scores = emit(aten.matmul.default, query, emit(aten.transpose.int, key, -2, -1))
+            scores = emit(aten.mul.Tensor, scores, scale)
+            if boolean:
+                scores = emit(aten.masked_fill.Scalar, scores, emit(aten.logical_not.default, mask), float("-inf"))
+            elif mask is not None:
+                scores = emit(aten.add.Tensor, scores, mask)
+            probs = emit(aten._softmax.default, scores, -1, False)
+            if boolean:
+                empty = emit(aten.eq.Scalar, emit(aten.amax.default, scores, [-1], True), float("-inf"))
+                probs = emit(aten.where.ScalarSelf, empty, 0.0, probs)
+            result = emit(aten.matmul.default, probs, value)
+            if out_dtype in half:
+                result = emit(aten.to.dtype, result, out_dtype)
+        observed, expected = result.meta["val"], node.meta["val"]
+        if tuple(observed.shape) != tuple(expected.shape) or observed.dtype != expected.dtype:
+            raise RecipeError(f"spelled attention {node.name} changed its result type")
+        node.replace_all_uses_with(result)
+        graph.erase_node(node)
+        rows.append({"node": node.name, "status": "spelled", "why": ""})
+    if any(row["status"] == "spelled" for row in rows):
+        graph.lint()
+        graph_module.recompile()
+    return rows
 
 
 def _has_floating_recipe_work(exported: Any, recipe: Mapping[str, Any]) -> bool:
@@ -194,9 +315,10 @@ def build_quantizer(
     operators = _recipe_operators(torch)
     listed = tuple(recipe.get("families") or ())
     targets = {op for family in listed if family == "contraction" for op in operators.get(family, ())}
+    pairs = set(operators[ACTIVATION_CONTRACTION]) if ACTIVATION_CONTRACTION in listed else set()
     sums = set(operators["operand_sum"]) if "operand_sum" in listed else set()
     means = set(operators["window_mean"]) if "window_mean" in listed else set()
-    if not targets:
+    if not targets and not pairs:
         raise RecipeError(f"the recipe quantizes {recipe.get('families')}, none of which this quantizer can annotate")
     #: What a value may pass through on its way to a reader without ceasing to be the same integers:
     #: an activation a readout applies, and shape changes that touch no element.
@@ -277,8 +399,22 @@ def build_quantizer(
         tensor = value.meta.get("val") if isinstance(value, torch.fx.Node) and value.op == "get_attr" else None
         return list(tensor.shape) if isinstance(tensor, torch.Tensor) else None
 
+    def runtime_pair(node: Any) -> bool:
+        """Both operands are run-time floating tensors (rank >= 2), neither a stored parameter."""
+        operands = node.args[:2]
+        if len(operands) < 2 or not all(isinstance(a, torch.fx.Node) for a in operands):
+            return False
+        if any(stored_floating_weight(a) for a in operands):
+            return False
+        values = [a.meta.get("val") for a in operands]
+        return all(isinstance(v, torch.Tensor) and v.is_floating_point() and v.dim() >= 2 for v in values)
+
     def eligible(node: Any, family: str) -> bool:
-        if not software_allows(node, family):
+        # An activation contraction is a contraction to the SW admission screen; the family only
+        # decides which spec its second operand takes.
+        if not software_allows(node, "contraction" if family == ACTIVATION_CONTRACTION else family):
+            return False
+        if family == ACTIVATION_CONTRACTION and int(node.args[0].meta["val"].shape[-1]) <= MIN_ACTIVATION_REDUCTION:
             return False
         if family == "contraction":
             if len(node.args) < 2 or not stored_floating_weight(node.args[1]):
@@ -320,6 +456,8 @@ def build_quantizer(
         return direct.placement == QLP.DEVICE
 
     def family_of(node: Any) -> str | None:
+        if node.target in pairs and runtime_pair(node):
+            return ACTIVATION_CONTRACTION
         if node.target in targets:
             return "contraction"
         if node.target in sums:
@@ -380,6 +518,8 @@ def build_quantizer(
             self.activation = _spec(activation, is_weight=False, eps=eps)
             self.weight = _spec(weight, is_weight=True, eps=eps)
             self.annotated = 0
+            self.annotated_pairs = 0
+            self.pair_sites: list[dict[str, Any]] = []
             self.annotated_sums = 0
             self.annotated_means = 0
             self.left_in_float = 0
@@ -430,6 +570,22 @@ def build_quantizer(
                         )
                         self.annotated_means += 1
                     continue
+                if family == ACTIVATION_CONTRACTION:
+                    # Two run-time operands, each on the activation grid with its own calibrated
+                    # static scale; the result stays in floating point like any contraction's.
+                    operand, other = node.args[:2]
+                    node.meta["quantization_annotation"] = QuantizationAnnotation(
+                        input_qspec_map={operand: self.activation, other: self.activation}, _annotated=True
+                    )
+                    self.annotated_pairs += 1
+                    self.pair_sites.append(
+                        {
+                            "node": node.name,
+                            "owner": owner(node),
+                            "shapes": [list(a.meta["val"].shape) for a in (operand, other)],
+                        }
+                    )
+                    continue
                 if node.target not in targets or len(node.args) < 2:
                     continue
                 operand, kernel = node.args[:2]
@@ -456,10 +612,11 @@ def build_quantizer(
             # this read one, so a model carrying only the operand sums or window means a recipe also
             # covers was refused with a message saying its families were not covered -- which was
             # false, and pointed a reader at the model rather than at this table.
-            if self.annotated + self.annotated_sums + self.annotated_means == 0:
+            if self.annotated + self.annotated_pairs + self.annotated_sums + self.annotated_means == 0:
                 raise RecipeError(
                     f"the model has no operator the recipe's families cover "
-                    f"(families={list(listed)}; annotated contractions=0, sums=0, means=0)"
+                    f"(families={list(listed)}; annotated contractions=0, activation contractions=0, "
+                    f"sums=0, means=0)"
                 )
 
     return CapabilityQuantizer()
@@ -776,6 +933,9 @@ def apply_recipe(
                 source_padding = None
             if source.get("target") != "aten.conv2d.padding" or source_padding != row["padding"]:
                 raise RecipeError("Conv2d string-padding normalization lost original source ancestry")
+    # Only a recipe that quantizes activation x activation contractions needs a fused attention's
+    # two matmuls in the graph; every other recipe sees the graph exactly as exported.
+    attention = spell_attention(exported) if ACTIVATION_CONTRACTION in (recipe.get("families") or ()) else []
     if integral_inputs and not _has_floating_recipe_work(exported, recipe):
         return skip_already_integer()
     layer_plan = _plan_layers(recipe, model, source_layer_inventory=source_layer_inventory)
@@ -845,7 +1005,18 @@ def apply_recipe(
         "plan_sha256": layer_plan.get("plan_sha256"),
         "layers_on_host": [d for d in layer_plan.get("layers") or () if d.get("placement") == "host"],
         "operators_refused_by_placement": quantizer.refused_by_placement,
-        "annotated_contractions": quantizer.annotated,
+        # Every annotated contraction, whatever its operands: the capture's census compares this with
+        # the contractions the integer rewrite saw. The activation x activation share is broken out.
+        "annotated_contractions": quantizer.annotated + quantizer.annotated_pairs,
+        **(
+            {
+                "annotated_activation_contractions": quantizer.annotated_pairs,
+                "activation_contraction_sites": quantizer.pair_sites,
+                "attention_spelled": attention,
+            }
+            if ACTIVATION_CONTRACTION in (recipe.get("families") or ())
+            else {}
+        ),
         "annotated_sums": quantizer.annotated_sums,
         "annotated_means": quantizer.annotated_means,
         # Sums and means the recipe's families cover and the graph does not requantize: left alone.
