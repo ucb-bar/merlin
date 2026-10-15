@@ -192,15 +192,18 @@ def run_input(
     arrays: Mapping[str, np.ndarray],
     counts: Mapping[str, int],
     work: Path,
-    timeout_s: float,
+    deadline: float,
+    rows: list[dict[str, Any]],
     log=print,
-) -> tuple[CH.ChainRun, list[dict[str, Any]]]:
-    """The submission's chain on one input: every step relinked, run on Spike and read back."""
+) -> CH.ChainRun:
+    """The submission's chain on one input: every step relinked, run on Spike and read back (each
+    completed step appended to ``rows``). Every step must finish before ``deadline`` (monotonic)."""
     run = CH.ChainRun()
-    rows: list[dict[str, Any]] = []
     for program in model.programs:
         run.steps[program.name] = []
         for step in range(counts[program.name]):
+            if deadline - time.monotonic() < 1:
+                raise FullCheckError(f"the time budget ran out before {program.name}#{step}")
             row: dict[str, Any] = {"program": program.name, "step": step, "engine": "spike"}
             inputs = CH.bind(program, model, arrays, step, run)
             started = time.monotonic()
@@ -209,7 +212,7 @@ def run_input(
             row["elf_bytes"] = elf.stat().st_size
             step_dir = work / f"{program.name}.{step}"
             try:
-                console, wall = FB.run(target, elf, timeout_s=timeout_s)
+                console, wall = FB.run(target, elf, timeout_s=max(1.0, deadline - time.monotonic()))
             finally:
                 FB.discard(step_dir)  # the relinked image and its generated inputs; the bound inputs stay
             values, info = FB.read(console, stages[program.name], builds[program.name]["build_hash"])
@@ -228,7 +231,7 @@ def run_input(
             )
             rows.append(row)
             log(f"[full] {model.name} {program.name}#{step}: {row['cycles_functional']} cycles, {row['seconds']} s")
-    return run, rows
+    return run
 
 
 # ------------------------------------------------------------------------------------------ command

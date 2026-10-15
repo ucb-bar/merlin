@@ -301,13 +301,17 @@ def discard(directory: Path) -> None:
 
 def run(target: str, elf: Path, *, timeout_s: float) -> tuple[bytes, float]:
     """``(console bytes, wall seconds)`` of ``elf`` on the target's functional simulator, on the machine
-    the image declares (never the simulator's defaults)."""
+    the image declares (never the simulator's defaults), within ``timeout_s`` and the backend's own
+    ceiling for one run."""
     from merlin.runtime.backends.base import get_backend
 
     backend = get_backend(target)
     runner = getattr(backend, "run_declared_model_elf", None)
     if not callable(runner):
         raise FullBuildError(f"the {target} backend cannot run a linked model on its declared machine")
+    ceiling = getattr(backend, "execution_timeout_limit", None)
+    if callable(ceiling):
+        timeout_s = min(float(timeout_s), float(ceiling("spike")))
     started = time.monotonic()
     console = runner(Path(elf).resolve(), timeout=timeout_s, capture_bytes=True)
     return console, time.monotonic() - started
