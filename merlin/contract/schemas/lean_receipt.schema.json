@@ -6,7 +6,7 @@
   "type": "object",
   "required": ["schema", "boundary", "claim_type", "checker", "theorem", "exporter", "lean", "axioms", "verdict"],
   "allOf": [{
-    "if": {"properties": {"claim_type": {"const": "not_stuck"}}, "required": ["claim_type"]},
+    "if": {"properties": {"claim_type": {"enum": ["not_stuck", "defined"]}}, "required": ["claim_type"]},
     "then": {"required": ["subject", "function", "domain", "index_bits"]},
     "else": {"required": ["before", "after"]}
   }],
@@ -14,7 +14,7 @@
   "properties": {
     "schema": {"const": "merlin.lean.receipt.v1"},
     "boundary": {"type": "string"},
-    "claim_type": {"enum": ["equiv", "refine", "refine_conditional", "equiv_args", "policy", "erasure", "partition", "contract_seam", "safety", "not_stuck"], "description": "refine_conditional: refinement wherever the source is modelled (FuncRefinesC); strict only when composed with the capture's not_stuck receipt"},
+    "claim_type": {"enum": ["equiv", "refine", "refine_conditional", "equiv_args", "policy", "erasure", "partition", "contract_seam", "safety", "not_stuck", "defined"], "description": "refine_conditional: refinement wherever the source is modelled (FuncRefinesC). defined: successful, nonpoison results on the explicitly declared typed, nonpoison input domain."},
     "policy": {"type": "string"},
     "checker": {"type": "string", "description": "Lean name of the Checker value."},
     "theorem": {"type": "string", "description": "Lean name of the soundness theorem whose statement is pinned in SPEC_LOCK."},

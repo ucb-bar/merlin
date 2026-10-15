@@ -8,6 +8,7 @@ composes it into `FuncRefinesC mₙ m₀`, and `chain_refines` adds the support 
 (`supportCheck_sound`) to conclude strict refinement on typed inputs.
 -/
 import MerlinVerify.Check.Rulebook
+import MerlinVerify.Check.DefinedRules
 
 namespace MerlinVerify.Check
 
@@ -50,5 +51,21 @@ theorem chain_refines {ib : Nat} {m₀ : Module} {ms : List Module} {f : String}
     FuncRefines opSem (fun ctx => ctx.indexBits = ib) (fun args => HasTys ib args argTys)
       ((m₀ :: ms).getLast (List.cons_ne_nil _ _)) f m₀ f :=
   funcRefines_of_support (chain_refinesC m₀ ms hchain) hsupp
+
+/-- A checked, defined source gives both refinement and successful, nonpoison target execution.
+The domain explicitly requires typed, nonpoison inputs. No claim is made about earlier capture,
+numerical policies, downstream lowering, or external hardware implementations. -/
+theorem chain_defined_refines {ib : Nat} {m₀ : Module} {ms : List Module} {f : String}
+    {argTys resTys : List VTy}
+    (hchain : ChainRefinesC opSem (fun _ => True) (fun _ => True) f (m₀ :: ms))
+    (hdefined : Definedness.check (Definedness.book ib) m₀ f argTys resTys = true) :
+    let D := fun args => HasTys ib args argTys ∧ ResultsDefined args
+    let target := (m₀ :: ms).getLast (List.cons_ne_nil _ _)
+    FuncRefines opSem (fun ctx => ctx.indexBits = ib) D target f m₀ f ∧
+      FuncDefined opSem (fun ctx => ctx.indexBits = ib) D target f := by
+  have hs := Definedness.definedCheck_sound hdefined
+  have hc := chain_refinesC m₀ ms hchain
+  have hr := FuncRefinesC.strict (fun ctx _ args _ => hc ctx trivial args trivial) hs.notStuck
+  exact ⟨hr, hr.defined hs⟩
 
 end MerlinVerify.Check

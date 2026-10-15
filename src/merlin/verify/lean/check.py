@@ -29,6 +29,7 @@ import subprocess
 import tempfile
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,25 @@ CHECKER = "MerlinVerify.Check.moduleCheck"
 SUPPORT_THEOREM = "MerlinVerify.Check.supportCheck_sound"
 SUPPORT_CHECKER = "MerlinVerify.Check.supportCheck"
 LEDGER = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "T1", "T2", "T3", "T4", "T5", "T6"]
+
+DEFINED_THEOREM = "MerlinVerify.Check.Definedness.definedCheck_sound"
+DEFINED_CHECKER = "MerlinVerify.Check.Definedness.check"
+
+
+@dataclass(frozen=True)
+class _Obligation:
+    command: str
+    checker: str
+    theorem: str
+    claim_type: str
+    module: str
+    defined_inputs: bool = False
+
+
+_MODULE = _Obligation("check-module", CHECKER, THEOREM, "refine_conditional", "MerlinVerify.Check.Module")
+_SUPPORT = _Obligation("check-support", SUPPORT_CHECKER, SUPPORT_THEOREM, "not_stuck", "MerlinVerify.Check.Rulebook")
+_DEFINED = _Obligation("check-definedness", DEFINED_CHECKER, DEFINED_THEOREM, "defined",
+                       "MerlinVerify.Check.DefinedRules", defined_inputs=True)
 
 
 def _sha(path: Path) -> str:
@@ -192,7 +212,7 @@ def _check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
         return _write(stage, receipt)
     result = json.loads(proc.stdout)
     _check_exit(proc, result)
-    _result_identity(result, support=False)
+    _result_identity(result, _MODULE)
     receipt["verdict"] = result["verdict"]
     receipt["functions"] = result["functions"]
     receipt["assumptions"] += [f"ABI change handled by trusted lowering (T4): {c}" for c in result["abi_changes"]]
@@ -207,39 +227,48 @@ def _check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
 def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
                   index_bits: int = 64) -> dict[str, Any]:
     """Check source support; an unavailable check records unmeasured rather than an old verdict."""
+    return _function_attempt(work, index_bits, lambda: _check_support(
+        program, function, work, m2m_python=m2m_python, index_bits=index_bits))
+
+
+def check_definedness(program: Path, function: str, work: Path, *, m2m_python: Path,
+                      index_bits: int = 64) -> dict[str, Any]:
+    """Prove successful nonpoison results on typed, nonpoison inputs, or explicitly abstain."""
+    return _function_attempt(work, index_bits, lambda: _check_function(
+        _DEFINED, program, function, work, m2m_python=m2m_python, index_bits=index_bits))
+
+
+def _function_attempt(work: Path, index_bits: int, run: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     if type(index_bits) is not int or index_bits <= 0:
         _write(work, {"schema": "merlin.lean.attempt.v1", "verdict": "unmeasured",
                       "reason": "index_bits must be a positive integer"})
         raise ValueError("index_bits must be a positive integer")
-    return _attempt(work, lambda: _check_support(program, function, work, m2m_python=m2m_python,
-                                               index_bits=index_bits))
+    return _attempt(work, run)
 
 
 def _check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
                    index_bits: int) -> dict[str, Any]:
-    """Check that ``function`` of ``program`` is inside the proved fragment and write
-    ``work/receipt.json``; returns the receipt.
+    return _check_function(_SUPPORT, program, function, work, m2m_python=m2m_python, index_bits=index_bits)
 
-    ``verified`` means the function is never ``stuck`` on inputs of its declared types in any
-    context with ``index_bits``-bit ``index`` (``supportCheck_sound``); an op outside the proved
-    fragment makes it ``abstracted``, with the first refused op as the reason."""
-    if type(index_bits) is not int or index_bits <= 0:
-        raise ValueError("index_bits must be a positive integer")
+
+def _check_function(obligation: _Obligation, program: Path, function: str, work: Path, *,
+                    m2m_python: Path, index_bits: int) -> dict[str, Any]:
+    """Check one function obligation on the exact export validated by the round trip."""
     workdir = _work(work)
     snapshot = workdir / "program.mlir"
     receipt: dict[str, Any] = {
         "schema": "merlin.lean.receipt.v1",
-        "boundary": f"support:{program.name}",
-        "claim_type": "not_stuck",
-        "checker": SUPPORT_CHECKER,
-        "theorem": SUPPORT_THEOREM,
+        "boundary": f"{obligation.command.removeprefix('check-')}:{program.name}",
+        "claim_type": obligation.claim_type,
+        "checker": obligation.checker,
+        "theorem": obligation.theorem,
         "subject": _snapshot(program, snapshot),
         "function": function,
         "index_bits": index_bits,
-        "domain": _domain(index_bits),
+        "domain": _domain(index_bits, defined_inputs=obligation.defined_inputs),
         "exporter": _exporter_block(m2m_python),
         "lean": _lean_block(),
-        "axioms": theorem_axioms(SUPPORT_THEOREM, "MerlinVerify.Check.Rulebook"),
+        "axioms": theorem_axioms(obligation.theorem, obligation.module),
         "verdict": "unmeasured",
         "assumptions": list(LEDGER),
     }
@@ -249,16 +278,16 @@ def _check_support(program: Path, function: str, work: Path, *, m2m_python: Path
         receipt.update(verdict="abstracted", reason=reason)
         return _write(work, receipt)
     receipt["exports"] = {"subject": _file_ref(exported)}
-    proc = subprocess.run([str(lean_exe()), "check-support", str(exported), function, str(index_bits)],
+    proc = subprocess.run([str(lean_exe()), obligation.command, str(exported), function, str(index_bits)],
                           capture_output=True, text=True, check=False)
     if proc.returncode not in (0, 1):
         receipt.update(verdict="unmeasured", reason=f"checker error: {proc.stderr.strip()[-300:]}")
         return _write(work, receipt)
     result = json.loads(proc.stdout)
     _check_exit(proc, result)
-    _result_identity(result, support=True)
-    if result.get("index_bits") != index_bits:
-        receipt.update(verdict="unmeasured", reason="checker used a different index width")
+    _result_identity(result, obligation)
+    if result.get("index_bits") != index_bits or result.get("function") != function:
+        receipt.update(verdict="unmeasured", reason="checker used a different function or index width")
         return _write(work, receipt)
     if result["verdict"] == "verified":
         receipt["verdict"] = "verified"
@@ -303,21 +332,22 @@ def _finish(destination: Path, receipt: dict[str, Any]) -> dict[str, Any]:
 CHAIN_THEOREM = "MerlinVerify.Check.chain_refines"
 
 
-def _result_identity(result: dict[str, Any], *, support: bool) -> None:
-    expected = ("support", SUPPORT_THEOREM, "not_stuck") if support else ("module", THEOREM, "refine_conditional")
+def _result_identity(result: dict[str, Any], obligation: _Obligation) -> None:
+    expected = (obligation.command.removeprefix("check-"), obligation.theorem, obligation.claim_type)
     actual = tuple(result.get(k) for k in ("checker", "theorem", "claim_type"))
     if actual != expected:
         raise ValueError("checker returned a different proof obligation")
 
 
-def _validate_receipt(receipt: dict[str, Any], *, support: bool, function: str,
+def _validate_receipt(receipt: dict[str, Any], *, obligation: _Obligation, function: str,
                       m2m_python: Path, work: Path) -> list[str]:
     """Re-establish proof premises from the exact recorded exports, never from verdict strings."""
     import jsonschema
 
     schema = repo_root() / "merlin/contract/schemas/lean_receipt.schema.json"
     jsonschema.validate(receipt, json.loads(schema.read_text()))
-    expected = (SUPPORT_CHECKER, SUPPORT_THEOREM, "not_stuck") if support else (CHECKER, THEOREM, "refine_conditional")
+    single = obligation is not _MODULE
+    expected = (obligation.checker, obligation.theorem, obligation.claim_type)
     if tuple(receipt[k] for k in ("checker", "theorem", "claim_type")) != expected:
         return ["receipt does not establish the required proof obligation"]
     if receipt["verdict"] != "verified":
@@ -327,15 +357,16 @@ def _validate_receipt(receipt: dict[str, Any], *, support: bool, function: str,
         reasons.append("Lean provenance differs from the current checker")
     if receipt["exporter"] != {**_exporter_block(m2m_python), "round_trip": "identical"}:
         reasons.append("exporter identity or successful round trip does not match")
-    module = "MerlinVerify.Check.Rulebook" if support else "MerlinVerify.Check.Module"
-    axioms = theorem_axioms(expected[1], module)
+    axioms = theorem_axioms(obligation.theorem, obligation.module)
     if receipt["axioms"] != axioms or not set(axioms) <= {"propext", "Classical.choice", "Quot.sound"}:
         reasons.append("receipt axioms do not match the audited theorem")
-    keys = ("subject",) if support else ("before", "after")
+    keys = ("subject",) if single else ("before", "after")
     if set(receipt.get("exports", {})) != set(keys):
         reasons.append("receipt does not bind all required exports")
-    if support and (receipt["function"] != function or receipt["domain"] != _domain(receipt["index_bits"])):
-        reasons.append("support receipt has another function or input domain")
+    if single:
+        domain = _domain(receipt["index_bits"], defined_inputs=obligation.defined_inputs)
+        if receipt["function"] != function or receipt["domain"] != domain:
+            reasons.append("function receipt has another function or input domain")
     if reasons:
         return reasons
     work.mkdir()
@@ -352,16 +383,16 @@ def _validate_receipt(receipt: dict[str, Any], *, support: bool, function: str,
         if trip.status != "identical":
             return [f"receipt replay round trip: {trip.status}: {trip.detail}"]
         exports.append(exported)
-    args = (["check-support", str(exports[0]), function, str(receipt["index_bits"])] if support else
+    args = ([obligation.command, str(exports[0]), function, str(receipt["index_bits"])] if single else
             ["check-module", *(str(p) for p in exports)])
     proc = subprocess.run([str(lean_exe()), *args], capture_output=True, text=True, check=False)
     result = json.loads(proc.stdout)
     _check_exit(proc, result)
-    _result_identity(result, support=support)
+    _result_identity(result, obligation)
     if result["verdict"] != "verified":
         return ["checker rejected receipt replay"]
     assumptions = list(LEDGER)
-    if support:
+    if single:
         if result.get("index_bits") != receipt["index_bits"] or result.get("function") != function:
             return ["checker replay has a different input domain"]
     else:
@@ -374,8 +405,9 @@ def _validate_receipt(receipt: dict[str, Any], *, support: bool, function: str,
     return _stale(receipt, "replayed receipt")
 
 
-def _domain(index_bits: int) -> str:
-    return f"inputs of the declared argument types; contexts with {index_bits}-bit index"
+def _domain(index_bits: int, *, defined_inputs: bool = False) -> str:
+    prefix = "nonpoison " if defined_inputs else ""
+    return f"{prefix}inputs of the declared argument types; contexts with {index_bits}-bit index"
 
 
 def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
@@ -414,7 +446,7 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     for index, stage in enumerate(stages):
         path = stage / "receipt.json"
         receipt = json.loads(path.read_text())
-        reasons += _validate_receipt(receipt, support=False, function=function, m2m_python=m2m_python,
+        reasons += _validate_receipt(receipt, obligation=_MODULE, function=function, m2m_python=m2m_python,
                                      work=work / f"stage_{index}")
         receipts.append(receipt)
         links.append({"boundary": receipt["boundary"], "receipt_sha256": _sha(path),
@@ -424,7 +456,7 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
             reasons.append(f"{receipt['boundary']}: {receipt['verdict']}: {receipt.get('reason', '')}")
         assumptions += [a for a in receipt.get("assumptions", []) if a not in assumptions]
     sup = json.loads(support.read_text())
-    reasons += _validate_receipt(sup, support=True, function=function, m2m_python=m2m_python,
+    reasons += _validate_receipt(sup, obligation=_SUPPORT, function=function, m2m_python=m2m_python,
                                  work=work / "support")
     if sup["verdict"] != "verified":
         reasons.append(f"support: {sup['verdict']}: {sup.get('reason', '')}")
