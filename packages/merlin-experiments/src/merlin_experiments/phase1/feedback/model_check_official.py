@@ -145,10 +145,11 @@ def run_gate(submission: Path, run_dir: Path, required_programs: dict[str, tuple
 
     with ThreadPoolExecutor(max_workers=summary["rtl_workers"]) as executor:
         summary["rtl"] = list(executor.map(replay, enumerate(selected.values())))
-    summary["rtl_complete"] = len(summary["rtl"]) == len(selected) and all(
+    models_complete = bool(required_programs) and all(
+        row["status"] == "pass" for row in summary["models"].values())
+    summary["rtl_complete"] = models_complete and len(summary["rtl"]) == len(selected) and all(
         row["status"] == "pass" for row in summary["rtl"])
-    summary["passed"] = bool(required_programs) and all(
-        row["status"] == "pass" for row in summary["models"].values()) and summary["rtl_complete"]
+    summary["passed"] = models_complete and summary["rtl_complete"]
     if hash_tree(submission)["sha256"] != source_sha256:
         summary["passed"] = False
         summary["source_changed_during_grade"] = True

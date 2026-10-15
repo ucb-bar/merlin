@@ -52,7 +52,7 @@ def test_official_gate_refuses_missing_kernel_evidence(tmp_path, monkeypatch):
     summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {"resnet50": ("model",)})
     assert summary["passed"] is False
     assert summary["models"]["resnet50"]["status"] == "unavailable"
-    assert summary["rtl_complete"] is True and summary["unique_kernel_count"] == 0
+    assert summary["rtl_complete"] is False and summary["unique_kernel_count"] == 0
 
 
 def test_official_gate_refuses_pass_without_full_chain_metrics_and_spike_runs(tmp_path, monkeypatch):
