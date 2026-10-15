@@ -4,6 +4,7 @@ each checked, plus the capture's support, compose into a verified chain; a broke
 from __future__ import annotations
 
 import json
+from functools import partial
 
 from merlin.common.paths import repo_root
 from merlin.llvmlower.passes_xdsl import preprocess_text
@@ -18,6 +19,7 @@ def test_chain_composes_real_preprocessing(tmp_path, monkeypatch, lean_tools):
 
     from merlin.verify.lean.check import check_stage, check_support, compose_chain
 
+    compose_chain = partial(compose_chain, m2m_python=lean_tools.m2m_python)
     monkeypatch.setenv("MERLIN_LEAN_STAGES", str(tmp_path / "stages"))
     preprocess_text(FIXTURE.read_text())
     stages = lean_stages.completed(tmp_path / "stages")

@@ -22,7 +22,7 @@
   "schemas/lean_cert.schema.json": "dcc8f540643d15ccb4f8d084b3f0fe5f7d659080287dfd2d3237abb1ed8de52f",
   "schemas/lean_chain.schema.json": "1970a00d2e86068351ff60684c25ae1de8ca382eaa7092f3eb6f74c263657977",
   "schemas/lean_ir.schema.json": "1c4c73ed6f824b2d19dfaf4b3edb381ec156c8612d03f6877267478bc84a9644",
-  "schemas/lean_receipt.schema.json": "bbf1af1605ac6d3ae495eddc1253314b3dbc8116dfb99101b15f10c06acc40a0",
+  "schemas/lean_receipt.schema.json": "ae93c5f461823668acdab788fab9794c87926d6a132b77e4016b3087bcc04ee1",
   "statement:MerlinVerify.Check.c1Check_sound": "62ae1580fe183e4c72ea3ce7ec32eec663fda2693cfc4ec95002dd9e546274ab",
   "statement:MerlinVerify.Check.chain_refines": "1e02dc52b52fc1c08c6147cf5c2d3f32ccacd10c94cdd7f0a93b167b566ef763",
   "statement:MerlinVerify.Check.chain_refinesC": "06c9bb3fb48d98f2cdcfdf9ef7319c2e1f2f9deee383dacb19954c38c16a0322",

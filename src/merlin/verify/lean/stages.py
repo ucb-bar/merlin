@@ -81,7 +81,8 @@ def record_handoff(path: Path) -> None:
         root = _dir()
         root.mkdir(parents=True, exist_ok=True)
         (root / "handoff.json").write_text(json.dumps(
-            {"schema": "merlin.lean.handoff.v1", "path": str(path), "sha256": hashlib.sha256(data).hexdigest(),
+            {"schema": "merlin.lean.handoff.v1", "path": str(path.resolve()),
+             "sha256": hashlib.sha256(data).hexdigest(),
              "bytes": len(data)}, indent=2, sort_keys=True))
 
 

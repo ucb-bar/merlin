@@ -23,6 +23,7 @@
     "subject": {"$ref": "#/$defs/fileRef", "description": "The one program a not_stuck claim is about."},
     "function": {"type": "string", "description": "The function a not_stuck claim is about."},
     "index_bits": {"type": "integer", "minimum": 1},
+    "functions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "domain": {"type": "string", "description": "The inputs and contexts a not_stuck claim quantifies over."},
     "cert": {"$ref": "#/$defs/fileRef"},
     "exports": {

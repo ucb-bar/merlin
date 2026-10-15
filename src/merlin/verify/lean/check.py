@@ -112,7 +112,9 @@ def theorem_axioms(theorem: str, module: str) -> list[str]:
 def _mlir_revision(m2m_python: Path) -> str:
     proc = subprocess.run([str(m2m_python), "-c", "import importlib.metadata as m; print(m.version('torch-mlir'))"],
                           capture_output=True, text=True, check=False)
-    return f"torch-mlir {proc.stdout.strip()}" if proc.returncode == 0 else "unknown"
+    if proc.returncode != 0 or not proc.stdout.strip():
+        raise RuntimeError("cannot identify the authoritative MLIR environment")
+    return f"torch-mlir {proc.stdout.strip()}"
 
 
 def _exporter_block(m2m_python: Path) -> dict[str, Any]:
@@ -190,7 +192,9 @@ def _check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
         return _write(stage, receipt)
     result = json.loads(proc.stdout)
     _check_exit(proc, result)
+    _result_identity(result, support=False)
     receipt["verdict"] = result["verdict"]
+    receipt["functions"] = result["functions"]
     receipt["assumptions"] += [f"ABI change handled by trusted lowering (T4): {c}" for c in result["abi_changes"]]
     if result["verdict"] != "verified":
         reasons = list(result["unverified_changes"])
@@ -232,7 +236,7 @@ def _check_support(program: Path, function: str, work: Path, *, m2m_python: Path
         "subject": _snapshot(program, snapshot),
         "function": function,
         "index_bits": index_bits,
-        "domain": f"inputs of the declared argument types; contexts with {index_bits}-bit index",
+        "domain": _domain(index_bits),
         "exporter": _exporter_block(m2m_python),
         "lean": _lean_block(),
         "axioms": theorem_axioms(SUPPORT_THEOREM, "MerlinVerify.Check.Rulebook"),
@@ -252,6 +256,7 @@ def _check_support(program: Path, function: str, work: Path, *, m2m_python: Path
         return _write(work, receipt)
     result = json.loads(proc.stdout)
     _check_exit(proc, result)
+    _result_identity(result, support=True)
     if result.get("index_bits") != index_bits:
         receipt.update(verdict="unmeasured", reason="checker used a different index width")
         return _write(work, receipt)
@@ -277,7 +282,7 @@ def _stale(receipt: dict[str, Any], what: str) -> list[str]:
         if ref is None:
             continue
         path = Path(ref.get("path", ""))
-        if not path.is_file() or _sha(path) != ref["sha256"]:
+        if not path.is_file() or _file_ref(path) != ref:
             reasons.append(f"{what}: {key} file changed or missing since it was checked")
     if receipt["lean"]["checker_sha256"] != _sha(lean_exe()):
         reasons.append(f"{what}: checked by a different merlin-lean build")
@@ -298,8 +303,101 @@ def _finish(destination: Path, receipt: dict[str, Any]) -> dict[str, Any]:
 CHAIN_THEOREM = "MerlinVerify.Check.chain_refines"
 
 
+def _result_identity(result: dict[str, Any], *, support: bool) -> None:
+    expected = ("support", SUPPORT_THEOREM, "not_stuck") if support else ("module", THEOREM, "refine_conditional")
+    actual = tuple(result.get(k) for k in ("checker", "theorem", "claim_type"))
+    if actual != expected:
+        raise ValueError("checker returned a different proof obligation")
+
+
+def _validate_receipt(receipt: dict[str, Any], *, support: bool, function: str,
+                      m2m_python: Path, work: Path) -> list[str]:
+    """Re-establish proof premises from the exact recorded exports, never from verdict strings."""
+    import jsonschema
+
+    schema = repo_root() / "merlin/contract/schemas/lean_receipt.schema.json"
+    jsonschema.validate(receipt, json.loads(schema.read_text()))
+    expected = (SUPPORT_CHECKER, SUPPORT_THEOREM, "not_stuck") if support else (CHECKER, THEOREM, "refine_conditional")
+    if tuple(receipt[k] for k in ("checker", "theorem", "claim_type")) != expected:
+        return ["receipt does not establish the required proof obligation"]
+    if receipt["verdict"] != "verified":
+        return [f"receipt is {receipt['verdict']}: {receipt.get('reason', '')}"]
+    reasons = _stale(receipt, "receipt")
+    if receipt["lean"] != _lean_block():
+        reasons.append("Lean provenance differs from the current checker")
+    if receipt["exporter"] != {**_exporter_block(m2m_python), "round_trip": "identical"}:
+        reasons.append("exporter identity or successful round trip does not match")
+    module = "MerlinVerify.Check.Rulebook" if support else "MerlinVerify.Check.Module"
+    axioms = theorem_axioms(expected[1], module)
+    if receipt["axioms"] != axioms or not set(axioms) <= {"propext", "Classical.choice", "Quot.sound"}:
+        reasons.append("receipt axioms do not match the audited theorem")
+    keys = ("subject",) if support else ("before", "after")
+    if set(receipt.get("exports", {})) != set(keys):
+        reasons.append("receipt does not bind all required exports")
+    if support and (receipt["function"] != function or receipt["domain"] != _domain(receipt["index_bits"])):
+        reasons.append("support receipt has another function or input domain")
+    if reasons:
+        return reasons
+    work.mkdir()
+    exports = []
+    for key in keys:
+        source, exported = work / f"{key}.mlir", work / f"{key}.json"
+        for ref, snapshot in ((receipt[key], source), (receipt["exports"][key], exported)):
+            if _snapshot(Path(ref["path"]), snapshot) != ref:
+                return ["receipt files changed while replaying"]
+        if not _exported_from(exported, source):
+            return ["export does not name the bound source snapshot"]
+        trip = round_trip_exported(source, exported, work / f"rt_{key}", lean_exe=lean_exe(), backend="mlir",
+                                   m2m_python=m2m_python)
+        if trip.status != "identical":
+            return [f"receipt replay round trip: {trip.status}: {trip.detail}"]
+        exports.append(exported)
+    args = (["check-support", str(exports[0]), function, str(receipt["index_bits"])] if support else
+            ["check-module", *(str(p) for p in exports)])
+    proc = subprocess.run([str(lean_exe()), *args], capture_output=True, text=True, check=False)
+    result = json.loads(proc.stdout)
+    _check_exit(proc, result)
+    _result_identity(result, support=support)
+    if result["verdict"] != "verified":
+        return ["checker rejected receipt replay"]
+    assumptions = list(LEDGER)
+    if support:
+        if result.get("index_bits") != receipt["index_bits"] or result.get("function") != function:
+            return ["checker replay has a different input domain"]
+    else:
+        if (not result["functions_verified"] or result["unverified_changes"] or
+                result["functions"] != receipt.get("functions") or function not in result["functions"]):
+            return ["module receipt does not cover the requested function and all changes"]
+        assumptions += [f"ABI change handled by trusted lowering (T4): {c}" for c in result["abi_changes"]]
+    if receipt.get("assumptions") != assumptions:
+        return ["receipt assumptions do not match the replayed obligation"]
+    return _stale(receipt, "replayed receipt")
+
+
+def _domain(index_bits: int) -> str:
+    return f"inputs of the declared argument types; contexts with {index_bits}-bit index"
+
+
 def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
-                  handoff: Path | None = None) -> dict[str, Any]:
+                  handoff: Path | None = None, *, m2m_python: Path | None = None) -> dict[str, Any]:
+    """Replay the proof premises before composing; a receipt is an untrusted hint."""
+    pending = {"schema": "merlin.lean.attempt.v1", "verdict": "unmeasured", "reason": "chain replay incomplete"}
+    _atomic_json(out, pending)
+    try:
+        if m2m_python is None:
+            from merlin.llvmlower.toolchain import compiler_python
+
+            m2m_python = compiler_python()
+        with tempfile.TemporaryDirectory(prefix=".lean-replay-", dir=out.parent) as scratch:
+            return _compose_chain(stages, support, function, out, handoff, m2m_python, Path(scratch))
+    except Exception as exc:
+        result = {**pending, "reason": f"{type(exc).__name__}: {exc}"}
+        _atomic_json(out, result)
+        return result
+
+
+def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
+                   handoff: Path | None, m2m_python: Path, work: Path) -> dict[str, Any]:
     """Compose checked boundaries (``stage/receipt.json``, in order) and the capture's support
     receipt into ``out`` (schema ``merlin.lean.chain.v1``); returns the document.
 
@@ -311,12 +409,11 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     ``abstracted`` with the reasons."""
     links, reasons, assumptions = [], [], []
     receipts = []
-    for stage in stages:
+    for index, stage in enumerate(stages):
         path = stage / "receipt.json"
         receipt = json.loads(path.read_text())
-        if receipt.get("claim_type") != "refine_conditional":
-            raise ValueError(f"{path} is not a boundary receipt (claim_type {receipt.get('claim_type')!r})")
-        reasons += _stale(receipt, receipt["boundary"])
+        reasons += _validate_receipt(receipt, support=False, function=function, m2m_python=m2m_python,
+                                     work=work / f"stage_{index}")
         receipts.append(receipt)
         links.append({"boundary": receipt["boundary"], "receipt_sha256": _sha(path),
                       "before_sha256": receipt["before"]["sha256"], "after_sha256": receipt["after"]["sha256"],
@@ -325,15 +422,20 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
             reasons.append(f"{receipt['boundary']}: {receipt['verdict']}: {receipt.get('reason', '')}")
         assumptions += [a for a in receipt.get("assumptions", []) if a not in assumptions]
     sup = json.loads(support.read_text())
-    if sup.get("claim_type") != "not_stuck" or sup.get("function") != function:
-        raise ValueError(f"{support} is not a not_stuck receipt for {function}")
+    reasons += _validate_receipt(sup, support=True, function=function, m2m_python=m2m_python,
+                                 work=work / "support")
     if sup["verdict"] != "verified":
         reasons.append(f"support: {sup['verdict']}: {sup.get('reason', '')}")
-    reasons += _stale(sup, "support")
     assumptions += [a for a in sup.get("assumptions", []) if a not in assumptions]
     chained = bool(receipts) and sup["subject"]["sha256"] == receipts[0]["before"]["sha256"] and all(
         a["after"]["sha256"] == b["before"]["sha256"] for a, b in zip(receipts, receipts[1:]))
-    handoff_sha = json.loads(handoff.read_text())["sha256"] if handoff is not None else None
+    handoff_sha = None
+    if handoff is not None:
+        bound = json.loads(handoff.read_text())
+        if (bound.get("schema") != "merlin.lean.handoff.v1" or
+                _file_ref(Path(bound["path"])) != {k: bound[k] for k in ("path", "sha256", "bytes")}):
+            reasons.append("handoff file changed or is not a valid recorded handoff")
+        handoff_sha = bound["sha256"]
     if receipts and handoff_sha is not None and receipts[-1]["after"]["sha256"] != handoff_sha:
         chained = False
         reasons.append("the chain does not end at the bytes handed to the upstream lowering")
@@ -355,7 +457,7 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     }
     if reasons:
         doc["reason"] = "; ".join(reasons)
-    out.write_text(json.dumps(doc, indent=2, sort_keys=True))
+    _atomic_json(out, doc)
     return doc
 
 
@@ -367,13 +469,18 @@ def _check_exit(proc: subprocess.CompletedProcess, result: dict[str, Any]) -> No
 
 
 def _write(stage: Path, receipt: dict[str, Any]) -> dict[str, Any]:
+    _atomic_json(stage / "receipt.json", receipt)
+    return receipt
+
+
+def _atomic_json(path: Path, value: dict[str, Any]) -> None:
+    stage = path.parent
     stage.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(mode="w", dir=stage, prefix=".receipt-", delete=False) as stream:
         temporary = Path(stream.name)
         try:
-            stream.write(json.dumps(receipt, indent=2, sort_keys=True))
+            stream.write(json.dumps(value, indent=2, sort_keys=True))
             stream.flush()
-            os.replace(temporary, stage / "receipt.json")
+            os.replace(temporary, path)
         finally:
             temporary.unlink(missing_ok=True)
-    return receipt

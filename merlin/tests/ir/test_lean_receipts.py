@@ -1,7 +1,9 @@
 """Receipt publication must fail closed, including when an earlier attempt succeeded."""
 
+import copy
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -94,3 +96,45 @@ def test_concurrent_source_edit_cannot_get_green_receipt(tmp_path, monkeypatch, 
     result = check.check_stage(stage, m2m_python=lean_tools.m2m_python)
     assert result["verdict"] == "unmeasured"
     assert "changed or missing" in result["reason"]
+
+
+def test_chain_replays_proof_obligations(tmp_path, lean_tools):
+    stage = _stage(tmp_path / "stage")
+    receipt = check.check_stage(stage, m2m_python=lean_tools.m2m_python)
+    support = tmp_path / "support"
+    assert check.check_support(stage / "before.mlir", "forward", support,
+                               m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+
+    def compose():
+        return check.compose_chain([stage], support / "receipt.json", "forward", tmp_path / "chain.json",
+                                   m2m_python=lean_tools.m2m_python)
+
+    assert compose()["verdict"] == "verified"
+    for keys, value in [
+        (("claim_type",), "safety"), (("checker",), "unrelated.check"),
+        (("theorem",), "unrelated.theorem"), (("axioms",), ["sorryAx"]),
+        (("exporter", "round_trip"), "not_run"), (("functions",), ["another_function"]),
+        (("assumptions",), []),
+    ]:
+        mutated = copy.deepcopy(receipt)
+        target = mutated
+        for key in keys[:-1]:
+            target = target[key]
+        target[keys[-1]] = value
+        check._write(stage, mutated)
+        assert compose()["verdict"] != "verified", keys
+    check._write(stage, receipt)
+
+    # Updating a tampered export's hash cannot substitute it for the source's actual meaning.
+    exported = receipt["exports"]["after"]
+    path = Path(exported["path"])
+    doc = json.loads(path.read_text())
+    ops = doc["module"]["ops"][0]["regions"][0]["blocks"][0]["ops"]
+    constant = next(op for op in ops if op["name"] == "arith.constant")
+    (constant["props"].get("value") or constant["attrs"]["value"])["value"] = "1"
+    path.write_text(json.dumps(doc))
+    receipt["exports"]["after"] = check._file_ref(path)
+    check._write(stage, receipt)
+    result = compose()
+    assert result["verdict"] == "abstracted"
+    assert "round trip" in result["reason"]

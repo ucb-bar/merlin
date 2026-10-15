@@ -467,6 +467,7 @@ triton = [
     { name = "triton" },
 ]
 verify = [
+    { name = "jsonschema" },
     { name = "xdsl" },
     { name = "z3-solver" },
 ]
@@ -481,6 +482,7 @@ requires-dist = [
     { name = "exo-lang", marker = "extra == 'kernels-exo'" },
     { name = "jsonschema", marker = "extra == 'semantic-search'" },
     { name = "jsonschema", marker = "extra == 'targetgen'" },
+    { name = "jsonschema", marker = "extra == 'verify'" },
     { name = "matplotlib", marker = "extra == 'kernels-plots'" },
     { name = "numpy" },
     { name = "pyarrow", marker = "extra == 'kernels-parquet'" },
