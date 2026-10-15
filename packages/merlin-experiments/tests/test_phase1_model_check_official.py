@@ -80,6 +80,7 @@ def test_official_invocation_uses_sealed_full_mode_and_bounded_rtl(tmp_path, mon
                                 bundle=tmp_path / "bundle", timeout_s=13)
     assert checked["status"] == replayed["status"] == "pass"
     assert all(argv[argv.index("--split") + 1] == "sealed" for argv in calls)
+    assert all(Path(argv[argv.index("--models") + 1]).is_file() for argv in calls)
     assert calls[0][calls[0].index("--mode") + 1] == "full"
     assert calls[1][calls[1].index("--engine") + 1] == "gsim"
     assert calls[1][calls[1].index("--timeout-s") + 1] == "13"

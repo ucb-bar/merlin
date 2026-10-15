@@ -14,6 +14,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from merlin.model_check.models import default_models_path
 from merlin_experiments.phase1.run_inputs import strip_build_state
 
 PROGRAMS = {"resnet50": ("model",),
@@ -68,7 +69,8 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
         argv = [sys.executable, "-m", "merlin.model_check", action, "--submission", str(snapshot),
                 "--model", model, "--split", "visible", "--agent-view", "--out", str(report_path),
                 "--work", str(Path(scratch) / "work"), "--timeout-s", str(timeout_s),
-                "--bundle", "/work/merlin/private/gemmini/numerics/v1"]
+                "--bundle", "/work/merlin/private/gemmini/numerics/v1",
+                "--models", str(default_models_path("gemmini"))]
         if action == "check":
             argv += ["--mode", "fast"]
         else:

@@ -33,6 +33,7 @@ def test_visible_model_check_uses_immutable_copy_and_no_private_argv(tmp_path, m
             (source / "compiler.py").write_text("VALUE = 2\n")
             assert start_new_session and cwd == ws
             assert argv[argv.index("--mode") + 1] == "fast"
+            assert Path(argv[argv.index("--models") + 1]).is_file()
             Path(argv[argv.index("--out") + 1]).write_text(json.dumps({
                 "schema": broker.REPORT_SCHEMA, "command": "check", "model": "resnet50",
                 "status": "pass", "exit_code": 0, "agent_view": True,

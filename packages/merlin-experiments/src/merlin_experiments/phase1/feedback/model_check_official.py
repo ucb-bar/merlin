@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 from merlin.common.tree_hash import hash_tree
+from merlin.model_check.models import default_models_path
 
 REPORT_SCHEMA = "merlin.model_check.report.v1"
 DEFAULT_BUNDLE = Path("/work/merlin/private/gemmini/numerics/v1")
@@ -22,6 +23,7 @@ def _invoke(command: str, *, submission: Path, model: str, output: Path, bundle:
     output.unlink(missing_ok=True)
     argv = [sys.executable, "-m", "merlin.model_check", command, "--submission", str(submission),
             "--model", model, "--split", "sealed", "--bundle", str(bundle),
+            "--models", str(default_models_path("gemmini")),
             "--work", str(output.with_suffix(".work")), "--out", str(output), "--timeout-s", str(timeout_s)]
     if command == "check":
         argv += ["--mode", "full"]
