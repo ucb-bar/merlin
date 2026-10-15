@@ -1,116 +1,235 @@
-/* Bump allocator for the bare-metal model runtime.
+/* Bounded bare-metal model allocator.
  *
- * MLIR bufferization emits malloc/free for activation buffers. We serve them from a
- * fixed, absolute-addressed arena (default 0xC0000000), NOT a linker-reserved symbol:
- * with multi-GB models the arena sits >2GB from the code, beyond `-mcmodel=medany`'s
- * PC-relative reach, so it must be addressed by a literal constant (compiled to `li`).
- * The arena lives in spike's -m memory; it is not a loaded ELF section.
+ * Bufferization emits a malloc/free pair for each temporary. A bump allocator
+ * that ignores free needs the sum of every temporary in a whole model; the
+ * declared activation arena instead budgets the peak live set. Each chunk has
+ * a fixed 64-byte header followed by a 64-byte-aligned payload. Free chunks
+ * stay address-sorted, are split on reuse and coalesced on release, so a later
+ * large tensor can reuse space held by several smaller dead tensors. The arena
+ * remains at an absolute address: its location may be beyond medany's reach
+ * from model code and is part of the selected board's memory admission.
  *
- * free() is a no-op; merlin_arena_reset reclaims the whole arena between inferences.
- * calloc/aligned_alloc zero/align what they hand out. Scales by MERLIN_ARENA_SIZE_BYTES.
+ * Exhaustion and invalid frees fail loudly before generated code can use a
+ * null or stale pointer. No memory outside MERLIN_ARENA_SIZE_BYTES is served.
  */
 #include <stddef.h>
 #include <stdint.h>
 
 #include "htif.h"
-
 #ifndef MERLIN_ARENA_BASE_ADDR
 #define MERLIN_ARENA_BASE_ADDR 0xC0000000ULL
 #endif
 #ifndef MERLIN_ARENA_SIZE_BYTES
-#define MERLIN_ARENA_SIZE_BYTES 0x10000000ULL /* 256 MB default */
+#define MERLIN_ARENA_SIZE_BYTES 0x10000000ULL
 #endif
-
-static uintptr_t brk = 0;
-
-static inline uintptr_t arena_base(void) { return (uintptr_t)MERLIN_ARENA_BASE_ADDR; }
-static inline uintptr_t arena_end(void) {
-  return (uintptr_t)MERLIN_ARENA_BASE_ADDR + (uintptr_t)MERLIN_ARENA_SIZE_BYTES;
+#define MAGIC 0x4d45524c494e414cULL
+#define HEADER 64ULL
+typedef struct Block {
+	struct Block *next;
+	size_t span;
+	uint64_t magic;
+	uint64_t live;
+	size_t requested;
+	size_t alignment;
+	uint64_t reserved[2];
+} Block;
+_Static_assert(sizeof(Block) == HEADER, "fixed header size");
+static uintptr_t brk;
+static Block *free_list;
+static unsigned long long seq, freed, reused, split, merged;
+static size_t largest;
+static uintptr_t arena_base(void) {
+	return (uintptr_t)MERLIN_ARENA_BASE_ADDR;
 }
-
-void merlin_arena_reset(void) { brk = arena_base(); }
-
-/* Exhaustion FAILS LOUDLY rather than returning NULL.
- *
- * Nothing in the generated model checks a malloc result -- bufferization emits the allocation and then
- * stores through it -- so a NULL return does not stop the run, it defers the failure to the first store,
- * which surfaces as a store access fault at address 0 somewhere deep in `forward` with no indication
- * that an allocation ever failed. That is a materially harder bug than the one that actually happened:
- * it was investigated as descriptor corruption for a long time before `mtval == 0` identified it.
- *
- * Reporting the request and the shortfall turns it into a one-line diagnosis. Sizes and pointers go
- * through the console's UNSIGNED printer: a corrupt length is exactly the case where the signed one
- * reports a negative number, which reads as a different bug than the one that happened. */
-static size_t largest = 0;
-static unsigned long long seq = 0, largest_seq = 0;
-
-static void arena_exhausted(const char *why, size_t n, uintptr_t align) {
-  htif_puts("\nFATAL: model arena -- ");
-  htif_puts(why);
-  htif_puts("\n  requested ");
-  htif_puthex((unsigned long long)n);
-  htif_puts(" bytes (align ");
-  htif_putd((long)align);
-  htif_puts(")\n  arena ");
-  htif_puthex((unsigned long long)arena_base());
-  htif_puts(" .. ");
-  htif_puthex((unsigned long long)arena_end());
-  htif_puts(", brk ");
-  htif_puthex((unsigned long long)brk);
-  htif_puts("\n  largest prior request ");
-  htif_puthex((unsigned long long)largest);
-  htif_puts(" at call #");
-  htif_putd((long)largest_seq);
-  htif_puts(" of ");
-  htif_putd((long)seq);
-  htif_putc('\n');
-  htif_exit(0x900);
+static uintptr_t arena_end(void) {
+	return arena_base() + (uintptr_t)MERLIN_ARENA_SIZE_BYTES;
 }
-
-/* An allocation LARGER THAN THE WHOLE ARENA can never be served, and serving it is not the failure --
- * believing it is. `brk` is a bump pointer, so one request with a corrupt length carries it past the
- * arena and every later allocation fails; the report then names whichever innocent allocation happened
- * to be next, and the number it prints as "used" is the corrupt length. MEASURED on deepjscc: the
- * console blamed a 320-byte request and reported 29.8 TB used, which is not a size any model asks for.
- * Rejecting the impossible request AT the call that makes it names the real one. */
-static void *bump(size_t n, uintptr_t align) {
-  if (!brk) brk = arena_base();
-  ++seq;
-  if (n > (size_t)(uintptr_t)MERLIN_ARENA_SIZE_BYTES)
-    arena_exhausted("request exceeds the whole arena (corrupt length, not a sizing failure)", n, align);
-  uintptr_t p = (brk + (align - 1)) & ~(align - 1);
-  uintptr_t next = p + n;
-  if (next > arena_end())
-    arena_exhausted("exhausted -- raise it with arena_mb=", n, align);   /* noreturn */
-  if (n > largest) { largest = n; largest_seq = seq; }
-  brk = next;
-  return (void *)p;
+static uintptr_t up(uintptr_t n, uintptr_t a) {
+	return (n + a - 1) & ~(a - 1);
 }
-
-void *malloc(size_t n) { return bump(n, 64); }
-
+void merlin_arena_reset(void) {
+	brk = arena_base();
+	free_list = 0;
+	seq = freed = reused = split = merged = 0;
+	largest = 0;
+}
+static void fatal(const char *why, size_t n, uintptr_t align) {
+	size_t total = 0, big = 0;
+	for (Block *b = free_list; b; b = b->next) {
+		total += b->span;
+		if (b->span > big)
+			big = b->span;
+	}
+	htif_puts("\nFATAL: model arena -- ");
+	htif_puts(why);
+	htif_puts("\n  requested ");
+	htif_puthex(n);
+	htif_puts(" align ");
+	htif_putd((long)align);
+	htif_puts("\n  arena ");
+	htif_puthex(arena_base());
+	htif_puts(" .. ");
+	htif_puthex(arena_end());
+	htif_puts(" brk ");
+	htif_puthex(brk);
+	htif_puts("\n  free span ");
+	htif_puthex(total);
+	htif_puts(" largest free ");
+	htif_puthex(big);
+	htif_puts(" largest request ");
+	htif_puthex(largest);
+	htif_puts("\n  allocations ");
+	htif_putd((long)seq);
+	htif_puts(" frees ");
+	htif_putd((long)freed);
+	htif_puts(" reused ");
+	htif_putd((long)reused);
+	htif_puts(" split ");
+	htif_putd((long)split);
+	htif_puts(" merged ");
+	htif_putd((long)merged);
+	htif_putc('\n');
+	htif_exit(0x900);
+}
+static void *allocate(size_t n, uintptr_t align) {
+	if (!brk)
+		brk = arena_base();
+	++seq;
+	if (align < 64)
+		align = 64;
+	if ((align & (align - 1)) || align > MERLIN_ARENA_SIZE_BYTES)
+		fatal("invalid alignment", n, align);
+	if (MERLIN_ARENA_SIZE_BYTES <= HEADER + 64 ||
+		n > MERLIN_ARENA_SIZE_BYTES - HEADER - 64)
+		fatal("request exceeds whole arena", n, align);
+	if (!n)
+		n = 1;
+	uintptr_t need = up(HEADER + n, 64);
+	Block *best = 0, *best_prev = 0, *prev = 0;
+	for (Block *b = free_list; b; prev = b, b = b->next)
+		if (b->span >= need && (((uintptr_t)b + HEADER) & (align - 1)) == 0 &&
+			(!best || b->span < best->span)) {
+			best = b;
+			best_prev = prev;
+		}
+	if (best) {
+		uintptr_t remain = best->span - need;
+		if (remain >= HEADER + 64) {
+			Block *tail = (Block *)((uintptr_t)best + need);
+			tail->next = best->next;
+			tail->span = remain;
+			tail->magic = MAGIC;
+			tail->live = 0;
+			tail->requested = 0;
+			tail->alignment = 64;
+			if (best_prev)
+				best_prev->next = tail;
+			else
+				free_list = tail;
+			best->span = need;
+			++split;
+		} else {
+			if (best_prev)
+				best_prev->next = best->next;
+			else
+				free_list = best->next;
+		}
+		best->next = 0;
+		best->live = 1;
+		best->requested = n;
+		best->alignment = align;
+		++reused;
+		if (n > largest)
+			largest = n;
+		return (void *)((uintptr_t)best + HEADER);
+	}
+	uintptr_t start = up(brk + HEADER, align) - HEADER;
+	if (start > arena_end() || need > arena_end() - start)
+		fatal("exhausted", n, align);
+	if (start > brk && start - brk >= HEADER + 64) {
+		Block *gap = (Block *)brk;
+		gap->span = start - brk;
+		gap->magic = MAGIC;
+		gap->live = 0;
+		gap->requested = 0;
+		gap->alignment = 64;
+		Block **link = &free_list;
+		while (*link && (uintptr_t)*link < (uintptr_t)gap)
+			link = &(*link)->next;
+		gap->next = *link;
+		*link = gap;
+	}
+	Block *b = (Block *)start;
+	brk = start + need;
+	b->next = 0;
+	b->span = need;
+	b->magic = MAGIC;
+	b->live = 1;
+	b->requested = n;
+	b->alignment = align;
+	if (n > largest)
+		largest = n;
+	return (void *)(start + HEADER);
+}
+void *malloc(size_t n) {
+	return allocate(n, 64);
+}
 void *aligned_alloc(size_t alignment, size_t size) {
-  return bump(size, alignment < 64 ? 64 : alignment);
+	return allocate(size, alignment);
 }
-
 void *calloc(size_t nmemb, size_t size) {
-  /* A wrapped product can look like a small valid allocation and silently
-   * overwrite a buffer whose caller requested an unrepresentable byte count.
-   * Refuse before changing the bump cursor or writing any arena bytes. */
-  if (size && nmemb > SIZE_MAX / size) {
-    htif_puts("\nFATAL: model arena -- calloc size multiplication overflow\n  elements ");
-    htif_puthex((unsigned long long)nmemb);
-    htif_puts(", element bytes ");
-    htif_puthex((unsigned long long)size);
-    htif_putc('\n');
-    htif_exit(0x900);
-  }
-  size_t n = nmemb * size;
-  char *p = (char *)bump(n, 64);
-  if (p)
-    for (size_t i = 0; i < n; i++)
-      p[i] = 0;
-  return p;
+	if (size && nmemb > SIZE_MAX / size)
+		fatal("calloc size multiplication overflow", nmemb, size);
+	size_t n = nmemb * size;
+	unsigned char *p = allocate(n, 64);
+	for (size_t i = 0; i < n; i++)
+		p[i] = 0;
+	return p;
 }
-
-void free(void *p) { (void)p; }
+void free(void *p) {
+	if (!p)
+		return;
+	uintptr_t address = (uintptr_t)p;
+	if (address < arena_base() + HEADER || address >= brk || (address & 63))
+		fatal("invalid free pointer", 0, 0);
+	Block *b = (Block *)(address - HEADER);
+	if (b->magic != MAGIC || b->live != 1 || b->span < HEADER + 64 ||
+		(b->span & 63) || b->span > brk - (uintptr_t)b)
+		fatal("invalid or duplicate free", 0, 0);
+	b->live = 0;
+	++freed;
+	Block *prev = 0, *next = free_list;
+	while (next && (uintptr_t)next < (uintptr_t)b) {
+		prev = next;
+		next = next->next;
+	}
+	b->next = next;
+	if (prev)
+		prev->next = b;
+	else
+		free_list = b;
+	if (prev && (uintptr_t)prev + prev->span == (uintptr_t)b) {
+		prev->span += b->span;
+		prev->next = b->next;
+		b = prev;
+		++merged;
+	}
+	next = b->next;
+	if (next && (uintptr_t)b + b->span == (uintptr_t)next) {
+		b->span += next->span;
+		b->next = next->next;
+		++merged;
+	}
+	if ((uintptr_t)b + b->span == brk) {
+		if (b == free_list)
+			free_list = b->next;
+		else {
+			prev = free_list;
+			while (prev && prev->next != b)
+				prev = prev->next;
+			if (prev)
+				prev->next = b->next;
+		}
+		brk = (uintptr_t)b;
+	}
+}
