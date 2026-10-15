@@ -199,6 +199,58 @@ def test_split_switch_runs_through_the_real_lowering_runner(tmp_path, monkeypatc
     assert lowered.count("call void @free") == 2
 
 
+@m2m
+def test_split_keeps_a_device_result_and_its_output_as_one_allocation(tmp_path):
+    """The generated shim returns its writable output; freeing both aliases is a double free."""
+    source = """module {
+      func.func @forward(%input: memref<4xf32>) {
+        %true = arith.constant true
+        %out = memref.alloc() : memref<4xf32>
+        %result = call @merlin_dev_test(%input, %input, %out) :
+          (memref<4xf32>, memref<4xf32>, memref<4xf32>) -> memref<4xf32>
+        %base, %off, %size:1, %stride:1 = memref.extract_strided_metadata %out :
+          memref<4xf32> -> memref<f32>, index, index, index
+        %base2, %off2, %size2:1, %stride2:1 = memref.extract_strided_metadata %result :
+          memref<4xf32> -> memref<f32>, index, index, index
+        bufferization.dealloc (%base, %base2 : memref<f32>, memref<f32>) if (%true, %true)
+        return
+      }
+      func.func private @merlin_dev_test(
+        memref<4xf32> {bufferization.access = "read"},
+        memref<4xf32> {bufferization.access = "read"},
+        memref<4xf32> {bufferization.access = "write"}) -> memref<4xf32>
+    }"""
+    src, script = tmp_path / "alias.mlir", tmp_path / "split_alias.py"
+    src.write_text(source, encoding="utf-8")
+    script.write_text(
+        "import sys\nfrom torch_mlir import ir\n"
+        + P.SPLIT_FRESH_DEALLOCS_PRELUDE
+        + "ctx = ir.Context()\n"
+        + "with ctx:\n"
+        + "  module = ir.Module.parse(open(sys.argv[1]).read(), ctx)\n"
+        + "  _split_fresh_local_deallocs(ctx, module)\n"
+        + "  print(module.operation)\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "1 fresh allocs 1 device aliases" in proc.stdout
+    assert proc.stdout.count("memref.dealloc %alloc") == 1
+    assert "bufferization.dealloc" not in proc.stdout
+
+    # A lookalike foreign call has no Merlin shim alias contract; retain the
+    # aggregate so upstream's runtime ownership check remains authoritative.
+    src.write_text(source.replace("merlin_dev_test", "foreign_test"), encoding="utf-8")
+    foreign = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "0 fresh allocs" in foreign.stdout
+    assert "bufferization.dealloc" in foreign.stdout
+
+
 # --- the guard -------------------------------------------------------------------------------
 
 

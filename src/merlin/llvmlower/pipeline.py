@@ -28,6 +28,8 @@ from pathlib import Path
 from merlin.common import compile_trace
 
 from .llvm_dialect_product import run_translation, select_retention
+from .sliced_elementwise_output import PRELUDE as SLICED_OUTPUT_PRELUDE
+from .sliced_elementwise_output import RUNNER as SLICED_OUTPUT_RUNNER
 from .source_scalar_carrier_binding import host_admitted
 from .toolchain import m2m_python
 
@@ -86,10 +88,12 @@ def _dealloc_passes(sink: bool | None = None) -> list[str]:
         passes.insert(1, SPLIT_FRESH_DEALLOCS_MARKER)
     if sink is None:
         sink = _sink_deallocs()
-    if _split_fresh_deallocs():
+    if _split_fresh_deallocs() or _slice_unused_elementwise_outputs():
         sink = True
     if sink:
         passes += _sink_dealloc_passes()
+    if _slice_unused_elementwise_outputs():
+        passes.append(SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER)
     return passes
 
 
@@ -113,6 +117,16 @@ def _split_fresh_deallocs() -> bool:
     import os
 
     return bool(os.environ.get("MERLIN_SPLIT_FRESH_DEALLOCS"))
+
+
+SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER = "__merlin_slice_unused_elementwise_output__"
+
+
+def _slice_unused_elementwise_outputs() -> bool:
+    """Enable the guarded output-slice rewrite during full-model qualification."""
+    import os
+
+    return bool(os.environ.get("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT"))
 
 
 #: The pass that moves a dealloc to its last user. Named once: the runner keys the placement CHECK
@@ -1115,60 +1129,99 @@ DEALLOC_CHECK_TOKEN = "OK dealloc_placement"
 # everything else remains in the original aggregate and retains upstream's ownership logic.
 SPLIT_FRESH_DEALLOCS_PRELUDE = r"""
 def _split_fresh_local_deallocs(ctx, module):
-    from collections import Counter
+    from collections import defaultdict
 
-    targets = []
+    def is_alloc(value):
+        owner = value.owner
+        return hasattr(owner, 'operation') and owner.operation.name == 'memref.alloc'
+
+    declarations = {
+        str(op.attributes['sym_name']).strip('"'): op
+        for op in module.body.operations if op.operation.name == 'func.func'
+    }
+    moved = dropped_aliases = 0
     for func in module.body.operations:
-        if func.operation.name != 'func.func':
+        if func.operation.name != 'func.func' or not func.regions[0].blocks:
             continue
         for block in func.regions[0].blocks:
-            targets.extend(op for op in list(block.operations)
-                           if op.operation.name == 'bufferization.dealloc')
-
-    moved = 0
-    for old in targets:
-        # A retained value or an unrecognised operand layout changes the ownership
-        # contract; leave it to upstream instead of guessing.
-        if old.results or len(old.operands) % 2:
-            continue
-        n = len(old.operands) // 2
-        mems, conds = list(old.operands[:n]), list(old.operands[n:])
-        roots = []
-        for mem in mems:
-            owner = mem.owner
-            if not hasattr(owner, 'operation') or owner.operation.name != 'memref.extract_strided_metadata':
-                roots.append(None)
-                continue
-            base = owner.operands[0]
-            alloc = base.owner
-            roots.append(base if hasattr(alloc, 'operation') and
-                         alloc.operation.name == 'memref.alloc' else None)
-        counts = Counter(root for root in roots if root is not None)
-        fresh, keep = [], []
-        for mem, cond, root in zip(mems, conds, roots):
-            cond_op = cond.owner
-            owned = (hasattr(cond_op, 'operation') and
-                     cond_op.operation.name == 'arith.constant' and
-                     str(cond_op.attributes['value']) == 'true')
-            if root is not None and counts[root] == 1 and owned:
-                fresh.append(root)
-            else:
-                keep.append((mem, cond))
-        if not fresh:
-            continue
-        with ctx, old.location, ir.InsertionPoint(old):
-            for root in fresh:
-                ir.Operation.create('memref.dealloc', operands=[root])
-            if keep:
-                ir.Operation.create(
-                    'bufferization.dealloc',
-                    operands=[*(mem for mem, _ in keep), *(cond for _, cond in keep)],
-                    attributes={'operandSegmentSizes': ir.DenseI32ArrayAttr.get(
-                        [len(keep), len(keep), 0])})
-        old.operation.erase()
-        moved += len(fresh)
+            # Merlin's generated device shim returns precisely its third, writable
+            # output descriptor. The other two operands are read-only, and the shim
+            # does not retain any pointer. Check that exact declaration contract.
+            call_alias = {}
+            unknown_memref_call = False
+            for op in block.operations:
+                if op.operation.name != 'func.call' or not any(
+                    str(result.type).startswith('memref') for result in op.results
+                ):
+                    continue
+                name = str(op.attributes['callee']).lstrip('@')
+                decl = declarations.get(name)
+                valid = (
+                    name.startswith('merlin_dev_') and decl is not None
+                    and len(op.operands) == 3 and len(op.results) == 1
+                    and str(op.results[0].type) == str(op.operands[2].type)
+                    and len(decl.arg_attrs) == 3
+                    and [str(attrs['bufferization.access']) for attrs in decl.arg_attrs]
+                    == ['"read"', '"read"', '"write"']
+                )
+                if valid:
+                    call_alias[op.results[0]] = op.operands[2]
+                else:
+                    unknown_memref_call = True
+            for old in list(block.operations):
+                if old.operation.name != 'bufferization.dealloc' or old.results or len(old.operands) % 2:
+                    continue
+                n = len(old.operands) // 2
+                mems, conds = list(old.operands[:n]), list(old.operands[n:])
+                groups = defaultdict(list)
+                # An unknown result alias could duplicate a fresh root. Keep the
+                # whole aggregate under upstream's ownership semantics in that case.
+                if unknown_memref_call:
+                    continue
+                ambiguous = False
+                for i, mem in enumerate(mems):
+                    owner = mem.owner
+                    if not hasattr(owner, 'operation') or owner.operation.name != 'memref.extract_strided_metadata':
+                        ambiguous = True
+                        break
+                    base = owner.operands[0]
+                    if is_alloc(base):
+                        groups[base].append((i, 'direct'))
+                    elif base in call_alias and is_alloc(call_alias[base]):
+                        groups[call_alias[base]].append((i, 'call_alias'))
+                    elif not isinstance(base, ir.BlockArgument):
+                        ambiguous = True
+                        break
+                if ambiguous:
+                    continue
+                chosen = {}
+                for root, entries in groups.items():
+                    direct = [i for i, kind in entries if kind == 'direct']
+                    if len(direct) != 1:
+                        continue
+                    cond_op = conds[direct[0]].owner
+                    if (not hasattr(cond_op, 'operation') or cond_op.operation.name != 'arith.constant'
+                            or str(cond_op.attributes['value']) != 'true'):
+                        continue
+                    chosen[root] = {i for i, _ in entries}
+                if not chosen:
+                    continue
+                removed = set().union(*chosen.values())
+                keep = [(mem, cond) for i, (mem, cond) in enumerate(zip(mems, conds)) if i not in removed]
+                with ctx, old.location, ir.InsertionPoint(old):
+                    for root in chosen:
+                        ir.Operation.create('memref.dealloc', operands=[root])
+                    if keep:
+                        ir.Operation.create(
+                            'bufferization.dealloc',
+                            operands=[*(mem for mem, _ in keep), *(cond for _, cond in keep)],
+                            attributes={'operandSegmentSizes': ir.DenseI32ArrayAttr.get(
+                                [len(keep), len(keep), 0])})
+                old.operation.erase()
+                moved += len(chosen)
+                dropped_aliases += len(removed) - len(chosen)
     module.operation.verify()
-    print('OK split_fresh_local_deallocs', moved, 'fresh allocs')
+    print('OK split_fresh_local_deallocs', moved, 'fresh allocs', dropped_aliases, 'device aliases')
 """
 
 
@@ -1318,6 +1371,8 @@ from torch_mlir.dialects import llvm
     + DEALLOC_CHECK_RUNNER
     + SPLIT_FRESH_DEALLOCS_PRELUDE
     + SPLIT_FRESH_DEALLOCS_RUNNER
+    + SLICED_OUTPUT_PRELUDE
+    + SLICED_OUTPUT_RUNNER
     + r'''
 
 def _residual_vector_ops(module):
@@ -1447,6 +1502,8 @@ _RUNNER_ACT_POLY_TAIL = (
     + DEALLOC_CHECK_RUNNER
     + SPLIT_FRESH_DEALLOCS_PRELUDE
     + SPLIT_FRESH_DEALLOCS_RUNNER
+    + SLICED_OUTPUT_PRELUDE
+    + SLICED_OUTPUT_RUNNER
     + r"""
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
