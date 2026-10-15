@@ -44,11 +44,27 @@ labels describe only the selected gSIM design and must carry its identity.
 
 For the next experiment intended to feed this FireSim model, select the
 `gemmini_rocket_chipyard` / `gemmini_rocket_rtl` source revisions of the pinned
-bitstream before Phase 0 derivation. Elaborate `GemminiGsimSerialClkConfig`
-from committed source at those revisions; regenerate RTL facts from that exact
+bitstream before Phase 0 derivation. Add the exact
+`build_tools/chipyard/GemminiGsimFireSimAlignedConfig.scala` file to a clean
+descendant of the recorded Chipyard revision and keep the Gemmini gitlink at
+its recorded revision. This new configuration composes the FireSim chip tweaks
+with the gSIM clock and serial adapters while omitting FireSim bridges. Elaborate
+`GemminiGsimFireSimAlignedConfig` from that committed source; regenerate RTL facts from that exact
 TestHarness FIRRTL, the gSIM executable and its strict build receipt, and the
 selected execution contract together. The source-to-FIRRTL elaboration receipt
-must bind the selected configuration and exact Chipyard/Gemmini revisions.
+must bind the selected configuration, the one-file Chipyard descendant and the
+exact Gemmini revision.
+The configuration must retain the gSIM clock/serial harness adapters while
+matching FireSim's 16 GiB address map, CPU ISA and chip-visible bus/peripheral
+settings. `GemminiGsimSerialClkConfig` alone retains the older chip settings.
+At the recorded Chipyard revision, `FireSimGemminiRocketConfig` composes
+`WithFireSimConfigTweaks` with `GemminiRocketConfig`. The FireSim tweaks set
+16 GiB external memory, 1 GHz bus frequencies, SerialTL width 4, UART policy,
+debug/clock-gating/monitor policy, trace IO and block-device presence. The new
+gSIM configuration must carry each chip-visible setting that changes the
+elaboration and replace only the FireSim harness/bridge pieces with the gSIM
+clock instantiator and serial-clock punchthrough. Review the resulting generated
+DTS and RTL differences; a shared base class does not make them equivalent.
 Compare the chip portion of that elaboration with the FireSim build and record
 the Gemmini parameters and ABI header identity.
 Require a passing matched-ELF capsule check on gSIM and FireSim before fitting
@@ -76,12 +92,14 @@ release contract and facts:
 ```sh
 python -m merlin_experiments.phase1.gsim_alignment \
   --contract CONTRACT --rtl-facts FACTS \
-  --chipyard-root CHIPYARD --hardware-pins PINS
+  --chipyard-root CHIPYARD --hardware-pins PINS \
+  --board-catalog CATALOG --gsim-dts GSIM_DTS
 ```
 
 Require `gsim_source_aligned: true`. This verifies the reproduced elaboration
-receipt, source commits recorded for the FireSim bitstream, facts FIRRTL and
-strict emulator build receipt. The historical bitstream's build-time source
+receipt, source commits recorded for the FireSim bitstream, facts FIRRTL,
+strict emulator build receipt, and matching host memory map and ISA in the
+generated gSIM and FireSim DTS files. The historical bitstream's build-time source
 state was not completely preserved, so matching commits alone cannot prove
 chip equivalence. Structural comparison and matched-ELF measurements are still
 required before timing transfer.
