@@ -5,7 +5,18 @@ import subprocess
 
 import pytest
 
+from merlin.common.paths import repo_root
 from merlin.verify.lean import check
+
+FIXTURE = repo_root() / "merlin/tests/fixtures/lean_dce_forward.mlir"
+
+
+def _stage(path):
+    path.mkdir()
+    for name in ("before", "after"):
+        (path / f"{name}.mlir").write_bytes(FIXTURE.read_bytes())
+    (path / "meta.json").write_text('{"boundary": "identity"}')
+    return path
 
 
 @pytest.mark.parametrize("error", [FileNotFoundError("checker missing"), RuntimeError("audit failed"),
@@ -47,3 +58,39 @@ def test_invalid_width_invalidates_previous_receipt(tmp_path):
 def test_checker_exit_must_match_verdict(code, verdict):
     with pytest.raises(ValueError, match="exit status"):
         check._check_exit(subprocess.CompletedProcess([], code), {"verdict": verdict})
+
+
+def test_checker_consumes_exact_round_trip_exports(tmp_path, monkeypatch, lean_tools):
+    stage = _stage(tmp_path / "stage")
+    exported, validated = [], []
+    export, round_trip = check.export_file, check.round_trip_exported
+
+    def record_export(source, target, **kwargs):
+        exported.append(target)
+        return export(source, target, **kwargs)
+
+    def record_round_trip(source, target, *args, **kwargs):
+        validated.append(target)
+        return round_trip(source, target, *args, **kwargs)
+
+    monkeypatch.setattr(check, "export_file", record_export)
+    monkeypatch.setattr(check, "round_trip_exported", record_round_trip)
+    receipt = check.check_stage(stage, m2m_python=lean_tools.m2m_python)
+    assert receipt["verdict"] == "verified", receipt.get("reason")
+    assert exported == validated and len(exported) == 2
+    assert {str(p.resolve()) for p in validated} == {ref["path"] for ref in receipt["exports"].values()}
+    assert all(check._sha(p) == receipt["exports"][p.stem]["sha256"] for p in validated)
+
+
+def test_concurrent_source_edit_cannot_get_green_receipt(tmp_path, monkeypatch, lean_tools):
+    stage = _stage(tmp_path / "stage")
+    export = check.export_file
+
+    def concurrent_edit(source, target, **kwargs):
+        (stage / "after.mlir").write_text("changed during verification")
+        return export(source, target, **kwargs)
+
+    monkeypatch.setattr(check, "export_file", concurrent_edit)
+    result = check.check_stage(stage, m2m_python=lean_tools.m2m_python)
+    assert result["verdict"] == "unmeasured"
+    assert "changed or missing" in result["reason"]

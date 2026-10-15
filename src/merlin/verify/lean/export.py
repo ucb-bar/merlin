@@ -319,6 +319,15 @@ def round_trip(mlir_path: Path, workdir: Path, *, lean_exe: Path, mlir_opt: Path
         export_file(mlir_path, jpath, backend=backend, m2m_python=m2m_python)
     except Exception as exc:  # the reason is the result
         return RoundTrip("export_failed", f"{type(exc).__name__}: {exc}")
+    return round_trip_exported(mlir_path, jpath, workdir, lean_exe=lean_exe, mlir_opt=mlir_opt,
+                               backend=backend, m2m_python=m2m_python)
+
+
+def round_trip_exported(mlir_path: Path, jpath: Path, workdir: Path, *, lean_exe: Path,
+                        mlir_opt: Path | None = None, backend: str = "mlir",
+                        m2m_python: Path | None = None) -> RoundTrip:
+    """Validate this exact export; callers must pass the same JSON to the proof checker."""
+    workdir.mkdir(parents=True, exist_ok=True)
     lpath = workdir / "lean.mlir"
     proc = subprocess.run([str(lean_exe), "print", str(jpath), str(lpath)], capture_output=True, text=True, check=False)
     if proc.returncode != 0:

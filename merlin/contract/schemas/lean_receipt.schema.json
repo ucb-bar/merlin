@@ -25,6 +25,14 @@
     "index_bits": {"type": "integer", "minimum": 1},
     "domain": {"type": "string", "description": "The inputs and contexts a not_stuck claim quantifies over."},
     "cert": {"$ref": "#/$defs/fileRef"},
+    "exports": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "before": {"$ref": "#/$defs/fileRef"},
+        "after": {"$ref": "#/$defs/fileRef"},
+        "subject": {"$ref": "#/$defs/fileRef"}
+      }
+    },
     "exporter": {
       "type": "object",
       "required": ["executable_sha256", "mlir_revision"],
