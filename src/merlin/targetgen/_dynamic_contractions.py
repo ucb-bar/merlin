@@ -142,7 +142,9 @@ def feeds_row_softmax(node: Any) -> bool:
     aten = _aten()
     rank = node.meta["val"].dim()
     casts = {aten.to.dtype, aten._to_copy.default, aten.clone.default, aten.contiguous.default}
+    scalar_steps = {aten.mul.Tensor, aten.div.Tensor, aten.mul_.Tensor, aten.div_.Tensor}
     softmaxes = {aten._softmax.default, aten.softmax.int}
+    checks = {aten._assert_tensor_metadata.default}  # a metadata assertion reads no value
     pending, reached = [node], False
     while pending:
         value = pending.pop()
@@ -155,9 +157,11 @@ def feeds_row_softmax(node: Any) -> bool:
                 if not _last_axis(args[1], rank):
                     return False
                 reached = True
+            elif user.target in checks:
+                continue
             elif user.target in casts and args[0] is value:
                 pending.append(user)
-            elif user.target in (aten.mul.Tensor, aten.div.Tensor) and args[0] is value:
+            elif user.target in scalar_steps and args[0] is value:
                 if isinstance(args[1], torch.fx.Node):
                     return False
                 pending.append(user)

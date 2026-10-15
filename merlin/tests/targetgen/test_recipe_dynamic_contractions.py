@@ -136,11 +136,17 @@ class Block(nn.Module):
         self.qkv = nn.Linear(64, 192)
         self.out = nn.Linear(64, 64)
 
-    def forward(self, x, mask):
+    def forward(self, x, mask, keep):
         q, k, v = self.qkv(x).reshape(1, 32, 3, 2, 32).permute(2, 0, 3, 1, 4)
         context = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, scale=0.25)
+        # The same attention written out: an in-place scale, a cast, a boolean select, a cast back.
+        scores = torch.matmul(q, k.transpose(-2, -1))
+        scores *= 0.25
+        scores = torch.where(keep, scores.to(torch.float32), torch.finfo(torch.float32).min)
+        eager = torch.matmul(torch.softmax(scores, dim=-1).to(v.dtype), v)
         gate = torch.relu(torch.matmul(q, k.transpose(-2, -1)))  # read by a relu: never smoothed
-        return self.out(context.transpose(1, 2).reshape(1, 32, 64)) + gate.sum()
+        both = (context + eager).transpose(1, 2).reshape(1, 32, 64)
+        return self.out(both) + gate.sum()
 
 
 def grid(x, scale):
@@ -151,13 +157,15 @@ def absmax(x, dim):
     return (x.abs().amax(dim=dim, keepdim=True) / QMAX).clamp(min=1.1754943508222875e-38)
 
 
-def reference(model, x, mask):
-    # The measurement harness's arithmetic (iso2), stated independently of the module under test.
-    q, k, v = model.qkv(x).reshape(1, 32, 3, 2, 32).permute(2, 0, 3, 1, 4)
-    ks = k - k.mean(dim=-2, keepdim=True)
-    sq, sk = absmax(q, -1), absmax(ks, -1)
-    scores = (grid(q, sq).double() @ grid(ks, sk).double().transpose(-2, -1)) * sq.double() * sk.double().transpose(-2, -1)
-    p = torch.softmax(scores.float() * 0.25 + mask, dim=-1)
+def int_scores(q, k):
+    sq, sk = absmax(q, -1), absmax(k, -1)
+    acc = grid(q, sq).double() @ grid(k, sk).double().transpose(-2, -1)
+    return (acc * sq.double() * sk.double().transpose(-2, -1)).float()
+
+
+def attention(q, k, v, scores_to_p):
+    # The measurement harness's arithmetic (iso2): smoothed keys, per-token Q/K scales, two P planes.
+    p = scores_to_p(int_scores(q, k - k.mean(dim=-2, keepdim=True)))
     sv = absmax(v, -2)
     vi = grid(v, sv).double()
     out, residual = 0, p.double()
@@ -166,14 +174,23 @@ def reference(model, x, mask):
         pi = grid(residual, sp)
         out = out + (pi @ vi) * sp * sv.double()
         residual = residual - pi * sp
-    sg, kg = absmax(q, -1), absmax(k, -1)  # the relu-read matmul: no smoothing, one plane
-    gate = torch.relu((grid(q, sg).double() @ grid(k, kg).double().transpose(-2, -1)) * sg.double() * kg.double().transpose(-2, -1))
-    return model.out(out.float().transpose(1, 2).reshape(1, 32, 64)) + gate.float().sum()
+    return out.float()
+
+
+def reference(model, x, mask, keep):
+    q, k, v = model.qkv(x).reshape(1, 32, 3, 2, 32).permute(2, 0, 3, 1, 4)
+    context = attention(q, k, v, lambda s: torch.softmax(s * 0.25 + mask, dim=-1))
+    big = torch.finfo(torch.float32).min
+    eager = attention(q, k, v, lambda s: torch.softmax(torch.where(keep, s * 0.25, big), dim=-1))
+    gate = torch.relu(int_scores(q, k))  # the relu-read matmul: no smoothing, one plane
+    return model.out((context + eager).transpose(1, 2).reshape(1, 32, 64)) + gate.sum()
 
 
 torch.manual_seed(0)
 model = Block().eval()
-inputs = (torch.randn(1, 32, 64), torch.zeros(1, 1, 32, 32))
+keep = torch.ones(1, 1, 32, 32, dtype=torch.bool)
+keep[..., :, 20:] = False
+inputs = (torch.randn(1, 32, 64), torch.zeros(1, 1, 32, 32), keep)
 graph = torch.export.export(model, inputs).module()
 quant.spell_attention(graph)
 before = graph.code
@@ -218,12 +235,12 @@ def test_without_the_block_the_graph_is_unchanged():
 def test_attention_takes_run_time_scales_smoothed_keys_and_two_probability_planes():
     recipe = QR.with_dynamic_contractions(_recipe(), planes={QR.SOFTMAX_OUTPUT: 2}, smooth=True, static_families=[])
     data = _run(recipe)
-    assert len(data["rows"]) == 3 and all(r["status"] == "rewritten" for r in data["rows"])
+    assert len(data["rows"]) == 5 and all(r["status"] == "rewritten" for r in data["rows"])
     scores = [r for r in data["rows"] if r["smooth"]]
-    assert len(scores) == 1 and scores[0]["planes"] == [1, 1], "only the softmax-read Q.K^T is smoothed"
-    assert sorted(r["planes"] for r in data["rows"]) == [[1, 1], [1, 1], [2, 1]], "P.V's P has two planes"
-    # Two heads: Q.K^T and the relu-read product one call each per head, P.V two (one per plane).
-    assert data["int_mm"] == 2 * (1 + 1 + 2)
+    assert len(scores) == 2 and all(r["planes"] == [1, 1] for r in scores), "the softmax-read Q.K^T are smoothed"
+    assert sorted(r["planes"] for r in data["rows"]) == [[1, 1]] * 3 + [[2, 1]] * 2, "each P.V's P has two planes"
+    # Two heads: each Q.K^T and the relu-read product one call per head, each P.V two (one per plane).
+    assert data["int_mm"] == 2 * (1 + 1 + 1 + 2 + 2)
     assert all(r["host_elements"] > 0 and r["int8_macs"] > 0 for r in data["rows"])
     assert data["max_error"] < 1e-5, data["max_error"]
     assert data["after_pt2e_error"] == 0.0, "nothing left to annotate: PT2E leaves the integer form alone"
