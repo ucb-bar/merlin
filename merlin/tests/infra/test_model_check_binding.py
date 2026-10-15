@@ -723,3 +723,25 @@ def test_bundle_manifest_carries_the_binding(tmp_path):
         bundle, model, target=TARGET, captures=tmp_path, engine={"contract": "c"}, binding=record, log=lambda _: None
     )
     assert bundle.manifest()["binding"] == record
+
+
+def test_bundle_build_binds_a_bundle_that_has_no_manifest_yet(tmp_path, monkeypatch):
+    """The first bundle-build of a new bundle has no MANIFEST.json to read an engine from: the
+    receipt is bound from the explicit arguments instead of failing on the absent manifest."""
+    seen = {}
+    monkeypatch.setattr(BD, "receipt", lambda **kwargs: seen.update(kwargs) or {"status": "pass"})
+    monkeypatch.setattr(BD, "replay_memory_defaults", lambda: (0, 0))
+    monkeypatch.delenv("MERLIN_TARGET_CONTRACT", raising=False)
+    monkeypatch.delenv("MERLIN_RTL_FACTS", raising=False)
+    from merlin.common.paths import repo_root
+
+    fresh = tmp_path / "new-bundle"
+    fresh.mkdir()
+    models = repo_root() / "examples" / "gemmini" / "numerics" / "models.yaml"
+    args = cli.build_parser().parse_args(
+        ["bundle-build", "--models", str(models), "--bundle", str(fresh), "--captures", str(tmp_path), "--model", "resnet50",
+         "--host-package", "h", "--contract", "c.yaml", "--rtl-facts", "f.json", "--out", str(tmp_path / "r.json")]
+    )  # fmt: skip
+    assert BD.receipt_for(args) == {"status": "pass"}
+    assert seen["contract_path"] == Path("c.yaml") and seen["facts_path"] == Path("f.json")
+    assert seen["host_package"] == Path("h")
