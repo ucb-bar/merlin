@@ -11,10 +11,19 @@
 schema: merlin.model_check.models.v1
 target: gemmini
 
+# check --mode full: how each program's whole-model image is built and run (contract §2). Paths are
+# repo-relative or ${ENV}-expanded; each model adds its arena (`full.arena_mb`).
+full:
+  board: gemmini_rocket_spike_functional
+  board_catalog: examples/gemmini/platform/board-catalog.yaml
+  host_dts: ${MERLIN_CHIPYARD}/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/chipyard.harness.TestHarness.GemminiRocketConfig.dts
+  datapath: int8
+
 models:
   resnet50:
     workload: resnet50_v1_5
     chain: {kind: single}
+    full: {arena_mb: 128}
     programs:
       - name: model
         stage: null
@@ -27,6 +36,7 @@ models:
   smolvla:
     workload: smolvla
     chain: {kind: flow, steps: 10}       # checkpoint config num_steps; t = 1.0, dt = -0.1 inside the program
+    full: {arena_mb: 8192}
     programs:
       - name: prefix_encode
         stage: prefix_encode
@@ -56,6 +66,7 @@ models:
   tiny_llama:
     workload: tiny_llama
     chain: {kind: causal, prefill_tokens: 128, decode_steps: 32}
+    full: {arena_mb: 512}
     programs:
       - name: prefill
         stage: prefill

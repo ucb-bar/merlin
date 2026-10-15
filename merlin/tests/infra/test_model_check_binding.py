@@ -723,3 +723,15 @@ def test_bundle_manifest_carries_the_binding(tmp_path):
         bundle, model, target=TARGET, captures=tmp_path, engine={"contract": "c"}, binding=record, log=lambda _: None
     )
     assert bundle.manifest()["binding"] == record
+
+
+def test_a_bundle_being_built_has_no_manifest_to_read(tmp_path, monkeypatch):
+    # bundle-build asks for the receipt before it writes the manifest: the engine inputs must then come
+    # from the command's own options, never from a manifest read that cannot succeed yet.
+    import argparse
+
+    monkeypatch.delenv("MERLIN_TARGET_CONTRACT", raising=False)
+    monkeypatch.delenv("MERLIN_RTL_FACTS", raising=False)
+    args = argparse.Namespace(bundle=tmp_path / "new_bundle", contract=None, rtl_facts=None, host_package=None)
+    with pytest.raises(BD.BindingError, match="target contract"):
+        BD.receipt_for(args)
