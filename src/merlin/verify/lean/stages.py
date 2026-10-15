@@ -11,6 +11,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 ENV = "MERLIN_LEAN_STAGES"
@@ -28,6 +30,16 @@ def generic_text(module) -> str:
     from merlin.xdsl_dialects._common import text
 
     return text(module, generic=True)
+
+
+@contextmanager
+def boundary(name: str, pass_entry: str, module) -> Iterator[None]:
+    """Record ``module`` before and after the block as boundary ``name`` when recording is on; the
+    block runs unchanged either way."""
+    before = generic_text(module) if enabled() else None
+    yield
+    if before is not None:
+        record_boundary(name, pass_entry, before, generic_text(module))
 
 
 def record_boundary(boundary: str, pass_entry: str, before: str, after: str, *, extra: dict | None = None) -> Path:

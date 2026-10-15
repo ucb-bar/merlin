@@ -41,7 +41,7 @@ def test_recording_is_byte_neutral(tmp_path, monkeypatch):
     recorded, _ = _record(tmp_path, monkeypatch)
     assert recorded == plain
     names = sorted(p.name.split("_", 1)[1] for p in (tmp_path / "stages").iterdir())
-    assert names == ["xdsl-c-interface", "xdsl-pruned", "xdsl-quant-lowered"]
+    assert names == ["xdsl-c-interface", "xdsl-parse", "xdsl-pruned", "xdsl-quant-lowered"]
 
 
 def _body(doc):

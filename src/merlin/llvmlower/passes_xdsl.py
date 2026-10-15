@@ -655,11 +655,21 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
     return stats
 
 
+def _record_parse(mlir_text: str, module) -> None:
+    """Record the text handed to preprocessing against what the xDSL reader made of it."""
+    from ..verify.lean import stages as _lean_stages
+
+    if _lean_stages.enabled():
+        _lean_stages.record_boundary("xdsl-parse", f"{__name__}.parse_mlir_text", mlir_text,
+                                     _lean_stages.generic_text(module))
+
+
 def preprocess_text(mlir_text: str, *, audit=None) -> tuple[str, dict]:
     """Run Merlin xDSL passes, optionally observing each completed rewrite without changing it."""
     from ..xdsl_dialects._common import text as module_to_text
 
     module = parse_mlir_text(mlir_text)
+    _record_parse(mlir_text, module)
     transform_map = None
     if audit is not None and audit.directory is not None:
         supported = _SourceTransformMap.supports(module)
@@ -706,6 +716,7 @@ def preprocess_text_with_transform_map(mlir_text: str) -> tuple[str, dict, dict]
     from ..xdsl_dialects._common import text as module_to_text
 
     module = parse_mlir_text(mlir_text)
+    _record_parse(mlir_text, module)
     transform_map = _SourceTransformMap(mlir_text, module)
     stats = _preprocess_module(module, on_quant_rewrite=transform_map.record)
     upstream = module_to_text(module, generic=True)

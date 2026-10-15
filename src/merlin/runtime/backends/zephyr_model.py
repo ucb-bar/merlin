@@ -496,6 +496,7 @@ def _prepare_model_mlir(
         lower_quant_ext,
     )
     from ...llvmlower.torchao_affine import lower_torchao_affine_quant
+    from ...verify.lean import stages as _lean_stages
     from ...xdsl_dialects._common import text as to_text
     from ..dispatch_runtime import _propagate_quant_inner
 
@@ -512,17 +513,29 @@ def _prepare_model_mlir(
         selected_passes = ("contraction_int8",)
 
     module = parse_mlir_file(mlir_path)
+    if _lean_stages.enabled():
+        # The capture as written, against what the xDSL reader made of it.
+        _lean_stages.record_boundary("prepare-parse", "merlin.frontends.linalg_mlir.parse_mlir_file",
+                                     Path(mlir_path).read_text(), _lean_stages.generic_text(module))
     # Same first step as the interpreter path (dispatch_runtime.run_model): torchao's
     # choose_qparams/quantize arrive as opaque calls to externs nothing defines, and the two paths
     # diverging here is precisely how a bundle ends up interpretable but unlinkable.
-    lower_torchao_affine_quant(module)
+    with _lean_stages.boundary("prepare-torchao-affine",
+                               "merlin.llvmlower.torchao_affine.lower_torchao_affine_quant", module):
+        lower_torchao_affine_quant(module)
     from ...llvmlower.scalar_square import canonicalize_scalar_squares
 
-    _squares = canonicalize_scalar_squares(module)
+    with _lean_stages.boundary("prepare-scalar-squares",
+                               "merlin.llvmlower.scalar_square.canonicalize_scalar_squares", module):
+        _squares = canonicalize_scalar_squares(module)
     if _squares:
         print(f"[canonicalize] replaced {_squares} scalar square power(s) with multiplication")
-    collapse_overrank_matmul(module)
-    _propagate_quant_inner(module)
+    with _lean_stages.boundary("prepare-collapse-overrank-matmul",
+                               "merlin.llvmlower.passes_xdsl.collapse_overrank_matmul", module):
+        collapse_overrank_matmul(module)
+    with _lean_stages.boundary("prepare-propagate-quant-inner",
+                               "merlin.runtime.dispatch_runtime._propagate_quant_inner", module):
+        _propagate_quant_inner(module)
     # BIND the quantized-subclass inner tensors on the COMPILED path too. The interpreter binds them
     # while it walks the graph (`dispatch_runtime.execute`); a compiled binary has no such moment, so
     # each tagged `tensor.empty` is lifted here to a trailing `@forward` argument and
@@ -532,7 +545,8 @@ def _prepare_model_mlir(
     # A module with no quantized subclass is untouched, so every other bundle lowers byte-identically.
     from ...llvmlower import qinner as _qinner
 
-    _qargs = _qinner.lift(module)
+    with _lean_stages.boundary("prepare-qinner-lift", "merlin.llvmlower.qinner.lift", module):
+        _qargs = _qinner.lift(module)
     if _qargs:
         print(
             f"[qinner] lifted {len(_qargs)} quant-inner tensor(s) to @forward arguments "
@@ -553,26 +567,28 @@ def _prepare_model_mlir(
         if respect_captured_quantization_scope:
             from ...llvmlower.quant_scope import captured_quantized_contraction
 
-            apply_quant(
-                module,
-                list(selected_passes),
-                named_contraction=named_contraction,
-                prequant_gather=prequant_gather,
-                report_out=_qrep,
-                select=captured_quantized_contraction,
-            )
+            with _lean_stages.boundary("prepare-apply-quant", "merlin.llvmlower.quant_passes.apply_quant", module):
+                apply_quant(
+                    module,
+                    list(selected_passes),
+                    named_contraction=named_contraction,
+                    prequant_gather=prequant_gather,
+                    report_out=_qrep,
+                    select=captured_quantized_contraction,
+                )
             print(
                 "[quant_scope] respected captured quantization evidence: "
                 "contraction_int8 only; conv/nonlinear integer approximation passes disabled"
             )
         else:
-            apply_quant(
-                module,
-                list(selected_passes),
-                named_contraction=named_contraction,
-                prequant_gather=prequant_gather,
-                report_out=_qrep,
-            )
+            with _lean_stages.boundary("prepare-apply-quant", "merlin.llvmlower.quant_passes.apply_quant", module):
+                apply_quant(
+                    module,
+                    list(selected_passes),
+                    named_contraction=named_contraction,
+                    prequant_gather=prequant_gather,
+                    report_out=_qrep,
+                )
         _pg = _qrep.get("contraction_int8", {})
         if prequant_gather:
             print(
@@ -585,13 +601,18 @@ def _prepare_model_mlir(
                     if k.startswith(("prequant_gather_mode_", "prequant_gather_refused_"))
                 )
             )
-    lower_quant_ext(module)
-    lower_bf16_matmul_f32acc(module)
-    fix_bool_sitofp(module)
+    with _lean_stages.boundary("prepare-lower-quant-ext", "merlin.llvmlower.passes_xdsl.lower_quant_ext", module):
+        lower_quant_ext(module)
+    with _lean_stages.boundary("prepare-bf16-matmul-f32acc",
+                               "merlin.llvmlower.passes_xdsl.lower_bf16_matmul_f32acc", module):
+        lower_bf16_matmul_f32acc(module)
+    with _lean_stages.boundary("prepare-fix-bool-sitofp", "merlin.llvmlower.passes_xdsl.fix_bool_sitofp", module):
+        fix_bool_sitofp(module)
     # The other half of the bool-cast repair, and the one that erases models rather than skewing
     # them: a float->i1 `arith.fptosi` is POISON in LLVM for every value but 0 and -1, and the
     # poison propagates until a branch on it lets simplifycfg delete the rest of `forward`.
-    fix_bool_fptosi(module)
+    with _lean_stages.boundary("prepare-fix-bool-fptosi", "merlin.llvmlower.passes_xdsl.fix_bool_fptosi", module):
+        fix_bool_fptosi(module)
     # FUSE THE QUANTIZE ROUND/CLAMP/CONVERT CHAIN (default OFF -> baseline byte-identical), and do it
     # HERE, between the quant passes that build the chain and the vectorize tagging below that reads
     # the body. The order is the whole point of the placement: the tagger REFUSES any generic with a
@@ -630,7 +651,8 @@ def _prepare_model_mlir(
             )
         _bd = Path(bundle_dir)
         _man = _json.loads((_bd / "weights.safetensors.manifest.json").read_text())
-        _hargs, _hvals, _nch = _qh.apply(module, _qh.activation_arg_indices(_man), _qh.weight_loader(_bd, _man))
+        with _lean_stages.boundary("prepare-hoist-weight-quantize", "merlin.llvmlower.quant_hoist.apply", module):
+            _hargs, _hvals, _nch = _qh.apply(module, _qh.activation_arg_indices(_man), _qh.weight_loader(_bd, _man))
         _qh.write_plan(work, _hargs)
         _qh.write_values(work, _hvals)
         print(
@@ -641,7 +663,9 @@ def _prepare_model_mlir(
         from ...llvmlower.quant_round import fuse_round_clamp_convert
 
         _rrep: dict = {}
-        fuse_round_clamp_convert(module, report_out=_rrep)
+        with _lean_stages.boundary("prepare-fuse-quant-round",
+                                   "merlin.llvmlower.quant_round.fuse_round_clamp_convert", module):
+            fuse_round_clamp_convert(module, report_out=_rrep)
         print("[quant_round] fuse_quantize_round_convert: " + " ".join(f"{k}={v}" for k, v in sorted(_rrep.items())))
     # VECTORIZE THE AMAX REDUCTION (default OFF -> baseline byte-identical). Placed HERE, in the same
     # slot and for the same reason as `fuse_quant_round` above: it rewrites `math.absf` to a bit-exact
@@ -658,7 +682,9 @@ def _prepare_model_mlir(
         from ...llvmlower import reduce_vec as _reduce_vec
 
         _vrep: dict = {}
-        _reduce_vec.apply(module, lanes=vec_lanes, min_rank=_VEC_RANK_MIN_RANK, max_rank=vec_max_rank, report_out=_vrep)
+        with _lean_stages.boundary("prepare-vectorize-amax", "merlin.llvmlower.reduce_vec.apply", module):
+            _reduce_vec.apply(module, lanes=vec_lanes, min_rank=_VEC_RANK_MIN_RANK, max_rank=vec_max_rank,
+                              report_out=_vrep)
         print("[reduce_vec] vectorize_amax_reduction: " + " ".join(f"{k}={v}" for k, v in sorted(_vrep.items())))
     # PER-RANK VECTORIZE TAGGING (default OFF -> baseline byte-identical): tag each all-parallel
     # (non-reduction) linalg.generic with `merlin.vec_r{rank}` so the transform schedule can
@@ -670,6 +696,7 @@ def _prepare_model_mlir(
     # of only by an env var it cannot set. MERLIN_VEC_RANK still forces it on for a manual A/B.
     import os as _os
 
+    _vec_before = _lean_stages.generic_text(module) if _lean_stages.enabled() else None
     if tag_vec_ranks or _os.environ.get("MERLIN_VEC_RANK"):
         from xdsl.dialects.builtin import UnitAttr
         from xdsl.ir.affine import AffineBinaryOpExpr
@@ -742,9 +769,14 @@ def _prepare_model_mlir(
             f"extent, {skip_rank} outside the rank bound, {skip_map} on a "
             f"non-projected-permutation indexing map)"
         )
+    if _vec_before is not None:
+        _lean_stages.record_boundary("prepare-vec-rank-tags", f"{__name__}._prepare_model_mlir", _vec_before,
+                                     _lean_stages.generic_text(module))
     from ...llvmlower.splat_inputs import scalarize_splat_inputs
 
-    _splats = scalarize_splat_inputs(module)
+    with _lean_stages.boundary("prepare-scalarize-splat-inputs",
+                               "merlin.llvmlower.splat_inputs.scalarize_splat_inputs", module):
+        _splats = scalarize_splat_inputs(module)
     if _splats:
         print(f"[canonicalize] kept {_splats} uniform linalg input(s) scalar")
     if op_counts_out is not None:
@@ -762,6 +794,10 @@ def _prepare_model_mlir(
     _qinner.require_initialized(module, where=str(mlir_path))
     out = work / "model.prepared.mlir"
     out.write_text(to_text(module))
+    if _lean_stages.enabled():
+        # The module against the text lowering will read back.
+        _lean_stages.record_boundary("prepare-print", "merlin.xdsl_dialects._common.text",
+                                     _lean_stages.generic_text(module), out.read_text())
     if int8_compute:
         from ...common.digest import sha256_file
         from ...common.jsonio import write_pretty_json
@@ -1017,15 +1053,19 @@ def prepare_for_lowering(
     # model.perop_tagged.mlir matmul=15), so a matmul-keyed lever that WOULD fire was being named as
     # one that could not. A check that reports the wrong answer is worse than no check.
     _applicability_source = _op_counts
+    _prepared_first = Path(prepared)
 
     def _finish_preparation(path: Path) -> tuple[Path, frozenset[str]]:
         from ...llvmlower.prepared_model_transform import apply_prepared_model_transform
+        from ...verify.lean import stages as _lean_stages
 
         stripped = _strip_provenance(path, work, features)
-        return (
-            apply_prepared_model_transform(stripped, Path(work) / "prepared_model_transform", prepared_model_transform),
-            features,
-        )
+        final = apply_prepared_model_transform(stripped, Path(work) / "prepared_model_transform", prepared_model_transform)
+        if _lean_stages.enabled():
+            # Every file-level rewrite after `_prepare_model_mlir`, as one boundary.
+            _lean_stages.record_boundary("prepare-for-lowering-rewrites", f"{__name__}.prepare_for_lowering",
+                                         _prepared_first.read_text(), Path(final).read_text())
+        return final, features
 
     def _judge_levers_on(mod_path) -> None:
         """Report inapplicable levers against the module LOWERING actually receives.
