@@ -281,3 +281,20 @@ def test_an_unsigned_min_compares_bit_patterns() -> None:
     b = np.array([[31, -2, 4, -1, 7, 2**31 - 1, -(2**31), 3]], np.int32)
     (out,) = _evaluate(text, a, b)
     assert out.tolist() == [[31, 5, 4, 0, 7, 2**31 - 1, 2**31 - 1, 3]]
+
+
+def test_a_runtime_assertion_is_checked_not_skipped() -> None:
+    """``cf.assert`` is evaluated: a true condition passes through, a false one stops the oracle."""
+    text = """
+func.func @forward(%x: tensor<2xi64>, %y: i64) -> tensor<2xi64> {
+  %c = arith.constant 4 : i64
+  %ok = arith.cmpi slt, %y, %c : i64
+  cf.assert %ok, "index in bounds"
+  return %x : tensor<2xi64>
+}
+"""
+    x = np.array([1, 2], np.int64)
+    (out,) = _evaluate(text, x, np.int64(3))
+    assert out.tolist() == [1, 2]
+    with pytest.raises(LN.LinalgNumpyError, match="index in bounds"):
+        _evaluate(text, x, np.int64(9))

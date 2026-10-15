@@ -854,6 +854,13 @@ def evaluate_op(op, env: Mapping[int, Any]) -> list[Any]:
         return [destination]
     if name.startswith("arith.") or name.startswith("math."):
         return [_body_op(op, env)]
+    if name == "cf.assert":
+        # The program's own runtime check: evaluated, never skipped, so a violated bound stops the oracle
+        # exactly where the compiled program would trap.
+        if not np.all(np.asarray(env[id(op.operands[0])]).astype(np.bool_)):
+            message = op.properties.get("msg") or op.attributes.get("msg")
+            raise LinalgNumpyError(f"cf.assert failed: {getattr(message, 'data', message)}")
+        return []
     if name == "tensor.dim":
         source = np.asarray(env[id(op.operands[0])])
         axis = int(env[id(op.operands[1])])
