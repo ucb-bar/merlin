@@ -7,14 +7,10 @@ import MerlinVerify.Check.Module
 import MerlinVerify.Check.Rulebook
 
 open MerlinVerify
-
-/-- A JSON string literal. -/
-def jsonStr (s : String) : String :=
-  "\"" ++ (s.toList.map fun c => match c with
-    | '"' => "\\\"" | '\\' => "\\\\" | '\n' => "\\n" | c => c.toString).foldl (· ++ ·) "" ++ "\""
+open Lean (Json toJson)
 
 /-- Argument and result value types of function `fn`, from its `function_type` at index width `ib`. -/
-def funcSig? (ib : Nat) (m : Module) (fn : String) : Option (List Check.VTy × List Check.VTy) :=
+def funcSig? (ib : Nat) (m : MerlinVerify.Module) (fn : String) : Option (List Check.VTy × List Check.VTy) :=
   m.ops.findSome? fun op =>
     match op.asFunc?, op.attr? "function_type" with
     | some f, some (.type (.function ins outs)) =>
@@ -25,9 +21,29 @@ def funcSig? (ib : Nat) (m : Module) (fn : String) : Option (List Check.VTy × L
       else none
     | _, _ => none
 
-/-- `merlin-lean`: checker driver (design §8.3).
+/-- What a per-boundary verdict leaves open: its theorem is conditional refinement
+(`FuncRefinesC`), which says nothing where the source is not modelled. Strict refinement needs the
+capture's support (`Check.supportCheck_sound`) and the composed chain (`Check.chain_refines`). -/
+def conditionalObligation : String :=
+  "strict refinement needs source support: MerlinVerify.Check.supportCheck_sound on the capture, " ++
+    "composed by MerlinVerify.Check.chain_refines"
+
+def verdictOf (ok : Bool) : String := if ok then "verified" else "abstracted"
+
+/-- Print one result object and return its exit code. -/
+def emit (fields : List (String × Json)) (ok : Bool) : IO UInt32 := do
+  IO.println (Json.mkObj fields).compress
+  return (if ok then 0 else 1)
+
+/-- `merlin-lean`: checker driver (design §8.3). Every result is one JSON object on stdout.
 * `decode <in.json>` — validate a `merlin.lean.ir.v1` document and print a summary.
-* `print <in.json> <out.mlir>` — decode and print generic MLIR (round trip, design D9). -/
+* `print <in.json> <out.mlir>` — decode and print generic MLIR (round trip, design D9).
+* `check-c1 <before.json> <after.json> <fn>` — C1 on one function (`Check.c1Check_sound`).
+* `check-module <before.json> <after.json>` — every defined function, plus outside-function changes
+  (`Check.moduleCheck_sound`).
+* `check-support <in.json> <fn> [index_bits]` — the function is inside the proved fragment
+  (`Check.supportCheck_sound`).
+The first two checks prove conditional refinement only; their output names the open obligation. -/
 def main (args : List String) : IO UInt32 := do
   match args with
   | ["decode", inp] =>
@@ -41,29 +57,35 @@ def main (args : List String) : IO UInt32 := do
     | .ok m => IO.FS.writeFile out (Print.module m); return 0
     | .error e => IO.eprintln s!"decode error: {e}"; return 1
   | ["check-c1", beforeJ, afterJ, fn] =>
-    -- Verdict of C1 (rule-instance checker) for one function; claim: `Check.c1Check_sound`.
     match Decode.module (← IO.FS.readFile beforeJ), Decode.module (← IO.FS.readFile afterJ) with
     | .ok src, .ok tgt =>
       let input := Check.synthC1 src tgt fn
       let sites := (input.script.filter fun | .site .. => true | .same => false).length
       let ok := Check.c1Check input
-      IO.println s!"\{\"checker\": \"C1\", \"theorem\": \"MerlinVerify.Check.c1Check_sound\", \"claim_type\": \"refine\", \"function\": \"{fn}\", \"verdict\": \"{if ok then "verified" else "abstracted"}\", \"steps\": {input.script.length}, \"rule_sites\": {sites}}"
-      return (if ok then 0 else 1)
+      emit ([("checker", toJson "C1"), ("theorem", toJson "MerlinVerify.Check.c1Check_sound"),
+        ("claim_type", toJson "refine_conditional"), ("obligation", toJson conditionalObligation),
+        ("function", toJson fn), ("verdict", toJson (verdictOf ok)),
+        ("steps", toJson input.script.length), ("rule_sites", toJson sites)] ++
+        (if ok then [] else [("reason", toJson
+          "no identity/DCE script relates the functions (a changed op, or an erased op that is used or not effect-free)")]))
+        ok
     | .error e, _ | _, .error e => IO.eprintln s!"decode error: {e}"; return 2
   | ["check-module", beforeJ, afterJ] =>
-    -- Every defined function refines (`Check.moduleCheck_sound`), plus the outside-claim accounting.
     match Decode.module (← IO.FS.readFile beforeJ), Decode.module (← IO.FS.readFile afterJ) with
     | .ok src, .ok tgt =>
       let ok := Check.moduleCheck src tgt
       let out := Check.outsideChanges src tgt
       let verified := ok && out.unverified.isEmpty
-      let strs (xs : List String) := "[" ++ ", ".intercalate (xs.map fun x => "\"" ++ x ++ "\"") ++ "]"
-      IO.println s!"\{\"checker\": \"module\", \"theorem\": \"MerlinVerify.Check.moduleCheck_sound\", \"claim_type\": \"refine\", \"functions\": {strs (Check.Module.definedNames src)}, \"functions_verified\": {ok}, \"abi_changes\": {strs out.abi}, \"unverified_changes\": {strs out.unverified}, \"verdict\": \"{if verified then "verified" else "abstracted"}\"}"
-      return (if verified then 0 else 1)
+      let reasons := (if ok then [] else ["a function body did not verify"]) ++ out.unverified
+      emit ([("checker", toJson "module"), ("theorem", toJson "MerlinVerify.Check.moduleCheck_sound"),
+        ("claim_type", toJson "refine_conditional"), ("obligation", toJson conditionalObligation),
+        ("functions", toJson (Check.Module.definedNames src)), ("functions_verified", toJson ok),
+        ("abi_changes", toJson out.abi), ("unverified_changes", toJson out.unverified),
+        ("verdict", toJson (verdictOf verified))] ++
+        (if verified then [] else [("reason", toJson ("; ".intercalate reasons))]))
+        verified
     | .error e, _ | _, .error e => IO.eprintln s!"decode error: {e}"; return 2
   | "check-support" :: inp :: fn :: rest =>
-    -- The capture is inside the proved fragment (`Check.supportCheck_sound`): never stuck on typed
-    -- inputs at index width `ib` (default 64).
     let ib := (rest.head? >>= String.toNat?).getD 64
     match Decode.module (← IO.FS.readFile inp) with
     | .ok m =>
@@ -73,8 +95,10 @@ def main (args : List String) : IO UInt32 := do
           let R := Check.merlinBook ib
           if Check.supportCheck R m fn argTys resTys then (true, "")
           else (false, (Check.diagnoseFunc R m fn argTys resTys).getD "refused")
-      IO.println s!"\{\"checker\": \"support\", \"theorem\": \"MerlinVerify.Check.supportCheck_sound\", \"claim_type\": \"not_stuck\", \"function\": {jsonStr fn}, \"index_bits\": {ib}, \"verdict\": \"{if ok then "verified" else "unsupported"}\", \"first_refusal\": {if ok then "null" else jsonStr why}}"
-      return (if ok then 0 else 1)
+      emit [("checker", toJson "support"), ("theorem", toJson "MerlinVerify.Check.supportCheck_sound"),
+        ("claim_type", toJson "not_stuck"), ("function", toJson fn), ("index_bits", toJson ib),
+        ("verdict", toJson (if ok then "verified" else "unsupported")),
+        ("first_refusal", if ok then Json.null else toJson why)] ok
     | .error e => IO.eprintln s!"decode error: {e}"; return 2
   | _ =>
     IO.eprintln "usage: merlin-lean decode <in.json> | print <in.json> <out.mlir> | check-c1 <before.json> <after.json> <fn> | check-module <before.json> <after.json> | check-support <in.json> <fn> [index_bits]"

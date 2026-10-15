@@ -14,5 +14,5 @@
   "schemas/lean_cert.schema.json": "dcc8f540643d15ccb4f8d084b3f0fe5f7d659080287dfd2d3237abb1ed8de52f",
   "schemas/lean_chain.schema.json": "ed3d465b3429f74685d762e3348434846c9d4dde5158147dbe606fd9774e9a84",
   "schemas/lean_ir.schema.json": "1c4c73ed6f824b2d19dfaf4b3edb381ec156c8612d03f6877267478bc84a9644",
-  "schemas/lean_receipt.schema.json": "a0efdf2ee52631e9e71af557a3ef99cfe87cbacd290ced477b0250625711f88d"
+  "schemas/lean_receipt.schema.json": "8b87545a992dbadaebdd51c61fe89923779aa927fa0fd9a9aefd64370fc132b3"
 }

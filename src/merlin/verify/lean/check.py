@@ -103,7 +103,9 @@ def check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
     receipt: dict[str, Any] = {
         "schema": "merlin.lean.receipt.v1",
         "boundary": meta["boundary"],
-        "claim_type": "refine",
+        # Conditional: the theorem says nothing where the source is unmodelled; strict refinement
+        # comes only from `compose_chain` with the capture's support receipt.
+        "claim_type": "refine_conditional",
         "checker": CHECKER,
         "theorem": THEOREM,
         "before": _file_ref(before),
@@ -199,6 +201,8 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path) -
     for stage in stages:
         path = stage / "receipt.json"
         receipt = json.loads(path.read_text())
+        if receipt.get("claim_type") != "refine_conditional":
+            raise ValueError(f"{path} is not a boundary receipt (claim_type {receipt.get('claim_type')!r})")
         receipts.append(receipt)
         links.append({"boundary": receipt["boundary"], "receipt_sha256": _sha(path),
                       "before_sha256": receipt["before"]["sha256"], "after_sha256": receipt["after"]["sha256"],
