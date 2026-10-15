@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -520,7 +521,44 @@ def _spawn_selfcheck(argv, *, cwd, env, job_log, timeout_s):
         stdin=subprocess.DEVNULL,
         stdout=job_log,
         stderr=subprocess.STDOUT,
+        start_new_session=True,
     )
+
+
+def _stop_sim_process(process) -> None:
+    """Stop the simulator's complete process group, including a child of ``timeout``."""
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+
+
+def _cancel_running_job(ch: Path, jid: str, job: dict, reason: str) -> None:
+    """Publish cancellation and release every resource held by an obsolete job."""
+    _stop_sim_process(job["proc"])
+    timing = dict(job["timing"], finished_at_unix=time.time(), state="cancelled",
+                  worker_runtime_s=max(0.0, time.monotonic() - job["started_monotonic"]),
+                  returncode=job["proc"].returncode)
+    (ch / f"simtiming_{jid}.json").write_text(json.dumps(timing, indent=2))
+    response = {"sim": job["sim"], "state": "cancelled", "all_pass": False, "error": reason}
+    for recipient in (jid, *job.get("aliases", [])):
+        (ch / f"simresp_{recipient}.json").write_text(json.dumps(response, indent=2))
+        (ch / f"simerr_{recipient}").write_text("cancelled")
+    if job.get("log"):
+        job["log"].close()
+    _release_veril_workers(job["slots"])
+    if job.get("snapshot_root"):
+        shutil.rmtree(job["snapshot_root"], ignore_errors=True)
 
 
 def _per_capsule_timeout(
@@ -664,6 +702,7 @@ def main(
     # spawned for a round that never started. Exit when the process that started us is gone.
     queued_since = {}
     orig_ppid = os.getppid()
+    next_source_check = 0.0
     while True:
         if (ch / "STOP").exists() or os.getppid() != orig_ppid:
             break
@@ -760,6 +799,20 @@ def main(
             if j.get("snapshot_root"):
                 shutil.rmtree(j["snapshot_root"], ignore_errors=True)
             running.pop(jid)
+        # An edit supersedes paid simulation of the old source. Detect it within five seconds,
+        # release its slots, and leave completed evidence for an unchanged source in place.
+        now = time.monotonic()
+        if running and now >= next_source_check:
+            next_source_check = now + 5
+            try:
+                current_source = _TP._submission_digest(ws)
+            except (OSError, ValueError):
+                current_source = None  # a mid-edit source is retried at the next observation
+            if current_source is not None:
+                for jid, job in list(running.items()):
+                    if job["source_digest"] != current_source:
+                        _cancel_running_job(ch, jid, job, "submission source superseded")
+                        running.pop(jid)
         # launch queued (respect local + global caps)
         queued = _observe_pending(ch.glob("simreq_*.json"), claimed, queued_since, time.monotonic())
         if len(running) < a.max_jobs:
@@ -969,7 +1022,7 @@ def main(
         time.sleep(a.poll)
     # drain on STOP
     for j in running.values():
-        j["proc"].kill()
+        _stop_sim_process(j["proc"])
         _release_veril_workers(j["slots"])
         if j.get("snapshot_root"):
             shutil.rmtree(j["snapshot_root"], ignore_errors=True)

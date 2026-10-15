@@ -78,6 +78,36 @@ def test_simjob_dedupes_only_exact_source_capsule_engine_and_tier(tmp_path):
     assert (tmp_path / "simdone_after").is_file()
 
 
+def test_simjob_cancellation_stops_process_group_and_releases_slots(tmp_path):
+    import subprocess
+    import sys
+    import time
+
+    ch = tmp_path / "channel"
+    ch.mkdir()
+    slot = tmp_path / "slot_0"
+    slot.write_text("held")
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                               start_new_session=True, stdout=subprocess.DEVNULL)
+    log = (ch / "simlog_job.txt").open("wb")
+    job = {"proc": process, "timing": {"job_id": "job"}, "started_monotonic": time.monotonic(),
+           "sim": "gsim", "aliases": ["duplicate"], "log": log, "slots": (slot,),
+           "snapshot_root": snapshot}
+    try:
+        simjob._cancel_running_job(ch, "job", job, "submission source superseded")
+        assert process.poll() is not None
+        assert not slot.exists() and not snapshot.exists() and log.closed
+        for jid in ("job", "duplicate"):
+            response = json.loads((ch / f"simresp_{jid}.json").read_text())
+            assert response["state"] == "cancelled" and response["all_pass"] is False
+            assert (ch / f"simerr_{jid}").exists()
+        assert json.loads((ch / "simtiming_job.json").read_text())["state"] == "cancelled"
+    finally:
+        simjob._stop_sim_process(process)
+
+
 def test_context_caches_models_per_invocation_but_reloads_schedule(tmp_path, monkeypatch):
     from merlin.targetgen import capsule_runner as runner
     from merlin.targetgen import isa_model, target_experiment
