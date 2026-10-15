@@ -152,6 +152,17 @@ def test_the_differential_holds_every_output_to_every_bit():
     assert F._same(ours, [ours[0], np.array([3], np.int32), ours[2]]) == [1], "so is a dtype"
 
 
+def test_images_are_built_below_the_out_root_whatever_the_work_directory(tmp_path, monkeypatch):
+    """A harness passes ``--work`` outside this checkout; a whole-model build may only write below out/."""
+    out = tmp_path / "out"
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(out))
+    inside = out / "build" / "model_check" / "w"
+    assert F.build_root(inside, "m") == inside
+    elsewhere = F.build_root(tmp_path / "run" / "check.work", "m")
+    assert elsewhere.is_relative_to(out) and elsewhere.is_dir() and elsewhere.name.startswith("m-")
+    assert F.build_root(tmp_path / "run" / "check.work", "m") != elsewhere, "each check its own directory"
+
+
 def test_full_mode_takes_the_differential_and_refuses_a_program():
     import argparse
 

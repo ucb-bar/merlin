@@ -297,6 +297,20 @@ def _outputs_rows(model: Model, run: CH.ChainRun, ref: CH.ChainRun, specs) -> di
     return out
 
 
+def build_root(work: Path, model: str) -> Path:
+    """Where the whole-model images are built: ``work`` when it lies below the out root (the only place a
+    whole-model build may write), else a fresh directory of this check's own under it. Runs, references and
+    every other product stay in ``work``."""
+    from merlin.common.paths import build_dir, out_dir
+
+    if Path(work).resolve().is_relative_to(out_dir().resolve()):
+        return Path(work)
+    root = build_dir() / "model_check" / "full"
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    return Path(tempfile.mkdtemp(prefix=f"{model}-{stamp}-", dir=root))
+
+
 def default_jobs(inputs: int) -> int:
     """Inputs run concurrently when ``--jobs`` is not given: one per input, up to half the CPUs (a Spike run
     and a relink are single-threaded; the other half is left to the machine)."""
@@ -340,6 +354,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
     inputs = judged_inputs(bundle, model.name, args.split, getattr(args, "inputs", None))
     submission_sha = report["submission"]["tree_sha256"]
     work = Path(args.work or (build_dir() / "model_check" / "full")) / submission_sha[:16] / model.name
+    images = build_root(work, model.name)
     settings = FB.BuildSettings.of(models, model, args.host_package)
     stages = {p.name: B.stage_dir(captures, model, p.name) for p in model.programs}
     specs = {name: _out_specs(stage / "model.mlir") for name, stage in stages.items()}
@@ -360,7 +375,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
             submission=args.submission,
             submission_sha256=submission_sha,
             settings=settings,
-            directory=work / "programs" / program.name,
+            directory=images / "programs" / program.name,
             admission=admission,
         )
         timing["build_seconds"] += 0 if builds[program.name]["reused"] else builds[program.name]["seconds"]
@@ -378,7 +393,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
             submission=args.submission,
             submission_sha256=submission_sha,
             settings=settings,
-            directory=work / "host" / program.name,
+            directory=images / "host" / program.name,
             offload=False,
         )
         timing["build_seconds"] += 0 if twins[program.name]["reused"] else twins[program.name]["seconds"]
