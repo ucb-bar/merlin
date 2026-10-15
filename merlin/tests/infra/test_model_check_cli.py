@@ -91,3 +91,29 @@ def test_agent_view_drops_sealed_values():
     assert view["model_metrics"]["per_input"] == []
     assert "input" not in view["failures"][0] and "detail" not in view["failures"][0]
     assert view["agent_view"] is True
+
+
+def test_worst_case_takes_min_agreement_and_max_error():
+    from merlin.model_check.metrics import worst_of
+
+    rows = [
+        {"split": "visible", "kl_mean": 0.01, "top1_agree": 0.95, "distributions": 33},
+        {"split": "visible", "kl_mean": 0.04, "top1_agree": 0.90, "distributions": 33},
+    ]
+    assert worst_of(rows) == {"kl_mean": 0.04, "top1_agree": 0.90}
+
+
+def test_census_moves_refused_kernels_off_the_device(tmp_path):
+    from merlin.model_check import commands as C
+    from merlin.model_check.bundle import Bundle
+
+    program = tmp_path / "m" / "programs" / "p"
+    program.mkdir(parents=True)
+    rows = [
+        {"placement": "device", "symbol": "k0", "macs": 30},
+        {"placement": "device", "symbol": "k1", "macs": 60},
+        {"placement": "host", "symbol": None, "macs": 10},
+    ]
+    (program / "census.json").write_text(json.dumps({"denominator": 3, "device": 2, "contractions": rows}))
+    census = C._program_census(Bundle(tmp_path), "m", "p", {"k1": "no lowering"})  # noqa: SLF001
+    assert census == {"denominator": 3, "device": 1, "refused": 1, "device_mac_fraction": 0.3}
