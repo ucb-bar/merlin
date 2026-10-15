@@ -664,8 +664,9 @@ def build_device_objects(
     compute capacity (or explicit ``MERLIN_DEVICE_BUILD_JOBS``). Legacy callers default to one job.
     """
     from merlin.common.digest import sha256_text
+    from merlin.targetgen import capsule_common as CC
     from merlin.targetgen import corpus_spec as CS
-    from merlin.targetgen.package_runtime import load_package, run_entrypoint
+    from merlin.targetgen.package_runtime import BackendDeclined, CertFailure, load_package
 
     from .device_build_jobs import ArtifactBuild, ArtifactCompiler, build_workers
     from .device_ir_scalability import DeviceIRBudget, inspect_device_ir
@@ -909,20 +910,26 @@ def build_device_objects(
             ifc.write_text(iface, encoding="utf-8")
 
             try:
-                r = run_entrypoint(pkg, "emit_target_artifact", ifc, timeout=timeout)
+                # Model builds must honor the same checked command-buffer
+                # acceptance as capsule builds. A successful artifact process
+                # can still accompany an explicit refusal or a fence-only stub.
+                lowering = work / f"{sym}.lowering"
+                _, artifact = CC.lower_interface(pkg, ifc, lowering, contract=None, timeout=timeout)
             except subprocess.TimeoutExpired:
-                skipped.append((sym, f"emit_target_artifact: timed out after {timeout} seconds"))
+                skipped.append((sym, f"package lowering: timed out after {timeout} seconds"))
                 continue
-            if r.returncode != 0:
-                shape = f"{m}x{k}x{n}" if m is not None else str(entry.get("op") or "this program")
-                skipped.append((sym, f"package declined {shape}: {(r.stderr or '').strip()[:200]}"))
+            except (BackendDeclined, CertFailure, ValueError) as error:
+                skipped.append((sym, f"package lowering: {type(error).__name__}: {str(error)[:300]}"))
                 continue
-            if expected_interfaces is not None and f"llvm.func @{abi.symbol}(" not in r.stdout:
+            if expected_interfaces is not None and f"llvm.func @{abi.symbol}(" not in artifact:
                 skipped.append((sym, "exact package artifact has no contract-named LLVM kernel entry"))
                 continue
             art = stem.with_suffix(".device.mlir")
-            art.write_text(r.stdout, encoding="utf-8")
-            digest = hashlib.sha256(r.stdout.encode("utf-8")).hexdigest()
+            # Keep the checked producer path for proof custody without a second
+            # full artifact copy. Both names are in this build's filesystem.
+            art.unlink(missing_ok=True)
+            art.hardlink_to(lowering / "lowered.llvm.mlir")
+            digest = hashlib.sha256(artifact.encode("utf-8")).hexdigest()
             ll = stem.with_suffix(".ll")
             raw = stem.with_suffix(".raw.o")
             # Resolve original tool selection on the caller thread. Workers receive only
@@ -1068,7 +1075,8 @@ def apply_post_offload_transform(routing, prepared: Path, sidecar: Path, workdir
         raise ValueError("post-offload transform changed source routing identity")
     if not selected.is_file():
         raise ValueError("post-offload transform returned no model file")
-    digest = lambda data: hashlib.sha256(data).hexdigest()
+    def digest(data):
+        return hashlib.sha256(data).hexdigest()
     (workdir / "post_offload_transform.json").write_text(
         json.dumps(
             {
