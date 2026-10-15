@@ -13,6 +13,20 @@ import pytest
 from merlin.targetgen.sandbox import toolchain as TC
 
 
+def test_cross_checkout_sandbox_searches_frozen_source_closure(tmp_path, monkeypatch):
+    repo = tmp_path / "frozen-repo"
+    legacy = repo / "merlin/python"
+    legacy.mkdir(parents=True)
+    (repo / "src").mkdir()
+    implementation = tmp_path / "current-repo/src"
+    implementation.mkdir(parents=True)
+    monkeypatch.setattr(TC, "repo_root", lambda: repo)
+    monkeypatch.setattr(TC, "python_source_dir", lambda: implementation)
+
+    paths = TC.ToolchainPaths.from_checkout()
+    assert paths.python_import_roots == (str(legacy), str(repo / "src"), str(implementation))
+
+
 @pytest.mark.parametrize("installed", [False, True])
 def test_installed_interpreter_not_shadowed_by_work_root_venv(tmp_path, monkeypatch, installed):
     repo = tmp_path / "work-root"
