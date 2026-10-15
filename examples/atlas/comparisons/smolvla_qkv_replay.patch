@@ -1,0 +1,98 @@
+--- current/evaluate_smolvla_retained_prefix.py
++++ generated-qkv-epoch/replay.py
+@@ -59,7 +59,7 @@
+     return digest.hexdigest()
+ 
+ 
+-def evaluate(args, report):
++def evaluate(args, report, *, candidate_plan=None):
+     producer = safe_path(args.producer_root)
+     validator, validator_id = load_provider_validator(
+         producer, args.validator_sha256, args.provider_receipt, args.provider_receipt_sha256)
+@@ -170,6 +170,10 @@
+     require_same(query_module.weight.detach().t().contiguous().view(torch.uint16).numpy(), arrays["B_bf16"], "Original Q weights changed")
+     replacement = torch.from_numpy(actual_words.copy()).view(torch.bfloat16).reshape(1, 177, 960)
+     current = {}
++    candidate_prefix = "actual-query" if candidate_plan is None else "actual-" + candidate_plan.roles_name
++    candidate_names = tuple(candidate_prefix + "-repeat" + str(i) for i in range(2))
++    if candidate_plan is not None:
++        candidate_plan.bind_prefix(model, torch, manifest, arrays, actual_words, prefix, smolvlm_with_expert.apply_rope)
+ 
+     def q_hook(_, incoming, output):
+         if current["q_calls"] != 0 or incoming[0].dtype != torch.bfloat16 or output.dtype != torch.bfloat16:
+@@ -269,21 +273,29 @@
+         model.embed_prefix, model.denoise_step, model.vlm_with_expert.forward = embed, denoise, encode
+         handle = query_module.register_forward_hook(q_hook) if candidate else None
+         try:
++            if candidate and candidate_plan is not None:
++                candidate_plan.begin_candidate()
+             with torch.no_grad():
+                 full = model.sample_actions([inputs[0][:, i] for i in range(2)], [inputs[1][:, i] for i in range(2)], *inputs[2:5], noise=inputs[5])
+         finally:
+             rng_after = torch.random.get_rng_state().clone()
+             torch.random.set_rng_state(rng)
+-            if handle is not None:
+-                handle.remove()
+-            for owner, method in owners:
+-                delattr(owner, method)
++            try:
++                if candidate and candidate_plan is not None:
++                    candidate_plan.remove_candidate_hooks()
++            finally:
++                if handle is not None:
++                    handle.remove()
++                for owner, method in owners:
++                    delattr(owner, method)
+         if len(steps) != 10 or len(prefix_calls) != 1 or current["q_calls"] != int(candidate):
+             raise ValueError("Incomplete native prefix/trajectory/query traversal")
+         captures["final_full_state"] = save_array(full)
+         captures["final_actions"] = save_array(full[:, :, :6])
+         for index in steps:
+             captures[f"step_{index:02d}_output_state"] = captures[f"step_{index + 1:02d}_input_state"].copy() if index < 9 else captures["final_full_state"].copy()
++        if candidate and candidate_plan is not None:
++            candidate_plan.finish_candidate(captures)
+         verify_trajectory(captures, original=not candidate)
+         if not torch.equal(rng, rng_after):
+             raise ValueError("Explicit-noise native replay consumed RNG")
+@@ -296,13 +308,16 @@
+     # A source refusal here prevents every candidate run.
+     original = run("original-native", False)
+     original_repeat = run("original-native-repeat", False)
+-    candidates = [run("actual-query-repeat" + str(i), True) for i in range(2)]
++    candidates = [run(name, True) for name in candidate_names]
+     restored = run("restored-native", False)
+     for left, right in ((original, original_repeat), (original, restored), (candidates[0], candidates[1])):
+         for key in left:
+             require_same(left[key], right[key], "Native replay repeat/restoration changed: " + key)
+-    for field in ("prefix_key_cache", "prefix_value_cache"):
+-        require_same(candidates[0][field][0], original[field][0], "Layer-zero K/V changed after a Q-only substitution")
++    if candidate_plan is None:
++        for field in ("prefix_key_cache", "prefix_value_cache"):
++            require_same(candidates[0][field][0], original[field][0], "Layer-zero K/V changed after a Q-only substitution")
++    else:
++        candidate_plan.check_layer0_caches(candidates)
+     changed = {key: value.copy() for key, value in candidates[0].items()}
+     changed["step_01_input_state"].view(np.uint32).flat[0] ^= 1
+     try:
+@@ -315,6 +330,8 @@
+     for binding in bindings:
+         identity(binding["path"], binding["sha256"])
+     validator.recheck(provider_records)
++    if candidate_plan is not None:
++        candidate_plan.recheck()
+     metrics = {}
+     for key in ("final_full_state", "final_actions"):
+         native, actual = original[key], candidates[0][key]
+@@ -331,9 +348,11 @@
+                           "candidate_own10step_closed_trajectory": True, "layer0_KV_preserved_under_Q_only_substitution": True,
+                           "candidate_repeats_and_original_restoration_raw_exact": True, "input_state_parameter_RNG_bookends": True},
+                   negative_controls=controls, source_fidelity=metrics,
+-                  artifacts={name: identity(args.output / (name + ".npz")) for name in ("original-native", "original-native-repeat", "actual-query-repeat0", "actual-query-repeat1", "restored-native")},
++                  artifacts={name: identity(args.output / (name + ".npz")) for name in ("original-native", "original-native-repeat", *candidate_names, "restored-native")},
+                   source_bookends=bindings, provider_bookends=provider_records,
+                   claim_limits=manifest["claim_limits"] + ["retained_prefix_replay_not_fresh_vision", "policy_coordinates_before_original_postprocessing", "physical_units_unqualified"])
++    if candidate_plan is not None:
++        candidate_plan.extend_report(report)
+ 
+ 
+ def main():
