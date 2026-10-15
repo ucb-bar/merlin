@@ -118,10 +118,13 @@ def _valid_capsules(spec: str, capsules_root: Path) -> list[str] | None:
         return ["all"]
     names = [c.strip() for c in spec.split(",") if c.strip()]
     out = []
+    seen = set()
     for n in names:
         if not all(c.isascii() and (c.isalnum() or c == "_") for c in n) or not (capsules_root / n).is_dir():
             return None  # reject ../, globs, unknown names
-        out.append(n)
+        if n not in seen:
+            out.append(n)
+            seen.add(n)
     return out or None
 
 

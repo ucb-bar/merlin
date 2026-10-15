@@ -65,6 +65,14 @@ def test_simjob_parallel_capsules_respect_global_verilator_slots(tmp_path, monke
     assert not list(tmp_path.glob("slot_*"))
 
 
+def test_simjob_repeated_capsule_names_cannot_reserve_extra_workers(tmp_path):
+    (tmp_path / "A").mkdir()
+    names = simjob._valid_capsules("A,A,A,A", tmp_path)
+    assert names == ["A"]
+    assert simjob._capsule_workers(4, sim="gsim", n_capsules=len(names)) == 1
+    assert simjob._valid_capsules("A,../private,A", tmp_path) is None
+
+
 def test_simjob_dedupes_only_exact_source_capsule_engine_and_tier(tmp_path):
     key = ("a" * 64, "SY_conv_operand_capacity_boundary", "gsim", "L3")
     active = {"original": {"dedupe_key": key, "aliases": []}}
