@@ -567,6 +567,50 @@ theorem namedOk_safe {ib : Nat} {ctx : Ctx} (hib : ctx.indexBits = ib) {maps : L
 theorem shapeOf_typed {ib : Nat} {v : RVal} {t : VTy} (h : RVal.HasTy ib v t) : shapeOf v = t.shape := by
   simpa using shapes_typed (vs := [v]) (tys := [t]) (List.Forall₂.cons h .nil)
 
+theorem forall₂_reverse {α β : Type} {R : α → β → Prop} {xs : List α} {ys : List β}
+    (h : List.Forall₂ R xs ys) : List.Forall₂ R xs.reverse ys.reverse := by
+  induction h with
+  | nil => exact .nil
+  | cons h hs ih => simpa only [List.reverse_cons] using List.rel_append ih (.cons h .nil)
+
+/-- Map has one destination, last in the operands. Its body receives that destination element
+after all input elements, as required by LLVM f5e175f and the installed compiler. -/
+def mapRule : OpRule := fun _ op argTys resTys =>
+  if dialectOf op.name = "linalg" ∧ op.name = "linalg.map" then
+    match argTys.reverse with
+    | tout :: insRev =>
+      namedOk (List.replicate argTys.length (identityMap tout.shape.length))
+        (LinalgNamed.parallel tout.shape.length) insRev.reverse [tout] op resTys
+    | [] => none
+  else none
+
+theorem mapRule_sound (ib : Nat) : RuleSound ib mapRule := by
+  intro d op argTys resTys sigs hm h
+  simp only [mapRule] at h
+  split at h
+  · next hc =>
+    obtain ⟨hd, hn⟩ := hc
+    split at h
+    · next tout insRev hrev =>
+      have hlen : argTys.length = insRev.length + 1 := by
+        simpa only [List.length_reverse, List.length_cons] using congrArg List.length hrev
+      intro ctx call args regions hib _ hargs hregs
+      have ha := forall₂_reverse hargs
+      rw [hrev] at ha
+      cases hv : args.reverse with
+      | nil => rw [hv] at ha; cases ha
+      | cons init xs =>
+        rw [hv] at ha
+        obtain _ | ⟨ho, hins⟩ := ha
+        obtain ⟨body, rfl, hsafe⟩ := namedOk_safe hib h
+          (forall₂_reverse hins) (.cons ho .nil) hregs
+        rw [named_sem_of hm hd (by simp [hn])]
+        simp only [LinalgNamed.sem, Op.blind_name, hn, hv, shapeOf_typed ho]
+        simpa only [hlen, List.map_const', List.length_append, List.length_reverse,
+          List.length_singleton, HasTys.length hins] using hsafe
+    · cases h
+  · cases h
+
 /-- `linalg.matmul`: `C(m,n) += A(m,k) · B(k,n)`, or the op's own `indexing_maps`. -/
 def matmulRule : OpRule := fun _ op argTys resTys =>
   if dialectOf op.name = "linalg" ∧ op.name = "linalg.matmul" then
@@ -768,13 +812,13 @@ theorem transposeRule_sound (ib : Nat) : RuleSound ib transposeRule := by
 defined by their generic form. -/
 def linalgRule : OpRule :=
   firstRule [genericRule, fillRule, indexRule, matmulRule, batchMatmulRule, quantizedMatmulRule,
-    copyRule, broadcastRule, transposeRule]
+    copyRule, broadcastRule, transposeRule, mapRule]
 
 theorem linalgRule_sound (ib : Nat) : RuleSound ib linalgRule := by
   apply firstRule_sound
   simp only [List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff, implies_true, and_true]
   exact ⟨genericRule_sound ib, fillRule_sound ib, indexRule_sound ib, matmulRule_sound ib,
     batchMatmulRule_sound ib, quantizedMatmulRule_sound ib, copyRule_sound ib, broadcastRule_sound ib,
-    transposeRule_sound ib⟩
+    transposeRule_sound ib, mapRule_sound ib⟩
 
 end MerlinVerify.Check

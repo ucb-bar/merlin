@@ -244,10 +244,87 @@ theorem contractionDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
       · cases h
     · cases h
 
+/-- Map visits the entire destination with identity maps. Keep the destination's initialization
+fact when checking the actual body: an initialized destination may be read, a dirty one may only
+be overwritten. Captures are checked in the original environment. -/
+def mapDefinedRule (ib : Nat) (Γ : FEnv) (op : Op) (fs : List Fact) : Option (List Fact) :=
+  if unmodelledAttr? op.blind = none ∧ dialectOf op.name = "linalg" ∧ op.name = "linalg.map" then
+    match fs.reverse, op.regions with
+    | (out@⟨.tensor sh e, _⟩) :: insRev, [body] =>
+      let maps := List.replicate fs.length (identityMap sh.length)
+      if op.results.length = 1 ∧
+          structuredRanges? maps sh.length (insRev.reverse.map (·.ty) ++ [.tensor sh e]) = some sh ∧
+          checkRegion (leafBook ib) Γ body ((insRev.reverse ++ [out]).map elementFact) [.scalar e] then
+        some (clean [.tensor sh e])
+      else none
+    | _, _ => none
+  else none
+
+theorem mapDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
+    mapDefinedRule ib Γ op fs = some rs → ∀ ctx call env args,
+    ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
+    ∃ vs, opSem ctx call op args (evalRegions opSem call env op.regions) = .ok vs ∧
+      FactsHold ib vs rs := by
+  intro Γ op fs rs h ctx call env args hib hΓ ha
+  unfold mapDefinedRule at h
+  split at h
+  · next hc =>
+    obtain ⟨hm, hd, hn⟩ := hc
+    split at h
+    · next sh e init insRev body hrev hregs =>
+      dsimp only at h
+      split at h
+      · next hc =>
+        obtain ⟨hres, hranges, hbody⟩ := hc
+        cases h
+        have hlen : fs.length = insRev.length + 1 := by
+          simpa only [List.length_reverse, List.length_cons] using congrArg List.length hrev
+        have ha' := forall₂_reverse ha
+        rw [hrev] at ha'
+        cases hv : args.reverse with
+        | nil => rw [hv] at ha'; cases ha'
+        | cons dst xs =>
+          rw [hv] at ha'
+          obtain _ | ⟨ht, hxs⟩ := ha'
+          cases dst with
+          | scalar _ => cases ht.1
+          | tensor t =>
+            have hins := forall₂_reverse hxs
+            have hb : BodyTotal ib (fun ctx => evalRegion opSem ctx call env body)
+                ((insRev.reverse ++ [(⟨.tensor sh e, init⟩ : Fact)]).map elementFact) [.scalar e] := by
+              intro ctx hib args ha
+              exact checkRegion_sound (leafBook ib) hbody hib hΓ ha
+            have hs : StructuredOk (List.replicate fs.length (identityMap sh.length))
+                (LinalgNamed.parallel sh.length).length
+                (insRev.reverse.map (·.ty) ++ [.tensor sh e]) sh := by
+              simpa only [LinalgNamed.parallel, List.length_replicate] using structuredRanges?_spec hranges
+            have htotal : ∃ vs,
+                genericSem ctx (List.replicate fs.length (identityMap sh.length))
+                  (LinalgNamed.parallel sh.length) xs.reverse [.tensor t]
+                  (fun ctx => evalRegion opSem ctx call env body) = .ok vs ∧
+                FactsHold ib vs (clean [.tensor sh e]) := by
+              cases init
+              · exact overwriteSem_total hib hs (by simp [hlen]) hins ht.1 hb
+              · exact genericSem_total hib hs (by simp [VTy.isTensor]) hins (.cons ht .nil) hb
+            obtain ⟨vs, hsem, hrf⟩ := htotal
+            refine ⟨vs, ?_, hrf⟩
+            have hcount : vs.length = op.blind.results.length := by
+              rw [HasTys.length (clean_typed hrf), Op.blind_results, List.length_map, hres]
+              rfl
+            rw [named_sem_of hm hd (by simp [hn])]
+            simp only [hregs, evalRegions, LinalgNamed.sem, Op.blind_name, hn, hv,
+              shapeOf_typed ht.1, VTy.shape, List.map_const', List.length_append,
+              List.length_reverse, List.length_singleton, List.Forall₂.length_eq hxs,
+              ← hlen, LinalgNamed.run, hsem, Outcome.bind_ok, hcount, ↓reduceIte]
+      · cases h
+    · cases h
+  · cases h
+
 def book (ib : Nat) : Book opSem ib where
   rule Γ op fs := match (leafBook ib).rule Γ op fs with
     | some rs => some rs
-    | none => [fillDefinedRule ib, genericDefinedRule ib, overwriteDefinedRule ib, contractionDefinedRule ib].findSome? fun r => r Γ op fs
+    | none => [fillDefinedRule ib, genericDefinedRule ib, overwriteDefinedRule ib,
+        contractionDefinedRule ib, mapDefinedRule ib].findSome? fun r => r Γ op fs
   sound Γ op fs rs h ctx call env args hib hΓ ha := by
     split at h
     · next _ hl =>
@@ -255,11 +332,12 @@ def book (ib : Nat) : Book opSem ib where
       exact (leafBook ib).sound Γ op fs _ hl ctx call env args hib hΓ ha
     · obtain ⟨r, hmem, hr⟩ := List.exists_of_findSome?_eq_some h
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
-      rcases hmem with rfl | rfl | rfl | rfl
+      rcases hmem with rfl | rfl | rfl | rfl | rfl
       · exact fillDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact genericDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact overwriteDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact contractionDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
+      · exact mapDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
 
 /-- Acceptance proves successful, nonpoison results for every typed, nonpoison input. -/
 theorem definedCheck_sound {ib : Nat} {m : Module} {f : String} {argTys resTys : List VTy}
