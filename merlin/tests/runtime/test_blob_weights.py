@@ -147,3 +147,31 @@ def test_the_scope_requests_blob_weights_only_inside_it() -> None:
     with pytest.raises(TypeError):
         with BW.requested(1):  # type: ignore[arg-type]
             pass
+
+
+_CHAIN = """builtin.module {
+  func.func @forward(%x: tensor<4xf32>, %w: tensor<4xf32>) -> tensor<4xf32> {
+    %e = tensor.empty() : tensor<4xf32>
+    %d = linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], \
+iterator_types = ["parallel"]} ins(%w : tensor<4xf32>) outs(%e : tensor<4xf32>) {
+    ^bb0(%a: f32, %o: f32):
+      %n = arith.negf %a : f32
+      linalg.yield %n : f32
+    } -> tensor<4xf32>
+    func.return %d : tensor<4xf32>
+  }
+}
+"""
+
+
+def test_an_original_read_only_by_a_dead_value_chain_is_dropped() -> None:
+    """The rewrite leaves a replaced weight's dequantize chain for canonicalization; it reads nothing live."""
+    from xdsl.dialects.builtin import Float32Type
+
+    module = mq.parse(_CHAIN)
+    binder = BW.WeightArgs(module)
+    bound = binder(np.arange(4, dtype=np.float32), Float32Type())
+    ret = next(op for op in module.walk() if op.name == "func.return")
+    ret.operands[0] = bound
+    binder.finish()
+    assert binder.dead_args == (1,), "the generic still reads %w, but nothing reads the generic"

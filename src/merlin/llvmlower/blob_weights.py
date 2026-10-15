@@ -67,8 +67,51 @@ def _forward(module):
     return _forward_func(module)
 
 
+#: Value-semantic dialects: an op of these with results computes nothing but them, so it matters only
+#: when something live reads a result. Every other op (a call, a return, anything on memory) is a root.
+_VALUE_DIALECTS = ("arith.", "math.", "tensor.", "linalg.", "quant_ext.")
+
+
 def _used(block) -> set[int]:
-    return {index for index, arg in enumerate(block.args) if any(True for _ in arg.uses)}
+    """Indices of ``block``'s arguments some LIVE op reads (transitively from a root, nested regions too).
+
+    An argument read only by a dead value chain -- a weight's dequantize-and-requantize that fed the
+    group the rewrite replaced, left for canonicalization to erase -- is not used."""
+    from xdsl.ir import BlockArgument, OpResult
+
+    from merlin.common.mlir_query import op_name  # an unregistered op (quant_ext.*) by its real name
+
+    def top(op):
+        while op.parent_block() is not block:
+            op = op.parent_op()
+        return op
+
+    pending = [op for op in block.ops if not op.results or not op_name(op).startswith(_VALUE_DIALECTS)]
+    live: set[int] = {id(op) for op in pending}
+    args: set[int] = set()
+    index = {id(arg): i for i, arg in enumerate(block.args)}
+    while pending:
+        op = pending.pop()
+        for inner in op.walk():
+            for value in inner.operands:
+                if isinstance(value, BlockArgument) and id(value) in index:
+                    args.add(index[id(value)])
+                elif isinstance(value, OpResult) and _inside(value.op, block):
+                    owner = top(value.op)
+                    if id(owner) not in live:
+                        live.add(id(owner))
+                        pending.append(owner)
+    return args
+
+
+def _inside(op, block) -> bool:
+    parent = op.parent_block()
+    while parent is not None:
+        if parent is block:
+            return True
+        holder = parent.parent_op()
+        parent = holder.parent_block() if holder is not None else None
+    return False
 
 
 @dataclass
@@ -168,12 +211,22 @@ def compact(header: dict, payload: bytes, manifest: dict, dead_args: frozenset[i
 
     A tensor stays when any live argument names it (a tied weight read by host code keeps its bytes).
     Kept tensors are re-placed ``ALIGNMENT``-aligned in their original order; a dropped tensor's offsets
-    become ``(0, 0)``, so its never-read descriptor points at the blob's base."""
+    become ``(0, 0)``, so its never-read descriptor points at the blob's base. A tensor larger than
+    what remains is kept, so even a dead read that survived into the object stays inside the image."""
     readers: dict[str, set[bool]] = {}
     for key, meta in manifest.items():
         if key.isdigit() and isinstance(meta, dict) and meta.get("weight") in header:
             readers.setdefault(meta["weight"], set()).add(int(key) in dead_args)
     dropped = {name for name, dead in readers.items() if dead == {True}}
+
+    def size(name: str) -> int:
+        begin, end = header[name]["data_offsets"]
+        return end - begin
+
+    remaining = sum(size(n) for n, m in header.items() if isinstance(m, dict) and "data_offsets" in m) - sum(
+        size(n) for n in dropped
+    )
+    dropped = {name for name in dropped if size(name) <= remaining}
     out, blob = {}, bytearray()
     for name, meta in sorted(
         ((n, m) for n, m in header.items() if isinstance(m, dict) and "data_offsets" in m),
