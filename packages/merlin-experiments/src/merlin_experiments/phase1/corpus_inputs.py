@@ -165,33 +165,37 @@ def _reconcile_public_software_denial(te, bundle, paths, *, spec, source_freeze,
     selected = software_spec_path_for_recipe(recipe)
     if selected is None:
         return paths
-    grants = [row for row in bundle.get("allowed", [])
-              if row.get("mode") == "ro" and row.get("note") == "admitted software semantics"
-              and bwrap.resolve_grant(row["path"], root).absolute() == selected]
+    grants = [bwrap.resolve_grant(row["path"], root).absolute()
+              for row in bundle.get("allowed", [])
+              if row.get("mode") == "ro" and row.get("note") == "admitted software semantics"]
     if not grants:
         return paths
     if len(grants) != 1:
         raise ValueError("public software declaration has ambiguous grants")
+    granted = grants[0]
     resolved = private_source_freeze.verify(spec, source_freeze, root=source_root, target=te.target)
     copies = [copy for (original, field), copy in resolved.items()
-              if original == str(selected) and field == "software_spec"]
+              if original == str(granted) and field == "software_spec"]
     if not copies:
         return paths
-    if any(original == str(selected) and field != "software_spec" for original, field in resolved):
+    if any(original == str(granted) and field != "software_spec" for original, field in resolved):
         raise ValueError("public software declaration has a private non-software role")
-    if selected.is_symlink() or any(parent.is_symlink() for parent in selected.parents):
+    if any(path.is_symlink() or any(parent.is_symlink() for parent in path.parents)
+           for path in (selected, granted)):
         raise ValueError("public software declaration is indirect")
     digest = file_sha256(selected)
+    if file_sha256(granted) != digest:
+        raise ValueError("reviewed public software declaration differs from selected semantics")
     if any(file_sha256(copy) != digest for copy in copies):
         raise ValueError("public software declaration differs from authenticated private source")
-    document = yaml.safe_load(selected.read_bytes())
-    checked = validate_software_spec(document, target=te.target, source=selected)
+    document = yaml.safe_load(granted.read_bytes())
+    checked = validate_software_spec(document, target=te.target, source=granted)
     if checked.get("status") != "reviewed":
         raise ValueError("public software declaration is not reviewed")
     # The exact already-reviewed grant authorizes these semantics bytes. Only
     # its original software-role spelling is removed; frozen copies and all
     # capture/weight/golden/archive directories retain their private denials.
-    return [row for row in paths if not (row.get("path") == str(selected) and row.get("kind") == "file")]
+    return [row for row in paths if not (row.get("path") == str(granted) and row.get("kind") == "file")]
 
 
 def prepare_bundle(

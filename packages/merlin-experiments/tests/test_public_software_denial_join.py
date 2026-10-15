@@ -50,6 +50,29 @@ def test_exact_reviewed_software_join_preserves_all_private_dependencies(joined)
     assert (source.read_bytes(), frozen.read_bytes()) == original
 
 
+def test_relocated_recipe_accepts_same_reviewed_public_grant(joined):
+    source, _, bundle, paths, resolved, run = joined
+    granted = source.parent / "previous-repo/software.yaml"
+    granted.parent.mkdir()
+    granted.write_bytes(source.read_bytes())
+    bundle["allowed"][0]["path"] = str(granted)
+    paths[0]["path"] = str(granted)
+    resolved[(str(granted), "software_spec")] = resolved.pop((str(source), "software_spec"))
+    assert run() == paths[1:]
+
+
+def test_relocated_public_grant_requires_identical_semantics(joined):
+    source, _, bundle, paths, resolved, run = joined
+    granted = source.parent / "previous-repo/software.yaml"
+    granted.parent.mkdir()
+    granted.write_bytes(source.read_bytes() + b"\n")
+    bundle["allowed"][0]["path"] = str(granted)
+    paths[0]["path"] = str(granted)
+    resolved[(str(granted), "software_spec")] = resolved.pop((str(source), "software_spec"))
+    with pytest.raises(ValueError, match="differs from selected semantics"):
+        run()
+
+
 def test_changed_frozen_software_cannot_become_public(joined):
     _, frozen, _, _, _, run = joined
     frozen.write_bytes(frozen.read_bytes() + b"\n")
