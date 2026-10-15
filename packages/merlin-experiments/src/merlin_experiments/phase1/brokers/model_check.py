@@ -67,9 +67,11 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
         report_path = Path(scratch) / "report.json"
         argv = [sys.executable, "-m", "merlin.model_check", action, "--submission", str(snapshot),
                 "--model", model, "--split", "visible", "--agent-view", "--out", str(report_path),
-                "--work", str(Path(scratch) / "work"),
+                "--work", str(Path(scratch) / "work"), "--timeout-s", str(timeout_s),
                 "--bundle", "/work/merlin/private/gemmini/numerics/v1"]
-        if action == "replay-kernel":
+        if action == "check":
+            argv += ["--mode", "fast"]
+        else:
             argv += ["--program", program, "--group", group, "--engine", engine]
         stdout_path, stderr_path = Path(scratch) / "stdout", Path(scratch) / "stderr"
         with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:

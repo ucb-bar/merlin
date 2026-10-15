@@ -1435,6 +1435,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         official_grade = CERT._official_grade_result(
             grade_rc,
             run_dir,
+            require_model_check=context.target == "gemmini",
             required_models=PFM.requirements_for(context.descriptor),
             required_programs=PFM.program_requirements_for(context.descriptor),
             execution_gate=PFX.gate_for(

@@ -91,7 +91,7 @@ def _program_row(model: str, program: str, result: dict) -> dict:
 
 
 def check_snapshot(ws: Path, run_dir: Path, snapshot: Path, source_sha256: str, *,
-                   stop: threading.Event, timeout_s: int = 7200) -> dict:
+                   stop: threading.Event, timeout_s: int = 540) -> dict:
     gate = {"source_sha256": source_sha256, "split": "visible", "programs": _rows(source_sha256)}
     verdict = ws / "qa" / "verdict.json"
     publish(verdict, {"model_gate": gate})
@@ -113,7 +113,7 @@ def check_snapshot(ws: Path, run_dir: Path, snapshot: Path, source_sha256: str, 
     return gate
 
 
-def start(ws: Path, run_dir: Path, *, interval_s: int = 120, timeout_s: int = 7200):
+def start(ws: Path, run_dir: Path, *, interval_s: int = 120, timeout_s: int = 540):
     stop = threading.Event()
     publish(ws / "qa" / "verdict.json", {"model_gate": {
         "source_sha256": None, "split": "visible", "programs": _rows(None),

@@ -762,6 +762,18 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     private_execution_complete = (
         execution_gate is None or execution_gate["required"] is False or (private_execution or {}).get("passed") is True
     )
+    model_check_official = {"passed": False, "reason": "private model inputs unavailable"}
+    if (
+        context.target == "gemmini" and required_full_models and private_models_complete
+        and a.private_full_model_spec is not None
+    ):
+        from . import model_check_official as MCO
+
+        try:
+            model_check_official = MCO.run_gate(pkg, run_dir, required_full_programs)
+        except Exception as exc:  # noqa: BLE001 -- an incomplete host gate never certifies a run
+            model_check_official = {"passed": False, "reason": f"{type(exc).__name__}: {exc}"}
+    model_check_complete = context.target != "gemmini" or model_check_official.get("passed") is True
     public_resources_complete = (
         public_resources.get("required") is False or public_resources.get("resource_complete") is True
     )
@@ -777,6 +789,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         and hidden_phase["formal_complete"]
         and private_models_complete
         and private_execution_complete
+        and model_check_complete
         and public_resources_complete
     )
     completion_failures = [
@@ -784,6 +797,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         *(f"hidden:{reason}" for reason in hidden_phase["completion_failures"]),
         *([] if private_models_complete else ["private_full_models:incomplete"]),
         *([] if private_execution_complete else ["private_full_model_execution:incomplete"]),
+        *([] if model_check_complete else ["model_check_official:incomplete"]),
         *([] if public_resources_complete else ["public_codegen_resources:incomplete"]),
     ]
 
@@ -824,6 +838,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "hidden": hidden_phase,
         **({'hidden_capsule_validation': hidden_policy} if functional_hidden else {}),
         "private_full_models": private_models,
+        **({"model_check_official": model_check_official} if context.target == "gemmini" else {}),
         "public_codegen_resources": public_resources,
         **({} if private_execution is None else {"private_full_model_execution": private_execution}),
         "completion": {
@@ -881,6 +896,13 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
 
     fr = [
         f"# {run_dir.name} — final report ({a.arm})",
+        "",
+        "| Model | Sealed full-chain status |",
+        "| --- | --- |",
+        *[f"| {model} | {(model_check_official.get('models') or {}).get(model, {}).get('status', 'unavailable')} |"
+          for model in required_full_models],
+        f"| Unique kernel RTL | {sum(row.get('status') == 'pass' for row in model_check_official.get('rtl', []))}/"
+        f"{model_check_official.get('unique_kernel_count', 0)} pass required |",
         "",
         f"- integrity: {manifest['integrity_status']} (exempt={manifest['integrity_exempt']})",
         f"- public/dev: functional_pass={manifest['public_dev']['functional_pass']} "
