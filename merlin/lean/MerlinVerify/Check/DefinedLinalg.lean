@@ -1,5 +1,6 @@
 /- Proved definedness rules for structured tensor programs and the assembled checker. -/
 import MerlinVerify.Check.DefinedLoops
+import MerlinVerify.Rules.Generalize
 
 namespace MerlinVerify.Check.Definedness
 
@@ -205,10 +206,48 @@ theorem overwriteDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
     · cases h
   · cases h
 
+/-- Check a named contraction through its proved generic expansion, then transfer successful
+execution back to the actual source. The input arity and actual body closure are checked as well. -/
+def contractionDefinedRule (ib : Nat) (Γ : FEnv) (op : Op) (fs : List Fact) : Option (List Fact) := do
+  let v ← Rules.Generalize.expand op
+  match op.regions with
+  | [_] => if fs.length = 3 then genericDefinedRule ib Γ v fs else none
+  | _ => none
+
+theorem contractionDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
+    contractionDefinedRule ib Γ op fs = some rs → ∀ ctx call env args,
+    ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
+    ∃ vs, opSem ctx call op args (evalRegions opSem call env op.regions) = .ok vs ∧
+      FactsHold ib vs rs := by
+  intro Γ op fs rs h ctx call env args hib hΓ ha
+  simp only [contractionDefinedRule] at h
+  cases he : Rules.Generalize.expand op with
+  | none => simp [he] at h
+  | some v =>
+    simp only [he] at h
+    split at h
+    · next body hregs =>
+      split at h
+      · next hlen =>
+        obtain ⟨vs, hv, hvf⟩ := genericDefinedRule_sound ib Γ v fs rs h ctx call env args hib hΓ ha
+        have hfields := Rules.Generalize.expand_sound op v he
+        rw [hfields.2.2.2.2.1, hregs] at hv
+        have hlegal : Rules.Generalize.legal op v := by
+          dsimp only [Rules.Generalize.expand] at he
+          split at he
+          · next hc => cases he; exact hc.1
+          · cases he
+        refine ⟨vs, ?_, hvf⟩
+        rw [hregs]
+        exact Rules.Generalize.meaning_success hlegal ctx call
+          ((List.Forall₂.length_eq ha).trans hlen) _ hv
+      · cases h
+    · cases h
+
 def book (ib : Nat) : Book opSem ib where
   rule Γ op fs := match (leafBook ib).rule Γ op fs with
     | some rs => some rs
-    | none => [fillDefinedRule ib, genericDefinedRule ib, overwriteDefinedRule ib].findSome? fun r => r Γ op fs
+    | none => [fillDefinedRule ib, genericDefinedRule ib, overwriteDefinedRule ib, contractionDefinedRule ib].findSome? fun r => r Γ op fs
   sound Γ op fs rs h ctx call env args hib hΓ ha := by
     split at h
     · next _ hl =>
@@ -216,10 +255,11 @@ def book (ib : Nat) : Book opSem ib where
       exact (leafBook ib).sound Γ op fs _ hl ctx call env args hib hΓ ha
     · obtain ⟨r, hmem, hr⟩ := List.exists_of_findSome?_eq_some h
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
-      rcases hmem with rfl | rfl | rfl
+      rcases hmem with rfl | rfl | rfl | rfl
       · exact fillDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact genericDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact overwriteDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
+      · exact contractionDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
 
 /-- Acceptance proves successful, nonpoison results for every typed, nonpoison input. -/
 theorem definedCheck_sound {ib : Nat} {m : Module} {f : String} {argTys resTys : List VTy}
