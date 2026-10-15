@@ -791,6 +791,17 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     environment_path = run_dir / "environment.yaml"
     environment = yaml.safe_load(environment_path.read_bytes()) if environment_path.is_file() else {}
     qualification_only = isinstance(environment, Mapping) and environment.get("qualification_only") is True
+    text_files = {
+        row.get("name"): row.get("sha256")
+        for row in (environment.get("treatment_snapshot") or {}).get("files", [])
+        if isinstance(row, Mapping) and row.get("name") in {"served/TASK.md", "archived/TASK.md"}
+    }
+    errata = environment.get("operator_errata") or {}
+    if errata:
+        text_files["archived/ERRATA.md"] = errata.get("sha256")
+    bundle_path = run_dir / "input_bundle_manifest.yaml"
+    bundle_document = yaml.safe_load(bundle_path.read_text(encoding="utf-8")) or {} if bundle_path.is_file() else {}
+    exact_grants = list(bundle_document.get("allowed") or [])
     ctt = {}
     ctt_path = run_dir / "cost_time_toolcalls.yaml"
     if ctt_path.is_file():
@@ -800,6 +811,8 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "run_id": run_dir.name,
         **({"qualification_only": True, "authoring_converged": False} if qualification_only else {}),
         "arm": a.arm,
+        "operator_text_sha256": text_files,
+        "assisted_grants": exact_grants if a.arm == "merlin_assisted" else [],
         "model": a.model,
         "grading_budget": {"step_timeout_s": a.qa_timeout},
         "repo_sha": frozen["repo_sha"],
