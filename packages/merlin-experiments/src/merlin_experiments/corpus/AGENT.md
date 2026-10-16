@@ -6,6 +6,10 @@ and snapshot verification. `admission.py` observes actual evaluator construction
 for conformance and public-cohort selection; advertised tiers are not evidence.
 
 These are host-only workflows, not candidate tools or numerical implementations.
+`publication.py` rejects held-out source identities in public members before
+copying and again at reviewed authoring admission. Generated-only preparation is
+the default. An explicit historical overlay cannot publish validation sources;
+operator-private validation cohorts remain separate.
 Keep private copies on independent inodes, public summaries aggregate-only, and
 human approval explicit. Preserve schemas, historical provenance identities and
 adapter construction order. Core owns copying primitives, admission validation,

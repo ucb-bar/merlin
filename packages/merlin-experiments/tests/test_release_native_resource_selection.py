@@ -97,7 +97,7 @@ def test_reviewed_phase1_handoff_reconstructs_selected_model_spike_budget(tmp_pa
     bundle.parent.mkdir(parents=True)
     bundle.write_text("bundle_id: el4\n")
     te = SimpleNamespace(path=experiment / "target_experiment.yaml", capsule_corpus=experiment / "corpus/isa",
-                         declared_contract_path=lambda: destination)
+                         declared_contract_path=lambda: destination, graded_roots=lambda: [])
     monkeypatch.setattr(coverage_commitment, "read_inputs", lambda _: {"capability_contract": original})
     declaration = {"bundle_id": "el4", "allowed": [{"mode": "ro", "path": str(destination)}]}
     if mutate:
@@ -154,7 +154,7 @@ def test_reviewed_phase1_handoff_accepts_only_the_exact_resource_variant(tmp_pat
     bundle.parent.mkdir(parents=True)
     bundle.write_text("bundle_id: el4\n")
     te = SimpleNamespace(path=experiment / "target_experiment.yaml", capsule_corpus=experiment / "corpus/isa",
-                         declared_contract_path=lambda: destination)
+                         declared_contract_path=lambda: destination, graded_roots=lambda: [])
     monkeypatch.setattr(coverage_commitment, "read_inputs", lambda _: {"capability_contract": original})
     declaration = {"bundle_id": "el4", "allowed": [{"mode": "ro", "path": str(destination)}]}
     if mutation is None:
@@ -247,7 +247,7 @@ def test_reviewed_handoff_allows_only_exact_full_values_transport_variant(
     bundle.parent.mkdir(parents=True)
     bundle.write_text("bundle_id: el4\n")
     te = SimpleNamespace(path=experiment / "target_experiment.yaml", capsule_corpus=experiment / "corpus/isa",
-                         declared_contract_path=lambda: destination)
+                         declared_contract_path=lambda: destination, graded_roots=lambda: [])
     monkeypatch.setattr(coverage_commitment, "read_inputs", lambda _: {"capability_contract": original})
     declaration = {"bundle_id": "el4", "allowed": [{"mode": "ro", "path": str(destination)}]}
     if mutation is None:

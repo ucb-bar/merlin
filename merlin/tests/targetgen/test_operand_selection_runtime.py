@@ -172,7 +172,7 @@ def test_reviewed_handoff_requires_original_facts_complete_host_closure_and_exac
     authored.parent.mkdir(parents=True)
     authored.write_text("bundle_id: el4\n")
     te = SimpleNamespace(path=root / "target_experiment.yaml", capsule_corpus=root / "corpus/isa",
-                         declared_contract_path=lambda: contract_file)
+                         declared_contract_path=lambda: contract_file, graded_roots=lambda: [])
     monkeypatch.setattr(coverage_commitment, "read_inputs", lambda _: {
         "capability_contract": contract, "raw_facts_utf8": raw.decode(),
         "evidence": {"raw_facts_sha256": "0" * 64 if mutation == "raw_pin"

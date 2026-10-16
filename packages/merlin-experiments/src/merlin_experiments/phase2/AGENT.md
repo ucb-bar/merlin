@@ -1,5 +1,10 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`agent_workspace` projects capsule inputs using frozen reference roles in
+`merlin.targetgen.capsule_privacy` and the central answer registry. Live-source
+deletion cannot disclose frozen expected values; public inputs remain usable.
+Projection grants no numerical, runtime or isolation qualification.
+
 `evaluation_costs` observes original parent jobs from assigned CPUs before setup
 through verified cleanup, durable release and artifact publication. Keep admission
 and queue wait separate. Reopen original job identity, source/resource context and

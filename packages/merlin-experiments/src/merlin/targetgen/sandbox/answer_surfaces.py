@@ -74,6 +74,7 @@ from merlin.common.access import (
     module_name_for as module_name_for,
 )
 from merlin.common.paths import artifacts_dir, repo_root
+from merlin.targetgen.capsule_privacy import capsule_answer_members
 from merlin.targetgen.target_experiment import TargetExperiment
 
 # --------------------------------------------------------------------------- the DECLARED registry
@@ -157,6 +158,9 @@ def golden_files(te: TargetExperiment) -> list[Path]:
     for corpus in corpora:
         if corpus and corpus.is_dir():
             files += sorted(corpus.rglob("golden.*"))
+            for declaration in sorted(corpus.rglob("capsule.yaml")):
+                files += [declaration.parent / member for member, origin in
+                          capsule_answer_members(declaration.parent).items() if origin == "golden"]
             # Instruction-coverage expectations are used by the grader in the same way as numerical
             # goldens. Exposing them tells the agent the exact command mix it must synthesize, so they
             # are an answer surface even though their filename does not begin with ``golden``.
