@@ -263,4 +263,16 @@ def badSlice : Module :=
 
 #guard isStuck (Sem.Ops.denote ctx badSlice "f" [intTensor [2, 3] 32 [1, 2, 3, 4, 5, 6]])
 
+/-! ### Named map includes the output element in its region signature -/
+
+def namedMap : Module :=
+  let t := tensorTy [2] i32
+  let body : Region := .mk [.mk [v 10 i32, v 11 i32] [
+    mkOp "arith.addi" [v 12 i32] [10, 11], mkOp "linalg.yield" [] [12]]]
+  { ops := [func "f" [v 0 t, v 1 t] [mkOp "linalg.map" [v 2 t] [0, 1] [] [] [body], ret [2]]] }
+
+-- Reading the init argument is permitted by MLIR's MapOp verifier and generic form.
+#guard readInts (Sem.Ops.denote ctx namedMap "f"
+    [intTensor [2] 32 [1, 2], intTensor [2] 32 [10, 20]]) == some [[some 11, some 22]]
+
 end MerlinVerify.Tests.Semantics

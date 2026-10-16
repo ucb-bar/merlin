@@ -16,7 +16,7 @@ Sources: llvm-project `a47bddcce`, `mlir/include/mlir/Dialect/Linalg/IR/LinalgSt
 | transpose | in: dim p ↦ d_i where permutation[i] = p; init id | p^n |
 | broadcast | in: init dims not in `dimensions`; init id | p^n |
 | reduce | in id (input rank); init: input dims not in `dimensions` | r on `dimensions` |
-| map | ins id, init id; body takes the inputs only | p^n |
+| map | ins id, init id; body takes the inputs and init | p^n |
 
 The cross-check against `mlir-opt --linalg-generalize-named-ops` (design §4.3, §9.4) is part of the
 fidelity suite; every instance in the corpus must generalize to exactly these maps.
@@ -106,13 +106,12 @@ def sem : OpSem := fun ctx _ op args regions =>
         | _ => .stuck "malformed linalg.reduce"
       | none => .stuck "linalg.reduce: dimensions"
     | "linalg.map" =>
-      -- `linalg.map ins(...) outs(%init)`: the body takes the input elements only.
+      -- MLIR's MapOp::verify requires one argument per input plus the init element.
       match args.reverse with
       | init :: insRev =>
         let ins := insRev.reverse
         let n := (shapeOf init).length
-        let body' : Ctx → RegionSem := fun c vals => body c (vals.take ins.length)
-        run ctx op ((ins ++ [init]).map fun _ => identityMap n) (parallel n) ins [init] body'
+        run ctx op ((ins ++ [init]).map fun _ => identityMap n) (parallel n) ins [init] body
       | [] => .stuck "malformed linalg.map"
     | name => .stuck s!"unsupported named linalg op {name}"
   | _ => .stuck s!"{op.name}: expected exactly one body region (generic form)"
