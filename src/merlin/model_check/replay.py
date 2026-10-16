@@ -284,7 +284,10 @@ def _write_image_sources(
 
 
 def _run_tool(argv: Sequence[str], *, cwd: Path, timeout: float) -> None:
-    done = subprocess.run([str(a) for a in argv], cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    from merlin.model_check.compute_execution import compute_step
+
+    with compute_step(timeout) as remaining:
+        done = subprocess.run([str(a) for a in argv], cwd=cwd, capture_output=True, text=True, timeout=remaining)
     if done.returncode != 0:
         raise ReplayError(f"{Path(str(argv[0])).name} failed: {(done.stderr or done.stdout)[-1500:]}")
 
@@ -347,9 +350,14 @@ def spike_argv(target: str, elf: Path, *, dram_base: int, dram_bytes: int) -> tu
 
 
 def run_image(target: str, elf: Path, *, dram_base: int, dram_bytes: int, timeout: float) -> tuple[str, float]:
+    from merlin.model_check.compute_execution import compute_step
+
     argv, engine = spike_argv(target, elf, dram_base=dram_base, dram_bytes=dram_bytes)
-    started = time.monotonic()
-    done = subprocess.run(argv, cwd=engine["cwd"], env=engine["environment"], capture_output=True, timeout=timeout)
+    with compute_step(timeout) as remaining:
+        started = time.monotonic()
+        done = subprocess.run(
+            argv, cwd=engine["cwd"], env=engine["environment"], capture_output=True, timeout=remaining,
+        )
     wall = time.monotonic() - started
     console = done.stdout.decode("latin-1") + done.stderr.decode("latin-1")
     if done.returncode != 0 or "MCDONE" not in console:
