@@ -8,7 +8,7 @@ Contract and numerics policy: [`docs/reference/model_check.md`](../../../docs/re
 
 | Path | What it is | How it is used |
 |---|---|---|
-| [`models.yaml`](models.yaml) | Programs of each model, how they chain, what is judged, how `--mode full` builds images | Default `--models` of every subcommand, e.g. `python -m merlin.model_check check --submission S --model M --split visible --out R.json` |
+| [`models.yaml`](models.yaml) | Programs of each model, how they chain, what is judged and its reference admission bars, how `--mode full` builds images | Default `--models` of every subcommand, e.g. `python -m merlin.model_check check --submission S --model M --split visible --out R.json` |
 | [`sources.yaml`](sources.yaml) | Pinned sources (revision + sha256) and the selection rule of every split | Read by `python -m merlin.model_check inputs-prepare` (see [Reproducibility](#reproducibility)) |
 | [`binding.yaml`](binding.yaml) | Which files bind Spike to the RTL and to the FPGA build, with citations the receipt re-reads | Default `--spec` of `python -m merlin.model_check binding --out R.json` |
 | [`MANIFEST.json`](MANIFEST.json) | sha256 of every visible, sealed and derived input file, and each input's selection | Written by `inputs-prepare`; `merlin/tests/infra/test_model_check_inputs.py` checks the committed files against it |
