@@ -64,6 +64,8 @@ class AsmAudit:
     #: two endpoints that each fail on 500 different words are not 500 words nobody can place.
     #: Empty when the reading did not track positions; see ``positions_known``.
     unaccounted_indices: tuple[int, ...] = ()
+    #: Every unresolved text occurrence, including its source line, operands, and reason.
+    unresolved_instructions: tuple[dict[str, Any], ...] = ()
     #: Whether ``unaccounted_indices`` is a complete record. False means the count came from
     #: arithmetic, so it may be summarized but MUST NOT be intersected.
     positions_known: bool = True
@@ -138,6 +140,7 @@ class AsmAudit:
             "endpoint_fraction": round(self.endpoint_fraction, 4),
             "role_histogram": dict(sorted(self.role_histogram.items())),
             "unroled_identities": list(self.unroled_identities),
+            "unresolved_instructions": [{"source": self.stream, **entry} for entry in self.unresolved_instructions],
             "consistent": self.is_consistent(),
             "gaps": list(self.gaps()),
             "notes": list(self.notes),
@@ -170,7 +173,7 @@ def _classify(decoded, endpoint, target: str, engine: str, notes=()) -> AsmAudit
             ident = str(getattr(d, "identity", "") or mnemonic)
             if ident and ident not in unroled:
                 unroled.append(ident)
-        elif mnemonic and mnemonic != _UNKNOWN:
+        elif mnemonic and mnemonic != _UNKNOWN and not getattr(d, "unresolved_reason", ""):
             a.named_by_tool += 1
         else:
             a.unaccounted += 1
@@ -531,6 +534,7 @@ def audit_text(lines, target: str, endpoint=None) -> AsmAudit:
         endpoint = next((e for e in eps if "accumulate" in e.roles), eps[0] if eps else None)
     decoded = _text.decode_text(lines, target, endpoint)
     a = _classify(decoded, endpoint, target, getattr(endpoint, "engine", ""))
+    a.unresolved_instructions = _text.unresolved_instructions(decoded)
     unresolved = _text.unresolved_mnemonics(decoded)
     if unresolved:
         a.notes += (

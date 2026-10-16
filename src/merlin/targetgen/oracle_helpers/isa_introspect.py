@@ -30,6 +30,7 @@ import inspect
 import json
 import sys
 import textwrap
+from typing import ClassVar, get_origin
 
 
 def _load_module(path: str):
@@ -39,56 +40,42 @@ def _load_module(path: str):
     return mod
 
 
-# Candidate operand attribute names an instruction format may read in to_bytecode(). Setting one the
-# format does not use is harmless (it never reaches the packed word); this list only needs to be a
-# SUPERSET of operand fields across formats. No opcode/funct here — those are the FIXED bits we derive.
-_OPERAND_ATTRS = (
-    "rd",
-    "rs1",
-    "rs2",
-    "imm",
-    "vd",
-    "vs1",
-    "vs2",
-    "es1",
-    "shamt",
-    "imm16",
-    "imm12",
-    "imm20",
-    "uimm",
-    "vt",
-    "vm",
-    "aq",
-    "rl",
-    "csr",
-)
-
-
 def _operand_names(cls) -> list[str]:
-    """The op's operand field names, from the ISA def's OWN typed annotations across the class MRO (the
-    pattern base declares them) plus the candidate superset. Used to build an encodable zero instance without
-    running the op's ``__init__`` — position/format agnostic, no field-name assumption beyond the superset."""
+    """Assembler-visible attributes from parameter metadata, or annotations when metadata is absent.
+
+    Bundled parameters expose their register and immediate separately. An explicit empty parameter list
+    is nullary, even when an inherited encoding format declares additional attributes.
+    """
     names: list[str] = []
+    params = getattr(cls, "params", None)
+    if params is not None:
+        for param in params:
+            parts = (param.reg, param.imm) if hasattr(param, "reg") and hasattr(param, "imm") else (param,)
+            for part in parts:
+                attr = getattr(part, "repr", None)
+                if isinstance(attr, str) and attr and not attr.startswith("_") and attr not in names:
+                    names.append(attr)
+        return names
     for base in getattr(cls, "__mro__", (cls,)):
-        for attr in getattr(base, "__annotations__", {}) or {}:
+        for attr, annotation in (getattr(base, "__annotations__", {}) or {}).items():
+            if annotation is ClassVar or get_origin(annotation) is ClassVar:
+                continue
+            if isinstance(annotation, str) and annotation.partition("[")[0].strip().rsplit(".", 1)[-1] == "ClassVar":
+                continue
             if not attr.startswith("_") and attr not in names:
                 names.append(attr)
-    for attr in _OPERAND_ATTRS:
-        if attr not in names:
-            names.append(attr)
     return names
 
 
 def _zeroed_instance(cls):
-    """An instance of ``cls`` with every operand field that has NO class default set to 0, so the op's own
-    ``to_bytecode`` can encode it (RISC-V-style ops declare operands with no default and set them only in
-    ``__init__``, which ``object.__new__`` skips). Class-defaulted attributes are LEFT ALONE — that preserves
-    a fixed discriminator carried as a default (e.g. an ebreak whose imm default distinguishes it from ecall);
-    zeroing it would corrupt the op's identity. Returns the raw instance (may still be non-encodable, caller
-    guards)."""
+    """Zero the declared semantic operands without creating unused encoding-format attributes.
+
+    Fixed discriminators outside the parameter list retain their class defaults. Without parameter
+    metadata, fill missing annotated attributes and preserve class defaults.
+    """
     inst = object.__new__(cls)
     for attr in _operand_names(cls):
-        if not hasattr(inst, attr):  # missing (no class default) -> fill with 0
+        if getattr(cls, "params", None) is not None or not hasattr(inst, attr):
             try:
                 setattr(inst, attr, 0)
             except Exception:  # noqa: BLE001 — not settable on this format; leave it
@@ -127,18 +114,8 @@ def _operand_fields(cls, base: int, operand_attrs: set[str] | None = None) -> tu
     variable — otherwise a legal instruction whose aliased bits are non-zero is falsely rejected."""
     fields: dict[str, list[int | None]] = {}
     touched = 0
-    for attr in _OPERAND_ATTRS:
+    for attr in _operand_names(cls):
         if operand_attrs is not None and attr not in operand_attrs:
-            continue
-        # cheap use-check first: a wide all-ones pattern; if nothing moves, the format ignores this attr.
-        # Probe on a ZEROED instance (all other free operands set) so the op is encodable even when it needs
-        # several operands — a bare instance would raise on the unset ones and hide every real field.
-        probe = _zeroed_instance(cls)
-        try:
-            setattr(probe, attr, 0x7FFFFFFF)
-            if ((int(probe.to_bytecode()) & 0xFFFFFFFF) ^ base) == 0:
-                continue
-        except Exception:  # noqa: BLE001 — attr not settable on this format
             continue
         bits: list[int | None] = []
         for i in range(32):
@@ -164,13 +141,8 @@ def _operand_fields(cls, base: int, operand_attrs: set[str] | None = None) -> tu
 
 
 def _declared_operands(cls) -> set:
-    """Operand attributes the format classes in ``cls``'s MRO declare in their OWN annotations."""
-    out = set()
-    for base in getattr(cls, "__mro__", (cls,)):
-        for attr in getattr(base, "__annotations__", {}) or {}:
-            if attr in _OPERAND_ATTRS:
-                out.add(attr)
-    return out
+    """Operand attributes declared by semantic parameters, with annotation fallback."""
+    return set(_operand_names(cls))
 
 
 def _canonical_placements(entries: list[dict]) -> dict:
