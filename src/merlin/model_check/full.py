@@ -187,13 +187,16 @@ def judged_metrics(model: Model, run: CH.ChainRun, fp: list[np.ndarray]) -> dict
 # ---------------------------------------------------------------------------------------- one input
 
 
-def execute(target: str, record: Mapping[str, Any], stage: Path, inputs, step_dir: Path, deadline: float) -> dict:
+def execute(
+    target: str, record: Mapping[str, Any], stage: Path, inputs, step_dir: Path, deadline: float, *, twin: bool = False
+) -> dict:
     """One program step: ``record``'s image relinked with ``inputs``, run on Spike, every output read back."""
     started = time.monotonic()
     elf = FB.relink(record, stage, inputs, step_dir)
     out: dict[str, Any] = {"relink_seconds": round(time.monotonic() - started, 1), "elf_bytes": elf.stat().st_size}
     try:
-        console, wall = FB.run(target, elf, timeout_s=max(1.0, deadline - time.monotonic()))
+        remaining = max(1.0, deadline - time.monotonic())
+        console, wall = FB.run_host(elf, timeout_s=remaining) if twin else FB.run(target, elf, timeout_s=remaining)
     finally:
         FB.discard(step_dir)  # the relinked image and its generated inputs; the bound inputs stay
     (step_dir / "console.bin").write_bytes(console)  # kept only when it cannot be read back
@@ -252,7 +255,7 @@ def run_input(
             future = None
             if twin is not None:
                 future = twin_pool.submit(
-                    execute, target, twin, stage, inputs, work / f"{program.name}.{step}.host", deadline
+                    execute, target, twin, stage, inputs, work / f"{program.name}.{step}.host", deadline, twin=True
                 )
             done = execute(target, builds[program.name], stage, inputs, work / f"{program.name}.{step}", deadline)
             row = {"program": program.name, "step": step, "engine": "spike", "status": "completed", **done["row"]}
