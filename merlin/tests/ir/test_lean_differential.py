@@ -21,7 +21,7 @@ from merlin.verify.lean import differential as diff
 
 
 @pytest.fixture(scope="module")
-def fidelity_tools():
+def fidelity_tools(tmp_path_factory):
     from merlin.llvmlower import toolchain
     from merlin.verify.lean.check import lean_exe
 
@@ -43,6 +43,13 @@ def fidelity_tools():
     diff._run([str(lake), "build", "MerlinVerify.Core.Json", "MerlinVerify.Sem.Ops"], cwd=repo_root() / "merlin/lean")
     # An installed but broken compiler environment is a failure, never an unavailable-tool skip.
     diff._run([str(compiler), "-c", "from torch_mlir.execution_engine import ExecutionEngine"])
+    # Diagnose API drift before comparing model outcomes: a legacy parser must not masquerade as
+    # a Lean execution mismatch. Each native result also records the independently probed contract.
+    work = tmp_path_factory.mktemp("mlir-map-contract")
+    request = work / "request.json"
+    request.write_text(json.dumps({"map_contract": True}))
+    result = diff._run([str(compiler), str(Path(diff.__file__).with_name("mlir_execute.py")), str(request)])
+    (work / "contract.json").write_text(result.stdout)
     return tools
 
 

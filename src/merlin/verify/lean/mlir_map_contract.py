@@ -35,7 +35,10 @@ def probe() -> dict:
             suffix = " return %r : tensor<2xi32> }"
             block_args = [f"%x{i}: i32" for i in range(count)] + ["%old: i32"]
             source = prefix + f"({', '.join(block_args)}) {{ linalg.yield %old : i32 }}" + suffix
-            module = ir.Module.parse(source)
+            try:
+                module = ir.Module.parse(source)
+            except ir.MLIRError as exc:
+                raise RuntimeError("unsupported linalg.map contract: expected inputs plus destination") from exc
             op = module.body.operations[0].regions[0].blocks[0].operations[0]
             if len(op.regions[0].blocks[0].arguments) != count + 1:
                 raise RuntimeError("unsupported linalg.map contract: expected inputs plus destination")
