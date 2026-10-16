@@ -49,7 +49,8 @@ counter_semantics:
 At completion, Phase 1 writes `capsule_timing_audit.json` and
 `capsule_timing_archive_status.json` in the run directory. If every passing gSIM
 L3 result has a positive label, matching kernel-scope caller marker, original
-ELF, input, numeric and simulator artifacts, and an RTL-derived/cycle-accurate/pass verdict,
+ELF, compiler and command-buffer identities, input, numeric and simulator artifacts,
+and an RTL-derived/cycle-accurate/pass verdict,
 it also writes `capsule_timing.tar`. The operator can rerun the host-only audit
 or export on a retained run:
 
@@ -88,6 +89,11 @@ ELF embeds the harness's exact input bytes; the archived `harness.c`,
 `input.interface.mlir`, `command_buffer.json`, result and logs expose the input
 and compilation context. The archived instruction trace is a **static** trace;
 it must not be treated as a dynamic event timeline.
+`timing_ready` covers the retained passing gSIM L3 results. It does not assert
+that every capsule in the admitted corpus ran at L3. Compare the archive's
+capsule roster with the frozen corpus and grading manifest before describing a
+dataset as an all-capsule measurement sweep. Failed or screened-only capsules
+have no usable timing label.
 
 ## Spike calibration and Phase 2 handoff
 

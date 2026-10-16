@@ -22,6 +22,7 @@ _KERNEL_SCOPE = re.compile(
     r"boundary=entry-through-completion record_b64=([A-Za-z0-9+/=]+) \*/"
 )
 _CYCLE_LINE = re.compile(r"METRIC cycles ([1-9][0-9]*)")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 def _file_sha256(path: Path) -> str:
@@ -145,14 +146,18 @@ def audit(run_dir: Path) -> dict:
         r
         for r in gsim_pass
         if r["cycles_measured"]
-        and r["elf_sha256"]
+        and all(
+            isinstance(r.get(name), str) and _SHA256.fullmatch(r[name])
+            for name in ("elf_sha256", "harness_sha256", "candidate_sha256", "command_buffer_sha256")
+        )
         and r["timing_selection_sha256"]
         and r["console_cycle_verified"]
         and all(
             r["artifacts"][name]
             for name in ("harness", "input_interface", "command_buffer", "static_instruction_trace", "numeric_report")
         )
-        and (r["sim_provenance"] or {}).get("sha256")
+        and isinstance((r["sim_provenance"] or {}).get("sha256"), str)
+        and _SHA256.fullmatch(r["sim_provenance"]["sha256"])
         and r["result_status"] == "pass"
         and r["derived_from_rtl"] is True
         and r["cycle_accurate"] is True
@@ -178,8 +183,8 @@ def archive(run_dir: Path, destination: Path) -> dict:
         raise TimingArchiveError(
             f"gSIM capsule timing incomplete: {index['gsim_pass_with_cycles']}/"
             f"{index['gsim_pass_records']} passing records have positive cycle markers; "
-            f"{index['gsim_pass_complete']}/{index['gsim_pass_records']} have ELF, simulator "
-            "and kernel-scope identities, input/numeric artifacts and one matching console marker"
+            f"{index['gsim_pass_complete']}/{index['gsim_pass_records']} have ELF, compiler, command-buffer, "
+            "simulator and kernel-scope identities, input/numeric artifacts and one matching console marker"
         )
     if destination.exists():
         raise TimingArchiveError(f"archive already exists: {destination}")
