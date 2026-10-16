@@ -240,7 +240,13 @@ column of the other, a stored weight's per output channel), rescaled on the host
 product. The block can split a softmax-produced operand into k int8 planes (k device matmuls, summed
 on the host) and subtract the other operand's mean over a softmax's axis (a shift the softmax
 ignores). The device still sees ordinary int8 matmuls; every scale, plane sum and shift is host work,
-counted in the capture's `quantization_stats.dynamic_contractions`.
+counted in the capture's `quantization_stats.dynamic_contractions`. With `scales: static_heads`
+(CLI `--scales static_heads`) the same block fixes the scales at capture instead, the form a readout
+applies per device call: `_static_attention` calibrates one minmax scale per head of each operand in
+one pass over the calibration inputs before PT2E, takes the smooth shift as a calibrated per-(head,
+row) mean (folded into the producing Linear's bias when only layout steps lie between, otherwise a
+host subtraction), and replaces a softmax-produced operand by `exp(s - rowmax)` in planes with fixed
+scales `1/127`, `1/(127*128)`, dividing the result rows by their sum on the host.
 
 A wider STATIC activation grid is a third opt-in, the recipe's `static_planes` block
 (`quant_recipe.with_static_planes`, CLI `static-planes [--planes k] [--observer O] [--owners a,b]`).

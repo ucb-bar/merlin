@@ -611,16 +611,21 @@ def build_quantizer(
             self.planes = _planes_spec(recipe, eps=eps) if planes_block else None
             self.annotated_planes = 0
 
-        def rewrite_dynamic(self, graph_module: Any) -> list[dict[str, Any]]:
+        def rewrite_dynamic(
+            self, graph_module: Any, samples: Any = None, limit: int | None = None
+        ) -> list[dict[str, Any]]:
             """Rewrite the dynamic families' placed contractions into their integer form, in place.
 
             Runs before PT2E sees the graph, so a rewritten contraction is never also annotated. One the
-            rewrite cannot express is left in floating point and listed, never approximated.
+            rewrite cannot express is left in floating point and listed, never approximated. Under the
+            block's ``static_heads`` scales the activation contractions are calibrated on ``samples``.
             """
             if not dynamic_families:
                 return []
             import _dynamic_contractions as DC  # noqa: PLC0415 -- a sibling, by bare name
 
+            if dynamic_block.get("scales") == "static_heads":
+                return self._rewrite_static_heads(graph_module, samples, limit)
             qmax = DC.qmax_of(recipe)
             for node in list(graph_module.graph.nodes):
                 family = family_of(node) if node.op == "call_function" else None
@@ -651,6 +656,39 @@ def build_quantizer(
             if any(r["status"] == "rewritten" for r in self.dynamic_rows):
                 graph_module.graph.lint()
                 graph_module.recompile()
+            return self.dynamic_rows
+
+        def _rewrite_static_heads(self, graph_module: Any, samples: Any, limit: int | None) -> list[dict[str, Any]]:
+            import _static_attention as SA  # noqa: PLC0415 -- a sibling, by bare name
+
+            if dynamic_families != {ACTIVATION_CONTRACTION} or samples is None:
+                raise RecipeError("static per-head scales cover activation contractions, calibrated on samples")
+            if iter(samples) is samples:
+                raise RecipeError("static per-head scales read the calibration stream before PT2E does; pass a list")
+            samples = list(samples)[:limit]
+            sites = [
+                n
+                for n in graph_module.graph.nodes
+                if n.op == "call_function"
+                and family_of(n) == ACTIVATION_CONTRACTION
+                and eligible(n, ACTIVATION_CONTRACTION)
+            ]
+            policy = recipe.get("framework_capture_policy") or {}
+            try:
+                self.dynamic_rows = SA.rewrite_sites(
+                    graph_module,
+                    sites,
+                    dynamic_block,
+                    samples,
+                    low=activation["quant_min"],
+                    high=activation["quant_max"],
+                    eps=policy.get("observer_epsilon", eps),
+                    owner=owner,
+                )
+            except ValueError as error:
+                raise RecipeError(f"static per-head scales: {error}") from error
+            graph_module.graph.lint()
+            graph_module.recompile()
             return self.dynamic_rows
 
         def transform_for_annotation(self, graph_module: Any) -> Any:
@@ -1154,7 +1192,8 @@ def apply_recipe(
         eps=epsilon,
         fold_candidates=fold_candidates,
     )
-    dynamic = quantizer.rewrite_dynamic(exported)
+    calibration = calibration_inputs if calibration_inputs is not None else (tuple(example_inputs),)
+    dynamic = quantizer.rewrite_dynamic(exported, calibration, calibration_limit(recipe, calibration_samples))
     prepared = prepare_pt2e(exported, quantizer)
     samples = calibration_inputs if calibration_inputs is not None else (tuple(example_inputs),)
     sample_limit = calibration_limit(recipe, calibration_samples)
