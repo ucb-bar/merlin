@@ -314,3 +314,8 @@ the full-model coordinator supplies its current digest and pinned-file callbacks
 retains component attribution, cache identity and certification decisions.
 `selfcheck_results` projects already closed results, census and telemetry with
 unchanged redaction and refusal semantics; it does not execute a grade.
+
+`private_execution_checks` validates the descriptor's complete numerical-check
+roster at both judgement and formal completion. Require explicit successful
+booleans, ordered result/element coverage and the original reference/tolerance
+selection; descriptive group scope cannot stand in for numerical evidence.
