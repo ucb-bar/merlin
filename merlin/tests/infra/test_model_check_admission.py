@@ -98,3 +98,31 @@ def test_seeded_draws_are_reproducible_and_keep_the_stored_draw(tmp_path):
     assert not np.array_equal(draws[0], draws[1]) and not np.array_equal(draws[0], noise)
     assert np.array_equal(np.load(again[1]["inputs"])["noise"], draws[0])
     assert np.array_equal(np.load(first[1]["inputs"])["other"], np.ones(2, np.float32))
+
+
+def test_a_changed_bar_rejudges_a_built_bundle_from_its_stored_metrics(tmp_path):
+    import json
+
+    from merlin.model_check import bundle as B
+    from merlin.model_check import references as REF
+
+    model = load(repo_root() / "examples" / "gemmini" / "numerics" / "models.yaml").model("tiny_llama")
+    root = tmp_path / "bundle"
+    (root).mkdir()
+    (root / "MANIFEST.json").write_text(json.dumps({"schema": B.MANIFEST_SCHEMA, "models": {}}))
+    # The launch recipe's measured KL: 0.043 visible, 0.066 sealed (and one extra draw, to cover seeds/<k>).
+    cases = {"visible/v00": 0.043, "sealed/s00": 0.066, "sealed/s00#s1": 0.064}
+    for name, kl in cases.items():
+        where, _, draw = name.partition("#s")
+        here = root / "tiny_llama" / where / ("seeds/" + draw if draw else "")
+        here.mkdir(parents=True)
+        (here / "metrics_int8.json").write_text(json.dumps({"kl_mean": kl, "top1_agree": 0.93}))
+    stale = {"status": "fail", "checks": []}
+    quality = {"model": "tiny_llama", "inputs": dict.fromkeys(cases, {}), "admission": {"sealed": stale}}
+    (root / "tiny_llama" / "reference_quality.json").write_text(json.dumps(quality))
+
+    summary = REF.rejudge(B.Bundle(root), model)
+    assert {split: a["status"] for split, a in summary["admission"].items()} == {"sealed": "pass", "visible": "pass"}
+    assert summary["admission"]["sealed"]["inputs"] == 2
+    written = json.loads((root / "tiny_llama" / "reference_quality.json").read_text())
+    assert written["admission"] == summary["admission"] and written["model"] == "tiny_llama"

@@ -54,6 +54,7 @@ python -m merlin.model_check binding [--contract C] [--rtl-facts F] [--host-pack
 python -m merlin.model_check kernels-export --bundle B --model M [--program P] [--split visible]
         --out-dir DIR --out REPORT.json
 python -m merlin.model_check variants-build --model M [--program P] --seed S [--bundle B] --out REPORT.json
+python -m merlin.model_check bundle-admission --model M [--bundle DIR] --out REPORT.json
 python -m merlin.model_check bundle-seal [--bundle DIR] [--jobs N] --out REPORT.json
 python -m merlin.model_check bundle-verify [--bundle DIR] [--jobs N] --out REPORT.json
 python -m merlin.model_check bundle-build --captures DIR --model M [--program P] [--keep {all|sample}]
@@ -109,6 +110,9 @@ official pass.
   and censuses, carries no tensor data and no paths, and accepts only the visible split: it is what a
   harness stages into an agent sandbox.
 - `variants-build`: seeds and stores the sealed shape variants (§8.1); operator only.
+- `bundle-admission` re-judges a built bundle's reference admission (§4.5) under the models file's current
+  rules, from each case's stored `metrics_int8.json` and `metrics_baseline.json`; nothing is recomputed.
+  It rewrites `reference_quality.json`, so a sealed bundle must be sealed again.
 - `bundle-seal` freezes a bundle: `SHA256SUMS` lists a sha256 of every file, and the manifest's `seal`
   records that file's digest, the file count and the size. `bundle-verify` recomputes every digest and
   fails on any changed, missing or extra file, on a sums file that differs from the manifest's, and on a
@@ -192,8 +196,11 @@ the same inputs. Building the references evaluates every rule per split into `re
 (`admission.<split>.{status, checks[]}`); a rule with no data is `unknown`, never a pass. The bars below
 restate the target's models file.
 **Approved (1.7): ResNet50 top-1 agreement ≥ 15/16 and the logits cosine's mean over the inputs ≥ 0.99**,
-the worst image reported (one image's cosine is noisy). Approved (1.15): TinyLlama mean `kl`
-≤ 0.075 nats and top-1 agreement ≥ 90 %. **Approved (1.9): SmolVLA within 2 × the bf16 model's own error,
+the worst image reported (one image's cosine is noisy). **Approved (1.15): TinyLlama mean `kl` ≤ 0.075
+nats** (exp(0.075) − 1 ≈ +7.8 % perplexity, measured against the FP model's own next-token distributions)
+**and top-1 agreement ≥ 90 %**. Set after the launch recipe was measured (8 inputs per split: visible 0.043,
+sealed 0.066). The split-to-split spread of 0.02 is as large as the gap the earlier proposal of 0.05 left.
+**Approved (1.9): SmolVLA within 2 × the bf16 model's own error,
 both against an fp32 execution** (FlashAttention's rule, §4.6). Statistic: per input, the worst action dim's
 `rel_rmse` (dims 0–5, the 50-step chunk) against the **fp32 reference** = the same checkpoint with every
 weight upcast and every op in float32 (`ATEN_CPU_CAPABILITY=default`, one thread). `E_bf16` = that
@@ -400,5 +407,5 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   (approved); admission rules take `p<NN>` aggregates and `report_only`; `reference.seeds` in the models file.
 - 1.14 (2026-10-16): §2, §9: `full.differential: cached` (SmolVLA, TinyLlama; approved): full mode
   compares with cached host twins only and records the rest `pending`; a pending gate does not fail a report.
-
-- 1.15 (2026-10-16): user-approved TinyLlama reference admission mean KL <= 0.075 nats; top-1 agreement remains >= 90 %. Existing reference outputs can be rejudged without inference.
+- 1.15 (2026-10-16): §4.5: TinyLlama's KL bar is 0.075 nats (approved); `bundle-admission` re-judges a built
+  bundle's admission from its stored metrics.

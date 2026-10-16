@@ -14,7 +14,8 @@ When the models file names ``reference.seeds`` (an input array and a count), eve
 under ``count - 1`` further draws of that standard-normal array, each in ``<split>/<id>/seeds/<k>/`` with its
 own ``inputs.npz`` and the same reference files; draw 0 is the stored input. Draw ``k`` is seeded by the
 sha256 of ``<split>/<id>/<array>/<k>``, so a rebuild reproduces it. Device calls are recorded for draw 0
-only; admission is judged over every (input, draw).
+only; admission is judged over every (input, draw). :func:`rejudge` re-evaluates a built bundle's admission
+from the stored metrics alone, when a bar changes.
 """
 
 from __future__ import annotations
@@ -186,14 +187,40 @@ def build(
             "seconds": round(time.monotonic() - t0, 1),
         }
         log(f"[references] {model.name} {case['name']}: {json.dumps(headline)}")
+    summary["admission"] = _admission(model, rows, baseline_rows)
+    (bundle.root / model.name / "reference_quality.json").write_text(json.dumps(summary, indent=1) + "\n")
+    return summary
+
+
+def _admission(model: Model, rows: list[dict[str, Any]], baseline_rows: list[dict[str, Any]]) -> dict[str, Any]:
     rules = model.judged.get("admission") or ()
-    summary["admission"] = {
+    return {
         split: M.admission(
             rules, [r for r in rows if r["split"] == split], [r for r in baseline_rows if r["split"] == split]
         )
         for split in sorted({r["split"] for r in rows})
     }
-    (bundle.root / model.name / "reference_quality.json").write_text(json.dumps(summary, indent=1) + "\n")
+
+
+def rejudge(bundle: Bundle, model: Model) -> dict[str, Any]:
+    """``model``'s admission rules over a built bundle's stored per-case metrics (``metrics_int8.json``,
+    ``metrics_baseline.json``), nothing recomputed; ``reference_quality.json``'s ``admission`` is replaced."""
+    path = bundle.root / model.name / "reference_quality.json"
+    summary = json.loads(path.read_text())
+    rows: list[dict[str, Any]] = []
+    baseline_rows: list[dict[str, Any]] = []
+    for name in summary["inputs"]:
+        where, _, draw = name.partition("#s")
+        split, _, ident = where.partition("/")
+        here = bundle.root / model.name / split / ident
+        if draw:
+            here = here / "seeds" / draw
+        row = {"split": split, "draw": int(draw or 0)}
+        rows.append({**row, **json.loads((here / "metrics_int8.json").read_text())})
+        if (here / "metrics_baseline.json").is_file():
+            baseline_rows.append({**row, **json.loads((here / "metrics_baseline.json").read_text())})
+    summary["admission"] = _admission(model, rows, baseline_rows)
+    path.write_text(json.dumps(summary, indent=1) + "\n")
     return summary
 
 

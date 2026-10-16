@@ -135,6 +135,10 @@ def build_parser() -> argparse.ArgumentParser:
     _common(verify, submission=False)
     verify.add_argument("--jobs", type=int, default=8, help="files hashed at once")
 
+    rejudge = sub.add_parser("bundle-admission", help="re-judge a built bundle's reference admission (no recompute)")
+    _common(rejudge, submission=False)
+    rejudge.add_argument("--model", required=True)
+
     seal = sub.add_parser("bundle-seal", help="record a sha256 of every file of a numerics bundle (freeze it)")
     _common(seal, submission=False)
     seal.add_argument("--jobs", type=int, default=8, help="files hashed at once")
