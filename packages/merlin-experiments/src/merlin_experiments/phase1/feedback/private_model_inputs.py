@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -90,7 +91,7 @@ def _recipe_derivation(
     host_capabilities_sha256: str,
     pinned_file,
     file_digest,
-) -> tuple[dict[str, str], dict, dict]:
+) -> tuple[dict[str, Any], dict, dict]:
     """Bind the selected capture recipe to canonical current-spec derivation.
 
     The Phase 0 export is a diagnostic transformation input, not an admission
@@ -148,12 +149,17 @@ def _recipe_derivation(
     if not isinstance(selected, Mapping):
         raise ValueError("complete model has no selected capture recipe")
     selected_file = pinned_file(spec, selected.get("path"), selected.get("sha256"))
+    variant = row.get("capture_recipe_variant")
+    wanted = (
+        {"sha256": variant.get("base_file_sha256"), "recipe_sha256": variant.get("base_recipe_sha256")}
+        if isinstance(variant, Mapping) else selected
+    )
     candidates = [
         entry
         for entry in index["recipes"]
         if isinstance(entry, Mapping)
-        and entry.get("sha256") == selected.get("sha256")
-        and entry.get("recipe_sha256") == selected.get("recipe_sha256")
+        and entry.get("sha256") == wanted.get("sha256")
+        and entry.get("recipe_sha256") == wanted.get("recipe_sha256")
     ]
     if len(candidates) != 1:
         raise ValueError("selected capture recipe is absent from current-spec derivation")
@@ -161,7 +167,7 @@ def _recipe_derivation(
     if not isinstance(member, str) or not member.startswith("software/quantization-recipes/"):
         raise ValueError("current-spec recipe has no safe indexed member")
     raw = artifacts.get(member)
-    if raw is None or file_digest(selected_file) != candidates[0]["sha256"]:
+    if raw is None:
         raise ValueError("selected capture recipe differs from current-spec derived bytes")
     derived = json.loads(raw)
     if (
@@ -169,13 +175,24 @@ def _recipe_derivation(
         or derived.get("target") != target
         or derived.get("recipe_sha256") != candidates[0]["recipe_sha256"]
         or recipe_digest(derived) != candidates[0]["recipe_sha256"]
-        or raw != selected_file.read_bytes()
+        or sha256(raw).hexdigest() != candidates[0]["sha256"]
     ):
+        raise ValueError("selected capture recipe has no verified current-spec content identity")
+    variant_proof = None
+    if variant is not None:
+        from .private_recipe_variant import verify
+
+        variant_proof = verify(variant, parent=raw, selected=selected_file.read_bytes(), target=target)
+        if variant.get("selected_recipe_sha256") != selected.get("recipe_sha256"):
+            raise ValueError("capture recipe variant names another selected semantic digest")
+    elif raw != selected_file.read_bytes():
         raise ValueError("selected capture recipe has no verified current-spec content identity")
     proof = {
         "evidence_manifest_sha256": file_digest(manifest),
-        "recipe_sha256": candidates[0]["sha256"],
-        "recipe_semantic_sha256": candidates[0]["recipe_sha256"],
+        "recipe_sha256": file_digest(selected_file),
+        "recipe_semantic_sha256": selected["recipe_sha256"],
         "scope": "current-spec diagnostic recipe derivation only; no model or hardware admission",
     }
+    if variant_proof is not None:
+        proof["variant"] = variant_proof
     return proof, evidence.software_spec, {selected_host_name: host_profiles[selected_host_name]}

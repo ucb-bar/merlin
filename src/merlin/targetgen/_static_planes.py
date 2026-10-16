@@ -20,9 +20,10 @@ accumulators inside the rescale it already applies to one (``* s * s_w`` per out
 bias), so the rescale reads ``k`` accumulators and no pass is added. The quantize pass over ``x`` also
 emits the digits, and one set of digits serves every contraction that reads the same quantized ``x``.
 
-Only a Linear whose weight PT2E quantized to int8 is rewritten; the planes annotation selects nothing
-else (``_recipe_quantizer``), so a planes-grid operand this module cannot rewrite is an error, never
-a silent wide fake-quantization. Nothing here imports merlin, names a model or a target.
+Only a Linear or an ungrouped Conv2d (im2col on each digit plane, as the integer rewrite does it) whose
+weight PT2E quantized to int8 is rewritten; the planes annotation selects nothing else
+(``_recipe_quantizer``), so a planes-grid operand this module cannot rewrite is an error, never a silent
+wide fake-quantization. Nothing here imports merlin, names a model or a target.
 """
 
 from __future__ import annotations
@@ -32,8 +33,8 @@ from typing import Any
 
 #: Accumulators are i32: every digit-times-weight sum must fit, whatever the observed values.
 _I32_MAX = (1 << 31) - 1
-#: Created operations that move no element (their cost is not host arithmetic).
-_LAYOUT = ("reshape", "transpose", "_int_mm", "view", "t")
+#: Created operations that compute nothing (layout, im2col copies, the device's own contraction).
+_LAYOUT = ("reshape", "transpose", "_int_mm", "view", "t", "slice", "permute", "cat", "constant_pad_nd")
 
 
 def grid(low: int, high: int, planes: int) -> tuple[int, int, int]:
@@ -103,8 +104,58 @@ def _cost(created: list[Any]) -> int:
     return total
 
 
+def _pair(value: Any, default: int) -> tuple[int, int]:
+    value = default if value is None else value
+    pair = (value, value) if isinstance(value, int) else tuple(value)
+    if len(pair) != 2 or not all(isinstance(v, int) for v in pair):
+        raise ValueError(f"unsupported convolution parameter {value!r}")
+    return pair
+
+
+def _conv_geometry(node: Any, x_shape: list, w_shape: list) -> dict[str, Any]:
+    """Stride, padding, dilation and output extent of a Conv2d over NCHW / OIHW (groups 1)."""
+    args = list(node.args) + [None] * (7 - len(node.args))
+    named = ("stride", "padding", "dilation", "groups")
+    stride, padding, dilation, groups = (
+        args[3 + i] if args[3 + i] is not None else node.kwargs.get(k) for i, k in enumerate(named)
+    )
+    if (groups or 1) != 1 or len(x_shape) != 4 or len(w_shape) != 4:
+        raise ValueError(f"{node.name}: digit planes take an ungrouped NCHW convolution")
+    (sh, sw), (ph, pw), (dh, dw) = _pair(stride, 1), _pair(padding, 0), _pair(dilation, 1)
+    n, cin, h, w = x_shape
+    cout, _, kh, kw = w_shape
+    oh, ow = (h + 2 * ph - dh * (kh - 1) - 1) // sh + 1, (w + 2 * pw - dw * (kw - 1) - 1) // sw + 1
+    return {
+        "n": n,
+        "cin": cin,
+        "cout": cout,
+        "kh": kh,
+        "kw": kw,
+        "oh": oh,
+        "ow": ow,
+        "stride": (sh, sw),
+        "padding": (ph, pw),
+        "dilation": (dh, dw),
+    }
+
+
+def _im2col(site: Any, digit: Any, g: dict[str, Any]) -> Any:
+    """``[N*OH*OW, KH*KW*C]`` patches of an int8 NCHW digit plane, in the integer rewrite's (kh, kw, c) order."""
+    aten = site.torch.ops.aten
+    (sh, sw), (ph, pw), (dh, dw) = g["stride"], g["padding"], g["dilation"]
+    padded = site(aten.constant_pad_nd.default, digit, [pw, pw, ph, ph], 0) if ph or pw else digit
+    patches = []
+    for ih in range(g["kh"]):
+        for iw in range(g["kw"]):
+            patch = site(aten.slice.Tensor, padded, 2, ih * dh, ih * dh + g["oh"] * sh, sh)
+            patch = site(aten.slice.Tensor, patch, 3, iw * dw, iw * dw + g["ow"] * sw, sw)
+            patch = site(aten.permute.default, patch, [0, 2, 3, 1])
+            patches.append(site(aten.reshape.default, patch, [g["n"] * g["oh"] * g["ow"], g["cin"]]))
+    return patches[0] if len(patches) == 1 else site(aten.cat.default, patches, 1)
+
+
 def rewrite_static_planes(graph_module: Any, *, planes: int, low: int, high: int) -> list[dict[str, Any]]:
-    """Rewrite every Linear whose activation is quantized on the planes grid; return one row per site.
+    """Rewrite every Linear / Conv2d whose activation is on the planes grid; return one row per site.
 
     ``low``/``high`` are the recipe's int8 activation range. Raises ``ValueError`` for a planes-grid
     operand whose contraction is not that form, so a capture never keeps a wide fake-quantization.
@@ -131,8 +182,13 @@ def rewrite_static_planes(graph_module: Any, *, planes: int, low: int, high: int
     digits_of: dict[Any, list[Any]] = {}
     rows = []
     for node in sites:
-        if node.target != aten.linear.default or not on_grid(node.args[0]) or on_grid(node.args[1]):
-            raise ValueError(f"{node.name}: a planes-grid operand outside a Linear's activation")
+        conv = node.target == aten.conv2d.default
+        if (
+            node.target not in (aten.linear.default, aten.conv2d.default)
+            or not on_grid(node.args[0])
+            or on_grid(node.args[1])
+        ):
+            raise ValueError(f"{node.name}: a planes-grid operand outside a Linear's or a Conv2d's activation")
         dq_x, dq_w = node.args[0], node.args[1]
         q_x = dq_x.args[0]
         if not (
@@ -163,8 +219,11 @@ def rewrite_static_planes(graph_module: Any, *, planes: int, low: int, high: int
                 raise ValueError(f"{node.name}: the weight has a zero point")
         elif w_zero != 0:
             raise ValueError(f"{node.name}: the weight has a zero point")
-        shape = list(x.meta["val"].shape)
-        reduction, outputs = shape[-1], int(w.meta["val"].shape[0])
+        shape, w_shape = [int(d) for d in x.meta["val"].shape], [int(d) for d in w.meta["val"].shape]
+        geometry = _conv_geometry(node, shape, w_shape) if conv else None
+        reduction = math.prod(w_shape[1:]) if conv else shape[-1]
+        outputs = int(w_shape[0])
+        rows_m = geometry["n"] * geometry["oh"] * geometry["ow"] if conv else math.prod(shape[:-1])
         if reduction * max(-low, high) * max(-w_low, w_high) > _I32_MAX:
             raise ValueError(f"{node.name}: an i32 accumulator may overflow for reduction K={reduction}")
         site = Emitter(graph_module, node, mode=mode, transform="static_planes")
@@ -174,10 +233,9 @@ def rewrite_static_planes(graph_module: Any, *, planes: int, low: int, high: int
             emit = Emitter(graph_module, q_x, mode=mode, transform="static_planes")
             emit.lineage = sorted({*emit.lineage, *site.lineage})
             value = x if x.meta["val"].dtype == torch.float32 else emit(aten.to.dtype, x, torch.float32)
-            rows2d = emit(aten.reshape.default, value, [-1, reduction])
             rest = emit(
                 aten.clamp.default,
-                emit(aten.round.default, emit(aten.mul.Tensor, rows2d, 1.0 / scale)),
+                emit(aten.round.default, emit(aten.mul.Tensor, value, 1.0 / scale)),
                 grid_min,
                 grid_max,
             )
@@ -191,8 +249,14 @@ def rewrite_static_planes(graph_module: Any, *, planes: int, low: int, high: int
                 digits.append(emit(aten._to_copy.default, digit, dtype=torch.int8))
             digits_of[q_x] = digits
             cost += _cost(emit.created)
-        weight_t = site(aten.transpose.int, w, 0, 1)
-        accumulators = [site(aten._int_mm.default, digit, weight_t) for digit in digits_of[q_x]]
+        if conv:  # the integer rewrite's im2col on each int8 digit plane; the weight as [K, Cout]
+            operands = [_im2col(site, digit, geometry) for digit in digits_of[q_x]]
+            matrix = site(aten.reshape.default, site(aten.permute.default, w, [0, 2, 3, 1]), [outputs, reduction])
+            weight_t = site(aten.transpose.int, matrix, 0, 1)
+        else:
+            operands = [site(aten.reshape.default, digit, [-1, reduction]) for digit in digits_of[q_x]]
+            weight_t = site(aten.transpose.int, w, 0, 1)
+        accumulators = [site(aten._int_mm.default, operand, weight_t) for operand in operands]
         value = site(aten._to_copy.default, accumulators[0], dtype=torch.float32)
         for accumulator in accumulators[1:]:
             lower = site(aten._to_copy.default, accumulator, dtype=torch.float32)
@@ -201,11 +265,18 @@ def rewrite_static_planes(graph_module: Any, *, planes: int, low: int, high: int
         value = site(aten.mul.Tensor, value, w_scale)
         if per_channel:
             value = site(aten._to_copy.default, value, dtype=torch.float32)
-        value = site(aten.reshape.default, value, [*shape[:-1], outputs])
+        if conv:
+            g = geometry
+            value = site(aten.reshape.default, value, [g["n"], g["oh"], g["ow"], outputs])
+            value = site(aten.permute.default, value, [0, 3, 1, 2])
+        else:
+            value = site(aten.reshape.default, value, [*shape[:-1], outputs])
         bias = node.args[2] if len(node.args) > 2 else node.kwargs.get("bias")
         if bias is not None:
             if isinstance(bias, torch.fx.Node):
                 _observe_attr(graph_module, bias, mode)
+            if conv:
+                bias = site(aten.reshape.default, bias, [1, outputs, 1, 1])
             value = site(aten.add.Tensor, value, bias)
         expected = node.meta.get("val")
         if expected is None or tuple(value.meta["val"].shape) != tuple(expected.shape):
@@ -217,10 +288,11 @@ def rewrite_static_planes(graph_module: Any, *, planes: int, low: int, high: int
             {
                 "node": node.name,
                 "owner": _owner(node),
-                "shape": [math.prod(shape[:-1]), reduction, outputs],
+                "kind": "conv2d" if conv else "linear",
+                "shape": [rows_m, reduction, outputs],
                 "planes": planes,
                 "scale": scale,
-                "int8_macs": planes * math.prod(shape[:-1]) * reduction * outputs,
+                "int8_macs": planes * rows_m * reduction * outputs,
                 "device_calls": planes,
                 "host_elements": cost,
             }

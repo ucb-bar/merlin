@@ -383,9 +383,14 @@ DYNAMIC_SCHEMA = "dynamic_contractions_v1"
 #: other (a stored weight: one per output channel, fixed at capture). Each int8 product is then summed
 #: exactly in the i32 accumulator and the scales apply afterwards as an outer product, on the host.
 NON_REDUCTION = "non_reduction"
-#: Plane selectors: an operand produced by a row softmax, and a stored weight.
+#: The static mode: one CALIBRATED scale per head of each operand (the readout's own form per device
+#: call), a calibrated smooth shift, and fixed-scale planes of a softmax's ``exp(s - rowmax)``.
+STATIC_HEADS = "static_heads"
+#: Plane selectors: an operand produced by a row softmax, a stored weight, and (static per-head scales only)
+#: every other operand, as k int8 digits of one static grid.
 SOFTMAX_OUTPUT = "softmax_output"
 WEIGHT = "weight"
+OPERAND = "operand"
 #: The smooth shift: when a contraction reaches a softmax over its column axis only through scalar
 #: factors and masks, the other operand's mean over that axis is subtracted first. That shifts each
 #: score row by a constant, which the softmax ignores.
@@ -400,6 +405,7 @@ def with_dynamic_contractions(
     planes: Mapping[str, int] | None = None,
     smooth: bool = False,
     static_families: Sequence[str] | None = None,
+    scales: str = NON_REDUCTION,
 ) -> dict[str, Any]:
     """``recipe`` with a ``dynamic`` block: these families' contractions take run-time scales.
 
@@ -417,6 +423,14 @@ def with_dynamic_contractions(
     ``families`` must be contraction families of this recipe (``activation_contraction`` is added
     when asked for); ``static_families`` (default: the recipe's own) are the families still
     quantized with the recipe's static spec. Families listed in both take the dynamic form.
+
+    ``scales=STATIC_HEADS`` keeps the same mechanisms with scales fixed at capture: one calibrated
+    minmax scale per head of each operand, the smooth shift a calibrated per-(head, row) mean (folded
+    into the producing Linear's bias where only layout steps lie between), and a softmax-produced
+    operand replaced by ``exp(s - rowmax)`` in planes with fixed scales ``1 / (q * (q + 1)**j)``, the
+    rows divided by their sum after the contraction (``_static_attention``). ``planes[OPERAND] = k``
+    puts every other operand on a static per-head grid of k int8 digits (two digits: 15 bits), each
+    pair of digit planes one device call with one scale. Activation contractions of a static recipe only.
     """
     if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
         raise ValueError("only a derived quant_recipe_v1 can be extended")
@@ -428,10 +442,18 @@ def with_dynamic_contractions(
         raise ValueError(f"dynamic scales apply to contraction families only, not {wanted}")
     selected = dict(planes or {})
     if any(
-        k not in (SOFTMAX_OUTPUT, WEIGHT) or type(v) is not int or not 1 <= v <= _MAX_PLANES
+        k not in (SOFTMAX_OUTPUT, WEIGHT, OPERAND) or type(v) is not int or not 1 <= v <= _MAX_PLANES
         for k, v in selected.items()
     ):
-        raise ValueError(f"planes take {SOFTMAX_OUTPUT!r}/{WEIGHT!r} -> 1..{_MAX_PLANES}, not {selected}")
+        raise ValueError(f"planes take {SOFTMAX_OUTPUT!r}/{WEIGHT!r}/{OPERAND!r} -> 1..{_MAX_PLANES}, not {selected}")
+    if OPERAND in selected and (scales != STATIC_HEADS or selected[OPERAND] > 3):
+        raise ValueError(f"{OPERAND!r} digit planes (at most 3) belong to static per-head scales")
+    if scales not in (NON_REDUCTION, STATIC_HEADS):
+        raise ValueError(f"scales are {NON_REDUCTION!r} or {STATIC_HEADS!r}, not {scales!r}")
+    if scales == STATIC_HEADS and (
+        wanted != [ACTIVATION_CONTRACTION] or WEIGHT in selected or activation.get("mode") != "static"
+    ):
+        raise ValueError("static per-head scales cover activation contractions of a static recipe only")
     kept = list(recipe.get("families") or ()) if static_families is None else list(static_families)
     unknown = [f for f in kept if f not in (recipe.get("families") or ())]
     if unknown:
@@ -443,7 +465,7 @@ def with_dynamic_contractions(
     body[DYNAMIC] = {
         "schema": DYNAMIC_SCHEMA,
         "families": wanted,
-        "scales": NON_REDUCTION,
+        "scales": scales,
         "planes": dict(sorted(selected.items())),
         "smooth": SOFTMAX_AXIS if smooth else None,
     }
@@ -451,6 +473,10 @@ def with_dynamic_contractions(
         "opted in: run-time scales on non-reduction axes (rows of the streamed operand, columns of the "
         "other, a stored weight's output channels), applied by the host to the exact i32 accumulator "
         "as an outer product; the readout's one scale cannot hold them"
+        if scales == NON_REDUCTION
+        else "opted in: one calibrated scale per head of each operand, so every per-head device call reads "
+        "one scale; softmax probabilities as fixed-scale planes of exp(s - rowmax), rows divided by their sum "
+        "on the host"
     )
     body["recipe_sha256"] = digest(body)
     return body
@@ -509,7 +535,7 @@ def with_gptq_weights(recipe: Mapping[str, Any], **parameters: Any) -> dict[str,
     return body
 
 
-#: The recipe block that gives selected Linears' activations a wider STATIC grid as int8 digit planes.
+#: The recipe block that gives selected Linears' and Conv2ds' activations a wider STATIC grid as int8 digit planes.
 STATIC_PLANES = "static_planes"
 STATIC_PLANES_SCHEMA = "static_planes_v1"
 #: Observers a static recipe may name: TorchAO's two, or a percentile of |x| (``p99.999``).
@@ -540,7 +566,7 @@ def with_static_planes(
     observer: str = "minmax",
     owners: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """``recipe`` whose Linear activations (in ``owners``' modules, default all) take ``planes`` digits.
+    """``recipe`` whose Linear and Conv2d activations (in ``owners``' modules, default all) take ``planes`` digits.
 
     The activation keeps ONE static scale per tensor, on a grid ``planes`` digits wide: with the
     recipe's activation range ``[low, high]`` and ``base = high + 1``, the top digit spans
@@ -610,6 +636,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     dynamic.add_argument("--planes", default="", help=f"selector=k pairs, e.g. {SOFTMAX_OUTPUT}=2")
     dynamic.add_argument("--smooth", action="store_true", help="subtract the mean over a softmax's axis")
     dynamic.add_argument("--static-families", default=None, help="families kept static (default: the recipe's)")
+    dynamic.add_argument("--scales", default=NON_REDUCTION, choices=(NON_REDUCTION, STATIC_HEADS))
     wide = sub.add_parser("static-planes", help=with_static_planes.__doc__.splitlines()[0])
     wide.add_argument("recipe", type=Path)
     wide.add_argument("out", type=Path)
@@ -648,6 +675,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
             planes=planes,
             smooth=args.smooth,
             static_families=static,
+            scales=args.scales,
         )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")

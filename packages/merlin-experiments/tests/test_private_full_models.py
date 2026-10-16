@@ -1868,7 +1868,7 @@ def test_recipe_derivation_binds_current_sources_and_selected_capture_recipe(tmp
     root.mkdir()
     manifest = root / "evidence-manifest.json"
     manifest.write_text("verified by canonical evidence loader")
-    body = {"schema": "quant_recipe_v1", "target": "fixture", "format": "int8", "why": {}}
+    body = {"schema": "quant_recipe_v1", "target": "fixture", "status": "derived", "format": "int8", "why": {}}
     body["recipe_sha256"] = recipe_digest(body)
     raw = json.dumps(body, sort_keys=True).encode()
     selected = tmp_path / "selected-recipe.json"
@@ -1962,6 +1962,28 @@ def test_recipe_derivation_binds_current_sources_and_selected_capture_recipe(tmp
     assert proof["evidence_manifest_sha256"] == _sha(manifest)
     assert resolved_software == software
     assert selected_profiles == profiles
+    from merlin_experiments.phase1.feedback import private_recipe_variant as variants
+
+    variant = {**body, "framework_capture_policy": {"calibration_count": 1024}}
+    variant["recipe_sha256"] = recipe_digest(variant)
+    selected.write_text(json.dumps(variant, sort_keys=True))
+    review = {"schema": variants.SCHEMA, "status": "reviewed", "reviewed_by": "operator",
+              "reason": "Approved calibration policy",
+              "base_file_sha256": index["recipes"][0]["sha256"], "base_recipe_sha256": body["recipe_sha256"],
+              "selected_file_sha256": _sha(selected), "selected_recipe_sha256": variant["recipe_sha256"],
+              "changes": variants.changes(body, variant)}
+    variant_plan = {"recipe": {"path": str(selected), "sha256": _sha(selected),
+                                "recipe_sha256": variant["recipe_sha256"]}}
+    variant_row = {**row, "capture_recipe_variant": review}
+    variant_proof, _, _ = gate._recipe_derivation(tmp_path / "operator.yaml", variant_row, variant_plan, **kwargs)
+    assert variant_proof["recipe_semantic_sha256"] == variant["recipe_sha256"]
+    assert variant_proof["variant"]["base_recipe_sha256"] == body["recipe_sha256"]
+    with pytest.raises(ValueError, match="absent from current-spec derivation"):
+        gate._recipe_derivation(tmp_path / "operator.yaml", row, variant_plan, **kwargs)
+    with pytest.raises(ValueError, match="selected rtl-facts"):
+        gate._recipe_derivation(tmp_path / "operator.yaml", variant_row, variant_plan,
+                                **{**kwargs, "facts_sha256": "5" * 64})
+    selected.write_bytes(raw)
     assert gate._selected_admission_views(
         resolved_software,
         selected_profiles,

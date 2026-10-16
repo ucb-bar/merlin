@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-10-15
 related: [architecture, performance_budget_unit]
-code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py]
+code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, packages/merlin-experiments/src/merlin_experiments/phase1/rtl_timing_facts.py]
 ---
 
 # Calibrating and validating annotated timing
@@ -206,15 +206,81 @@ spike-timing archive-handoff --plan observation-plan.json --dataset dataset.json
   --output handoff.json
 ```
 
-These commands perform host file processing only. They launch no simulations and
-refuse to overwrite their outputs. Intake streams the uncompressed tar, verifies
-every indexed artifact's bytes, and rejects links, duplicate/traversing paths,
-missing files and contradictory summary counts. Failed and unavailable rows,
-including null artifact references, remain in the inventory. Caller, RTL console
-and original result are checked independently: the caller must carry exactly one
-matching encoded timing selection, the console exactly one positive matching
-`METRIC cycles` line, and the result the same verdict, compiler identity,
-command-buffer identity and tensor shapes.
+These archive commands perform host file processing only. They launch no
+simulations and refuse to overwrite their outputs. Intake streams the
+uncompressed tar, verifies every indexed artifact's bytes, and rejects links,
+duplicate/traversing paths, missing files and contradictory summary counts.
+Failed and unavailable rows, including null artifact references, remain in the
+inventory. Caller, RTL console and original result are checked independently:
+the caller must carry exactly one matching encoded timing selection, the console
+exactly one positive matching `METRIC cycles` line, and the result the same
+verdict, compiler identity, command-buffer identity and tensor shapes.
+
+Run `spike-timing archive-design-check --plan observation-plan.json --output
+design-check.json` immediately after preparation. It counts measured,
+within-workload variant pairs separated by more than 5%, the mechanism families
+they cover, calibration source groups and missing labels. A passing design check
+only says the captured experiment can *attempt* native timing qualification; it
+does not establish Spike accuracy. If the design check fails, add original
+capsules or compiler variants and measure them with gSIM before freezing a model.
+Repeating one ELF cannot create a variant pair. A static instruction trace is not
+a dynamic schedule.
+
+### Structural facts for the selected 16 GiB gSIM target
+
+The operator can extract one pinned, machine-readable `rtl_facts.json` from the
+matching Chipyard source and generated gSIM FIRRTL/DTS/L2 metadata:
+
+```sh
+python3 packages/merlin-experiments/src/merlin_experiments/phase1/rtl_timing_facts.py \
+  --chipyard-source CHIPYARD_DIR --generated GENERATED_DIR \
+  --firrtl-sha256 SELECTED_FIRRTL_SHA256 --dts-sha256 SELECTED_DTS_SHA256 \
+  --spike-profile SELECTED_SPIKE_PROFILE.json \
+  --output rtl_facts.json
+```
+
+The extractor requires the FireSim tweak → GemminiRocketConfig →
+DefaultGemminiConfig source chain, checks the default INT8/INT32 geometry against
+generated reservation station and controller queue structures, and reconciles
+16 GiB memory and L2 size against the DTS and L2 metadata. It records exact
+source/artifact hashes. The current selected elaboration yields 16×16 PEs,
+256 KiB scratchpad in four banks, 64 KiB accumulator in two banks, 8/16/4
+load/execute/store reservation entries, 8/8/2 controller queue entries and
+16 GiB RAM at 0x80000000. The generated counter interface exposes 45 event
+signals and eight external counter values; this does not imply those counters
+were configured or sampled in a Phase 1 capsule. These are *structural*
+constraints. The target cycle
+frequency and primitive prices remain unknown. Do not copy reservation entries
+into the generic event engine's `ResourceSpec.capacity` or `queue_capacity`:
+those fields model concurrent occupancy and queued reservations, respectively,
+and require a reviewed semantic mapping.
+With `--spike-profile`, the same command also checks the selected Spike
+profile's mesh, element widths, scratchpad/accumulator rows, memory base/size,
+target name and original DTS hash. A structural match does not qualify timing.
+
+### Fitting for Phase 2 ranking
+
+Use Phase 1 gSIM cycle labels for the exact original ELF, embedded input,
+kernel-call scope and selected simulator. Keep all variants of a source in one
+train/calibration/test split. Capture at least 20 held variant pairs with measured
+separation above 5% across at least three mechanism families, two independent
+calibration source groups, and a train roster covering the held families. Sweep
+tile shape, K blocking, reuse and DMA scheduling where numerics and memory bounds
+hold. Include matched repeats to estimate noise; repeats are one case, not new
+ranking pairs. The present Phase 1 capsule contract has no loop/FSM command
+coverage, so neither fit nor claim those regimes.
+
+Run the *functional* Spike extension with the optional timing observer on the
+same original ELFs and inputs, with one frozen model file and reviewed PC scope
+bindings. Tune Gemmini event latencies, occupancies and transfer rates only from
+training labels; use calibration groups for residual intervals and held groups
+once for validation. Native event reports must retain full feature counts,
+unresolved events, cycle breakdown, exact model/engine hashes and numerical
+receipts. Accept the model for Phase 2 LLM ranking only if `validate
+--prediction-kind event_timing` qualifies it. The empirical screen is a
+diagnostic seed, not a substitute for that native validation. When qualified
+intervals overlap or a candidate leaves the training domain, report a tie or
+UNKNOWN and spend gSIM measurement only where the choice matters.
 
 The measured label is **one host-core cycle delta for the original capsule kernel
 call through its selected completion wait**. Input staging, output serialization,

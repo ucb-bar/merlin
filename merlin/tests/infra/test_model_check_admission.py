@@ -62,3 +62,39 @@ def test_malformed_admission_rules_are_refused(tmp_path):
         load(_models_with(tmp_path, {"admission": [{"metric": "cosine", "min": 0.9, "max": 1.0}]}))
     with pytest.raises(ModelsFileError, match="reference.baseline"):
         load(_models_with(tmp_path, {"admission": [{"metric": "cosine", "max_ratio_to_baseline": 2.0}]}))
+
+
+def test_a_percentile_rule_and_a_report_only_rule():
+    rows = [{"e": v} for v in (0.01, 0.02, 0.03, 0.04, 0.50)]
+    base = [{"e": 0.05}] * 5
+    rules = [
+        {"metric": "e", "aggregate": "p50", "max_ratio_to_baseline": 1.0},
+        {"metric": "e", "aggregate": "max", "max_ratio_to_baseline": 1.0, "report_only": True},
+    ]
+    verdict = admission(rules, rows, base)
+    assert verdict["status"] == "pass"  # the one outlier only shows in the report-only max
+    assert [c["status"] for c in verdict["checks"]] == ["pass", "info"]
+    assert verdict["checks"][1]["within"] is False
+
+
+def test_seeded_draws_are_reproducible_and_keep_the_stored_draw(tmp_path):
+    import numpy as np
+
+    from merlin.model_check import references as REF
+    from merlin.model_check.bundle import Bundle
+    from merlin.model_check.models import Model
+
+    derived = tmp_path / "private" / "derived" / "m" / "visible" / "v00"
+    derived.mkdir(parents=True)
+    noise = np.arange(6, dtype=np.float32).reshape(1, 2, 3)
+    np.savez(derived / "inputs.npz", noise=noise, other=np.ones(2, np.float32))
+    judged = {"kind": "per_channel", "reference": {"seeds": {"input": "noise", "count": 3}}}
+    model = Model(name="m", workload="w", chain={"kind": "single"}, programs=(), judged=judged)
+    first = REF._cases(Bundle(tmp_path / "b1"), model, tmp_path / "private", [("visible", "v00")])  # noqa: SLF001
+    again = REF._cases(Bundle(tmp_path / "b2"), model, tmp_path / "private", [("visible", "v00")])  # noqa: SLF001
+    assert [c["draw"] for c in first] == [0, 1, 2] and first[0]["inputs"] == derived / "inputs.npz"
+    draws = [np.load(c["inputs"])["noise"] for c in first[1:]]
+    assert all(d.shape == noise.shape and d.dtype == noise.dtype for d in draws)
+    assert not np.array_equal(draws[0], draws[1]) and not np.array_equal(draws[0], noise)
+    assert np.array_equal(np.load(again[1]["inputs"])["noise"], draws[0])
+    assert np.array_equal(np.load(first[1]["inputs"])["other"], np.ones(2, np.float32))
