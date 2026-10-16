@@ -240,14 +240,22 @@ column of the other, a stored weight's per output channel), rescaled on the host
 product. The block can split a softmax-produced operand into k int8 planes (k device matmuls, summed
 on the host) and subtract the other operand's mean over a softmax's axis (a shift the softmax
 ignores). The device still sees ordinary int8 matmuls; every scale, plane sum and shift is host work,
-counted in the capture's `quantization_stats.dynamic_contractions`.
+counted in the capture's `quantization_stats.dynamic_contractions`. With `scales: static_heads`
+(CLI `--scales static_heads`) the same block fixes the scales at capture instead, the form a readout
+applies per device call: `_static_attention` calibrates one minmax scale per head of each operand in
+one pass over the calibration inputs before PT2E, takes the smooth shift as a calibrated per-(head,
+row) mean (folded into the producing Linear's bias when only layout steps lie between, otherwise a
+host subtraction), and replaces a softmax-produced operand by `exp(s - rowmax)` in planes with fixed
+scales `1/127`, `1/(127*128)`, ..., dividing the result rows by their sum on the host. `--planes
+operand=k` puts every other operand on a static per-head grid of k int8 digits (two: 15 bits); each
+pair of digit planes is one device call per head with one scale.
 
 A wider STATIC activation grid is a third opt-in, the recipe's `static_planes` block
 (`quant_recipe.with_static_planes`, CLI `static-planes [--planes k] [--observer O] [--owners a,b]`).
-A Linear in scope (its owning module path under one of `owners`; default: every Linear) gets one
+A Linear or ungrouped Conv2d in scope (its owning module path under one of `owners`; default: all) gets one
 calibrated scale per tensor on a grid of k int8 digits: the top digit spans the recipe's int8 range,
 each lower one `[0, 127]` (two digits: 15 bits). After `convert_pt2e`, `_static_planes` rewrites each
-such Linear into k `_int_mm` calls against the SAME int8 weight and sums `128 * acc_top + acc_low`
+such contraction into k `_int_mm` calls (a Conv2d through im2col of each digit plane) against the SAME int8 weight and sums `128 * acc_top + acc_low`
 inside the per-column rescale the host already applies, so no host pass is added; the sites and their
 cost are in `quantization_stats.static_planes`. A static activation observer may also be a
 percentile of `|x|` (`with_activation_observer`, CLI `activation-observer IN OUT p99.999`;

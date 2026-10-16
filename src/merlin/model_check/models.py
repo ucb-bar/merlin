@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 from merlin.common.paths import repo_root
+from merlin.model_check.metrics import is_aggregate
 
 MODELS_SCHEMA = "merlin.model_check.models.v1"
 
@@ -85,15 +86,19 @@ ADMISSION_BOUNDS = ("max", "min", "max_ratio_to_baseline")
 def _check_admission(judged: dict[str, Any], where: str) -> None:
     """``admission``: rules judged when a bundle is built; ``reference.precision``: the FP reference's precision
     (``native`` = the checkpoint's own, or ``float32``); ``reference.baseline``: a precision whose own error
-    against the reference ``max_ratio_to_baseline`` rules are relative to."""
+    against the reference ``max_ratio_to_baseline`` rules are relative to; ``reference.seeds``: judge every
+    input under ``count`` draws of its standard-normal input array ``input`` (draw 0 is the stored one)."""
     for rule in judged.get("admission") or ():
         bounds = [key for key in ADMISSION_BOUNDS if key in rule]
         if "metric" not in rule or len(bounds) != 1:
             raise ModelsFileError(f"{where}.admission: each rule needs a metric and one of {ADMISSION_BOUNDS}")
-        if rule.get("aggregate", "mean") not in ("mean", "max", "min"):
-            raise ModelsFileError(f"{where}.admission: aggregate must be mean, max or min")
+        if not is_aggregate(str(rule.get("aggregate", "mean"))):
+            raise ModelsFileError(f"{where}.admission: aggregate must be mean, max, min or p<NN>")
         if bounds == ["max_ratio_to_baseline"] and not (judged.get("reference") or {}).get("baseline"):
             raise ModelsFileError(f"{where}.admission: a baseline-relative rule needs reference.baseline")
+    seeds = (judged.get("reference") or {}).get("seeds")
+    if seeds is not None and not (isinstance(seeds.get("input"), str) and int(seeds.get("count", 0)) >= 1):
+        raise ModelsFileError(f"{where}.reference.seeds needs an input key and a count >= 1")
 
 
 def _require(mapping: Any, key: str, where: str) -> Any:

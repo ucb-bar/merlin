@@ -65,10 +65,14 @@ models:
       outputs: [{program: action_decode, output: 0}]
       channel_axis: -1
       channels: {first: 0, last: 5}      # the checkpoint's action feature shape is [6]; 6..31 are padding
-      reference: {precision: float32, baseline: native}   # FP reference in f32; the bf16 model is the baseline
-      admission:                         # contract §4.5 (approved 1.9): within 2x the bf16 model's own error
+      reference:                         # FP reference in f32; the bf16 model is the baseline
+        precision: float32
+        baseline: native
+        seeds: {input: noise, count: 4}  # each input under 4 initial-noise draws: the 10-step flow is chaotic
+      admission:                         # contract §4.5 (approved 1.9, 1.13): within 2x the bf16 model's own error
         - {metric: rel_rmse_worst, aggregate: mean, max_ratio_to_baseline: 2.0}
-        - {metric: rel_rmse_worst, aggregate: max, max_ratio_to_baseline: 2.0}
+        - {metric: rel_rmse_worst, aggregate: p90, max_ratio_to_baseline: 2.0}
+        - {metric: rel_rmse_worst, aggregate: max, max_ratio_to_baseline: 2.0, report_only: true}
 
   tiny_llama:
     workload: tiny_llama

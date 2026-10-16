@@ -364,11 +364,9 @@ matrices = {"conv2d": model.conv.weight.detach().reshape(8, -1), "linear": model
             "linear_1": model.second.weight.detach(), "matmul": model.table.detach().T}
 direct = {}
 for name, matrix in matrices.items():
-    # The observer is per channel along axis 0 of the observed tensor; for the matmul operand
-    # [K, N] that is one scale per reduced row, a column of W = table^T.
-    observed = model.table.detach() if name == "matmul" else matrix
-    scales = G.symmetric_scales(observed, granularity="channel", quant_min=-127, quant_max=127)
-    scales = scales.T if name == "matmul" else scales
+    # The observer is per OUTPUT channel: a row of every W, including W = table^T of the matmul
+    # (its stored [K, N] operand is observed along N).
+    scales = G.symmetric_scales(matrix, granularity="channel", quant_min=-127, quant_max=127)
     codes, _ = G.gptq_codes(matrix, sums[name].value(), scales, quant_min=-127, quant_max=127,
                             damp=options["damp"], act_order=options["act_order"], block=options["block"])
     if name == "conv2d":
