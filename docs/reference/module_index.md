@@ -100,3 +100,4 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin_experiments.phase2.claims` | Measured-claim decisions; frozen declaration identities are not Python import APIs. |
 | `merlin_experiments.phase2.whole_model_measured` | Phase 2 ``whole_model_measured`` mode: a candidate compiler measured as a WHOLE MODEL on hardware. |
 | `merlin_experiments.tracking` | Experiment tracking views: a static HTML dashboard and a live terminal view, from records only. |
+| `merlin_timing` | Portable timing calibration and validation without compiler dependencies. |

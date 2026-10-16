@@ -723,3 +723,36 @@ def test_bundle_manifest_carries_the_binding(tmp_path):
         bundle, model, target=TARGET, captures=tmp_path, engine={"contract": "c"}, binding=record, log=lambda _: None
     )
     assert bundle.manifest()["binding"] == record
+
+
+def test_a_bundle_being_built_has_no_manifest_to_read(tmp_path, monkeypatch):
+    # bundle-build asks for the receipt before it writes the manifest: the engine inputs must then come
+    # from the command's own options, never from a manifest read that cannot succeed yet.
+    import argparse
+
+    monkeypatch.delenv("MERLIN_TARGET_CONTRACT", raising=False)
+    monkeypatch.delenv("MERLIN_RTL_FACTS", raising=False)
+    args = argparse.Namespace(bundle=tmp_path / "new_bundle", contract=None, rtl_facts=None, host_package=None)
+    with pytest.raises(BD.BindingError, match="target contract"):
+        BD.receipt_for(args)
+
+
+def test_bundle_build_binds_a_bundle_that_has_no_manifest_yet(tmp_path, monkeypatch):
+    """The first bundle-build of a new bundle has no MANIFEST.json to read an engine from: the
+    receipt is bound from the explicit arguments instead of failing on the absent manifest."""
+    seen = {}
+    monkeypatch.setattr(BD, "receipt", lambda **kwargs: seen.update(kwargs) or {"status": "pass"})
+    monkeypatch.setattr(BD, "replay_memory_defaults", lambda: (0, 0))
+    monkeypatch.delenv("MERLIN_TARGET_CONTRACT", raising=False)
+    monkeypatch.delenv("MERLIN_RTL_FACTS", raising=False)
+    from merlin.common.paths import repo_root
+
+    fresh = tmp_path / "new-bundle"
+    fresh.mkdir()
+    models = repo_root() / "examples" / "gemmini" / "numerics" / "models.yaml"
+    argv = ["bundle-build", "--models", str(models), "--bundle", str(fresh), "--captures", str(tmp_path)]
+    argv += ["--model", "resnet50", "--host-package", "h", "--contract", "c.yaml", "--rtl-facts", "f.json"]
+    args = cli.build_parser().parse_args([*argv, "--out", str(tmp_path / "r.json")])
+    assert BD.receipt_for(args) == {"status": "pass"}
+    assert seen["contract_path"] == Path("c.yaml") and seen["facts_path"] == Path("f.json")
+    assert seen["host_package"] == Path("h")

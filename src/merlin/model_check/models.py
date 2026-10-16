@@ -79,6 +79,23 @@ def default_models_path(target: str) -> Path:
     return repo_root() / "examples" / target / "numerics" / "models.yaml"
 
 
+ADMISSION_BOUNDS = ("max", "min", "max_ratio_to_baseline")
+
+
+def _check_admission(judged: dict[str, Any], where: str) -> None:
+    """``admission``: rules judged when a bundle is built; ``reference.precision``: the FP reference's precision
+    (``native`` = the checkpoint's own, or ``float32``); ``reference.baseline``: a precision whose own error
+    against the reference ``max_ratio_to_baseline`` rules are relative to."""
+    for rule in judged.get("admission") or ():
+        bounds = [key for key in ADMISSION_BOUNDS if key in rule]
+        if "metric" not in rule or len(bounds) != 1:
+            raise ModelsFileError(f"{where}.admission: each rule needs a metric and one of {ADMISSION_BOUNDS}")
+        if rule.get("aggregate", "mean") not in ("mean", "max", "min"):
+            raise ModelsFileError(f"{where}.admission: aggregate must be mean, max or min")
+        if bounds == ["max_ratio_to_baseline"] and not (judged.get("reference") or {}).get("baseline"):
+            raise ModelsFileError(f"{where}.admission: a baseline-relative rule needs reference.baseline")
+
+
 def _require(mapping: Any, key: str, where: str) -> Any:
     if not isinstance(mapping, dict) or key not in mapping:
         raise ModelsFileError(f"{where}: missing {key!r}")
@@ -127,6 +144,7 @@ def load(path: str | os.PathLike | None = None) -> ModelsFile:
         judged = dict(_require(entry, "judged", where))
         if judged.get("kind") not in JUDGED_KINDS:
             raise ModelsFileError(f"{where}.judged.kind must be one of {sorted(JUDGED_KINDS)}")
+        _check_admission(judged, f"{where}.judged")
         names = {p.name for p in programs}
         for ref in judged.get("outputs", []):
             if ref.get("program") not in names:

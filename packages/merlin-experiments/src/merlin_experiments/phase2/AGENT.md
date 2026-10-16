@@ -1,5 +1,10 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`agent_workspace` projects capsule inputs using frozen reference roles in
+`merlin.targetgen.capsule_privacy` and the central answer registry. Live-source
+deletion cannot disclose frozen expected values; public inputs remain usable.
+Projection grants no numerical, runtime or isolation qualification.
+
 `evaluation_costs` observes original parent jobs from assigned CPUs before setup
 through verified cleanup, durable release and artifact publication. Keep admission
 and queue wait separate. Reopen original job identity, source/resource context and
@@ -600,7 +605,13 @@ mount declarations alone do not prove the final mounted bytes are unchanged.
 `feedback_metrics.py`, `calibration.py` and `capsule_verdict.py` share workload pricing,
 measured calibration and per-capsule verdicts with retained native consumers. Preserve
 scientific thresholds, budgets, redaction and stopping semantics; missing observations
-must not become successful or zero-cost measurements. Use synthetic executors for tests.
+must not become successful or zero-cost measurements. Ordinary feedback starts with
+unknown observed ceilings and member costs. Populate them only from this session's
+fresh original passing public-baseline replies joined to the exact frozen member,
+submission, command buffer and selected execution certificate. Saved Phase 1,
+hidden/final, sibling-run, carried and candidate measurements cannot set these
+rates or scheduling costs. Retained evaluations own separate bounded point maps.
+Use synthetic executors for tests.
 `transcript_audit.py` owns native and translated agent command-event auditing,
 broker invocation accounting and answer/direct-execution refusal. Native authoring
 and requalification import the same auditor. Frozen replay supplies its original

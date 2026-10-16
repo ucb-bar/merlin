@@ -62,6 +62,9 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
         or expected.parent.parent.is_symlink()
     ):
         raise ValueError("reviewed Phase 1 requires the selected release's generated bundle manifest")
+    from ..corpus.publication import require_public_capsules
+
+    require_public_capsules(te, te.graded_roots())
     from ..phase0.coverage_commitment import read_inputs
 
     coverage_inputs = read_inputs(te.capsule_corpus.parent)

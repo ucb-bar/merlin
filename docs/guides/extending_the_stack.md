@@ -3,7 +3,7 @@ title: Extending the compiler stack
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-15
+last_verified: 2026-10-16
 related: [phase0_specification, model_lowering, model2mlir, triton_kernels, target_resolution, llvm_integration, simulator_selection]
 code_refs:
   - src/merlin/targetgen/software_spec.py
@@ -12,6 +12,7 @@ code_refs:
   - src/merlin/targetgen/quant_recipe.py
   - src/merlin/targetgen/quant_layer_plan.py
   - src/merlin/targetgen/_recipe_quantizer.py
+  - src/merlin/targetgen/_gptq.py
   - src/merlin/targetgen/rtl/circt_introspect.py
   - src/merlin/targetgen/rtl/timing.py
   - src/merlin/xdsl_dialects/schedule.py
@@ -230,6 +231,37 @@ static quantizer then spells each fused `scaled_dot_product_attention` as its ma
 definition (the one the capture lowers it to) and puts the activation spec on both operands
 of every activation x activation matmul whose reduction exceeds 16: `Q`, `K`, the softmax
 probabilities `P` and `V` each get one calibrated static scale per tensor.
+
+Run-time scales are a second opt-in, the recipe's `dynamic` block
+(`quant_recipe.with_dynamic_contractions`, CLI `dynamic-contractions`): the listed contraction
+families are rewritten by `_dynamic_contractions` before PT2E into plain `int8 x int8 -> i32`
+`_int_mm` calls with scales on non-reduction axes only (one per row of the streamed operand, one per
+column of the other, a stored weight's per output channel), rescaled on the host by their outer
+product. The block can split a softmax-produced operand into k int8 planes (k device matmuls, summed
+on the host) and subtract the other operand's mean over a softmax's axis (a shift the softmax
+ignores). The device still sees ordinary int8 matmuls; every scale, plane sum and shift is host work,
+counted in the capture's `quantization_stats.dynamic_contractions`.
+
+A wider STATIC activation grid is a third opt-in, the recipe's `static_planes` block
+(`quant_recipe.with_static_planes`, CLI `static-planes [--planes k] [--observer O] [--owners a,b]`).
+A Linear in scope (its owning module path under one of `owners`; default: every Linear) gets one
+calibrated scale per tensor on a grid of k int8 digits: the top digit spans the recipe's int8 range,
+each lower one `[0, 127]` (two digits: 15 bits). After `convert_pt2e`, `_static_planes` rewrites each
+such Linear into k `_int_mm` calls against the SAME int8 weight and sums `128 * acc_top + acc_low`
+inside the per-column rescale the host already applies, so no host pass is added; the sites and their
+cost are in `quantization_stats.static_planes`. A static activation observer may also be a
+percentile of `|x|` (`with_activation_observer`, CLI `activation-observer IN OUT p99.999`;
+`_recipe_observers`).
+
+Weight codes are rounded to nearest unless a recipe opts into GPTQ:
+`quant_recipe.with_gptq_weights` (CLI:
+`python -m merlin.targetgen.quant_recipe gptq-weights IN.json OUT.json`) sets
+`weight.rounding: gptq` and records `calibration_samples`, `act_order`, `damp` and `block`
+under `weight.gptq`, all of which enter the digest. The grid stays the recipe's: GPTQ only
+picks each code on the scales the weight observer computes. `_gptq.py` accumulates each
+contraction's Hessian during the static calibration pass and sets the codes into the stored
+weights before `convert_pt2e` folds them, so the converted program's int8 weights are GPTQ's.
+A recipe without the key keeps its digest and its nearest codes.
 
 For a new format, first add its structural vocabulary and derivation rules, including
 granularity, packing, ranges, zero points, bias domain and rounding. Then extend the

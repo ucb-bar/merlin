@@ -1027,7 +1027,8 @@ def receipt_for(args: argparse.Namespace) -> dict[str, Any]:
     from merlin.model_check.models import load as load_models
 
     engine_inputs: dict[str, Any] = {}
-    if getattr(args, "bundle", None):
+    if getattr(args, "bundle", None) and (Path(args.bundle) / "MANIFEST.json").is_file():
+        # A bundle being built has no manifest yet; its engine inputs are the command's own options.
         engine_inputs = B.Bundle(args.bundle).manifest().get("engine") or {}
     chosen = {
         key: getattr(args, key, None) or (Path(engine_inputs[key]) if engine_inputs.get(key) else None)

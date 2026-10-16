@@ -32,6 +32,9 @@ models:
       kind: logits
       outputs: [{program: model, output: 0}]
       topk: [1, 5]
+      admission:                         # contract §4.5 (approved 1.7)
+        - {metric: top1_agree, aggregate: mean, min: 0.9375}   # >= 15/16
+        - {metric: cosine, aggregate: mean, min: 0.99}
 
   smolvla:
     workload: smolvla
@@ -62,6 +65,10 @@ models:
       outputs: [{program: action_decode, output: 0}]
       channel_axis: -1
       channels: {first: 0, last: 5}      # the checkpoint's action feature shape is [6]; 6..31 are padding
+      reference: {precision: float32, baseline: native}   # FP reference in f32; the bf16 model is the baseline
+      admission:                         # contract §4.5 (approved 1.9): within 2x the bf16 model's own error
+        - {metric: rel_rmse_worst, aggregate: mean, max_ratio_to_baseline: 2.0}
+        - {metric: rel_rmse_worst, aggregate: max, max_ratio_to_baseline: 2.0}
 
   tiny_llama:
     workload: tiny_llama
@@ -81,3 +88,6 @@ models:
     judged:
       kind: next_token_distribution
       outputs: [{program: prefill, output: 0}, {program: decode, output: 0}]
+      admission:                         # contract §4.5 (proposed): KL 0.05 nats is about +5% perplexity
+        - {metric: kl_mean, aggregate: mean, max: 0.05}
+        - {metric: top1_agree, aggregate: mean, min: 0.90}

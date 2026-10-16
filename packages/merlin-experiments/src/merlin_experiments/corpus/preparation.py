@@ -649,10 +649,10 @@ def assemble(
     *,
     private_baseline: Path | None = None,
     retirements: Path | None = None,
-    generated_only: bool = False,
+    generated_only: bool = True,
     loader_profile_sources: tuple[Path, ...] | None = None,
 ) -> dict:
-    """Assemble a historical baseline or an explicit Phase-0-only public corpus."""
+    """Assemble generated public members, with an explicit safe historical overlay."""
     from merlin.targetgen.sandbox.bwrap import _validate_host_sources
 
     from ..runner import fingerprint
@@ -684,6 +684,10 @@ def assemble(
         [(str(root), root) for root in private_roots]
         + ([(str(generated_private), generated_private)] if generated_private.exists() else []),
     )
+    from .publication import require_public_capsules
+
+    require_public_capsules(te, [root for root in roots if root not in private_roots])
+    require_public_capsules(te, [root for root in generated.iterdir() if root != generated_private])
     baseline = {}
     for root in roots:
         private_external = root == private_baseline

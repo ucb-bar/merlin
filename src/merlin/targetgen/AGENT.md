@@ -60,6 +60,11 @@ launching, capsule grading, golden generation, sandboxing and certification. The
 
 ## What belongs here
 
+- `capsule_privacy.py` classifies reference artifacts from capsule metadata for
+  live masks, frozen masks and answer-free projections. The writer records a
+  typed expected-output closure; legacy materialized captures retain their
+  original reference role. Classification reads no tensor payload and grants
+  no capture, numerical or execution authority. Malformed closures refuse.
 - `rtl_engine_policy.simulation_runtime_slot` uses the explicitly selected shared
   compute lease for every simulator. GSim retains its separate conservative
   native census/cap, acquiring compute first and reusing synchronous ownership.

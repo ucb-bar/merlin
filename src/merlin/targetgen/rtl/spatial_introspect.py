@@ -5,8 +5,9 @@ target's own introspect (SIMT). Its first instance is a vector unit's
 **OuterProductUnit (OPU)** — a non-systolic spatial tensor tile: a ``cluster x cell`` grid of accumulator
 cells that computes a matmul as a sequence of rank-1 (outer-product) accumulate steps, NOT a
 stationary-weight systolic wavefront. So the geometry is a *tile of cells*, and the facts are the tile
-dimensions, the per-cell multi-register-file (MRF) depth, the operand/accumulator element widths, the
-int8 + FP8 datapaths, and the FP8 FMA pipeline latency.
+dimensions, the per-cell multi-register-file (MRF) depth and the operand/accumulator element widths.
+Numeric formats, accumulation semantics and cycle latency remain unknown until the selected arithmetic
+dataflow and its register boundaries are observed.
 
 Two properties make this its own fact family rather than a reuse of the systolic path:
 
@@ -37,7 +38,7 @@ from typing import Any
 from . import port_geometry as PG
 from .facts import rtl_cache_dir
 
-GENERATOR_VERSION = "spatial-introspect-v1-opu"
+GENERATOR_VERSION = "spatial-introspect-v2"
 
 
 # ------------------------------------------------------------------- arc state-manifest geometry parse
@@ -241,7 +242,8 @@ def build_fact_bundle(target: str) -> dict[str, Any]:
     Mirrors :func:`merlin.targetgen.rtl.mlc_bridge.target_fact_bundle` (the systolic sibling): each field
     carries ``{value, derived, source, evidence}``; a field that cannot be grounded is reported
     ``derived=False`` (value None), never guessed. The geometry is read from the state-manifest cell count
-    (NOT ``discover_mesh_dim``); the hw.mlir cross-checks the widths and supplies the FP8 FMA latency.
+    (NOT ``discover_mesh_dim``); the hw.mlir supplies port widths. Module and selector names alone
+    establish neither numerical arithmetic nor pipeline latency.
     """
     from . import mlc_bridge
 
@@ -261,7 +263,6 @@ def build_fact_bundle(target: str) -> dict[str, Any]:
 
     hw_text = Path(hw).read_text(errors="replace") if hw and Path(hw).is_file() else ""
     cell_w = _cell_port_widths(hw_text)
-    fma = _fp8_fma(hw_text)
 
     # -- geometry (state-manifest cell count, NOT discover_mesh_dim) --------------------------------
     cells = _cell_count(names)
@@ -302,80 +303,16 @@ def build_fact_bundle(target: str) -> dict[str, Any]:
         else f"manifest operand:i{operand_bits}, accumulator reg:i{accum_bits}"
     )
 
-    # -- datapaths / dtypes ------------------------------------------------------------------------
-    has_fp8 = any(n.startswith("io_op_fp8_") for n in names)
-    has_altfmt = any(n.startswith("io_op_altfmt_") for n in names)
-    dtypes: list[dict[str, Any]] = [
-        {
-            "name": "int8",
-            "operand": "i8",
-            "accumulator": f"i{accum_bits}" if accum_bits else "i32",
-            "path": "combinational i8*i8 -> i32 MAC (io_op_fp8=0)",
-        }
-    ]
-    fp8_id_derived = True
-    if has_fp8:
-        fw = operand_bits or 8
-        fp8_names = _fp8_format_names(hw_text, fw)  # RTL-named formats at the operand width, or []
-        if fp8_names:
-            use = fp8_names if has_altfmt else fp8_names[:1]  # altfmt makes >1 named format reachable
-            for altfmt, fmt in enumerate(use):
-                dtypes.append(
-                    {
-                        "name": fmt,
-                        "operand": fmt.split("_", 1)[1] if "_" in fmt else fmt,
-                        "accumulator": "f32",
-                        "altfmt": altfmt,
-                        "path": f"fp8 -> fp32 widen; MulAddRecFNPipe fp32 FMA (io_op_fp8=1, io_op_altfmt={altfmt})",
-                    }
-                )
-        else:
-            # fail closed: an fp8 datapath exists, io_op_altfmt_ says how many sub-format modes, but the
-            # RTL names no format at this width -> report the width-only identity, never a guessed pair.
-            fp8_id_derived = False
-            dtypes.append(
-                {
-                    "name": f"float{fw}",
-                    "operand": f"f{fw}",
-                    "accumulator": "f32",
-                    "modes": 2 if has_altfmt else 1,
-                    "altfmt_selectable": has_altfmt,
-                    "identity_derived": False,
-                    "path": f"fp8 -> fp32 widen; MulAddRecFNPipe fp32 FMA; io_op_altfmt selects "
-                    f"{'2 sub-formats' if has_altfmt else '1 sub-format'} whose identity is NOT named "
-                    f"in the RTL facts (UNKNOWN; not fabricating fp8_e4m3/fp8_e5m2)",
-                }
-            )
-    if not has_fp8:
-        dtypes_ev = "no io_op_fp8_ ports -> int8-only tile"
-    elif fp8_id_derived:
-        fp8_list = [d["name"] for d in dtypes if d["name"] != "int8"]
-        dtypes_ev = f"io_op_fp8_/io_op_altfmt_ ports present -> int8 + {fp8_list} (fp32 accumulate, RTL-named)"
-    else:
-        w = operand_bits or 8
-        dtypes_ev = (
-            f"io_op_fp8_ present -> int8 + a {w}-bit fp8 datapath with "
-            f"{'2 io_op_altfmt-selected sub-formats' if has_altfmt else '1 sub-format'}, fp32 "
-            f"accumulate; fp8 format identity NOT named in the RTL -> float{w} (UNKNOWN, not fabricated)"
-        )
-
-    # -- FMA latency -------------------------------------------------------------------------------
-    fma_val = {"int8_mac_cycles": 0, "fp8_fma_cycles": (fma or {}).get("latency_cycles") if has_fp8 else None}
-    fma_derived = (not has_fp8) or (fma is not None)
-    fma_ev = "int8 MAC is combinational (same-cycle accumulate); " + (
-        f"fp8 FMA @MulAddRecFNPipe_l{fma['latency_cycles']} (e{fma.get('exp_bits')}_s{fma.get('sig_bits')} = fp32)"
-        if (has_fp8 and fma)
-        else "no fp8 datapath"
-        if not has_fp8
-        else "fp8 FMA module not found in hw.mlir"
+    # Port widths and selector/module names do not establish arithmetic semantics.
+    # The current reader does not follow the complete signed MAC dataflow or its
+    # register boundaries, so it cannot assign a numeric dtype or cycle latency.
+    arithmetic_unknown = (
+        "port widths and datapath-select names do not establish signedness, "
+        "accumulation arithmetic or the selected arithmetic path"
     )
-
-    # -- accumulator kind --------------------------------------------------------------------------
-    accum_kind = {"int8": f"i{accum_bits}" if accum_bits else "i32"}
-    if has_fp8:
-        accum_kind["fp8"] = "f32"
-    accum_ev = f"int8 datapath accumulates into i{accum_bits} registers" + (
-        "; fp8 datapath accumulates into fp32 (RecFN e8_s24)" if has_fp8 else ""
+    latency_unknown = (
+        "the selected arithmetic input/output dataflow and register boundaries "
+        "were not observed; module names and port presence do not prove cycle latency"
     )
 
     fields = {
@@ -398,16 +335,16 @@ def build_fact_bundle(target: str) -> dict[str, Any]:
             "evidence": widths_ev,
         },
         "dtypes": {
-            "value": dtypes,
-            "derived": True,
-            "source": "io_op_fp8/altfmt datapath-select ports",
-            "evidence": dtypes_ev,
+            "value": None,
+            "derived": False,
+            "source": "arithmetic dataflow unavailable",
+            "evidence": arithmetic_unknown,
         },
         "fma_latency": {
-            "value": fma_val,
-            "derived": fma_derived,
-            "source": "MulAddRecFNPipe_l<L> module name + combinational int8 MAC",
-            "evidence": fma_ev,
+            "value": None,
+            "derived": False,
+            "source": "arithmetic register-path observation unavailable",
+            "evidence": latency_unknown,
         },
         "op_categories": {
             "value": _op_categories(names),
@@ -416,10 +353,10 @@ def build_fact_bundle(target: str) -> dict[str, Any]:
             "evidence": f"io_op control ports -> {_op_categories(names)}",
         },
         "accum_kind": {
-            "value": accum_kind,
-            "derived": accum_bits is not None,
-            "source": "accumulator register width + fp8 RecFN format",
-            "evidence": accum_ev,
+            "value": None,
+            "derived": False,
+            "source": "accumulation dataflow unavailable",
+            "evidence": arithmetic_unknown,
         },
     }
     return {

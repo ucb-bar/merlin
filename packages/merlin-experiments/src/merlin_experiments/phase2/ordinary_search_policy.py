@@ -324,7 +324,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
                 "round": self.feedback_round,
                 "executed_profile_timeout_s": feedback.executed_profile_timeout_s,
                 "machine_bounds": _data(feedback.machine_bounds),
-                "seed_points": _data(feedback.seed_points),
+                "measurement_sources": "fresh_original_public_baseline_replies_only",
                 "member_cost": _data(dict(feedback.member_cost)),
                 "tuning_call_budget": feedback.tuning_call_budget,
             },
@@ -544,7 +544,9 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             _prefetched={},
             _totals=None,
             _spend=None,
-            _achievable_points=self._selected_feedback.seed_points,
+            _achievable_points=(),
+            _baseline_points={},
+            _baseline_costs={},
         )
         work_root.mkdir(parents=True, mode=0o700)
         measurement_plan = (
