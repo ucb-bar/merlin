@@ -445,7 +445,8 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
         return result
 
     jobs = int(args.jobs) if getattr(args, "jobs", None) else default_jobs(len(inputs))
-    with ThreadPoolExecutor(max_workers=jobs) as twin_pool, ThreadPoolExecutor(max_workers=jobs) as pool:
+    # A long twin step (a prefix) must not hold back the short ones behind it: two twin workers per chain.
+    with ThreadPoolExecutor(max_workers=2 * jobs) as twin_pool, ThreadPoolExecutor(max_workers=jobs) as pool:
         results = list(pool.map(one, inputs))
     timing["jobs"] = jobs
 
