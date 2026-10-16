@@ -235,6 +235,7 @@ matching Chipyard source and generated gSIM FIRRTL/DTS/L2 metadata:
 python3 packages/merlin-experiments/src/merlin_experiments/phase1/rtl_timing_facts.py \
   --chipyard-source CHIPYARD_DIR --generated GENERATED_DIR \
   --firrtl-sha256 SELECTED_FIRRTL_SHA256 --dts-sha256 SELECTED_DTS_SHA256 \
+  --spike-profile SELECTED_SPIKE_PROFILE.json \
   --output rtl_facts.json
 ```
 
@@ -253,6 +254,9 @@ frequency and primitive prices remain unknown. Do not copy reservation entries
 into the generic event engine's `ResourceSpec.capacity` or `queue_capacity`:
 those fields model concurrent occupancy and queued reservations, respectively,
 and require a reviewed semantic mapping.
+With `--spike-profile`, the same command also checks the selected Spike
+profile's mesh, element widths, scratchpad/accumulator rows, memory base/size,
+target name and original DTS hash. A structural match does not qualify timing.
 
 ### Fitting for Phase 2 ranking
 

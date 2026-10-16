@@ -100,3 +100,33 @@ def test_extract_refuses_stale_elaboration_hash(tmp_path):
     source, generated, fir, dts = _fixture(tmp_path)
     with pytest.raises(F.FactError, match="firrtl SHA256"):
         F.extract(source, generated, firrtl_sha256="0" * 64, dts_sha256=_sha(dts))
+
+
+def test_spike_profile_alignment_refuses_wrong_memory_or_geometry(tmp_path):
+    source, generated, fir, dts = _fixture(tmp_path)
+    facts = F.extract(source, generated, firrtl_sha256=_sha(fir), dts_sha256=_sha(dts))
+    profile = {
+        "schema": "gemmini.annotated_spike.target.v1",
+        "target_config": "FireSimGemminiRocketConfig",
+        "provenance": {
+            "dram_base": facts["soc"]["memory_base"],
+            "dram_bytes": facts["soc"]["memory_bytes"],
+            "host_dts_sha256": facts["evidence_sha256"]["dts"],
+        },
+        "target": {
+            "hardware": {
+                "dim": 16,
+                "element_bytes": 1,
+                "accumulator_bytes": 4,
+                "scratchpad_rows": 16384,
+                "accumulator_rows": 1024,
+            }
+        },
+    }
+    path = tmp_path / "profile.json"
+    path.write_text(json.dumps(profile))
+    assert F.verify_spike_profile(facts, path)["status"] == "structural_match"
+    profile["provenance"]["dram_bytes"] //= 2
+    path.write_text(json.dumps(profile))
+    with pytest.raises(F.FactError, match="provenance.dram_bytes"):
+        F.verify_spike_profile(facts, path)

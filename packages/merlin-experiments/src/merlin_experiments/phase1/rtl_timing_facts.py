@@ -257,15 +257,53 @@ def extract(chipyard_source: Path, generated: Path, *, firrtl_sha256: str, dts_s
     }
 
 
+def verify_spike_profile(facts: dict, path: Path) -> dict:
+    """Check the existing functional Spike target profile's structural projection."""
+    profile = json.loads(path.read_text())
+    if not isinstance(profile, dict) or profile.get("schema") != "gemmini.annotated_spike.target.v1":
+        raise FactError("selected Spike profile has the wrong schema")
+    gemmini, soc = facts["gemmini"], facts["soc"]
+    expected = {
+        "target_config": "FireSimGemminiRocketConfig",
+        "provenance.dram_base": soc["memory_base"],
+        "provenance.dram_bytes": soc["memory_bytes"],
+        "provenance.host_dts_sha256": facts["evidence_sha256"]["dts"],
+        "target.hardware.dim": gemmini["meshRows"],
+        "target.hardware.element_bytes": gemmini["input_bits"] // 8,
+        "target.hardware.accumulator_bytes": gemmini["accumulator_bits"] // 8,
+        "target.hardware.scratchpad_rows": gemmini["sp_capacity_bytes"]
+        // (gemmini["meshColumns"] * gemmini["input_bits"] // 8),
+        "target.hardware.accumulator_rows": gemmini["acc_capacity_bytes"]
+        // (gemmini["meshColumns"] * gemmini["accumulator_bits"] // 8),
+    }
+    if gemmini["meshRows"] != gemmini["meshColumns"] or gemmini["input_bits"] != gemmini["weight_bits"]:
+        raise FactError("selected Spike geometry projection requires square equal-width input and weight tiles")
+    for dotted, value in expected.items():
+        actual = profile
+        for key in dotted.split("."):
+            actual = actual.get(key) if isinstance(actual, dict) else None
+        if actual != value or type(actual) is not type(value):
+            raise FactError(f"selected Spike profile differs from generated facts at {dotted}")
+    return {
+        "profile_sha256": _sha(path),
+        "status": "structural_match",
+        "checked_fields": sorted(expected),
+        "timing_qualification": "not_assessed",
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--chipyard-source", type=Path, required=True)
     parser.add_argument("--generated", type=Path, required=True)
     parser.add_argument("--firrtl-sha256", required=True)
     parser.add_argument("--dts-sha256", required=True)
+    parser.add_argument("--spike-profile", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     facts = extract(args.chipyard_source, args.generated, firrtl_sha256=args.firrtl_sha256, dts_sha256=args.dts_sha256)
+    if args.spike_profile:
+        facts["spike_profile_alignment"] = verify_spike_profile(facts, args.spike_profile)
     if args.output.exists():
         parser.error("output already exists")
     args.output.write_text(json.dumps(facts, indent=2, sort_keys=True) + "\n")
