@@ -1,30 +1,17 @@
-"""A per-workload ROOFLINE: the fewest cycles any schedule of declared work can take on this machine.
+"""Conservative workload floors from explicit RTL arithmetic and memory facts.
 
-    machine = machine_bounds(target, facts=facts, elaboration=fir)   # array geometry + memory path
-    doc = roofline(contractions, read_bytes, write_bytes, machine)   # {"roofline_cycles", "limiter", ...}
-    position(doc, cycles)                                            # measured / roofline, or None
+Compute charges useful MACs against the maximum structural multiplier capacity.
+Every discovered array must state its rows, columns and multipliers per element;
+geometry alone establishes neither a MAC rate nor stationary-row scheduling.
+The bound assumes all those sites can issue simultaneously, so unavailable sites,
+fill/drain, tails and instruction overhead can only make execution slower.
 
-Both floors are DERIVED, never configured, and both are about the MACHINE and the WORKLOAD -- not
-about any implementation -- so the same bound applies to every program that computes the workload:
-
-* **Compute.** A contraction ``M x K x N`` on an ``R x C`` array is cut into stationary blocks of at
-  most ``R`` deep by ``C`` wide; every streamed row passes every block once, one row per cycle, and a
-  block enters the array one row per cycle, which at best overlaps the previous block's stream. So a
-  block costs at least ``max(streamed rows, block depth)`` cycles and the floor is the sum over
-  blocks, minimised over which operand is held (``C = A B`` or ``C^T = B^T A^T``).
-* **Movement.** Every byte the workload declares as read must come in over the accelerator's memory
-  path and every byte it declares as written must go out. Read and write are separate channels, so
-  the floor is ``max(read bytes / read width, write bytes / write width)``. The widths come from the
-  elaborated circuit itself (:func:`merlin.targetgen.rtl.introspect.memory_path`), never from a
-  configuration name.
-
-The roofline is the larger floor, and ``limiter`` names which one it is. Omissions (fill/drain delay,
-fixed invocation cost) only LOWER the bound, so it stays a floor, and they are recorded. A term whose
-input is UNKNOWN is dropped and named in ``unresolved``; a workload with neither term has no roofline,
-never a zero one. A measurement below the roofline REFUTES it (``status: refuted``): a bound a real
-program beats means an input it was derived from does not describe the machine.
-
-Nothing here names a target, an instruction, an opcode or a size.
+Movement charges declared interface reads/writes against the elaborated path's
+widths. This term requires those bytes actually to cross that interface; logical
+intermediates retained locally must not be charged as compulsory interface bytes.
+The maximum of known terms is a lower bound, not a runtime prediction or an
+assertion of compute/movement overlap. Missing facts remain UNKNOWN, and a measured
+count below a floor refutes it.
 """
 
 from __future__ import annotations
@@ -37,6 +24,7 @@ from typing import Any
 __all__ = [
     "SCHEMA",
     "compute_floor",
+    "compute_peak_from_facts",
     "machine_bounds",
     "position",
     "roofline",
@@ -57,24 +45,35 @@ def _positive_int(value: Any) -> int | None:
     return value if value > 0 else None
 
 
-def compute_floor(m: int, k: int, n: int, *, array_rows: int, array_cols: int) -> dict[str, Any]:
-    """The array's floor for ``M x K x N`` (see the module docstring), minimised over orientation."""
+def compute_floor(m: int, k: int, n: int, *, peak_macs_per_cycle: int) -> dict[str, Any]:
+    """Useful work divided by an explicitly qualified structural rate upper bound."""
+    if any(_positive_int(value) is None for value in (m, k, n, peak_macs_per_cycle)):
+        raise ValueError("positive contraction extents and a qualified MAC rate are required")
+    macs = m * k * n
+    return {"cycles": _ceil(macs, peak_macs_per_cycle), "macs": macs}
 
-    def oriented(streamed: int, held: int) -> tuple[int, int]:
-        depths = [min(array_rows, k - start) for start in range(0, k, array_rows)]
-        blocks_wide = _ceil(held, array_cols)
-        cycles = blocks_wide * sum(max(streamed, depth) for depth in depths)
-        computes = _ceil(streamed, array_rows) * len(depths) * blocks_wide
-        return cycles, computes
 
-    options = {"stream_m": oriented(m, n), "stream_n": oriented(n, m)}
-    best = min(options, key=lambda o: options[o][0])
-    return {
-        "cycles": options[best][0],
-        "min_computes": min(c for _, c in options.values()),
-        "orientation": best,
-        "options": {o: {"cycles": c, "computes": u} for o, (c, u) in options.items()},
-    }
+def compute_peak_from_facts(document: Mapping[str, Any]) -> tuple[int | None, str]:
+    """Optimistic simultaneous issue capacity; never infer multipliers from geometry.
+
+    Summing all discovered sites avoids restricting a generic target to the first
+    array. An incomplete site's arithmetic count makes the rate unknown, because
+    dropping that capacity could create a false lower bound.
+    """
+    body = document.get("facts", document)
+    arrays = body.get("arrays") if isinstance(body, Mapping) else None
+    if not isinstance(arrays, (list, tuple)) or not arrays:
+        return None, "no complete arithmetic-site inventory was extracted"
+    peak = 0
+    for array in arrays:
+        if not isinstance(array, Mapping):
+            return None, "an extracted arithmetic site is not a mapping"
+        idiom = array.get("mac_idiom")
+        values = (array.get("rows"), array.get("cols"), idiom.get("muls") if isinstance(idiom, Mapping) else None)
+        if any(_positive_int(value) is None for value in values):
+            return None, "every array must explicitly state positive rows, columns and mac_idiom.muls"
+        peak += math.prod(values)
+    return peak, "sum of extracted rows * columns * explicit mac_idiom.muls; simultaneous issue upper bound"
 
 
 def machine_bounds(
@@ -84,20 +83,27 @@ def machine_bounds(
     elaboration: str | Path | None = None,
 ) -> dict[str, Any]:
     """``{"array_rows", "array_cols", "read_bytes_per_cycle", "write_bytes_per_cycle", "basis",
-    "unresolved"}`` for ``target`` -- the geometry from its RTL facts, the memory path from the exact
+    "peak_macs_per_cycle", "unresolved"}`` for ``target`` -- explicit arithmetic facts
+    and the memory path from the exact
     elaboration the timing engine was built from. Every value is derived or None with a reason."""
     from merlin.perf.decompose import is_unknown  # noqa: PLC0415
     from merlin.perf.derived_bound import machine_from_facts  # noqa: PLC0415
 
     unresolved: dict[str, str] = {}
     basis: dict[str, str] = {}
+    if facts is None:
+        from merlin.targetgen.rtl.facts import load_facts  # noqa: PLC0415
+
+        facts = load_facts(target)
     machine = machine_from_facts(target, facts=facts, measure_fill=False)
+    peak, peak_basis = compute_peak_from_facts(facts)
+    if peak is None:
+        unresolved["compute"] = peak_basis
+    else:
+        basis["compute"] = peak_basis
     rows, cols = machine.array_rows, machine.array_cols
     if is_unknown(rows) or is_unknown(cols):
-        unresolved["compute"] = machine.refusals.get("array_rows") or "the array geometry is UNKNOWN"
         rows = cols = None
-    else:
-        basis["compute"] = machine.provenance.get("array_rows", "") or "facts.arrays"
     read_width = write_width = None
     if elaboration is None:
         unresolved["movement"] = "no elaborated circuit was named, so the memory path is not derivable"
@@ -118,6 +124,7 @@ def machine_bounds(
     return {
         "array_rows": None if rows is None else int(rows),
         "array_cols": None if cols is None else int(cols),
+        "peak_macs_per_cycle": peak,
         "read_bytes_per_cycle": read_width,
         "write_bytes_per_cycle": write_width,
         "basis": basis,
@@ -142,7 +149,7 @@ def roofline(
     unresolved = dict(machine.get("unresolved") or {})
     if not machine:
         unresolved.setdefault("machine", "no machine bounds were derived")
-    rows, cols = machine.get("array_rows"), machine.get("array_cols")
+    peak = _positive_int(machine.get("peak_macs_per_cycle"))
     terms: dict[str, float] = {}
     doc: dict[str, Any] = {
         "schema": SCHEMA,
@@ -153,13 +160,18 @@ def roofline(
     }
     if contractions is None:
         unresolved.setdefault("compute", "the declared work has no derivable contraction extents")
-    elif rows and cols:
-        cycles = 0
-        for extents in contractions:
-            m, k, n = (int(v) for v in extents)
-            cycles += compute_floor(m, k, n, array_rows=int(rows), array_cols=int(cols))["cycles"]
-        terms["compute"] = float(cycles)
+    elif not contractions:
+        doc["compute_floor_cycles"] = 0  # known absence of contraction work, not a timing term
+    elif any(len(extents) != 3 or any(_positive_int(v) is None for v in extents) for extents in contractions):
+        unresolved["compute"] = "contraction extents are not positive integer triples"
+    elif peak is not None:
+        # Concurrent independent contractions may share a cycle; round only once.
+        work = sum(math.prod(extents) for extents in contractions)
+        cycles = _ceil(work, peak)
+        terms["compute"] = cycles
         doc["compute_floor_cycles"] = cycles
+    else:
+        unresolved.setdefault("compute", "no explicit arithmetic-site rate upper bound was derived")
     read_width, write_width = machine.get("read_bytes_per_cycle"), machine.get("write_bytes_per_cycle")
     charged = []
     if read_width and isinstance(read_bytes, int):

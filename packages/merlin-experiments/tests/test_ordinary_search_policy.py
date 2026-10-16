@@ -122,7 +122,6 @@ def ordinary_inputs(tmp_path, monkeypatch):
     monkeypatch.setattr(DF.MS, "load_rtl_identity", lambda path, target: {"sha256": sha256_file(path)})
     monkeypatch.setattr(DF.FM, "derived_peak_macs_per_cycle", lambda *args: (None, "synthetic unknown"))
     monkeypatch.setattr(DF, "derive_machine_bounds", lambda *args: {})
-    monkeypatch.setattr(DF.FM, "harvest_member_cost", lambda roots: {})
     monkeypatch.setattr(DF.MS, "executed_profile", lambda *args, **kwargs: {"status": "unknown"})
     executions = []
 

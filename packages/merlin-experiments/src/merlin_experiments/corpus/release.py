@@ -398,7 +398,7 @@ def prepare(
     *,
     private_baseline: Path | None = None,
     retirements: Path | None = None,
-    generated_only: bool = False,
+    generated_only: bool = True,
     phase1_policy_descriptor: Path | None = None,
     loader_profile_sources: tuple[Path, ...] | None = None,
     optional_levels: tuple[str, ...] = (),

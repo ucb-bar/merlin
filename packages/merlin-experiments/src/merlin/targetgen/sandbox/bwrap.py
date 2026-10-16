@@ -1334,6 +1334,11 @@ def _frozen_answer_surfaces(
                     if member.is_dir() and member.name == "hidden":
                         add(member, "dir", "hidden")
                     elif member.is_file():
+                        if member.name == "capsule.yaml":
+                            from merlin.targetgen.capsule_privacy import capsule_answer_members
+
+                            for relative, origin in capsule_answer_members(member.parent).items():
+                                add(member.parent / relative, "file", origin)
                         if member.name.startswith("golden.") or member.name == "expected_instruction_coverage.yaml":
                             add(member, "file", "golden")
                         elif member.name.endswith((".safetensors", ".safetensors.manifest.json")):

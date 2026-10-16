@@ -33,6 +33,10 @@ views even after original aliases or selected providers change.
 
 ## Invariants / notes
 
+- Capsule reference masks come from `capsule_privacy` roles as well as historical
+  answer names. Reopen frozen declarations under the verified snapshot owner;
+  removing the original capture cannot make a copied reference public. Operand
+  data stays available, and privacy classification is not a numerical verdict.
 - DERIVE, never per-target-branch. The mask set comes from the descriptor's corpus/`answer_surfaces` + the declared `ORACLE_MODULES`/`GRADER_MODULES` registry; the toolchain routes on `sim_via` (declarative `SIM_TOOLCHAINS` table) + `kind`. There is no `if target ==` anywhere.
 - Selected support-provider roots are withheld as whole packages, including sibling
   conformance, build-helper, tool and data files. Metadata discovery must not import

@@ -109,6 +109,13 @@ code runs on two targets of different archetypes and produces **different, corre
   closed. `UNKNOWN` is a distinct inhabited state and must never be readable as `0.0`.
 - Generated output. Products go to `out/artifacts/` via `merlin.common.paths` / `artifacts` helpers.
 
+`capsule_roofline` provides conservative floors, not runtime predictions. Geometry
+alone cannot imply an instruction schedule or MAC throughput. Require explicit
+arithmetic counts for every discovered array before bounding useful work; missing
+sites or counts remain UNKNOWN. No stationary-row, orientation, command or tile
+law is universal. Logical bytes require proof of crossing the named interface
+before use as compulsory movement, especially across fused/resident groups.
+
 ## Invariants
 
 - **Never default a composition operator.** Textbook roofline takes `max` of compute and memory time,

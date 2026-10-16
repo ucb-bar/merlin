@@ -15,6 +15,7 @@ from typing import Any
 from merlin.benchharness import hash_tree
 from merlin.common.digest import sha256_bytes as _sha256
 from merlin.perf.external_objective import OBJECTIVE_DIRECTORY, ExternalObjective, objective_directory
+from merlin.targetgen.capsule_privacy import capsule_answer_members
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import toolchain as TC
 from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces
@@ -174,10 +175,11 @@ def build_answer_free_agent_inputs(
     destination.mkdir(parents=True)
     for member in corpus.capsules:
         original = Path(target_experiment.capsule_corpus).resolve().parent / member.source_relative_path
+        protected = capsule_answer_members(member.source_dir)
         for frozen_file in sorted(path for path in member.source_dir.rglob("*") if path.is_file()):
             relative_in_capsule = frozen_file.relative_to(member.source_dir)
             original_file = original / relative_in_capsule
-            if _path_is_answer(original_file, surfaces):
+            if relative_in_capsule.as_posix() in protected or _path_is_answer(original_file, surfaces):
                 continue
             relative = Path(member.source_relative_path) / relative_in_capsule
             output = destination / relative
