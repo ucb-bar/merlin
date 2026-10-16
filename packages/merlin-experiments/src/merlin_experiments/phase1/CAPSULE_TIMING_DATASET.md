@@ -97,6 +97,18 @@ have no usable timing label.
 
 ## Spike calibration and Phase 2 handoff
 
+The intended Phase 2 model is annotated Spike **with its Gemmini accelerator
+observer**. Fit the observer's primitive latency/occupancy and transfer prices,
+and CPU/cache parameters against the gSIM whole-call labels. Pin resource and
+queue capacities from the selected RTL where possible; test unresolved capacity
+choices with targeted capsule families. The labels constrain combined behavior; they do
+not identify any individual command latency by themselves. Keep unsupported or
+unidentifiable parameters unknown, and use held-out capsule families to test the
+result. `merlin_timing.fitting.fit` currently produces a diagnostic linear
+feature screen, not a calibrated Gemmini event-model configuration. The event
+model still needs an explicit parameter-selection/fitting step before Phase 2
+can use it as a tuned Spike timing model.
+
 Use one passing, complete gSIM L3 row as one supervised example. Run the
 archived ELF with the same input on the selected Spike configuration to produce
 the model's features or prediction. Pair by ELF SHA256, capsule/shape,
@@ -116,6 +128,56 @@ holdout labels come from gSIM, so its predictions estimate the selected gSIM
 elaboration's capsule-call cycles. U250 measurements are not a prerequisite for
 this handoff; they are required only to claim or calibrate board cycles. Full-model
 executions are outside this capsule dataset.
+
+## Dynamic command graph and efficient replay
+
+Nicolas Rakanic's [MX-Gemmini performance extension](https://github.com/ucb-bar/libgemmini/tree/c17f961816b5ab48a447f7cd7abda0e5d2445e5d)
+is a useful design reference, not a parameter set for this INT8 target. Its
+[reservation station](https://github.com/ucb-bar/libgemmini/blob/c17f961816b5ab48a447f7cd7abda0e5d2445e5d/perf/control/reservation_station.cc)
+derives dependencies from local row read/write spans and live queue entries;
+load, execute, store and vector queues have distinct issue rules. Its
+[event queue](https://github.com/ucb-bar/libgemmini/blob/c17f961816b5ab48a447f7cd7abda0e5d2445e5d/perf/sim/event_queue.h)
+advances only to scheduled activity and separates same-cycle evaluation from
+state commit. Its [model trace](https://github.com/ucb-bar/libgemmini/blob/c17f961816b5ab48a447f7cd7abda0e5d2445e5d/perf/model.cc)
+can emit command allocation, issue, completion and row spans plus selected
+unit events. These are model events to compare with RTL diagnostics, not measured
+gSIM command timestamps.
+
+For the Phase 1 corpus, preserve the existing exact ELF/input and single
+kernel-call gSIM cycle label as the primary training record. On replay in Spike,
+derive a **compact dynamic command graph** for each passing capsule: RoCC
+instruction order and PC, funct and operand words, expanded loop commands where
+used, decoded shape/bytes/MACs, local row read/write ranges, dependency edges,
+fence/wait position, unknown decoding reasons and the selected counter-window
+membership. Bind the graph to ELF, input, target-config and observer hashes.
+This graph is a reconstruction from the functional execution, not a hardware
+timestamp trace; keep its schema/version separate from the measured label.
+The current annotated Spike observer rejects loop/FSM functs, so any capsule
+containing them needs an explicit loop decoder before it can yield a complete
+Gemmini timing prediction. The MX model's loop expansion is an implementation
+reference, subject to the pinned INT8 RTL's actual behavior.
+
+For a bounded diagnostic subset, add Gemmini performance-counter snapshots or
+RTL event captures to separate load, compute, store, overlap, queue waits and
+DMA traffic. Record the counter selector, start/end scope and perturbation check
+for each diagnostic run. Hardware exposes fewer simultaneous counter slots than
+event kinds, so selected counter groups may require repeated runs; do not merge
+different runs into a single supposedly exact command timeline. Keep verbose
+per-command or per-cycle RTL traces only for outliers and validation
+microbenchmarks. The primary gSIM label must keep its reviewed uninstrumented
+measurement window.
+
+The MX extension's [three modes](https://github.com/ucb-bar/libgemmini/blob/c17f961816b5ab48a447f7cd7abda0e5d2445e5d/gemmini_perf.cc)
+illustrate a performance tradeoff: `func` runs the functional extension,
+`both` also runs the timing model, and `perf` skips data-moving and computing
+functional commands. `perf` can accelerate timing-only sweeps when those
+commands cannot affect later control flow or address generation, but it cannot
+serve as the numerical oracle. Measure `func`, `both` and any timing-only mode on
+the *same* Phase 1 capsules, recording wall time, command count, timing
+completeness and cycle prediction; require functional equivalence separately.
+The reported 100x speedup has no published comparable benchmark in this source
+revision and must be treated as a claim until the selected build and workload
+reproduce it.
 
 The annotated Spike model at
 [`806ec0adda22`](https://github.com/copparihollmann/riscv-isa-sim-gemmini/tree/806ec0adda2242597b253ebf17adfaa5cdb395e3)
