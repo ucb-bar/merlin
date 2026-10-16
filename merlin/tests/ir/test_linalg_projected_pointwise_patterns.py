@@ -68,6 +68,13 @@ def _generic(text: str):
         (_program(), "arith.addi", None, ((2, 1), (2, 3))),
         (
             _program(
+                inputs=(("2x3", "i1", "(d0, d1)"), ("", "f32", "()"), ("", "f32", "()")),
+                result="f32", operation="arith.select", scalar_args="%a0, %a1, %a2",
+            ),
+            "arith.select", None, ((2, 3), (), ()),
+        ),
+        (
+            _program(
                 shape="2x3x4",
                 inputs=(("2x1x4", "f32", "(d0, 0, d2)"), ("2x3x1", "f32", "(d0, d1, 0)")),
                 result="i1",

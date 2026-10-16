@@ -111,6 +111,241 @@ def _rtl_source_audit(args: argparse.Namespace) -> int:
     )
 
 
+def _counter_source_observation(args: argparse.Namespace) -> int:
+    """Check complete source-local rows; retain all physical timer unknowns."""
+    from dataclasses import asdict, fields
+
+    from merlin.common.strict_json import loads
+
+    from .rtl.hw_combinational import EvaluationLimits
+    from .rtl.hw_counter_intervals import (
+        CounterEndpointSelection,
+        CounterInterval,
+        CounterIntervalLimits,
+        CounterPhaseSample,
+        observe_counter_intervals,
+    )
+    from .rtl.hw_counter_state_timelines import (
+        StateGetterSelection,
+        StatePhaseSample,
+        StateTimelineLimits,
+        observe_state_getter_timeline,
+    )
+
+    def read(path, limit):
+        if type(limit) is not int or not 0 < limit < 1 << 63:
+            raise ValueError("Counter observation input bound is unavailable.")
+        try:
+            with Path(path).open("rb") as handle:
+                value = handle.read(limit + 1)
+        except OSError:
+            raise ValueError("Counter observation input is unavailable.") from None
+        if len(value) > limit:
+            raise ValueError("Counter observation input exceeds its byte bound.")
+        return value
+
+    def record(cls, value, *, arrays=()):
+        if type(value) is not dict or set(value) != {field.name for field in fields(cls)}:
+            raise ValueError("Counter observation request fields are incomplete.")
+        converted = dict(value)
+        for name in arrays:
+            if type(converted[name]) is not list:
+                raise ValueError("Counter observation request array is unavailable.")
+            converted[name] = tuple(converted[name])
+        return cls(**converted)
+
+    request_bytes = read(args.request, args.max_request_bytes)
+    request = loads(request_bytes, max_bytes=args.max_request_bytes)
+    keys = {"schema", "kind", "selection", "limits", "expected_phases", "samples", "intervals"}
+    if type(request) is not dict or request.get("schema") not in (
+        "merlin.counter_source_request.v1",
+        "merlin.counter_source_request.v2",
+    ):
+        raise ValueError("Counter observation request schema is unsupported.")
+    explicit_emission = request["schema"] == "merlin.counter_source_request.v2"
+    if set(request) != keys | ({"macro_environment"} if explicit_emission else set()):
+        raise ValueError("Counter observation request schema is unsupported.")
+    kind = request["kind"]
+    if kind not in ("unit_counter", "state_getter"):
+        raise ValueError("Counter observation request kind is unsupported.")
+    macro_environment = request["macro_environment"] if explicit_emission else None
+    if explicit_emission:
+        if kind == "state_getter" and type(macro_environment) is not str:
+            raise ValueError("Counter observation macro premise is unavailable.")
+        if kind == "unit_counter" and macro_environment is not None:
+            raise ValueError("Counter observation macro premise is unsupported for this kind.")
+    limit_type = CounterIntervalLimits if kind == "unit_counter" else StateTimelineLimits
+    raw_limits = request["limits"]
+    if type(raw_limits) is not dict or set(raw_limits) != {field.name for field in fields(limit_type)}:
+        raise ValueError("Counter observation limit roster is incomplete.")
+    limits = record(limit_type, {**raw_limits, "expressions": record(EvaluationLimits, raw_limits["expressions"])})
+    selection_type = CounterEndpointSelection if kind == "unit_counter" else StateGetterSelection
+    selection = record(
+        selection_type, request["selection"], arrays=() if kind == "unit_counter" else ("register_ordinals",)
+    )
+    phases, samples, intervals = (request[name] for name in ("expected_phases", "samples", "intervals"))
+    if (
+        type(phases) is not int
+        or phases < 2
+        or phases % 2
+        or phases > limits.expressions.cases
+        or type(samples) is not list
+        or len(samples) != phases
+        or type(intervals) is not list
+        or not 0 < len(intervals) <= limits.intervals
+    ):
+        raise ValueError("Counter observation phase or interval roster is incomplete.")
+    sample_type = CounterPhaseSample if kind == "unit_counter" else StatePhaseSample
+    arrays = ("inputs", "outputs") if kind == "unit_counter" else ("inputs", "states", "outputs")
+    samples = tuple(record(sample_type, row, arrays=arrays) for row in samples)
+    intervals = tuple(record(CounterInterval, row) for row in intervals)
+    source_bytes = read(args.source, limits.expressions.source_bytes)
+    try:
+        source = source_bytes.decode("utf-8")
+    except UnicodeError:
+        raise ValueError("Counter observation source encoding is unsupported.") from None
+    observer = observe_counter_intervals if kind == "unit_counter" else observe_state_getter_timeline
+    result = observer(
+        source,
+        selection=selection,
+        limits=limits,
+        expected_phases=phases,
+        samples=samples,
+        intervals=intervals,
+        **({"macro_environment": macro_environment} if explicit_emission and kind == "state_getter" else {}),
+    )
+    observation = asdict(result)
+    if not explicit_emission and kind == "state_getter":
+        observation.pop("module_metadata", None)
+        observation.pop("source_emission", None)
+    rendered = {
+        "schema": "merlin.counter_source_observation.v2"
+        if explicit_emission
+        else "merlin.counter_source_observation.v1",
+        "request_sha256": hashlib.sha256(request_bytes).hexdigest(),
+        "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
+        "observation": observation,
+        "scope": "source-local values only; sample custody, physical units, runtime and timing remain unknown",
+    }
+    if explicit_emission:
+        rendered["macro_environment_sha256"] = (
+            hashlib.sha256(macro_environment.encode("utf-8")).hexdigest() if macro_environment is not None else None
+        )
+    with Path(args.out).open("x", encoding="utf-8") as handle:
+        handle.write(json.dumps(rendered, sort_keys=True, indent=2, allow_nan=False) + "\n")
+    return 0
+
+
+def _value_binding_observation(args: argparse.Namespace) -> int:
+    """Export exact source value bindings without assigning endpoint roles."""
+    import os
+    import stat
+    from dataclasses import fields
+
+    from merlin.common.strict_json import loads
+
+    from .rtl.hw_value_bindings import OriginalValueSelection, ValueBindingLimits, prepare_value_bindings
+
+    def positive(value):
+        if type(value) is not int or not 0 < value < 1 << 63:
+            raise ValueError("Value observation byte bound is unavailable.")
+        return value
+
+    def identity(value):
+        return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
+
+    def read(path, maximum):
+        path = Path(path).absolute()
+        try:
+            if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
+                raise ValueError("Value observation input path identity differs.")
+            before = path.stat()
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError("Value observation input is not a regular file.")
+            with path.open("rb") as stream:
+                if identity(before) != identity(os.fstat(stream.fileno())):
+                    raise ValueError("Value observation input changed before reading.")
+                raw = stream.read(positive(maximum) + 1)
+                if identity(before) != identity(os.fstat(stream.fileno())) or identity(before) != identity(path.stat()):
+                    raise ValueError("Value observation input changed during reading.")
+        except OSError:
+            raise ValueError("Value observation input is unavailable.") from None
+        if len(raw) > maximum:
+            raise ValueError("Value observation input exceeds its byte bound.")
+        return raw, identity(before)
+
+    def record(cls, value):
+        if type(value) is not dict or set(value) != {field.name for field in fields(cls)}:
+            raise ValueError("Value observation request fields are incomplete.")
+        if cls is OriginalValueSelection:
+            if type(value["occurrence"]) is not list:
+                raise ValueError("Value observation occurrence roster is unavailable.")
+            value = {**value, "occurrence": tuple(value["occurrence"])}
+        return cls(**value)
+
+    request_bytes, request_identity = read(args.request, positive(args.max_request_bytes))
+    request = loads(request_bytes, max_bytes=args.max_request_bytes)
+    if (
+        type(request) is not dict
+        or set(request) != {"schema", "root", "selections", "limits"}
+        or request["schema"] != "merlin.value_binding_request.v1"
+    ):
+        raise ValueError("Value observation request schema is unsupported.")
+    limits = record(ValueBindingLimits, request["limits"])
+    if type(request["selections"]) is not list or not 0 < len(request["selections"]) <= limits.selections:
+        raise ValueError("Value observation original selection roster is incomplete.")
+    selections = tuple(record(OriginalValueSelection, value) for value in request["selections"])
+    source_bytes, source_identity = read(args.source, limits.source_bytes)
+    try:
+        source = source_bytes.decode("utf-8")
+    except UnicodeError:
+        raise ValueError("Value observation source encoding is unsupported.") from None
+    output_bound = positive(args.max_output_bytes)
+    observation = prepare_value_bindings(source, root=request["root"], selections=selections, limits=limits)
+    rendered = {
+        "schema": "merlin.value_binding_observation.v1",
+        "request_sha256": hashlib.sha256(request_bytes).hexdigest(),
+        "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
+        "observation": observation,
+        "scope": "source connectivity only; endpoint roles, runtime, physical units and timing remain unknown",
+    }
+
+    def recheck():
+        if read(args.request, args.max_request_bytes) != (request_bytes, request_identity) or read(
+            args.source, limits.source_bytes
+        ) != (source_bytes, source_identity):
+            raise ValueError("Value observation selected inputs changed during observation.")
+
+    recheck()
+    encoder = json.JSONEncoder(indent=2, sort_keys=True, allow_nan=False)
+    size = 1
+    for piece in encoder.iterencode(rendered):
+        size += len(piece.encode("utf-8"))
+        if size > output_bound:
+            raise ValueError("Value observation output exceeds its byte bound.")
+    destination = Path(args.out).absolute()
+    if destination.is_symlink() or any(parent.is_symlink() for parent in destination.parents):
+        raise ValueError("Value observation output path identity differs.")
+    with destination.open("xb") as handle:
+        for piece in encoder.iterencode(rendered):
+            handle.write(piece.encode("utf-8"))
+        handle.write(b"\n")
+    recheck()
+    return 0
+
+
+def _plain_word_relation(args: argparse.Namespace) -> int:
+    from .rtl.plain_word_request import write_plain_word_observation
+
+    write_plain_word_observation(
+        request=args.request,
+        out=args.out,
+        max_request_bytes=args.max_request_bytes,
+        max_output_bytes=args.max_output_bytes,
+    )
+    return 0
+
+
 def _semantic_search(args: argparse.Namespace) -> int:
     """Inspect real linalg-on-tensors MLIR with a selected instruction model."""
     from .contract.linalg_iface import parse_linalg_mlir
@@ -384,6 +619,28 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--hardware-spec", required=True)
     audit.add_argument("--output", required=True)
     audit.set_defaults(func=_rtl_source_audit)
+
+    counter = sub.add_parser("counter-source-observation", help="check complete source-local counter/state rows")
+    counter.add_argument("--source", required=True, help="exact selected HW MLIR source")
+    counter.add_argument("--request", required=True, help="closed source selection, limits and complete sample JSON")
+    counter.add_argument("--max-request-bytes", required=True, type=int, help="explicit request byte bound")
+    counter.add_argument("--out", required=True, help="fresh data-only JSON observation destination")
+    counter.set_defaults(func=_counter_source_observation)
+
+    values = sub.add_parser("value-binding-observation", help="export bounded original source value bindings")
+    values.add_argument("--source", required=True, help="exact selected generic HW MLIR source")
+    values.add_argument("--request", required=True, help="closed original selections and explicit limit JSON")
+    values.add_argument("--max-request-bytes", required=True, type=int, help="explicit request byte bound")
+    values.add_argument("--max-output-bytes", required=True, type=int, help="explicit observation byte bound")
+    values.add_argument("--out", required=True, help="fresh data-only JSON observation destination")
+    values.set_defaults(func=_value_binding_observation)
+
+    word = sub.add_parser("plain-word-relation", help="observe bounded conditional source word declarations")
+    word.add_argument("--request", required=True, help="closed source declaration, cast, premises and limits JSON")
+    word.add_argument("--max-request-bytes", required=True, type=int, help="explicit request byte bound")
+    word.add_argument("--max-output-bytes", required=True, type=int, help="explicit observation byte bound")
+    word.add_argument("--out", required=True, help="fresh conditional source observation destination")
+    word.set_defaults(func=_plain_word_relation)
 
     selection = sub.add_parser(
         "semantic-search", help="inspect linalg-on-tensors kernels against selected OOT instruction semantics"

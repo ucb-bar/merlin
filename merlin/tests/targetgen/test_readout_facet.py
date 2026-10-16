@@ -93,6 +93,24 @@ def test_without_the_scale_field_the_granularity_is_unknown_never_a_default() ->
     assert "no command-register field carries the scale role" in facet.unknown["scale_granularities"]
 
 
+@pytest.mark.parametrize("explicit", [False, True])
+def test_selected_data_readout_does_not_require_native_runtime(monkeypatch, explicit):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("data-only readout must not discover a runtime backend")
+
+    monkeypatch.setattr(RF, "capture_inputs", forbidden)
+    declared = {"scalar_abi": _ABI, "epilogue_capability": _READOUTS}
+    contract = {
+        "compute_units": [{"name": "u", "dtypes": ["int8"]}],
+        "runner": {"backend": "chipyard_rocc", "chipyard_rocc": {"readout": declared}},
+    }
+    selected = {"scalar_abi": _ABI, "readouts": [{"selector": "i32", "applies": []}]} if explicit else None
+    facet, = RF.for_target("synthetic", contract=contract, facts=_facts(), readout_inputs=selected)
+    assert facet.rounding == "half_even"
+    assert list(facet.readouts) == (selected["readouts"] if explicit else _READOUTS)
+    assert facet.scale_granularities == ("tensor",)
+
+
 def test_layouts_from_the_reader_that_dropped_parametric_bundles_decide_nothing() -> None:
     facet = RF.derive("t", facts=_facts(with_unresolved=False))
     # The carrier IS visible here; what the old record cannot support is a claim of absence.

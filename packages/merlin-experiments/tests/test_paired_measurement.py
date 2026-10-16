@@ -5,6 +5,7 @@ import importlib.abc
 import subprocess
 import sys
 import threading
+from contextvars import ContextVar
 from types import SimpleNamespace
 
 import pytest
@@ -102,6 +103,8 @@ def test_installed_owner_import_has_no_native_dependencies(monkeypatch):
 
 
 def test_serial_parallel_schedule_storage_and_projection_are_byte_identical(tmp_path):
+    original_scope = ContextVar("paired_original_scope",default=None)
+    original_scope.set("frozen-profile-owner")
     plan = _plan(tmp_path)
     out = tmp_path / "results"
     out.mkdir()
@@ -120,6 +123,7 @@ def test_serial_parallel_schedule_storage_and_projection_are_byte_identical(tmp_
         physical_unit,
         workers,
     ):
+        assert original_scope.get() == "frozen-profile-owner"
         assert timeout == 7 and hardware_counters is False
         assert physical_unit == "BYTES" and not workspace.exists()
         workspace.mkdir(parents=True)

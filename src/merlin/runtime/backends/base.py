@@ -190,6 +190,11 @@ def _ensure_discovered() -> None:
 # changes and the core carries no name -> module map for it. Target-agnostic: the PACKAGE names its own
 # backend file; nothing here is keyed on a specific target.
 #
+# A DATA-ONLY provider may instead name a generic CORE module (``plugin.backend:
+# merlin.runtime.backends.<generic>``). The core file is then loaded as a fresh per-target instance
+# under the same synthetic ``merlin._oot_backends.<target>`` name, so the generic module learns which
+# target it serves from its own ``__name__`` and reads everything else from the provider's data.
+#
 # ``plugin.backend`` may point at EITHER a single ``.py`` file OR a directory (a package with an
 # ``__init__.py``). A directory is loaded as a package with its own ``__path__``, so a backend whose
 # implementation spans several relative-import-coupled modules (``from .codegen import ...``) works
@@ -231,7 +236,7 @@ def _assert_oot_plugin_ownership() -> None:
     because metadata can change without an environment-string change. Ownership
     commits canonical provider/module paths, not source bytes or held references.
     """
-    from merlin.targetgen.plugins import PluginError, _reference_path, provider_root, resolve_support
+    from merlin.targetgen.plugins import PluginError, provider_root, resolve_reference, resolve_support
 
     with _oot_lock:
         for owner in tuple(_LOADED_PLUGIN_OWNERS.values()):
@@ -243,9 +248,9 @@ def _assert_oot_plugin_ownership() -> None:
                 for key in _PLUGIN_KEYS[owner.namespace]:
                     if not plugin.get(key):
                         continue
-                    path = _reference_path(root, plugin[key], "module")
+                    path = resolve_reference(root, plugin[key], "module")
                     if path is None:
-                        raise PluginError(f"plugin.{key} does not resolve under selected provider root")
+                        raise PluginError(f"plugin.{key} does not resolve under selected provider root or core")
                     paths.add(_plugin_source(path))
                 if selected.base.resolve() == owner.provider_root and paths == {owner.module_path}:
                     continue
@@ -287,11 +292,12 @@ def _oot_plugin_modules(key: str = "backend") -> list[tuple[str, Path]]:
         rel = plugin.get(key)
         if not rel:
             continue  # declares nothing under this key — a package without the seam, not a broken one
-        from merlin.targetgen.plugins import PluginError, _reference_path, provider_root
+        from merlin.targetgen.plugins import PluginError, provider_root, resolve_reference
 
         try:
             root = provider_root(info.base, plugin.get("path"))
-            path = _reference_path(root, rel, "module") if isinstance(rel, str) else None
+            # A provider-owned file, or a dotted reference to GENERIC core code the provider selects.
+            path = resolve_reference(root, rel, "module") if isinstance(rel, str) else None
         except PluginError as exc:
             _LOAD_FAILURES[name] = f"PluginError: {exc}"
             continue
@@ -336,7 +342,13 @@ def _load_oot_backend_locked(name: str, path: Path, *, ns: str) -> None:
     ``ns`` is the synthetic top-level namespace, so a target's ``plugin.backend`` and its
     ``plugin.sim_oracle`` (loaded via the same mechanism) get distinct module names and never collide."""
     modname = f"{ns}.{name}"
-    from merlin.targetgen.plugins import PluginError, _reference_path, provider_root, resolve_support
+    from merlin.targetgen.plugins import (
+        PluginError,
+        _reference_path,
+        is_core_module_source,
+        provider_root,
+        resolve_support,
+    )
 
     selected = resolve_support(name)
 
@@ -348,11 +360,18 @@ def _load_oot_backend_locked(name: str, path: Path, *, ns: str) -> None:
         try:
             relative = path.resolve(strict=True).relative_to(root)
         except (OSError, RuntimeError, ValueError) as exc:
-            raise PluginError(f"plugin module escapes selected provider root {root}") from exc
-    checked = _reference_path(root, str(relative), "module")
-    if checked is None:
-        raise PluginError(f"plugin module does not resolve under selected provider root {root}")
-    path = checked
+            # ...unless the provider SELECTS a generic core module: that file is installed Merlin
+            # source, loaded below as a fresh per-target instance under this target's synthetic name.
+            if not is_core_module_source(path):
+                raise PluginError(f"plugin module escapes selected provider root {root}") from exc
+            relative = None
+    if relative is not None:
+        checked = _reference_path(root, str(relative), "module")
+        if checked is None:
+            raise PluginError(f"plugin module does not resolve under selected provider root {root}")
+        path = checked
+    else:
+        path = path.resolve(strict=True)
     owner = _PluginOwner(name, ns, selected.base.resolve(), _plugin_source(path))
     previous = _LOADED_PLUGIN_OWNERS.get(modname)
     if previous is not None and previous != owner:
@@ -511,10 +530,9 @@ def whole_model_driver(target: str):
 def harness_renderer(target: str):
     """``target``'s runner-owned harness renderer — ``render_harness(cb, *, target) -> str``.
 
-    Optional, like :func:`harness_build_recipe`, and separate from it on purpose: the BUILD is a
-    toolchain description a contract could plausibly carry, whereas the harness body pads to a
-    target's tile edge and lays out its accumulator readout. That is codegen, and putting it behind a
-    contract key would define a key no second target could implement.
+    Optional, like :func:`harness_build_recipe`. Shared logical harnesses transport
+    dense semantic buffers; device packing and scheduling belong to the candidate.
+    Legacy external renderers remain explicitly selected executable capabilities.
     """
     backend = get_backend(target)
     render = getattr(backend, "render_harness", None)
@@ -543,6 +561,34 @@ def name_of_module(module_name: str) -> str:
     raise KeyError(f"no registered backend for module {module_name!r}")
 
 
+def _contract_backend(name: str):
+    """Bind selected data before discovering executable providers; never cache by name."""
+    if name in _SEEDED:
+        return None
+    from merlin.targetgen.target_registry import TargetContractMissing, resolve
+
+    selected = resolve(name)
+    try:
+        contract = selected.load_contract()
+    except TargetContractMissing:
+        if os.environ.get("MERLIN_TARGET_CONTRACT"):
+            raise
+        return None
+    runner = contract.get("runner", {})
+    if not isinstance(runner, dict):
+        raise ValueError("selected contract runner must be a mapping")
+    if "backend" not in runner:
+        return None
+    if contract.get("name") != name or runner["backend"] != "chipyard_rocc":
+        raise ValueError("selected contract has an unknown backend family or mismatched name")
+    if contract.get("plugin"):
+        raise ValueError("data-bound runtime selection cannot grant executable provider hooks")
+    from merlin.runtime.backends.chipyard_rocc import bind
+    from merlin.targetgen.rtl.facts import load_facts
+
+    return bind(target=name, contract=contract, facts=load_facts(name, regenerate=False))
+
+
 def get_backend(name: str):
     """Lazily import + return the backend module for ``name``.
 
@@ -551,6 +597,9 @@ def get_backend(name: str):
     refactor elsewhere in the tree presents exactly like a backend that was never declared, and the
     suites that depend on it skip green instead of failing.
     """
+    bound = _contract_backend(name)
+    if bound is not None:
+        return bound
     _ensure_discovered()
     why = _LOAD_FAILURES.get(name)
     if why and name in _REGISTRY:
@@ -574,7 +623,22 @@ def get_backend(name: str):
     return importlib.import_module(_REGISTRY[name].module)
 
 
-def execution_capability_facts(target: str) -> dict[str, dict[str, Any]]:
+def independent_execution_capability_facts() -> dict[str, dict[str, Any]]:
+    """RTL source observations alone establish no executable support capability."""
+    return {
+        name: {
+            "satisfied": None,
+            "tier": "not_established",
+            "evidence": "independent RTL observations do not qualify an executable support implementation",
+            "missing": ["independently issued live runtime qualification"],
+        }
+        for name in EXECUTION_CAPABILITIES
+    }
+
+
+def execution_capability_facts(
+    target: str, *, contract: dict | None = None, facts: dict | None = None
+) -> dict[str, dict[str, Any]]:
     """Tri-state, evidence-bearing software capabilities for ``target``'s registered backend.
 
     A loaded backend settles every name in :data:`EXECUTION_CAPABILITIES`: a declared name is true and
@@ -582,9 +646,17 @@ def execution_capability_facts(target: str) -> dict[str, dict[str, Any]]:
     false because no implementation was available to inspect.  Nothing is inferred from a target name,
     target class, opcode, or hardware trait; adding a new target means declaring capabilities in that
     target's own backend module.
+
+    An explicit contract/facts pair binds the shared data-only backend directly,
+    without provider discovery. Incomplete selections remain unknown.
     """
     try:
-        backend = get_backend(target)
+        if contract is None and facts is None:
+            backend = get_backend(target)
+        else:
+            from merlin.runtime.backends.chipyard_rocc import bind
+
+            backend = bind(target=target, contract=contract, facts=facts)
     except Exception as exc:  # noqa: BLE001 -- an unavailable plugin is UNKNOWN and carries why
         why = f"{type(exc).__name__}: {exc}"
         return {

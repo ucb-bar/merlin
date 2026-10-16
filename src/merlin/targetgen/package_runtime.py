@@ -124,7 +124,9 @@ def _is_input_dialect(mod: str) -> bool:
     return is_public_input_module(mod)
 
 
-def _py_imports_merlin(text: str, *, compiler_library: CompilerLibraryContract | None = None) -> str | None:
+def _py_imports_merlin(
+    text: str, *, compiler_library: CompilerLibraryContract | None = None, compiler_api=None
+) -> str | None:
     """Return the offending module name iff source imports a non-exempt core/extension harness module.
     The historical function name remains compatible. AST-based: docstrings, comments and ``merlin_iface``
     never match. The public input dialect (:data:`_INPUT_DIALECT_EXEMPT`) is allowed (using the interface,
@@ -137,7 +139,11 @@ def _py_imports_merlin(text: str, *, compiler_library: CompilerLibraryContract |
         return None
 
     def permitted(module: str) -> bool:
-        return _is_input_dialect(module) or (compiler_library is not None and compiler_library.permits(module))
+        return (
+            _is_input_dialect(module)
+            or (compiler_library is not None and compiler_library.permits(module))
+            or (compiler_api is not None and compiler_api.permits(module))
+        )
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -247,6 +253,21 @@ class InfraFailure(CertFailure):
     The number was then handed to the next round as the agent's own failure history. A harness fault that
     can wear a verdict's clothes is worse than a crash, because it gets believed and cited.
     """
+
+
+class NotMeasuredFailure(CertFailure):
+    """A gate that produced NO verdict -- e.g. a mandatory tier stopped by its wall clock.
+
+    It still fails closed (never a pass), but ``status`` is one of the not-measured statuses
+    (``capsule_common.NOT_MEASURED_STATUSES``), so a timeout is neither counted against the submission
+    as a numeric failure nor allowed to certify it. ``facts`` (tier, tier_reason, cycles the run printed
+    before it was stopped, ...) are copied onto the recorded failure.
+    """
+
+    def __init__(self, plane: str, category, detail: str, *, status: str, **facts):
+        super().__init__(plane, category, detail)
+        self.status = status
+        self.facts = facts
 
 
 class BackendDeclined(Exception):
@@ -508,6 +529,13 @@ def integrity_scan(
     oracle markers or structural import restrictions. Never read them from a
     candidate manifest or mutate the process-wide defaults for an experiment.
     """
+    from .compiler_profile_admission import active_compiler_imports
+
+    compiler_api = active_compiler_imports()
+    if compiler_api is not None and pkg.integrity_exempt:
+        raise CertFailure(
+            "integrity", "forbidden_pattern", "profile-admitted candidates cannot claim an integrity exemption"
+        )
     if (compiler_library is None) != (compiler_library_root is None):
         raise CertFailure(
             "integrity", "structural_invariant_violation", "library contract and root must be supplied together"
@@ -538,7 +566,7 @@ def integrity_scan(
                     f"(a non-exempt package must not read the reference/oracle)",
                 )
         if src.suffix == ".py":  # real merlin-harness import (AST, not substring)
-            mod = _py_imports_merlin(text, compiler_library=compiler_library)
+            mod = _py_imports_merlin(text, compiler_library=compiler_library, compiler_api=compiler_api)
             if mod is not None:
                 raise CertFailure(
                     "integrity",

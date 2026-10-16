@@ -1,5 +1,219 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`agent_workspace` projects capsule inputs using frozen reference roles in
+`merlin.targetgen.capsule_privacy` and the central answer registry. Live-source
+deletion cannot disclose frozen expected values; public inputs remain usable.
+Projection grants no numerical, runtime or isolation qualification.
+
+`evaluation_costs` observes original parent jobs from assigned CPUs before setup
+through verified cleanup, durable release and artifact publication. Keep admission
+and queue wait separate. Reopen original job identity, source/resource context and
+persisted products; saved data cannot issue an observation. Telemetry failure
+cannot change a grade or retry cleanup. Failed/cancelled costs are descriptive;
+CPU, per-arm cost and cache state remain UNKNOWN.
+`evaluation_priorities` joins passing singleton selected costs to the incumbent's
+existing potential savings, retaining every repeat and separate evaluator/resource
+contexts. This diagnostic projection never changes contender scores, calibration,
+promotion, plateau or final gates and cannot price another source or parallel sweep.
+
+`provisional_search` projects original completed cheap observations into a
+diverse exploration shortlist, separate from the complete measured incumbent.
+Reopen retained sources and original feedback; unknown or failed observations
+are unmeasured. Known identical emissions may be deduplicated. Only live
+qualified screening orders absolute model savings; no projection can promote
+a compiler or establish a plateau. The normal broker restores only issued
+parents through the bounded revision store. Serialize author edits before
+restoration; retained workers keep their immutable inputs.
+
+`ordinary_queue_calibration` fits only this live normal queue's completed
+compile/Spike and complete RTL products. Its public partition is frozen before
+observations; all alternatives of a member stay together. Reopen actual native
+products, complete numerical observations and successful original receipts.
+Install the issued owner only as coordinator exploration state; the original
+runtime closure, measured incumbent and final gates remain unchanged. Fitting
+launches no simulator, retains bounded evidence and prices retained disk.
+Missing evidence refuses; unqualified fits remain UNKNOWN. Rich feature
+selection reads training activity only. Identifiable empirical coefficients
+are not physical rates. All observed feature domains, including constants and
+unfitted columns, constrain predictions; unseen work cannot be priced zero.
+
+`ordinary_measurement_selection` selects explicit public diagnostic members
+through the normal retained evaluator and its original source, numerical and
+certificate gates. It does not require strict component-runtime roles or grant
+new physical authority. Queue scope stays pinned across dispatch/consumption;
+unselected obligations have null timing and explicit reasons. Partial timing
+cannot establish objective attainment, promotion or a plateau. The complete
+original roster remains required for measured selection and final grading.
+
+`public_program_measurement` routes the frozen ordinary public source basis into
+the original submitted-model evaluator via closed engine/facts/timer data.
+Explicit `simulator="spike"` requires the original L2 ceiling and grants no
+timing or RTL observation. Valid reviewed optional timer/caller bytes remain
+identical for same-build comparison; absent timing remains unavailable and
+Spike cycle values never price work. Original tiers stay intact with L3 pending;
+source/ABI/ISA/dispatch and full numerical checks precede observed L0/L1/L2
+projection, and the full grade stays incomplete. The original backend call is
+observed as a Python dispatch with actual ELF/engine dependencies and raw
+console bytes; it is never relabeled as a newly observed subprocess.
+Retain original source, package sandbox/resource scopes, complete ABI/numerics,
+source-placement and mandatory tiers. A budget child requires the original
+sealed `compiler_profile_child` reconstruction of the exact profile executor
+and any selected live resource boundary. Foreign/incomplete owners refuse;
+arbitrary alternative executors are not reconstructed. The inline route remains
+selected when its budget is unset. After a passing grade,
+reopen actual source, inputs, candidate, caller, object/ELF, console and original
+bound engine receipt. Reparse all outputs under the trusted selected readback
+policy and check the full original numerical contract before normal certificate
+admission. Engine hashes come from actual receipts. Reuse is false; no second
+execution or reconstructed role is issued. Missing clock/source selections,
+warm/compact and unsupported coherent-output replay remain unavailable.
+Protected/validation programs cannot use this pre-freeze public selector.
+
+`ordinary_build_runtime` binds optional original live immutable toolchain and
+LLVM-product owners before queue admission. Contexts reach both normal
+compile/Spike and RTL member workers; calibration/final omit product reuse.
+`build_view_configuration` admits bounded original paths and storage budgets,
+never commands, factories, compiler strategies or saved qualification. Shared
+snapshot/cache/source ceilings fit the original disk reserve. Parent publication
+and discard follow real cleanup and durable release; post-verification close
+retains owners when cleanup remains unknown. Object reuse is distinct from a
+new compiler invocation and simulator replay.
+
+`ordinary_search_policy` adapts the normal Phase 1 functional fork and
+`CorpusFeedbackPolicy` to retained development revisions. Its factory uses the
+original functional admission, frozen performance corpus and fixed ordinary
+`prepare_development_feedback` executor. Reopen original corpus, descriptor,
+functional, certificate, RTL and source pins; bind both retained compilers to the
+same frozen edit authority. Jobs use private feedback state and the complete
+roster. They return the original redacted corpus document and keep its receipt
+and final functional guards. This scope is measured simulator cycles over the
+development corpus; structural counts and executed ISA traces cannot establish
+physical traffic or whole-model host cost. This route does not require or issue
+the separate strict component-runtime roles. Retained member fanout must match
+the explicit queue grant and propagate the original execution contexts into
+every member worker.
+
+`ordinary_fast_feedback` runs the same boxed compiler/capsule ladder through an
+explicit L2 execution ceiling. Preserve original mandatory tiers as pending;
+compile/Spike observations cannot become full grades or measured timing.
+Its explicit selected diagnostic kind executes only named original public
+members and retains null pending observations for the rest. Bind the completed
+selection to the original immutable queued job. Partial results cannot enter
+complete empirical calibration, provisional complete-roster ordering or measured
+promotion. Full cheap/RTL/final gates remain unchanged; selection supplies no
+proof of dependency impact or artifact/verdict reuse.
+Join fresh emitted LLVM and actual linked ELF/invocation products before using
+the core static-site observer. Unsupported bodies stay UNKNOWN; neither sites
+nor linked bytes are physical work. `ordinary_calibration` executes this fixed
+route and complete original RTL feedback on allocated AWS CPU for explicit
+disjoint public training/held member groups and immutable compiler alternatives.
+Reopen the actual same-source/full-numeric/selected-engine products. Collapse
+identical executable replicates; ranking pairs compare alternatives on the same
+member/configuration. Keep original ranking, error, coverage and sample-count
+gates. A live issued owner can install screening before queue admission; the
+normal coordinator may separately install one from its completed original jobs.
+Calibration forces fresh execution; absent qualification keeps measured fallback.
+Optional native runtime/index selections remain original live process owners,
+and default calls stay fresh. Publish artifact archives only from the parent
+completion hook after actual cleanup and durable resource release; publication
+failure leaves future cache misses and never changes the completed verdict.
+
+`ordinary_timing_study` exports closed normal-policy requests and owns the fixed
+AWS-only command. Planning never loads a runtime or queries AWS. Explicit
+execution reopens original Phase 1 admission, freezes bounded public compiler
+alternatives and profiles only the original cheap/certified routes. Keep actual
+setup, complete route and calibration/held wall/CPU/RSS/disk denominators and
+source/domain/partition identities. Supervise each reduced route with its
+original deadline/descendant cleanup. Repeated processes do not establish cache
+state; external engine build and unsupported total costs remain UNKNOWN. Public
+definitions cannot select commands, callbacks or reconstructed qualification.
+
+`normal_resource_launch` adapts the original normal author/probe/broker bwrap
+prefix under an exact live external resource owner. Every empty tmpfs mask and
+shm directory uses private capped backing; keep scratch through the original
+process lifetime. The actual namespace disables nested user namespaces and
+remounts root/device metadata readonly. Preserve the sealed policy and default
+argv. Bind the exact owner explicitly in broker HTTP threads and reopen it before
+publishing feedback. Parser/routing spies issue no kernel enforcement authority.
+
+`census_launch` narrows that original package policy to one streamed readonly ELF
+plus admitted tools and fresh private scratch. The original completed ELF link
+producer and numerical L2 gate remain required. There is no raw-host fallback
+or private grading/reference workspace grant. A live unresolved descendant owner
+raises mandatory `CensusCleanupUnknown`; optional diagnostic fallback may not
+hide it or remove its input/backing. Default scratch sampling is soft; selected
+aggregate enforcement remains the original external resource owner's job.
+
+`functional_guard_execution` applies the original package sandbox and scoped
+executor to baseline/candidate emission and the complete original final grade.
+Each actual compiler gets one streamed interface, a shared readonly package and
+private outputs retained until grade workers join. Copy only the declared output
+back; linked outputs and foreign package/workspace paths refuse. The numerical
+and certification gates remain original. A selected whole-model budget child
+reconstructs the exact original profile and resource selections through the
+sealed child transport; it refuses foreign or incomplete owners. The inline
+route is selected with `MERLIN_MODEL_BUDGET_S` unset. No new numerical, model,
+timing or physical authority follows from this reconstruction or resource scope.
+
+`external_resources` and `_kernel_resources` verify externally provisioned Linux
+cgroup v2 ceilings and one whole capped backing filesystem without creating or
+changing controls. The enclosing stage namespace must already have a readonly
+root and every writable backing mount on that capped filesystem; only genuine
+procfs and devpts kernel interfaces are exempt. Device metadata is readonly and
+shm/temporary mounts are capped or readonly. Pin actual namespace identity and
+complete kernel mount inventory; a declared bind plan cannot supply this proof.
+Inherited writable regular-file descriptors must use the same capped backing;
+readonly mounts do not revoke those handles. Writable raw block descriptors refuse.
+The exact live-issued owner is a separate trusted launch
+argument, never serialized assigned capacity or scientific authority. Require
+unprivileged no-new-privileges membership, nonwritable migration/limit controls,
+finite local CPU/RAM ceilings, swap disabled and the selected effective cpuset.
+Reopen controls, membership and all original writable roots before admission
+and result use. Linked roots, descendant mounts, large filesystems with quota
+metadata, delegated native services and containers remain refused in hard mode.
+The storage guarantee is allocated backing capacity, not sparse logical bytes.
+`bounded_tool_scratch` preserves original grants and replaces fresh temporary
+backing only; its directories remain owned until the original command closes.
+Default calls preserve their exact argv. Pool storage-finalization failure must
+retain a nonterminal UNKNOWN state and grants despite actual child reaping;
+missing durable evidence cannot publish a completed result.
+
+`search_configuration` pins explicit operator budgets and stopping settings to
+the actual live component policy, frozen corpus, fresh baseline and timing
+certificate. Selection data cannot issue runtime/model/timing roles. Native
+author concurrency must match the launch canary. `search_coordinator` ranks the
+complete correct measured simulator roster, retains all repeat ranges, and
+excludes analytical and partial reports. Join authors, finalize and prove queue
+cleanup, then restore the measured selection during observed authoring; no
+post-lineage restoration or later edits. The selection broker receipt joins the
+exact selected source to original complete feedback; final compile/static and
+numerical qualification remain fresh. Pool admission and per-process limits do
+not prove aggregate OS limits or 20–25-core member fanout. Preserve explicit
+UNKNOWN/refusal until actual enforcing and execution owners exist. See the
+operator guide `docs/guides/phase2_component_search.md`.
+
+`search_priorities` projects the incumbent's complete measured roster with the
+exact selection weights and every repeat. Rank potential weighted savings, not
+utilization alone. Matched empirical throughput targets and hardware lower
+bounds retain distinct meanings; neither promises reachable improvement.
+Unpriced host members remain in the total measured time, and absent complete
+evaluation costs stay UNKNOWN. Priorities cannot select or stop a compiler.
+
+`test_justification` v2 accepts the explicit prepared host source basis from
+source-preparation v2, reopens the complete typed component program and emitted
+bytes, and binds its full numerical-reference tree. It supplies source rationale
+without a fabricated RTL trait; actual execution, physical resource mappings,
+guard admission and timing remain UNKNOWN. Ordinary discovery/freeze supports
+these diagnostic receipts and representative selection closes over whole source
+families, including source-operation and resource-boundary distinctions. Existing
+trait-gated v1 meaning and qualification requirements remain unchanged.
+
+`freeze_performance_corpus(..., operator_exclusion=selection)` privately reopens
+the fixed Phase0 operator exclusion pin before copying, checks each copied public
+source, and rechecks the pin before sealing. The selection, its file path and
+excluded hashes remain outside the snapshot and manifest. Operators must pass
+their same private selection explicitly; no protected source discovery or new
+qualification follows from a successful publication check.
 `supervised_feedback` runs the callback worker and retains private
 transport/exit/refusal evidence. `feedback_protocol` accepts only bounded plain
 values and the selected existing interval/analytical value types, never pickle,
@@ -228,6 +442,9 @@ commit/reveal generation with an explicit catalog and source-owner context. Veri
 loaded origins and complete membership before reusing committed generation sources;
 never attest running code using an unrelated or empty source tree. Candidate seals
 must precede reveal; preserve the Phase 0 generator and exact cohort policy.
+`form_holdout.py` commits a form-scale cohort minted by a separate host-private Phase 0 run
+from a private performance-scale roster: counts and digests only in public, refusal of any
+workload a tuning member measures, and the same v2 reveal after every candidate seal.
 `gsim_certificate.py` owns build/capture validation, semantic oracle checks and same-ELF
 certificate production; native producer paths are CLI-only. `heldout_qualification.py`
 owns post-reveal lowering, qualification and completed-result admission. Supply an
@@ -333,7 +550,10 @@ corpus publication. This is trusted host code, withheld from candidate compilers
 `checkpoint_admission.py` owns explicit execution context, immutable preflight,
 provenance and checkpoints; `checkpoint_controller.py` owns ordered campaign execution
 and adoption. `checkpoint_cli.py` requires explicit resource/output/source-owner roots.
-Never replace this lifecycle with native callbacks or omit functional regrading before
+An optional form-scale holdout (private spec or generated root plus roster) is predeclared,
+committed beside the PK holdout before authoring, revealed after every seal and qualified
+and measured under its own `held_out_form` cells; any failure refuses the run, never PK-only.
+Unconfigured, records stay byte-identical. Never replace this lifecycle with native callbacks or omit functional regrading before
 reveal. `paired_cli.py` owns paired result writing and forwards its explicit contract
 root to execution; interruption must retain incomplete `NO_GO` evidence and propagate.
 `chia_launch.py` binds exact script/module commands and its own policy bytes in v2
@@ -385,7 +605,13 @@ mount declarations alone do not prove the final mounted bytes are unchanged.
 `feedback_metrics.py`, `calibration.py` and `capsule_verdict.py` share workload pricing,
 measured calibration and per-capsule verdicts with retained native consumers. Preserve
 scientific thresholds, budgets, redaction and stopping semantics; missing observations
-must not become successful or zero-cost measurements. Use synthetic executors for tests.
+must not become successful or zero-cost measurements. Ordinary feedback starts with
+unknown observed ceilings and member costs. Populate them only from this session's
+fresh original passing public-baseline replies joined to the exact frozen member,
+submission, command buffer and selected execution certificate. Saved Phase 1,
+hidden/final, sibling-run, carried and candidate measurements cannot set these
+rates or scheduling costs. Retained evaluations own separate bounded point maps.
+Use synthetic executors for tests.
 `transcript_audit.py` owns native and translated agent command-event auditing,
 broker invocation accounting and answer/direct-execution refusal. Native authoring
 and requalification import the same auditor. Frozen replay supplies its original
@@ -625,9 +851,38 @@ Original input trees are selected before execution. The fixed consumer reparses
 the actual full serial stream, rederives the original ABI/input projection and
 recomputes the complete original numerical comparison. Edited saved outputs,
 metrics or reports cannot replace those products. Coherent-memory consumption
-is unsupported in this raw serial slice and requires its separate original owner.
+requires an explicit `CoherentMeasurementPlan` and the same selected prepared
+process/readback plan. The fixed consumer rejoins the actual decoder, request,
+same ELF and complete original object bytes, rechecks original immutable inputs,
+and recomputes every call's full numerical comparison from its complete history.
+Unframed ordered bytes are the only supported coherent grammar here; a framed
+or implicit selection refuses. The original full-value serial route is unchanged.
 Bounded reads precede decoding. Missing/moved events refuse accounting even when
 original outputs match. Source-produced labels and raw getters cannot certify
 actual complete-cost boundaries, cold/warm state, timer integrity, runtime14,
 stage11, measurement14 or held ranking/error/coverage. OOT support owns those
 semantics; this data-only collector supplies no issuer or author grant.
+
+The ordinary measurement launcher freezes its explicit observation plan and
+readback policy before work and refuses drift before accounting or raw-product
+publication. Direct collection also retains the original plan through replay.
+These identity checks supply no new measurement or runtime qualification.
+
+`evaluation_fidelity` binds explicit public/protected program scope and selected
+ordinary CPU engine provenance. Public numerical execution delegates only to
+the issued original evaluator; legacy model probe exclusion and protected final
+gates remain unchanged. Component authority never transfers to a whole program.
+Source/output agreement and matched memory/cache/clock hashes issue no timing.
+`component_compiled_arms` optionally uses the original scoped compile-only and
+consumed-static observer without per-member RTL; numerical/physical features
+remain UNKNOWN and analytical use keeps the original live measurement/held gates.
+`timing_study` owns the nonexecuting AWS CPU plan command and a private fixed
+ordinary profiler under the existing supervised worker. Require actual allocated
+AWS identity and explicit CPU/RAM/disk/environment selections before profiling.
+Keep every cold/warm/setup/calibration/held/complete-cost denominator and original
+screening minima; process cost observations cannot issue scientific authority.
+`component_providers.build_independent_component_rtl_provider` binds the existing
+certified development evaluator to the actual qualified runtime executor and
+fresh baseline/cohort/descriptor. Certificate, facts, derived CIRCT and engine
+artifact pins must remain in original runtime source membership. Preserve the
+original exact workload envelope and refused timing scopes.

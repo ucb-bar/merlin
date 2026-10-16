@@ -116,6 +116,61 @@ def _category(name: str) -> str:
     }.get(name, "other")
 
 
+def _posttested_single_block_loop(header, latch, nodes, predecessors, positions):
+    """Prove a single-block do-while whose tested update is its exact backedge value."""
+    if latch is not header or nodes != {header}:
+        raise ValueError("post-tested loop is not a single block")
+    terminal = header.last_op
+    if terminal.name != "llvm.cond_br" or terminal.successors[0] is not header or terminal.successors[1] is header:
+        raise ValueError("post-tested loop branch is not true-backedge/false-exit")
+    condition = terminal.operands[0].owner
+    if not isinstance(condition, Operation) or condition.name != "llvm.icmp":
+        raise ValueError("post-tested loop needs an integer comparison")
+    try:
+        predicate = ICmpPredicateFlag.from_int(_integer_attr(condition.properties.get("predicate"))).value
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError("post-tested loop predicate is unknown") from None
+    update_value = condition.operands[0]
+    update = update_value.owner
+    if predicate not in {"slt", "ult"} or not isinstance(update, Operation) or update.name != "llvm.add":
+        raise ValueError("post-tested induction is not a positive addition less-than test")
+    candidates = [v for v in update.operands if v in header.args]
+    if len(candidates) != 1 or not isinstance(candidates[0].type, IntegerType):
+        raise ValueError("post-tested update does not uniquely consume induction")
+    induction = candidates[0]
+    induction_index = list(header.args).index(induction)
+    incoming = list(terminal.then_arguments)
+    if len(incoming) != len(header.args) or incoming[induction_index] is not update_value:
+        raise ValueError("post-tested backedge does not carry the tested update")
+    outside = predecessors[header] - nodes
+    if len(outside) != 1 or predecessors[header] & nodes != {header}:
+        raise ValueError("post-tested loop needs exactly one preheader")
+    preheader = next(iter(outside))
+    branch = preheader.last_op
+    if branch.name != "llvm.br" or branch.successors[0] is not header or len(branch.operands) != len(header.args):
+        raise ValueError("post-tested initial edge does not match header")
+    initial = constant_integer(branch.operands[induction_index])
+    bound = constant_integer(condition.operands[1])
+    step = constant_integer(next(v for v in update.operands if v is not induction))
+    if initial is None or bound is None or step is None or step <= 0:
+        raise ValueError("post-tested initial, bound and positive step must be constant")
+    width = int(induction.type.width.data)
+    if predicate == "ult":
+        initial &= (1 << width) - 1
+        bound &= (1 << width) - 1
+    trips = max(1, (bound - initial + step - 1) // step)
+    limit = (1 << width) - 1 if predicate == "ult" else (1 << (width - 1)) - 1
+    if initial + trips * step > limit:
+        raise ValueError("post-tested final induction update could overflow")
+    return {
+        "header_block": positions[header], "latch_block": positions[latch],
+        "body_blocks": [], "initial": initial, "bound": bound, "step": step,
+        "trip_count": trips, "induction_argument_index": induction_index,
+        "other_carried_values": len(header.args) - 1, "predicate": predicate,
+        "post_tested": True,
+    }, nodes
+
+
 def _constant_loop(header, latch, nodes, predecessors, positions):
     """Recognize constant induction independently of other carried SSA values.
 
@@ -123,6 +178,8 @@ def _constant_loop(header, latch, nodes, predecessors, positions):
     edges determine execution counts. Other conditional exits remain rejected by
     the enclosing CFG analysis; this does not model accumulator values.
     """
+    if header is latch:
+        return _posttested_single_block_loop(header, latch, nodes, predecessors, positions)
     terminal = header.last_op
     if terminal.name != "llvm.cond_br" or not header.args or len(terminal.successors) != 2:
         raise ValueError("loop header is not an induction conditional branch")
@@ -384,6 +441,7 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
             pending.extend(b for b in block.last_op.successors if b in index)
     if len(reachable) != len(blocks):
         problems.append("function contains unreachable blocks")
+    structural_problems = tuple(problems)
     loops = []
     if not problems:
         dominance = cfg.dominance
@@ -412,11 +470,25 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
                 problems.append("natural loops overlap without nesting")
         if not any(block.last_op.name == "llvm.return" for block in blocks):
             problems.append("function has no return")
+    constant_counts = None
+    if problems and not structural_problems:
+        from .constant_control_cfg import constant_control_counts
+
+        try:
+            constant_counts = constant_control_counts(function)
+        except (ValueError, KeyError, TypeError, AttributeError) as exc:
+            problems.append(f"constant-control fallback: {exc}")
+        else:
+            problems = []
     multiplicity = {block: 1 for block in blocks}
-    if not problems:
+    if constant_counts is not None:
+        multiplicity = constant_counts
+    elif not problems:
         for row, nodes in loops:
             for block in nodes:
-                multiplicity[block] *= row["trip_count"] + (index[block] == row["header_block"])
+                multiplicity[block] *= row["trip_count"] + (
+                    index[block] == row["header_block"] and not row.get("post_tested", False)
+                )
     else:
         multiplicity = {block: None for block in blocks}
 
@@ -424,6 +496,10 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
     dynamic = Counter()
     pointer_setup = _pointer_setup_operations(function)
     dynamic_pointer_setup = 0
+    from .address_loop_control import address_loop_updates
+
+    address_updates = address_loop_updates(blocks, loops) if not problems else frozenset()
+    dynamic_address_updates = 0
     tasks = defaultdict(
         lambda: {"static": Counter(), "dynamic": Counter(), "load_payload_bytes": 0, "store_payload_bytes": 0}
     )
@@ -463,6 +539,8 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
                 task["dynamic"][category] += count
                 if operation in pointer_setup:
                     dynamic_pointer_setup += count
+                if operation in address_updates:
+                    dynamic_address_updates += count
             if category in {"load", "store"}:
                 ty = operation.results[0].type if category == "load" else operation.operands[0].type
                 payload = _payload_bytes(ty)
@@ -557,6 +635,9 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
         "schema": "host_cfg_activity_v1",
         "status": "derived" if not problems and not unknown_payload else "UNKNOWN",
         "problems": sorted(set(problems)),
+        "control_count_basis": "bounded_constant_control_v1"
+        if constant_counts is not None
+        else "constant_induction_v1",
         "loop_count": len(loops),
         "loops": [row for row, _ in loops],
         "blocks": [{"block": index[b], "execution_count": multiplicity[b]} for b in blocks],
@@ -569,6 +650,7 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
         "static_operations": dict(static),
         "dynamic_operations": dict(dynamic) if not problems else None,
         "dynamic_pointer_setup_arithmetic": dynamic_pointer_setup if not problems else None,
+        "dynamic_address_loop_control_arithmetic": dynamic_address_updates if not problems else None,
         "load_payload_bytes": sum(row["load_payload_bytes"] for row in tasks.values()) if payload_known else None,
         "store_payload_bytes": sum(row["store_payload_bytes"] for row in tasks.values()) if payload_known else None,
         "unknown_memory_operation_indices": unknown_payload,
@@ -577,7 +659,9 @@ def analyze_host_cfg_activity(function: Any, *, prepared_cfg: PreparedHostCFG | 
         "allocations": allocations,
         "top_allocations_by_static_payload": top_allocations,
         "top_buffers_by_scalar_memory_payload": top_buffers,
-        "memory_hotspot_identity_scope": "buffer_root alloca index is function.walk operation index; exact SSA roots only",
+        "memory_hotspot_identity_scope": (
+            "buffer_root alloca index is function.walk operation index; exact SSA roots only"
+        ),
         "static_allocation_payload_bytes": sum(row["payload_bytes"] for row in allocations)
         if all(row["payload_bytes"] is not None for row in allocations)
         else None,

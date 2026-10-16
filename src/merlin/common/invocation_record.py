@@ -4,6 +4,7 @@ These observations confer no correctness or stage applicability. Callers own
 which inputs/dependencies are complete and the verifier owns semantic lift.
 Records are written outside invoked packages and never accepted from stdout.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -18,6 +19,7 @@ import uuid
 from pathlib import Path
 
 SCHEMA = "merlin.invocation_record.v1"
+ARTIFACT_REUSE_SCHEMA = "merlin.artifact_reuse.v1"
 
 
 def _pin(path: Path) -> dict:
@@ -25,7 +27,16 @@ def _pin(path: Path) -> dict:
     try:
         if not path.is_file():
             raise OSError("not a regular file")
-        return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        before = path.stat()
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                digest.update(chunk)
+        after = path.stat()
+        fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_mode")
+        if any(getattr(before, name) != getattr(after, name) for name in fields):
+            raise OSError("observation member changed during its read")
+        return {"path": str(path), "sha256": digest.hexdigest()}
     except OSError as error:
         # An observation must not replace the process's own missing-tool/input
         # failure. A verifier cannot admit an unavailable pin.
@@ -48,8 +59,11 @@ def environment_identity(environment) -> dict:
     for key, value in environment.items():
         encoded_key, encoded_value = os.fsencode(key), os.fsencode(value)
         if (
-            not encoded_key or b"=" in encoded_key or b"\0" in encoded_key
-            or b"\0" in encoded_value or encoded_key in members
+            not encoded_key
+            or b"=" in encoded_key
+            or b"\0" in encoded_key
+            or b"\0" in encoded_value
+            or encoded_key in members
         ):
             raise ValueError("environment has an invalid or ambiguous process mapping")
         members[encoded_key] = encoded_value
@@ -59,7 +73,8 @@ def environment_identity(environment) -> dict:
             digest.update(len(part).to_bytes(8, "big"))
             digest.update(part)
     return {
-        "schema": "merlin.process_environment.v1", "sha256": digest.hexdigest(),
+        "schema": "merlin.process_environment.v1",
+        "sha256": digest.hexdigest(),
         "keys": [os.fsdecode(key) for key in sorted(members)],
         "scope": "complete effective mapping; values withheld; transitive dependencies unproved",
     }
@@ -67,7 +82,16 @@ def environment_identity(environment) -> dict:
 
 class Invocation:
     def __init__(
-        self, directory: Path, *, stage: str, argv, cwd=None, env=None, inputs=(), outputs=(), dependencies=(),
+        self,
+        directory: Path,
+        *,
+        stage: str,
+        argv,
+        cwd=None,
+        env=None,
+        inputs=(),
+        outputs=(),
+        dependencies=(),
     ):
         if not stage or not argv:
             raise ValueError("invocation observation requires a stage and command")
@@ -89,10 +113,15 @@ class Invocation:
                 found = shutil.which(command[0], path=os.pathsep.join(search))
                 executable = Path(found) if found else work / executable
         self.document = {
-            "schema": SCHEMA, "stage": stage, "argv": command, "cwd": str(work),
+            "schema": SCHEMA,
+            "stage": stage,
+            "argv": command,
+            "cwd": str(work),
             "kind": "subprocess",
-            "executable": _pin(executable), "inputs": _pins(self.inputs),
-            "dependencies": _pins(self.dependencies), "status": "running",
+            "executable": _pin(executable),
+            "inputs": _pins(self.inputs),
+            "dependencies": _pins(self.dependencies),
+            "status": "running",
             "started_ns": time.time_ns(),
             "environment": environment_identity(selected_env),
         }
@@ -108,10 +137,23 @@ class Invocation:
             data = value if isinstance(value, bytes) else (value or "").encode("utf-8")
             path = self.directory / (name + ".bin")
             path.write_bytes(data)
-            self.document[name] = _pin(path)
+        self.complete_streams(result.returncode)
+
+    def complete_streams(self, returncode: int):
+        """Seal streams written incrementally by the actual process caller.
+
+        The caller owns bounded capture and real process cleanup. Existing raw
+        stream files are pinned without loading a full trace into RAM.
+        """
+        if type(returncode) is not int:
+            raise ValueError("streamed invocation requires its actual process exit status")
+        for name in ("stdout", "stderr"):
+            self.document[name] = _pin(self.directory / (name + ".bin"))
         self.document.update(
-            status="completed" if result.returncode == 0 else "failed", returncode=result.returncode,
-            finished_ns=time.time_ns(), outputs=_pins(path for path in self.outputs if path.is_file()),
+            status="completed" if returncode == 0 else "failed",
+            returncode=returncode,
+            finished_ns=time.time_ns(),
+            outputs=_pins(path for path in self.outputs if path.is_file()),
             inputs_unchanged=_pins(self.inputs) == self.document["inputs"],
             dependencies_unchanged=_pins(self.dependencies) == self.document["dependencies"],
             executable_unchanged=_pin(Path(self.document["executable"]["path"])) == self.document["executable"],
@@ -126,8 +168,10 @@ class Invocation:
 
 class CallInvocation(Invocation):
     """An observed Python dispatch, distinct from a subprocess command claim."""
-    def __init__(self, directory: Path, *, stage: str, function, arguments: dict,
-                 inputs=(), outputs=(), dependencies=()):
+
+    def __init__(
+        self, directory: Path, *, stage: str, function, arguments: dict, inputs=(), outputs=(), dependencies=()
+    ):
         try:
             origin = inspect.getsourcefile(function)
         except TypeError:
@@ -135,14 +179,21 @@ class CallInvocation(Invocation):
         # An uninspectable callable remains an unavailable observation; it does
         # not turn optional lineage into a new functional refusal.
         source = origin or "/unavailable-callable-source"
-        super().__init__(directory, stage=stage, argv=(source,), inputs=inputs, outputs=outputs,
-                         dependencies=(*dependencies, Path(source)))
+        super().__init__(
+            directory,
+            stage=stage,
+            argv=(source,),
+            inputs=inputs,
+            outputs=outputs,
+            dependencies=(*dependencies, Path(source)),
+        )
         name = (
             f"{getattr(function, '__module__', type(function).__module__)}."
             f"{getattr(function, '__qualname__', type(function).__qualname__)}"
         )
-        self.document.update(kind="python_call", callable=name, callable_source_available=origin is not None,
-                             arguments=arguments)
+        self.document.update(
+            kind="python_call", callable=name, callable_source_available=origin is not None, arguments=arguments
+        )
         self.document.pop("argv")
         self.document.pop("environment")
         self._write()
@@ -172,8 +223,16 @@ def run(argv, *, directory: Path, stage: str, inputs=(), outputs=(), dependencie
     # Observe and execute the same immutable snapshot, even if a caller's
     # mutable mapping or ambient environment changes at the observation point.
     kwargs["env"] = dict(os.environ if kwargs.get("env") is None else kwargs["env"])
-    with observe(directory, stage=stage, argv=argv, inputs=inputs, outputs=outputs,
-                 dependencies=dependencies, cwd=kwargs.get("cwd"), env=kwargs.get("env")) as record:
+    with observe(
+        directory,
+        stage=stage,
+        argv=argv,
+        inputs=inputs,
+        outputs=outputs,
+        dependencies=dependencies,
+        cwd=kwargs.get("cwd"),
+        env=kwargs.get("env"),
+    ) as record:
         result = subprocess.run(argv, **kwargs)
         record.complete(result)
         return result
@@ -192,31 +251,115 @@ def observe_call(directory: Path, **kwargs):
             record.failed(RuntimeError("call did not report its return"))
 
 
-def verify(path: Path) -> dict:
+def verify(path: Path, *, pin_replay=None) -> dict:
     """Reopen exact observation bytes; completeness/applicability remain caller-owned."""
     document = json.loads(Path(path).read_text(encoding="utf-8"))
     returned = (
-        document.get("returncode") == 0 if document.get("kind") == "subprocess"
+        document.get("returncode") == 0
+        if document.get("kind") == "subprocess"
         else document.get("outcome") == "returned"
     )
     unchanged = ("inputs_unchanged", "dependencies_unchanged", "executable_unchanged")
-    if (document.get("schema") != SCHEMA or document.get("status") != "completed"
-        or not returned or any(document.get(name) is not True for name in unchanged)):
+    if (
+        document.get("schema") != SCHEMA
+        or document.get("status") != "completed"
+        or not returned
+        or any(document.get(name) is not True for name in unchanged)
+    ):
         raise ValueError("invocation did not complete with unchanged observed inputs")
-    for pin in [document["executable"], document["stdout"], document["stderr"], *document["inputs"],
-                *document["outputs"], *document["dependencies"]]:
-        if not pin.get("sha256") or _pin(Path(pin["path"])) != pin:
+    roles = [(document["executable"], True), (document["stdout"], False), (document["stderr"], False)]
+    roles.extend((pin, False) for pin in (*document["inputs"], *document["outputs"]))
+    roles.extend((pin, True) for pin in document["dependencies"])
+    for pin, selected_role in roles:
+        actual = None
+        if selected_role and pin_replay is not None:
+            from .selected_pin_replay import replayed_pin
+
+            actual = replayed_pin(pin_replay, Path(pin["path"]))
+        if actual is None:
+            actual = _pin(Path(pin["path"]))
+        if not pin.get("sha256") or actual != pin:
             raise ValueError("invocation input, dependency or product changed")
     return document
 
 
-def require_environment(path: Path, *, environment) -> dict:
+def require_environment(path: Path, *, environment, pin_replay=None) -> dict:
     """Reopen an actual successful process and compare its protected selection.
 
     Older observations without this binding cannot establish environment
     identity. A matching saved record alone confers no live execution authority.
     """
-    document = verify(path)
+    document = verify(path, pin_replay=pin_replay)
     if document.get("kind") != "subprocess" or document.get("environment") != environment_identity(environment):
         raise ValueError("invocation has no matching effective process environment binding")
+    return document
+
+
+def record_artifact_reuse(
+    directory: Path, *, stage: str, selection_sha256: str, original_invocation: Path, inputs=(), outputs=()
+) -> Path:
+    """Record restored bytes separately from an actual process invocation.
+
+    The live build owner must authenticate the original closed process before
+    calling. This byte receipt issues no runtime closure, new invocation,
+    compiler timing, repeat or numerical verdict.
+    """
+    original = verify(original_invocation)
+    if original["kind"] != "subprocess" or not stage:
+        raise ValueError("artifact reuse requires its original completed process")
+    if (
+        type(selection_sha256) is not str
+        or len(selection_sha256) != 64
+        or any(char not in "0123456789abcdef" for char in selection_sha256)
+    ):
+        raise ValueError("artifact reuse requires its complete selected build identity")
+    document = {
+        "schema": ARTIFACT_REUSE_SCHEMA,
+        "kind": "artifact_reuse",
+        "stage": stage,
+        "status": "restored",
+        "selection_sha256": selection_sha256,
+        "original_invocation": _pin(original_invocation),
+        "inputs": _pins(inputs),
+        "outputs": _pins(outputs),
+        "observed_ns": time.time_ns(),
+        "new_process": False,
+    }
+    original_hashes = {pin["sha256"] for pin in original["outputs"]}
+    if not document["outputs"] or any(pin["sha256"] not in original_hashes for pin in document["outputs"]):
+        raise ValueError("restored artifact has no matching original completed product")
+    encoded = json.dumps(document, sort_keys=True, indent=2) + "\n"
+    if len(encoded.encode()) > 1024 * 1024:
+        raise ValueError("artifact reuse receipt exceeds its byte budget")
+    parent = Path(directory).resolve() / "invocations" / uuid.uuid4().hex
+    parent.mkdir(parents=True, mode=0o700)
+    path = parent / "artifact_reuse.json"
+    path.write_text(encoded, encoding="utf-8")
+    verify_artifact_reuse(path)
+    return path
+
+
+def verify_artifact_reuse(path: Path) -> dict:
+    """Reopen byte provenance; saved receipts never issue a live cache owner."""
+    path = Path(path)
+    if path.stat().st_size > 1024 * 1024:
+        raise ValueError("artifact reuse receipt exceeds its byte budget")
+    document = json.loads(path.read_text())
+    if (
+        document.get("schema") != ARTIFACT_REUSE_SCHEMA
+        or document.get("kind") != "artifact_reuse"
+        or document.get("status") != "restored"
+        or document.get("new_process") is not False
+        or any(name in document for name in ("argv", "returncode", "started_ns", "finished_ns", "timing"))
+    ):
+        raise ValueError("artifact reuse receipt claims an unrelated process")
+    for pin in (*document["inputs"], *document["outputs"], document["original_invocation"]):
+        if not pin.get("sha256") or _pin(Path(pin["path"])) != pin:
+            raise ValueError("artifact reuse input, restored product or original record changed")
+    original = verify(Path(document["original_invocation"]["path"]))
+    if original["kind"] != "subprocess":
+        raise ValueError("artifact reuse has no actual original process")
+    original_hashes = {pin["sha256"] for pin in original["outputs"]}
+    if not document["outputs"] or any(pin["sha256"] not in original_hashes for pin in document["outputs"]):
+        raise ValueError("artifact reuse differs from its original completed products")
     return document

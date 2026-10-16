@@ -329,3 +329,20 @@ def test_selected_math_symbol_contract_is_mandatory_and_exact(kind, symbol):
     clamp, _ = _synthetic_host("clamp_upper_literal", symbol="powf")
     with pytest.raises(ValueError, match="linkage"):
         validate_host_capabilities(clamp["host"]["capability_spec"])
+
+
+def test_ordered_compare_select_clamp_is_distinct_and_source_exact():
+    body = '''%bound = "arith.constant"() <{value = 2.250000e+00 : f32}> : () -> f32
+        %condition = "arith.cmpf"(%input, %bound) <{predicate = 2 : i64, fastmath = #arith.fastmath<none>}> : (f32, f32) -> i1
+        %value = "arith.select"(%condition, %bound, %input) : (i1, f32, f32) -> f32'''
+    text = _program("clamp_upper_literal", body=body)
+    pattern = recognize_static_composite_math_body(_generic(text))
+    assert pattern.operation == "clamp_upper_literal_compare_select"
+    validate_serialized_static_composite_math_pattern(asdict(pattern))
+    for changed in (
+        text.replace("predicate = 2", "predicate = 4"),
+        text.replace("(%condition, %bound, %input)", "(%condition, %input, %bound)"),
+        text.replace("(%input, %bound)", "(%acc, %bound)"),
+    ):
+        with pytest.raises(InvalidLinalgPattern):
+            recognize_static_composite_math_body(_generic(changed))

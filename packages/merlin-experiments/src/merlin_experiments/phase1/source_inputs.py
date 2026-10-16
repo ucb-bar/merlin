@@ -177,10 +177,14 @@ def paths(
         ("general_compiler_contract", "merlin.targetgen.generalization_prompt"),
         ("semantic_search", "merlin.targetgen.semantic_search.search"),
         ("linalg_inventory", "merlin.targetgen.contract.linalg_iface"),
+        ("public_compile_sources", "merlin_experiments.phase0.public_compile_sources"),
+        ("public_scale_sources", "merlin_experiments.phase0.public_scale_sources"),
+        ("public_interface_emitter", "merlin.targetgen.contract.interface_emit"),
         ("instruction_semantics", "merlin.targetgen.instruction_semantics"),
         ("readback_policy", "merlin.targetgen.contract.readback_policy"),
         ("readback_codec", "merlin.runtime.out_b64"),
         ("binary_readback_codec", "merlin.runtime.out_bin"),
+        ("simulation_certificate", "merlin.targetgen.simulation_certificate"),
     ):
         inputs[f"phase1:startup:{key}"] = str(_source(module).resolve())
     try:

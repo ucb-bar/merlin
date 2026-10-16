@@ -54,6 +54,42 @@ def _empty_prepared_index(raw, normalized, receipt, count, selected, linked=None
     return witness
 
 
+def _synthetic_host_groups(module, _target, **_kwargs):
+    """Cover the real source while isolating placement from admission checks."""
+    from merlin.xdsl_dialects.lowering import compute_groups
+
+    roots = [op for op in module.walk()
+             if op.name.startswith("linalg.") and compute_groups.classify(op) is not None]
+    return [
+        compute_groups.Group(
+            index, compute_groups.HOST, None, members=[root],
+            stages=[compute_groups.classify(root).kind],
+        )
+        for index, root in enumerate(roots)
+    ]
+
+
+def _synthetic_source_demand(raw, normalized, groups, *, linked=None):
+    """Closed bookkeeping fixture, independent of native/source qualification."""
+    from merlin_experiments.phase1.feedback import private_source_demand
+
+    record = {
+        "schema": private_source_demand.SCHEMA,
+        "status": "source_demand_linked" if linked is not None else "source_demand_derived",
+        "source_sha256": raw, "normalized_source_sha256": normalized,
+        "declarations": {name: "a" * 64 for name in ("capability", "software", "rtl_facts", "numeric_policy")},
+        "n_source_groups": groups, "n_demanded_groups": groups,
+        "n_requested_groups": groups, "n_lowered_groups": groups if linked else 0,
+        "n_covered_groups": groups if linked else 0, "n_host_groups": 0,
+        "n_unknown_host_groups": 0, "n_missing_direct_groups": 0,
+        "n_unresolved_raw_regions": 0, "n_raw_undetermined_regions": 0,
+        "demanded_group_provenance": [],
+    }
+    if linked is not None:
+        record["linked_build"] = dict(linked)
+    return record
+
+
 def test_private_capture_binds_sealed_and_compiler_tree_algorithms_independently(tmp_path):
     from merlin_experiments.capture_execution import sealed_m2m
 
@@ -219,6 +255,12 @@ def test_complete_requires_current_candidate_all_programs_and_device_work(monkey
                         "n_linalg_regions": 1,
                         "n_groups": 1,
                         "eligible_groups": [0],
+                        "eligible_group_provenance": [],
+                        "accelerator_source_demand": _synthetic_source_demand(
+                            "d" * 64, "e" * 64, 1,
+                            linked={"capture_tree_sha256": "c" * 64, "elf_sha256": "2" * 64,
+                                    "candidate_tree_sha256": "1" * 64},
+                        ),
                         "selected_index_observation": deepcopy(selected_index),
                         "n_bounded_control_assertions": 0,
                         "n_internal_mask_compactions": 0,
@@ -438,6 +480,14 @@ def test_complete_requires_current_candidate_all_programs_and_device_work(monkey
         "paper_accuracy": "not_claimed",
     }
     kwargs = {"required_models": ("a", "b"), "required_programs": programs, "candidate_sha256": "1" * 64}
+    assert gate.complete(record, **kwargs)
+    source = record["models"][0]["checks"]["source"]["prefix"]
+    demand = source.pop("accelerator_source_demand")
+    assert not gate.complete(record, **kwargs)
+    source["accelerator_source_demand"] = demand
+    demand["n_requested_groups"] = 0
+    assert not gate.complete(record, **kwargs)
+    demand["n_requested_groups"] = 1
     assert gate.complete(record, **kwargs)
     record["schema"] = "merlin.phase1.private_full_model_build_gate.v1"
     assert not gate.complete(record, **kwargs)
@@ -873,6 +923,31 @@ def test_unknown_support_required_operation_is_not_waived():
         gate._noncompute_support({"disposition": "support_required", "mlir_operation": "tensor.future_unknown"})
 
 
+def test_only_source_proved_contraction_zero_init_fill_is_support():
+    from merlin.common import mlir_query as mq
+
+    def proven(value: str, consumer: str) -> bool:
+        source = f"""module {{
+          func.func @f(%a: tensor<2x2xf32>, %b: tensor<2x2xf32>) -> tensor<2x2xf32> {{
+            %e = tensor.empty() : tensor<2x2xf32>
+            %z = arith.constant {value} : f32
+            %i = linalg.fill ins(%z : f32) outs(%e : tensor<2x2xf32>) -> tensor<2x2xf32>
+            {consumer}
+          }}
+        }}"""
+        parsed = tuple(mq.walk(mq.parse(source)))
+        ordinal = next(i for i, op in enumerate(parsed) if op.name == "linalg.fill")
+        row = {"disposition": "support_required", "mlir_operation": "linalg.fill", "ordinals": [ordinal], "count": 1}
+        return gate._contraction_zero_init_fill(row, parsed)
+
+    matmul = """%r = linalg.matmul ins(%a, %b : tensor<2x2xf32>, tensor<2x2xf32>)
+                   outs(%i : tensor<2x2xf32>) -> tensor<2x2xf32>
+                return %r : tensor<2x2xf32>"""
+    assert proven("0.000000e+00", matmul)
+    assert not proven("1.000000e+00", matmul)
+    assert not proven("0.000000e+00", "return %i : tensor<2x2xf32>")
+
+
 def _transpose_module(*, permutation="1, 0", output="3x2xi8", body=None, operation="linalg.transpose"):
     from merlin.common import mlir_query as mq
 
@@ -990,11 +1065,12 @@ def _generic_copy_module(
         output_dtype = dtype
     if iterators is None:
         iterators = ", ".join(["#linalg.iterator_type<parallel>"] * 4)
+    domain = ", ".join(f"d{i}" for i in range(len(output_shape.split("x"))))
     input_type = f"tensor<{input_shape}x{dtype}>"
     output_type = f"tensor<{output_shape}x{output_dtype}>"
     properties = (
-        f"indexing_maps = [affine_map<(d0, d1, d2, d3) -> ({input_map})>, "
-        f"affine_map<(d0, d1, d2, d3) -> ({output_map})>], "
+        f"indexing_maps = [affine_map<({domain}) -> ({input_map})>, "
+        f"affine_map<({domain}) -> ({output_map})>], "
         f"iterator_types = [{iterators}], operandSegmentSizes = array<i32: {segments}>"
     )
     return mq.parse(
@@ -1008,6 +1084,37 @@ def _generic_copy_module(
   }}
 }}"""
     )
+
+
+@pytest.mark.parametrize(
+    "input_shape,input_map,accepted",
+    [
+        ("1x2x12x12", "d3, d0, d4 * 4 + d1, d5 * 4 + d2", True),
+        ("1x2x11x12", "d3, d0, d4 * 4 + d1, d5 * 4 + d2", False),
+        ("1x2x12x12", "d3, d0, d4 * 4 + d1 + 1, d5 * 4 + d2", False),
+        ("1x2x12x12", "d3, d0, d4 * 4 + d1 - 1, d5 * 4 + d2", False),
+        ("1x2x12x12", "d3, d0, d4 floordiv 2, d5 * 4 + d2", False),
+    ],
+)
+def test_generic_copy_support_proves_linear_tiled_movement_bounds(input_shape, input_map, accepted):
+    from merlin_experiments.phase1.feedback.private_data_movement import verify_generic_copy
+
+    from merlin.common import mlir_query as mq
+
+    # Independent geometry: patch coordinates are bounded by the identity output domain.
+    module = _generic_copy_module(
+        input_shape=input_shape,
+        output_shape="2x4x4x1x3x3",
+        input_map=input_map,
+        output_map="d0, d1, d2, d3, d4, d5",
+        iterators=", ".join(["#linalg.iterator_type<parallel>"] * 6),
+    )
+    op = tuple(mq.walk(module))[2]
+    if accepted:
+        verify_generic_copy(op, ordinal=2)
+    else:
+        with pytest.raises(ValueError):
+            verify_generic_copy(op, ordinal=2)
 
 
 def test_generic_copy_support_requires_typed_singleton_projection_and_exact_join():
@@ -1097,13 +1204,13 @@ def test_source_obligations_prove_copy_before_hardware_eligibility(tmp_path, mon
         ai, "verify_capture_receipt", lambda _source: {"status": "verified_materialized", "receipt_sha256": "a" * 64}
     )
     monkeypatch.setattr(bucketize, "verify_capture_receipt", ai.verify_capture_receipt)
-    monkeypatch.setattr(cg, "form_groups", lambda _module, _target: [])
+    monkeypatch.setattr(cg, "form_groups", _synthetic_host_groups)
     monkeypatch.setattr(cg, "plan", lambda _module, _target, *, groups: {})
     monkeypatch.setattr(cg, "require_explained", lambda _plan: None)
     monkeypatch.setattr(
         eligibility,
         "capability_map_from_contract",
-        lambda _contract: {"movement": SemanticCapability("movement", dtypes=("fp32",))},
+        lambda _contract: {"movement": SemanticCapability("movement", dtypes=("int8",))},
     )
     signature_row = {
         "mlir_operation": "linalg.generic",
@@ -1152,7 +1259,11 @@ def test_source_obligations_prove_copy_before_hardware_eligibility(tmp_path, mon
         gate._source_obligations(capture, "fixture", {}, {}, {})
     signature_row["semantic_family"] = "elementwise_map"
     signature_row["disposition"] = "host_required"
-    with pytest.raises(ValueError, match="eligible source operation"):
+    monkeypatch.setattr(
+        eligibility, "capability_map_from_contract",
+        lambda _contract: {"movement": SemanticCapability("movement", dtypes=("fp32",))},
+    )
+    with pytest.raises(gate.source_demand.SourceDemandIncomplete):
         gate._source_obligations(capture, "fixture", {}, {}, {})
 
 
@@ -1192,8 +1303,11 @@ def test_source_obligations_joins_typed_hardware_exclusion_before_host_check(tmp
     %t = "linalg.generic"(%init) <{indexing_maps = [affine_map<(d0) -> (d0)>],
       iterator_types = [#linalg.iterator_type<parallel>], operandSegmentSizes = array<i32: 0, 1>}> ({
       ^bb0(%old: i64):
+        %idx = "linalg.index"() <{dim = 0 : i64}> : () -> index
+        %wide = "arith.index_cast"(%idx) : (index) -> i64
         %c = "arith.constant"() <{value = 1 : i64}> : () -> i64
-        "linalg.yield"(%c) : (i64) -> ()
+        %value = "arith.addi"(%wide, %c) : (i64, i64) -> i64
+        "linalg.yield"(%value) : (i64) -> ()
     }) {prov.family = "movement", prov.op = "arange", prov.aten = "aten.arange.start_step"} :
       (tensor<4xi64>) -> tensor<4xi64>
     return %t : tensor<4xi64>
@@ -1205,7 +1319,7 @@ def test_source_obligations_joins_typed_hardware_exclusion_before_host_check(tmp
     )
     (capture / "frontend-trace.json").write_text(json.dumps({"graphs": {"prepared": {"nodes": []}}}))
     monkeypatch.setattr(bucketize, "verify_capture_receipt", ai.verify_capture_receipt)
-    monkeypatch.setattr(cg, "form_groups", lambda _module, _target: [])
+    monkeypatch.setattr(cg, "form_groups", _synthetic_host_groups)
     monkeypatch.setattr(cg, "plan", lambda _module, _target, *, groups: {})
     monkeypatch.setattr(cg, "require_explained", lambda _plan: None)
     capability = {
@@ -1224,7 +1338,10 @@ def test_source_obligations_joins_typed_hardware_exclusion_before_host_check(tmp
         ],
     }
     with pytest.raises(gate.SourceAdmissionError) as failure:
-        gate._source_obligations(capture, "fixture", {"operations": []}, capability, {})
+        gate._source_obligations(
+            capture, "fixture", {"operations": []}, capability, {},
+            facts_sha256="a" * 64, numeric_policy_sha256="b" * 64,
+        )
     assert str(failure.value) == "source has 1 unaccounted or unjustified operation signature(s)"
     private = failure.value._private_unresolved
     assert len(private) == 1
@@ -1261,19 +1378,31 @@ def test_source_obligations_joins_typed_hardware_exclusion_before_host_check(tmp
     # This fixture isolates the independent hardware exclusion screen; the
     # arange source/selected-width join has its own real captured-IR tests.
     monkeypatch.setattr(gate.arange_support, "record", lambda *_args: None)
-    proof = gate._source_obligations(capture, "fixture", {"operations": []}, capability, {})
+    proof = gate._source_obligations(
+            capture, "fixture", {"operations": []}, capability, {},
+            facts_sha256="a" * 64, numeric_policy_sha256="b" * 64,
+        )
     assert proof["eligible_groups"] == []
     for hardware_status in ("unknown", "admitted"):
         with pytest.raises(ValueError, match="unknown hardware eligibility"):
-            gate._source_obligations(capture, "fixture", {"operations": []}, capability, {})
+            gate._source_obligations(
+            capture, "fixture", {"operations": []}, capability, {},
+            facts_sha256="a" * 64, numeric_policy_sha256="b" * 64,
+        )
     hardware_status = "unsupported"
     missing_precision = True
     with pytest.raises(ValueError, match="unknown hardware eligibility"):
-        gate._source_obligations(capture, "fixture", {"operations": []}, capability, {})
+        gate._source_obligations(
+            capture, "fixture", {"operations": []}, capability, {},
+            facts_sha256="a" * 64, numeric_policy_sha256="b" * 64,
+        )
     missing_precision = False
     unknown_precision = True
     with pytest.raises(ValueError, match="unknown hardware eligibility"):
-        gate._source_obligations(capture, "fixture", {"operations": []}, capability, {})
+        gate._source_obligations(
+            capture, "fixture", {"operations": []}, capability, {},
+            facts_sha256="a" * 64, numeric_policy_sha256="b" * 64,
+        )
 
 
 def test_source_admission_error_copies_mutable_input_records():
@@ -1591,6 +1720,8 @@ def test_shared_postbuild_verifier_rehashes_prebuilt_elf(tmp_path):
         "capture_receipt_sha256": "a" * 64,
         "n_source_operations": 3,
         "n_linalg_regions": 1,
+        "eligible_group_provenance": [],
+        "accelerator_source_demand": _synthetic_source_demand("3" * 64, "3" * 64, 0),
         "selected_index_observation": deepcopy(selected),
         "n_bounded_control_assertions": 0,
         "n_internal_mask_compactions": 0,
@@ -1737,7 +1868,7 @@ def test_recipe_derivation_binds_current_sources_and_selected_capture_recipe(tmp
     root.mkdir()
     manifest = root / "evidence-manifest.json"
     manifest.write_text("verified by canonical evidence loader")
-    body = {"schema": "quant_recipe_v1", "target": "fixture", "format": "int8", "why": {}}
+    body = {"schema": "quant_recipe_v1", "target": "fixture", "status": "derived", "format": "int8", "why": {}}
     body["recipe_sha256"] = recipe_digest(body)
     raw = json.dumps(body, sort_keys=True).encode()
     selected = tmp_path / "selected-recipe.json"
@@ -1831,6 +1962,28 @@ def test_recipe_derivation_binds_current_sources_and_selected_capture_recipe(tmp
     assert proof["evidence_manifest_sha256"] == _sha(manifest)
     assert resolved_software == software
     assert selected_profiles == profiles
+    from merlin_experiments.phase1.feedback import private_recipe_variant as variants
+
+    variant = {**body, "framework_capture_policy": {"calibration_count": 1024}}
+    variant["recipe_sha256"] = recipe_digest(variant)
+    selected.write_text(json.dumps(variant, sort_keys=True))
+    review = {"schema": variants.SCHEMA, "status": "reviewed", "reviewed_by": "operator",
+              "reason": "Approved calibration policy",
+              "base_file_sha256": index["recipes"][0]["sha256"], "base_recipe_sha256": body["recipe_sha256"],
+              "selected_file_sha256": _sha(selected), "selected_recipe_sha256": variant["recipe_sha256"],
+              "changes": variants.changes(body, variant)}
+    variant_plan = {"recipe": {"path": str(selected), "sha256": _sha(selected),
+                                "recipe_sha256": variant["recipe_sha256"]}}
+    variant_row = {**row, "capture_recipe_variant": review}
+    variant_proof, _, _ = gate._recipe_derivation(tmp_path / "operator.yaml", variant_row, variant_plan, **kwargs)
+    assert variant_proof["recipe_semantic_sha256"] == variant["recipe_sha256"]
+    assert variant_proof["variant"]["base_recipe_sha256"] == body["recipe_sha256"]
+    with pytest.raises(ValueError, match="absent from current-spec derivation"):
+        gate._recipe_derivation(tmp_path / "operator.yaml", row, variant_plan, **kwargs)
+    with pytest.raises(ValueError, match="selected rtl-facts"):
+        gate._recipe_derivation(tmp_path / "operator.yaml", variant_row, variant_plan,
+                                **{**kwargs, "facts_sha256": "5" * 64})
+    selected.write_bytes(raw)
     assert gate._selected_admission_views(
         resolved_software,
         selected_profiles,

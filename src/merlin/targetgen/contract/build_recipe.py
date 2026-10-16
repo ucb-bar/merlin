@@ -104,6 +104,18 @@ class HarnessBuildRecipe:
     # include root; the ELF cache hashes its exact bytes rather than treating
     # the include-root path alone as a source identity.
     header_dependencies: tuple[Path, ...] = ()
+    # Support sources (a subset of ``support_sources``) whose code must be linked AHEAD of the harness
+    # and the candidate's objects: a startup routine that reaches them with a short-range branch (a
+    # RISC-V ``j``/``jal`` spans +-1 MiB) breaks once candidate code between them grows past that.
+    link_first: tuple[Path, ...] = ()
+
+    def ordered_link_sources(self, sources: Sequence[Path]) -> list[Path]:
+        """``link_first`` support sources, then ``sources``, then the remaining support sources."""
+        first = [Path(s) for s in self.link_first]
+        if any(f not in {Path(s) for s in self.support_sources} for f in first):
+            raise self.error_cls("link_first names a source that is not one of the recipe's support sources")
+        rest = [Path(s) for s in self.support_sources if Path(s) not in first]
+        return [*first, *(Path(s) for s in sources), *rest]
 
     def require_kernel_stack_frame(self) -> KernelStackFramePolicy:
         """Return the target-declared policy or refuse to compile a target-bound kernel."""
@@ -120,8 +132,7 @@ class HarnessBuildRecipe:
         for root in self.include_roots:
             cmd += ["-I", str(root)]
         cmd += ["-T", str(link_script or self.link_script), "-o", str(output)]
-        cmd += [str(s) for s in sources]
-        cmd += [str(s) for s in self.support_sources]
+        cmd += [str(s) for s in self.ordered_link_sources(sources)]
         cmd += self.ldflags
         return cmd
 

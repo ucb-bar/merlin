@@ -86,6 +86,102 @@ def join_routed_source_groups(assigned: Any, source: Mapping[str, Any]) -> dict[
     return joined
 
 
+def verify_routed_source_coverage(emitted: Mapping[str, Any], source: Mapping[str, Any]) -> dict[int, int]:
+    """Require every independently eligible root, allowing intended host selection.
+
+    ``source`` remains the original source-admission witness, never a roster
+    reconstructed from this sidecar. Host selection cannot excuse a missing,
+    duplicate or changed eligible identity. Other emitter refusals stay fatal.
+    This grants no linked-symbol, body, host-compute or numerical admission.
+    """
+    assigned = emitted.get("routed")
+    if not isinstance(assigned, list) or not assigned:
+        raise ValueError("linked roster differs from eligible source groups")
+    demand = source.get("accelerator_source_demand")
+    if (not isinstance(demand, Mapping) or demand.get("status") != "source_demand_derived"
+        or demand.get("n_unknown_host_groups") != 0 or demand.get("n_missing_direct_groups") != 0
+        or demand.get("n_unresolved_raw_regions") != 0
+        or demand.get("demanded_group_provenance") != source.get("eligible_group_provenance")
+        or demand.get("n_demanded_groups") != len(source.get("eligible_groups", []))):
+        raise ValueError("linked source coverage lacks complete independent accelerator demand")
+    joined = join_routed_source_groups(assigned, source)
+    skipped = emitted.get("skipped", [])
+    if not isinstance(skipped, (list, tuple)) or any(
+        not isinstance(row, (list, tuple)) or len(row) != 2
+        or not isinstance(row[0], str) or not row[0]
+        or row[1] != "the placement did not select this group's root"
+        for row in skipped
+    ):
+        raise ValueError("linked build retained a device refusal outside intended host selection")
+    return joined
+
+
+def _conv_entry_signature_matches(emitted, symbol, row):
+    """Join a logical NHWC convolution ABI to its captured matrix contraction."""
+    entry = emitted.get("entries", {}).get(symbol)
+    buffers = emitted.get("call_buffers", {}).get(symbol)
+    if emitted.get("granularity") != "group" or not isinstance(entry, Mapping) or entry.get("op") != "conv2d":
+        return False
+    epilogue = entry.get("epilogue", [])
+    if epilogue not in ([], ["acc_scale"], ["bias_add"], ["bias_add", "acc_scale"]):
+        return False
+    if entry.get("layout", "NHWC") != "NHWC":
+        return False
+    if entry.get("groups", 1) != 1 or type(entry.get("groups", 1)) is not int:
+        return False
+    biased = "bias_add" in epilogue
+    if not isinstance(buffers, list) or len(buffers) != (4 if biased else 3):
+        return False
+    if any(not isinstance(b, Mapping) for b in buffers):
+        return False
+    if [b.get("role") for b in buffers] != (
+        ["input_0", "weight_0", "bias_0", "out_0"] if biased else ["input_0", "weight_0", "out_0"]
+    ):
+        return False
+    program = emitted.get("programs", {}).get(symbol)
+    stated = program.get("entry") if isinstance(program, Mapping) else None
+    if not isinstance(stated, Mapping):
+        return False
+    for key in ("op", "Himg", "Wimg", "ci", "kh", "kw", "N", "stride", "padding", "dilation", "epilogue", "acc_scale"):
+        default = [1, 1] if key == "dilation" else [] if key == "epilogue" else None
+        if entry.get(key, default) != stated.get(key, default):
+            return False
+    image = buffers[0].get("shape")
+    if not isinstance(image, list) or len(image) != 4 or any(type(x) is not int or x <= 0 for x in image):
+        return False
+    batch, h, w, ci = image
+    names = ("Himg", "Wimg", "ci", "kh", "kw", "N")
+    if any(type(entry.get(k)) is not int or entry[k] <= 0 for k in names):
+        return False
+    if (h, w, ci) != (entry["Himg"], entry["Wimg"], entry["ci"]):
+        return False
+    stride, padding, dilation = entry.get("stride"), entry.get("padding"), entry.get("dilation", [1, 1])
+    for values, length, minimum in ((stride, 2, 1), (padding, 4, 0), (dilation, 2, 1)):
+        if (
+            not isinstance(values, list)
+            or len(values) != length
+            or any(type(x) is not int or x < minimum for x in values)
+        ):
+            return False
+    oh = (h + padding[0] + padding[1] - dilation[0] * (entry["kh"] - 1) - 1) // stride[0] + 1
+    ow = (w + padding[2] + padding[3] - dilation[1] * (entry["kw"] - 1) - 1) // stride[1] + 1
+    if oh <= 0 or ow <= 0:
+        return False
+    m, n, k = batch * oh * ow, entry["N"], entry["kh"] * entry["kw"] * ci
+    # This supported logical ABI has an image, flattened stored weights,
+    # optional i32 bias, and a flattened committed output. Match the fused
+    # readout to the same source-stated epilogue rather than assuming a bare
+    # contraction whenever a convolution uses the logical NHWC interface.
+    return (
+        row.get("parallel") == [m, n]
+        and row.get("reduction") == [k]
+        and buffers[1].get("shape") == [k, n]
+        and (not biased or (buffers[2].get("shape") == [n] and buffers[2].get("dtype") == "i32"))
+        and buffers[-1].get("shape") == [m, n]
+        and [buffers[i].get("dtype") for i in (0, 1, len(buffers) - 1)] == row.get("dtypes")
+    )
+
+
 def routed_kernel_symbols(emitted: Mapping[str, Any]) -> set[str]:
     """Validate unique compiled kernels, independently of the source call roster.
 
@@ -127,7 +223,10 @@ def routed_kernel_symbols(emitted: Mapping[str, Any]) -> set[str]:
         if (
             not isinstance(extents, list)
             or any(type(size) is not int for size in extents)
-            or extents != parallel + reduction
+            or (
+                extents != parallel + reduction
+                and not (extents == [] and _conv_entry_signature_matches(emitted, symbol, row))
+            )
         ):
             raise ValueError("routed kernel extents differ from compiled signature")
         by_symbol[symbol] = signature

@@ -13,6 +13,17 @@ from merlin_experiments.phase1.feedback.private_group_provenance import (
 )
 
 
+def require_linked_symbols(elf: Path, symbols: set[str]) -> None:
+    from merlin.llvmlower import toolchain
+
+    command = [str(toolchain.nm()), "--defined-only", "--extern-only", str(elf)]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=120, check=True)
+    defined = {line.split()[-1] for line in result.stdout.splitlines() if line.split()}
+    missing = sorted(symbols - defined)
+    if missing:
+        raise ValueError(f"linked ELF omits {len(missing)} routed device symbol(s): {missing[:8]}")
+
+
 def require_static_build_inputs(
     receipt: Mapping[str, Any], *, target: str, board: str, catalog: Path, dts: Path
 ) -> None:
@@ -99,7 +110,13 @@ def audit_built_device_host_compute(
             )
             for name in functions
         ]
-        report = HA.audit(module, sites)
+        preparation = source.get("conv_input_preparation", {}).get(symbol)
+        report = HA.audit(
+            module,
+            sites,
+            input_preparation={abi.symbol: preparation} if preparation is not None else None,
+            target=target,
+        )
         HA.require_clean(report)
         if report.get("proven_clean") is not True or report.get("accelerator_groups_clean") != len(sites):
             raise ValueError(f"linked group {index} host-compute audit is unknown, not clean")

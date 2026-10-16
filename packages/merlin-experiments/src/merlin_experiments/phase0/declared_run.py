@@ -22,7 +22,7 @@ from .component_generation import DECLARATION, digest
 from .evidence import select_evidence
 from .generation import generate_target
 from .original_call_sources import validate_budget as validate_source_budget
-from .packing_intake import issue_independent_packing_intake
+from .packing_intake import issue_independent_packing_intake, validate_memory_selection
 from .rtl_intake import _outside, _plain, issue_independent_hardware_intake
 from .software_intake import issue_independent_software_intake
 
@@ -31,6 +31,12 @@ BRIDGE_SCHEMA = "merlin.independent_phase0_run.v2"
 REQUIREMENT_SCHEMA = "merlin.independent_phase0_run.v3"
 PERFORMANCE_SCHEMA = "merlin.independent_phase0_run.v4"
 REFERENCE_SCHEMA = "merlin.independent_phase0_run.v5"
+PACKING_SCHEMA = "merlin.independent_phase0_run.v6"
+INTEGER_SCALAR_SCHEMA = "merlin.independent_phase0_run.v7"
+METADATA_SCHEMA = "merlin.independent_phase0_run.v8"
+TRIANGULAR_SCHEMA = "merlin.independent_phase0_run.v9"
+RESHAPE_SCHEMA = "merlin.independent_phase0_run.v10"
+REDUCTION_SCHEMA = "merlin.independent_phase0_run.v11"
 REPORT_SCHEMA = "merlin.independent_phase0_run_report.v1"
 _INPUTS = {"descriptor", "hardware_selection", "software_source", "software_review", "semantic_basis"}
 
@@ -60,6 +66,28 @@ def _pin(value, *, forbidden, runtime=False):
     return path
 
 
+def _has_original_references(request):
+    return isinstance(request, dict) and (
+        request.get("schema") in {REFERENCE_SCHEMA, PACKING_SCHEMA}
+        or (
+            request.get("schema")
+            in {INTEGER_SCALAR_SCHEMA, METADATA_SCHEMA, TRIANGULAR_SCHEMA, RESHAPE_SCHEMA, REDUCTION_SCHEMA}
+            and "original_references" in request
+        )
+    )
+
+
+def _has_memory_packing(request):
+    return isinstance(request, dict) and (
+        request.get("schema") == PACKING_SCHEMA
+        or (
+            request.get("schema")
+            in {INTEGER_SCALAR_SCHEMA, METADATA_SCHEMA, TRIANGULAR_SCHEMA, RESHAPE_SCHEMA, REDUCTION_SCHEMA}
+            and "packing" in request
+        )
+    )
+
+
 def validate(request):
     """Close source and policy declarations before any authority is issued."""
     fields = {"schema", "target", "inputs", "operator_schemas", "circt_opt", "forbidden_roots", "automatic"}
@@ -67,16 +95,54 @@ def validate(request):
         REQUIREMENT_SCHEMA,
         PERFORMANCE_SCHEMA,
         REFERENCE_SCHEMA,
+        PACKING_SCHEMA,
+        INTEGER_SCALAR_SCHEMA,
+        METADATA_SCHEMA,
+        TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
     }:
         fields.add("release_purpose")
-    if isinstance(request, dict) and request.get("schema") in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
+    if isinstance(request, dict) and request.get("schema") in {
+        PERFORMANCE_SCHEMA,
+        REFERENCE_SCHEMA,
+        PACKING_SCHEMA,
+        INTEGER_SCALAR_SCHEMA,
+        METADATA_SCHEMA,
+        TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
+    }:
         fields.add("source_performance")
-    if isinstance(request, dict) and request.get("schema") == REFERENCE_SCHEMA:
+    if _has_original_references(request):
         fields.add("original_references")
+    if _has_memory_packing(request):
+        fields.add("packing")
+    if isinstance(request, dict) and request.get("schema") in {
+        INTEGER_SCALAR_SCHEMA,
+        METADATA_SCHEMA,
+        TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
+    }:
+        fields.add("original_scalar_conversion")
     if (
         not isinstance(request, dict)
         or set(request) != fields
-        or request["schema"] not in {SCHEMA, BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}
+        or request["schema"]
+        not in {
+            SCHEMA,
+            BRIDGE_SCHEMA,
+            REQUIREMENT_SCHEMA,
+            PERFORMANCE_SCHEMA,
+            REFERENCE_SCHEMA,
+            PACKING_SCHEMA,
+            INTEGER_SCALAR_SCHEMA,
+            METADATA_SCHEMA,
+            TRIANGULAR_SCHEMA,
+            RESHAPE_SCHEMA,
+            REDUCTION_SCHEMA,
+        }
         or not isinstance(request["target"], str)
         or not request["target"]
         or not isinstance(request["inputs"], dict)
@@ -89,27 +155,53 @@ def validate(request):
         )
     ):
         raise ValueError("independent Phase 0 needs a closed explicit declared-input request")
-    if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
+    if request["schema"] in {
+        REQUIREMENT_SCHEMA,
+        PERFORMANCE_SCHEMA,
+        REFERENCE_SCHEMA,
+        PACKING_SCHEMA,
+        INTEGER_SCALAR_SCHEMA,
+        METADATA_SCHEMA,
+        TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
+    }:
         from .source_requirement_ledger import PURPOSES
 
         if request["release_purpose"] not in PURPOSES:
             raise ValueError("requirement diagnostic needs an explicit supported preparation purpose")
-    if request["schema"] in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
+    if request["schema"] in {
+        PERFORMANCE_SCHEMA,
+        REFERENCE_SCHEMA,
+        PACKING_SCHEMA,
+        INTEGER_SCALAR_SCHEMA,
+        METADATA_SCHEMA,
+        TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
+    }:
         from .component_source_performance import SCHEMA as source_schema
+        from .component_source_performance import SCHEMA_V2 as curriculum_schema
 
         selection = request["source_performance"]
+        source_keys = (
+            {"policy"}
+            if isinstance(selection, dict) and selection.get("schema") == curriculum_schema
+            else {"objectives", "sweeps"}
+        )
         if (
             request["release_purpose"] != "performance_campaign"
             or not isinstance(selection, dict)
-            or set(selection) != {"schema", "objectives", "sweeps"}
-            or selection["schema"] != source_schema
+            or set(selection) != {"schema", *source_keys}
+            or selection["schema"] not in {source_schema, curriculum_schema}
             or any(
-                not isinstance(selection[key], dict) or set(selection[key]) != {"path", "sha256"}
-                for key in ("objectives", "sweeps")
+                not isinstance(selection[key], dict) or set(selection[key]) != {"path", "sha256"} for key in source_keys
             )
         ):
-            raise ValueError("source performance requires explicit v1 source pins and performance campaign purpose")
-    if request["schema"] == REFERENCE_SCHEMA:
+            raise ValueError(
+                "source performance requires explicit versioned source pins and performance campaign purpose"
+            )
+    if _has_original_references(request):
         selection = request["original_references"]
         if (
             type(selection) is not dict
@@ -117,6 +209,8 @@ def validate(request):
             or any(type(pin) is not dict or set(pin) != {"path", "sha256"} for pin in selection.values())
         ):
             raise ValueError("original reference flow requires two closed explicit source selections")
+    if _has_memory_packing(request):
+        validate_memory_selection(request["packing"])
     operator = request["operator_schemas"]
     fields = {"schema", "status", "namespace", "python", "canonical_source"}
     tensor = isinstance(operator, dict) and operator.get("schema") in {
@@ -129,7 +223,18 @@ def validate(request):
     if zero:
         fields.add("zero_returns")
     versions = {S.SELECTION_SCHEMA}
-    if request["schema"] in {BRIDGE_SCHEMA, REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
+    if request["schema"] in {
+        BRIDGE_SCHEMA,
+        REQUIREMENT_SCHEMA,
+        PERFORMANCE_SCHEMA,
+        REFERENCE_SCHEMA,
+        PACKING_SCHEMA,
+        INTEGER_SCALAR_SCHEMA,
+        METADATA_SCHEMA,
+        TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
+    }:
         versions |= {S.TENSOR_SELECTION_SCHEMA, S.ZERO_SELECTION_SCHEMA}
     if (
         not isinstance(operator, dict)
@@ -156,13 +261,56 @@ def validate(request):
     if (
         not isinstance(automatic, dict)
         or set(automatic) != {"schema", "status", "budget", "execution_budget", "original_source_budget"}
-        or automatic["schema"] not in {A.ORIGINAL_POLICY_SCHEMA, A.LINEAR_POLICY_SCHEMA, A.POINTWISE_POLICY_SCHEMA}
+        or automatic["schema"]
+        not in {
+            A.ORIGINAL_POLICY_SCHEMA,
+            A.LINEAR_POLICY_SCHEMA,
+            A.POINTWISE_POLICY_SCHEMA,
+            A.TRANSPOSE_POLICY_SCHEMA,
+            A.BROADCAST_POLICY_SCHEMA,
+            A.SCALAR_BINARY_POLICY_SCHEMA,
+            A.INTEGER_SCALAR_POLICY_SCHEMA,
+            A.METADATA_POLICY_SCHEMA,
+            A.TRIANGULAR_POLICY_SCHEMA,
+            A.RESHAPE_POLICY_SCHEMA,
+            A.REDUCTION_POLICY_SCHEMA,
+        }
         or automatic["status"] != "reviewed"
         or not isinstance(automatic["budget"], dict)
         or set(automatic["budget"]) != {"max_members", "max_interaction_cells"}
         or any(type(value) is not int or value < 1 for value in automatic["budget"].values())
     ):
         raise ValueError("full original Phase 0 needs explicit supported automatic construction budgets")
+    if request["schema"] in {
+        INTEGER_SCALAR_SCHEMA,
+        METADATA_SCHEMA,
+        TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
+    }:
+        selected = request["original_scalar_conversion"]
+        if (
+            automatic["schema"]
+            != {
+                INTEGER_SCALAR_SCHEMA: A.INTEGER_SCALAR_POLICY_SCHEMA,
+                METADATA_SCHEMA: A.METADATA_POLICY_SCHEMA,
+                TRIANGULAR_SCHEMA: A.TRIANGULAR_POLICY_SCHEMA,
+                RESHAPE_SCHEMA: A.RESHAPE_POLICY_SCHEMA,
+                REDUCTION_SCHEMA: A.REDUCTION_POLICY_SCHEMA,
+            }[request["schema"]]
+            or not tensor
+            or type(selected) is not dict
+            or set(selected) != {"path", "sha256"}
+        ):
+            raise ValueError("integer construction needs v14, native Tensor bindings and exact converter inputs")
+    elif automatic["schema"] in {
+        A.INTEGER_SCALAR_POLICY_SCHEMA,
+        A.METADATA_POLICY_SCHEMA,
+        A.TRIANGULAR_POLICY_SCHEMA,
+        A.RESHAPE_POLICY_SCHEMA,
+        A.REDUCTION_POLICY_SCHEMA,
+    }:
+        raise ValueError("original integer construction requires its explicit v7 declared caller")
     validate_execution_budget(automatic["execution_budget"])
     validate_source_budget(automatic["original_source_budget"])
     return request
@@ -174,9 +322,12 @@ def _source_performance_inputs(selection, *, forbidden):
 
     from merlin.targetgen.phase_policy import PerformanceObjective
 
-    from .component_source_performance import sweep_refusal
+    from .component_source_performance import SCHEMA_V2, sweep_refusal, validate_curriculum_policy
     from .sweeps import _validate_performance_block
 
+    if selection["schema"] == SCHEMA_V2:
+        path = _pin(selection["policy"], forbidden=forbidden)
+        return {"policy": path}, None, validate_curriculum_policy(yaml.safe_load(path.read_bytes()))
     paths = {key: _pin(selection[key], forbidden=forbidden) for key in ("objectives", "sweeps")}
     objectives, template = (yaml.safe_load(paths[key].read_bytes()) for key in ("objectives", "sweeps"))
     if (
@@ -357,8 +508,36 @@ def _verify_diagnostic_products(root, coverage, paths, *, target, hardware, soft
     return len(commitments)
 
 
-def run(request_path, *, output):
+def _issue_packing(request, *, hardware, circt_opt, forbidden_roots, output):
+    selected = validate_memory_selection(request["packing"]) if _has_memory_packing(request) else None
+    return issue_independent_packing_intake(
+        hardware=hardware,
+        circt_opt=circt_opt,
+        forbidden_roots=forbidden_roots,
+        output=output,
+        **({"memory_selection": selected} if selected is not None else {}),
+    )
+
+
+def _issue_scalar_conversion(selected, *, schemas, basis, coverage, numerical_semantics, output):
+    from . import original_scalar_conversion_flow as F
+
+    owner = F.prepare(
+        selected,
+        schema_intake=schemas,
+        basis=basis,
+        source_record=coverage["automatic_derivation"]["original_call_sources"],
+        numerical_semantics=numerical_semantics,
+        destination=output / "original-scalar-conversion",
+    )
+    return owner, F.summary(owner)
+
+
+def run(request_path, *, output, operator_exclusion=None):
     """Issue selected public inputs and execute the ordinary complete diagnostic."""
+    from .operator_exclusion import require_selection
+
+    require_selection(operator_exclusion, output)
     request_path = _plain(request_path)
     request_bytes = request_path.read_bytes()
     request = validate(json.loads(request_bytes))
@@ -376,15 +555,45 @@ def run(request_path, *, output):
     declarations = _pin(canonical["declarations"], forbidden=forbidden)
     circt_opt = _pin(request["circt_opt"], forbidden=forbidden)
     performance_paths, objectives, sweep_template = {}, [], {"sweeps": []}
-    if request["schema"] in {PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
+    if request["schema"] in {
+        PERFORMANCE_SCHEMA,
+        REFERENCE_SCHEMA,
+        PACKING_SCHEMA,
+        INTEGER_SCALAR_SCHEMA,
+        METADATA_SCHEMA,
+        TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
+    }:
         performance_paths, objectives, sweep_template = _source_performance_inputs(
             request["source_performance"], forbidden=forbidden
         )
     reference_inputs, standard_ir = None, None
-    if request["schema"] == REFERENCE_SCHEMA:
+    if _has_original_references(request):
         from .original_reference_flow import read_selection
 
         reference_inputs = read_selection(request["original_references"], forbidden=forbidden)
+    scalar_inputs, scalar_conversion = None, None
+    if request["schema"] in {
+        INTEGER_SCALAR_SCHEMA,
+        METADATA_SCHEMA,
+        TRIANGULAR_SCHEMA,
+        RESHAPE_SCHEMA,
+        REDUCTION_SCHEMA,
+    }:
+        from . import original_scalar_conversion_flow
+
+        scalar_inputs = original_scalar_conversion_flow.read_selection(
+            request["original_scalar_conversion"],
+            forbidden=forbidden,
+            version={
+                INTEGER_SCALAR_SCHEMA: 1,
+                METADATA_SCHEMA: 2,
+                TRIANGULAR_SCHEMA: 3,
+                RESHAPE_SCHEMA: 4,
+                REDUCTION_SCHEMA: 5,
+            }[request["schema"]],
+        )
     output = Path(output).absolute()
     _outside(output, forbidden)
     if output.exists() or ".." in output.parts or any(path.is_symlink() for path in (output, *output.parents)):
@@ -398,6 +607,7 @@ def run(request_path, *, output):
         checkout,
         *performance_paths.values(),
         *(reference_inputs.paths if reference_inputs is not None else ()),
+        *(scalar_inputs.paths if scalar_inputs is not None else ()),
     ]
     if compiler is not None:
         selected_paths.append(compiler)
@@ -482,13 +692,20 @@ def run(request_path, *, output):
         )
         packing = step(
             "fresh_public_rtl_packing",
-            lambda: issue_independent_packing_intake(
+            lambda: _issue_packing(
+                request,
                 hardware=hardware,
                 circt_opt=circt_opt,
                 forbidden_roots=forbidden,
                 output=output / "packing",
             ),
         )
+        if _has_memory_packing(request):
+            report["conditional_memory_bindings"] = {
+                "path": str(output / "packing" / "intake.json"),
+                "sha256": packing.sha256,
+                "scope": "same original source conditional structural bindings only; no mapping or domain admission",
+            }
         facts = output / "hardware" / "facts.json"
         evidence = select_evidence(
             request["target"],
@@ -500,6 +717,14 @@ def run(request_path, *, output):
             source_components=True,
         )
         identity = {key: evidence.derivation_identity[key] for key in ("contract_sha256", "raw_facts_sha256")}
+        if "policy" in performance_paths:
+            from .component_source_performance import derive_curriculum
+
+            sweep_template = step(
+                "derive_ordinary_source_curriculum",
+                lambda: derive_curriculum(software=software, hardware=hardware, policy=sweep_template),
+            )
+            objectives = sweep_template["curriculum_derivation"]["objectives"]
         policy = copy.deepcopy(request["automatic"])
         policy.update(
             hardware=identity,
@@ -547,6 +772,7 @@ def run(request_path, *, output):
                     arithmetic_intake=arithmetic,
                     packing_intake=packing,
                     output_root=generated,
+                    operator_exclusion=operator_exclusion,
                     **({"source_preparation": request["source_performance"]["schema"]} if performance_paths else {}),
                 ),
                 generated,
@@ -554,6 +780,20 @@ def run(request_path, *, output):
         )
         coverage_path = generated / "_evidence" / "coverage" / "component-coverage.json"
         coverage = json.loads(coverage_path.read_bytes())
+        if scalar_inputs is not None:
+            from .component_semantic_basis import ComponentSemanticBasis
+
+            scalar_conversion, report["original_scalar_construction"] = step(
+                "fresh_original_registered_scalar_conversion",
+                lambda: _issue_scalar_conversion(
+                    scalar_inputs,
+                    schemas=schemas,
+                    basis=ComponentSemanticBasis.from_recipe(recipe, routing={}),
+                    coverage=coverage,
+                    numerical_semantics=software.public_facts()["numerical_semantics"],
+                    output=output,
+                ),
+            )
         if reference_inputs is not None:
             from . import original_reference_flow
             from .component_semantic_basis import ComponentSemanticBasis
@@ -629,18 +869,63 @@ def run(request_path, *, output):
                 "reason": "requires the Phase 0 coverage gate, frozen compiler and actual runtime qualification",
             },
         }
-        if request["schema"] in {REQUIREMENT_SCHEMA, PERFORMANCE_SCHEMA, REFERENCE_SCHEMA}:
-            from .source_requirement_ledger import prepare_requirement_ledger
+        if request["schema"] in {
+            REQUIREMENT_SCHEMA,
+            PERFORMANCE_SCHEMA,
+            REFERENCE_SCHEMA,
+            PACKING_SCHEMA,
+            INTEGER_SCALAR_SCHEMA,
+            METADATA_SCHEMA,
+            TRIANGULAR_SCHEMA,
+            RESHAPE_SCHEMA,
+            REDUCTION_SCHEMA,
+        }:
+            from .source_requirement_ledger import (
+                prepare_metadata_prerequisite_ledger,
+                prepare_prerequisite_ledger,
+                prepare_reduction_prerequisite_ledger,
+                prepare_requirement_ledger,
+                prepare_reshape_prerequisite_ledger,
+                prepare_triangular_prerequisite_ledger,
+            )
+
+            prepare_ledger = prepare_requirement_ledger
+            prerequisite_inputs = {}
+            if request["schema"] in {
+                INTEGER_SCALAR_SCHEMA,
+                METADATA_SCHEMA,
+                TRIANGULAR_SCHEMA,
+                RESHAPE_SCHEMA,
+                REDUCTION_SCHEMA,
+            }:
+                from .component_semantic_basis import ComponentSemanticBasis
+
+                prepare_ledger = (
+                    prepare_reduction_prerequisite_ledger
+                    if request["schema"] == REDUCTION_SCHEMA
+                    else prepare_reshape_prerequisite_ledger
+                    if request["schema"] == RESHAPE_SCHEMA
+                    else prepare_triangular_prerequisite_ledger
+                    if request["schema"] == TRIANGULAR_SCHEMA
+                    else prepare_metadata_prerequisite_ledger
+                    if request["schema"] == METADATA_SCHEMA
+                    else prepare_prerequisite_ledger
+                )
+                prerequisite_inputs = {
+                    "schema_intake": schemas,
+                    "semantic_basis": ComponentSemanticBasis.from_recipe(recipe, routing={}),
+                }
 
             ledger = step(
                 "checked_source_requirement_ledger",
-                lambda: prepare_requirement_ledger(
+                lambda: prepare_ledger(
                     root=generated,
                     coverage=coverage,
                     hardware=hardware,
                     software=software,
                     purpose=request["release_purpose"],
                     **({"standard_ir": standard_ir} if standard_ir is not None else {}),
+                    **prerequisite_inputs,
                 ),
             )
             ledger_path = output / "source-requirement-ledger.json"
@@ -670,6 +955,9 @@ def run(request_path, *, output):
         if reference_inputs is not None:
             reference_inputs.verify()
             standard_ir.verify()
+        if scalar_inputs is not None:
+            scalar_inputs.verify()
+            scalar_conversion.record()
     except Exception as error:
         details = {"type": type(error).__name__, "message": str(error)}
         stderr = getattr(error, "stderr", None)

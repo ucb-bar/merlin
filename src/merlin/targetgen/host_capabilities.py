@@ -11,6 +11,18 @@ import json
 from collections.abc import Mapping
 
 from merlin.common.digest import is_sha256
+from merlin.frontends.linalg_mixed_patterns import SCHEMA as MIXED_SCHEMA
+from merlin.frontends.linalg_mixed_patterns import recognize as recognize_mixed
+from merlin.frontends.linalg_mixed_patterns import validate_declaration as validate_mixed
+from merlin.frontends.linalg_embedding_gather import (
+    SCHEMA as EMBEDDING_GATHER_SCHEMA,
+)
+from merlin.frontends.linalg_embedding_gather import (
+    recognize as recognize_embedding_gather,
+)
+from merlin.frontends.linalg_embedding_gather import (
+    validate_source_body as validate_embedding_gather_body,
+)
 from merlin.targetgen.host_linkage_contract import (
     required_composite_math_symbol,
     validate_linkage_contract,
@@ -135,6 +147,12 @@ def validate_host_capabilities(
                 validate_static_composite_math_source_body(body)
                 if required_composite_math_symbol(body["schema"], body["operation"]) and "linkage_contract" not in row:
                     raise ValueError("composite math source requires an exact selected linkage contract")
+            elif isinstance(body, dict) and body.get("schema") == EMBEDDING_GATHER_SCHEMA:
+                validate_embedding_gather_body(body)
+                if row.get("signature", {}).get("ordered_operand_dtypes") != ["i64", "bf16"] or row.get(
+                    "signature", {}
+                ).get("ordered_result_dtypes") != ["bf16"]:
+                    raise ValueError("embedding gather declaration has a different exact typed signature")
             elif isinstance(body, dict) and body.get("schema") == STATIC_PROJECTED_POINTWISE_BODY_SCHEMA:
                 validate_static_projected_pointwise_source_body(body)
             elif isinstance(body, dict) and body.get("schema") == STATIC_INTEGER_REDUCTION_SOURCE_BODY_SCHEMA:
@@ -197,7 +215,7 @@ def validate_host_capabilities(
                     or row["signature"]
                     != {
                         "family": "reduction",
-                        "ordered_operand_dtypes": ["f32", "f32", "i64"],
+                        "ordered_operand_dtypes": ["bf16" if body["operation"] == "bf16_extended_f32_literal_boundary_count_i64" else "f32", "f32", "i64"],
                         "ordered_result_dtypes": ["i64"],
                     }
                     or not isinstance(row.get("numerical_contract"), dict)
@@ -220,6 +238,12 @@ def validate_host_capabilities(
                     or row["numerical_contract"].get("status") != "unreviewed"
                 ):
                     raise ValueError("f32 maximum source_body needs one exact typed placement-only selector")
+            elif isinstance(body, dict) and body.get("schema") == MIXED_SCHEMA:
+                validate_mixed(body)
+                if required_composite_math_symbol(body["schema"], body["operation"]) and "linkage_contract" not in row:
+                    raise ValueError("mixed math source requires its exact selected linkage contract")
+                if row.get("numerical_contract", {}).get("status") != "unreviewed":
+                    raise ValueError("mixed source-body routing declares no numerical qualification")
             else:
                 validate_static_pointwise_source_body(body)
         if "quantization_parameters" in row["signature"]:
@@ -447,7 +471,8 @@ def _screen_source_body(
         if any(not bucketize_pattern_fits_index(pattern, width) for pattern in patterns):
             return {"status": "unsupported", "reason": "bucketize source tensor exceeds selected signed index span"}
         if (
-            signature.get("ordered_operand_dtypes") != ["f32", "f32", "i64"]
+            any(signature.get("ordered_operand_dtypes") != list(pattern.ordered_types[:3]) for pattern in patterns)
+            or any(pattern.operation != declaration["source_body"]["operation"] for pattern in patterns)
             or signature.get("ordered_result_dtypes") != ["i64"]
             or type(signature.get("rank")) is not int
             or any(signature["rank"] != len(pattern.shape) for pattern in patterns)
@@ -478,11 +503,13 @@ def _screen_source_body(
     try:
         body = declaration["source_body"]
         recognizer = {
+            MIXED_SCHEMA: recognize_mixed,
             STATIC_BOOLEAN_SOURCE_BODY_SCHEMA: recognize_static_boolean_body,
             DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA: recognize_dynamic_boolean_cast_body,
             STATIC_F32_MATH_SOURCE_BODY_SCHEMA: recognize_static_f32_math_body,
             STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA: recognize_static_composite_math_body,
             STATIC_PROJECTED_POINTWISE_BODY_SCHEMA: recognize_static_projected_pointwise,
+            EMBEDDING_GATHER_SCHEMA: recognize_embedding_gather,
         }.get(body["schema"], recognize_static_pointwise)
         patterns = tuple(recognizer(op) for op in source_operations)
     except InvalidLinalgPattern as exc:

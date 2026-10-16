@@ -7,10 +7,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from merlin.common.paths import data_path
-
 from merlin_experiments.phase1.context import InvocationContext
 from merlin_experiments.phase1.feedback import qa, selfcheck
+
+from merlin.common.paths import data_path
 
 SENTINEL = "PRIVATE_OR_LEGACY_PROGRAM_SENTINEL"
 
@@ -197,6 +197,9 @@ def test_main_selfcheck_uses_only_selected_tier_console(
             "kind": "op",
             "status": "pass" if passing_case else "fail",
             "numeric": {"status": "pass"},
+            # This console-selection control supplies its original independent
+            # structural verdict; numerical screens alone cannot certify it.
+            "trace_check": {"status": "pass", "trace_requirement_status": "pass"},
             "tiers": {"L2": {"status": l2_status, "console_log": "l2_console.log"}},
             "failure": {"category": "TESTBENCH_TIMEOUT", "tier": "L3"},
         }
@@ -267,3 +270,28 @@ def test_model_layers_uses_candidate_projection_not_legacy_functional_pass(tmp_p
     assert report["grade_failure"] is None
     assert report["per_capsule"][0]["candidate_native_verification"]["status"] == "incomplete"
     assert SENTINEL not in json.dumps(report)
+
+
+def test_candidate_emission_string_becomes_actionable_bounded_failure():
+    failure = selfcheck._public_candidate_emission_failure({
+        'candidate_emission_failure': 'eligible source operation lacks unavoidable attributed contraction work; '
+                                      'fused transforms need independent evidence',
+    })
+    assert failure['plane'] == 'candidate_compilation'
+    assert failure['category'] == 'CANDIDATE_EMISSION_FAILED'
+    assert 'unavoidable attributed contraction work' in failure['detail']
+    assert len(failure['detail']) <= 800
+
+
+def test_candidate_emission_feedback_cannot_copy_reference_payload():
+    result = {'candidate_emission_failure': {
+        'detail': 'compiler mismatch expected=123456.75 observed=98765.25',
+        'reference': SENTINEL, 'golden': [SENTINEL], 'capture': {'weights': SENTINEL},
+    }, 'numeric': {'first_mismatch': {'expected': SENTINEL}}, 'status': 'incomplete'}
+    row, certified = selfcheck._candidate_selfcheck_row(result, None, name='public_model', barrier_tier='L2')
+    serialized = json.dumps(row)
+    assert not certified
+    assert row['failure']['category'] == 'CANDIDATE_EMISSION_FAILED'
+    assert SENTINEL not in serialized
+    assert '123456.75' not in serialized and '98765.25' not in serialized
+    assert row['numeric'] == {}

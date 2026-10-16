@@ -141,6 +141,7 @@ def test_unpaid_qualification_uses_formal_child_and_refuses_selected_source_drif
             bundle_dir=project / "input_bundles/fixture",
             public_root=public,
             private_full_model_spec=private_spec,
+            instruction_selection=project / "private-instruction-selection.json",
             contract_root=None,
             scope_roots={"public_roots": [public], "hidden_roots": [hidden], "contract": None},
             environment={
@@ -158,6 +159,8 @@ def test_unpaid_qualification_uses_formal_child_and_refuses_selected_source_drif
         calls.append(argv)
         assert "merlin_experiments.phase1.feedback.formal" in argv
         assert "--private-full-model-spec" in argv
+        assert "--instruction-selection" in argv
+        assert argv[argv.index("--instruction-selection") + 1].endswith("private-instruction-selection.json")
         assert "--hidden-capsules" in argv
         assert argv[argv.index("--qa-timeout") + 1] == "3217"
         return subprocess.CompletedProcess(argv, 1)
@@ -513,6 +516,37 @@ def test_real_prepare_retains_views_and_post_staging_tool_observation(project, m
 
     assert _run(request, continuation) == 0
     assert not storage_lifecycle.blockers(observed[0].workspace.parent, require_terminal=True)
+
+
+def test_public_only_prepare_pins_selected_facts_without_a_private_spec(project, monkeypatch):
+    from hashlib import sha256
+
+    from merlin_experiments.phase1.feedback import public_owned_host_selection as selection
+
+    _external_substitutes(monkeypatch)
+    facts_dir = project / "facts"
+    facts_dir.mkdir()
+    facts = facts_dir / "facts.json"
+    facts.write_text(json.dumps({"inputs": {"target": "fixture"}, "facts": {}}))
+    manifest = project / "input_bundles/fixture/input_bundle_manifest.yaml"
+    bundle = yaml.safe_load(manifest.read_bytes())
+    bundle["selected_rtl_facts_file"] = str(facts)
+    bundle["allowed"].append({"path": str(facts_dir) + "/"})
+    manifest.write_text(yaml.safe_dump(bundle))
+    install = selection.install_for_session
+    observed = []
+
+    def observe(spec, declaration, **kwargs):
+        assert spec is None and declaration is None
+        frozen = kwargs["selected_facts"]
+        assert frozen != facts and frozen.read_bytes() == facts.read_bytes()
+        assert kwargs["selected_facts_sha256"] == sha256(frozen.read_bytes()).hexdigest()
+        observed.append(frozen)
+        return install(spec, declaration, **kwargs)
+
+    monkeypatch.setattr(selection, "install_for_session", observe)
+    assert _run(_request(project), lambda prepared: 0) == 0
+    assert len(observed) == 1
 
 
 def test_reviewed_semantic_diagnostic_is_private_and_resume_bound(project, monkeypatch):

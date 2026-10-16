@@ -555,6 +555,55 @@ def test_source_integer_bound_uses_captured_bytes_and_stamps_both_artifacts(tmp_
     assert saved_golden["outputs"] == golden["outputs"]
 
 
+@pytest.mark.parametrize("op,dtype,result", [("permute", "i8", "i8"), ("dtype_cast", "i32", "f32")])
+def test_native_storage_writer_preserves_result_policy_without_mac_qualification(
+    tmp_path, monkeypatch, op, dtype, result
+):
+    signature = {
+        "provenance_op": op,
+        "frontend_op": "selected.frontend",
+        "semantic_family": "movement" if op == "permute" else "elementwise_map",
+        "disposition": "support_required" if op == "permute" else "host_required",
+        "ordered_operand_types": [{"dtype": dtype, "shape": [2, 3]}],
+        "ordered_result_types": [{"dtype": result, "shape": [3, 2] if op == "permute" else [2, 3]}],
+    }
+    entry = {
+        "name": "native_storage", "op": op, "source": "pytorch", "operand_dtype": dtype,
+        "capture_dtype": "fp32", "frontend_op": "selected.frontend",
+        "native_input_dtype": dtype, "native_output_dtype": result,
+        "generalization": {"must_accelerate": False, "eligible": False},
+        "native_source_abi": {
+            "full_inventory_sha256": "a" * 64, "capture_sha256": "b" * 64,
+            "signature_sha256": hashlib.sha256(
+                json.dumps(signature, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+            "signature": signature,
+        },
+    }
+    policy = {"compare": "exact_int" if result == "i8" else "tolerance_float", "dtype": result}
+    capsule = {"name": entry["name"], "operation": {"op": op}, "inputs": [], "numeric_policy": policy}
+    golden = {"golden_source": "host_torch_eager", "outputs": {"Y": [[1]]}}
+    (tmp_path / "capsule.yaml").write_text(yaml.safe_dump(capsule))
+    (tmp_path / "golden.yaml").write_text(yaml.safe_dump(golden))
+    monkeypatch.setattr(writer, "_write_capsule_inner", lambda *a, **kw: tmp_path)
+    binding = CorpusBinding("synthetic", 4, dtype, "i32", True, ["L0"], "exact_int")
+    _write_capsule(entry, binding, tmp_path)
+    assert yaml.safe_load((tmp_path / "capsule.yaml").read_text())["numeric_policy"] == policy
+    assert "integer_partial_sum_bound" not in yaml.safe_load((tmp_path / "capsule.yaml").read_text())
+    assert load_golden(tmp_path) == golden
+    # A source model cannot bypass its existing qualifier by copying storage declarations.
+    from merlin_experiments.phase0 import model_qualification
+
+    def model_refuses(*args):
+        raise ValueError("model qualification still required")
+
+    monkeypatch.setattr(model_qualification, "qualify", model_refuses)
+    with pytest.raises(ValueError, match="model qualification still required"):
+        _write_capsule({**entry, "kind": "model"}, binding, tmp_path)
+    with pytest.raises(ValueError, match="complete typed declaration"):
+        _write_capsule({key: value for key, value in entry.items() if key != "native_output_dtype"}, binding, tmp_path)
+
+
 def test_source_integer_bound_refuses_overflow_and_incomplete_capture(tmp_path):
     safe = tmp_path / "safe"
     entry, _, capsule, golden = _exact_source_integer_member(safe, reduction_extent=2)

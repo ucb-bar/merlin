@@ -63,6 +63,8 @@ triton = ["triton==3.7.1"]
 merlin = "merlin.cli:main"
 merlin-opt = "merlin.xdsl_dialects.opt:main"
 merlin-verify = "merlin.verify.cli:main"
+merlin-verify-lean = "merlin.verify.lean_cli:main"
+merlin-isa-generate = "merlin.targetgen.isa_codegen_cli:main"
 # What the generated-output root costs and why, plus the reclaim classes whose safety is a property
 # (an unreferenced store object, an abandoned input closure, a declared-regenerable cache) rather
 # than a judgement about whether a run is finished.
@@ -115,6 +117,9 @@ exclude = ["merlin._data", "merlin._data.*"]
 # canonical merlin/{schemas,prompts} instead.
 [tool.setuptools.package-data]
 merlin = [
+    "runtime/portable_trig.c",
+    "runtime/portable_trig.LICENSE",
+    "verify/lean/Merlin/*.lean",
     "semantic_compiler/egg_bridge/Cargo.toml",
     "semantic_compiler/egg_bridge/Cargo.lock",
     "semantic_compiler/egg_bridge/src/main.rs",

@@ -62,6 +62,7 @@ def prepare_component_prompt_inputs(
     broker_path: str,
     broker_receipt_path: str,
     public_manifest_sha256: str | None = None,
+    author_agents: int | None = None,
 ) -> SP.ComponentPromptInputs:
     """Bind a host-selected component policy without selecting a model or legacy grant.
 
@@ -92,6 +93,7 @@ def prepare_component_prompt_inputs(
         broker_path,
         broker_receipt_path,
         public_manifest_sha256,
+        author_agents,
     )
     SP.render_component_prompt(inputs)
     return inputs
@@ -374,6 +376,10 @@ def prepare_prompt_inputs(
         str(AW.PERF_CORPUS_MANIFEST_MOUNT),
         *(str(grant.destination) for grant in frozen_functional.grants),
     )
+    profile = None
+    if frozen_functional.public_marker is not None:
+        public_projection = CONTRACTS.mapping_file(frozen_functional.public_marker)
+        profile = public_projection.get("compiler_tool_profile")
     return SP.StagePromptInputs(
         target=target_experiment.target,
         approach="arm4",
@@ -412,6 +418,7 @@ def prepare_prompt_inputs(
         execution_broker_path=BROKER_NAME,
         execution_broker_command=f"python3 {BROKER_NAME}",
         broker_receipt_path=str(BROKER_RECEIPT_MOUNT),
+        compiler_tool_profile=profile,
     )
 
 

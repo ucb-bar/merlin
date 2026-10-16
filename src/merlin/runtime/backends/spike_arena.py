@@ -13,6 +13,11 @@ from pathlib import Path
 import re
 
 
+#: The arena lives here (literal-addressed, inside the -m memory map this backend passes to spike).
+ARENA_BASE = 0xC0000000  # derived-ok: address chosen by this backend's own -m map, not read from a target
+DRAM_BASE = 0x80000000  # derived-ok: RISC-V platform DRAM base used by spike/fesvr; the -m map is passed explicitly
+
+
 GIB = 1 << 30
 MIB = 1 << 20
 _MALLOC = re.compile(r"\bcall ptr @malloc\(i64 ([^)]+)\)")
@@ -75,3 +80,54 @@ def spike_session_layout(
     if static_end is not None:
         layout["static_end"] = static_end
     return layout
+
+
+def _layout(
+    arena_bytes: int,
+    weights_bytes: int,
+    *,
+    dram_base: int = DRAM_BASE,
+    dram_bytes: int | None = None,
+    code_reserve: int = 64 * 1024 * 1024,
+    spike_arena_base: int = ARENA_BASE,
+) -> dict:
+    """Absolute-address memory map for the bare-metal image.
+
+    Default (``dram_bytes=None``) is the historical spike map: code@0x80000000, arena@0xC0000000,
+    weights 256 MB-aligned above it and at least 0x2_0000_0000. spike is told to span it with ``-m``,
+    so "above the DRAM a real board has" costs nothing there.
+
+    On a REAL board it costs everything: an arena at 0xC0000000 and weights at 0x2_0000_0000 are simply
+    not memory, so the image faults on its first activation. Given ``dram_bytes`` the map is packed
+    inside ``[dram_base, dram_base + dram_bytes)`` instead — code first, then the weights blob, then the
+    arena taking the rest — and it FAILS CLOSED if the model does not fit rather than emitting an image
+    that addresses memory the chip does not have.
+    """
+    if dram_bytes is None:
+        if spike_arena_base < dram_base or spike_arena_base % (1 << 20):
+            raise ValueError("Spike arena base must be in DRAM and MiB-aligned")
+        weights_base = spike_arena_base + arena_bytes
+        weights_base = (weights_base + 0xFFFFFFF) & ~0xFFFFFFF  # 256MB align
+        weights_base = max(weights_base, 0x200000000)
+        mem_end = weights_base + weights_bytes
+        mem_bytes = ((mem_end - DRAM_BASE) + 0x3FFFFFFF) & ~0x3FFFFFFF  # round to 1GB
+        return {"arena_base": spike_arena_base, "weights_base": weights_base, "mem_bytes": mem_bytes}
+    if spike_arena_base != ARENA_BASE:
+        raise ValueError("Spike arena base override is not valid for a board DRAM layout")
+
+    align = 1 << 20  # 1 MB is enough for a blob base
+    weights_base = (dram_base + code_reserve + align - 1) & ~(align - 1)
+    arena_base = (weights_base + weights_bytes + align - 1) & ~(align - 1)
+    end = dram_base + dram_bytes
+    if arena_base + arena_bytes > end:
+        raise RuntimeError(
+            f"does not fit: code+static-I/O reserve {code_reserve / 2**20:.0f} MB + weights "
+            f"{weights_bytes / 2**20:.1f} MB + arena {arena_bytes / 2**20:.0f} MB exceeds the board's "
+            f"{dram_bytes / 2**20:.0f} MB at {hex(dram_base)}. Shrink the arena or the model."
+        )
+    return {
+        "arena_base": arena_base,
+        "weights_base": weights_base,
+        "mem_bytes": dram_bytes,
+        "code_reserve": code_reserve,
+    }

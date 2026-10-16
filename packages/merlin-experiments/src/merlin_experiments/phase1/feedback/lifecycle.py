@@ -8,6 +8,7 @@ handoff, not cancellation or a timed join. Numerical grading is supplied explici
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -37,6 +38,16 @@ class BrokerConfig:
     policy_root: Path | None = None
     contract: Path | None = None
     selected_rtl_facts: Path | None = None
+    compiler_bundle_manifest: Path | None = None
+    sim_per_capsule_timeout: int = 0
+    raw_evidence_root: Path | None = None
+
+    def __post_init__(self):
+        from ..options import MAX_SIM_PER_CAPSULE_TIMEOUT_S
+
+        if (type(self.sim_per_capsule_timeout) is not int
+                or not 0 <= self.sim_per_capsule_timeout <= MAX_SIM_PER_CAPSULE_TIMEOUT_S):
+            raise ValueError("sim per-capsule timeout must be an explicit integer in 0..86400")
 
 
 @dataclass(frozen=True)
@@ -90,7 +101,11 @@ def start_brokers(ws: Path, config: BrokerConfig):
     # round trip.
     for client_module, staged_as in _TR.COMMON_CLIENTS:
         stage_client(ws, module_source_path(client_module), staged_as)
-    broker_specs = [(spec.module, spec.log, spec.channel) for spec in _TR.COMMON_BROKERS]
+    broker_specs = [
+        (spec.module, spec.log, spec.channel)
+        for spec in _TR.COMMON_BROKERS
+        if spec.channel != ".model_check_channel" or config.context.target == "gemmini"  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+    ]
     # Brokered TOOLS (the ISA assembler/disassembler/linter; the two mandated CCA calls) are part of the
     # arm's TREATMENT, so which ones start is read from the bundle's resolved tool set rather than from
     # the arm's name. That distinction matters twice over: the CIRCT arm runs under _ARM ==
@@ -129,6 +144,10 @@ def start_brokers(ws: Path, config: BrokerConfig):
                 argv += ["--rtl-facts", str(config.selected_rtl_facts)]
             if name == "merlin_experiments.phase1.brokers.simjob":
                 argv += ["--timing-file", str(config.timing_file)]
+            if config.compiler_bundle_manifest is not None and name in {
+                "merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob",
+            }:
+                argv += ["--compiler-bundle-manifest", str(config.compiler_bundle_manifest)]
             if name in {"merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob"}:
                 if capsules_root is not None:
                     argv += ["--capsules-root", str(capsules_root)]
@@ -148,13 +167,27 @@ def start_brokers(ws: Path, config: BrokerConfig):
             # byte-identical to before.
             if config.sim_max_jobs and name == "merlin_experiments.phase1.brokers.simjob":
                 argv += ["--max-jobs", str(config.sim_max_jobs)]
-            output = open(ch / log, "w")
+            if config.sim_per_capsule_timeout and name == "merlin_experiments.phase1.brokers.simjob":
+                argv += ["--per-capsule-timeout", str(config.sim_per_capsule_timeout)]
+            channel_dir = ws / channel
+            channel_dir.mkdir(parents=True, exist_ok=True)
+            (channel_dir / "STOP").unlink(missing_ok=True)
+            output = open(channel_dir / log, "w")
             launch_error = None
             try:
                 from merlin_experiments.frozen_python import inherited_python_command
 
+                launch_kwargs = {}
+                if name in {
+                    "merlin_experiments.phase1.brokers.selfcheck",
+                    "merlin_experiments.phase1.brokers.simjob",
+                }:
+                    from .raw_selfcheck_evidence import broker_environment
+
+                    launch_kwargs["env"] = broker_environment(config.raw_evidence_root, ws)
                 brokers.append(
-                    subprocess.Popen(inherited_python_command(argv), stdout=output, stderr=subprocess.STDOUT)
+                    subprocess.Popen(inherited_python_command(argv), stdout=output,
+                                     stderr=subprocess.STDOUT, **launch_kwargs)
                 )
                 owned_channels.append(channel)
             except BaseException as error:
@@ -191,7 +224,8 @@ def stop_brokers(ws: Path, brokers, *, primary_error: BaseException | None = Non
     propagating provider/launch exception remains primary; callers pass it from
     their finally block. Cleanup details are attached to it, never substituted.
     """
-    _stop_brokers(ws, brokers, primary_error=primary_error, channels=(".qa_channel", ".isa_channel", ".cca_channel"))
+    _stop_brokers(ws, brokers, primary_error=primary_error,
+                  channels=(".qa_channel", ".model_check_channel", ".isa_channel", ".cca_channel"))
 
 
 def _stop_brokers(ws: Path, brokers, *, primary_error: BaseException | None, channels: tuple[str, ...]) -> None:
@@ -344,6 +378,7 @@ def start_background(
     on_tick=None,
     grade_callback: IntervalGrade,
     fast_grade_callback: FastGrade,
+    foreground_has_priority=None,
 ):
     """Start the in-turn grader for ONE agent turn; returns a handle for `stop_background`.
 
@@ -361,10 +396,14 @@ def start_background(
 
     stop = threading.Event()
 
-    def _body() -> None:
+    def _grade_body() -> None:
         if not (ws / "qa" / "verdict.json").exists():
             landed, tries = False, 0
             while not stop.is_set():
+                if foreground_has_priority is not None and foreground_has_priority():
+                    if stop.wait(FIRST_GRADE_POLL_S):
+                        break
+                    continue
                 tries += 1
                 try:
                     v = fast_grade_callback(ws, run_dir, FIRST_BACKGROUND_TICK, min(cadence.qa_timeout, 900))
@@ -401,6 +440,8 @@ def start_background(
         t = 0
         previous_key = None
         while not stop.wait(max(30, int(cadence.grade_interval))):
+            if foreground_has_priority is not None and foreground_has_priority():
+                continue
             t += 1
             scratch_key = grade_key(round_index, t)
             try:
@@ -427,6 +468,15 @@ def start_background(
                     on_tick(t)
                 except Exception as e:  # noqa: BLE001 - a tick hook must never kill the grader
                     print(f"[in-turn grade {t}] on_tick skipped: {type(e).__name__}: {e}", flush=True)
+
+    def _body() -> None:
+        from merlin.common.cpu_pool import preparation_cpus, selected_pool
+
+        # A new thread inherits the manager's CPU pool. Establish the grading
+        # base before callbacks create executors so nested build/sim leases
+        # restore preparation CPUs, including between-capsule provenance work.
+        with selected_pool(preparation_cpus()):
+            _grade_body()
 
     th = threading.Thread(target=_body, name="in-turn-grader", daemon=True)
     th.start()

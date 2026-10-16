@@ -2,10 +2,56 @@
 
 Host-only grading, redaction, certificate promotion and simulator dispatch live here.
 Inputs are explicit invocation context and corpus/contract paths, never native imports.
+
+`compiler_profile_runtime` preserves explicitly caller-selected artifact ABI 0.2
+structural emission through the same original source owner and isolated package
+box. Revalidate the exact typed profile before and after the call, before output
+publication, without mounting it or treating artifact bytes as LLVM/executable
+evidence. Frozen compiler scopes refuse Python bytecode writes; the core API's
+explicit scratch-copy opt-in is a separate non-profile execution contract.
+
+`compiler_profile_child` reconstructs only the exact original profile executor
+in a fresh bounded model-grade interpreter. Its parent-issued sealed readonly
+descriptor binds compiler source, frozen archive/snapshot/profile, target,
+explicit sandbox inputs, interpreter, direct host sources and environment.
+Reopen these selections and any original live kernel resource boundary before
+grading; recheck them and the transport receipt afterward. Foreign/incomplete
+owners and arbitrary alternative executors refuse. Transport identity supplies
+no new numerical, hardware, timing or transitive runtime authority.
+
+The original V3 import scope enters `lean_emission_context` for ordinary traced
+lowering and actual object consumption. Reopen input/emission observations,
+check the raw checkpoint chain freshly, and take the entry from the original
+build/capability contract. A consumed traced artifact requires a fresh object;
+absent traces retain historical reuse with zero formal credit. Unconsumed or
+unobserved emissions confer no proof, even with identical bytes. Unsupported
+edges retain partial unproved obligations; covered failures reject the build.
+Explicit compile-only transport avoids duplicate checking. Trace custody does not prove internal pass history,
+terminal lowering, dispatch, host optimization or machine/numerical/RTL behavior.
+
+`candidate_observations` supplies the public emission-only `--candidate-diagnostics`
+projection before compiler admission. Use original package integrity/build/ABI
+entrypoints and exact public member selection. No numerical or simulator call is
+made. Reopen own source/IR/object/ELF and original invocation records; feature
+presence and source/global-plan joins do not waive ordinary grades. Source drift,
+ambiguous products and unsupported observers retain UNKNOWN. Raw paths, answer
+values and private grading records never enter the returned report.
+
+`candidate_census` optionally appends descriptive dynamic activity to ordinary
+selfcheck and normal cheap feedback only after the original numerical screen.
+Use the same selected public descriptor and original package policy; the fixed
+bounded census wrapper independently reopens the completed original ELF producer
+and narrows its sandbox. No policy, ambiguous products or missing ownership means
+UNKNOWN without raw-host fallback. Cleanup-unknown BaseException must abort the
+enclosing job. Legacy runner-owned model artifacts cannot substitute for the
+distinct candidate executable. Final/numerical/RTL obligations stay unchanged.
 Keep actual adapter construction, observation order, missing-oracle behavior and
 enqueue-time certificate attribution unchanged. Public clients remain separate.
 Dispatch owns only the closed async simulator policy shared by broker and promotion.
 Source moves invalidate new implementation identities, never rewrite old evidence.
+`private_device_audit.require_linked_symbols` retains the ordinary native symbol
+check for the completed ELF. `private_full_models` preserves its helper import
+API and invokes that same check; this extraction changes no admission meaning.
 
 `private_facts.py` selects the private roster's exact pinned RTL extraction for
 its model builds, after checking that the public effective view names the same
@@ -42,6 +88,30 @@ or claims physical-padding, numerical equivalence or a certificate.
 whole-model build. The shared post-build verifier still checks linked bytes and
 source obligations, but an old receipt without exact producer/toolchain closure
 cannot become a full-roster gate result or a build-cache hit.
+
+The automatic private build caller accepts an explicitly supplied live
+`LinkedElfAdmissionService`. `private_linked_elf_selection.py` freezes and
+reopens its target, callback and source selection, and requires the exact same
+service on the planned `DeviceRouting` before and after the ordinary saved-model
+build. An active route without that selection refuses. This supplies no default
+policy, native decoder or instruction/effect/runtime authority. The formal
+coordinator supplies no service without explicit source selection: independently
+selected public command/predicate/accessor intakes, protected source-symbol
+prohibitions and an explicit decoder selection are still required. Diagnostic
+prebuilt inspection cannot establish actual final-image policy evaluation.
+
+`formal.py --instruction-selection` explicitly selects the protected closed
+`private_instruction_selection.v1` declaration. `private_instruction_declaration.py`
+checks its complete pinned source/tool roster before any selected issuance;
+`private_instruction_coordinator.py` delegates only the existing fixed fresh
+hardware, command, source-predicate, native accessor and source-symbol policy
+issuers. It forwards their exact live service to the private automatic build in
+the same process, after joining original byte-checked FIRRTL/configuration and
+reopens the selection afterward. No saved intake/report, provider callback or
+minimal-software-spec field supplies authority. Declaration and observation
+products remain in the private grader identity. A reviewed original selector
+set and actual native replay are still required; this wiring grants no policy
+role completeness, source-to-RTL/physical correspondence or 4/11/14 authority.
 
 The private complete-model build gate consumes the producer-bound completed
 compilation recipe and independently rehashes its explicit compiler/link inputs
@@ -208,3 +278,44 @@ formal completion. `freeze.py` owns the existing freeze.json record using the sh
 tree-hash and explicit repository identity. Preserve mandatory L3 simulator selection
 even for no-oracle diagnostics. Only synthetic external execution is substituted in
 installed lifecycle tests; those tier records are not hardware qualification.
+
+`private_data_movement.py` proves pure generic movement with static identity output
+domains. Input affine additions and literal multipliers require conservative integer
+extrema inside every input extent; symbols, nonlinear/divisor expressions and shared
+input coordinate dimensions remain refused. This is source movement support only,
+never compute placement, value equivalence or native execution evidence.
+
+Mixed scalar source bodies reuse the mandatory private Linalg witness with exact
+per-input shapes/maps and bf16/f64 byte spans. Reopen every mixed ordinal and literal
+from the actual capture tree at linked-build and completion checks. Routing-only
+host declarations do not certify arithmetic or native numerical equivalence.
+
+Cert cover resolves the already discovered exact public/dev leaf directories, including
+nested frozen policy cohorts; actual empty and wholly excluded cohorts stay empty.
+Fast loop feedback schedules the existing cert queue immediately using its frozen
+candidate source. It does not grant withheld tiers, duplicate the full grade or
+change native slot limits; broker promotion keeps the same identity ledger.
+
+Fast grading also promotes each completed loop-tier pass before the remaining
+batch finishes. The serialized suite callback retains frozen model source
+custody and mandatory model checks, reopens the exact durable result, and admits
+only selected nonexcluded public/dev names. It always queues against the frozen
+candidate; optional queue errors cannot turn unknown tiers into passes.
+
+Synchronous broker selfchecks freeze their verified candidate before launching
+the protected worker. Broker-only context enables the same durable per-capsule
+completion promotion for loop-only requests; public progress files never authorize
+certification. The worker checks that frozen source digest before scheduling,
+and omits this extra handoff when its own selected adapters already execute cert.
+
+`private_model_inputs` owns exact selected-input, capture-tree and recipe bindings;
+the full-model coordinator supplies its current digest and pinned-file callbacks.
+`promotion_sources` owns conservative package import/literal closure; promotion
+retains component attribution, cache identity and certification decisions.
+`selfcheck_results` projects already closed results, census and telemetry with
+unchanged redaction and refusal semantics; it does not execute a grade.
+
+`private_execution_checks` validates the descriptor's complete numerical-check
+roster at both judgement and formal completion. Require explicit successful
+booleans, ordered result/element coverage and the original reference/tolerance
+selection; descriptive group scope cannot stand in for numerical evidence.

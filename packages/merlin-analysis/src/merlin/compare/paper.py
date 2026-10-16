@@ -8,15 +8,14 @@ build/run/correctness as separate lifecycle facts.
 from __future__ import annotations
 
 import hashlib
-import statistics
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import yaml
 
 from merlin.common.schemas import validate_or_raise
-
 
 _PRECISIONS = frozenset({"w8a8", "fp32"})
 _SESSION_STATE = {
@@ -63,7 +62,7 @@ class SessionSpec:
     measurement_repeats: int = 1
 
     @staticmethod
-    def parse(raw: Any, where: str) -> "SessionSpec":
+    def parse(raw: Any, where: str) -> SessionSpec:
         raw = _mapping(raw, where)
         kind = str(raw.get("kind", ""))
         if kind not in _SESSION_STATE:
@@ -104,7 +103,7 @@ class ModelSpec:
     memory: dict[str, Any]
 
     @staticmethod
-    def parse(raw: Any, index: int) -> "ModelSpec":
+    def parse(raw: Any, index: int) -> ModelSpec:
         where = f"models[{index}]"
         raw = _mapping(raw, where)
         name = str(raw.get("name", ""))
@@ -167,7 +166,7 @@ class BackendSpec:
     options: dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
-    def parse(raw: Any, index: int) -> "BackendSpec":
+    def parse(raw: Any, index: int) -> BackendSpec:
         where = f"backends[{index}]"
         raw = _mapping(raw, where)
         name, kind, runtime = (str(raw.get(k, "")) for k in ("name", "kind", "runtime"))
@@ -235,13 +234,18 @@ class PaperStudySpec:
     backends: tuple[BackendSpec, ...]
     reporting: dict[str, Any]
     source_path: Path | None = None
+    contraction_format_requirements: dict[str, str] = field(default_factory=dict)
 
     @staticmethod
-    def parse(raw: Any, *, source_path: Path | None = None) -> "PaperStudySpec":
+    def parse(raw: Any, *, source_path: Path | None = None) -> PaperStudySpec:
         raw = _mapping(raw, "paper study")
         validate_or_raise(raw, "paper_study")
-        if int(raw["version"]) != 2:
-            raise ValueError("paper study version must be 2")
+        version = int(raw["version"])
+        if version not in {2, 3} or (version == 3 and type(raw["version"]) is not int):
+            raise ValueError("paper study version must be 2 or 3")
+        from .capture_format_policy import declared_format_cells
+
+        declared_format_cells(raw)
         status = str(raw["status"])
         if status not in {"draft", "frozen"}:
             raise ValueError("paper study status must be draft or frozen")
@@ -319,12 +323,12 @@ class PaperStudySpec:
             if model.session.parameters.get("paper_primary_scope") != "end_to_end":
                 raise ValueError(
                     f"model {model.name}: session.parameters.paper_primary_scope must be end_to_end")
-        return PaperStudySpec(2, str(raw["label"]), status, str(raw["target"]), primary, control,
+        return PaperStudySpec(version, str(raw["label"]), status, str(raw["target"]), primary, control,
                               core_counts, dict(dev), dict(paper_inputs), holdout, dict(freeze), models, backends,
-                              reporting, source_path)
+                              reporting, source_path, dict(raw.get("contraction_format_requirements", {})))
 
     @staticmethod
-    def from_yaml(path: str | Path) -> "PaperStudySpec":
+    def from_yaml(path: str | Path) -> PaperStudySpec:
         source = Path(path).resolve()
         return PaperStudySpec.parse(yaml.safe_load(source.read_text(encoding="utf-8")),
                                     source_path=source)
@@ -446,7 +450,7 @@ class PaperStudySpec:
         return Preflight(tuple(errors), tuple(blockers), tuple(warnings))
 
     def canonical_dict(self) -> dict[str, Any]:
-        return {"version": self.version, "label": self.label, "status": self.status,
+        raw = {"version": self.version, "label": self.label, "status": self.status,
                 "target": self.target, "primary_precision": self.primary_precision,
                 "control_precision": self.control_precision, "core_counts": list(self.core_counts),
                 "development_corpus": dict(self.development_corpus),
@@ -455,6 +459,11 @@ class PaperStudySpec:
                 "models": [m.to_dict() for m in self.models],
                 "backends": [b.to_dict() for b in self.backends],
                 "reporting": dict(self.reporting)}
+        if self.version == 3:
+            raw["contraction_format_requirements"] = dict(self.contraction_format_requirements)
+        elif self.contraction_format_requirements:
+            raise ValueError("Declared contraction format membership is incomplete.")
+        return raw
 
     def sha256(self) -> str:
         text = yaml.safe_dump(self.canonical_dict(), sort_keys=True)

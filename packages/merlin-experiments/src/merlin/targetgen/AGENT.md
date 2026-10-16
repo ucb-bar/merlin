@@ -1,5 +1,15 @@
 # Trusted experiment evaluation
 
+Explicit ordinary public-program execution retains the source-owned runtime
+bundle and binds the actual complete-call caller, same ELF and raw outputs.
+Public sources with no accelerator obligations may have empty required device
+classes only under their original public basis and explicit false acceleration
+demand. Independent source eligibility, source/task CFG, object/ELF/ISA and full
+numeric/mandatory-tier checks still run. Optional legal accelerator lowering is
+allowed; no placement strategy follows from zero mandatory device obligations.
+Existing declared acceleration demand always retains its nonempty mandatory
+family-matched device dispatch proof. No strict component role is added.
+
 Contains evaluation implementations, not generic compiler package invocation.
 Package/runtime primitives and stable error identities live in core package_runtime.
 The common.access registry must name every withheld implementation before moving
@@ -35,9 +45,40 @@ complete declared value roster before ordinary numerical comparison. A result
 record, console filename or apparent byte format cannot select the transport.
 Decoding full values grants no build, source, dispatch or hardware authority.
 
+`capsule_scheduling.run_pipelined` copies the selected caller context into each
+original calibration and grade worker. Keep original dependency order, full
+roster and worker joins; copied contexts carry existing package/resource owners,
+never new numerical or timing authority. Explicit operator-small-first feedback
+ordering selects only ready/admitted operators before models and preserves immediate
+completion callbacks; absent selection keeps legacy ordering.
+
 The selected native component route spends one explicit wall deadline across
 package build, all ordinary lowering commands, source checks, object/link,
 execution, original output comparison and result publication. Failed attempt
 evidence is retained after expiry; it cannot become a completed result.
 Boundary checks do not preempt arbitrary in-process callbacks or confer any
 semantic, physical or performance authority.
+
+`native_component_inputs` owns the shared error identity and ordered tensor
+binder reexported by `native_component_execution`; both import orders must work.
+An explicitly selected original member supplies exact typed input storage and
+the original full-output comparator without entering legacy golden dispatch.
+Reopen that live owner before and after ordinary lowering/execution and keep
+reference details in private evidence; caller-visible original failures contain
+no expected values or private paths. Opaque pointer arity does not prove flat
+tensor storage or a ranked memref descriptor bridge.
+
+`owned_host_leaf_execution` grades reviewed host-only layers and model slices as
+provided platform infrastructure. Reopen original source eligibility and require
+zero accelerator-eligible operations before selecting fixed Merlin host lowering.
+Candidates provide no host arithmetic. Keep complete typed inputs/outputs, actual
+host compiler/object/link custody, whole-ELF accelerator prohibition and every
+frozen numerical tier; missing native execution never passes. This grants no
+candidate accelerator or host-code authorship credit.
+
+`capsule_tier_result` owns the stable tier record serialization; the runner keeps
+its historical class import/pickle identity. `capsule_lane_evidence` judges only
+recorded execution, with the legacy counter map supplied by the runner.
+`capsule_perf_ledger` publishes observations, taking current grader callbacks;
+`native_model_values` decodes only frozen leaf bytes with the caller's error type.
+All four are evaluator implementations and remain masked by common.access.

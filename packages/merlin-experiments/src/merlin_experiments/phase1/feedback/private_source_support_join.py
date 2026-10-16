@@ -16,6 +16,7 @@ from merlin_experiments.phase1.feedback import private_linkage_support as linkag
 from merlin_experiments.phase1.feedback import private_literal_arange_admission as arange
 from merlin_experiments.phase1.feedback import private_ordered_scan_support as ordered_scan
 from merlin_experiments.phase1.feedback import private_pure_stage_support as pure_stage
+from merlin_experiments.phase1.feedback import private_source_demand as demand
 from merlin_experiments.phase1.feedback.private_pool_support import linked_pool_complete
 
 
@@ -32,6 +33,8 @@ def linked_source_support_complete(checks: Mapping[str, Any], stages: Sequence[s
     for stage, entry in zip(stages, entries, strict=True):
         source = sources[stage]
         if not isinstance(source, Mapping) or not isinstance(entry, Mapping):
+            return False
+        if not demand.linked_complete(source, entry, candidate_sha256):
             return False
         if not movement.linked_movement_complete(source, entry, candidate_sha256):
             return False

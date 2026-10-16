@@ -2,6 +2,95 @@
 
 ## Purpose
 
+`stock_cli` is an explicitly selected scalar transport through stock upstream
+tools, using the ordinary scalar pass pipeline and shared object/link/runtime
+code. Python remains the default. Runner-only rewrites, guarded fusion, checked
+deallocation sinking, vector/parallel schedules, per-pass inspection, callbacks
+and serial product-retention requests refuse. Preserve the total deadline and
+actual tool input/output records; this transport issues no semantic, deployment
+or hardware qualification. A failed selected tool never triggers another driver.
+
+`host_optimization_request` separates original semantic/runtime permissions
+from bounded, source-bound author choices. The ordinary target object producer
+selects the exact original executor context. Logical graph choices run only
+on admitted host IR; foreign/device operations and finished LLVM refuse them.
+Structured hoist/sink choices reuse the fixed upstream registry under original
+index/layout and storage premises. LLVM arena reuse requires original sequential,
+successful-allocation and non-reentrant admission. Original input, selected IR,
+translation product, later LLVM and final object retain separate byte identities.
+Reports establish conditional structural checks and product custody, never Lean
+proof, numerical, physical/runtime or timing authority. Unselected calls retain
+their original lowering choices.
+
+`graph_optimizations` is an explicit source-pinned logical-host route selected
+before ordinary preprocessing. Its first admitted domain is static pointwise
+tensors and permutations. Independent scalar/coordinate/expanded-source checks
+and positive structural cost contracts gate layout propagation and contiguous
+dispatch fusion. Unknown views, reductions and opaque regions refuse this
+selection. These checks confer no Lean, physical-representation or timing
+authority; target placement and device policy remain OOT responsibilities.
+
+`compile_host` may explicitly select `HostDescriptorSelection` for complete
+original tensor/storage declarations. The ordinary caller requires unchanged
+typed source/prepared correspondence, actual translation/object/runtime/link
+membership and the same loaded private image. `HostModel` then packs ordered
+ranked descriptors from that object driver's observed layout, checks complete
+caller shape/dtype/stride/capacity and disjoint address intervals, and retains
+the actual call's descriptor bytes. Absent selection retains the legacy ABI.
+This does not prove implementation indexing, accessible allocation, lifetime,
+body/effect equivalence, hardware, dependency closure or runtime qualification.
+Unsupported scalar/trampoline/alias and transformed source routes refuse.
+The ordinary host entry serializes generic MLIR before preprocessing, preserving
+attributes that individual operation custom printers can omit. This retains
+source correspondence; it supplies no new semantic or runtime admission.
+
+`device_offload.build_arguments` preserves the explicit group route's complete
+per-symbol statements across the ordinary sidecar/build boundary. Missing,
+empty, malformed or changed statement membership refuses before a group can
+fall through to contraction-only synthesis. Legacy and contraction routes keep
+their existing unstated-program behavior. This structural check establishes no
+source-body, numerical, device-event, ownership or runtime authority.
+The same reader requires exact routed-symbol/signature membership and complete,
+consistent per-symbol precision, including repeated calls to a shared kernel.
+The ordinary linker caller passes its explicitly selected routing granularity;
+sidecar metadata cannot downgrade that selection to contraction-only work.
+
+Every active ordinary device route requires an explicitly selected
+`LinkedElfAdmissionService`. The build freezes its original target, callback and
+source pins before work, then evaluates and reopens the exact final-link bytes
+after legacy audits and before completing the recipe. Missing policy, refusal
+or changed selection/image/report prevents completion. Target decoding and
+protected source-symbol policy remain independently selected inputs; this
+transport establishes no device execution, effect or runtime authority.
+
+`codegen.build_host_shared` records the existing LLVM-object, runtime-C-object
+and shared-link subprocesses with the same frozen argv, working directory and
+environment used for execution. Direct source/object/product roles reopen
+changed or missing recorded intermediates. Failed subprocesses retain their
+original exceptions and interrupted records. This is artifact custody only;
+transitive headers/libraries, body semantics, storage/ABI, dependency closure
+and execution authority remain independent obligations.
+
+`descriptor_contract`, `descriptor_wrapper`, `descriptor_object` and
+`descriptor_layout` provide an explicitly selected, bounded ranked-memref
+C-interface transport observation. Original ordered tensor slots and every
+storage offset/stride/capacity/alignment are caller declarations. Complete
+parsed aggregate load/extract/call/return fields are checked; the actual object
+producer folds GEP layout constants into a readonly, relocation-free object.
+No separately versioned LLVM API or pointer/index/contiguity defaults interpret
+that layout. Format-only packing preserves pointed data. Prepared source/body
+semantics, accessible allocation, carrier alignment, physical alias ownership,
+callee indexing, machine equivalence, dependency closure and runtime authority
+remain separate obligations. No ordinary ABI or author admission default changes.
+
+`llvm_dialect_product` optionally retains the serial upstream runner's actual
+post-pass generic module and raw in-process translation in one subprocess
+record. Fresh product paths preserve raw bytes through later normalization;
+the ordinary text/file/host APIs return its custody receipt. Selected parallel
+and scalar-rewrite transports refuse; absent selection keeps ordinary emission.
+This observes IR products, not source semantics, descriptor/storage premises,
+resource legality, import closure, object/link equivalence or runtime authority.
+
 `counted_copy_check` proves only a closed original integer tensor identity/copy
 to scalar LLVM counted loop under explicit original software pointer objects.
 It checks complete source/body/CFG, ordinal/byte bounds, pointer bases, loaded
@@ -11,6 +100,14 @@ DataLayout API, retaining real tool/header/library and invocation pins. Missing
 storage/layout, opaque operations, aggregate literals, poison/provenance flags,
 general graphs and unsupported control remain UNKNOWN. These conditional IR
 facets do not prove physical resources/lifetime, machine code or runtime/timing.
+
+`compiled_layout_query` also observes the existing ordinary selected LLVM object
+driver through its actual bounded pre-instruction-selection MIR module. Exact
+original object/source/tool records, options, working directory and explicitly
+selected environment are reopened. No compiler or layout fallback is supplied;
+unsupported options and absent layout/triple refuse. Its byte cap bounds the
+observation reader only. Descriptor fields/storage, optimized IR equivalence,
+transitive dependency closure and host/target execution remain separate proofs.
 
 `endpoint_narrowing` is a separate default-off capability for finite interval
 subsets in a private original-source epoch. It preserves the legacy prepared
@@ -513,6 +610,23 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 - Fresh `kernel_backend.compile_host` loads select `PrivateHostImagePolicy` for their exact invocation-owned build directory, canonicalized before lowering. The private sibling snapshot gives each compilation a byte-identified load path; fd/path stability checks and cleanup retain source bytes. This opt-in requires temporary creation and cleanup in the selected directory and refuses aliased source parents. Sibling placement preserves relative dependency lookup, but neither dependencies nor build/execution provenance are frozen. Do not silently select it for cached, sealed or read-only artifact readers or substitute an external temporary directory that changes `$ORIGIN`.
 
 ## Testing expectations
+
+### Explicit pure integer scalar correspondence
+
+`integer_scalar_contract.py` declares an independently selected original source,
+complete ordered integer scalar ABI, modular bitvector numeric contract and
+explicit reader limits. These declarations issue no authority. The opt-in
+`integer_scalar_correspondence.py` reader reopens the actual ordinary serial
+translation products and proves only complete typed straight-line constant,
+arithmetic, bitwise, compare and select DAGs with an exact scalar C-interface
+call/return. Equality is structural over typed values, including large integer
+constants and repeated operands; differing or unsupported DAGs remain UNKNOWN.
+Overflow promises, opaque operations, loops, aggregate returns, tensors and
+memory are unsupported. Original result slots persist on supported-contract
+refusals. This conditional IR facet establishes neither object/link semantics,
+physical ABI realization, numerical framework equivalence, effects, resource
+bounds nor any phase/runtime qualification. The caller supplies original source
+and ABI ownership; this utility chooses no source, lowering or execution policy.
 
 - radix_integer_reconstruct.py emits explicitly selected signed-i64 weighted
   group updates followed by one exact binary64 conversion. It rederives the

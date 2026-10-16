@@ -40,6 +40,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.liveness` | HW-agnostic *liveness / progress* oracle — an L2.5 tier between functional (L2) and RTL (L3). |
 | `merlin.llvmlower` | Whole-model lowering: linalg-on-tensors MLIR -> LLVM IR -> RVV objects. |
 | `merlin.mining` | RVV target-package machinery: fork an iteration of the RVV codegen (a transform-dialect SCHEDULE + cflags, captured as data), build it in isolation, measure it on coupled targets (spike correctness +… |
+| `merlin.model_check` | Build, run and judge complete quantized models for a device submission. |
 | `merlin.perf` | The performance layer: what a target's legal choices cost. |
 | `merlin.perf.deps` | Dependence primitives: what an instruction defines and uses, what is live, and what that costs. |
 | `merlin.perf.layer_bench` | Per-layer RTL evidence: build one small layer program, run it on a cycle-accurate engine, keep the receipt. |
@@ -76,9 +77,10 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.targetgen.semantic_search` | Bounded semantic instruction selection and scratchpad allocation. |
 | `merlin.targetgen.synthesize` | Synthesize the five plan artifacts from collected evidence. |
 | `merlin.targetgen.validate` | Validation layer: check synthesized plans + the generated repo, render a report. |
+| `merlin.transforms` | Target-independent xDSL transformations with explicit verification handoff. |
 | `merlin.triton` | Triton as a target-independent KERNEL FRONTEND to Merlin (not a per-target backend). |
 | `merlin.validation` | Structural/artifact validation for generated target repos + contract plans. |
-| `merlin.verify` | Compiler-pass verification: the static (lit/FileCheck) and formal (SMT) layers. |
+| `merlin.verify` | Compiler-pass verification: static (lit/FileCheck) and formal (SMT/Lean) checks. |
 | `merlin.xdsl_dialects` | merlin's core dialects in xDSL (the default prototyping plane). |
 | `merlin.xdsl_dialects.lowering` | Staged lowering across the core dialects. |
 | `merlin.xdsl_dialects.targets` | Generic xDSL target-dialect construction. Target plans and implementations live in examples/OOT. |
@@ -98,3 +100,4 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin_experiments.phase2.claims` | Measured-claim decisions; frozen declaration identities are not Python import APIs. |
 | `merlin_experiments.phase2.whole_model_measured` | Phase 2 ``whole_model_measured`` mode: a candidate compiler measured as a WHOLE MODEL on hardware. |
 | `merlin_experiments.tracking` | Experiment tracking views: a static HTML dashboard and a live terminal view, from records only. |
+| `merlin_timing` | Portable timing calibration and validation without compiler dependencies. |

@@ -477,8 +477,16 @@ def _adoption_status(home: Path, path: Path, digest: str) -> tuple[str, str]:
     )
 
 
-def resolve(target: str, *, env_var: str | None = None) -> Resolution:
-    """Resolve ``target``'s GSIM emulator and decide whether it may certify. Never raises."""
+def resolve(target: str, *, env_var: str | None = None, backend=None) -> Resolution:
+    """Resolve gSIM bytes; malformed explicit backend resolutions refuse."""
+    selected = getattr(backend, "gsim_resolution", None)
+    if selected is not None:
+        if not callable(selected):
+            raise ValueError("selected backend has no callable gSIM resolution")
+        model = selected()
+        if type(model) is not Resolution or model.target != target:
+            raise ValueError("selected backend returned a mismatched gSIM resolution")
+        return model
     path = emulator_path(target, env_var=env_var)
     source = "derived"
     for name in _override_names(target, env_var):
@@ -564,7 +572,7 @@ def resolve(target: str, *, env_var: str | None = None) -> Resolution:
     )
 
 
-def selected_firrtl_status(target: str, *, env_var: str | None = None) -> tuple[bool, str]:
+def selected_firrtl_status(target: str, *, env_var: str | None = None, backend=None) -> tuple[bool, str]:
     """Whether the receipted model represents this run's selected FIRRTL.
 
     A receipt binding the emulator binary alone does not establish that it was
@@ -572,7 +580,19 @@ def selected_firrtl_status(target: str, *, env_var: str | None = None) -> tuple[
     ``MERLIN_RTL_FACTS`` to their verified input snapshot.  Legacy invocations
     without that selection retain their existing availability semantics, but
     cannot cite this check as evidence of source identity.
+
+    Selected facts require v3 file and saved-transcript validation before the
+    digest comparison.  That validation does not establish actual producer,
+    emitter-build, counter, runtime or physical correspondence.
     """
+    selected = getattr(backend, "gsim_selected_firrtl_status", None)
+    if selected is not None:
+        if not callable(selected):
+            return False, "selected backend has no callable FIRRTL status"
+        result = selected()
+        if type(result) is not tuple or len(result) != 2 or type(result[0]) is not bool or type(result[1]) is not str:
+            return False, "selected backend returned malformed FIRRTL status"
+        return result
     facts_path = os.environ.get("MERLIN_RTL_FACTS", "").strip()
     if not facts_path:
         return True, "no selected FIRRTL facts supplied; source identity unverified"
@@ -593,6 +613,8 @@ def selected_firrtl_status(target: str, *, env_var: str | None = None) -> tuple[
     if not model.ok:
         return False, model.reason
     receipt = model.receipt or {}
+    if model.receipt_status == "bound" and receipt.get("schema_version") != STRICT_RECEIPT_SCHEMA:
+        return False, "gsim selected FIRRTL comparison has no strict v3 build receipt"
     actual = receipt.get("firrtl_sha256")
     if model.receipt_status != "bound" or not isinstance(actual, str) or len(actual) != 64:
         return False, "gsim has no bound FIRRTL build receipt for the selected RTL facts"
@@ -607,14 +629,14 @@ def probe(target: str, *, env_var: str | None = None) -> tuple[bool, str]:
     return r.ok, r.reason
 
 
-def citation(target: str, *, env_var: str | None = None) -> dict[str, Any]:
+def citation(target: str, *, env_var: str | None = None, backend=None) -> dict[str, Any]:
     """The block a run record embeds so a GSIM verdict says which emulator produced it.
 
     Recorded whether or not the emulator is usable — "GSIM was refused because ..." is exactly as much a
     fact about a run as "GSIM certified these capsules", and only one of the two currently survives into
     any artifact.
     """
-    r = resolve(target, env_var=env_var)
+    r = resolve(target, env_var=env_var, backend=backend)
     return {
         "target": r.target,
         "engine": "gsim",

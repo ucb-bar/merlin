@@ -117,6 +117,29 @@ PLUGIN_KEYS: dict[str, PluginKey] = {
         consumed=True,
         expects="path",
     ),
+    "rocc_semantics": PluginKey(
+        "rocc_semantics",
+        "The host-side RoCC ABI module (isa_constants / decode_instruction / instruction_funct, each "
+        "taking the target) that a GENERIC backend serves as its `rocc_semantics` attribute. Usually a "
+        "core module reference; read by the generic chipyard RoCC backend, never imported by name.",
+        consumed=True,
+        expects="path",
+    ),
+    "rtl_checks": PluginKey(
+        "rtl_checks",
+        "The structural RTL-check provider (load_default_facts / project_facts / screen / "
+        "compile_trace_checks / render_trace) a generic backend exposes as `rocc_semantics.rtl_checks`.",
+        consumed=True,
+        expects="path",
+    ),
+    "isa_headers": PluginKey(
+        "isa_headers",
+        "A DATA resource of the provider: the ISA-headers spec (schema merlin.isa_headers.v1) naming "
+        "the upstream header checkout by pin and content digest, its include roots, CRT, link script and "
+        "flags. The bytes are referenced, never copied into the provider.",
+        consumed=True,
+        expects="file",
+    ),
     "path": PluginKey(
         "path",
         "Injected by target_registry for external packages — the package root. Not authored by hand.",
@@ -179,10 +202,96 @@ def validate(plugin: dict[str, Any] | None, *, root: Path | None = None, where: 
             except PluginError as exc:
                 problems.append(f"{where}.path: {exc}")
             continue
-        target = _reference_path(Path(root), value, spec.expects)
+        target = resolve_reference(Path(root), value, spec.expects)
         if target is None:
-            problems.append(f"{where}.{key}: {value!r} does not resolve to a file under {root}")
+            problems.append(
+                f"{where}.{key}: {value!r} does not resolve to a file under {root}"
+                + ("" if spec.expects == "file" else " nor to a module of Merlin's installed core")
+            )
     return problems
+
+
+#: The installed core package. A plugin reference that names a module UNDER it (``merlin.<...>``) and
+#: that the provider does not ship itself is a reference to GENERIC core code: a data-only provider
+#: declares which generic implementation serves it instead of carrying a copy of one.
+CORE_PACKAGE = "merlin"
+#: Synthetic namespaces this module and the backend registry mint; never a core module.
+_SYNTHETIC_PREFIXES = ("merlin._oot",)
+
+
+def core_module_path(reference: str, expects: str = "module") -> Path | None:
+    """The source file of a dotted reference to a module of Merlin's installed core, or None.
+
+    Only a fully dotted ``merlin.<pkg>...<module>`` spelling qualifies (never a path, never a
+    synthetic plugin namespace), and the file found must be a real ``.py`` under the active core's
+    import root. Parent packages are imported by the lookup, which is safe: they are core code.
+    """
+    if expects == "file":
+        return None
+    module_ref = reference.split(ATTR_SEP, 1)[0] if expects == "attr" else reference
+    parts = module_ref.split(".")
+    if (
+        len(parts) < 2
+        or parts[0] != CORE_PACKAGE
+        or not all(part.isidentifier() for part in parts)
+        or any(module_ref.startswith(prefix) for prefix in _SYNTHETIC_PREFIXES)
+    ):
+        return None
+    from merlin.common.paths import python_source_dir
+
+    try:
+        spec = importlib.util.find_spec(module_ref)
+    except (ImportError, ValueError):
+        return None
+    if spec is None or not spec.origin or not spec.has_location:
+        return None
+    try:
+        origin = Path(spec.origin).resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    return origin if is_core_module_source(origin) else None
+
+
+def _core_package_dirs() -> tuple[Path, ...]:
+    """The installed distributions' ``merlin`` package directories (core first).
+
+    The namespace also spans the checkout's ``merlin/`` data tree (tests, contracts); that is not a
+    distribution, so only the active core and sibling ``src``/``site-packages`` roots count.
+    """
+    from merlin.common.paths import python_source_dir
+
+    core = (python_source_dir() / CORE_PACKAGE).resolve()
+    found = [core]
+    package = sys.modules.get(CORE_PACKAGE)
+    for entry in getattr(package, "__path__", ()) or ():
+        path = Path(entry).resolve()
+        if path not in found and path.name == CORE_PACKAGE and path.parent.name in {"src", "site-packages"}:
+            found.append(path)
+    return tuple(found)
+
+
+def is_core_module_source(path: str | Path) -> bool:
+    """Whether ``path`` is the ``.py`` source of a module of an installed Merlin distribution."""
+    try:
+        resolved = Path(path).resolve(strict=True)
+    except (OSError, RuntimeError):
+        return False
+    if resolved.suffix != ".py" or not resolved.is_file():
+        return False
+    return any(resolved.is_relative_to(root) for root in _core_package_dirs())
+
+
+def resolve_reference(root: Path, reference: str, expects: str) -> Path | None:
+    """A provider-owned reference first; otherwise a dotted reference to a core module.
+
+    Provider precedence keeps every existing package's resolution unchanged. The core fallback lets a
+    data-only provider name the generic implementation that serves it (``plugin.backend:
+    merlin.runtime.backends.<generic>``) instead of shipping target code.
+    """
+    owned = _reference_path(Path(root), reference, expects)
+    if owned is not None:
+        return owned
+    return core_module_path(reference, expects)
 
 
 def provider_root(root: str | Path, declared_root: str | Path | None = None) -> Path:
@@ -275,6 +384,12 @@ def load_module(root: str | Path, reference: str, *, package_name: str):
         module_ref = module_ref[: -len(".py")]
     module_ref = ".".join(Path(module_ref).parts) if "/" in module_ref else module_ref
     if _reference_path(root_path, reference, "module") is None:
+        if core_module_path(reference, "module") is not None:
+            # Generic core code the provider SELECTS but does not ship: import it under its own name.
+            try:
+                return importlib.import_module(reference)
+            except Exception as exc:  # noqa: BLE001 — report which plugin failed
+                raise PluginError(f"importing core module {reference!r} failed: {type(exc).__name__}: {exc}") from exc
         raise PluginError(f"{reference!r} does not resolve to a module under {root_path}")
     # Inspect Python's actual file-finder precedence without importing parents:
     # a namespace directory can be shadowed by a sibling module/extension.

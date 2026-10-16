@@ -50,6 +50,20 @@ from merlin_experiments.phase1 import workspace_transport as WT  # noqa: E402
 from merlin_experiments.phase1.providers import codex_agent as CA  # noqa: E402
 from merlin_experiments.phase1.providers import execution as EX  # noqa: E402
 
+from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
+
+
+def _corpus_probe_golden(context) -> Path:
+    """A real answer file of the descriptor-selected corpus: the file the agent must NOT be able to read."""
+    corpus = load_target_experiment(context.descriptor).capsule_corpus
+    if corpus is None:
+        raise SystemExit("NO-GO: the descriptor selects no capsule corpus, so there is no golden to probe")
+    for path in sorted(Path(corpus).rglob("golden.*")):
+        if path.is_file() and path.stat().st_size:
+            return path
+    raise SystemExit(f"NO-GO: no golden file under the selected corpus {corpus}; generate the corpus first")
+
+
 #: What the agent is asked to probe. Each line appends to a report file inside
 #: the workspace, so a partial run still shows how far it got.
 _PROBE_SCRIPT = """set +e
@@ -118,8 +132,8 @@ def run_canary(
     else:
         bundle = {"allowed": [], "denied": []}
 
-    golden, _iface = R._corpus_probe_paths()
-    corpus = golden.parent.parent.parent  # the capsule corpus root
+    golden = _corpus_probe_golden(R.C.CONTEXT)
+    corpus = Path(load_target_experiment(R.C.CONTEXT.descriptor).capsule_corpus)
     (ws / "TASK.md").write_text(
         "This is an isolation canary, not a build task. Run the shell script in probe.sh "
         "exactly as given, then reply with the contents of canary_report.txt and nothing else.\n"
@@ -139,6 +153,22 @@ def run_canary(
     except Exception as exc:  # noqa: BLE001 — a canary reports, it does not crash
         checks.append(_check("mask_selftest", False, f"{type(exc).__name__}: {exc}"))
 
+    if not checks[-1]["ok"]:
+        report = {
+            "verdict": "NO-GO",
+            "sandbox": sandbox,
+            "bundle": bundle_info,
+            "timestamp": stamp,
+            "checks": checks,
+            "agent_report": "",
+            "codex_summary": {},
+            "transcript": None,
+            "workspace": str(ws),
+            "provider_started": False,
+        }
+        (work / "canary_report.json").write_text(json.dumps(report, indent=2))
+        return 1, report
+
     # --- Run one real Codex round through the driver under test ---
     os.environ.setdefault("CODEX_CANARY", "1")
     rc, tpath = CA.run_round(
@@ -156,7 +186,7 @@ def run_canary(
         "then reply with the contents of canary_report.txt and nothing else. "
         "Do not modify probe.sh. This is an isolation check, not a build task.",
     )
-    records = [json.loads(l) for l in tpath.read_text().splitlines() if l.strip()]
+    records = [json.loads(line) for line in tpath.read_text().splitlines() if line.strip()]
     summary = next((r for r in records if r.get("type") == "codex_summary"), {})
     report_path = ws / "canary_report.txt"
     agent_report = report_path.read_text() if report_path.is_file() else ""

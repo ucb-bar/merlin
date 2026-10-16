@@ -15,10 +15,10 @@ Make these four PUBLIC capsules pass (under `merlin/contract/capsules/`):
 Read each capsule's `capsule.yaml` + `capsule.interface.mlir` for its exact op, shapes, dtypes, and
 epilogue, and read `merlin/contract/command_buffer_abi.yaml` for the precise epilogue/`acc_scale`
 semantics and `merlin/contract/interface_grammar.md` for the input grammar. Derive everything you need
-(rounding rule, tiling, dtypes) from the contract and the public Gemmini header — they are not
-restated here. Each capsule dir gives you `capsule.yaml`, `capsule.interface.mlir`, and
-`expected_instruction_coverage.yaml`. (The numeric `golden.yaml` is intentionally withheld — you do
-NOT get the answers; see the QA gate below.)
+(rounding rules and dtypes included) from the granted facts and contracts (no Gemmini
+C ISA headers are provided) — they are not restated here. Each capsule dir gives you `capsule.yaml`,
+`capsule.interface.mlir`, and `expected_instruction_coverage.yaml`. (The numeric `golden.yaml` is
+intentionally withheld — you do NOT get the answers; see the QA gate below.)
 
 ## Deliverable (write into `submission/`)
 
@@ -69,7 +69,7 @@ each `capsule.interface.mlir`, and confirm the command_buffer validates against
 - `integrity_exempt: false`; no `import merlin` / `from merlin` / `merlin.runtime.reference` /
   `merlin.runtime.simulator` / `reference_outputs` in your sources.
 - The device implementation must be **MLIR-lowered RoCC** — **no C compute kernels**, **no copying or
-  calling bareMetalC**, **no high-level Gemmini C library kernels** (e.g. `tiled_matmul_auto`) as the
+  calling bareMetalC**, **no high-level vendor C library kernels** as the
   answer. Integer math is **exact**.
 - **Never hardcode or embed outputs.** The grader runs hidden capsules after you freeze; a backend that
   memorizes public answers will fail them. Compute genuinely.

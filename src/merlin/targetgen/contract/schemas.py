@@ -192,14 +192,25 @@ def _resolve_target(obj: Any, target: str) -> Any:
     return obj
 
 
-def render_backend_contract(target: str, *, contract: str | Path | None = None) -> dict[str, Any]:
-    """The OOT backend contract resolved for ``target`` — ``kernel_abi.symbol`` becomes ``f"{target}_
-    kernel"`` and the entrypoint argv templates resolve ``--convert-iface-to-{target}``, exactly the value
-    ``generate_prompt`` derives. The first target resolves byte-identically to the former hand-authored literals."""
+#: The version-1 resident kernel ABI, kept apart from the candidate-facing OOT backend contract.
+LEGACY_KERNEL_ABI = ("legacy", "kernel_abi_v1.yaml")
+
+
+def legacy_kernel_abi_path(*, contract: str | Path | None = None) -> Path:
+    """Where the version-1 kernel ABI (``kernel_abi``) lives under the selected contract dir."""
+    return contract_dir(contract).joinpath(*LEGACY_KERNEL_ABI)
+
+
+def render_legacy_kernel_abi(target: str, *, contract: str | Path | None = None) -> dict[str, Any]:
+    """The version-1 ``kernel_abi`` block resolved for ``target`` (``symbol`` -> ``f"{target}_kernel"``).
+
+    Read by Merlin's own device shim and by version-1 harness certification only; a runner-owned
+    harness follows ``logical_kernel_abi`` in the OOT backend contract."""
     import yaml
 
-    text = (contract_dir(contract) / "mlir_oot_backend_contract.yaml").read_text(encoding="utf-8")
-    return _resolve_target(yaml.safe_load(text), target)
+    document = yaml.safe_load(legacy_kernel_abi_path(contract=contract).read_text(encoding="utf-8"))
+    block = document.get("kernel_abi") if isinstance(document, dict) else None
+    return _resolve_target(block if isinstance(block, dict) else {}, target)
 
 
 def render_oracle_runner_contract(target: str, *, contract: str | Path | None = None) -> dict[str, Any]:

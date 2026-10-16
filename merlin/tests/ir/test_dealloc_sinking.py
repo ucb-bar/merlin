@@ -22,6 +22,8 @@ result and MUST reject a free moved before a use -- including a use through an a
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from merlin.llvmlower import pipeline as P
@@ -30,6 +32,13 @@ from merlin.llvmlower import toolchain
 m2m = pytest.mark.skipif(
     not toolchain.m2m_python().is_file(), reason="model2MLIR venv (torch-mlir pass registry) not present"
 )
+
+
+@pytest.fixture(autouse=True)
+def legacy_memory_pipeline_for_stage_comparisons(monkeypatch):
+    """Keep individual upstream-stage controls comparable to the old pipeline."""
+    monkeypatch.setenv("MERLIN_SPLIT_FRESH_DEALLOCS", "0")
+    monkeypatch.setenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT", "0")
 
 LOWER = "bufferization-lower-deallocations"
 SINK = "optimize-allocation-liveness"
@@ -73,8 +82,8 @@ def _stages(text: str) -> list[str]:
 # --- the pass list ---------------------------------------------------------------------------
 
 
-def test_the_sinking_stage_is_off_by_default(monkeypatch):
-    """An unflagged build must emit the frozen baseline byte for byte, so nothing is added."""
+def test_the_legacy_sinking_stage_can_be_disabled_for_comparison(monkeypatch):
+    """The A/B controls preserve the frozen upstream pass list."""
     monkeypatch.delenv("MERLIN_SINK_DEALLOCS", raising=False)
     assert P._dealloc_passes() == ["ownership-based-buffer-deallocation", "buffer-deallocation-simplification", LOWER]
     for text in (
@@ -83,6 +92,15 @@ def test_the_sinking_stage_is_off_by_default(monkeypatch):
         P.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset()),
     ):
         assert SINK not in text
+
+
+def test_safe_memory_passes_run_in_an_unflagged_build(monkeypatch):
+    monkeypatch.delenv("MERLIN_SPLIT_FRESH_DEALLOCS")
+    monkeypatch.delenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT")
+    stages = P._dealloc_passes()
+    assert P.SPLIT_FRESH_DEALLOCS_MARKER in stages
+    assert P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in stages
+    assert any(SINK in stage for stage in stages)
 
 
 def test_the_env_flag_turns_the_stage_on(monkeypatch):
@@ -146,6 +164,173 @@ def test_the_stage_frees_a_buffer_after_its_last_use():
     frees = [i for i, ln in enumerate(body) if ln.startswith("memref.dealloc")]
     assert len(frees) == 2
     assert min(frees) < last_matmul, "the first buffer is still freed after the last compute"
+
+
+@m2m
+def test_aggregate_owned_allocs_are_split_and_sunk(tmp_path, monkeypatch):
+    """A whole-function aggregate must not pin independent local buffers until return."""
+    monkeypatch.setenv("MERLIN_SPLIT_FRESH_DEALLOCS", "1")
+    aggregate = P.apply_passes(CHAIN, _BUFFERIZE + ",ownership-based-buffer-deallocation")
+    assert aggregate.count("bufferization.dealloc") == 1
+    src, dst, script = (tmp_path / name for name in ("aggregate.mlir", "split.mlir", "split.py"))
+    src.write_text(aggregate, encoding="utf-8")
+    script.write_text(
+        "import sys\nfrom torch_mlir import ir\n"
+        + P.SPLIT_FRESH_DEALLOCS_PRELUDE
+        + "ctx = ir.Context()\n"
+        + "with ctx:\n"
+        + "  module = ir.Module.parse(open(sys.argv[1]).read(), ctx)\n"
+        + "  _split_fresh_local_deallocs(ctx, module)\n"
+        + "  open(sys.argv[2], 'w').write(str(module.operation))\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src), str(dst)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "OK split_fresh_local_deallocs 2 fresh allocs" in proc.stdout
+    split = dst.read_text(encoding="utf-8")
+    assert split.count("memref.dealloc") == 2
+    # The input buffers remain under upstream's aggregate ownership logic.
+    assert split.count("bufferization.dealloc") == 1
+    sunk = P.apply_passes(
+        split,
+        "buffer-deallocation-simplification,bufferization-lower-deallocations,"
+        "canonicalize,func.func(optimize-allocation-liveness)",
+    )
+    assert P.dealloc_placement_violations(sunk) == []
+    body = [line.strip() for line in sunk.splitlines()]
+    assert min(i for i, line in enumerate(body) if line.startswith("memref.dealloc")) < max(
+        i for i, line in enumerate(body) if line.startswith("linalg.matmul")
+    )
+
+
+@m2m
+def test_default_memory_passes_run_through_the_real_lowering_runner(tmp_path, monkeypatch):
+    monkeypatch.delenv("MERLIN_SPLIT_FRESH_DEALLOCS")
+    monkeypatch.delenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT")
+    stages = P._dealloc_passes()
+    assert stages[1] == P.SPLIT_FRESH_DEALLOCS_MARKER
+    assert P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in stages
+    assert any(SINK in stage for stage in stages)
+    lowered = P.lower_to_llvm_ir(CHAIN, workdir=tmp_path, pipeline=P._upstream_pipeline())
+    assert lowered.count("call void @free") == 2
+
+
+@m2m
+def test_split_keeps_a_device_result_and_its_output_as_one_allocation(tmp_path):
+    """The generated shim returns its writable output; freeing both aliases is a double free."""
+    source = """module {
+      func.func @forward(%input: memref<4xf32>) {
+        %true = arith.constant true
+        %out = memref.alloc() : memref<4xf32>
+        %result = call @merlin_dev_test(%input, %input, %out) :
+          (memref<4xf32>, memref<4xf32>, memref<4xf32>) -> memref<4xf32>
+        %base, %off, %size:1, %stride:1 = memref.extract_strided_metadata %out :
+          memref<4xf32> -> memref<f32>, index, index, index
+        %base2, %off2, %size2:1, %stride2:1 = memref.extract_strided_metadata %result :
+          memref<4xf32> -> memref<f32>, index, index, index
+        bufferization.dealloc (%base, %base2 : memref<f32>, memref<f32>) if (%true, %true)
+        return
+      }
+      func.func private @merlin_dev_test(
+        memref<4xf32> {bufferization.access = "read"},
+        memref<4xf32> {bufferization.access = "read"},
+        memref<4xf32> {bufferization.access = "write"}) -> memref<4xf32>
+    }"""
+    src, script = tmp_path / "alias.mlir", tmp_path / "split_alias.py"
+    src.write_text(source, encoding="utf-8")
+    script.write_text(
+        "import sys\nfrom torch_mlir import ir\n"
+        + P.SPLIT_FRESH_DEALLOCS_PRELUDE
+        + "ctx = ir.Context()\n"
+        + "with ctx:\n"
+        + "  module = ir.Module.parse(open(sys.argv[1]).read(), ctx)\n"
+        + "  _split_fresh_local_deallocs(ctx, module)\n"
+        + "  print(module.operation)\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "1 fresh allocs 1 device aliases" in proc.stdout
+    assert proc.stdout.count("memref.dealloc %alloc") == 1
+    assert "bufferization.dealloc" not in proc.stdout
+
+    # A bias-bearing device group has three read-only inputs and the same
+    # writable, returned output contract. Its extra input must not prevent
+    # splitting every otherwise-owned allocation in a whole model.
+    biased = source.replace(
+        "@merlin_dev_test(%input, %input, %out)",
+        "@merlin_dev_test(%input, %input, %input, %out)",
+    ).replace(
+        "(memref<4xf32>, memref<4xf32>, memref<4xf32>) -> memref<4xf32>",
+        "(memref<4xf32>, memref<4xf32>, memref<4xf32>, memref<4xf32>) -> memref<4xf32>",
+    ).replace(
+        '        memref<4xf32> {bufferization.access = "write"})',
+        '        memref<4xf32> {bufferization.access = "read"},\n'
+        '        memref<4xf32> {bufferization.access = "write"})',
+    )
+    src.write_text(biased, encoding="utf-8")
+    bias_group = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "1 fresh allocs 1 device aliases" in bias_group.stdout
+    assert bias_group.stdout.count("memref.dealloc %alloc") == 1
+    assert "bufferization.dealloc" not in bias_group.stdout
+
+    src.write_text(biased.replace('bufferization.access = "read"},\n'
+                                  '        memref<4xf32> {bufferization.access = "write"}',
+                                  'bufferization.access = "write"},\n'
+                                  '        memref<4xf32> {bufferization.access = "write"}'), encoding="utf-8")
+    invalid_bias = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "0 fresh allocs" in invalid_bias.stdout
+    assert "bufferization.dealloc" in invalid_bias.stdout
+
+    # A lookalike foreign call has no Merlin shim alias contract; retain the
+    # aggregate so upstream's runtime ownership check remains authoritative.
+    src.write_text(source.replace("merlin_dev_test", "foreign_test"), encoding="utf-8")
+    foreign = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "0 fresh allocs" in foreign.stdout
+    assert "bufferization.dealloc" in foreign.stdout
+
+    src.write_text(source.replace('bufferization.access = "write"', 'other.access = "write"'), encoding="utf-8")
+    missing_contract = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "0 fresh allocs" in missing_contract.stdout
+    assert "bufferization.dealloc" in missing_contract.stdout
+
+    # A void foreign call can still retain the output, including inside a
+    # region. No returned memref is needed for the aggregate split to be unsafe.
+    capture = source.replace(
+        "        %base, %off, %size:1, %stride:1 =",
+        "        scf.if %true {\n"
+        "          func.call @foreign_capture(%out) : (memref<4xf32>) -> ()\n"
+        "          scf.yield\n"
+        "        }\n"
+        "        %base, %off, %size:1, %stride:1 =",
+    ).replace(
+        "      func.func private @merlin_dev_test(",
+        "      func.func private @foreign_capture(memref<4xf32>)\n"
+        "      func.func private @merlin_dev_test(",
+    )
+    src.write_text(capture, encoding="utf-8")
+    captured = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    assert "0 fresh allocs" in captured.stdout
+    assert "bufferization.dealloc" in captured.stdout
 
 
 # --- the guard -------------------------------------------------------------------------------

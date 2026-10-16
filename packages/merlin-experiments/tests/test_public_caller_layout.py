@@ -168,3 +168,34 @@ def test_explicit_projection_must_equal_the_declared_encoding(tmp_path, selected
     }
     with pytest.raises(ValueError, match="declared encoding"):
         _checked_projection(projection, command)
+
+
+def test_a_core_backend_is_admitted_only_when_the_providers_contract_names_it(tmp_path, monkeypatch, selected_provider):
+    """A data-only provider is served by an installed GENERIC backend outside its directory. That is
+    admitted only for the core module its own contract names; any other core module is still refused."""
+    from merlin.runtime.backends import chipyard_rocc
+    from merlin.targetgen.contract import harness_render
+
+    submission, facts, _ = _fixture(tmp_path)
+    generic = Path(chipyard_rocc.__file__)
+    impostor = SimpleNamespace(
+        __file__=str(harness_render.__file__),
+        caller_layout_source_paths=lambda: (Path(harness_render.__file__),),
+        describe_caller_layout=lambda cb, **_: {},
+    )
+    selected_provider.plugin = lambda: {"backend": "merlin.runtime.backends.chipyard_rocc"}
+    monkeypatch.setattr(backends, "get_backend", lambda target: impostor)
+    with pytest.raises(ValueError, match="differs from explicit support provider"):
+        inspect_caller_layout(
+            submission=submission, command_buffer_member="command_buffer.json", target="gemmini", facts_path=facts
+        )
+    named = SimpleNamespace(
+        __file__=str(generic),
+        caller_layout_source_paths=lambda: (generic, Path("/etc/hostname")),
+        describe_caller_layout=lambda cb, **_: {},
+    )
+    monkeypatch.setattr(backends, "get_backend", lambda target: named)
+    with pytest.raises(ValueError, match="outside its provider and the installed core"):
+        inspect_caller_layout(
+            submission=submission, command_buffer_member="command_buffer.json", target="gemmini", facts_path=facts
+        )

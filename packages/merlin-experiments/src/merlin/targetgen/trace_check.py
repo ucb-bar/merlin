@@ -23,12 +23,74 @@ run's formal verdict, and a program that is slow is not a program that is wrong.
 
 from __future__ import annotations
 
+import copy
 import functools
+import math
 from typing import Any
 
 _COMPUTE = {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"}
 _CONFIG = {"CONFIG_EX", "CONFIG_LD", "CONFIG_ST"}
 _MVIN = {"MVIN", "MVIN2", "MVIN3"}
+
+
+def requirements_complete(observation) -> bool:
+    """Applicable trace obligations need a pass and available selected evidence.
+
+    Historical observations without a selected requirement status retain their
+    existing meaning. An explicit unavailable/failed requirement cannot become
+    qualification just because the separately observed trace status is passing.
+    Applicability and original capsule/source ownership remain caller-owned.
+    """
+    return (isinstance(observation, dict) and observation.get("status") == "pass"
+            and observation.get("trace_requirement_status") in (None, "pass"))
+
+
+def _bound_trace_view(trace, target):
+    """Reopen raw class identity and optional fields from the original selected decoder."""
+    if not target:
+        return None
+    from merlin.runtime.backends import base
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+    from merlin.targetgen.rocc.semantics import BoundSemantics
+
+    try:
+        backend = base.get_backend(target)
+    except (ValueError, ImportError):
+        return None  # Historical advisory callers may have no selected execution backend.
+    if type(backend) is not BoundRoCCBackend:
+        return None
+    semantics = backend.rocc_semantics
+    if type(semantics) is not BoundSemantics:
+        raise ValueError("structural trace requires its original selected operand decoder")
+    isa = semantics.isa_constants(target)
+    if trace.get("abi") != {"custom_opcode": hex(isa["CUSTOM_OPCODE"]), "funct3": hex(isa["FUNCT3"])}:
+        raise ValueError("structural trace transport differs from the original selected ISA")
+    contract = backend._data()["contract"]
+    roles = ((contract.get("corpus_instruction_roles") or {}).get("by_role") or {})
+    if type(roles) is not dict:
+        raise ValueError("selected corpus instruction roles are malformed")
+    roster = set(isa["FUNCT_CLASS"].values())
+    for classes in roles.values():
+        if type(classes) is not list or any(type(name) is not str or name not in roster for name in classes):
+            raise ValueError("corpus instruction roles differ from the selected ISA roster")
+    observer = semantics.operand_observer
+    view = copy.deepcopy(trace)
+    raw_classes = []
+    for row in view["instructions"]:
+        if row.get("funct") is None:
+            if row.get("class") != "FENCE":
+                raise ValueError("structural trace contains an unresolved transport instruction")
+            raw_classes.append("FENCE")
+            continue
+        label, decoded = semantics.decode_instruction(row["funct"], row["rs1"], row["rs2"], isa)
+        if label == "UNKNOWN" or row.get("class") != label or row.get("decoded") != decoded:
+            raise ValueError("structural trace differs from its original raw instruction decode")
+        raw_classes.append(label)
+        if observer is not None:
+            row["class"], row["decoded"] = observer.decode_instruction(
+                row["funct"], row["rs1"], row["rs2"], observer.isa_constants(target)
+            )
+    return view, roles, raw_classes, observer is not None
 
 
 def _classes(trace: dict) -> list[str]:
@@ -113,7 +175,7 @@ def subsumption_for(target: str | None) -> dict:
     return _subsumption(str(target))
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _subsumption(target: str) -> dict:
     try:
         from .target_registry import load_contract
@@ -156,7 +218,7 @@ def movement_bound_for(target: str | None) -> dict:
     return dict(_movement_bound(str(target)))
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _movement_bound(target: str) -> dict:
     # THE DECLARATION IS THE GATE, and it is read first on purpose: a target that does not declare a
     # transfer payload has no bound whatever its facts say, and deriving facts for it would be work
@@ -272,21 +334,28 @@ def check(
 ) -> dict:
     """Validate ``trace`` against capsule ``expected`` (+ optional command buffer).
 
-    The returned ``violations`` are ADVISORY diagnostics — instruction-class coverage, ordering, and
-    declared-mode checks that help the author, but do NOT decide pass/fail. The verdict is the oracle
-    (numerics + L2/L3 RTL, which execute the actual emitted stream); an instruction we cannot classify
-    (``UNKNOWN``) is our decoder's limit, not the backend's defect, so it is reported, never gated on.
-    The sole gating signal derived here is :func:`drives_accelerator` (anti-cheese).
+    These findings do not change the numerical/native verdict. Applicable structural evidence is
+    required separately by formal qualification and public completion feedback. An unavailable
+    selected operand/schedule protocol records missing evidence, rather than a numerical defect.
 
     ``target`` names whose derived facts the two residency modes read (the load-state selector, the
     retain sentinel and the accumulator bound); without one, a declared residency mode reports a
     refusal rather than passing in silence."""
     violations: list[str] = []
+    try:
+        binding = _bound_trace_view(trace, target)
+    except (ValueError, KeyError, TypeError) as error:
+        return {"status": "fail", "violations": [str(error)], "trace_requirement_status": "invalid_binding"}
+    raw_classes = []
+    protocol_selected = False
+    if binding is not None:
+        trace, bound_roles, raw_classes, protocol_selected = binding
     #: Not violations: what the program did INSTEAD, where the target says it amounts to the same.
     notes: list[str] = []
     ins = trace.get("instructions", [])
     classes = _classes(trace)
     present = set(classes)
+    observed_classes = present | set(raw_classes)
 
     if "UNKNOWN" in present:
         n = classes.count("UNKNOWN")
@@ -297,7 +366,7 @@ def check(
     for used in present:
         covered |= set((subsumes or {}).get(used) or ())
     for req in expected.get("instruction_classes", []):
-        if req in present:
+        if req in observed_classes:
             continue
         if req in covered:
             doers = sorted(u for u in present if req in set((subsumes or {}).get(u) or ()))
@@ -307,7 +376,7 @@ def check(
 
     # 2. forbidden classes absent
     for forb in expected.get("forbidden_classes", []):
-        if forb in present:
+        if forb in observed_classes:
             violations.append(f"forbidden instruction class present: {forb}")
 
     # 3. ordering invariants
@@ -345,8 +414,33 @@ def check(
 
     # 4. mode checks
     modes = expected.get("modes", {}) or {}
-    decoded = [i.get("decoded", {}) for i in ins]
-
+    unresolved_modes = []
+    unresolved_fields = []
+    if binding is not None and not protocol_selected:
+        unresolved_modes = [mode for mode, required in modes.items() if required and mode != "movement"]
+        for mode in unresolved_modes:
+            violations.append(f"mode {mode} requires an unavailable selected operand protocol")
+    elif binding is not None:
+        for mode, classes_needed, field in (
+            ("i8", {"MVOUT"}, "readout"), ("relu", {"CONFIG_ST"}, "relu"),
+            ("acc_scale", {"CONFIG_ST"}, "acc_scale"), ("k_accumulate", {"PRELOAD"}, "accumulate"),
+        ):
+            if not modes.get(mode):
+                continue
+            observations = [row for row in ins if row["class"] in classes_needed]
+            if (mode == "k_accumulate" and not observations) or (
+                observations and not any(row.get("decoded", {}).get(field) is not None for row in observations)
+            ):
+                unresolved_fields.append(mode)
+                violations.append(f"mode {mode} has unresolved original operand fields")
+        if modes.get("resident_reuse"):
+            loads = [row for row in ins if row["class"] in _MVIN]
+            if not loads or any(
+                any(row.get("decoded", {}).get(field) is None for field in ("spad_addr", "dram", "rows", "cols"))
+                for row in loads
+            ):
+                unresolved_fields.append("resident_reuse")
+                violations.append("mode resident_reuse has unresolved original load identity/extent fields")
     def _any(pred) -> bool:
         return any(pred(i) for i in ins)
 
@@ -357,11 +451,21 @@ def check(
         if not _any(lambda i: i["class"] == "CONFIG_ST" and i.get("decoded", {}).get("relu") is True):
             violations.append("mode relu declared but no CONFIG_ST sets relu activation")
     if modes.get("acc_scale"):
-        ok = _any(lambda i: i["class"] == "CONFIG_ST" and (i.get("decoded", {}).get("acc_scale") not in (None, 1.0)))
+        def _scale_update(instruction):
+            value = instruction.get("decoded", {}).get("acc_scale")
+            return (instruction["class"] == "CONFIG_ST" and type(value) in (int, float)
+                    and (binding is None or type(value) is float) and math.isfinite(value) and value != 1.0)
+
+        # All-ones can be a keep-state sentinel whose f32 view is NaN. It is
+        # not an observed scale update, nor is any nonfinite bit pattern.
+        ok = _any(_scale_update)
         if not ok:
             violations.append("mode acc_scale declared but no CONFIG_ST has a non-identity scale")
     if modes.get("k_accumulate"):
-        ok = ("COMPUTE_ACCUMULATE" in present) or _any(
+        # A selected COMPUTE_AND_STAY operation can retain a weight bank. Its
+        # class label alone does not prove accumulator write-add; use the actual
+        # selected destination accumulation flag for Bound protocols.
+        ok = (binding is None and "COMPUTE_ACCUMULATE" in present) or _any(
             lambda i: i["class"] == "PRELOAD" and i.get("decoded", {}).get("accumulate") is True
         )
         if not ok:
@@ -390,24 +494,52 @@ def check(
 
         violations += _SR.residency_findings({"instructions": ins}, target=target)
     if modes.get("movement"):
-        bad = present & _COMPUTE | (present & {"PRELOAD"})
+        loads, stores = _MVIN, {"MVOUT"}
+        computes, preloads = _COMPUTE, {"PRELOAD"}
+        if binding is not None and not protocol_selected:
+            loads, stores = set(bound_roles.get("memory", [])), set(bound_roles.get("acc_readout", []))
+            computes, preloads = set(bound_roles.get("matmul", [])), set(bound_roles.get("weight_load", []))
+            if not loads or not stores:
+                unresolved_modes.append("movement")
+                violations.append("mode movement requires unavailable selected load/readout roles")
+        bad = present & computes | (present & preloads)
         if bad:
             violations.append(f"mode movement declared but compute instructions present: {sorted(bad)}")
-        if not present & _MVIN or "MVOUT" not in present:
+        if not present & loads or not present & stores:
             violations.append("mode movement declared but trace lacks MVIN/MVOUT")
 
-    # 5. optional cross-validation against the command buffer tile geometry
-    if cb is not None:
-        try:
-            _check_tiles(classes, cb, violations)
-        except Exception as e:  # never let cross-check crash the verifier
-            violations.append(f"tile cross-check error (non-fatal): {e}")
+    # A sixteen-wide resident schedule is a preferred strategy, not generic
+    # instruction legality. No original selected schedule relation is consumed
+    # here, so these findings never become required structural obligations.
+    tile_advisory = None
+    if cb is not None and any(
+        command.get("opcode") in {"MATMUL", "MATMUL_RESIDENT"} for command in cb.get("commands", [])
+    ):
+        findings = []
+        available = binding is None or protocol_selected
+        if available:
+            try:
+                _check_tiles(classes, cb, findings)
+            except Exception as error:
+                findings.append(f"legacy tile-strategy observation unavailable: {error}")
+        tile_advisory = {
+            "required": False, "strategy": "legacy_16wide_resident_matmul",
+            "status": "observed" if available else "unavailable_projection", "findings": findings,
+        }
 
     # advisory DRAM-address provenance (parameterized by the harness address model; no-op if unknown)
     if address_model:
         violations += dram_address_findings(trace, address_model)
 
     out = {"status": "pass" if not violations else "fail", "violations": violations}
+    if tile_advisory is not None:
+        out["tile_schedule_advisory"] = tile_advisory
+    if binding is not None:
+        out["trace_requirement_status"] = (
+            "unavailable_protocol" if unresolved_modes else "unavailable_fields" if unresolved_fields
+            else "failed" if violations else "pass"
+        )
+        out["unavailable_requirements"] = sorted(set(unresolved_modes + unresolved_fields))
     if notes:
         out["satisfied_otherwise"] = notes
     return out

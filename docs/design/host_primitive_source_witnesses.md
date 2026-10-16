@@ -4,7 +4,7 @@ kind: design
 status: current
 owner: core
 last_verified: 2026-10-08
-related: [agent_compiler_performance]
+related: [verified_compiler_roadmap]
 code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_literal_arange.py
   - packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_literal_arange_admission.py

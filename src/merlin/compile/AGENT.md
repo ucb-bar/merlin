@@ -45,3 +45,7 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
   numerical regime (comparison, tolerances, scaling and subnormal handling), not hardware evidence.
   Core never discovers a profile by target name. Floating execution without that declaration refuses;
   callers must forward it through recursive tiling, certification, runtime dispatch and device builds.
+- Explicit placement planning forwards the caller's selected linked-ELF admission
+  unchanged into `DeviceRouting`. Automatic `compile_model` planning currently has
+  no independently selected live policy/accessor producer; an active ordinary
+  device build must refuse rather than infer one from a target or package name.

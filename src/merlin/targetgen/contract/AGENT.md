@@ -7,11 +7,14 @@ Experiment-ABI contract layer.
 ## Modules
 
 - `compile.py` — Runner-owned compile + execute of a *package-produced* lowered LLVM/RoCC MLIR.
+- `memory_decode.py` — The selected coherent-memory output decoder, run as one observed invocation.
 - `build_recipe.py` — Pure compile/link recipe; the runtime backend re-exports this same class.
 - `build_service.py` — Typed host-only build service and isolated pure target-package loader; no backend discovery, execution or reference imports.
 - `execution_service.py` — Explicit pinned functional transport; no backend discovery or correctness, ISA, hardware timing, or counter authority.
 - `elf_admission.py` — Source-pinned linked-artifact admission before explicit simulator dispatch; rejected binaries are not executed or assigned numerical/timing results.
 - `readback_policy.py` — Explicit invocation-only full-value output transport and selected build-byte receipt; never source this choice from a candidate command buffer or ambient environment.
+- `harness_render.py` — Solution-neutral runner-owned harness renderer (logical kernel ABI v2), driven only by declared contract data.
+- `reference_kernel.py` — Naive C reference kernel (and deliberate mutants) for qualifying the harness; a test instrument, never graded.
 - `interface_emit.py` — ``merlin_iface`` interface-grammar: emit a Merlin command buffer as contract text, and
 - `schemas.py` — Fail-closed JSON-Schema validation against the ``merlin/contract/schemas/`` bundle.
 - `toolchain.py` — MLIR toolchain resolution for the experiment ABI (env-overridable).
@@ -93,6 +96,58 @@ descendant cleanup, runtime qualification, effects, hardware or timing. The
 native timeout bounds the selected subprocess; it is not an OS deadline or a
 process-tree cleanup guarantee, and captured output has no aggregate byte limit.
 
+`artifact_retesting` supplies a separate normal Phase 1 corpus observation hook.
+The admitted public queue observes fresh complete ELF, kernel object, harness,
+numeric inputs, readback recipe, known build tools, selected process source and
+engine plus effective environment. It reopens its actual prior Python dispatch
+before reporting an artifact comparison. It never imports saved cache records,
+skips execution, issues a physical witness or adds an independent replicate.
+The bounded observer belongs to one original job output and can be shared by
+copied member thread contexts. Optional `_artifact_index.py` retains complete
+artifact/input/runtime digest observations across revisions under one live
+parent-issued `NativeRuntimeView`. Workers stage signed actual process evidence;
+only the creating parent publishes after original guardian cleanup and durable
+release. Pending and published refs share file/byte budgets and storage pins.
+The parent discards failed/cancelled pending refs only after actual cleanup;
+unknown cleanup or damaged evidence retains pins. No cleanup JSON is authority.
+The optional native view closes filesystem lookup, but unspecified native
+reset/seed and non-file inputs remain UNKNOWN, so identical artifacts still
+execute. Calibration omits the index and final execution never selects this
+public observer; original fresh timing and full numerical gates remain in place.
+
+`build_products.py` optionally reuses only original LLVM object compilation
+products after fresh emission, under the exact live shared `BuildRuntimeView`.
+Explicit target/architecture/ABI and closed flags are data; target or model names
+never supply eligibility. Unknown CPU discovery, plugins/profile/response files,
+C sources and links execute freshly. Whole selected input/view/source/argv/env
+identity plus complete object/stack-sidecar bytes precede reuse. Workers stage
+only authenticated actual closed process observations; creating-parent publication
+follows original guardian cleanup and durable release. Entry/file/reference-byte
+budgets bound retention; metadata has a separate per-record byte bound. Active
+readers pin original jobs until parent cleanup; unknown cleanup or damaged
+pin metadata preserves pins. Proven cleanup permits discarding authenticated
+stale products (including original stack repair) without publishing them.
+A distinct `artifact_reuse` receipt cites the original
+process and restored bytes without a new compiler invocation/timing/replicate.
+No-index calibration/final paths, harness/link work and all simulations/numerical
+gates remain fresh. JSON cannot reconstruct either live owner.
+
+An optional exact `PreparedProcessReadbackPlan` derives a values-free object
+roster and complete file budget from the original typed direct harness ABI and
+repeat/counter/phase plans. Only this explicit selection admits one whole-token
+request operand and one output operand beside the single ELF operand. Its
+private preparation files, original command buffer, selected sources and actual
+ELF are rechecked before dispatch; the output must be absent before execution
+and complete afterward. Actual invocation inputs, product bytes, tool, argv,
+environment identity and captured stream are reopened at consumption. Source
+pins do not prove imports or bytecode. The external source-owned loader and
+decoder still owe exact ELF symbol resolution, packet grammar, original values,
+histories, completion, isolation, resource and physical correspondence. This
+transport issues no stage, runtime, cold/warm, measurement or timing authority.
+Absent selection preserves the original unsupported-options refusal and serial
+route. V1 supports one bounded exact-size readback file, not inherited channels
+or arbitrary prepared commands.
+
 The build-only renderer must be an actual Python function or bound method whose
 inspected file and current bytes belong to the selected source roster. Unwrap
 only exact stdlib `functools.partial`, never supplied wrapper/source attributes.
@@ -106,6 +161,11 @@ simulator dispatch. Reopen its actual report and exact ELF bytes before and afte
 execution. Refusal is completed evaluation data with `execution=not_attempted`,
 never a fabricated console, output roster, timing result or completed process.
 This source-bound transport does not issue instruction or physical authority.
+It freezes the selected evaluator's actual function/code, bound owner and exact
+stdlib partial bindings, using the functional transport's shallow selection
+mechanism. Recheck through completed output decoding; same-file substitutions
+cannot replace the preexecution policy. Mutable reachable state, import closure
+and source-to-bytecode equivalence remain unproved.
 
 `compile_only.CompileOnlySourceAbi` contains static original tensor declarations,
 with provenance supplied by an independent source producer. Its retained
@@ -117,6 +177,17 @@ index, resource, numerical or physical obligation.
 An explicit empty original input tuple or logical input map represents a zero-input
 program; it is distinct from absent input data. The original output roster stays
 nonempty and complete, with every output pointer and tensor type checked.
+
+`source_observation` keeps the original straight-line reader contract when no
+control-flow plan is selected. An explicit `ControlFlowObservationPlan` freezes
+the whole LLVM input, entry, layout declaration and every reader budget. Its
+separate versioned `observe_control_flow` method receives the complete bounded
+static CFG, including cyclic joins and dead blocks, through the ordinary prepared
+source-verifier call. The actual graph and input invocation are retained. Layout
+declarations, callback attribution and graph inventory do not prove same-object
+DataLayout/storage correspondence, source semantics, dynamic paths, output
+coverage, ownership, effects, resources, stages or runtime. Unsupported module
+metadata remains refused; do not strip it or silently reinterpret old readers.
 
 `pointer_storage` declares original logical pointer storage only from explicit
 software choices and original static tensor types. No contiguous/noalias/order,
@@ -134,6 +205,17 @@ are not preempted. Partial console and interrupted records remain diagnostics,
 never completed values or a timer qualification. Unselected calls retain their
 existing timeout behavior.
 
+`harness_render` hands a kernel the capsule's LOGICAL tensors (dense row-major, declared
+dtype containers, 64-byte aligned) in one pointer order: inputs in declaration order, then
+results in reference order (`logical_kernel_abi` in the OOT contract). Tiling, padding, packing
+and layout are the compiler's job, and the harness includes no target header; outputs are
+poisoned before every invocation. The host completion and cycle-counter instructions come from
+the target contract's `logical_harness` block. Its correctness is gated by
+`build_tools/scripts/harness_reference_gate.py` (naive reference kernel exact on spike, mutants
+caught, no excluded-header routine visible). The version-1 `kernel_abi` lives in
+`merlin/contract/legacy/kernel_abi_v1.yaml`; only Merlin's device shim and version-1 harness
+certification (`check_kernel_abi_arg_order.py`) read it.
+
 `compile_only.require_pointer_entry` checks the actual nonvariadic external C
 entry, void result, plain pointer parameters and matching block signature.
 Compile-only and explicit component numerical execution share this boundary;
@@ -149,3 +231,13 @@ proofs. The fresh author view and qualified grader must use that same live
 selection. An absent pair preserves the original import restrictions. Approved
 direct imports and source-byte attribution do not establish semantic generality,
 transitive dependency isolation, runtime correctness, effects or hardware timing.
+
+`llvm_mlir_to_object` optionally consumes an exact original
+`HostOptimizationSelection`, normally from its scoped execution owner. A public
+request selects bounded choices only; it cannot supply semantics, ABI, runtime,
+callbacks or arbitrary pass pipelines. The ordinary route retains original
+emitted MLIR and binds selected host stages to the actual object, including an
+independently measured stack repair. This supplies no automatic proof authority.
+Stack preflight preserves raw compiler `.su` bytes for invocation custody and
+writes a separate canonical measurement view. Its receipt binds both byte sets;
+measured stack size remains a structural build gate, never execution evidence.

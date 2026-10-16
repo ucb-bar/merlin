@@ -5,13 +5,23 @@ Phase 0 has no agent: selected input bytes and pinned tools determine extraction
 requirements and candidate capsules. Unknown semantics remain explicit blockers.
 Phase 1 develops the functional compiler; Phase 2 uses a separate performance cohort.
 
+For a fresh AWS experiment, use the [neutral worker preparation guide](../../../docs/guides/phase0_phase1_setup.md)
+and its operator-only deployment and verified-definition templates. This retained
+diagnostic example does not supply a reviewed execution contract or native launch
+evidence. The shared neutral tooling needs explicit contract/facts data and no
+handwritten support package.
+
 ## 1. Select the inputs
+
+The accelerator user supplies the [software spec](../target/README.md).
+Platform integrators select the [hardware and host environment](../platform/README.md).
+The remaining corpus products are generated; no authored capsule roster is needed.
 
 | Input | Responsibility |
 | --- | --- |
 | [Software spec](../target/software-spec.yaml) | Operation signatures, numerical semantics, placement/transfers and quantization eligibility |
-| [Hardware selection](../target/hardware.yaml) | Source-production requirements and direct RTL audit questions |
-| [Host capabilities](../target/host-capabilities.yaml) | Separately pinned scalar Rocket host package and per-operation semantic declarations; the approved typed dequantization rule does not qualify Rocket execution |
+| [Hardware selection](../platform/hardware.yaml) | Source-production requirements and direct RTL audit questions |
+| [Host capabilities](../platform/host-capabilities.yaml) | Separately pinned scalar Rocket host package and per-operation semantic declarations; the approved typed dequantization rule does not qualify Rocket execution |
 | [Recipe](recipe.yaml) | Derived-only policy, comparison tolerances and oracle tiers; no authored capsule list |
 | [Descriptor](../target/descriptor.yaml) | Independent iteration roster, held-out validation roster and experiment resources |
 | [Selected capability contract](../target/contracts/target_contract.yaml) | Prototype command order and runner intent, explicitly frozen by the experiment; not an OOT support certificate |
@@ -44,7 +54,7 @@ for what belongs in a SW spec versus extracted evidence.
 ## 2. Produce and audit one coherent RTL source selection
 
 Follow the exact source production and audit commands in
-[the target input guide](../target/README.md). The source bundle binds selected
+[the verification walkthrough](../verification/README.md). The source bundle binds selected
 FIRRTL, prepared generation inputs, the selected `firtool`, generated HW-MLIR and
 module hierarchy. Extraction consumes that bundle explicitly; it must not silently
 combine unrelated cached elaborations. Save `source-selection.json`, `facts.json`
@@ -115,7 +125,7 @@ to the capsule-local sidecar; do not edit the captured MLIR by hand.
 FP32 captures inventory frontend demand; they do not imply FP32 device support.
 For an int8 capture, the reviewed rank-3/4 dequantization signature is only a
 semantic screen. Mint the selected scalar package from
-[its recipe](../target/scalar-host-recipe.yaml) before deriving; the old RVV
+[its recipe](../platform/scalar-host-recipe.yaml) before deriving; the old RVV
 package requires a V extension absent from Rocket. The scalar package's ISA
 fits the selected DTS, and one saved rank-4 capture passed Spike, but this does
 not qualify Rocket RTL/FireSim execution or every declared host operation.
@@ -154,17 +164,17 @@ captures and layer frequencies do not select or tune the derivation corpus.
 
 With installed `merlin-experiments`, explicit captures and fresh facts:
 
-Select the *same* out-of-tree support package and capability contract for
-derivation and the subsequent Phase 0 run. For example, leave
-`MERLIN_TARGET_PATH` explicitly set to independently derived external support, selecting the same
-support directory for both, and set
-`MERLIN_TARGET_CONTRACT` to
-`examples/gemmini/target/contracts/target_contract.yaml` before both commands.
-The support package's raw contract alone omits the example's corpus command
-issue order and cannot materialize this corpus. The generated requirement binds
-raw facts, the contract, effective readout facets and support-source bytes;
-changing a provider requires a fresh
-derivation, not a resumed corpus run. The selected Gemmini readout supports
+Select the *same* reviewed execution contract and original RTL facts for
+derivation and the subsequent Phase 0 run. Set `MERLIN_TARGET_CONTRACT` and
+`MERLIN_RTL_FACTS` to those exact inputs. A contract declaring
+`runner.backend: chipyard_rocc`, logical harness ABI v2, operand roles and pinned
+toolchain/engines uses Merlin's shared neutral tooling without executable
+support. The checked-in prototype contract is reference metadata and does not
+already provide this deployment selection. See the
+[worker setup](../../../docs/guides/gsim_worker_setup.md).
+The generated requirement binds raw facts, the contract, effective readout
+facets and selected tooling source bytes. Changing those inputs requires fresh
+derivation rather than a resumed corpus run. The selected Gemmini readout supports
 `acc_scale` but not the distinct integer-shift `requant` epilogue, so the latter
 must remain an explicit rejected/host obligation rather than a fabricated
 accelerator capability.
@@ -401,14 +411,14 @@ tensors and intermediate lowering snapshots.
 ### Check a generated kernel on the oracle ladder
 
 With `merlin-experiments` and its AET dependency installed, select the same
-support provider, example contract and exact facts used by derivation. The
+reviewed neutral contract and exact facts used by derivation. The
 compiler interpreter and LLVM tools are independent of the PyTorch capture
 interpreter. An installed Merlin checkout does not imply they are installed or
 selected; check `python -c 'import aet'` and resolve these paths before grading.
 
 ```sh
-MERLIN_TARGET_PATH="$PWD/examples/gemmini/support" \
-MERLIN_TARGET_CONTRACT="$PWD/examples/gemmini/target/contracts/target_contract.yaml" \
+MERLIN_TARGET_PATH= \
+MERLIN_TARGET_CONTRACT="${PREPARED_CONTRACT:?reviewed neutral execution contract required}" \
 MERLIN_RTL_FACTS="$RTL_ROOT/facts.json" \
 MERLIN_EXT_CHIPYARD="$SIMULATOR_CHIPYARD_ROOT" \
 MERLIN_COMPILER_PYTHON="$COMPILER_PYTHON" \

@@ -21,17 +21,56 @@ Usage: selfcheck_broker.py --ws <workspace> [--poll 0.5]
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
 import secrets
+import shutil
+import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
-from merlin_experiments.phase1.context import add_context_arguments, resolve_context
+from merlin_experiments.phase1.context import add_context_arguments, context_argv, resolve_context
 from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worker_command
+
+
+def _freeze_passed_source(ws: Path, expected_digest: str, *, source_ws: Path | None = None):
+    """Bind asynchronous promotion to the source just graded, before releasing the author."""
+    from merlin_experiments.phase1.feedback import snapshots
+
+    token, error = snapshots.create_promotion_snapshot(
+        ws, source_ws or ws, expected_digest,
+        submission_digest=lambda root: _submission_digest(Path(root) / "submission")
+    )
+    if error:
+        raise RuntimeError(error)
+    source = snapshots.promotion_snapshot_path(ws, token)
+    if source is None or _submission_digest(source / "submission") != expected_digest:
+        raise RuntimeError("passed selfcheck source snapshot differs from graded identity")
+    return source
+
+
+def _working_snapshot(ws: Path, expected_digest: str) -> Path:
+    """Copy one request's source under the task temp root before launching the grader."""
+    source = ws / "submission"
+    if source.is_symlink() or any(path.is_symlink() for path in source.rglob("*")):
+        raise ValueError("self-check source contains a symlink")
+    tmpdir = os.environ.get("TMPDIR")
+    if not tmpdir or not Path(tmpdir).is_absolute():
+        raise ValueError("self-check requires a task-owned TMPDIR")
+    root = Path(tempfile.mkdtemp(prefix="merlin_selfcheck_", dir=tmpdir))
+    try:
+        shutil.copytree(source, root / "submission", ignore=shutil.ignore_patterns(*_DIGEST_IGNORES))
+        if _submission_digest(root / "submission") != expected_digest:
+            raise ValueError("submission changed while taking self-check snapshot")
+        return root
+    except Exception:
+        shutil.rmtree(root)
+        raise
 
 #: request key -> the real self-check's flag, for every probe that replaces the capsule suite. The
 #: shim writes the keys, this broker turns them back into flags; a probe missing here is one a
@@ -40,29 +79,37 @@ FORWARDED_PROBES = {
     "shape_coverage": "--shape-coverage",
     "offload_census": "--offload-census",
     "model_layers": "--model-layers",
+    "candidate_diagnostics": "--candidate-diagnostics",
+    "compile_only": "--compile-only",
+    "scale_probe": "--scale-probe",
+    "dynamic_census": "--dynamic-census",
 }
 PROTOCOL_VERSION = 3
+COMMON_ACTIONS = frozenset({"common-transform", "common-check"})
 _DIGEST_IGNORES = frozenset({"build", "__pycache__", ".git", "selfcheck_out"})
 
 
 def _submission_digest(root: Path) -> str:
     """Stable digest of authored submission bytes, excluding disposable build state."""
-    root = Path(root)
-    digest = hashlib.sha256()
-    if not root.is_dir():
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    with shared_compute_pool():
+        root = Path(root)
+        digest = hashlib.sha256()
+        if not root.is_dir():
+            return digest.hexdigest()
+        for path in sorted(root.rglob("*")):
+            rel = path.relative_to(root)
+            if any(part in _DIGEST_IGNORES for part in rel.parts):
+                continue
+            if path.is_symlink():
+                digest.update(rel.as_posix().encode() + b"\0SYMLINK\0" + os.readlink(path).encode())
+            elif path.is_file():
+                digest.update(rel.as_posix().encode() + b"\0")
+                with path.open("rb") as f:
+                    while chunk := f.read(1024 * 1024):
+                        digest.update(chunk)
         return digest.hexdigest()
-    for path in sorted(root.rglob("*")):
-        rel = path.relative_to(root)
-        if any(part in _DIGEST_IGNORES for part in rel.parts):
-            continue
-        if path.is_symlink():
-            digest.update(rel.as_posix().encode() + b"\0SYMLINK\0" + os.readlink(path).encode())
-        elif path.is_file():
-            digest.update(rel.as_posix().encode() + b"\0")
-            with path.open("rb") as f:
-                while chunk := f.read(1024 * 1024):
-                    digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _decorate_response(
@@ -240,7 +287,7 @@ def _pending_requests(ch: Path, seen: set[str], *, now: float | None = None) -> 
     full-corpus grade before it reached the request whose client was actually waiting.
     """
     now = time.time() if now is None else now
-    pending: list[Path] = []
+    pending: list[tuple[float, Path]] = []
     for req in ch.glob("req_*.json"):
         if req.name in seen:
             continue
@@ -253,14 +300,15 @@ def _pending_requests(ch: Path, seen: set[str], *, now: float | None = None) -> 
                 continue
             if now > _request_deadline(req):
                 continue
-            req.stat()
+            arrival = req.stat().st_mtime
         except FileNotFoundError:
             continue
-        pending.append(req)
-    return sorted(pending, key=lambda p: p.stat().st_mtime)
+        pending.append((arrival, req))
+    return [request for _, request in sorted(pending, key=lambda row: row[0])]
 
 
-def _abort_reason(ch: Path, orig_ppid: int, request: Path, deadline: float) -> str | None:
+def _abort_reason(ch: Path, orig_ppid: int, request: Path, deadline: float,
+                  *, request_stop: Path | None = None) -> str | None:
     """Why the self-check in flight must stop now, or ``None`` to let it run.
 
     A CANCEL CANCELS. A client cancels by renaming its request away; the broker had already claimed
@@ -271,8 +319,15 @@ def _abort_reason(ch: Path, orig_ppid: int, request: Path, deadline: float) -> s
     stop = _should_stop(ch, orig_ppid)
     if stop:
         return stop
+    if request_stop is not None and request_stop.exists():
+        return "dispatcher stopped"
     if not request.exists():
         return "the requester cancelled it"
+    try:
+        if _requester_alive(json.loads(request.read_bytes())) is False:
+            return "requester exited"
+    except (OSError, ValueError, AttributeError):
+        return "request changed or became unreadable"
     if time.monotonic() > deadline:
         return "timed out"
     return None
@@ -294,6 +349,165 @@ def _should_stop(ch: Path, orig_ppid: int) -> str | None:
     return None
 
 
+def _dispatch_capacity() -> int:
+    value = os.environ.get("MERLIN_SELFCHECK_BROKER_JOBS", "1")
+    if value not in {"1", "2"}:
+        raise ValueError("MERLIN_SELFCHECK_BROKER_JOBS must be 1 or 2")
+    return int(value)
+
+
+def _process_record(pid):
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+        return int(stat[1]), int(stat[19]), stat[0]
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _stop_owned_worker(process):
+    """Stop only this original process tree, checking birth before each signal."""
+    owned = {}
+    root = _process_record(process.pid)
+    if root is None:
+        process.wait(timeout=5)
+        return
+    owned[process.pid] = root[1]
+    records = {}
+    for directory in Path("/proc").iterdir():
+        if directory.name.isdecimal():
+            row = _process_record(int(directory.name))
+            if row is not None:
+                records[int(directory.name)] = row
+    changed = True
+    while changed:
+        children = {pid: row[1] for pid, row in records.items() if row[0] in owned and pid not in owned}
+        owned.update(children)
+        changed = bool(children)
+    for kind in (signal.SIGTERM, signal.SIGKILL):
+        for pid, birth in reversed(tuple(owned.items())):
+            current = _process_record(pid)
+            if current is not None and current[1] == birth and current[2] != "Z":
+                try:
+                    os.kill(pid, kind)
+                except ProcessLookupError:
+                    pass
+        end = time.monotonic() + 3
+        while time.monotonic() < end:
+            if not any((row := _process_record(pid)) is not None and row[1] == birth and row[2] != "Z"
+                       for pid, birth in owned.items()):
+                break
+            time.sleep(.02)
+    process.wait(timeout=5)
+
+
+def _diagnostic_request(request: Path, *, request_bytes=None) -> bool:
+    try:
+        body = json.loads(request.read_bytes() if request_bytes is None else request_bytes)
+        return bool(body.get("caller_layout") or any(body.get(key) for key in FORWARDED_PROBES))
+    except (OSError, ValueError, AttributeError):
+        return False  # The unchanged handler reports the malformed request.
+
+
+def _handler_command(a, context, capsules_root, contract, promotion_root, request, stop,
+                     *, request_bytes=None):
+    """Original command and input paths; request data cannot choose a handler."""
+    command = [sys.executable, "-m", "merlin_experiments.phase1.brokers.selfcheck"]
+    command += context_argv(context) + ["--ws", str(Path(a.ws).resolve()),
+        "--poll", str(a.poll), "--capsules-root", str(capsules_root),
+        "--one-request", request.name, "--request-stop", str(stop),
+        "--request-sha256", hashlib.sha256(
+            request.read_bytes() if request_bytes is None else request_bytes).hexdigest()]
+    for flag, value in (("--contract", contract), ("--policy-capsules-root", promotion_root),
+                        ("--rtl-facts", a.rtl_facts),
+                        ("--compiler-bundle-manifest", a.compiler_bundle_manifest)):
+        if value is not None:
+            command += [flag, str(value)]
+    return command
+
+
+def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
+    """Two independent processes: one numerical lane and one diagnostic lane.
+
+    Each handler reconstructs its own original service and retains the existing
+    source, deadline, cancellation and publication checks. The parent never holds
+    a compute lease across a handler wait or shares execution scopes with it.
+    """
+    from merlin.common.cpu_pool import worker_pool_command
+    from merlin_experiments.frozen_python import inherited_python_command
+
+    ws = Path(a.ws).resolve()
+    ch, orig_ppid = ws / ".qa_channel", os.getppid()
+    seen, active = set(), {}
+    health_path = ch / "broker_health.json"
+    try:
+        health = json.loads(health_path.read_bytes())
+    except (OSError, ValueError):
+        health = {}
+    health.update(protocol=PROTOCOL_VERSION, dispatch_capacity=2,
+                  broker_starts=int(health.get("broker_starts", 0)) + 1,
+                  processed=int(health.get("processed", 0)),
+                  max_queue_depth=int(health.get("max_queue_depth", 0)),
+                  last_started_at_unix_ns=time.time_ns())
+    try:
+        while not _should_stop(ch, orig_ppid):
+            for name, job in tuple(active.items()):
+                if job["process"].poll() is None:
+                    continue
+                request, rid = job["request"], name[len("req_"):-len(".json")]
+                if not ((ch / f"done_{rid}").exists() and (ch / f"resp_{rid}.json").exists()):
+                    _atomic_write(ch / f"resp_{rid}.json", json.dumps({"all_pass": False,
+                        "error": "broker: request handler ended without durable completion",
+                        "selfcheck_protocol": PROTOCOL_VERSION, "selfcheck_request_id": rid,
+                        "submission_sha256": None}))
+                    _atomic_write(ch / f"done_{rid}", "err")
+                job["stop"].unlink(missing_ok=True)
+                del active[name]
+                health["processed"] += 1
+            pending = _pending_requests(ch, seen)
+            pending.sort(key=_diagnostic_request)  # Stable FIFO within each lane.
+            health["max_queue_depth"] = max(health["max_queue_depth"], len(pending))
+            for request in pending:
+                try:
+                    request_bytes = request.read_bytes()
+                except FileNotFoundError:
+                    continue
+                diagnostic = _diagnostic_request(request, request_bytes=request_bytes)
+                if len(active) >= 2 or any(j["diagnostic"] == diagnostic for j in active.values()):
+                    continue
+                stop = ch / f".handler-stop_{secrets.token_hex(12)}"
+                try:
+                    command = _handler_command(a, context, capsules_root, contract, promotion_root, request, stop,
+                                               request_bytes=request_bytes)
+                except FileNotFoundError:
+                    continue  # Ordinary cancellation must not stop another lane.
+                process = subprocess.Popen(worker_pool_command(inherited_python_command(command), os.environ),
+                    cwd=ws, env=dict(os.environ))
+                stat = _process_record(process.pid)
+                seen.add(request.name)
+                active[request.name] = {"process": process, "request": request,
+                                        "stop": stop, "diagnostic": diagnostic,
+                                        "start_ticks": stat[1] if stat else None}
+            health["active_handlers"] = len(active)
+            health["handlers"] = [{"request_id": name[len("req_"):-len(".json")],
+                "pid": job["process"].pid, "start_ticks": job["start_ticks"],
+                "diagnostic": job["diagnostic"]} for name, job in active.items()]
+            health["queued_requests"] = len(_pending_requests(ch, seen))
+            _atomic_write(health_path, json.dumps(health, sort_keys=True))
+            time.sleep(a.poll)
+    finally:
+        # Ask each original handler to drain its existing cancellation path before
+        # reaping it. STOP and parent loss are independently checked by handlers.
+        for job in active.values():
+            _atomic_write(job["stop"], "stop")
+        for job in active.values():
+            try:
+                job["process"].wait(timeout=35)
+            except subprocess.TimeoutExpired:
+                _stop_owned_worker(job["process"])
+            job["stop"].unlink(missing_ok=True)
+    return 0
+
+
 def main(
     argv=None,
     *,
@@ -312,6 +526,10 @@ def main(
     ap.add_argument("--ws", required=True)
     ap.add_argument("--rtl-facts", type=Path, help="Selected facts in the verified frozen input snapshot")
     ap.add_argument("--poll", type=float, default=0.5)
+    ap.add_argument("--compiler-bundle-manifest", type=Path, help="host-owned archived common compiler profile")
+    ap.add_argument("--one-request", help=argparse.SUPPRESS)
+    ap.add_argument("--request-stop", type=Path, help=argparse.SUPPRESS)
+    ap.add_argument("--request-sha256", help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
     from ..frozen_facts import select
 
@@ -325,9 +543,27 @@ def main(
     ws = Path(a.ws)
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True, exist_ok=True)
+    if a.one_request is not None and (
+        Path(a.one_request).name != a.one_request or not a.one_request.startswith("req_")
+        or not a.one_request.endswith(".json")
+        or a.one_request[len("req_"):-len(".json")] in {"", ".", ".."}
+    ):
+        ap.error("single request must name one channel request")
+    if a.request_stop is not None and a.request_stop.parent.resolve() != ch.resolve():
+        ap.error("request stop must belong to the original channel")
+    if a.one_request is None and _dispatch_capacity() == 2:
+        return _dispatch_requests(a, context, capsules_root, contract, promotion_capsules_root)
+    common_service = None
+    if a.compiler_bundle_manifest is not None:
+        from .common_transforms import CommonTransformService
+
+        common_service = CommonTransformService(
+            workspace=ws, bundle_manifest=a.compiler_bundle_manifest, repo=context.repo,
+        )
     orig_ppid = os.getppid()
     seen: set[str] = set()
-    health_path = ch / "broker_health.json"
+    health_path = (ch / "broker_health.json" if a.one_request is None
+                   else ch / f"health_{a.one_request[len('req_'):-len('.json')]}.json")
     try:
         health = json.loads(health_path.read_text(encoding="utf-8"))
     except Exception:
@@ -342,7 +578,11 @@ def main(
     }
     _atomic_write(health_path, json.dumps(health, sort_keys=True))
     while True:
+        if a.one_request is not None and seen:
+            return 0
         why = _should_stop(ch, orig_ppid)
+        if a.request_stop is not None and a.request_stop.exists():
+            why = "dispatcher stopped"
         if why:
             health["last_stopped_at_unix_ns"] = time.time_ns()
             health["last_stop_reason"] = why
@@ -356,6 +596,10 @@ def main(
         # minutes earlier while a later one was served, then ended the round with 3.5h of its budget
         # unused. Oldest-first also means the request the agent is actually blocked on is the one served.
         pending = _pending_requests(ch, seen)
+        if a.one_request is not None:
+            pending = [request for request in pending if request.name == a.one_request]
+            if not pending:
+                return 0
         if len(pending) > int(health.get("max_queue_depth", 0)):
             health["max_queue_depth"] = len(pending)
             _atomic_write(health_path, json.dumps(health, sort_keys=True))
@@ -379,7 +623,10 @@ def main(
             json.dumps({"claimed_at_unix_ns": time.time_ns(), "queued_behind_this": len(pending) - 1}),
         )
         try:
-            r = json.loads(req.read_text())
+            request_bytes = req.read_bytes()
+            if a.request_sha256 is not None and hashlib.sha256(request_bytes).hexdigest() != a.request_sha256:
+                raise ValueError("dispatched request bytes changed")
+            r = json.loads(request_bytes)
         except Exception:
             _atomic_write(resp, json.dumps({"error": "broker: unreadable request"}))
             _atomic_write(ch / f"done_{rid}", "err")
@@ -412,7 +659,46 @@ def main(
                 _atomic_write(resp, json.dumps(doc))
                 _atomic_write(ch / f"done_{rid}", "err")
                 continue
-        sim = None if r.get("caller_layout") else str(r.get("sim") or _default_sim() or "") or None
+        if r.get("action") in COMMON_ACTIONS:
+            try:
+                if common_service is None:
+                    raise FileNotFoundError("versioned common transformation tooling was not admitted for this run")
+                if (
+                    r["action"] == "common-check"
+                    and common_service.profile.get("common_substrate") != "merlin.common_compiler_substrate.v3"
+                ):
+                    raise FileNotFoundError("common check was not admitted by the original compiler profile")
+                proof_root = a.compiler_bundle_manifest.parent / "common-transform-work"
+                proof_root.mkdir(mode=0o700, exist_ok=True)
+                remaining = int(_child_deadline_monotonic(r) - time.monotonic())
+                if remaining < 1:
+                    raise TimeoutError("common request exhausted its original client deadline")
+                method = common_service.check if r["action"] == "common-check" else common_service.apply
+                body = method(r.get("transform"), work_root=proof_root, timeout_s=remaining)
+            except Exception as error:
+                from merlin.common.path_scrub import scrub_host_paths
+
+                body = {"status": "unavailable" if isinstance(error, FileNotFoundError) else "unknown",
+                        "reason": scrub_host_paths(str(error)), "all_pass": False}
+            if r["action"] == "common-check":
+                # Error summaries remain bound to the actual request too. These
+                # hashes describe bytes; they do not turn a refusal into proof.
+                payload = r.get("transform")
+                if isinstance(payload, dict):
+                    for field, key in (("before_ir", "source_sha256"), ("after_ir", "target_sha256")):
+                        if isinstance(payload.get(field), str):
+                            body.setdefault(key, hashlib.sha256(payload[field].encode()).hexdigest())
+            doc = _decorate_response(
+                json.dumps(body), r, rid, graded_digest, started_ns=started_ns, completed_ns=time.time_ns(),
+            )
+            _atomic_write(resp, json.dumps(doc))
+            _atomic_write(ch / f"done_{rid}", "ok")
+            health["processed"] = int(health.get("processed", 0)) + 1
+            health["last_completed_at_unix_ns"] = time.time_ns()
+            _atomic_write(health_path, json.dumps(health, sort_keys=True))
+            continue
+        inspection = r.get("caller_layout") or r.get("candidate_diagnostics") or r.get("compile_only")
+        sim = None if inspection else str(r.get("sim") or _default_sim() or "") or None
         policy_error = _sim_policy_error(sim) if sim else None
         if policy_error:
             doc = _decorate_response(
@@ -435,13 +721,15 @@ def main(
             continue
         to = int(r.get("timeout", 1800))
         worker_kwargs = {"rtl_facts": a.rtl_facts} if a.rtl_facts is not None else {}
+        if a.compiler_bundle_manifest is not None:
+            worker_kwargs["compiler_bundle_manifest"] = a.compiler_bundle_manifest
         argv2 = worker_command(context, capsules_root, contract, **worker_kwargs) + [
             "--submission",
             str(ws / "submission"),
             "--capsules",
             str(r.get("capsules", "all")),
             "--workers",
-            str(r.get("workers", 8)),
+            str(r.get("workers", 0)),
             "--timeout",
             str(to),
             # The real self-check writes --out directly.  Point it at a private name and publish
@@ -468,6 +756,9 @@ def main(
                 argv2.append(flag)
         if r.get("caller_layout"):
             argv2.extend(("--caller-layout", str(r["caller_layout"])))
+        if a.one_request is not None:
+            argv2 += ["--artifact-root", str(ws / "selfcheck_out" / "requests" / rid)]
+        snapshot_root = None
         try:
             # Run the REAL self-check OUTSIDE the sandbox (oracle available); cwd=ws so the agent's own
             # artifacts land in <ws>/selfcheck_out/ (visible to the agent through the bind mount).
@@ -480,19 +771,43 @@ def main(
             staged_resp = ch / f".resp_{rid}.{os.getpid()}.tmp"
             staged_resp.unlink(missing_ok=True)
             aborted = False
-            with log_out.open("w") as fo, log_err.open("w") as fe:
+            # Every check grades a private request snapshot. The author can keep
+            # editing, and the response stays bound to the selected digest.
+            snapshot_root = _working_snapshot(ws, graded_digest)
+            argv2[argv2.index("--submission") + 1] = str(snapshot_root / "submission")
+            worker_env = dict(os.environ)
+            if not r.get("caller_layout") and not any(r.get(key) for key in FORWARDED_PROBES):
+                worker_env.update(
+                    MERLIN_SELFCHECK_PROMOTION_WS=str(ws),
+                    MERLIN_SELFCHECK_PROMOTION_ROOT=str(promotion_capsules_root or capsules_root),
+                    MERLIN_SELFCHECK_PROMOTION_SHA256=graded_digest,
+                )
+            with log_out.open("w") as fo, log_err.open("w") as fe, contextlib.ExitStack() as priority:
+                from merlin.common.cpu_pool import worker_pool_command
                 from merlin_experiments.frozen_python import inherited_python_command
 
-                proc = subprocess.Popen(inherited_python_command(argv2), cwd=str(ws), stdout=fo, stderr=fe, text=True)
+                proc = subprocess.Popen(
+                    worker_pool_command(inherited_python_command(argv2), worker_env),
+                    cwd=str(ws), stdout=fo, stderr=fe, text=True, env=worker_env
+                )
+                from ..feedback.background_admission import active_full_selfcheck
+
+                priority.enter_context(active_full_selfcheck(ws=ws, process=proc, request=r,
+                    source_sha256=graded_digest, public=capsules_root, context=context,
+                    contract=contract, bundle_manifest=a.compiler_bundle_manifest, sim=sim,
+                    dispatcher_pid=orig_ppid if a.one_request is not None else None))
                 while proc.poll() is None:
-                    why = _abort_reason(ch, orig_ppid, req, deadline)
+                    why = _abort_reason(ch, orig_ppid, req, deadline, request_stop=a.request_stop)
                     if why:
-                        proc.terminate()
-                        try:
-                            proc.wait(timeout=30)
-                        except subprocess.TimeoutExpired:
-                            proc.kill()  # a wedged RTL sim does not get to outlive us
-                            proc.wait(timeout=30)
+                        if a.one_request is not None:
+                            _stop_owned_worker(proc)
+                        else:
+                            proc.terminate()
+                            try:
+                                proc.wait(timeout=30)
+                            except subprocess.TimeoutExpired:
+                                proc.kill()  # a wedged RTL sim does not get to outlive us
+                                proc.wait(timeout=30)
                         staged_resp.unlink(missing_ok=True)
                         doc = _decorate_response(
                             json.dumps({"error": f"broker: self-check aborted ({why})", "all_pass": False}),
@@ -509,25 +824,11 @@ def main(
                     time.sleep(a.poll)
             if not aborted:
                 completed_ns = time.time_ns()
-                completed_digest = _submission_digest(ws / "submission")
-                if completed_digest != graded_digest:
-                    staged_resp.unlink(missing_ok=True)
-                    doc = _decorate_response(
-                        json.dumps(
-                            {"error": "broker: submission changed during grading; retry the check", "all_pass": False}
-                        ),
-                        r,
-                        rid,
-                        completed_digest,
-                        started_ns=started_ns,
-                        completed_ns=completed_ns,
-                    )
-                    _atomic_write(resp, json.dumps(doc))
-                elif staged_resp.exists():
+                if staged_resp.exists():
                     raw = staged_resp.read_text(encoding="utf-8", errors="replace")
                     staged_resp.unlink(missing_ok=True)
                     doc = _decorate_response(
-                        raw, r, rid, completed_digest, started_ns=started_ns, completed_ns=completed_ns
+                        raw, r, rid, graded_digest, started_ns=started_ns, completed_ns=completed_ns
                     )
                     _atomic_write(resp, json.dumps(doc))
                 else:
@@ -537,7 +838,7 @@ def main(
                         out or json.dumps({"error": err, "all_pass": False}),
                         r,
                         rid,
-                        completed_digest,
+                        graded_digest,
                         started_ns=started_ns,
                         completed_ns=completed_ns,
                     )
@@ -552,6 +853,18 @@ def main(
                 completed_ns=time.time_ns(),
             )
             _atomic_write(resp, json.dumps(doc))
+        # Capture the verified source BEFORE done releases the author to edit it.
+        # The optional queueing below must never hash the newly edited live workspace.
+        promotion_source = None
+        try:
+            if resp.exists():
+                passed = json.loads(resp.read_text())
+                if not passed.get("error") and any(row.get("pass") is True for row in passed.get("per_capsule", [])):
+                    promotion_source = _freeze_passed_source(ws, graded_digest, source_ws=snapshot_root)
+        except Exception as exc:
+            print(f"[promote] source freeze refused: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+        if snapshot_root is not None:
+            shutil.rmtree(snapshot_root, ignore_errors=True)
         # COMPLETE THE CALLER'S REQUEST before optional promotion.  The shim deliberately waits for both
         # response and done; publishing the verdict and then running promotion first made a slow or wedged
         # promotion indistinguishable from a lost response even though the verdict was already durable.
@@ -564,6 +877,10 @@ def main(
         # The caller may stop the run immediately after observing ``done``. Re-check before starting
         # optional promotion: promotion is not part of the request and must not delay broker shutdown.
         if _should_stop(ch, orig_ppid):
+            continue
+        if inspection:
+            # Static observations cannot trigger a numerical/RTL promotion or
+            # pay for a simulator after a deliberately no-execution request.
             continue
 
         # PROMOTE off the SYNCHRONOUS path too. Promotion was first hooked into the async oracle alone,
@@ -579,7 +896,7 @@ def main(
             _loop, _cert, _cover = _resolve(ws, context=context, capsules_root=promotion_capsules_root)
             if _loop and _cert and resp.exists():
                 _v = _j.loads(resp.read_text())
-                if isinstance(_v, dict) and not _v.get("error"):
+                if isinstance(_v, dict) and not _v.get("error") and promotion_source is not None:
                     _promote(
                         ws,
                         ch,
@@ -590,6 +907,7 @@ def main(
                         sys.stderr,
                         context=context,
                         capsules_root=promotion_capsules_root,
+                        source_ws=promotion_source,
                     )
         except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
             print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)

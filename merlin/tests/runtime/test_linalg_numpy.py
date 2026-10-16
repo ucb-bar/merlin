@@ -216,6 +216,46 @@ def test_an_integer_floor_division_rounds_toward_minus_infinity() -> None:
         _evaluate(text, a, np.zeros_like(b))
 
 
+def test_a_signed_division_truncates_exactly_past_2_pow_53() -> None:
+    """``divsi``/``remsi`` round toward zero in integers; a float quotient would drop the low bits."""
+    a = np.array([[-7, 7, -7, 7, 2**62 + 1, -(2**62) - 3, 0, 9]], np.int64)
+    b = np.array([[2, -2, -2, 2, 3, 5, 7, -4]], np.int64)
+    (q,) = _evaluate(_int_binary_module("      %r = arith.divsi %x, %y : i64\n      linalg.yield %r : i64"), a, b)
+    (r,) = _evaluate(_int_binary_module("      %r = arith.remsi %x, %y : i64\n      linalg.yield %r : i64"), a, b)
+    want_q = [
+        int(x / abs(x) if x else 0) * (abs(x) // abs(y)) * (1 if y > 0 else -1)
+        for x, y in zip(a[0].tolist(), b[0].tolist())
+    ]
+    assert q.tolist() == [want_q]
+    assert r.tolist() == [[x - y * w for x, y, w in zip(a[0].tolist(), b[0].tolist(), want_q)]]
+
+
+def test_an_equality_compare_reads_predicate_zero() -> None:
+    """``cmpi eq`` carries predicate 0, an attribute that is falsy; it must still be read as ``eq``."""
+    body = "      %c = arith.cmpi eq, %x, %y : i64\n      %r = arith.extui %c : i1 to i64\n      linalg.yield %r : i64"
+    a = np.array([[1, 2, 3, 4, 5, 6, 7, 8]], np.int64)
+    b = np.array([[1, 0, 3, 0, 5, 0, 7, 0]], np.int64)
+    (out,) = _evaluate(_int_binary_module(body), a, b)
+    assert out.tolist() == [[1, 0, 1, 0, 1, 0, 1, 0]]
+
+
+def test_an_unsigned_division_reads_bit_patterns_and_refuses_zero() -> None:
+    """``divui``/``remui`` divide the operands' unsigned values; a zero divisor is undefined."""
+    text = _int_binary_module("      %r = arith.divui %x, %y : i64\n      linalg.yield %r : i64")
+    rem = _int_binary_module("      %r = arith.remui %x, %y : i64\n      linalg.yield %r : i64")
+    a = np.array([[7, 360, -1, 2**62 + 5, 0, -8, 13, 1]], np.int64)
+    b = np.array([[2, 7, 2, 3, 9, 3, -1, 1]], np.int64)
+    (q,) = _evaluate(text, a, b)
+    (r,) = _evaluate(rem, a, b)
+    ua = [x % 2**64 for x in a[0].tolist()]
+    ub = [y % 2**64 for y in b[0].tolist()]
+    signed = [v - 2**64 if v >= 2**63 else v for v in (x // y for x, y in zip(ua, ub))]
+    assert q.tolist() == [signed]
+    assert r.tolist() == [[x % y for x, y in zip(ua, ub)]]
+    with pytest.raises(LN.LinalgNumpyError, match="by zero"):
+        _evaluate(text, a, np.zeros_like(b))
+
+
 def test_an_arithmetic_shift_keeps_the_sign_and_refuses_poison() -> None:
     """``shrsi`` is floor division by a power of two; a clamped amount (``minui`` against width-1, how a
     signed shift by an out-of-range amount is written) is exact, and an unclamped one is poison."""
@@ -241,3 +281,38 @@ def test_an_unsigned_min_compares_bit_patterns() -> None:
     b = np.array([[31, -2, 4, -1, 7, 2**31 - 1, -(2**31), 3]], np.int32)
     (out,) = _evaluate(text, a, b)
     assert out.tolist() == [[31, 5, 4, 0, 7, 2**31 - 1, 2**31 - 1, 3]]
+
+
+def test_a_runtime_assertion_is_checked_not_skipped() -> None:
+    """``cf.assert`` is evaluated: a true condition passes through, a false one stops the oracle."""
+    text = """
+func.func @forward(%x: tensor<2xi64>, %y: i64) -> tensor<2xi64> {
+  %c = arith.constant 4 : i64
+  %ok = arith.cmpi slt, %y, %c : i64
+  cf.assert %ok, "index in bounds"
+  return %x : tensor<2xi64>
+}
+"""
+    x = np.array([1, 2], np.int64)
+    (out,) = _evaluate(text, x, np.int64(3))
+    assert out.tolist() == [1, 2]
+    with pytest.raises(LN.LinalgNumpyError, match="index in bounds"):
+        _evaluate(text, x, np.int64(9))
+
+
+def test_a_tensor_dim_reads_the_extent_and_refuses_an_index_past_the_rank() -> None:
+    """``tensor.dim`` answers the operand's extent along a constant or runtime index; an index outside the
+    rank is undefined and stops the oracle."""
+    text = """
+func.func @forward(%x: tensor<2x3xi64>, %i: index) -> (index, index) {
+  %c1 = arith.constant 1 : index
+  %d = tensor.dim %x, %c1 : tensor<2x3xi64>
+  %e = tensor.dim %x, %i : tensor<2x3xi64>
+  return %d, %e : index, index
+}
+"""
+    x = np.zeros((2, 3), np.int64)
+    fixed, read = _evaluate(text, x, np.int64(0))
+    assert (int(fixed), int(read)) == (3, 2)
+    with pytest.raises(LN.LinalgNumpyError, match="outside rank 2"):
+        _evaluate(text, x, np.int64(2))

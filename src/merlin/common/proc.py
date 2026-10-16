@@ -32,11 +32,18 @@ def run_checked(cmd: Sequence[Any], *, error: type[Exception] = RuntimeError, ti
     shown = " ".join(argv)[:_SHOWN_CMD_CHARS]
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, **kw)
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as expired:
         if not wrap_timeout:
             raise
-        raise error(f"command timed out after {timeout}s{timeout_hint}: {shown}") from None
+        failure = error(f"command timed out after {timeout}s{timeout_hint}: {shown}")
+        failure.captured_timeout = expired
+        raise failure from None
     if proc.returncode != 0:
-        raise error(f"command failed (rc {proc.returncode}): {shown}\n"
-                    f"STDOUT:{(proc.stdout or '')[-tail:]}\nSTDERR:{(proc.stderr or '')[-tail:]}")
+        failure = error(f"command failed (rc {proc.returncode}): {shown}\n"
+                        f"STDOUT:{(proc.stdout or '')[-tail:]}\nSTDERR:{(proc.stderr or '')[-tail:]}")
+        # Keep the concise caller-facing message, while owned build observers
+        # can retain the complete captured diagnostics, including the first
+        # compiler assertion that a long stack trace would otherwise hide.
+        failure.captured_process = proc
+        raise failure
     return proc

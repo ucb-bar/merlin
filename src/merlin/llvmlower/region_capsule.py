@@ -246,7 +246,9 @@ def ask_package_region(
         return refuse(cause, f"the package did not lower this region: {str(failure)[:300]}")
     except Exception as error:  # noqa: BLE001
         return refuse(WP.PACKAGE_FAILED, f"the package did not run: {type(error).__name__}: {error}")
-    (work / f"{tag}.artifact.txt").write_text(artifact, encoding="utf-8")
+    from merlin.verify.lean_emission_context import write_emitted_artifact
+
+    write_emitted_artifact(work / f"{tag}.artifact.txt", artifact)
     if record is not None:
         # THE SAME TWO PATHS A SINGLE-GROUP ASK RECORDS (`whole_program._ask_package`), in the SAME
         # place -- `bind_groups` reads `asked["command_buffer"]` for EVERY package-answered row,

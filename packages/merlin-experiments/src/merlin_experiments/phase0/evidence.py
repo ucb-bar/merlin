@@ -10,11 +10,14 @@ import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import yaml
+
+from .evidence_output import _materialize_evidence
 
 
 def _json(value: Any) -> bytes:
@@ -340,13 +343,19 @@ class EvidenceSelection:
             ),
         }
 
+    @cached_property
+    def _view_bytes(self) -> tuple[tuple[str, bytes], ...]:
+        # Decode the immutable selection once. Cache only immutable field bytes,
+        # so consumers still receive independently decoded mutable values.
+        return tuple((key, json.dumps(value).encode()) for key, value in json.loads(self.views_json).items())
+
     def __getattr__(self, name: str) -> Any:
         # Every consumer receives a fresh value. The authoritative views are
         # immutable serialized bytes, not mutable objects shared with callers.
-        views = json.loads(self.views_json)
-        if name not in views:
-            raise AttributeError(name)
-        return views[name]
+        for key, raw in self._view_bytes:
+            if key == name:
+                return json.loads(raw)
+        raise AttributeError(name)
 
 
 def _record_scaling_contradictions(
@@ -419,7 +428,7 @@ def select_evidence(
     selected documents fail rather than selecting another source implicitly.
     """
     from merlin.perf.profile import derive_profile
-    from merlin.runtime.backends.base import execution_capability_facts
+    from merlin.runtime.backends import base, chipyard_rocc
     from merlin.targetgen import readout_facet, target_registry
     from merlin.targetgen.rtl import facts as rtl_facts
 
@@ -520,6 +529,10 @@ def select_evidence(
             whole_program_admission = json.loads(raw_whole_program)
             if operations_digest(whole_program_admission) != declared_whole_program.get("sha256"):
                 raise ValueError("whole-program admission sidecar differs from the requirement's commitment")
+        if conformance_spec is not None and requirement.get("public_program_sources") is not None:
+            from .public_programs import observe_inventory
+
+            observe_inventory(requirement, conformance_spec, observe)
         if sidecar is not None:
             raw_inventory = observe(sidecar, "application-inventory", required=False)
             if raw_inventory is not None:
@@ -623,9 +636,11 @@ def select_evidence(
         if capability_contract_path is not None
         else {}
     )
+    # The shared runtime family selects data, not a compiler-bearing provider.
+    data_only = (contract.get("runner") or {}).get("backend") == "chipyard_rocc"
     residual, provider = {}, None
     try:
-        provider = target_registry.resolve(target) if hardware_intake is None else None
+        provider = target_registry.resolve(target) if hardware_intake is None and not data_only else None
     except (KeyError, FileNotFoundError, ValueError) as exc:
         diagnostics.append({"component": "support", "status": "unknown", "reason": str(exc)})
     if (
@@ -708,7 +723,9 @@ def select_evidence(
             owner = Path(hardware_spec).parent if not isinstance(hardware_spec, Mapping) else Path.cwd()
             observe(owner / value, f"hardware-reference:{field}")
     try:
-        selected_path = rtl_facts.find_facts(target, explicit=facts_path)
+        selected_path = (
+            None if data_only and facts_path is None else rtl_facts.find_facts(target, explicit=facts_path)
+        )
     except FileNotFoundError as exc:
         selected_path = None
         diagnostics.append({"component": "facts", "status": "unknown", "reason": str(exc)})
@@ -822,18 +839,21 @@ def select_evidence(
                         diagnostics.append(
                             {"component": f"host-capabilities:{name}", "status": "unknown", "reason": str(exc)}
                         )
-            headers = [str(resolve_grant(header, root=source_root)) for header in te.isa_headers]
-            for header in headers:
-                observe(header, "isa-source")
-            # The taxonomy's historical memo is path-keyed. A fresh selection
-            # must derive from the source bytes just observed, not that memo.
-            for source in sources.values():
-                if source.role == "isa-source":
-                    isa_taxonomy._CACHE.pop(str(source.path), None)
-            model = (contract.get("runner") or {}).get("model_ext")
-            taxonomy = dict(
-                isa_taxonomy.derive_isa_taxonomy(SimpleNamespace(target=target, isa_headers=headers), model_ext=model)
-            )
+            if not data_only:
+                headers = [str(resolve_grant(header, root=source_root)) for header in te.isa_headers]
+                for header in headers:
+                    observe(header, "isa-source")
+                # The taxonomy's historical memo is path-keyed. A fresh selection
+                # must derive from the source bytes just observed, not that memo.
+                for source in sources.values():
+                    if source.role == "isa-source":
+                        isa_taxonomy._CACHE.pop(str(source.path), None)
+                model = (contract.get("runner") or {}).get("model_ext")
+                taxonomy = dict(
+                    isa_taxonomy.derive_isa_taxonomy(
+                        SimpleNamespace(target=target, isa_headers=headers), model_ext=model
+                    )
+                )
         except Exception as exc:  # noqa: BLE001 -- absent ISA tooling is unknown evidence
             taxonomy = {
                 "status": "unknown",
@@ -876,8 +896,8 @@ def select_evidence(
                 )
     snapshot_bytes = {str(path): source.content for path, source in sources.items()}
     refreshed_facts = dict(readout_facet.with_current_register_layouts(loaded_facts, source_bytes=snapshot_bytes))
-    readout_inputs = {}
-    if hardware_intake is None:
+    readout_inputs = chipyard_rocc.readout_metadata(contract) if data_only else {}
+    if hardware_intake is None and not data_only:
         with rtl_facts.observed_facts(target, refreshed_facts, selected_path):
             readout_inputs = readout_facet.capture_inputs(target, facts=refreshed_facts, include_taxonomy=False)
     readout_inputs["taxonomy"] = taxonomy
@@ -925,6 +945,7 @@ def select_evidence(
                 quantization_candidates=quantization_candidates,
                 taxonomy=taxonomy,
                 prohibited_roles=prohibited_roles,
+                **({"data_only": True} if data_only else {}),
             )
         software_doc, software_derivation = spec_fact_drift.resolve_spec(software_doc, fact_view)
         software_derivation["prohibited_instruction_roles"] = sorted(set(prohibited_roles))
@@ -940,19 +961,11 @@ def select_evidence(
     target_profile = derive_profile(target, facts=refreshed_facts, residual=residual, contract=contract).to_dict()
     if hardware_intake is None:
         with rtl_facts.observed_facts(target, refreshed_facts, selected_path):
-            execution = execution_capability_facts(target)
+            execution = base.execution_capability_facts(
+                target, **({"contract": contract, "facts": refreshed_facts} if data_only else {})
+            )
     else:
-        from merlin.runtime.backends.base import EXECUTION_CAPABILITIES
-
-        execution = {
-            name: {
-                "satisfied": None,
-                "tier": "not_established",
-                "evidence": "independent RTL observations do not qualify an executable support implementation",
-                "missing": ["independently issued live runtime qualification"],
-            }
-            for name in EXECUTION_CAPABILITIES
-        }
+        execution = base.independent_execution_capability_facts()
     performance_doc = {"target_profile": target_profile, "execution_capabilities": execution}
     performance_facts = {
         "target": target,
@@ -1171,16 +1184,12 @@ def select_evidence(
     )
 
 
-def export_evidence(selection: EvidenceSelection, artifact_root: str | Path) -> dict:
-    """Write only already-observed bytes beneath the explicit Phase 0 run root."""
-    root = Path(artifact_root)
+def evidence_artifacts(selection: EvidenceSelection) -> dict[str, bytes]:
+    """Calculate the existing evidence artifacts without writing files."""
     if selection.archived_artifacts:
         # A newer implementation must not rewrite historical reports or widen
         # their qualification. Re-export the already validated original bytes.
-        outputs = dict(selection.archived_artifacts)
-        manifest = json.loads(outputs["evidence-manifest.json"])
-        _materialize_evidence(root, outputs)
-        return manifest
+        return dict(selection.archived_artifacts)
     outputs: dict[str, bytes] = {}
     outputs["software/selection.json"] = selection.views_json
     if selection.raw_facts is not None:
@@ -1219,6 +1228,11 @@ def export_evidence(selection: EvidenceSelection, artifact_root: str | Path) -> 
         application_graphs=getattr(selection, "application_graphs", None),
         host_capabilities=getattr(selection, "host_capabilities", None),
         capture_execution_attestations=getattr(selection, "capture_execution_attestations", None),
+        application_sources={
+            source.role.removeprefix("application-capture:"): source.content
+            for source in selection.source_snapshots
+            if source.role.startswith("application-capture:")
+        } or None,
     )
     accounting["selected_inventory"] = getattr(
         selection,
@@ -1422,32 +1436,16 @@ def export_evidence(selection: EvidenceSelection, artifact_root: str | Path) -> 
         "qualification": "byte snapshots and declared/derived views only; no compiler or hardware verdict",
     }
     outputs["evidence-manifest.json"] = _json(manifest)
-    _materialize_evidence(root, outputs)
-    return manifest
+    return outputs
 
 
-def _materialize_evidence(root: Path, outputs: dict[str, bytes]) -> None:
-    """Validate all destinations before adding immutable saved evidence members."""
-    for name in outputs:
-        member = Path(name)
-        if member.is_absolute() or not member.parts or ".." in member.parts:
-            raise ValueError(f"invalid evidence output member: {name}")
-        if member.parts[0] == "private":
-            raise ValueError(f"evidence output may not occupy the private source snapshot: {name}")
-        path = root / name
-        if path.is_symlink():
-            raise ValueError(f"evidence output may not be symlinked: {path}")
-        if path.exists() and path.read_bytes() != outputs[name]:
-            raise FileExistsError(f"changed evidence output already exists: {path}")
-        if any(parent.is_symlink() for parent in path.parents):
-            raise ValueError(f"evidence output traverses a symlink: {path}")
-    for name, raw in outputs.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists():
-            continue
-        with path.open("xb") as handle:
-            handle.write(raw)
+def export_evidence(selection: EvidenceSelection, artifact_root: str | Path) -> dict:
+    """Write only already-observed bytes beneath the explicit Phase 0 run root."""
+    outputs = evidence_artifacts(selection)
+    _materialize_evidence(Path(artifact_root), outputs)
+    return json.loads(outputs["evidence-manifest.json"])
+
+
 
 
 def load_exported_evidence(artifact_root: str | Path) -> EvidenceSelection:

@@ -57,6 +57,10 @@ def run(
         expected_hidden_dir=expected_hidden,
     )
     prepared.verify_inputs()
+    from .feedback import hidden_capsule_policy
+
+    hidden_policy = hidden_capsule_policy.resolve(context.descriptor, getattr(options, 'hidden_capsule_mode', ''))
+    hidden_capsule_policy.verify_record(hidden_policy, prepared.environment.get('hidden_capsule_validation'))
     command = [
         sys.executable,
         "-m",
@@ -84,10 +88,17 @@ def run(
         command.append("--no-oracle")
     if prepared.private_full_model_spec is not None:
         command += ["--private-full-model-spec", str(prepared.private_full_model_spec)]
+    instruction_selection = getattr(prepared, "instruction_selection", None)
+    if instruction_selection is not None:
+        command += ["--instruction-selection", str(instruction_selection)]
     if options.skip_hidden:
         command.append("--skip-hidden")
+    if hidden_policy['mode'] != 'rtl':
+        command += ['--hidden-capsule-mode', hidden_policy['mode']]
+    if selected_rtl_facts is not None or prepared.bundle.get("compiler_tool_profile") is not None:
+        command += ["--workspace", str(workspace)]
     if selected_rtl_facts is not None:
-        command += ["--workspace", str(workspace), "--rtl-facts", str(selected_rtl_facts)]
+        command += ["--rtl-facts", str(selected_rtl_facts)]
     from merlin_experiments.frozen_python import inherited_python_command
 
     result = subprocess.run(inherited_python_command(command), cwd=str(context.repo))

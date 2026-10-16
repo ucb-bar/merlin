@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+import contextvars
 import shutil
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -24,30 +24,23 @@ from . import paired_measurement as PME
 from .broker_evidence import _is_sha256
 from .contracts import StageGateError
 from .contracts import write_json as _write_json
-
-SWEEP_WORKERS_ENV = "MERLIN_PERF_SWEEP_WORKERS"
+from .feedback_metrics import derive_machine_bounds  # noqa: F401 -- re-exported for its callers
+from .sweep_policy import (  # noqa: F401 -- the sweep's declared environment, re-exported
+    AUTHORING_GSIM_FLOOR_BUDGET_ENV,
+    SWEEP_WORKERS_ENV,
+    authoring_gsim_floor_budget,
+    sweep_workers,
+)
+from .whole_model_profile import load_selected_inputs as _load_whole_model_inputs
 
 
 def _measurement_selection(value):
     from .component_measurement_scheduling import DevelopmentMeasurementPlan
+    from .ordinary_measurement_selection import OrdinaryMeasurementPlan
 
-    if type(value) is not DevelopmentMeasurementPlan:
+    if type(value) not in (DevelopmentMeasurementPlan, OrdinaryMeasurementPlan):
         raise StageGateError("development measurement selection requires its live qualified plan")
     return value
-
-
-def sweep_workers() -> int:
-    """The declared sweep fan-out, or 1. Refuses a value it cannot read rather than guessing one."""
-    raw = (os.environ.get(SWEEP_WORKERS_ENV) or "").strip()
-    if not raw:
-        return 1
-    try:
-        workers = int(raw)
-    except ValueError:
-        raise StageGateError(f"{SWEEP_WORKERS_ENV}={raw!r} is not an integer; refusing to guess a fan-out") from None
-    if workers < 1:
-        raise StageGateError(f"{SWEEP_WORKERS_ENV}={workers} is not a positive fan-out")
-    return workers
 
 
 @dataclass
@@ -69,22 +62,34 @@ class DevelopmentGsimFeedback:
     decisions: Mapping[tuple[str, str], GATE.EvaluationDecision]
     peak_macs_per_cycle: int | None = None
     peak_basis: str = ""
+    #: The machine's derived bounds for each member's ROOFLINE: array geometry from the RTL facts and
+    #: the memory-path widths of the exact elaboration the certified timing engine was built from
+    #: (:func:`merlin.perf.capsule_roofline.machine_bounds`). None leaves every roofline UNKNOWN with
+    #: that reason; it never substitutes a width.
+    machine_bounds: Mapping[str, Any] | None = None
+    #: The target's counter-byte binding evidence, probed once per stage the first time a counter
+    #: profile runs (:func:`measurement_support.probe_counter_byte_bindings`). Passed to every counter
+    #: pass so physical movement is measured whenever the target's probe proves the byte semantics,
+    #: and stays UNKNOWN with the probe's own reason when it does not.
+    counter_binding: Mapping[str, Any] | None = None
+    #: Seconds allowed for each arm's executed-command replay; 0 disables it (the cells then say so).
+    executed_profile_timeout_s: int = 120
+    #: The operator's whole-model deployment record (:mod:`.whole_model_profile`); None leaves the
+    #: whole-model boundary profile unavailable, and the stage advertises that.
+    whole_model_inputs: Any = None
+    rtl_facts_path: Path | None = None
+    _whole_model_baseline: dict | None = None
     achievable_macs_per_cycle: float | None = None
     achievable_basis: str = ""
     # Spread of the achievable rate across the points that established it. It is what "already at
     # the ceiling" tolerates, and it is MEASURED so that judgement is not a constant anyone can
     # turn until the answer changes. None when fewer than two points price, which refuses.
     achievable_dispersion: float | None = None
-    #: The phase-1 functional points the ceiling starts from, kept so it can be RE-DERIVED over a
-    #: wider set once this run's own frozen-baseline measurements exist. Phase 1's corpus is not
-    #: this corpus: measured 2026-09-04, its ceiling was 80.01 MACs/cycle while four performance
-    #: members already ran ABOVE it at baseline, and its dispersion of 0.472 put the "already at the
-    #: ceiling" line at 42.25 -- so 14 of 38 members were told they had no headroom left.
-    seed_points: tuple = ()
     #: Every host-owned point currently eligible to establish a rate.  Unlike the scalar summary
     #: ceiling, per-member scoring filters these by exact contraction reduction depth.
     _achievable_points: tuple = ()
-    functional_run_id: str = ""
+    _baseline_points: dict = field(default_factory=dict, repr=False)
+    _baseline_costs: dict = field(default_factory=dict, repr=False)
     #: Median measured simulation seconds per capsule, and how the ordering was arrived at. Used to
     #: sweep cheapest-first, so a losing candidate is refuted before the corpus's slowest members
     #: are paid for. Empty means no history: the declared order stands and the basis says so.
@@ -103,6 +108,7 @@ class DevelopmentGsimFeedback:
     _profile_baseline_cache: dict[tuple[str, str], dict[str, Any]] | None = None
     #: Rows a wave measured ahead of the loop that consumes them, keyed by (member index, arm).
     _prefetched: dict = field(default_factory=dict)
+    _compiler_profile_service: object | None = field(default=None, repr=False)
 
     def _execute(
         self,
@@ -169,6 +175,31 @@ class DevelopmentGsimFeedback:
                 break
         if not attempts:
             raise StageGateError("development GSIM feedback exceeded its deterministic timeout")
+        if arm == "baseline" and not hardware_counters and measurement_plan is None:
+            from .calibration import public_baseline_measurement
+
+            point, cost = public_baseline_measurement(
+                raw,
+                corpus=self.corpus,
+                member=member,
+                package_sha256=self.baseline_sha256,
+                certificate=self.certificate,
+                decision=decision,
+            )
+            key = (member.family, member.capsule)
+            if point is not None:
+                self._baseline_points[key] = point
+            if cost is not None:
+                self._baseline_costs[key] = cost
+        if not hardware_counters and self.executed_profile_timeout_s and isinstance(raw.get("measurement"), Mapping):
+            raw = {
+                **raw,
+                "_executed_profile": MS.executed_profile(
+                    destination,
+                    target=str(getattr(self.target_experiment, "target", "") or ""),
+                    timeout_s=self.executed_profile_timeout_s,
+                ),
+            }
         return raw
 
     def _execute_once(
@@ -199,19 +230,23 @@ class DevelopmentGsimFeedback:
                 timeout_s = deadline - time.monotonic()
                 if timeout_s <= 0:
                     raise StageGateError("selected development measurement exhausted its dispatch budget")
-            result = self.executor(
-                arm=arm,
-                package=package,
-                package_sha256=package_sha256,
-                member=member,
-                decision=decision,
-                workspace=workspace,
-                timeout_s=timeout_s,
-                certificate=self.certificate,
-                target_experiment=self.target_experiment,
-                rtl_identity=self.rtl_identity,
-                hardware_counters=hardware_counters,
-            )
+            from merlin_experiments.phase1.feedback.compiler_profile_runtime import original_compiler_imports
+
+            with original_compiler_imports(self._compiler_profile_service):
+                result = self.executor(
+                    arm=arm,
+                    package=package,
+                    package_sha256=package_sha256,
+                    member=member,
+                    decision=decision,
+                    workspace=workspace,
+                    timeout_s=timeout_s,
+                    certificate=self.certificate,
+                    target_experiment=self.target_experiment,
+                    rtl_identity=self.rtl_identity,
+                    hardware_counters=hardware_counters,
+                    **({"counter_binding": self.counter_binding_evidence()} if hardware_counters else {}),
+                )
             if measurement_plan is not None:
                 measurement_plan.verify(self, package=package, arm=arm, member=member)
             return result
@@ -304,7 +339,12 @@ class DevelopmentGsimFeedback:
             or not decision.use_gsim
         ):
             raise StageGateError(f"development GSIM {arm}/{family}/{capsule} lacks a positive certified cycle count")
-        return {"correct": correct, "gsim_cycles": cycles}
+        executed = raw.get("_executed_profile")
+        return {
+            "correct": correct,
+            "gsim_cycles": cycles,
+            "executed": dict(executed) if isinstance(executed, Mapping) else None,
+        }
 
     def profile_witness(self) -> tuple[CORPUS.PerformanceCapsule, str]:
         """The fixed reduced witness used only to explain a global candidate's cycle change.
@@ -462,10 +502,53 @@ class DevelopmentGsimFeedback:
             "missing": missing,
         }
 
-    def profile(self, candidate: Path, *, round_index: int, call_index: int, timeout_s: int) -> dict[str, Any]:
-        """Warm-profile one preselected reduced witness with only occupancy/movement counters."""
+    def whole_model_profile(self, candidate: Path, *, round_index: int, call_index: int, timeout_s: int) -> dict:
+        """Per-group cycles, gaps and rooflines of the declared whole-model programs (see that module)."""
+        from . import whole_model_profile as WMP  # noqa: PLC0415
+
+        return WMP.profile_candidate(self, candidate, round_index=round_index, call_index=call_index)
+
+    def counter_binding_evidence(self) -> Mapping[str, Any]:
+        if self.counter_binding is None:
+            target = str(getattr(self.target_experiment, "target", "") or "")
+            try:
+                self.counter_binding = MS.probe_counter_byte_bindings(self.rtl_identity, target=target)
+            except Exception as exc:  # noqa: BLE001 - an unavailable probe leaves bytes UNKNOWN
+                self.counter_binding = {"status": "unknown", "counter_facts": [], "why": type(exc).__name__}
+        return self.counter_binding
+
+    def profile_member(self, identity: str) -> tuple[CORPUS.PerformanceCapsule, str]:
+        """The frozen tuning member ``family/capsule`` the agent asked to profile, or a refusal."""
+        family, sep, capsule = str(identity or "").strip().partition("/")
+        if not sep or not family or not capsule:
+            raise StageGateError("a profiled member is named as family/capsule from the frozen tuning corpus")
+        from merlin.perf.execution_policy import require_probe_execution  # noqa: PLC0415
+
+        for member in tuple(getattr(self.corpus, "capsules", ()) or ()):
+            if member.family == family and member.capsule == capsule:
+                try:
+                    require_probe_execution(member.descriptor)
+                except ValueError as exc:
+                    raise StageGateError(str(exc)) from exc
+                return member, "named by the agent from the frozen tuning corpus"
+        raise StageGateError(f"{family}/{capsule} is not a member of the frozen tuning corpus")
+
+    def profile(
+        self,
+        candidate: Path,
+        *,
+        round_index: int,
+        call_index: int,
+        timeout_s: int,
+        member: str | None = None,
+    ) -> dict[str, Any]:
+        """Warm-profile one reduced member with only occupancy/movement counters: the preselected
+        witness, or the frozen tuning member the caller names (``family/capsule``)."""
         candidate = Path(candidate).resolve(strict=True)
-        member, selection_basis = self.profile_witness()
+        if member is None:
+            member, selection_basis = self.profile_witness()
+        else:
+            member, selection_basis = self.profile_member(member)
         key = (member.family, member.capsule)
         decision = self.decisions.get(key)
         if decision is None:
@@ -517,6 +600,14 @@ class DevelopmentGsimFeedback:
                 "selection": selection_basis,
                 "selected_before_candidate_measurement": True,
             },
+            # The measured member's derived machine bound, beside its counters (see `roofline` in the
+            # tuning feedback): busy time and overlap read against the floors they can be compared to.
+            "roofline": FM.roofline_cell(
+                member.descriptor,
+                self.machine_bounds,
+                baseline_cycles=baseline["total_compute_cycles"],
+                candidate_cycles=candidate_row["total_compute_cycles"],
+            ),
             "candidate_sha256": candidate_sha,
             "profile_contract": {
                 "warmup_runs": 1,
@@ -798,8 +889,14 @@ class DevelopmentGsimFeedback:
             # makespan is not set by a slow member that was submitted last.
             for index, member in sorted(wave, key=lambda im: -float(self.member_cost.get(im[1].capsule, 0.0))):
                 if measurement_plan is not None or (member.family, member.capsule) not in self._baseline_cache:
-                    jobs[pool.submit(one, index, member, "baseline")] = (index, "baseline")
-                jobs[pool.submit(one, index, member, "candidate")] = (index, "candidate")
+                    jobs[pool.submit(contextvars.copy_context().run, one, index, member, "baseline")] = (
+                        index,
+                        "baseline",
+                    )
+                jobs[pool.submit(contextvars.copy_context().run, one, index, member, "candidate")] = (
+                    index,
+                    "candidate",
+                )
             for future in concurrent.futures.as_completed(jobs):
                 slot = jobs[future]
                 try:
@@ -809,52 +906,35 @@ class DevelopmentGsimFeedback:
         return rows
 
     def _refresh_achievable(self) -> None:
-        """Re-derive the ceiling and its tolerance over every measurement the agent did not author.
-
-        Phase 1's corpus is not phase 2's. Measured 2026-09-04: the ceiling harvested from the
-        functional run alone was 80.01 MACs/cycle while four performance members already ran ABOVE
-        it at baseline (PC01_k128 99.79, PR01 94.06, PR03 88.33, PR02 87.96), and that set's
-        dispersion of 0.472 put "already at the ceiling" at 42.25 -- so 14 of 38 members were being
-        told they had no headroom left. Over the widened set the ceiling is 99.79 and the dispersion
-        0.245, and 6 members read as finished. The tolerance MUST come from the same points as the
-        ceiling: a wide-set ceiling with a narrow-set spread is not a measurement of anything.
-
-        Widening can only ever RAISE the ceiling -- the rate is a max over the points, so it is
-        monotone under union, and a point with positive cycles cannot falsify `demand/rate <= busy`.
-        A higher ceiling makes every consumer stricter: shares fall, `no_headroom` fires less, and
-        the attainment stop condition fires less. There is no direction in which this flatters a
-        candidate.
-
-        BASELINE ARMS ONLY, and that is the entire safety argument. The baseline package is phase
-        1's submission, sha-pinned before the first member runs; its cycles cannot depend on
-        anything the agent wrote. Admitting candidate arms would let the agent raise its own
-        ceiling, pinning its candidate near 1.0 by construction while pushing every other member
-        down -- a target the agent authors is not a target.
-        """
+        """Use only fresh measurements of this session's exact public baseline members."""
         from . import calibration as PMODEL  # noqa: PLC0415
         from . import capsule_verdict as CV  # noqa: PLC0415
 
-        baseline_points = FM.harvest_baseline_points(self.work_root)
-        points = list(self.seed_points) + list(baseline_points)
+        points = list(self._baseline_points.values())
+        counts = {}
+        for member in self.corpus.capsules:
+            counts[member.capsule] = counts.get(member.capsule, 0) + 1
+        self.member_cost = {
+            capsule: value for (_, capsule), value in self._baseline_costs.items() if counts.get(capsule) == 1
+        }
+        _, self.member_cost_basis = FM.order_members_by_cost((), self.member_cost)
         self._achievable_points = tuple(points)
         if not points:
             return
-        ceiling = PMODEL.achievable_ceiling(points, provenance="functional and frozen baseline")
+        ceiling = PMODEL.achievable_ceiling(points, provenance="original public frozen baseline executions")
         if not ceiling.known:
             return  # never downgrade a known ceiling to an absent one
         self.achievable_macs_per_cycle = float(ceiling.value)
         self.achievable_dispersion = CV.ceiling_dispersion([{"macs": p.macs, "cycles": p.cycles} for p in points])
         self.achievable_basis = (
-            f"best rate over {len(points)} measured point(s): {len(self.seed_points)} from the "
-            f"phase-1 functional run {self.functional_run_id} and {len(baseline_points)} from the "
-            f"frozen-baseline arm of the performance corpus (baseline arms only; no candidate "
-            f"measurement contributes to this ceiling)"
+            f"best rate over {len(points)} original public baseline measurement(s); "
+            "baseline arms only; no candidate measurement contributes to this ceiling"
         )
 
     def _matched_achievable(self, member: CORPUS.PerformanceCapsule) -> tuple[float | None, str, float | None]:
         """Best measured rate for the member's exact contraction-depth signature.
 
-        Reduction depth is the amortisation axis for a weight-stationary contraction.  A global max
+        Reduction depth distinguishes contraction regimes without assuming a target mapping. A global max
         over unrelated K values is useful context, but it is not an attainable target for this
         member.  Both signatures come from declared/emitted operand geometry; absence refuses rather
         than silently falling back to the flattering global number.
@@ -890,9 +970,24 @@ class DevelopmentGsimFeedback:
             dispersion,
         )
 
+    def roofline_floor(self, member: Any) -> int | None:
+        """The member's declared-work roofline floor on this machine, or None when underivable."""
+        value = FM.capsule_roofline(member.descriptor, self.machine_bounds).get("roofline_cycles")
+        return value if type(value) is int else None
+
     def evaluate(
-        self, candidate: Path, *, round_index: int, call_index: int, timeout_s: int, measurement_plan=None
+        self,
+        candidate: Path,
+        *,
+        round_index: int,
+        call_index: int,
+        timeout_s: int,
+        measurement_plan=None,
+        retained_revision=None,
+        complete_roster: bool = False,
     ) -> dict[str, Any]:
+        if type(complete_roster) is not bool or complete_roster and measurement_plan is not None:
+            raise StageGateError("complete-roster RTL ranking needs the original full measurement selection")
         candidate = Path(candidate).resolve(strict=True)
         if measurement_plan is not None:
             _measurement_selection(measurement_plan)
@@ -912,8 +1007,16 @@ class DevelopmentGsimFeedback:
         # bytes that produced them, and a snapshot gives that property outright instead of turning a
         # note into a voided campaign. Every run below reads the copy, so a concurrent edit cannot
         # change what was measured, and `candidate_sha256` names the bytes actually executed.
-        measured_candidate = call_root / "_measured_candidate"
-        shutil.copytree(candidate, measured_candidate, symlinks=True)
+        if retained_revision is None:
+            measured_candidate = call_root / "_measured_candidate"
+            shutil.copytree(candidate, measured_candidate, symlinks=True)
+        else:
+            from .retained_revisions import executing_revision
+
+            if executing_revision(candidate) is not retained_revision:
+                raise StageGateError("retained RTL execution requires the issued fixed evaluator context")
+            retained_revision.verify()
+            measured_candidate = retained_revision.source
         candidate_before = str(hash_tree(measured_candidate)["sha256"])
         candidate = measured_candidate
         original_members = sorted(self.corpus.capsules, key=lambda row: (row.family, row.capsule))
@@ -925,6 +1028,28 @@ class DevelopmentGsimFeedback:
 
             by_id = {document_sha256([member.family, member.capsule]): member for member in original_members}
             members = [by_id[identity] for identity in measurement_plan.selected]
+        # LARGE MEMBERS NEVER BLOCK AUTHORING. Above the declared roofline-floor budget a member is
+        # measured on gSIM only in the final cells (one of them alone runs past an hour); here it gets
+        # its roofline cell and a stated reason, and static analysis, Spike and the reduced witnesses
+        # remain the agent's tools for it.
+        # An explicit complete sweep is the measured selection denominator.
+        # The exploratory floor budget must not silently omit its large cases.
+        from .ordinary_measurement_selection import OrdinaryMeasurementPlan
+
+        budget = (
+            None
+            if complete_roster or type(measurement_plan) is OrdinaryMeasurementPlan
+            else authoring_gsim_floor_budget()
+        )
+        deferred = []
+        if budget is not None:
+            floors = {(member.family, member.capsule): self.roofline_floor(member) for member in members}
+            deferred = [
+                m
+                for m in members
+                if type(floors[(m.family, m.capsule)]) is int and floors[(m.family, m.capsule)] > budget
+            ]
+            members = [m for m in members if m not in deferred]
         cells: list[dict[str, Any]] = []
         started = time.monotonic()
         # CHEAPEST MEASURED MEMBER FIRST. A candidate behind on every member measured so far is
@@ -1073,6 +1198,20 @@ class DevelopmentGsimFeedback:
                         candidate_cycles=ccycles if comparable else None,
                         dispersion=matched_dispersion,
                     ),
+                    # WHERE EACH ARM SITS AGAINST THE MACHINE'S OWN BOUND for this member's declared
+                    # work: the larger of the array's compute floor and the memory path's movement
+                    # floor, both derived. Only a correct arm is positioned against it.
+                    "roofline": FM.roofline_cell(
+                        member.descriptor,
+                        self.machine_bounds,
+                        baseline_cycles=bcycles if baseline["correct"] else None,
+                        candidate_cycles=ccycles if candidate_row["correct"] else None,
+                    ),
+                    # WHAT EACH ARM EXECUTED: accelerator commands by class, retired host
+                    # instructions, and the local-memory rows its commands addressed.
+                    "executed_commands": FM.executed_commands_cell(
+                        baseline.get("executed"), candidate_row.get("executed")
+                    ),
                     "measured": True,
                     "skip_reason": None,
                 }
@@ -1083,7 +1222,9 @@ class DevelopmentGsimFeedback:
             # SAME work and it is already behind on all of it. The converse is false -- a candidate
             # ahead on the cheap prefix may still lose on a member it has not paid for -- so a
             # winning prefix buys nothing and the full sweep is measured.
-            if measurement_plan is None and self._refuted_so_far(cells, index, len(members)):
+            # A weighted full-roster objective can recover on later members;
+            # its selected complete_roster route therefore preserves all cells.
+            if measurement_plan is None and not complete_roster and self._refuted_so_far(cells, index, len(members)):
                 stopped_after = index + 1
                 break
         for member in members[stopped_after:] if stopped_after is not None else ():
@@ -1091,6 +1232,7 @@ class DevelopmentGsimFeedback:
             cells.append(
                 FM.unmeasured_cell(
                     member,
+                    machine=self.machine_bounds,
                     reason=(
                         "the sweep is ordered cheapest-measured-first and this candidate "
                         "was already behind on every comparable member measured before "
@@ -1098,11 +1240,24 @@ class DevelopmentGsimFeedback:
                     ),
                 )
             )
+        for member in deferred:
+            cells.append(
+                FM.unmeasured_cell(
+                    member,
+                    machine=self.machine_bounds,
+                    reason=(
+                        f"measured on gSIM only in the final measurement cells: its roofline floor exceeds "
+                        f"the authoring gSIM budget of {budget} cycles"
+                    ),
+                )
+            )
         if measurement_plan is not None:
             selected_ids = set(measurement_plan.selected)
             for member in original_members:
                 if document_sha256([member.family, member.capsule]) not in selected_ids:
-                    cells.append(FM.unmeasured_cell(member, reason=measurement_plan.reason(member)))
+                    cells.append(
+                        FM.unmeasured_cell(member, machine=self.machine_bounds, reason=measurement_plan.reason(member))
+                    )
             measurement_plan.verify(self, candidate=candidate)
         # The snapshot must still be the bytes the runs read: nothing here may edit it, and a
         # difference now would mean the measurement mutated its own input rather than that the agent
@@ -1160,6 +1315,8 @@ class DevelopmentGsimFeedback:
         candidate_after = str(hash_tree(candidate)["sha256"])
         if candidate_after != candidate_before:
             raise StageGateError("development GSIM evaluation mutated the candidate snapshot")
+        if retained_revision is not None:
+            retained_revision.verify()
         comparable = [row for row in cells if row["comparable"]]
         return CF.validate_redacted_feedback(
             {
@@ -1199,55 +1356,13 @@ class DevelopmentGsimFeedback:
                         "ranked": [],
                         "corpus_total_cycles": None,
                     },
+                    "roofline_machine": FM.roofline_machine_summary(self.machine_bounds),
                 },
             }
         )
 
 
-def development_executor(
-    *,
-    contract_root: Path,
-    arm,
-    package,
-    package_sha256,
-    member,
-    decision,
-    workspace,
-    timeout_s,
-    certificate,
-    target_experiment,
-    rtl_identity,
-    hardware_counters=False,
-):
-    # The installed engine uses the package-sandboxed Spike+GSIM path;
-    # the trusted caller supplies the contract resource root explicitly.
-
-    spec = PME.ExecutionSpec(
-        execution_index=0,
-        pair_index=0,
-        pair_id=f"{member.family}__{member.capsule}__development",
-        phase="tuning",
-        arm=arm,
-        family=member.family,
-        capsule=member.capsule,
-        replicate="r000",
-        package=package,
-        package_sha256=package_sha256,
-        member=member,
-        workload=PME.gsim_workload(member),
-        gsim_decision=decision,
-        gsim_certificate=certificate,
-    )
-    return PME.run_execution(
-        spec,
-        workspace,
-        timeout_s,
-        target_experiment,
-        rtl_identity,
-        contract_root=contract_root,
-        hardware_counters=hardware_counters,
-        workers=1 if hardware_counters else sweep_workers(),
-    )
+development_executor = PME.development_executor
 
 
 def prepare_development_feedback(
@@ -1263,6 +1378,7 @@ def prepare_development_feedback(
     work_root: Path,
     tuning_call_budget: int | None = None,
     functional_run_dir: Path | None = None,
+    whole_model_inputs: Path | None = None,
 ) -> DevelopmentGsimFeedback:
     """Bind one stage to a strict certificate and exact frozen tuning corpus."""
     if certificate_path is None or not _is_sha256(certificate_sha256) or rtl_facts_path is None:
@@ -1276,45 +1392,14 @@ def prepare_development_feedback(
 
         rtl_identity = MS.load_rtl_identity(Path(rtl_facts_path), target_experiment.target)
         peak_macs, peak_basis = FM.derived_peak_macs_per_cycle(Path(rtl_facts_path), target_experiment.target)
-        # THE ACHIEVABLE CEILING, from cycles phase 1 already paid for. The structural peak is what
-        # the array could retire if nothing ever stalled; the achievable
-        # ceiling is the best rate anything on this machine actually reached, and it is what the
-        # agent is asked to close on. Underivable -> None with a reason, never a substituted number.
-        # Ordering the sweep by measured cost needs history; absent it the declared order stands
-        # and the basis says so, rather than a proxy silently standing in for a measurement.
-        member_cost: dict[str, float] = FM.harvest_member_cost(
-            [Path(functional_run_dir).parent] if functional_run_dir is not None else []
-        )
+        machine_bounds = derive_machine_bounds(Path(rtl_facts_path), certificate, target_experiment.target)
+        # Historical run trees include hidden and final evidence. They supply
+        # neither rates nor scheduling costs; only this session's admitted public
+        # baseline replies can establish them after actual measurement.
+        member_cost = {}
         _, member_cost_basis = FM.order_members_by_cost((), member_cost)
-        achievable_macs, achievable_basis = None, "no functional run was supplied to harvest"
-        achievable_dispersion: float | None = None
-        seed_points: tuple = ()
-        if functional_run_dir is not None:
-            try:
-                from merlin_experiments.phase2 import calibration as PMODEL  # noqa: PLC0415
-
-                points, _skipped = PMODEL.harvest_measured_points(Path(functional_run_dir))
-                ceiling = PMODEL.achievable_ceiling(
-                    points, provenance=f"measured cycles harvested from {Path(functional_run_dir).name}"
-                )
-                try:
-                    from merlin_experiments.phase2 import capsule_verdict as CV  # noqa: PLC0415
-
-                    achievable_dispersion = CV.ceiling_dispersion(
-                        [{"macs": p.macs, "cycles": p.cycles} for p in points]
-                    )
-                except Exception:  # noqa: BLE001 - an underivable spread refuses, never defaults
-                    achievable_dispersion = None
-                seed_points = tuple(points)
-                if ceiling.known:
-                    achievable_macs = float(ceiling.value)
-                    achievable_basis = (
-                        f"best rate over {ceiling.n_samples} measured points in {Path(functional_run_dir).name}"
-                    )
-                else:
-                    achievable_basis = ceiling.reason
-            except Exception as exc:  # noqa: BLE001 - an unharvestable corpus is reported, not faked
-                achievable_basis = f"harvest failed ({type(exc).__name__})"
+        achievable_macs, achievable_basis = None, "no fresh public baseline measurements"
+        achievable_dispersion = None
         decisions: dict[tuple[str, str], GATE.EvaluationDecision] = {}
         for member in sorted(corpus.capsules, key=lambda row: (row.family, row.capsule)):
             if member.descriptor.get("label") != "dev":
@@ -1341,6 +1426,9 @@ def prepare_development_feedback(
         raise StageGateError(f"development GSIM feedback certificate is unavailable or invalid: {exc}") from exc
     if str(hash_tree(baseline)["sha256"]) != baseline_sha256:
         raise StageGateError("development GSIM baseline bytes differ from the functional submission")
+    from merlin_experiments.phase1.feedback.compiler_profile_runtime import functional_service
+
+    profile_service = None if functional_run_dir is None else functional_service(functional_run_dir)
     return DevelopmentGsimFeedback(
         certificate,
         corpus,
@@ -1352,14 +1440,15 @@ def prepare_development_feedback(
         decisions,
         peak_macs_per_cycle=peak_macs,
         peak_basis=peak_basis,
+        machine_bounds=machine_bounds,
         achievable_macs_per_cycle=achievable_macs,
         achievable_basis=achievable_basis,
         achievable_dispersion=achievable_dispersion,
-        seed_points=seed_points,
-        _achievable_points=seed_points,
-        functional_run_id=(Path(functional_run_dir).name if functional_run_dir is not None else ""),
         member_cost=member_cost,
         member_cost_basis=member_cost_basis,
         executor=partial(development_executor, contract_root=contract_root),
         tuning_call_budget=tuning_call_budget,
+        whole_model_inputs=_load_whole_model_inputs(whole_model_inputs, target_experiment),
+        rtl_facts_path=Path(rtl_facts_path),
+        _compiler_profile_service=profile_service,
     )

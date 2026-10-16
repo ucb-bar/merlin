@@ -50,7 +50,7 @@ operation:
     - acc_scale
     - relu
     output_dtype: i8
-    semantic: conv2d_im2col
+    semantic: conv2d
     bias: B
     acc_scale: 0.005765077542770927
 numeric_policy:

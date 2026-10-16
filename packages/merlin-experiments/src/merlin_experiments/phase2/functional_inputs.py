@@ -156,6 +156,60 @@ def inspect_stage_functional_run(
     return _functional_input_snapshot(PC.inspect_functional_run(run_root, run_id, expected_digest, waive=waive))
 
 
+def require_formal_qualification(functional: StageFunctionalRun, target_experiment) -> None:
+    """Reopen the original formal gates before normal performance search.
+
+    The caller selects the same descriptor as the frozen Phase 1 run. Legacy
+    capsule-only diagnostics remain inspectable through ``campaign``; they do
+    not supply a formally qualified baseline for ordinary search. This reads
+    existing evidence only and never launches a grader, model or simulator.
+    """
+    from merlin_experiments.phase1.feedback import certification
+    from merlin_experiments.phase1.feedback import hidden_capsule_policy as hidden
+    from merlin_experiments.phase1.feedback import private_full_model_execution as execution
+    from merlin_experiments.phase1.feedback import private_full_models as models
+
+    descriptor = Path(target_experiment.path)
+    descriptor_sha = target_experiment.descriptor_sha256
+    if CONTRACTS.sha256_file(descriptor) != descriptor_sha:
+        raise StageGateError("functional qualification descriptor changed")
+    environment = CONTRACTS.mapping_file(functional.run_dir / "environment.yaml", yaml_file=True)
+    if (
+        (environment.get("task_scope") or {}).get("target") != target_experiment.target
+        or (environment.get("public_corpus_input") or {}).get("descriptor_sha256") != descriptor_sha
+    ):
+        raise StageGateError("functional qualification differs from the original target selection")
+    manifest = CONTRACTS.mapping_file(functional.run_dir / "run_manifest.yaml", yaml_file=True)
+    if (manifest.get("completion") or {}).get("formal_grade_complete") is not True:
+        raise StageGateError("Phase 1 formal qualification is incomplete")
+    required_models = models.requirements_for(descriptor)
+    required_programs = models.program_requirements_for(descriptor)
+    gate = execution.gate_for(descriptor, required_programs=required_programs)
+    if not required_models or gate is None or gate.get("required") is not True:
+        raise StageGateError("normal search requires complete-model build and execution obligations")
+    if any("deferred" in entry for stages in gate["programs"].values() for entry in stages.values()):
+        raise StageGateError("normal search requires execution of every required program")
+    mode = (environment.get("hidden_capsule_validation") or {}).get("mode", "rtl")
+    hidden.verify_record(hidden.resolve(descriptor, mode), environment.get("hidden_capsule_validation"))
+    result = certification._official_grade_result(
+        0,
+        functional.run_dir,
+        required_models=required_models,
+        required_programs=required_programs,
+        execution_gate=gate,
+        hidden_capsule_mode=mode,
+    )
+    if not result["complete"]:
+        raise StageGateError("Phase 1 formal qualification is incomplete: " + ", ".join(result["failures"]))
+    if (
+        CONTRACTS.sha256_file(descriptor) != descriptor_sha
+        or CONTRACTS.mapping_file(functional.run_dir / "run_manifest.yaml", yaml_file=True) != manifest
+        or CONTRACTS.mapping_file(functional.run_dir / "environment.yaml", yaml_file=True) != environment
+        or manifest.get("submission_sha256") != functional.digest
+    ):
+        raise StageGateError("functional qualification changed during admission")
+
+
 def verify_functional_host_lane_snapshot(host: Mapping[str, Any]) -> None:
     run_snapshot = host.get("run_snapshot")
     if not isinstance(run_snapshot, Mapping):
@@ -279,6 +333,8 @@ def load_frozen_functional_inputs(
             "kind": "public_functional_input_projection",
             "content_sha256": public_digest,
             "grants": public_rows,
+            **({"compiler_tool_profile": private["bundle"]["compiler_tool_profile"]}
+               if private["bundle"].get("compiler_tool_profile") is not None else {}),
         }
         public_marker = Path(public_manifest_path)
         public_marker.parent.mkdir(parents=True, exist_ok=True)

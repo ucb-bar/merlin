@@ -21,12 +21,21 @@ all arguments.
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 import subprocess
+import time
+from collections import deque
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import FIRST_COMPLETED, wait
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+
+    from .device_ir_scalability import DeviceIRBudget
 
 __all__ = [
     "FROM_EXTENTS",
@@ -93,6 +102,90 @@ class DeviceRouting:
     final_elf_audit: Callable[[Path], None] | None = None
     #: Provider-owned host ABI preparation after source-bound offload declarations.
     post_offload_transform: Callable[[Path, Path, Path], Path] | None = None
+    #: Explicit independently selected final linked-image policy. Every active
+    #: ordinary device build requires it; the legacy callback cannot replace it.
+    linked_elf_admission: LinkedElfAdmissionService | None = None
+    #: Original-caller static compilation resource policy, never read from emitted programs.
+    device_ir_budget: DeviceIRBudget | None = None
+    #: Original full-model qualification requests every source-admitted group.
+    require_complete_groups: bool = False
+
+    def __post_init__(self):
+        if type(self.require_complete_groups) is not bool:
+            raise TypeError("complete source group routing requires an original Boolean")
+        if self.require_complete_groups and self.granularity != "group":
+            raise ValueError("complete source group routing requires group granularity")
+
+
+def freeze_device_elf_admission(device):
+    """Freeze supplied policy selection; an empty host route needs no policy."""
+    from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+
+    service = getattr(device, "linked_elf_admission", None)
+    if service is None:
+        return None
+    if type(service) is not LinkedElfAdmissionService:
+        raise ValueError("device linked ELF admission requires an explicitly selected service")
+    return device.device, service, service.verify(device.device)
+
+
+def freeze_device_ir_budget(device):
+    """Copy original caller policy before any package or provider callback runs."""
+    from .device_ir_scalability import DeviceIRBudget
+
+    selected = getattr(device, "device_ir_budget", None)
+    if selected is not None and type(selected) is not DeviceIRBudget:
+        raise ValueError("device_ir_budget must be an original-caller DeviceIRBudget")
+    return DeviceIRBudget(**(selected.record() if selected is not None else {}))
+
+
+def require_device_elf_admission(device, selection):
+    """An active routed program cannot downgrade or replace its selected policy."""
+    if selection is None:
+        raise ValueError("active device route requires independent linked ELF admission")
+    target, service, identity = selection
+    if (
+        device is None
+        or device.device != target
+        or getattr(device, "linked_elf_admission", None) is not service
+        or service.verify(target) != identity
+    ):
+        raise ValueError("device linked ELF admission selection changed during build")
+    return service
+
+
+def admit_linked_device_elf(device, selection, *, elf, linked_sha256, directory):
+    """Enforce the selected policy on unchanged final link bytes, not objects.
+
+    The selected evaluator owns ISA facts and the original protected policy.
+    This caller retains actual evaluation and refuses absent or changed evidence;
+    it supplies no default decoder, instruction/effect or runtime authority.
+    """
+    import json
+
+    from merlin.common import invocation_record
+    from merlin.common.digest import sha256_file
+
+    service = require_device_elf_admission(device, selection)
+    if sha256_file(elf) != linked_sha256:
+        raise ValueError("device linked ELF changed after its actual link")
+    with invocation_record.observe_call(
+        directory,
+        stage="device_final_linked_elf_policy",
+        function=service.evaluate,
+        arguments={"target": selection[0], "scope": "selected final linked-artifact policy"},
+        inputs=(elf,),
+        dependencies=tuple(Path(path) for path, _digest in service.source_pins),
+    ) as observation:
+        result = service.evaluate(elf=elf, target=selection[0], evidence_root=observation.directory / "policy")
+        observation.outputs = (Path(result["report_path"]),)
+        observation.returned(stdout=json.dumps(result, sort_keys=True))
+    require_device_elf_admission(device, selection)
+    if service.revalidate(elf=elf, result=result, target=selection[0]) != "accepted":
+        raise ValueError("device linked ELF was refused by its selected policy")
+    if sha256_file(elf) != linked_sha256:
+        raise ValueError("device linked ELF changed during its selected policy")
+    return result
 
 
 def routing_for_placement(
@@ -104,6 +197,7 @@ def routing_for_placement(
     granularity: str = "contraction",
     capture: str | Path | None = None,
     model: str = "",
+    linked_elf_admission: LinkedElfAdmissionService | None = None,
 ) -> DeviceRouting:
     """The ``DeviceRouting`` a whole-model build needs, derived from a placement rather than declared.
 
@@ -161,6 +255,7 @@ def routing_for_placement(
         granularity=str(granularity),
         capture=capture,
         model=str(model),
+        linked_elf_admission=linked_elf_admission,
     )
 
 
@@ -194,6 +289,8 @@ class DeviceBuild:
     shim_object: Path | None = None
     #: shim entry symbol -> the kernel symbol it calls.
     kernels: dict[str, str] = field(default_factory=dict)
+    #: Actual translation/compile/rename invocations for each linked kernel.
+    custody: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
     skipped: tuple[tuple[str, str], ...] = ()
     #: symbol -> which entry the kernel was built from: :data:`FROM_GROUP` (the layer's own stated
     #: program, epilogue and all) or :data:`FROM_EXTENTS` (a bare contraction of those extents).
@@ -203,6 +300,7 @@ class DeviceBuild:
     built_from: dict[str, str] = field(default_factory=dict)
     #: Coarse build receipt: distinct compiled artifact texts versus exported kernel symbols.
     object_dedup: dict[str, int] = field(default_factory=dict)
+    build_metrics: dict[str, dict] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -437,6 +535,39 @@ def _run_build_tool(argv: Sequence[str], *, timeout: int) -> subprocess.Complete
         )
 
 
+def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output, metrics=None, expected_input_sha256=None):
+    """Return a process, closed file-identity pin, and separate wall duration."""
+    from merlin.common import invocation_record
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    with shared_compute_pool(timeout_s=timeout), invocation_record.observe(
+        directory, stage=stage, argv=argv, inputs=inputs, outputs=(output,),
+        dependencies=(Path(__file__), Path(__file__).with_name("device_build_jobs.py")),
+    ) as observed:
+        if metrics is not None:
+            observed.document["device_build_metrics"] = metrics
+            observed._write()
+        if expected_input_sha256 is not None and (
+            len(observed.document["inputs"]) != 1
+            or observed.document["inputs"][0]["sha256"] != expected_input_sha256
+        ):
+            raise ValueError("device LLVM changed after its static build admission")
+        started = time.monotonic()
+        if metrics is not None:
+            metrics["compiler_started"] = True
+        result = _run_build_tool(argv, timeout=timeout)
+        observed.document["tool_elapsed_s"] = time.monotonic() - started
+        if metrics is not None:
+            metrics["stages"]["compilation_s"] = observed.document["tool_elapsed_s"]
+        observed.complete(result)
+    path = observed.path
+    return result, {
+        "path": str(path),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "size_bytes": path.stat().st_size,
+    }, observed.document["tool_elapsed_s"]
+
+
 def kernel_entry(
     symbol: str, extents: Sequence[int], stated: Mapping[str, Any] | None, device: str
 ) -> tuple[dict[str, Any] | None, str, str]:
@@ -497,8 +628,16 @@ def build_device_objects(
     expected_interfaces: Mapping[str, Mapping[str, str]] | None = None,
     package_sha256: str | None = None,
     tile_edge: int | None = None,
+    call_buffers: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+    device_ir_budget: DeviceIRBudget | None = None,
 ) -> DeviceBuild:
     """One kernel object per signature plus the shim object, ready to archive.
+
+    ``call_buffers`` is ``symbol -> the host call's operands`` (``{"role", "shape", "dtype"}`` in call
+    order), recorded by a group rewrite under the logical kernel ABI. With it every pointer of each
+    kernel's logical interface is passed from the host call (:func:`device_shim.logical_buffers`,
+    :func:`device_shim.emit_logical_translation_unit`); an interface value the call does not supply is
+    declined by name.
 
     ``signatures`` / ``dtypes`` come from the offload rewrite. ``operand_dtype`` / ``accum_dtype`` are
     the device's own datapath tokens, which the caller derived from the device rather than assumed.
@@ -519,15 +658,32 @@ def build_device_objects(
 
     By default every failure is recorded and skipped, so a diagnostic build reports all declined
     symbols. A caller that requires every object may request ``stop_on_first_failure``; its first
-    actual failure is retained, no subsequent symbol is attempted, and no shim is emitted.
+    actual failure is retained, no subsequent symbol is admitted, and no shim is emitted.
+    Already admitted external tool jobs drain and retain their genuine outputs. Package emission
+    stays sequential on its owner thread; independent LLVM/tool jobs use the declared shared
+    compute capacity (or explicit ``MERLIN_DEVICE_BUILD_JOBS``). Legacy callers default to one job.
     """
     from merlin.common.digest import sha256_text
+    from merlin.targetgen import capsule_common as CC
     from merlin.targetgen import corpus_spec as CS
-    from merlin.targetgen.package_runtime import load_package, run_entrypoint
+    from merlin.targetgen.package_runtime import BackendDeclined, CertFailure, load_package
 
-    from .device_shim import emit_translation_unit, kernel_abi_for
+    from .device_build_jobs import ArtifactBuild, ArtifactCompiler, build_workers
+    from .device_ir_scalability import DeviceIRBudget, inspect_device_ir
+    from .device_shim import (
+        emit_logical_translation_unit,
+        emit_translation_unit,
+        kernel_abi_for,
+        logical_argument_roles,
+        logical_buffers,
+    )
     from .toolchain import clang, mlir_translate
 
+    workers = build_workers()
+    if device_ir_budget is not None and type(device_ir_budget) is not DeviceIRBudget:
+        raise ValueError("device_ir_budget must be an original-caller DeviceIRBudget")
+    # Freeze before the package runs. Its returned LLVM/options cannot change this policy.
+    budget = DeviceIRBudget(**(device_ir_budget.record() if device_ir_budget is not None else {}))
     work = Path(workdir)
     if type(stop_on_first_failure) is not bool:
         raise ValueError("stop_on_first_failure must be a bool")
@@ -598,119 +754,233 @@ def build_device_objects(
     objs: list[Path] = []
     kernels: dict[str, str] = {}
     built_from: dict[str, str] = {}
+    # Under the logical kernel ABI each kernel's pointer order is its own interface's.
+    logical_abi = getattr(abi, "version", 1) == 2
+    argument_roles: dict[str, tuple[str, ...]] = {}
+    grouped = logical_abi and call_buffers is not None
+    group_buffers: dict[str, tuple] = {}
     oc = _objcopy()
     # The selected interface is still checked and emitted for every signature. Two
     # interfaces may nevertheless produce the same LLVM artifact; compile its raw
     # object once, then rename a separate copy for each shim entry.
-    compiled_by_artifact: dict[str, list[tuple[Path, Path]]] = {}
+    custody = {}
+    build_metrics = {}
+    objects_by_symbol = {}
+    pending = deque()
 
     def dedup_receipt() -> dict[str, int]:
-        return {
-            "unique_artifacts": sum(map(len, compiled_by_artifact.values())),
-            "emitted_symbols": len(kernels),
-        }
+        return {"unique_artifacts": compiler.completed_count(), "emitted_symbols": len(kernels)}
 
-    for index, sym in enumerate(sorted(signatures)):
-        if stop_on_first_failure and skipped:
-            break
-        key = tuple(int(v) for v in signatures[sym])
-        entry, provenance, refusal = kernel_entry(sym, key, None if entries is None else entries.get(sym), device)
-        if entry is None:
-            skipped.append((sym, refusal))
-            continue
-        # A batched signature needs the SAME kernel as its unbatched form: the batch is a loop in the
-        # shim over disjoint slices, not a third axis the device sees. Building a separate kernel per
-        # batch size would mint one per B for identical work.
-        m, n, k = key[-3:] if len(key) in (3, 4) else (None, None, None)
-        want = kernel_symbol(abi.symbol, index)
-        stem = work / f"{sym}"
-        if expected_interfaces is None:
-            try:
-                _capsule, iface = CS.build(entry, binding)
-            except Exception as exc:  # noqa: BLE001
-                skipped.append((sym, f"interface capsule: {exc}"))
-                continue
-        else:
-            from merlin.targetgen.contract.resident_interface_abi import bind_single_resident_matmul
-
-            chosen = expected_interfaces[sym]
-            iface = chosen.get("mlir")
-            if not isinstance(iface, str) or sha256_text(iface) != chosen.get("sha256"):
-                raise ValueError(f"{sym} no longer matches its selected interface bytes")
-            resident = bind_single_resident_matmul(iface, target=device)
-            if (resident.m, resident.n, resident.k) != (m, n, k) or resident.dtypes != tuple(dtypes[sym]):
-                raise ValueError(f"{sym} selected interface disagrees with pointer ABI, device, shape, or precision")
-        ifc = stem.with_suffix(".iface.mlir")
-        ifc.write_text(iface, encoding="utf-8")
-
-        try:
-            r = run_entrypoint(pkg, "emit_target_artifact", ifc, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            skipped.append((sym, f"emit_target_artifact: timed out after {timeout} seconds"))
-            continue
-        if r.returncode != 0:
-            shape = f"{m}x{k}x{n}" if m is not None else str(entry.get("op") or "this program")
-            skipped.append((sym, f"package declined {shape}: {(r.stderr or '').strip()[:200]}"))
-            continue
-        if expected_interfaces is not None and f"llvm.func @{abi.symbol}(" not in r.stdout:
-            skipped.append((sym, "exact package artifact has no contract-named LLVM kernel entry"))
-            continue
-        art = stem.with_suffix(".device.mlir")
-        art.write_text(r.stdout, encoding="utf-8")
-        digest = hashlib.sha256(r.stdout.encode("utf-8")).hexdigest()
-        # Compare actual bytes as well, so a digest collision cannot merge kernels.
-        raw = next(
-            (base for source, base in compiled_by_artifact.get(digest, ()) if source.read_bytes() == art.read_bytes()),
-            None,
+    def compile_artifact(art, ll, raw, translate_command, compile_command):
+        t, translated_invocation, translation_s = _observed_build_tool(
+            translate_command, timeout=timeout, directory=work,
+            stage="device_llvm_translation", inputs=(art,), output=ll,
         )
-        if raw is None:
-            ll = stem.with_suffix(".ll")
-            t = _run_build_tool([mlir_translate(), "--mlir-to-llvmir", str(art), "-o", str(ll)], timeout=timeout)
-            if t.returncode != 0:
-                skipped.append((sym, f"mlir-translate: {(t.stderr or '').strip()[:200]}"))
-                continue
-
-            raw = stem.with_suffix(".raw.o")
-            c = _run_build_tool(
-                [clang(), *_flags(codegen_target, cflags), "-c", str(ll), "-o", str(raw)], timeout=timeout
+        if t.returncode != 0:
+            return ArtifactBuild(refusal=f"mlir-translate: {(t.stderr or '').strip()[:200]}")
+        try:
+            report = inspect_device_ir(ll, budget)
+        except (OSError, ValueError) as error:
+            return ArtifactBuild(refusal=f"device_ir_analysis: {type(error).__name__}: {error}")
+        report["stages"] = {"translation_s": translation_s,
+                            "analysis_s": report["analysis"]["elapsed_s"], "compilation_s": None}
+        report["compiler_started"] = False
+        report_path = ll.with_suffix(".build-cost.json")
+        report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+        if report["decision"]["status"] != "accepted":
+            return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
+                                 refusal=f"{report['decision']['reason']}: {report['decision']['exceeded']}; "
+                                         f"retain counted loops; report={report_path.name}")
+        try:
+            c, compiled_invocation, compilation_s = _observed_build_tool(
+                compile_command, timeout=timeout, directory=work,
+                stage="device_object_compilation", inputs=(ll,), output=raw, metrics=report,
+                expected_input_sha256=report["analysis"]["sha256"],
             )
-            if c.returncode != 0:
-                skipped.append((sym, f"clang: {(c.stderr or '').strip()[:200]}"))
-                continue
-            compiled_by_artifact.setdefault(digest, []).append((art, raw))
+        except ValueError as error:
+            report["decision"].update(status="refused", reason="device_ir_changed_after_analysis", action=str(error))
+            report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+            return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
+                                 refusal=str(error))
+        report["compiler_started"] = True
+        report["stages"]["compilation_s"] = compilation_s
+        report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+        if c.returncode != 0:
+            return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
+                                 refusal=f"clang: {(c.stderr or '').strip()[:200]}")
+        return ArtifactBuild(raw, {"translation": translated_invocation, "compilation": compiled_invocation,
+                                   "build_metrics": report, "build_metrics_path": str(report_path)})
 
+    def finish_one():
+        # Refill after any completed job: one slow group must not idle the other
+        # compute slots. Final collection below restores original symbol order.
+        wait([record[-1] for record in pending], return_when=FIRST_COMPLETED)
+        record = next(record for record in pending if record[-1].done())
+        pending.remove(record)
+        sym, provenance, want, stem, future = record
+        built = future.result()
+        if "build_metrics" in built.custody:
+            # A fresh symbol/shape record wraps any shared byte-identical analysis.
+            build_metrics[sym] = {**built.custody["build_metrics"],
+                "shape": list(signatures[sym]), "dtypes": list(dtypes[sym]),
+                "compiler_package_sha256": package_sha256,
+                "report_path": built.custody["build_metrics_path"]}
+            context = {"shape": list(signatures[sym]), "dtypes": list(dtypes[sym]),
+                       "compiler_package_sha256": package_sha256, "policy": budget.record(),
+                       "artifact_sha256": built.custody["build_metrics"]["analysis"]["sha256"],
+                       "compilation_invocation": built.custody.get("compilation")}
+            build_metrics[sym]["context_sha256"] = hashlib.sha256(
+                json.dumps(context, sort_keys=True, allow_nan=False).encode()
+            ).hexdigest()
+        if built.refusal:
+            skipped.append((sym, built.refusal))
+            return
+        raw = built.raw
+        translated = raw.with_name(raw.name.removesuffix(".raw.o") + ".ll")
+        ll = stem.with_suffix(".ll")
+        if translated != ll:
+            # Keep each selected interface beside its exact shared translation.
+            ll.write_bytes(translated.read_bytes())
         obj = stem.with_suffix(".o")
         if oc is None:
             skipped.append((sym, "no objcopy available to give this kernel a distinct symbol"))
-            continue
-        rn = _run_build_tool([oc, f"--redefine-sym={abi.symbol}={want}", str(raw), str(obj)], timeout=timeout)
+            return
+        rn, renamed_invocation, _rename_s = _observed_build_tool(
+            [oc, f"--redefine-sym={abi.symbol}={want}", str(raw), str(obj)],
+            timeout=timeout, directory=work, stage="device_object_symbol_rename",
+            inputs=(raw,), output=obj,
+        )
         if rn.returncode != 0:
             skipped.append((sym, f"symbol rename: {(rn.stderr or '').strip()[:200]}"))
-            continue
-
+            return
         objs.append(obj)
+        objects_by_symbol[sym] = obj
         kernels[sym] = want
+        custody[sym] = {key: built.custody[key] for key in ("translation", "compilation")}
+        custody[sym]["rename"] = renamed_invocation
         built_from[sym] = provenance
+
+    with ArtifactCompiler(workers) as compiler:
+        for index, sym in enumerate(sorted(signatures)):
+            if stop_on_first_failure and (skipped or compiler.has_failed()):
+                break
+            key = tuple(int(v) for v in signatures[sym])
+            entry, provenance, refusal = kernel_entry(sym, key, None if entries is None else entries.get(sym), device)
+            if entry is None:
+                skipped.append((sym, refusal))
+                continue
+            # A batched signature needs the SAME kernel as its unbatched form: the batch is a loop in the
+            # shim over disjoint slices, not a third axis the device sees. Building a separate kernel per
+            # batch size would mint one per B for identical work.
+            m, n, k = key[-3:] if len(key) in (3, 4) else (None, None, None)
+            want = kernel_symbol(abi.symbol, index)
+            stem = work / f"{sym}"
+            if expected_interfaces is None:
+                try:
+                    _capsule, iface = CS.build(entry, binding)
+                except Exception as exc:  # noqa: BLE001
+                    skipped.append((sym, f"interface capsule: {exc}"))
+                    continue
+            else:
+                from merlin.targetgen.contract.resident_interface_abi import bind_single_resident_matmul
+
+                chosen = expected_interfaces[sym]
+                iface = chosen.get("mlir")
+                if not isinstance(iface, str) or sha256_text(iface) != chosen.get("sha256"):
+                    raise ValueError(f"{sym} no longer matches its selected interface bytes")
+                resident = bind_single_resident_matmul(iface, target=device)
+                if (resident.m, resident.n, resident.k) != (m, n, k) or resident.dtypes != tuple(dtypes[sym]):
+                    raise ValueError(
+                        f"{sym} selected interface disagrees with pointer ABI, device, shape, or precision"
+                    )
+            if grouped:
+                buffers, refusal = logical_buffers(iface)
+                call = (call_buffers or {}).get(sym)
+                if buffers is None or call is None:
+                    skipped.append((sym, refusal or "the group rewrite recorded no host call for this symbol"))
+                    continue
+                group_buffers[sym] = (buffers, tuple(call))
+            elif logical_abi:
+                roles, refusal = logical_argument_roles(iface)
+                if roles is None:
+                    skipped.append((sym, refusal))
+                    continue
+                argument_roles[sym] = roles
+            ifc = stem.with_suffix(".iface.mlir")
+            ifc.write_text(iface, encoding="utf-8")
+
+            try:
+                # Model builds must honor the same checked command-buffer
+                # acceptance as capsule builds. A successful artifact process
+                # can still accompany an explicit refusal or a fence-only stub.
+                lowering = work / f"{sym}.lowering"
+                _, artifact = CC.lower_interface(pkg, ifc, lowering, contract=None, timeout=timeout)
+            except subprocess.TimeoutExpired:
+                skipped.append((sym, f"package lowering: timed out after {timeout} seconds"))
+                continue
+            except (BackendDeclined, CertFailure, ValueError) as error:
+                skipped.append((sym, f"package lowering: {type(error).__name__}: {str(error)[:300]}"))
+                continue
+            if expected_interfaces is not None and f"llvm.func @{abi.symbol}(" not in artifact:
+                skipped.append((sym, "exact package artifact has no contract-named LLVM kernel entry"))
+                continue
+            art = stem.with_suffix(".device.mlir")
+            # Keep the checked producer path for proof custody without a second
+            # full artifact copy. Both names are in this build's filesystem.
+            art.unlink(missing_ok=True)
+            art.hardlink_to(lowering / "lowered.llvm.mlir")
+            digest = hashlib.sha256(artifact.encode("utf-8")).hexdigest()
+            ll = stem.with_suffix(".ll")
+            raw = stem.with_suffix(".raw.o")
+            # Resolve original tool selection on the caller thread. Workers receive only
+            # frozen external commands, not the package/executor's contextual services.
+            translate_command = [mlir_translate(), "--mlir-to-llvmir", str(art), "-o", str(ll)]
+            compile_command = [clang(), *_flags(codegen_target, cflags), "-c", str(ll), "-o", str(raw)]
+            future = compiler.submit(
+                art, digest,
+                lambda art=art, ll=ll, raw=raw, translate_command=translate_command, compile_command=compile_command:
+                    compile_artifact(art, ll, raw, translate_command, compile_command),
+            )
+            pending.append((sym, provenance, want, stem, future))
+            if len(pending) >= workers:
+                finish_one()
+        while pending:
+            finish_one()
+
+    objs[:] = [objects_by_symbol[sym] for sym in sorted(kernels)]
+    for records in (kernels, custody, built_from):
+        ordered = sorted(records.items())
+        records.clear()
+        records.update(ordered)
+    skipped.sort(key=lambda row: row[0])
 
     if stop_on_first_failure and skipped:
         return DeviceBuild(
             device=device,
             objects=tuple(objs),
             kernels=kernels,
+            custody=custody,
             built_from=built_from,
             skipped=tuple(skipped),
             object_dedup=dedup_receipt(),
+            build_metrics=build_metrics,
         )
 
     if not kernels:
-        return DeviceBuild(device=device, skipped=tuple(skipped), object_dedup=dedup_receipt())
+        return DeviceBuild(device=device, skipped=tuple(skipped), object_dedup=dedup_receipt(),
+                           build_metrics=build_metrics)
 
-    unit = emit_translation_unit(
-        device,
-        {s: signatures[s] for s in kernels},
-        {s: dtypes.get(s, ()) for s in kernels},
-        kernel_symbol_for=kernels.get,
-        tile_edge=tile_edge,
+    unit = (
+        emit_logical_translation_unit(device, {s: group_buffers[s] for s in kernels}, kernel_symbol_for=kernels.get)
+        if grouped
+        else emit_translation_unit(
+            device,
+            {s: signatures[s] for s in kernels},
+            {s: dtypes.get(s, ()) for s in kernels},
+            kernel_symbol_for=kernels.get,
+            tile_edge=tile_edge,
+            argument_roles=argument_roles if logical_abi else None,
+        )
     )
     if not unit.symbols:
         return DeviceBuild(
@@ -720,6 +990,7 @@ def build_device_objects(
             built_from=built_from,
             skipped=tuple([*skipped, *unit.skipped]),
             object_dedup=dedup_receipt(),
+            build_metrics=build_metrics,
         )
     # A KERNEL THE SHIM DECLINED IS NOT A KERNEL THIS ARCHIVE CAN OFFER. The shim is what defines the
     # symbol the model's own call binds to, so a kernel object with no entry beside it ships a private
@@ -736,8 +1007,9 @@ def build_device_objects(
     shim_c = work / "device_shim.c"
     shim_c.write_text(unit.text, encoding="utf-8")
     shim_o = work / "device_shim.o"
-    s = _run_build_tool(
-        [clang(), *_flags(codegen_target, cflags), "-c", str(shim_c), "-o", str(shim_o)], timeout=timeout
+    s, _shim_invocation, _shim_s = _observed_build_tool(
+        [clang(), *_flags(codegen_target, cflags), "-c", str(shim_c), "-o", str(shim_o)],
+        timeout=timeout, directory=work, stage="device_shim_compilation", inputs=(shim_c,), output=shim_o,
     )
     if s.returncode != 0:
         skipped.append(("shim", f"clang: {(s.stderr or '').strip()[:300]}"))
@@ -748,6 +1020,7 @@ def build_device_objects(
             built_from=built_from,
             skipped=tuple(skipped),
             object_dedup=dedup_receipt(),
+            build_metrics=build_metrics,
         )
 
     return DeviceBuild(
@@ -755,9 +1028,11 @@ def build_device_objects(
         objects=(*objs, shim_o),
         shim_object=shim_o,
         kernels=kernels,
+        custody=custody,
         built_from=built_from,
         skipped=tuple(skipped),
         object_dedup=dedup_receipt(),
+        build_metrics=build_metrics,
     )
 
 
@@ -800,7 +1075,8 @@ def apply_post_offload_transform(routing, prepared: Path, sidecar: Path, workdir
         raise ValueError("post-offload transform changed source routing identity")
     if not selected.is_file():
         raise ValueError("post-offload transform returned no model file")
-    digest = lambda data: hashlib.sha256(data).hexdigest()
+    def digest(data):
+        return hashlib.sha256(data).hexdigest()
     (workdir / "post_offload_transform.json").write_text(
         json.dumps(
             {

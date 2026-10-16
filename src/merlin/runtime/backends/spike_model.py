@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import os
-import struct
 import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -39,6 +38,10 @@ from ...llvmlower.source_scalar_carrier_binding import host_admitted
 from ..boards import CONSOLE_HTIF, CONSOLE_UART
 from ..execution_memory import ExecutionMemoryError, MemoryMapBinding, MemoryReservation, admit_execution_memory
 from . import spike as _spike  # toolchain paths (gcc/spike/objdump)
+from ._model_console import parse_model_console
+from .spike_arena import ARENA_BASE as ARENA_BASE, DRAM_BASE as DRAM_BASE, _layout as _layout
+from .host_compiler_policy import _harness_cflags as _harness_cflags
+from .host_compiler_policy import _select_host_vectorize as _select_host_vectorize
 
 if TYPE_CHECKING:
     from ...llvmlower.entry_weight_projection import GeneratedDispatchABI
@@ -55,46 +58,6 @@ CLANG_TARGET = "--target=riscv64-unknown-elf"
 # merlin_model.c additionally asserts that a pointer is one int64_t word. This is a
 # selected runtime ABI constraint, not a target-hardware index-width assumption.
 _C_DESCRIPTOR_INDEX_BITS = 64
-
-
-def _harness_cflags(model_flags: list[str]) -> list[str]:
-    """Give GCC the model's ISA/ABI while retaining GCC-compatible harness options."""
-    flags = list(RVV_CFLAGS)
-    for prefix in ("-march=", "-mabi=", "-mcmodel="):
-        selected = [flag for flag in model_flags if flag.startswith(prefix)]
-        if selected:
-            flags = [flag for flag in flags if not flag.startswith(prefix)]
-            flags.append(selected[-1])
-    return flags
-
-
-def _select_host_vectorize(
-    model_flags: list[str],
-    schedule: str | None,
-    requested: bool | None,
-) -> bool:
-    """Select host scheduling from the declared ISA or the caller's explicit policy.
-
-    Fixed-width vectors can be scalarized by LLVM, so an explicit schedule or
-    override may intentionally use them on a scalar ISA. The default RVV
-    schedule should only be selected for an ISA declaring floating vectors.
-    A ``zvl`` minimum-length extension alone does not provide vector execution.
-    """
-    if requested is not None and not isinstance(requested, bool):
-        raise ValueError("host_vectorize must be a bool or None")
-    if requested is False and schedule is not None:
-        raise ValueError("host_vectorize=False conflicts with an explicit rvv_schedule")
-    if requested is not None:
-        return requested
-    if schedule is not None:
-        return True
-    marches = [flag[len("-march=") :].lower() for flag in model_flags if flag.startswith("-march=")]
-    if not marches:
-        return False
-    base, *extensions = marches[-1].split("_")
-    if base.startswith(("rv32", "rv64")) and "v" in base[4:]:
-        return True
-    return any(extension.startswith(("zve32f", "zve64f", "zve64d")) for extension in extensions)
 
 
 class SpikeModelError(RuntimeError):
@@ -219,7 +182,12 @@ _SPIKE_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "900") or 
 
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
     timeout = kw.pop("timeout", _SPIKE_CMD_TIMEOUT_S or None)
-    return _proc.run_checked(cmd, error=SpikeModelError, timeout=timeout, timeout_hint=" (pathological compile)", **kw)
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    with shared_compute_pool(timeout_s=timeout):
+        return _proc.run_checked(
+            cmd, error=SpikeModelError, timeout=timeout, timeout_hint=" (pathological compile)", **kw,
+        )
 
 
 def _mlir_runtime_compiler(clang: Path, gcc: Path, flags: list[str]) -> list[str]:
@@ -277,12 +245,8 @@ def _selected_libm_archive(gcc: Path, flags: list[str], link_flags: tuple[str, .
     return archive, sha256_file(archive), driver_sha
 
 
-#: The arena lives here (literal-addressed, inside the -m memory map this backend passes to spike).
-ARENA_BASE = 0xC0000000  # derived-ok: address chosen by this backend's own -m map, not read from a target
-DRAM_BASE = 0x80000000  # derived-ok: RISC-V platform DRAM base used by spike/fesvr; the -m map is passed explicitly
-#: Reserve ahead of the weights blob for everything that is NOT the model's static I/O: code,
-#: rodata, the stack and the runtime's own tables. The model-dependent part (embedded inputs + the
-#: static output buffer) is added on top, from `c_runtime.generate`'s `static_io_bytes`.
+#: Minimum region ahead of the weights blob for code, rodata, static I/O,
+#: stack, and runtime tables. Large generated objects can raise this floor.
 _CODE_RESERVE_FIXED = 64 * 1024 * 1024
 
 
@@ -375,57 +339,6 @@ def declared_memory(elf: str | Path) -> tuple[int, int] | None:
     return found[DRAM_BASE_SYMBOL], found[DRAM_SPAN_SYMBOL]
 
 
-def _layout(
-    arena_bytes: int,
-    weights_bytes: int,
-    *,
-    dram_base: int = DRAM_BASE,
-    dram_bytes: int | None = None,
-    code_reserve: int = 64 * 1024 * 1024,
-    spike_arena_base: int = ARENA_BASE,
-) -> dict:
-    """Absolute-address memory map for the bare-metal image.
-
-    Default (``dram_bytes=None``) is the historical spike map: code@0x80000000, arena@0xC0000000,
-    weights 256 MB-aligned above it and at least 0x2_0000_0000. spike is told to span it with ``-m``,
-    so "above the DRAM a real board has" costs nothing there.
-
-    On a REAL board it costs everything: an arena at 0xC0000000 and weights at 0x2_0000_0000 are simply
-    not memory, so the image faults on its first activation. Given ``dram_bytes`` the map is packed
-    inside ``[dram_base, dram_base + dram_bytes)`` instead — code first, then the weights blob, then the
-    arena taking the rest — and it FAILS CLOSED if the model does not fit rather than emitting an image
-    that addresses memory the chip does not have.
-    """
-    if dram_bytes is None:
-        if spike_arena_base < dram_base or spike_arena_base % (1 << 20):
-            raise ValueError("Spike arena base must be in DRAM and MiB-aligned")
-        weights_base = spike_arena_base + arena_bytes
-        weights_base = (weights_base + 0xFFFFFFF) & ~0xFFFFFFF  # 256MB align
-        weights_base = max(weights_base, 0x200000000)
-        mem_end = weights_base + weights_bytes
-        mem_bytes = ((mem_end - DRAM_BASE) + 0x3FFFFFFF) & ~0x3FFFFFFF  # round to 1GB
-        return {"arena_base": spike_arena_base, "weights_base": weights_base, "mem_bytes": mem_bytes}
-    if spike_arena_base != ARENA_BASE:
-        raise ValueError("Spike arena base override is not valid for a board DRAM layout")
-
-    align = 1 << 20  # 1 MB is enough for a blob base
-    weights_base = (dram_base + code_reserve + align - 1) & ~(align - 1)
-    arena_base = (weights_base + weights_bytes + align - 1) & ~(align - 1)
-    end = dram_base + dram_bytes
-    if arena_base + arena_bytes > end:
-        raise RuntimeError(
-            f"does not fit: code+static-I/O reserve {code_reserve / 2**20:.0f} MB + weights "
-            f"{weights_bytes / 2**20:.1f} MB + arena {arena_bytes / 2**20:.0f} MB exceeds the board's "
-            f"{dram_bytes / 2**20:.0f} MB at {hex(dram_base)}. Shrink the arena or the model."
-        )
-    return {
-        "arena_base": arena_base,
-        "weights_base": weights_base,
-        "mem_bytes": dram_bytes,
-        "code_reserve": code_reserve,
-    }
-
-
 def _supplemental_object_digest(objects):
     """Identity of actual linked device/matrix bytes, independent of work paths."""
     import hashlib
@@ -484,6 +397,7 @@ def build(
     source_scalar_carrier=None,
     host_llvm_transform: Callable[[Path, Path], Path] | None = None,
     host_llvm_transform_chain: HostLLVMTransformChain | None = None,
+    host_llvm_bitcode: bool = False,
     host_provider_builder: Callable | None = None,
     cflags_override: list[str] | None = None,
     vlen: int | None = None,
@@ -501,6 +415,8 @@ def build(
     output_dump_cap: int = 4096,
     output_sha256: bool = False,
     output_all_sha256: bool = False,
+    full_readback: bool = False,
+    group_profile: bool = False,
     execution_memory_map: MemoryMapBinding | None = None,
     execution_memory_reservations: tuple[MemoryReservation, ...] = (),
 ) -> dict:
@@ -613,10 +529,20 @@ def build(
     """
     from ...llvmlower.compilation_recipe import FILENAME as COMPILATION_RECIPE
     from ...llvmlower.compilation_recipe import CompilationRecipe
+    from ...llvmlower.device_build import (
+        admit_linked_device_elf,
+        freeze_device_elf_admission,
+        freeze_device_ir_budget,
+        require_device_elf_admission,
+    )
     from ...llvmlower.link_supplier_trace import trace_symbol_flags
 
     # Refusal during validation must not leave a previous build's success receipt.
     (Path(work) / COMPILATION_RECIPE).unlink(missing_ok=True)
+    device_admission_selection = freeze_device_elf_admission(device)
+    if type(host_llvm_bitcode) is not bool:
+        raise TypeError("host LLVM bitcode transport requires an explicit Boolean selection")
+    device_ir_budget = freeze_device_ir_budget(device)
     supplier_flags = () if math_archive_symbols is None else trace_symbol_flags(math_archive_symbols)
     (Path(work) / "execution_memory_admission.json").unlink(missing_ok=True)
     if host_llvm_transform_chain is not None:
@@ -863,10 +789,18 @@ def build(
             res.workdir / LOWERING_RECIPE, host_chain_receipt, source=res.ll_path, selected=model_ir
         )
         compilation.bind_preparation("host_transform_chain", host_chain_receipt)
+    compiler_input = model_ir
+    bitcode_receipt = None
+    if host_llvm_bitcode:
+        from ...llvmlower.host_bitcode_transport import assemble_host_bitcode
+
+        compiler_input, bitcode_receipt = assemble_host_bitcode(
+            model_ir, work / "host_bitcode", compiler=clang, compilation=compilation, runner=_run,
+        )
     compilation.run(
-        [clang, CLANG_TARGET, *model_cflags, "-c", model_ir, "-o", work / "model.o"],
+        [clang, CLANG_TARGET, *model_cflags, "-c", compiler_input, "-o", work / "model.o"],
         runner=_run,
-        inputs=[model_ir],
+        inputs=[compiler_input],
         output=work / "model.o",
     )
     if sha256_file(index_observation["compiler_resolved"]) != index_observation["compiler_sha256"]:
@@ -880,7 +814,13 @@ def build(
             "entry_projection": entry_projection_plan,
             "entry_projection_source": entry_projection_source,
         }
-    info = c_runtime.generate(model_dir, cgen, inputs_npz, prepared_dir=work, **projection_options)
+    # The bare-metal driver executes merlin_prepare_step(0) exactly once. Embed
+    # only that step of a captured session: later stream inputs and trajectory
+    # references cannot be observed by this ELF, and rendering them as C
+    # literals makes large captures costly to compile (hundreds of MB of C).
+    info = c_runtime.generate(
+        model_dir, cgen, inputs_npz, prepared_dir=work, max_session_steps=1, **projection_options
+    )
     if output_sha256 and info.get("out_dt") not in {"f32", "i64", "i1"}:
         raise SpikeModelError("full-output SHA256 evidence requires f32, i64 or i1 output")
     arena_estimate = None
@@ -889,16 +829,30 @@ def build(
 
         arena_estimate = estimate_llvm_malloc(model_ir)
         arena_bytes = max(arena_bytes, recommended_arena_bytes(arena_estimate))
-    # The region ahead of the weights blob holds code, the stack, and the harness's STATIC I/O
-    # storage -- and that last term is a property of the model, not a constant: `static float
-    # OUT[MERLIN_OUT_ELEMS]` is 125 MiB of .bss for a 128x256000 logits output, four times what a
-    # 64 MB reserve leaves. Deriving it from `static_io_bytes` is the difference between a correct
-    # map and a link that fails with "section .weights VMA overlaps section .bss", which names
-    # neither the reserve nor the buffer that outgrew it. Only the packed (`dram_bytes`) map uses
-    # this; the spike map puts the blob at 0x2_0000_0000 with nothing in between.
-    reserve = int(code_reserve) if code_reserve else _CODE_RESERVE_FIXED + int(info.get("static_io_bytes", 0))
-    lay = _layout(arena_bytes, info["weights_bytes"], dram_base=dram_base, dram_bytes=dram_bytes,
-                  code_reserve=reserve, spike_arena_base=spike_arena_base)
+    if full_readback:
+        from ..whole_model_readback import render_outputs_header
+
+        (cgen / "model_outputs.h").write_text(
+            render_outputs_header(c_runtime._out_specs(model_dir / "model.mlir")), encoding="utf-8"
+        )
+    if output_sha256 and info.get("out_dt") != "f32":
+        raise SpikeModelError("full-output SHA256 evidence requires f32 output")
+    # The board's code_reserve is a floor for the entire linked code/static-I/O
+    # region, not an extra allocation on top of its measured contents. The
+    # lowered model may contain large .rodata (TinyLlama's object exceeds 1 GiB)
+    # and the C harness may embed a large input stream. Count both, leave a
+    # quarter of the board floor for the fixed runtime/shim, and honor the floor
+    # whenever the measured contents are smaller. The final link still checks
+    # the actual section addresses against this packed map.
+    reserve_floor = int(code_reserve) if code_reserve is not None else _CODE_RESERVE_FIXED
+    reserve = max(
+        reserve_floor,
+        int(info.get("static_io_bytes", 0)) + (work / "model.o").stat().st_size + reserve_floor // 4,
+    )
+    lay = _layout(
+        arena_bytes, info["weights_bytes"], dram_base=dram_base, dram_bytes=dram_bytes,
+        code_reserve=reserve, spike_arena_base=spike_arena_base,
+    )
 
     # 3. weights.bin -> binary blob object (placed at the absolute weights address)
     compilation.run(
@@ -931,8 +885,11 @@ def build(
     from ...llvmlower.device_offload import load_sidecar as _load_device_sidecar
 
     _dev_side = _load_device_sidecar(work)
-    _dev_args = _device_build_arguments(_dev_side)
+    _dev_args = _device_build_arguments(
+        _dev_side, expected_granularity=device.granularity if device is not None else None
+    )
     _dev_sigs = _dev_args["signatures"]
+    device_artifacts = None
     _catalog_requested = device is not None and (
         getattr(device, "catalog_manifest", None) is not None or getattr(device, "catalog_builder", None) is not None
     )
@@ -948,6 +905,7 @@ def build(
                 f"{len(_dev_sigs)} device signature(s) were offloaded but no `device=` routing is "
                 "available to build them against; the image would not link"
             )
+        require_device_elf_admission(device, device_admission_selection)
         if _dev_side.get("device") != device.device:
             raise RuntimeError("device offload sidecar does not match selected device")
         exact = getattr(device, "exact_selection", None)
@@ -975,7 +933,11 @@ def build(
                 routed=_dev_side.get("routed") or (),
                 workdir=work / "device",
                 codegen_target="riscv",
-                cflags=[CLANG_TARGET, *clang_cflags],
+                # Device shims are C and need the same selected bare-metal
+                # headers as the trusted host helper runtime.
+                cflags=_mlir_runtime_compiler(
+                    Path(compiler_plan["observation"]["compiler_resolved"]), gcc, clang_cflags
+                )[1:],
             )
         else:
             from ...llvmlower.device_build import build_device_objects
@@ -995,9 +957,15 @@ def build(
                 # cannot make this whole-model image link or satisfy its selected route.
                 stop_on_first_failure=True,
                 # the SAME ISA the rest of the image is built for -- see device_build._flags
-                cflags=[CLANG_TARGET, *clang_cflags],
+                # Device shims are C and need the same selected bare-metal
+                # headers as the trusted host helper runtime.
+                cflags=_mlir_runtime_compiler(
+                    Path(compiler_plan["observation"]["compiler_resolved"]), gcc, clang_cflags
+                )[1:],
                 expected_interfaces=_dev_side.get("expected_interfaces") or None,
                 package_sha256=_dev_side.get("package_sha256"),
+                call_buffers=_dev_args.get("call_buffers"),  # every pointer of a group's logical interface
+                device_ir_budget=device_ir_budget,
             )
         if exact is not None:
             exact.check_package(device.package_dir)
@@ -1007,6 +975,31 @@ def build(
                 f"device offload did not build every routed kernel for {device.device!r}: {_dev_build.skipped}"
             )
         supplemental_objects.extend(_dev_build.objects)
+        if _dev_side.get("catalog_manifest") is None:
+            # Producer-owned symbol mapping, never reconstructed from signature order.
+            device_artifacts = {
+                "target": device.device,
+                "kernels": {
+                    symbol: {
+                        "kernel_symbol": kernel,
+                        "custody": _dev_build.custody[symbol],
+                        "build_metrics": _dev_build.build_metrics.get(symbol),
+                        "artifacts": {
+                            role: {
+                                "path": str(path.absolute()),
+                                "sha256": sha256_file(path),
+                                "size_bytes": path.stat().st_size,
+                            }
+                            for role, path in (
+                                ("llvm_mlir", work / "device" / f"{symbol}.device.mlir"),
+                                ("llvm_ir", work / "device" / f"{symbol}.ll"),
+                                ("object", work / "device" / f"{symbol}.o"),
+                            )
+                        },
+                    }
+                    for symbol, kernel in _dev_build.kernels.items()
+                },
+            }
         print(
             f"[device] linked {len(_dev_build.kernels)} kernel(s) + shim for {device.device}"
             f" ({_dev_side.get('granularity') or 'contraction'} granularity;"
@@ -1020,6 +1013,7 @@ def build(
 
     matrix_sigs = load_matrix_signatures(work, matrix)
     if matrix_sigs:
+        raise ValueError("active matrix route has no independently selected final linked-ELF admission consumer")
         if matrix is None:
             raise RuntimeError(
                 f"{len(matrix_sigs)} matrix-unit signature(s) were routed but no `matrix=` routing is "
@@ -1147,6 +1141,11 @@ def build(
         _hh.update(b"output_sha256=True")
     if output_all_sha256:
         _hh.update(b"output_all_sha256=True")
+    # Observability switches change the emitted image (merlin.runtime.whole_model_readback).
+    if full_readback:
+        _hh.update(b"full_readback=True")
+    if group_profile:
+        _hh.update(b"group_profile=True")
     build_hash = _hh.hexdigest()[:12]
     # Console backend: one of two implementations of the same four-symbol ABI. `uart` needs the
     # target's own MMIO facts, derived from its SDK headers -- never defaulted, because a wrong
@@ -1192,7 +1191,9 @@ def build(
             + prof_defs
             + [f'-DMERLIN_BUILD_HASH="{build_hash}"', f"-DMERLIN_DUMP_CAP={output_dump_cap}"]
             + (["-DMERLIN_OUTPUT_SHA256"] if output_sha256 else [])
-            + (["-DMERLIN_ALL_OUTPUT_SHA256"] if output_all_sha256 else []),
+            + (["-DMERLIN_ALL_OUTPUT_SHA256"] if output_all_sha256 else [])
+            + (["-DMERLIN_FULL_READBACK"] if full_readback else [])
+            + (["-DMERLIN_GROUP_PROFILE"] if group_profile else []),
         ),
         "mlir_rt.o": (runtime_dir() / "abi/mlir_runtime.c", []),
         "crt.o": (h / "crt.S", []),
@@ -1202,6 +1203,25 @@ def build(
     }
     if op_profile:
         units["op_prof.o"] = (rt / "merlin_op_prof.c", prof_defs)
+    profile_link_flags: list[str] = []
+    if group_profile:
+        from ..whole_model_readback import callees as _group_callees
+        from ..whole_model_readback import group_names as _group_names
+        from ..whole_model_readback import render_group_profile, wrap_flags
+
+        # The model object's undefined symbols are what a wrapper can intercept: a routed group is
+        # bracketed under the name the model actually calls it by, or the build refuses.
+        listing = _run([str(toolchain.nm()), "-u", str(work / "model.o")]).stdout
+        undefined = {line.split()[-1] for line in listing.splitlines() if line.split()}
+        routed_rows = list(_dev_side.get("routed") or [])
+        group_callees = _group_callees(
+            routed_rows, _dev_args.get("signatures") or {}, undefined, _dev_args.get("call_buffers")
+        )
+        (cgen / "merlin_group_profile.c").write_text(
+            render_group_profile(group_callees, _group_names(routed_rows)), encoding="utf-8"
+        )
+        units["group_profile.o"] = (cgen / "merlin_group_profile.c", [])
+        profile_link_flags = wrap_flags(group_callees)
     objs = []
     for obj, (src, extra) in units.items():
         if work / obj != runtime_object:
@@ -1224,6 +1244,17 @@ def build(
             "-nostartfiles",
             f"-Wl,--defsym,MERLIN_WEIGHTS_BASE={hex(lay['weights_base'])}",
             f"-Wl,--defsym,MERLIN_STACK_BYTES={hex(int(stack_bytes))}",
+            # A packed map states its DRAM span, so a runner sizes the simulated memory from the image
+            # (declared_memory) rather than from a default that may be smaller than the model.
+            *(
+                [
+                    f"-Wl,--defsym,{DRAM_BASE_SYMBOL}={hex(int(dram_base))}",
+                    f"-Wl,--defsym,{DRAM_SPAN_SYMBOL}={hex(int(lay['mem_bytes']))}",
+                ]
+                if dram_bytes is not None
+                else []
+            ),
+            *profile_link_flags,
             "-T",
             h / "model_link.ld",
             *objs,
@@ -1268,6 +1299,15 @@ def build(
 
         host_llvm_transform_chain.validate()
         recheck_host_transform_chain(host_chain_receipt, expected_chain=host_llvm_transform_chain)
+    linked_admission = None
+    if _dev_sigs:
+        linked_admission = admit_linked_device_elf(
+            device,
+            device_admission_selection,
+            elf=elf,
+            linked_sha256=compilation.record["commands"][-1]["output"]["sha256"],
+            directory=work,
+        )
     compilation.completed(elf)
     return {
         "elf": elf,
@@ -1288,6 +1328,12 @@ def build(
         "host_vectorize": vectorize,
         "host_math_policy": host_math_policy,
         "host_llvm_transform": host_ir_receipt,
+        **({"host_bitcode_transport": bitcode_receipt} if bitcode_receipt is not None else {}),
+        "host_artifacts": {
+            role: {"path": str(path.absolute()), "sha256": sha256_file(path), "size_bytes": path.stat().st_size}
+            for role, path in (("llvm_ir", model_ir), ("object", work / "model.o"))
+        },
+        **({"device_artifacts": device_artifacts} if device_artifacts is not None else {}),
         **({"host_provider": host_provider_receipt} if host_provider_receipt is not None else {}),
         "supplemental_objects_sha256": _supplemental_object_digest(supplemental_objects).hex()
         if supplemental_objects
@@ -1304,6 +1350,7 @@ def build(
         "matrix_routing": matrix.identity() if matrix is not None else None,
         "index_lowering": index_lowering,
         **({"execution_memory_admission": memory_admission} if memory_admission is not None else {}),
+        **({"linked_elf_admission": linked_admission} if linked_admission is not None else {}),
         **info,
     }
 
@@ -1352,128 +1399,37 @@ def run(
     return parse_console(console)
 
 
-def parse_console(console: str) -> dict[str, Any]:
-    """Parse the shared bare-metal model protocol, independent of its simulator.
+def run_raw(
+    elf: str | Path,
+    *,
+    harts: int = 1,
+    mem_bytes: int = 1 << 30,
+    isa: str = "rv64gcv_zfh_zvfh",
+    timeout: int = 3600,
+    vlen: int | None = None,
+) -> bytes:
+    """Run the ELF on the plain functional simulator and return its stdout BYTES, unparsed.
 
-    OUT/OUT_I64/OUT_I1 is a bounded prefix (at most 4096 values). Large
-    outputs use an OUT_BEGIN declaration and contiguous OUT_CHUNK records.
-    A prefix is never evidence of a complete larger tensor; the caller must
-    compare the observed count with its independently captured output shape.
-    Process success and hardware provenance belong to the caller.
-    Duplicate, truncated, or malformed output must never qualify a run.
-    """
-    lines = console.splitlines()
-    if any(line.startswith(("FATAL:", "FATAL ", "FAIL ")) or "*** FAILED" in line
-           for line in lines):
-        raise SpikeModelError("guest reported failure in model console")
-    out_lines = [(i, line) for i, line in enumerate(lines)
-                 if line.startswith(("OUT ", "OUT_I64 ", "OUT_I1 "))]
-    begin_lines = [(i, line) for i, line in enumerate(lines) if line.startswith("OUT_BEGIN ")]
-    chunk_lines = [(i, line) for i, line in enumerate(lines) if line.startswith("OUT_CHUNK ")]
-    done_lines = [i for i, line in enumerate(lines) if line.strip() == "DONE"]
-    if len(done_lines) != 1 or bool(out_lines) == bool(begin_lines):
-        raise SpikeModelError(f"run requires one output stream and DONE:\n{console[-2000:]}")
-    if begin_lines:
-        if len(begin_lines) != 1 or not chunk_lines or begin_lines[0][0] >= done_lines[0]:
-            raise SpikeModelError("malformed or incomplete chunked model output")
-        head = begin_lines[0][1].split()
-        try:
-            dtype, n = head[1], int(head[2])
-        except (IndexError, ValueError) as exc:
-            raise SpikeModelError("malformed OUT_BEGIN") from exc
-        if len(head) != 3 or dtype not in {"f32", "i64", "i1"} or not 4096 < n <= 1_048_576:
-            raise SpikeModelError("invalid chunked model output type or count")
-        integer, boolean = dtype == "i64", dtype == "i1"
-        bits = []
-        offset = 0
-        for line_index, line in chunk_lines:
-            parts = line.split()
-            try:
-                start, count = int(parts[2]), int(parts[3])
-                words = [int(word) for word in parts[4:]]
-            except (IndexError, ValueError) as exc:
-                raise SpikeModelError("malformed OUT_CHUNK") from exc
-            if (len(parts) < 5 or parts[1] != dtype or start != offset or
-                    not 1 <= count <= 1024 or count > n - offset or
-                    len(words) != count * (2 if integer else 1) or
-                    not begin_lines[0][0] < line_index < done_lines[0]):
-                raise SpikeModelError("missing, repeated, or out-of-order OUT_CHUNK")
-            bits.extend(words)
-            offset += count
-        if offset != n:
-            raise SpikeModelError("chunked model output is incomplete")
-    else:
-        if chunk_lines:
-            raise SpikeModelError("OUT_CHUNK has no OUT_BEGIN")
-        if len(out_lines) != 1 or out_lines[0][0] >= done_lines[0]:
-            raise SpikeModelError("DONE preceded model output")
-        parts = out_lines[0][1].split()
-        integer = parts[0] == "OUT_I64"
-        boolean = parts[0] == "OUT_I1"
-        try:
-            n = int(parts[1])
-            bits = [int(x) for x in parts[2:]]
-        except (IndexError, ValueError) as exc:
-            raise SpikeModelError("malformed OUT count or raw output words") from exc
-        if not 0 <= n <= 4096:
-            raise SpikeModelError("legacy OUT count exceeds its bounded prefix")
-    maximum_word = 1 if boolean else 0xFFFFFFFF
-    if len(bits) != n * (2 if integer else 1) or any(not 0 <= b <= maximum_word for b in bits):
-        raise SpikeModelError("OUT count or raw output words do not match the bare-metal protocol")
-    raw = (
-        np.asarray([lo | (hi << 32) for lo, hi in zip(bits[::2], bits[1::2], strict=True)], dtype=np.uint64)
-        if integer
-        else np.asarray(bits, dtype=np.uint8 if boolean else np.uint32)
-    )
-    flat = raw.view(np.int64 if integer else np.bool_ if boolean else np.float32)
-    metrics = {}
-    argmax = None
-    sumval = None
-    for line in console.splitlines():
-        if line.startswith("METRIC "):
-            parts = line.split()
-            if len(parts) != 3 or parts[1] in metrics:
-                raise SpikeModelError("malformed or duplicate model METRIC")
-            _, k, v = parts
-            # Not every metric is a number: `build_hash` is a hex digest. Keeping the string beats
-            # crashing the parse of an otherwise complete run.
-            try:
-                metrics[k] = int(v)
-            except ValueError:
-                metrics[k] = v
-        elif line.startswith("ARGMAX "):
-            if integer or boolean:
-                raise SpikeModelError("integer/Boolean model output cannot carry a floating ARGMAX digest")
-            p = line.split()
-            try:
-                count = int(p[1])
-                values = [int(x) for x in p[2:]]
-                if argmax is not None or count < 0 or len(values) != count:
-                    raise ValueError("duplicate or truncated ARGMAX")
-                argmax = np.array(values, dtype=np.int64)
-            except (IndexError, ValueError, OverflowError) as exc:
-                raise SpikeModelError("malformed or duplicate model ARGMAX") from exc
-        elif line.startswith("SUM "):
-            if integer or boolean:
-                raise SpikeModelError("integer/Boolean model output cannot carry a floating SUM digest")
-            p = line.split()
-            try:
-                bits = int(p[1])
-                if sumval is not None or len(p) != 2 or not 0 <= bits <= 0xFFFFFFFF:
-                    raise ValueError("duplicate or malformed SUM")
-                sumval = struct.unpack("<f", struct.pack("<I", bits))[0]
-            except (IndexError, ValueError) as exc:
-                raise SpikeModelError("malformed or duplicate model SUM") from exc
-    return {
-        "outputs": flat,
-        "prefix": flat,
-        "output_dtype": "i64" if integer else "i1" if boolean else "f32",
-        "raw_output_bits": raw,
-        "argmax": argmax,
-        "sum": sumval,
-        "metrics": metrics,
-        "console": console,
-    }
+    The full-readback console (:mod:`merlin.runtime.whole_model_readback`) carries raw payload bytes,
+    which a text decode would replace; this is :func:`run` without the decode. A state the image
+    declares (its DRAM span) wins over ``mem_bytes``."""
+    if vlen is not None:
+        want = f"zvl{int(vlen)}b"
+        if want not in isa:
+            isa = f"{isa}_{want}"
+    span = declared_memory(elf)
+    memory = f"-m{hex(span[0])}:{hex(span[1])}" if span else f"-m{hex(DRAM_BASE)}:{hex(mem_bytes)}"
+    cmd = [_spike.spike_path(), f"--isa={isa}", f"-p{harts}", memory, str(elf)]
+    proc = subprocess.run([str(c) for c in cmd], capture_output=True, timeout=timeout)
+    if proc.returncode != 0:
+        tail = (proc.stdout or b"")[-2000:].decode("utf-8", errors="replace")
+        raise SpikeModelError(f"spike exited {proc.returncode}:\n{tail}")
+    return proc.stdout or b""
+
+
+def parse_console(console: str) -> dict[str, Any]:
+    """Parse a bounded output prefix; caller owns process and hardware provenance."""
+    return parse_model_console(console, error_type=SpikeModelError)
 
 
 def build_and_run(

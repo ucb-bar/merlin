@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,7 +12,7 @@ from merlin.common import digest as _mdigest
 class StackFramePreflightError(ValueError):
     """A compiler stack report cannot prove that the declared entrypoint fits its budget."""
 
-    def __init__(self, message: str, *, measurement: "StackFrameMeasurement | None" = None):
+    def __init__(self, message: str, *, measurement: StackFrameMeasurement | None = None):
         super().__init__(message)
         self.measurement = measurement
 
@@ -84,6 +83,8 @@ def measure_entrypoint(
 ) -> StackFrameMeasurement:
     """Require one fresh, source-bound, fully static entrypoint row within the target's budget."""
     report_path, llvm_path = Path(report_path), Path(llvm_path)
+    measurement_view = report_path.with_suffix(".measured.su")
+    measurement_view.unlink(missing_ok=True)
     if report_path.is_symlink() or not report_path.is_file():
         raise StackFramePreflightError(f"compiler produced no regular stack-usage report at {report_path}")
     try:
@@ -95,12 +96,11 @@ def measure_entrypoint(
             raise StackFramePreflightError(
                 f"stack row for {row.function!r} names source {row.source_identity!r}, expected {llvm_path.name!r}"
             )
-    # Clang writes the absolute input path into each otherwise deterministic row.  Canonicalize that
-    # one workdir-dependent component after validating it, so two byte-identical compilations yield
-    # the same evidence artifact and build-cache receipt.  Counts, classifications, symbols and row
-    # order remain exactly compiler-produced.
+    # Keep the actual compiler product byte-identical to its completed invocation.
+    # Canonical path spelling belongs to a separate measurement view. Counts,
+    # classifications, symbols and row order remain exactly compiler-produced.
     canonical = "".join(f"{llvm_path.name}:{row.function}\t{row.frame_bytes}\t{row.allocation}\n" for row in rows)
-    report_path.write_text(canonical, encoding="utf-8")
+    measurement_view.write_text(canonical, encoding="utf-8")
     # A dynamic helper beneath a static entrypoint is still an unbounded stack use.  Reject every
     # dynamic row in the translation unit, not merely a dynamic spelling on the entry row.
     dynamic = [row.function for row in rows if row.allocation != "static"]
@@ -153,6 +153,15 @@ def write_receipt(
         "llvm_ir_sha256": _sha256(llvm_path) if llvm_path.is_file() else None,
         "object_sha256": _sha256(object_path) if object_path.is_file() else None,
         "stack_usage_report_sha256": _sha256(report_path) if report_path.is_file() else None,
+        "stack_usage_measurement_view": (
+            {
+                "name": report_path.with_suffix(".measured.su").name,
+                "sha256": _sha256(report_path.with_suffix(".measured.su")),
+                "raw_source_sha256": _sha256(report_path),
+            }
+            if report_path.is_file() and report_path.with_suffix(".measured.su").is_file()
+            else None
+        ),
         "diagnostic": diagnostic,
         # What was DONE to make an over-budget frame fit, if anything, and what the first
         # measurement said before it. A frame that passes only after a transform must not

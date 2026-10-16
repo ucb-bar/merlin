@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import shutil
 import time
+from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 
@@ -37,8 +38,35 @@ def run_component_stage(
     max_tool_calls: int,
     tool_timeout_seconds: int,
     suite: str,
+    search_configuration: Path | None = None,
 ) -> Path:
     """Author one fresh bounded session, audit receipts, and requalify final bytes."""
+    with ExitStack() as cleanup:
+        return _run_component_stage(
+            launch,
+            model=model,
+            effort=effort,
+            wall_budget_seconds=wall_budget_seconds,
+            max_tool_calls=max_tool_calls,
+            tool_timeout_seconds=tool_timeout_seconds,
+            suite=suite,
+            search_configuration=search_configuration,
+            cleanup=cleanup,
+        )
+
+
+def _run_component_stage(
+    launch,
+    *,
+    model,
+    effort,
+    wall_budget_seconds,
+    max_tool_calls,
+    tool_timeout_seconds,
+    suite,
+    search_configuration,
+    cleanup,
+):
     if type(launch) is not L.QualifiedComponentLaunch:
         raise C.StageGateError("component authoring requires evaluated launch prerequisites")
     launch.verify()
@@ -53,6 +81,15 @@ def run_component_stage(
     ):
         raise C.StageGateError("component authoring budgets require positive integers and a bounded tool ceiling")
     inputs = launch.inputs
+    search = None
+    if search_configuration is not None:
+        from .search_configuration import read_search_configuration
+
+        search = read_search_configuration(search_configuration)
+        if launch.selected_subagent_count != search.author_agents:
+            raise C.StageGateError("search must use the author concurrency qualified by its launch canary")
+        if not search.settings.final_reserve_seconds < wall_budget_seconds <= search.settings.hard_seconds:
+            raise C.StageGateError("search wall budget must preserve its final reserve within the hard ceiling")
     if not isinstance(suite, str) or not suite.strip():
         raise C.StageGateError("component authoring requires an explicit accounting suite")
     telemetry_preflight = TEL.prepare(
@@ -75,6 +112,13 @@ def run_component_stage(
         baseline_admission=inputs.policy.baseline_admission,
         independent_runtime=inputs.policy.independent_runtime,
     )
+    pool = None
+    if search is not None:
+        pool = search.install(policy, edit_authority=inputs.edit_authority, root=inputs.stage_root / "search")
+        cleanup.callback(pool.close)
+        wall_budget_seconds = (
+            min(wall_budget_seconds, search.settings.soft_seconds) - search.settings.final_reserve_seconds
+        )
     # Copy only the immutable launch configuration with this new receipt owner.
     authored_inputs = replace(inputs, policy=policy)
     tool = L.ComponentToolPolicy(
@@ -105,6 +149,7 @@ def run_component_stage(
         broker_path=B.BROKER_NAME,
         broker_receipt_path=str(B.BROKER_RECEIPT_MOUNT),
         public_manifest_sha256=sha256_bytes(L.public_component_manifest(policy.component_corpus)),
+        author_agents=search.author_agents if search is not None else None,
     )
     prompt = SP.render_component_prompt(prompt_inputs)
     broker = B.Broker(
@@ -130,15 +175,25 @@ def run_component_stage(
     )
     refusals, audit, receipts, final_qualification, telemetry = [], None, None, None, None
     started = time.monotonic()
-    with broker.serving(socket_path=authored_inputs.socket_path):
-        rc, transcript, lineage = run_component_origin_round(
-            launch,
-            authored_inputs,
-            model=model,
-            effort=effort,
-            wall_budget_seconds=wall_budget_seconds,
-            prompt=prompt,
-        )
+    search_observation = None
+    try:
+        with broker.serving(socket_path=authored_inputs.socket_path):
+            rc, transcript, lineage = run_component_origin_round(
+                launch,
+                authored_inputs,
+                model=model,
+                effort=effort,
+                wall_budget_seconds=wall_budget_seconds,
+                prompt=prompt,
+            )
+        if pool is not None:
+            search.verify()
+            search_observation = policy.search_coordinator.status()
+    finally:
+        if pool is not None:
+            pool.close()
+    if pool is not None:
+        search_observation = policy.search_coordinator.status()
     try:
         round_telemetry = TEL.collect_round(
             inputs.stage_root, 0, model=model, agent_exit_code=rc, preflight_record=telemetry_preflight
@@ -157,6 +212,15 @@ def run_component_stage(
         if audit.get("clean") is not True:
             raise C.StageGateError("component authoring transcript audit failed")
         digest = str(hash_tree(inputs.candidate)["sha256"])
+        if search is not None:
+            search.verify()
+            if (
+                not search_observation["finalized"]
+                or search_observation["selected"] is None
+                or search_observation["selected"]["source_sha256"] != digest
+                or search_observation["incumbent"]["source_sha256"] != digest
+            ):
+                raise C.StageGateError("observed final compiler differs from the measured search incumbent")
         receipts = policy.verify_receipts(policy.receipt_path, actions, audit, candidate_sha256=digest)
         if rc not in (0, C.ROUND_DEADLINE_EXIT):
             raise C.StageGateError("component model transport did not complete an admitted bounded session")
@@ -193,6 +257,11 @@ def run_component_stage(
             "receipts": receipts,
             "wall_seconds": time.monotonic() - started,
             "telemetry": telemetry,
+            **(
+                {"search": search_observation, "search_configuration_sha256": search.sha256}
+                if search is not None
+                else {}
+            ),
             "admission": {"consumable": not refusals, "refusal": "; ".join(refusals) or None},
             "final_acceptance": "NOT_ESTABLISHED",
         },

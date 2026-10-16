@@ -22,6 +22,9 @@ attention/batched generics); anything else is left for the f32 fallback (``lower
 
 from __future__ import annotations
 
+from .passes_quant_rsqrt import lower_rsqrt_int as lower_rsqrt_int
+from .quant_scope import prequantized_source
+
 
 def _carry_prov(src, **roles) -> None:
     """Copy ``src``'s ``prov.*`` onto every op the rewrite split it into, each tagged with its role.
@@ -649,7 +652,7 @@ def lower_contraction_int8(
     prequant_gather: bool = False,
     report_out: "dict | None" = None,
 ) -> int:
-    """Rewrite f32 contractions into i8×i8→i32 + dynamic act-quant + requant. Returns count.
+    """Rewrite f32-accumulator contractions into i8×i8→i32 + requant. Returns count.
 
     ``prequant_gather`` (default False, so the shipped datapath is byte-identical) turns on the
     ``quantize_before_gather`` feature: when a contraction's f32 activation operand is produced by a
@@ -666,7 +669,17 @@ def lower_contraction_int8(
     """
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
-    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, FloatAttr, TensorType, f32, i8, i32
+    from xdsl.dialects.builtin import (
+        AffineMapAttr,
+        ArrayAttr,
+        BFloat16Type,
+        Float16Type,
+        FloatAttr,
+        TensorType,
+        f32,
+        i8,
+        i32,
+    )
     from xdsl.dialects.linalg import ops as L
     from xdsl.ir import Block, Region
     from xdsl.ir.affine import AffineDimExpr, AffineMap
@@ -720,9 +733,19 @@ def lower_contraction_int8(
             continue
         if not all(isinstance(i.type, TensorType) for i in op.inputs):
             continue
-        # at least one f32 operand to quantize (else nothing to do)
+        # A floating input normally supplies the quantization work. A selected
+        # half-precision contraction can instead reuse captured i8 operands.
         if not any(i.type.element_type == f32 or _is_dequant(i.owner) for i in op.inputs):
-            continue
+            # A captured dequantized bf16/f16 contraction is promoted to an
+            # f32 accumulator before this pass. Its operands remain half
+            # precision, but the explicit source quantization path licenses
+            # the same integer contraction rewrite.
+            if not (
+                select is not None
+                and select(op)
+                and any(isinstance(i.type.element_type, (BFloat16Type, Float16Type)) for i in op.inputs)
+            ):
+                continue
         targets.append((op, view))
     targets = _select_targets(targets, select, key=lambda t: t[0])
 
@@ -740,6 +763,7 @@ def lower_contraction_int8(
         i8_inputs = []
         scale_vals = []  # (ssa, [output-positions]) per operand
         for oi, operand in enumerate(op.inputs):
+            operand = prequantized_source(operand)  # reuse captured bytes behind an exact widening
             dims = in_maps[oi]  # iterator dims this operand indexes
             red_pos = [p for p, d in enumerate(dims) if red_flags[d]]  # positions in operand
             par_pos = [p for p, d in enumerate(dims) if not red_flags[d]]
@@ -802,9 +826,29 @@ def lower_contraction_int8(
                     _bump(report_out, "static_activation_reshape_reused")
                 continue
             if operand.type.element_type != f32:
-                i8_inputs.append(operand)  # already integer
-                scale_vals.append((None, par_outpos))
-                continue
+                if isinstance(operand.type.element_type, (BFloat16Type, Float16Type)):
+                    # An uncalibrated half-precision input still needs the
+                    # existing dynamic activation quantizer. Extend it to f32
+                    # first; never reinterpret bf16/f16 bits as i8 payload.
+                    f32_t = TensorType(f32, shp)
+                    ext_e = tensor.EmptyOp((), f32_t)
+                    eb = Block(arg_types=[operand.type.element_type, f32])
+                    extended = arith.ExtFOp(eb.args[0], f32)
+                    eb.add_ops([extended, L.YieldOp(extended.result)])
+                    ext = L.GenericOp(
+                        inputs=(operand,),
+                        outputs=(ext_e.results[0],),
+                        body=Region(eb),
+                        indexing_maps=ArrayAttr([amap(r, AffineMap.identity(r).results)] * 2),
+                        iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * r),
+                        result_types=(f32_t,),
+                    )
+                    pre.extend([ext_e, ext])
+                    operand = ext.results[0]
+                else:
+                    i8_inputs.append(operand)  # already integer
+                    scale_vals.append((None, par_outpos))
+                    continue
 
             # QUANTIZE BEFORE THE GATHER, when the operand is one. `quantize(G(A)) == G(quantize(A))`
             # holds for a pure gather and a single shared scale, so the abs-max, the quantize and the
@@ -1830,57 +1874,6 @@ def lower_silu_int(module, *, select=None) -> int:
         for nop in new:
             block.insert_op_before(nop, op)
         op.results[0].replace_all_uses_with(sg.results[0])
-        block.detach_op(op)
-        n += 1
-    return n
-
-
-# Fast inverse square root magic constant (Quake): y0 = bitcast(0x5f3759df - (bits(v)>>1)).
-_RSQRT_MAGIC = 0x5F3759DF
-
-
-def lower_rsqrt_int(module, *, select=None) -> int:
-    """Replace RMSNorm/LayerNorm's transcendental ``math.rsqrt`` with the fast inverse square
-    root: a bit-hack initial guess (an integer subtract + shift on the f32 bit pattern) refined
-    by Newton steps in f32 (``y = y*(1.5 - 0.5*v*y*y)``). No libm call, no integer per-lane
-    divide — only ``arith`` integer ops + f32 ``vfmul``/``vfsub`` (all RVV-vectorizable, the
-    plan's sanctioned f32-normalization path). Operates in-place on each ``math.rsqrt`` op inside
-    its host generic body. Validated vs 1/sqrt: rmsnorm cos ~ 1.0 (4 Newton iters). Returns count."""
-    from xdsl.dialects import arith
-    from xdsl.dialects import math as mathd
-    from xdsl.dialects.builtin import FloatAttr, IntegerAttr, f32, i32
-
-    NEWTON = 4
-    rsqrts = [op for op in module.walk() if op.name == "math.rsqrt" and op.operands[0].type == f32]
-    rsqrts = _select_targets(rsqrts, select)
-    n = 0
-    for op in rsqrts:
-        v = op.operands[0]
-        block = op.parent_block()
-        new = []
-        # y0 = bitcast(magic - (bitcast(v) >> 1))
-        bi = arith.BitcastOp(v, i32)
-        one = arith.ConstantOp(IntegerAttr(1, i32))
-        sh = arith.ShRSIOp(bi.result, one.results[0])
-        magic = arith.ConstantOp(IntegerAttr(_RSQRT_MAGIC, i32))
-        sub = arith.SubiOp(magic.results[0], sh.result)
-        y = arith.BitcastOp(sub.result, f32)
-        new += [bi, one, sh, magic, sub, y]
-        half = arith.ConstantOp(FloatAttr(0.5, f32))
-        threehalf = arith.ConstantOp(FloatAttr(1.5, f32))
-        new += [half, threehalf]
-        cur = y.result
-        for _ in range(NEWTON):
-            yy = arith.MulfOp(cur, cur)
-            vyy = arith.MulfOp(v, yy.result)
-            hvyy = arith.MulfOp(half.results[0], vyy.result)
-            s = arith.SubfOp(threehalf.results[0], hvyy.result)
-            ny = arith.MulfOp(cur, s.result)
-            new += [yy, vyy, hvyy, s, ny]
-            cur = ny.result
-        for nop in new:
-            block.insert_op_before(nop, op)
-        op.results[0].replace_all_uses_with(cur)
         block.detach_op(op)
         n += 1
     return n

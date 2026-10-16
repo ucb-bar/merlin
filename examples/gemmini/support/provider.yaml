@@ -1,0 +1,5 @@
+schema: merlin.provider.v1
+id: gemmini-support
+target: gemmini
+role: support
+contract: contracts/target_contract.yaml

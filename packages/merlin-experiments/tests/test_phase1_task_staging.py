@@ -8,7 +8,31 @@ from merlin_experiments.phase1 import task_staging as TS
 from merlin_experiments.phase1.context import InvocationContext
 from merlin_experiments.phase1.levels import LEVELS
 
-from merlin.targetgen.generalization_prompt import GENERAL_COMPILER_CONTRACT_V1
+from merlin.targetgen.generalization_prompt import GENERAL_COMPILER_CONTRACT_V3
+
+
+def test_gemmini_full_model_task_is_short_and_allows_edits_during_checks(tmp_path, monkeypatch):
+    from merlin_experiments.phase1 import resource_prompt
+
+    conf = config(tmp_path / "operator", "gemmini")
+    conf = replace(conf, experiment="full", bundle_id="merlin_assisted_rtlchecks_hwbringup_v0")
+    (conf.bundle_dir / "tools.txt").write_text("xdsl_kit\ncca_spine\n")
+    monkeypatch.setattr(TS, "load_target_experiment", lambda _: object())
+    ws, run = conf.context.repo / "workspace", conf.context.repo / "run"
+    ws.mkdir()
+    run.mkdir()
+    TS.build_task("merlin_assisted", ws, run, config=conf,
+                  task_scope={"required_public_dev_capsules": 120, "held_out_capsules": 20})
+    resource_prompt.append_resource_guidance(ws, run, object())
+    task = (ws / "TASK.md").read_text()
+    assert len(task.encode()) <= 12 * 1024
+    assert all(name in task for name in ("ResNet50", "SmolVLA", "TinyLlama", "numerics.approximations"))
+    assert "task/PHASE2_TARGET.md" in task
+    assert "public capsule L3 gSIM qualification" in task
+    assert "per-kernel model gSIM replay is not requested" in task
+    assert "--engine spike" in task and "--engine gsim" not in task
+    assert "You may continue editing while a self-check or grade runs" in task
+    assert task == (run / "TASK.md").read_text()
 
 
 def config(root, target="synthetic"):
@@ -63,7 +87,7 @@ def test_actual_authored_task_explicit_bundle_and_descriptor(tmp_path, monkeypat
     assert "Required public/dev capsules: **7**" in text
     assert "Held-out capsules: **3**" in text
     assert "unsandboxed diagnostic override" in text
-    assert text.count(GENERAL_COMPILER_CONTRACT_V1) == 1
+    assert text.count(GENERAL_COMPILER_CONTRACT_V3) == 1
     assert ("selected TASK_ADDENDUM.md" in text) == (arm == "merlin_assisted")
     for doc in TS.RI.MERLIN_WS_DOCS:
         assert (ws / doc).exists() == (arm == "merlin_assisted")
@@ -93,7 +117,10 @@ def test_tools_are_observed_after_callback_creation_and_again_after_changes(tmp_
     assert callback() == ("sim_job", "isa_query")
 
 
-@pytest.mark.parametrize("level", LEVELS, ids=[level["id"] for level in LEVELS])
+@pytest.mark.parametrize(
+    "level", [level for level in LEVELS if level["id"] not in {"EL5", "EL6"}],
+    ids=[level["id"] for level in LEVELS if level["id"] not in {"EL5", "EL6"}],
+)
 def test_actual_tool_inventory_follows_selected_level_and_explicit_ablation(tmp_path, level):
     from merlin.targetgen.generate_bundles import _ALL_ARMS
 
@@ -157,7 +184,7 @@ def test_generated_task_composition_keeps_starter_and_addendum_rules(tmp_path, m
     text = (ws / "TASK.md").read_text()
     assert calls[0][1:] == ({"target": "synthetic"}, experiment, arm, {"merlin/tool.py"})
     assert text.startswith("generated task")
-    assert text.count(GENERAL_COMPILER_CONTRACT_V1) == 1
+    assert text.count(GENERAL_COMPILER_CONTRACT_V3) == 1
     assert "must not duplicate" not in text
     assert ("selected addendum" in text) == (arm == "merlin_assisted")
     assert ("## Grading tiers" in text) == (experiment == "full")

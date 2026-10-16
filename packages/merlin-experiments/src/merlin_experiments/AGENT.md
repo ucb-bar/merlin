@@ -2,7 +2,9 @@
 
 `spec.py` validates public definitions, `adapters.py` owns allowed options and
 installed/native command mapping, `runner.py` owns frozen process attempts, and `cli.py` owns
-discovery. New baseline and RTL-check plans use the installed Phase 1 command with explicit
+discovery. `spec.default_run_dir` owns declaration-based phase/output navigation;
+`runner` preserves its import API and uses the shared streamed file digest.
+New baseline and RTL-check plans use the installed Phase 1 command with explicit
 authored inputs and treatment selection; stored native plans keep their native command identity. Optional
 operator timing/environment inputs bind absence as well as present bytes. Scientific
 verdicts remain phase-engine evidence, never inferred from process completion. Preserve independent
@@ -43,3 +45,6 @@ stays at the caller. V4 binds explicit ownership and full file/directory members
 Verification/bootstrap is standard-library-only and never discovers a live checkout.
 Old seals remain inspectable but require a fresh freeze for this verifier's execution;
 never rewrite an archive or substitute current code for its historical verifier.
+
+`runner_process` owns bounded process/group inspection and shutdown; `runner`
+retains its existing imports and overrides at plan execution boundaries.

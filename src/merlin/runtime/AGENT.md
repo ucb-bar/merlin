@@ -7,6 +7,16 @@ the per-backend adapters under `backends/`.
 
 ## What belongs here
 
+- `complete_call_timing` selects an optional reviewed normal contract boundary:
+  `logical_harness.complete_call_timing` names an existing `counter_semantics`
+  record and an explicit positive delta bound below 2**63. The record must bind
+  actual accessor/ISA/clock source files, cycles, 64-bit width and modulo wrap;
+  the existing selected counter assembly is reused. No default counter or clock
+  exists. Both original callers include main preparation, submitted whole-program
+  work, completion and every output publication. Static immutable staging,
+  loader/startup, final metric formatting/exit and external parent readback are
+  excluded explicitly. Cold/warm qualification remains UNKNOWN. Actual source
+  and engine certificates remain necessary; this reviewed data is no new role.
 - `simulator.py` / `reference.py` / `tensor.py` / `metrics.py` / `commandbuffer.py` — the
   synthetic-workload command-buffer engine (integer tensor math + metrics) and an
   independent reference recomputation it is gated against.
@@ -21,6 +31,28 @@ the per-backend adapters under `backends/`.
   `cumsum` accumulator-init `i64`) are passed by value via `abi.ScalarArg`, NOT as a memref
   descriptor — `emit_c_interface` only wraps memrefs.
 - `backends/` — host / spike adapters.
+- `native_runtime.py`, `_native_files.py` and `_native_launch.py` optionally
+  freeze one bounded shared filesystem view for the original normal Chipyard
+  backend. Selected native calls adopt that readonly view, one requested ELF
+  and fresh closed writable scratch. Real kernel process/mount observations
+  precede exec, and actual process records retain raw streams. Saved JSON cannot
+  issue this live owner. Host release follows the original guardian's cleanup;
+  unknown cleanup retains ownership. Filesystem closure does not establish the
+  engine's unspecified reset/seed: current selections always execute freshly.
+- `build_runtime.py` optionally adopts that same launcher for the original
+  translation, object, harness and link subprocesses. Explicit tools, immutable
+  lookup roots, fresh input/product rosters and file/byte budgets precede any
+  selection. Per-job storage relocation changes the actual private child paths;
+  the executed mapping owns its command key. Unsupported choices remain fresh.
+  Signed completed observations require real kernel adoption and preserved
+  original process/product files. Artifact reuse is a separate receipt and
+  establishes no numerical, simulator or timing authority.
+- `dispatch_placement.py` joins the original ordered outline table to actual
+  typed functions/calls and placement attributes/properties before dispatch.
+  Explicit nonhost intent refuses native/XNNPACK substitution and a declined
+  device route before host execution or a successful host ledger entry.
+  Unspecified placement retains fallback behavior. This structural requirement
+  grants no device capability, command-event, ownership or synchronization role.
 - `host_math.py` — explicit portable libm evaluation policies and their compiled runtime objects.
   The default emits nothing. A selected policy changes linked-byte identity and must pass the
   caller's original numerical contract; it does not promise errno or exception-flag equivalence.
@@ -50,6 +82,15 @@ the per-backend adapters under `backends/`.
   budgets apply before storage rendering. Accessor implementations remain in
   selected runtime support. No counter units, integrity, cold/warm status,
   calibrated overhead or complete-stage cost authority follows from these data.
+- `direct_kernel_phases.py` — opt-in raw samples at fixed generated console,
+  calibration, output-history/count and DONE boundaries, plus inclusive main.
+  It requires the same explicit counter plan and original repeated ABI/history
+  roster; combined buffer/history/sample budgets precede rendering. Entry and
+  selected completion retain their original counter bracket. Main includes
+  inner instrumentation but ends before its own sample storage/count, exit and
+  parent readback. Static initialization/loading and these excluded operations
+  remain unknown, never free. Raw values do not grant completion, counter units,
+  cold/warm, full eleven-stage costs or runtime/held qualification.
 - `out_bin.py` — separate opt-in byte-oriented full-value framing. It consumes
   exact length-delimited raw payloads without text-decoding their NUL/non-UTF-8
   contents, checks the transport checksum, and requires END/DONE and a closed

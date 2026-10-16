@@ -127,7 +127,56 @@ def _functions(module) -> dict[str, Any]:
     return found
 
 
-def audit_group(site: GroupSite, function: Any | None, budget: Budget = Budget()) -> dict[str, Any]:
+def _command_only_integer_orchestration(function: Any, target: str | None) -> bool:
+    """Prove a high instruction count cannot be host tensor computation.
+
+    A pointer-only kernel with no scalar memory access or value arithmetic can
+    spend many integer instructions calculating transfer addresses and command
+    operands. Its only effects must be target-owned RoCC commands and fences;
+    unrecognized inline assembly, helpers, scalar memory, or a scalar return
+    keeps the ordinary element-scale veto in force.
+    """
+    if target is None:
+        return False
+    from xdsl.dialects.builtin import UnitAttr
+    from xdsl.dialects.llvm import LLVMPointerType
+
+    from merlin.targetgen.rocc.decode import _asm_template, _parse_insn, isa_constants
+
+    try:
+        isa = isa_constants(target)
+        opcode, classes = isa["CUSTOM_OPCODE"], isa["FUNCT_CLASS"]
+    except (KeyError, TypeError, ValueError):
+        return False
+    blocks = tuple(function.body.blocks)
+    if not blocks or not blocks[0].args or not all(isinstance(arg.type, LLVMPointerType) for arg in blocks[0].args):
+        return False
+    commands = 0
+    for op in function.walk():
+        name = op.name
+        if name in {"llvm.load", "llvm.store", "llvm.alloca", "llvm.call", "llvm.call_intrinsic", "llvm.atomicrmw", "llvm.cmpxchg"}:
+            return False
+        if name == "llvm.return" and op.operands:
+            return False
+        if name != "llvm.inline_asm":
+            continue
+        if op.results or not isinstance(op.has_side_effects, UnitAttr) or "~{memory}" not in op.constraints.data.split(","):
+            return False
+        template = _asm_template(op)
+        if template == "fence":
+            if op.operands:
+                return False
+            continue
+        parsed = _parse_insn(template, opcode)
+        if parsed is None or not parsed[1] or parsed[0] not in classes or len(op.operands) != 2:
+            return False
+        commands += 1
+    return commands > 0
+
+
+def audit_group(
+    site: GroupSite, function: Any | None, budget: Budget = Budget(), *, input_preparation=None, target=None
+) -> dict[str, Any]:
     """One group's verdict, with the numbers it rests on."""
     row: dict[str, Any] = {
         "group": site.group,
@@ -158,18 +207,57 @@ def audit_group(site: GroupSite, function: Any | None, budget: Budget = Budget()
     if not isinstance(address_arithmetic, int) or isinstance(address_arithmetic, bool) or address_arithmetic < 0:
         row.update(verdict=UNKNOWN, why="pointer-setup arithmetic has no derived execution count")
         return row
+    address_loop_arithmetic = activity.get("dynamic_address_loop_control_arithmetic", 0)
+    if type(address_loop_arithmetic) is not int or address_loop_arithmetic < 0:
+        row.update(verdict=UNKNOWN, why="address-loop control has no derived execution count")
+        return row
+    pointer_arithmetic = address_arithmetic
+    address_arithmetic += address_loop_arithmetic
     total_arithmetic = sum(int(dynamic.get(name, 0)) for name in _ARITHMETIC)
     arithmetic = total_arithmetic - address_arithmetic
+    if arithmetic < 0:
+        row.update(verdict=UNKNOWN, why="proved address/control counts exceed raw arithmetic")
+        return row
     value_arithmetic = sum(int(dynamic.get(name, 0)) for name in _VALUE_ONLY)
     payload = (activity.get("load_payload_bytes") or 0) + (activity.get("store_payload_bytes") or 0)
+    preparation = None
+    if input_preparation is not None and site.placement != HOST:
+        from merlin.verify.conv_input_preparation import prove_input_preparation
+
+        preparation = prove_input_preparation(function, activity, input_preparation, target=target)
+        row["input_preparation"] = preparation
+        if preparation.get("status") == "proven":
+            # All exclusions are actual closed address/copy execution counts;
+            # ordinary budgets still judge every operation outside that proof.
+            arithmetic -= preparation["arithmetic"] - address_arithmetic
+            payload -= preparation["payload_bytes"]
+            if arithmetic < 0 or payload < 0:
+                row.update(verdict=UNKNOWN, why="input preparation counts exceed original raw accounting")
+                return row
+    command_only = (
+        site.placement != HOST
+        and arithmetic > site.elements * budget.arithmetic_per_element
+        and value_arithmetic == 0
+        and payload == 0
+        and _command_only_integer_orchestration(function, target)
+    )
+    if command_only:
+        # The raw dynamic count remains visible. Only the proven pointer-only
+        # command orchestration is removed from the tensor-compute budget.
+        row["host_command_orchestration_arithmetic"] = arithmetic
+        arithmetic = 0
     top = (activity.get("block_signatures") or [{}])[0]
     row.update(
-        arithmetic_basis="pointer_offset_provenance_v1",
+        arithmetic_basis=("pointer_only_target_commands_v1" if command_only else "pointer_offset_provenance_v1"),
+        address_loop_basis="closed_induction_address_uses_v1",
         host_arithmetic=arithmetic,
         host_total_arithmetic=total_arithmetic,
         host_address_arithmetic=address_arithmetic,
+        host_pointer_setup_arithmetic=pointer_arithmetic,
+        host_address_loop_control_arithmetic=address_loop_arithmetic,
         host_value_arithmetic=value_arithmetic,
         host_payload_bytes=payload,
+        host_raw_payload_bytes=(activity.get("load_payload_bytes") or 0) + (activity.get("store_payload_bytes") or 0),
         dominant_block={
             "signature": top.get("signature"),
             "trips": top.get("trips"),
@@ -245,10 +333,21 @@ def compact_signature(signature: Any, *, limit: int = 160) -> str:
     return text if len(text) <= limit else text[: limit - 4].rstrip() + " ..."
 
 
-def audit(module: Any, sites: Sequence[GroupSite], budget: Budget = Budget()) -> dict[str, Any]:
+def audit(
+    module: Any, sites: Sequence[GroupSite], budget: Budget = Budget(), *, input_preparation=None, target=None
+) -> dict[str, Any]:
     """Audit every group site against the functions of an emitted LLVM-dialect module."""
     functions = _functions(module)
-    rows = [audit_group(site, functions.get(site.symbol), budget) for site in sites]
+    rows = [
+        audit_group(
+            site,
+            functions.get(site.symbol),
+            budget,
+            input_preparation=(input_preparation or {}).get(site.symbol),
+            target=target,
+        )
+        for site in sites
+    ]
     judged = [row for row in rows if row["placement"] != HOST]
     counts: dict[str, int] = {}
     for row in rows:

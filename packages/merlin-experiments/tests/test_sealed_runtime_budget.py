@@ -162,7 +162,11 @@ def test_discounted_issue_refuses_cache_mutation_during_link(tmp_path, monkeypat
     assert not (run / "capture").exists()
 
 
-def test_concurrent_runtime_snapshot_during_inventory_keeps_exact_cached_identity(tmp_path, monkeypatch):
+def test_concurrent_runtime_snapshot_waits_for_inventory_and_keeps_exact_cached_identity(tmp_path, monkeypatch):
+    """A second capture's link waits for the first one's exclusive inventory instead of racing it."""
+    import threading
+    import time
+
     from merlin_experiments.capture_execution import sealed_static
 
     monkeypatch.setenv(runtime_store.STORE_ENV, str(tmp_path / "store"))
@@ -175,28 +179,40 @@ def test_concurrent_runtime_snapshot_during_inventory_keeps_exact_cached_identit
     assert cache is not None
     source = entry / "opt/capture-venv/lib/module.bin"
     original_digest = sealed_static._file_digest
-    inventories, observations = 0, []
+    inventories, observations, errors = 0, [], []
+    concurrent: list[threading.Thread] = []
+
+    def link_second():
+        try:
+            runtime_store.link_runtime(plan, second, verified_cache=cache)
+        except BaseException as exc:  # noqa: BLE001 -- reported below
+            errors.append(exc)
 
     def interleaved_digest(path):
         nonlocal inventories
         if path == source:
             inventories += 1
             if inventories == 2:
+                # The second capture starts linking the same immutable inode while the first
+                # caller's post-link inventory is reading that file.
                 before = source.stat()
-                # The second actual caller links the same immutable inode while
-                # the first caller's post-link inventory is reading that file.
-                runtime_store.link_runtime(plan, second, verified_cache=cache)
-                after = source.stat()
-                observations.append((before, after))
+                thread = threading.Thread(target=link_second)
+                thread.start()
+                concurrent.append(thread)
+                time.sleep(0.3)
+                observations.append((before, source.stat()))
         return original_digest(path)
 
     monkeypatch.setattr(sealed_static, "_file_digest", interleaved_digest)
     runtime_store.link_runtime(plan, first, verified_cache=cache)
+    concurrent[0].join(timeout=60)
+    assert not concurrent[0].is_alive() and errors == []
     assert len(observations) == 1
-    before, after = observations[0]
-    assert before.st_nlink + 1 == after.st_nlink
-    assert before.st_ctime_ns != after.st_ctime_ns
-    assert (before.st_ino, before.st_size, before.st_mtime_ns) == (after.st_ino, after.st_size, after.st_mtime_ns)
+    before, during = observations[0]
+    # The inventory saw a stable inode: the second link waited for the exclusive verification.
+    assert (before.st_nlink, before.st_ctime_ns) == (during.st_nlink, during.st_ctime_ns)
+    assert source.stat().st_nlink == before.st_nlink + 1
+    monkeypatch.setattr(sealed_static, "_file_digest", original_digest)
     assert runtime_store.verified_cached_entry(plan, first) == cache
     for destination in (first, second):
         linked = destination / "opt/capture-venv/lib/module.bin"

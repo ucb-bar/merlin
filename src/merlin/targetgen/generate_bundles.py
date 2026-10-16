@@ -243,7 +243,7 @@ def _arm_manifest(
             + [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY]
             + deny
         )
-    elif arm == "merlin_rtlchecks":
+    elif arm in {"merlin_rtlchecks", "merlin_isa", "merlin_lean"}:
         deny = _VERIFY_DENY + [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY] + deny
     elif arm == "merlin_verify":
         # EL4's deny block minus the verification seam: EL4-V is EL4 plus that one grant, so its
@@ -342,7 +342,11 @@ _ARMS = {
 # the xDSL arm and the run silently gets arm-3's tool set under the verify arm's name -- the exact
 # downgrade that resolver's own docstring was written to prevent. Move the entry into ``_ARMS`` and
 # widen the resolver in the same change.
-_OPT_IN_ARMS = {"merlin_verify": "merlin_assisted_verify"}
+_OPT_IN_ARMS = {
+    "merlin_verify": "merlin_assisted_verify",
+    "merlin_isa": "merlin_assisted_rtlchecks_isa",
+    "merlin_lean": "merlin_assisted_rtlchecks_isa_lean",
+}
 _ALL_ARMS = {**_ARMS, **_OPT_IN_ARMS}
 
 
@@ -425,6 +429,10 @@ def generate_bundles(
     python_source_root: Path | None = None,
     llvm_toolchain_root: Path | None = None,
     rtl_facts_root: Path | None = None,
+    common_substrate: str | None = None,
+    lean_toolchain_manifest: Path | None = None,
+    host_index_bits: int | None = None,
+    public_codegen_resource_policy: dict | None = None,
 ) -> dict[str, dict]:
     """The bundle manifests for ``te``, keyed by bundle_id. Target-agnostic: the same code emits them
     for any target from its descriptor + derived paths (no hand-authored YAML).
@@ -438,11 +446,31 @@ def generate_bundles(
     """
     python_source_root = _python_source_selection(python_source_root)
     selected_facts = _selected_rtl_facts(te, rtl_facts_root)
+    from .public_codegen_budget import validate_policy
+
+    if public_codegen_resource_policy is None:
+        import yaml
+
+        declaration = yaml.safe_load(te.path.read_bytes()) or {}
+        public_codegen_resource_policy = (declaration.get("phase1_gates") or {}).get("public_codegen_scalability")
+    selected_policy = validate_policy(public_codegen_resource_policy)
+    if selected_policy is not None and common_substrate is None:
+        raise ValueError("selected public codegen resource policy requires an original compiler tool profile")
+    if selected_policy is not None:
+        from .capsule_common import discover_capsules
+        from .public_codegen_budget import require_public_members
+
+        members = discover_capsules(te.graded_roots(), labels={"public", "dev"})
+        excluded = set(te.effective_exclusions(row.get("name") for row in members))
+        require_public_members(selected_policy, (row.get("name") for row in members
+                                                if row.get("name") not in excluded))
     suffix = TR.cell_suffix(add_tools, drop_tools)
     wanted = arms or tuple(_ARMS)
     for a in wanted:
         if a not in _ALL_ARMS:
             raise KeyError(f"unknown arm {a!r}; known: {sorted(_ALL_ARMS)}")
+        if a in {"merlin_isa", "merlin_lean"} and common_substrate is None:
+            raise ValueError("EL5/EL6 require an explicitly versioned common compiler substrate")
     out = {}
     for arm in wanted:
         bid = f"{_ALL_ARMS[arm]}_{variant}{suffix}"
@@ -450,12 +478,62 @@ def generate_bundles(
         out[bid]["host_inputs"].extend(
             {"path": path, "note": "operator-only frozen input; never an agent grant"} for path in host_inputs
         )
+        if common_substrate is not None:
+            from .tool_profile import attach_common_substrate
+
+            if python_source_root is None:
+                raise ValueError("common substrate requires the selected Python source root")
+            from .tool_profile import COMMON_SUBSTRATE_V3
+
+            if common_substrate != COMMON_SUBSTRATE_V3:
+                attach_common_substrate(
+                    out[bid],
+                    version=common_substrate,
+                    python_source_root=python_source_root,
+                    lean_toolchain_manifest=lean_toolchain_manifest,
+                    host_index_bits=host_index_bits,
+                    public_codegen_resource_policy=selected_policy,
+                )
+        elif lean_toolchain_manifest is not None:
+            raise ValueError("selected Lean tooling requires the versioned common compiler substrate")
         if python_source_root is not None:
             _select_python_grants(out[bid], python_source_root)
         if llvm_toolchain_root is not None:
             _select_llvm_grant(out[bid], llvm_toolchain_root)
         if selected_facts is not None:
             _select_rtl_facts_grant(out[bid], te, selected_facts[0])
+        if common_substrate == "merlin.common_compiler_substrate.v3":
+            # The common generated task is the sole authoring instruction owner.
+            # Legacy target task directories remain operator inputs, not grants.
+            legacy_task = te.experiment_resource("task") + "/"
+            out[bid]["allowed"] = [row for row in out[bid]["allowed"] if row.get("path") != legacy_task]
+            out[bid]["host_inputs"].append(
+                {"path": legacy_task, "note": "retained task text for release custody; never a candidate grant"}
+            )
+            # Resolve original semantic inputs only after ordinary source/facts
+            # grants have reached their final canonical selected locations.
+            software = [
+                row["path"]
+                for row in out[bid]["host_inputs"]
+                if row.get("note") == "selected software semantics; not hardware evidence"
+            ]
+            if len(software) > 1:
+                raise ValueError("common formal semantics have ambiguous original software inputs")
+            selected_software = Path(software[0]) if software else None
+            if selected_software is not None and not selected_software.is_absolute():
+                selected_software = (te._source_root() / selected_software).resolve()
+            attach_common_substrate(
+                out[bid],
+                version=common_substrate,
+                python_source_root=python_source_root,
+                lean_toolchain_manifest=lean_toolchain_manifest,
+                host_index_bits=host_index_bits,
+                software_spec_path=selected_software,
+                facts_path=selected_facts[0] / "facts.json" if selected_facts else None,
+                target=te.target,
+                public_codegen_resource_policy=selected_policy,
+            )
+            _select_python_grants(out[bid], python_source_root)
     return out
 
 
@@ -624,6 +702,10 @@ def _materialize_prompt_and_grants(
             allowed, manifest.get("tools") or (), python_source_root=python_source_root
         )
         prompt = render_prompt(te, cap, experiment, stem, granted_tools=granted)
+        if manifest.get("compiler_tool_profile") is not None:
+            from .tool_profile import tool_profile_prompt
+
+            prompt += tool_profile_prompt(manifest)
         if manifest.get("condition") == "kernel-library":
             library_alias = next(
                 (
@@ -648,7 +730,14 @@ not correctness-qualified implementations and must not be promoted without an in
         _w_if_absent("STARTER_PROMPT.md", prompt)
     _w_always("allowed_files.txt", _grant_txt(manifest, "allowed"))
     _w_always("denied_files.txt", _grant_txt(manifest, "denied"))
-    if manifest.get("arm") in {"merlin_assisted", "merlin_rtlchecks", "merlin_eqsat", "merlin_verify"}:
+    if manifest.get("arm") in {
+        "merlin_assisted",
+        "merlin_rtlchecks",
+        "merlin_eqsat",
+        "merlin_verify",
+        "merlin_isa",
+        "merlin_lean",
+    }:
         _w_always("ALLOWED_MERLIN_TOOLS.md", _allowed_merlin_tools_doc(manifest))
 
 
@@ -664,6 +753,10 @@ def materialize_bundles(
     python_source_root: Path | None = None,
     llvm_toolchain_root: Path | None = None,
     rtl_facts_root: Path | None = None,
+    common_substrate: str | None = None,
+    lean_toolchain_manifest: Path | None = None,
+    host_index_bits: int | None = None,
+    public_codegen_resource_policy: dict | None = None,
 ) -> list[Path]:
     """Write every generated bundle under ``dest/<bundle_id>/`` for each requested ``variant``:
     ``input_bundle_manifest.yaml`` (always, overwritten — the manifest is fully generated) plus the
@@ -719,6 +812,10 @@ def materialize_bundles(
             python_source_root=python_source_root,
             llvm_toolchain_root=llvm_toolchain_root,
             rtl_facts_root=rtl_facts_root,
+            common_substrate=common_substrate,
+            lean_toolchain_manifest=lean_toolchain_manifest,
+            host_index_bits=host_index_bits,
+            public_codegen_resource_policy=public_codegen_resource_policy,
         )
         for bundle_id, manifest in bundles.items():
             bdir = dest / bundle_id
@@ -749,6 +846,8 @@ def _main(argv: list[str] | None = None) -> int:
     ``--dest`` defaults to a fresh versioned artifact product, never beside the descriptor."""
     import argparse
     from pathlib import Path
+
+    import yaml
 
     from .target_experiment import load_target_experiment
 
@@ -800,6 +899,21 @@ def _main(argv: list[str] | None = None) -> int:
         help="absolute ordinary directory containing the selected Phase 0 facts.json",
     )
     ap.add_argument("--list-tools", action="store_true", help="print the tool catalog and exit")
+    from .tool_profile import COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3
+
+    ap.add_argument(
+        "--common-substrate",
+        choices=(COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3),
+        help="select versioned common transforms and strict covered-domain verification for a fresh release",
+    )
+    ap.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
+    ap.add_argument("--public-codegen-resource-policy", type=Path,
+                    help="original YAML resource selection copied into a fresh sealed compiler profile")
+    ap.add_argument(
+        "--host-index-bits",
+        type=int,
+        help="reviewed index width of the selected host ABI; unknown refuses common lowering",
+    )
     a = ap.parse_args(argv)
 
     if a.list_tools:
@@ -842,6 +956,13 @@ def _main(argv: list[str] | None = None) -> int:
         python_source_root=a.python_source_root,
         llvm_toolchain_root=a.llvm_toolchain_root,
         rtl_facts_root=a.rtl_facts_root,
+        common_substrate=a.common_substrate,
+        lean_toolchain_manifest=a.lean_toolchain_manifest,
+        host_index_bits=a.host_index_bits,
+        public_codegen_resource_policy=(
+            yaml.safe_load(a.public_codegen_resource_policy.read_bytes())
+            if a.public_codegen_resource_policy is not None else None
+        ),
     )
     if product is not None:
         for path in written:

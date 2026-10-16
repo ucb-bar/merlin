@@ -257,6 +257,28 @@ def test_capture_normalization_refuses_a_stale_worker_census():
     assert "disagrees" in message and "unknown" in message
 
 
+def test_capture_normalization_reuses_exact_source_without_sharing_receipts(monkeypatch):
+    from merlin.frontends import capture_normalization as normalization
+
+    raw = "module {}"
+    normalization._normalize_capture_mlir_cached.cache_clear()
+    original_parse = normalization.parse_mlir_text
+    parses = []
+
+    def tracked_parse(text):
+        parses.append(text)
+        return original_parse(text)
+
+    monkeypatch.setattr(normalization, "parse_mlir_text", tracked_parse)
+    first_text, first_receipt = normalization.normalize_capture_mlir(raw)
+    first_receipt["raw_opaque_detail"]["caller_only"] = 1
+    second_text, second_receipt = normalization.normalize_capture_mlir(raw)
+    assert first_text == second_text
+    assert "caller_only" not in second_receipt["raw_opaque_detail"]
+    assert len(parses) == 2  # initial raw parse and serialized verification; no repeat parse
+    normalization._normalize_capture_mlir_cached.cache_clear()
+
+
 def test_a_worker_that_produced_no_diagnosis_still_reports_stderr(tmp_path, monkeypatch):
     """The stderr path must survive for a worker that died before writing meta.json."""
     import subprocess

@@ -115,6 +115,14 @@ def resolved_tools(
     drop = set(drop_tools)
     out = [t for t in base if t not in drop]
     out += [t for t in add_tools if t not in out]
+    manifest_file = bdir / "input_bundle_manifest.yaml"
+    if manifest_file.is_file():
+        from merlin.targetgen.tool_profile import verify_tool_profile
+
+        manifest = yaml.safe_load(manifest_file.read_text(encoding="utf-8")) or {}
+        verify_tool_profile(manifest, tools=tuple(out))
+    elif set(out) & {"isa_dialect_generation", "lean_proof_authoring"}:
+        raise ValueError("optional ISA/Lean tools require an explicit versioned bundle manifest")
     return tuple(out)
 
 
@@ -172,6 +180,11 @@ def task_tool_inventory_block(config: TaskStagingConfig) -> str:
         lines.append(f"- `{name}`: {tool.blurb} {access}")
     if not names:
         lines.append("No additional treatment tools are selected; use the common substrate and admitted toolchain.")
+    manifest = config.bundle_dir / "input_bundle_manifest.yaml"
+    if manifest.is_file():
+        from merlin.targetgen.tool_profile import tool_profile_prompt
+
+        lines.append(tool_profile_prompt(yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}))
     return "\n".join(lines) + "\n"
 
 
@@ -263,6 +276,82 @@ def task_runtime_scope_block(te, sandbox: str, *, context: InvocationContext, sc
     )
 
 
+def full_model_task(config: TaskStagingConfig, sandbox: str, scope: dict) -> str:
+    """The Gemmini Phase 1 charter, with no unenforced process checklist."""
+    names = resolved_tools(config.bundle_id, bundle_dir=config.bundle_dir,
+                           add_tools=config.add_tools, drop_tools=config.drop_tools)
+    tools = "\n".join(f"- `{name}`: {_TR.spec(name).blurb}" for name in names)
+    body = """# Phase 1: Gemmini compiler for complete models
+
+Build the compiler in `submission/` from the empty starting directory. The required programs are:
+
+| Model | Programs |
+| --- | --- |
+| ResNet50 | `model` |
+| SmolVLA | `prefix_encode`, `flow_denoise`, `action_decode` |
+| TinyLlama | `prefill`, `decode` |
+
+Success requires all six programs to compile, link and pass the model numerics policy on Spike,
+a fixed-denominator offload census, and public capsule L3 gSIM qualification.
+Model kernels are checked on Spike; per-kernel model gSIM replay is not requested.
+`qa/verdict.json` reports your
+visible-input results. Sealed-input results appear only in the official grade.
+
+The frozen `task/PHASE2_TARGET.md` describes the planned FireSim deployment
+target and its relationship to this release's selected RTL facts. Read the
+selected facts and contract for the exact Phase 1 compilation target; retain
+their identities when reporting any timing observation.
+
+## Deliverable
+
+Write a self-contained `submission/` with `manifest.yaml`, compiler sources, the four required
+parse/lower/emit/LLVM entrypoints defined by the admitted contract, and `REPORT.md` stating
+measured results and limitations. The model-check contract uses `numerics.approximations` in the
+manifest for declared approximate kernels. Undeclared device kernels must match the integer
+reference exactly. Declared approximate kernels and host f32 work must meet the contract's
+error policy.
+
+## Available tools
+
+- `python agent_selfcheck.py --help`: focused public capsule checks.
+- `python simjob.py --help`: asynchronous public RTL jobs.
+- `python await_verdict.py --help`: wait for a new harness verdict.
+- `python agent_model_check.py check --model MODEL --out REPORT.json`: visible model check through the broker.
+- `python agent_model_check.py replay-kernel --model MODEL --program PROGRAM`
+  `--group SOURCE_REGION_ID --engine spike`: visible kernel replay through the broker.
+  A pending reply includes a `wait --job-id` command.
+
+Selected treatment tools:
+"""  # target-ok: the selected Gemmini full-model task names its target
+    body += tools or "- No additional treatment tools are selected."
+    body += """
+
+## Sandbox and enforced rules
+
+- Use only the frozen inputs and tools granted in this workspace. Do not access hidden inputs,
+  goldens, prior backend submissions, or operator-private paths.
+- `integrity_exempt: false`; the compiler must be agent-authored and use the selected xDSL/Python
+  language and CLI contract. Do not import Merlin's reference or simulator implementation into
+  the submission, or substitute C compute kernels for emitted device code.
+- Keep `manifest.yaml` and the four entrypoints valid. The harness checks package integrity,
+  public capsules (including L3 gSIM), whole-model numerics, and the offload census.
+  A pending or unavailable check is not a pass.
+- The harness grades immutable snapshots. You may continue editing while a self-check or grade runs.
+  A verdict names the snapshot it graded; check its source digest before treating it as current.
+
+## Final status
+
+Lead with a table of all six programs: model, program, compile/link, numerics, and census.
+Report capsule RTL status separately. Then name the submission path, test artifacts, and remaining failures. Report only
+measured results.
+"""  # target-ok: this is the selected Gemmini full-model task text
+    body += task_runtime_scope_block(load_target_experiment(config.context.descriptor), sandbox,
+                                     context=config.context, scope=scope)
+    if len(body.encode("utf-8")) > 10_000:
+        raise RuntimeError("Gemmini full-model task exceeds its 10 KB pre-resource budget")  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+    return body
+
+
 def build_task(
     arm: str,
     ws: Path,
@@ -281,6 +370,15 @@ def build_task(
     bundle_dir, experiment = config.bundle_dir, config.experiment
     _te = partial(load_target_experiment, context.descriptor)
     _manifest = partial(load_capability_manifest, context.target)
+    if context.target == "gemmini" and arm == "merlin_assisted" and experiment == "full":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        body = full_model_task(config, sandbox, task_scope)
+        (ws / "TASK.md").write_text(body)
+        shutil.copy(ws / "TASK.md", run_dir / "TASK.md")
+        for doc in RI.MERLIN_WS_DOCS:
+            src = bundle_dir / doc
+            if src.exists():
+                shutil.copy(src, ws / doc)
+        return
     if experiment == "realistic":
         # whole-repo + self-check tool + self-paced READY marker; TASK_realistic is self-contained,
         # so skip the full experiment's grading-tier addendum appended below.

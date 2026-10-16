@@ -415,9 +415,26 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
         return written
     cap = yaml.safe_load(capf.read_text()) or {}
     dirty = False
+    if entry.get("public_boundary"):
+        from .public_boundaries import verify_written
+
+        cap["public_boundary"] = copy.deepcopy(entry["public_boundary"])
+        verify_written(cap, d)
+        dirty = True
     regime, _ = CS.entry_binding(entry, binding)
     model_capsule = entry.get("kind") == "model" or entry.get("op") == "model"
-    if regime == "int" and _is_source_backed(entry):
+    from merlin.targetgen.native_storage_source import native_storage_source_spec
+
+    # An integer storage type does not make a cast or permutation a mesh MAC.
+    # This exception is limited to the validated nonaccelerating native source
+    # declaration. Its complete captured ABI and values are checked by the
+    # source writer; ordinary written-program placement checks still apply.
+    native_storage = (
+        native_storage_source_spec(entry)
+        if entry.get("source") == "pytorch" or entry.get("pytorch_ref")
+        else None
+    )
+    if regime == "int" and _is_source_backed(entry) and (model_capsule or native_storage is None):
         if model_capsule:
             # A whole model's contractions read internal tensors, so it is qualified by the isolated
             # verification of every device group it forms; without that evidence it is refused
@@ -542,7 +559,10 @@ def _cap_oracle_tiers(entry: dict, cap: dict) -> bool:
     capsule is admissible only as an extension of a sibling that WAS certified, so the thing it rests
     on has to be readable from the capsule itself rather than inferred from a naming convention.
     """
-    cap_to = str(entry.get("max_oracle_tier") or "")
+    # The cap may come from the profile entry or already sit on a carried capsule (a hand-authored or
+    # materialized member). Either way a written capsule must never demand a tier above its own cap:
+    # `required_oracle_tiers: [..., L3]` beside `max_oracle_tier: L2` is unrunnable as a corpus.
+    cap_to = str(entry.get("max_oracle_tier") or cap.get("max_oracle_tier") or "")
     if not cap_to:
         return False
     tiers = [str(t) for t in (cap.get("required_oracle_tiers") or ())]
@@ -553,8 +573,9 @@ def _cap_oracle_tiers(entry: dict, cap: dict) -> bool:
             f"leave the capsule demanding everything"
         )
     trimmed = tiers[: tiers.index(cap_to) + 1]
-    changed = trimmed != tiers
+    changed = trimmed != tiers or cap.get("max_oracle_tier") != cap_to
     cap["required_oracle_tiers"] = trimmed
+    cap["max_oracle_tier"] = cap_to
     if entry.get("extends"):
         cap["extends"] = str(entry["extends"])
         changed = True
@@ -858,6 +879,7 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
     # dtypes torch/torchAO does not faithfully model, e.g. int8xint8 systolic or block-scaled MX).
     if entry.get("source") == "pytorch" or entry.get("pytorch_ref"):
         from merlin.targetgen.application_inventory import int_mm_source_is_qualified
+        from merlin.targetgen.capsule_builtin_source import native_storage_source_spec
 
         # AN ENTRY THAT NAMES A QUANTIZATION SCHEME has said which arithmetic its program must contain,
         # so the float-regime restriction below does not apply to it. The restriction exists because a
@@ -867,7 +889,7 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
         # eager then computes the same quantized math, so the golden is right by construction.
         # For operation-derived slices, the source's exact digest-bound integer arithmetic is checked
         # independently. Static and dynamic whole-model quantization remain distinct source schemes.
-        if entry.get("quant_scheme") or (
+        if native_storage_source_spec(entry) is not None or entry.get("quant_scheme") or (
             entry.get("capture_op") == "int_matmul"
             and int_mm_source_is_qualified(entry.get("application_signature_match") or {})
         ):

@@ -25,6 +25,7 @@ from merlin.common import strict_json
 from .m2m_origin import M2MOriginError, git_origin, verify_frozen_receipt, verify_frozen_selector
 from .precision_staging import STAGING_API_REQUIREMENTS, output_staging_error
 from .python_preflight import _loader_env_reads
+from .sealed_inventory import _snapshot_rows, _verify_staged_selection
 from .sealed_python import _FLAGS, _TIMEOUT_SECONDS
 from .sealed_static import _bwrap_binary, _canonical_path, _digest, _file_digest, _json, _tree
 
@@ -55,11 +56,30 @@ _ARCHIVED_V3_ISSUER_SHA256 = "ff12b040ac7f98fb54f704e00f3c9764b1fc923072d2c9b1f3
 # This is replay-only: issue() still requires the current plan and issuer, and
 # the selection, staged source, runtime, inputs and output must still match.
 _PRE_CACHE_NORMALIZATION_V3_ISSUER_SHA256 = "03e1d28ebd4cc356928355490a13e329e5b73d134cdffa827f4aa60b29ab8b78"
+# Exact predecessor before checkpoint inventory reuse. Replay still verifies
+# its selected policy and bytes, with a fresh inventory after execution.
+_PRE_INVENTORY_REUSE_ISSUER_SHA256 = "b78a8d7f13785c9d0263e4149e38a4de0d9bfd43052e552213003d143fac7ba3"
+# Exact selected v2 issuer archived at a8eb1da93, before inventory reuse.
+# Replay retains its fixed command/policy and every selected snapshot check;
+# this does not authorize new issuance with historical producer bytes.
+_ARCHIVED_SELECTED_V2_ISSUER_SHA256 = "83af01552173c2ddd24d78996838bfb9d72b79abecc61b9a0e79690bf12ef4d5"
 _V1_SCOPE = "isolated selected FP32 CPU M2M capture; no Phase 0 admission"
 _V2_SCOPE = "isolated selected CPU M2M capture; no Phase 0 admission"
 _V3_SCOPE = "isolated selected CPU M2M capture with declared model inputs; no Phase 0 admission"
 _MAX_SNAPSHOT_BYTES = 16_000_000_000
 _MAX_FULL_CAPTURE_SECONDS = 43_200
+#: Upper bound for an operator-selected timeout on a checkpoint-free (v2) capture. Absent, a v2
+#: capture keeps the historical fixed timeout and its plan bytes stay unchanged.
+_MAX_SELECTED_CAPTURE_SECONDS = 14_400
+
+
+def _selected_timeout_valid(schema: str, value: Any) -> bool:
+    """Whether a plan's selected execution timeout is in its schema's bounds."""
+    if schema == SCHEMA_V3:
+        return type(value) is int and _TIMEOUT_SECONDS <= value <= _MAX_FULL_CAPTURE_SECONDS
+    return value is None or (type(value) is int and _TIMEOUT_SECONDS <= value <= _MAX_SELECTED_CAPTURE_SECONDS)
+
+
 _LAUNCH_PREFIX = (
     "import runpy,sys;"
     "sys.path[:0]=['/source/m2m-src','/opt/capture-venv/lib/python3.12/site-packages'];"
@@ -472,13 +492,7 @@ def _source_tree(
 
 def _snapshot_tree(root: Path) -> dict[str, Any]:
     # _tree rejects every symlink and checks file identity during hashing.
-    rows = _tree(root)
-    compact = [(name, *sorted(info.items())) for name, info in rows.items()]
-    return {
-        "members": len(rows),
-        "bytes": sum(row.get("bytes", 0) for row in rows.values()),
-        "sha256": _digest(_json(compact)),
-    }
+    return _snapshot_rows(_tree(root))
 
 
 def _declared_loader_env(
@@ -737,8 +751,11 @@ def prepare_plan(
             or not _TIMEOUT_SECONDS <= execution_timeout_seconds <= _MAX_FULL_CAPTURE_SECONDS
         ):
             raise SealedM2MError("v3 capture requires a selected timeout between 120 and 43200 seconds")
-    elif execution_timeout_seconds is not None:
-        raise SealedM2MError("v2 capture retains its historical fixed timeout")
+    elif not _selected_timeout_valid(version, execution_timeout_seconds):
+        raise SealedM2MError(
+            f"v2 capture timeout must be absent (historical {_TIMEOUT_SECONDS} s) or between "
+            f"{_TIMEOUT_SECONDS} and {_MAX_SELECTED_CAPTURE_SECONDS} seconds"
+        )
     merlin_root = worker.parents[1]
     if worker != merlin_root / "targetgen/_m2m_capture_worker.py" or not (merlin_root / "__init__.py").is_file():
         raise SealedM2MError("selected worker must belong to the selected Merlin source package")
@@ -858,7 +875,13 @@ def prepare_plan(
             if version == SCHEMA_V3
             else {}
         ),
-        **({"execution_timeout_seconds": execution_timeout_seconds} if version == SCHEMA_V3 else {}),
+        # V3 always selects a timeout; v2 records one only when the operator selected it, so an
+        # unselected v2 plan keeps its historical bytes and fixed timeout.
+        **(
+            {"execution_timeout_seconds": execution_timeout_seconds}
+            if version == SCHEMA_V3 or execution_timeout_seconds is not None
+            else {}
+        ),
         # Present only when selected, so a plan without options keeps its historical bytes.
         **({"worker_options": options} if options else {}),
     }
@@ -1303,41 +1326,6 @@ def _stage_source(plan: dict[str, Any], source: Path) -> None:
                 shutil.copytree(row["source"], destination, symlinks=False)
 
 
-def _verify_staged_selection(plan: dict[str, Any], source: Path, runtime: Path) -> dict[str, Any]:
-    """Reject bytes copied after selection changed, before executing any guest code."""
-    roots = {
-        "venv": runtime / "opt/capture-venv",
-        "base": runtime / Path(plan["base"]).relative_to("/"),
-        "m2m": source / "m2m-src/m2m",
-        "workload": source / "workload",
-        "schemas": source / "merlin-src/merlin/_data/schemas",
-    }
-    selected_trees = plan["selected_trees"]
-    if plan.get("frozen_origin") is not None:
-        try:
-            origin_commit = verify_frozen_receipt(
-                plan["frozen_origin"],
-                (source / "m2m-origin.json").read_bytes(),
-                Path(plan["m2m_root"]),
-                selected_trees["m2m"],
-            )
-        except (M2MOriginError, OSError) as exc:
-            raise SealedM2MError("staged frozen M2M origin differs from selection") from exc
-        if origin_commit != plan["m2m_commit"]:
-            raise SealedM2MError("staged frozen M2M origin revision differs from selected plan")
-    for name, path in roots.items():
-        if _snapshot_tree(path) != selected_trees[name]:
-            raise SealedM2MError(f"staged {name} bytes differ from the pre-execution selection")
-    if plan.get("schema") == SCHEMA_V3:
-        for row in plan["selected_inputs"]:
-            _verify_selected_input(row, source / "inputs" / row["guest_member"])
-    # External schemas are inserted after the original Merlin package snapshot.
-    if plan["schemas_root"] == str(Path(plan["merlin_root"]) / "_data/schemas"):
-        if _snapshot_tree(source / "merlin-src/merlin") != selected_trees["merlin"]:
-            raise SealedM2MError("staged Merlin bytes differ from the pre-execution selection")
-    return selected_trees["schemas"]
-
-
 def issue(
     plan: dict[str, Any],
     run_dir: Path,
@@ -1391,7 +1379,11 @@ def issue(
                 "execution_timeout_seconds": plan["execution_timeout_seconds"],
             }
             if plan["schema"] == SCHEMA_V3
-            else {}
+            else (
+                {"execution_timeout_seconds": plan["execution_timeout_seconds"]}
+                if "execution_timeout_seconds" in plan
+                else {}
+            )
         ),
     )
     if selected != plan:
@@ -1437,7 +1429,10 @@ def issue(
     _validate_snapshots(source, runtime, output, schema=plan["schema"])
     # Rehash the copied bytes against the antecedent selection, not mutable
     # host paths: a source change after prepare_plan must never be executed.
-    selected_schemas = _verify_staged_selection(plan, source, runtime)
+    source_rows, runtime_rows = _tree(source), _tree(runtime)
+    selected_schemas = _verify_staged_selection(
+        plan, source, runtime, source_rows=source_rows, runtime_rows=runtime_rows
+    )
     if _file_digest(source / "merlin-src/merlin/targetgen/_m2m_capture_worker.py") != plan["worker_sha256"]:
         raise SealedM2MError("worker snapshot differs from selected bytes")
     if plan.get("recipe") and _file_digest(source / "inputs/quant_recipe.json") != plan["recipe"]["sha256"]:
@@ -1450,8 +1445,9 @@ def issue(
                 raise SealedM2MError(f"system ELF snapshot differs from the pre-execution selection: {name}")
         elif _file_digest(copied) != _file_digest(Path(name)):
             raise SealedM2MError(f"system ELF snapshot differs from selected bytes: {name}")
-    source_digest = _snapshot_tree(source)
-    runtime_digest = _snapshot_tree(runtime)
+    source_digest = _snapshot_rows(source_rows)
+    runtime_digest = _snapshot_rows(runtime_rows)
+    del source_rows, runtime_rows
     if source_digest["bytes"] + runtime_digest["bytes"] > plan["max_snapshot_bytes"]:
         raise SealedM2MError("actual snapshot bytes exceed selected cap")
     output.mkdir()
@@ -1537,11 +1533,8 @@ def replay_verify(run_dir: Path, *, bwrap_binary: Path | None = None) -> dict[st
         dtype, recipe = plan.get("dtype"), plan.get("recipe")
         if dtype not in _FLOAT_DTYPES | {"int8"} or (recipe is not None) != (dtype == "int8"):
             raise SealedM2MError("pending M2M receipt has an unsupported dtype or recipe selection")
-        if schema == SCHEMA_V3 and (
-            type(plan.get("execution_timeout_seconds")) is not int
-            or not _TIMEOUT_SECONDS <= plan["execution_timeout_seconds"] <= _MAX_FULL_CAPTURE_SECONDS
-        ):
-            raise SealedM2MError("pending full capture has no selected bounded execution timeout")
+        if not _selected_timeout_valid(schema, plan.get("execution_timeout_seconds")):
+            raise SealedM2MError("pending capture has no selected bounded execution timeout")
         selected_digest = doc.get("capture_selection_sha256")
         if selected_digest is not None and (
             not isinstance(selected_digest, str)
@@ -1578,6 +1571,10 @@ def replay_verify(run_dir: Path, *, bwrap_binary: Path | None = None) -> dict[st
     )
     if schema in {SCHEMA, SCHEMA_V3} and doc.get("capture_selection_sha256") is not None:
         supported_issuer.add(_STRICT_JSON_SELECTED_ISSUER_SHA256)
+    if schema == SCHEMA and doc.get("capture_selection_sha256") is not None:
+        supported_issuer.add(_ARCHIVED_SELECTED_V2_ISSUER_SHA256)
+    if schema in {SCHEMA, SCHEMA_V3}:
+        supported_issuer.add(_PRE_INVENTORY_REUSE_ISSUER_SHA256)
     if schema in {SCHEMA, SCHEMA_V3} and "frozen_origin" not in plan:
         supported_issuer.add(_PRE_FROZEN_ORIGIN_ISSUER_SHA256)
     if (
@@ -1602,7 +1599,8 @@ def replay_verify(run_dir: Path, *, bwrap_binary: Path | None = None) -> dict[st
         raise SealedM2MError("pending M2M receipt has an unsupported policy")
     source, runtime, output = (run_dir / "snapshots/source", run_dir / "snapshots/guest-root", run_dir / "capture")
     _validate_snapshots(source, runtime, output, schema=schema)
-    if (_snapshot_tree(source), _snapshot_tree(runtime), _snapshot_tree(output)) != (
+    source_rows, runtime_rows = _tree(source), _tree(runtime)
+    if (_snapshot_rows(source_rows), _snapshot_rows(runtime_rows), _snapshot_tree(output)) != (
         doc.get("source"),
         doc.get("guest_root"),
         doc.get("output"),
@@ -1658,7 +1656,8 @@ def replay_verify(run_dir: Path, *, bwrap_binary: Path | None = None) -> dict[st
         if plan.get("schemas_root") == str(Path(str(plan.get("merlin_root"))) / "_data/schemas"):
             selected_roots["merlin"] = source / "merlin-src/merlin"
         for name, path in selected_roots.items():
-            if _snapshot_tree(path) != selected_trees[name]:
+            root, rows = (runtime, runtime_rows) if path.is_relative_to(runtime) else (source, source_rows)
+            if _snapshot_rows(rows, path.relative_to(root).as_posix()) != selected_trees[name]:
                 raise SealedM2MError(f"selected {name} bytes differ from the v2 plan")
         if _file_digest(source / "merlin-src/merlin/targetgen/_m2m_capture_worker.py") != plan.get("worker_sha256"):
             raise SealedM2MError("selected Merlin worker bytes differ from the v2 plan")
@@ -1687,6 +1686,7 @@ def replay_verify(run_dir: Path, *, bwrap_binary: Path | None = None) -> dict[st
     if materialized != doc.get("materialized"):
         raise SealedM2MError("materialized M2M receipt differs")
     bwrap = _bwrap_binary(bwrap_binary)
+    del source_rows, runtime_rows
     if _file_digest(bwrap) != doc.get("bwrap_sha256"):
         raise SealedM2MError("bubblewrap bytes differ from M2M receipt")
     with tempfile.TemporaryDirectory(prefix="m2m-replay-", dir=run_dir) as temporary:

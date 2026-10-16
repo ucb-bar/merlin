@@ -1,9 +1,8 @@
 """A declared target build helper must affect identity, never widen its package boundary."""
 
+import time
 from pathlib import Path
 from types import SimpleNamespace
-
-import time
 
 import pytest
 
@@ -28,9 +27,14 @@ def setup_target(tmp_path, monkeypatch):
 
 
 def test_declared_sibling_helper_changes_build_identity(tmp_path, monkeypatch):
+    from merlin.llvmlower import codegen
+
     _, helper, _ = setup_target(tmp_path, monkeypatch)
-    monkeypatch.setattr(BC, "recipe_token", lambda _: {"compile": ["synthetic-compiler"]})
+    monkeypatch.setattr(
+        BC, "recipe_token", lambda _: {"compile": ["synthetic-compiler"], "link": ["synthetic-compiler"]}
+    )
     monkeypatch.setattr(BC, "toolchain_token", lambda _: "synthetic-toolchain-digest")
+    monkeypatch.setattr(codegen, "clang", lambda: "synthetic-kernel-compiler")
     monkeypatch.delenv("MERLIN_ELF_BUILD_CACHE", raising=False)
 
     def identity():
@@ -92,6 +96,26 @@ def test_absent_hook_preserves_existing_backend_subtree(tmp_path, monkeypatch):
     assert helper not in BC.build_path("synthetic-target")
 
 
+def test_core_bound_renderer_has_readback_pins_without_external_support(monkeypatch):
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+    from merlin.targetgen.contract import readback_policy as RB
+
+    backend = BoundRoCCBackend("synthetic-target", '{"contract": {}}', None)
+    monkeypatch.setattr(base, "get_backend", lambda _: backend)
+
+    def no_external_support(_):
+        raise AssertionError("core renderer identity must not discover an external provider")
+
+    monkeypatch.setattr(target_registry, "resolve", no_external_support)
+    monkeypatch.setattr(BC, "recipe_token", lambda _: {"compile": ["synthetic-compiler"]})
+    paths = BC.build_path(backend.target)
+    assert paths is not None
+    assert set(backend.build_source_paths()) <= set(paths)
+    _, pins = RB.selected_build_inputs(backend.target, object(), policy=RB.ReadbackPolicy(RB.FULL_VALUES_BIN))
+    assert {pin["path"] for pin in pins} == {str(path) for path in paths}
+    assert all(pin["sha256"] == RB.file_sha256(Path(pin["path"])) for pin in pins)
+
+
 def test_a_same_size_rewrite_in_one_tick_still_changes_the_build_identity(tmp_path, monkeypatch):
     """The stat signature is not the content, and the memo must not pretend otherwise.
 
@@ -132,6 +156,9 @@ def test_a_quiescent_tree_is_still_memoized(tmp_path, monkeypatch):
     for path in paths:
         if path.exists():
             os.utime(path, ns=(old, old))
+    # Quiescence covers ctime too; rewriting mtime alone does not age a file.
+    observed_now = max(path.stat().st_ctime_ns for path in paths) + 10_000_000_000
+    monkeypatch.setattr(BC.time, "time_ns", lambda: observed_now)
 
     reads = []
     import merlin.common.provenance as PR

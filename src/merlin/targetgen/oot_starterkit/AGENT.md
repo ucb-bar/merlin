@@ -22,3 +22,8 @@ original declared function result types before exposing ordered value bindings.
 Arguments, repeated returns and individual result indices retain their identity;
 unsupported multi-block joins refuse. This boundary check is structural only and
 does not establish body semantics, effects, lowering or runtime authority.
+
+LLVM function `memory_effects` annotations retain their exact standard attribute
+kind and payload through parsing, verification and printing. The stock compiler
+owns payload legality; this parser neither infers body effects nor relaxes
+pointer storage correspondence or the original operation checks.

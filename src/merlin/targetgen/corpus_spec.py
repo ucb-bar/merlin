@@ -21,15 +21,13 @@ from typing import Any
 
 from merlin.targetgen.capsule_dram import dtype_bits
 
+from .capsule_intent import _semantic_block as _semantic_block
+
 # canonical dtype token -> (capsule.yaml spelling, MLIR spelling, is_integer). Keyed on the dtype, never
 # on a target — a target selects its dtypes via its compute-unit contract.
-#
-# The WIDTH is deliberately absent. It used to be a fourth literal column, and it was a second copy of a
-# fact the format registry already owns: it read 1 byte/element for mxfp6 and mxfp4, which are 6- and
-# 4-bit formats, so the two authorities disagreed about how large an MX tensor is. Nothing was
-# mis-addressed only because the one consumer read it on the integer path, where the literal happened to
-# be right. `dtype_info` derives the width from the registry instead, so there is one source and a new
-# format is a registry entry rather than an edit here.
+# Element widths come from the format registry through `dtype_info`, not this
+# spelling table. Sub-byte formats must retain their actual widths in address
+# calculations.
 _DTYPE = {
     "int8": ("i8", "i8", True),
     "i8": ("i8", "i8", True),
@@ -112,6 +110,9 @@ class CorpusBinding:
     scale_block: int | None = None
     # instruction-class source: a callable (op, output_dtype, epilogue, movement) -> [class,...]
     classes_for: Callable[..., list[str]] = field(default=lambda **_: [])
+    # Explicit data-only readout selection. None preserves legacy backend discovery;
+    # an empty mapping is an explicit absence and must not discover another provider.
+    readout_inputs: dict | None = None
 
     def cap_dtype(self, token: str) -> str:
         return dtype_info(token)[0]
@@ -389,7 +390,20 @@ def _classes_source(te, contract: dict, *, taxonomy: dict | None = None) -> Call
     """The instruction-class deriver for a matmul-family op. Two regimes, chosen by what the target ships:
     a self-hosted-ISA target (an ``isa_definition.py`` is present) derives its classes from the taxonomy;
     a RoCC/command target derives the RoCC semantic classes from its ``encoding`` map. Never hardcoded."""
+    # Explicit effect declarations avoid provider discovery and legacy issue schedules.
+    enc = contract.get("encoding") or {}
+    if "corpus_required_classes" in enc or "class_family" in enc:
+        from merlin.targetgen.corpus_effect_classes import source
+
+        return source(enc)
+
     from merlin.targetgen import isa_taxonomy as IT
+
+    from .corpus_instruction_roles import selected_classes
+
+    explicit_roles = selected_classes(contract)
+    if explicit_roles is not None:
+        return explicit_roles
 
     # A compute unit may declare that it IS a matrix extension whose encodings are derived by the
     # matrix-unit reader (``matrix_units.yaml``). That surface ships no isa_definition.py and no RoCC
@@ -500,7 +514,13 @@ def profile_datapath(profile: dict, *, numeric_only: bool = False) -> dict:
 
 
 def derive_binding(
-    te, datapath: dict, *, contract: dict | None = None, facts: dict | None = None, taxonomy: dict | None = None
+    te,
+    datapath: dict,
+    *,
+    contract: dict | None = None,
+    facts: dict | None = None,
+    taxonomy: dict | None = None,
+    defer_classes: bool = False,
 ) -> CorpusBinding:
     """Derive the per-target binding from the descriptor + the profile's ``datapath`` block (compare +
     tolerances + optional requant-output dtype — the numeric contract the manifest does not yet carry)."""
@@ -526,6 +546,11 @@ def derive_binding(
     integer = dtype_info(accum)[3]
     scaling = datapath.get("scaling") or cu.get("scaling")
     tiers = datapath.get("required_oracle_tiers") or sorted(inferred_oracle_tiers(te.target, te.sim_via))
+    readout_inputs = None
+    if (c.get("runner") or {}).get("backend") == "chipyard_rocc":
+        from merlin.runtime.backends.chipyard_rocc import readout_metadata
+
+        readout_inputs = readout_metadata(c)
     return CorpusBinding(
         target=te.target,
         tile_dim=_tile_dim(te.target, c, operand=operand, facts=facts),
@@ -543,7 +568,10 @@ def derive_binding(
         subnormal_operand_flush=bool(datapath.get("subnormal_operand_flush", False)),
         inapplicable_tiers=_inapplicable_tiers(datapath, tiers),
         semantic_defaults=dict(datapath.get("semantic_defaults") or {}),
-        classes_for=_classes_source(te, c, taxonomy=taxonomy),
+        classes_for=(lambda **kw: _classes_source(te, c, taxonomy=taxonomy)(**kw))
+        if defer_classes
+        else _classes_source(te, c, taxonomy=taxonomy),
+        readout_inputs=readout_inputs,
     )
 
 
@@ -700,12 +728,25 @@ def requant_shift_for(entry: dict, binding: CorpusBinding, epilogue: list[str], 
 
 def _readout_selectors(binding: CorpusBinding):
     """The target's declared readouts, or ``None`` when it describes none (UNKNOWN, never 'anything goes')."""
-    from merlin.targetgen.readout_facet import epilogue_readouts
+    from merlin.targetgen.readout_facet import ReadoutSupportError, epilogue_readouts, validated_readouts
+
+    if binding.readout_inputs is not None:
+        return validated_readouts(binding.readout_inputs.get("readouts")) or None
 
     try:
         return epilogue_readouts(binding.target) or None
+    except ReadoutSupportError:
+        raise  # selected support owes readout facts and cannot serve them: refuse, never "unknown"
     except Exception:  # noqa: BLE001 -- an unreadable declaration evidences nothing
         return None
+
+
+def _readout_routes(binding: CorpusBinding):
+    from merlin.targetgen.readout_facet import epilogue_stage_routes, validated_stage_routes
+
+    if binding.readout_inputs is not None:
+        return validated_stage_routes(binding.readout_inputs.get("stage_routes"))
+    return epilogue_stage_routes(binding.target)
 
 
 def _readout_selector_for(
@@ -723,15 +764,12 @@ def _readout_selector_for(
     by a check that had the declaration available the whole time. Generation is where this is cheap to
     find out.
     """
-    from merlin.targetgen.readout_facet import epilogue_readouts, epilogue_stage_routes
     from merlin.verify.epilogue_applicability import selectors_applying
 
-    readouts = epilogue_readouts(binding.target)
+    readouts = _readout_selectors(binding)
     if not readouts:
         return None
-    routes = tuple(
-        route for route in epilogue_stage_routes(binding.target) if route.operand_role in available_operand_roles
-    )
+    routes = tuple(route for route in _readout_routes(binding) if route.operand_role in available_operand_roles)
     applying = selectors_applying(readouts, epilogue, routes=routes, composition="contraction")
     if applying:
         return applying[0]
@@ -782,6 +820,17 @@ def _resolve_output_dtype(
     silently substituted default.
     """
     declared = (entry or {}).get("output_dtype")
+    if (entry or {}).get("outcome") == "refuse":
+        # A MUST-REFUSE capsule states, on purpose, a computation no readout performs: that is what it
+        # tests (merlin.targetgen.expected_refusal). The readout check below, which keeps every other
+        # capsule honest, is exactly the fact it relies on, so it is not applied; the committed width is
+        # the entry's own, else the requantized width the stages would narrow to.
+        if declared:
+            dtype_info(str(declared))
+            return str(declared)
+        if binding.requant_output_dtype and any(st in epilogue for st in REQUANTIZING_STAGES):
+            return binding.requant_output_dtype
+        return binding.accum_dtype
     if declared:
         dtype_info(str(declared))  # raises on an unknown token -- fail closed, never fall back
         # AN AUTHOR MAY CHOOSE THE WIDTH; NOBODY MAY CHOOSE ONE THE HARDWARE CANNOT HONOUR. The
@@ -793,13 +842,10 @@ def _resolve_output_dtype(
         if epilogue:
             _selectors = _readout_selectors(binding)
             if _selectors is not None:
-                from merlin.targetgen.readout_facet import epilogue_stage_routes
                 from merlin.verify.epilogue_applicability import selectors_applying
 
                 routes = tuple(
-                    route
-                    for route in epilogue_stage_routes(binding.target)
-                    if route.operand_role in available_operand_roles
+                    route for route in _readout_routes(binding) if route.operand_role in available_operand_roles
                 )
                 _ok = selectors_applying(
                     _selectors,
@@ -1913,8 +1959,8 @@ def build_gemv_batched(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
 
 
 def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
-    """An im2col conv2d capsule (op == conv2d): NHWC IFM + pre-im2col'd weight [KH*KW*Ci, Cout] -> a resident
-    matmul over conv windows, output [Ho*Wo, Cout]. Reuses the runtime's canonical conv geometry so the golden
+    """A conv2d capsule (op == conv2d): NHWC IFM and a weight laid out ``[tap_h, tap_w, channel] x Cout``
+    (``[KH*KW*Ci, Cout]``), output ``[Ho*Wo, Cout]``. Reuses the runtime's canonical conv geometry so the golden
     (capsule_golden conv2d branch) and the harness agree. Native operand dtype (e.g. int8)."""
     from merlin.runtime.commandbuffer import conv_out_dims
 
@@ -1952,7 +1998,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "layout": "nhwc",
         "epilogue": epilogue,
         "output_dtype": odt,
-        "semantic": "conv2d_im2col",
+        "semantic": "conv2d",
     }
     # A pooling epilogue is fused onto the conv's store path (the fused conv loop takes the window and
     # stores the pooled result), so it rides on this op's own attributes. ``pool_in_dims`` is DERIVED
@@ -2378,118 +2424,6 @@ BUILDERS["component_program"] = build_component_program
 #: Capsule kind -> the generalization axis it probes. A fact about what the capsule tests, not an
 #: opinion about it, so it is derived rather than re-typed on every entry.
 _AXIS_BY_KIND: dict[str, str] = {"isa": "seen", "layer": "composition", "model_slice": "composition", "model": "model"}
-
-
-def _semantic_block(entry: dict, binding: CorpusBinding) -> dict:
-    """The capsule's generalization-intent block: half derived, half authorial.
-
-    ``semantic_family`` is DERIVED from the op — the same mapping the eligibility oracle and the
-    leave-one-family-out splitter already fall back to, so a generated capsule and a graded capsule can
-    never disagree about which family they belong to.
-
-    ``must_accelerate`` / ``generalization_axis`` are NOT derivable: they are the author's claim about
-    what this capsule is for, so they come from the profile entry (or the profile's
-    ``datapath.semantic_defaults``). ⚠️ ``must_accelerate`` defaults to FALSE on purpose. It is the
-    strongest assertion in the block — an eligible region that falls back is a hard failure — and
-    defaulting it true would turn every generated capsule into a gate the moment this lands.
-
-    Emitting this here is what stops a corpus regeneration from silently deleting the annotation:
-    before, the 40 radiance blocks were hand-written and ``_write_capsule`` dumps the dict wholesale,
-    so a regen would have zeroed the only working generalization annotation in the repo.
-    """
-    from merlin.targetgen import semantic_families as _sf
-
-    defaults = dict(getattr(binding, "semantic_defaults", None) or {})
-    # ⚠️ NOT ``entry["semantic"]`` -- a profile entry already uses that key for a free-form op-semantics
-    # label ("quantized_linear", "matmul_mxu0") that flows into ``operation.attributes.semantic``.
-    # Reusing it here would collide with 12 existing entries across gemmini and atlas and crash the
-    # generator, so the generalization-intent override gets a key of its own.
-    raw = entry.get("generalization")
-    authored = dict(raw) if isinstance(raw, dict) else {}
-    fam = authored.get("semantic_family") or _sf.from_op(entry.get("op", "matmul"))
-    block: dict = {}
-    if fam:
-        block["semantic_family"] = fam
-    # The axis follows the capsule KIND, which is a fact about what the capsule tests rather than an
-    # opinion: an ``isa`` capsule exercises a primitive the corpus has SEEN, a ``model_slice`` exercises
-    # a COMPOSITION of primitives, and a whole ``model`` is the end-to-end integration case. Deriving it
-    # keeps 40 annotations from having to be re-typed and keeps a new capsule from being mislabelled.
-    kind = entry.get("kind", "isa")
-    axis = authored.get("generalization_axis") or defaults.get("generalization_axis") or _AXIS_BY_KIND.get(kind, "seen")
-    block["generalization_axis"] = axis
-    # A whole-model capsule spans families by construction, is never held out (see
-    # generalization_splits), and is expected to contain regions the target cannot run -- so it must
-    # never carry must_accelerate, whatever the corpus default says.
-    #
-    # ⚠️ NEITHER MAY A CAPSULE THAT FORBIDS THE MESH. `lanes.forbid: [on_mesh]` is the negative lane:
-    # the capsule exists to prove the compiler does NOT put this work on the accelerator, and
-    # `must_accelerate: true` demands the opposite. Emitting both produces a capsule that cannot pass
-    # under any behaviour, and it is produced by exactly the combination that looks safest -- a
-    # corpus-wide `semantic_defaults: {must_accelerate: true}` meeting a host-only capsule. Measured:
-    # declaring that default on one profile gave `SY_host_only_elementwise_map` and
-    # `SY_host_only_reduction` `forbid: [on_mesh]` alongside `must_accelerate: true`. The lane
-    # declaration is the more specific statement and wins, structurally rather than by an exception
-    # list -- the same treatment `kind == "model"` already gets above.
-    lanes = entry.get("lanes") or {}
-    forbids_mesh = "on_mesh" in {str(x) for x in (lanes.get("forbid") or ())}
-    must_default = False if (kind == "model" or forbids_mesh) else bool(defaults.get("must_accelerate", False))
-    # An AUTHORED `true` cannot override the negative lane either: the contradiction is the same
-    # whichever half asserted it, and a capsule declaring both is an authoring error to report rather
-    # than a preference to honour.
-    authored_must = authored.get("must_accelerate", must_default)
-    if forbids_mesh and bool(authored_must):
-        raise ValueError(
-            f"{entry.get('name', '<unnamed>')}: lanes.forbid names 'on_mesh' while must_accelerate is "
-            f"true. The negative lane exists to prove this work does NOT reach the accelerator, so the "
-            f"two demands cannot both hold and the capsule could not pass under any behaviour"
-        )
-    block["must_accelerate"] = bool(authored_must)
-    # WHY the strongest assertion was withheld. The schema has a field for it, and for the interop and
-    # host-island capsules it is the whole contract: they withhold ``must_accelerate`` on purpose,
-    # because host-lane work is the behaviour under test rather than a fallback failure, and the demand
-    # they DO make is `lanes.require`. That reason was hand-written into the capsule after generation
-    # and therefore deleted by the next regeneration -- measured on three gemmini capsules at once --
-    # which left a withheld assertion looking like an author who simply never made one. Same argument
-    # as the block around it: emit it from the profile so a regen preserves it.
-    reason = authored.get("not_asserted_reason", defaults.get("not_asserted_reason"))
-    if reason:
-        block["not_asserted_reason"] = reason
-    block["eligible"] = authored.get("eligible", defaults.get("eligible", "auto"))
-    # FAMILIES THIS CAPSULE FUSES, so that a fused-only family can be covered at all.
-    #
-    # A target may declare a family reachable ONLY in composition -- `elementwise_map` with
-    # `composed_with: [contraction]` on the target measured here. A standalone elementwise capsule would
-    # then be the WRONG capsule (the eligibility oracle refuses it as a false fallback), so the only
-    # capsule that can ever evidence that cell is a contraction with an epilogue. Crediting a capsule for
-    # exactly one family therefore left such a cell permanently uncoverable while the requirement kept
-    # demanding it -- a gap no capsule could close, reported forever as corpus debt.
-    #
-    # Derived, not declared: each epilogue stage the capsule carries is resolved to its family through
-    # the same op->family table everything else uses, and kept only when the manifest says that family
-    # composes with this capsule's own. A stage whose family does not resolve is recorded rather than
-    # dropped, because silently withholding coverage a capsule earned is the failure this replaces.
-    fused, unresolved = _fused_families(entry, fam, binding)
-    if fused:
-        block["composed_families"] = sorted(fused)
-    if unresolved:
-        block["composed_families_unresolved"] = sorted(unresolved)
-    # ANY OTHER AUTHORED KEY SURVIVES. The block above consumes the keys it knows and, until this,
-    # silently dropped the rest -- so a capsule synthesized to discharge a NAMED obligation could not
-    # say which one, and the coverage reader had to re-derive the answer from attributes. That works
-    # only when the obligation is expressible in attributes: a `padUNKNOWN` convolution window is not,
-    # because the member can only spell zero padding, so the obligation it was built for could never
-    # be matched by it. Carrying the reference is what closes that, and it is general rather than a
-    # special case for one axis.
-    for key, value in authored.items():
-        if key not in block and key not in (
-            "must_accelerate",
-            "eligible",
-            "not_asserted_reason",
-            "semantic_family",
-            "generalization_axis",
-        ):
-            block[key] = value
-    return block
 
 
 def _fused_families(entry: dict, family: str | None, binding: CorpusBinding) -> tuple[set, set]:

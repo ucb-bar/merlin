@@ -510,11 +510,15 @@ def build_operation_accounting(
     application_graphs: dict[str, dict] | None = None,
     host_capabilities: dict | None = None,
     capture_execution_attestations: dict[str, dict] | None = None,
+    application_sources: dict[str, bytes] | None = None,
 ) -> dict:
     """Build deterministic, complete workload partitions from selected immutable inputs.
 
     ``capture_execution_attestations`` are carried per application unchanged; this
     module never judges them (the coverage gate re-verifies each from disk).
+    ``application_sources`` supplies the exact captured bytes for declarations
+    requiring parsed source bodies. This enables host declaration screening,
+    not numerical qualification or compiler lowering certification.
     ``None`` means the detailed inventory is unavailable, not an empty covered
     workload. Only a supplied selected contract is re-screened for hardware
     admission; no target registry or ambient facts are read here.
@@ -540,6 +544,8 @@ def build_operation_accounting(
             raise ValueError("empty operation inventory must explicitly declare status not_declared")
     else:
         applications = {}
+    if application_sources is not None and set(application_sources) != set(applications):
+        raise ValueError("parsed source admission requires the exact selected application roster")
     capability_map = None
     if capability_contract is not None:
         from merlin.targetgen.eligibility import capability_map_from_contract
@@ -551,6 +557,23 @@ def build_operation_accounting(
 
     for label, application in sorted(applications.items()):
         selected_graph = (application_graphs or {}).get(label) or application.get("operation_graph")
+        parsed_operations = None
+        if application_sources is not None:
+            from merlin.common import mlir_query as mq
+            from merlin.frontends.capture_normalization import normalize_capture_mlir
+
+            raw = application_sources[label]
+            if not isinstance(raw, bytes) or hashlib.sha256(raw).hexdigest() != application["capture_sha256"]:
+                raise ValueError("parsed source admission differs from selected capture bytes")
+            normalized, _ = normalize_capture_mlir(raw.decode("utf-8"))
+            if (
+                selected_graph is not None
+                and hashlib.sha256(normalized.encode()).hexdigest() != selected_graph.get("normalized_mlir_sha256")
+            ):
+                raise ValueError("parsed source admission differs from selected normalized graph")
+            parsed_operations = tuple(mq.walk(mq.parse(normalized)))
+            if len(parsed_operations) != application["n_operations"]:
+                raise ValueError("parsed source admission operation count differs from selected inventory")
         entries = []
         for row in sorted(application["signatures"], key=lambda item: min(item["ordinals"])):
             entry = {
@@ -566,6 +589,10 @@ def build_operation_accounting(
                     capability_contract=capability_contract,
                     capability_map=capability_map,
                     host_capabilities=host_capabilities,
+                    source_operations=(
+                        tuple(parsed_operations[ordinal] for ordinal in row["ordinals"])
+                        if parsed_operations is not None else None
+                    ),
                 ),
                 "lowering_status": "unverified",
             }

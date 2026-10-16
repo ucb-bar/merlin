@@ -67,8 +67,18 @@ def _output_root(path: str | Path) -> Path:
     return output
 
 
-def _saved_reference(capture: Path, name: str | None, *, execution: bool) -> np.ndarray | None:
-    verification = verify_capture_receipt(capture / "model.mlir")
+def _saved_reference(
+    capture: Path,
+    name: str | None,
+    *,
+    execution: bool,
+    materialized_inputs=None,
+) -> np.ndarray | None:
+    verification = (
+        {"status": "verified_materialized"}
+        if materialized_inputs is not None and materialized_inputs.verify(capture)
+        else verify_capture_receipt(capture / "model.mlir")
+    )
     if verification.get("status") != "verified_materialized":
         raise BaremetalModelError(f"saved capture receipt is not byte-verified: {verification.get('errors')}")
     for required in ("inputs.npz", "input_order.json", "golden.npy"):
@@ -82,7 +92,11 @@ def _saved_reference(capture: Path, name: str | None, *, execution: bool) -> np.
     if (capture / "goldens.npz").exists() or (capture / "output_order.json").exists():
         raise BaremetalModelError("multi-output captures have no complete bare-metal OUT gate")
     reference = capture / name
-    recorded = json.loads((capture / "capture_receipt.json").read_text()).get("artifacts") or {}
+    recorded = (
+        materialized_inputs.verify(capture)
+        if materialized_inputs is not None
+        else json.loads((capture / "capture_receipt.json").read_text()).get("artifacts") or {}
+    )
     if not reference.is_file() or reference.is_symlink() or (recorded.get(name) or {}).get("sha256") != _sha(reference):
         raise BaremetalModelError(f"reference {name!r} is absent or not bound by the capture receipt")
     golden = np.load(reference, allow_pickle=False)
@@ -91,6 +105,169 @@ def _saved_reference(capture: Path, name: str | None, *, execution: bool) -> np.
     if golden.size > 1_048_576:
         raise BaremetalModelError("complete chunked OUT observability is limited to 1048576 elements")
     return golden.reshape(-1)
+
+
+def _full_references(
+    capture: Path,
+    reference_file: str | None,
+    *,
+    materialized_inputs=None,
+) -> list[tuple[str, np.ndarray | None]]:
+    """``[(name, reference or None)]`` in forward-result order for a full-readback execution.
+
+    A capture that states every result (``output_order.json`` with one array each in ``goldens.npz``)
+    references them all. Otherwise result zero is held to the one explicit ``reference_file`` and any
+    further result is recorded as having no capture reference (a caller may hold it to an independent
+    host execution of the same program). Every file must be bound by the capture receipt or lie in the
+    capture tree whose digest this compilation records."""
+    from merlin.llvmlower.c_runtime import _out_specs
+
+    recorded = (
+        materialized_inputs.verify(capture)
+        if materialized_inputs is not None
+        else json.loads((capture / "capture_receipt.json").read_text()).get("artifacts") or {}
+    )
+
+    def present(name: str, *, receipt_bound: bool) -> Path:
+        path = capture / name
+        if not path.is_file() or path.is_symlink():
+            raise BaremetalModelError(f"reference {name!r} is absent from the capture")
+        if receipt_bound and (recorded.get(name) or {}).get("sha256") != _sha(path):
+            raise BaremetalModelError(f"reference {name!r} is not bound by the capture receipt")
+        return path
+
+    results = len(_out_specs(capture / "model.mlir"))
+    if (capture / "output_order.json").exists() or (capture / "goldens.npz").exists():
+        names = [str(x) for x in json.loads(present("output_order.json", receipt_bound=False).read_text())]
+        archive = np.load(present("goldens.npz", receipt_bound=False), allow_pickle=False)
+        if len(names) != results or len(set(names)) != len(names) or set(names) != set(archive.files):
+            raise BaremetalModelError("output_order.json and goldens.npz disagree with the forward's results")
+        return [(name, np.asarray(archive[name])) for name in names]
+    if reference_file is None or Path(reference_file).name != reference_file or not reference_file.endswith(".npy"):
+        raise BaremetalModelError("execution needs one explicit in-bundle .npy reference_file for result zero")
+    first = np.load(present(reference_file, receipt_bound=True), allow_pickle=False)
+    return [(Path(reference_file).stem, first), *((f"out{i}", None) for i in range(1, results))]
+
+
+def _agreement(value: np.ndarray, reference: np.ndarray, tolerance: dict[str, float] | None) -> dict[str, Any]:
+    """Exact (bit for bit, or integer equality) without a tolerance; element-wise atol/rtol with one."""
+    reference = np.asarray(reference)
+    if value.size != reference.size:
+        return {"passed": False, "note": f"printed {value.size} of {reference.size} elements"}
+    flat, ref = value.reshape(-1), reference.reshape(-1)
+    if tolerance is None:
+        if flat.dtype == np.float32 and ref.dtype == np.float32:
+            differ = int(np.count_nonzero(flat.view(np.uint32) != ref.view(np.uint32)))
+        elif flat.dtype.kind in "iub" and ref.dtype.kind in "iub":
+            differ = int(np.count_nonzero(flat.astype(np.int64) != ref.astype(np.int64)))
+        else:
+            return {"passed": False, "note": f"{flat.dtype} cannot be exact against {ref.dtype}"}
+        return {"passed": differ == 0, "mismatched_elements": differ, "of": int(ref.size)}
+    from merlin.perf.float_accuracy import compare
+
+    agreement = compare(flat.astype(np.float64), ref.astype(np.float64), tolerance["atol"], tolerance["rtol"])
+    return {**agreement, "passed": agreement["within"] == agreement["of"]}
+
+
+def _spike_extension_backend(target: str):
+    """The target backend that runs ELFs on the functional simulator WITH its accelerator extension.
+
+    ``None`` for a target whose backend declares no extension (a host-only image then runs on the
+    plain simulator); an extension that is declared but cannot be resolved refuses the run."""
+    from merlin.runtime.backends import base
+
+    try:
+        backend = base.get_backend(target)
+    except KeyError:
+        return None
+    if not callable(getattr(backend, "spike_extension", None)) or not callable(getattr(backend, "run_elf", None)):
+        return None
+    return backend
+
+
+def _judge_prefix(console: str, built: dict, golden: np.ndarray, output: Path, receipt: dict) -> None:
+    """The historical one-output protocol: the printed prefix, bit for bit, against the reference."""
+    from merlin.runtime.backends.spike_model import parse_console
+
+    if isinstance(console, bytes):
+        console = console.decode("utf-8", errors="replace")
+    console_path = output / "console.log"
+    console_path.write_text(console, encoding="utf-8")
+    receipt["output"].update({"console": str(console_path), "console_sha256": _sha(console_path)})
+    observed = parse_console(console)
+    if not isinstance(observed, dict):
+        raise BaremetalModelError("whole-model console parser returned no structured result")
+    if observed.get("metrics", {}).get("build_hash") != built.get("build_hash"):
+        raise BaremetalModelError("whole-model console does not identify the linked build")
+    if observed.get("metrics", {}).get("memref_rank_mismatch") != 0:
+        raise BaremetalModelError("whole-model console lacks a clean memref-rank diagnostic")
+    values = np.asarray(observed["outputs"], dtype=np.float32).reshape(-1)
+    if values.size != golden.size or not np.isfinite(values).all():
+        raise BaremetalModelError("whole-model OUT is partial or nonfinite")
+    if not np.array_equal(values.view(np.uint32), golden.view(np.uint32)):
+        mismatched = int(np.count_nonzero(values.view(np.uint32) != golden.view(np.uint32)))
+        raise BaremetalModelError(f"whole-model output differs from declared reference in {mismatched} elements")
+    receipt["output"].update(
+        {"elements": int(golden.size), "mismatched_elements": 0, "metrics": observed.get("metrics") or {}}
+    )
+
+
+def console_text_metrics(text: str) -> dict[str, str]:
+    """``METRIC <name> <value>`` lines as strings (a build hash is hex, not an integer)."""
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) == 3 and parts[0] == "METRIC":
+            out[parts[1]] = parts[2]
+    return out
+
+
+def read_full_outputs(console: bytes, capture: Path, built_hash: str | None) -> tuple[list[np.ndarray], dict]:
+    """Every forward result decoded from a full-readback console, plus its text metrics.
+
+    Refuses a console that does not identify ``built_hash`` or reports a memref-rank refusal."""
+    from merlin.llvmlower.c_runtime import _out_specs
+    from merlin.runtime.out_bin import binary_console_diagnostics, parse_binary_console_details
+    from merlin.runtime.whole_model_readback import decode_outputs
+
+    if not isinstance(console, bytes):
+        raise BaremetalModelError("a full-readback console must be read as raw bytes")
+    outputs, _numeric, frames = parse_binary_console_details(console)
+    metrics = console_text_metrics(binary_console_diagnostics(console).decode("utf-8", errors="replace"))
+    if built_hash is not None and metrics.get("build_hash") != built_hash:
+        raise BaremetalModelError("whole-model console does not identify the linked build")
+    if metrics.get("memref_rank_mismatch") != "0":
+        raise BaremetalModelError("whole-model console lacks a clean memref-rank diagnostic")
+    values = decode_outputs(outputs, frames, _out_specs(capture / "model.mlir"))
+    return values, metrics
+
+
+def _judge_full_readback(console, built, capture, references, tolerance, output: Path) -> dict[str, Any]:
+    console_path = output / "console.bin"
+    console_path.write_bytes(console if isinstance(console, bytes) else console.encode("utf-8"))
+    values, metrics = read_full_outputs(console, capture, built.get("build_hash"))
+    np.savez(output / "outputs.npz", **{f"out{i}": value for i, value in enumerate(values)})
+    record: dict[str, Any] = {
+        "console": str(console_path),
+        "console_sha256": _sha(console_path),
+        "outputs_npz": str(output / "outputs.npz"),
+        "metrics": metrics,
+    }
+    if references is None:
+        return record
+    if len(references) != len(values):
+        raise BaremetalModelError(f"the forward has {len(values)} results and the capture states {len(references)}")
+    per_output = []
+    for (name, reference), value in zip(references, values, strict=True):
+        if reference is None:
+            per_output.append({"name": name, "passed": True, "status": "no_capture_reference"})
+            continue
+        per_output.append({"name": name, "status": "compared", **_agreement(value, reference, tolerance)})
+    record["per_output"] = per_output
+    failed = [row["name"] for row in per_output if not row["passed"]]
+    if failed:
+        raise BaremetalModelError(f"whole-model results differ from the capture's references: {failed}")
+    return record
 
 
 def _native_engine(target: str, run: str, facts: dict[str, str]):
@@ -121,16 +298,49 @@ def compile_saved_model(
     rtl_facts: str | Path | None = None,
     device: Any | None = None,
     math_archive_symbols: Sequence[str] | None = None,
+    readback: str = "prefix",
+    group_profile: bool = False,
+    tolerance: dict[str, float] | None = None,
+    materialized_inputs=None,
+    respect_captured_quantization_scope: bool = False,
+    host_llvm_bitcode: bool = False,
+    blob_weights: bool = True,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
+    ``blob_weights`` stores each routed weight once: the device-layout copy goes to the weights blob and
+    the original the device alone read is dropped (:mod:`merlin.llvmlower.blob_weights`).
+
+    ``readback="full"`` builds the image to print every forward result complete
+    (:mod:`merlin.runtime.whole_model_readback`); execution then holds each result to the capture's
+    own reference (``goldens.npz`` + ``output_order.json``, or the one ``reference_file``), exactly or
+    within ``tolerance`` (``{atol, rtol}``). ``group_profile`` brackets every routed device-group call
+    with cycle counts and records them. A ``spike`` run goes through the target backend with its
+    accelerator extension when the backend declares one.
+
     ``reference_file`` is required for execution because a weight-only capture's
     ``golden.npy`` is not necessarily the reference for a W8A8 execution.  This
-    executor supports one complete float32 OUT, using chunked Spike console
-    records above 4096 values (at most 1048576 values).
+    prefix executor supports one complete float32 OUT, using chunked Spike
+    console records above 4096 values (at most 1048576 values). Full readback
+    uses the separate typed binary protocol for every result.
     """
     if run not in {"none", "spike", "gsim", "verilator"}:
         raise BaremetalModelError(f"unsupported bare-metal run {run!r}")
+    if readback not in {"prefix", "full"}:
+        raise BaremetalModelError(f"unsupported readback {readback!r}; choose prefix or full")
+    if tolerance is not None and (
+        not isinstance(tolerance, dict)
+        or set(tolerance) != {"atol", "rtol"}
+        or any(isinstance(v, bool) or not isinstance(v, int | float) or v < 0 for v in tolerance.values())
+    ):
+        raise BaremetalModelError("tolerance declares exactly non-negative atol and rtol")
+    full = readback == "full"
+    if type(respect_captured_quantization_scope) is not bool:
+        raise BaremetalModelError("captured quantization scope must be an explicit Boolean")
+    if type(host_llvm_bitcode) is not bool:
+        raise BaremetalModelError("host LLVM bitcode transport must be an explicit Boolean")
+    if type(blob_weights) is not bool:
+        raise BaremetalModelError("blob weights must be an explicit Boolean")
     if type(arena_mb) is not int or arena_mb < 1 or type(timeout_s) is not int or timeout_s < 1:
         raise BaremetalModelError("arena_mb and timeout_s must be positive integers")
     paths = [Path(capture), Path(package), Path(board_catalog), Path(dts)]
@@ -172,13 +382,34 @@ def compile_saved_model(
             "rtl_facts": str(rtl_facts) if rtl_facts else None,
             "arena_mb": arena_mb,
             "timeout_s": timeout_s,
+            "readback": readback,
+            "group_profile": bool(group_profile),
+            "tolerance": tolerance,
+            "blob_weights": blob_weights,
         },
     }
     try:
         capture_tree = MI.strict_tree_sha256(capture_path)
         package_tree = MI.strict_tree_sha256(package_path)
         catalog_sha, dts_sha = _sha(catalog_path), _sha(dts_path)
-        golden = _saved_reference(capture_path, reference_file, execution=run != "none")
+        if materialized_inputs is not None:
+            from merlin.compile.materialized_model_inputs import MaterializedModelInputs
+
+            if type(materialized_inputs) is not MaterializedModelInputs:
+                raise BaremetalModelError("explicit trusted materialized model binding required")
+            materialized_inputs.verify(capture_path)
+            receipt["inputs"]["materialization"] = materialized_inputs.record()
+        golden = _saved_reference(
+            capture_path,
+            reference_file,
+            execution=run != "none" and not full,
+            materialized_inputs=materialized_inputs,
+        )
+        references = (
+            _full_references(capture_path, reference_file, materialized_inputs=materialized_inputs)
+            if full and run != "none"
+            else None
+        )
         boards = load_boards(catalog_path)
         selected = boards.get(board)
         if selected is None or selected.target != target:
@@ -229,7 +460,9 @@ def compile_saved_model(
                 "dts_sha256": dts_sha,
                 "host_isa": isas[0],
                 "simulator_isa": marches[0],
-                "golden_sha256": _sha(capture_path / reference_file) if golden is not None else None,
+                "golden_sha256": _sha(capture_path / reference_file)
+                if golden is not None or (references is not None and reference_file)
+                else None,
             }
         )
         if selection is not None:
@@ -237,22 +470,36 @@ def compile_saved_model(
         build_options = {"math_archive_symbols": math_archive_symbols} if math_archive_symbols is not None else {}
         if golden is not None and golden.size > 4096:
             build_options["output_dump_cap"] = int(golden.size)
-        built = spike_model.build(
-            capture_path,
-            output_path / "build",
-            arena_mb=arena_mb,
-            dram_base=selected.dram_base,
-            dram_bytes=selected.dram_bytes,
-            code_reserve=selected.code_reserve,
-            int8_compute=bool(pkg.is_int8),
-            backend=pkg.backend,
-            rvv_schedule=pkg.schedule_text if pkg.backend == "rvv" else None,
-            cflags_override=list(pkg.cflags),
-            vlen=selected.vlen if pkg.backend == "rvv" else None,
-            console=selected.console,
-            device=device,
-            **build_options,
-        )
+        if respect_captured_quantization_scope:
+            receipt["inputs"]["respect_captured_quantization_scope"] = True
+        if host_llvm_bitcode:
+            receipt["inputs"]["host_llvm_bitcode"] = True
+        if respect_captured_quantization_scope:
+            from merlin.llvmlower.quant_scope import FEATURE as captured_quantization_scope
+
+            build_options["features"] = frozenset({captured_quantization_scope})
+        from merlin.llvmlower.blob_weights import requested as blob_weights_requested
+
+        with blob_weights_requested(blob_weights):
+            built = spike_model.build(
+                capture_path,
+                output_path / "build",
+                arena_mb=arena_mb,
+                dram_base=selected.dram_base,
+                dram_bytes=selected.dram_bytes,
+                code_reserve=selected.code_reserve,
+                int8_compute=bool(pkg.is_int8),
+                backend=pkg.backend,
+                rvv_schedule=pkg.schedule_text if pkg.backend == "rvv" else None,
+                cflags_override=list(pkg.cflags),
+                vlen=selected.vlen if pkg.backend == "rvv" else None,
+                console=selected.console,
+                device=device,
+                full_readback=full,
+                group_profile=bool(group_profile),
+                **({"host_llvm_bitcode": True} if host_llvm_bitcode else {}),
+                **build_options,
+            )
         if not isinstance(built.get("build_hash"), str) or not built["build_hash"]:
             raise BaremetalModelError("bare-metal build returned no citable build hash")
         if (
@@ -273,6 +520,9 @@ def compile_saved_model(
             "build_hash": built.get("build_hash"),
             "index_lowering": built["index_lowering"],
             "matrix_routing": built.get("matrix_routing"),
+            "host_artifacts": built.get("host_artifacts"),
+            **({"host_bitcode_transport": built["host_bitcode_transport"]} if host_llvm_bitcode else {}),
+            "device_artifacts": built.get("device_artifacts"),
         }
         # Bind the producer's record, rather than minting a new command history.
         # Its consumer independently verifies completed commands and input bytes.
@@ -292,8 +542,37 @@ def compile_saved_model(
             raise BaremetalModelError("device was selected but the build emitted no device dispatch sidecar")
         if device is not None:
             receipt["output"]["device_dispatch_evidence"] = "static_sidecar_only; execution not established"
+        receipt["output"]["readback"] = readback
         if run != "none":
-            if backend is None:
+            extension = _spike_extension_backend(target) if run == "spike" else None
+            if backend is None and extension is not None:
+                # The functional model WITH the target's accelerator extension: a device-routed image
+                # issues accelerator instructions the plain simulator traps on.
+                flags, libdir = extension.spike_extension()
+                receipt["output"]["spike_extension"] = {"flags": list(flags), "library_dir": str(libdir)}
+                try:
+                    console = extension.run_elf(elf, simulator="spike", timeout=timeout_s, capture_bytes=full)
+                except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+                    _retain_simulator_failure_output(exc, output_path, receipt)
+                    raise
+            elif backend is None and full:
+                if device is not None:
+                    raise BaremetalModelError("a device-routed image needs the target's spike extension")
+                try:
+                    console = spike_model.run_raw(
+                        elf,
+                        harts=selected.harts,
+                        mem_bytes=built["mem_bytes"],
+                        isa=marches[0],
+                        timeout=timeout_s,
+                        vlen=built.get("vlen"),
+                    )
+                except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+                    _retain_simulator_failure_output(exc, output_path, receipt)
+                    raise
+            elif backend is None:
+                if device is not None:
+                    raise BaremetalModelError("a device-routed image needs the target's spike extension")
                 try:
                     result = spike_model.run(
                         elf,
@@ -332,36 +611,38 @@ def compile_saved_model(
                     slot = nullcontext()
                 with slot:
                     try:
-                        console = backend.run_elf(elf, simulator=run, timeout=timeout_s)
+                        console = backend.run_elf(elf, simulator=run, timeout=timeout_s, capture_bytes=full)
                     except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
                         _retain_simulator_failure_output(exc, output_path, receipt)
                         raise
                 if command is not None:
                     command.revalidate()
                 revalidate()
-            console_path = output_path / "console.log"
-            console_path.write_text(console, encoding="utf-8")
-            receipt["output"].update({"console": str(console_path), "console_sha256": _sha(console_path)})
-            from merlin.runtime.backends.spike_model import parse_console
-
-            observed = parse_console(console)
-            if not isinstance(observed, dict):
-                raise BaremetalModelError("whole-model console parser returned no structured result")
-            if observed.get("metrics", {}).get("build_hash") != built.get("build_hash"):
-                raise BaremetalModelError("whole-model console does not identify the linked build")
-            if observed.get("metrics", {}).get("memref_rank_mismatch") != 0:
-                raise BaremetalModelError("whole-model console lacks a clean memref-rank diagnostic")
-            values = np.asarray(observed["outputs"], dtype=np.float32).reshape(-1)
-            if values.size != golden.size or not np.isfinite(values).all():
-                raise BaremetalModelError("whole-model OUT is partial or nonfinite")
-            if not np.array_equal(values.view(np.uint32), golden.view(np.uint32)):
-                mismatched = int(np.count_nonzero(values.view(np.uint32) != golden.view(np.uint32)))
-                raise BaremetalModelError(
-                    f"whole-model output differs from declared reference in {mismatched} elements"
+            if full:
+                receipt["output"].update(
+                    _judge_full_readback(console, built, capture_path, references, tolerance, output_path)
                 )
-            receipt["output"].update(
-                {"elements": int(golden.size), "mismatched_elements": 0, "metrics": observed.get("metrics") or {}}
-            )
+            else:
+                _judge_prefix(console, built, golden, output_path, receipt)
+            if group_profile:
+                from merlin.runtime.whole_model_readback import parse_group_profile
+
+                text = console.decode("utf-8", errors="replace") if isinstance(console, bytes) else console
+                if full:
+                    from merlin.runtime.out_bin import binary_console_diagnostics
+
+                    text = binary_console_diagnostics(console).decode("utf-8", errors="replace")
+                profile = parse_group_profile(text)
+                if profile is None:
+                    raise BaremetalModelError("the group-profiled image printed no group profile")
+                (output_path / "group_profile.json").write_text(json.dumps(profile, indent=2) + "\n")
+                receipt["output"]["group_profile"] = {
+                    "path": str(output_path / "group_profile.json"),
+                    "calls": profile["calls"],
+                    "dropped": profile["dropped"],
+                    "group_cycles": sum(row["cycles"] for row in profile["groups"]),
+                    "gap_cycles": sum(row["gap_before"] for row in profile["groups"]) + profile["tail_gap"],
+                }
         if (
             MI.strict_tree_sha256(capture_path) != capture_tree
             or MI.strict_tree_sha256(package_path) != package_tree
@@ -378,6 +659,8 @@ def compile_saved_model(
             raise BaremetalModelError("selected native RTL engine changed during execution")
         if native and MI.selected_firrtl(rtl_facts, target=target, config=selected.rtl_sim_config) != facts:
             raise BaremetalModelError("selected RTL facts or source FIRRTL changed during execution")
+        if materialized_inputs is not None:
+            materialized_inputs.verify(capture_path)
         receipt["status"] = "compiled" if run == "none" else "verified_complete_output"
     except Exception as exc:
         receipt["failure"] = f"{type(exc).__name__}: {exc}"

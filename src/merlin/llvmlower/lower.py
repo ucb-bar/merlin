@@ -11,7 +11,10 @@ from __future__ import annotations
 import os as _os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .graph_optimizations import GraphOptimizationContract
 
 from merlin.common import compile_trace
 from merlin.common.ir_audit import IrAudit, audit_mode
@@ -51,6 +54,7 @@ STAGES = compile_trace.declare(
     "llvm",
     (
         "input",
+        "host-graph-optimized",
         *PREPROCESS_STAGES,
         "upstream",
         "upstream-scheduled",
@@ -95,6 +99,8 @@ def lower_model(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
+    retain_llvm_dialect: bool = False,
+    graph_optimizations: GraphOptimizationContract | None = None,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -102,6 +108,15 @@ def lower_model(
     :func:`merlin.llvmlower.pipeline.lower_to_llvm_ir`). ``index_bits`` explicitly binds every LLVM
     index conversion pass and is returned with the effective pipeline in ``stats``. A selected build
     supplies it from its compiler observation; this generic API does not infer a host/runtime ABI.
+
+    ``retain_llvm_dialect`` forwards optional serial native product retention.
+    Its custody receipt in ``stats`` ends at returned upstream LLVM, before
+    later arena/ciface transforms, object production and linking.
+
+    ``graph_optimizations`` explicitly selects source-pinned logical host layout
+    propagation and/or contiguous dispatch fusion before preprocessing. Structural
+    semantic checks and caller cost constraints are reported; this supplies no
+    target placement, hardware qualification or cycle prediction.
 
     ``masked_contraction_effects`` forwards the caller's explicit nontrapping,
     unobserved-floating-flags contract for closed-mask scheduling. Selection
@@ -139,6 +154,12 @@ def lower_model(
         work.mkdir(parents=True, exist_ok=True)
 
         audit.stage("input", mlir_text)
+        graph_report = None
+        if graph_optimizations is not None:
+            from .graph_optimizations import optimize_host_graph
+
+            mlir_text, graph_report = optimize_host_graph(mlir_text, graph_optimizations)
+            audit.stage("host-graph-optimized", mlir_text)
         if textual:
             from .passes_xdsl import preprocess_text_textual
 
@@ -146,6 +167,8 @@ def lower_model(
         else:
             observed = audit.directory is not None or compile_trace.active() is not None
             upstream_text, stats = preprocess_text(mlir_text, audit=audit) if observed else preprocess_text(mlir_text)
+        if graph_report is not None:
+            stats["graph_optimizations"] = graph_report
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
 
         audit.stage("upstream", upstream_text)
@@ -168,6 +191,7 @@ def lower_model(
                 masked_contraction_effects=masked_contraction_effects,
                 source_observation_effects=source_observation_effects,
                 source_scalar_carrier=source_scalar_carrier,
+                retain_llvm_dialect=retain_llvm_dialect,
             )
         except Exception as exc:
             # A module MLIR refuses to PARSE fails before any pass, and the reader's dump names a line
@@ -189,6 +213,8 @@ def lower_model(
             stats["source_observation"] = lowering_selection["source_observation"]
         if "source_scalar_carrier" in lowering_selection:
             stats["source_scalar_carrier"] = lowering_selection["source_scalar_carrier"]
+        if "llvm_dialect_product" in lowering_selection:
+            stats["llvm_dialect_product"] = lowering_selection["llvm_dialect_product"]
         if index_bits is not None:
             if lowering_selection.get("index_bits") != index_bits or not lowering_selection.get("effective_pipeline"):
                 raise ValueError("selected index lowering lost its effective compiler pipeline")
@@ -254,6 +280,8 @@ def lower_model_file(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
+    retain_llvm_dialect: bool = False,
+    graph_optimizations: GraphOptimizationContract | None = None,
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
@@ -276,4 +304,6 @@ def lower_model_file(
         masked_contraction_effects=masked_contraction_effects,
         source_observation_effects=source_observation_effects,
         source_scalar_carrier=source_scalar_carrier,
+        retain_llvm_dialect=retain_llvm_dialect,
+        graph_optimizations=graph_optimizations,
     )

@@ -44,6 +44,8 @@ from pathlib import Path
 
 from merlin.targetgen.application_inventory import application_demand_inventory
 
+from .conformance_scope import _scope_gap as _scope_gap
+
 #: How a cell's origin was established. ``observed`` = a real capture contains the family;
 #: ``declared`` = asserted from an external source because no capture exists. Kept as data on every cell
 #: so a reader can tell evidence from assertion without consulting this docstring.
@@ -1404,19 +1406,28 @@ def _epilogue_axis(target: str) -> dict:
     # as an epilogue" -- so it makes every elementwise stage required together. These declarations
     # distinguish activation on readout from bias seeded before contraction. Consulting only the
     # coarse source put a stage in the requirement that no application path performs, and the grade
-    # refused that capsule hours later -- having read the very declaration this loop now reads.
-    # Absent (the target declares no readouts) leaves the two original sources deciding, unchanged.
-    from merlin.targetgen.readout_facet import epilogue_readouts, epilogue_stage_routes
+    # refused that capsule hours later. Absent declarations leave the original sources deciding.
+    from merlin.targetgen.readout_facet import ReadoutSupportError, epilogue_readouts, epilogue_stage_routes
     from merlin.verify.epilogue_applicability import selectors_applying
 
     try:
         readouts = epilogue_readouts(target)
         routes = epilogue_stage_routes(target)
+    except ReadoutSupportError:
+        raise  # selected support owes readout facts and cannot serve them: a refusal, not "absent"
     except Exception:  # noqa: BLE001 -- an unreadable declaration evidences nothing
-        readouts = None
-        routes = ()
+        readouts, routes = None, ()
 
-    required, rejected = [], []
+    # Whether the two stage-granular sources were READ at all. ``epilogue_readouts`` returns ``None`` for
+    # a target that declares nothing (or whose declaration could not be read), which its own contract
+    # calls UNKNOWN; an ungrounded taxonomy is likewise ``unknown`` / ``not_applicable``, never "derived
+    # with no fusion class". When neither was read, a stage the manifest does not make fused-only has NO
+    # evidence either way. Recording it as rejected wrote a definitive "the target cannot fuse this" into
+    # the requirement, and the derived corpus then demanded no epilogue at all.
+    taxonomy_status = IT.status_of(taxonomy)
+    unread = readouts is None and taxonomy_status != IT.STATUS_DERIVED
+
+    required, rejected, unresolved = [], [], []
     for stage in _builder_epilogue_stages():
         family = sf.from_op(stage)
         by_manifest = family in fused_families
@@ -1462,6 +1473,21 @@ def _epilogue_axis(target: str) -> dict:
                     "isa_classes": classes,
                 }
             )
+        elif unread:
+            unresolved.append(
+                {
+                    "stage": stage,
+                    "family": family,
+                    "taxonomy_status": taxonomy_status,
+                    "readouts": "undeclared",
+                    "why": (
+                        "the manifest declares no family fused-only for it, no readout declaration could be "
+                        f"read for this target and its instruction taxonomy is {taxonomy_status!r}; whether "
+                        "the stage fuses onto a contraction is UNDETERMINED, which is neither a requirement "
+                        "nor a refusal"
+                    ),
+                }
+            )
         else:
             rejected.append(
                 {
@@ -1477,11 +1503,13 @@ def _epilogue_axis(target: str) -> dict:
     return {
         "required": required,
         "rejected": rejected,
+        "unresolved": unresolved,
         "axis_basis": (
             "the epilogue stages this target can fuse onto a contraction, evidenced by its capability "
             "manifest declaring the stage's family fused-only OR by its own instruction taxonomy "
             "resolving a class for the role the stage needs, and then INTERSECTED with the stages its "
-            "declared readout or contraction-scoped non-readout route actually applies -- the first two are family-granular and the last is "
+            "declared readout or contraction-scoped non-readout route actually applies -- "
+            "the first two are family-granular and the last is "
             "stage-granular, so a target that fuses an activation but not an integer requantize is "
             "described correctly instead of being asked for both. A (family, dtype, alignment) cell "
             "cannot express WHICH epilogue rides the contraction, so a corpus derived from cells alone "
@@ -2555,95 +2583,6 @@ def _epilogue_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
             "a required epilogue stage no capsule demands means a backend that cannot emit it "
             "fails nothing here; a stage evidenced only standalone means its lowering is tested "
             "and its FUSION is not"
-        ),
-    }
-
-
-def _scope_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
-    """Which required CHAIN signatures no capsule in the corpus presents.
-
-    A capsule witnesses a chain when its own program contains that run of adjacent regions. Almost no
-    capsule does: the corpus is built one region at a time, which is exactly the finding. Reporting it as
-    a measured gap rather than leaving the rung empty is the point -- an unpopulated rung reads as "not
-    covered yet", while a measured zero against a derived requirement says the corpus cannot observe the
-    lever at all.
-
-    A capsule's chain is read from its own linalg when it ships one. A capsule with no linalg module
-    contributes NOTHING rather than counting as a chain of one: absence of a program is not evidence of
-    a single-region program, and treating it as one would manufacture coverage of the shortest chains.
-    """
-    import yaml
-
-    from merlin.common import mlir_query as mq
-    from merlin.targetgen import scope_census as SC
-
-    labels = set(labels or {"public"})
-    exclude = set(exclude or ())
-    roots = [corpus_roots] if isinstance(corpus_roots, (str, Path)) else list(corpus_roots)
-    have: dict[str, list[str]] = {}
-    unreadable = 0
-    no_program = 0
-    for root in roots:
-        for cy in _capsule_paths(root):
-            try:
-                cap = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
-            except yaml.YAMLError:
-                continue
-            if cap.get("label") not in labels:
-                continue
-            name = str(cap.get("name") or cy.parent.name)
-            if name in exclude:
-                continue
-            selected = cap.get("linalg_mlir", "capsule.linalg.mlir")
-            if not isinstance(selected, str) or not selected:
-                unreadable += 1
-                continue
-            relative = Path(selected)
-            if relative.is_absolute() or ".." in relative.parts or not relative.parts:
-                unreadable += 1
-                continue
-            linalg = cy.parent
-            for part in relative.parts:
-                linalg = linalg / part
-                if linalg.is_symlink():
-                    unreadable += 1
-                    break
-            else:
-                if not linalg.is_file():
-                    no_program += 1
-                    continue
-                try:
-                    for chain in SC.chains(mq.parse(linalg), max_length=64):
-                        have.setdefault(chain.signature, []).append(name)
-                except Exception:  # noqa: BLE001
-                    unreadable += 1
-                continue
-    want = [r["signature"] for r in (required or [])]
-    missing = [sig for sig in want if sig not in have]
-    # ONE VOCABULARY ACROSS EVERY AXIS. This function used to answer in its own words -- `required`,
-    # `covered`, `missing`, and no `status` at all -- while every sibling gap function returns
-    # `status`/`n_required`/`n_covered`/`uncovered`. Nothing outside `uncovered()` read it, so the
-    # difference cost nothing until a caller tried to treat the axes uniformly: the gate's reporter
-    # printed `scope: missing` (its default for a dict with no `status`) and its debt accumulator looked
-    # for an `uncovered` key that was never there, so an adjacency gap could not reach the verdict
-    # however the accumulator was written. An axis that spells its answer differently from its siblings
-    # is an axis that will be skipped by anything written to handle them together.
-    return {
-        "status": "ok",
-        "n_required": len(want),
-        "n_covered": len(want) - len(missing),
-        "uncovered": missing,
-        "witnessed_by": {sig: sorted(set(v)) for sig, v in have.items() if sig in set(want)},
-        # Reported rather than folded into `uncovered`: a capsule with no linalg module cannot be asked
-        # what chain it contains, and counting it as covering nothing is a different claim from counting
-        # it as containing nothing.
-        "capsules_without_a_program": no_program,
-        "capsules_unreadable": unreadable,
-        "qualification": "declared graph-input adjacency only; target compilation and execution are not observed",
-        "note": (
-            "an uncovered signature is an adjacency chain real captures present that no capsule "
-            "contains: the corpus is built one region at a time, so a compiler that mishandles a "
-            "boundary between two regions is tested by nothing here"
         ),
     }
 

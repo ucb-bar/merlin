@@ -4,8 +4,7 @@ kind: guide
 status: current
 owner: targetgen
 last_verified: 2026-07-22
-related: [getting_started, adding_a_target, targetgen, kernel_mining, beam_search, dse, dse_guidance,
-          design_pressure, model2mlir, rvv_e2e, zephyr, gemmini_experiment, integrations, llvm_integration]
+related: [getting_started, adding_a_target, targetgen, kernel_mining, beam_search, dse, dse_guidance, design_pressure, model2mlir, rvv_e2e, zephyr, phase0_phase1_setup, integrations, llvm_integration]
 code_refs: [merlin/python/merlin, build_tools/scripts]
 ---
 
@@ -29,10 +28,10 @@ Both paths share the same two-step start, then branch by what you want to do. Re
    and where each external dependency comes from, then `check_repro_env.py` to see what's runnable here.
 2. This guide, **§0** below — `merlin-compile`, the one-command compile/build/run/verify front door.
 
-**Path A — run the target-dialect-generation experiments (Gemmini, all 4 arms):**
-3. [gemmini_experiment](gemmini_experiment.md) — the end-to-end runbook: four arms → prove-the-sandbox
-   gate → launch the sweep → certify (RTL conformance) → perf-bench → publish. **§6** below is the
-   condensed version.
+**Path A — run target compiler experiments:**
+3. [Phase 0 and Phase 1 setup](phase0_phase1_setup.md) — select independent inputs,
+   derive and review a corpus, qualify the worker, then launch authoring. **§6**
+   below is the condensed version.
 4. [targetgen](targetgen.md) then [adding_a_target](adding_a_target.md) — the tool the arms exercise.
 5. [target_publishing](../design/target_publishing.md) — how a certified champion lands versioned in
    `gemmini-mlir` / `rvv-mlir` (**§8**).
@@ -59,7 +58,7 @@ Everything below fills in each step with the exact CLI + output location; the ta
 | bring in a new model (capture bundle) | [model2mlir](model2mlir.md) | §4 |
 | run a model end-to-end on the K1 board | [rvv_e2e](rvv_e2e.md) | §7 |
 | run a model on Zephyr / FireSim / spike | [zephyr](zephyr.md) | §7 |
-| run the Gemmini target-gen experiment (arms→cert→perf→publish) | [gemmini_experiment](gemmini_experiment.md) | §6 |
+| run target compiler experiments | [Phase 0 and Phase 1 setup](phase0_phase1_setup.md) | §6 |
 | publish a certified champion to `<target>-mlir` | [target_publishing](../design/target_publishing.md) | §6, §8 |
 | understand the compiler internals | [architecture](../reference/architecture.md), [lowering_pipeline](../reference/lowering_pipeline.md), [llvm_integration](llvm_integration.md), [compilation_strategies](compilation_strategies.md) | — |
 | find where code/tests/docs/output live | [repo_structure](../reference/repo_structure.md), [merlin_layout](../reference/merlin_layout.md) | — |
@@ -213,25 +212,21 @@ summary is `out/artifacts/kernel-mining/rvv/bench/autonomous_beam_experiment.jso
 credited only on real K1 silicon above the noise margin; an `inert` fork (emitted code == parent's)
 is never promoted; whole-model int8/fp16 have no XNNPACK e2e column (harness limitation, stated).
 
-## 6. Gemmini target-dialect-generation experiment (agentic case study)
+## 6. Target compiler experiments
 
-**Purpose.** Compare four Phase 1 experiment levels: EL1 raw baseline, EL2 C++
-infrastructure, EL3 Merlin-assisted, and EL4 RTL-informed Merlin. Frozen records
-retain their older arm and bundle IDs. The historical 20-capsule cohort is not a
-current release or a claim that a new EL4 run is ready.
+Choose a catalog definition and inspect its independently selected phase inputs:
 
-```bash
+```sh
 merlin experiment levels
-merlin experiment inspect gemmini-functional --phase 1
-merlin experiment preflight gemmini-functional --phase 1
+merlin experiment inspect gemmini-functional --phase 0
+merlin experiment preflight gemmini-functional --phase 0
 ```
-Preflight on the example intentionally reports missing operator-owned inputs.
-Select a reviewed Phase 0 release, its newly generated bundle, measured timing,
-LLVM toolchain, and explicit OOT support provider before launch. The current
-[Gemmini example](../../examples/gemmini/README.md) and
-[Phase 1 guide](../../examples/gemmini/phase1/README.md) give the installed path;
-the [historical experiment](gemmini_experiment.md) retains the old launcher and
-bundle IDs for interpreting archived runs.
+
+The catalog ID is an example. Follow [Phase 0 and Phase 1
+setup](phase0_phase1_setup.md) to derive and review a release, prepare its frozen
+bundle, qualify the neutral runtime and configure author transport. Preflight
+reports missing operator-owned inputs; it does not certify execution. Phase 1
+success requires the original complete functional gates after compiler freeze.
 
 ## 7. Run a model on real hardware / simulators + external baselines
 

@@ -59,6 +59,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common.paths import module_source_path
+from merlin_experiments.phase1.providers.codex_usage import usage_to_claude_shape as usage_to_claude_shape
 
 # --- The measured event contract (codex-cli 0.147.0) ------------------------
 # Verified by capturing a live run, not read from documentation. Envelope types
@@ -223,47 +224,6 @@ def build_cmd(
     return cmd
 
 
-def usage_to_claude_shape(usage: dict) -> tuple[dict, bool]:
-    """Translate a Codex ``turn.completed`` usage payload to the Claude shape.
-
-    Returns ``(usage_dict, reported)``. Codex's ``input_tokens`` is a TOTAL that
-    already contains the cache reads and writes; the Claude shape's
-    ``input_tokens`` is the uncached remainder. Subtracting is therefore the
-    correct translation, clamped at zero so a provider inconsistency cannot
-    produce a negative count. When nothing was reported, ``reported`` is False
-    and the caller must omit usage rather than emit zeros.
-    """
-
-    def _int(key: str) -> int | None:
-        value = usage.get(key)
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            return None
-        return int(value)
-
-    total_in = _int("input_tokens")
-    cache_read = _int("cached_input_tokens")
-    cache_write = _int("cache_write_input_tokens")
-    out = _int("output_tokens")
-    reasoning = _int("reasoning_output_tokens")
-    if all(v is None for v in (total_in, cache_read, cache_write, out, reasoning)):
-        return {}, False
-
-    uncached = None if total_in is None else max(total_in - (cache_read or 0) - (cache_write or 0), 0)
-    shaped = {
-        "input_tokens": uncached or 0,
-        "output_tokens": out or 0,
-        "cache_read_input_tokens": cache_read or 0,
-        "cache_creation_input_tokens": cache_write or 0,
-    }
-    # Kept alongside, not folded in: reasoning is a subset of output_tokens and
-    # adding it again would double-count the most expensive bucket.
-    if reasoning is not None:
-        shaped["reasoning_output_tokens"] = reasoning
-    if total_in is not None:
-        shaped["codex_input_tokens_total"] = total_in
-    return shaped, True
-
-
 #: The frozen per-experiment Codex config. Deliberately minimal: the user's own
 #: config.toml and unrelated project trust/notice state are never copied. The
 #: exact prepared workspace's trust is declared below before the config is
@@ -287,10 +247,20 @@ def _candidate_permission_config(codex_home: Path, *, read_paths: tuple[str, ...
     if not codex_home.is_absolute():
         raise ValueError("isolated CODEX_HOME must be absolute")
     if read_paths is not None:
-        if (not isinstance(read_paths, tuple) or not read_paths or len(set(read_paths)) != len(read_paths)
-            or any(not isinstance(path, str) or not Path(path).is_absolute() or ".." in Path(path).parts
-                   or Path(path) == Path("/") or codex_home.is_relative_to(Path(path))
-                   or Path(path).is_relative_to(codex_home) for path in read_paths)):
+        if (
+            not isinstance(read_paths, tuple)
+            or not read_paths
+            or len(set(read_paths)) != len(read_paths)
+            or any(
+                not isinstance(path, str)
+                or not Path(path).is_absolute()
+                or ".." in Path(path).parts
+                or Path(path) == Path("/")
+                or codex_home.is_relative_to(Path(path))
+                or Path(path).is_relative_to(codex_home)
+                for path in read_paths
+            )
+        ):
             raise ValueError("explicit candidate read grants must be exact absolute paths without control credentials")
         grants = "".join(f'{json.dumps(path)} = "read"\n' for path in read_paths)
         return (
@@ -298,8 +268,7 @@ def _candidate_permission_config(codex_home: Path, *, read_paths: tuple[str, ...
             'extends = ":workspace"\n'
             f"[permissions.{_CANDIDATE_PERMISSION_PROFILE}.filesystem]\n"
             '":root" = "deny"\n'
-            '":minimal" = "read"\n' + grants +
-            f'{json.dumps(str(codex_home))} = "deny"\n'
+            '":minimal" = "read"\n' + grants + f'{json.dumps(str(codex_home))} = "deny"\n'
             f'[permissions.{_CANDIDATE_PERMISSION_PROFILE}.filesystem.":workspace_roots"]\n'
             '"." = "write"\n'
             f"[permissions.{_CANDIDATE_PERMISSION_PROFILE}.network]\n"
@@ -334,25 +303,10 @@ _CLI_VERSION: dict = {}
 
 
 def cli_version(codex_bin: str = "codex") -> str | None:
-    """The CLI's self-reported version, or ``None`` when it cannot be asked.
+    """The verbatim CLI version, or ``None`` when it cannot be observed."""
+    from .codex_runtime import cached_cli_version
 
-    ``None`` is a real answer and is recorded as such: guessing a version would put a fabricated
-    provenance stamp on every run made with that binary, which is worse than an absent one. The
-    string is stored VERBATIM (e.g. ``codex-cli 0.153.0``) and never parsed here -- a comparison is
-    somebody else's job, and a parser is one more thing to drift.
-    """
-    if codex_bin in _CLI_VERSION:
-        return _CLI_VERSION[codex_bin]
-    out = None
-    try:
-        proc = subprocess.run([codex_bin, "--version"], capture_output=True, text=True, timeout=30)
-        if proc.returncode == 0:
-            text = (proc.stdout or proc.stderr or "").strip().splitlines()
-            out = text[0].strip() if text else None
-    except (OSError, subprocess.SubprocessError):
-        out = None
-    _CLI_VERSION[codex_bin] = out or None
-    return _CLI_VERSION[codex_bin]
+    return cached_cli_version(codex_bin, _CLI_VERSION)
 
 
 def real_codex_home() -> Path:
@@ -360,8 +314,14 @@ def real_codex_home() -> Path:
 
 
 def prepare_codex_home(
-    dest: Path, *, model: str, effort: str, workspace: Path,
+    dest: Path,
+    *,
+    model: str,
+    effort: str,
+    workspace: Path,
     candidate_read_paths: tuple[str, ...] | None = None,
+    auth_source: Path | None = None,
+    max_concurrent_subagents: int | None = None,
 ) -> dict:
     """Build an ISOLATED ``CODEX_HOME`` at *dest* and describe it.
 
@@ -382,8 +342,16 @@ def prepare_codex_home(
     build its home the same way, or the cache-hit rate varies between arms for a
     reason that has nothing to do with the treatment.
     """
+    if max_concurrent_subagents is not None and (
+        type(max_concurrent_subagents) is not int or max_concurrent_subagents < 1
+    ):
+        raise ValueError("Codex subagent concurrency must be an explicit positive integer")
     if not workspace.is_absolute() or not workspace.is_dir() or workspace.resolve(strict=True) != workspace:
         raise ValueError("Codex workspace must be an existing canonical absolute directory")
+    if auth_source is not None:
+        from .codex_runtime import canonical_file
+
+        auth_source = canonical_file(str(auth_source), "client credential")
     dest.mkdir(parents=True, exist_ok=True)
     # A non-OpenAI model reaches codex-cli only through the LiteLLM bridge: codex 0.147 speaks the
     # Responses API and nothing else, so the provider block points it at our proxy and declares the
@@ -399,9 +367,16 @@ def prepare_codex_home(
         provider=provider,
         trust=f'[projects.{json.dumps(str(workspace))}]\ntrust_level = "trusted"\n',
     )
+    if max_concurrent_subagents is not None:
+        # These are root-level dotted keys, preceding permission/provider tables.
+        # The selected CLI's existing strict-config preflight must accept them.
+        config = (
+            "features.multi_agent = true\nagents.enabled = true\n"
+            f"agents.max_concurrent_threads_per_session = {max_concurrent_subagents}\n" + config
+        )
     config_path = dest / "config.toml"
     config_path.write_text(config)
-    auth = real_codex_home() / "auth.json"
+    auth = real_codex_home() / "auth.json" if auth_source is None else auth_source
     import hashlib
 
     return {
@@ -691,6 +666,24 @@ _CAPACITY_MAX_RETRIES = 3
 _CAPACITY_BACKOFF_S = 20
 
 
+def delegation_user_prompt(prompt: str, limit: int | None) -> str:
+    """Translate the explicit operator opt-in into the actual user instruction."""
+    if limit is None:
+        return prompt
+    if type(limit) is not int or limit < 1:
+        raise ValueError("delegation prompt requires an explicit positive concurrency limit")
+    return prompt + (
+        "\n\nI explicitly request native sub-agent delegation for this compiler implementation. "
+        f"Keep at most {limit} helper sub-agent(s) active concurrently. Delegate an independent frontend "
+        "or lowering implementation task that advances the functional compiler goal in TASK.md; "
+        "continue an existing helper rather than duplicating its work. Assign disjoint source files "
+        "and a concrete compiler behavior to implement. The parent owns integration and must join "
+        "all helper changes before freezing a candidate or requesting a self-check. Keep helpers "
+        "focused on implementation results, not optional verification or documentation. Follow the "
+        "same task, source obligations, tools and permissions; this request grants no additional access."
+    )
+
+
 def build_resume_cmd(
     ws: Path, *, model: str, effort: str, final_path: Path, sandbox: str, thread_id: str, codex_bin: str = "codex"
 ) -> list[str]:
@@ -851,7 +844,9 @@ def run_round(
     candidate_read_paths: tuple[str, ...] | None = None,
     runtime_binds: Callable[[Path], list[str]] | None = None,
     require_fresh_home: bool = False,
+    auth_source: Path | None = None,
     continuation_prompt: str | None = None,
+    max_concurrent_subagents: int | None = None,
     **_ignored,
 ) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via ``codex exec``. Returns ``(rc, transcript_path)``.
@@ -871,15 +866,32 @@ def run_round(
     still one session -- just delivered over several processes. Off by default: in ROUNDS mode a
     round ending is how the harness re-grades and re-prompts, and continuing would break that cadence.
 
-    Tier-within-agent (``subagent_model`` / ``background_model``) has no Codex
-    equivalent — ``codex exec`` exposes no subagent mechanism — so a request for
-    one is recorded in the init record and otherwise ignored. Silently accepting
-    it would make an arm look tiered when it was not.
+    Legacy model-tier selections are recorded without changing spawned models.
+    Explicit ``max_concurrent_subagents`` selects the native multi-agent limit
+    in the frozen home; the same strict-config preflight applies on AWS. It does
+    not prove that an agent delegated or change its sandbox and runtime grants.
     """
     # Explicit round inputs avoid changing another concurrent round's executable
     # or credential-isolated home placement. Defaults retain historical callers.
+    if max_concurrent_subagents is not None and (
+        type(max_concurrent_subagents) is not int or max_concurrent_subagents < 1 or sandbox != "bwrap"
+    ):
+        raise ValueError("explicit Codex subagent concurrency requires a positive isolated selection")
     if codex_binary is not None and (not isinstance(codex_binary, (str, Path)) or not str(codex_binary).strip()):
         raise ValueError("explicit codex_binary must be a nonempty executable path or name")
+    if auth_source is not None:
+        from .codex_runtime import canonical_file
+
+        canonical_file(str(auth_source), "client credential")
+        if (
+            sandbox != "bwrap"
+            or codex_binary is None
+            or codex_home_root is None
+            or not candidate_read_paths
+            or runtime_binds is None
+            or not require_fresh_home
+        ):
+            raise ValueError("explicit credential selection requires complete isolated client inputs")
     codex_bin = str(codex_binary) if codex_binary is not None else os.environ.get("CODEX_BIN", "codex")
     # A rigorous caller may preflight model resolution and pass the content-addressed result.
     # In that mode do NOT consult CODEX_MODEL_MAP a second time between the declaration and
@@ -896,6 +908,12 @@ def run_round(
             # candidate shell. A future broker can deliver it without a shell
             # environment leak; clearenv intentionally does not do that today.
             raise RuntimeError("bridged Codex needs a host-side proxy credential broker under bwrap")
+    if require_fresh_home and sandbox == "bwrap" and codex_home_root is not None:
+        selected_home = Path(codex_home_root) / f"{run_dir.name}_r{rnd:02d}"
+        if selected_home.exists() or selected_home.is_symlink():
+            raise ValueError("fresh authoring refuses an existing Codex home or session history")
+        if selected_home.resolve().is_relative_to(ws.resolve()) or ws.resolve().is_relative_to(selected_home.resolve()):
+            raise ValueError("isolated CODEX_HOME must not overlap the candidate workspace")
     rounds = run_dir / "rounds"
     rounds.mkdir(parents=True, exist_ok=True)
     tpath = rounds / f"round_{rnd:02d}.transcript.jsonl"
@@ -935,8 +953,9 @@ def run_round(
             "backend under submission/ per those instructions. During iteration, check the smallest affected capsule "
             "or coherent comma-separated capsule cluster with `python3 agent_selfcheck.py --submission submission "
             "--sim spike --capsules <names>`; do not repeatedly grade the whole corpus. Run `--capsules all` only "
-            "after the focused checks improve and the candidate is ready for a regression sweep. Do not edit "
-            "submission/ while a self-check is running, because that makes its result stale. Goldens are withheld; "
+            "after the focused checks improve and the candidate is ready for a regression sweep. You may edit "
+            "submission/ while a self-check runs; compare the verdict's source digest with your current bytes. "
+            "Goldens are withheld; "
             "iterate until the complete corpus passes. THE FIRST GRADE NEEDS YOUR SUBMISSION FIRST: the harness "
             "grades submission/, so while submission/manifest.yaml does not exist there is NOTHING to grade and no "
             "verdict can ever arrive -- an absent qa/verdict.json is not a queue you wait in, it means you have not "
@@ -949,6 +968,7 @@ def run_round(
             "Begin now."
         )
     )
+    msg = delegation_user_prompt(msg, max_concurrent_subagents)
     prompt_path.write_text(msg)
 
     inner_final = last_message_path(ws, final_path, sandbox)
@@ -973,6 +993,10 @@ def run_round(
         if require_fresh_home and (codex_home.exists() or codex_home.is_symlink()):
             raise ValueError("fresh authoring refuses an existing Codex home or session history")
         home_options = {"candidate_read_paths": candidate_read_paths} if candidate_read_paths is not None else {}
+        if auth_source is not None:
+            home_options["auth_source"] = auth_source
+        if max_concurrent_subagents is not None:
+            home_options["max_concurrent_subagents"] = max_concurrent_subagents
         home_info = prepare_codex_home(codex_home, model=resolved, effort=effort, workspace=ws, **home_options)
         runtime_selector = codex_runtime_binds if runtime_binds is None else runtime_binds
         _verify_frozen_config(codex_home, home_info["config_sha256"])
@@ -1003,12 +1027,17 @@ def run_round(
     stamped_f = open(stamped_path, "w")
     #: Sent when resuming. Deliberately the SAME standing instruction, never a hint: an arm that got
     #: extra guidance mid-session would not be comparable to one that did not.
-    _CONTINUE_MSG = continuation_prompt if continuation_prompt is not None else (
-        "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
-        "backend under submission/. With agent_selfcheck, re-check only the smallest affected "
-        "capsule or coherent cluster after each edit; use `--capsules all` only after focused "
-        "checks improve, and never edit submission/ while a self-check is running."
+    _CONTINUE_MSG = (
+        continuation_prompt
+        if continuation_prompt is not None
+        else (
+            "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
+            "backend under submission/. With agent_selfcheck, re-check only the smallest affected "
+            "capsule or coherent cluster after each edit; use `--capsules all` only after focused "
+            "checks improve. You may edit while a check runs; compare the verdict's source digest."
+        )
     )
+    _CONTINUE_MSG = delegation_user_prompt(_CONTINUE_MSG, max_concurrent_subagents)
     turn_index = 0
     rc = 0
     active_proc: subprocess.Popen | None = None
@@ -1055,15 +1084,18 @@ def run_round(
                     cmd = resume_argv
             with open(stderr_path, "ab") as err_f, open(cur_prompt, "rb") as in_f:
                 try:
-                    proc = subprocess.Popen(
-                        cmd,
-                        stdin=in_f,
-                        stdout=subprocess.PIPE,
-                        stderr=err_f,
-                        cwd=str(ws),
-                        env=dict(os.environ),
-                        start_new_session=True,
-                    )
+                    from merlin.common.cpu_pool import parse_roster, selected_pool
+
+                    with selected_pool(parse_roster(os.environ.get("MERLIN_CODEX_CPUS", ""))):
+                        proc = subprocess.Popen(
+                            cmd,
+                            stdin=in_f,
+                            stdout=subprocess.PIPE,
+                            stderr=err_f,
+                            cwd=str(ws),
+                            env=dict(os.environ),
+                            start_new_session=True,
+                        )
                     active_proc, active_pgid = proc, proc.pid
                     # Resource telemetry is sampled OUTSIDE the graded sandbox and follows the complete
                     # bwrap/Codex/tool descendant tree. One file per continuation turn prevents ambiguous

@@ -753,7 +753,8 @@ def _application_operation_inventory(
         if disposition == "unclassified" and software_spec is not None and host_capabilities is not None:
             # Independent hardware eligibility remains unknown for dtype-changing operations.
             # A separately pinned and reviewed host declaration can nevertheless resolve their
-            # placement. Use the same exact-signature screen as whole-program admission.
+            # placement without duplication in accelerator software semantics. Use the same
+            # exact-signature screen as whole-program admission.
             from merlin.targetgen.operation_accounting import admit_operation_row
 
             admission = admit_operation_row(
@@ -768,13 +769,9 @@ def _application_operation_inventory(
                 admission["host_admission"]["status"] == "admitted"
                 and admission["host_admission"]["reviewed"]
                 and admission["accelerator_admission"]["status"] != "admitted"
-                and any(
-                    row["status"] == "admitted" and row["placement"] == "host"
-                    for row in admission["software_admissions"]
-                )
             ):
                 disposition = signature["disposition"] = "host_required"
-                signature["reason"] = "exact reviewed software and pinned host declarations admit this signature"
+                signature["reason"] = "exact reviewed pinned host declaration admits this signature"
         key = json.dumps(signature, sort_keys=True, separators=(",", ":"))
         slot = grouped.setdefault(key, {**signature, "count": 0, "ordinals": []})
         slot["count"] += 1

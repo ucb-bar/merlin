@@ -73,6 +73,11 @@ def measure(source):
             reduction = lhs["shape"][1]
             work += 2 * count * reduction + 2 * count
             raw_bits = max(bits, _bits(lhs["dtype"]) + _bits(rhs["dtype"]) + reduction.bit_length() + 1)
+        elif node["op"] == "reduce_sum":
+            lhs = types[node["actual_inputs"][0]]
+            reduction = lhs["shape"][node["axis"]]
+            work += 2 * _extent(lhs["shape"]) + 2 * count
+            raw_bits = max(bits, _bits(lhs["dtype"]) + reduction.bit_length() + 1)
         else:
             work += 3 * count
             if node["op"] in {"add", "update"}:

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Compiler-pass verification: the **static** (lit/FileCheck) and **formal** (SMT) layers that sit beside
+Compiler-pass verification: the **static** (lit/FileCheck) and **formal** (SMT/Lean) layers that sit beside
 the capsule oracle ladder. The bench grades *outcomes*; this package verifies *passes*. Model, results
 and working log: `docs/design/compiler_verification.md`.
 
@@ -36,6 +36,32 @@ and working log: `docs/design/compiler_verification.md`.
   under `packages/merlin-analysis/src/merlin/verify/`; install the analysis `replay` extra.
 
 ## Invariants
+
+- `lean_contract.py` owns public result data and strict modeled coverage; it cannot issue
+  accepted evidence. `lean_export.py` projects actual pure integer SSA under explicit
+  primitive semantics. `lean_checker.py` runs the selected Lean kernel and owns live
+  host completions. Deserialized receipts, candidate callbacks and status strings are
+  never acceptance authority. Reuse only bounded process-local successful proof checks
+  bound to actual IR, semantic model, scope and revalidated toolchain products.
+- The common transformation broker chooses the frozen semantics, index width and
+  toolchain. Lower experiment levels receive automatic checking through that broker;
+  the author-facing Lean API is an explicitly separate treatment. Do not broaden grants.
+- Loop/storage checks combine parameterized arithmetic/lifetime lemmas with trusted
+  structural correspondence. They do not prove complete SCF/memory execution, LLVM,
+  physical resource allocation, ISA encoding, numerical policy or RTL behavior.
+  Unsupported effects, poison flags and metadata remain explicit gaps.
+- `lean_obligations.py` projects V2 total-scalar rewrites and ordered unrolling
+  only after exact IR correspondence passes. Generic function/fold lemmas do not
+  model timing, allocation failure or arbitrary memory/RTL execution. The
+  invocation inventory commitment is written after closed-file byte validation;
+  a saved commitment cannot seed the process-local completion ledger.
+- `lean_checked.py` reconstructs actual emitted resource geometry and actual
+  authored sequential reorderings before live receipt acceptance. V3's
+  `lean_isa_semantics.py` selects original frozen software/facts; candidate
+  messages cannot set primitive meanings, bank geometry or atomic completion.
+  `StateEffects` derives commutation from read/write frames under admitted
+  sequential semantics. `ResourceGeometry` checks actual projected intervals
+  and address relations; neither supplies a physical/RTL proof.
 
 - **A layer that cannot run must never look like one that ran clean.** Missing tool, missing solver,
   solver timeout: all report an explicit state. `unknown` is never `verified`; `abstracted` is never a
@@ -91,3 +117,25 @@ and working log: `docs/design/compiler_verification.md`.
   0.68 and 0.70 — identical. Upgrading does not help; `smt_ops` supplies the scope and
   `smt_semantics.in_range` constrains element widths with the shift identity instead.
 - Keep queries quantifier-free: take extents CONCRETE from the IR's own types.
+
+`lean_sat_runtime` binds generated BV obligations to an explicit original SAT
+executable/file inventory. Native reflection requires independent original
+opt-in, uses the exact frozen solver path and labels the broader Lean compiler
+and native LRAT TCB. Successful selected BV checks use `lean_native_reflection`,
+not kernel-only assurance. `Lean.ofReduceBool` and `Lean.trustCompiler` are
+admitted only in this original mode; other reported axioms retain the fixed
+policy, and kernel reduction remains separately labeled `lean_kernel`.
+Identifiers are lexed structurally, excluding comments and strings; a generated
+query cannot override the solver. Saved documents remain descriptive, not live
+completion authority. Native loader closure and deployment stay independent.
+
+`lean_emission_products` issues immutable text carriers only within the original
+host process and live scope. Lookup uses exact object identity; equal-byte
+strings, serialized IDs and reconstructed objects cannot select a source.
+Trusted artifact copies retain exact path/byte association, with ambiguous
+paths refusing. Failed claims remain pending, and object sharing stays within
+one observed origin. Host rewrites invalidate previous path ownership; intervening
+writers prevent stale registration. Completed sources may feed later ordinary
+consumers only with a fresh source check and actual object observation, bypassing
+legacy byte caches. Bound pending/completed text, alias and writer records; never copy tensor
+data or grant an author new source permissions through this bookkeeping.

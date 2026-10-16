@@ -6,6 +6,17 @@ The performance layer: what a target's legal choices *cost*. Derives archetypes 
 performance contract whose terms carry provenance and a validity domain, composes a predicted cycle
 count with gap attribution, and classifies workloads by which lever has headroom.
 
+`dynamic_census` observes only the original selected neutral Spike trace behind
+the host's live one-ELF boxed launch. Online command multiplicity, operand and
+reported memory requests are bounded; linked entry PCs and instruction bytes
+own lexical host attribution. Outside-entry/callee work stays unpriced UNKNOWN.
+Truncation, unsupported decoding and changed sources/tools/products refuse;
+unresolved cleanup aborts the enclosing job and retains its owner. Raw streams
+and real invocation records stay private. This is descriptive ISS activity,
+not a numerical verdict, emitter-integrity proof, physical traffic, utilization,
+cycles or replay. Per-process RLIMIT and sampled scratch do not supply aggregate
+resource enforcement; the original external owner supplies selected hard caps.
+
 `component_applicability` holds pure frozen joint semantic cells for measured
 payload/resource, tile/tail, streaming, dependency, reuse and composition scope.
 Exact membership cannot imply range or repetition transfer. These declarations
@@ -32,11 +43,38 @@ extents. Counts are before native optimization. They are neither executed
 instruction counts nor physical traffic, staging, capacity or cycle features.
 Unsupported bodies refuse; experiments owns actual compile-consumption joins.
 
+`candidate_diagnostics`, `candidate_source` and `candidate_features` project bounded
+own public source/emission, typed shapes and numeric declarations, source affine
+reduction/MAC demands, host CFG activity, representations and linked section/frame
+records. Reuse original source/global-plan and affine observers. Declarations do
+not establish execution lanes, numerical equivalence or physical costs; absent
+products and unsupported multiplicity remain UNKNOWN. Feature keys are closed,
+unpriced observations. Experiments owns actual public selection, original emission
+and invocation reopening. Never project literal tensor payloads or private paths.
+
+`candidate_cost_graph` retains verified original task/source ownership and per-task
+host CFG demand, declared representation/device requests and exact missing effects.
+Opaque calls/assembly and unowned work remain UNKNOWN. Conditional CycleInterval
+composition reuses ActivityTimeline: serial addition is an explicit premise;
+overlap needs externally independently observed complete intervals with matching
+stage IDs, prices and dependencies. Pure arithmetic issues no prices, overlap
+qualification or complete-program cost; kernel-excluded preparation/readback and
+cold/warm costs retain their separate original measurement owners.
+
 `component_measurement_stream` checks one bounded, explicitly ordered raw event
 frame containing every original complete-cost stage. Counter wrap and control
 changes are retained. Event labels do not establish actual stage boundaries;
 there is no elapsed-cost subtraction, clock unit or cold/warm inference. Stage,
 timer, observer, resource, runtime and held qualification remain independent.
+
+`component_coherent_measurement` splits an explicitly selected complete ordered
+object file using the original typed ABI, repeated-call, counter and fixed
+harness-phase plans. It rechecks immutable inputs and retains every output
+history and raw counter/control sample. Experiments reopens the actual same-ELF
+decoder/process products and recomputes each call's original numerical gate.
+This is raw observation grammar, not ELF loading, observer integrity, device
+completion, counter units, cold/warm or complete-cost qualification. Omitted
+startup, return, parent readback and sample publication costs remain UNKNOWN.
 
 The namespace is shared without duplicate implementations: experiments owns
 the isolated/controlled/paired probe providers, host-region/physical-transition/lane-migration
@@ -70,6 +108,13 @@ code runs on two targets of different archetypes and produces **different, corre
 - Assumed geometry, capacities, opcodes or latencies. Derive them, or record `UNKNOWN` and fail
   closed. `UNKNOWN` is a distinct inhabited state and must never be readable as `0.0`.
 - Generated output. Products go to `out/artifacts/` via `merlin.common.paths` / `artifacts` helpers.
+
+`capsule_roofline` provides conservative floors, not runtime predictions. Geometry
+alone cannot imply an instruction schedule or MAC throughput. Require explicit
+arithmetic counts for every discovered array before bounding useful work; missing
+sites or counts remain UNKNOWN. No stationary-row, orientation, command or tile
+law is universal. Logical bytes require proof of crossing the named interface
+before use as compulsory movement, especially across fused/resident groups.
 
 ## Invariants
 

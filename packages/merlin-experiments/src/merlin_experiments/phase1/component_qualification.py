@@ -17,6 +17,7 @@ from merlin_experiments.phase2.component_experiment import ComponentView, Runtim
 
 from . import component_qualification_domain as D
 from . import component_qualification_evidence as E
+from . import component_qualification_members as M
 from .component_compile_admission import qualification_compile_roles
 from .component_lineage import ComponentCompilerLineage
 from .component_origin import FreshCompilerOrigin, _authority_identity
@@ -91,6 +92,7 @@ class ComponentQualification:
     _issuer: object = field(repr=False, compare=False)
     compile_role_evaluation: object = None
     container_transport: object = None
+    original_members: object = None
 
     def verify(self, *, candidate: Path | None = None) -> dict:
         """Reopen all frozen authorities; caller hashes and booleans grant nothing."""
@@ -141,6 +143,10 @@ class ComponentQualification:
             raise C.StageGateError("component grading contract changed")
         report, domain = D.reopen_domain(self.corpus_root, origin=self.compiler_origin)
         D.verify_receipt_domain(document, domain)
+        M.obligations(
+            report, preparation=D.preparation_for_origin(self.compiler_origin), original_members=self.original_members
+        )
+        M.verify_record(document, self.original_members)
         if report["sha256"] != self.coverage_sha256:
             raise C.StageGateError("component domain membership changed")
         source_inputs.verify(
@@ -178,6 +184,7 @@ class ComponentQualification:
             corpus_root=self.corpus_root,
             descriptor_sha256=self.target_descriptor_sha256,
             preparation=D.preparation_for_origin(self.compiler_origin),
+            original_members=self.original_members,
         )
         return document
 
@@ -263,6 +270,11 @@ def qualify_component_compiler(
     if len({member["name"] for member in members}) != len(members):
         raise C.StageGateError("component functional membership contains duplicate names")
     evidence_root.mkdir(parents=True, mode=0o700)
+    original_members = M.prepare_for_origin(preparation, evidence_root / "original_members")
+    obligations = M.obligations(report, preparation=preparation, original_members=original_members)
+    members = [member for row in obligations for member in row["members"]]
+    if len({member["name"] for member in members}) != len(members):
+        raise C.StageGateError("original candidate member names collide with coverage membership")
     clone = evidence_root / "compiler"
     shutil.copytree(candidate, clone)
     if C.exact_tree_record(clone)["sha256"] != before:
@@ -286,34 +298,11 @@ def qualify_component_compiler(
                 timeout=timeout_s,
                 max_workers=max_workers,
                 target=target_experiment.target,
+                **({"original_members": original_members} if original_members is not None else {}),
             )
-        rows = score.get("per_capsule") or []
-        index = {row.get("capsule"): row for row in rows}
-        if len(rows) != len(members) or set(index) != {member["name"] for member in members}:
-            failures.append("mandatory declared-domain denominator did not execute completely")
         result_paths = sorted((evidence_root / "grade").rglob("capsule_result.json"))
         actual_results = {C.mapping_file(path).get("capsule"): C.mapping_file(path) for path in result_paths}
-        for obligation in obligations:
-            for member in obligation["members"]:
-                row = index.get(member["name"], {})
-                if obligation["expectation"] == "unsupported_program":
-                    # Only the actual ordinary lowering refusal can discharge a
-                    # declared unsupported case. An execution crash is not refusal.
-                    actual = actual_results.get(member["name"], {})
-                    # The ordinary score intentionally omits the refusal plane.
-                    # Reopen its actual produced record, not an invented score
-                    # field or a candidate exit-code summary.
-                    refused = (
-                        row.get("status") == "declined"
-                        and actual.get("status") == "declined"
-                        and (actual.get("failure") or {}).get("plane") == "backend_declined"
-                        and isinstance((actual.get("declined") or {}).get("reason"), str)
-                        and bool(actual["declined"]["reason"].strip())
-                    )
-                    if not refused:
-                        failures.append(member["name"] + ": declared unsupported program was not refused")
-                elif not _passed(row):
-                    failures.append(member["name"] + ": complete numerical/executable certification failed")
+        failures.extend(M.numeric_failures(score, obligations, actual_results))
         if score.get("integrity_status") != "clean":
             failures.append("candidate integrity gate did not pass")
         for path in result_paths:
@@ -391,7 +380,13 @@ def qualify_component_compiler(
         if snapshot_digest != before:
             raise C.StageGateError("private component compiler changed during domain qualification")
         invocation_evidence = E.invocation_members(evidence_root / "grade")
-        E.require_member_invocations(report, evidence_root / "grade", invocation_evidence, preparation=preparation)
+        E.require_member_invocations(
+            report,
+            evidence_root / "grade",
+            invocation_evidence,
+            preparation=preparation,
+            original_members=original_members,
+        )
     except Exception as exc:  # noqa: BLE001 - keep real incomplete or drifted attempts unavailable
         failures.append("component actual invocation evidence unavailable: " + str(exc))
     if C.exact_tree_record(candidate)["sha256"] != before:
@@ -401,6 +396,8 @@ def qualify_component_compiler(
     if _verify_runtime(runtime_authority, compiler_origin, descriptor) != runtime_digest:
         failures.append("independent target runtime changed during domain qualification")
     reopened, actual_domain = D.reopen_domain(corpus_root, origin=compiler_origin)
+    if M.obligations(reopened, preparation=preparation, original_members=original_members) != obligations:
+        failures.append("original candidate source/reference membership changed during qualification")
     if reopened["sha256"] != report["sha256"] or not D.unchanged_domain(domain, actual_domain):
         failures.append("component domain changed during qualification")
     source_inputs.verify(implementation, repo=source_root, entrypoint=Path(__file__), descriptor=None)
@@ -438,6 +435,7 @@ def qualify_component_compiler(
             "compiler_snapshot_sha256": snapshot_digest,
             "invocation_evidence": invocation_evidence,
             "coverage_sha256": report["sha256"],
+            **({"original_candidate_members": M.record(original_members)} if original_members is not None else {}),
             "guard_link": build_guard_link(report),
             "target_descriptor_sha256": descriptor_digest,
             "contract_sha256": contract_digest,
@@ -486,6 +484,7 @@ def qualify_component_compiler(
         object(),
         compile_role_evaluation,
         container_transport,
+        original_members,
     )
     _ISSUED[qualification._issuer] = _authority_identity(qualification)
     return qualification

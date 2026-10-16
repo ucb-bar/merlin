@@ -217,14 +217,44 @@ def test_missing_index_lowering_record_cannot_become_a_compiled_receipt(tmp_path
     assert "index_lowering" not in receipt.get("output", {})
 
 
-def test_oversize_output_refused_before_build_with_failed_receipt(tmp_path, monkeypatch):
+def test_chunked_output_preserves_captured_quantization_build_options(tmp_path, monkeypatch):
+    from merlin.llvmlower.quant_scope import FEATURE
+
     inputs, out = _fixture(tmp_path, monkeypatch, elements=4097)
+    words = np.arange(4097, dtype=np.float32).view(np.uint32)
+    records = ["OUT_BEGIN f32 4097"]
+    for start in range(0, len(words), 1024):
+        chunk = words[start:start + 1024]
+        records.append(f"OUT_CHUNK f32 {start} {len(chunk)} " + " ".join(map(str, chunk)))
+    records.extend(["METRIC build_hash abc123", "METRIC memref_rank_mismatch 0", "DONE"])
+    observed = []
+
+    def build(bundle, work, **kwargs):
+        observed.append(kwargs)
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    monkeypatch.setattr(BM.spike_backend, "available", lambda: True)
+    monkeypatch.setattr(BM, "_spike_extension_backend", lambda target: None)
+    monkeypatch.setattr(BM.spike_model, "run", lambda *a, **kw: {"console": "\n".join(records)})
+    receipt = BM.compile_saved_model(
+        **inputs, output=out / "chunked", run="spike", reference_file="golden.npy",
+        respect_captured_quantization_scope=True,
+    )
+    assert receipt["status"] == "verified_complete_output"
+    assert receipt["output"]["elements"] == 4097
+    assert observed[0]["output_dump_cap"] == 4097
+    assert observed[0]["features"] == frozenset({FEATURE})
+
+
+def test_oversize_output_refused_before_build_with_failed_receipt(tmp_path, monkeypatch):
+    inputs, out = _fixture(tmp_path, monkeypatch, elements=1_048_577)
     monkeypatch.setattr(BM.spike_model, "build", lambda *a, **kw: pytest.fail("build ran before OUT bound"))
-    with pytest.raises(BM.BaremetalModelError, match="4096"):
+    with pytest.raises(BM.BaremetalModelError, match="1048576"):
         BM.compile_saved_model(**inputs, output=out / "too_large", run="spike", reference_file="golden.npy")
     receipt = json.loads((out / "too_large" / "baremetal_model.json").read_text())
     assert receipt["status"] == "failed"
-    assert "4096" in receipt["failure"]
+    assert "1048576" in receipt["failure"]
 
 
 def test_native_wrong_board_firrtl_refused_before_build(tmp_path, monkeypatch):
@@ -288,3 +318,24 @@ def test_native_failure_keeps_partial_stream_bytes_without_numerical_claim(
     assert "console" not in receipt["output"]
     assert "elements" not in receipt["output"]
     assert "metrics" not in receipt["output"]
+
+
+def test_captured_quantization_scope_is_explicit_and_bound(tmp_path, monkeypatch):
+    from merlin.llvmlower.quant_scope import FEATURE
+
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    calls = []
+
+    def build(bundle, work, **kwargs):
+        calls.append(kwargs)
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    default = BM.compile_saved_model(**inputs, output=out / "default-scope", run="none")
+    selected = BM.compile_saved_model(
+        **inputs, output=out / "captured-scope", run="none", respect_captured_quantization_scope=True
+    )
+    assert "features" not in calls[0]
+    assert calls[1]["features"] == frozenset({FEATURE})
+    assert "respect_captured_quantization_scope" not in default["inputs"]
+    assert selected["inputs"]["respect_captured_quantization_scope"] is True

@@ -70,6 +70,8 @@ def _remaining(deadline):
 
 
 def _run(argv, *, root, stage, deadline, inputs=(), outputs=(), dependencies=(), **kwargs):
+    if kwargs.get("env") is not None:
+        kwargs.setdefault("cwd", root)
     result = invocation_record.run(
         argv,
         directory=root,
@@ -147,7 +149,9 @@ class LLVMLayoutObservation:
         }
 
 
-def observe_llvm_layout(*, layout, integer_bits, native_compiler, llvm_config, output_root, timeout_s=120):
+def observe_llvm_layout(
+    *, layout, integer_bits, native_compiler, llvm_config, output_root, timeout_s=120, environment=None
+):
     """Compile a fixed public LLVM accessor and execute the exact layout query.
 
     The coordinator owns independent selection of the tools. This mechanism
@@ -174,6 +178,7 @@ def observe_llvm_layout(*, layout, integer_bits, native_compiler, llvm_config, o
             stage="layout_native_flags",
             deadline=deadline,
             text=True,
+            env=environment,
         )
     )
     libraries = tuple(
@@ -190,6 +195,7 @@ def observe_llvm_layout(*, layout, integer_bits, native_compiler, llvm_config, o
         inputs=(source,),
         outputs=(deps,),
         dependencies=(config, *libraries),
+        env=environment,
     )
     headers = _headers(deps)
     actual_deps = root / "compiled-headers.d"
@@ -201,6 +207,7 @@ def observe_llvm_layout(*, layout, integer_bits, native_compiler, llvm_config, o
         inputs=(source,),
         outputs=(binary, actual_deps),
         dependencies=(config, *libraries, *headers),
+        env=environment,
     )
     if _headers(actual_deps) != headers:
         raise ValueError("native LLVM helper compilation changed its actual consumed header membership")
@@ -213,6 +220,7 @@ def observe_llvm_layout(*, layout, integer_bits, native_compiler, llvm_config, o
             inputs=(query,),
             dependencies=(*libraries, *headers),
             stdin=stream,
+            env=environment,
         )
     result = root / "result.txt"
     result.write_bytes(output)
@@ -239,50 +247,49 @@ def observe_llvm_layout(*, layout, integer_bits, native_compiler, llvm_config, o
     return observation
 
 
-def observe_compiled_layout(*, object_record, integer_bits, native_compiler, llvm_config, output_root, timeout_s=120):
+def observe_compiled_layout(
+    *,
+    object_record,
+    integer_bits,
+    native_compiler,
+    llvm_config,
+    output_root,
+    timeout_s=120,
+    environment=None,
+    max_observation_bytes=None,
+):
     """Requery the actual ordinary object's compiler on its original LLVM input.
 
-    Only the ordinary single-LLVM-input command suffix is supported. Revised
-    transform objects need a separate preservation theorem and are not admitted
-    here. The query shares every original driver option, replacing object output
-    by LLVM emission; its data layout comes from the selected compiler's output.
+    The ordinary clang command retains its historical query. Explicitly selected
+    LLVM object commands require exact environment replay and a bounded native
+    MIR observation. Every original option is retained. Revised transform
+    objects and unsupported flags remain unavailable. This observes the driver's
+    actual layout, without proving its optimized IR or descriptor storage.
+    The observation byte budget bounds this reader, not compiler resources.
     """
+    from .compiled_layout_query import query_object_layout, select_object
     from .target_data_layout import parse
 
     deadline = _deadline(timeout_s)
     record = Path(object_record).resolve(strict=True)
-    document = invocation_record.verify(record)
-    argv = document.get("argv", ())
-    if (
-        document.get("kind") != "subprocess"
-        or document.get("stage") != "object"
-        or len(argv) < 5
-        or argv[-4] != "-c"
-        or argv[-2] != "-o"
-        or "-c" in argv[1:-4]
-        or "-o" in argv[1:-4]
-    ):
-        raise ValueError("layout query requires the actual ordinary LLVM object command")
-    original, obj = map(lambda path: Path(path).resolve(strict=True), (argv[-3], argv[-1]))
-    if original.suffix != ".ll" or document["inputs"] != [{"path": str(original), "sha256": sha256_file(original)}]:
-        raise ValueError("layout query has no exact original LLVM input")
-    if {"path": str(obj), "sha256": sha256_file(obj)} not in document["outputs"]:
-        raise ValueError("layout query has no exact actual object")
-    compiler = Path(document["executable"]["path"])
+    selected_env = None if environment is None else dict(environment)
+    document, original, obj, driver, options = select_object(record, environment=selected_env)
     root = Path(output_root).absolute()
     if root.exists() or root.resolve() != root:
         raise ValueError("compiled layout query requires a fresh direct owner")
     root.mkdir(parents=True, mode=0o700)
-    output = root / "selected.ll"
-    dependencies = tuple(Path(row["path"]) for row in document["dependencies"])
-    _run(
-        [str(compiler), *argv[1:-4], "-S", "-emit-llvm", str(original), "-o", str(output)],
+    output, compiler, dependencies = query_object_layout(
+        document=document,
+        original=original,
+        obj=obj,
+        record=record,
+        driver=driver,
+        options=options,
         root=root,
-        stage="layout_selected_object_compiler",
+        run=_run,
         deadline=deadline,
-        inputs=(original,),
-        outputs=(output,),
-        dependencies=(record, obj, *dependencies),
+        environment=selected_env,
+        max_observation_bytes=max_observation_bytes,
     )
     layout = parse(output.read_text())
     if not layout:
@@ -294,6 +301,7 @@ def observe_compiled_layout(*, object_record, integer_bits, native_compiler, llv
         llvm_config=llvm_config,
         output_root=root / "native",
         timeout_s=_remaining(deadline),
+        environment=selected_env,
     )
     invocation_record.verify(record)
     pins = tuple(
@@ -305,6 +313,8 @@ def observe_compiled_layout(*, object_record, integer_bits, native_compiler, llv
                 _pin(original),
                 _pin(obj),
                 _pin(output),
+                *(_pin(path) for path in (root / "selected.mir",) if path.is_file()),
+                _pin(Path(__file__).with_name("compiled_layout_query.py")),
                 *(_pin(path) for path in dependencies),
             }
         )

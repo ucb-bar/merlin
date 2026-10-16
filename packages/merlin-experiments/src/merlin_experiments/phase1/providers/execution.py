@@ -31,6 +31,8 @@ class ProviderConfig:
     provider: str = "subscription"
     subagent_model: str = ""
     background_model: str = ""
+    codex_runtime: object | None = None
+    codex_max_subagents: int | None = None
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,8 @@ class ExecutionConfig:
     timing_file: Path
     sim_max_jobs: int = 0
     selected_rtl_facts: Path | None = None
+    sim_per_capsule_timeout: int = 0
+    model_gate_interval: int = 0
 
 
 _DRIVER_MODULES = {
@@ -147,6 +151,7 @@ def sandbox_command(
     # the declared bytes through read-only mounts and never needs (or gets) their host storage path.
     parts += ["--unsetenv", _MODEL_HOST_SNAPSHOT_ROOT_ENV, "--unsetenv", _MODEL_HOST_SNAPSHOT_REQUIRED_ENV]
     parts += ["--unsetenv", _MODEL_HOST_SNAPSHOT_RECORD_ENV]
+    parts += ["--unsetenv", "MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION"]
     # Per-driver runtime binds (e.g. the Codex CLI's package dir + an isolated
     # CODEX_HOME) go in BEFORE the mask pass, so a bind can never re-expose an
     # answer surface: masking is applied last and therefore wins.
@@ -179,6 +184,31 @@ def sandbox_command(
     # pinned by merlin/tests/infra/test_bwrap_cmd_argv_size.py so a merge cannot silently drop it a
     # third time.
     return _BW.compose_command(parts, " bash -c '" + payload.replace("'", "'\\''") + "'", ws)
+
+
+def codex_sandbox_command(inner, ws, bundle, extra_binds=None, *, context, private_run_dir, runtime):
+    from merlin.targetgen.sandbox import toolchain as TC
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    runtime.verify()
+    target = load_target_experiment(context.descriptor)
+    if (
+        tuple(TC.toolchain_binds(target)) != runtime.toolchain_mounts
+        or TC.sandbox_env(target, ws) != runtime.tool_environment
+    ):
+        raise ValueError("explicit client toolchain mount selection changed")
+    return sandbox_command(
+        inner, ws, bundle, extra_binds, context=context, private_run_dir=private_run_dir, codex_mode=True
+    )
+
+
+def codex_call_kwargs(runtime, *, context, run_dir, model) -> dict:
+    if runtime is None:
+        return {"sandbox_command": partial(sandbox_command, context=context, private_run_dir=run_dir, codex_mode=True)}
+    return {
+        **runtime.round_kwargs(),
+        "sandbox_command": partial(codex_sandbox_command, context=context, private_run_dir=run_dir, runtime=runtime),
+    }
 
 
 def launch(
@@ -225,11 +255,19 @@ def launch(
                 policy_root,
                 contract,
                 config.selected_rtl_facts,
+                run_dir / "input_bundle_manifest.yaml" if bundle.get("compiler_tool_profile") is not None else None,
+                sim_per_capsule_timeout=config.sim_per_capsule_timeout,
+                raw_evidence_root=(run_dir / "_qa_work" / "selfchecks").resolve(),
             ),
         )
         if sandbox == "bwrap"
         else None
     )
+    model_gate = None
+    if config.model_gate_interval > 0 and sandbox == "bwrap":
+        from merlin_experiments.phase1.feedback import visible_model_gate
+
+        model_gate = visible_model_gate.start(ws, run_dir, interval_s=config.model_gate_interval)
     primary_error = None
     try:
         # Route to the selected driver (explicit --driver, or auto-by-model-id). A non-Anthropic model can't
@@ -237,6 +275,10 @@ def launch(
         # sandbox agentic loop (incl. the self_check tool wired to the shim above) + a compatible transcript;
         # 'opencode' drives the provider-agnostic OpenCode CLI; 'claudecode'/Anthropic uses the claude CLI.
         drv = resolve_driver(model, config=config.provider)
+        if config.provider.codex_runtime is not None and drv != "codex":
+            raise ValueError("explicit client runtime requires the Codex provider")
+        if config.provider.codex_max_subagents is not None and (drv != "codex" or sandbox != "bwrap"):
+            raise ValueError("Codex subagents require the Codex provider and bwrap sandbox")
         # A (model, harness) pairing that needs the bridge needs the proxy running. Started here rather
         # than by the launcher so EVERY entry point (launch_ab_batch, chia_ab_batch, watchdog resume, a
         # bare run) gets it, and idempotently so concurrent arms of one campaign share one instance.
@@ -306,8 +348,10 @@ def launch(
                 background_model=config.provider.background_model,
                 effort=effort,
                 continue_session=continuous,
-                sandbox_command=partial(
-                    sandbox_command, context=config.context, private_run_dir=run_dir, codex_mode=True
+                **({"max_concurrent_subagents": config.provider.codex_max_subagents}
+                   if config.provider.codex_max_subagents is not None else {}),
+                **codex_call_kwargs(
+                    config.provider.codex_runtime, context=config.context, run_dir=run_dir, model=model
                 ),
             )
         # claudecode. The claude CLI speaks the Anthropic Messages API, so a NON-Anthropic model reaches
@@ -351,5 +395,7 @@ def launch(
         primary_error = error
         raise
     finally:
+        if model_gate is not None:
+            visible_model_gate.stop_gate(model_gate)
         FL.stop_brokers(ws, broker, primary_error=primary_error)
     return rc, tpath

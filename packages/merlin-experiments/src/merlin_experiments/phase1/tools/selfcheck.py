@@ -159,9 +159,11 @@ def _request_budget_seconds(timeout: int, *, capsules: str, workers: int, suite_
 
     ``agent_selfcheck`` passes ``timeout`` to every capsule run.  Treating that value as a deadline for
     the entire request aborts a healthy full-suite check after one capsule-timeout, even though the suite
-    has a serial calibration head followed by several parallel worker waves.  Mirror that scheduling
-    shape here.  The bound is deliberately conservative: an individual capsule normally finishes far
-    below its timeout, so successful requests still return promptly.
+    has a serial calibration head followed by a pipelined worker pool (``capsule_scheduling``).  Greedy
+    list scheduling of members each bounded by ``timeout`` on ``workers`` finishes within
+    ``(n - 1) / workers + 1`` timeouts (Graham), so the pool term is ``ceil(rest / workers) + 1``.  The
+    bound is deliberately conservative: an individual capsule normally finishes far below its timeout,
+    so successful requests still return promptly.
     """
     per_capsule = max(1, int(timeout))
     worker_count = max(1, int(workers))
@@ -170,8 +172,9 @@ def _request_budget_seconds(timeout: int, *, capsules: str, workers: int, suite_
     else:
         count = max(1, len({name.strip() for name in capsules.split(",") if name.strip()}))
     serial = min(_CALIBRATION_CAP, count)
-    parallel_waves = math.ceil(max(0, count - serial) / worker_count)
-    return (serial + parallel_waves) * per_capsule + 240
+    rest = max(0, count - serial)
+    pool = math.ceil(rest / worker_count) + (1 if rest > worker_count else 0)
+    return (serial + pool) * per_capsule + 240
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -228,8 +231,14 @@ def main(argv=None):
     # simulator, which only some targets let you select) was unreachable from inside the box.
     ap.add_argument("--tiers", default="")
     ap.add_argument("--capsules", default="all")
-    ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--timeout", type=int, default=1800)
+    ap.add_argument("--workers", type=int, default=0, help="0 uses the host's selected grading worker count")
+    # This bounds the entire capsule check, including source setup, object builds,
+    # the functional screen, native RTL execution, coherent readback and audits.
+    # The selected gSIM native execution keeps its separate original 1800 s cap.
+    # A default of 1800 here cut off the capacity convolution during coherent
+    # readback after a 5-minute setup, even though native execution passed its
+    # own limit in the automatic promotion path.
+    ap.add_argument("--timeout", type=int, default=None)
     ap.add_argument("--out", default="")
     # Forwarded like every other flag. Without this the sandboxed agent -- which is EVERY real run --
     # gets "unrecognized arguments" and the shape-coverage report is unreachable exactly where it
@@ -240,6 +249,14 @@ def main(argv=None):
     # got "unrecognized arguments" for it.
     ap.add_argument("--offload-census", action="store_true")
     ap.add_argument("--model-layers", action="store_true")
+    ap.add_argument("--candidate-diagnostics", action="store_true",
+                    help="inspect original public emission without grading")
+    ap.add_argument("--compile-only", action="store_true",
+                    help="compile public scale/frontier tensor sources without executing a probe")
+    ap.add_argument("--scale-probe", action="store_true",
+                    help="with --compile-only, inspect public scale/tail emission before object compilation")
+    ap.add_argument("--dynamic-census", action="store_true",
+                    help="append bounded own-ELF activity after functional screening")
     ap.add_argument(
         "--caller-layout",
         default="",
@@ -267,8 +284,12 @@ def main(argv=None):
         help="resume waiting on an in-flight request id instead of submitting a new one",
     )
     a = ap.parse_args(argv)
+    if a.timeout is None:
+        a.timeout = 3600 if a.sim == "gsim" else 1800
+    if a.scale_probe and not a.compile_only:
+        ap.error("--scale-probe requires --compile-only")
 
-    policy_error = None if a.caller_layout else _sim_policy_error(a.sim)
+    policy_error = None if a.caller_layout or a.candidate_diagnostics or a.compile_only else _sim_policy_error(a.sim)
     if policy_error:
         txt = json.dumps(
             {"error": policy_error, "all_pass": False, "sim": a.sim, "required_rtl_engine": _required_rtl_engine()}
@@ -321,6 +342,10 @@ def main(argv=None):
                     "shape_coverage": bool(a.shape_coverage),
                     "offload_census": bool(a.offload_census),
                     "model_layers": bool(a.model_layers),
+                    "candidate_diagnostics": bool(a.candidate_diagnostics),
+                    "compile_only": bool(a.compile_only),
+                    "scale_probe": bool(a.scale_probe),
+                    "dynamic_census": bool(a.dynamic_census),
                     "caller_layout": a.caller_layout,
                 }
             ),
@@ -399,6 +424,10 @@ def main(argv=None):
             # the shape-coverage report has no `all_pass`; its verdict is `all_covered`
             if a.shape_coverage:
                 return 0 if _v.get("all_covered") else 1
+            if a.candidate_diagnostics:
+                return 0 if _v.get("schema") == "merlin.public_candidate_diagnostics.v1" else 2
+            if a.compile_only:
+                return 0 if _v.get("schema") == "merlin.public_compile_only_feedback.v1" and _v.get("cases") else 2
             if _v.get("status") == "layout_only":
                 return 0 if _v.get("schema") == "public_caller_layout_receipt_v1" else 2
             return 0 if _v.get("all_pass") else 1

@@ -725,7 +725,8 @@ OP_CATEGORY = {
     "dtype_cast": "quantize_requant",
     "embedding": "gather",
     "index_gather": "gather",
-    "convolution_im2col_matmul": "contraction",
+    "convolution_im2col_matmul": "contraction",  # read alias (legacy_labels.CONV_OP_ALIASES)
+    "convolution_gathered_matmul": "contraction",
 }
 
 #: `prov.family` -> category. The families are the ones the study models' own captures emit.

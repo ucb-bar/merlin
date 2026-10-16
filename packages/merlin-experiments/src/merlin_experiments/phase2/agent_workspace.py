@@ -15,6 +15,7 @@ from typing import Any
 from merlin.benchharness import hash_tree
 from merlin.common.digest import sha256_bytes as _sha256
 from merlin.perf.external_objective import OBJECTIVE_DIRECTORY, ExternalObjective, objective_directory
+from merlin.targetgen.capsule_privacy import capsule_answer_members
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import toolchain as TC
 from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces
@@ -23,6 +24,7 @@ from merlin.targetgen.target_experiment import TargetExperiment
 from . import campaign as CAMPAIGN
 from . import contracts as CONTRACTS
 from . import corpus as CORPUS
+from . import normal_resource_launch as NR
 from .broker import AGENT_CORPUS_MOUNT
 from .contracts import StageGateError
 from .contracts import canonical_json as _canonical_json
@@ -173,10 +175,11 @@ def build_answer_free_agent_inputs(
     destination.mkdir(parents=True)
     for member in corpus.capsules:
         original = Path(target_experiment.capsule_corpus).resolve().parent / member.source_relative_path
+        protected = capsule_answer_members(member.source_dir)
         for frozen_file in sorted(path for path in member.source_dir.rglob("*") if path.is_file()):
             relative_in_capsule = frozen_file.relative_to(member.source_dir)
             original_file = original / relative_in_capsule
-            if _path_is_answer(original_file, surfaces):
+            if relative_in_capsule.as_posix() in protected or _path_is_answer(original_file, surfaces):
                 continue
             relative = Path(member.source_relative_path) / relative_in_capsule
             output = destination / relative
@@ -447,22 +450,25 @@ def outer_codex_policy(
 
 
 def run_required_tool_probes(
-    policy: AgentSandboxPolicy, target_experiment: TargetExperiment, candidate: Path, *, timeout_s: int = 60
+    policy: AgentSandboxPolicy,
+    target_experiment: TargetExperiment,
+    candidate: Path,
+    *,
+    timeout_s: int = 60,
+    external_boundary=None,
 ) -> list[dict[str, Any]]:
     policy.verify_execution()
     probes = policy.required_tools
     rows: list[dict[str, Any]] = []
     for probe in probes:
-        command = [
-            *policy.argv,
-            "--chdir",
-            str(candidate),
-            "bash",
-            "-c",
-            policy.env_prefix + probe.cmd,
-        ]
         policy.verify_execution()
-        proc = subprocess.run(command, cwd=str(policy.process_cwd), capture_output=True, text=True, timeout=timeout_s)
+        with NR.bounded_normal_scratch(
+            policy.argv, owner=candidate.parent / "tool_probe_scratch", boundary=external_boundary
+        ) as prefix:
+            command = [*prefix, "--chdir", str(candidate), "bash", "-c", policy.env_prefix + probe.cmd]
+            proc = subprocess.run(
+                command, cwd=str(policy.process_cwd), capture_output=True, text=True, timeout=timeout_s
+            )
         row = {
             "label": probe.label,
             "returncode": proc.returncode,

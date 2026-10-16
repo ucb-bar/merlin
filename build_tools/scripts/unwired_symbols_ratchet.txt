@@ -135,8 +135,6 @@ merlin/python/merlin/targetgen/program_oracle.py::run_capability_probe
 merlin/python/merlin/targetgen/routing.py::host_board_gap
 merlin/python/merlin/targetgen/routing.py::is_fully_routed
 merlin/python/merlin/targetgen/rtl/circt_introspect.py::crosscheck_semantic_class_names
-merlin/python/merlin/targetgen/rtl/circt_introspect.py::extract_register_bundle_layouts
-merlin/python/merlin/targetgen/rtl/circt_introspect.py::unresolved_register_bundles
 merlin/python/merlin/targetgen/rtl/facts.py::clear_resolution_cache
 merlin/python/merlin/targetgen/rtl/facts.py::toolchain_of
 merlin/python/merlin/targetgen/rtl/fsm.py::reset_values

@@ -90,6 +90,38 @@ def test_output_transport_selection_does_not_break_isa_broker_startup(tmp_path, 
     assert brokers[0].returncode == 0
 
 
+def test_raw_selfcheck_selection_is_passed_only_to_host_execution_brokers(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import raw_selfcheck_evidence as E
+
+    names = ["selfcheck", "simjob", "qa"]
+    monkeypatch.setattr(L._TR, "COMMON_BROKERS", tuple(
+        SimpleNamespace(module=f"merlin_experiments.phase1.brokers.{name}",
+                        log="broker.log", channel=f".{name}_probe") for name in names
+    ))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    root = tmp_path / "run" / "_qa_work" / "selfchecks"
+    real_popen, observed = subprocess.Popen, []
+
+    def spawn(argv, **kwargs):
+        observed.append(kwargs.get("env"))
+        script = "import os; print(os.environ.get('" + E.ROOT_ENV + "', '<unset>'))"
+        return real_popen([sys.executable, "-c", script], **kwargs)
+
+    monkeypatch.setattr(L.subprocess, "Popen", spawn)
+    brokers = L.start_brokers(workspace, replace(_config(tmp_path), raw_evidence_root=root))
+    try:
+        assert [child.wait(timeout=5) for child in brokers] == [0, 0, 0]
+        for environment in observed[:2]:
+            assert environment[E.ROOT_ENV] == str(root)
+            assert environment[E.WORKSPACE_ENV] == str(workspace)
+        assert observed[2] is None
+        for name in names[:2]:
+            assert (workspace / f".{name}_probe/broker.log").read_text().strip() == str(root)
+    finally:
+        L.stop_brokers(workspace, brokers)
+
+
 def test_host_tool_broker_uses_only_selected_frozen_facts(tmp_path, monkeypatch):
     from merlin_experiments.phase1.frozen_facts import select
 
@@ -459,6 +491,7 @@ def test_actual_caller_finally_preserves_primary_and_stops_brokers(tmp_path, mon
         "sys": sys,
         "ws": tmp_path,
         "broker": [child],
+        "model_gate": None,
         "cmd": "unused",
         "a": SimpleNamespace(timeout=1),
         "run_provider": run_provider,
@@ -589,3 +622,56 @@ def test_source_receipt_rejects_lifecycle_drift(tmp_path, monkeypatch, mutation)
         member.with_name("added_lifecycle.py").write_text("# new lifecycle member\n")
     with pytest.raises(SpecError, match="source identity changed"):
         SI.verify(record, **inputs)
+
+
+@pytest.mark.parametrize("configured", [True, False])
+def test_background_grade_pool_is_worker_base_and_nested_lease_restore(tmp_path, monkeypatch, configured):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from merlin.common.cpu_pool import selected_pool
+
+    original = os.sched_getaffinity(0)
+    available = sorted(original)
+    if len(available) < 4:
+        pytest.skip("requires four available CPUs for isolated affinity observations")
+    manager = {available[0]}
+    expected = set(available[1:3]) if configured else manager
+    if configured:
+        monkeypatch.setenv("MERLIN_GRADE_CPUS", ",".join(map(str, sorted(expected))))
+    else:
+        monkeypatch.delenv("MERLIN_GRADE_CPUS", raising=False)
+    completed = threading.Event()
+    observed = {}
+    handle = None
+
+    def worker():
+        before = os.sched_getaffinity(0)
+        with selected_pool((available[3],)):
+            leased = os.sched_getaffinity(0)
+        return before, leased, os.sched_getaffinity(0)
+
+    def fast(*args):
+        observed["grader"] = os.sched_getaffinity(0)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            observed["worker"] = pool.submit(worker).result(timeout=5)
+        observed["after_workers"] = os.sched_getaffinity(0)
+        completed.set()
+        return {"all_pass": None, "tiers_graded": ["loop"], "tiers_not_run": ["cert"]}
+
+    try:
+        os.sched_setaffinity(0, manager)
+        handle = L.start_background(
+            tmp_path / "workspace", tmp_path / "run", L.GradeCadence(60, False, 900),
+            interval_grades=False, grade_callback=lambda *a: pytest.fail("unexpected interval"),
+            fast_grade_callback=fast,
+        )
+        assert completed.wait(5)
+        L.stop_background(handle)
+        assert observed["grader"] == expected
+        assert observed["worker"] == (expected, {available[3]}, expected)
+        assert observed["after_workers"] == expected
+        assert os.sched_getaffinity(0) == manager
+    finally:
+        if handle is not None:
+            L.stop_background(handle)
+        os.sched_setaffinity(0, original)

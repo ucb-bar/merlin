@@ -164,7 +164,12 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
     )
     lines.append(header)
 
+    produced = {command["operands"]["dst"] for command in commands
+                if command.get("opcode") in _NAMED_OPCODE_TO_OP}
+
     for name, spec in tensors.items():
+        if name in produced:
+            continue
         role = spec.get("role", "input")
         tensor_attrs = {"name": name, "role": role}
         if role == "scale":
@@ -213,6 +218,18 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
         elif op == "EVICT":
             h = ops["handle"]
             lines.append(f"  merlin_iface.evict %{h} : (!merlin_iface.resident) -> ()")
+        elif op in _NAMED_OPCODE_TO_OP:
+            mnemonic = _NAMED_OPCODE_TO_OP[op]
+            names = [ops[key] for key in _NAMED_OP_OPERAND_KEYS[mnemonic]]
+            dst = ops["dst"]
+            result_type = _tensor_type(tensors[dst])
+            arguments = ", ".join(f"%{name}" for name in names)
+            types = ", ".join(val_type[name] for name in names)
+            lines.append(
+                f"  %{dst} = merlin_iface.{mnemonic} {arguments} {_fmt_attrs({'name': dst, **attrs})} "
+                f": ({types}) -> {result_type}"
+            )
+            val_type[dst] = result_type
         else:  # pragma: no cover - defensive
             raise ValueError(f"unsupported opcode {op!r} for interface grammar v{GRAMMAR_VERSION}")
 

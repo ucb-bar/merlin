@@ -32,3 +32,18 @@ Continuous Codex sessions retry only explicit capacity refusals, at most three t
 within the existing wall budget, using the same thread, model and sandbox. Preserve
 all failed-turn events and unknown usage. Quota/authentication errors, missing session
 identity, round-mode execution and exhausted retry budgets remain non-successes.
+
+Optional explicit credential selection is stat/path only and requires complete
+explicit isolated Codex inputs. Never discover the real home in that route. Reject
+same-file/hard-link executable and credential selections before executable hashing.
+The shared ordinary/canary runtime constructs the same read grants, home mounts and
+native permission preflight. Existing per-round homes refuse before client startup.
+
+An explicit positive sub-agent concurrency option adds the operator's delegation request
+to both initial and continued user prompts, with the same recorded concurrency bound.
+Helpers implement disjoint compiler changes; the parent joins changes before candidate
+freezing or self-checks. This grants no additional tools, access or model selection.
+Omitting the option preserves the existing prompt bytes exactly.
+
+`codex_usage` owns the pure token-subset conversion. Unreported usage remains
+unknown; the provider preserves its existing public conversion import.

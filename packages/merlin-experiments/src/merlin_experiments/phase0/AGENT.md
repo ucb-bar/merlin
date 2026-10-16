@@ -1,8 +1,151 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+Explicit ordinary `public_joint_boundaries` v2 selects typed connected cuts:
+casts with original dtype literals, integer representations, higher-rank batch
+contractions/broadcasting and reduction composition. Keep v1 float-only replay
+unchanged. Preserve every original live-out, exact integer references and each
+floating output's original tolerance through an explicit per-output policy.
+Observed dense input permutations are retained; other strided/effect domains
+remain UNKNOWN. Source widths price logical payload only at facts-derived row
+widths, never physical packing, simultaneous allocation or lifetime. New source
+cases still pass ordinary capture, private exclusion and discovery/freeze.
+
+Ordinary `public_joint_boundaries` v1 selects the shared public boundary factory.
+`public_boundary_semantics` replays exact original public typed calls and derives
+connected cuts/dimension equalities; `public_boundaries` emits changed bounded
+ATen loaders through normal generation-time sealed capture and model writing.
+Reopen the original context before freezing loaders and every fresh captured
+call, schema, type and published reference before staged exclusion/discovery.
+Summed logical tensor volumes at selected store row widths are pressure probes,
+never physical placement, simultaneous allocations or lifetime proofs. Preserve
+complete original programs separately and every unsupported/budget-denied UNKNOWN.
+
+Ordinary recipe `performance_source_programs` v1 selects the complete descriptor's
+unchanged public performance roster as connected dev members. Require every
+original sealed capture, selected loader/profile, finite ABI/payload budgets and
+operator-private exclusion before derivation publishes any source member. Keep
+the full original graph and host eager input/output closure through the existing
+materializer/writer and normal frozen input owner. Whole-program placement uses
+the same software screen as iteration sources. Purpose metadata may report only
+observed operations and existing conditional form boundaries; absent movement,
+conversion, physical mapping, runtime and timing remain UNKNOWN. A source basis
+is an alternative to an RTL trait rationale, never execution qualification.
+
+Original call-source v11 / automatic v18 / declared v11 opt in to shared original reduction-shape factories. Keep mean dimensions/keepdim/dtype, softmax signed dimension/dtype, and layer-normalization normalized-shape/affine/epsilon/cudnn bindings exact. Converter v6/declared selector v5 and stable factory v5/ledger v7 preserve every original call/cohort ID and all prior versions. Fresh literal-bound geometry establishes no numerical/reference/effect/packing or phase admission; missing prerequisites remain mandatory.
+
+
+Original call-source v10 / automatic v17 / declared v10 opt in to exact typed
+contiguous reshape construction. Preserve original literal dimensions and -1,
+shape/stride premises, ordered storage/result and Tensor(a) declarations.
+Fixed products admit only legal fresh factorizations, never capacity evidence;
+impossible requested extents stay required unavailable. Converter selection v5,
+declared selector v4 and stable factory v4/ledger v6 retain complete original
+call/cohort IDs beside every numerical/effect/packing UNKNOWN. Prior versions
+retain their meanings; construction issues no reference or phase admission.
+
+Local packing intake v2 explicitly selects source-byte, local-memory,
+hierarchy and interval metadata budgets. Reuse the freshly serialized original
+core and its exact live hardware production root/container; preserve v1 local
+partitions and add separate conditional occurrence-to-memory bit facts. Retain
+every memory port and state/read/opaque/unsupported cut, original undefined
+memory domains and all command/axis/capacity/effect UNKNOWNs. Declared Phase 0
+run v6 carries this selector through the ordinary packing intake while keeping
+all v5 source/reference and mandatory requirements. Structural data grants no
+packing-domain, numerical, physical or grading admission; saved records cannot
+recreate live source authority or upgrade prior observations.
+
 Profiles declare tests; sweeps expand them; writer constructs and validates capsules;
 numerics owns the independent golden engines. Generation orchestrates those owners,
 and provenance records emitted inputs without exposing hidden member names.
+Profiles also own declaration-order Cartesian products and one-level variant
+formatting; sweeps retain their existing import names and expansion semantics.
+
+`operator_exclusion.select(path, sha256)` is a fixed operator-only selection of
+an ordinary private content-pinned JSON hash list. Never discover protected
+programs or shapes, put this selection in declarations/receipts/bundles, or expose
+matches in author feedback. Its typed contraction hashes include every actual
+matmul node's ordered input/result geometry, storage and selected arithmetic;
+names, graph topology and source bundle identity cannot hide an equal node.
+The operator passes the opaque selection directly to `declared_run.run` or
+`generation.generate_target`. `staging.write_staged` checks complete emitted
+public/dev sources before any new member is promoted. Unknown source structure,
+source/policy drift and exclusions share one generic refusal; hidden source
+cohorts retain their private scope. This safeguard grants no numerical/runtime
+qualification. Generation propagates that refusal without matched-member error
+rows. Default legacy calls do not discover or select an exclusion list.
+
+Original call-source v9 / automatic v16 / declared v9 add bounded `triu`
+construction for the exact original signed diagonal/default, positive rank of
+at least two and same input/result storage and shape relation. Preserve the
+last-two-axis semantics with independent fresh geometry and complete rank,
+logical input/output and aggregate source budgets. Stable factory v3/ledger v5
+retain all original call/cohort IDs, including fulfilled source prerequisites;
+scalar-conversion selection/receipt v4 and declared selection v3 retain the
+unchanged scalar sub-roster and observer v2. Earlier versions retain their
+meanings. Construction grants no reference, effect, packing, numerical or phase
+admission, and unsupported original formats remain required.
+
+Original call-source v8 / automatic v15 / declared v8 explicitly select bounded
+typed `to.dtype` and metadata-assertion factories. Retain original storage/rank,
+cast flags and dtype/device/layout conditions; non-None size/stride requirements
+remain unavailable rather than borrowing example geometry. Replay the selected
+native zero-return bridge and preserve the Python None slot separately from zero
+dispatcher results. Stable factory v2/ledger v4 keep every original selector ID,
+cohort and candidate blocker, including fulfilled original call-binding IDs.
+Binding state does not discharge effects or numerical admission. Scalar-conversion selection/receipt v3 replays the
+complete v8 source roster and the unchanged scalar sub-roster/native observer v2.
+Old versions, independent reference/packing choices and all numerical, alias,
+effect, hardware and phase-admission requirements keep their meanings.
+
+Original call-source v7 and scalar-conversion selection/receipt v2 explicitly
+select signed64 integer-literal construction through the same original live
+schema Tensor getter. Retain every original cohort and require exact native
+wrapped storage, fresh promotion/readout observations, registered importer/body
+joins and separate complete preallocation bounds for both dispatch outputs.
+Prior source, automatic, reference, review and numerical policies are unchanged;
+finite observed promotion establishes no whole-domain or mandatory admission.
+
+Automatic policy/receipt v14 explicitly selects original call-source v7 and
+the same native Tensor-binding facet in schema intake v2 or v3. Declared run v7
+connects the complete original source roster to the actual fixed registered
+scalar converter with input-only public source/parser and complete product/
+promotion budget declarations; live original owners derive all selection hashes.
+Its source-construction route retains v4 performance and mandatory requirements.
+Reference and local-memory selections are independent explicit additions, never
+fallbacks. Their absence preserves all missing numeric/effect/packing premises
+and blocked phases. Old v13/v6 factories and v5/v6 caller grammars are unchanged.
+
+Declared run v7 additionally selects source requirement ledger v3. The fixed
+`original_factory_prerequisites` owner derives every original call and all three
+cohorts before inspecting construction outcomes, then replays live schema/basis
+owners and exact source bytes. Stable selector IDs include fulfilled factories;
+the full `original_prerequisite_ids` union retains every coverage ID. Historical
+`original_required_ids`, ledger APIs, missing-row semantics and nonfactory or
+candidate blockers remain unchanged. Constructed source is separate from all
+numerical, hardware, effect, runtime and phase admission.
+
+Original call-source v6 / automatic policy and receipt v13 explicitly adds the
+bounded scalar mul/div factory. Every original call and guard/private slot,
+aggregate cost and missing admission remains required. Keep old versions and
+numeric/reference/review meanings unchanged; FloatLiteral preservation and a
+constructed loader grant no registered conversion or numerical/domain authority.
+
+`original_scalar_conversion` is a separate opt-in live consumer of that complete
+scalar guard/private source roster. The fixed observer records real registered
+importer entry/return without replacing registry functions; overrides refuse.
+Check exact public source bytes, original typed arguments, complete native
+products, the core SSA/body relation and actual selected stock parser before
+issuing construction data. Keep wrapped-number source correspondence,
+numeric/reference/owner, effects/resources and every mandatory admission unknown.
+Old source, reference and automatic versions keep their meanings.
+
+Original call-source v5 / automatic policy v12 selects typed broadcast-add forms;
+original reference selection/roster v5 and standard-IR v4 explicitly select the
+same vocabulary. Preserve every original call and guard/private slot, complete
+aggregate logical budgets and all unavailable policies/owners/effect/resource
+requirements. Original positive extents supply singleton/equality relations only,
+never generated sizes, objective weights or packing roles. Earlier versions keep
+their meanings; new finite source/reference products grant no mandatory admission.
 
 `source_preparation_release` replays the complete original source ledger and
 optional finite semantic cases into a live versioned input owner. Preserve all
@@ -29,6 +172,11 @@ source and process pins with JSON scalar types preserved; completed parser
 refusals and interrupted deadlines remain distinct. Unsupported original slots
 stay required. This private data checks neither compiled body semantics nor
 candidate execution, numerical stress, physical effects or Phase 1 release.
+Pointwise standard-IR replay explicitly shares only its selected canonical
+stock-parser tool pin during one bounded verification. Reopen complete tool
+content before and after, retain every original invocation/ENV/argv/role/member
+join and every fresh reader/input/output pin. Actual native observation remains
+fresh; historical v1 and absence of this opt-in retain their original behavior.
 
 `memory_port_intake` observes the complete local typed Seq memory/port roster
 from the same live independently reproduced public core. Fixed native generic
@@ -102,6 +250,19 @@ guard and private transfer commitment to fixed full-reference replay. No supplie
 factory, receipt, target encoding or accepted status is an input. Legacy request
 versions stay closed; v4 still retains all missing requirements and blocked later
 phases, with hardware guards and measured baselines unestablished.
+
+Explicit source-preparation v2 derives the shared template and objectives from
+live minimal software and RTL intake. The declared caller selects only a pinned,
+closed construction policy; workload/query selectors and arbitrary factories
+refuse before issuance. Normal generation rederives that complete template before
+writing, then uses existing sweep, aggregate-budget, source-screen and exact
+reference owners. Real signed casts and axis reductions use component-program
+v2. Every member retains its purpose, numerical policy, complete output boundary,
+source tier and limits. Joint adjacent source probes use observed memory depth,
+volume and optional array dimensions; physical axis/capacity/tail mappings remain
+UNKNOWN. Missing semantics and metadata-budget refusals retain mandatory rows.
+The explicit host source basis substitutes for a required RTL trait only for
+source preparation; saved execution labels cannot satisfy its execution gate.
 
 `component_source_demand` is a separate explicit private v1 source-contract
 consumer. Replay the same live source selectors and every complete original
@@ -389,6 +550,17 @@ Historical v8/v9 meanings and every original numerical admission, unsupported
 owner, effect and hardware gap remain unchanged. Factory construction and
 ordinary upstream source parsing grant no whole-domain numerical authority.
 
+Automatic policy/receipt v11 explicitly selects source record v4, adding exact
+original rank-two transpose forms. Original reference selection/roster v4 and
+declared reference/standard selections v3 use a separate finite storage policy;
+standard IR selection/request/roster v3 binds the exact ordinary converter.
+Preserve original axes and Tensor(a) schema alias while using fresh bounded
+rectangular geometry. Check every output element's exact storage bytes and
+separately reopen actual native strides, storage contact and unchanged finite
+input bytes. Those observations grant no effect domain, physical ownership,
+temporal behavior, hardware mapping, semantic-review owner or release authority.
+Keep every old version, guard/private identity and unsupported original slot.
+
 `operator_schema_intake` observes captured graph-level schemas against clean
 tracked public function declarations and the actual registered native schemas.
 The fixed reader retains typed alias sets, exact original argument/result joins
@@ -513,3 +685,25 @@ conversion failure, opaque frontend output and stock parser refusal give no
 source credit. These finite private observations do not grant original semantic
 ownership, numerical admission, stress-domain coverage, hardware or runtime
 effects, compiled semantics, or Phase 1 release.
+
+Original semantic review/cases v2 explicitly admits pointwise policy v2 while
+preserving legacy v1. Pin every selected tracked public implementation context,
+complete original schema/default/type/policy selector and unchanged input domain.
+The fixed pointwise probe producer requires fresh bounded extents and explicit
+complete logical/source/output budgets before shaped allocation. Supplementary
+native full-output checks and actual reference-traversal stress never replace an
+original guard/private slot. Source preparation v2 carries these finite reviewed
+facets through the same live source chain; all original mandatory unknown domains,
+effects, mappings, runtime and pending candidate predicates survive unchanged.
+
+The optional `generation_scope: phase1-functional` retains full roster expansion
+and all ordinary nonperformance, hidden and application admission. Only existing
+`_perf` members are deferred before capsule writing. Keep every resolved claim in
+the byte-bound `phase2-deferred.json` ledger and preserve it during release
+preparation. Deferred claims are neither written members nor Phase 2 readiness;
+omission retains historical full generation. Do not reuse this selector to omit
+other mandatory obligations or change sealed capture freshness.
+
+`capture_recipe` reads only the selected frozen software recipe index, checks
+exact bytes and semantic digests, and refuses ambiguous selections. Generation
+retains its callback alias; this helper cannot supply a hardware-only default.

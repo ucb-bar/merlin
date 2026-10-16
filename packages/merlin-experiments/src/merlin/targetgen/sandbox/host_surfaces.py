@@ -18,8 +18,10 @@ from merlin.targetgen.sandbox.bwrap import (
     _SNAPSHOT_COMPLETE,
     _bind_alias,
     _host_input_paths,
+    _MountPathIndex,
     _mounts,
     _private_validation_paths,
+    _resolved_bind_mounts,
     _snapshot_grants,
     _snapshot_host_inputs,
     _validate_host_locations,
@@ -69,8 +71,59 @@ def _host_mount_devices() -> list[tuple[int, Path]]:
         raise RuntimeError("host mount topology cannot be verified for private inputs") from exc
 
 
+def _private_hardlink_inodes(records: list[tuple[str, Path, Path]]) -> set[tuple[int, int]]:
+    """Discover current private identities once per exact path in this policy call.
+
+    Private roots can include both an enclosing directory and many selected
+    children. Do not repeatedly walk that directory for every original/frozen
+    spelling. Keep this inventory local: a subsequent call must observe newly
+    created links. Leaf symlinks retain their referent identity, but directory
+    symlinks are traversed only when explicitly selected as a root.
+    """
+    inodes: set[tuple[int, int]] = set()
+    members: set[Path] = set()
+    directories: set[Path] = set()
+    indirect_directories: set[Path] = set()
+    roots = {root for _, original, frozen in records for root in (original, frozen)}
+
+    def remember(path: Path, info: os.stat_result) -> None:
+        members.add(path)
+        if stat.S_ISREG(info.st_mode) and info.st_nlink > 1:
+            inodes.add((info.st_dev, info.st_ino))
+
+    for root in sorted(roots, key=lambda path: (len(path.parts), str(path))):
+        if root in members and root not in indirect_directories:
+            continue
+        if not root.exists():  # A resumed run may have lost its live source.
+            continue
+        info = root.stat()
+        remember(root, info)
+        if not stat.S_ISDIR(info.st_mode):
+            continue
+        pending = [root]
+        while pending:
+            directory = pending.pop()
+            if directory in directories:
+                continue
+            directories.add(directory)
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    member = Path(entry.path)
+                    if member in members:
+                        continue
+                    info = entry.stat()  # Follow leaf referents; unreadable/broken ones refuse.
+                    remember(member, info)
+                    if stat.S_ISDIR(info.st_mode):
+                        if entry.is_symlink():
+                            indirect_directories.add(member)
+                        else:
+                            pending.append(member)
+    return inodes
+
+
 def _host_hardlink_surfaces(
-    argv: list[str], records: list[tuple[str, Path, Path]], approved: set[tuple[Path, Path]]
+    argv: list[str], records: list[tuple[str, Path, Path]], approved: set[tuple[Path, Path]],
+    *, mounts: list[tuple[str, str, str]] | None = None,
 ) -> list[AnswerSurface]:
     """Mask extra runtime names for private inodes, not identical public bytes.
 
@@ -78,16 +131,8 @@ def _host_hardlink_surfaces(
     CAS objects with private inputs. Only those exact source/destination pairs
     are exempt; arbitrary runtime aliases do not inherit a public grant.
     """
-    private_inodes: set[tuple[int, int]] = set()
     try:
-        for _, original, frozen in records:
-            for root in {original, frozen}:
-                if not root.exists():  # A resumed run may have lost its live source.
-                    continue
-                for member in (root, *root.rglob("*")) if root.is_dir() else (root,):
-                    info = member.stat()
-                    if stat.S_ISREG(info.st_mode) and info.st_nlink > 1:
-                        private_inodes.add((info.st_dev, info.st_ino))
+        private_inodes = _private_hardlink_inodes(records)
     except OSError as exc:
         raise RuntimeError("private input hardlink identities cannot be verified") from exc
     if not private_inodes:
@@ -130,7 +175,7 @@ def _host_hardlink_surfaces(
                         hits.append(Path(entry.path).relative_to(root))
         return hits
 
-    for state, raw_source, raw_destination in _mounts(argv):
+    for state, raw_source, raw_destination in _mounts(argv) if mounts is None else mounts:
         if state != "expose":
             continue
         source, destination = Path(raw_source).absolute(), Path(raw_destination).absolute()
@@ -222,17 +267,24 @@ def _private_path_surfaces(
     argv: list[str], records: list[tuple[str, Path, Path]], approved: set[tuple[Path, Path]]
 ) -> list[AnswerSurface]:
     """One alias translation for frozen payloads and exact host provenance files."""
+    if not records:
+        return []
+    # Resolve this immutable mount plan once per policy invocation. Repeating
+    # parsing and filesystem resolution for every private file makes a closed
+    # formal-toolchain inventory quadratic in the size of the mount argv.
+    mounts = _mounts(argv)
+    binds = _resolved_bind_mounts(mounts)
+    exposed = [(spellings, destination) for _source, destination, spellings in binds]
+    source_index = _MountPathIndex(spellings for spellings, _destination in exposed)
+
     surfaces: dict[Path, AnswerSurface] = {}
     for _, original, frozen in records:
         kind = path_kind(frozen)
         for private in {original, frozen}:
             surfaces[private] = AnswerSurface("host-only input", private, kind, "hidden")
-            for state, raw_source, raw_destination in _mounts(argv):
-                if state != "expose":
-                    continue
-                source = Path(raw_source).absolute()
-                for resolved in {source, source.resolve()}:
-                    destination = Path(raw_destination)
+            for mount_id in sorted(source_index.related(private)):
+                spellings, destination = exposed[mount_id]
+                for resolved in spellings:
                     translated = _bind_alias(private, kind, resolved, destination)
                     if translated is None:
                         continue
@@ -240,7 +292,7 @@ def _private_path_surfaces(
                     if alias_kind == "missing":
                         raise RuntimeError("private input alias cannot be classified for masking")
                     surfaces[alias] = AnswerSurface("host-only input alias", alias, alias_kind, "hidden")
-    for surface in _host_hardlink_surfaces(argv, records, approved):
+    for surface in _host_hardlink_surfaces(argv, records, approved, mounts=mounts):
         surfaces[surface.path] = surface
     return list(surfaces.values())
 

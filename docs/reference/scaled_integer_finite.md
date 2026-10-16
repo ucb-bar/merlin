@@ -4,7 +4,7 @@ kind: reference
 status: draft
 owner: core
 last_verified: 2026-10-07
-related: [source_expression_interval, architecture, agent_compiler_performance]
+related: [source_expression_interval, architecture, verified_compiler_roadmap]
 code_refs:
   - src/merlin/llvmlower/scaled_integer_finite.py
   - src/merlin/llvmlower/scaled_integer_finite_llvm.py

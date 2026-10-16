@@ -190,6 +190,35 @@ def test_interleaved_invocations_keep_snapshot_policy_order_and_publication(tmp_
         events.clear()
 
 
+def test_in_turn_grade_reaches_agent_after_source_changes(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import promotion
+
+    ws, run = tmp_path / "ws", tmp_path / "run"
+    (ws / "submission").mkdir(parents=True)
+    (ws / "submission/manifest.yaml").write_text("language: python\n")
+    (ws / "submission/compiler.py").write_text("VALUE = 1\n")
+    inputs = G.GradingInputs(context(tmp_path), "raw_baseline", tmp_path / "public", (), None)
+    monkeypatch.setattr(G, "_write_stage_ledger", lambda *a, **kw: None)
+    monkeypatch.setattr(G, "_attach_shape_generalization", lambda *a, **kw: None)
+    monkeypatch.setattr(G, "_attach_codegen_scalability", lambda *a, **kw: None)
+    monkeypatch.setattr(G, "_record_plateau", lambda *a: None)
+    monkeypatch.setattr(G.FL, "record_channel_health", lambda *a: None)
+    monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **kw: (None, None, None))
+
+    def grade_snapshot(candidate, *args, **kwargs):
+        assert (Path(candidate) / "compiler.py").read_text() == "VALUE = 1\n"
+        (ws / "submission/compiler.py").write_text("VALUE = 2\n")
+        assert kwargs["defer_pending"]() == "background source superseded"
+        return {"all_pass": False, "n_passed": 0, "n_capsules": 1, "per_capsule": []}
+
+    G.grade(ws, run, 900, False, 10, label="inturn", inputs=inputs,
+            qa_runner=grade_snapshot, advisory_background=True)
+    visible = json.loads((ws / "qa/verdict.json").read_text())
+    assert visible["snapshot_current"] is False
+    assert visible["background_grade"]["reason"] == "background source superseded"
+    assert len(visible["graded_source_sha256"]) == 64
+
+
 def test_selected_object_build_reaches_grade_and_candidate_matched_continuous_brief(tmp_path, monkeypatch):
     from merlin_experiments.phase1.feedback import brief, promotion
     from merlin_experiments.phase1.feedback import codegen_scalability as S
@@ -353,7 +382,24 @@ def test_native_lazy_selection_binds_descriptor_and_cache_per_invocation(tmp_pat
     assert authoring._grading_public_root(first, explicit) == explicit
 
 
-def test_fast_grade_uses_explicit_target_roots_and_withheld_tier(tmp_path, monkeypatch):
+@pytest.mark.parametrize("shared_compute", [False, True])
+def test_fast_grade_uses_explicit_target_roots_and_withheld_tier(tmp_path, monkeypatch, shared_compute):
+    from merlin.common.cpu_pool import shared_compute_pool
+
+    if shared_compute:
+        cpu = min(os.sched_getaffinity(0))
+        monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+        monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "compute"))
+        actual_copytree = G.shutil.copytree
+
+        def copied(*args, **kwargs):
+            import fcntl
+            with (tmp_path / "compute" / f"cpu-{cpu}.lock").open("r+") as probe:
+                with pytest.raises(BlockingIOError):
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return actual_copytree(*args, **kwargs)
+
+        monkeypatch.setattr(G.shutil, "copytree", copied)
     from merlin_experiments.phase1.feedback import qa
 
     from merlin.targetgen import capsule_grade, capsule_runner
@@ -390,6 +436,12 @@ def test_fast_grade_uses_explicit_target_roots_and_withheld_tier(tmp_path, monke
     (inputs.public_root / "capsule.yaml").write_text("required_oracle_tiers: [L2, L3]\n")
 
     def grade(candidate, **kwargs):
+        # The parent copy/discovery leases have closed before this grade can
+        # invoke independent compiler/child owners requiring the same core.
+        if shared_compute:
+            import fcntl
+            with (tmp_path / "compute" / f"cpu-{cpu}.lock").open("r+") as probe:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
         seen.append(kwargs)
         assert candidate != str(ws / "submission")
 
@@ -397,10 +449,182 @@ def test_fast_grade_uses_explicit_target_roots_and_withheld_tier(tmp_path, monke
     monkeypatch.setattr(
         qa, "_per_capsule_from_results", lambda root: {"public": {"status": "pass", "tiers": {"L2": "pass"}}}
     )
+    from merlin_experiments.phase1.feedback import promotion
+
+    promoted = []
+    monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **kw: ("L2", "L3", {"public"}))
+
+    def promote(*args, source_ws, context, capsules_root):
+        assert (ws / "qa/verdict.json").is_file()
+        assert source_ws != ws
+        assert (source_ws / "submission/manifest.yaml").read_text() == "language: python\n"
+        assert context == inputs.context
+        assert capsules_root == inputs.promotion_root
+        promoted.append(args[2]["per_capsule"])
+
+    monkeypatch.setattr(promotion, "promote", promote)
     verdict = G.fast_grade(ws, tmp_path / "run", 900, 10, inputs=inputs)
+    assert promoted and promoted[0][0]["tiers"] == {"L2": "pass"}
     assert verdict["all_pass"] is None
     assert seen[0]["target"] == "isolated"
     assert seen[0]["capsules_root"] == str(inputs.public_root)
     assert seen[0]["contract"] == str(inputs.contract)
     assert seen[0]["oracle_adapters"] == {"L2": "loop"}
     assert json.loads((ws / "qa/verdict.json").read_text()) == verdict
+
+
+def test_nested_policy_cert_cover_keeps_public_dev_exclusions_and_real_empty(tmp_path, monkeypatch):
+    import yaml
+    from merlin_experiments.phase1.feedback import promotion
+
+    from merlin.targetgen import capsule_common, target_experiment
+
+    policy = tmp_path / "policy"
+    for index, (name, label, family) in enumerate(
+        (
+            ("public_case", "public", "contraction"),
+            ("dev_case", "dev", "elementwise_map"),
+            ("hidden_case", "hidden", "reduction"),
+        )
+    ):
+        leaf = policy / str(index) / name
+        leaf.mkdir(parents=True)
+        (leaf / "capsule.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "name": name,
+                    "label": label,
+                    "inputs": [{"dtype": "int8", "shape": [16, 16]}],
+                    "semantic": {"semantic_family": family},
+                }
+            )
+        )
+    monkeypatch.setattr(
+        capsule_common,
+        "load_capsule",
+        lambda directory, **kw: {
+            **yaml.safe_load((Path(directory) / "capsule.yaml").read_text()),
+            "__dir__": str(directory),
+        },
+    )
+    excluded = set()
+    monkeypatch.setattr(
+        target_experiment,
+        "load_target_experiment",
+        lambda _: SimpleNamespace(
+            target="fixture",
+            effective_exclusions=lambda _: excluded,
+        ),
+    )
+    assert promotion._cert_cover(tmp_path, context=context(tmp_path), capsules_root=policy) == {
+        "public_case",
+        "dev_case",
+    }
+    excluded.update(("public_case", "dev_case"))
+    assert promotion._cert_cover(tmp_path, context=context(tmp_path), capsules_root=policy) == set()
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert promotion._cert_cover(tmp_path, context=context(tmp_path), capsules_root=empty) == set()
+
+
+def test_mandatory_cert_members_respect_selected_cohort_labels_and_exclusions(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import promotion
+    from merlin.targetgen import capsule_common, target_experiment
+
+    caps = [
+        {"name": "mandatory", "label": "public", "required_oracle_tiers": ["L2", "L3"]},
+        {"name": "optional", "label": "dev", "required_oracle_tiers": ["L2"]},
+        {"name": "excluded", "label": "public", "required_oracle_tiers": ["L3"]},
+    ]
+    selected = tmp_path / "selected-functional"
+    def discover(roots, **kw):
+        assert roots == (selected,)
+        assert kw["labels"] == {"public", "dev"}
+        return caps
+    monkeypatch.setattr(capsule_common, "discover_capsules", discover)
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace(
+        effective_exclusions=lambda names: {"excluded"},
+        graded_roots=lambda: pytest.fail("selected root was ignored"),
+        perf_roots=lambda: pytest.fail("performance roots were inspected"),
+    ))
+    assert promotion._mandatory_cert_members(
+        context=context(tmp_path), capsules_root=selected, cert_tier="L3"
+    ) == {"mandatory"}
+
+
+@pytest.mark.parametrize("producer", ["fast_grade", "selfcheck"])
+def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp_path, monkeypatch, producer):
+    import threading
+    from merlin.targetgen import capsule_common, capsule_scheduling
+    from merlin_experiments.phase1.feedback import promotion, qa
+
+    ws, frozen, runs = (tmp_path / name for name in ("ws", "frozen", "runs"))
+    for root in (ws, frozen):
+        (root / "submission").mkdir(parents=True)
+        (root / "submission/manifest.yaml").write_text("x: 1\n")
+    (ws / ".qa_channel").mkdir()
+    ctx = context(tmp_path)
+    ctx.descriptor.write_text("{}\n")
+    inputs = G.GradingInputs(context=ctx, arm="raw_baseline", public_root=tmp_path / "public", policy_roots=(),
+                             promotion_root=tmp_path / "policy", contract=tmp_path / "contract")
+    monkeypatch.setattr(G, "load_target_experiment", lambda _: SimpleNamespace(
+        target="fixture", effective_exclusions=lambda names: {"excluded"}))
+    monkeypatch.setattr(capsule_common, "discover_capsules", lambda *a, **kw: [
+        {"name": "first"}, {"name": "second"}, {"name": "failed"}, {"name": "excluded"}])
+    monkeypatch.setattr(G, "_suite_for", lambda _: "fixture-suite")
+    monkeypatch.setattr(qa, "_execution_digest_from_result", lambda _: None)
+    monkeypatch.setattr(promotion, "affordable_cert_items", lambda want, **kw: (want, {}))
+    monkeypatch.setattr(promotion, "_mandatory_cert_members", lambda **kw: {"first", "second"})
+    if producer == "fast_grade":
+        callback = G._completed_loop_promoter(ws, frozen, runs, "L2", "L3", {"first"}, inputs=inputs)
+    else:
+        from merlin_experiments.phase1.brokers.selfcheck import _submission_digest
+        from merlin_experiments.phase1.feedback import selfcheck
+
+        monkeypatch.setenv("MERLIN_SELFCHECK_PROMOTION_WS", str(ws))
+        monkeypatch.setenv("MERLIN_SELFCHECK_PROMOTION_ROOT", str(inputs.promotion_root))
+        monkeypatch.setenv("MERLIN_SELFCHECK_PROMOTION_SHA256", _submission_digest(frozen / "submission"))
+        monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **kw: ("L2", "L3", {"first"}))
+        callback = selfcheck._streaming_completion(
+            context=ctx, capsules_root=inputs.public_root, contract=inputs.contract,
+            source=frozen / "submission", runs=runs, adapters={"L2": object()},
+        )
+    second_started, release_second = threading.Event(), threading.Event()
+    rows = {}
+
+    def run_one(cap, workers):
+        name = cap["name"]
+        if name == "second":
+            second_started.set()
+            assert release_second.wait(5)
+        row = {"capsule": name, "tiers": {"L2": {"status": "fail" if name == "failed" else "pass"}}}
+        path = runs / "runs/fixture-suite" / name / "capsule_result.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(row))
+        rows[name] = row
+        return row
+
+    def completed(row):
+        callback(row)
+        if row["capsule"] == "first":
+            assert second_started.wait(5)
+            reqs = list((ws / ".qa_channel").glob("simreq_*.json"))
+            assert len(reqs) == 1, "first pass must queue while second capsule is unfinished"
+            req = json.loads(reqs[0].read_text())
+            assert req["submission_digest"] == promotion._submission_digest(frozen)
+            (ws / "submission/manifest.yaml").write_text("live edit: true\n")
+            assert req["submission_digest"] != promotion._submission_digest(ws)
+            callback(row)  # The same completed identity cannot enqueue twice.
+            assert len(list((ws / ".qa_channel").glob("simreq_*.json"))) == 1
+            release_second.set()
+
+    capsule_scheduling.run_pipelined(
+        [{"name": name} for name in ("first", "second", "failed", "hidden", "excluded")],
+        run_one, max_workers=2, on_complete=completed,
+    )
+    # The second frozen result is retained but cannot replenish native work
+    # after the author genuinely changes the reachable source.
+    assert len(list((ws / ".qa_channel").glob("simreq_*.json"))) == 1
+    # A result that has not been durably published cannot unlock a certificate.
+    callback({"capsule": "first", "tiers": {"L2": {"status": "pass"}}, "tampered": True})
+    assert len(list((ws / ".qa_channel").glob("simreq_*.json"))) == 1

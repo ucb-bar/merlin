@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: core
 last_verified: 2026-10-06
-related: [agent_uses_the_compiler_gemmini]
+related: [fresh_compiler_origin]
 code_refs: [merlin/experiments/agent_recipe_select_v0/scripts/_track.py, merlin/experiments/agent_recipe_select_v0/scripts/run_census_campaign.py, merlin/experiments/agent_recipe_select_v0/scripts/census_workloads.py, merlin/experiments/agent_recipe_select_v0/scripts/compare_arms.py, merlin/experiments/agent_recipe_select_v0/scripts/agent_compile.py]
 ---
 
@@ -12,7 +12,7 @@ code_refs: [merlin/experiments/agent_recipe_select_v0/scripts/_track.py, merlin/
 
 Two agent arms over a frozen, RTL-certified Gemmini backend, measured on the ResNet-50 and TinyLlama
 kernel census. For *why* the experiment is shaped this way, read
-[the design note](../design/agent_uses_the_compiler_gemmini.md) first — in particular the section on
+[the design note](../design/fresh_compiler_origin.md) first — in particular the section on
 why the two arms cannot be ranked by their own speedups.
 
 This is a checkout-local reproduction guide for a historical target example, not Merlin's generic

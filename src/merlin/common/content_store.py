@@ -19,9 +19,12 @@ Two properties make the store safe to keep under the declared-purgeable cache ro
 * **A link is a claim.** The bytes live for as long as any name references them, so removing a store
   object with one remaining link cannot take data from a live snapshot. ``orphans()`` finds exactly
   those, which is what ``merlin-storage prune`` acts on.
-* **A reused object is re-digested before it is handed out.** Trusting the file name would let a
+* **A reused object is checked before it is handed out.** Trusting the file name would let a
   corrupted or truncated object silently become a run's input, and that run's own digest would then
   certify the wrong bytes as the frozen treatment -- a result attributed to inputs it never ran on.
+  The explicit snapshot lease opt-in may reuse its digest under a freshly checked Linux read lease;
+  unsupported objects and ordinary callers retain full hashing. Placement closes its final lease
+  check before returning, and later snapshot checks bind the same actual inode independently.
 
 ``MERLIN_BUNDLE_CAS`` relocates the store (a hard link cannot cross a filesystem, so point it at the
 volume holding an out-of-tree workspace); setting it **empty** disables sharing and every consumer
@@ -39,6 +42,7 @@ import tempfile
 from collections.abc import Callable, Collection
 from pathlib import Path
 
+from merlin.common import read_lease_digest
 from merlin.common.paths import artifacts_dir
 
 # ``shutil.copytree``'s ignore contract: (directory, entry names) -> names to skip.
@@ -76,13 +80,31 @@ def digest_file(path: Path) -> tuple[str, int]:
 
 
 def object_for(root: Path, source: Path) -> Path | None:
+    """Validate an original store object before handing its identity to a consumer."""
+    with read_lease_digest.verification():
+        return _object_for(root, source)
+
+
+def _object_digest(path: Path) -> str:
+    # Only the public store object participates: source reads and private copy
+    # policy remain unchanged. Canonical aliases may reuse the same leased inode.
+    if read_lease_digest.enabled():
+        canonical = path.absolute()
+        if canonical.resolve() == canonical and canonical.stat().st_size >= read_lease_digest.MIN_BYTES:
+            selected = read_lease_digest.digest(canonical)
+            if selected is not None:
+                return selected
+    return digest_file(path)[0]
+
+
+def _object_for(root: Path, source: Path) -> Path | None:
     """The store object holding ``source``'s bytes, created on first sight. ``None`` if unavailable.
 
     The key is the content AND whether the file is executable, because a mode is a property of the
     inode and two grants sharing one would fight over it -- a granted compiler or script has to stay
     runnable inside a sandbox, and a plain file with the same bytes must not become runnable.
 
-    A reused object is RE-DIGESTED before it is handed out. Trusting the file name would let a
+    A reused object is byte-verified before it is handed out. Trusting the file name would let a
     corrupted or truncated object silently become a consumer's input, and that consumer's own seal
     would then certify the wrong bytes as the frozen treatment -- a result attributed to inputs it
     never ran on, which is the failure the freeze exists to prevent.
@@ -104,7 +126,7 @@ def object_for(root: Path, source: Path) -> Path | None:
                 return None  # never repair modes through a foreign cache alias
             if obj.is_file():
                 stat = obj.stat()
-                if stat.st_size == size and digest_file(obj)[0] == sha:
+                if stat.st_size == size and _object_digest(obj) == sha:
                     # Cleanup of a read-only consumer can chmod a shared inode.
                     # Revalidate bytes first, then restore the store's typed mode
                     # before handing out another link (or trusting old aliases).
@@ -164,6 +186,19 @@ def _observe_source(
 
 
 def place_file(
+    source: Path,
+    dst: Path,
+    root: Path | None,
+    *,
+    observe: Callable[[Path, Path, Path], None] | None = None,
+    preserve_permissions: bool = False,
+) -> bool:
+    """Freeze a file and finish any selected immutable-object checks before returning."""
+    with read_lease_digest.verification():
+        return _place_file(source, dst, root, observe=observe, preserve_permissions=preserve_permissions)
+
+
+def _place_file(
     source: Path,
     dst: Path,
     root: Path | None,
@@ -305,6 +340,12 @@ def orphans(root: Path | None = None) -> tuple[list[Path], int]:
 
 
 def adopt(path: Path, root: Path | None, *, before_replace: Callable[[], None] | None = None) -> int:
+    """Adopt a caller-owned file, with final selected store custody before returning."""
+    with read_lease_digest.verification():
+        return _adopt(path, root, before_replace=before_replace)
+
+
+def _adopt(path: Path, root: Path | None, *, before_replace: Callable[[], None] | None = None) -> int:
     """Re-point ``path`` at the store object holding its bytes. Returns the bytes this freed.
 
     ``place_file`` gets the saving at the moment a tree is frozen. This gets it afterwards, for the

@@ -17,6 +17,8 @@ representations of original BF16 weight/columns/bias/output .npy arrays.
 
 from __future__ import annotations
 
+from merlin.targetgen import legacy_labels as LL
+
 CPU_BF16_BLAS_ILP4_POLICY = "torch_2_10_cpu_blas_bf16_ilp4"
 
 
@@ -70,7 +72,10 @@ def rewrite_cpu_bf16_conv_ilp4(
         getattr(attrs.get("prov.aten"), "data", None) == "aten.convolution.default", "convolution provenance required"
     )
     require(getattr(attrs.get("prov.orig_dtype"), "data", None) == "bfloat16", "BF16 source dtype required")
-    require(getattr(attrs.get("prov.conv_path"), "data", None) == "im2col_matmul", "im2col provenance required")
+    require(
+        LL.is_gathered_conv_path(getattr(attrs.get("prov.conv_path"), "data", None)),
+        "gathered-window convolution provenance required",
+    )
     require(
         tuple(getattr(x, "data", None) for x in attrs.get("prov.source_node_ids", ())) == source_node_ids,
         "source node binding mismatch",

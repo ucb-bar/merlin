@@ -23,12 +23,14 @@ import argparse
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 from merlin_experiments.phase1.context import InvocationContext, add_context_arguments, resolve_context
+from merlin_experiments.phase1.feedback import completions as _completions
 from merlin_experiments.phase1.feedback import promotion as _TP
 from merlin_experiments.phase1.feedback.dispatch import allowed_sims as _allowed_sims
 from merlin_experiments.phase1.feedback.promotion import promote as _promote  # noqa: E402
@@ -37,6 +39,38 @@ from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worke
 from merlin_experiments.phase1.feedback.snapshots import recover_promotion_snapshot
 
 PY = sys.executable
+
+
+def _dedupe_sim_job(ch: Path, jid: str, key: tuple[str, str, str, str],
+                    running: dict, completed: dict) -> bool:
+    """Attach an identical request to its one active or completed simulator job."""
+    equivalent = next((active_id for active_id, active in running.items()
+                       if active["dedupe_key"] == key), None)
+    if equivalent is not None:
+        running[equivalent].setdefault("aliases", []).append(jid)
+        (ch / f"simrun_{jid}").write_text(f"deduplicated with {equivalent}\n")
+        return True
+    if key in completed:
+        original, cached = completed[key]
+        (ch / f"simresp_{jid}.json").write_text(json.dumps(cached, indent=2))
+        (ch / (f"simerr_{jid}" if cached.get("error") else f"simdone_{jid}")).write_text(
+            f"deduplicated with {original}"
+        )
+        return True
+    return False
+
+
+def _freeze_direct_job_source(ws):
+    """Run and promote one direct job from the same private immutable source."""
+    from merlin_experiments.phase1.feedback.snapshots import create_promotion_snapshot
+
+    digest = _TP._submission_digest(ws)
+    token, error = create_promotion_snapshot(ws, ws, digest, submission_digest=_TP._submission_digest)
+    if error:
+        return None, None, error
+    return recover_promotion_snapshot(
+        Path(ws), digest, snapshot_token=token, submission_digest=_TP._submission_digest
+    )
 
 
 def _conda_env() -> str:
@@ -84,10 +118,13 @@ def _valid_capsules(spec: str, capsules_root: Path) -> list[str] | None:
         return ["all"]
     names = [c.strip() for c in spec.split(",") if c.strip()]
     out = []
+    seen = set()
     for n in names:
         if not all(c.isascii() and (c.isalnum() or c == "_") for c in n) or not (capsules_root / n).is_dir():
             return None  # reject ../, globs, unknown names
-        out.append(n)
+        if n not in seen:
+            out.append(n)
+            seen.add(n)
     return out or None
 
 
@@ -130,6 +167,126 @@ def _completed_job_ids(ch: Path) -> set[str]:
     """Recover jobs whose durable response was already published by an earlier broker process."""
     prefix = "simresp_"
     return {p.stem[len(prefix) :] for p in ch.glob(f"{prefix}*.json")}
+
+
+def _current_source_first(requests, ws, *, context=None, capsules_root=None, cert_tier=None, contract=None):
+    """Prioritize current-source work without treating request metadata as evidence.
+
+    Source recovery still authenticates every promoted request at launch. Unknown
+    bindings retain ordinary ordering; source changes during observation abandon
+    the optimization. Running jobs and their completed certificates are untouched.
+    """
+    ordered = sorted(requests)
+    if len(ordered) < 2:
+        return ordered
+    try:
+        current = _TP._submission_digest(ws)
+        ranks = {}
+        for request in ordered:
+            try:
+                row = json.loads(request.read_text())
+            except (OSError, ValueError):
+                ranks[request] = (1, 1)
+                continue
+            if not isinstance(row, dict):
+                ranks[request] = (1, 1)
+                continue
+            digest = row.get("submission_digest")
+            # Direct requests are frozen from current source when launched.
+            current_work = not row.get("promoted") or digest == current
+            ready_model = False
+            if current_work and digest == current and row.get("promoted") and context is not None:
+                try:
+                    import yaml
+
+                    from merlin_experiments.phase1.feedback import model_gate_vouchers
+
+                    names = _valid_capsules(str(row.get("capsules", "all")), capsules_root)
+                    ready_model = bool(names and names != ["all"]) and all(
+                        yaml.safe_load((capsules_root / name / "capsule.yaml").read_text()).get("kind") == "model"
+                        and model_gate_vouchers.lookup(
+                            ws, digest=current, capsule=name, context=context,
+                            cert_tier=cert_tier, contract=contract,
+                        ) is not None
+                        for name in names
+                    )
+                except (OSError, ValueError, TypeError, AttributeError):
+                    ready_model = False
+            ranks[request] = (0 if current_work else 1, 0 if ready_model else 1)
+        if _TP._submission_digest(ws) != current:
+            return ordered
+        return sorted(ordered, key=lambda request: ranks[request])
+    except Exception:  # noqa: BLE001 -- an unreadable fingerprint cannot reorder the queue
+        return ordered
+
+
+def _observe_pending(requests, claimed, queued_since, now):
+    """Observe wait even while all worker slots are occupied."""
+    pending = [p for p in requests if p.stem[len("simreq_"):] not in claimed]
+    for request in pending:
+        queued_since.setdefault(request.stem[len("simreq_"):], now)
+    return pending
+
+
+def _admitted_promotions(requests, ws, *, loop_tier, cert_tier, context):
+    """Defer obsolete automatic work without cancelling requests or touching results."""
+    from merlin_experiments.phase1.feedback import promotion_admission as admission
+
+    observed = False
+    current = state = instrument = loop_instrument = None
+    snapshots = {}
+    for path in requests:
+        try:
+            request = json.loads(path.read_text())
+        except (OSError, ValueError):
+            yield path  # Existing dispatch owns malformed/direct request handling.
+            continue
+        if not isinstance(request, dict) or not request.get("promoted"):
+            yield path
+            continue
+        if not observed:
+            observed = True
+            try:
+                current = admission.observe_source(Path(ws))
+                state = _TP._tier_state(ws)
+                instrument = _TP.cert_instrument(cert_tier, context=context)
+                loop_instrument = _TP.cert_instrument(loop_tier, context=context)
+            except (OSError, ValueError):
+                current = None
+        reason = "current source identity unavailable" if current is None else admission.queued_reason(
+            Path(ws), request, loop_tier=loop_tier, cert_tier=cert_tier,
+            instrument=instrument, loop_instrument=loop_instrument, current=current, state=state, snapshots=snapshots,
+        )
+        jid = path.stem.removeprefix("simreq_")
+        note = path.parent / f"simdefer_{jid}.json"
+        if reason:
+            document = {"state": "deferred", "reason": reason, "job_id": jid,
+                        "source_digest": request.get("submission_digest"),
+                        "current_source_digest": current.digest if current is not None else None}
+            previous = admission.read_note(note)
+            # A return to exactly the same stale source still starts a NEW
+            # deferral after a recorded resume; do not leave the resume newer.
+            resume = path.parent / f"simresume_{jid}.json"
+            resumed = admission.read_note(resume)
+            after_resume = False
+            if (isinstance(resumed, dict) and resumed.get("state") == "admitted" and resumed.get("job_id") == jid
+                    and isinstance(resumed.get("current_source_digest"), str) and resumed["current_source_digest"]):
+                try:
+                    after_resume = resume.stat().st_mtime_ns >= note.stat().st_mtime_ns
+                except OSError:
+                    pass
+            if previous != document or after_resume:
+                admission.write_note(note, document)
+                print(f"[simjob] {jid} auto promotion deferred: {reason}", file=sys.stderr, flush=True)
+            continue
+        # Scheduling metadata preserves the earlier reason when the original
+        # source/dependencies return; it grants no qualification authority.
+        if note.exists():
+            resume = path.parent / f"simresume_{jid}.json"
+            document = {"state": "admitted", "job_id": jid, "current_source_digest": current.digest}
+            if admission.read_note(resume) != document:
+                admission.write_note(resume, document)
+        yield path
 
 
 class VerilSlotsUnusable(RuntimeError):
@@ -357,16 +514,54 @@ def _spawn_selfcheck(argv, *, cwd, env, job_log, timeout_s):
     stopped by the kernel with SIGTTIN. The broker then mistakes a job that never ran for an RTL
     timeout. Simulator checks are non-interactive, so an explicit EOF is the only truthful stdin.
     """
+    from merlin.common.cpu_pool import worker_pool_command
     from merlin_experiments.frozen_python import inherited_python_command
 
     return subprocess.Popen(
-        ["timeout", str(timeout_s + 120)] + inherited_python_command(argv),
+        ["timeout", str(timeout_s + 120)] + worker_pool_command(inherited_python_command(argv), env),
         cwd=str(cwd),
         env=env,
         stdin=subprocess.DEVNULL,
         stdout=job_log,
         stderr=subprocess.STDOUT,
+        start_new_session=True,
     )
+
+
+def _stop_sim_process(process) -> None:
+    """Stop the simulator's complete process group, including a child of ``timeout``."""
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+
+
+def _cancel_running_job(ch: Path, jid: str, job: dict, reason: str) -> None:
+    """Publish cancellation and release every resource held by an obsolete job."""
+    _stop_sim_process(job["proc"])
+    timing = dict(job["timing"], finished_at_unix=time.time(), state="cancelled",
+                  worker_runtime_s=max(0.0, time.monotonic() - job["started_monotonic"]),
+                  returncode=job["proc"].returncode)
+    (ch / f"simtiming_{jid}.json").write_text(json.dumps(timing, indent=2))
+    response = {"sim": job["sim"], "state": "cancelled", "all_pass": False, "error": reason}
+    for recipient in (jid, *job.get("aliases", [])):
+        (ch / f"simresp_{recipient}.json").write_text(json.dumps(response, indent=2))
+        (ch / f"simerr_{recipient}").write_text("cancelled")
+    if job.get("log"):
+        job["log"].close()
+    _release_veril_workers(job["slots"])
+    if job.get("snapshot_root"):
+        shutil.rmtree(job["snapshot_root"], ignore_errors=True)
 
 
 def _per_capsule_timeout(
@@ -380,7 +575,7 @@ def _per_capsule_timeout(
     2. the cost law of the engine that will actually run (:func:`_cert_budget_s`), FLOORED at
        :data:`_CERT_TIMEOUT_FLOOR_S` so a cheap fit can never shorten the budget below what the old
        default already allowed. Derivation is allowed to raise the budget, never to lower it.
-    3. the recorded verilator measurement, i.e. exactly what this used to do -- kept so a target with
+    3. the recorded selected-engine measurement -- kept so a target with
        no cert history behaves as it did rather than losing its budget to the new code path.
     4. the historical constant, when even that measurement is absent.
     """
@@ -389,15 +584,18 @@ def _per_capsule_timeout(
     derived, why = _cert_budget_s(str(context.target or ""))
     if derived:
         return max(_CERT_TIMEOUT_FLOOR_S, int(derived)), f"derived from {why}"
-    from merlin_experiments.phase1.timing import read_verified_timing, requires_chipyard_timing, timing_path
+    from merlin_experiments.phase1.timing import (
+        observed_seconds,
+        read_verified_timing,
+        requires_chipyard_timing,
+        timing_path,
+    )
 
     descriptor = getattr(context, "descriptor", None)
     if requires_chipyard_timing(descriptor):
         tf = timing_file or timing_path(context.experiment, context.target)
         try:
-            measured = int(
-                2 * read_verified_timing(tf, descriptor=descriptor, target=context.target)["verilator_per_capsule_s"]
-            )
+            measured = int(2 * observed_seconds(read_verified_timing(tf, descriptor=descriptor, target=context.target)))
         except ValueError as exc:  # absent/foreign observations cannot shorten a Chipyard cert budget
             return _CERT_TIMEOUT_FALLBACK_S, f"no engine cost law and no target-bound measurement ({why}; {exc})"
     else:
@@ -407,7 +605,9 @@ def _per_capsule_timeout(
         except Exception:  # noqa: BLE001 -- no measurement: the historical constant
             return _CERT_TIMEOUT_FALLBACK_S, f"no engine cost law and no recorded measurement ({why})"
     return max(_CERT_TIMEOUT_FLOOR_S, measured), (
-        f"no engine cost law ({why}); fell back to the recorded verilator measurement"
+        f"no engine cost law ({why}); fell back to the recorded "
+        + ("selected-engine" if requires_chipyard_timing(descriptor) else "verilator")
+        + " measurement"
     )
 
 
@@ -441,6 +641,7 @@ def main(
     )
     ap.add_argument("--ws", required=True)
     ap.add_argument("--rtl-facts", type=Path, help="Selected facts in the verified frozen input snapshot")
+    ap.add_argument("--compiler-bundle-manifest", type=Path, help="host-owned archived common compiler profile")
     ap.add_argument("--max-jobs", type=int, default=4)
     ap.add_argument("--veril-slots", type=int, default=2)
     ap.add_argument("--poll", type=float, default=0.5)
@@ -480,16 +681,31 @@ def main(
     print(f"[budget] per-capsule cert timeout {vpc}s: {_budget_why}", file=sys.stderr, flush=True)
 
     running: dict[str, dict] = {}  # jid -> {proc, slot, resp_tmp, sim}
+    completed_by_key: dict[tuple[str, str, str, str], tuple[str, dict]] = {}
     # One broker is created per round, but the channel and its queue survive across rounds.  Starting
     # from an empty set replays every historical request, including paid L3 work.  A response is the
     # durable commit record; a bare simrun marker is not (the previous broker may have died mid-job), so
     # only responses are recovered here and interrupted requests remain retryable.
     claimed: set[str] = _completed_job_ids(ch)
+    if _CERT_TIER is not None:
+        recovered_results = {}
+        _completions.recover(
+            ws, cert_tier=_CERT_TIER, instrument=_TP.cert_instrument(_CERT_TIER, context=context), log=sys.stderr,
+            recovered_results=recovered_results,
+        )
+        for jid, verdict in recovered_results.items():
+            response = ch / f"simresp_{jid}.json"
+            if not response.exists():
+                response.write_text(json.dumps(verdict, indent=2))
+                (ch / f"simdone_{jid}").write_text("recovered")
+            claimed.add(jid)
     # STOP alone does not bound this broker's life: the sentinel is written by the driver, so if the
     # driver dies first nobody ever writes it and the broker polls forever -- while HOLDING sim slots and
     # child simulators. Three sibling brokers were found orphaned to init hours after their run ended,
     # spawned for a round that never started. Exit when the process that started us is gone.
+    queued_since = {}
     orig_ppid = os.getppid()
+    next_source_check = 0.0
     while True:
         if (ch / "STOP").exists() or os.getppid() != orig_ppid:
             break
@@ -498,6 +714,10 @@ def main(
             if j["proc"].poll() is None:
                 continue
             rc = j["proc"].returncode
+            timing = dict(j["timing"], finished_at_unix=time.time(),
+                          worker_runtime_s=max(0.0, time.monotonic() - j["started_monotonic"]),
+                          returncode=rc)
+            (ch / f"simtiming_{jid}.json").write_text(json.dumps(timing, indent=2))
             resp = ch / f"simresp_{jid}.json"
             tmp = j["resp_tmp"]
             try:
@@ -518,8 +738,23 @@ def main(
                     "all_pass": False,
                     "error": f"{j['sim']} exceeded its time budget",
                 }
+            if j.get("promoted") and not out.get("error"):
+                try:
+                    _completions.persist(
+                        ws, jid, out, identity=j.get("identity"),
+                        source_digest=j.get("source_digest"),
+                        source_identity_verified=bool(j.get("source_identity_verified")),
+                        cert_tier=_CERT_TIER, instrument=j.get("cert_instrument"),
+                    )
+                except Exception as exc:  # noqa: BLE001 -- ordinary recording still runs
+                    print(f"[promote] completion custody not saved: {type(exc).__name__}: {exc}",
+                          file=sys.stderr, flush=True)
             resp.write_text(json.dumps(out, indent=2))
             (ch / (f"simerr_{jid}" if out.get("error") else f"simdone_{jid}")).write_text("ok")
+            completed_by_key[j["dedupe_key"]] = (jid, out)
+            for alias in j.get("aliases", []):
+                (ch / f"simresp_{alias}.json").write_text(json.dumps(out, indent=2))
+                (ch / (f"simerr_{alias}" if out.get("error") else f"simdone_{alias}")).write_text("deduplicated")
             # PROMOTE: a capsule that just passed the loop tier earns the cert tier now, not at a round
             # boundary hours away. Skipped for a job that WAS a promotion, so a cert verdict cannot
             # re-enqueue itself.
@@ -535,6 +770,7 @@ def main(
                         sys.stderr,
                         context=context,
                         capsules_root=promotion_capsules_root,
+                        source_ws=j["snapshot_root"],
                     )
                 except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
                     print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)
@@ -566,9 +802,30 @@ def main(
             if j.get("snapshot_root"):
                 shutil.rmtree(j["snapshot_root"], ignore_errors=True)
             running.pop(jid)
+        # An edit supersedes paid simulation of the old source. Detect it within five seconds,
+        # release its slots, and leave completed evidence for an unchanged source in place.
+        now = time.monotonic()
+        if running and now >= next_source_check:
+            next_source_check = now + 5
+            try:
+                current_source = _TP._submission_digest(ws)
+            except (OSError, ValueError):
+                current_source = None  # a mid-edit source is retried at the next observation
+            if current_source is not None:
+                for jid, job in list(running.items()):
+                    if job["source_digest"] != current_source:
+                        _cancel_running_job(ch, jid, job, "submission source superseded")
+                        running.pop(jid)
         # launch queued (respect local + global caps)
+        queued = _observe_pending(ch.glob("simreq_*.json"), claimed, queued_since, time.monotonic())
         if len(running) < a.max_jobs:
-            for req in sorted(ch.glob("simreq_*.json")):
+            ordered = _current_source_first(
+                queued, ws, context=context, capsules_root=capsules_root,
+                cert_tier=_CERT_TIER, contract=contract,
+            )
+            for req in _admitted_promotions(
+                ordered, ws, loop_tier=_LOOP_TIER, cert_tier=_CERT_TIER, context=context,
+            ):
                 jid = req.stem[len("simreq_") :]
                 if jid in claimed:
                     continue
@@ -647,10 +904,25 @@ def main(
                         claimed.add(jid)
                         continue
                     source_identity_verified = True
+                else:
+                    submission, snapshot_root, snapshot_error = _freeze_direct_job_source(ws)
+                    if snapshot_error:
+                        _release_veril_workers(slots)
+                        (ch / f"simresp_{jid}.json").write_text(
+                            json.dumps({"error": snapshot_error, "all_pass": False}, indent=2)
+                        )
+                        (ch / f"simerr_{jid}").write_text("source identity mismatch")
+                        claimed.add(jid)
+                        continue
+                    source_identity_verified = True
                 capspec = "all" if caps == ["all"] else ",".join(caps)
+                launched_source_digest = _TP._submission_digest(snapshot_root)
+                launched_instrument = _TP.cert_instrument(_CERT_TIER, context=context) if r.get("promoted") else None
                 to = _job_timeout_s(sim, ncaps, vpc)
                 resp_tmp = ch / f"simtmp_{jid}.json"
                 worker_kwargs = {"rtl_facts": a.rtl_facts} if a.rtl_facts is not None else {}
+                if a.compiler_bundle_manifest is not None:
+                    worker_kwargs["compiler_bundle_manifest"] = a.compiler_bundle_manifest
                 argv2 = worker_command(context, capsules_root, contract, **worker_kwargs) + [
                     "--submission",
                     str(submission),
@@ -662,12 +934,51 @@ def main(
                     str(to),
                     "--out",
                     str(resp_tmp),
+                    "--progress-out",
+                    str(ch / f"progress_{jid}.json"),
                 ]
                 if sim != _NEUTRAL_SIM:  # --sim is meaningless where the contract picks the tier
                     argv2 += ["--sim", sim]
                 _tiers = str(r.get("tiers") or "").strip()
+                model_vouchers = []
+                try:
+                    if r.get("promoted") and caps != ["all"]:
+                        import yaml
+
+                        from merlin_experiments.phase1.feedback import model_gate_vouchers
+
+                        for name in caps:
+                            declaration = yaml.safe_load((capsules_root / name / "capsule.yaml").read_text())
+                            if declaration.get("kind") != "model":
+                                continue
+                            voucher = model_gate_vouchers.lookup(
+                                ws, digest=launched_source_digest, capsule=name, context=context,
+                                cert_tier=_CERT_TIER, contract=contract,
+                            )
+                            if voucher is None:
+                                raise ValueError("promoted model has no protected closed L2 gate voucher")
+                            model_vouchers.append(voucher)
+                        if model_vouchers:
+                            _tiers = "L2,L3"
+                            for voucher in model_vouchers:
+                                argv2 += ["--model-gate-voucher", str(voucher)]
+                except (ValueError, OSError) as exc:
+                    _release_veril_workers(slots)
+                    (ch / f"simresp_{jid}.json").write_text(json.dumps({
+                        "error": f"model continuation refused: {exc}", "all_pass": False,
+                        "promotion_source_verified": source_identity_verified,
+                    }))
+                    (ch / f"simerr_{jid}").write_text("model continuation not admitted")
+                    claimed.add(jid)
+                    continue
                 if _tiers:  # validated downstream against the RESOLVED adapter map
                     argv2 += ["--tiers", _tiers]
+                dedupe_key = (launched_source_digest, capspec, sim, _tiers)
+                if _dedupe_sim_job(ch, jid, dedupe_key, running, completed_by_key):
+                    _release_veril_workers(slots)
+                    shutil.rmtree(snapshot_root, ignore_errors=True)
+                    claimed.add(jid)
+                    continue
                 (ch / f"simrun_{jid}").write_text("running")
                 # KEEP THE CHILD'S OUTPUT. This was stdout/stderr=DEVNULL, so when a job exited without
                 # writing its verdict file the only trace was the broker's own "no verdict produced" --
@@ -684,7 +995,19 @@ def main(
                     if snapshot_root:
                         shutil.rmtree(snapshot_root, ignore_errors=True)
                     raise
+                started = time.monotonic()
+                timing = {
+                    "schema": "simjob_resource_timing_v1", "job_id": jid,
+                    "source_digest": launched_source_digest, "started_at_unix": time.time(),
+                    "queue_wait_s": max(0.0, started - queued_since.pop(jid, started)),
+                    "reserved_verilator_slots": len(slots), "worker_pid": proc.pid,
+                    "configured_gsim_capacity": os.environ.get("MERLIN_GSIM_MAX_SLOTS"),
+                    "configured_gsim_cpus": os.environ.get("MERLIN_GSIM_CPUS"),
+                    "scope": "broker-observed queue wait and worker runtime; not native-only runtime",
+                }
+                (ch / f"simtiming_{jid}.json").write_text(json.dumps(timing, indent=2))
                 running[jid] = {
+                    "timing": timing, "started_monotonic": started,
                     "proc": proc,
                     "slots": slots,
                     "resp_tmp": str(resp_tmp),
@@ -694,13 +1017,17 @@ def main(
                     # which tier-state record this promotion was launched for (see the reap)
                     "identity": r.get("identity"),
                     "source_identity_verified": source_identity_verified,
+                    "source_digest": launched_source_digest,
+                    "cert_instrument": launched_instrument,
                     "snapshot_root": snapshot_root,
+                    "dedupe_key": dedupe_key,
+                    "aliases": [],
                 }
                 claimed.add(jid)
         time.sleep(a.poll)
     # drain on STOP
     for j in running.values():
-        j["proc"].kill()
+        _stop_sim_process(j["proc"])
         _release_veril_workers(j["slots"])
         if j.get("snapshot_root"):
             shutil.rmtree(j["snapshot_root"], ignore_errors=True)
