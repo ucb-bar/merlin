@@ -246,7 +246,9 @@ applies per device call: `_static_attention` calibrates one minmax scale per hea
 one pass over the calibration inputs before PT2E, takes the smooth shift as a calibrated per-(head,
 row) mean (folded into the producing Linear's bias when only layout steps lie between, otherwise a
 host subtraction), and replaces a softmax-produced operand by `exp(s - rowmax)` in planes with fixed
-scales `1/127`, `1/(127*128)`, dividing the result rows by their sum on the host.
+scales `1/127`, `1/(127*128)`, ..., dividing the result rows by their sum on the host. `--planes
+operand=k` puts every other operand on a static per-head grid of k int8 digits (two: 15 bits); each
+pair of digit planes is one device call per head with one scale.
 
 A wider STATIC activation grid is a third opt-in, the recipe's `static_planes` block
 (`quant_recipe.with_static_planes`, CLI `static-planes [--planes k] [--observer O] [--owners a,b]`).
