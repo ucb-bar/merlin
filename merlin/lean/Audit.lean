@@ -4,7 +4,7 @@ import Lean
 `merlin-lean-audit`: guardrail audit of the compiled `MerlinVerify` environment (design §1.2, §8.6).
 
 `merlin-lean-audit <module>...` imports the given modules and inspects every constant named
-`MerlinVerify.*`:
+`MerlinVerify.*` or defined in a `MerlinVerify.*` module, including helpers in other namespaces:
 * every theorem's axioms (`collectAxioms`) must be ⊆ {propext, Classical.choice, Quot.sound}, plus
   axioms declared in `MerlinVerify.Assumptions.*`; anything else (`sorryAx`, native-decide/
   bv_decide axioms, `Lean.ofReduceBool`, `Lean.trustCompiler`) is a violation;
@@ -23,6 +23,18 @@ def allowedAxioms : List Name := [``propext, ``Classical.choice, ``Quot.sound]
 
 def inMerlin (n : Name) : Bool := (`MerlinVerify).isPrefixOf n
 def inAssumptions (n : Name) : Bool := (`MerlinVerify.Assumptions).isPrefixOf n
+
+def definingModule? (env : Environment) (n : Name) : Option Name :=
+  ((env.getModuleIdxFor? n).bind (env.header.modules[·]?)).map (·.module)
+
+/-- A declaration belongs to the project by its defining module as well as its name. A helper
+declared outside the namespace can still change a compiled checker through `implemented_by`. -/
+def inProject (env : Environment) (n : Name) : Bool :=
+  inMerlin n || (definingModule? env n).any inMerlin
+
+/-- A namespace alone is not review: assumptions must live in a locked Assumptions module. -/
+def reviewedAssumption (env : Environment) (n : Name) : Bool :=
+  inAssumptions n && (definingModule? env n).any inAssumptions
 
 /-- `f._unsafe_rec` is the executable twin Lean's compiler generates for a recursive definition `f`.
 When `f` itself is a safe definition (structural or well-founded recursion, so the kernel checked
@@ -89,20 +101,23 @@ def main (args : List String) : IO UInt32 := do
   let mut violations : Array String := #[]
   let mut theorems := 0
   for (n, ci) in env.constants.toList do
-    if !inMerlin n || isCompilerAux env n then continue
-    if ci.isUnsafe then violations := violations.push s!"unsafe: {n}"
-    if ci.isPartial then violations := violations.push s!"partial: {n}"
+    if !inProject env n then continue
+    -- Compiler-generated recursive twins may be unsafe/partial, but their names must not exempt user
+    -- implementation overrides or extern attributes from the audit.
+    if ci.isUnsafe && !isCompilerAux env n then violations := violations.push s!"unsafe: {n}"
+    if ci.isPartial && !isCompilerAux env n then violations := violations.push s!"partial: {n}"
     if (Compiler.implementedByAttr.getParam? env n).isSome then
       violations := violations.push s!"implemented_by: {n}"
     if isExtern env n then violations := violations.push s!"extern: {n}"
     match ci with
     | .opaqueInfo _ => violations := violations.push s!"opaque (e.g. partial def): {n}"
     | .axiomInfo _ =>
-      if !inAssumptions n then violations := violations.push s!"axiom outside Assumptions: {n}"
+      if !reviewedAssumption env n then
+        violations := violations.push s!"axiom outside a reviewed Assumptions module: {n}"
     | .thmInfo _ =>
       theorems := theorems + 1
       for a in (← axiomsOf env n) do
-        if !(allowedAxioms.contains a || inAssumptions a) then
+        if !(allowedAxioms.contains a || reviewedAssumption env a) then
           violations := violations.push s!"theorem {n} depends on axiom {a}"
     | _ => pure ()
   IO.println s!"\{\"theorems_audited\": {theorems}, \"violations\": {jsonStrList (violations.toList.map toString)}}"
