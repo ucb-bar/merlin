@@ -26,6 +26,7 @@ dispatch table.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 from collections.abc import Iterable, Mapping
@@ -720,8 +721,17 @@ def build_quantizer(
                 # Both inputs of the contraction; its result stays in floating point and the next
                 # contraction quantizes its own input edge. What follows a contraction is absorbed
                 # by the compiler's group formation, not assumed here.
+                # A weight's channel is its OUTPUT axis: dim 0 of a Linear's [N, K] or a conv's
+                # [Cout, ...], but the LAST dim of a matmul's stored [..., K, N] operand. Dim 0 there is
+                # the reduction, and a scale along a reduction is one no readout can apply.
+                stored = self.weight
+                if self.weight.ch_axis is not None and node.target not in (
+                    torch.ops.aten.linear.default,
+                    torch.ops.aten.conv2d.default,
+                ):
+                    stored = dataclasses.replace(self.weight, ch_axis=kernel.meta["val"].dim() - 1)
                 node.meta["quantization_annotation"] = QuantizationAnnotation(
-                    input_qspec_map={operand: self.planes if planes else self.activation, kernel: self.weight},
+                    input_qspec_map={operand: self.planes if planes else self.activation, kernel: stored},
                     _annotated=True,
                 )
                 self.annotated_planes += int(planes)
