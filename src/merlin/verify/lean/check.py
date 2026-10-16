@@ -22,6 +22,11 @@ strict ones (``MerlinVerify.Check.funcRefines_of_support``).
 inputs for the supported straight-line fragment. With this separate receipt, :func:`compose_chain`
 can establish defined execution as well as refinement of the recorded source. The claim covers
 the recorded chain and stated assumptions, not capture, numerical policies, or downstream codegen.
+
+:func:`check_typed_stage` checks a boundary on declared input types at an explicit index width.
+Its separate theorem justifies type-dependent map expansion using checked source execution.
+Replay preserves this domain; mixed chains require matching argument types, tensor shapes and
+index widths. The universal :func:`check_stage` claim and theorem remain unchanged.
 """
 
 from __future__ import annotations

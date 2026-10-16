@@ -12,6 +12,8 @@ code_refs:
   - src/merlin/verify/lean/mlir_map_contract.py
   - merlin/tests/ir/test_lean_differential.py
   - merlin/tests/ir/test_lean_map.py
+  - merlin/tests/ir/test_lean_typed.py
+  - src/merlin/verify/lean/check.py
 ---
 
 # Run Lean semantics differential tests
@@ -111,11 +113,36 @@ and production scalar/parallel defaults generalize before bufferization. A regre
 order and that an observable destination read retains its initializer copy in bufferized IR.
 This regression does not prove arbitrary downstream pipelines correct.
 
-Map-to-generic **rewrite certification remains unsupported** by the current C1 checker. C1
-quantifies over arbitrary runtime shapes; map obtains its loop rank from the runtime destination,
-whereas generic fixes its rank in attributes. A future typed rewrite context must justify that
-rank. Export preserves the actual map, and those boundaries remain `abstracted`; differential
-agreement is evidence about semantics, not a replacement for the missing rewrite theorem.
+Map-to-generic **rewrite certification is available on an explicit typed domain** through
+`merlin.verify.lean.check.check_typed_stage(stage, m2m_python=compiler, index_bits=64)`.
+`Check/TypedRewrite.lean` derives runtime facts from checked source operations and carries them
+through intermediate SSA bindings. `Rules/MapGeneralize.lean` uses the justified destination rank
+to prove the map expansion. `Check/TypedC1.lean` then checks the actual target with the existing
+universal C1 rules. Export retains the original map; normalization is an internal proved step.
+The original universal `check_stage` still refuses this type-dependent rewrite.
+
+Typed receipts name `MerlinVerify.Check.TypedModule.check_sound` and record their domain and
+index width. `compose_chain` replays typed and universal boundaries together, requires every
+boundary to preserve the capture's declared input types/shapes, and checks that typed widths
+match the source support/definedness receipts. The resulting typed chain names
+`chain_typed_refines` and `chain_typed_defined_refines`. An initialized source still needs its
+independent definedness proof; rewrite certification alone permits poison and UB.
+
+Qualification is in `test_lean_typed.py`: actual generalization, rank-zero/empty tensors, captures,
+intermediate reshape/splat results, escaping outputs, both index widths, mixed chains, corrupted
+rewrites, stale bytes, and tampered domains/theorem labels. The normalizer handles top-level
+one-operation expansions that preserve bindings and region closures. Nested rewrites and operation
+motion remain separate obligations. In particular, upstream can hoist a captured constant across
+`tensor.empty`; a negative regression retains that refusal until motion has its own proof.
+
+```sh
+MERLIN_LEAN_REQUIRED=1 .venv/bin/python -m pytest \
+  merlin/tests/ir/test_lean_typed.py -q
+```
+
+The lower-level driver also exposes `merlin-lean check-module-typed before.json after.json 64`.
+Differential agreement remains empirical evidence about the semantics; the typed rewrite and
+chain theorems supply the formal transformation claims.
 
 ## Limits
 

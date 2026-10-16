@@ -22,6 +22,12 @@ code_refs:
   - src/merlin/llvmlower/pipeline.py
   - src/merlin/runtime/backends/spike_model.py
   - src/merlin/runtime/backends/zephyr_model.py
+  - src/merlin/verify/lean/check.py
+  - merlin/lean/MerlinVerify/Check/TypedRewrite.lean
+  - merlin/lean/MerlinVerify/Check/TypedC1.lean
+  - merlin/lean/MerlinVerify/Check/TypedModule.lean
+  - merlin/lean/MerlinVerify/Check/TypedChain.lean
+  - merlin/lean/MerlinVerify/Rules/MapGeneralize.lean
 ---
 
 # Lean verification of the Merlin compilation path outside the OOT
@@ -641,10 +647,13 @@ multiply, AND, OR, and XOR, with scalar and tensor semantics; floats and overflo
 Qualification runs actual MLIR generalization/canonicalization/CSE, verifies defined chains on the
 supported integer fragment, and rejects altered maps, body operations, casts, constants, and flags.
 Operand-dependent/non-adjacent CSE and other numerical or shape rewrites remain unsupported.
-Map-to-generic rewrite certification also remains unsupported: map's modeled loop rank comes from
-the runtime destination, while generic's rank is fixed in attributes. C1 currently has no typed
-runtime context to justify that rank. Map support/definedness and passing differential comparisons
-do not discharge this rewrite obligation; actual map-to-generic boundaries remain `abstracted`.
+Map-to-generic certification now has a separate typed route. `TypedRewrite` proves normalization
+using runtime facts derived from checked source execution, including intermediate SSA values.
+`MapGeneralize` proves identity maps, operand segmentation, iterator order and unchanged bodies
+at the justified destination rank. `TypedC1` composes that normalization with the existing C1
+script on the actual target. The universal C1 theorem remains unchanged; typed claims explicitly
+require the declared argument types and index width. Nested rewrites and independent operation
+motion, including upstream constant hoisting, remain `abstracted` without their own proofs.
 The untrusted script synthesizer cannot bypass these checks.
 
 **Rule families for Tier A** (exact list fixed by WP-0):
@@ -672,8 +681,8 @@ model/tensor layer is outside this sequence.
 
 | Order | Family | Proof obligation and completion criterion |
 |---|---|---|
-| 1 | Named contraction generalization | Expand `linalg.matmul`/`batch_matmul` using their declared maps, iterator order, and unchanged body/casts; qualify actual MLIR generalization and a defined chain. |
-| 2 | Exact integer arithmetic | Add operand canonicalization; introduce typed local obligations before width-dependent cast/constant simplifications. Check widths, signedness, flags, poison, and actual canonicalizer output. |
+| 1 | Named operation generalization | Matmul/batch-matmul use universal expansion; map uses checked typed SSA facts. Implemented for these top-level forms, with actual pass output and defined chains qualified. |
+| 2 | Exact integer arithmetic | Operand commutation and typed one-operation normalization are implemented. Next extend typed sites to width/flag-aware multi-operation cast and constant simplifications. Check signedness, poison and actual canonicalizer output. |
 | 3 | Valid static shape rewrites | Prove reshape cancellation/composition and indexing equivalence, including zero extents, reassociation, element type, and all escaping uses. |
 | 4 | Rewrites inside operation bodies | Lift proved local rules into actual linalg region closures with captures and block-argument shadowing; preserve reduction order and unchanged computation. |
 | 5 | Exact quantization expansion | Check dequantization and already-declared quantization operations against independent software semantics. Preserve broadcast/granularity maps, zero points, widths, rounding, clamps, and floating operation order. |
@@ -691,6 +700,13 @@ Type annotations alone do not establish runtime operand widths or canonical tens
 Cast/shape elimination rules must carry proved local typing/canonicality facts under an explicit
 input domain, or establish correctness without those assumptions. Do not weaken the existing
 universal theorem or assume well-typed operands merely because an IR annotation says so.
+
+Implemented foundation: `Check/TypedRewrite.lean` provides a `TypedExpansion` contract and proves
+that successful source steps establish the types of their actual results. Normalization preserves
+operands, result bindings and region closures. `TypedC1.check_sound` and `TypedModule.check_sound`
+are separately pinned claims on typed inputs at one index width. The first qualified expansion
+is map-to-generic. This one-operation interface does not yet implement multi-operation cast
+fusion, reshape elimination, nested rewriting or numerical policies.
 
 Over-rank matmul capture repair is **not** an ordinary shape equivalence obligation. Its source is
 explicitly invalid linalg (`collapse_overrank_matmul`), so proving refinement against its unsupported
@@ -882,6 +898,12 @@ the overall verdict remains `abstracted`. Earlier receipts, sources, and the han
 again before publication. Argument maps (`equiv_args`) and numerical policies are not composed yet.
 This claim covers the recorded chain, not the entire compilation pipeline. No caller-provided
 definedness flag can replace the proof.
+
+Typed boundaries use `check_typed_stage(..., index_bits=...)`, with the independent
+`TypedModule.check_sound` theorem. Mixed universal/typed chains use `chain_typed_refines` and
+`chain_typed_defined_refines` from `Check/TypedChain.lean`. Replay compares the bound function
+argument types, including tensor shapes, across every link and requires typed index widths to
+match the source receipts. The original chain theorems and legacy receipt behavior are unchanged.
 
 ### 5.11 C11 — upstream tensor passes (Tier B) and bufferization (Tier C)
 

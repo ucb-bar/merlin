@@ -83,10 +83,11 @@ def test_map_identity_chain_has_independent_definedness(tmp_path, lean_tools):
     assert chain["verdict"] == "verified", chain.get("reason")
 
 
-def test_map_generalization_waits_for_typed_rewrite_context(tmp_path, lean_tools):
+def test_universal_checker_refuses_type_dependent_map_generalization(tmp_path, lean_tools):
     # The current C1 theorem quantifies over arbitrary runtime shapes. A map derives its loop rank
     # from the destination; generic has a fixed rank. Source annotations alone cannot justify that
-    # rank in this interface. Do not silently normalize exports or certify this boundary yet.
+    # rank in this interface. TypedModule supplies a separate checked domain; this universal path
+    # must continue to refuse rather than silently normalizing exports or assuming those facts.
     stage = tmp_path / "stage"
     stage.mkdir()
     before, after = stage / "before.mlir", stage / "after.mlir"
