@@ -227,7 +227,8 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     ``after`` byte for byte, and the support receipt is about the first ``before`` -- the hypotheses
     of ``chain_refines`` -- and every receipt still describes the current bytes, checker build and
     ``SPEC_LOCK``. With ``handoff`` (the ``handoff.json`` the lowering recorded), the chain must also
-    end at the exact bytes handed to the upstream lowering. Anything missing makes the chain
+    end at the exact bytes handed to the upstream lowering, and the handoff file must still match
+    its recorded digest and size. Anything missing makes the chain
     ``abstracted`` with the reasons."""
     links, reasons, assumptions = [], [], []
     receipts = []
@@ -253,7 +254,13 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     assumptions += [a for a in sup.get("assumptions", []) if a not in assumptions]
     chained = bool(receipts) and sup["subject"]["sha256"] == receipts[0]["before"]["sha256"] and all(
         a["after"]["sha256"] == b["before"]["sha256"] for a, b in zip(receipts, receipts[1:]))
-    handoff_sha = json.loads(handoff.read_text())["sha256"] if handoff is not None else None
+    handoff_sha = None
+    if handoff is not None:
+        ref = json.loads(handoff.read_text())
+        handoff_sha = ref["sha256"]
+        path = Path(ref["path"])
+        if not path.is_file() or _sha(path) != handoff_sha or path.stat().st_size != ref["bytes"]:
+            reasons.append("handoff: file changed or missing since it was recorded")
     if receipts and handoff_sha is not None and receipts[-1]["after"]["sha256"] != handoff_sha:
         chained = False
         reasons.append("the chain does not end at the bytes handed to the upstream lowering")

@@ -645,12 +645,17 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
             _lean_stages.record_boundary(stage, f"{__name__}.{name}", before, _lean_stages.generic_text(module))
         if statistic == "quant_ext_lowered" and _layer_norm_chunked_sums_selected():
             # Optional and default off, so an unselected build records the same stages and emits the same
-            # module. Selecting the pass grants both of its numerical permissions; its rewrite lands in the
-            # next recorded stage, and the transform map owns every operation it adds.
+            # module. Selecting the pass grants both of its numerical permissions; record its own
+            # boundary, and let the transform map own every operation it adds.
             from .normalization_reassociation import chunk_layer_norm_sums
 
-            stats["layer_norm_sums_chunked"] = chunk_layer_norm_sums(
-                module, allow_reassociation=True, assume_finite_intermediates=True, on_rewrite=on_quant_rewrite
+            stats["layer_norm_sums_chunked"] = _lean_stages.run(
+                "xdsl-layer-norm-chunked-sums",
+                chunk_layer_norm_sums,
+                module,
+                allow_reassociation=True,
+                assume_finite_intermediates=True,
+                on_rewrite=on_quant_rewrite,
             )
     return stats
 
