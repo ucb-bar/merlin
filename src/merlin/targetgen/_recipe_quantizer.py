@@ -634,6 +634,8 @@ def quantize_config(recipe: Mapping[str, Any]):
     weight, activation = _require(recipe)
     if activation.get("mode") != "dynamic":
         raise RecipeError("quantize_config realises dynamic recipes")
+    if _weight_rounding(recipe) is not None:
+        raise RecipeError("GPTQ weight rounding is realised on the static PT2E path; quantize_ rounds to nearest")
     granularity = {"tensor": PerTensor, "channel": PerRow}.get(str(weight.get("granularity")))
     if granularity is None:
         raise RecipeError(
@@ -753,6 +755,34 @@ def _plan_layers(
     return QLP.plan(
         recipe, layer_inventory(model) if source_layer_inventory is None else source_layer_inventory
     ).to_dict()
+
+
+def _weight_rounding(recipe: Mapping[str, Any], prepared: Any = None) -> Any:
+    """How ``recipe`` rounds its weights: ``None`` for round-to-nearest, else GPTQ (``_gptq.py``).
+
+    Without ``prepared`` this returns the recipe's validated GPTQ parameters. With a prepared PT2E
+    module it returns the hook that accumulates Hessians during calibration (``track``) and sets
+    GPTQ's codes into the stored weights before ``convert_pt2e`` folds them (``apply``). The
+    algorithm, and why the hook sits at that point, are documented in ``_gptq.py``, a sibling
+    imported by bare name like ``quant_layer_plan``.
+    """
+    import sys
+    from pathlib import Path
+
+    here = str(Path(__file__).resolve().parent)
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import _gptq
+
+    try:
+        parameters = _gptq.rounding_of(recipe["weight"])
+    except _gptq.GPTQError as error:
+        raise RecipeError(str(error)) from error
+    if parameters is None or prepared is None:
+        return parameters
+    import torch
+
+    return _gptq.PT2EWeightRounding(prepared, parameters, contractions=_recipe_operators(torch)["contraction"])
 
 
 def _as_tuple(sample: Any) -> tuple:
@@ -970,6 +1000,11 @@ def apply_recipe(
     )
     prepared = prepare_pt2e(exported, quantizer)
     samples = calibration_inputs if calibration_inputs is not None else (tuple(example_inputs),)
+    # GPTQ weight rounding, when the recipe asks for it: Hessians accumulate during this same
+    # calibration pass, and the codes are set into the stored weights before convert folds them.
+    weight_rounding = _weight_rounding(recipe, prepared)
+    if weight_rounding is not None:
+        samples = weight_rounding.track(samples)
     calibrated = 0
     with torch.no_grad():
         for sample in samples:
@@ -979,6 +1014,7 @@ def apply_recipe(
             calibrated += 1
     if calibrated == 0:
         raise RecipeError("static calibration saw no input sample")
+    weight_rounding_report = weight_rounding.apply() if weight_rounding is not None else None
     quantized = convert_pt2e(prepared, use_reference_representation=False, fold_quantize=True)
     if original_frontend_snapshot is not None:
         from m2m.capture.trace import attach_quantization_boundaries
@@ -1022,6 +1058,7 @@ def apply_recipe(
         # Sums and means the recipe's families cover and the graph does not requantize: left alone.
         "sums_and_means_left_in_float": quantizer.left_in_float,
         "calibration_samples": calibrated,
+        **({"weight_rounding": weight_rounding_report} if weight_rounding_report is not None else {}),
         "pruned_dead_state_tensors": pruned,
         "weight_granularity": recipe["weight"]["granularity"],
         "activation_granularity": recipe["activation"]["granularity"],
