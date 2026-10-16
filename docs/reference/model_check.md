@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.12**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.13**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -192,10 +192,13 @@ the worst image reported (one image's cosine is noisy). Proposed (pending approv
 both against an fp32 execution** (FlashAttention's rule, §4.6). Statistic: per input, the worst action dim's
 `rel_rmse` (dims 0–5, the 50-step chunk) against the **fp32 reference** = the same checkpoint with every
 weight upcast and every op in float32 (`ATEN_CPU_CAPABILITY=default`, one thread). `E_bf16` = that
-statistic for the stock bf16 model. The INT8 reference passes when the mean over the inputs is ≤ 2 × the
-mean of `E_bf16`, and the maximum is ≤ 2 × the maximum of `E_bf16` (8 visible inputs: 0.0345 / 0.052, so
-the bar is 0.069 / 0.104). Reported beside it, never gating: the same statistic against the bf16 FP
-reference, and 2 × the bf16 "float noise" (the disagreement of two valid bf16 kernel sets: 0.026 / 0.058).
+statistic for the stock bf16 model. **Since 1.13 every input is judged under 4 initial-noise draws**
+(`reference.seeds`: draw 0 is the stored noise, draws 1–3 are seeded from the input's identity), so a split
+of 8 inputs gives 32 chains: the 10-step flow is chaotic, and one chain's worst dim swings about 2× under
+perturbations that do not change the recipe. The INT8 reference passes when the **mean** and the **90th
+percentile** over the chains are each ≤ 2 × the same statistic of `E_bf16`; the maximum is reported, not
+gated. Reported beside it, never gating: the same statistic against the bf16 FP reference, and 2 × the bf16
+"float noise" (the disagreement of two valid bf16 kernel sets).
 Why fp32: a bar must measure distance to the true function. Two bf16 implementations disagreeing only
 estimates bf16's error indirectly and depends on which second implementation is chosen; the fp32 run
 measures it directly. A per-dim form is not used: with 8 inputs one dim's error is too poorly estimated.
@@ -387,3 +390,5 @@ Schema: `merlin/schemas/model_check_report.schema.yaml` (`merlin.model_check.rep
 - 1.11 (2026-10-16): §8: the stored inputs of a model and split are one `<split>.npz` (key `<id>.<field>`)
   and one `<split>.json`, public and sealed alike; the inputs and model-ready arrays are unchanged.
 - 1.12 (2026-10-16): `bundle-seal` and `bundle-verify` (§2): a sealed bundle carries a sha256 of every file.
+- 1.13 (2026-10-16): §4.5: SmolVLA is judged over 4 noise draws per input, on the mean and 90th percentile
+  (approved); admission rules take `p<NN>` aggregates and `report_only`; `reference.seeds` in the models file.
