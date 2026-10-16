@@ -100,6 +100,48 @@ theorem perChannel_body_sound (ctx : Ctx) (call : CallSem)
     Sem.Ops.Arith.widthOf, Ty.bitWidth?, Sem.Ops.Arith.bv, overflow_none,
     Spec.Dequant.perChannel, Op.isTerminator, terminatorNames]
 
+/-- A typed integer or float operand, with `none` representing poison. -/
+def intValue (w : Nat) (x : Option (BitVec w)) : Val :=
+  match x with | none => .poison | some x => .some (.bits w x)
+
+def floatValue (x : Option (FBits .f32)) : Val :=
+  match x with | none => .poison | some x => .some (.flt .f32 x)
+
+def poisonInputs (q : Option (BitVec 8)) (z : Option (BitVec 32))
+    (s : Option (FBits .f32)) (init : Val) : Env :=
+  [(0, .scalar (intValue 8 q)), (1, .scalar (floatValue s)),
+   (2, .scalar (intValue 32 z)), (3, .scalar init)]
+
+set_option maxHeartbeats 2000000 in
+set_option maxRecDepth 4096 in
+/-- Exact execution, including all eight combinations of defined/poison arithmetic operands. -/
+theorem body_poison_sound (channel : Bool) (ctx : Ctx) (call : CallSem)
+    (q : Option (BitVec 8)) (z : Option (BitVec 32)) (s : Option (FBits .f32)) (init : Val) :
+    evalOps Sem.Ops.opSem ctx call (poisonInputs q z s init)
+      (if channel then perChannelBody else perTensorBody) =
+      .ok [.scalar (Spec.Dequant.scalarValue channel ctx.M q z s)] := by
+  cases channel <;> cases q <;> cases z <;> cases s
+  all_goals first
+    | simpa only [poisonInputs, intValue, floatValue, inputs, Spec.Dequant.scalarValue,
+        Spec.Dequant.scalar, Bool.false_eq_true, ↓reduceIte] using
+        (perTensor_body_sound ctx call _ _ _ init)
+    | simpa only [poisonInputs, intValue, floatValue, inputs, Spec.Dequant.scalarValue,
+        Spec.Dequant.scalar, ↓reduceIte] using
+        (perChannel_body_sound ctx call _ _ _ init)
+    | simp [poisonInputs, intValue, floatValue, Spec.Dequant.scalarValue,
+      Spec.Dequant.scalar,
+      evalOps, perTensorBody, perChannelBody, op, floatOp, intSub, yield,
+      Env.getAll, Env.get?, Env.bindAll, List.lookup, Outcome.mapM, Outcome.ofOption,
+      Sem.Ops.opSem, Sem.Ops.unmodelledAttr?, Sem.Ops.interpretedAttrs, Sem.Ops.dispatch,
+      Op.blind, Op.name, Op.results, Op.attrs, Op.props, Op.successors,
+      dialect_extsi, dialect_subi, dialect_sitofp, dialect_subf, dialect_mulf,
+      Sem.Ops.Arith.sem, Sem.Ops.Arith.unOp, Sem.Ops.Arith.binOp,
+      Sem.Ops.Arith.pureN, Sem.Ops.Arith.resultElt, liftEager, Sem.Ops.Arith.fltBin,
+      floatKey_default, floatKey_explicitNone, Sem.Ops.Arith.intUn,
+      Sem.Ops.Arith.intBin, Sem.Ops.Arith.arithWithFlags, Sem.Ops.Arith.widthOf,
+      Ty.bitWidth?, Sem.Ops.Arith.bv, overflow_none, Spec.Dequant.perTensor,
+      Spec.Dequant.perChannel, Op.isTerminator, terminatorNames]
+
 def body (channel : Bool) : List Op := if channel then perChannelBody else perTensorBody
 
 def argMap (args : List Value) : Check.Rho := [0, 1, 2, 3].zip (args.map (·.id))
@@ -122,5 +164,19 @@ theorem checkBody_sound {channel : Bool} {args : List Value} {ops : List Op}
     (inputs q z s init) env ha hc (fun _ _ => rfl)
   rw [← he]
   cases channel <;> simp [body, Spec.Dequant.scalar, perTensor_body_sound, perChannel_body_sound]
+
+/-- The accepted body has the source contract even when any arithmetic operands are poison. -/
+theorem checkBody_poison_sound {channel : Bool} {args : List Value} {ops : List Op}
+    (h : checkBody channel args ops = true) (ctx : Ctx) (call : CallSem)
+    (q : Option (BitVec 8)) (z : Option (BitVec 32)) (s : Option (FBits .f32))
+    (init : Val) (env : Env)
+    (hc : Check.Corr (argMap args) (poisonInputs q z s init) env) :
+    evalOps Sem.Ops.opSem ctx call env ops =
+      .ok [.scalar (Spec.Dequant.scalarValue channel ctx.M q z s)] := by
+  simp only [checkBody, Bool.and_eq_true] at h
+  have he := Check.alphaOps_sound call call (argMap args) (body channel) ops ctx
+    (poisonInputs q z s init) env h.2 hc (fun _ _ => rfl)
+  rw [← he]
+  exact body_poison_sound channel ctx call q z s init
 
 end MerlinVerify.Rules.DequantScalar

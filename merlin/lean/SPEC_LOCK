@@ -16,7 +16,7 @@
   "MerlinVerify/Sem/Support.lean": "35c431533dc68e3c9fd4c12c219a09fbc0efd98c22407dc77345719dcc9117dd",
   "MerlinVerify/Sem/Value.lean": "70f3a86242c13f97a13fac365fa9bd01a41757a63b5353d8ca9c84f8e7229412",
   "MerlinVerify/Spec/Annotations.lean": "17febb602da964d15134efdc647bd4271d5bfb30b9d3944dcfbb7aef4f492d7a",
-  "MerlinVerify/Spec/Dequant.lean": "a5babb05f3ec1c07432a34fb2aab5d49e22ce82b88799383b61ce535ac270ccc",
+  "MerlinVerify/Spec/Dequant.lean": "8c8df77bc71092495f1ba80b837d3110cb0feccd38c1775bb2c5c007d75f9490",
   "lake-manifest.json": "483e372c6cd8ee69b2f3e40b6454651140fdc0f6c4e3de3fa208591d4a14677d",
   "lakefile.toml": "6d9009180a567bf4fc7a6f8224d174963f8957a84e5702d864944383233fc99c",
   "lean-toolchain": "ca5f1f601d34c49079e38d7e7041eb0f2a9c227fbc1df0f404820069a052330c",
@@ -31,6 +31,8 @@
   "statement:MerlinVerify.Check.moduleCheck_sound": "351695da5f4d1377d0c7a5c9beebcab10117903abcc6153bae8e4bd77ba1c81e",
   "statement:MerlinVerify.Check.supportCheck_safe": "b59b52d6b9bf4cba339111b4a65d64a62bb68c217838acd84cba58bc8962011f",
   "statement:MerlinVerify.Check.supportCheck_sound": "5d04b5409b2343452edd58190b1cf7b8186447637dc52e3dcac22d89333d1ac9",
+  "statement:MerlinVerify.Rules.DequantScalar.body_poison_sound": "56b9a7de11a334f364833c8822195fd96be5f8bb2e9a8e7c08c720c5babc212f",
+  "statement:MerlinVerify.Rules.DequantScalar.checkBody_poison_sound": "e7f64f525bf31843527d76407c6275fe5baf17f4d0bd1219e41e96e284d624a1",
   "statement:MerlinVerify.Rules.DequantScalar.checkBody_sound": "782057d55708e73169bf61fb26dd0d9a934127b4b629227cd7188fc18810b9ee",
   "statement:MerlinVerify.Rules.DequantScalar.perChannel_body_sound": "4c1329e16db41e75e3d9a597610851b15941802696202ad2db0c0ecdaa830a1a",
   "statement:MerlinVerify.Rules.DequantScalar.perTensor_body_sound": "623c56680e689a569753f95a14af7c1b92a65df56ed1eb705aeed87cc9be6acb"

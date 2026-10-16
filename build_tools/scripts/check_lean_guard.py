@@ -57,6 +57,8 @@ PINNED = {
     "MerlinVerify.Rules.DequantScalar.perTensor_body_sound": "MerlinVerify.Rules.DequantScalar",
     "MerlinVerify.Rules.DequantScalar.perChannel_body_sound": "MerlinVerify.Rules.DequantScalar",
     "MerlinVerify.Rules.DequantScalar.checkBody_sound": "MerlinVerify.Rules.DequantScalar",
+    "MerlinVerify.Rules.DequantScalar.body_poison_sound": "MerlinVerify.Rules.DequantScalar",
+    "MerlinVerify.Rules.DequantScalar.checkBody_poison_sound": "MerlinVerify.Rules.DequantScalar",
 }
 
 

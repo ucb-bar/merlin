@@ -17,6 +17,7 @@ Unsigned inputs, other precisions/zero-point widths, absent zero points and per-
 are outside this contract.
 -/
 import MerlinVerify.Sem.Float
+import MerlinVerify.Sem.Value
 
 namespace MerlinVerify.Spec.Dequant
 
@@ -40,5 +41,13 @@ def perChannel (M : FloatModel) (q : BitVec 8) (z : BitVec 32) (s : FBits .f32) 
 def scalar (channel : Bool) (M : FloatModel) (q : BitVec 8) (z : BitVec 32) (s : FBits .f32) :
     FBits .f32 :=
   if channel then perChannel M q z s else perTensor M q z s
+
+/-- Typed operands may be poison independently. Every arithmetic input is consumed eagerly;
+an unused destination is deliberately absent from the source contract. -/
+def scalarValue (channel : Bool) (M : FloatModel) (q : Option (BitVec 8))
+    (z : Option (BitVec 32)) (s : Option (FBits .f32)) : Val :=
+  match q, z, s with
+  | some q, some z, some s => .some (.flt .f32 (scalar channel M q z s))
+  | _, _, _ => .poison
 
 end MerlinVerify.Spec.Dequant
