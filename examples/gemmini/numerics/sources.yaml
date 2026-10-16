@@ -1,8 +1,8 @@
 # Evaluation and calibration inputs for `python -m merlin.model_check` (contract:
 # docs/reference/model_check.md §8). Every source is pinned by revision and sha256; every selection is a
 # deterministic rule over that source, so anyone with the same files gets the same inputs.
-# Visible inputs are committed under inputs/<model>/visible/; sealed inputs are produced by the same rules
-# into the private bundle and are committed here only as sha256 (MANIFEST.json).
+# Visible inputs are committed as inputs/<model>/visible.{npz,json}; sealed inputs are produced by the same
+# rules into the private root and are committed here only as sha256 (MANIFEST.json).
 schema: merlin.model_check.sources.v1
 target: gemmini
 
@@ -27,7 +27,7 @@ models:
       n03445777: 574
       n03888257: 701
     preprocessing: torchvision ResNet50_Weights.IMAGENET1K_V2 (resize 232 bilinear antialias, crop 224, normalize)
-    stored_form: image.npz, 224x224 RGB uint8 after resize+crop; normalization is applied in numpy
+    stored_form: array image, 224x224 RGB uint8 after resize+crop; normalization is applied in numpy
     visible: {split: val, classes: [0, 8], rank: 0}     # classes sorted by synset: indices [0, 8); first image (sorted name)
     sealed: {split: val, classes: [2, 10], rank: 1}     # classes [2, 10); second image: different items
     calibration: {split: train, per_class: 26}           # first 26 images per class (sorted name): 260
@@ -60,7 +60,7 @@ models:
     policy: {repo_id: lerobot/smolvla_base, revision: c83c3163b8ca9b7e67c509fffd9121e66cb96205}
     vlm: {repo_id: HuggingFaceTB/SmolVLM2-500M-Video-Instruct, revision: 7b375e1b73b11138ff12fe22c8f2822d8fe03467}
     preprocessing: LeRobot 0.6 SmolVLA processors (image resize-with-pad 512, state normalization, task tokens)
-    stored_form: frame.npz (raw top-camera uint8 frame, raw state) + observation.json (task, seed); noise from torch.randn with the input's seed
+    stored_form: arrays frame (raw top-camera uint8) and state (raw) + metadata (task, seed); noise from torch.randn with the input's seed
     judged_joints: [0, 6]                                 # smolvla_base's action feature shape is [6]
     visible: {episodes: [0, 8], frame: 100, noise_seed_base: 1000}
     sealed: {episodes: [25, 33], frame: 100, noise_seed_base: 2000}

@@ -3,14 +3,14 @@ title: "Full-model check contract (model_check v1)"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-15
+last_verified: 2026-10-16
 related: [contracts, lowering_pipeline]
 code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src/merlin/runtime/linalg_numpy.py, merlin/schemas/model_check_report.schema.yaml, examples/gemmini/numerics/models.yaml]
 ---
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.8**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.9**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -255,14 +255,17 @@ Counts and MAC-weighted fractions per program. The census is a measurement; it n
 
 Inputs (committed, small, reproducible): `examples/<target>/numerics/`
 ```
-README.md   MANIFEST.json   models.yaml
-inputs/<model>/visible/<id>/...      # 8 per model
+README.md   MANIFEST.json   models.yaml   sources.yaml
+inputs/<model>/visible.npz           # 8 per model: one array per input and field, key <id>.<field>
+inputs/<model>/visible.json          # {<id>: metadata}; a model without arrays has only this file
 calibration/<model>.json             # calibration item ids + sha256, disjoint from inputs
 ```
 Sealed inputs (8 per model, from different source items) are produced by the same generator but stored
-privately at `/work/merlin/private/<target>/numerics/inputs/<model>/sealed/<id>/...`; a public example
-never holds a holdout. The public `MANIFEST.json` commits to them by sha256 only, so the sealed set is
-verifiable when it is released.
+privately at `/work/merlin/private/<target>/numerics/stored/<model>/sealed.{npz,json}`, in the same
+format; a public example never holds a holdout. The public `MANIFEST.json` commits to them by sha256
+only, so the sealed set is verifiable when it is released. `merlin.model_check.inputs.stored` reads
+either split. The model-ready arrays stay private and one file per input
+(`derived/<model>/<split>/<id>/`).
 Frozen bundle (generated, private): `/work/merlin/private/<target>/numerics/<version>/`
 ```
 MANIFEST.json                        # generator/merlin/model2mlir commits, capture hashes, engine inputs
@@ -356,3 +359,5 @@ Schema: `merlin/schemas/model_check_report.schema.yaml` (`merlin.model_check.rep
 - 1.6 (2026-10-15): §4.5: SmolVLA's admission bar is 2 × its float noise per action dim (approved).
 - 1.7 (2026-10-15): §4.5: ResNet50's cosine bar is on the mean over inputs (approved).
 - 1.8 (2026-10-15): §4.5: SmolVLA's 2 × float-noise bar is stated on the per-input worst dim (mean and max).
+- 1.9 (2026-10-16): §8: the stored inputs of a model and split are one `<split>.npz` (key `<id>.<field>`)
+  and one `<split>.json`, public and sealed alike; the inputs and model-ready arrays are unchanged.
