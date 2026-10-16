@@ -187,13 +187,16 @@ def judged_metrics(model: Model, run: CH.ChainRun, fp: list[np.ndarray]) -> dict
 # ---------------------------------------------------------------------------------------- one input
 
 
-def execute(target: str, record: Mapping[str, Any], stage: Path, inputs, step_dir: Path, deadline: float) -> dict:
+def execute(
+    target: str, record: Mapping[str, Any], stage: Path, inputs, step_dir: Path, deadline: float, *, twin: bool = False
+) -> dict:
     """One program step: ``record``'s image relinked with ``inputs``, run on Spike, every output read back."""
     started = time.monotonic()
     elf = FB.relink(record, stage, inputs, step_dir)
     out: dict[str, Any] = {"relink_seconds": round(time.monotonic() - started, 1), "elf_bytes": elf.stat().st_size}
     try:
-        console, wall = FB.run(target, elf, timeout_s=max(1.0, deadline - time.monotonic()))
+        remaining = max(1.0, deadline - time.monotonic())
+        console, wall = FB.run_host(elf, timeout_s=remaining) if twin else FB.run(target, elf, timeout_s=remaining)
     finally:
         FB.discard(step_dir)  # the relinked image and its generated inputs; the bound inputs stay
     (step_dir / "console.bin").write_bytes(console)  # kept only when it cannot be read back
@@ -218,12 +221,18 @@ def _same(values: Sequence[np.ndarray], twin: Sequence[np.ndarray]) -> list[int]
     ]
 
 
+def carried(values: Sequence[np.ndarray], specs: Sequence[tuple[list[int], str]]) -> list[np.ndarray]:
+    """A step's read-back outputs as the chain carries them on (float results as float32)."""
+    return [v if dt in INTEGER else np.asarray(v, np.float32) for v, (_shape, dt) in zip(values, specs, strict=True)]
+
+
 def run_input(
     model: Model,
     *,
     target: str,
     builds: Mapping[str, dict[str, Any]],
     twins: Mapping[str, dict[str, Any] | None],
+    caches: Mapping[str, Any],
     stages: Mapping[str, Path],
     specs: Mapping[str, list[tuple[list[int], str]]],
     arrays: Mapping[str, np.ndarray],
@@ -237,47 +246,58 @@ def run_input(
     """The submission's chain on one input: every step relinked, run on Spike and read back (each
     completed step appended to ``rows``). Every step must finish before ``deadline`` (monotonic).
 
-    The differential: each step's exact bound inputs also run on the program's host twin (submitted to
-    ``twin_pool`` before the step itself, so the two overlap), and the step's row records whether every
-    output is bit-identical."""
+    The differential: each step's exact bound inputs are looked up in the program's twin cache
+    (:mod:`merlin.model_check.twins`); on a miss they run on the host twin (submitted to ``twin_pool``
+    before the step itself, so the two overlap). The step's row records whether every output is
+    bit-identical and whether the twin was ``cached`` or ``computed``."""
+    from merlin.model_check import twins as TW
+
     run = CH.ChainRun()
     pending = []
     for program in model.programs:
         run.steps[program.name] = []
-        stage, twin = stages[program.name], twins.get(program.name)
+        stage, twin, cache = stages[program.name], twins.get(program.name), caches.get(program.name)
         for step in range(counts[program.name]):
             if deadline - time.monotonic() < 1:
                 raise FullCheckError(f"the time budget ran out before {program.name}#{step}")
             inputs = CH.bind(program, model, arrays, step, run)
-            future = None
+            future = cached = None
             if twin is not None:
-                future = twin_pool.submit(
-                    execute, target, twin, stage, inputs, work / f"{program.name}.{step}.host", deadline
-                )
+                cached = cache.get(TW.inputs_sha256(stage, inputs)) if cache is not None else None
+                if cached is None:
+                    future = twin_pool.submit(
+                        execute, target, twin, stage, inputs, work / f"{program.name}.{step}.host", deadline, twin=True
+                    )
             done = execute(target, builds[program.name], stage, inputs, work / f"{program.name}.{step}", deadline)
             row = {"program": program.name, "step": step, "engine": "spike", "status": "completed", **done["row"]}
-            elements = [dt for _shape, dt in specs[program.name]]
             values = done["values"]
-            run.steps[program.name].append(
-                [v if dt in INTEGER else np.asarray(v, np.float32) for v, dt in zip(values, elements, strict=True)]
-            )
+            run.steps[program.name].append(carried(values, specs[program.name]))
             rows.append(row)
-            pending.append((row, values, future))
+            pending.append((row, values, twin is not None, future, cached))
             log(f"[full] {model.name} {program.name}#{step}: {row['cycles_functional']} cycles, {row['seconds']} s")
-    for row, values, future in pending:
-        if future is None:
+    for row, values, has_twin, future, cached in pending:
+        if not has_twin:
             row["differential"] = {"status": "identical", "detail": "a host-only program is its own host twin"}
             continue
-        try:
-            twin = future.result()
-        except Exception as error:  # noqa: BLE001 -- the step is reported, never silently skipped
-            row["differential"] = {"status": "error", "detail": f"{type(error).__name__}: {error}"[:1000]}
-            continue
-        differing = _same(values, twin["values"])
+        if cached is not None:
+            twin_values, twin_row, source = cached[0], cached[1], "cached"
+        else:
+            try:
+                done = future.result()
+            except Exception as error:  # noqa: BLE001 -- the step is reported, never silently skipped
+                row["differential"] = {
+                    "status": "error",
+                    "twin": "computed",
+                    "detail": f"{type(error).__name__}: {error}"[:1000],
+                }
+                continue
+            twin_values, twin_row, source = done["values"], done["row"], "computed"
+        differing = _same(values, twin_values)
         row["differential"] = {
             "status": "differs" if differing else "identical",
             "differing_outputs": differing,
-            "twin": {k: twin["row"][k] for k in ("seconds", "cycles_functional", "relink_seconds", "elf_bytes")},
+            "twin": source,
+            "twin_run": {k: twin_row.get(k) for k in ("seconds", "cycles_functional")},
         }
     return run
 
@@ -312,9 +332,10 @@ def build_root(work: Path, model: str) -> Path:
 
 
 def default_jobs(inputs: int) -> int:
-    """Inputs run concurrently when ``--jobs`` is not given: one per input, up to half the CPUs (a Spike run
-    and a relink are single-threaded; the other half is left to the machine)."""
-    return max(1, min(inputs, (os.cpu_count() or 2) // 2))
+    """Inputs run concurrently when ``--jobs`` is not given: one per input, up to a quarter of the CPUs
+    (each chain is one single-threaded Spike run at a time; host twins, run only on a cache miss, take at
+    most half as many more -- 8 sealed inputs on 32 CPUs: 8 chains and at most 4 twins)."""
+    return max(1, min(inputs, (os.cpu_count() or 4) // 4))
 
 
 def _kernels(bundle: B.Bundle, model: str, program: str, build: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -397,6 +418,13 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
             offload=False,
         )
         timing["build_seconds"] += 0 if twins[program.name]["reused"] else twins[program.name]["seconds"]
+    from merlin.model_check import twins as TW
+
+    caches = {
+        name: TW.TwinCache(bundle, model.name, name, TW.identity(record))
+        for name, record in twins.items()
+        if record is not None
+    }
     kernels_built = report["gates"].get("build")  # the kernel replay's, when it ran first
     report["gates"]["build"] = {
         "status": kernels_built["status"] if kernels_built else "pass",
@@ -417,6 +445,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
                 target=models.target,
                 builds=builds,
                 twins=twins,
+                caches=caches,
                 stages=stages,
                 specs=specs,
                 arrays=arrays,
@@ -445,7 +474,8 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
         return result
 
     jobs = int(args.jobs) if getattr(args, "jobs", None) else default_jobs(len(inputs))
-    with ThreadPoolExecutor(max_workers=jobs) as twin_pool, ThreadPoolExecutor(max_workers=jobs) as pool:
+    # Twins run only on a cache miss; half a worker per chain keeps the machine's Spike count bounded.
+    with ThreadPoolExecutor(max_workers=max(1, jobs // 2)) as twin_pool, ThreadPoolExecutor(max_workers=jobs) as pool:
         results = list(pool.map(one, inputs))
     timing["jobs"] = jobs
 

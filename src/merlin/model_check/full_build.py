@@ -336,6 +336,23 @@ def run(target: str, elf: Path, *, timeout_s: float) -> tuple[bytes, float]:
     return console, time.monotonic() - started
 
 
+def run_host(elf: Path, *, timeout_s: float) -> tuple[bytes, float]:
+    """``(console bytes, wall seconds)`` of a host-only image (a host twin) on the plain functional
+    simulator with the ISA and memory span the image declares.
+
+    A twin issues no accelerator instruction, so it needs no extension -- and it computes every group in
+    scalar code, which can take longer than the selected engine's ceiling for one submission run
+    (SmolVLA's prefix: ~1 G MAC/min). Its bound is the check's own time budget."""
+    from merlin.runtime.backends.spike_model import declared_isa, run_raw
+
+    isa = declared_isa(Path(elf))
+    if isa is None:
+        raise FullBuildError(f"{elf} declares no ISA to run it with")
+    started = time.monotonic()
+    console = run_raw(Path(elf).resolve(), isa=isa, timeout=max(1, int(timeout_s)))
+    return console, time.monotonic() - started
+
+
 def read(console: bytes, stage: Path, build_hash: str) -> tuple[list[np.ndarray], dict[str, Any]]:
     """Every result of the forward (i1 as bool), its text metrics and its group profile."""
     from merlin.compile.baremetal_model import read_full_outputs
