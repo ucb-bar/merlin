@@ -287,6 +287,14 @@ def _input_abi(inputs):
     return leaves, [{"shape": list(x.shape), "dtype": _mlir_dtype(x.dtype)} for x in leaves]
 
 
+def _calibration_stream_limit(RQ, recipe) -> int:
+    """Samples a calibration stream must supply: what the recipe observes, and the agreement receipt."""
+    observed = RQ.calibration_limit(
+        recipe, inspect.signature(RQ.apply_recipe).parameters["calibration_samples"].default
+    )
+    return max(observed, inspect.signature(RQ.agreement).parameters["limit"].default)
+
+
 def _freeze_calibration(samples, *, limit, normalize, torch):
     """Own bounded sample values before a generator can reuse its scratch storage."""
     from itertools import islice
@@ -940,10 +948,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             if isinstance(stream, torch.Tensor) and stream.shape[0] > 0:
                 samples = ((stream[i],) for i in range(int(stream.shape[0])))
         if samples is not None:
-            calibration_limit = max(
-                inspect.signature(RQ.apply_recipe).parameters["calibration_samples"].default,
-                inspect.signature(RQ.agreement).parameters["limit"].default,
-            )
+            calibration_limit = _calibration_stream_limit(RQ, json.loads(Path(a.recipe).read_text(encoding="utf-8")))
             calibration = _freeze_calibration(samples, limit=calibration_limit, normalize=RQ._as_tuple, torch=torch)
     original_snapshot = {
         "status": "unavailable",
@@ -1093,7 +1098,13 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         if not a.stage_fp32:
             hook = getattr(loader, "get_calibration_inputs", None)
             if callable(hook):
-                calibration = list(hook(mdl, tuple(inputs)))
+                # A hook may decline (None): the stage then calibrates on its own example, as
+                # without one. A stream is read only as far as the recipe and the receipt use it.
+                samples = hook(mdl, tuple(inputs))
+                if samples is not None:
+                    from itertools import islice
+
+                    calibration = list(islice(samples, _calibration_stream_limit(RQ, recipe)))
             else:
                 stream = getattr(mdl, "session_images", None)
                 if isinstance(stream, torch.Tensor) and stream.shape[0] > 0:

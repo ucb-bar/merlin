@@ -759,6 +759,20 @@ def _as_tuple(sample: Any) -> tuple:
     return tuple(sample) if isinstance(sample, (tuple, list)) else (sample,)
 
 
+def calibration_limit(recipe: Mapping[str, Any], default: int) -> int:
+    """How many calibration samples a static recipe observes: its policy's count, else ``default``.
+
+    The count is part of the recipe (``framework_capture_policy.calibration_count``) because it
+    changes the scales, so two captures of one recipe observe the same number of samples and a
+    receipt keyed on the recipe digest names it. Which samples is the loader's calibration stream.
+    """
+    policy = recipe.get("framework_capture_policy") or {}
+    value = policy.get("calibration_count", default)
+    if type(value) is not int or value < 1:
+        raise RecipeError("framework_capture_policy.calibration_count must be a positive integer")
+    return value
+
+
 def _no_batch_norm_fold_needed(original_snapshot: Any, exported: Any) -> bool:
     """Prove the selected original and PT2E-input graphs contain no BN to fold.
 
@@ -970,10 +984,11 @@ def apply_recipe(
     )
     prepared = prepare_pt2e(exported, quantizer)
     samples = calibration_inputs if calibration_inputs is not None else (tuple(example_inputs),)
+    sample_limit = calibration_limit(recipe, calibration_samples)
     calibrated = 0
     with torch.no_grad():
         for sample in samples:
-            if calibrated >= calibration_samples:
+            if calibrated >= sample_limit:
                 break
             prepared(*_as_tuple(sample))
             calibrated += 1
@@ -1034,6 +1049,7 @@ def apply_recipe(
             "observer_epsilon": epsilon,
             "calibration_source": "explicit_calibration_stream" if calibration_inputs is not None else "example_inputs",
             "calibration_count": calibrated,
+            "calibration_sample_limit": sample_limit,
         },
     }
     return quantized
