@@ -3,9 +3,11 @@
 
 For a stage directory written by :mod:`.stages` (``before.mlir``, ``after.mlir``, ``meta.json``):
 
-1. export both texts with the authoritative exporter (the pipeline's MLIR via ``torch_mlir``);
+1. snapshot both inputs once and export those bytes with the authoritative exporter (the pipeline's
+   MLIR via ``torch_mlir``);
 2. round-trip both through the Lean decoder/printer (design D9);
-3. run ``merlin-lean check-module`` (theorem ``MerlinVerify.Check.moduleCheck_sound``);
+3. run ``merlin-lean check-module`` on the exact JSON that passed each round trip (theorem
+   ``MerlinVerify.Check.moduleCheck_sound``);
 4. write ``receipt.json`` (schema ``merlin.lean.receipt.v1``) binding the exact bytes, exporter, Lean
    toolchain, checker binary, ``SPEC_LOCK``, the theorem's audited axioms and the assumptions.
 
@@ -25,11 +27,12 @@ import hashlib
 import json
 import os
 import subprocess
+import uuid
 from pathlib import Path
 from typing import Any
 
 from merlin.common.paths import out_dir, repo_root
-from merlin.verify.lean.export import MLIR_EXPORT, export_file, round_trip
+from merlin.verify.lean.export import MLIR_EXPORT, round_trip
 
 THEOREM = "MerlinVerify.Check.moduleCheck_sound"
 CHECKER = "MerlinVerify.Check.moduleCheck"
@@ -43,7 +46,27 @@ def _sha(path: Path) -> str:
 
 
 def _file_ref(path: Path) -> dict[str, Any]:
-    return {"path": str(path), "sha256": _sha(path), "bytes": path.stat().st_size}
+    data = path.read_bytes()
+    return _bytes_ref(path, data)
+
+
+def _bytes_ref(path: Path, data: bytes) -> dict[str, Any]:
+    return {"path": str(path), "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+
+
+def _workdir(root: Path) -> Path:
+    """Retain each check's inputs and exports privately, including simultaneous checks of a stage."""
+    work = root / "lean" / uuid.uuid4().hex
+    work.mkdir(parents=True)
+    return work
+
+
+def _snapshot(source: Path, dest: Path) -> dict[str, Any]:
+    """Hash and check one reading of the input, rather than re-reading a mutable stage file."""
+    data = source.read_bytes()
+    dest.write_bytes(data)
+    dest.chmod(0o444)
+    return _bytes_ref(source, data)
 
 
 def lean_root() -> Path:
@@ -100,6 +123,9 @@ def check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
     """Check one stage directory and write ``stage/receipt.json``; returns the receipt."""
     meta = json.loads((stage / "meta.json").read_text())
     before, after = stage / "before.mlir", stage / "after.mlir"
+    work = _workdir(stage)
+    snapshots = [work / "before.mlir", work / "after.mlir"]
+    refs = [_snapshot(source, dest) for source, dest in zip((before, after), snapshots)]
     receipt: dict[str, Any] = {
         "schema": "merlin.lean.receipt.v1",
         "boundary": meta["boundary"],
@@ -108,26 +134,25 @@ def check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
         "claim_type": "refine_conditional",
         "checker": CHECKER,
         "theorem": THEOREM,
-        "before": _file_ref(before),
-        "after": _file_ref(after),
+        "before": refs[0],
+        "after": refs[1],
         "exporter": _exporter_block(m2m_python),
         "lean": _lean_block(),
         "axioms": theorem_axioms(THEOREM, "MerlinVerify.Check.Module"),
         "verdict": "unmeasured",
         "assumptions": list(LEDGER),
     }
-    work = stage / "lean"
     trips = [round_trip(p, work / f"rt_{p.stem}", lean_exe=lean_exe(), backend="mlir", m2m_python=m2m_python)
-             for p in (before, after)]
+             for p in snapshots]
     bad = [t for t in trips if t.status != "identical"]
     receipt["exporter"]["round_trip"] = "identical" if not bad else "different"
     if bad:
         receipt.update(verdict="abstracted", reason=f"round trip: {bad[0].status}: {bad[0].detail[:300]}")
         return _write(stage, receipt)
-    jb, ja = work / "before.json", work / "after.json"
-    export_file(before, jb, backend="mlir", m2m_python=m2m_python)
-    export_file(after, ja, backend="mlir", m2m_python=m2m_python)
-    if not _exported_from(jb, before) or not _exported_from(ja, after):
+    # Check the exact exports that passed the round trips; exporting again would open another
+    # gap between the checked reading and the reading that MLIR reproduced.
+    jb, ja = work / "rt_before" / "export.json", work / "rt_after" / "export.json"
+    if not _exported_from(jb, snapshots[0]) or not _exported_from(ja, snapshots[1]):
         receipt.update(verdict="unmeasured", reason="an export does not name the bytes of its stage file")
         return _write(stage, receipt)
     proc = subprocess.run([str(lean_exe()), "check-module", str(jb), str(ja)], capture_output=True, text=True,
@@ -154,13 +179,16 @@ def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
     ``verified`` means the function is never ``stuck`` on inputs of its declared types in any
     context with ``index_bits``-bit ``index`` (``supportCheck_sound``); an op outside the proved
     fragment makes it ``abstracted``, with the first refused op as the reason."""
+    run = _workdir(work)
+    snapshot = run / "program.mlir"
+    subject = _snapshot(program, snapshot)
     receipt: dict[str, Any] = {
         "schema": "merlin.lean.receipt.v1",
         "boundary": f"support:{program.name}",
         "claim_type": "not_stuck",
         "checker": SUPPORT_CHECKER,
         "theorem": SUPPORT_THEOREM,
-        "subject": _file_ref(program),
+        "subject": subject,
         "function": function,
         "domain": f"inputs of the declared argument types; contexts with {index_bits}-bit index",
         "exporter": _exporter_block(m2m_python),
@@ -169,14 +197,13 @@ def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
         "verdict": "unmeasured",
         "assumptions": list(LEDGER),
     }
-    trip = round_trip(program, work / "rt", lean_exe=lean_exe(), backend="mlir", m2m_python=m2m_python)
+    trip = round_trip(snapshot, run / "rt", lean_exe=lean_exe(), backend="mlir", m2m_python=m2m_python)
     receipt["exporter"]["round_trip"] = "identical" if trip.status == "identical" else "different"
     if trip.status != "identical":
         receipt.update(verdict="abstracted", reason=f"round trip: {trip.status}: {trip.detail[:300]}")
         return _write(work, receipt)
-    exported = work / "program.json"
-    export_file(program, exported, backend="mlir", m2m_python=m2m_python)
-    if not _exported_from(exported, program):
+    exported = run / "rt" / "export.json"
+    if not _exported_from(exported, snapshot):
         receipt.update(verdict="unmeasured", reason="the export does not name the program's bytes")
         return _write(work, receipt)
     proc = subprocess.run([str(lean_exe()), "check-support", str(exported), function, str(index_bits)],
@@ -282,11 +309,25 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     }
     if reasons:
         doc["reason"] = "; ".join(reasons)
-    out.write_text(json.dumps(doc, indent=2, sort_keys=True))
+    _atomic_json(out, doc)
     return doc
 
 
+def _atomic_json(path: Path, doc: dict[str, Any]) -> None:
+    """Publish one complete result even when another check writes the same destination."""
+    tmp = path.with_name(f".{path.name}-{uuid.uuid4().hex}")
+    try:
+        tmp.write_text(json.dumps(doc, indent=2, sort_keys=True))
+        tmp.replace(path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def _write(stage: Path, receipt: dict[str, Any]) -> dict[str, Any]:
+    if receipt["verdict"] == "verified":
+        stale = _stale(receipt, receipt["boundary"])
+        if stale:
+            receipt.update(verdict="unmeasured", reason="; ".join(stale))
     stage.mkdir(parents=True, exist_ok=True)
-    (stage / "receipt.json").write_text(json.dumps(receipt, indent=2, sort_keys=True))
+    _atomic_json(stage / "receipt.json", receipt)
     return receipt
