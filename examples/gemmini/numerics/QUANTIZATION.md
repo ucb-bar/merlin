@@ -248,7 +248,7 @@ Contract: [`docs/reference/model_check.md`](../../../docs/reference/model_check.
   `judged.admission` in [`models.yaml`](models.yaml), evaluated per split when the references are built
   (into `reference_quality.json`; a rule without data is `unknown`, never a pass).
   - ResNet50: top-1 agreement ≥ 15/16 and **mean** logits cosine ≥ 0.99 (approved).
-  - TinyLlama: mean KL ≤ 0.05 nats (about +5 % perplexity) and top-1 ≥ 90 % (proposed).
+  - TinyLlama: mean KL ≤ 0.075 nats (about +7.8 % perplexity) and top-1 ≥ 90 % (approved).
   - SmolVLA: per input, the worst action dim's relRMSE (dims 0–5, over the 50-step action chunk),
     measured against an **fp32 execution** of the same checkpoint. Its mean and its maximum over the
     inputs must each be ≤ 2 × the stock bf16 model's own error against that fp32 run. On the 8 visible

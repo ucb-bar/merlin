@@ -115,6 +115,23 @@ def variants_build(args: argparse.Namespace, report: dict) -> dict:
     return report
 
 
+@register("bundle-admission")
+def bundle_admission(args: argparse.Namespace, report: dict) -> dict:
+    """Re-judge a built bundle's reference admission under the models file's current rules (§4.5)."""
+    from merlin.model_check import references as REF
+
+    model = load_models(args.models).model(args.model)
+    bundle = _bundle(args)
+    admission = REF.rejudge(bundle, model)["admission"]
+    report["bundle"] = {"path": str(bundle.root)}
+    report["model_metrics"] = {"admission": admission}
+    report["gates"]["admission"] = {
+        "status": "pass" if admission and all(a["status"] == "pass" for a in admission.values()) else "fail",
+        "detail": ", ".join(f"{split} {a['status']}" for split, a in admission.items()),
+    }
+    return report
+
+
 @register("bundle-seal")
 def bundle_seal(args: argparse.Namespace, report: dict) -> dict:
     from merlin.model_check import seal as SL

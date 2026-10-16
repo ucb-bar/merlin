@@ -95,6 +95,6 @@ models:
     judged:
       kind: next_token_distribution
       outputs: [{program: prefill, output: 0}, {program: decode, output: 0}]
-      admission:                         # contract §4.5 (proposed): KL 0.05 nats is about +5% perplexity
-        - {metric: kl_mean, aggregate: mean, max: 0.05}
+      admission:                         # contract §4.5 (approved 1.15): KL 0.075 nats is about +7.8% perplexity
+        - {metric: kl_mean, aggregate: mean, max: 0.075}
         - {metric: top1_agree, aggregate: mean, min: 0.90}
