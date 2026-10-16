@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.9**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.10**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -171,7 +171,14 @@ group's ops in float64 with every rounding and quantize step removed, in the out
 | `smolvla` | §4.3 on `rel_rmse` and `worst`, **per action dim** (0–5), over the 50-step chunk |
 
 ### 4.5 Reference admission (bundles, not submissions)
-A bundle may be frozen only if its INT8 reference is close enough to FP on the visible inputs.
+A bundle may be frozen only if its INT8 reference is close enough to FP on the visible inputs. The rules
+are data: `judged.admission` in the models file, one `{metric, aggregate (mean|max|min), bound}` per rule,
+where the bound is `max`, `min` or `max_ratio_to_baseline`. A baseline-relative rule needs
+`judged.reference: {precision, baseline}`: the FP reference is run at `precision` (e.g. `float32`) and
+the float model at the `baseline` precision (e.g. `native`, the checkpoint's own) is judged against it on
+the same inputs. Building the references evaluates every rule per split into `reference_quality.json`
+(`admission.<split>.{status, checks[]}`); a rule with no data is `unknown`, never a pass. The bars below
+restate the target's models file.
 **Approved (1.7): ResNet50 top-1 agreement ≥ 15/16 and the logits cosine's mean over the inputs ≥ 0.99**,
 the worst image reported (one image's cosine is noisy). Proposed (pending approval): TinyLlama mean `kl`
 ≤ 0.05 nats and top-1 agreement ≥ 90 %. **Approved (1.9): SmolVLA within 2 × the bf16 model's own error,
@@ -284,7 +291,10 @@ binding.json                         # the binding receipt (§7)
 <model>/<split>/<id>/fp.npz          # FP judged outputs (§3)
 <model>/<split>/<id>/int8.npz        # INT8-reference judged outputs
 <model>/<split>/<id>/metrics_int8.json           # INT8-reference model metrics vs FP (§4.4)
-<model>/reference_quality.json       # per-input reference metrics and fp_numerics_env
+<model>/<split>/<id>/fp_baseline.npz, metrics_baseline.json
+                                     # only with judged.reference.baseline: the float model at the baseline
+                                     # precision, and its own error against the FP reference (§4.5)
+<model>/reference_quality.json       # per-input metrics, fp_numerics_env, fp_runs, admission per split
 <model>/sealed_variants/{blobs/, <program>/variants.json, <program>/calls.json}   # §8.1
 ```
 Replays of sealed variants build in `<bundle>.sealed_variants-work/`, beside the private bundle, never
@@ -362,3 +372,5 @@ Schema: `merlin/schemas/model_check_report.schema.yaml` (`merlin.model_check.rep
 - 1.8 (2026-10-15): §4.5: SmolVLA's 2 × float-noise bar is stated on the per-input worst dim (mean and max).
 - 1.9 (2026-10-16): §4.5: SmolVLA's admission is measured against an fp32 execution: within 2 × the bf16
   model's own error (FlashAttention's rule); the bf16-noise comparison is reported, not gated.
+- 1.10 (2026-10-16): §4.5: admission rules are data (`judged.admission`, `judged.reference`), judged
+  per split when references are built; §8 adds the baseline files.
