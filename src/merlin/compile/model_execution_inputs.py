@@ -136,7 +136,7 @@ def native_engine(target: str, simulator: str, facts: dict[str, str]):
         from merlin.targetgen import gsim_emulator
 
         env_var = getattr(backend, "GSIM_EMU_ENV", None)
-        citation = gsim_emulator.citation(target, env_var=env_var)
+        citation = gsim_emulator.citation(target, env_var=env_var, backend=backend)
         receipt = citation.get("receipt") or {}
         if (
             citation.get("available") is not True
@@ -163,7 +163,7 @@ def native_engine(target: str, simulator: str, facts: dict[str, str]):
         def revalidate() -> None:
             if bound_execution:
                 backend.verify_execution_inputs()
-            current = gsim_emulator.citation(target, env_var=env_var)
+            current = gsim_emulator.citation(target, env_var=env_var, backend=backend)
             if current != citation or file_sha256(engine_path) != citation["binary_sha256"]:
                 raise ModelExecutionInputError("GSIM engine citation or binary changed during qualification")
 
