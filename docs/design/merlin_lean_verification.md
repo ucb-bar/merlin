@@ -28,6 +28,7 @@ code_refs:
   - merlin/lean/MerlinVerify/Check/TypedModule.lean
   - merlin/lean/MerlinVerify/Check/TypedChain.lean
   - merlin/lean/MerlinVerify/Rules/MapGeneralize.lean
+  - merlin/lean/MerlinVerify/Rules/Motion.lean
 ---
 
 # Lean verification of the Merlin compilation path outside the OOT
@@ -639,9 +640,9 @@ induction over the block, with `ProgRefines.trans` for multiple sites.
 This is the main lever for parallelism: once the congruence theorem and the rule interface exist, rule
 families are independent work.
 
-**Implemented local rewrite families.** DCE, adjacent closed-expression CSE, named contraction
-generalization, and unflagged integer operand commutation are proved in `Rules/`. Generalization
-checks matmul/batch-matmul indexing maps and iterator order and preserves the original region body,
+**Implemented local rewrite families.** DCE, adjacent closed-expression CSE and motion, named
+contraction generalization, and unflagged integer operand commutation are proved in `Rules/`.
+Generalization checks matmul/batch-matmul indexing maps and iterator order and preserves the original region body,
 including signed/unsigned casts and floating operation order. Integer commutation covers add,
 multiply, AND, OR, and XOR, with scalar and tensor semantics; floats and overflow flags are refused.
 Qualification runs actual MLIR generalization/canonicalization/CSE, verifies defined chains on the
@@ -652,8 +653,13 @@ using runtime facts derived from checked source execution, including intermediat
 `MapGeneralize` proves identity maps, operand segmentation, iterator order and unchanged bodies
 at the justified destination rank. `TypedC1` composes that normalization with the existing C1
 script on the actual target. The universal C1 theorem remains unchanged; typed claims explicitly
-require the declared argument types and index width. Nested rewrites and independent operation
-motion, including upstream constant hoisting, remain `abstracted` without their own proofs.
+require the declared argument types and index width. `Motion` separately proves adjacent swaps
+of two pure, region-free, operand-free, single-result expressions. It checks distinct source
+result ids and uses alpha simulation in target order to preserve both bindings and escaping
+uses. The synthesizer proposes a two-operation site; C1 independently checks it. This covers
+upstream hoisting a captured constant across a static `tensor.empty`, including composition
+with typed map expansion. Operand-taking or region-bearing motion, non-adjacent hoisting and
+nested rewrites remain `abstracted` without additional proofs or synthesis.
 The untrusted script synthesizer cannot bypass these checks.
 
 **Rule families for Tier A** (exact list fixed by WP-0):

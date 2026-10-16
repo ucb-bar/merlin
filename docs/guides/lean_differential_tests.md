@@ -13,6 +13,8 @@ code_refs:
   - merlin/tests/ir/test_lean_differential.py
   - merlin/tests/ir/test_lean_map.py
   - merlin/tests/ir/test_lean_typed.py
+  - merlin/tests/ir/test_lean_motion.py
+  - merlin/lean/MerlinVerify/Rules/Motion.lean
   - src/merlin/verify/lean/check.py
 ---
 
@@ -131,13 +133,18 @@ independent definedness proof; rewrite certification alone permits poison and UB
 Qualification is in `test_lean_typed.py`: actual generalization, rank-zero/empty tensors, captures,
 intermediate reshape/splat results, escaping outputs, both index widths, mixed chains, corrupted
 rewrites, stale bytes, and tampered domains/theorem labels. The normalizer handles top-level
-one-operation expansions that preserve bindings and region closures. Nested rewrites and operation
-motion remain separate obligations. In particular, upstream can hoist a captured constant across
-`tensor.empty`; a negative regression retains that refusal until motion has its own proof.
+one-operation expansions that preserve bindings and region closures. Adjacent closed-expression
+motion has its own proof in `Rules/Motion.lean`: both expressions must be pure, operand-free,
+region-free, single-result operations with distinct source bindings and fresh target bindings.
+This permits upstream hoisting a captured constant across static `tensor.empty`. Qualification
+includes the typed defined chain, native execution before and after, an independent integer
+reference, and rejection of a changed moved constant. `test_lean_motion.py` checks escaping values,
+integer widths, floating constants without arithmetic laws, and conservative refusals. Operand-taking
+motion, non-adjacent hoisting and nested rewriting still require additional work.
 
 ```sh
 MERLIN_LEAN_REQUIRED=1 .venv/bin/python -m pytest \
-  merlin/tests/ir/test_lean_typed.py -q
+  merlin/tests/ir/test_lean_typed.py merlin/tests/ir/test_lean_motion.py -q
 ```
 
 The lower-level driver also exposes `merlin-lean check-module-typed before.json after.json 64`.
