@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.11**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.12**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -54,7 +54,8 @@ python -m merlin.model_check binding [--contract C] [--rtl-facts F] [--host-pack
 python -m merlin.model_check kernels-export --bundle B --model M [--program P] [--split visible]
         --out-dir DIR --out REPORT.json
 python -m merlin.model_check variants-build --model M [--program P] --seed S [--bundle B] --out REPORT.json
-python -m merlin.model_check bundle-verify [--bundle DIR] --out REPORT.json
+python -m merlin.model_check bundle-seal [--bundle DIR] [--jobs N] --out REPORT.json
+python -m merlin.model_check bundle-verify [--bundle DIR] [--jobs N] --out REPORT.json
 python -m merlin.model_check bundle-build --captures DIR --model M [--program P] [--keep {all|sample}]
         --host-package DIR --contract FILE --rtl-facts FILE [--bundle DIR] --out REPORT.json
 ```
@@ -103,6 +104,12 @@ official pass.
   and censuses, carries no tensor data and no paths, and accepts only the visible split: it is what a
   harness stages into an agent sandbox.
 - `variants-build`: seeds and stores the sealed shape variants (§8.1); operator only.
+- `bundle-seal` freezes a bundle: `SHA256SUMS` lists a sha256 of every file, and the manifest's `seal`
+  records that file's digest, the file count and the size. `bundle-verify` recomputes every digest and
+  fails on any changed, missing or extra file, on a sums file that differs from the manifest's, and on a
+  model whose catalogs or censuses are missing or a binding receipt whose digest differs from the
+  manifest's. Its report carries the manifest's own sha256 (`bundle.verify.manifest_sha256`), which a
+  release pins. A bundle changed after its seal fails until sealed again; an unsealed bundle is refused.
 - Cache: `check` and `replay-kernel` reuse kernel objects (keyed by package content, interface sha256,
   compile flags, tool identities, target contract and facts, and Merlin's build sources) and replay
   consoles (keyed by image sources, operand bytes, linked objects, toolchain and simulator) under
@@ -379,3 +386,4 @@ Schema: `merlin/schemas/model_check_report.schema.yaml` (`merlin.model_check.rep
   per split when references are built; §8 adds the baseline files.
 - 1.11 (2026-10-16): §8: the stored inputs of a model and split are one `<split>.npz` (key `<id>.<field>`)
   and one `<split>.json`, public and sealed alike; the inputs and model-ready arrays are unchanged.
+- 1.12 (2026-10-16): `bundle-seal` and `bundle-verify` (§2): a sealed bundle carries a sha256 of every file.
