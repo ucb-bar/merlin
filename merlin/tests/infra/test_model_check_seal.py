@@ -7,6 +7,7 @@ import json
 import pytest
 
 from merlin.model_check import seal as SL
+from merlin.model_check import binding as BD
 from merlin.model_check.bundle import Bundle, BundleError
 
 
@@ -59,3 +60,30 @@ def test_a_missing_catalog_is_a_structure_failure(tmp_path):
 def test_an_unsealed_bundle_is_refused(tmp_path):
     with pytest.raises(BundleError, match="not sealed"):
         SL.verify(_bundle(tmp_path))
+
+
+def test_raw_binding_receipt_matches_manifest_digest_and_status(tmp_path):
+    bundle = _bundle(tmp_path)
+    receipt = {"status": "pass", "checks": []}
+    (bundle.root / "binding.json").write_bytes(BD.serialize(receipt))
+    manifest = bundle.manifest()
+    manifest["binding"] = {"receipt": "binding.json", "receipt_sha256": BD.digest(receipt), "status": "pass"}
+    (bundle.root / "MANIFEST.json").write_text(json.dumps(manifest))
+    SL.seal(bundle)
+    assert SL.verify(bundle)["status"] == "pass"
+
+    manifest = bundle.manifest()
+    manifest["binding"]["status"] = "fail"
+    (bundle.root / "MANIFEST.json").write_text(json.dumps(manifest))
+    assert SL.verify(bundle)["structure"] == ["binding receipt digest differs from the manifest's"]
+
+
+def test_legacy_binding_report_still_verifies(tmp_path):
+    bundle = _bundle(tmp_path)
+    receipt = {"status": "pass", "checks": []}
+    (bundle.root / "binding.json").write_text(json.dumps({"binding": {"receipt": receipt}}))
+    manifest = bundle.manifest()
+    manifest["binding"] = {"receipt": "binding.json", "receipt_sha256": BD.digest(receipt), "status": "pass"}
+    (bundle.root / "MANIFEST.json").write_text(json.dumps(manifest))
+    SL.seal(bundle)
+    assert SL.verify(bundle)["status"] == "pass"
