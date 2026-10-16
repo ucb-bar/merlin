@@ -85,8 +85,13 @@ whole model:**
 
 Target: minutes per model on one core per unique kernel. **`full`** additionally builds every program's
 linked ELF and runs the whole chain per input on Spike: the integration check (host code, ABI, memory
-layout, linking) for the official grade or a scheduled job, never the inner loop. `--differential`
-(full only) adds an offload-disabled build and requires bit-identical outputs.
+layout, linking) for the official grade or a scheduled job, never the inner loop. Its integration gate
+is the `differential`: each step's outputs must be bit-identical to the host twin's (the same recipe built
+with offload disabled) on the same bound inputs, read from the bundle's twin cache (`bundle-twins`) or run
+on a miss. A model whose `full.differential` is `cached` (SmolVLA, TinyLlama: their twins take hours per
+input on Spike) runs no twin: a step without a cached one is `pending` (not run, not failed) and so is
+the gate unless a step differs. Its grade is then every kernel exact and the whole chain completed, with
+`host_drift` reported; the per-call check will close the gate.
 `--decode-steps K` below 32 marks the TinyLlama gate `partial: true`; a partial gate is never an
 official pass.
 
@@ -345,7 +350,8 @@ Expected results are the interface program evaluated exactly. Variants and the s
 Schema: `merlin/schemas/model_check_report.schema.yaml` (`merlin.model_check.report.v1`). Top level:
 `schema`, `command`, `status` (`pass|fail|error`), `exit_code`, `tool`, `submission`, `model`, `split`,
 `agent_view`, `bundle`, `binding`, `gates` (name → `{status, partial, detail}`), `programs[]`,
-`model_metrics`, `failures[]`, `timing`.
+`model_metrics`, `failures[]`, `timing`. A gate's status is `pass` or `fail`, or `pending` for a gate the
+models file defers (§2); a pending gate neither passes nor fails the report.
 
 - `programs[]`: `program`; `build {seconds, built, refused, cache {enabled, hits, misses, stored}}`
   (`full` adds `status: linked`); `census {denominator, device, refused, device_mac_fraction}` (the
@@ -392,3 +398,5 @@ Schema: `merlin/schemas/model_check_report.schema.yaml` (`merlin.model_check.rep
 - 1.12 (2026-10-16): `bundle-seal` and `bundle-verify` (§2): a sealed bundle carries a sha256 of every file.
 - 1.13 (2026-10-16): §4.5: SmolVLA is judged over 4 noise draws per input, on the mean and 90th percentile
   (approved); admission rules take `p<NN>` aggregates and `report_only`; `reference.seeds` in the models file.
+- 1.14 (2026-10-16): §2, §9: `full.differential: cached` (SmolVLA, TinyLlama; approved): full mode
+  compares with cached host twins only and records the rest `pending`; a pending gate does not fail a report.

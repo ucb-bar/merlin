@@ -12,7 +12,10 @@ schema: merlin.model_check.models.v1
 target: gemmini
 
 # check --mode full: how each program's whole-model image is built and run (contract §2). Paths are
-# repo-relative or ${ENV}-expanded; each model adds its arena (`full.arena_mb`).
+# repo-relative or ${ENV}-expanded; each model adds its arena (`full.arena_mb`) and its differential
+# (`full.differential`): `required` (default) runs the host twin on a twin-cache miss; `cached` leaves
+# that step pending. SmolVLA's and TinyLlama's twins take hours per input on Spike, so their official
+# grade is exact kernels + a completed chain until the per-call check lands (user decision, 2026-10-16).
 full:
   board: firesim_gemmini_rocket_u250_30mhz
   board_catalog: examples/gemmini/platform/board-catalog.yaml
@@ -39,7 +42,7 @@ models:
   smolvla:
     workload: smolvla
     chain: {kind: flow, steps: 10}       # checkpoint config num_steps; t = 1.0, dt = -0.1 inside the program
-    full: {arena_mb: 8192}
+    full: {arena_mb: 8192, differential: cached}
     programs:
       - name: prefix_encode
         stage: prefix_encode
@@ -77,7 +80,7 @@ models:
   tiny_llama:
     workload: tiny_llama
     chain: {kind: causal, prefill_tokens: 128, decode_steps: 32}
-    full: {arena_mb: 512}
+    full: {arena_mb: 512, differential: cached}
     programs:
       - name: prefill
         stage: prefill

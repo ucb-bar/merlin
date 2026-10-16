@@ -11,7 +11,9 @@ Judged (the fast kernel replay runs first and contributes ``build`` and ``kernel
 - ``differential`` -- THE integration gate. Each program with device groups also has a host twin: the
   same recipe and host code with every group on the host and no submission object. Every step's exact
   bound inputs run on both, and every output (integer and float) must be bit-identical. What the twin
-  and the submission share -- Merlin's host code -- cannot be charged to the submission.
+  and the submission share -- Merlin's host code -- cannot be charged to the submission. A model whose
+  ``full.differential`` is ``cached`` compares only with the bundle's twin cache: a step without a cached
+  twin is ``pending`` (not run, not failed), and so is the gate unless a step differs.
 - Reported, not gated: ``model_metrics.numerics`` (contract §4.4 on the measured judged outputs, ratio
   rule vs FP) and ``model_metrics.host_drift`` with each output's ``host_drift`` (Merlin's compiled host
   code against the numpy INT8 reference chain). ``--decode-steps K`` below a recurrent program's declared
@@ -241,6 +243,8 @@ def run_input(
     deadline: float,
     rows: list[dict[str, Any]],
     twin_pool,
+    policy: str = "required",
+    deferred: frozenset[str] = frozenset(),
     log=print,
 ) -> CH.ChainRun:
     """The submission's chain on one input: every step relinked, run on Spike and read back (each
@@ -249,7 +253,9 @@ def run_input(
     The differential: each step's exact bound inputs are looked up in the program's twin cache
     (:mod:`merlin.model_check.twins`); on a miss they run on the host twin (submitted to ``twin_pool``
     before the step itself, so the two overlap). The step's row records whether every output is
-    bit-identical and whether the twin was ``cached`` or ``computed``."""
+    bit-identical and whether the twin was ``cached`` or ``computed``. Under the ``cached`` policy a miss
+    runs nothing and the step is ``pending``, as is every step of a ``deferred`` program (one with no twin
+    cache in the bundle, whose twin was not built)."""
     from merlin.model_check import twins as TW
 
     run = CH.ChainRun()
@@ -264,7 +270,7 @@ def run_input(
             future = cached = None
             if twin is not None:
                 cached = cache.get(TW.inputs_sha256(stage, inputs)) if cache is not None else None
-                if cached is None:
+                if cached is None and policy == "required":
                     future = twin_pool.submit(
                         execute, target, twin, stage, inputs, work / f"{program.name}.{step}.host", deadline, twin=True
                     )
@@ -273,7 +279,7 @@ def run_input(
             values = done["values"]
             run.steps[program.name].append(carried(values, specs[program.name]))
             rows.append(row)
-            pending.append((row, values, twin is not None, future, cached))
+            pending.append((row, values, twin is not None or program.name in deferred, future, cached))
             log(f"[full] {model.name} {program.name}#{step}: {row['cycles_functional']} cycles, {row['seconds']} s")
     for row, values, has_twin, future, cached in pending:
         if not has_twin:
@@ -281,6 +287,13 @@ def run_input(
             continue
         if cached is not None:
             twin_values, twin_row, source = cached[0], cached[1], "cached"
+        elif future is None:
+            row["differential"] = {
+                "status": "pending",
+                "twin": "uncached",
+                "detail": "no cached host twin for these inputs (full.differential: cached): not run, not failed",
+            }
+            continue
         else:
             try:
                 done = future.result()
@@ -402,10 +415,17 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
         timing["build_seconds"] += 0 if builds[program.name]["reused"] else builds[program.name]["seconds"]
         log(f"[full] {model.name}/{program.name}: {builds[program.name]['elf_bytes']} B image")
     # The differential's host twins: the same recipe with every group on the host, no submission object.
+    policy = (model.extra.get("full") or {}).get("differential", "required")
+    cached_twins = (manifest.get("models") or {}).get(model.name, {}).get("twins") or {}
     twins: dict[str, dict[str, Any] | None] = {}
+    deferred = set()  # cached policy and no twin cache in the bundle: every step pending, no twin built
     for program in model.programs:
         if not builds[program.name]["device_routed"]:
             twins[program.name] = None  # already host only: the image is its own twin
+            continue
+        if policy == "cached" and program.name not in cached_twins:
+            twins[program.name] = None
+            deferred.add(program.name)
             continue
         twins[program.name] = FB.build(
             stages[program.name],
@@ -454,6 +474,8 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
                 deadline=deadline,
                 rows=result["rows"],
                 twin_pool=twin_pool,
+                policy=policy,
+                deferred=frozenset(deferred),
                 log=log,
             )
             result["chain_seconds"] = round(time.monotonic() - started, 1)
@@ -480,7 +502,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
     timing["jobs"] = jobs
 
     exact_rows = integer_bad = float_exact = float_total = 0
-    steps = identical = 0
+    steps = identical = pending = 0
     drift: list[float] = []
     per_input = []
     for result in results:
@@ -515,7 +537,8 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
             differential = row.get("differential") or {"status": "error", "detail": "no host twin ran"}
             steps += 1
             identical += int(differential["status"] == "identical")
-            if differential["status"] != "identical":
+            pending += int(differential["status"] == "pending")
+            if differential["status"] not in ("identical", "pending"):
                 report["failures"].append(
                     {
                         "kind": "gate" if differential["status"] == "differs" else "infrastructure",
@@ -580,11 +603,16 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
             }
         )
     judged = len(per_input) == len(results)
+    complete = judged and steps and identical + pending == steps
     report["gates"]["differential"] = {
-        "status": "pass" if judged and steps and identical == steps else "fail",
+        "status": ("pending" if pending else "pass") if complete else "fail",
         "partial": partial,
+        "policy": policy,
+        "pending": pending,
         "detail": f"{identical}/{steps} program steps bit-identical (every output) to the host twin on the same "
-        f"inputs; {len(per_input)}/{len(results)} input(s) completed",
+        "inputs"
+        + (f", {pending} pending (no cached twin; full.differential: cached)" if pending else "")
+        + f"; {len(per_input)}/{len(results)} input(s) completed",
     }
     report["model_metrics"] = {
         "source": "measured",

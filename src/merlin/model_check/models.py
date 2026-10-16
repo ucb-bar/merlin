@@ -20,6 +20,9 @@ MODELS_SCHEMA = "merlin.model_check.models.v1"
 CHAIN_KINDS = {"single", "flow", "causal"}
 JUDGED_KINDS = {"logits", "next_token_distribution", "per_channel"}
 BINDING_SOURCES = ("input", "tokens", "output", "constant")
+# Full mode's differential per model (``full.differential``, contract §2): ``required`` runs the host twin
+# on a cache miss; ``cached`` compares with the bundle's twin cache only, a miss leaving the step pending.
+DIFFERENTIAL_POLICIES = ("required", "cached")
 
 
 class ModelsFileError(ValueError):
@@ -154,6 +157,9 @@ def load(path: str | os.PathLike | None = None) -> ModelsFile:
         for ref in judged.get("outputs", []):
             if ref.get("program") not in names:
                 raise ModelsFileError(f"{where}.judged names unknown program {ref.get('program')!r}")
+        differential = (entry.get("full") or {}).get("differential", "required")
+        if differential not in DIFFERENTIAL_POLICIES:
+            raise ModelsFileError(f"{where}.full.differential must be one of {list(DIFFERENTIAL_POLICIES)}")
         known = {"workload", "chain", "programs", "judged"}
         models[name] = Model(
             name=name,

@@ -62,7 +62,9 @@ def settle(report: dict) -> dict:
     """Derive ``status`` and ``exit_code`` from the gates and failures already recorded.
 
     Any infrastructure failure makes the report ``error``; otherwise every gate must be ``pass`` (and
-    not partial) for ``pass``. A report with no gates is ``error``: nothing was judged.
+    no gate partial) for ``pass``. A ``pending`` gate -- one the models file defers (full mode's differential
+    under ``full.differential: cached``) -- is recorded and neither passes nor fails. A report with no
+    gates, or with only pending ones, is ``error``: nothing was judged.
     """
     infra = [f for f in report["failures"] if f.get("kind") in {"infrastructure", "usage"}]
     if infra:
@@ -70,12 +72,13 @@ def settle(report: dict) -> dict:
         report["status"] = "error"
         report["exit_code"] = EXIT_USAGE if usage else EXIT_INFRASTRUCTURE
         return report
-    gates = report["gates"]
-    if not gates:
+    gates = report["gates"].values()
+    judged = [g for g in gates if g.get("status") != "pending"]
+    if not judged:
         report["status"] = "error"
         report["exit_code"] = EXIT_INFRASTRUCTURE
         return report
-    passed = all(g.get("status") == "pass" and not g.get("partial", False) for g in gates.values())
+    passed = all(g.get("status") == "pass" for g in judged) and not any(g.get("partial", False) for g in gates)
     report["status"] = "pass" if passed else "fail"
     report["exit_code"] = _EXIT_OF_STATUS[report["status"]]
     return report

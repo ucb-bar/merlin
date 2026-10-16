@@ -81,6 +81,19 @@ def test_settle_requires_every_gate_and_no_partial():
     assert R.settle(rep) == rep and rep["status"] == "pass" and rep["exit_code"] == R.EXIT_PASS
 
 
+def test_a_pending_gate_neither_passes_nor_fails_a_report():
+    rep = R.new_report("check", model="m", split="sealed", submission={})
+    rep["gates"] = {"differential": {"status": "pending"}}
+    assert R.settle(rep)["status"] == "error"  # nothing judged
+    rep["gates"]["kernel_exact"] = {"status": "pass"}
+    assert R.settle(rep)["status"] == "pass" and rep["exit_code"] == R.EXIT_PASS
+    rep["gates"]["differential"]["partial"] = True
+    assert R.settle(rep)["status"] == "fail", "a partial gate is never a pass, pending or not"
+    rep["gates"]["differential"]["partial"] = False
+    rep["gates"]["kernel_exact"]["status"] = "fail"
+    assert R.settle(rep)["status"] == "fail"
+
+
 def test_agent_view_drops_sealed_values():
     rep = R.new_report("check", model="m", split="all", submission={})
     rep["programs"] = [{"runs": [{"input": "v1", "split": "visible"}, {"input": "s1", "split": "sealed"}]}]
