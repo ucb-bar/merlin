@@ -27,7 +27,12 @@ structure Config where
 
 /-- Captures may carry the full signed-i8 range. Other metadata/contracts are refused. -/
 def metadataOK (op : Op) : Bool :=
-  op.successors.isEmpty && match op.attr? "quant_min", op.attr? "quant_max" with
+  op.successors.isEmpty &&
+  (match op.attr? "input_dtype" with
+    | none => true
+    | some (.str "i8") => true
+    | _ => false) &&
+  match op.attr? "quant_min", op.attr? "quant_max" with
   | none, none => true
   | some (.int lo (.int 64)), some (.int hi (.int 64)) => lo == -128 && hi == 127
   | _, _ => false

@@ -655,6 +655,15 @@ body. Both narrow granularities verify on actual pass output. The historical flo
 per-channel body is retained as a refused negative control, including its large-zero-point numeric
 counterexample. Other datatype and precision combinations remain outside this lowering proof.
 
+**Narrow whole-pass milestone.** Authoritative tests now export real preprocessing boundaries
+with the full signed-i8 bounds and `input_dtype = "i8"` metadata, check every stage and source
+support, bind the upstream handoff, and replay the receipts into a strict `chain_refines` claim.
+Changing emitted subtraction to addition after verification invalidates the chain. Additional
+checks cover multiple dequantization sites, reversed returned-result order, rank-zero tensors,
+empty tensors and nonzero channel axes. This is verification relative to the proposed source
+model (T3), with nonnegative axes, rank-zero per-tensor parameters, and omitted or full-range
+signed-i8 bounds; it is not yet paper-qualified capture-to-execution verification.
+
 ### 5.2 C2 — outlining (inline-and-compare)
 
 A generalization of `verify/outline_ir.py`, with these steps:
