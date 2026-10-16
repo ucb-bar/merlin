@@ -26,7 +26,7 @@ from .concat_dps import ensure_registered as _register_concat_dps
 # entry exists. Idempotent, so a second import is a no-op.
 from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
 from .im2col_pack import ensure_registered as _register_im2col_panel_pack
-from .kernel_link import find_kernel_uses, link_kernels, prepare_kernel_declarations, select_body
+from .kernel_link import find_kernel_uses, link_kernels
 from .masked_contraction import MaskEffectContract
 from .named_broadcast_fold import ensure_registered as _register_named_broadcast_fold
 from .passes_xdsl import PREPROCESS_STAGES, preprocess_text
@@ -96,14 +96,12 @@ def lower_model(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
-    kernel_form: str | None = None,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
-    A module that calls external kernels (model2MLIR ``prov.kernel``) gets their bodies linked in
-    (``kernel_link``): ``ll_path`` is then ``model.linked.ll`` (rv64gcv), the unlinked ``model.ll`` is
-    kept beside it, and a host build links its own copy. ``kernel_form`` picks the body form
-    (``llvm_ir`` | ``llvm_mlir``; default: the table's first).
+    A module that calls external kernels (model2MLIR ``prov.kernel``) gets their bodies linked in as MLIR
+    before the pipeline (``kernel_link``), so ``model.ll`` already contains them and every target compiles
+    it unchanged; ``stats["kernels_linked"]`` names the kernels.
 
     ``data_layout`` is the target's LLVM data layout, set on the module before translation (see
     :func:`merlin.llvmlower.pipeline.lower_to_llvm_ir`). ``index_bits`` explicitly binds every LLVM
@@ -153,12 +151,14 @@ def lower_model(
         else:
             observed = audit.directory is not None or compile_trace.active() is not None
             upstream_text, stats = preprocess_text(mlir_text, audit=audit) if observed else preprocess_text(mlir_text)
-        # External kernels (model2MLIR prov.kernel calls): give their declarations one ABI whichever
-        # preprocess ran, before the pipeline sees them. () for every kernel-free model.
+        # External kernels (model2MLIR prov.kernel calls): each declaration becomes its @triton_op
+        # wrapper and the kernel's llvm-dialect body joins the module, whichever preprocess ran, so the
+        # pipeline lowers one closed module. () for every kernel-free model, which is left untouched.
         kernel_uses = find_kernel_uses(mlir_text)
         if kernel_uses:
-            upstream_text = prepare_kernel_declarations(upstream_text, kernel_uses)
+            upstream_text = link_kernels(upstream_text, kernel_uses, work)
             stats["kernel_uses"] = len(kernel_uses)
+            stats["kernels_linked"] = sorted({u.qualname for u in kernel_uses})
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
 
         audit.stage("upstream", upstream_text)
@@ -239,20 +239,10 @@ def lower_model(
             stats=stats,
             audit_index=audit.directory / "index.json" if audit.directory is not None else None,
         )
-        host_ll = ll_path
-        if kernel_uses:
-            result.ll_path = link_kernels(ll_path, kernel_uses, work, target="riscv", form=kernel_form)
-            stats["kernels_linked"] = sorted(
-                {f"{u.qualname}:{select_body(u, 'riscv', kernel_form).form}" for u in kernel_uses}
-            )
-            if "host" in targets:
-                host_ll = link_kernels(
-                    ll_path, kernel_uses, work, target="host", form=kernel_form, out_name="model.host.linked.ll"
-                )
         if "host" in targets:
-            result.host_so = build_host_shared(host_ll, work / "model_host.so")
+            result.host_so = build_host_shared(ll_path, work / "model_host.so")
         if "riscv" in targets:
-            result.riscv_obj = compile_ll(result.ll_path, work / "model_rv64gcv.o", "riscv")
+            result.riscv_obj = compile_ll(ll_path, work / "model_rv64gcv.o", "riscv")
         return result
 
 
@@ -277,7 +267,6 @@ def lower_model_file(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
-    kernel_form: str | None = None,
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
@@ -300,5 +289,4 @@ def lower_model_file(
         masked_contraction_effects=masked_contraction_effects,
         source_observation_effects=source_observation_effects,
         source_scalar_carrier=source_scalar_carrier,
-        kernel_form=kernel_form,
     )

@@ -495,17 +495,15 @@ def build(
     output_sha256: bool = False,
     execution_memory_map: MemoryMapBinding | None = None,
     execution_memory_reservations: tuple[MemoryReservation, ...] = (),
-    kernel_form: str | None = None,
 ) -> dict:
     """Build the whole-model bare-metal ELF (spike, or any board with no RTOS).
 
     Returns ``{elf, mem_bytes, weights_base, build_hash, ...}``.
 
     A model that calls external kernels (model2MLIR ``prov.kernel``) has their bodies linked into the model
-    object by the lowering (``llvmlower.kernel_link``); ``kernel_form`` picks the body form (``llvm_ir`` |
-    ``llvm_mlir``, default the table's first) and the result's ``kernels`` lists ``qualname:form`` for each
-    one linked (empty for an ordinary model). The model object is compiled from the LINKED module, so the
-    kernel bodies are already inside ``build_hash``.
+    module by the lowering (``llvmlower.kernel_link``), and the result's ``kernels`` lists the ``prov.kernel``
+    name of each one linked (empty for an ordinary model). The bodies are compiled as part of the model
+    object, so they are already inside ``build_hash``.
 
     ``host_math_policy`` defaults to emission-neutral ``native``. Explicit
     ``expf_via_double`` changes libm returned-value precision; callers must
@@ -811,7 +809,6 @@ def build(
             masked_contraction_effects=masked_contraction_effects,
             source_observation_effects=source_observation_effects,
             source_scalar_carrier=source_scalar_carrier,
-            kernel_form=kernel_form,
         )  # produce only the .ll
     # BACKEND-level feature flags, on the MODEL OBJECT ONLY (the GCC-built harness units keep
     # `gcc_cflags`): a feature like the register-group width is an LLVM backend query no tile size

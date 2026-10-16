@@ -3,29 +3,35 @@
 model2MLIR lowers a registered custom op (today: a Triton ``@triton_op``) to a ``func.call`` of a private,
 body-less ``func.func`` tagged ``prov.kernel = "<ns>::<name>"`` (``m2m/ir/kernel_registry.py``). That call
 is a placeholder: the real code is supplied here, at link time, for whatever machine is being compiled
-for. This module is only the DATA — which body, in which file, called how. ``kernel_link`` does the work.
+for. This module is only the DATA — which kernel, in which file, launched how. ``kernel_link`` does the
+work.
 
 **Keyed by ``prov.kernel``, never by symbol.** m2m suffixes the declaration's symbol (``_1``, ``_2``, …)
 each time the same kernel appears at a new shape, so the symbol is per-shape and the attribute is the
 identity. Entries are keyed by the same qualname as m2m's ``KernelSpec``, and
 ``test_table_keys_match_m2m_registry`` keeps the two tables in step. m2m emits only the identity and the
-operand binding; everything about the implementation (language, bodies, ABI) is recorded here.
+operand binding; everything about the implementation (file, entry, launch) is recorded here.
 
-**``backend`` is the authoring language, not the execution target.** Triton is how the kernel was
-written; nothing here runs on a GPU. A body is LLVM IR (or its MLIR ``llvm`` dialect form) for a CPU.
+**A body is the Triton kernel itself, in MLIR's ``llvm`` dialect.** The file is what triton-cpu emits for
+the ``@triton.jit`` function the ``@triton_op`` launches — that function, not a CPU twin of it: its
+``llvm.func`` keeps the Python name and Triton's specialization attributes (``tt.divisibility``).
+Triton is how the kernel was written; nothing here runs on a GPU. ``kernel_link`` merges the
+``llvm.func`` into the model's MLIR before lowering, so it is optimized and code-generated for the
+model's target together with the model, and carries no triple of its own.
 
-**A body states its own calling convention** (``abi``) because it is not the model's. The model reaches
-the kernel through MLIR's C interface — one memref descriptor per tensor — while a triton-cpu export
-takes raw pointers, the runtime row count, and six launch integers (program id x/y/z, grid x/y/z), and
-computes one ``block`` of rows per call. ``kernel_link`` generates the shim between the two from this
-description, so a second body with a different convention is a table edit, not new code.
+**``args`` + ``grid`` are the ``@triton_op`` wrapper's launch, as data.** The Python wrapper allocates
+the result, computes the program grid with ``triton.cdiv``, and calls the kernel with each tensor's data
+pointer and its runtime scalars, in the ``@triton.jit`` signature's order; triton-cpu appends six launch
+integers (program id x/y/z, grid x/y/z) to every kernel. A body records the first two parts
+(``args``, ``grid``); ``kernel_link.emit_wrappers`` turns them into the MLIR twin of that wrapper. The
+kernel's own signature is the check: a wrapper whose call does not match the ``llvm.func`` fails MLIR
+verification at link time, by name.
 
-**Portable bodies.** A triton-cpu export is written for the host it was produced on (an x86 triple and
-datalayout) but its code is target-neutral: generic ``llvm.*`` intrinsics only, no arch intrinsics, no
-inline asm, no address spaces. ``portable=True`` records that claim; the link step then drops the
-triple/datalayout and the IR is compiled for the model's target. ``test_every_body_file_exists_and_is_
-portable`` checks the claim against the file. A body that is NOT portable must carry the arch it was
-written for in ``triple`` and is only linked for that arch.
+Invariants:
+
+- Every body is portable: generic ``llvm`` dialect only — no arch intrinsic namespace, no inline asm, no
+  address spaces. ``test_every_body_file_exists_and_is_portable`` checks the files.
+- Each result appears exactly once in ``args`` (the wrapper returns what the kernel wrote there).
 """
 
 from __future__ import annotations
@@ -34,7 +40,7 @@ from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 
-__all__ = ["AbiParam", "KERNEL_TABLE", "KernelBody", "KernelEntry", "KernelTableError", "body_path", "lookup"]
+__all__ = ["KERNEL_TABLE", "KernelArg", "KernelBody", "KernelEntry", "KernelTableError", "body_path", "lookup"]
 
 
 class KernelTableError(LookupError):
@@ -42,41 +48,37 @@ class KernelTableError(LookupError):
 
 
 @dataclass(frozen=True)
-class AbiParam:
-    """One parameter of a body's entry point, in order.
+class KernelArg:
+    """One argument of the kernel's ``llvm.func`` before triton-cpu's six launch integers, in order.
 
-    ``kind``: ``operand`` (data pointer of the tensor operand named ``name`` — the names are
-    m2m's ``prov.kernel_operands``), ``result`` (data pointer of result ``index``), ``dim`` (extent
-    ``index`` of operand ``name``), ``program_id`` / ``grid`` (launch coordinate / launch extent on
-    axis ``index``), ``null`` (a pointer the body does not use, e.g. a scratch buffer).
-    ``ctype`` is its C spelling in the generated shim.
+    ``kind``: ``operand`` (data pointer of the tensor operand named ``name`` — the names are m2m's
+    ``prov.kernel_operands``), ``result`` (data pointer of result ``index``, which the wrapper
+    allocates), ``dim`` (extent ``index`` of operand ``name``, passed as ``i32``: the type Triton gives an
+    integer argument that fits in 32 bits).
     """
 
     kind: str
-    ctype: str
     name: str = ""
     index: int = 0
 
 
 @dataclass(frozen=True)
 class KernelBody:
-    """One linkable implementation of a kernel.
+    """The linkable implementation of a kernel: one triton-cpu export in MLIR's ``llvm`` dialect.
 
-    ``form`` is ``llvm_ir`` (textual ``.ll``) or ``llvm_mlir`` (MLIR in the ``llvm`` dialect, translated
-    with ``mlir-translate`` first). ``ir`` is relative to the ``merlin.kernels`` package directory.
-    ``specialization`` lists the extents the body was compiled for (``None`` = read at run time), so a
-    use at another shape is refused instead of computed wrong. ``block = (operand, axis, size)`` means
-    one call per ``size`` rows of that operand's axis — the triton program grid.
+    ``mlir`` is relative to the ``merlin.kernels`` package directory; ``entry`` is the ``llvm.func`` it
+    defines. ``grid`` has one ``(operand, axis, block)`` per program axis (at most three; a missing axis
+    is 1): axis ``i`` runs ``ceil(operand.shape[axis] / block)`` programs — the wrapper's
+    ``triton.cdiv``. ``specialization`` lists the extents the body was compiled for (``None`` = read at
+    run time): Triton bakes ``tl.constexpr`` arguments into the code, so a use at another shape is
+    refused instead of computed wrong.
     """
 
-    form: str
-    ir: str
+    mlir: str
     entry: str
-    abi: tuple[AbiParam, ...]
+    args: tuple[KernelArg, ...]
+    grid: tuple[tuple[str, int, int], ...] = ()
     specialization: tuple[tuple[str, tuple[int | None, ...]], ...] = ()
-    block: tuple[str, int, int] | None = None
-    portable: bool = False
-    triple: str = ""
     dtype: str = "f32"
     description: str = ""
 
@@ -84,71 +86,36 @@ class KernelBody:
 @dataclass(frozen=True)
 class KernelEntry:
     qualname: str
-    backend: str = "triton"
+    body: KernelBody
     description: str = ""
-    bodies: tuple[KernelBody, ...] = ()
-
-    def body(self, form: str | None = None) -> KernelBody:
-        """The body of ``form``, or the first (preferred) body when ``form`` is None."""
-        for b in self.bodies:
-            if form is None or b.form == form:
-                return b
-        raise KernelTableError(
-            f"kernel {self.qualname!r} has no {form!r} body (available: {[b.form for b in self.bodies] or 'none'})"
-        )
 
 
-# triton-cpu's launch tail: every exported kernel takes these six after its own arguments.
-_TRITON_CPU_LAUNCH = (
-    AbiParam("program_id", "int32_t", index=0),
-    AbiParam("program_id", "int32_t", index=1),
-    AbiParam("program_id", "int32_t", index=2),
-    AbiParam("grid", "int32_t", index=0),
-    AbiParam("grid", "int32_t", index=1),
-    AbiParam("grid", "int32_t", index=2),
+# model2MLIR workloads/mlp_basic_triton/kernels.py: the `triton_exp::fused_mlp2` wrapper launches
+#   _mlp2_kernel[(cdiv(M, BLOCK_M),)](x, w1, b1, w2, b2, out, M, K=K, H1=H1, H2=H2, BLOCK_M=16)
+# K/H1/H2/BLOCK_M are constexpr, so they are compiled in and `specialization` pins them. Weights are in
+# nn.Linear's [out, in] layout; the kernel loads them transposed itself.
+_MLP2 = KernelBody(
+    mlir="triton_llvmir/mlp2_wrapper_llvm.mlir",
+    entry="_mlp2_kernel",
+    args=(
+        KernelArg("operand", "x"),
+        KernelArg("operand", "w1"),
+        KernelArg("operand", "b1"),
+        KernelArg("operand", "w2"),
+        KernelArg("operand", "b2"),
+        KernelArg("result", index=0),
+        KernelArg("dim", "x", 0),
+    ),
+    grid=(("x", 0, 16),),
+    specialization=(("x", (None, 16)), ("w1", (32, 16)), ("b1", (32,)), ("w2", (32, 32)), ("b2", (32,))),
+    description="triton-cpu llvm-dialect MLIR of _mlp2_kernel, before LLVM optimization",
 )
-
-# workloads/mlp_basic_triton/kernels.py:_mlp2_kernel — (x, w1, b1, w2, b2, out, M; K/H1/H2/BLOCK_M constexpr).
-# Weights are in nn.Linear's [out, in] layout; the kernel loads them transposed itself.
-_MLP2_ABI = (
-    AbiParam("operand", "const float *", name="x"),
-    AbiParam("operand", "const float *", name="w1"),
-    AbiParam("operand", "const float *", name="b1"),
-    AbiParam("operand", "const float *", name="w2"),
-    AbiParam("operand", "const float *", name="b2"),
-    AbiParam("result", "float *", index=0),
-    AbiParam("dim", "int32_t", name="x", index=0),
-    *_TRITON_CPU_LAUNCH,
-)
-_MLP2_SPEC = (("x", (None, 16)), ("w1", (32, 16)), ("b1", (32,)), ("w2", (32, 32)), ("b2", (32,)))
 
 _BUILTIN: tuple[KernelEntry, ...] = (
     KernelEntry(
         "triton_exp::fused_mlp2",
-        backend="triton",
+        body=_MLP2,
         description="linear+relu+linear+relu in one Triton kernel (model2MLIR workloads/mlp_basic_triton)",
-        bodies=(
-            KernelBody(
-                form="llvm_ir",
-                ir="triton_llvmir/mlp2.ll",
-                entry="fused_mlp2_kernel",
-                abi=_MLP2_ABI,
-                specialization=_MLP2_SPEC,
-                block=("x", 0, 16),
-                portable=True,
-                description="triton-cpu LLVM IR, optimized for the exporting x86 host",
-            ),
-            KernelBody(
-                form="llvm_mlir",
-                ir="triton_llvmir/mlp2_llvm.mlir",
-                entry="fused_mlp2_kernel",
-                abi=_MLP2_ABI,
-                specialization=_MLP2_SPEC,
-                block=("x", 0, 16),
-                portable=True,
-                description="triton-cpu llvm-dialect MLIR, before LLVM optimization",
-            ),
-        ),
     ),
 )
 
@@ -167,5 +134,5 @@ def lookup(qualname: str) -> KernelEntry:
 
 
 def body_path(body: KernelBody) -> Path:
-    """Where the body's IR lives. Read through the package (works installed or in a checkout)."""
-    return Path(str(resources.files("merlin.kernels").joinpath(body.ir)))
+    """Where the body's MLIR lives. Read through the package (works installed or in a checkout)."""
+    return Path(str(resources.files("merlin.kernels").joinpath(body.mlir)))

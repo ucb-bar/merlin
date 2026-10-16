@@ -1,15 +1,14 @@
 """The external kernel table: model2MLIR ``prov.kernel`` names -> kernel bodies merlin can link.
 
 Three ways the table can rot, one test each: a key m2m emits that merlin has no entry for (the
-model then fails at link time with an undefined symbol), a body file that is missing or not what
-its registration claims (target-specific IR registered as portable), and an ABI tuple that does not
-describe how the body is actually called (wrong answers rather than an error). The last is checked
-by DRIVING the body through its own ``abi`` on the host, so the table data itself is what is tested.
+model then fails to lower, naming it), a body file that is missing or not target-neutral, and a
+launch (``args`` + ``grid``) that does not describe how the kernel is really called (wrong answers
+rather than an error). The last is checked by LOWERING a call of the kernel through the generated
+wrapper on the host and comparing with numpy, so the table data itself is what is tested.
 """
 
 from __future__ import annotations
 
-import ctypes
 import subprocess
 
 import numpy as np
@@ -20,7 +19,7 @@ from merlin.llvmlower import toolchain
 
 
 def _bodies():
-    return [(e.qualname, b) for e in KT.KERNEL_TABLE.values() for b in e.bodies]
+    return [(e.qualname, e.body) for e in KT.KERNEL_TABLE.values()]
 
 
 def test_lookup_unknown_lists_keys():
@@ -30,101 +29,77 @@ def test_lookup_unknown_lists_keys():
     assert "triton_exp::fused_mlp2" in str(err.value)
 
 
-def test_body_by_unknown_form_lists_forms():
-    entry = KT.lookup("triton_exp::fused_mlp2")
-    with pytest.raises(KT.KernelTableError) as err:
-        entry.body("spirv")
-    assert "llvm_ir" in str(err.value) and "llvm_mlir" in str(err.value)
-
-
-def test_mlp2_has_both_forms():
-    entry = KT.lookup("triton_exp::fused_mlp2")
-    assert [b.form for b in entry.bodies] == ["llvm_ir", "llvm_mlir"]
-    assert entry.body().form == "llvm_ir"  # first body is the default
-
-
-@pytest.mark.parametrize("qualname,body", _bodies(), ids=lambda v: getattr(v, "form", v))
+@pytest.mark.parametrize("qualname,body", _bodies(), ids=lambda v: getattr(v, "entry", v))
 def test_every_body_file_exists_and_is_portable(qualname, body):
-    """A portable body has its triple and datalayout dropped at link, which is only sound when the
-    IR has nothing that belongs to one ISA: no arch intrinsic namespace, no inline asm, no address
-    spaces (an NVPTX export has all three)."""
+    """A body is merged into the model module and compiled for the model's target, which is only sound
+    when it has nothing that belongs to one ISA: no arch intrinsic namespace or dialect, no inline asm,
+    no address spaces (an NVPTX export has all three)."""
     path = KT.body_path(body)
     assert path.is_file(), f"{qualname}: {path} missing"
     text = path.read_text(encoding="utf-8")
-    assert body.entry in text
-    if body.portable:
-        for marker in (
-            "@llvm.x86.",
-            "@llvm.nvvm.",
-            "@llvm.amdgcn.",
-            "@llvm.riscv.",
-            "addrspace(",
-            "inline_asm",
-            " asm ",
-        ):
-            assert marker not in text, f"{path.name} is registered portable but contains {marker!r}"
+    assert f"llvm.func @{body.entry}(" in text
+    for marker in (
+        '"llvm.x86.',
+        '"llvm.nvvm.',
+        '"llvm.amdgcn.',
+        '"llvm.riscv.',
+        "x86vector.",
+        "nvvm.",
+        "rocdl.",
+        "arm_sve.",
+        "arm_neon.",
+        "llvm.inline_asm",
+        "!llvm.ptr<",
+    ):
+        assert marker not in text, f"{path.name} is linked into every target but contains {marker!r}"
 
 
-def _host_object(body, tmp_path):
-    """Compile the body for THIS host so its numerics can be checked without a simulator."""
-    if not toolchain.clang().is_file():
-        pytest.skip("clang-23 not available")
-    src = KT.body_path(body)
-    if body.form == "llvm_mlir":
-        if not toolchain.mlir_translate().is_file():
-            pytest.skip("mlir-translate not available")
-        ll = tmp_path / "body.ll"
-        subprocess.run(
-            [str(toolchain.mlir_translate()), "--mlir-to-llvmir", str(src), "-o", str(ll)],
-            check=True,
-            capture_output=True,
-        )
-        src = ll
-    obj, so = tmp_path / "body.o", tmp_path / "body.so"
-    subprocess.run(
-        [str(toolchain.clang()), "-O2", "-fPIC", "-Wno-override-module", "-c", str(src), "-o", str(obj)],
-        check=True,
-        capture_output=True,
+def test_every_result_written_once():
+    for qualname, body in _bodies():
+        written = sorted(a.index for a in body.args if a.kind == "result")
+        assert written == list(range(len(written))), f"{qualname}: results {written}"
+        assert len(body.grid) <= 3, qualname
+
+
+def _capture(m: int) -> str:
+    """A minimal model2MLIR-shaped module: @forward returns one call of the mlp2 kernel at M = ``m``."""
+    x, out = f"tensor<{m}x16xf32>", f"tensor<{m}x32xf32>"
+    operands = f"{x}, tensor<32x16xf32>, tensor<32xf32>, tensor<32x32xf32>, tensor<32xf32>"
+    return (
+        "builtin.module {\n"
+        f"  func.func @forward(%x: {x}, %w1: tensor<32x16xf32>, %b1: tensor<32xf32>, "
+        f"%w2: tensor<32x32xf32>, %b2: tensor<32xf32>) -> {out} {{\n"
+        f"    %0 = func.call @triton_exp__fused_mlp2(%x, %w1, %b1, %w2, %b2) "
+        '{prov.kernel = "triton_exp::fused_mlp2", prov.kernel_operands = ["x", "w1", "b1", "w2", "b2"]} '
+        f": ({operands}) -> {out}\n"
+        f"    func.return %0 : {out}\n"
+        "  }\n"
+        f"  func.func private @triton_exp__fused_mlp2({operands}) -> {out} "
+        'attributes {prov.kernel = "triton_exp::fused_mlp2"}\n'
+        "}\n"
     )
-    subprocess.run(["cc", "-shared", str(obj), "-o", str(so)], check=True, capture_output=True)
-    return ctypes.CDLL(str(so))
 
 
-@pytest.mark.parametrize("body", KT.lookup("triton_exp::fused_mlp2").bodies, ids=lambda b: b.form)
+@pytest.mark.skipif(not toolchain.available(), reason="clang-23 / model2MLIR venv not available")
 @pytest.mark.parametrize("m", [4, 16, 20])
-def test_mlp2_body_abi_matches_numpy(body, m, tmp_path):
-    """Call the body exactly as its ``abi``/``block`` say, over the grid they imply, and compare with
-    the nn.Linear-layout MLP it stands for. M=20 exercises the partial last block (masking)."""
-    lib = _host_object(body, tmp_path)
+def test_mlp2_launch_matches_numpy(m, tmp_path):
+    """Lower a call of the kernel at M rows on the host and compare with the nn.Linear-layout MLP it
+    stands for. M=20 is a two-program grid whose last block is partial (masking)."""
+    from merlin.llvmlower.abi import HostModel
+    from merlin.llvmlower.lower import lower_model
+
+    # A directory per M: pytest hands a passed parametrization's tmp_path name to the next one, and
+    # dlopen of a path already loaded returns the earlier library, not the new file.
+    res = lower_model(_capture(m), tmp_path / f"m{m}", targets=("host",))
+    assert res.stats["kernels_linked"] == ["triton_exp::fused_mlp2"]
     rng = np.random.default_rng(0)
-    arrays = {
-        "x": rng.standard_normal((m, 16), dtype=np.float32),
-        "w1": rng.standard_normal((32, 16), dtype=np.float32),
-        "b1": rng.standard_normal(32, dtype=np.float32),
-        "w2": rng.standard_normal((32, 32), dtype=np.float32),
-        "b2": rng.standard_normal(32, dtype=np.float32),
-    }
+    x = rng.standard_normal((m, 16), dtype=np.float32)
+    w1 = rng.standard_normal((32, 16), dtype=np.float32)
+    b1 = rng.standard_normal(32, dtype=np.float32)
+    w2 = rng.standard_normal((32, 32), dtype=np.float32)
+    b2 = rng.standard_normal(32, dtype=np.float32)
     out = np.full((m, 32), np.nan, dtype=np.float32)
-    operand, axis, size = body.block
-    grid = (arrays[operand].shape[axis] + size - 1) // size
-    fn = getattr(lib, body.entry)
-    for pid in range(grid):
-        args = []
-        for p in body.abi:
-            if p.kind == "operand":
-                args.append(ctypes.c_void_p(arrays[p.name].ctypes.data))
-            elif p.kind == "result":
-                args.append(ctypes.c_void_p(out.ctypes.data))
-            elif p.kind == "dim":
-                args.append(ctypes.c_int32(arrays[p.name].shape[p.index]))
-            elif p.kind == "program_id":
-                args.append(ctypes.c_int32(pid if p.index == 0 else 0))
-            elif p.kind == "grid":
-                args.append(ctypes.c_int32(grid if p.index == 0 else 1))
-            else:
-                args.append(ctypes.c_void_p(0))
-        fn(*args)
-    x, w1, b1, w2, b2 = (arrays[k] for k in ("x", "w1", "b1", "w2", "b2"))
+    HostModel.load(str(res.host_so))([(a.ctypes.data, a.shape) for a in (x, w1, b1, w2, b2, out)])
     ref = np.maximum(np.maximum(x @ w1.T + b1, 0) @ w2.T + b2, 0)
     assert not np.isnan(out).any()
     np.testing.assert_allclose(out, ref, rtol=1e-5, atol=1e-4)

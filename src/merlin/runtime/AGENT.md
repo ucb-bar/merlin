@@ -71,5 +71,5 @@ the per-backend adapters under `backends/`.
 - The host dispatch runtimes (`dispatch_runtime.execute`, `interpret.run_dispatch_program`) run
   merlin's own outlined dispatches only; an external kernel call (model2MLIR `prov.kernel`) raises
   `ExternalKernelNotExecutable` naming it. Such models run on the LLVM route, whose lowering links
-  the kernel body (`backends/spike_model.build(..., kernel_form=)`).
+  the kernel body (`backends/spike_model.build`, whose result lists them under `kernels`).
 - Every subdirectory must also contain an AGENT.md.

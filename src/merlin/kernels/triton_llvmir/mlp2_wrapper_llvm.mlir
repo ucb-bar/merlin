@@ -1,6 +1,6 @@
-#loc = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":7:1)
-#loc9 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":25:10)
-#loc16 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":28:10)
+#loc = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":17:1)
+#loc9 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":24:10)
+#loc16 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":27:10)
 #loc24 = loc("x_ptr"(#loc))
 #loc25 = loc("w1_ptr"(#loc))
 #loc26 = loc("b1_ptr"(#loc))
@@ -11,7 +11,7 @@
 #loc37 = loc("w1"(#loc9))
 #loc43 = loc("w2"(#loc16))
 module {
-  llvm.func @fused_mlp2_kernel(%x_ptr: !llvm.ptr loc("x_ptr"(#loc)), %w1_ptr: !llvm.ptr loc("w1_ptr"(#loc)), %b1_ptr: !llvm.ptr loc("b1_ptr"(#loc)), %w2_ptr: !llvm.ptr loc("w2_ptr"(#loc)), %b2_ptr: !llvm.ptr loc("b2_ptr"(#loc)), %out_ptr: !llvm.ptr loc("out_ptr"(#loc)), %M: i32 loc("M"(#loc)), %arg7: i32 loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":7:1), %arg8: i32 loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":7:1), %arg9: i32 loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":7:1), %arg10: i32 loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":7:1), %arg11: i32 loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":7:1), %arg12: i32 loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":7:1)) attributes {alignment = 128 : i64, noinline = false} {
+  llvm.func @_mlp2_kernel(%x_ptr: !llvm.ptr {tt.divisibility = 16 : i32} loc("x_ptr"(#loc)), %w1_ptr: !llvm.ptr {tt.divisibility = 16 : i32} loc("w1_ptr"(#loc)), %b1_ptr: !llvm.ptr {tt.divisibility = 16 : i32} loc("b1_ptr"(#loc)), %w2_ptr: !llvm.ptr {tt.divisibility = 16 : i32} loc("w2_ptr"(#loc)), %b2_ptr: !llvm.ptr {tt.divisibility = 16 : i32} loc("b2_ptr"(#loc)), %out_ptr: !llvm.ptr {tt.divisibility = 16 : i32} loc("out_ptr"(#loc)), %M: i32 loc("M"(#loc)), %arg7: i32 loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":17:1), %arg8: i32 loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":17:1), %arg9: i32 loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":17:1), %arg10: i32 loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":17:1), %arg11: i32 loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":17:1), %arg12: i32 loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":17:1)) attributes {alignment = 128 : i64, noinline = false} {
     %0 = llvm.mlir.poison : vector<32xi1> loc(#loc1)
     %1 = llvm.mlir.constant(1024 : index) : i64 loc(#loc1)
     %2 = llvm.mlir.poison : vector<32xf32> loc(#loc1)
@@ -5343,29 +5343,29 @@ module {
 } loc(#loc)
 #di_basic_type = #llvm.di_basic_type<tag = DW_TAG_base_type, name = "unknown_type", encoding = DW_ATE_signed>
 #di_basic_type1 = #llvm.di_basic_type<tag = DW_TAG_base_type, name = "int", sizeInBits = 32, encoding = DW_ATE_signed>
-#di_file = #llvm.di_file<"mlp_kernel.py" in "/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export">
+#di_file = #llvm.di_file<"kernels.py" in "/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton">
 #di_null_type = #llvm.di_null_type
 #loc1 = loc(unknown)
-#loc2 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":23:61)
-#loc3 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":21:10)
-#loc4 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":31:24)
-#loc5 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":23:25)
-#loc6 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":21:39)
-#loc7 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":23:9)
-#loc8 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":23:17)
-#loc10 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":22:35)
-#loc11 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":25:27)
-#loc12 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":25:18)
-#loc13 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":26:49)
-#loc14 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":26:9)
-#loc15 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":27:9)
-#loc17 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":28:27)
-#loc18 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":28:18)
-#loc19 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":29:49)
-#loc20 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":29:9)
-#loc21 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":30:9)
-#loc22 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":31:5)
-#loc23 = loc("/bwrcq/home/amy.yao/ttir2linalg/examples/triton_cpu_mlp_export/mlp_kernel.py":31:14)
+#loc2 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":22:61)
+#loc3 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":20:10)
+#loc4 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":30:24)
+#loc5 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":22:25)
+#loc6 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":20:39)
+#loc7 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":22:9)
+#loc8 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":22:17)
+#loc10 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":21:35)
+#loc11 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":24:27)
+#loc12 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":24:18)
+#loc13 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":25:49)
+#loc14 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":25:9)
+#loc15 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":26:9)
+#loc17 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":27:27)
+#loc18 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":27:18)
+#loc19 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":28:49)
+#loc20 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":28:9)
+#loc21 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":29:9)
+#loc22 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":30:5)
+#loc23 = loc("/bwrcq/home/amy.yao/model2MLIR/workloads/mlp_basic_triton/kernels.py":30:14)
 #di_compile_unit = #llvm.di_compile_unit<id = distinct[0]<>, sourceLanguage = DW_LANG_C, file = #di_file, producer = "triton", isOptimized = true, emissionKind = LineTablesOnly>
 #di_derived_type = #llvm.di_derived_type<tag = DW_TAG_pointer_type, name = "pointer", baseType = #di_basic_type, sizeInBits = 64, dwarfAddressSpace = 0>
 #loc31 = loc("x"(#loc2))
@@ -5386,5 +5386,5 @@ module {
 #loc48 = loc("o"(#loc21))
 #di_subroutine_type = #llvm.di_subroutine_type<callingConvention = DW_CC_normal, types = #di_null_type, #di_derived_type, #di_derived_type, #di_derived_type, #di_derived_type, #di_derived_type, #di_derived_type, #di_basic_type1, #di_basic_type1, #di_basic_type1, #di_basic_type1, #di_basic_type1, #di_basic_type1, #di_basic_type1>
 #loc49 = loc(fused[#loc4, #loc33])
-#di_subprogram = #llvm.di_subprogram<recId = distinct[0]<>, id = distinct[1]<>, compileUnit = #di_compile_unit, scope = #di_file, name = "fused_mlp2_kernel", linkageName = "fused_mlp2_kernel", file = #di_file, line = 7, scopeLine = 7, subprogramFlags = "Definition|Optimized", type = #di_subroutine_type>
+#di_subprogram = #llvm.di_subprogram<recId = distinct[0]<>, id = distinct[1]<>, compileUnit = #di_compile_unit, scope = #di_file, name = "_mlp2_kernel", linkageName = "_mlp2_kernel", file = #di_file, line = 17, scopeLine = 17, subprogramFlags = "Definition|Optimized", type = #di_subroutine_type>
 #loc50 = loc(fused<#di_subprogram>[#loc])
