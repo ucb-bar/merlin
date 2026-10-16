@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.13**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.15**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -192,8 +192,8 @@ the same inputs. Building the references evaluates every rule per split into `re
 (`admission.<split>.{status, checks[]}`); a rule with no data is `unknown`, never a pass. The bars below
 restate the target's models file.
 **Approved (1.7): ResNet50 top-1 agreement ≥ 15/16 and the logits cosine's mean over the inputs ≥ 0.99**,
-the worst image reported (one image's cosine is noisy). Proposed (pending approval): TinyLlama mean `kl`
-≤ 0.05 nats and top-1 agreement ≥ 90 %. **Approved (1.9): SmolVLA within 2 × the bf16 model's own error,
+the worst image reported (one image's cosine is noisy). Approved (1.15): TinyLlama mean `kl`
+≤ 0.075 nats and top-1 agreement ≥ 90 %. **Approved (1.9): SmolVLA within 2 × the bf16 model's own error,
 both against an fp32 execution** (FlashAttention's rule, §4.6). Statistic: per input, the worst action dim's
 `rel_rmse` (dims 0–5, the 50-step chunk) against the **fp32 reference** = the same checkpoint with every
 weight upcast and every op in float32 (`ATEN_CPU_CAPABILITY=default`, one thread). `E_bf16` = that
@@ -400,3 +400,5 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   (approved); admission rules take `p<NN>` aggregates and `report_only`; `reference.seeds` in the models file.
 - 1.14 (2026-10-16): §2, §9: `full.differential: cached` (SmolVLA, TinyLlama; approved): full mode
   compares with cached host twins only and records the rest `pending`; a pending gate does not fail a report.
+
+- 1.15 (2026-10-16): user-approved TinyLlama reference admission mean KL <= 0.075 nats; top-1 agreement remains >= 90 %. Existing reference outputs can be rejudged without inference.
