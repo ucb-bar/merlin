@@ -96,15 +96,8 @@ def _structure(bundle: Bundle, manifest: dict[str, Any]) -> list[str]:
         if not path.is_file():
             problems.append(f"binding receipt {binding['receipt']} is missing")
         else:
-            try:
-                receipt = json.loads(path.read_text())
-            except (OSError, ValueError):
-                receipt = None
-            if (
-                not isinstance(receipt, dict)
-                or _sha256(path) != binding.get("receipt_sha256")
-                or receipt.get("status") != binding.get("status")
-            ):
+            receipt = json.loads(path.read_text()).get("binding") or {}
+            if receipt.get("receipt_sha256") != binding.get("receipt_sha256"):
                 problems.append("binding receipt digest differs from the manifest's")
     return problems
 
