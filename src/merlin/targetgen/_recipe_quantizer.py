@@ -48,7 +48,13 @@ MIN_ACTIVATION_REDUCTION = 16
 #: Recipe dtype -> the torch dtype a spec is built with. A dtype absent here is refused, not mapped
 #: to a neighbour: the recipe states the hardware's element format and a near miss is a different
 #: datapath.
-_TORCH_DTYPE = {"int8": "int8", "fp8_e4m3": "float8_e4m3fn", "fp8_e5m2": "float8_e5m2"}
+_TORCH_DTYPE = {
+    "int8": "int8",
+    "int16": "int16",
+    "int32": "int32",
+    "fp8_e4m3": "float8_e4m3fn",
+    "fp8_e5m2": "float8_e5m2",
+}
 
 
 class RecipeError(ValueError):
@@ -91,6 +97,7 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float):
     granularity, symmetric = tensor.get("granularity"), bool(tensor.get("symmetric"))
     dtype = _torch_dtype(tensor.get("dtype"))
     floating_format = str(tensor.get("dtype", "")).startswith("fp8_")
+    arguments: dict[str, Any] = {"eps": eps}
     if granularity == "tensor":
         qscheme = torch.per_tensor_symmetric if symmetric else torch.per_tensor_affine
         # A weight is observed once, so its range is its min and max; an activation is observed
@@ -101,6 +108,11 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float):
         if floating_format and observer_name == "histogram":
             raise RecipeError("FP8 histogram observation is unavailable in TorchAO PT2E; use minmax")
         observer = {"minmax": MinMaxObserver, "histogram": HistogramObserver}.get(observer_name)
+        import _recipe_observers as RO  # noqa: PLC0415 -- a sibling, by bare name
+
+        percentile = RO.percentile_of(observer_name)
+        if percentile is not None and not floating_format:
+            observer, arguments["percentile"] = RO.percentile_observer(), percentile
         if observer is None:
             raise RecipeError(f"recipe observer {tensor.get('observer')!r} is not one this quantizer builds")
         axis = None
@@ -115,7 +127,7 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float):
         )
     return QuantizationSpec(
         dtype=dtype,
-        observer_or_fake_quant_ctr=observer.with_args(eps=eps),
+        observer_or_fake_quant_ctr=observer.with_args(**arguments),
         quant_min=tensor.get("quant_min"),
         quant_max=tensor.get("quant_max"),
         qscheme=qscheme,
@@ -302,6 +314,56 @@ def _source_weight_geometry_matches(
     )
 
 
+def _planes_grid(recipe: Mapping[str, Any]) -> tuple[Any, Any, Any]:
+    """The ``static_planes`` block's digit count and the recipe's activation range it builds on."""
+    block, activation = recipe.get("static_planes") or {}, recipe["activation"]
+    return block.get("planes"), activation.get("quant_min"), activation.get("quant_max")
+
+
+def _planes_spec(recipe: Mapping[str, Any], *, eps: float):
+    """The activation spec of a planes site: the recipe's, on the wide grid, with the block's observer."""
+    import _static_planes as SP  # noqa: PLC0415 -- a sibling, by bare name
+
+    planes, low, high = _planes_grid(recipe)
+    try:
+        grid_min, grid_max, _ = SP.grid(low, high, planes)
+        dtype = SP.storage_dtype(grid_min, grid_max)
+    except ValueError as error:
+        raise RecipeError(f"static_planes: {error}") from error
+    wide = {**recipe["activation"], "dtype": dtype, "quant_min": grid_min, "quant_max": grid_max}
+    # The epsilon floors the STEP; on the wide grid it floors the same RANGE as on the int8 one.
+    floor = eps * (high - low) / (grid_max - grid_min)
+    return _spec({**wide, "observer": recipe["static_planes"].get("observer") or "minmax"}, is_weight=False, eps=floor)
+
+
+def _planes_site(block: Mapping[str, Any], node: Any, owner: str | None) -> bool:
+    """A Linear of a planes family, owned inside the block's scope, takes the planes grid."""
+    import _static_planes as SP  # noqa: PLC0415 -- a sibling, by bare name
+    import torch
+
+    return bool(
+        "contraction" in (block.get("families") or ())
+        and node.target == torch.ops.aten.linear.default
+        and SP.in_scope(owner, block.get("owners"))
+    )
+
+
+def _rewrite_planes(quantized: Any, recipe: Mapping[str, Any], annotated: int) -> list[dict[str, Any]]:
+    """The converted graph's planes sites in their digit form: every annotated one, or an error."""
+    if not recipe.get("static_planes"):
+        return []
+    import _static_planes as SP  # noqa: PLC0415 -- a sibling, by bare name
+
+    planes, low, high = _planes_grid(recipe)
+    try:
+        rows = SP.rewrite_static_planes(quantized, planes=planes, low=low, high=high)
+    except ValueError as error:
+        raise RecipeError(f"static_planes: {error}") from error
+    if len(rows) != annotated:
+        raise RecipeError(f"static_planes: {annotated} Linear(s) annotated on the planes grid, {len(rows)} rewritten")
+    return [{**row, "status": "rewritten"} for row in rows]
+
+
 def build_quantizer(
     recipe: Mapping[str, Any],
     *,
@@ -332,6 +394,8 @@ def build_quantizer(
     # Families the recipe's ``dynamic`` block takes out of static annotation (_dynamic_contractions).
     dynamic_block = dict(recipe.get("dynamic") or {})
     dynamic_families = set(dynamic_block.get("families") or ())
+    # Linears whose activation takes the recipe's ``static_planes`` grid (_static_planes).
+    planes_block = dict(recipe.get("static_planes") or {})
     if not targets and not pairs:
         raise RecipeError(f"the recipe quantizes {recipe.get('families')}, none of which this quantizer can annotate")
     #: What a value may pass through on its way to a reader without ceasing to be the same integers:
@@ -541,6 +605,8 @@ def build_quantizer(
             self.software_decisions = software_decisions
             self.fold_candidates = fold_candidates or []
             self.dynamic_rows: list[dict[str, Any]] = []
+            self.planes = _planes_spec(recipe, eps=eps) if planes_block else None
+            self.annotated_planes = 0
 
         def rewrite_dynamic(self, graph_module: Any) -> list[dict[str, Any]]:
             """Rewrite the dynamic families' placed contractions into their integer form, in place.
@@ -648,13 +714,16 @@ def build_quantizer(
                 if node.target not in targets or len(node.args) < 2:
                     continue
                 operand, kernel = node.args[:2]
+                planes = self.planes is not None and _planes_site(planes_block, node, owner(node))
                 # Both inputs of the contraction; its result stays in floating point and the next
                 # contraction quantizes its own input edge. What follows a contraction is absorbed
                 # by the compiler's group formation, not assumed here.
                 node.meta["quantization_annotation"] = QuantizationAnnotation(
-                    input_qspec_map={operand: self.activation, kernel: self.weight}, _annotated=True
+                    input_qspec_map={operand: self.planes if planes else self.activation, kernel: self.weight},
+                    _annotated=True,
                 )
-                self.annotated += 1
+                self.annotated_planes += int(planes)
+                self.annotated += int(not planes)
             # Closed sum/mean candidates form a set. Its fixpoint can revisit a
             # reader in any object-hash order, so keep every decision (including
             # repeated screens) but expose the complete report rows canonically.
@@ -672,7 +741,8 @@ def build_quantizer(
             # covers was refused with a message saying its families were not covered -- which was
             # false, and pointed a reader at the model rather than at this table.
             rewritten = sum(r["status"] == "rewritten" for r in self.dynamic_rows)
-            if self.annotated + self.annotated_pairs + self.annotated_sums + self.annotated_means + rewritten == 0:
+            annotated = self.annotated + self.annotated_planes + self.annotated_pairs
+            if annotated + self.annotated_sums + self.annotated_means + rewritten == 0:
                 raise RecipeError(
                     f"the model has no operator the recipe's families cover "
                     f"(families={list(listed)}; annotated contractions=0, activation contractions=0, "
@@ -1062,6 +1132,7 @@ def apply_recipe(
         operators = _recipe_operators(torch)
         selected = {op for family in recipe.get("families") or () for op in operators.get(family, ())}
         attach_quantization_boundaries(quantized, selected)
+    planes = _rewrite_planes(quantized, recipe, quantizer.annotated_planes)
     pruned = None
     try:  # the capture library's own dead-state sweep, when present
         from m2m.capture.torchao_pipeline import _drop_unused_graph_state
@@ -1097,6 +1168,9 @@ def apply_recipe(
         # the Phase 2 cost they carry: device int8 MACs and calls, and the host's elementwise work
         # (absmax and mean passes, quantize, the outer-product rescale per output element and plane).
         **({"dynamic_contractions": _dynamic_summary(dynamic)} if recipe.get("dynamic") else {}),
+        # Linears whose activation the static_planes block split into int8 digit planes (not counted
+        # in annotated_contractions: integerization never sees them), with the same cost columns.
+        **({"static_planes": _dynamic_summary(planes)} if recipe.get("static_planes") else {}),
         "annotated_sums": quantizer.annotated_sums,
         "annotated_means": quantizer.annotated_means,
         # Sums and means the recipe's families cover and the graph does not requantize: left alone.

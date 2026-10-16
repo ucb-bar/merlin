@@ -51,14 +51,17 @@ def qmax_of(recipe: dict) -> int:
 class Emitter:
     """Insert ATen calls before ``anchor`` with observed values and the anchor's ownership and lineage."""
 
-    def __init__(self, graph_module: Any, anchor: Any) -> None:
+    def __init__(
+        self, graph_module: Any, anchor: Any, *, mode: Any = None, transform: str = "dynamic_contraction"
+    ) -> None:
         import torch
         from torch._guards import detect_fake_mode
 
         self.torch = torch
         self.gm, self.graph, self.anchor = graph_module, graph_module.graph, anchor
         vals = [a.meta.get("val") for a in anchor.all_input_nodes if isinstance(a.meta.get("val"), torch.Tensor)]
-        self.mode = detect_fake_mode(vals)
+        self.mode = mode if mode is not None else detect_fake_mode(vals)
+        self.transform = transform
         custom = dict(anchor.meta.get("custom") or {})
         node_id = [custom["m2m_node_id"]] if "m2m_node_id" in custom else []
         self.lineage = sorted({*(custom.get("m2m_lineage") or ()), *node_id})
@@ -70,7 +73,7 @@ class Emitter:
             node = self.graph.call_function(target, args, kwargs)
         node.meta.update({k: self.anchor.meta[k] for k in _INHERITED_META if k in self.anchor.meta})
         if self.lineage:
-            node.meta["custom"] = {"m2m_lineage": list(self.lineage), "m2m_transform": "dynamic_contraction"}
+            node.meta["custom"] = {"m2m_lineage": list(self.lineage), "m2m_transform": self.transform}
 
         def observed(value: Any) -> Any:
             if isinstance(value, torch.fx.Node):

@@ -3,7 +3,7 @@ title: Extending the compiler stack
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-15
+last_verified: 2026-10-16
 related: [phase0_specification, model_lowering, model2mlir, triton_kernels, target_resolution, llvm_integration, simulator_selection]
 code_refs:
   - src/merlin/targetgen/software_spec.py
@@ -240,6 +240,17 @@ product. The block can split a softmax-produced operand into k int8 planes (k de
 on the host) and subtract the other operand's mean over a softmax's axis (a shift the softmax
 ignores). The device still sees ordinary int8 matmuls; every scale, plane sum and shift is host work,
 counted in the capture's `quantization_stats.dynamic_contractions`.
+
+A wider STATIC activation grid is a third opt-in, the recipe's `static_planes` block
+(`quant_recipe.with_static_planes`, CLI `static-planes [--planes k] [--observer O] [--owners a,b]`).
+A Linear in scope (its owning module path under one of `owners`; default: every Linear) gets one
+calibrated scale per tensor on a grid of k int8 digits: the top digit spans the recipe's int8 range,
+each lower one `[0, 127]` (two digits: 15 bits). After `convert_pt2e`, `_static_planes` rewrites each
+such Linear into k `_int_mm` calls against the SAME int8 weight and sums `128 * acc_top + acc_low`
+inside the per-column rescale the host already applies, so no host pass is added; the sites and their
+cost are in `quantization_stats.static_planes`. A static activation observer may also be a
+percentile of `|x|` (`with_activation_observer`, CLI `activation-observer IN OUT p99.999`;
+`_recipe_observers`).
 
 For a new format, first add its structural vocabulary and derivation rules, including
 granularity, packing, ranges, zero points, bias domain and rounding. Then extend the
