@@ -136,6 +136,11 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
                     )
                 if operand_selection is not None:
                     expected_contract = rocc_selection.select_operand_protocol(expected_contract, operand_selection)
+                if (released.get("logical_harness") or {}).get("kernel_call_timing") is not None:
+                    from merlin.common.digest import sha256_file
+                    from ..corpus.kernel_timing_selection import select
+
+                    expected_contract, _ = select(expected_contract, (path, sha256_file(path)))
             except (KeyError, TypeError, ValueError, runtime.RoCCExecutionError) as error:
                 raise ValueError(
                     "released capability contract differs from selected Phase 0 coverage inputs"

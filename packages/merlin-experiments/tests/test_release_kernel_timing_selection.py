@@ -2,6 +2,7 @@
 
 import copy
 import hashlib
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -81,3 +82,41 @@ def test_changed_or_incomplete_timing_selection_refuses(tmp_path, mutation):
         _stage_capability_contract(
             source, sha256_file(source), tmp_path / "release.yaml", None, kernel_timing_selection=(selected, digest)
         )
+
+
+@pytest.mark.parametrize("mutation", [None, "hardware", "policy", "counter_source", "scope"])
+def test_reviewed_phase1_accepts_only_the_additive_timing_selection(tmp_path, monkeypatch, mutation):
+    from merlin_experiments.corpus import publication
+    from merlin_experiments.phase0 import coverage_commitment
+    from merlin_experiments.phase1.corpus_inputs import require_reviewed_bundle
+
+    source, selected, timed, pin = inputs(tmp_path)
+    original = yaml.safe_load(source.read_text())
+    root = tmp_path / "experiment"
+    contract = root / "contracts/target_contract.yaml"
+    _stage_capability_contract(
+        source, sha256_file(source), contract, None, kernel_timing_selection=(selected, sha256_file(selected))
+    )
+    if mutation == "counter_source":
+        pin.write_text("changed counter implementation\n")
+    elif mutation:
+        if mutation == "hardware":
+            timed["runner"]["chipyard_rocc"]["config"] = "foreign"
+        elif mutation == "policy":
+            timed["numeric_policy"] = {"kind": "approximate"}
+        else:
+            timed["logical_harness"]["kernel_call_timing"]["schema"] = "unreviewed-scope"
+        contract.write_text(yaml.safe_dump(timed))
+    te = SimpleNamespace(
+        path=root / "target_experiment.yaml", capsule_corpus=tmp_path / "corpus/isa",
+        declared_contract_path=lambda: contract, graded_roots=lambda: (),
+    )
+    bundle = {"bundle_id": "fixture", "allowed": [{"path": str(contract), "mode": "ro"}]}
+    manifest = root / "input_bundles/fixture/input_bundle_manifest.yaml"
+    monkeypatch.setattr(publication, "require_public_capsules", lambda *_: None)
+    monkeypatch.setattr(coverage_commitment, "read_inputs", lambda _: {"capability_contract": original})
+    if mutation:
+        with pytest.raises(ValueError, match="differs from selected Phase 0"):
+            require_reviewed_bundle(te, manifest, bundle)
+    else:
+        require_reviewed_bundle(te, manifest, bundle)
