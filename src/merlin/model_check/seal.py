@@ -96,8 +96,27 @@ def _structure(bundle: Bundle, manifest: dict[str, Any]) -> list[str]:
         if not path.is_file():
             problems.append(f"binding receipt {binding['receipt']} is missing")
         else:
-            receipt = json.loads(path.read_text()).get("binding") or {}
-            if receipt.get("receipt_sha256") != binding.get("receipt_sha256"):
+            try:
+                receipt = json.loads(path.read_text())
+            except (OSError, ValueError):
+                receipt = None
+            # Older sealed bundles stored a full binding command report here;
+            # current bundle-build stores the raw receipt. Preserve verification
+            # of both immutable formats.
+            if isinstance(receipt, dict) and isinstance(receipt.get("binding"), dict):
+                from merlin.model_check import binding as BD
+
+                nested = receipt["binding"].get("receipt")
+                digest = BD.digest(nested) if isinstance(nested, dict) else None
+                status = nested.get("status") if isinstance(nested, dict) else None
+            else:
+                digest = _sha256(path)
+                status = receipt.get("status") if isinstance(receipt, dict) else None
+            if (
+                not isinstance(receipt, dict)
+                or digest != binding.get("receipt_sha256")
+                or status != binding.get("status")
+            ):
                 problems.append("binding receipt digest differs from the manifest's")
     return problems
 

@@ -321,7 +321,9 @@ error policy.
   A pending reply includes a `wait --job-id` command.
 
 Selected treatment tools:
-""" + (tools or "- No additional treatment tools are selected.") + """
+"""  # target-ok: the selected Gemmini full-model task names its target
+    body += tools or "- No additional treatment tools are selected."
+    body += """
 
 ## Sandbox and enforced rules
 
@@ -341,11 +343,11 @@ Selected treatment tools:
 Lead with a table of all six programs: model, program, compile/link, numerics, census, and RTL
 status. Then name the submission path, test artifacts, and remaining failures. Report only
 measured results.
-"""
+"""  # target-ok: this is the selected Gemmini full-model task text
     body += task_runtime_scope_block(load_target_experiment(config.context.descriptor), sandbox,
                                      context=config.context, scope=scope)
     if len(body.encode("utf-8")) > 10_000:
-        raise RuntimeError("Gemmini full-model task exceeds its 10 KB pre-resource budget")
+        raise RuntimeError("Gemmini full-model task exceeds its 10 KB pre-resource budget")  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
     return body
 
 
@@ -367,7 +369,7 @@ def build_task(
     bundle_dir, experiment = config.bundle_dir, config.experiment
     _te = partial(load_target_experiment, context.descriptor)
     _manifest = partial(load_capability_manifest, context.target)
-    if context.target == "gemmini" and arm == "merlin_assisted" and experiment == "full":
+    if context.target == "gemmini" and arm == "merlin_assisted" and experiment == "full":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
         body = full_model_task(config, sandbox, task_scope)
         (ws / "TASK.md").write_text(body)
         shutil.copy(ws / "TASK.md", run_dir / "TASK.md")

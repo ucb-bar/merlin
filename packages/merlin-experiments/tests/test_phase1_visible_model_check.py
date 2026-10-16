@@ -14,6 +14,12 @@ from merlin_experiments.phase1.feedback import visible_model_gate as gate
 from merlin_experiments.phase1.tools import model_check as client
 
 
+@pytest.fixture(autouse=True)
+def selected_target_contract(monkeypatch):
+    contract = Path(__file__).resolve().parents[3] / "examples/gemmini/target/contracts/target_contract.yaml"
+    monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(contract))
+
+
 def test_visible_model_check_uses_immutable_copy_and_no_private_argv(tmp_path, monkeypatch):
     ws = tmp_path / "workspace"
     source = ws / "submission"
@@ -21,6 +27,7 @@ def test_visible_model_check_uses_immutable_copy_and_no_private_argv(tmp_path, m
     (source / "manifest.yaml").write_text("commands: {}\n")
     (source / "compiler.py").write_text("VALUE = 1\n")
     monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setenv("MERLIN_MODEL_CHECK_BUNDLE", str(tmp_path / "selected-bundle"))
     calls = []
 
     class Completed:
@@ -33,6 +40,7 @@ def test_visible_model_check_uses_immutable_copy_and_no_private_argv(tmp_path, m
             (source / "compiler.py").write_text("VALUE = 2\n")
             assert start_new_session and cwd == ws
             assert argv[argv.index("--mode") + 1] == "fast"
+            assert argv[argv.index("--bundle") + 1] == str(tmp_path / "selected-bundle")
             assert Path(argv[argv.index("--models") + 1]).is_file()
             Path(argv[argv.index("--out") + 1]).write_text(json.dumps({
                 "schema": broker.REPORT_SCHEMA, "command": "check", "model": "resnet50",

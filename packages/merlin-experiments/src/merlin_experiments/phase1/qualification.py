@@ -51,7 +51,7 @@ def execute(prepared: PreparedRun) -> int:
     grade = certification._official_grade_result(
         returncode,
         prepared.run_dir,
-        require_model_check=target == "gemmini",
+        require_model_check=target == "gemmini",  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
         required_models=private_full_models.requirements_for(descriptor),
         required_programs=private_full_models.program_requirements_for(descriptor),
         execution_gate=private_full_model_execution.gate_for(

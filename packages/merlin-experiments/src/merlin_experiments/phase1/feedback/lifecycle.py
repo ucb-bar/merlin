@@ -103,7 +103,7 @@ def start_brokers(ws: Path, config: BrokerConfig):
     broker_specs = [
         (spec.module, spec.log, spec.channel)
         for spec in _TR.COMMON_BROKERS
-        if spec.channel != ".model_check_channel" or config.context.target == "gemmini"
+        if spec.channel != ".model_check_channel" or config.context.target == "gemmini"  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
     ]
     # Brokered TOOLS (the ISA assembler/disassembler/linter; the two mandated CCA calls) are part of the
     # arm's TREATMENT, so which ones start is read from the bundle's resolved tool set rather than from

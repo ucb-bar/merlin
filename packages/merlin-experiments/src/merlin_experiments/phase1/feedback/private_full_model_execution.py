@@ -351,10 +351,10 @@ def run_engine(
         revalidate()
         started = time.monotonic()
         bounded = _selected_run_timeout(backend, engine, timeout_s, deadline)
-        if engine == "spike" and target == "gemmini":
+        if engine == "spike" and target == "gemmini":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
             run_declared = getattr(backend, "run_declared_model_elf", None)
             if not callable(run_declared):
-                raise ExecutionGateError("selected Gemmini backend cannot run the linked model's declared machine")
+                raise ExecutionGateError("selected Gemmini backend cannot run the linked model's declared machine")  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
             console = run_declared(elf, timeout=bounded, capture_bytes=capture_bytes)
         else:
             options = {"private_max_cycles": max_cycles} if private_bound_gsim else {}

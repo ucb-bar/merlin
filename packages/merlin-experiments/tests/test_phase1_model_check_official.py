@@ -6,12 +6,20 @@ import json
 import threading
 from pathlib import Path
 
+import pytest
 from merlin_experiments.phase1.feedback import model_check_official as official
+
+
+@pytest.fixture(autouse=True)
+def selected_target_contract(monkeypatch):
+    contract = Path(__file__).resolve().parents[3] / "examples/gemmini/target/contracts/target_contract.yaml"
+    monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(contract))
 
 
 def test_official_gate_dedupes_explicit_same_shape_kernels(tmp_path, monkeypatch):
     (tmp_path / "submission").mkdir()
     (tmp_path / "submission/manifest.yaml").write_text("commands: {}\n")
+    monkeypatch.setenv("MERLIN_MODEL_CHECK_BUNDLE", str(tmp_path / "selected-bundle"))
     calls = []
 
     def invoke(command, **kwargs):
@@ -32,6 +40,7 @@ def test_official_gate_dedupes_explicit_same_shape_kernels(tmp_path, monkeypatch
     summary = official.run_gate(tmp_path / "submission", tmp_path / "run",
                                 {"tiny_llama": ("prefill", "decode")})
     assert summary["passed"] is True
+    assert summary["bundle"] == str(tmp_path / "selected-bundle")
     assert summary["unique_kernel_count"] == 1
     assert [command for command, _ in calls] == ["check", "replay-kernel"]
     assert calls[0][1]["model"] == "tiny_llama" and calls[0][1]["timeout_s"] == 7200

@@ -608,7 +608,8 @@ def fast_grade(
     (ws / "qa").mkdir(exist_ok=True)
     verdict["graded_request_sha256"] = background_guard.source
     verdict["snapshot_current"] = background_guard.current()
-    verdict = write_verdict(ws / "qa" / "verdict.json", verdict)
+    if verdict["snapshot_current"]:
+        verdict = write_verdict(ws / "qa" / "verdict.json", verdict)
     _record_plateau(run_dir)  # operator-side; deliberately not in the agent's verdict
     FL.record_channel_health(ws, run_dir)
     # The first successful loop verdict unlocks cert work immediately. The existing
