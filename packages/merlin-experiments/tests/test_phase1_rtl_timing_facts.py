@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
+from pathlib import Path
 
 import pytest
-from merlin_experiments.phase1 import rtl_timing_facts as F
+
+_SOURCE = Path(__file__).resolve().parents[3] / "examples/gemmini/verification/extract_rtl_timing_facts.py"
+_SPEC = importlib.util.spec_from_file_location("rtl_timing_facts_example", _SOURCE)
+F = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(F)
 
 
 def _fixture(tmp_path):
