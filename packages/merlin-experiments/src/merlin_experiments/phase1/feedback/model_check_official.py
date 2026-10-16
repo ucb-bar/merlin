@@ -1,4 +1,4 @@
-"""Host-only sealed model checks and bounded RTL replays for a frozen submission."""
+"""Host-only sealed model checks, with optional bounded model-kernel RTL replays."""
 
 from __future__ import annotations
 
@@ -62,8 +62,12 @@ def _invoke(command: str, *, submission: Path, model: str, output: Path, bundle:
 def run_gate(submission: Path, run_dir: Path, required_programs: dict[str, tuple[str, ...]], *,
              bundle: Path | None = None, model_timeout_s: int = 7200,
              rtl_budget_s: int = 7200, kernel_timeout_s: int = 300,
-             rtl_workers: int = 4) -> dict:
-    """Require sealed full-chain Spike and every observed unique device kernel on gSIM."""
+             rtl_workers: int = 4, replay_model_kernels: bool = False) -> dict:
+    """Require sealed full-chain Spike; model-kernel RTL is an explicit opt-in.
+
+    Capsule L3 qualification and timing collection are separate and stay enabled.
+    An unrequested model RTL check is never reported as completed.
+    """
     if bundle is None:
         bundle = Bundle.default(target_from_contract()).root
     root = run_dir / "grading_model_check"
@@ -78,6 +82,8 @@ def run_gate(submission: Path, run_dir: Path, required_programs: dict[str, tuple
                "split": "sealed", "bundle": str(bundle), "submission_sha256": source_sha256,
                "models": {}, "rtl": [],
                "unique_kernel_count": 0, "rtl_complete": False,
+               "rtl_required": replay_model_kernels,
+               "rtl_status": "pending" if replay_model_kernels else "not_requested",
                "rtl_workers": max(1, min(int(rtl_workers), 4, slot_cap))}
     selected: dict[tuple, tuple[str, str, str]] = {}
     for model, programs in required_programs.items():
@@ -146,13 +152,16 @@ def run_gate(submission: Path, run_dir: Path, required_programs: dict[str, tuple
         result.pop("body", None)
         return {"model": model, "program": program, "group": group, **result}
 
-    with ThreadPoolExecutor(max_workers=summary["rtl_workers"]) as executor:
-        summary["rtl"] = list(executor.map(replay, enumerate(selected.values())))
+    if replay_model_kernels:
+        with ThreadPoolExecutor(max_workers=summary["rtl_workers"]) as executor:
+            summary["rtl"] = list(executor.map(replay, enumerate(selected.values())))
     models_complete = bool(required_programs) and all(
         row["status"] == "pass" for row in summary["models"].values())
-    summary["rtl_complete"] = models_complete and len(summary["rtl"]) == len(selected) and all(
+    summary["rtl_complete"] = replay_model_kernels and models_complete and len(summary["rtl"]) == len(selected) and all(
         row["status"] == "pass" for row in summary["rtl"])
-    summary["passed"] = models_complete and summary["rtl_complete"]
+    if replay_model_kernels:
+        summary["rtl_status"] = "pass" if summary["rtl_complete"] else "incomplete"
+    summary["passed"] = models_complete and (not replay_model_kernels or summary["rtl_complete"])
     if hash_tree(submission)["sha256"] != source_sha256:
         summary["passed"] = False
         summary["source_changed_during_grade"] = True

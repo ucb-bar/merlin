@@ -28,6 +28,9 @@ def test_gemmini_full_model_task_is_short_and_allows_edits_during_checks(tmp_pat
     assert len(task.encode()) <= 12 * 1024
     assert all(name in task for name in ("ResNet50", "SmolVLA", "TinyLlama", "numerics.approximations"))
     assert "task/PHASE2_TARGET.md" in task
+    assert "public capsule L3 gSIM qualification" in task
+    assert "per-kernel model gSIM replay is not requested" in task
+    assert "--engine spike" in task and "--engine gsim" not in task
     assert "You may continue editing while a self-check or grade runs" in task
     assert task == (run / "TASK.md").read_text()
 

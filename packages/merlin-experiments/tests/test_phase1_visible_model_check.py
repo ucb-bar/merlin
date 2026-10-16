@@ -72,7 +72,7 @@ def test_replay_request_uses_contract_program_and_report_file(tmp_path, monkeypa
         def __init__(self, argv, **kwargs):
             assert argv[argv.index("--program") + 1] == "decode"
             assert argv[argv.index("--group") + 1] == "matmul_0"
-            assert argv[argv.index("--engine") + 1] == "gsim"
+            assert argv[argv.index("--engine") + 1] == "spike"
             Path(argv[argv.index("--out") + 1]).write_text(json.dumps({
                 "schema": broker.REPORT_SCHEMA, "command": "replay-kernel", "model": "tiny_llama",
                 "split": "visible", "agent_view": True, "status": "pass", "exit_code": 0,
@@ -84,12 +84,24 @@ def test_replay_request_uses_contract_program_and_report_file(tmp_path, monkeypa
 
     monkeypatch.setattr(broker.subprocess, "Popen", Completed)
     result = broker.execute_visible(ws, {"action": "replay-kernel", "model": "tiny_llama",
-                                         "program": "decode", "group": "matmul_0", "engine": "gsim",
+                                         "program": "decode", "group": "matmul_0", "engine": "spike",
                                          "split": "visible"})
     assert result["status"] == "pass"
     missing_program = broker.execute_visible(ws, {"action": "replay-kernel", "model": "tiny_llama",
-                                                  "group": "matmul_0", "engine": "gsim", "split": "visible"})
+                                                  "group": "matmul_0", "engine": "spike", "split": "visible"})
     assert missing_program["status"] == "rejected"
+
+
+def test_visible_model_replay_rejects_gsim_before_spawning(tmp_path, monkeypatch):
+    def forbidden_spawn(*_args, **_kwargs):
+        pytest.fail("Phase 1 must not spawn a model-kernel gSIM replay")
+
+    monkeypatch.setattr(broker.subprocess, "Popen", forbidden_spawn)
+    result = broker.execute_visible(tmp_path, {"action": "replay-kernel", "model": "tiny_llama",
+                                               "program": "decode", "group": "matmul_0",
+                                               "engine": "gsim", "split": "visible"})
+    assert result["status"] == "rejected"
+    assert "spike" in result["error"]
 
 
 def test_visible_check_accepts_stable_source_with_generated_build_state(tmp_path, monkeypatch):
