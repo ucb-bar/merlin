@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from merlin.model_check import seal as SL
 from merlin.model_check import binding as BD
+from merlin.model_check import seal as SL
 from merlin.model_check.bundle import Bundle, BundleError
 
 
