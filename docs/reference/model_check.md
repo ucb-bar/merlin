@@ -128,7 +128,7 @@ shares no code with any lowering:
 
 The reference states the program's own epilogue order (e.g. f32 scale multiply, f32 bias add,
 round-to-nearest-even quantize). A device kernel that folds an epilogue into the accelerator's readout
-must reproduce that order exactly (Merlin proves this per group: `llvmlower/group_exact_float.py`) or
+must reproduce that order exactly (Merlin proves this per group: `xdsl_dialects/lowering/group_exact_float.py`) or
 leave the epilogue on the host.
 
 The capture's `integer-reference.json` (a PyTorch fake-quant interpreter) is **not** the reference.
