@@ -14,6 +14,7 @@ proof.
 -/
 import MerlinVerify.Check.RulesLinalg
 import MerlinVerify.Check.RulesTensor
+import MerlinVerify.Check.RulesDequant
 
 namespace MerlinVerify.Check
 
@@ -22,12 +23,12 @@ open MerlinVerify MerlinVerify.Sem.Ops
 /-! ### The rulebook -/
 
 /-- Merlin's typing rule at index width `ib`. -/
-def merlinRule (ib : Nat) : OpRule := firstRule [cfRule, arithRule ib, linalgRule, tensorRule]
+def merlinRule (ib : Nat) : OpRule := firstRule [cfRule, arithRule ib, linalgRule, tensorRule, dequantRule]
 
 theorem merlinRule_sound (ib : Nat) : RuleSound ib (merlinRule ib) := by
   apply firstRule_sound
   simp only [List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff, implies_true, and_true]
-  exact ⟨cfRule_sound ib, arithRule_sound ib, linalgRule_sound ib, tensorRule_sound ib⟩
+  exact ⟨cfRule_sound ib, arithRule_sound ib, linalgRule_sound ib, tensorRule_sound ib, dequantRule_sound ib⟩
 
 def merlinBook (ib : Nat) : Rulebook opSem ib := (merlinRule_sound ib).book
 

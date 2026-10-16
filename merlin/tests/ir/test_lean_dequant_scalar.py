@@ -20,7 +20,7 @@ from merlin.llvmlower.passes_xdsl import lower_quant_ext
 from merlin.verify.lean.export import MLIR_EXPORT, export_file
 
 
-def lowered(kind, shape=(2,), axis=0):
+def dequant_source(kind, shape=(2,), axis=0):
     quantized_shape = "".join(f"{extent}x" for extent in shape)
     parameter_shape = "" if kind == "per_tensor" else f"{shape[axis]}x"
     attrs = "" if kind == "per_tensor" else f"axis = {axis} : i64"
@@ -31,6 +31,11 @@ def lowered(kind, shape=(2,), axis=0):
           -> tensor<{quantized_shape}f32>
       return %r : tensor<{quantized_shape}f32>
     }}""")
+    return module
+
+
+def lowered(kind, shape=(2,), axis=0):
+    module = dequant_source(kind, shape, axis)
     assert lower_quant_ext(module) == 1
     module.verify()
     return module, next(op for op in module.walk() if op.name == "linalg.generic")

@@ -639,9 +639,19 @@ and interval-proved access bounds. `tensor_contract_sound` then proves that the 
 loop computes the independently specified `Spec.Dequant.tensor`: q uses the output coordinate,
 parameters use either the empty coordinate or the selected channel coordinate. It derives the
 pointwise reads, covers arbitrary ranks and poison elements, and permits any destination values.
-Source-contract review, capture-producer binding, source-operation semantics/typing, and the C1
-site rule and synthesis registration remain required before a
-`lower_quant_ext` boundary may be reported verified. The dispatcher still refuses `quant_ext`.
+The narrow `Sem/Ops/Dequant.lean` source family now checks runtime shapes and observable element
+values, and evaluates that independent source contract. `Check/RulesDequant.lean` proves source
+support on typed inputs; this prevents the claim from depending on an unsupported source.
+`Rules/DequantSource.lean` connects actual runtime tensors to the loop proof. The C1 rule in
+`Rules/DequantSite.lean` checks source/target operation structure, every operand mapping, output
+and parameter shapes, attributes, fresh result/temporary names, maps, iterators and the scalar body.
+Its soundness proof preserves SSA correspondence across the target-only allocation. `Synth` offers
+this one-to-two site to C1; the existing C1 and module checkers recheck it. Unsupported variants
+remain refused. This source-family addition is the frozen-dispatch interface extension requested
+by the narrow-lowering verification work; the dispatcher change and family are pinned in SPEC_LOCK.
+Source-contract review and capture-producer binding remain necessary for paper qualification.
+The current production per-channel floating-subtraction body is still refused; an integer-subtraction
+replacement verifies, while actual per-tensor lowering verifies without modification.
 
 ### 5.2 C2 — outlining (inline-and-compare)
 

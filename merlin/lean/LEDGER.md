@@ -22,16 +22,19 @@ assumed, why, and what evidence stands behind it. A claim that relies on an entr
 |---|---|
 | T1 | Lean kernel; Lean compiler and runtime for the compiled checker (including the compiler-generated `_unsafe_rec` twins of recursive definitions); `Lean.Json`. |
 | T2 | The MLIR parser/printer bundled with `torch_mlir` (the pipeline's own), used for export and round trip. |
-| T3 | Fidelity of the MerlinSem op semantics to MLIR. Not proved; tested by hand-built `#guard` cases and bounded integer-folder/named-op comparisons against pinned MLIR. Scalar dequantization body tests additionally compare concrete f32 constant folds with independent ordered-arithmetic calculations. Full runtime-census and IEEE-instance qualification (§9.4) remain outstanding. |
+| T3 | Fidelity of the MerlinSem op semantics to MLIR and the captured source producer. Not proved; tested by hand-built `#guard` cases and bounded integer-folder/named-op comparisons against pinned MLIR. Scalar dequantization body tests additionally compare concrete f32 constant folds with independent ordered-arithmetic calculations. The narrow quant_ext source contract is proposed: human review and capture-producer binding remain outstanding, as do full runtime-census and IEEE-instance qualification (§9.4). |
 | T4 | Upstream MLIR lowering below the verified tensor stage, LLVM, the linker, the C runtime. |
 | T5 | Accelerator kernels meeting their stated contracts (the OOT hole, design D8). |
 | T6 | Floating-point accuracy (measured, never proved; floats are parametric in every theorem). |
 
-## Proposed scalar source contracts
+## Proposed dequantization source contract
 
 `Spec/Dequant.lean` specifies the distinct per-tensor and per-channel arithmetic orders from
-PyTorch v2.10.0 for signed-i8 input, i32 zero point and f32 scale/result. Its scalar-body theorems
-add no axioms or float algebra laws. The specification is proposed and still needs human review
-and binding to the captured `quant_ext` producer. It is not dispatched by `opSem`, admitted by
-`supportCheck`, or connected to a whole-pass C1 receipt. No existing receipt gains quantization
-coverage from these definitions.
+PyTorch v2.10.0 for signed-i8 input, i32 zero point and f32 scale/result, including tensor
+coordinates and poison propagation. Its theorems add no axioms or float algebra laws.
+`Sem/Ops/Dequant.lean` dispatches that proposed source contract only for checked tensor types,
+shapes and metadata. The source support rule proves non-stuck evaluation on typed inputs, and
+the registered C1 site rule connects accepted target loops to it. Such receipts prove refinement
+relative to this model; they do not establish that the model is the captured producer's meaning.
+Human specification review and exact capture-producer/version binding remain required before
+paper qualification (T3). Unsupported granularities, types and attributes remain refused.

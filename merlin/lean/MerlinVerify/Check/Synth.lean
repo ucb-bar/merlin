@@ -3,11 +3,13 @@ UNTRUSTED script synthesis for C1. A certificate is a hint (design D2): this mod
 the two programs by greedy alignment, and `c1Check` re-checks every step. A wrong or incomplete
 synthesis can only make the boundary `abstracted`, never `verified`.
 
-Current alignment: ops that are alpha-equivalent are `same`; a source op with no counterpart is
+Current alignment: ops that are alpha-equivalent are `same`; a checked dequantization site
+consumes one source and two target ops; a source op with no counterpart is
 offered to the DCE rule. Rules that need certificates from the pass (rewrites that create ops)
 add their own synthesis or read the pass's certificate.
 -/
 import MerlinVerify.Rules.Dce
+import MerlinVerify.Rules.DequantSite
 
 namespace MerlinVerify.Check
 
@@ -20,7 +22,13 @@ def synthDce (ρ : Rho) : List Op → List Op → List Step
   | s :: ss, t :: ts =>
     match alphaOp ρ s t with
     | some ρ' => .same :: synthDce ρ' ss ts
-    | none => .site Rules.Dce.rule 1 0 :: synthDce ρ ss (t :: ts)
+    | none =>
+      match ts with
+      | t2 :: rest =>
+        match Rules.DequantSite.check ρ [s] [t, t2] with
+        | some ρ' => .site Rules.DequantSite.rule 1 2 :: synthDce ρ' ss rest
+        | none => .site Rules.Dce.rule 1 0 :: synthDce ρ ss (t :: ts)
+      | [] => .site Rules.Dce.rule 1 0 :: synthDce ρ ss [t]
 
 /-- Build the C1 input for function `fn` with a synthesized DCE/identity script. -/
 def synthC1 (src tgt : Module) (fn : String) : C1Input :=

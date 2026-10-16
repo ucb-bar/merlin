@@ -63,6 +63,9 @@ PINNED = {
     "MerlinVerify.Rules.DequantTensor.checkLayout_sound": "MerlinVerify.Rules.DequantTensor",
     "MerlinVerify.Rules.DequantTensor.checked_generic_sound": "MerlinVerify.Rules.DequantTensor",
     "MerlinVerify.Rules.DequantTensor.tensor_contract_sound": "MerlinVerify.Rules.DequantTensor",
+    "MerlinVerify.Rules.DequantSource.generic_result_sound": "MerlinVerify.Rules.DequantSource",
+    "MerlinVerify.Rules.DequantSite.check_sound": "MerlinVerify.Rules.DequantSite",
+    "MerlinVerify.Check.dequantRule_sound": "MerlinVerify.Check.RulesDequant",
 }
 
 
