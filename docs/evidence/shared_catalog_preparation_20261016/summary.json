@@ -1,0 +1,48 @@
+{
+  "schema": "merlin.development.catalog_storage.v1",
+  "scope": "same full pretrained TinyLlama decode capture, fixed INT8 policy, same selected regular integer target facts; compiler preparation only",
+  "programs": {
+    "inline": {
+      "ref/model.prepared.mlir": {
+        "bytes": 3996826,
+        "sha256": "6c4bdd02525c3765fe9c00eba563965333081e5e536e308faedb2eb66484e901"
+      },
+      "dev/model.prepared.mlir": {
+        "bytes": 2072452385,
+        "sha256": "54f6a42d0e234fa22d2da4bc662e65908f7249113ac025cc0ec29b407ff60682"
+      },
+      "dev/device_signatures.json": {
+        "bytes": 104034,
+        "sha256": "4b4db04138ab2a3a92108e41041a2f953e5162a6fa1c87c88273b2be847f0c23"
+      }
+    },
+    "packed": {
+      "ref/model.prepared.mlir": {
+        "bytes": 3996826,
+        "sha256": "6c4bdd02525c3765fe9c00eba563965333081e5e536e308faedb2eb66484e901"
+      },
+      "dev/model.prepared.mlir": {
+        "bytes": 3606805,
+        "sha256": "c39ab96f830ac1f15a97d4797e5585a4ff972cc433fd0fa0bb416e50c1cd9e4c"
+      },
+      "dev/device_signatures.json": {
+        "bytes": 104034,
+        "sha256": "4b4db04138ab2a3a92108e41041a2f953e5162a6fa1c87c88273b2be847f0c23"
+      }
+    }
+  },
+  "reference_ir_identical": true,
+  "group_bindings_identical": true,
+  "interfaces_identical": true,
+  "groups": 155,
+  "interfaces": 5,
+  "inline": {
+    "wall_seconds": 821.33,
+    "peak_rss_kib": 7252516
+  },
+  "packed": {
+    "wall_seconds": 54.55,
+    "peak_rss_kib": 2221344
+  },
+  "omitted": "IR with checkpoint constants, packed weight values, binaries and checkpoints; identities retained, not independently reopenable from this archive"
+}

@@ -117,6 +117,7 @@ class ProgramCatalog:
 def prepare(stage: Path, directory: Path, *, target: str) -> ProgramCatalog:
     """Prepare ``stage`` (a capture directory with ``model.mlir``) with and without device groups."""
     from merlin.compile.complete_group_routing import routing
+    from merlin.llvmlower.blob_weights import requested
     from merlin.runtime.backends.zephyr_model import _prepare_model_mlir
 
     stage, directory = Path(stage), Path(directory)
@@ -152,13 +153,16 @@ def prepare(stage: Path, directory: Path, *, target: str) -> ProgramCatalog:
         )
         (directory / "catalog.json").write_text(json.dumps(catalog.record(), indent=1) + "\n")
         return catalog
-    dev = _prepare_model_mlir(
-        stage / "model.mlir",
-        directory / "dev",
-        int8_compute=True,
-        respect_captured_quantization_scope=True,
-        complete_group_device=route,
-    )
+    # Match the executable build's packed-weight storage. Printing checkpoint
+    # tensors as dense constants can make a small program several GiB of text.
+    with requested(True):
+        dev = _prepare_model_mlir(
+            stage / "model.mlir",
+            directory / "dev",
+            int8_compute=True,
+            respect_captured_quantization_scope=True,
+            complete_group_device=route,
+        )
     sidecar = json.loads((directory / "dev" / "device_signatures.json").read_text())
     routing_record = {
         "operand_dtype": route.operand_dtype,
@@ -176,6 +180,28 @@ def prepare(stage: Path, directory: Path, *, target: str) -> ProgramCatalog:
 def _function_arity(module) -> int:
     fn = next(op for op in module.walk() if op.name == "func.func" and op.body.blocks)
     return len(fn.body.blocks[0].args)
+
+
+def _prepared_arguments(module, arguments: Sequence[np.ndarray], prepared: Path) -> list[np.ndarray]:
+    """Bind the original capture arguments and checked, stage-local packed weights."""
+    from merlin.llvmlower import blob_weights
+    from merlin.runtime.linalg_numpy import _elem
+
+    plan = blob_weights.read(prepared.parent)
+    arity = _function_arity(module)
+    original = arity - len(plan.args)
+    if original < 0 or len(arguments) < original:
+        raise CatalogError("prepared program's argument count differs from its capture and weight plan")
+    values = list(arguments)[:original]
+    fn = next(op for op in module.walk() if op.name == "func.func" and op.body.blocks)
+    for value, (entry, data) in zip(fn.body.blocks[0].args[original:], plan.values(), strict=True):
+        if (
+            list(value.type.get_shape()) != entry["shape"]
+            or _elem(value.type.element_type) != entry["dtype"]
+        ):
+            raise CatalogError("packed weight plan differs from the prepared entry's argument ABI")
+        values.append(data)
+    return values
 
 
 @dataclass
@@ -264,7 +290,7 @@ def evaluate(
     calls: list[dict[str, Any]] = []
     rewritten = LN.evaluate(
         dev,
-        list(arguments)[: _function_arity(dev)],
+        _prepared_arguments(dev, arguments, catalog.dev_prepared),
         calls=_answers(catalog, calls, blobs=blobs, keep_call=keep_call),
     )
     return Evaluation([np.asarray(v) for v in reference], [np.asarray(v) for v in rewritten], calls)
@@ -313,7 +339,8 @@ def record_calls(
     dev = parse_mlir_file(catalog.dev_prepared)
     calls: list[dict[str, Any]] = []
     LN.evaluate(
-        dev, list(arguments)[: _function_arity(dev)], calls=_answers(catalog, calls, blobs=blobs, keep_call=keep_call)
+        dev, _prepared_arguments(dev, arguments, catalog.dev_prepared),
+        calls=_answers(catalog, calls, blobs=blobs, keep_call=keep_call)
     )
     return calls
 

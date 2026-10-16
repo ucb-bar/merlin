@@ -1,0 +1,8 @@
+{
+  "passes": [
+    "contraction_int8"
+  ],
+  "prepared_mlir_sha256": "c39ab96f830ac1f15a97d4797e5585a4ff972cc433fd0fa0bb416e50c1cd9e4c",
+  "schema": "merlin.quantization_policy.v1",
+  "selection": "captured_scope"
+}

@@ -1,0 +1,15 @@
+{
+  "files_sha256": {
+    "inline/catalog.json": "75574af052e3f29e5bf5cf4759965e5c6a9da26ffc1962e775dcdb859777afc5",
+    "inline/dev/device_signatures.json.gz": "d8842404ee3cf51db6d17df0450599ac82c36cfa44ff29cc898717a681bceff9",
+    "inline/dev/quantization-policy.json": "accfd96d11ce6aa79d0b340ec9c84d5774c9b55e6c4f64962bf1dfe6b5128e92",
+    "inline/preparation.log": "7e11048ae913691fc3a141039b52fc30ea04b340be42ad61b32a83da6bd8c8a9",
+    "packed/catalog.json": "a63032aa70d9a448704baa7221358f2544f5c5d6a0916baf4b831b70c56bc7bb",
+    "packed/dev/device_signatures.json.gz": "d8842404ee3cf51db6d17df0450599ac82c36cfa44ff29cc898717a681bceff9",
+    "packed/dev/quantization-policy.json": "73f680cbaea0afbf95d6e16393163ff57b4a4c43fa798acfdb6daf8dc1d0feeb",
+    "packed/preparation.log": "acb3f9bcca49799967360c42b724402048be3f4bf703feaa8abc6eeb3a87764c",
+    "selected_facts.json": "d4737cf71a05709b84cfe2337a1827bd54dd4ea0835b981899c9c0f79050918a",
+    "summary.json": "9fba5fc79e05f390e3a2ee894629cb2f0e4410bebb9f22c75e2918a4a9184b90",
+    "verify.py": "2f315a73994b02923b29f3f4fae814d4fdf5ff21821f3f28e7e83c7646923515"
+  }
+}

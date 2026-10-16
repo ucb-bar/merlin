@@ -154,3 +154,16 @@ They reduce build storage and I/O, without changing target schedules or model
 numerics. An execution adapter must preserve binary output bytes and select
 the machine declared by the final ELF before complete-state comparisons count
 as successful model validation.
+
+Catalog preparation uses this same packed-weight representation. Packed data
+stays in `blob_weights.npz`; trailing entry arguments carry its shape and type.
+The reference evaluator validates the storage against that argument ABI before
+binding it. Missing data or a shape/type mismatch refuses evaluation.
+
+The [catalog storage measurement](../evidence/shared_catalog_preparation_20261016/summary.json)
+on full TinyLlama decode changes prepared device IR from
+about 2 GiB of text to 3.5 MiB, with the packed bytes stored separately. The
+observed preparation run decreases from 13m41s to 55s and peak RSS from 6.9 GiB
+to 2.1 GiB. Original reference IR, all 155 group bindings and the five kernel
+interfaces are byte-identical. These are compiler preparation measurements;
+they establish no inference speedup or numerical qualification.

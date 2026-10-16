@@ -187,8 +187,8 @@ class Plan:
         """Bytes the trailing arguments add to the blob."""
         return sum(int(np.prod(a["shape"])) * np.dtype(_NUMPY[a["dtype"]]).itemsize for a in self.args)
 
-    def arrays(self):
-        """``(arg, bytes)`` per trailing argument, in argument order."""
+    def values(self):
+        """Validated ``(arg, ndarray)`` values in the prepared entry's argument order."""
         if not self.args:
             return
         with np.load(Path(self.directory) / VALUES_FILE) as values:
@@ -196,7 +196,12 @@ class Plan:
                 data = np.ascontiguousarray(values[arg["key"]])
                 if list(data.shape) != list(arg["shape"]) or data.dtype != np.dtype(_NUMPY[arg["dtype"]]):
                     raise ValueError(f"blob weight {arg['key']} bytes disagree with its plan")
-                yield arg, data.tobytes()
+                yield arg, data
+
+    def arrays(self):
+        """``(arg, bytes)`` per trailing argument, in argument order."""
+        for arg, data in self.values():
+            yield arg, data.tobytes()
 
 
 def read(directory: str | Path) -> Plan:
