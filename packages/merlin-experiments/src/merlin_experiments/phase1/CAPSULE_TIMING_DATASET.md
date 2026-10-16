@@ -130,6 +130,30 @@ defaults. The current `fire_aligned_30mhz.json` is not yet populated this way.
 The DTS's CPU `clock-frequency = <0>` is not a usable guest-cycle frequency;
 clock/counter semantics need their own reviewed sources and timing contract.
 
+Map each RTL fact to the behavior it limits, rather than matching field names:
+
+| RTL fact | Timing-model role |
+| --- | --- |
+| 16x16 mesh, dataflow and type widths | Decode command work and legal packet shapes; calculate tile count, bytes and MACs. |
+| 8/16/4 load/execute/store reservation entries | Per-class **live-command credits**, held from allocation until completion. |
+| 8/8/2 controller command queues | Buffers after reservation-station issue, distinct from live-command credits. |
+| Reservation-station issue logic | Per-class issue arbitration and dependency readiness. |
+| 4 scratchpad and 2 accumulator banks/ports | Address-to-bank mapping and port conflicts for local-memory phases. |
+| 16 outstanding memory requests and 64-byte DMA maximum | Split transfers into bounded requests; return credits on responses and share memory service. |
+| 32 KiB I/D caches, 512 KiB L2, 16 GiB map | Cache geometry, residency and legal guest addresses; fit miss service separately. |
+
+The current generic engine's `ResourceSpec.capacity` means simultaneous
+occupancy lanes and `queue_capacity` means reservations waiting to *start*;
+neither is an RTL reservation-station entry held from allocation through
+completion. Set an issue-port resource's occupancy to its initiation interval,
+not its full command latency, so independent commands can overlap. A small
+Gemmini-specific scheduler should separately track reservation credits,
+controller queues, banks and DMA credits, and publish command completion to
+the generic dependency engine. Until those roles exist, use a plainly labeled
+coarse approximation and validate its **ranking** on held-out matched variants;
+do not put `8/16/4` directly into the generic lane or wait-queue fields and
+present that as a faithful RTL mapping.
+
 Second, fit only the remaining primitive latency/occupancy, transfer,
 host/cache and memory-service prices against the gSIM whole-call labels and
 targeted diagnostics. RTL pipeline structure can constrain minimum latencies,
