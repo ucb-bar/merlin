@@ -1,39 +1,10 @@
-"""Per-group DERIVED ROOFLINE: the fewest cycles any schedule of a group can take on this machine.
+"""Diagnostic per-group floors using the shared conservative arithmetic bound.
 
-    machine = roofline_machine(target)                    # array geometry + memory path, both derived
-    shapes = group_shapes(model_capsule, target=target)   # each group's extents and compulsory bytes
-    bound = group_roofline(shapes[group], machine)         # {"roofline_cycles", "min_computes", ...}
-    bound = confront(bound, [("ours", 412_000)])           # a measurement below it REFUTES it
-
-WHY. A bar made from another implementation's cycles (the vendor library's) is a fact about that
-implementation: where it is weak, the bar is weak, and a form whose bar is already beaten looks done
-while most of its headroom is left. This bound is about the MACHINE, from the target's own facts and
-the group's own shape, so it is the same for every implementation and shows each form's real headroom.
-
-TWO FLOORS, AND THE ROOFLINE IS THE LARGER.
-
-* **Compute.** A contraction ``M x K x N`` on an ``R x C`` array is cut into stationary blocks of at
-  most ``R`` deep by ``C`` wide; every row of the streamed operand passes every block once, one row
-  per cycle (the sequencer's own loop, :mod:`merlin.perf.mesh_occupancy`), and a block itself enters
-  the array one row per cycle, which at best overlaps the previous block's stream. So a block costs at
-  least ``max(streamed rows, block depth)`` cycles, and the floor is the sum over blocks, minimised
-  over which operand is held (``C = A B`` or ``C^T = B^T A^T``). ``min_computes`` is the same cut
-  counted in full ``R x R x C`` compute units. A convolution is its own im2col contraction
-  (``M = Hout * Wout``, ``K = ci * kh * kw``, ``N = co``); nothing is charged for forming that matrix.
-* **Movement.** Every byte a group reads (its operand tensors, as the buffer declares them) must come in
-  over the accelerator's memory path, and every byte it writes must go out; read and write are
-  separate channels, so the floor is ``max(read bytes / read width, write bytes / write width)``. The
-  widths come from the elaborated circuit itself (:func:`merlin.targetgen.rtl.introspect.memory_path`,
-  checked against the emulator's receipt), never from a configuration name.
-
-WHAT IS LEFT OUT LOOSENS THE BOUND AND IS RECORDED. The fill/drain delay line, any bias vector (its
-device width is a lowering choice), and a window-mean's all-ones operand are not charged. Each
-omission makes the floor LOWER -- still a floor. A term whose fact is UNKNOWN is dropped the same way
-and named in ``unresolved``; a group with neither term has no roofline, never a zero one.
-
-IT IS REFUTABLE. Any measured cycle count below the roofline means an input it was derived from does
-not describe the machine; :func:`confront` then marks it ``refuted`` and it is not a bar. Nothing here
-names a target, an instruction or a size.
+Explicit extracted multiplier counts bound useful MAC throughput. Array geometry
+alone establishes no stationary mapping, orientation, command count or tile count.
+Movement terms apply only where the named tensors cross the measured interface;
+retained whole-program intermediates require separate residency evidence. These
+optimistic floors are not whole-model runtime predictions or qualifications.
 """
 
 from __future__ import annotations
@@ -110,25 +81,21 @@ def engine_memory_path(target: str, *, emulator: str | Path | None = None) -> di
 
 def roofline_machine(target: str, *, emulator: str | Path | None = None) -> dict[str, Any]:
     """``{"array_rows", "array_cols", "memory", "provenance", "unresolved"}`` -- every value derived."""
-    from merlin.perf.decompose import is_unknown
-    from merlin.perf.derived_bound import machine_from_facts
+    from merlin.perf.capsule_roofline import machine_bounds
 
-    facts = machine_from_facts(target, measure_fill=False)
-    unresolved: dict[str, str] = {}
-    rows, cols = facts.array_rows, facts.array_cols
-    if is_unknown(rows) or is_unknown(cols):
-        unresolved["compute"] = facts.refusals.get("array_rows") or "the array geometry is UNKNOWN"
-        rows = cols = None
+    bounds = machine_bounds(target)
+    unresolved = {key: value for key, value in bounds["unresolved"].items() if key != "movement"}
     memory = engine_memory_path(target, emulator=emulator)
     if memory.get("status") != "derived":
         unresolved["movement"] = str(memory.get("reason"))
     return {
         "target": target,
-        "array_rows": None if rows is None else int(rows),
-        "array_cols": None if cols is None else int(cols),
+        "array_rows": bounds["array_rows"],
+        "array_cols": bounds["array_cols"],
+        "peak_macs_per_cycle": bounds["peak_macs_per_cycle"],
         "memory": memory,
         "provenance": {
-            "array": facts.provenance.get("array_rows", ""),
+            "array": bounds["basis"].get("compute", ""),
             "memory": memory.get("evidence", ""),
             "firrtl_sha256": (memory.get("firrtl") or {}).get("sha256"),
         },
@@ -222,36 +189,30 @@ def group_shapes(model_capsule: str | Path, *, target: str) -> dict[str, dict[st
 # ------------------------------------------------------------------------------------- the floors
 
 
-def compute_floor(m: int, k: int, n: int, *, array_rows: int, array_cols: int) -> dict[str, Any]:
-    """The array's floor for ``M x K x N`` -- one implementation, shared with the per-capsule roofline
-    (:func:`merlin.perf.capsule_roofline.compute_floor`)."""
+def compute_floor(m: int, k: int, n: int, *, peak_macs_per_cycle: int) -> dict[str, Any]:
+    """The shared useful-work floor, without assumptions about instruction mapping."""
     from merlin.perf.capsule_roofline import compute_floor as _floor
 
-    return _floor(m, k, n, array_rows=array_rows, array_cols=array_cols)
+    return _floor(m, k, n, peak_macs_per_cycle=peak_macs_per_cycle)
 
 
 def group_roofline(shape: Mapping[str, Any], machine: Mapping[str, Any]) -> dict[str, Any]:
     """One group's roofline document. ``roofline_cycles`` is None only when no term resolved."""
     unresolved = dict(machine.get("unresolved") or {})
     extents = shape.get("extents") or {}
-    rows, cols = machine.get("array_rows"), machine.get("array_cols")
+    peak = machine.get("peak_macs_per_cycle")
     doc: dict[str, Any] = {"schema": SCHEMA, "op": shape.get("op"), "extents": dict(extents) or None}
     terms: dict[str, float] = {}
-    if rows and cols and {"M", "K", "N"} <= set(extents):
-        floor = compute_floor(extents["M"], extents["K"], extents["N"], array_rows=rows, array_cols=cols)
+    doc.update(min_computes=None, orientation=None, cycles_per_compute_floor=None, output_tiles=None)
+    if type(peak) is int and peak > 0 and {"M", "K", "N"} <= set(extents):
+        floor = compute_floor(extents["M"], extents["K"], extents["N"], peak_macs_per_cycle=peak)
         terms["compute"] = float(floor["cycles"])
-        doc.update(
-            min_computes=floor["min_computes"],
-            compute_floor_cycles=floor["cycles"],
-            orientation=floor["orientation"],
-            cycles_per_compute_floor=round(floor["cycles"] / floor["min_computes"], 3),
-        )
+        doc["compute_floor_cycles"] = floor["cycles"]
     elif {"M", "K", "N"} <= set(extents):
         doc["compute_floor_cycles"] = None
+        unresolved.setdefault("compute", "no explicit arithmetic-site rate upper bound was derived")
     else:
-        doc.update(min_computes=0, compute_floor_cycles=0)  # no contraction: the array does no work here
-    if rows and cols and {"M", "N"} <= set(extents):
-        doc["output_tiles"] = _ceil(extents["M"], rows) * _ceil(extents["N"], cols)
+        doc.update(min_computes=0, compute_floor_cycles=0)  # no contraction declared
     reads, writes = shape.get("reads") or {}, shape.get("writes") or {}
     unknown_bytes = [n for n, b in {**reads, **writes}.items() if not isinstance(b, int)]
     memory = machine.get("memory") or {}
@@ -313,7 +274,11 @@ def form_table(
             "groups": [int(g) for g in groups],
             "roofline_cycles": sum(bounds) if complete else None,
             "limiters": sorted({str(rooflines.get(g, {}).get("limiter")) for g in groups}),
-            "min_computes": sum(int(rooflines.get(g, {}).get("min_computes") or 0) for g in groups),
+            "min_computes": (
+                sum(rooflines[g]["min_computes"] for g in groups)
+                if all(type(rooflines.get(g, {}).get("min_computes")) is int for g in groups)
+                else None
+            ),
         }
         if not complete:
             row["roofline_missing"] = [g for g in groups if rooflines.get(g, {}).get("status") != "derived"]

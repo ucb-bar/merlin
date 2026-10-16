@@ -85,16 +85,11 @@ class DevelopmentGsimFeedback:
     # the ceiling" tolerates, and it is MEASURED so that judgement is not a constant anyone can
     # turn until the answer changes. None when fewer than two points price, which refuses.
     achievable_dispersion: float | None = None
-    #: The phase-1 functional points the ceiling starts from, kept so it can be RE-DERIVED over a
-    #: wider set once this run's own frozen-baseline measurements exist. Phase 1's corpus is not
-    #: this corpus: measured 2026-09-04, its ceiling was 80.01 MACs/cycle while four performance
-    #: members already ran ABOVE it at baseline, and its dispersion of 0.472 put the "already at the
-    #: ceiling" line at 42.25 -- so 14 of 38 members were told they had no headroom left.
-    seed_points: tuple = ()
     #: Every host-owned point currently eligible to establish a rate.  Unlike the scalar summary
     #: ceiling, per-member scoring filters these by exact contraction reduction depth.
     _achievable_points: tuple = ()
-    functional_run_id: str = ""
+    _baseline_points: dict = field(default_factory=dict, repr=False)
+    _baseline_costs: dict = field(default_factory=dict, repr=False)
     #: Median measured simulation seconds per capsule, and how the ordering was arrived at. Used to
     #: sweep cheapest-first, so a losing candidate is refuted before the corpus's slowest members
     #: are paid for. Empty means no history: the declared order stands and the basis says so.
@@ -180,6 +175,22 @@ class DevelopmentGsimFeedback:
                 break
         if not attempts:
             raise StageGateError("development GSIM feedback exceeded its deterministic timeout")
+        if arm == "baseline" and not hardware_counters and measurement_plan is None:
+            from .calibration import public_baseline_measurement
+
+            point, cost = public_baseline_measurement(
+                raw,
+                corpus=self.corpus,
+                member=member,
+                package_sha256=self.baseline_sha256,
+                certificate=self.certificate,
+                decision=decision,
+            )
+            key = (member.family, member.capsule)
+            if point is not None:
+                self._baseline_points[key] = point
+            if cost is not None:
+                self._baseline_costs[key] = cost
         if not hardware_counters and self.executed_profile_timeout_s and isinstance(raw.get("measurement"), Mapping):
             raw = {
                 **raw,
@@ -895,52 +906,35 @@ class DevelopmentGsimFeedback:
         return rows
 
     def _refresh_achievable(self) -> None:
-        """Re-derive the ceiling and its tolerance over every measurement the agent did not author.
-
-        Phase 1's corpus is not phase 2's. Measured 2026-09-04: the ceiling harvested from the
-        functional run alone was 80.01 MACs/cycle while four performance members already ran ABOVE
-        it at baseline (PC01_k128 99.79, PR01 94.06, PR03 88.33, PR02 87.96), and that set's
-        dispersion of 0.472 put "already at the ceiling" at 42.25 -- so 14 of 38 members were being
-        told they had no headroom left. Over the widened set the ceiling is 99.79 and the dispersion
-        0.245, and 6 members read as finished. The tolerance MUST come from the same points as the
-        ceiling: a wide-set ceiling with a narrow-set spread is not a measurement of anything.
-
-        Widening can only ever RAISE the ceiling -- the rate is a max over the points, so it is
-        monotone under union, and a point with positive cycles cannot falsify `demand/rate <= busy`.
-        A higher ceiling makes every consumer stricter: shares fall, `no_headroom` fires less, and
-        the attainment stop condition fires less. There is no direction in which this flatters a
-        candidate.
-
-        BASELINE ARMS ONLY, and that is the entire safety argument. The baseline package is phase
-        1's submission, sha-pinned before the first member runs; its cycles cannot depend on
-        anything the agent wrote. Admitting candidate arms would let the agent raise its own
-        ceiling, pinning its candidate near 1.0 by construction while pushing every other member
-        down -- a target the agent authors is not a target.
-        """
+        """Use only fresh measurements of this session's exact public baseline members."""
         from . import calibration as PMODEL  # noqa: PLC0415
         from . import capsule_verdict as CV  # noqa: PLC0415
 
-        baseline_points = FM.harvest_baseline_points(self.work_root)
-        points = list(self.seed_points) + list(baseline_points)
+        points = list(self._baseline_points.values())
+        counts = {}
+        for member in self.corpus.capsules:
+            counts[member.capsule] = counts.get(member.capsule, 0) + 1
+        self.member_cost = {
+            capsule: value for (_, capsule), value in self._baseline_costs.items() if counts.get(capsule) == 1
+        }
+        _, self.member_cost_basis = FM.order_members_by_cost((), self.member_cost)
         self._achievable_points = tuple(points)
         if not points:
             return
-        ceiling = PMODEL.achievable_ceiling(points, provenance="functional and frozen baseline")
+        ceiling = PMODEL.achievable_ceiling(points, provenance="original public frozen baseline executions")
         if not ceiling.known:
             return  # never downgrade a known ceiling to an absent one
         self.achievable_macs_per_cycle = float(ceiling.value)
         self.achievable_dispersion = CV.ceiling_dispersion([{"macs": p.macs, "cycles": p.cycles} for p in points])
         self.achievable_basis = (
-            f"best rate over {len(points)} measured point(s): {len(self.seed_points)} from the "
-            f"phase-1 functional run {self.functional_run_id} and {len(baseline_points)} from the "
-            f"frozen-baseline arm of the performance corpus (baseline arms only; no candidate "
-            f"measurement contributes to this ceiling)"
+            f"best rate over {len(points)} original public baseline measurement(s); "
+            "baseline arms only; no candidate measurement contributes to this ceiling"
         )
 
     def _matched_achievable(self, member: CORPUS.PerformanceCapsule) -> tuple[float | None, str, float | None]:
         """Best measured rate for the member's exact contraction-depth signature.
 
-        Reduction depth is the amortisation axis for a weight-stationary contraction.  A global max
+        Reduction depth distinguishes contraction regimes without assuming a target mapping. A global max
         over unrelated K values is useful context, but it is not an attainable target for this
         member.  Both signatures come from declared/emitted operand geometry; absence refuses rather
         than silently falling back to the flattering global number.
@@ -1041,6 +1035,7 @@ class DevelopmentGsimFeedback:
         # An explicit complete sweep is the measured selection denominator.
         # The exploratory floor budget must not silently omit its large cases.
         from .ordinary_measurement_selection import OrdinaryMeasurementPlan
+
         budget = (
             None
             if complete_roster or type(measurement_plan) is OrdinaryMeasurementPlan
@@ -1398,45 +1393,13 @@ def prepare_development_feedback(
         rtl_identity = MS.load_rtl_identity(Path(rtl_facts_path), target_experiment.target)
         peak_macs, peak_basis = FM.derived_peak_macs_per_cycle(Path(rtl_facts_path), target_experiment.target)
         machine_bounds = derive_machine_bounds(Path(rtl_facts_path), certificate, target_experiment.target)
-        # THE ACHIEVABLE CEILING, from cycles phase 1 already paid for. The structural peak is what
-        # the array could retire if nothing ever stalled; the achievable
-        # ceiling is the best rate anything on this machine actually reached, and it is what the
-        # agent is asked to close on. Underivable -> None with a reason, never a substituted number.
-        # Ordering the sweep by measured cost needs history; absent it the declared order stands
-        # and the basis says so, rather than a proxy silently standing in for a measurement.
-        member_cost: dict[str, float] = FM.harvest_member_cost(
-            [Path(functional_run_dir).parent] if functional_run_dir is not None else []
-        )
+        # Historical run trees include hidden and final evidence. They supply
+        # neither rates nor scheduling costs; only this session's admitted public
+        # baseline replies can establish them after actual measurement.
+        member_cost = {}
         _, member_cost_basis = FM.order_members_by_cost((), member_cost)
-        achievable_macs, achievable_basis = None, "no functional run was supplied to harvest"
-        achievable_dispersion: float | None = None
-        seed_points: tuple = ()
-        if functional_run_dir is not None:
-            try:
-                from merlin_experiments.phase2 import calibration as PMODEL  # noqa: PLC0415
-
-                points, _skipped = PMODEL.harvest_measured_points(Path(functional_run_dir))
-                ceiling = PMODEL.achievable_ceiling(
-                    points, provenance=f"measured cycles harvested from {Path(functional_run_dir).name}"
-                )
-                try:
-                    from merlin_experiments.phase2 import capsule_verdict as CV  # noqa: PLC0415
-
-                    achievable_dispersion = CV.ceiling_dispersion(
-                        [{"macs": p.macs, "cycles": p.cycles} for p in points]
-                    )
-                except Exception:  # noqa: BLE001 - an underivable spread refuses, never defaults
-                    achievable_dispersion = None
-                seed_points = tuple(points)
-                if ceiling.known:
-                    achievable_macs = float(ceiling.value)
-                    achievable_basis = (
-                        f"best rate over {ceiling.n_samples} measured points in {Path(functional_run_dir).name}"
-                    )
-                else:
-                    achievable_basis = ceiling.reason
-            except Exception as exc:  # noqa: BLE001 - an unharvestable corpus is reported, not faked
-                achievable_basis = f"harvest failed ({type(exc).__name__})"
+        achievable_macs, achievable_basis = None, "no fresh public baseline measurements"
+        achievable_dispersion = None
         decisions: dict[tuple[str, str], GATE.EvaluationDecision] = {}
         for member in sorted(corpus.capsules, key=lambda row: (row.family, row.capsule)):
             if member.descriptor.get("label") != "dev":
@@ -1481,9 +1444,6 @@ def prepare_development_feedback(
         achievable_macs_per_cycle=achievable_macs,
         achievable_basis=achievable_basis,
         achievable_dispersion=achievable_dispersion,
-        seed_points=seed_points,
-        _achievable_points=seed_points,
-        functional_run_id=(Path(functional_run_dir).name if functional_run_dir is not None else ""),
         member_cost=member_cost,
         member_cost_basis=member_cost_basis,
         executor=partial(development_executor, contract_root=contract_root),

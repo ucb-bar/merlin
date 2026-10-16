@@ -1,6 +1,6 @@
 """Per-member ROOFLINE in the tuning feedback: a derived machine bound for each member's declared work.
 
-The bound is the larger of the array's compute floor (from the RTL facts' array geometry) and the memory
+The bound is the larger of the explicit RTL arithmetic-site compute floor and the memory
 path's movement floor (from the elaborated circuit's read/write widths), both derived; the feedback
 cell states where each correct arm sits against it and refutes, never under-reports, a bound beaten.
 """
@@ -25,6 +25,7 @@ _REPO = Path(__file__).resolve().parents[3]
 _MACHINE = {
     "array_rows": 16,
     "array_cols": 16,
+    "peak_macs_per_cycle": 256,
     "read_bytes_per_cycle": 16,
     "write_bytes_per_cycle": 16,
     "basis": {"compute": "test geometry", "movement": "test widths"},
@@ -42,11 +43,38 @@ def _matmul(m: int, k: int, n: int, *, out: str = "i32") -> dict:
     }
 
 
-def test_compute_floor_is_block_issue_minimised_over_orientation():
-    # 64 streamed rows through one 16-deep block per 16 columns: 4 blocks wide x 64 rows.
-    assert CR.compute_floor(64, 16, 64, array_rows=16, array_cols=16)["cycles"] == 256
-    # A short stream still pays each block's own entry depth.
-    assert CR.compute_floor(1, 64, 16, array_rows=16, array_cols=16)["cycles"] == 64
+def test_compute_floor_uses_only_explicit_capacity_without_stationary_assumptions():
+    assert CR.compute_floor(64, 16, 64, peak_macs_per_cycle=256)["cycles"] == 256
+    # No row-entry penalty follows from arithmetic capacity alone.
+    assert CR.compute_floor(1, 64, 16, peak_macs_per_cycle=256)["cycles"] == 4
+
+
+def test_geometry_alone_leaves_compute_unknown_and_no_contraction_rounds_twice():
+    geometry_only = {"array_rows": 16, "array_cols": 16}
+    doc = CR.roofline([(1, 64, 16)], None, None, geometry_only)
+    assert doc["roofline_cycles"] is None and "compute" in doc["unresolved"]
+    concurrent = CR.roofline([(1, 1, 1), (1, 1, 1)], None, None, _MACHINE)
+    assert concurrent["compute_floor_cycles"] == 1
+    empty = CR.roofline([], None, None, _MACHINE)
+    assert empty["roofline_cycles"] is None and empty["compute_floor_cycles"] == 0
+    malformed = CR.roofline([(1, -1, 1)], None, None, _MACHINE)
+    assert malformed["roofline_cycles"] is None and "compute" in malformed["unresolved"]
+
+
+def test_peak_requires_explicit_arithmetic_counts_from_every_array(tmp_path):
+    geometry = {"rows": 8, "cols": 4}
+    assert CR.compute_peak_from_facts({"arrays": [geometry]})[0] is None
+    complete = {**geometry, "mac_idiom": {"muls": 2}}
+    assert CR.compute_peak_from_facts({"facts": {"arrays": [complete]}})[0] == 64
+    assert CR.compute_peak_from_facts({"arrays": [complete, geometry]})[0] is None
+    assert CR.compute_peak_from_facts({"arrays": [complete, complete]})[0] == 128
+    bounds = CR.machine_bounds("arbitrary", facts={"arrays": [geometry]})
+    assert bounds["peak_macs_per_cycle"] is None and "compute" in bounds["unresolved"]
+    source = tmp_path / "facts.json"
+    source.write_text(json.dumps({"arrays": [geometry]}))
+    assert FM.derived_peak_macs_per_cycle(source, "arbitrary")[0] is None
+    source.write_text(json.dumps({"arrays": [complete, complete]}))
+    assert FM.derived_peak_macs_per_cycle(source, "arbitrary")[0] == 128
 
 
 def test_a_small_contraction_is_movement_bound_and_names_its_limiter():
@@ -148,7 +176,9 @@ def test_machine_bounds_read_geometry_from_facts_and_widths_from_the_pinned_elab
         "    wire w : UInt<1>\n"
     )
     facts = tmp_path / "facts.json"
-    facts.write_text(json.dumps({"facts": {"arrays": [{"name": "grid", "rows": 8, "cols": 4}]}}))
+    facts.write_text(
+        json.dumps({"facts": {"arrays": [{"name": "grid", "rows": 8, "cols": 4, "mac_idiom": {"muls": 1}}]}})
+    )
 
     class _Certificate:
         pins = {"gsim_firrtl": {"path": str(fir), "sha256": "0" * 64}}
