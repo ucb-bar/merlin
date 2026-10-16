@@ -16,6 +16,31 @@ def selected_target_contract(monkeypatch):
     monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(contract))
 
 
+@pytest.mark.parametrize("command", ["check", "replay-kernel"])
+def test_official_cli_always_disables_cached_evidence(tmp_path, monkeypatch, command):
+    seen = []
+
+    class Process:
+        returncode = 0
+
+        def __init__(self, argv, **_kwargs):
+            seen.extend(argv)
+            output = Path(argv[argv.index("--out") + 1])
+            output.write_text(json.dumps({"schema": official.REPORT_SCHEMA, "command": command,
+                                          "model": "resnet50", "split": "sealed",
+                                          "exit_code": 0, "status": "pass"}))
+
+        def wait(self, **_kwargs):
+            return 0
+
+    monkeypatch.setattr(official.subprocess, "Popen", Process)
+    result = official._invoke(command, submission=tmp_path / "submission", model="resnet50",
+                              output=tmp_path / "report.json", bundle=tmp_path / "bundle", timeout_s=1,
+                              program="model", group="conv_0")
+    assert result["status"] == "pass"
+    assert seen.count("--no-cache") == 1
+
+
 def test_official_gate_dedupes_explicit_same_shape_kernels(tmp_path, monkeypatch):
     (tmp_path / "submission").mkdir()
     (tmp_path / "submission/manifest.yaml").write_text("commands: {}\n")

@@ -25,7 +25,7 @@ def _invoke(command: str, *, submission: Path, model: str, output: Path, bundle:
     target = target_from_contract()
     argv = [sys.executable, "-m", "merlin.model_check", command, "--submission", str(submission),
             "--model", model, "--split", "sealed", "--bundle", str(bundle),
-            "--models", str(default_models_path(target)),
+            "--models", str(default_models_path(target)), "--no-cache",
             "--work", str(output.with_suffix(".work")), "--out", str(output), "--timeout-s", str(timeout_s)]
     if command == "check":
         argv += ["--mode", "full"]
