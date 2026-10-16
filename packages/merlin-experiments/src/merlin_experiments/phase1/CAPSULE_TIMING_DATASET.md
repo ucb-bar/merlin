@@ -105,9 +105,11 @@ a whole-call label is a model parameter, not a measured per-command latency.
 The Phase 2 handoff consists of this immutable tar and its SHA256, the selected
 Spike executable/configuration identities, the fitted model artifact and
 training code identities, the split manifest, holdout report, and the declared
-prediction scope. Phase 2 may use the tuned model only for that scope and must
-keep gSIM as the source of actual RTL timing evidence. Full-model executions are
-outside this capsule dataset.
+prediction scope. Phase 2 may use the tuned model only for that scope. The
+holdout labels come from gSIM, so its predictions estimate the selected gSIM
+elaboration's capsule-call cycles. U250 measurements are not a prerequisite for
+this handoff; they are required only to claim or calibrate board cycles. Full-model
+executions are outside this capsule dataset.
 
 The annotated Spike model at
 [`806ec0adda22`](https://github.com/copparihollmann/riscv-isa-sim-gemmini/tree/806ec0adda2242597b253ebf17adfaa5cdb395e3)
@@ -123,10 +125,12 @@ independent review evidence. A whole-program Spike estimate or a consecutive
 counter-pair guess is not the capsule label's scope.
 
 The annotated Spike branch now has a separate `fire_aligned_30mhz.json` profile
-for archive SHA256 `0af6f26e…`, with the FireSim-selected `5b1254a7…`
+associated with archive SHA256 `0af6f26e…`, with the FireSim-selected `5b1254a7…`
 functional receiver. The older `stock_u250.json` belongs to `a9a190b9…`.
 The new profile's primitive prices and queue capacities remain unknown until
-calibration. Matching ABI header `3758ae96…` does not make the two bitstreams
+calibration. Fitting them to gSIM labels must bind the gSIM executable, FIRRTL
+and counter scope as the timing target; the archive association is only source
+context. Matching ABI header `3758ae96…` does not make the two bitstreams
 one timing target. Launch Spike with the selected 16 GiB map beginning at
 `0x80000000` for these ELFs. Gemmini's local `address_bits: 32` parameter is
 not the Rocket physical-memory size. The model's README example `-m64` is a
@@ -134,7 +138,7 @@ small test allocation, not this board's memory selection.
 The next Phase 1 numerical oracle must select the exact `fire_aligned_30mhz`
 functional Spike package and receiver. The annotated observer is a separate
 Phase 2 timing consumer of the archived ELF/input records, enabled only after
-calibration for this bitstream.
+calibration and held-out validation for the selected gSIM elaboration.
 
 The compiler agent receives the selected Phase 1 contract and RTL facts through
 the frozen input bundle. The Gemmini task grant also contains

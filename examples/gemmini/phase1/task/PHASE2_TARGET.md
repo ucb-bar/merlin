@@ -6,14 +6,21 @@ that copy to the compiler agent. The selected Phase 1 capability contract and
 RTL facts, also granted by the bundle, govern emitted instructions and runtime
 behavior. Their configuration names and hashes identify the actual launch.
 
-The planned Phase 2 timing machine is the full Alveo U250 FireSim design named
+The first Phase 2 timing target is the selected FireSim-source-aligned gSIM
+elaboration. Fit the annotated Spike observer to complete Phase 1 capsule-call
+cycle labels from that elaboration, and validate on held-out capsules. A tuned
+observer can screen candidates within that measured scope without a U250 runner.
+Its predictions are gSIM-surrogate cycles; no board-cycle accuracy follows from
+the shared source configuration or 16 GiB address map.
+
+An optional later board timing target is the full Alveo U250 FireSim design named
 `FireSimGemminiRocketConfig`. The `full_u250_board` machine selects hardware
 config `alveo_u250_firesim_gemmini_rocket_30mhz`. Its pin is
 `firesim_gemmini_rocket_30mhz` in `merlin/contract/hardware_pins.yaml`, with
 bitstream SHA256
 `0af6f26e1cbad1c03f9e5873217505a5100bf2d0d068205cfa486522b24fc603`.
 That pin records a FireSim generator revision distinct from the older
-`gemmini_rtl` pin used for the selected `GemminiRocketConfig` RTL facts.
+`gemmini_rtl` pin used for historical `GemminiRocketConfig` RTL facts.
 
 The FireSim board catalog declares one non-vector Rocket hart and 16 GiB of
 DRAM mapped at `0x80000000`; the selected DTS SHA256 is
@@ -28,13 +35,13 @@ it supports full-width accumulator readout. The historical lean U250 design
 has a different ABI and is a different target.
 
 Phase 1 capsule timing is measured on its selected gSIM elaboration. The
-currently installed emulator uses `GemminiGsimSerialClkConfig` and FIRRTL
+historically installed emulator uses `GemminiGsimSerialClkConfig` and FIRRTL
 SHA256 `089d053b62523b5047e71ccca31dfbbe27d4e5daeab24050227a923e7b4628c8`.
 That emulator is based on the older `gemmini_rtl` revision. It is not an
 equivalence witness for the FireSim bitstream. The older hand-edited
 `gemmini_gsim_model_testharness` pin is also unsuitable for this new run.
 
-The current Phase 0 RTL facts come from a `GemminiRocketConfig` Verilator
+Historical Phase 0 RTL facts come from a `GemminiRocketConfig` Verilator
 elaboration. The planned FireSim bitstream uses a different generator revision.
 Their common ancestry does not establish equal accelerator features or equal
 cycle counts. A FireSim-targeted Spike model needs a reviewed fact-level
