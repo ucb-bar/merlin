@@ -8,8 +8,8 @@ compared.
 
 Sections 1–7 describe code and capture records. Each claim names the file or record a reader can
 check. Section 8 is a dated status report (2026-10-15) and will change. Section 9 lists what is not
-yet settled. The judging contract is [`docs/reference/model_check.md`](../../docs/reference/model_check.md).
-The evaluation and calibration inputs are described in [`numerics/README.md`](numerics/README.md).
+yet settled. The judging contract is [`docs/reference/model_check.md`](../../../docs/reference/model_check.md).
+The evaluation and calibration inputs are described in [`README.md`](README.md).
 
 "r53b" names the current development captures. They are kept in a private, sealed capture store,
 and every fact quoted from them below is structural (counts, settings, hashes). No tensor data is quoted.
@@ -95,9 +95,9 @@ the exact steps:
 - TinyLlama linears (no bias) and SmolVLA's f32 projections: the f32 result, plus an f32 bias where
   the layer has one.
 
-**Gemmini readout.** Sources: `target/contracts/target_contract.yaml` (`scaling`,
+**Gemmini readout.** Sources: [`target/contracts/target_contract.yaml`](../target/contracts/target_contract.yaml) (`scaling`,
 `epilogue_capability`, `stage_routes`, `scalar_abi`, `operand_sum`, which cite `gemmini_params.h`),
-[`merlin/contract/command_buffer_abi.yaml`](../../merlin/contract/command_buffer_abi.yaml), and the
+[`merlin/contract/command_buffer_abi.yaml`](../../../merlin/contract/command_buffer_abi.yaml), and the
 RTL facts of the Phase 1 release payload, whose readout section matches.
 
 - An int8 × int8 product accumulates into an int32 accumulator.
@@ -229,7 +229,7 @@ outer-product rescale of every score element per plane, plus element-wise absmax
 
 ## 6. How numerics are judged
 
-Contract: [`docs/reference/model_check.md`](../../docs/reference/model_check.md), §3–§4.
+Contract: [`docs/reference/model_check.md`](../../../docs/reference/model_check.md), §3–§4.
 
 - **INT8 reference.** The prepared program (§1), evaluated by `merlin.runtime.linalg_numpy.evaluate`,
   which reads each op's semantics from the IR and shares no code with any lowering. Integers wrap at
@@ -249,8 +249,8 @@ Contract: [`docs/reference/model_check.md`](../../docs/reference/model_check.md)
   - SmolVLA: per input, the worst action dim's relRMSE (dims 0–5); its mean and its maximum over the
     inputs must each be ≤ 2 × the same statistic of the float noise, i.e. the gap between two valid float
     runs (FP with portable vs vectorized ATen kernels). Approved; stated in this form in contract 1.8.
-- **Inputs.** 8 visible inputs per model, plus calibration item lists, are in
-  [`numerics/`](numerics/README.md). The sealed inputs are private.
+- **Inputs.** 8 visible inputs per model, plus calibration item lists, are in this folder (see
+  [`README.md`](README.md)). The sealed inputs are private.
 - **Running the check:** `python -m merlin.model_check check --submission S --model M --split visible
   --out R.json` (contract §2). `kernels-export` writes every kernel's `interface.mlir` and `abi.json`,
   which are exactly what a device implementation must compute.
@@ -318,7 +318,7 @@ The device-kernel forms stay plain int8 × int8 → int32 matmuls and convolutio
 The following techniques are under evaluation. They are screening results, not commitments.
 
 - **Calibration with real data**: 260 Imagenette train images, 128 WikiText-2 train segments and
-  50 ALOHA frames, listed in `numerics/calibration/*.json` and disjoint from every evaluation input.
+  50 ALOHA frames, listed in [`calibration/*.json`](calibration/) and disjoint from every evaluation input.
 - **Per-channel weight scales.** The device still computes int8 → int32; the per-column scale moves to
   the host epilogue.
 - **Function-preserving outlier-channel splitting** in gated MLPs. In
