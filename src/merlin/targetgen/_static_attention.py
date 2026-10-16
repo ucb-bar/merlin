@@ -40,6 +40,8 @@ _LAYOUT_NAMES = ("transpose", "permute", "view", "reshape", "_unsafe_view", "con
 #: Created operations that move no element (their cost is not host arithmetic).
 _NO_COST = ("reshape", "transpose", "_int_mm", "view", "select", "stack", "t")
 _RECORDS: dict[int, dict] = {}
+#: The plane selector of a static operand (``quant_recipe.OPERAND``): k int8 digits of one static grid.
+OPERAND = "operand"
 
 
 def _record(run: int, key: str, value: Any, smooth: bool) -> None:
@@ -72,8 +74,9 @@ def plan(node: Any, block: dict) -> dict:
         raise ValueError("a softmax-produced second operand has no static form")
     context = DC.softmax_produced(lhs)
     smooth = not context and block.get("smooth") == DC.SOFTMAX_AXIS and DC.feeds_row_softmax(node)
-    planes = int((block.get("planes") or {}).get(DC.SOFTMAX_OUTPUT, 1)) if context else 1
-    return {"context": context, "smooth": smooth, "planes": planes}
+    selected = block.get("planes") or {}
+    planes = int(selected.get(DC.SOFTMAX_OUTPUT, 1)) if context else 1
+    return {"context": context, "smooth": smooth, "planes": planes, "digits": int(selected.get(OPERAND, 1))}
 
 
 def calibrate(graph_module: Any, plans: dict, samples: list) -> dict:
@@ -208,12 +211,45 @@ def _quantize(emit: Any, value: Any, scale: Any, qmax: int) -> Any:
     return emit(aten._to_copy.default, grid, dtype=torch.int8)
 
 
+def _grid(low: int, high: int, digits: int) -> tuple[int, int, int]:
+    """``(grid_min, grid_max, base)`` of an operand on ``digits`` int8 digits (one digit: the int8 range)."""
+    if digits == 1:
+        return -min(-low, high), min(-low, high), high + 1
+    base = high + 1
+    span = base ** (digits - 1)
+    return low * span, high * span + span - 1, base
+
+
+def _digit_planes(emit: Any, value: Any, scale: Any, *, low: int, high: int, digits: int) -> list:
+    """``[(int8 digit plane, weight)]`` of ``value / scale`` on the static grid, top digit first."""
+    torch, aten = emit.torch, DC._aten()
+    grid_min, grid_max, base = _grid(low, high, digits)
+    rest = emit(aten.clamp.default, emit(aten.round.default, emit(aten.div.Tensor, value, scale)), grid_min, grid_max)
+    out = []
+    for power in range(digits - 1, -1, -1):
+        digit = rest
+        if power:
+            unit = float(base**power)
+            digit = emit(aten.floor.default, emit(aten.div.Tensor, rest, unit))
+            rest = emit(aten.sub.Tensor, rest, emit(aten.mul.Tensor, digit, unit))
+        out.append((emit(aten._to_copy.default, digit, dtype=torch.int8), float(base**power)))
+    return out
+
+
 def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, high: int, eps: float) -> dict:
-    """Replace one activation contraction by its static per-head integer form; return its row."""
+    """Replace one activation contraction by its static per-head integer form; return its row.
+
+    Every non-softmax operand is ``site["digits"]`` int8 digit planes of one static per-head grid (one
+    digit: the int8 range); each pair of planes is one device call per head with one scale, and the host
+    sums the calls in the rescale.
+    """
     import torch
 
     aten = DC._aten()
     qmax = min(-low, high)
+    digits = int(site.get("digits", 1))
+    grid_min, grid_max, _ = _grid(low, high, digits)
+    span = (low, high) if digits == 1 else (grid_min, grid_max)
     lhs, rhs = node.args[:2]
     record_rhs = stats[f"{node.name}:rhs"]
     folded = False
@@ -231,15 +267,21 @@ def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, 
     rank_b = b.meta["val"].dim()
     if shift is not None and not folded:
         b = emit(aten.sub.Tensor, b, emit.constant(f"_static_mean_{node.name}", _shaped(shift, rank_b, 1)))
-    rhs_scale = _scale(record_rhs["absmax"], low, high, eps)
+    # The epsilon floors the step of a one-digit grid; a wider grid floors the same range.
+    floor = eps * (high - low) / (span[1] - span[0])
+    rhs_scale = _scale(record_rhs["absmax"], *span, floor)
     b_scale = emit.constant(f"_static_scale_{node.name}_rhs", _shaped(rhs_scale, rank_b, 2))
-    qb = _quantize(emit, b, b_scale, qmax)
+    rhs_planes = _digit_planes(emit, b, b_scale, low=low, high=high, digits=digits)
     if not site["context"]:
         a = DC._f32(emit, lhs)
-        lhs_scale = _scale(stats[f"{node.name}:lhs"]["absmax"], low, high, eps)
+        lhs_scale = _scale(stats[f"{node.name}:lhs"]["absmax"], *span, floor)
         rank_a = a.meta["val"].dim()
         a_scale = emit.constant(f"_static_scale_{node.name}_lhs", _shaped(lhs_scale, rank_a, 2))
-        planes = [(_quantize(emit, a, a_scale, qmax), _shaped(lhs_scale * rhs_scale, max(rank_a, rank_b), 2))]
+        lhs_planes = [
+            (plane, lhs_scale * weight)
+            for plane, weight in _digit_planes(emit, a, a_scale, low=low, high=high, digits=digits)
+        ]
+        rank = max(rank_a, rank_b)
         total = None
     else:
         softmax = lhs
@@ -252,31 +294,35 @@ def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, 
         peak = emit(aten.where.ScalarSelf, emit(aten.eq.Scalar, peak, float("-inf")), 0.0, peak)
         e = emit(aten.exp.default, emit(aten.sub.Tensor, scores, peak))
         total = emit(aten.clamp.default, emit(aten.sum.dim_IntList, e, [-1], True), DC.SCALE_FLOOR)
-        planes, residual = [], e
+        lhs_planes, residual = [], e
         for index in range(site["planes"]):
             steps = float(qmax * (qmax + 1) ** index)  # plane j has the fixed scale 1 / steps
             grid = emit(
                 aten.clamp.default, emit(aten.round.default, emit(aten.mul.Tensor, residual, steps)), -qmax, qmax
             )
-            planes.append((emit(aten._to_copy.default, grid, dtype=torch.int8), _shaped(rhs_scale / steps, rank_b, 2)))
+            lhs_planes.append((emit(aten._to_copy.default, grid, dtype=torch.int8), torch.ones_like(rhs_scale) / steps))
             if index + 1 < site["planes"]:
                 residual = emit(aten.sub.Tensor, residual, emit(aten.div.Tensor, grid, steps))
+        rank = rank_b
     result = None
-    for plane, scale in planes:
-        acc = DC._int_matmul(emit, plane, qb)
-        out = acc.meta["val"]
-        census["int8_macs"] += math.prod(out.shape) * int(plane.meta["val"].shape[-1])
-        census["device_calls"] += math.prod(out.shape[:-2]) if out.dim() > 2 else 1
-        term = emit(
-            aten.mul.Tensor,
-            emit(aten.to.dtype, acc, torch.float32),
-            emit.constant(f"_static_scale_{node.name}_out", scale),
-        )
-        result = term if result is None else emit(aten.add.Tensor, result, term)
+    for plane, lhs_weight in lhs_planes:
+        for other, rhs_weight in rhs_planes:
+            acc = DC._int_matmul(emit, plane, other)
+            out = acc.meta["val"]
+            census["int8_macs"] += math.prod(out.shape) * int(plane.meta["val"].shape[-1])
+            census["device_calls"] += math.prod(out.shape[:-2]) if out.dim() > 2 else 1
+            scale = _shaped(lhs_weight * rhs_scale * rhs_weight, rank, 2)
+            term = emit(
+                aten.mul.Tensor,
+                emit(aten.to.dtype, acc, torch.float32),
+                emit.constant(f"_static_scale_{node.name}_out", scale),
+            )
+            result = term if result is None else emit(aten.add.Tensor, result, term)
     if total is not None:
         result = emit(aten.div.Tensor, result, total)
     census["host_elements"] = _cost(emit.created)
-    row = DC._finish(emit, node, result, census, smooth=bool(site["smooth"]), planes=(site["planes"], 1))
+    planes = (site["planes"] if site["context"] else digits, digits)
+    row = DC._finish(emit, node, result, census, smooth=bool(site["smooth"]), planes=planes)
     return {**row, "scales": "static_heads", "shift_folded": folded}
 
 

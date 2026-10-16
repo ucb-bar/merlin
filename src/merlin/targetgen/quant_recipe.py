@@ -386,9 +386,11 @@ NON_REDUCTION = "non_reduction"
 #: The static mode: one CALIBRATED scale per head of each operand (the readout's own form per device
 #: call), a calibrated smooth shift, and fixed-scale planes of a softmax's ``exp(s - rowmax)``.
 STATIC_HEADS = "static_heads"
-#: Plane selectors: an operand produced by a row softmax, and a stored weight.
+#: Plane selectors: an operand produced by a row softmax, a stored weight, and (static per-head scales only)
+#: every other operand, as k int8 digits of one static grid.
 SOFTMAX_OUTPUT = "softmax_output"
 WEIGHT = "weight"
+OPERAND = "operand"
 #: The smooth shift: when a contraction reaches a softmax over its column axis only through scalar
 #: factors and masks, the other operand's mean over that axis is subtracted first. That shifts each
 #: score row by a constant, which the softmax ignores.
@@ -426,8 +428,9 @@ def with_dynamic_contractions(
     minmax scale per head of each operand, the smooth shift a calibrated per-(head, row) mean (folded
     into the producing Linear's bias where only layout steps lie between), and a softmax-produced
     operand replaced by ``exp(s - rowmax)`` in planes with fixed scales ``1 / (q * (q + 1)**j)``, the
-    rows divided by their sum after the contraction (``_static_attention``). Activation contractions
-    of a static recipe only.
+    rows divided by their sum after the contraction (``_static_attention``). ``planes[OPERAND] = k``
+    puts every other operand on a static per-head grid of k int8 digits (two digits: 15 bits), each
+    pair of digit planes one device call with one scale. Activation contractions of a static recipe only.
     """
     if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
         raise ValueError("only a derived quant_recipe_v1 can be extended")
@@ -439,10 +442,12 @@ def with_dynamic_contractions(
         raise ValueError(f"dynamic scales apply to contraction families only, not {wanted}")
     selected = dict(planes or {})
     if any(
-        k not in (SOFTMAX_OUTPUT, WEIGHT) or type(v) is not int or not 1 <= v <= _MAX_PLANES
+        k not in (SOFTMAX_OUTPUT, WEIGHT, OPERAND) or type(v) is not int or not 1 <= v <= _MAX_PLANES
         for k, v in selected.items()
     ):
-        raise ValueError(f"planes take {SOFTMAX_OUTPUT!r}/{WEIGHT!r} -> 1..{_MAX_PLANES}, not {selected}")
+        raise ValueError(f"planes take {SOFTMAX_OUTPUT!r}/{WEIGHT!r}/{OPERAND!r} -> 1..{_MAX_PLANES}, not {selected}")
+    if OPERAND in selected and (scales != STATIC_HEADS or selected[OPERAND] > 3):
+        raise ValueError(f"{OPERAND!r} digit planes (at most 3) belong to static per-head scales")
     if scales not in (NON_REDUCTION, STATIC_HEADS):
         raise ValueError(f"scales are {NON_REDUCTION!r} or {STATIC_HEADS!r}, not {scales!r}")
     if scales == STATIC_HEADS and (

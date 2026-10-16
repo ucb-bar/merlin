@@ -61,9 +61,13 @@ def _recipe() -> dict:
     return body
 
 
-def _static(recipe: dict | None = None) -> dict:
+def _static(recipe: dict | None = None, **planes: int) -> dict:
     return QR.with_dynamic_contractions(
-        recipe or _recipe(), planes={QR.SOFTMAX_OUTPUT: 2}, smooth=True, static_families=[], scales=QR.STATIC_HEADS
+        recipe or _recipe(),
+        planes={QR.SOFTMAX_OUTPUT: 2, **planes},
+        smooth=True,
+        static_families=[],
+        scales=QR.STATIC_HEADS,
     )
 
 
@@ -81,12 +85,13 @@ def test_the_mode_is_stated_and_changes_the_digest():
         ({"planes": {QR.WEIGHT: 2}}, {}),
         ({}, {"mode": "dynamic"}),
         ({"scales": "per_tile"}, {}),
+        ({"planes": {QR.OPERAND: 4}}, {}),
     ],
 )
 def test_what_the_mode_cannot_state_is_refused(kwargs, change):
     recipe = _recipe()
     recipe["activation"] = {**recipe["activation"], **change}
-    with pytest.raises(ValueError, match="static per-head|scales are"):
+    with pytest.raises(ValueError, match="static per-head|scales are|at most 3"):
         QR.with_dynamic_contractions(recipe, **{"scales": QR.STATIC_HEADS, **kwargs})
 
 
@@ -117,7 +122,12 @@ spec = importlib.util.spec_from_file_location("recipe_quantizer", source)
 quant = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(quant)
 recipe = json.loads(sys.argv[2])
-Q, EPS, LOW = 127, 2.0**-12, -float("inf")
+DIGITS = int(sys.argv[3])  # operand digits of one static per-head grid
+PLANES = int(sys.argv[4])  # fixed-scale probability planes
+Q, LOW = 127, -float("inf")
+GRID = (-Q, Q) if DIGITS == 1 else (-128 * 128 ** (DIGITS - 1), 128**DIGITS - 1)
+HALF = 127.5 if DIGITS == 1 else (GRID[1] - GRID[0]) / 2
+EPS = 2.0**-12 * 127.5 / HALF
 
 
 class Block(nn.Module):
@@ -145,12 +155,12 @@ class Block(nn.Module):
 
 
 def grid(x, scale):
-    return torch.clamp(torch.round(x / scale), -Q, Q)
+    return torch.clamp(torch.round(x / scale), *GRID)
 
 
 def head_scale(tensors):
     absmax = torch.stack([t.abs().amax(dim=(0, 2, 3)) for t in tensors]).amax(0)
-    return (absmax / 127.5).clamp(min=EPS).reshape(1, -1, 1, 1)
+    return (absmax / HALF).clamp(min=EPS).reshape(1, -1, 1, 1)
 
 
 def scores_of(q, k, sq, sk):
@@ -161,9 +171,12 @@ def context_of(s, v, sv):
     e = torch.exp(s - s.amax(dim=-1, keepdim=True))
     total = e.sum(dim=-1, keepdim=True)
     vi = grid(v, sv).double()
-    p1 = torch.clamp(torch.round(e * Q), -Q, Q)
-    p2 = torch.clamp(torch.round((e - p1 / Q) * (Q * 128)), -Q, Q)
-    acc = (p1.double() @ vi) / Q + (p2.double() @ vi) / (Q * 128)
+    acc, residual = 0, e
+    for j in range(PLANES):
+        steps = Q * 128**j
+        pj = torch.clamp(torch.round(residual * steps), -Q, Q)
+        acc = acc + (pj.double() @ vi) / steps
+        residual = residual - pj / steps
     return (acc * sv.double() / total.double()).float()
 
 
@@ -218,8 +231,10 @@ def _run(recipe: dict) -> dict:
     python = os.environ.get("MERLIN_M2M_PYTHON")
     if not python or not Path(python).is_file():
         pytest.skip("the TorchAO capture interpreter is not configured")
+    planes = (recipe.get(QR.DYNAMIC) or {}).get("planes") or {}
+    shape = [str(planes.get(QR.OPERAND, 1)), str(planes.get(QR.SOFTMAX_OUTPUT, 2))]
     completed = subprocess.run(
-        [python, "-c", _SCRIPT, str(_QUANTIZER), json.dumps(recipe)],
+        [python, "-c", _SCRIPT, str(_QUANTIZER), json.dumps(recipe), *shape],
         capture_output=True,
         text=True,
         timeout=300,
@@ -246,3 +261,14 @@ def test_attention_takes_static_per_head_scales_and_fixed_probability_planes():
     assert all(r["host_elements"] > 0 and r["int8_macs"] > 0 for r in rows)
     assert data["max_error"] < 1e-5, data["max_error"]
     assert data["folded_biases"] == 1 and data["fold_error"] < 1e-6, data.get("fold_error")
+
+
+def test_operands_on_a_wider_static_grid_take_digit_planes():
+    """Q, K and V as two int8 digits of one 15-bit per-head grid, the probabilities in three planes."""
+    data = _run(_static(**{QR.SOFTMAX_OUTPUT: 3, QR.OPERAND: 2}))
+    rows = data["rows"]
+    assert sorted(r["planes"] for r in rows) == [[2, 2]] * 3 + [[3, 2]] * 2
+    # per head: two Q.K^T and the gate of 2 x 2 digit calls each, two P.V of 3 planes x 2 digits each
+    assert data["int_mm"] == 2 * (3 * 4 + 2 * 6)
+    assert data["max_error"] < 1e-5, data["max_error"]
+    assert data["folded_biases"] == 1 and data["fold_error"] < 1e-6
