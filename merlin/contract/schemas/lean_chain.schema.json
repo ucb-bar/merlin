@@ -13,11 +13,18 @@
       "refinement_verdict": {"const": "verified"},
       "source_definedness": {"required": ["receipt_sha256"], "properties": {"verdict": {"const": "verified"}}}
     }}
+  }, {
+    "if": {"properties": {"theorem": {"const": "MerlinVerify.Check.chain_typed_defined_refines"}}, "required": ["theorem"]},
+    "then": {"required": ["index_bits"], "properties": {
+      "refinement_theorem": {"const": "MerlinVerify.Check.chain_typed_refines"}
+    }},
+    "else": {"properties": {"refinement_theorem": {"const": "MerlinVerify.Check.chain_refines"}}}
   }],
   "properties": {
     "schema": {"const": "merlin.lean.chain.v1"},
-    "theorem": {"const": "MerlinVerify.Check.chain_defined_refines"},
-    "refinement_theorem": {"const": "MerlinVerify.Check.chain_refines"},
+    "theorem": {"enum": ["MerlinVerify.Check.chain_defined_refines", "MerlinVerify.Check.chain_typed_defined_refines"]},
+    "refinement_theorem": {"enum": ["MerlinVerify.Check.chain_refines", "MerlinVerify.Check.chain_typed_refines"]},
+    "index_bits": {"type": "integer", "minimum": 1},
     "domain": {"type": "string", "description": "The defined-execution claim requires typed, nonpoison inputs at the stated index width."},
     "function": {"type": "string"},
     "links": {

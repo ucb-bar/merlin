@@ -6,21 +6,14 @@ import MerlinVerify.Check.Synth
 import MerlinVerify.Check.Module
 import MerlinVerify.Check.Rulebook
 import MerlinVerify.Check.DefinedLinalg
+import MerlinVerify.Check.TypedModule
 
 open MerlinVerify
 open Lean (Json toJson)
 
 /-- Argument and result value types of function `fn`, from its `function_type` at index width `ib`. -/
 def funcSig? (ib : Nat) (m : MerlinVerify.Module) (fn : String) : Option (List Check.VTy × List Check.VTy) :=
-  m.ops.findSome? fun op =>
-    match op.asFunc?, op.attr? "function_type" with
-    | some f, some (.type (.function ins outs)) =>
-      if f.name == fn then
-        match ins.mapM (Check.vtyOf ib), outs.mapM (Check.vtyOf ib) with
-        | some a, some r => some (a, r)
-        | _, _ => none
-      else none
-    | _, _ => none
+  Check.TypedModule.signature? ib m fn
 
 /-- What a per-boundary verdict leaves open: its theorem is conditional refinement
 (`FuncRefinesC`), which says nothing where the source is not modelled. Strict refinement needs the
@@ -42,6 +35,8 @@ def emit (fields : List (String × Json)) (ok : Bool) : IO UInt32 := do
 * `check-c1 <before.json> <after.json> <fn>` — C1 on one function (`Check.c1Check_sound`).
 * `check-module <before.json> <after.json>` — every defined function, plus outside-function changes
   (`Check.moduleCheck_sound`).
+* `check-module-typed <before.json> <after.json> <index_bits>` — typed normalization followed by
+  C1, on each function's declared input domain (`Check.TypedModule.check_sound`).
 * `check-support <in.json> <fn> [index_bits]` — the function is inside the proved fragment
   (`Check.supportCheck_sound`).
 * `check-definedness <in.json> <fn> [index_bits]` — successful, nonpoison results on typed,
@@ -87,6 +82,24 @@ def main (args : List String) : IO UInt32 := do
         (if verified then [] else [("reason", toJson ("; ".intercalate reasons))]))
         verified
     | .error e, _ | _, .error e => IO.eprintln s!"decode error: {e}"; return 2
+  | ["check-module-typed", beforeJ, afterJ, width] =>
+    let some ib := width.toNat?.filter (· > 0) | do
+      IO.eprintln "index_bits must be one positive integer"
+      return 2
+    match Decode.module (← IO.FS.readFile beforeJ), Decode.module (← IO.FS.readFile afterJ) with
+    | .ok src, .ok tgt =>
+      let ok := Check.TypedModule.check ib src tgt
+      let out := Check.outsideChanges src tgt
+      let verified := ok && out.unverified.isEmpty
+      let reasons := (if ok then [] else ["a function body did not verify on its typed input domain"]) ++ out.unverified
+      emit ([("checker", toJson "module-typed"),
+        ("theorem", toJson "MerlinVerify.Check.TypedModule.check_sound"),
+        ("claim_type", toJson "refine_conditional"), ("index_bits", toJson ib),
+        ("functions", toJson (Check.Module.definedNames src)), ("functions_verified", toJson ok),
+        ("abi_changes", toJson out.abi), ("unverified_changes", toJson out.unverified),
+        ("verdict", toJson (verdictOf verified))] ++
+        (if verified then [] else [("reason", toJson ("; ".intercalate reasons))])) verified
+    | .error e, _ | _, .error e => IO.eprintln s!"decode error: {e}"; return 2
   | command :: inp :: fn :: rest =>
     if command != "check-support" && command != "check-definedness" then
       IO.eprintln s!"unknown command: {command}"
@@ -120,5 +133,5 @@ def main (args : List String) : IO UInt32 := do
         ("first_refusal", if ok then Json.null else toJson why)] ok
     | .error e => IO.eprintln s!"decode error: {e}"; return 2
   | _ =>
-    IO.eprintln "usage: merlin-lean decode <in.json> | print <in.json> <out.mlir> | check-c1 <before.json> <after.json> <fn> | check-module <before.json> <after.json> | check-support <in.json> <fn> [index_bits] | check-definedness <in.json> <fn> [index_bits]"
+    IO.eprintln "usage: merlin-lean decode <in.json> | print <in.json> <out.mlir> | check-c1 <before.json> <after.json> <fn> | check-module <before.json> <after.json> | check-module-typed <before.json> <after.json> <index_bits> | check-support <in.json> <fn> [index_bits] | check-definedness <in.json> <fn> [index_bits]"
     return 2

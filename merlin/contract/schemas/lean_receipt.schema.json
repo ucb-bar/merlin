@@ -9,6 +9,9 @@
     "if": {"properties": {"claim_type": {"enum": ["not_stuck", "defined"]}}, "required": ["claim_type"]},
     "then": {"required": ["subject", "function", "domain", "index_bits"]},
     "else": {"required": ["before", "after"]}
+  }, {
+    "if": {"properties": {"checker": {"const": "MerlinVerify.Check.TypedModule.check"}}, "required": ["checker"]},
+    "then": {"required": ["index_bits", "domain", "functions"]}
   }],
   "additionalProperties": false,
   "properties": {
