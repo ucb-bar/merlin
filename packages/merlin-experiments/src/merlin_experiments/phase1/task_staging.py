@@ -291,9 +291,11 @@ Build the compiler in `submission/` from the empty starting directory. The requi
 | SmolVLA | `prefix_encode`, `flow_denoise`, `action_decode` |
 | TinyLlama | `prefill`, `decode` |
 
-Success requires all six programs to compile, link and pass the model numerics policy on Spike,
-a fixed-denominator offload census, and public capsule L3 gSIM qualification.
-Model kernels are checked on Spike; per-kernel model gSIM replay is not requested.
+All six programs must compile and link. During Phase 1, numerical checks require every device kernel
+to replay bit-exactly on Spike, including sealed inputs and sealed shape variants, a fixed-denominator
+offload census, and public capsule L3 gSIM qualification. Whole-model Spike chain validation runs
+on the frozen compiler after the experiment, outside its authoring clock;
+per-kernel model gSIM replay is not requested.
 `qa/verdict.json` reports your
 visible-input results. Sealed-input results appear only in the official grade.
 
@@ -334,7 +336,7 @@ Selected treatment tools:
   language and CLI contract. Do not import Merlin's reference or simulator implementation into
   the submission, or substitute C compute kernels for emitted device code.
 - Keep `manifest.yaml` and the four entrypoints valid. The harness checks package integrity,
-  public capsules (including L3 gSIM), whole-model numerics, and the offload census.
+  public capsules (including L3 gSIM), exact model-kernel replays, and the offload census.
   A pending or unavailable check is not a pass.
 - The harness grades immutable snapshots. You may continue editing while a self-check or grade runs.
   A verdict names the snapshot it graded; check its source digest before treating it as current.

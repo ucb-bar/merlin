@@ -96,6 +96,14 @@ the gate unless a step differs. Its grade is then every kernel exact and the who
 `--decode-steps K` below 32 marks the TinyLlama gate `partial: true`; a partial gate is never an
 official pass.
 
+The Phase 1 harness uses `check --mode fast --split sealed` at the freeze, running the models in
+parallel under the shared compute pool. It requires both the original kernel replays and every selected
+sealed shape variant, with a complete offload census. All required whole programs must still compile
+and link. The reviewed Phase 1 descriptor omits the legacy whole-model execution gate; `--mode full
+--split sealed` runs separately on the frozen submission after the experiment, outside its clock.
+The official report records this integration validation as `deferred_post_experiment`. Public capsule
+L3 gSIM qualification and timing collection remain required; model-kernel gSIM replay is not requested.
+
 - `replay-kernel`: the kernel step alone, for any group or all groups; `--engine gsim` is the RTL check
   per unique kernel, `spike` the fast functional one.
 - `--split sealed|all` on `check` and `replay-kernel` also replays every sealed shape variant of each

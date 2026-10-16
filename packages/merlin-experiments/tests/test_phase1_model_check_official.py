@@ -16,8 +16,8 @@ def selected_target_contract(monkeypatch):
     monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(contract))
 
 
-@pytest.mark.parametrize("command", ["check", "replay-kernel"])
-def test_official_cli_always_disables_cached_evidence(tmp_path, monkeypatch, command):
+@pytest.mark.parametrize("command,mode", [("check", "full"), ("check", "fast"), ("replay-kernel", "full")])
+def test_official_cli_always_disables_cached_evidence(tmp_path, monkeypatch, command, mode):
     seen = []
 
     class Process:
@@ -36,9 +36,11 @@ def test_official_cli_always_disables_cached_evidence(tmp_path, monkeypatch, com
     monkeypatch.setattr(official.subprocess, "Popen", Process)
     result = official._invoke(command, submission=tmp_path / "submission", model="resnet50",
                               output=tmp_path / "report.json", bundle=tmp_path / "bundle", timeout_s=1,
-                              program="model", group="conv_0")
+                              program="model", group="conv_0", mode=mode)
     assert result["status"] == "pass"
     assert seen.count("--no-cache") == 1
+    if command == "check":
+        assert seen[seen.index("--mode") + 1] == mode
 
 
 def test_official_gate_dedupes_explicit_same_shape_kernels(tmp_path, monkeypatch):

@@ -19,7 +19,7 @@ REPORT_SCHEMA = "merlin.model_check.report.v1"
 
 
 def _invoke(command: str, *, submission: Path, model: str, output: Path, bundle: Path,
-            timeout_s: int, program: str | None = None, group: str | None = None) -> dict:
+            timeout_s: int, program: str | None = None, group: str | None = None, mode: str = "full") -> dict:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.unlink(missing_ok=True)
     target = target_from_contract()
@@ -28,12 +28,15 @@ def _invoke(command: str, *, submission: Path, model: str, output: Path, bundle:
             "--models", str(default_models_path(target)), "--no-cache",
             "--work", str(output.with_suffix(".work")), "--out", str(output), "--timeout-s", str(timeout_s)]
     if command == "check":
-        argv += ["--mode", "full"]
+        argv += ["--mode", mode]
     else:
         argv += ["--program", str(program), "--group", str(group), "--engine", "gsim"]
     log = output.with_suffix(".stderr.log")
+    from merlin.common.cpu_pool import worker_pool_command
+
     with log.open("wb") as stream:
-        process = subprocess.Popen(argv, stdout=stream, stderr=subprocess.STDOUT, start_new_session=True)
+        process = subprocess.Popen(worker_pool_command(argv, dict(os.environ)), stdout=stream,
+                                   stderr=subprocess.STDOUT, start_new_session=True)
         try:
             process.wait(timeout=timeout_s + 30)
         except subprocess.TimeoutExpired:
@@ -62,12 +65,15 @@ def _invoke(command: str, *, submission: Path, model: str, output: Path, bundle:
 def run_gate(submission: Path, run_dir: Path, required_programs: dict[str, tuple[str, ...]], *,
              bundle: Path | None = None, model_timeout_s: int = 7200,
              rtl_budget_s: int = 7200, kernel_timeout_s: int = 300,
-             rtl_workers: int = 4, replay_model_kernels: bool = False) -> dict:
-    """Require sealed full-chain Spike; model-kernel RTL is an explicit opt-in.
+             rtl_workers: int = 4, replay_model_kernels: bool = False,
+             mode: str = "full", model_workers: int = 1) -> dict:
+    """Run the selected sealed check; fast requires the sealed shape variants.
 
     Capsule L3 qualification and timing collection are separate and stay enabled.
     An unrequested model RTL check is never reported as completed.
     """
+    if mode not in {"fast", "full"} or type(model_workers) is not int or model_workers < 1:
+        raise ValueError("model check requires an explicit fast/full mode and positive worker count")
     if bundle is None:
         bundle = Bundle.default(target_from_contract()).root
     root = run_dir / "grading_model_check"
@@ -80,47 +86,41 @@ def run_gate(submission: Path, run_dir: Path, required_programs: dict[str, tuple
         slot_cap = 1
     summary = {"schema": "merlin.phase1.model_check_official.v1", "passed": False,
                "split": "sealed", "bundle": str(bundle), "submission_sha256": source_sha256,
+               "mode": mode, "model_workers": min(model_workers, max(1, len(required_programs))),
+               "whole_model_status": "deferred_post_experiment" if mode == "fast" else "required",
                "models": {}, "rtl": [],
                "unique_kernel_count": 0, "rtl_complete": False,
                "rtl_required": replay_model_kernels,
                "rtl_status": "pending" if replay_model_kernels else "not_requested",
                "rtl_workers": max(1, min(int(rtl_workers), 4, slot_cap))}
     selected: dict[tuple, tuple[str, str, str]] = {}
-    for model, programs in required_programs.items():
+    variant_models = Bundle(bundle).manifest().get("models", {}) if mode == "fast" else {}
+
+    def check_model(model):
         result = _invoke("check", submission=submission, model=model,
                          output=root / "models" / f"{model}.json", bundle=bundle,
-                         timeout_s=model_timeout_s)
+                         timeout_s=model_timeout_s, mode=mode)
+        return model, result
+
+    with ThreadPoolExecutor(max_workers=summary["model_workers"]) as executor:
+        checked = list(executor.map(check_model, required_programs))
+    from .model_check_evidence import assess
+
+    for model, result in checked:
+        programs = required_programs[model]
         body = result.pop("body", None)
-        observed = {row.get("program"): row for row in (body or {}).get("programs", [])
-                    if isinstance(row, dict) and isinstance(row.get("program"), str)}
-        if set(observed) != set(programs):
+        counts = {name: value.get("variants") for name, value in (
+            (variant_models.get(model) or {}).get("sealed_variants", {}).get("programs", {}).items())}
+        observed, problems = assess(body, programs, mode=mode, shape_counts=counts)
+        if problems:
             result["status"] = "unavailable" if result["status"] == "pass" else result["status"]
-        metrics = (body or {}).get("model_metrics")
-        if not isinstance(metrics, dict) or not isinstance(metrics.get("worst"), dict):
-            result["status"] = "unavailable" if result["status"] == "pass" else result["status"]
-        for program in programs:
-            item = observed.get(program, {})
-            build = item.get("build")
-            census = item.get("census") or {}
-            kernels = item.get("kernels") or []
-            runs = item.get("runs") or []
-            if (not isinstance(build, dict) or build.get("status") != "linked"
-                    or not isinstance(census, dict)
-                    or not isinstance(census.get("denominator"), int)
-                    or not isinstance(census.get("device"), int)
-                    or not 0 <= census["device"] <= census["denominator"]
-                    or not any(isinstance(run, dict) and run.get("engine") == "spike"
-                               and run.get("status") == "completed" for run in runs)
-                    or census["device"] > 0 and not any(
-                        isinstance(row, dict) and isinstance(row.get("source_region_id"), str)
-                        for row in kernels)):
-                result["status"] = "unavailable" if result["status"] == "pass" else result["status"]
+            result["evidence_problems"] = problems
         summary["models"][model] = {**result, "programs": {
             program: {"build": observed.get(program, {}).get("build"),
                       "census": observed.get(program, {}).get("census")}
             for program in programs}}
         if result["status"] != "pass":
-            continue  # no RTL cost can turn an incomplete full-chain check into an official pass
+            continue  # RTL cannot turn an incomplete numerical check into a pass
         for program in programs:
             for kernel in observed.get(program, {}).get("kernels", []):
                 if not isinstance(kernel, dict) or not isinstance(kernel.get("source_region_id"), str):
