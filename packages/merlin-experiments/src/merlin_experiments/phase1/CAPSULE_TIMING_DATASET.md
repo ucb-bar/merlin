@@ -49,7 +49,8 @@ counter_semantics:
 At completion, Phase 1 writes `capsule_timing_audit.json` and
 `capsule_timing_archive_status.json` in the run directory. If every passing gSIM
 L3 result has a positive label, matching kernel-scope caller marker, original
-ELF, input, numeric and simulator artifacts, and an RTL-derived/cycle-accurate/pass verdict,
+ELF, compiler and command-buffer identities, input, numeric and simulator artifacts,
+and an RTL-derived/cycle-accurate/pass verdict,
 it also writes `capsule_timing.tar`. The operator can rerun the host-only audit
 or export on a retained run:
 
@@ -88,8 +89,82 @@ ELF embeds the harness's exact input bytes; the archived `harness.c`,
 `input.interface.mlir`, `command_buffer.json`, result and logs expose the input
 and compilation context. The archived instruction trace is a **static** trace;
 it must not be treated as a dynamic event timeline.
+`timing_ready` covers the retained passing gSIM L3 results. It does not assert
+that every capsule in the admitted corpus ran at L3. Compare the archive's
+capsule roster with the frozen corpus and grading manifest before describing a
+dataset as an all-capsule measurement sweep. Failed or screened-only capsules
+have no usable timing label.
 
 ## Spike calibration and Phase 2 handoff
+
+The intended Phase 2 model is annotated Spike **with its Gemmini accelerator
+observer**. Calibrate in two stages. First, derive the architectural structure
+from the *elaborated, selected* RTL and its pinned source/configuration: mesh
+geometry, scratchpad and accumulator banks/ports, reservation-station entries,
+command-queue depths and issue rules, DMA maximum transfer and outstanding
+request limits, cache geometry, and the CPU/Gemmini clock relationship. The
+selected INT8 [GemminiConfigs.defaultConfig](https://github.com/copparihollmann/gemmini/blob/63f0b68a68f185a016a2993f2fb32e1661ea9e6c/src/main/scala/gemmini/Configs.scala)
+source declares a 16x16 mesh,
+4 scratchpad banks, 2 accumulator banks, 8/16/4 load/execute/store reservation
+entries, 8/8/2 corresponding command-queue depths, 16 outstanding memory
+requests and a 64-byte DMA maximum. Verify those effective values against the
+FireSim-aligned gSIM elaboration rather than assuming no config override.
+Record each fact's generated artifact or source path, SHA256, derivation and
+mapping into the timing model. A hardware queue entry is not automatically a
+generic observer resource lane; match the model field's admission/issue
+semantics before assigning a number.
+
+The existing FireSim-aligned gSIM receipt already contains a generated FIRRTL
+(`6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149`)
+and DTS (`c4a2009a405945ea98f731713e0f4e7dc483031ab8cd5156d871e4eb7594f1df`).
+In the FIRRTL `ReservationStation` module, instantiated `entries_ld[0..7]`,
+`entries_ex[0..15]` and `entries_st[0..3]` corroborate those source entry
+counts; `LoadController` and `StoreController` instantiate the 8- and 2-entry
+command queue modules. The DTS declares 16 GiB RAM at `0x80000000`, 32 KiB
+I/D caches and a 512 KiB L2. A reproducible fact extractor should read the
+pinned config chain and generated artifacts, emit a machine-readable
+`rtl_facts.json` with each value, unit, source digest and evidence selector,
+then check that source and elaboration agree. It should refuse a differing
+generated design instead of silently filling the Spike profile from source
+defaults. The current `fire_aligned_30mhz.json` is not yet populated this way.
+The DTS's CPU `clock-frequency = <0>` is not a usable guest-cycle frequency;
+clock/counter semantics need their own reviewed sources and timing contract.
+
+Map each RTL fact to the behavior it limits, rather than matching field names:
+
+| RTL fact | Timing-model role |
+| --- | --- |
+| 16x16 mesh, dataflow and type widths | Decode command work and legal packet shapes; calculate tile count, bytes and MACs. |
+| 8/16/4 load/execute/store reservation entries | Per-class **live-command credits**, held from allocation until completion. |
+| 8/8/2 controller command queues | Buffers after reservation-station issue, distinct from live-command credits. |
+| Reservation-station issue logic | Per-class issue arbitration and dependency readiness. |
+| 4 scratchpad and 2 accumulator banks/ports | Address-to-bank mapping and port conflicts for local-memory phases. |
+| 16 outstanding memory requests and 64-byte DMA maximum | Split transfers into bounded requests; return credits on responses and share memory service. |
+| 32 KiB I/D caches, 512 KiB L2, 16 GiB map | Cache geometry, residency and legal guest addresses; fit miss service separately. |
+
+The current generic engine's `ResourceSpec.capacity` means simultaneous
+occupancy lanes and `queue_capacity` means reservations waiting to *start*;
+neither is an RTL reservation-station entry held from allocation through
+completion. Set an issue-port resource's occupancy to its initiation interval,
+not its full command latency, so independent commands can overlap. A small
+Gemmini-specific scheduler should separately track reservation credits,
+controller queues, banks and DMA credits, and publish command completion to
+the generic dependency engine. Until those roles exist, use a plainly labeled
+coarse approximation and validate its **ranking** on held-out matched variants;
+do not put `8/16/4` directly into the generic lane or wait-queue fields and
+present that as a faithful RTL mapping.
+
+Second, fit only the remaining primitive latency/occupancy, transfer,
+host/cache and memory-service prices against the gSIM whole-call labels and
+targeted diagnostics. RTL pipeline structure can constrain minimum latencies,
+but queueing, cache warmth, contention and effective DRAM service depend on the
+executed workload. The labels constrain combined behavior; they do not identify
+an individual command latency by themselves. Keep unsupported or
+unidentifiable parameters unknown, and use held-out capsule families to test the
+result. `merlin_timing.fitting.fit` currently produces a diagnostic linear
+feature screen, not a calibrated Gemmini event-model configuration. The event
+model still needs an explicit parameter-selection/fitting step before Phase 2
+can use it as a tuned Spike timing model.
 
 Use one passing, complete gSIM L3 row as one supervised example. Run the
 archived ELF with the same input on the selected Spike configuration to produce
@@ -111,6 +186,99 @@ elaboration's capsule-call cycles. U250 measurements are not a prerequisite for
 this handoff; they are required only to claim or calibrate board cycles. Full-model
 executions are outside this capsule dataset.
 
+## Dynamic command graph and efficient replay
+
+Nicolas Rakanic's [MX-Gemmini performance extension](https://github.com/ucb-bar/libgemmini/tree/c17f961816b5ab48a447f7cd7abda0e5d2445e5d)
+is a useful design reference, not a parameter set for this INT8 target. Its
+[reservation station](https://github.com/ucb-bar/libgemmini/blob/c17f961816b5ab48a447f7cd7abda0e5d2445e5d/perf/control/reservation_station.cc)
+derives dependencies from local row read/write spans and live queue entries;
+load, execute, store and vector queues have distinct issue rules. Its
+[event queue](https://github.com/ucb-bar/libgemmini/blob/c17f961816b5ab48a447f7cd7abda0e5d2445e5d/perf/sim/event_queue.h)
+advances only to scheduled activity and separates same-cycle evaluation from
+state commit. Its [model trace](https://github.com/ucb-bar/libgemmini/blob/c17f961816b5ab48a447f7cd7abda0e5d2445e5d/perf/model.cc)
+can emit command allocation, issue, completion and row spans plus selected
+unit events. These are model events to compare with RTL diagnostics, not measured
+gSIM command timestamps.
+
+For the Phase 1 corpus, preserve the existing exact ELF/input and single
+kernel-call gSIM cycle label as the primary training record. On replay in Spike,
+derive a **compact dynamic command graph** for each passing capsule: RoCC
+instruction order and PC, funct and operand words, expanded loop commands where
+used, decoded shape/bytes/MACs, local row read/write ranges, dependency edges,
+fence/wait position, unknown decoding reasons and the selected counter-window
+membership. Bind the graph to ELF, input, target-config and observer hashes.
+This graph is a reconstruction from the functional execution, not a hardware
+timestamp trace; keep its schema/version separate from the measured label.
+The selected Phase 1 command contract excludes loop/FSM functs. Verify that
+with a pre-launch replay census of the compiled capsules; if the census holds,
+the current observer's rejection of those functs is irrelevant to this corpus.
+The MX model's loop expansion remains a reference only for a future command
+contract that admits them.
+
+For a bounded diagnostic subset, add Gemmini performance-counter snapshots or
+RTL event captures to separate load, compute, store, overlap, queue waits and
+DMA traffic. Record the counter selector, start/end scope and perturbation check
+for each diagnostic run. Hardware exposes fewer simultaneous counter slots than
+event kinds, so selected counter groups may require repeated runs; do not merge
+different runs into a single supposedly exact command timeline. Keep verbose
+per-command or per-cycle RTL traces only for outliers and validation
+microbenchmarks. The primary gSIM label must keep its reviewed uninstrumented
+measurement window.
+
+The MX extension's [three modes](https://github.com/ucb-bar/libgemmini/blob/c17f961816b5ab48a447f7cd7abda0e5d2445e5d/gemmini_perf.cc)
+illustrate a performance tradeoff: `func` runs the functional extension,
+`both` also runs the timing model, and `perf` skips data-moving and computing
+functional commands. `perf` can accelerate timing-only sweeps when those
+commands cannot affect later control flow or address generation, but it cannot
+serve as the numerical oracle. Measure `func`, `both` and any timing-only mode on
+the *same* Phase 1 capsules, recording wall time, command count, timing
+completeness and cycle prediction; require functional equivalence separately.
+The reported 100x speedup has no published comparable benchmark in this source
+revision and must be treated as a claim until the selected build and workload
+reproduce it.
+
+## Qualification for Phase 2 optimization ranking
+
+Phase 2 primarily needs to choose among candidate implementations of the
+**same** workload, input and measurement scope. One measured implementation
+per capsule is insufficient to test that decision, even if many different
+capsules have labels. Before the Phase 1 measurement window closes, retain
+several numerically passing ELFs per representative capsule: a baseline and
+controlled variants of tiling, data reuse, transfer schedule, fence placement
+and CPU/accelerator partition where the command contract permits them. Keep
+these calibration/validation variants separate from the scored agent submission.
+Run each variant on the same pinned gSIM, hash its ELF and input, and archive
+its compiler provenance and kernel-call cycle label. If the Phase 1 agent
+naturally produced multiple retained candidate ELFs, use them too; do not
+assume that the final capsule archive contains enough matched alternatives.
+
+Choose variants and shapes that separately stress command count, DMA bytes,
+mesh work, local-memory reuse, queue pressure and host work, with both small
+and large cases. This gives the fit a chance to distinguish fixed command
+cost from per-byte and per-MAC cost. Read hardware geometry, capacities and
+issue rules from the pinned RTL; fit only a small set of remaining timing
+prices. Store every trial's parameter file and training/validation membership
+so the selected model can be reproduced. Repeated gSIM runs on a subset should
+measure label stability; near-tied candidates need more repeats or should be
+reported as ties.
+
+Hold out entire workload/shape groups before fitting, with each mechanism
+family represented in both train and test; reserve some transformation types
+for a separate extrapolation stress test. Evaluate within-workload pair ordering,
+sign of predicted speedup,
+top-choice regret and coverage, broken down by mechanism and by measured
+speedup size. The existing `merlin_timing.validation` gate requires 90% order
+agreement for held pairs separated by more than 5%, at least 20 eligible pairs
+across three mechanism families, plus absolute-error limits. Report those
+limits without silently weakening its existing qualification status. A separate
+Phase 2 ranking decision may weigh held-out ordering and measured regret more
+heavily than absolute cycle error. Preserve an uncertainty/abstention rule:
+when predicted alternatives
+are closer than observed label noise or the held-out error band, ask the LLM
+to treat them as tied or request another measurement, not claim a winner.
+Do not claim rank validation if the corpus supplies fewer than the required
+matched pairs; cross-workload comparisons do not replace them.
+
 The annotated Spike model at
 [`806ec0adda22`](https://github.com/copparihollmann/riscv-isa-sim-gemmini/tree/806ec0adda2242597b253ebf17adfaa5cdb395e3)
 accepts a `counter_pc_pair` scope binding with exact `elf_sha256`,
@@ -127,8 +295,10 @@ counter-pair guess is not the capsule label's scope.
 The annotated Spike branch now has a separate `fire_aligned_30mhz.json` profile
 associated with archive SHA256 `0af6f26e…`, with the FireSim-selected `5b1254a7…`
 functional receiver. The older `stock_u250.json` belongs to `a9a190b9…`.
-The new profile's primitive prices and queue capacities remain unknown until
-calibration. Fitting them to gSIM labels must bind the gSIM executable, FIRRTL
+The new profile's primitive prices and queue capacities are currently null.
+Populate RTL-derived facts before fitting workload-dependent prices, and keep
+any field without a defensible mapping unknown. Fitting to gSIM labels must
+bind the gSIM executable, FIRRTL
 and counter scope as the timing target; the archive association is only source
 context. Matching ABI header `3758ae96…` does not make the two bitstreams
 one timing target. Launch Spike with the selected 16 GiB map beginning at

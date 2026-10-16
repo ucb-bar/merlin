@@ -44,10 +44,10 @@ def _capsule(root, run, name, cycles):
                 "capsule": name,
                 "status": "pass",
                 "command_buffer_artifact": {
-                    "artifact_sha256": "command-buffer-digest",
+                    "artifact_sha256": "c" * 64,
                     "command_buffer": {"tensors": {"input": {"dtype": "i8", "shape": [4, 8]}}},
                 },
-                "original_compiler_child": {"candidate_sha256": "candidate-digest"},
+                "original_compiler_child": {"candidate_sha256": "d" * 64},
                 "tiers": {
                     "L3": {
                         "status": "pass",
@@ -56,7 +56,7 @@ def _capsule(root, run, name, cycles):
                         "cycle_accurate": True,
                         "cycles": cycles,
                         "timing": {"sim_active_s": 1.5},
-                        "sim_provenance": {"sha256": "emulator-digest"},
+                        "sim_provenance": {"sha256": "e" * 64},
                     }
                 },
             }
@@ -94,8 +94,8 @@ def test_archive_requires_real_cycles_and_keeps_capsule_artifacts(tmp_path):
         assert index["gsim_pass_with_cycles"] == 2
         assert all(row["elf_sha256"] for row in index["records"])
         assert all(row["shape"] == {"input": {"dtype": "i8", "shape": [4, 8]}} for row in index["records"])
-        assert all(row["command_buffer_sha256"] == "command-buffer-digest" for row in index["records"])
-        assert all(row["candidate_sha256"] == "candidate-digest" for row in index["records"])
+        assert all(row["command_buffer_sha256"] == "c" * 64 for row in index["records"])
+        assert all(row["candidate_sha256"] == "d" * 64 for row in index["records"])
         assert all(row["timing_selection_sha256"] == "a" * 64 for row in index["records"])
         assert all(
             row["timing_selection"]["counter_semantics"]["clock"] == "selected-clock" for row in index["records"]
@@ -117,8 +117,20 @@ def test_archive_requires_elf_and_simulator_identity(tmp_path):
     assert report["gsim_pass_with_cycles"] == 1
     assert report["gsim_pass_complete"] == 0
     assert report["timing_ready"] is False
-    with pytest.raises(A.TimingArchiveError, match="ELF, simulator and kernel-scope identities"):
+    with pytest.raises(A.TimingArchiveError, match="ELF, compiler, command-buffer, simulator and kernel-scope identities"):
         A.archive(tmp_path, tmp_path / "capsules.tar")
+
+
+def test_archive_requires_compiler_identity_for_spike_import(tmp_path):
+    capsule = _capsule(tmp_path, "runs_r0000_t000001", "A", 10)
+    result = capsule / "capsule_result.json"
+    document = json.loads(result.read_text())
+    document["original_compiler_child"].pop("candidate_sha256")
+    result.write_text(json.dumps(document))
+    report = A.audit(tmp_path)
+    assert report["gsim_pass_with_cycles"] == 1
+    assert report["gsim_pass_complete"] == 0
+    assert report["timing_ready"] is False
 
 
 def test_archive_refuses_unscoped_cycle_marker(tmp_path):

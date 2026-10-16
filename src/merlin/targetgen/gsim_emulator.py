@@ -629,14 +629,14 @@ def probe(target: str, *, env_var: str | None = None) -> tuple[bool, str]:
     return r.ok, r.reason
 
 
-def citation(target: str, *, env_var: str | None = None) -> dict[str, Any]:
+def citation(target: str, *, env_var: str | None = None, backend=None) -> dict[str, Any]:
     """The block a run record embeds so a GSIM verdict says which emulator produced it.
 
     Recorded whether or not the emulator is usable — "GSIM was refused because ..." is exactly as much a
     fact about a run as "GSIM certified these capsules", and only one of the two currently survives into
     any artifact.
     """
-    r = resolve(target, env_var=env_var)
+    r = resolve(target, env_var=env_var, backend=backend)
     return {
         "target": r.target,
         "engine": "gsim",
