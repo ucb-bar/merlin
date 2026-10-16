@@ -4,12 +4,15 @@
 each split's selection rule. :func:`prepare` applies the rule, runs the model's own preprocessing in its
 pinned environment (:mod:`merlin.model_check.input_worker`), and writes:
 
-- the stored form of every VISIBLE input to the public example (small: a uint8 crop or frame, a token list);
-- the stored form of every SEALED input, and every input's model-ready arrays, to the private root;
+- the stored forms of the VISIBLE inputs to the public example (small: a uint8 crop or frame, a token list);
+- the stored forms of the SEALED inputs, and every input's model-ready arrays, to the private root;
 - calibration items, privately, with their ids and hashes committed so the set is reproducible;
 - ``MANIFEST.json`` beside ``sources.yaml``: the sha256 of every file, sealed ones included.
 
-A public example never holds a holdout: sealed inputs are committed to by sha256 only.
+The stored forms of one model and split are two files (:func:`stored_paths`): ``<split>.npz`` with one
+array per input and field (key ``<id>.<field>``) and ``<split>.json`` with each input's metadata. The
+model-ready arrays stay one file per input. A public example never holds a holdout: sealed inputs are
+committed to by sha256 only.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ import hashlib
 import json
 import subprocess
 import tarfile
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -98,13 +102,80 @@ def run_worker(
     return json.loads(res.read_text())
 
 
-def _split_dirs(public: Path, private: Path, model: str, split: str, ident: str) -> tuple[Path, Path]:
-    """Stored form (public for visible, private for sealed) and model-ready arrays (always private)."""
-    stored = (public / "inputs" if split == "visible" else private / "stored") / model / split / ident
-    derived = private / "derived" / model / split / ident
-    stored.mkdir(parents=True, exist_ok=True)
-    derived.mkdir(parents=True, exist_ok=True)
-    return stored, derived
+# ----------------------------------------------------------------------------------- stored forms
+
+
+def stored_paths(root: Path, model: str, split: str) -> tuple[Path, Path]:
+    """The arrays (``<split>.npz``) and metadata (``<split>.json``) of ``model``'s stored ``split``.
+
+    ``root`` is the public example for the visible split (``inputs/<model>/``) and the private root for
+    the sealed one (``stored/<model>/``).
+    """
+    directory = Path(root) / ("inputs" if split == "visible" else "stored") / model
+    return directory / f"{split}.npz", directory / f"{split}.json"
+
+
+def stored(root: Path, model: str, split: str) -> dict[str, dict[str, Any]]:
+    """Stored forms by input id: ``{"meta": {...}, "arrays": {field: array}}``.
+
+    Metadata and arrays stay apart because one name can mean both (SmolVLA's ``frame`` is the frame
+    index in the metadata and the pixels in the arrays). A split without arrays has no ``.npz``.
+    """
+    arrays_path, meta_path = stored_paths(root, model, split)
+    if not meta_path.is_file():
+        raise InputError(f"no stored {split} inputs of {model}: {meta_path}")
+    items = {ident: {"meta": meta, "arrays": {}} for ident, meta in json.loads(meta_path.read_text()).items()}
+    if arrays_path.is_file():
+        for key, value in _load_npz(arrays_path).items():
+            ident, _, field = key.partition(".")
+            if ident not in items or not field:
+                raise InputError(f"{arrays_path}: array {key!r} names no input of {meta_path.name}")
+            items[ident]["arrays"][field] = value
+    return items
+
+
+def write_stored(root: Path, model: str, split: str, items: dict[str, dict[str, Any]]) -> list[Path]:
+    """Write ``split``'s stored forms (the inverse of :func:`stored`); returns the files written.
+
+    The bytes depend only on ``items``: arrays go through the byte-stable ``save_npz`` (sorted keys,
+    fixed timestamps) and the metadata is one line per input, in id order, with sorted keys.
+    """
+    if any("." in ident for ident in items):
+        raise InputError(f"input ids may not contain '.': {sorted(items)}")
+    arrays_path, meta_path = stored_paths(root, model, split)
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    arrays = {f"{i}.{field}": value for i, item in items.items() for field, value in item["arrays"].items()}
+    if arrays:
+        _save_npz(arrays_path, **arrays)
+    else:
+        arrays_path.unlink(missing_ok=True)
+    lines = [f" {json.dumps(i)}: {json.dumps(items[i]['meta'], sort_keys=True)}" for i in sorted(items)]
+    meta_path.write_text("{\n" + ",\n".join(lines) + "\n}\n")
+    return [path for path in (arrays_path, meta_path) if path.is_file()]
+
+
+def stored_hashes(root: Path, model: str, split: str) -> dict[str, str]:
+    """``MANIFEST.json``'s entry for a stored split: the sha256 of each of its files, by file name."""
+    return {path.name: sha256_file(path) for path in stored_paths(root, model, split) if path.is_file()}
+
+
+def _load_npz(path: Path) -> dict[str, np.ndarray]:
+    with np.load(path, allow_pickle=False) as data:
+        return {key: np.asarray(data[key]) for key in data.files}
+
+
+def _derived_dir(private: Path, model: str, split: str, ident: str) -> Path:
+    """Model-ready arrays of one input (always private)."""
+    directory = Path(private) / "derived" / model / split / ident
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def _item_dir(items: Path, split: str, ident: str) -> Path:
+    """Where a worker writes one input's stored form before :func:`write_stored` gathers the split."""
+    directory = Path(items) / split / ident
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
 
 
 # ----------------------------------------------------------------------------------------- resnet
@@ -122,7 +193,7 @@ def _imagenette_members(archive: Path) -> dict[tuple[str, str], list[str]]:
     return by_class
 
 
-def _prepare_resnet(spec, data_root, public, private, python, scratch) -> dict[str, Any]:
+def _prepare_resnet(spec, data_root, private, python, scratch, items) -> dict[str, Any]:
     archive = Path(data_root) / Path(spec["source"]["url"]).name
     _verify(archive, spec["source"]["sha256"])
     by_class = _imagenette_members(archive)
@@ -148,7 +219,7 @@ def _prepare_resnet(spec, data_root, public, private, python, scratch) -> dict[s
     with tarfile.open(archive) as tar:
         images = []
         for row in plan:
-            stored, derived = _split_dirs(public, private, "resnet50", row["split"], row["id"])
+            derived = _derived_dir(private, "resnet50", row["split"], row["id"])
             source = scratch / "resnet" / Path(row["member"]).name
             source.parent.mkdir(parents=True, exist_ok=True)
             source.write_bytes(tar.extractfile(row["member"]).read())
@@ -157,30 +228,31 @@ def _prepare_resnet(spec, data_root, public, private, python, scratch) -> dict[s
                 {
                     "id": row["id"],
                     "path": str(source),
-                    "stored": str(stored / "image.npz"),
+                    "stored": str(_item_dir(items, row["split"], row["id"]) / "image.npz"),
                     "inputs": str(derived / "inputs.npz"),
                 }
             )
-            row["stored"], row["derived"] = stored, derived
         calibration_rows = [
             {"member": name, "sha256": hashlib.sha256(tar.extractfile(name).read()).hexdigest()} for name in calibration
         ]
     result = run_worker(python, "resnet_crops", {"images": images}, scratch / "resnet")
-    transform = result["transform"]
+    stored_forms: dict[str, dict[str, Any]] = {}
     for row in plan:
-        (row["stored"] / "meta.json").write_text(
-            json.dumps(
-                {
-                    "member": row["member"],
-                    "synset": row["synset"],
-                    "imagenet_label": row["label"],
-                    "source_sha256": row["source_sha256"],
-                },
-                indent=1,
-            )
-            + "\n"
-        )
-    return {"transform": transform, "inputs": plan, "calibration": calibration_rows}
+        stored_forms.setdefault(row["split"], {})[row["id"]] = {
+            "meta": {
+                "member": row["member"],
+                "synset": row["synset"],
+                "imagenet_label": row["label"],
+                "source_sha256": row["source_sha256"],
+            },
+            "arrays": _load_npz(_item_dir(items, row["split"], row["id"]) / "image.npz"),
+        }
+    return {
+        "transform": result["transform"],
+        "inputs": plan,
+        "stored": stored_forms,
+        "calibration": calibration_rows,
+    }
 
 
 # ------------------------------------------------------------------------------------- tiny_llama
@@ -199,7 +271,7 @@ def _articles(rows: list[str]) -> list[str]:
     return ["".join(lines).strip() for lines in articles if "".join(lines).strip()]
 
 
-def _prepare_tiny_llama(spec, data_root, public, private, python, scratch, *, rows_python) -> dict[str, Any]:
+def _prepare_tiny_llama(spec, data_root, private, python, scratch, items, *, rows_python) -> dict[str, Any]:
     tokenizer = spec["tokenizer_path"]
     count = int(spec["segment_tokens"])
     splits: dict[str, list[list[int]]] = {}
@@ -218,16 +290,18 @@ def _prepare_tiny_llama(spec, data_root, public, private, python, scratch, *, ro
             scratch / "tiny",
         )
         splits[split] = [ids[:count] for ids in json.loads(tokens_out.read_text()) if len(ids) >= count]
-    plan = []
+    plan: list[dict[str, Any]] = []
+    stored_forms: dict[str, dict[str, Any]] = {}
     for split in ("visible", "sealed"):
         rule = spec[split]
         lo, hi = rule["articles"]
         for index, ids in enumerate(splits[rule["split"]][lo:hi]):
             ident = f"{split[0]}{index:02d}"
-            stored, derived = _split_dirs(public, private, "tiny_llama", split, ident)
-            (stored / "tokens.json").write_text(
-                json.dumps({"split": rule["split"], "article": lo + index, "tokens": ids}) + "\n"
-            )
+            derived = _derived_dir(private, "tiny_llama", split, ident)
+            stored_forms.setdefault(split, {})[ident] = {
+                "meta": {"split": rule["split"], "article": lo + index, "tokens": ids},
+                "arrays": {},
+            }
             _save_npz(derived / "inputs.npz", tokens=np.asarray(ids, np.int64))
             plan.append({"split": split, "id": ident, "article": lo + index})
     lo, hi = spec["calibration"]["articles"]
@@ -235,40 +309,33 @@ def _prepare_tiny_llama(spec, data_root, public, private, python, scratch, *, ro
         {"article": i, "sha256": hashlib.sha256(np.asarray(ids, np.int64).tobytes()).hexdigest()}
         for i, ids in enumerate(splits[spec["calibration"]["split"]][lo:hi], start=lo)
     ]
-    return {"inputs": plan, "calibration": calibration}
+    return {"inputs": plan, "stored": stored_forms, "calibration": calibration}
 
 
 # ---------------------------------------------------------------------------------------- smolvla
 
 
-def _prepare_smolvla(spec, data_root, public, private, python, scratch) -> dict[str, Any]:
-    items, plan = [], []
+def _prepare_smolvla(spec, data_root, private, python, scratch, items) -> dict[str, Any]:
+    requests, plan = [], []
     for split in ("visible", "sealed"):
         rule = spec[split]
         lo, hi = rule["episodes"]
         for index, episode in enumerate(range(lo, hi)):
             ident = f"{split[0]}{index:02d}"
-            stored, derived = _split_dirs(public, private, "smolvla", split, ident)
+            derived = _derived_dir(private, "smolvla", split, ident)
             seed = int(rule["noise_seed_base"]) + index
-            items.append(
+            requests.append(
                 {
                     "id": ident,
                     "episode": episode,
                     "frame": int(rule["frame"]),
                     "noise_seed": seed,
-                    "stored": str(stored / "frame.npz"),
+                    "stored": str(_item_dir(items, split, ident) / "frame.npz"),
                     "arrays": str(derived / "observation.npz"),
                 }
             )
             plan.append(
-                {
-                    "split": split,
-                    "id": ident,
-                    "episode": episode,
-                    "frame": int(rule["frame"]),
-                    "noise_seed": seed,
-                    "stored": stored,
-                }
+                {"split": split, "id": ident, "episode": episode, "frame": int(rule["frame"]), "noise_seed": seed}
             )
     calibration_items = []
     lo, hi = spec["calibration"]["episodes"]
@@ -293,29 +360,27 @@ def _prepare_smolvla(spec, data_root, public, private, python, scratch) -> dict[
         "dataset_root": spec["source"]["local_root"],
         "policy_snapshot": spec["policy_path"],
         "vlm_snapshot": spec["vlm_path"],
-        "items": items + calibration_items,
+        "items": requests + calibration_items,
     }
     result = run_worker(python, "smolvla_frames", request, scratch / "smolvla")
+    stored_forms: dict[str, dict[str, Any]] = {}
     for row in plan:
-        meta = result["items"][row["id"]]
-        (row["stored"] / "observation.json").write_text(
-            json.dumps(
-                {
-                    "episode": row["episode"],
-                    "frame": row["frame"],
-                    "noise_seed": row["noise_seed"],
-                    "task": meta["task"],
-                    "raw_state": meta["raw_state"],
-                },
-                indent=1,
-            )
-            + "\n"
-        )
+        observed = result["items"][row["id"]]
+        stored_forms.setdefault(row["split"], {})[row["id"]] = {
+            "meta": {
+                "episode": row["episode"],
+                "frame": row["frame"],
+                "noise_seed": row["noise_seed"],
+                "task": observed["task"],
+                "raw_state": observed["raw_state"],
+            },
+            "arrays": _load_npz(_item_dir(items, row["split"], row["id"]) / "frame.npz"),
+        }
     calibration = [
         {"id": c["id"], "episode": c["episode"], "frame": c["frame"], "sha256": sha256_file(Path(c["arrays"]))}
         for c in calibration_items
     ]
-    return {"inputs": [{k: v for k, v in r.items() if k != "stored"} for r in plan], "calibration": calibration}
+    return {"inputs": plan, "stored": stored_forms, "calibration": calibration}
 
 
 PREPARERS: dict[str, Callable[..., dict[str, Any]]] = {
@@ -340,21 +405,23 @@ def prepare(
     scratch: Path,
     **extra: Any,
 ) -> dict[str, Any]:
-    """Select, preprocess and store ``model``'s inputs; update both manifests."""
+    """Select, preprocess and store ``model``'s inputs; update both manifests.
+
+    Workers write each input's stored form into a temporary directory inside the private root, so a
+    sealed form never leaves it; :func:`write_stored` then gathers each split into its two files.
+    """
     sources = load_sources(sources_path)
     spec = dict(sources["models"][model])
     spec.update({k: v for k, v in extra.items() if k.endswith("_path")})
     kwargs = {k: v for k, v in extra.items() if not k.endswith("_path")}
-    record = PREPARERS[model](spec, data_root, public, private, python, scratch, **kwargs)
-    visible_root = public / "inputs" / model / "visible"
-    sealed_root = private / "stored" / model / "sealed"
+    public, private = Path(public), Path(private)
+    private.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".stored-items-", dir=private) as items:
+        record = PREPARERS[model](spec, data_root, private, python, scratch, Path(items), **kwargs)
+    roots = {"visible": public, "sealed": private}
+    for split, forms in record["stored"].items():
+        write_stored(roots[split], model, split, forms)
     derived_root = private / "derived" / model
-    entry = {
-        "visible": _tree_hashes(visible_root) if visible_root.is_dir() else {},
-        "sealed": _tree_hashes(sealed_root) if sealed_root.is_dir() else {},
-        "derived": _tree_hashes(derived_root) if derived_root.is_dir() else {},
-        "selection": [{k: v for k, v in row.items() if k not in ("stored", "derived")} for row in record["inputs"]],
-    }
     calibration_path = public / "calibration" / f"{model}.json"
     calibration_path.parent.mkdir(parents=True, exist_ok=True)
     calibration_path.write_text(json.dumps({"model": model, "items": record["calibration"]}, indent=1) + "\n")
@@ -363,8 +430,9 @@ def prepare(
     manifest.setdefault("models", {})[model] = {
         "sources_sha256": sha256_file(sources_path),
         "calibration_sha256": sha256_file(calibration_path),
-        **{k: v for k, v in entry.items() if k != "derived"},
-        "derived": entry["derived"],
+        **{split: stored_hashes(root, model, split) for split, root in roots.items()},
+        "derived": _tree_hashes(derived_root) if derived_root.is_dir() else {},
+        "selection": record["inputs"],
         **({"transform": record["transform"]} if "transform" in record else {}),
     }
     manifest_path.write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n")
