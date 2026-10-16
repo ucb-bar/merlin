@@ -62,6 +62,9 @@ class _Obligation:
 
 
 _MODULE = _Obligation("check-module", CHECKER, THEOREM, "refine_conditional", "MerlinVerify.Check.Module")
+_TYPED_MODULE = _Obligation("check-module-typed", "MerlinVerify.Check.TypedModule.check",
+                            "MerlinVerify.Check.TypedModule.check_sound", "refine_conditional",
+                            "MerlinVerify.Check.TypedModule")
 _SUPPORT = _Obligation("check-support", SUPPORT_CHECKER, SUPPORT_THEOREM, "not_stuck", "MerlinVerify.Check.Rulebook")
 _DEFINED = _Obligation("check-definedness", DEFINED_CHECKER, DEFINED_THEOREM, "defined",
                        "MerlinVerify.Check.DefinedLinalg", defined_inputs=True)
@@ -180,7 +183,14 @@ def check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
     return _attempt(stage, lambda: _check_stage(stage, m2m_python=m2m_python))
 
 
-def _check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
+def check_typed_stage(stage: Path, *, m2m_python: Path, index_bits: int = 64) -> dict[str, Any]:
+    """Check a boundary on declared input types at an explicit index width; preserve its domain."""
+    return _function_attempt(stage, index_bits, lambda: _check_stage(
+        stage, m2m_python=m2m_python, obligation=_TYPED_MODULE, index_bits=index_bits))
+
+
+def _check_stage(stage: Path, *, m2m_python: Path, obligation: _Obligation = _MODULE,
+                 index_bits: int | None = None) -> dict[str, Any]:
     """Check one stage directory and write ``stage/receipt.json``; returns the receipt."""
     meta = json.loads((stage / "meta.json").read_text())
     before, after = stage / "before.mlir", stage / "after.mlir"
@@ -192,16 +202,18 @@ def _check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
         # Conditional: the theorem says nothing where the source is unmodelled; strict refinement
         # comes only from `compose_chain` with the capture's support receipt.
         "claim_type": "refine_conditional",
-        "checker": CHECKER,
-        "theorem": THEOREM,
+        "checker": obligation.checker,
+        "theorem": obligation.theorem,
         "before": _snapshot(before, before_snapshot),
         "after": _snapshot(after, after_snapshot),
         "exporter": _exporter_block(m2m_python),
         "lean": _lean_block(),
-        "axioms": theorem_axioms(THEOREM, "MerlinVerify.Check.Module"),
+        "axioms": theorem_axioms(obligation.theorem, obligation.module),
         "verdict": "unmeasured",
         "assumptions": list(LEDGER),
     }
+    if obligation is _TYPED_MODULE:
+        receipt.update(index_bits=index_bits, domain=_domain(index_bits))
     exports = [_export_checked(p, work / f"rt_{p.stem}", m2m_python=m2m_python)
                for p in (before_snapshot, after_snapshot)]
     bad = [reason for _, reason in exports if reason is not None]
@@ -211,14 +223,20 @@ def _check_stage(stage: Path, *, m2m_python: Path) -> dict[str, Any]:
         return _write(stage, receipt)
     jb, ja = (path for path, _ in exports)
     receipt["exports"] = {"before": _file_ref(jb), "after": _file_ref(ja)}
-    proc = subprocess.run([str(lean_exe()), "check-module", str(jb), str(ja)], capture_output=True, text=True,
+    command = [str(lean_exe()), obligation.command, str(jb), str(ja)]
+    if obligation is _TYPED_MODULE:
+        command.append(str(index_bits))
+    proc = subprocess.run(command, capture_output=True, text=True,
                           check=False)
     if proc.returncode not in (0, 1):
         receipt.update(verdict="unmeasured", reason=f"checker error: {proc.stderr.strip()[-300:]}")
         return _write(stage, receipt)
     result = json.loads(proc.stdout)
     _check_exit(proc, result)
-    _result_identity(result, _MODULE)
+    _result_identity(result, obligation)
+    if obligation is _TYPED_MODULE and result.get("index_bits") != index_bits:
+        receipt.update(verdict="unmeasured", reason="checker used another typed boundary domain")
+        return _write(stage, receipt)
     receipt["verdict"] = result["verdict"]
     receipt["functions"] = result["functions"]
     receipt["assumptions"] += [f"ABI change handled by trusted lowering (T4): {c}" for c in result["abi_changes"]]
@@ -337,6 +355,8 @@ def _finish(destination: Path, receipt: dict[str, Any]) -> dict[str, Any]:
 
 CHAIN_THEOREM = "MerlinVerify.Check.chain_refines"
 DEFINED_CHAIN_THEOREM = "MerlinVerify.Check.chain_defined_refines"
+TYPED_CHAIN_THEOREM = "MerlinVerify.Check.chain_typed_refines"
+TYPED_DEFINED_CHAIN_THEOREM = "MerlinVerify.Check.chain_typed_defined_refines"
 
 
 def _result_identity(result: dict[str, Any], obligation: _Obligation) -> None:
@@ -353,7 +373,7 @@ def _validate_receipt(receipt: dict[str, Any], *, obligation: _Obligation, funct
 
     schema = repo_root() / "merlin/contract/schemas/lean_receipt.schema.json"
     jsonschema.validate(receipt, json.loads(schema.read_text()))
-    single = obligation is not _MODULE
+    single = obligation in (_SUPPORT, _DEFINED)
     expected = (obligation.checker, obligation.theorem, obligation.claim_type)
     if tuple(receipt[k] for k in ("checker", "theorem", "claim_type")) != expected:
         return ["receipt does not establish the required proof obligation"]
@@ -374,6 +394,9 @@ def _validate_receipt(receipt: dict[str, Any], *, obligation: _Obligation, funct
         domain = _domain(receipt["index_bits"], defined_inputs=obligation.defined_inputs)
         if receipt["function"] != function or receipt["domain"] != domain:
             reasons.append("function receipt has another function or input domain")
+    elif obligation is _TYPED_MODULE:
+        if receipt.get("domain") != _domain(receipt["index_bits"]):
+            reasons.append("typed boundary receipt has another input domain")
     if reasons:
         return reasons
     work.mkdir()
@@ -391,7 +414,9 @@ def _validate_receipt(receipt: dict[str, Any], *, obligation: _Obligation, funct
             return [f"receipt replay round trip: {trip.status}: {trip.detail}"]
         exports.append(exported)
     args = ([obligation.command, str(exports[0]), function, str(receipt["index_bits"])] if single else
-            ["check-module", *(str(p) for p in exports)])
+            [obligation.command, *(str(p) for p in exports)])
+    if obligation is _TYPED_MODULE:
+        args.append(str(receipt["index_bits"]))
     proc = subprocess.run([str(lean_exe()), *args], capture_output=True, text=True, check=False)
     result = json.loads(proc.stdout)
     _check_exit(proc, result)
@@ -403,6 +428,8 @@ def _validate_receipt(receipt: dict[str, Any], *, obligation: _Obligation, funct
         if result.get("index_bits") != receipt["index_bits"] or result.get("function") != function:
             return ["checker replay has a different input domain"]
     else:
+        if obligation is _TYPED_MODULE and result.get("index_bits") != receipt["index_bits"]:
+            return ["checker replay has another typed boundary domain"]
         if (not result["functions_verified"] or result["unverified_changes"] or
                 result["functions"] != receipt.get("functions") or function not in result["functions"]):
             return ["module receipt does not cover the requested function and all changes"]
@@ -415,6 +442,18 @@ def _validate_receipt(receipt: dict[str, Any], *, obligation: _Obligation, funct
 def _domain(index_bits: int, *, defined_inputs: bool = False) -> str:
     prefix = "nonpoison " if defined_inputs else ""
     return f"{prefix}inputs of the declared argument types; contexts with {index_bits}-bit index"
+
+
+def _argument_types(export: dict[str, Any], function: str) -> list[dict[str, Any]]:
+    """Read the declared domain from a byte-bound authoritative export, including tensor shapes."""
+    matches = []
+    for op in json.loads(Path(export["path"]).read_text())["module"]["ops"]:
+        attrs = {**op["attrs"], **op["props"]}
+        if op["name"] == "func.func" and attrs["sym_name"]["value"] == function:
+            matches.append(attrs["function_type"]["value"]["inputs"])
+    if len(matches) != 1:
+        raise ValueError("typed chain requires one unambiguous function signature")
+    return matches[0]
 
 
 def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
@@ -457,7 +496,8 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
         path = stage / "receipt.json"
         receipt, digest = _read_receipt(path)
         witnesses.append((path, digest, receipt))
-        reasons += _validate_receipt(receipt, obligation=_MODULE, function=function, m2m_python=m2m_python,
+        obligation = _TYPED_MODULE if receipt.get("checker") == _TYPED_MODULE.checker else _MODULE
+        reasons += _validate_receipt(receipt, obligation=obligation, function=function, m2m_python=m2m_python,
                                      work=work / f"stage_{index}")
         receipts.append(receipt)
         links.append({"boundary": receipt["boundary"], "receipt_sha256": digest,
@@ -473,6 +513,15 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     if sup["verdict"] != "verified":
         reasons.append(f"support: {sup['verdict']}: {sup.get('reason', '')}")
     assumptions += [a for a in sup.get("assumptions", []) if a not in assumptions]
+    typed = any(r.get("checker") == _TYPED_MODULE.checker for r in receipts)
+    if typed and not reasons:
+        domain_types = _argument_types(sup["exports"]["subject"], function)
+        for receipt in receipts:
+            if receipt.get("checker") == _TYPED_MODULE.checker and receipt.get("index_bits") != sup["index_bits"]:
+                reasons.append("typed boundary has another index width than the source input domain")
+            for key in ("before", "after"):
+                if _argument_types(receipt["exports"][key], function) != domain_types:
+                    reasons.append("typed chain changes the declared argument types or tensor shapes")
     chained = bool(receipts) and sup["subject"]["sha256"] == receipts[0]["before"]["sha256"] and all(
         a["after"]["sha256"] == b["before"]["sha256"] for a, b in zip(receipts, receipts[1:]))
     handoff_sha = None
@@ -518,8 +567,9 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
             refinement_verdict = "abstracted"
     doc: dict[str, Any] = {
         "schema": "merlin.lean.chain.v1",
-        "theorem": DEFINED_CHAIN_THEOREM,
-        "refinement_theorem": CHAIN_THEOREM,
+        "theorem": TYPED_DEFINED_CHAIN_THEOREM if typed else DEFINED_CHAIN_THEOREM,
+        "refinement_theorem": TYPED_CHAIN_THEOREM if typed else CHAIN_THEOREM,
+        **({"index_bits": sup["index_bits"]} if typed else {}),
         "domain": domain,
         "function": function,
         "links": links,
