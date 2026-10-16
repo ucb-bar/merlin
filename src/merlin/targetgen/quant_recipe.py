@@ -376,8 +376,61 @@ def with_activation_contractions(recipe: Mapping[str, Any]) -> dict[str, Any]:
     return body
 
 
+def with_gptq_weights(recipe: Mapping[str, Any], **parameters: Any) -> dict[str, Any]:
+    """``recipe`` (a derived ``quant_recipe_v1`` document) whose weight codes are chosen by GPTQ.
+
+    The switch is ``weight.rounding = "gptq"`` with ``weight.gptq`` holding every parameter of
+    :data:`merlin.targetgen._gptq.PARAMETERS`. ``parameters`` override
+    :data:`~merlin.targetgen._gptq.DEFAULT_PARAMETERS`. The grid stays the recipe's own: the same
+    dtype, range, symmetry and scale granularity, with the same observed scales. GPTQ only picks
+    which integer each weight takes on that grid, using the calibration inputs of its layer (see
+    ``_gptq.py``). Without the key a recipe rounds to nearest and its digest is what it always was.
+    With it the digest changes, so a capture made under GPTQ codes is never served for one made
+    under nearest codes.
+
+    Refused with the reason, never approximated: a recipe that quantizes no contraction, dynamic
+    activations (``quantize_`` rounds the weights itself), a weight format that is not a symmetric
+    integer, and a weight scale granularity that the static path cannot express.
+    """
+    from merlin.targetgen import _gptq
+
+    if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
+        raise ValueError("only a derived quant_recipe_v1 can be extended")
+    weight = recipe.get("weight") or {}
+    activation = recipe.get("activation") or {}
+    refusal = (
+        "the recipe quantizes no contraction"
+        if CONTRACTION not in (recipe.get("families") or ())
+        else f"activations are {activation.get('mode')!r}; GPTQ codes are set on the static path"
+        if activation.get("mode") != "static"
+        else "the weight format is not a symmetric integer with a declared range"
+        if not (
+            weight.get("symmetric")
+            and str(weight.get("dtype", "")).startswith("int")
+            and isinstance(weight.get("quant_min"), int)
+            and isinstance(weight.get("quant_max"), int)
+        )
+        else f"weight scales per {weight.get('granularity')!r} have no static spec to round onto"
+        if weight.get("granularity") not in ("tensor", "channel")
+        else None
+    )
+    if refusal is not None:
+        raise ValueError(f"GPTQ weights cannot extend this recipe: {refusal}")
+    chosen = _gptq.check_parameters({**_gptq.DEFAULT_PARAMETERS, **parameters})
+    body = json.loads(json.dumps(dict(recipe)))
+    body["weight"]["rounding"] = _gptq.GPTQ
+    body["weight"]["gptq"] = chosen
+    body.setdefault("why", {})["weight.rounding"] = (
+        f"opted in: GPTQ picks each weight's code on the recipe's own grid, propagating rounding "
+        f"error through the inverse Hessian of the layer's first {chosen['calibration_samples']} "
+        f"calibration inputs (act order {chosen['act_order']}, damp {chosen['damp']}, block {chosen['block']})"
+    )
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
 def _main(argv: Sequence[str] | None = None) -> int:
-    """``python -m merlin.targetgen.quant_recipe activation-contractions IN.json OUT.json``."""
+    """``python -m merlin.targetgen.quant_recipe {activation-contractions|gptq-weights} IN.json OUT.json``."""
     import argparse
     from pathlib import Path
 
@@ -386,8 +439,20 @@ def _main(argv: Sequence[str] | None = None) -> int:
     variant = sub.add_parser("activation-contractions", help=with_activation_contractions.__doc__.splitlines()[0])
     variant.add_argument("recipe", type=Path)
     variant.add_argument("out", type=Path)
+    gptq = sub.add_parser("gptq-weights", help=with_gptq_weights.__doc__.splitlines()[0])
+    gptq.add_argument("recipe", type=Path)
+    gptq.add_argument("out", type=Path)
+    gptq.add_argument("--calibration-samples", type=int, dest="calibration_samples")
+    gptq.add_argument("--act-order", action=argparse.BooleanOptionalAction, dest="act_order")
+    gptq.add_argument("--damp", type=float)
+    gptq.add_argument("--block", type=int)
     args = parser.parse_args(argv)
-    body = with_activation_contractions(json.loads(args.recipe.read_text(encoding="utf-8")))
+    source = json.loads(args.recipe.read_text(encoding="utf-8"))
+    if args.command == "gptq-weights":
+        chosen = {name: getattr(args, name) for name in ("calibration_samples", "act_order", "damp", "block")}
+        body = with_gptq_weights(source, **{name: value for name, value in chosen.items() if value is not None})
+    else:
+        body = with_activation_contractions(source)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"{args.out}: recipe_sha256 {body['recipe_sha256']}")
