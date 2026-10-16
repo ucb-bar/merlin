@@ -9,7 +9,7 @@ handoff before the optimized program can be used.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Protocol
 
 from .dispatch_program import Buffer, DispatchProgram, Node, verify_program
 
@@ -27,7 +27,7 @@ class HandoffFacts:
     resident_bytes: int
     capacity_bytes: int
     equivalent_to_materialized: bool
-    saved_cycles: int
+    saved_cycles: int | None
 
 
 @dataclass(frozen=True)
@@ -36,7 +36,7 @@ class Handoff:
     consumer: int
     buffer: str
     interface: str
-    saved_cycles: int
+    saved_cycles: int | None
 
 
 @dataclass(frozen=True)
@@ -48,12 +48,24 @@ class ConnectedPlan:
 HandoffProvider = Callable[[Node, Node, Buffer], HandoffFacts | None]
 
 
-def plan_connected_dispatches(program: DispatchProgram, facts_for: HandoffProvider) -> ConnectedPlan:
+class ConnectedBackend(Protocol):
+    """OOT adapter interface; returned facts use HandoffFacts field names."""
+
+    def handoff_facts(self, producer: int, consumer: int, buffer: str) -> dict | None: ...
+
+    def lower(self, selected: set[tuple[int, int, str]]): ...
+
+
+def plan_connected_dispatches(
+    program: DispatchProgram, facts_for: HandoffProvider, *, require_profitable: bool = True
+) -> ConnectedPlan:
     """Select adjacent, single-consumer dispatch chains with proven direct handoffs.
 
     Adjacent nodes are intentional: the dispatch DAG does not describe effects
     inside kernels, so moving an intervening operation would need another
-    proof. Region-carrying nodes are excluded for the same reason.
+    proof. Region-carrying nodes are excluded for the same reason. Calibration
+    may set ``require_profitable=False`` to measure a legal candidate whose
+    cost is unknown; production selection requires positive measured savings.
     """
     problems = verify_program(program)
     if problems:
@@ -97,7 +109,7 @@ def plan_connected_dispatches(program: DispatchProgram, facts_for: HandoffProvid
             if (
                 facts.resident_bytes > facts.capacity_bytes
                 or not facts.equivalent_to_materialized
-                or facts.saved_cycles <= 0
+                or (require_profitable and (facts.saved_cycles is None or facts.saved_cycles <= 0))
             ):
                 continue
             selected.append(Handoff(index, index + 1, buffer_id, facts.interface, facts.saved_cycles))
@@ -126,3 +138,24 @@ def require_realized(plan: ConnectedPlan, realized: set[tuple[int, int, str]]) -
     extra = realized - expected
     if extra:
         raise ValueError(f"backend realized handoffs absent from plan: {sorted(extra)}")
+
+
+def lower_connected_dispatches(
+    program: DispatchProgram, backend: ConnectedBackend, *, require_profitable: bool = True
+):
+    """Select a plan, lower it through the chosen backend, and check realization.
+
+    OOT packages can implement this interface without importing Merlin. The
+    lowered artifact must expose its independently checked ``realized`` edges.
+    """
+    indices = {id(node): index for index, node in enumerate(program.nodes)}
+
+    def facts(producer: Node, consumer: Node, buffer: Buffer) -> HandoffFacts | None:
+        row = backend.handoff_facts(indices[id(producer)], indices[id(consumer)], buffer.id)
+        return HandoffFacts(**row) if row is not None else None
+
+    plan = plan_connected_dispatches(program, facts, require_profitable=require_profitable)
+    selected = {(h.producer, h.consumer, h.buffer) for h in plan.handoffs}
+    lowered = backend.lower(selected)
+    require_realized(plan, set(lowered.realized))
+    return plan, lowered

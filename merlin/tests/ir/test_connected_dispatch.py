@@ -95,3 +95,27 @@ def test_invalid_or_unproved_program_cannot_select_handoffs() -> None:
     program.nodes[0].outputs.append("missing")
     with pytest.raises(ValueError, match="unknown buffer"):
         plan_connected_dispatches(program, lambda _p, _c, _b: HandoffFacts("direct", 512, 1024, True, 40))
+
+
+def test_calibration_can_measure_unknown_cost_without_claiming_a_speedup() -> None:
+    facts = lambda _p, _c, _b: HandoffFacts("direct", 512, 1024, True, None)
+    assert plan_connected_dispatches(_program(), facts).handoffs == ()
+    plan = plan_connected_dispatches(_program(), facts, require_profitable=False)
+    assert len(plan.handoffs) == 1 and plan.handoffs[0].saved_cycles is None
+
+
+def test_compilation_refuses_backend_that_ignores_selected_residency() -> None:
+    from types import SimpleNamespace
+
+    from merlin.xdsl_dialects.lowering.connected_dispatch import lower_connected_dispatches
+
+    class IgnoringBackend:
+        def handoff_facts(self, producer, consumer, buffer):
+            return dict(interface="direct", resident_bytes=512, capacity_bytes=1024,
+                        equivalent_to_materialized=True, saved_cycles=40)
+
+        def lower(self, selected):
+            return SimpleNamespace(realized=set())
+
+    with pytest.raises(ValueError, match="not realized"):
+        lower_connected_dispatches(_program(), IgnoringBackend())
