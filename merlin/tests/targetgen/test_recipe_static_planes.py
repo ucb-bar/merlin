@@ -319,3 +319,88 @@ def test_planes_take_the_gptq_codes_and_the_dynamic_block_refuses_them():
     assert data["rewritten"] == 2 and data["annotated"] == 0 and data["rounded"]
     assert data["error"] < 0.02, data["error"]
     assert data["refused"] and "GPTQ" in data["refused"]
+
+
+# --- convolutions (capture venv) -------------------------------------------------------------------
+
+_CONV = r"""
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(source.parent))
+sys.path.insert(0, str(source.parents[2]))
+import torch
+from torch import nn
+from torch.nn import functional as F
+from torchao.quantization.pt2e.quantize_pt2e import convert_pt2e, prepare_pt2e
+
+spec = importlib.util.spec_from_file_location("recipe_quantizer", source)
+quant = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(quant)
+recipe = json.loads(sys.argv[2])
+
+
+class Convs(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.patch = nn.Conv2d(3, 16, 4, stride=4)  # non-overlapping patches
+        self.smooth = nn.Conv2d(3, 8, 3, stride=2, padding=1, dilation=1, bias=False)  # overlapping, padded
+
+    def forward(self, x):
+        return self.patch(x), self.smooth(x)
+
+
+torch.manual_seed(0)
+model = Convs().eval()
+samples = [(torch.randn(2, 3, 16, 16) * (1 + i),) for i in range(3)]
+graph = torch.export.export(model, samples[0]).module()
+q = quant.build_quantizer(recipe, layer_plan=quant._plan_layers(recipe, model))
+prepared = prepare_pt2e(graph, q)
+with torch.no_grad():
+    for sample in samples:
+        prepared(*sample)
+converted = convert_pt2e(prepared, fold_quantize=True)
+rows = quant._rewrite_planes(converted, recipe, q.annotated_planes)
+x = samples[1][0]
+with torch.no_grad():
+    got = converted(x)
+base = recipe["activation"]["quant_max"] + 1
+low, high = recipe["activation"]["quant_min"] * base, recipe["activation"]["quant_max"] * base + base - 1
+errors = {}
+for index, (row, conv) in enumerate(zip(rows, (model.patch, model.smooth))):
+    s = row["scale"]
+    xq = torch.clamp(torch.round(x * (1.0 / s)), low, high).double()
+    w = conv.weight.detach()
+    sw = w.abs().amax(dim=(1, 2, 3), keepdim=True) / 127.0
+    wq = torch.clamp(torch.round(w * (1.0 / sw)), -127, 127).double()
+    want = F.conv2d(xq, wq, None, conv.stride, conv.padding) * s * sw.double().reshape(1, -1, 1, 1)
+    if conv.bias is not None:
+        want = want + conv.bias.detach().double().reshape(1, -1, 1, 1)
+    errors[row["owner"]] = float((got[index].double() - want).abs().max() / want.abs().max())
+int_mm = sum(n.target == torch.ops.aten._int_mm.default for n in converted.graph.nodes)
+print(json.dumps({"rows": rows, "errors": errors, "int_mm": int_mm}, default=str))
+"""
+
+
+def test_a_convolution_takes_digit_planes_through_im2col():
+    python = os.environ.get("MERLIN_M2M_PYTHON")
+    if not python or not Path(python).is_file():
+        pytest.skip("the TorchAO capture interpreter is not configured")
+    completed = subprocess.run(
+        [python, "-c", _CONV, str(_QUANTIZER), json.dumps(QR.with_static_planes(_recipe()))],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr[-3000:]
+    data = json.loads(completed.stdout.strip().splitlines()[-1])
+    assert [(r["owner"], r["kind"], r["shape"]) for r in data["rows"]] == [
+        ("patch", "conv2d", [2 * 4 * 4, 3 * 4 * 4, 16]),
+        ("smooth", "conv2d", [2 * 8 * 8, 3 * 3 * 3, 8]),
+    ]
+    assert data["int_mm"] == 4, "two digit planes per convolution"
+    assert all(error < 1e-6 for error in data["errors"].values()), data["errors"]

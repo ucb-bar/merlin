@@ -338,13 +338,15 @@ def _planes_spec(recipe: Mapping[str, Any], *, eps: float):
 
 
 def _planes_site(block: Mapping[str, Any], node: Any, owner: str | None) -> bool:
-    """A Linear of a planes family, owned inside the block's scope, takes the planes grid."""
+    """A Linear or ungrouped Conv2d of a planes family, owned inside the block's scope, takes the planes grid."""
     import _static_planes as SP  # noqa: PLC0415 -- a sibling, by bare name
     import torch
 
+    aten = torch.ops.aten
+    groups = node.args[6] if len(node.args) > 6 else node.kwargs.get("groups", 1)
     return bool(
         "contraction" in (block.get("families") or ())
-        and node.target == torch.ops.aten.linear.default
+        and (node.target == aten.linear.default or (node.target == aten.conv2d.default and groups == 1))
         and SP.in_scope(owner, block.get("owners"))
     )
 

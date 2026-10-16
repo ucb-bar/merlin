@@ -530,7 +530,7 @@ def with_gptq_weights(recipe: Mapping[str, Any], **parameters: Any) -> dict[str,
     return body
 
 
-#: The recipe block that gives selected Linears' activations a wider STATIC grid as int8 digit planes.
+#: The recipe block that gives selected Linears' and Conv2ds' activations a wider STATIC grid as int8 digit planes.
 STATIC_PLANES = "static_planes"
 STATIC_PLANES_SCHEMA = "static_planes_v1"
 #: Observers a static recipe may name: TorchAO's two, or a percentile of |x| (``p99.999``).
@@ -561,7 +561,7 @@ def with_static_planes(
     observer: str = "minmax",
     owners: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """``recipe`` whose Linear activations (in ``owners``' modules, default all) take ``planes`` digits.
+    """``recipe`` whose Linear and Conv2d activations (in ``owners``' modules, default all) take ``planes`` digits.
 
     The activation keeps ONE static scale per tensor, on a grid ``planes`` digits wide: with the
     recipe's activation range ``[low, high]`` and ``base = high + 1``, the top digit spans
