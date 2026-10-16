@@ -102,7 +102,8 @@ theorem checked_generic_sound {channel : Bool} {axis : Nat} {paramShape : List N
     (ctx : Ctx) (call : CallSem) (env : Env) (qv sv zv : RVal) (t : Tensor)
     (hl : checkLayout channel axis t.shape paramShape maps iters = true)
     (hb : checkBody channel args ops = true)
-    (ht : Check.HasTys ctx.indexBits [qv, sv, zv, .tensor t] (operandTypes t.shape paramShape))
+    (hshapes : [qv, sv, zv, .tensor t].map shapeOf =
+      (operandTypes t.shape paramShape).map Check.VTy.shape)
     (q : Idx → Option (BitVec 8)) (z : Idx → Option (BitVec 32))
     (s : Idx → Option (FBits .f32))
     (hq : ∀ p, Idx.InBounds t.shape p →
@@ -116,7 +117,6 @@ theorem checked_generic_sound {channel : Bool} {axis : Nat} {paramShape : List N
       .ok [.tensor (Tensor.canon t.shape t.elt
         (fun p => Spec.Dequant.scalarValue channel ctx.M (q p) (z p) (s p)))] := by
   obtain ⟨-, -, hm, hi, hstruct⟩ := checkLayout_sound hl
-  have hshapes := Check.shapes_typed ht
   have hd : maps.any (fun m => m.numDims ≠ iters.length || m.numSyms ≠ 0) = false := by
     rw [List.any_eq_false]
     intro m hm
@@ -136,5 +136,61 @@ theorem checked_generic_sound {channel : Bool} {axis : Nat} {paramShape : List N
   exact generic_sound hb ctx call env qv sv zv t _ q z s
     (by simpa [mapsFor] using hd) (by simpa [mapsFor] using hr)
     (by simpa [mapsFor] using hranges) hq hs hz
+
+/-- Parameter addressing agrees with the independently written source coordinate function. -/
+theorem parameterIndex_sound {channel : Bool} {axis : Nat} {shape paramShape : List Nat}
+    (ha : channel = false ∨ axis < shape.length)
+    (hs : paramShape = if channel then (shape[axis]?).toList else [])
+    {p : Idx} (hp : Idx.InBounds shape p) :
+    (evalMap (parameterMap channel shape.length axis) p >>= toIdx paramShape) =
+      some (Spec.Dequant.parameterIndex channel axis p) := by
+  cases channel with
+  | false => simp [parameterMap, Spec.Dequant.parameterIndex, evalMap, toIdx, hs]
+  | true =>
+    have haxis : axis < shape.length := ha.resolve_left (by decide)
+    have hpaxis : axis < p.length := by rw [hp.1]; exact haxis
+    have hbound : Idx.InBounds [shape[axis]] [p[axis]] :=
+      (Idx.inBounds_cons_cons _ _ _ _).2
+        ⟨hp.2 axis hpaxis haxis, (Idx.inBounds_nil_iff []).2 rfl⟩
+    have hidx := toIdx_ofNat hbound
+    simpa [parameterMap, Spec.Dequant.parameterIndex, evalMap, evalAffine,
+      List.getElem?_eq_getElem haxis, List.getElem?_eq_getElem hpaxis, hs] using hidx
+
+/-- Typed functional inputs represent every i8/i32/f32 tensor, including poison elements. -/
+def quantizedTensor (shape : List Nat) (q : Idx → Option (BitVec 8)) : Tensor :=
+  { shape, elt := .int 8, get := fun p => intValue 8 (q p) }
+
+def zeroTensor (shape : List Nat) (z : Idx → Option (BitVec 32)) : Tensor :=
+  { shape, elt := .int 32, get := fun p => intValue 32 (z p) }
+
+def scaleTensor (shape : List Nat) (s : Idx → Option (FBits .f32)) : Tensor :=
+  { shape, elt := .float .f32, get := fun p => floatValue (s p) }
+
+/-- The complete generic loop computes the independent source tensor contract. No pointwise
+read or arithmetic-correctness hypotheses are supplied by the caller. This still precedes the
+C1 proof connecting source and target operation syntax and their surrounding environments. -/
+theorem tensor_contract_sound {channel : Bool} {axis : Nat} {paramShape : List Nat}
+    {maps : List AffineMap} {iters : List IterKind} {args : List Value} {ops : List Op}
+    (ctx : Ctx) (call : CallSem) (env : Env) (t : Tensor)
+    (hl : checkLayout channel axis t.shape paramShape maps iters = true)
+    (hb : checkBody channel args ops = true) (he : t.elt = .float .f32)
+    (q : Idx → Option (BitVec 8)) (z : Idx → Option (BitVec 32))
+    (s : Idx → Option (FBits .f32)) :
+    genericSem ctx maps iters
+      [.tensor (quantizedTensor t.shape q), .tensor (scaleTensor paramShape s),
+        .tensor (zeroTensor paramShape z)] [.tensor t]
+      (fun ctx => evalRegion Sem.Ops.opSem ctx call env (.mk [.mk args ops])) =
+      .ok [.tensor (Spec.Dequant.tensor channel axis ctx.M t.shape q z s)] := by
+  have layout := checkLayout_sound hl
+  have hread (p : Idx) (hp : Idx.InBounds t.shape p) :=
+    parameterIndex_sound layout.1 layout.2.1 hp
+  simpa [Spec.Dequant.tensor, he] using checked_generic_sound ctx call env
+    (.tensor (quantizedTensor t.shape q)) (.tensor (scaleTensor paramShape s))
+    (.tensor (zeroTensor paramShape z)) t hl hb (by rfl) q
+    (fun p => z (Spec.Dequant.parameterIndex channel axis p))
+    (fun p => s (Spec.Dequant.parameterIndex channel axis p))
+    (fun p hp => by simpa [quantizedTensor] using readAt_identity (t := quantizedTensor t.shape q) hp)
+    (fun p hp => by simp [readAt, scaleTensor, hread p hp])
+    (fun p hp => by simp [readAt, zeroTensor, hread p hp])
 
 end MerlinVerify.Rules.DequantTensor

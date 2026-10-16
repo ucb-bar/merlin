@@ -16,7 +16,7 @@
   "MerlinVerify/Sem/Support.lean": "35c431533dc68e3c9fd4c12c219a09fbc0efd98c22407dc77345719dcc9117dd",
   "MerlinVerify/Sem/Value.lean": "70f3a86242c13f97a13fac365fa9bd01a41757a63b5353d8ca9c84f8e7229412",
   "MerlinVerify/Spec/Annotations.lean": "17febb602da964d15134efdc647bd4271d5bfb30b9d3944dcfbb7aef4f492d7a",
-  "MerlinVerify/Spec/Dequant.lean": "8c8df77bc71092495f1ba80b837d3110cb0feccd38c1775bb2c5c007d75f9490",
+  "MerlinVerify/Spec/Dequant.lean": "9d9bad45fff486cea810802a194ccf8015aff500c63db213fbdfc9ff8b73bf24",
   "lake-manifest.json": "483e372c6cd8ee69b2f3e40b6454651140fdc0f6c4e3de3fa208591d4a14677d",
   "lakefile.toml": "6d9009180a567bf4fc7a6f8224d174963f8957a84e5702d864944383233fc99c",
   "lean-toolchain": "ca5f1f601d34c49079e38d7e7041eb0f2a9c227fbc1df0f404820069a052330c",
@@ -37,6 +37,7 @@
   "statement:MerlinVerify.Rules.DequantScalar.perChannel_body_sound": "4c1329e16db41e75e3d9a597610851b15941802696202ad2db0c0ecdaa830a1a",
   "statement:MerlinVerify.Rules.DequantScalar.perTensor_body_sound": "623c56680e689a569753f95a14af7c1b92a65df56ed1eb705aeed87cc9be6acb",
   "statement:MerlinVerify.Rules.DequantTensor.checkLayout_sound": "cd1b3753b4ea3757e549156188e487410033a7b8f71b84897af94c59a3194291",
-  "statement:MerlinVerify.Rules.DequantTensor.checked_generic_sound": "b45b11a4b218b24a0a1fb2a3b01cf8a24971e060ad34309dde3f5b104a3be4ef",
-  "statement:MerlinVerify.Rules.DequantTensor.region_sound": "aec4b4839909a4d8456e66e97393ce411f2edddaaa3444f7cb80a30b23b375cc"
+  "statement:MerlinVerify.Rules.DequantTensor.checked_generic_sound": "866fa4d01977c3a3fae2cd65e1314dc3ad8941859ce9d1436ab63f0f12d6a4d5",
+  "statement:MerlinVerify.Rules.DequantTensor.region_sound": "aec4b4839909a4d8456e66e97393ce411f2edddaaa3444f7cb80a30b23b375cc",
+  "statement:MerlinVerify.Rules.DequantTensor.tensor_contract_sound": "318a05cbf38f3c893e560e3c34999eff60b4a3af8740c005ea07be79eafc72da"
 }

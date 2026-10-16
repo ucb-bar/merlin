@@ -27,10 +27,23 @@ def check_layout(document, kind, axis=0):
     return result["matches"]
 
 
-@pytest.mark.parametrize("kind", ["per_tensor", "per_channel"])
-def test_actual_lowering_layout(tmp_path, lean_tools, kind):
-    module, _ = lowered(kind)
-    assert check_layout(export_module(module, tmp_path, lean_tools), kind)
+@pytest.mark.parametrize(
+    "kind,shape,axis",
+    [
+        ("per_tensor", (), 0),
+        ("per_tensor", (2,), 0),
+        ("per_tensor", (2, 3), 0),
+        ("per_tensor", (0, 3), 0),
+        ("per_channel", (2,), 0),
+        ("per_channel", (2, 3), 0),
+        ("per_channel", (2, 3), 1),
+        ("per_channel", (0, 3), 0),
+        ("per_channel", (2, 3, 4), 2),
+    ],
+)
+def test_actual_lowering_layout(tmp_path, lean_tools, kind, shape, axis):
+    module, _ = lowered(kind, shape, axis)
+    assert check_layout(export_module(module, tmp_path, lean_tools), kind, axis)
 
 
 @pytest.mark.parametrize("mutation", ["input_map", "output_map", "symbols", "dimensions", "reduction", "map_count"])

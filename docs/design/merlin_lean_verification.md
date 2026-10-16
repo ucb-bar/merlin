@@ -635,10 +635,12 @@ per-channel float-subtraction body, and accept the proposed integer-subtraction 
 `Rules/DequantTensor.lean` lifts accepted bodies to regions closed over arbitrary SSA environments
 and entire generic loop nests, including empty iteration spaces. Its `checkLayout` checks the
 source-derived identity/broadcast/channel-projection maps, parameter shapes, axis, iterator kinds,
-and interval-proved access bounds. `checked_generic_sound` combines these checks with runtime
-typing and explicit pointwise read witnesses; it does not yet discharge those witnesses against
-a source tensor contract. Source-contract review, capture-producer binding, the pointwise source
-connection, and the C1 site rule remain required before a
+and interval-proved access bounds. `tensor_contract_sound` then proves that the complete generic
+loop computes the independently specified `Spec.Dequant.tensor`: q uses the output coordinate,
+parameters use either the empty coordinate or the selected channel coordinate. It derives the
+pointwise reads, covers arbitrary ranks and poison elements, and permits any destination values.
+Source-contract review, capture-producer binding, source-operation semantics/typing, and the C1
+site rule and synthesis registration remain required before a
 `lower_quant_ext` boundary may be reported verified. The dispatcher still refuses `quant_ext`.
 
 ### 5.2 C2 — outlining (inline-and-compare)

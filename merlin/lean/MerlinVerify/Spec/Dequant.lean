@@ -17,7 +17,7 @@ Unsigned inputs, other precisions/zero-point widths, absent zero points and per-
 are outside this contract.
 -/
 import MerlinVerify.Sem.Float
-import MerlinVerify.Sem.Value
+import MerlinVerify.Sem.Support
 
 namespace MerlinVerify.Spec.Dequant
 
@@ -49,5 +49,18 @@ def scalarValue (channel : Bool) (M : FloatModel) (q : Option (BitVec 8))
   match q, z, s with
   | some q, some z, some s => .some (.flt .f32 (scalar channel M q z s))
   | _, _, _ => .poison
+
+/-- Source parameter addressing: a scalar broadcast or the selected channel coordinate. -/
+def parameterIndex (channel : Bool) (axis : Nat) (p : Idx) : Idx :=
+  if channel then [(p[axis]?).getD 0] else []
+
+/-- Independent tensor contract: read q at the output coordinate and parameters at the source
+coordinate. Canonicalization only fixes the irrelevant out-of-bounds values to poison. -/
+def tensor (channel : Bool) (axis : Nat) (M : FloatModel) (shape : List Nat)
+    (q : Idx → Option (BitVec 8)) (z : Idx → Option (BitVec 32))
+    (s : Idx → Option (FBits .f32)) : Tensor :=
+  Tensor.canon shape (.float .f32) fun p =>
+    scalarValue channel M (q p) (z (parameterIndex channel axis p))
+      (s (parameterIndex channel axis p))
 
 end MerlinVerify.Spec.Dequant

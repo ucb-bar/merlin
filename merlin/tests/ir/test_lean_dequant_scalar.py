@@ -20,14 +20,16 @@ from merlin.llvmlower.passes_xdsl import lower_quant_ext
 from merlin.verify.lean.export import MLIR_EXPORT, export_file
 
 
-def lowered(kind):
-    scalar_shape = "" if kind == "per_tensor" else "2x"
-    attrs = "" if kind == "per_tensor" else "axis = 0 : i64"
-    module = parse_mlir_text(f"""func.func @forward(%q: tensor<2xi8>,
-        %s: tensor<{scalar_shape}f32>, %z: tensor<{scalar_shape}i32>) -> tensor<2xf32> {{
+def lowered(kind, shape=(2,), axis=0):
+    quantized_shape = "".join(f"{extent}x" for extent in shape)
+    parameter_shape = "" if kind == "per_tensor" else f"{shape[axis]}x"
+    attrs = "" if kind == "per_tensor" else f"axis = {axis} : i64"
+    module = parse_mlir_text(f"""func.func @forward(%q: tensor<{quantized_shape}i8>,
+        %s: tensor<{parameter_shape}f32>, %z: tensor<{parameter_shape}i32>) -> tensor<{quantized_shape}f32> {{
       %r = "quant_ext.dequantize_{kind}"(%q,%s,%z) <{{{attrs}}}> :
-        (tensor<2xi8>, tensor<{scalar_shape}f32>, tensor<{scalar_shape}i32>) -> tensor<2xf32>
-      return %r : tensor<2xf32>
+        (tensor<{quantized_shape}i8>, tensor<{parameter_shape}f32>, tensor<{parameter_shape}i32>)
+          -> tensor<{quantized_shape}f32>
+      return %r : tensor<{quantized_shape}f32>
     }}""")
     assert lower_quant_ext(module) == 1
     module.verify()
