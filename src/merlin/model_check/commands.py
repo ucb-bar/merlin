@@ -590,6 +590,15 @@ def check(args: argparse.Namespace, report: dict) -> dict:
     return report
 
 
+@register("bundle-twins")
+def bundle_twins(args: argparse.Namespace, report: dict) -> dict:
+    from merlin.model_check import twins
+
+    bundle = _bundle(args)
+    _bind_engine_inputs(args, bundle.manifest())
+    return twins.command(args, report, models=load_models(args.models), bundle=bundle)
+
+
 @register("kernels-export")
 def kernels_export(args: argparse.Namespace, report: dict) -> dict:
     from merlin.model_check import export as EX

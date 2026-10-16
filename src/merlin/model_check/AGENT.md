@@ -6,6 +6,7 @@ Build, run and judge complete quantized models for a device submission.
 
 ## Modules
 
+- `admission.py` — model_check's own linked-image admission for whole-model builds (``check --mode full``).
 - `approximations.py` — A submission's declared approximate kernels (``manifest.yaml`` key ``numerics.approximations``).
 - `binding.py` — The Spike / RTL / FPGA binding receipt (contract §7): is the functional model the machine the FPGA runs?
 - `binding_sources.py` — Structural readers behind the binding receipt: C parameter headers, device trees, ELF load segments and config sources.
@@ -17,6 +18,8 @@ Build, run and judge complete quantized models for a device submission.
 - `commands.py` — The subcommands behind ``python -m merlin.model_check`` (contract: ``docs/reference/model_check.md``).
 - `diagnostics.py` — Localize a wrong kernel result: the failing call re-runs in a second image that compares on the device.
 - `export.py` — What the package is asked to lower, per model: interface modules, call ABI and stated entries, no data.
+- `full.py` — ``check --mode full``: every program's linked image, each input's whole chain on Spike, judged.
+- `full_build.py` — One program's linked whole-model image: built once per submission, relinked per input, run on Spike.
 - `input_worker.py` — Model-side input preparation, run INSIDE a model's own pinned environment (``python input_worker.py``).
 - `inputs.py` — Evaluation and calibration inputs: deterministic selection from pinned sources, small stored forms.
 - `kernel_reference.py` — The expected result of one device-kernel call: the group's interface program evaluated in numpy.
@@ -26,6 +29,7 @@ Build, run and judge complete quantized models for a device submission.
 - `references.py` — Per-input references of a bundle: FP outputs, the INT8 reference chain, its metrics, and device calls.
 - `replay.py` — Replay device kernels on frozen boundary inputs: one small image per batch of calls, judged exactly.
 - `report.py` — The ``model_check_report`` document: construction, agent view, validation and exit codes.
+- `twins.py` — The differential's host twins, run once per release: every step's outputs cached in the bundle.
 - `variants.py` — Seeded shape-perturbed variants of every unique device kernel, stored and judged as sealed cases.
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
