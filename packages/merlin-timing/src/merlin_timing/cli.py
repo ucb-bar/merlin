@@ -9,6 +9,7 @@ import tarfile
 
 from . import archive as A
 from . import contracts as C
+from . import design as D
 from . import feedback as B
 from . import fitting as F
 from . import validation as V
@@ -50,6 +51,8 @@ def parser() -> argparse.ArgumentParser:
     attach = commands.add_parser("archive-attach", help="join original native reports to the exact prepared plan")
     attach.add_argument("--plan", required=True)
     attach.add_argument("--reports", required=True)
+    design = commands.add_parser("archive-design-check", help="check measured variant pairs before native tuning")
+    design.add_argument("--plan", required=True)
     handoff = commands.add_parser(
         "archive-handoff", help="freeze original labels, native predictions and held-out errors"
     )
@@ -59,7 +62,7 @@ def parser() -> argparse.ArgumentParser:
     handoff.add_argument("--spike-configuration", required=True)
     handoff.add_argument("--model-artifact", required=True)
     handoff.add_argument("--training-code", required=True)
-    for command in (fit, validate, compare, native, probe, inspect, prepare, attach, handoff):
+    for command in (fit, validate, compare, native, probe, inspect, prepare, attach, design, handoff):
         command.add_argument("--output", required=True)
     return root
 
@@ -100,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
                 result = A.prepare(result, C.read(arguments.binding))
         elif arguments.command == "archive-attach":
             result = A.attach(C.read(arguments.plan), C.read(arguments.reports))
+        elif arguments.command == "archive-design-check":
+            result = D.check(C.read(arguments.plan))
         else:
             result = A.handoff(
                 C.read(arguments.plan),
