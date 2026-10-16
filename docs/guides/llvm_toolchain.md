@@ -92,18 +92,6 @@ export MERLIN_MLIR_TRANSLATE=$PWD/third_party/llvm-build/bin/mlir-translate
 ```
 
 That skips installing 4 GB of headers and static libraries you only need for the out-of-tree C++ path.
-
-Models that call an external kernel (a model2MLIR `prov.kernel` call, see
-[external kernels](../design/external_kernels.md)) also need `llvm-link`, which merges the kernel body into
-the model's LLVM IR. It takes seconds to build in the same tree:
-
-```bash
-.venv/bin/ninja -C third_party/llvm-build llvm-link   # ninja ships in the venv, not on PATH
-```
-
-`toolchain.llvm_link()` finds it beside `MERLIN_CLANG` with no further setup (override:
-`MERLIN_LLVM_LINK`). It must come from the same LLVM release as the clang that lowered the model — textual
-IR is not stable across releases.
 Everything else in this repo that wants LLVM will still report honest-unavailable rather than break.
 
 ### Cost
