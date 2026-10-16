@@ -3,14 +3,14 @@ title: "Full-model check contract (model_check v1)"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-15
+last_verified: 2026-10-16
 related: [contracts, lowering_pipeline]
 code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src/merlin/runtime/linalg_numpy.py, merlin/schemas/model_check_report.schema.yaml, examples/gemmini/numerics/models.yaml]
 ---
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.8**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.12**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -54,7 +54,8 @@ python -m merlin.model_check binding [--contract C] [--rtl-facts F] [--host-pack
 python -m merlin.model_check kernels-export --bundle B --model M [--program P] [--split visible]
         --out-dir DIR --out REPORT.json
 python -m merlin.model_check variants-build --model M [--program P] --seed S [--bundle B] --out REPORT.json
-python -m merlin.model_check bundle-verify [--bundle DIR] --out REPORT.json
+python -m merlin.model_check bundle-seal [--bundle DIR] [--jobs N] --out REPORT.json
+python -m merlin.model_check bundle-verify [--bundle DIR] [--jobs N] --out REPORT.json
 python -m merlin.model_check bundle-build --captures DIR --model M [--program P] [--keep {all|sample}]
         --host-package DIR --contract FILE --rtl-facts FILE [--bundle DIR] --out REPORT.json
 ```
@@ -103,6 +104,12 @@ official pass.
   and censuses, carries no tensor data and no paths, and accepts only the visible split: it is what a
   harness stages into an agent sandbox.
 - `variants-build`: seeds and stores the sealed shape variants (§8.1); operator only.
+- `bundle-seal` freezes a bundle: `SHA256SUMS` lists a sha256 of every file, and the manifest's `seal`
+  records that file's digest, the file count and the size. `bundle-verify` recomputes every digest and
+  fails on any changed, missing or extra file, on a sums file that differs from the manifest's, and on a
+  model whose catalogs or censuses are missing or a binding receipt whose digest differs from the
+  manifest's. Its report carries the manifest's own sha256 (`bundle.verify.manifest_sha256`), which a
+  release pins. A bundle changed after its seal fails until sealed again; an unsealed bundle is refused.
 - Cache: `check` and `replay-kernel` reuse kernel objects (keyed by package content, interface sha256,
   compile flags, tool identities, target contract and facts, and Merlin's build sources) and replay
   consoles (keyed by image sources, operand bytes, linked objects, toolchain and simulator) under
@@ -171,16 +178,27 @@ group's ops in float64 with every rounding and quantize step removed, in the out
 | `smolvla` | §4.3 on `rel_rmse` and `worst`, **per action dim** (0–5), over the 50-step chunk |
 
 ### 4.5 Reference admission (bundles, not submissions)
-A bundle may be frozen only if its INT8 reference is close enough to FP on the visible inputs.
+A bundle may be frozen only if its INT8 reference is close enough to FP on the visible inputs. The rules
+are data: `judged.admission` in the models file, one `{metric, aggregate (mean|max|min), bound}` per rule,
+where the bound is `max`, `min` or `max_ratio_to_baseline`. A baseline-relative rule needs
+`judged.reference: {precision, baseline}`: the FP reference is run at `precision` (e.g. `float32`) and
+the float model at the `baseline` precision (e.g. `native`, the checkpoint's own) is judged against it on
+the same inputs. Building the references evaluates every rule per split into `reference_quality.json`
+(`admission.<split>.{status, checks[]}`); a rule with no data is `unknown`, never a pass. The bars below
+restate the target's models file.
 **Approved (1.7): ResNet50 top-1 agreement ≥ 15/16 and the logits cosine's mean over the inputs ≥ 0.99**,
 the worst image reported (one image's cosine is noisy). Proposed (pending approval): TinyLlama mean `kl`
-≤ 0.05 nats and top-1 agreement ≥ 90 %. **Approved (1.6, stated in aggregate form in 1.8): SmolVLA within
-2 × its float noise.** Per input, take the worst action dim's `rel_rmse` (dims 0–5, the 50-step chunk);
-the INT8 reference passes when the mean of that over the inputs is ≤ 2 × the same mean for the float noise,
-and the maximum is ≤ 2 × the float noise's maximum. Float noise = the same statistic between the FP
-reference (§3) and the same float model run with vectorized ATen kernels, on the same inputs. A per-dim
-form is not used: with 8 inputs a single dim's noise is too poorly estimated, and the unquantized float
-model itself failed it. A bf16 model's own float noise is several percent (SmolVLA: mean 2.6 %, max 5.8 %).
+≤ 0.05 nats and top-1 agreement ≥ 90 %. **Approved (1.9): SmolVLA within 2 × the bf16 model's own error,
+both against an fp32 execution** (FlashAttention's rule, §4.6). Statistic: per input, the worst action dim's
+`rel_rmse` (dims 0–5, the 50-step chunk) against the **fp32 reference** = the same checkpoint with every
+weight upcast and every op in float32 (`ATEN_CPU_CAPABILITY=default`, one thread). `E_bf16` = that
+statistic for the stock bf16 model. The INT8 reference passes when the mean over the inputs is ≤ 2 × the
+mean of `E_bf16`, and the maximum is ≤ 2 × the maximum of `E_bf16` (8 visible inputs: 0.0345 / 0.052, so
+the bar is 0.069 / 0.104). Reported beside it, never gating: the same statistic against the bf16 FP
+reference, and 2 × the bf16 "float noise" (the disagreement of two valid bf16 kernel sets: 0.026 / 0.058).
+Why fp32: a bar must measure distance to the true function. Two bf16 implementations disagreeing only
+estimates bf16's error indirectly and depends on which second implementation is chosen; the fp32 run
+measures it directly. A per-dim form is not used: with 8 inputs one dim's error is too poorly estimated.
 Calibration data is disjoint from every evaluation input.
 
 ### 4.6 Why ratios
@@ -255,14 +273,17 @@ Counts and MAC-weighted fractions per program. The census is a measurement; it n
 
 Inputs (committed, small, reproducible): `examples/<target>/numerics/`
 ```
-README.md   MANIFEST.json   models.yaml
-inputs/<model>/visible/<id>/...      # 8 per model
+README.md   MANIFEST.json   models.yaml   sources.yaml
+inputs/<model>/visible.npz           # 8 per model: one array per input and field, key <id>.<field>
+inputs/<model>/visible.json          # {<id>: metadata}; a model without arrays has only this file
 calibration/<model>.json             # calibration item ids + sha256, disjoint from inputs
 ```
 Sealed inputs (8 per model, from different source items) are produced by the same generator but stored
-privately at `/work/merlin/private/<target>/numerics/inputs/<model>/sealed/<id>/...`; a public example
-never holds a holdout. The public `MANIFEST.json` commits to them by sha256 only, so the sealed set is
-verifiable when it is released.
+privately at `/work/merlin/private/<target>/numerics/stored/<model>/sealed.{npz,json}`, in the same
+format; a public example never holds a holdout. The public `MANIFEST.json` commits to them by sha256
+only, so the sealed set is verifiable when it is released. `merlin.model_check.inputs.stored` reads
+either split. The model-ready arrays stay private and one file per input
+(`derived/<model>/<split>/<id>/`).
 Frozen bundle (generated, private): `/work/merlin/private/<target>/numerics/<version>/`
 ```
 MANIFEST.json                        # generator/merlin/model2mlir commits, capture hashes, engine inputs
@@ -280,7 +301,10 @@ binding.json                         # the binding receipt (§7)
 <model>/<split>/<id>/fp.npz          # FP judged outputs (§3)
 <model>/<split>/<id>/int8.npz        # INT8-reference judged outputs
 <model>/<split>/<id>/metrics_int8.json           # INT8-reference model metrics vs FP (§4.4)
-<model>/reference_quality.json       # per-input reference metrics and fp_numerics_env
+<model>/<split>/<id>/fp_baseline.npz, metrics_baseline.json
+                                     # only with judged.reference.baseline: the float model at the baseline
+                                     # precision, and its own error against the FP reference (§4.5)
+<model>/reference_quality.json       # per-input metrics, fp_numerics_env, fp_runs, admission per split
 <model>/sealed_variants/{blobs/, <program>/variants.json, <program>/calls.json}   # §8.1
 ```
 Replays of sealed variants build in `<bundle>.sealed_variants-work/`, beside the private bundle, never
@@ -356,3 +380,10 @@ Schema: `merlin/schemas/model_check_report.schema.yaml` (`merlin.model_check.rep
 - 1.6 (2026-10-15): §4.5: SmolVLA's admission bar is 2 × its float noise per action dim (approved).
 - 1.7 (2026-10-15): §4.5: ResNet50's cosine bar is on the mean over inputs (approved).
 - 1.8 (2026-10-15): §4.5: SmolVLA's 2 × float-noise bar is stated on the per-input worst dim (mean and max).
+- 1.9 (2026-10-16): §4.5: SmolVLA's admission is measured against an fp32 execution: within 2 × the bf16
+  model's own error (FlashAttention's rule); the bf16-noise comparison is reported, not gated.
+- 1.10 (2026-10-16): §4.5: admission rules are data (`judged.admission`, `judged.reference`), judged
+  per split when references are built; §8 adds the baseline files.
+- 1.11 (2026-10-16): §8: the stored inputs of a model and split are one `<split>.npz` (key `<id>.<field>`)
+  and one `<split>.json`, public and sealed alike; the inputs and model-ready arrays are unchanged.
+- 1.12 (2026-10-16): `bundle-seal` and `bundle-verify` (§2): a sealed bundle carries a sha256 of every file.

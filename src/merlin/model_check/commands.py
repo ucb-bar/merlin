@@ -115,6 +115,37 @@ def variants_build(args: argparse.Namespace, report: dict) -> dict:
     return report
 
 
+@register("bundle-seal")
+def bundle_seal(args: argparse.Namespace, report: dict) -> dict:
+    from merlin.model_check import seal as SL
+
+    bundle = _bundle(args)
+    record = SL.seal(bundle, jobs=args.jobs)
+    report["bundle"] = {"path": str(bundle.root), "seal": record}
+    report["gates"]["seal"] = {"status": "pass", "detail": f"{record['files']} file(s), {record['bytes']} bytes"}
+    return report
+
+
+@register("bundle-verify")
+def bundle_verify(args: argparse.Namespace, report: dict) -> dict:
+    from merlin.model_check import seal as SL
+
+    bundle = _bundle(args)
+    result = SL.verify(bundle, jobs=args.jobs)
+    report["bundle"] = {"path": str(bundle.root), "verify": result}
+    counts = result.get("counts") or {}
+    report["gates"]["bundle"] = {
+        "status": result["status"],
+        "detail": result.get("detail")
+        or f"{result['files']} file(s); {counts.get('changed', 0)} changed, {counts.get('missing', 0)} missing, "
+        f"{counts.get('extra', 0)} extra; {len(result['structure'])} structure problem(s)",
+    }
+    for kind in ("changed", "missing", "extra", "structure"):
+        for item in result.get(kind) or ():
+            report["failures"].append({"kind": "gate", "gate": "bundle", "detail": f"{kind}: {item}"})
+    return report
+
+
 @register("census")
 def census(args: argparse.Namespace, report: dict) -> dict:
     models = load_models(args.models)
