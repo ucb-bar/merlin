@@ -127,16 +127,19 @@ def test_typed_map_rejects_corrupted_generalization(tmp_path, lean_tools, fault)
     assert receipt["verdict"] == "abstracted", receipt.get("reason")
 
 
-def test_constant_motion_is_a_separate_rewrite_obligation(tmp_path, lean_tools):
+def test_map_generalization_with_proved_constant_motion(tmp_path, lean_tools):
     # MLIR's rewrite driver hoists this constant across tensor.empty. Map expansion preserves
-    # source operation order; the independent motion must have its own proof before acceptance.
+    # source operation order; the independent Motion rule now proves the adjacent swap.
     stage = _stage(tmp_path, lean_tools, _source("2xi32", inputs=0, dirty=True, read=False,
                                                constant_first=False))
     before, after = ((stage / name).read_text() for name in ("before.mlir", "after.mlir"))
     assert before.index("tensor.empty") < before.index("arith.constant")
     assert after.index("arith.constant") < after.index("tensor.empty")
     receipt = check_typed_stage(stage, m2m_python=lean_tools.m2m_python)
-    assert receipt["verdict"] == "abstracted", receipt.get("reason")
+    assert receipt["verdict"] == "verified", receipt.get("reason")
+    assert _source_receipts(tmp_path, lean_tools, stage)["verdict"] == "verified"
+    chain = _compose(tmp_path, lean_tools, [stage])
+    assert chain["verdict"] == "verified", chain.get("reason")
 
 
 def _source_receipts(tmp_path, lean_tools, stage, *, width=64):

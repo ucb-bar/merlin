@@ -10,6 +10,8 @@ def src : Module := { ops := [func "f" [] [constant 0 7, constant 1 8, ret [0, 1
 def tgt : Module := { ops := [func "f" [] [constant 10 8, constant 11 7, ret [11, 10]]] }
 
 #guard c1Check { src, tgt, fn := "f", script := [.site Rules.Motion.rule 2 2, .same] }
+#guard moduleCheck src tgt
+#guard moduleCheck tgt src
 -- Both bindings escape; changing which result escapes must fail after the motion site.
 def wrongUses : Module := { ops := [func "f" [] [constant 10 8, constant 11 7, ret [10, 11]]] }
 #guard !c1Check { src, tgt := wrongUses, fn := "f", script := [.site Rules.Motion.rule 2 2, .same] }

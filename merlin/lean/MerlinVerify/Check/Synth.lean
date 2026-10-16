@@ -3,13 +3,14 @@ UNTRUSTED script synthesis for C1. A certificate is a hint (design D2): this mod
 the two programs by greedy alignment, and `c1Check` re-checks every step. A wrong or incomplete
 synthesis can only make the boundary `abstracted`, never `verified`.
 
-Current alignment tries alpha-equivalent prefixes, closed-expression CSE, proved operation
-expansions, and DCE.
+Current alignment tries alpha-equivalent prefixes, closed-expression CSE and adjacent motion,
+proved operation expansions, and DCE.
 Rules that need certificates from the pass (rewrites that create ops)
 add their own synthesis or read the pass's certificate.
 -/
 import MerlinVerify.Rules.Dce
 import MerlinVerify.Rules.Cse
+import MerlinVerify.Rules.Motion
 import MerlinVerify.Rules.Generalize
 import MerlinVerify.Rules.Commutative
 
@@ -42,12 +43,15 @@ def synthLocal (ρ : Rho) : List Op → List Op → List Step
       match Rules.Cse.check ρ ((s :: ss).take 2) [t] with
       | some ρ' => .site Rules.Cse.rule 2 1 :: synthLocal ρ' (ss.drop 1) ts
       | none =>
-        match localRewrite? ρ s t with
-        | some (r, ρ') => .site r 1 1 :: synthLocal ρ' ss ts
+        match Rules.Motion.check ρ ((s :: ss).take 2) ((t :: ts).take 2) with
+        | some ρ' => .site Rules.Motion.rule 2 2 :: synthLocal ρ' (ss.drop 1) (ts.drop 1)
         | none =>
-          match alphaOp ρ s t with
-          | some ρ' => .same :: synthLocal ρ' ss ts
-          | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss (t :: ts)
+          match localRewrite? ρ s t with
+          | some (r, ρ') => .site r 1 1 :: synthLocal ρ' ss ts
+          | none =>
+            match alphaOp ρ s t with
+            | some ρ' => .same :: synthLocal ρ' ss ts
+            | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss (t :: ts)
   termination_by ss ts => ss.length + ts.length
   decreasing_by
     all_goals simp_all

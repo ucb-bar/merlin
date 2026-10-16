@@ -497,6 +497,58 @@ def test_map_contract_and_native_generalization(tmp_path, fidelity_tools, shape,
     assert original["native"]["results"] == generalized["native"]["results"]
 
 
+def test_map_generalization_with_closed_constant_motion(tmp_path, fidelity_tools):
+    from merlin.verify.lean.check import check_definedness, check_support, check_typed_stage, compose_chain
+
+    source = """func.func @subject(%input: tensor<2xi32>) -> (tensor<2xi32>, i32) {
+      %init = tensor.empty() : tensor<2xi32>
+      %captured = arith.constant 7 : i32
+      %r = linalg.map ins(%input : tensor<2xi32>) outs(%init : tensor<2xi32>)
+        (%x: i32, %old: i32) {
+          %sum = arith.addi %x, %captured : i32
+          linalg.yield %sum : i32
+        }
+      return %r, %captured : tensor<2xi32>, i32
+    }"""
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    before, after = stage / "before.mlir", stage / "after.mlir"
+    before.write_text(source)
+    request = tmp_path / "generalize.json"
+    request.write_text(json.dumps({"source": str(before), "generalize": True}))
+    result = diff._run([str(fidelity_tools.compiler_python),
+                        str(Path(diff.__file__).with_name("mlir_execute.py")), str(request)])
+    target = json.loads(result.stdout)["mlir"]
+    after.write_text(target)
+    # This must exercise actual operation motion, in addition to map expansion.
+    assert source.index("tensor.empty") < source.index("arith.constant")
+    assert target.index('"arith.constant"') < target.index('"tensor.empty"')
+    (stage / "meta.json").write_text(json.dumps({"boundary": "map-and-constant-motion"}))
+    compiler = fidelity_tools.compiler_python
+    assert check_typed_stage(stage, m2m_python=compiler)["verdict"] == "verified"
+    assert check_support(before, "subject", tmp_path / "support", m2m_python=compiler)["verdict"] == "verified"
+    assert check_definedness(before, "subject", tmp_path / "defined",
+                             m2m_python=compiler)["verdict"] == "verified"
+    chain = compose_chain([stage], tmp_path / "support/receipt.json", "subject", tmp_path / "chain.json",
+                          m2m_python=compiler, definedness=tmp_path / "defined/receipt.json")
+    assert chain["verdict"] == "verified", chain.get("reason")
+    samples = [[[0, 1]], [[0xFFFFFFFF, 0x7FFFFFFF]], [[0x80000000, 12345]]]
+    expected = [[str((x + 7) % (1 << 32)) for x in sample[0]] + ["7"] for sample in samples]
+    for name, program in [("before", source), ("after", target)]:
+        work = tmp_path / name
+        diff.compare(program, samples, work, fidelity_tools)
+        results = json.loads((work / "results.json").read_text())
+        assert results["native"]["results"] == expected
+    # Changing the moved constant must still fail transformation verification.
+    assert "value = 7 : i32" in target
+    bad = tmp_path / "changed-constant"
+    bad.mkdir()
+    (bad / "before.mlir").write_text(source)
+    (bad / "after.mlir").write_text(target.replace("value = 7 : i32", "value = 8 : i32"))
+    (bad / "meta.json").write_text(json.dumps({"boundary": "changed-moved-constant"}))
+    assert check_typed_stage(bad, m2m_python=compiler)["verdict"] == "abstracted"
+
+
 def test_map_reading_poison_never_runs_natively(tmp_path, fidelity_tools, monkeypatch):
     source = """func.func @subject(%a: tensor<2xi32>) -> tensor<2xi32> {
       %init = tensor.empty() : tensor<2xi32>
