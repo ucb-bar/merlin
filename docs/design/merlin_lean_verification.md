@@ -962,6 +962,42 @@ frozen:
    source (MLIR op docs, TorchAO, `torch._refs`), and the review is recorded in `SPEC_LOCK`.
 6. **Axioms and ban audit**, and receipt replay from a clean checkout on a second machine.
 
+**Executable MLIR integration tests.** `.github/workflows/lean-mlir.yml` builds and audits Lean,
+then requires the pinned compiler Python MLIR bindings for round trips, receipts, chain replay,
+and the receipt-forgery and file-race regressions. `test_lean_mlir_differential.py` compares concrete
+integer results with MLIR's constant folder at widths 1, 2, 8, 32 and 64, including boundary values,
+division, shifts and overflow flags. Immediate UB is classified independently from the generated
+inputs; a Lean `ub` answer alone never exempts a case from comparison. The JUnit results record
+constant, poison, UB and unfolded counts, and require measured coverage for every tested operation.
+Legal folds from poison to concrete values are counted separately from exact-value agreement.
+Named map, reduce, matmul and transpose also compare with MLIR's generalization and independently
+specified expected tensors, including nonzero destination initializers. These are bounded tests,
+not a proof of MLIR fidelity. Full `mlir-runner` census coverage and IEEE-instance testing remain
+qualification work; the concrete Lean test driver deliberately supplies no IEEE float oracle.
+
+To reproduce the authoritative tests on Linux x86_64 with Python 3.12 and `uv` installed:
+
+```sh
+uv sync --frozen --extra dev --extra verify --extra targetgen
+uv venv --python 3.12 out/build/lean/mlir-venv
+export MERLIN_M2M_PYTHON="$PWD/out/build/lean/mlir-venv/bin/python"
+uv pip install --python "$MERLIN_M2M_PYTHON" --no-deps -r build_tools/toolchains/lean-mlir-requirements.txt
+# Install elan, then fetch Mathlib's cache in merlin/lean: lake exe cache get
+export PATH="$HOME/.elan/bin:$PATH"
+uv run --no-sync python build_tools/scripts/check_lean_guard.py
+MERLIN_LEAN_REQUIRED=1 uv run --no-sync pytest -q merlin/tests/ir/test_lean*.py \
+  -k 'not standalone and not test_round_trip_identical' \
+  -o junit_family=xunit1 \
+  --junitxml=out/artifacts/verification/lean-mlir.xml
+```
+
+The isolated binding environment uses the same torch-mlir version as
+`build_tools/toolchains/compiler-python.toml`, with a checksum-bound wheel. It needs no model capture
+checkout or PyTorch frontend. `MERLIN_COMPILER_PYTHON` also selects the test interpreter when the
+compatibility variable `MERLIN_M2M_PYTHON` is absent. Standalone xDSL/`mlir-opt` comparisons remain
+available separately through `MERLIN_VERIFY_MLIR_OPT`; they do not substitute for the authoritative
+tests in this workflow.
+
 **What would make this verification fake, and the guard against each:**
 
 | Failure mode | Guard |

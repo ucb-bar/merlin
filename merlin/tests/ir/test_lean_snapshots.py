@@ -12,6 +12,10 @@ import pytest
 
 from merlin.verify.lean import check, export
 
+COMPILER_PYTHON = Path(
+    os.environ.get("MERLIN_M2M_PYTHON") or os.environ.get("MERLIN_COMPILER_PYTHON") or sys.executable
+)
+
 ADD = """func.func @forward(%a: i32, %b: i32) -> i32 {
   %r = arith.addi %a, %b : i32
   return %r : i32
@@ -31,10 +35,17 @@ CONSTANT = """func.func @forward() -> i32 {
 """
 
 
-@pytest.fixture
-def standalone_round_trip(lean_checker, monkeypatch):
-    # Exercise real Lean checking and MLIR parsing without requiring the torch frontend. Production
-    # still requires the authoritative exporter; only these race tests select the secondary reader.
+@pytest.fixture(params=["standalone", "authoritative"])
+def standalone_round_trip(lean_checker, monkeypatch, request):
+    # Run the same attacks through both the production MLIR exporter and the secondary reader.
+    # The production branch uses the selected compiler interpreter, without a capture checkout.
+    if request.param == "authoritative":
+        tools = request.getfixturevalue("lean_tools")
+
+        def trip(path, workdir, **kwargs):
+            return export.round_trip(path, workdir, lean_exe=lean_checker, backend="mlir", m2m_python=tools.m2m_python)
+
+        return trip
     opt = os.environ.get("MERLIN_VERIFY_MLIR_OPT") or shutil.which("mlir-opt")
     if not opt or not Path(opt).is_file():
         if os.environ.get("MERLIN_LEAN_REQUIRED"):
@@ -67,7 +78,7 @@ def test_stage_rejects_the_original_file_race(tmp_path, monkeypatch, standalone_
         return standalone_round_trip(path, workdir, **kwargs)
 
     monkeypatch.setattr(check, "round_trip", race)
-    receipt = check.check_stage(tmp_path, m2m_python=Path(sys.executable))
+    receipt = check.check_stage(tmp_path, m2m_python=COMPILER_PYTHON)
     before.write_text(ADD)
     assert receipt["verdict"] == "abstracted"
     assert receipt["before"]["sha256"] == check._sha(before)
@@ -82,7 +93,7 @@ def test_support_rejects_the_original_file_race(tmp_path, monkeypatch, standalon
         return standalone_round_trip(path, workdir, **kwargs)
 
     monkeypatch.setattr(check, "round_trip", race)
-    receipt = check.check_support(program, "forward", tmp_path / "support", m2m_python=Path(sys.executable))
+    receipt = check.check_support(program, "forward", tmp_path / "support", m2m_python=COMPILER_PYTHON)
     program.write_text(UNSUPPORTED)
     assert receipt["verdict"] == "abstracted"
     assert receipt["subject"]["sha256"] == check._sha(program)
@@ -100,7 +111,7 @@ def test_checks_retain_separate_exports(tmp_path, monkeypatch, standalone_round_
 
     monkeypatch.setattr(check, "round_trip", trip)
     for _ in range(2):
-        assert check.check_stage(tmp_path, m2m_python=Path(sys.executable))["verdict"] == "verified"
+        assert check.check_stage(tmp_path, m2m_python=COMPILER_PYTHON)["verdict"] == "verified"
     assert used[0].parent != used[2].parent
     for workdir in used:
         assert (workdir / "export.json").is_file()
@@ -117,7 +128,7 @@ def test_input_changed_during_a_valid_check_is_not_published_as_verified(tmp_pat
         return standalone_round_trip(path, workdir, **kwargs)
 
     monkeypatch.setattr(check, "round_trip", race)
-    receipt = check.check_stage(tmp_path, m2m_python=Path(sys.executable))
+    receipt = check.check_stage(tmp_path, m2m_python=COMPILER_PYTHON)
     assert receipt["verdict"] == "unmeasured"
     assert "changed or missing" in receipt["reason"]
 
@@ -149,10 +160,10 @@ def checked_chain(tmp_path, monkeypatch, standalone_round_trip):
         (stage / "before.mlir").write_text(ADD)
         (stage / "after.mlir").write_text(after)
         (stage / "meta.json").write_text(json.dumps({"boundary": "identity"}))
-        boundary = check.check_stage(stage, m2m_python=Path(sys.executable))
+        boundary = check.check_stage(stage, m2m_python=COMPILER_PYTHON)
         support = tmp_path / "support"
         receipt = check.check_support(
-            stage / "before.mlir", "forward", support, m2m_python=Path(sys.executable), index_bits=bits
+            stage / "before.mlir", "forward", support, m2m_python=COMPILER_PYTHON, index_bits=bits
         )
         assert receipt["verdict"] == "verified", receipt.get("reason")
         assert receipt["index_bits"] == bits
@@ -168,7 +179,7 @@ def test_chain_replays_genuine_claims_without_overwriting_evidence(tmp_path, che
     stage, support, boundary = checked_chain(bits=bits)
     assert boundary["verdict"] == "verified"
     originals = {p: p.read_bytes() for p in (stage / "receipt.json", support)}
-    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=COMPILER_PYTHON)
     assert result["verdict"] == "verified", result.get("reason")
     assert result["replayed"]
     schema = check.repo_root() / "merlin" / "contract" / "schemas"
@@ -189,7 +200,7 @@ def test_chain_rejects_forged_verified_verdict(tmp_path, checked_chain):
     assert boundary["verdict"] == "abstracted"
     boundary["verdict"] = "verified"
     (stage / "receipt.json").write_text(json.dumps(boundary))
-    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=COMPILER_PYTHON)
     assert result["verdict"] == "abstracted"
     assert "checker replay returned abstracted" in result["reason"]
 
@@ -208,7 +219,7 @@ def test_chain_rejects_changed_claim_metadata(tmp_path, checked_chain, field):
     else:
         receipt[field] = "forged"
     path.write_text(json.dumps(receipt))
-    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=COMPILER_PYTHON)
     assert result["verdict"] == "abstracted"
     assert "does not match the replay" in result["reason"]
 
@@ -218,7 +229,7 @@ def test_chain_rejects_legacy_support_without_recorded_width(tmp_path, checked_c
     receipt = json.loads(support.read_bytes())
     del receipt["index_bits"]
     support.write_text(json.dumps(receipt))
-    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=COMPILER_PYTHON)
     assert result["verdict"] == "abstracted"
     assert "regenerate it" in result["reason"]
 
@@ -232,7 +243,7 @@ def test_chain_binds_replay_to_stage_files(tmp_path, checked_chain):
     receipt["after"] = check._file_ref(original)
     (stage / "receipt.json").write_text(json.dumps(receipt))
     (stage / "after.mlir").write_text(SUB)
-    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=COMPILER_PYTHON)
     assert result["verdict"] == "abstracted"
     assert "after bytes do not match" in result["reason"]
 
@@ -249,7 +260,7 @@ def test_chain_rejects_receipt_replaced_during_replay(tmp_path, monkeypatch, che
         return errors
 
     monkeypatch.setattr(check, "_replay", race)
-    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=COMPILER_PYTHON)
     assert result["verdict"] == "abstracted"
     assert "receipt changed during composition" in result["reason"]
     assert result["links"][0]["receipt_sha256"] == digest
@@ -271,6 +282,6 @@ def test_chain_rechecks_actual_stage_after_replay(tmp_path, monkeypatch, checked
         return errors
 
     monkeypatch.setattr(check, "_replay", race)
-    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=COMPILER_PYTHON)
     assert result["verdict"] == "abstracted"
     assert "live after changed during composition" in result["reason"]
