@@ -32,6 +32,7 @@ def implementation_identity() -> dict:
         "merlin.targetgen._capture_session_reference",
         "merlin.targetgen._aten_opset_worker",
         "merlin.targetgen._recipe_quantizer",
+        "merlin.targetgen._gptq",
         "merlin.targetgen.quant_layer_plan",
         "merlin.targetgen.software_spec",
         "merlin.targetgen.transfer_contracts",

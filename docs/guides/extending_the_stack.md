@@ -12,6 +12,7 @@ code_refs:
   - src/merlin/targetgen/quant_recipe.py
   - src/merlin/targetgen/quant_layer_plan.py
   - src/merlin/targetgen/_recipe_quantizer.py
+  - src/merlin/targetgen/_gptq.py
   - src/merlin/targetgen/rtl/circt_introspect.py
   - src/merlin/targetgen/rtl/timing.py
   - src/merlin/xdsl_dialects/schedule.py
@@ -251,6 +252,16 @@ inside the per-column rescale the host already applies, so no host pass is added
 cost are in `quantization_stats.static_planes`. A static activation observer may also be a
 percentile of `|x|` (`with_activation_observer`, CLI `activation-observer IN OUT p99.999`;
 `_recipe_observers`).
+
+Weight codes are rounded to nearest unless a recipe opts into GPTQ:
+`quant_recipe.with_gptq_weights` (CLI:
+`python -m merlin.targetgen.quant_recipe gptq-weights IN.json OUT.json`) sets
+`weight.rounding: gptq` and records `calibration_samples`, `act_order`, `damp` and `block`
+under `weight.gptq`, all of which enter the digest. The grid stays the recipe's: GPTQ only
+picks each code on the scales the weight observer computes. `_gptq.py` accumulates each
+contraction's Hessian during the static calibration pass and sets the codes into the stored
+weights before `convert_pt2e` folds them, so the converted program's int8 weights are GPTQ's.
+A recipe without the key keeps its digest and its nearest codes.
 
 For a new format, first add its structural vocabulary and derivation rules, including
 granularity, packing, ranges, zero points, bias domain and rounding. Then extend the
