@@ -172,9 +172,12 @@ class CommonTransformService:
             raise ValueError("common transform requires actual structured IR and explicit parameters")
         if set(options) - {field.name for field in fields(PipelineOptions)}:
             raise ValueError("common transform contains unsupported transformation parameters")
-        from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3
+        from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4
 
-        if self.profile.get("common_substrate") not in {COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3} and set(options) & {
+        supports_planning = self.profile.get("common_substrate") in {
+            COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4,
+        }
+        if not supports_planning and set(options) & {
             "eliminate_redundancy",
             "hoist_invariants",
             "unroll_factors",
@@ -268,7 +271,7 @@ class CommonTransformService:
                 "hardware_conformance": "not_established",
                 "numerical_execution": "not_established",
             }
-            if self.profile.get("common_substrate") in {COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3}:
+            if self.profile.get("common_substrate") in {COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4}:
                 from merlin.perf.pass_observation import observe_changes
 
                 document["pass_observations"] = observe_changes(
@@ -282,12 +285,12 @@ class CommonTransformService:
 
     def check(self, request: dict, *, work_root: Path, timeout_s: int | None = None) -> dict:
         """Check authored actual IR without accepting author-selected semantics."""
-        from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3
+        from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4
         from merlin.verify.lean_checked import accepted_authored_receipt, verify_authored_transform
         from merlin.verify.lean_contract import document_digest
         from merlin.verify.lean_isa_semantics import reconstruct_isa_semantics
 
-        if self.profile.get("common_substrate") != COMMON_SUBSTRATE_V3:
+        if self.profile.get("common_substrate") not in {COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4}:
             raise ValueError("authored transformation checks are outside the original frozen substrate")
         if (
             not isinstance(request, dict)

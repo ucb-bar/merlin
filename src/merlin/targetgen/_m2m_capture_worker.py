@@ -22,9 +22,9 @@ import sys
 from pathlib import Path
 
 if __package__:
-    from ._m2m_capture_deployment import _mlir_dtype, _numeric_deployment
+    from ._m2m_capture_deployment import _capture_api_report, _mlir_dtype, _numeric_deployment
 else:
-    from merlin.targetgen._m2m_capture_deployment import _mlir_dtype, _numeric_deployment
+    from merlin.targetgen._m2m_capture_deployment import _capture_api_report, _mlir_dtype, _numeric_deployment
 
 # canonical dtype token -> (torchAO scheme | None, base-weight dtype cast | None). Mirrors
 # workloads/capture.py SCHEME + DTYPE_CAST so a capsule's precision matches how models are captured.
@@ -41,38 +41,6 @@ _SCHEME = {
 }
 
 _CAPTURE_ABI_VERSION = 6
-
-
-def _capture_api_report(m2m) -> dict[str, list[str]]:
-    """Report selected runtime API gaps; a signature check is not capture qualification."""
-    from m2m.capture.bundle import write_bundle
-
-    bundle_args = set(inspect.signature(write_bundle).parameters)
-    convert_args = set(inspect.signature(m2m.convert).parameters)
-    same_conversion_missing = [
-        f"m2m/capture/bundle.py:write_bundle({name})"
-        for name in sorted({"source_path", "capture_trace", "conversion_result"} - bundle_args)
-    ]
-    if importlib.util.find_spec("m2m.capture.provenance") is None:
-        same_conversion_missing.append("m2m/capture/provenance.py")
-    frontend_trace_missing = [
-        f"m2m/api.py:convert({name})" for name in sorted({"capture_trace", "original_frontend_snapshot"} - convert_args)
-    ]
-    if importlib.util.find_spec("m2m.capture.trace") is None:
-        frontend_trace_missing.append("m2m/capture/trace.py")
-    static_integerization_missing = [
-        member
-        for module, member in (
-            ("m2m.capture.pt2e_integerize", "m2m/capture/pt2e_integerize.py"),
-            ("m2m.capture.pt2e_integer_reference", "m2m/capture/pt2e_integer_reference.py"),
-        )
-        if importlib.util.find_spec(module) is None
-    ]
-    return {
-        "same_conversion_missing": same_conversion_missing,
-        "frontend_trace_missing": frontend_trace_missing,
-        "static_integerization_missing": static_integerization_missing,
-    }
 
 
 def _diagnostic_model_copy(out: Path, loader: Path, *, capture_api: dict[str, list[str]]) -> None:
@@ -926,6 +894,10 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             else None
         )
     )
+    if a.materialize_bundle and not a.already_quantized and not a.stage_fp32:
+        from merlin.targetgen._capture_session_reference import pre_quantization_session_reference
+
+        session = pre_quantization_session_reference(mdl, tuple(inputs), session)
     # Capture loader-owned calibration at original precision before export.
     calibration = None
     if a.stage_fp32 and a.recipe:
