@@ -1155,6 +1155,14 @@ def _build_facts(
             for field in ("arrays", "datapaths", "interfaces"):
                 if probes.get(field):
                     v1[field] = probes[field]
+            # The scoped census may be empty when the selected generator lives above a
+            # target's source subtree. Keep exact, capacity-bearing SRAM role probes in
+            # that case; the HW-port reader below supplies the accumulator capacity.
+            if not v1.get("memories"):
+                v1["memories"] = [
+                    {**row, "source": "selected_firrtl_role_probe", "view_kind": "address_space"}
+                    for row in probes.get("memories", ()) if row.get("bytes") is not None
+                ]
         v1["source"] = {
             "kind": "explicit_source_bundle",
             "config": selected["config"],
@@ -1177,7 +1185,9 @@ def _build_facts(
                         "accounting_note": "logical address-space view; do not sum with physical census stores",
                     }
                 )
-                v1["memory_address_spaces"] = [address_space]
+                v1["memory_address_spaces"] = [
+                    row for row in v1.get("memories", ()) if row.get("view_kind") == "address_space"
+                ] + [address_space]
                 # Preserve the named compatibility view consumed by profiles,
                 # alongside the physical inventory with an explicit view tag.
                 v1.setdefault("memories", []).append(address_space)

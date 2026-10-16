@@ -215,6 +215,8 @@ def test_quota_checkpoint_then_fresh_process_restore_and_honest_incompletion(tmp
     summary = yaml.safe_load((root / "run/qa_loop_summary.yaml").read_text())
     assert summary["n_rounds"] == 1 and summary["formal_complete"] is False
     assert summary["numeric_all_pass"] is False
+    assert summary["capsule_timing"]["timing_ready"] is False
+    assert json.loads((root / "run/capsule_timing_archive_status.json").read_text())["timing_ready"] is False
     assert "restored" in second.stdout.lower()
     assert json.loads((root / "fresh_checks.json").read_text())
     assert json.loads((root / "resumed_checks.json").read_text())

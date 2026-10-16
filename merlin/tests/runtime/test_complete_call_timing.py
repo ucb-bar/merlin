@@ -141,7 +141,7 @@ def test_both_original_callers_bracket_preparation_all_outputs_and_completion(co
         main = source[source.index("int main(") :]
         begin = main.index("merlin_complete_call_start=")
         end = main.index("merlin_complete_call_end=")
-        poison = main.index("merlin_poison_index" if source is neutral else "__builtin_memset")
+        poison = main.index("merlin_poison_bytes" if source is neutral else "__builtin_memset")
         assert begin < poison < main.index("entry_control(") < end
         assert main.index("completion_control();" if source is neutral else "selected_complete") < end
         assert main.index("OUT_B64_BEGIN v1 sum 1 1 8 s") < end

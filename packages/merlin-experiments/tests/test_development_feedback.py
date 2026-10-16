@@ -127,7 +127,6 @@ def test_prepared_feedback_binds_explicit_resources_to_installed_engine(
     monkeypatch.setattr(DF.GATE, "plan_evaluation", lambda *a, **k: decision)
     monkeypatch.setattr(MS, "load_rtl_identity", lambda *a: rtl_identity)
     monkeypatch.setattr(DF.FM, "derived_peak_macs_per_cycle", lambda *a: (None, "unavailable"))
-    monkeypatch.setattr(DF.FM, "harvest_member_cost", lambda roots: {})
     monkeypatch.setattr(PME, "gsim_workload", lambda actual: workload if actual is member else None)
     monkeypatch.setattr(PME, "run_execution", lambda *a, **k: observed.append((a, k)) or {"synthetic": True})
     monkeypatch.setenv(DF.SWEEP_WORKERS_ENV, "3")

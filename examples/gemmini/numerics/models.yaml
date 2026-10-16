@@ -14,9 +14,9 @@ target: gemmini
 # check --mode full: how each program's whole-model image is built and run (contract §2). Paths are
 # repo-relative or ${ENV}-expanded; each model adds its arena (`full.arena_mb`).
 full:
-  board: gemmini_rocket_spike_functional
+  board: firesim_gemmini_rocket_u250_30mhz
   board_catalog: examples/gemmini/platform/board-catalog.yaml
-  host_dts: ${MERLIN_CHIPYARD}/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/chipyard.harness.TestHarness.GemminiRocketConfig.dts
+  host_dts: ${MERLIN_CHIPYARD_GEMMINI_ROCKET}/sims/firesim-staging/generated-src/firechip.chip.FireSim.FireSimGemminiRocketConfig/firechip.chip.FireSim.FireSimGemminiRocketConfig.dts
   datapath: int8
 
 models:

@@ -119,6 +119,34 @@ def _seed_content(root: Path) -> dict:
     return {"content_sha256": content.hexdigest(), "n_files": n_files, "n_bytes": n_bytes}
 
 
+def _source_lineage(source: Path) -> dict:
+    """Accept only the frozen final output of a previous run in this lineage."""
+    from merlin.common import oot_repo as oot
+
+    if source.name != "submission":
+        raise RuntimeError("authoring seed must be a prior run's final submission")
+    previous = source.parent
+    environment = previous / "environment.yaml"
+    if not environment.is_file():
+        raise RuntimeError("authoring seed has no prior run environment")
+    record = yaml.safe_load(environment.read_text(encoding="utf-8")) or {}
+    run_id, lineage_id = record.get("run_id"), record.get("lineage_id")
+    if not isinstance(run_id, str) or not run_id or not isinstance(lineage_id, str) or not lineage_id:
+        raise RuntimeError("authoring seed has no recorded lineage")
+    try:
+        repo = previous / "oot"
+        final = oot.resolve(repo, "HEAD")
+        if oot.resolve(repo, oot.FROZEN_TAG) != final:
+            raise RuntimeError("authoring seed is not the prior run's final oot commit")
+        digest = oot.tree_digest(repo, final)
+        if digest != oot.package_digest(source):
+            raise RuntimeError("authoring seed bytes differ from the final oot commit tree")
+    except oot.OotRepoError as exc:
+        raise RuntimeError(f"authoring seed lacks a verified final oot commit: {exc}") from exc
+    return {"lineage_id": lineage_id, "source_run_id": run_id,
+            "source_commit": final, "source_tree_sha256": digest}
+
+
 def verify_seed_submission(ws: Path, run_dir: Path, expected: Mapping) -> None:
     """Require the staged candidate and its run-owned seed receipt to match."""
     receipt = Path(run_dir) / "seed_submission.json"
@@ -130,6 +158,10 @@ def verify_seed_submission(ws: Path, run_dir: Path, expected: Mapping) -> None:
         raise RuntimeError("unpaid qualification seed receipt is unreadable") from exc
     if not isinstance(expected, Mapping) or recorded != dict(expected) or expected.get("version") != 1:
         raise RuntimeError("unpaid qualification seed receipt differs from the environment")
+    if expected.get("authoring_seed") is True:
+        source = validate_seed_submission_source(expected.get("source", ""), Path(ws) / "submission")
+        if expected.get("lineage") != _source_lineage(source):
+            raise RuntimeError("authoring seed lineage changed after selection")
     observed = _seed_content(Path(ws) / "submission")
     if any(expected.get(key) != value for key, value in observed.items()):
         raise RuntimeError("unpaid qualification submission changed after selection")
@@ -172,7 +204,8 @@ def snapshot_seed_for_grade(ws: Path, run_dir: Path, expected: Mapping) -> Path:
     return destination
 
 
-def seed_submission(ws: Path, source: str | Path, run_dir: Path, *, require_stable_source: bool = False) -> dict:
+def seed_submission(ws: Path, source: str | Path, run_dir: Path, *, require_stable_source: bool = False,
+                    require_lineage: bool = False) -> dict:
     """Seed a *fresh* workspace from a preserved candidate and record its exact bytes.
 
     A changed public contract requires a new sealed run rather than a resume.  This copies only the
@@ -181,6 +214,7 @@ def seed_submission(ws: Path, source: str | Path, run_dir: Path, *, require_stab
     """
     seeded = Path(ws).resolve(strict=True) / "submission"
     source_dir = validate_seed_submission_source(source, seeded)
+    lineage = _source_lineage(source_dir) if require_lineage else None
     if require_stable_source:
         from merlin.common.tree_hash import hash_tree
 
@@ -207,6 +241,7 @@ def seed_submission(ws: Path, source: str | Path, run_dir: Path, *, require_stab
         "source": str(source_dir),
         **_seed_content(seeded),
         **({"selected_source_tree_sha256": source_before} if require_stable_source else {}),
+        **({"authoring_seed": True, "lineage": lineage} if require_lineage else {}),
     }
     record_path = Path(run_dir) / "seed_submission.json"
     record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")

@@ -3,7 +3,7 @@ title: Generating capsules for a target
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-08
+last_verified: 2026-10-15
 related: [adding_a_target, phase0_phase1_setup, capsule_bench, integrations, phase0_specification]
 code_refs:
   - experiments/catalog.yaml
@@ -206,13 +206,15 @@ merlin experiment corpus prepare /configured/out/runs/gemmini/phase0/example-1 \
 merlin experiment corpus inspect /configured/out/artifacts/protocols/gemmini-review-1
 ```
 
-The default preparation mode is historical: it combines the descriptor-selected source pool
-with receipt-declared generated members and retains classified hand-authored members. For a
-generated-only public release, select `--generated-only` explicitly. That mode copies public
+The default preparation mode is generated-only (`--generated-only`). It copies public
 capsules only from the selected, immutable Phase 0 run output; it never falls back to the
 descriptor's legacy capsule tree. If Phase 0 emitted no hidden cohort, provide a separate
 operator-owned `--private-baseline /absolute/hidden-category` or preparation refuses the
 empty hidden grade. A `--retirements` review is incompatible with generated-only mode.
+An explicit `--historical-overlay` combines the selected source pool with generated
+members and retains classified hand-authored members. Both modes refuse public
+capsules whose metadata identifies a held-out validation source, including renamed
+captures; reviewed Phase 1 admission repeats that check for older releases.
 Neither mode edits the source corpus or silently approves a different grading population.
 Generated-only preparation still requires nonempty native admission and an operator seal;
 it does not assert numerical, model-wide, or hardware correctness.

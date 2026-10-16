@@ -1,20 +1,10 @@
 #!/usr/bin/env python3
-"""model2MLIR capture worker — runs INSIDE the m2m venv (the only interpreter with torch), never inside
-the merlin venv. :mod:`merlin.targetgen.capsule_source` invokes it as a subprocess with the m2m venv's
-python and ingests the artifacts it writes.
+"""Capture a model through model2MLIR inside its torch-enabled environment.
 
-Given a request JSON on argv (a loader ``.py`` exposing ``get_model_and_inputs()``, a canonical dtype
-token, and an output dir) it:
-  1. builds the model + example inputs from the loader;
-  2. casts / torchAO-quantizes per the dtype token (the SAME scheme table ``workloads/capture.py`` uses);
-  3. lowers to linalg-on-tensors via ``m2m.convert`` (fx_importer backend), externalizing weights;
-  4. asserts 0 opaque ops (a capsule whose program still has opaque ops is not a valid input program);
-  5. runs the model EAGER on host CPU to produce the reference (golden) output;
-  6. writes ``linalg.mlir``, ``weights.safetensors`` and its argument manifest,
-     ``inputs.json``, ``golden.json``, ``meta.json``.
-
-This file carries no target-name dispatch. Scoped quantization recipes use the
-selected worker package's shared Merlin admission screen inside the m2m/torch process.
+The request names a loader, dtype and output directory. The worker constructs and
+quantizes the model, lowers it through m2m, rejects opaque operations, evaluates the
+host reference and writes the MLIR, weights, inputs, golden output and metadata.
+Scoped quantization recipes use the selected package's Merlin admission screen.
 """
 
 from __future__ import annotations

@@ -473,17 +473,18 @@ class BoundRoCCBackend:
         return from_contract(self._data()["contract"])
 
     def build_source_paths(self):
-        from merlin.runtime import complete_call_timing, direct_kernel_harness, harness_render
+        from merlin.runtime import complete_call_timing, direct_kernel_harness, harness_render, kernel_call_timing
 
-        plan = self.complete_call_timing()
-        clock = (
-            () if plan is None else tuple(Path(p["path"]) for p in plan.record()["counter_semantics"]["source_pins"])
-        )
+        # These files decide the emitted harness bytes. The counter's selected
+        # Rocket/ISA source pins are verified by the timing selections and
+        # carried in contract data; they are not renderer sources.
+        self.complete_call_timing()
+        kernel_call_timing.from_contract(self._data()["contract"])
         return (
-            *clock,
             Path(complete_call_timing.__file__).resolve(),
             Path(direct_kernel_harness.__file__).resolve(),
             Path(harness_render.__file__).resolve(),
+            Path(kernel_call_timing.__file__).resolve(),
         )
 
     def _engine(self, engine):

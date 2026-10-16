@@ -83,7 +83,10 @@ phase1_gates:
   # The engine sets the scope of the evidence: `gsim` is the RTL-equivalent engine (numerics and
   # cycles); `spike` is the functional instruction-set model with the accelerator extension
   # (spike-functional: numerics only, never certification or timing), on the declared functional
-  # board, whose DRAM holds the whole program's weights. max_cycles and timeout_s are hang bounds.
+  # FireSim-derived board, whose declared 16 GiB DRAM span holds the whole program's weights.
+  # The linked Spike binary and Gemmini extension must match the Phase 2 full-U250 machine
+  # selection; use phase1.spike_alignment before preparing the fresh release. max_cycles
+  # and timeout_s are hang bounds.
   # smolvla.action_decode carries no contraction (no quantization work), so its capture states no
   # integer reference and host execution judges it.
   whole_model:
@@ -92,8 +95,8 @@ phase1_gates:
       programs:
         resnet50:
           model:
-            engine: gsim
-            board: gemmini_rocket_verilator
+            engine: spike
+            board: firesim_gemmini_rocket_u250_30mhz
             max_cycles: 150000000
             timeout_s: 86400
             integer_reference: [integer-reference.json]
@@ -104,7 +107,7 @@ phase1_gates:
         smolvla:
           prefix_encode:
             engine: spike
-            board: gemmini_rocket_spike_functional
+            board: firesim_gemmini_rocket_u250_30mhz
             timeout_s: 86400
             integer_reference: [integer-reference.json]
             require_integer_reference: true
@@ -113,7 +116,7 @@ phase1_gates:
             group_profile: true
           flow_denoise:
             engine: spike
-            board: gemmini_rocket_spike_functional
+            board: firesim_gemmini_rocket_u250_30mhz
             timeout_s: 86400
             integer_reference: [integer-reference.json]
             require_integer_reference: true
@@ -122,7 +125,7 @@ phase1_gates:
             group_profile: true
           action_decode:
             engine: spike
-            board: gemmini_rocket_spike_functional
+            board: firesim_gemmini_rocket_u250_30mhz
             timeout_s: 14400
             integer_reference: [integer-reference.json]
             require_integer_reference: false
@@ -132,7 +135,7 @@ phase1_gates:
         tiny_llama:
           prefill:
             engine: spike
-            board: gemmini_rocket_spike_functional
+            board: firesim_gemmini_rocket_u250_30mhz
             timeout_s: 172800
             integer_reference: [integer-reference.json]
             require_integer_reference: true
@@ -141,7 +144,7 @@ phase1_gates:
             group_profile: true
           decode:
             engine: spike
-            board: gemmini_rocket_spike_functional
+            board: firesim_gemmini_rocket_u250_30mhz
             timeout_s: 86400
             integer_reference: [integer-reference.json]
             require_integer_reference: true

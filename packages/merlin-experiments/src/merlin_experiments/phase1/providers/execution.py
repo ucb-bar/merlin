@@ -44,6 +44,7 @@ class ExecutionConfig:
     sim_max_jobs: int = 0
     selected_rtl_facts: Path | None = None
     sim_per_capsule_timeout: int = 0
+    model_gate_interval: int = 0
 
 
 _DRIVER_MODULES = {
@@ -261,6 +262,11 @@ def launch(
         if sandbox == "bwrap"
         else None
     )
+    model_gate = None
+    if config.model_gate_interval > 0 and sandbox == "bwrap":
+        from merlin_experiments.phase1.feedback import visible_model_gate
+
+        model_gate = visible_model_gate.start(ws, run_dir, interval_s=config.model_gate_interval)
     primary_error = None
     try:
         # Route to the selected driver (explicit --driver, or auto-by-model-id). A non-Anthropic model can't
@@ -388,5 +394,7 @@ def launch(
         primary_error = error
         raise
     finally:
+        if model_gate is not None:
+            visible_model_gate.stop_gate(model_gate)
         FL.stop_brokers(ws, broker, primary_error=primary_error)
     return rc, tpath

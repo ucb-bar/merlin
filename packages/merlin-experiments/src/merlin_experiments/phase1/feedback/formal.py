@@ -762,6 +762,18 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     private_execution_complete = (
         execution_gate is None or execution_gate["required"] is False or (private_execution or {}).get("passed") is True
     )
+    model_check_official = {"passed": False, "reason": "private model inputs unavailable"}
+    if (
+        context.target == "gemmini" and required_full_models and private_models_complete  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        and a.private_full_model_spec is not None
+    ):
+        from . import model_check_official as MCO
+
+        try:
+            model_check_official = MCO.run_gate(pkg, run_dir, required_full_programs)
+        except Exception as exc:  # noqa: BLE001 -- an incomplete host gate never certifies a run
+            model_check_official = {"passed": False, "reason": f"{type(exc).__name__}: {exc}"}
+    model_check_complete = context.target != "gemmini" or model_check_official.get("passed") is True  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
     public_resources_complete = (
         public_resources.get("required") is False or public_resources.get("resource_complete") is True
     )
@@ -777,6 +789,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         and hidden_phase["formal_complete"]
         and private_models_complete
         and private_execution_complete
+        and model_check_complete
         and public_resources_complete
     )
     completion_failures = [
@@ -784,6 +797,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         *(f"hidden:{reason}" for reason in hidden_phase["completion_failures"]),
         *([] if private_models_complete else ["private_full_models:incomplete"]),
         *([] if private_execution_complete else ["private_full_model_execution:incomplete"]),
+        *([] if model_check_complete else ["model_check_official:incomplete"]),
         *([] if public_resources_complete else ["public_codegen_resources:incomplete"]),
     ]
 
@@ -791,6 +805,17 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     environment_path = run_dir / "environment.yaml"
     environment = yaml.safe_load(environment_path.read_bytes()) if environment_path.is_file() else {}
     qualification_only = isinstance(environment, Mapping) and environment.get("qualification_only") is True
+    text_files = {
+        row.get("name"): row.get("sha256")
+        for row in (environment.get("treatment_snapshot") or {}).get("files", [])
+        if isinstance(row, Mapping) and row.get("name") in {"served/TASK.md", "archived/TASK.md"}
+    }
+    errata = environment.get("operator_errata") or {}
+    if errata:
+        text_files["archived/ERRATA.md"] = errata.get("sha256")
+    bundle_path = run_dir / "input_bundle_manifest.yaml"
+    bundle_document = yaml.safe_load(bundle_path.read_text(encoding="utf-8")) or {} if bundle_path.is_file() else {}
+    exact_grants = list(bundle_document.get("allowed") or [])
     ctt = {}
     ctt_path = run_dir / "cost_time_toolcalls.yaml"
     if ctt_path.is_file():
@@ -800,6 +825,8 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "run_id": run_dir.name,
         **({"qualification_only": True, "authoring_converged": False} if qualification_only else {}),
         "arm": a.arm,
+        "operator_text_sha256": text_files,
+        "assisted_grants": exact_grants if a.arm == "merlin_assisted" else [],
         "model": a.model,
         "grading_budget": {"step_timeout_s": a.qa_timeout},
         "repo_sha": frozen["repo_sha"],
@@ -811,6 +838,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "hidden": hidden_phase,
         **({'hidden_capsule_validation': hidden_policy} if functional_hidden else {}),
         "private_full_models": private_models,
+        **({"model_check_official": model_check_official} if context.target == "gemmini" else {}),  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
         "public_codegen_resources": public_resources,
         **({} if private_execution is None else {"private_full_model_execution": private_execution}),
         "completion": {
@@ -868,6 +896,13 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
 
     fr = [
         f"# {run_dir.name} — final report ({a.arm})",
+        "",
+        "| Model | Sealed full-chain status |",
+        "| --- | --- |",
+        *[f"| {model} | {(model_check_official.get('models') or {}).get(model, {}).get('status', 'unavailable')} |"
+          for model in required_full_models],
+        f"| Unique kernel RTL | {sum(row.get('status') == 'pass' for row in model_check_official.get('rtl', []))}/"
+        f"{model_check_official.get('unique_kernel_count', 0)} pass required |",
         "",
         f"- integrity: {manifest['integrity_status']} (exempt={manifest['integrity_exempt']})",
         f"- public/dev: functional_pass={manifest['public_dev']['functional_pass']} "

@@ -374,8 +374,10 @@ def render_harness(
             raise ValueError("neutral output-only storage cannot carry precomputed data")
     normalized = {**normalized, "tensors": tensors}
     from .complete_call_timing import from_contract
+    from .kernel_call_timing import from_contract as kernel_timing_from_contract
 
     complete_call_timing = from_contract(contract)
+    kernel_call_timing = kernel_timing_from_contract(contract)
     return render_direct_kernel(
         normalized,
         inputs={name: {} for name in expected},
@@ -387,5 +389,6 @@ def render_harness(
         output_poison=0xA5,
         prelude_symbol=selected.prelude_symbol,
         complete_call_timing=complete_call_timing,
+        kernel_call_timing=kernel_call_timing,
         source_owned_mutables=source_owned_mutables,
     )

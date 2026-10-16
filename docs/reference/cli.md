@@ -74,3 +74,9 @@ Core console-scripts are installed with `pip install -e .` from the repo root. O
 | `merlin-rvv-mine` | `merlin.mining.mine:main` |
 | `merlin-rvv-opt` | `merlin.mining.op_sweep:main` |
 | `merlin-rvv-report` | `merlin.mining.report:main` |
+
+## merlin-timing
+
+| Command | Backing module |
+|---|---|
+| `spike-timing` | `merlin_timing.cli:main` |

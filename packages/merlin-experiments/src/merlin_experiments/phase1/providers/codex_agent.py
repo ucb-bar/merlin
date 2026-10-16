@@ -953,8 +953,9 @@ def run_round(
             "backend under submission/ per those instructions. During iteration, check the smallest affected capsule "
             "or coherent comma-separated capsule cluster with `python3 agent_selfcheck.py --submission submission "
             "--sim spike --capsules <names>`; do not repeatedly grade the whole corpus. Run `--capsules all` only "
-            "after the focused checks improve and the candidate is ready for a regression sweep. Do not edit "
-            "submission/ while a self-check is running, because that makes its result stale. Goldens are withheld; "
+            "after the focused checks improve and the candidate is ready for a regression sweep. You may edit "
+            "submission/ while a self-check runs; compare the verdict's source digest with your current bytes. "
+            "Goldens are withheld; "
             "iterate until the complete corpus passes. THE FIRST GRADE NEEDS YOUR SUBMISSION FIRST: the harness "
             "grades submission/, so while submission/manifest.yaml does not exist there is NOTHING to grade and no "
             "verdict can ever arrive -- an absent qa/verdict.json is not a queue you wait in, it means you have not "
@@ -1033,7 +1034,7 @@ def run_round(
             "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
             "backend under submission/. With agent_selfcheck, re-check only the smallest affected "
             "capsule or coherent cluster after each edit; use `--capsules all` only after focused "
-            "checks improve, and never edit submission/ while a self-check is running."
+            "checks improve. You may edit while a check runs; compare the verdict's source digest."
         )
     )
     _CONTINUE_MSG = delegation_user_prompt(_CONTINUE_MSG, max_concurrent_subagents)

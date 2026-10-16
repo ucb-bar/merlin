@@ -8,11 +8,11 @@ from merlin.perf import hw_counters
 from merlin.targetgen.contract import compile as contract_compile
 
 
-def _oracle(monkeypatch, tmp_path, *, simulator):
+def _oracle(monkeypatch, tmp_path, *, simulator, metrics=None):
     console = f"{hw_counters.COUNTER_MARKER} OPAQUE_BYTES 73\nDONE\n"
     backend = SimpleNamespace(
         run_elf=lambda *args, **kwargs: console,
-        parse_output=lambda text: ({}, {"cycles": 19}),
+        parse_output=lambda text: ({}, {"cycles": 19} if metrics is None else metrics),
         ORACLE={simulator: {"derived_from_rtl": True}},
     )
     monkeypatch.setattr(contract_compile, "compile_lowered_to_elf",
@@ -94,6 +94,18 @@ def test_failed_readback_retains_complete_native_console(monkeypatch, tmp_path):
 def test_successful_readback_retains_console_without_changing_result(monkeypatch, tmp_path):
     result = _oracle(monkeypatch, tmp_path, simulator="verilator")
     assert (tmp_path / "oracle_console.log").read_bytes() == result["console"].encode("utf-8")
+
+
+def test_missing_cycle_marker_is_unmeasured_not_zero(monkeypatch, tmp_path):
+    result = _oracle(monkeypatch, tmp_path, simulator="verilator", metrics={})
+    assert result["raw_metrics"] == {}
+    assert result["cycles"] is None
+
+
+def test_zero_cycle_marker_is_not_accepted_as_a_measurement(monkeypatch, tmp_path):
+    result = _oracle(monkeypatch, tmp_path, simulator="verilator", metrics={"cycles": 0})
+    assert result["raw_metrics"] == {"cycles": 0}
+    assert result["cycles"] is None
 
 
 def test_failed_launch_does_not_retain_an_earlier_attempts_console(monkeypatch, tmp_path):

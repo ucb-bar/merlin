@@ -147,6 +147,13 @@ def test_ordinary_writer_discovery_and_freeze_reopen_complete_public_capture(tmp
     exclusion, _ = selected(tmp_path)
     root, result = write(tmp_path, exclusion)
     capsule = yaml.safe_load((result / "capsule.yaml").read_bytes())
+    expected = result / "source-capture-golden.npy"
+    assert capsule["reference_closure"] == {
+        "schema": "merlin.capsule_reference_closure.v1",
+        "members": [{"path": expected.name, "role": "expected_output",
+                     "sha256": hashlib.sha256(expected.read_bytes()).hexdigest(),
+                     "bytes": expected.stat().st_size}],
+    }
     observation = P.verify_written(capsule, result)
     assert observation["status"] == "source_prepared_execution_unknown"
     assert capsule["operation"]["op"] == "model"

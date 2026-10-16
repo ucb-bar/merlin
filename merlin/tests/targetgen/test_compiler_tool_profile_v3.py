@@ -98,6 +98,8 @@ def test_selected_facts_are_host_only_unless_original_level_already_grants_them(
             "sha256": hashlib.sha256(facts.read_bytes()).hexdigest(),
         }
         allowed, hosts = ({row["path"] for row in bundle[role]} for role in ("allowed", "host_inputs"))
+        assert descriptor.experiment_resource("task") + "/" not in allowed
+        assert descriptor.experiment_resource("task") + "/" in hosts
         if bundle["arm"] == "raw_baseline":
             assert str(facts) in hosts and str(facts_root) + "/" not in allowed
         else:

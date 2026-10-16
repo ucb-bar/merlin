@@ -1415,8 +1415,12 @@ def _execute(root: Path, plan: dict, record: dict, *, checkpoint: Path | None = 
                 try:
                     _verify_inputs(plan)
                     entry["output_sha256"] = fingerprint(engine_output)
-                except (OSError, SpecError):
-                    entry.update(returncode=1, state="execution_failed", error="phase0 output identity not established")
+                except (OSError, SpecError) as exc:
+                    entry.update(
+                        returncode=1,
+                        state="execution_failed",
+                        error=f"phase0 output identity not established: {exc}",
+                    )
                     returncode = 1
             elif returncode == 0 and command["adapter"] == "capsule_bench":
                 try:
