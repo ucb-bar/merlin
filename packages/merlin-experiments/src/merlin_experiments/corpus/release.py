@@ -410,6 +410,7 @@ def prepare(
     model_spike_timeout_s: int | None = None,
     gsim_readback_transport: str | None = None,
     operand_protocol_selection: tuple[Path, str] | None = None,
+    kernel_timing_selection: tuple[Path, str] | None = None,
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
@@ -500,6 +501,7 @@ def prepare(
                 model_spike_timeout_s=model_spike_timeout_s,
                 gsim_readback_transport=gsim_readback_transport,
                 operand_protocol_selection=operand_protocol_selection,
+                kernel_timing_selection=kernel_timing_selection,
             )
             descriptor = payload / "experiment" / "target_experiment.yaml"
             checked = admission(descriptor, coverage_output=root / "private" / "workload-coverage.json")

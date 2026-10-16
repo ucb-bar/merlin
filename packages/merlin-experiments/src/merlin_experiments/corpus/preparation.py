@@ -942,20 +942,25 @@ def _bundle_selection(optional_levels, selected_levels, selected_variants):
 
 
 def _stage_capability_contract(source, expected_sha256, destination, native_timeout_s, gsim_readback_transport=None,
-                               *, model_spike_timeout_s=None, operand_selection=None):
+                               *, model_spike_timeout_s=None, operand_selection=None, kernel_timing_selection=None):
     """Record closed execution selections separately from original Phase 0 bytes."""
     from merlin.common.digest import sha256_file
     from merlin.runtime.backends import chipyard_rocc_bound as runtime
     from merlin.runtime.backends import rocc_selection
 
     if (native_timeout_s is None and model_spike_timeout_s is None
-            and gsim_readback_transport is None and operand_selection is None):
+            and gsim_readback_transport is None and operand_selection is None and kernel_timing_selection is None):
         return {"path": str(source), "sha256": copy_input(source, destination, expected_sha256=expected_sha256)}
     ordinary_tree(source)
     if sha256_file(source) != expected_sha256:
         raise SpecError("selected corpus input differs from verified evidence; prepare a new release")
     try:
         selected = read_yaml(source)
+        timing_record = None
+        if kernel_timing_selection is not None:
+            from .kernel_timing_selection import select
+
+            selected, timing_record = select(selected, kernel_timing_selection)
         if native_timeout_s is not None:
             selected = rocc_selection.select_native_timeout(selected, native_timeout_s)
         if model_spike_timeout_s is not None:
@@ -974,6 +979,8 @@ def _stage_capability_contract(source, expected_sha256, destination, native_time
         raise SpecError("selected original contract changed during execution selection")
     record = {"path": str(source), "sha256": expected_sha256}
     selected_sha256 = sha256_file(destination)
+    if timing_record is not None:
+        record["kernel_timing_selection"] = {**timing_record, "selected_contract_sha256": selected_sha256}
     if native_timeout_s is not None:
         record["execution_resource_selection"] = {
             "max_native_timeout_s": native_timeout_s,
@@ -1018,6 +1025,7 @@ def scaffold(
     model_spike_timeout_s: int | None = None,
     gsim_readback_transport: str | None = None,
     operand_protocol_selection: tuple[Path, str] | None = None,
+    kernel_timing_selection: tuple[Path, str] | None = None,
 ) -> dict:
     """Stage only declared task/selfcheck/harness resources, never prior runs or bundles."""
     from merlin.common.digest import sha256_file
@@ -1091,13 +1099,14 @@ def scaffold(
         contract_record = _stage_capability_contract(
             contract_source, contract_sha256, staged_contract, native_timeout_s, gsim_readback_transport,
             model_spike_timeout_s=model_spike_timeout_s, operand_selection=operand_selection,
+            kernel_timing_selection=kernel_timing_selection,
         )
         hardware["target_contract"] = str(staged_contract)
         inputs["capability_contract"] = contract_record
     elif te.declared_contract:
         raise SpecError("descriptor declares a capability contract without a selected Phase 0 export; freeze a new run")
     elif (native_timeout_s is not None or model_spike_timeout_s is not None
-          or gsim_readback_transport is not None or operand_selection is not None):
+          or gsim_readback_transport is not None or operand_selection is not None or kernel_timing_selection is not None):
         raise SpecError("execution selection requires an original Phase 0 contract")
     hardware_root = None
     if te.hwbringup_set:

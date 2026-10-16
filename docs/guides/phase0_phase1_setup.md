@@ -297,6 +297,24 @@ prove gSIM/FireSim RTL equivalence or that the FPGA can use the entire declared
 memory span; qualify those independently. A missing pinned checkout or DTS is a
 failed selection, not a reason to reuse the Verilator DTS.
 
+When an approved numerical capture recipe differs from the original Phase 0
+recipe, put a `capture_recipe_variant` review in that model's private spec row.
+Use schema `merlin.phase1.capture_recipe_variant.v1`, `status: reviewed`,
+`reviewed_by`, `reason`, and both recipes' `base_file_sha256`,
+`base_recipe_sha256`, `selected_file_sha256`, and `selected_recipe_sha256`.
+The `changes` list must equal the complete diff returned by
+`merlin_experiments.phase1.feedback.private_recipe_variant.changes(base, selected)`.
+The gate still verifies the original derivation, software, RTL facts and host
+profile before checking the review. The review records a numerical choice;
+it grants no new hardware capability or numerical pass. Keep this review private.
+
+To retain kernel cycle measurements when preparing a new release from an
+existing Phase 0 corpus, pass `kernel_timing_selection=(contract_path, sha256)`
+to `merlin_experiments.corpus.release.prepare`. The selected contract may add
+only counter semantics and the `logical_harness` kernel timing fields. Staging
+reopens the pinned counter source, preserves the original contract, and records
+the selected timing identity in the release. Other contract changes are refused.
+
 For capsule execution, select `GemminiGsimFireSimAlignedConfig` in the Phase 0
 execution contract and derive facts from its exact TestHarness FIRRTL. Build it
 from the [pinned configuration source](../../build_tools/chipyard/GemminiGsimFireSimAlignedConfig.scala)
