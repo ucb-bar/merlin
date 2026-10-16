@@ -764,7 +764,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     )
     model_check_official = {"passed": False, "reason": "private model inputs unavailable"}
     if (
-        context.target == "gemmini" and required_full_models and private_models_complete
+        context.target == "gemmini" and required_full_models and private_models_complete  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
         and a.private_full_model_spec is not None
     ):
         from . import model_check_official as MCO
@@ -773,7 +773,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             model_check_official = MCO.run_gate(pkg, run_dir, required_full_programs)
         except Exception as exc:  # noqa: BLE001 -- an incomplete host gate never certifies a run
             model_check_official = {"passed": False, "reason": f"{type(exc).__name__}: {exc}"}
-    model_check_complete = context.target != "gemmini" or model_check_official.get("passed") is True
+    model_check_complete = context.target != "gemmini" or model_check_official.get("passed") is True  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
     public_resources_complete = (
         public_resources.get("required") is False or public_resources.get("resource_complete") is True
     )
@@ -838,7 +838,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "hidden": hidden_phase,
         **({'hidden_capsule_validation': hidden_policy} if functional_hidden else {}),
         "private_full_models": private_models,
-        **({"model_check_official": model_check_official} if context.target == "gemmini" else {}),
+        **({"model_check_official": model_check_official} if context.target == "gemmini" else {}),  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
         "public_codegen_resources": public_resources,
         **({} if private_execution is None else {"private_full_model_execution": private_execution}),
         "completion": {

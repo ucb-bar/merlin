@@ -12,19 +12,20 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from merlin.common.tree_hash import hash_tree
-from merlin.model_check.models import default_models_path
+from merlin.model_check.bundle import Bundle
+from merlin.model_check.models import default_models_path, target_from_contract
 
 REPORT_SCHEMA = "merlin.model_check.report.v1"
-DEFAULT_BUNDLE = Path("/work/merlin/private/gemmini/numerics/v1")
 
 
 def _invoke(command: str, *, submission: Path, model: str, output: Path, bundle: Path,
             timeout_s: int, program: str | None = None, group: str | None = None) -> dict:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.unlink(missing_ok=True)
+    target = target_from_contract()
     argv = [sys.executable, "-m", "merlin.model_check", command, "--submission", str(submission),
             "--model", model, "--split", "sealed", "--bundle", str(bundle),
-            "--models", str(default_models_path("gemmini")),
+            "--models", str(default_models_path(target)),
             "--work", str(output.with_suffix(".work")), "--out", str(output), "--timeout-s", str(timeout_s)]
     if command == "check":
         argv += ["--mode", "full"]
@@ -59,10 +60,12 @@ def _invoke(command: str, *, submission: Path, model: str, output: Path, bundle:
 
 
 def run_gate(submission: Path, run_dir: Path, required_programs: dict[str, tuple[str, ...]], *,
-             bundle: Path = DEFAULT_BUNDLE, model_timeout_s: int = 7200,
+             bundle: Path | None = None, model_timeout_s: int = 7200,
              rtl_budget_s: int = 7200, kernel_timeout_s: int = 300,
              rtl_workers: int = 4) -> dict:
     """Require sealed full-chain Spike and every observed unique device kernel on gSIM."""
+    if bundle is None:
+        bundle = Bundle.default(target_from_contract()).root
     root = run_dir / "grading_model_check"
     root.mkdir(parents=True, exist_ok=True)
     source_sha256 = hash_tree(submission)["sha256"]

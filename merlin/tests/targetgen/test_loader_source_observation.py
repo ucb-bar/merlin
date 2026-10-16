@@ -32,6 +32,8 @@ def test_worker_observes_top_level_and_input_builder_imports(tmp_path, monkeypat
     monkeypatch.setattr(sys, "modules", dict(sys.modules))
     torch = ModuleType("torch")
     torch.manual_seed = lambda seed: None
+    torch.set_num_threads = lambda threads: None
+    torch.get_num_threads = lambda: 1
     torch.use_deterministic_algorithms = lambda enabled: None
     coverage = ModuleType("m2m.coverage")
     coverage.opaque_report = lambda *args: None

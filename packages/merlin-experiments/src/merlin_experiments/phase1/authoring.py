@@ -30,6 +30,8 @@ from merlin_experiments.phase1 import recovery as ROQ
 from merlin_experiments.phase1 import run_inputs as RI
 from merlin_experiments.phase1 import spend as SPEND
 from merlin_experiments.phase1 import treatments as T
+from merlin_experiments.phase1.authoring_conformance import conformance_ever as _conformance_ever
+from merlin_experiments.phase1.authoring_conformance import workflow_conformance as _workflow_conformance
 from merlin_experiments.phase1.audit import AnswerAudit
 from merlin_experiments.phase1.feedback import certification as CERT
 from merlin_experiments.phase1.feedback import lifecycle as FL
@@ -54,35 +56,6 @@ class AuthoringRuntime:
     bundle_id: str
     oracle_timing: Path
     public_root: Path | None = None
-
-
-def _conformance_ever(rounds) -> dict:
-    """Fold the run-level gate: true if ever satisfied, None if always inapplicable.
-
-    Resume rebuilds this same view from persisted round records.
-    """
-    ever: dict = {}
-    for entry in rounds or []:
-        checks = ((entry or {}).get("conformance") or {}).get("checks") or {}
-        for key, value in checks.items():
-            if value is None:
-                ever.setdefault(key, None)
-            else:
-                ever[key] = bool(ever.get(key)) or bool(value)
-    return ever
-
-
-def _workflow_conformance(
-    tpath: Path, submission_dir: Path, arm: str, endpoint_kind: str, resolved_tools
-) -> tuple[dict, bool]:
-    """Recompute current workflow evidence from resolved tools; checker errors fail closed."""
-    try:
-        from merlin_experiments.phase1 import conformance as _CONF
-
-        conf = _CONF.compute(tpath, submission_dir, arm, endpoint_kind, resolved_tools=resolved_tools)
-    except Exception as exc:  # noqa: BLE001 — conformance is a formal gate; unavailable means false
-        conf = {"conformant": False, "error": f"{type(exc).__name__}: {exc}"}
-    return conf, conf.get("conformant") is True
 
 
 def _spend_over_cap(this_round_cost) -> tuple[bool, float, float]:
@@ -301,7 +274,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         max(0, int(a.sim_max_jobs)),
         selected_rtl_facts,
         sim_per_capsule_timeout=a.sim_per_capsule_timeout,
-        model_gate_interval=a.grade_interval if context.target == "gemmini" and a.experiment == "full" else 0,
+        model_gate_interval=a.grade_interval if context.target == "gemmini" and a.experiment == "full" else 0,  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
     )
 
     public_build_service = None
@@ -616,7 +589,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         # FINAL AUTHORITATIVE GRADE: the background grades are progress reports on a moving workspace;
         # the run's verdict is a grade of the submission as the session left it.
         verdict = _grade(ws, run_dir, state["tick"] + 1, a.no_oracle, a.qa_timeout)
-        if context.target == "gemmini" and a.experiment == "full":
+        if context.target == "gemmini" and a.experiment == "full":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
             from . import oot_history as _OH
 
             _OH.verify_turn_end(run_dir, ws / "submission", verdict.get("oot_commit"))
@@ -794,7 +767,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             break
 
         verdict = _grade(ws, run_dir, rnd, a.no_oracle, a.qa_timeout)
-        if context.target == "gemmini" and a.experiment == "full":
+        if context.target == "gemmini" and a.experiment == "full":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
             from . import oot_history as _OH
 
             _OH.verify_turn_end(run_dir, ws / "submission", verdict.get("oot_commit"))
@@ -1275,12 +1248,12 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     # VERIFIED result (the relaunch design means the converging round's agent never saw the passing
     # verdict, so its self-reported status lags by one round). Guarantees the frozen report matches.
     finalize = None
-    if _authoring_complete() and context.target == "gemmini" and a.experiment == "full":
+    if _authoring_complete() and context.target == "gemmini" and a.experiment == "full":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
         # A report-finalize turn and the driver's status-line stamp change submission bytes after the
         # last agent-source OOT commit. The model task asks for the report during authoring; preserve
         # that exact tree for the official grade and record the visible model status here.
         finalize = {
-            "skipped": "gemmini model report belongs to the agent's final authoring tree",
+            "skipped": "gemmini model report belongs to the agent's final authoring tree",  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
             "visible_model_status_line": _verified_status_line(verdict),
             "status_line_stamped_by_driver": False,
         }
@@ -1435,7 +1408,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         official_grade = CERT._official_grade_result(
             grade_rc,
             run_dir,
-            require_model_check=context.target == "gemmini",
+            require_model_check=context.target == "gemmini",  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
             required_models=PFM.requirements_for(context.descriptor),
             required_programs=PFM.program_requirements_for(context.descriptor),
             execution_gate=PFX.gate_for(
