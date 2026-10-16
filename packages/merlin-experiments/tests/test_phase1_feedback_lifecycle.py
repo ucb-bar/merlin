@@ -90,6 +90,38 @@ def test_output_transport_selection_does_not_break_isa_broker_startup(tmp_path, 
     assert brokers[0].returncode == 0
 
 
+def test_raw_selfcheck_selection_is_passed_only_to_host_execution_brokers(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import raw_selfcheck_evidence as E
+
+    names = ["selfcheck", "simjob", "qa"]
+    monkeypatch.setattr(L._TR, "COMMON_BROKERS", tuple(
+        SimpleNamespace(module=f"merlin_experiments.phase1.brokers.{name}",
+                        log="broker.log", channel=f".{name}_probe") for name in names
+    ))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    root = tmp_path / "run" / "_qa_work" / "selfchecks"
+    real_popen, observed = subprocess.Popen, []
+
+    def spawn(argv, **kwargs):
+        observed.append(kwargs.get("env"))
+        script = "import os; print(os.environ.get('" + E.ROOT_ENV + "', '<unset>'))"
+        return real_popen([sys.executable, "-c", script], **kwargs)
+
+    monkeypatch.setattr(L.subprocess, "Popen", spawn)
+    brokers = L.start_brokers(workspace, replace(_config(tmp_path), raw_evidence_root=root))
+    try:
+        assert [child.wait(timeout=5) for child in brokers] == [0, 0, 0]
+        for environment in observed[:2]:
+            assert environment[E.ROOT_ENV] == str(root)
+            assert environment[E.WORKSPACE_ENV] == str(workspace)
+        assert observed[2] is None
+        for name in names[:2]:
+            assert (workspace / f".{name}_probe/broker.log").read_text().strip() == str(root)
+    finally:
+        L.stop_brokers(workspace, brokers)
+
+
 def test_host_tool_broker_uses_only_selected_frozen_facts(tmp_path, monkeypatch):
     from merlin_experiments.phase1.frozen_facts import select
 

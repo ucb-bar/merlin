@@ -84,10 +84,26 @@ def settle(report: dict) -> dict:
     return report
 
 
+def _redact_bundle_paths(value: Any, root: str) -> Any:
+    """Remove this report's known host-only bundle location from visible metadata."""
+    if isinstance(value, str):
+        return "<numerics_bundle>" if value == root else value.replace(root + "/", "<numerics_bundle>/")
+    if isinstance(value, dict):
+        return {key: _redact_bundle_paths(item, root) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_bundle_paths(item, root) for item in value]
+    return value
+
+
 def agent_view(report: Mapping[str, Any]) -> dict:
     """The report with every per-input value of the sealed split removed (aggregate gates kept)."""
     view = deepcopy(dict(report))
     view["agent_view"] = True
+    bundle = view.get("bundle")
+    if isinstance(bundle, dict):
+        root = bundle.pop("path", None)
+        if isinstance(root, str) and root not in {"", "/"} and Path(root).is_absolute():
+            view = _redact_bundle_paths(view, root.rstrip("/"))
     for program in view.get("programs", []):
         program["runs"] = [r for r in program.get("runs", []) if r.get("split") != "sealed"]
         for kernel in program.get("kernels", []):

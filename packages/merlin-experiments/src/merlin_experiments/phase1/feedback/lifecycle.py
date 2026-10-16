@@ -40,6 +40,7 @@ class BrokerConfig:
     selected_rtl_facts: Path | None = None
     compiler_bundle_manifest: Path | None = None
     sim_per_capsule_timeout: int = 0
+    raw_evidence_root: Path | None = None
 
     def __post_init__(self):
         from ..options import MAX_SIM_PER_CAPSULE_TIMEOUT_S
@@ -176,8 +177,17 @@ def start_brokers(ws: Path, config: BrokerConfig):
             try:
                 from merlin_experiments.frozen_python import inherited_python_command
 
+                launch_kwargs = {}
+                if name in {
+                    "merlin_experiments.phase1.brokers.selfcheck",
+                    "merlin_experiments.phase1.brokers.simjob",
+                }:
+                    from .raw_selfcheck_evidence import broker_environment
+
+                    launch_kwargs["env"] = broker_environment(config.raw_evidence_root, ws)
                 brokers.append(
-                    subprocess.Popen(inherited_python_command(argv), stdout=output, stderr=subprocess.STDOUT)
+                    subprocess.Popen(inherited_python_command(argv), stdout=output,
+                                     stderr=subprocess.STDOUT, **launch_kwargs)
                 )
                 owned_channels.append(channel)
             except BaseException as error:

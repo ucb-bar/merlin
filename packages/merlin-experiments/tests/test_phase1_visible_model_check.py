@@ -141,6 +141,46 @@ def test_sealed_or_private_report_never_reaches_agent(tmp_path, monkeypatch):
     assert broker._safe_report({"path": "/work/merlin/private/gemmini/numerics/v1"}) is False
 
 
+def test_visible_report_from_private_bundle_preserves_results_and_passes_export_guard(tmp_path):
+    from merlin.model_check import report as R
+
+    root = str(tmp_path / "private" / "numerics" / "bundle")
+    report = R.new_report("check", model="resnet50", split="visible",
+                          submission={"tree_sha256": "a" * 64})
+    report["bundle"] = {"path": root, "manifest_sha256": "b" * 64}
+    report["gates"] = {"kernels": {"status": "fail"}}
+    report["programs"] = [{"program": "model", "runs": [{
+        "split": "visible", "status": "fail", "artifact": root + "/resnet50/visible.json",
+    }]}]
+    report["model_metrics"] = {"per_input": [{"split": "visible", "error": 0.125}]}
+    R.settle(report)
+    view = R.agent_view(report)
+    out = tmp_path / "visible-report.json"
+    R.write(view, out)
+    published = json.loads(out.read_text())
+    assert broker._safe_report(published)
+    assert "path" not in published["bundle"]
+    assert published["status"] == "fail" and published["exit_code"] == 1
+    assert published["submission"] == report["submission"]
+    assert published["gates"] == report["gates"]
+    assert published["model_metrics"] == report["model_metrics"]
+    assert published["programs"][0]["runs"][0]["artifact"] == "<numerics_bundle>/resnet50/visible.json"
+    assert report["bundle"]["path"] == root  # Original host report is retained intact.
+    assert report["programs"][0]["runs"][0]["artifact"].startswith(root)
+
+
+@pytest.mark.parametrize("unexpected", [
+    "/unrelated/private/record", "/original/private/bundle-other/data", "sealed_inputs", "sealed",
+])
+def test_known_bundle_redaction_does_not_admit_other_private_data(unexpected):
+    from merlin.model_check import report as R
+
+    report = R.new_report("check", model="resnet50", split="visible", submission={})
+    report["bundle"] = {"path": "/original/private/bundle"}
+    report["unexpected"] = unexpected
+    assert broker._safe_report(R.agent_view(report)) is False
+
+
 def test_missing_model_check_report_is_unavailable_not_numeric_failure(tmp_path, monkeypatch):
     ws = tmp_path / "workspace"
     (ws / "submission").mkdir(parents=True)
