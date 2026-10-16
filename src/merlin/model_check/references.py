@@ -6,6 +6,8 @@ bundle, under ``<model>/<split>/<id>/``:
 - ``fp.npz``            the FP reference's judged outputs (from :mod:`reference_worker`, pinned env);
 - ``int8.npz``          the INT8 reference chain's judged outputs (:mod:`chain`, ``linalg_numpy``);
 - ``metrics_int8.json`` the INT8 reference's metrics against FP (reference admission, contract §4.5);
+- ``fp_baseline.npz`` / ``metrics_baseline.json`` when the models file names a ``reference.baseline``: the
+  float model at that precision and its own error against the FP reference;
 - ``<program>/calls.json`` the device calls of each program's first step (the replayed boundaries).
 """
 
@@ -75,21 +77,32 @@ def build(
         {"id": f"{s}/{i}", "inputs": str(_derived(private, model.name, s, i)), "out": str(out_dir[(s, i)] / "fp.npz")}
         for s, i in ids
     ]
+    reference = dict(model.judged.get("reference") or {})
     request = {**fp_request, "items": items, "input_worker": str(INP.WORKER)}
     if kind == "next_token_distribution":
         request.update(prefill_tokens=int(model.chain["prefill_tokens"]), decode_steps=int(model.chain["decode_steps"]))
-    INP.run_worker(
-        fp_python,
-        FP_TASK[kind],
-        request,
-        bundle.root / model.name / ".fp_work",
-        worker=REFERENCE_WORKER,
-        env={**fp_env, **FP_NUMERICS_ENV},
-    )
+    runs = {"fp.npz": reference.get("precision", "native")}
+    if reference.get("baseline"):
+        runs["fp_baseline.npz"] = reference["baseline"]
+    for name, precision in runs.items():
+        INP.run_worker(
+            fp_python,
+            FP_TASK[kind],
+            {
+                **request,
+                "precision": precision,
+                "items": [{**i, "out": str(Path(i["out"]).with_name(name))} for i in items],
+            },
+            bundle.root / model.name / ".fp_work",
+            worker=REFERENCE_WORKER,
+            env={**fp_env, **FP_NUMERICS_ENV},
+        )
     log(f"[references] {model.name}: FP reference for {len(ids)} inputs in {time.monotonic() - started:.0f} s")
     catalogs = {p.name: bundle.catalog(model.name, p.name) for p in model.programs}
     blobs = bundle.blobs(model.name)
-    summary: dict[str, Any] = {"model": model.name, "fp_numerics_env": FP_NUMERICS_ENV, "inputs": {}}
+    summary: dict[str, Any] = {"model": model.name, "fp_numerics_env": FP_NUMERICS_ENV, "fp_runs": runs, "inputs": {}}
+    rows: list[dict[str, Any]] = []
+    baseline_rows: list[dict[str, Any]] = []
     for split, ident in ids:
         t0 = time.monotonic()
         with np.load(_derived(private, model.name, split, ident)) as data:
@@ -108,6 +121,12 @@ def build(
         metrics = M.model_metrics(kind, judged, fp, model.judged)
         _save(out_dir[(split, ident)] / "int8.npz", judged)
         (out_dir[(split, ident)] / "metrics_int8.json").write_text(json.dumps(metrics, indent=1) + "\n")
+        rows.append({"split": split, **metrics})
+        if "fp_baseline.npz" in runs:
+            with np.load(out_dir[(split, ident)] / "fp_baseline.npz") as data:
+                base = M.model_metrics(kind, [np.asarray(data[k]) for k in data.files], fp, model.judged)
+            (out_dir[(split, ident)] / "metrics_baseline.json").write_text(json.dumps(base, indent=1) + "\n")
+            baseline_rows.append({"split": split, **base})
         for program, calls in calls_by_program.items():
             CAT.write_calls(
                 out_dir[(split, ident)] / program / "calls.json",
@@ -124,6 +143,13 @@ def build(
             "seconds": round(time.monotonic() - t0, 1),
         }
         log(f"[references] {model.name} {split}/{ident}: {json.dumps(headline)}")
+    rules = model.judged.get("admission") or ()
+    summary["admission"] = {
+        split: M.admission(
+            rules, [r for r in rows if r["split"] == split], [r for r in baseline_rows if r["split"] == split]
+        )
+        for split in sorted({r["split"] for r in rows})
+    }
     (bundle.root / model.name / "reference_quality.json").write_text(json.dumps(summary, indent=1) + "\n")
     return summary
 
