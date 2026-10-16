@@ -632,8 +632,13 @@ combinations of poison arithmetic operands and an arbitrary unused destination v
 `checkBody_poison_sound` lifts that result through the proved SSA alpha
 checker. Tests compare the actual MLIR-exported per-tensor lowering body, reject the current
 per-channel float-subtraction body, and accept the proposed integer-subtraction replacement.
-This is a scalar-body obligation only. Source-contract review and capture-producer binding,
-tensor maps/shapes/bounds and the C1 site rule remain required before a
+`Rules/DequantTensor.lean` lifts accepted bodies to regions closed over arbitrary SSA environments
+and entire generic loop nests, including empty iteration spaces. Its `checkLayout` checks the
+source-derived identity/broadcast/channel-projection maps, parameter shapes, axis, iterator kinds,
+and interval-proved access bounds. `checked_generic_sound` combines these checks with runtime
+typing and explicit pointwise read witnesses; it does not yet discharge those witnesses against
+a source tensor contract. Source-contract review, capture-producer binding, the pointwise source
+connection, and the C1 site rule remain required before a
 `lower_quant_ext` boundary may be reported verified. The dispatcher still refuses `quant_ext`.
 
 ### 5.2 C2 — outlining (inline-and-compare)

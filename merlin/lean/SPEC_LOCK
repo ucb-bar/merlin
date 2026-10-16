@@ -35,5 +35,8 @@
   "statement:MerlinVerify.Rules.DequantScalar.checkBody_poison_sound": "e7f64f525bf31843527d76407c6275fe5baf17f4d0bd1219e41e96e284d624a1",
   "statement:MerlinVerify.Rules.DequantScalar.checkBody_sound": "782057d55708e73169bf61fb26dd0d9a934127b4b629227cd7188fc18810b9ee",
   "statement:MerlinVerify.Rules.DequantScalar.perChannel_body_sound": "4c1329e16db41e75e3d9a597610851b15941802696202ad2db0c0ecdaa830a1a",
-  "statement:MerlinVerify.Rules.DequantScalar.perTensor_body_sound": "623c56680e689a569753f95a14af7c1b92a65df56ed1eb705aeed87cc9be6acb"
+  "statement:MerlinVerify.Rules.DequantScalar.perTensor_body_sound": "623c56680e689a569753f95a14af7c1b92a65df56ed1eb705aeed87cc9be6acb",
+  "statement:MerlinVerify.Rules.DequantTensor.checkLayout_sound": "cd1b3753b4ea3757e549156188e487410033a7b8f71b84897af94c59a3194291",
+  "statement:MerlinVerify.Rules.DequantTensor.checked_generic_sound": "b45b11a4b218b24a0a1fb2a3b01cf8a24971e060ad34309dde3f5b104a3be4ef",
+  "statement:MerlinVerify.Rules.DequantTensor.region_sound": "aec4b4839909a4d8456e66e97393ce411f2edddaaa3444f7cb80a30b23b375cc"
 }
