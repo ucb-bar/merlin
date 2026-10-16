@@ -14,6 +14,15 @@ they measure placement, cycles and model-level cost after functional capability
 has been established. A fast Phase 2 objective is not a substitute for a
 successful ResNet-50 or SmolVLA whole-model compile and correctness receipt.
 
+The intended fast timing path is the annotated Spike observer calibrated from
+Phase 1 capsule records for the selected `0af6f26e…` U250 build. Its current
+FireSim-aligned profile has no cycle prices, so it cannot yet rank candidates.
+After fitting, validate predictions with matched FireSim measurements and use
+gSIM only for targeted RTL disputes or requalification. The existing
+`whole-model-objective.json` still selects gSIM as its certifier and must be
+revised before a Spike-timing campaign starts; the functional Spike machine in
+`whole-model-machines.yaml` supplies correctness only.
+
 After the Phase 1 compiler is frozen, an owner-only form audit must compare a
 held-out capture with the iteration-derived form scope. It reports both the
 share in known operation-form classes and the share whose three GEMM extents

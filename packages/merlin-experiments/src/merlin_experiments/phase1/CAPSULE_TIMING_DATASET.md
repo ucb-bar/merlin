@@ -122,18 +122,19 @@ around `kernel_entry` through the selected completion call, and retain the
 independent review evidence. A whole-program Spike estimate or a consecutive
 counter-pair guess is not the capsule label's scope.
 
-The branch's shipped `examples/gemmini/timing/stock_u250.json` targets archive
-SHA256 `a9a190b9…`, whereas this experiment selects the 30 MHz archive
-`0af6f26e…`. Its primitive prices and queue capacities are unknown. Re-export
-and pin a profile for the selected `0af6f26e…` bitstream before fitting or
-deploying it; matching ABI header `3758ae96…` does not make the two bitstreams
+The annotated Spike branch now has a separate `fire_aligned_30mhz.json` profile
+for archive SHA256 `0af6f26e…`, with the FireSim-selected `5b1254a7…`
+functional receiver. The older `stock_u250.json` belongs to `a9a190b9…`.
+The new profile's primitive prices and queue capacities remain unknown until
+calibration. Matching ABI header `3758ae96…` does not make the two bitstreams
 one timing target. Launch Spike with the selected 16 GiB map beginning at
 `0x80000000` for these ELFs. Gemmini's local `address_bits: 32` parameter is
 not the Rocket physical-memory size. The model's README example `-m64` is a
 small test allocation, not this board's memory selection.
-The Phase 1 numerical oracle remains the selected stock functional Spike and
-Gemmini extension; the annotated observer is a separate Phase 2 timing consumer
-of the archived ELF/input records.
+The next Phase 1 numerical oracle must select the exact `fire_aligned_30mhz`
+functional Spike package and receiver. The annotated observer is a separate
+Phase 2 timing consumer of the archived ELF/input records, enabled only after
+calibration for this bitstream.
 
 The compiler agent receives the selected Phase 1 contract and RTL facts through
 the frozen input bundle. The Gemmini task grant also contains

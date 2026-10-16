@@ -77,11 +77,18 @@ machine with:
 
 ```sh
 python -m merlin_experiments.phase1.spike_alignment \
-  --contract CONTRACT --chipyard-root CHIPYARD \
+  --contract CONTRACT --chipyard-root CHIPYARD --spike-runtime SPIKE_RUNTIME \
   --machines MACHINES --hardware-pins PINS \
   --board-catalog CATALOG --private-model-spec SPEC
 ```
-Use the release-selected contract, `examples/gemmini/phase2/whole-model-machines.yaml`,
+Set `SPIKE_RUNTIME` to the built `fire_aligned_30mhz` functional package's
+`runtime/` directory. Its deployment receipt and executable, Gemmini extension
+and Boost runtime library must remain together. Launch both Phase 1 and Phase 2
+with the explicit 16 GiB map at `0x80000000`; the Phase 1 contract must use
+`--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs --priv=m -p1
+-m0x80000000:0x400000000` before
+`{elf}` and select that runtime's library directory. Use the release-selected
+contract, `examples/gemmini/phase2/whole-model-machines.yaml`,
 `merlin/contract/hardware_pins.yaml`, the release-selected board catalog and
 private full-model specification. A passing report proves those selected Spike,
 ABI, board and DTS identities align; its `rtl_equivalence_proven: false` is deliberate.
