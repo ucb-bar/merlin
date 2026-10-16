@@ -17,7 +17,9 @@ What this pins:
   several Linears is split once, a Linear out of scope keeps its int8 PT2E form, and each rewritten
   output equals an independent statement of the arithmetic (wide-grid quantize, per-channel int8
   weight, exact integer sum) within float rounding;
-* the percentile observer's range is the percentile of ``|x|`` to within one histogram bin.
+* the percentile observer's range is the percentile of ``|x|`` to within one histogram bin;
+* under GPTQ weight rounding the planes multiply GPTQ's codes (the split happens after convert, so GPTQ
+  saw the float activation), and the dynamic block, which rounds stored weights itself, refuses GPTQ.
 
 The quantizer runs in the capture venv (``MERLIN_M2M_PYTHON``); that half is skipped without it.
 """
@@ -258,3 +260,62 @@ def test_the_percentile_observer_ranges_at_the_percentile_of_magnitudes():
     data = _run(QR.with_activation_observer(_recipe(), "p99"))
     assert data["percentile_true"] <= data["percentile_clip"] <= data["percentile_true"] * 2 ** (1 / 32) * 1.0001
     assert data["percentile_scale"] == pytest.approx(data["percentile_clip"] / 127.5, rel=1e-6)
+
+
+# --- with GPTQ weight codes (capture venv, through apply_recipe) ----------------------------------
+
+_APPLY = r"""
+import json
+import sys
+from pathlib import Path
+
+targetgen, m2m_dir = Path(sys.argv[1]), sys.argv[2]
+for path in (str(targetgen), str(targetgen.parents[1]), m2m_dir):
+    sys.path.insert(0, path)
+import torch
+from torch import nn
+
+import _recipe_quantizer as RQ
+
+planes, dynamic = json.loads(sys.argv[3]), json.loads(sys.argv[4])
+torch.manual_seed(0)
+model = nn.Sequential(nn.Linear(48, 40), nn.ReLU(), nn.Linear(40, 16)).eval()
+samples = [(torch.randn(16, 48),) for _ in range(8)]
+quantized = RQ.apply_recipe(model, planes, example_inputs=samples[0], calibration_inputs=samples)
+stats = quantized._recipe_quantization_stats
+with torch.no_grad():
+    got, want = quantized(*samples[1]), model(*samples[1])
+result = {
+    "rewritten": stats["static_planes"]["rewritten"],
+    "annotated": stats["annotated_contractions"],
+    "rounded": stats.get("weight_rounding") is not None,
+    "error": float((got - want).abs().max() / want.abs().max()),
+}
+try:
+    RQ.build_quantizer(dynamic, layer_plan=RQ._plan_layers(dynamic, model))
+    result["refused"] = None
+except RQ.RecipeError as error:
+    result["refused"] = str(error)
+print(json.dumps(result))
+"""
+
+
+def test_planes_take_the_gptq_codes_and_the_dynamic_block_refuses_them():
+    python, m2m_dir = os.environ.get("MERLIN_M2M_PYTHON"), os.environ.get("MERLIN_M2M_DIR")
+    if not python or not Path(python).is_file() or not m2m_dir:
+        pytest.skip("no capture interpreter and model2MLIR checkout are configured")
+    gptq = QR.with_gptq_weights(_recipe(), calibration_samples=8)
+    planes = QR.with_static_planes(gptq)
+    dynamic = QR.with_dynamic_contractions(gptq, families=[QR.CONTRACTION], static_families=[])
+    completed = subprocess.run(
+        [python, "-c", _APPLY, str(_QUANTIZER.parent), m2m_dir, json.dumps(planes), json.dumps(dynamic)],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr[-3000:]
+    data = json.loads(completed.stdout.strip().splitlines()[-1])
+    assert data["rewritten"] == 2 and data["annotated"] == 0 and data["rounded"]
+    assert data["error"] < 0.02, data["error"]
+    assert data["refused"] and "GPTQ" in data["refused"]

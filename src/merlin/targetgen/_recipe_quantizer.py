@@ -394,6 +394,8 @@ def build_quantizer(
     # Families the recipe's ``dynamic`` block takes out of static annotation (_dynamic_contractions).
     dynamic_block = dict(recipe.get("dynamic") or {})
     dynamic_families = set(dynamic_block.get("families") or ())
+    if "contraction" in dynamic_families and _weight_rounding(recipe) is not None:
+        raise RecipeError("the dynamic block rounds stored weights to nearest; GPTQ codes are set on the static path")
     # Linears whose activation takes the recipe's ``static_planes`` grid (_static_planes).
     planes_block = dict(recipe.get("static_planes") or {})
     if not targets and not pairs:
