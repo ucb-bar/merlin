@@ -291,9 +291,12 @@ Build the compiler in `submission/` from the empty starting directory. The requi
 | SmolVLA | `prefix_encode`, `flow_denoise`, `action_decode` |
 | TinyLlama | `prefill`, `decode` |
 
-Success requires all six programs to compile, link and pass the model numerics policy on Spike,
-a fixed-denominator offload census, and gSIM evidence for every distinct device kernel those
-programs use. Public capsules remain a regression suite. `qa/verdict.json` reports your
+All six programs must compile and link. During Phase 1, numerical checks require every device kernel
+to replay bit-exactly on Spike, including sealed inputs and sealed shape variants, a fixed-denominator
+offload census, and public capsule L3 gSIM qualification. Whole-model Spike chain validation runs
+on the frozen compiler after the experiment, outside its authoring clock;
+per-kernel model gSIM replay is not requested.
+`qa/verdict.json` reports your
 visible-input results. Sealed-input results appear only in the official grade.
 
 The frozen `task/PHASE2_TARGET.md` describes the planned FireSim deployment
@@ -317,7 +320,7 @@ error policy.
 - `python await_verdict.py --help`: wait for a new harness verdict.
 - `python agent_model_check.py check --model MODEL --out REPORT.json`: visible model check through the broker.
 - `python agent_model_check.py replay-kernel --model MODEL --program PROGRAM`
-  `--group SOURCE_REGION_ID --engine gsim`: visible kernel replay through the broker.
+  `--group SOURCE_REGION_ID --engine spike`: visible kernel replay through the broker.
   A pending reply includes a `wait --job-id` command.
 
 Selected treatment tools:
@@ -333,15 +336,15 @@ Selected treatment tools:
   language and CLI contract. Do not import Merlin's reference or simulator implementation into
   the submission, or substitute C compute kernels for emitted device code.
 - Keep `manifest.yaml` and the four entrypoints valid. The harness checks package integrity,
-  public capsules, whole-model numerics, the offload census, and unique-kernel RTL replay.
+  public capsules (including L3 gSIM), exact model-kernel replays, and the offload census.
   A pending or unavailable check is not a pass.
 - The harness grades immutable snapshots. You may continue editing while a self-check or grade runs.
   A verdict names the snapshot it graded; check its source digest before treating it as current.
 
 ## Final status
 
-Lead with a table of all six programs: model, program, compile/link, numerics, census, and RTL
-status. Then name the submission path, test artifacts, and remaining failures. Report only
+Lead with a table of all six programs: model, program, compile/link, numerics, and census.
+Report capsule RTL status separately. Then name the submission path, test artifacts, and remaining failures. Report only
 measured results.
 """  # target-ok: this is the selected Gemmini full-model task text
     body += task_runtime_scope_block(load_target_experiment(config.context.descriptor), sandbox,

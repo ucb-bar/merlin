@@ -135,6 +135,10 @@ def build_parser() -> argparse.ArgumentParser:
     _common(verify, submission=False)
     verify.add_argument("--jobs", type=int, default=8, help="files hashed at once")
 
+    rejudge = sub.add_parser("bundle-admission", help="re-judge a built bundle's reference admission (no recompute)")
+    _common(rejudge, submission=False)
+    rejudge.add_argument("--model", required=True)
+
     seal = sub.add_parser("bundle-seal", help="record a sha256 of every file of a numerics bundle (freeze it)")
     _common(seal, submission=False)
     seal.add_argument("--jobs", type=int, default=8, help="files hashed at once")
@@ -154,6 +158,15 @@ def build_parser() -> argparse.ArgumentParser:
     variants.add_argument("--model", required=True)
     variants.add_argument("--program", default=None)
     variants.add_argument("--seed", type=int, required=True, help="private rule seed (never shown to an agent)")
+
+    twins = sub.add_parser("bundle-twins", help="run and cache every input's host-twin chain (the differential)")
+    _common(twins, submission=False)
+    twins.add_argument("--model", required=True)
+    twins.add_argument("--split", choices=SPLITS, default="all")
+    twins.add_argument("--input", dest="inputs", action="append", default=None, help="only these inputs")
+    twins.add_argument("--jobs", type=int, default=None, help="inputs run at once (default: per CPU)")
+    twins.add_argument("--timeout-s", type=float, default=None)
+    _engine(twins)
 
     prep = sub.add_parser("inputs-prepare", help="select and preprocess a model's evaluation/calibration inputs")
     _common(prep, submission=False)

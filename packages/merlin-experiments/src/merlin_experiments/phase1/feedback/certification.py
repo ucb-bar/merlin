@@ -292,6 +292,8 @@ def _official_grade_result(
         failures.append("trusted_private_full_model_roster_missing")
     else:
         if require_model_check:
+            from .model_check_evidence import rtl_requirement_satisfied
+
             model_check = manifest.get("model_check_official")
             try:
                 model_check_file = json.loads((run_dir / "grading_model_check" / "summary.json").read_text())
@@ -302,8 +304,7 @@ def _official_grade_result(
                 or model_check != model_check_file
                 or model_check.get("submission_sha256") != manifest.get("submission_sha256")
                 or set(model_check.get("models") or {}) != set(required_models)
-                or model_check.get("rtl_complete") is not True
-                or model_check.get("unique_kernel_count") != len(model_check.get("rtl") or [])
+                or not rtl_requirement_satisfied(model_check)
             ):
                 failures.append("model_check_official_incomplete_or_mismatch")
         if reported_roster != list(required_models) or reported_programs != {

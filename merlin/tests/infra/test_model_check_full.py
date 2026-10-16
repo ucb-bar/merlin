@@ -182,3 +182,81 @@ def test_full_mode_takes_the_differential_and_refuses_a_program():
     F.validate(argparse.Namespace(differential=True, program=None))
     with pytest.raises(ModelsFileError):
         F.validate(argparse.Namespace(differential=False, program="decode"))
+
+
+def test_twins_too_slow_for_a_grade_are_compared_only_when_cached(tmp_path):
+    models = _models()
+    policy = {n: (m.extra.get("full") or {}).get("differential", "required") for n, m in models.models.items()}
+    assert policy == {"resnet50": "required", "smolvla": "cached", "tiny_llama": "cached"}
+    text = models.path.read_text().replace("differential: cached", "differential: never", 1)
+    (tmp_path / "models.yaml").write_text(text)
+    with pytest.raises(ModelsFileError, match="full.differential"):
+        load(tmp_path / "models.yaml")
+
+
+def _run_input(tmp_path, monkeypatch, *, policy, pool):
+    """One input through four one-step programs: a cached twin, a cache miss, no twin cache, host only."""
+    import time
+    from types import SimpleNamespace
+
+    from merlin.model_check import twins as TW
+
+    out = [np.array([1, 2], np.int32)]
+    monkeypatch.setattr(CH, "bind", lambda program, model, arrays, step, run: {"in0": np.zeros(1)})
+    monkeypatch.setattr(TW, "inputs_sha256", lambda stage, inputs: "k")
+    monkeypatch.setattr(F, "execute", lambda *a, **k: {"values": out, "row": {"seconds": 1.0, "cycles_functional": 7}})
+
+    class Cache:
+        def __init__(self, hit):
+            self.hit = hit
+
+        def get(self, key):
+            return (out, {"seconds": 1.0}) if self.hit else None
+
+    names = ("hit", "miss", "deferred", "host")
+    rows = []
+    F.run_input(
+        SimpleNamespace(name="m", programs=[SimpleNamespace(name=n) for n in names]),
+        target="t",
+        builds=dict.fromkeys(names, {}),
+        twins={"hit": {}, "miss": {}, "deferred": None, "host": None},
+        caches={"hit": Cache(True), "miss": Cache(False)},
+        stages=dict.fromkeys(names, tmp_path),
+        specs=dict.fromkeys(names, [([2], "i32")]),
+        arrays={},
+        counts=dict.fromkeys(names, 1),
+        work=tmp_path,
+        deadline=time.monotonic() + 60,
+        rows=rows,
+        twin_pool=pool,
+        policy=policy,
+        deferred=frozenset({"deferred"}),
+        log=lambda *_: None,
+    )
+    return {row["program"]: row["differential"] for row in rows}
+
+
+def test_a_cached_differential_runs_no_twin_and_leaves_a_miss_pending(tmp_path, monkeypatch):
+    class NoTwins:
+        def submit(self, *args, **kwargs):
+            raise AssertionError("the cached policy never runs a host twin")
+
+    status = {k: v["status"] for k, v in _run_input(tmp_path, monkeypatch, policy="cached", pool=NoTwins()).items()}
+    assert status == {"hit": "identical", "miss": "pending", "deferred": "pending", "host": "identical"}
+
+
+def test_a_required_differential_runs_the_twin_on_a_miss(tmp_path, monkeypatch):
+    from concurrent.futures import Future
+
+    class Twins:
+        calls = 0
+
+        def submit(self, *args, **kwargs):
+            Twins.calls += 1
+            done = Future()
+            done.set_result({"values": [np.array([1, 3], np.int32)], "row": {}})
+            return done
+
+    rows = _run_input(tmp_path, monkeypatch, policy="required", pool=Twins())
+    assert Twins.calls == 1 and rows["miss"]["twin"] == "computed"
+    assert rows["miss"]["status"] == "differs" and rows["hit"]["status"] == "identical"

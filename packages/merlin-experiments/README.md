@@ -108,6 +108,16 @@ grading. Catalog definitions accept the corresponding `instruction_selection` an
 `private_full_model_spec` input fields. No selection is discovered from candidate
 metadata, and the declaration alone establishes no instruction or runtime authority.
 
+### Phase 1 model and capsule execution scope
+
+The official model gate runs sealed full-chain Spike checks, including their fast
+kernel checks and host-twin differential. Model-kernel gSIM replays are off by
+default and are recorded as `rtl_required: false`, `rtl_complete: false`, and
+`rtl_status: not_requested`. The visible model broker accepts Spike replay only.
+The standalone model-check CLI retains its gSIM replay tool for separately
+authorized measurements. Capsule L3 gSIM qualification and cycle archives remain
+enabled and are graded separately.
+
 ### Sealed fresh Codex client check
 
 The installed Phase 1 command accepts an explicit client runtime for both the

@@ -62,7 +62,9 @@ def settle(report: dict) -> dict:
     """Derive ``status`` and ``exit_code`` from the gates and failures already recorded.
 
     Any infrastructure failure makes the report ``error``; otherwise every gate must be ``pass`` (and
-    not partial) for ``pass``. A report with no gates is ``error``: nothing was judged.
+    no gate partial) for ``pass``. A ``pending`` gate -- one the models file defers (full mode's differential
+    under ``full.differential: cached``) -- is recorded and neither passes nor fails. A report with no
+    gates, or with only pending ones, is ``error``: nothing was judged.
     """
     infra = [f for f in report["failures"] if f.get("kind") in {"infrastructure", "usage"}]
     if infra:
@@ -70,21 +72,38 @@ def settle(report: dict) -> dict:
         report["status"] = "error"
         report["exit_code"] = EXIT_USAGE if usage else EXIT_INFRASTRUCTURE
         return report
-    gates = report["gates"]
-    if not gates:
+    gates = report["gates"].values()
+    judged = [g for g in gates if g.get("status") != "pending"]
+    if not judged:
         report["status"] = "error"
         report["exit_code"] = EXIT_INFRASTRUCTURE
         return report
-    passed = all(g.get("status") == "pass" and not g.get("partial", False) for g in gates.values())
+    passed = all(g.get("status") == "pass" for g in judged) and not any(g.get("partial", False) for g in gates)
     report["status"] = "pass" if passed else "fail"
     report["exit_code"] = _EXIT_OF_STATUS[report["status"]]
     return report
+
+
+def _redact_bundle_paths(value: Any, root: str) -> Any:
+    """Remove this report's known host-only bundle location from visible metadata."""
+    if isinstance(value, str):
+        return "<numerics_bundle>" if value == root else value.replace(root + "/", "<numerics_bundle>/")
+    if isinstance(value, dict):
+        return {key: _redact_bundle_paths(item, root) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_bundle_paths(item, root) for item in value]
+    return value
 
 
 def agent_view(report: Mapping[str, Any]) -> dict:
     """The report with every per-input value of the sealed split removed (aggregate gates kept)."""
     view = deepcopy(dict(report))
     view["agent_view"] = True
+    bundle = view.get("bundle")
+    if isinstance(bundle, dict):
+        root = bundle.pop("path", None)
+        if isinstance(root, str) and root not in {"", "/"} and Path(root).is_absolute():
+            view = _redact_bundle_paths(view, root.rstrip("/"))
     for program in view.get("programs", []):
         program["runs"] = [r for r in program.get("runs", []) if r.get("split") != "sealed"]
         for kernel in program.get("kernels", []):

@@ -257,6 +257,7 @@ def launch(
                 config.selected_rtl_facts,
                 run_dir / "input_bundle_manifest.yaml" if bundle.get("compiler_tool_profile") is not None else None,
                 sim_per_capsule_timeout=config.sim_per_capsule_timeout,
+                raw_evidence_root=(run_dir / "_qa_work" / "selfchecks").resolve(),
             ),
         )
         if sandbox == "bwrap"

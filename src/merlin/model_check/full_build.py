@@ -29,6 +29,8 @@ from typing import Any
 
 import numpy as np
 
+from merlin.model_check.compute_execution import compute_step
+
 BUILD_SCHEMA = "merlin.model_check.full_build.v1"
 #: Shadowed capture files: the bound input replaces the first; the session files are left out.
 SHADOWED = ("inputs.npz", "session_contract.yaml", "session_inputs.npz")
@@ -247,7 +249,8 @@ def _recipe_command(recipe: dict, output: Path) -> dict:
 
 
 def _run(argv: list[str], cwd: str) -> None:
-    done = subprocess.run([str(a) for a in argv], cwd=cwd, capture_output=True, text=True, check=False)
+    with compute_step():
+        done = subprocess.run([str(a) for a in argv], cwd=cwd, capture_output=True, text=True, check=False)
     if done.returncode != 0:
         raise FullBuildError(f"{Path(argv[0]).name} failed ({done.returncode}): {done.stderr[-2000:]}")
 
@@ -331,8 +334,27 @@ def run(target: str, elf: Path, *, timeout_s: float) -> tuple[bytes, float]:
     ceiling = getattr(backend, "execution_timeout_limit", None)
     if callable(ceiling):
         timeout_s = min(float(timeout_s), float(ceiling("spike")))
-    started = time.monotonic()
-    console = runner(Path(elf).resolve(), timeout=timeout_s, capture_bytes=True)
+    with compute_step(timeout_s) as remaining:
+        started = time.monotonic()
+        console = runner(Path(elf).resolve(), timeout=remaining, capture_bytes=True)
+    return console, time.monotonic() - started
+
+
+def run_host(elf: Path, *, timeout_s: float) -> tuple[bytes, float]:
+    """``(console bytes, wall seconds)`` of a host-only image (a host twin) on the plain functional
+    simulator with the ISA and memory span the image declares.
+
+    A twin issues no accelerator instruction, so it needs no extension -- and it computes every group in
+    scalar code, which can take longer than the selected engine's ceiling for one submission run
+    (SmolVLA's prefix: ~1 G MAC/min). Its bound is the check's own time budget."""
+    from merlin.runtime.backends.spike_model import declared_isa, run_raw
+
+    isa = declared_isa(Path(elf))
+    if isa is None:
+        raise FullBuildError(f"{elf} declares no ISA to run it with")
+    with compute_step(timeout_s) as remaining:
+        started = time.monotonic()
+        console = run_raw(Path(elf).resolve(), isa=isa, timeout=remaining)
     return console, time.monotonic() - started
 
 

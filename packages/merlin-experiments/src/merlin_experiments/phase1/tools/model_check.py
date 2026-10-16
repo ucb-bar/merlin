@@ -18,7 +18,7 @@ def main(argv=None) -> int:
     parser.add_argument("--program")
     parser.add_argument("--group")
     parser.add_argument("--split", default="visible", choices=("visible",))
-    parser.add_argument("--engine", choices=("spike", "gsim"))
+    parser.add_argument("--engine", choices=("spike",))
     parser.add_argument("--out")
     parser.add_argument("--job-id")
     parser.add_argument("--wait-budget", type=int, default=540)

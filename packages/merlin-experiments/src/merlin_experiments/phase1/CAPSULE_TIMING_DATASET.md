@@ -26,6 +26,14 @@ null. `tiers.L3.timing` separately records host wall durations in seconds.
 The kernel-call selection and `complete_call_timing` are mutually exclusive for
 this caller because both publish the same `METRIC cycles` name.
 
+Phase 1 retains ordinary agent selfcheck and simulator-job raw runs under
+`RUN_DIR/_qa_work/selfchecks/selfcheck_*/runs/`, alongside periodic grading runs.
+The host broker selects this location before launching workers; requests cannot
+choose it. It must be outside the visible workspace, with no symlink components.
+Public `selfcheck_out` files remain redacted copies. Both successful and failed
+raw capsule executions are discoverable by the same archive audit; retention
+does not make a failed or unmeasured execution eligible for calibration.
+
 The selected contract block has this shape; the clock and source pins must be
 filled from reviewed original sources before a release is frozen:
 

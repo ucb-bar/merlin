@@ -41,9 +41,9 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
     group, engine, program = request.get("group"), request.get("engine"), request.get("program")
     if action == "replay-kernel" and (
         program not in PROGRAMS[model] or not isinstance(group, str) or len(group) > 200
-        or not _GROUP.fullmatch(group) or engine not in {"spike", "gsim"}
+        or not _GROUP.fullmatch(group) or engine != "spike"
     ):
-        return {"status": "rejected", "error": "replay requires a declared program, group, and engine"}
+        return {"status": "rejected", "error": "replay requires a declared program, group, and the spike engine"}
     if action == "check" and (group is not None or engine is not None or program is not None):
         return {"status": "rejected", "error": "check accepts only a model"}
     source = snapshot_source if snapshot_source is not None else ws / "submission"

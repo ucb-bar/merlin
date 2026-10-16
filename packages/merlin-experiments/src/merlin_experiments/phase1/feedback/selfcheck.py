@@ -898,7 +898,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         want = None if a.capsules == "all" else set(s.strip() for s in a.capsules.split(",") if s.strip())
     import tempfile
 
-    runs_root = Path(tempfile.mkdtemp(prefix="selfcheck_"))
+    from .raw_selfcheck_evidence import create_runs_root
+
+    runs_root = create_runs_root()
 
     # Subset filtering that ACTUALLY limits the grade: CG.grade runs EVERY capsule under capsules_root, so
     # the `want` output-filter below alone would still grade all 20 (a "1-capsule verilator" check = ~1hr).

@@ -770,7 +770,8 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         from . import model_check_official as MCO
 
         try:
-            model_check_official = MCO.run_gate(pkg, run_dir, required_full_programs)
+            model_check_official = MCO.run_gate(pkg, run_dir, required_full_programs,
+                                               mode="fast", model_workers=3)
         except Exception as exc:  # noqa: BLE001 -- an incomplete host gate never certifies a run
             model_check_official = {"passed": False, "reason": f"{type(exc).__name__}: {exc}"}
     model_check_complete = context.target != "gemmini" or model_check_official.get("passed") is True  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
@@ -897,13 +898,13 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     fr = [
         f"# {run_dir.name} — final report ({a.arm})",
         "",
-        "| Model | Sealed full-chain status |",
+        "| Model | Sealed numerical status |",
         "| --- | --- |",
         *[f"| {model} | {(model_check_official.get('models') or {}).get(model, {}).get('status', 'unavailable')} |"
           for model in required_full_models],
-        f"| Unique kernel RTL | {sum(row.get('status') == 'pass' for row in model_check_official.get('rtl', []))}/"
-        f"{model_check_official.get('unique_kernel_count', 0)} pass required |",
+        f"| Model kernel RTL | {model_check_official.get('rtl_status', 'unavailable')} |",
         "",
+        f"- whole-model validation: {model_check_official.get('whole_model_status', 'unavailable')}",
         f"- integrity: {manifest['integrity_status']} (exempt={manifest['integrity_exempt']})",
         f"- public/dev: functional_pass={manifest['public_dev']['functional_pass']} "
         f"passed={manifest['public_dev']['passed']} highest_tier={manifest['public_dev']['highest_tier']}",

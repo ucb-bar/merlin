@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-10-15
 related: [architecture, performance_budget_unit]
-code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, packages/merlin-experiments/src/merlin_experiments/phase1/rtl_timing_facts.py]
+code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py]
 ---
 
 # Calibrating and validating annotated timing
@@ -232,7 +232,7 @@ The operator can extract one pinned, machine-readable `rtl_facts.json` from the
 matching Chipyard source and generated gSIM FIRRTL/DTS/L2 metadata:
 
 ```sh
-python3 packages/merlin-experiments/src/merlin_experiments/phase1/rtl_timing_facts.py \
+python3 examples/gemmini/verification/extract_rtl_timing_facts.py \
   --chipyard-source CHIPYARD_DIR --generated GENERATED_DIR \
   --firrtl-sha256 SELECTED_FIRRTL_SHA256 --dts-sha256 SELECTED_DTS_SHA256 \
   --spike-profile SELECTED_SPIKE_PROFILE.json \

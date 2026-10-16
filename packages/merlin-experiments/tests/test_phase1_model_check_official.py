@@ -1,4 +1,4 @@
-"""The sealed grade requires full model checks and bounded unique RTL evidence."""
+"""The sealed grade requires full models; model-kernel RTL needs an explicit opt-in."""
 
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ def selected_target_contract(monkeypatch):
     monkeypatch.setenv("MERLIN_TARGET_CONTRACT", str(contract))
 
 
-@pytest.mark.parametrize("command", ["check", "replay-kernel"])
-def test_official_cli_always_disables_cached_evidence(tmp_path, monkeypatch, command):
+@pytest.mark.parametrize("command,mode", [("check", "full"), ("check", "fast"), ("replay-kernel", "full")])
+def test_official_cli_always_disables_cached_evidence(tmp_path, monkeypatch, command, mode):
     seen = []
 
     class Process:
@@ -36,9 +36,11 @@ def test_official_cli_always_disables_cached_evidence(tmp_path, monkeypatch, com
     monkeypatch.setattr(official.subprocess, "Popen", Process)
     result = official._invoke(command, submission=tmp_path / "submission", model="resnet50",
                               output=tmp_path / "report.json", bundle=tmp_path / "bundle", timeout_s=1,
-                              program="model", group="conv_0")
+                              program="model", group="conv_0", mode=mode)
     assert result["status"] == "pass"
     assert seen.count("--no-cache") == 1
+    if command == "check":
+        assert seen[seen.index("--mode") + 1] == mode
 
 
 def test_official_gate_dedupes_explicit_same_shape_kernels(tmp_path, monkeypatch):
@@ -63,7 +65,7 @@ def test_official_gate_dedupes_explicit_same_shape_kernels(tmp_path, monkeypatch
 
     monkeypatch.setattr(official, "_invoke", invoke)
     summary = official.run_gate(tmp_path / "submission", tmp_path / "run",
-                                {"tiny_llama": ("prefill", "decode")})
+                                {"tiny_llama": ("prefill", "decode")}, replay_model_kernels=True)
     assert summary["passed"] is True
     assert summary["bundle"] == str(tmp_path / "selected-bundle")
     assert summary["unique_kernel_count"] == 1
@@ -87,6 +89,32 @@ def test_official_gate_refuses_missing_kernel_evidence(tmp_path, monkeypatch):
     assert summary["passed"] is False
     assert summary["models"]["resnet50"]["status"] == "unavailable"
     assert summary["rtl_complete"] is False and summary["unique_kernel_count"] == 0
+
+
+@pytest.mark.parametrize("model_status", ["pass", "fail"])
+def test_default_gate_requires_models_without_running_or_certifying_model_rtl(tmp_path, monkeypatch, model_status):
+    (tmp_path / "submission").mkdir()
+    calls = []
+
+    def invoke(command, **kwargs):
+        calls.append(command)
+        assert command == "check"
+        return {"status": model_status, "body": {"model_metrics": {"worst": {}}, "programs": [{
+            "program": "model", "build": {"status": "linked"},
+            "census": {"device": 1, "denominator": 1},
+            "runs": [{"engine": "spike", "status": "completed"}],
+            "kernels": [{"source_region_id": "conv_0"}],
+        }]}}
+
+    monkeypatch.setattr(official, "_invoke", invoke)
+    summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {"resnet50": ("model",)})
+    assert calls == ["check"]
+    assert summary["passed"] is (model_status == "pass")
+    assert summary["rtl"] == []
+    assert summary["rtl_complete"] is False
+    assert summary["rtl_required"] is False
+    assert summary["rtl_status"] == "not_requested"
+    assert json.loads((tmp_path / "run/grading_model_check/summary.json").read_text()) == summary
 
 
 def test_official_gate_refuses_pass_without_full_chain_metrics_and_spike_runs(tmp_path, monkeypatch):
@@ -127,7 +155,7 @@ def test_official_gate_runs_distinct_rtl_kernels_in_bounded_parallel(tmp_path, m
 
     monkeypatch.setattr(official, "_invoke", invoke)
     summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {"resnet50": ("model",)},
-                                rtl_workers=2)
+                                rtl_workers=2, replay_model_kernels=True)
     assert summary["passed"] and summary["rtl_complete"]
     assert summary["rtl_workers"] == 2
     assert replayed == ["conv_0", "conv_1"]
@@ -156,7 +184,7 @@ def test_official_gate_marks_unstarted_rtl_pending_when_budget_expires(tmp_path,
 
     monkeypatch.setattr(official, "_invoke", invoke)
     summary = official.run_gate(tmp_path / "submission", tmp_path / "run", {"resnet50": ("model",)},
-                                rtl_budget_s=1)
+                                rtl_budget_s=1, replay_model_kernels=True)
     assert summary["rtl"] == [{"model": "resnet50", "program": "model", "group": "conv_0",
                                "status": "pending", "reason": "RTL budget exhausted"}]
     assert summary["passed"] is False and summary["rtl_complete"] is False
