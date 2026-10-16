@@ -17,8 +17,10 @@ Nothing here is target-specific: the same artifacts feed the host and the spike 
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
+import os
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -147,6 +149,7 @@ def generate(
     entry_projection: EntryWeightProjection | None = None,
     entry_projection_source: str | Path | None = None,
     materialize_weights: bool = True,
+    weights_source: str | Path | None = None,
 ) -> dict:
     """Emit the runtime-driving artifacts for a captured model into ``out_dir``.
 
@@ -166,9 +169,15 @@ def generate(
     ``materialize_weights=False`` still derives and hashes the exact blob and
     argument offsets, but leaves the binary file to a caller that already has
     a verified copy. This avoids duplicating checkpoint weights per stage.
+
+    ``weights_source`` materializes an identical existing blob by hard link, after
+    checking its complete size and digest against this stage's derived bytes.
+    Weight writes use atomic replacement so regeneration cannot modify a shared inode.
     """
     if type(materialize_weights) is not bool:
         raise TypeError("materialize_weights must be a bool")
+    if weights_source is not None and not materialize_weights:
+        raise ValueError("weights_source requires materialize_weights=True")
     model_dir, out_dir = Path(model_dir).resolve(), Path(out_dir).resolve()
     prepared_dir = Path(prepared_dir).resolve() if prepared_dir is not None else out_dir
     if entry_projection is not None:
@@ -682,9 +691,28 @@ def generate(
     weight_digest.update(blob)
     weight_digest.update(appended)
     if materialize_weights:
-        with (out_dir / "weights.bin").open("wb") as stream:
-            stream.write(blob)
-            stream.write(appended)
+        weights = out_dir / "weights.bin"
+        if weights_source is not None:
+            source = Path(weights_source).resolve(strict=True)
+            with source.open("rb") as stream:
+                digest = hashlib.file_digest(stream, "sha256").hexdigest()
+            if source.stat().st_size != len(blob) + len(appended) or digest != weight_digest.hexdigest():
+                raise ValueError("selected weight blob differs from this stage's derived bytes")
+            os.link(source, weights)
+            with weights.open("rb") as stream:
+                if hashlib.file_digest(stream, "sha256").hexdigest() != weight_digest.hexdigest():
+                    raise ValueError("selected weight blob changed during reuse")
+        else:
+            with tempfile.NamedTemporaryFile(dir=out_dir, prefix="weights-", delete=False) as stream:
+                pending = Path(stream.name)
+                try:
+                    stream.write(blob)
+                    stream.write(appended)
+                    stream.flush()
+                except BaseException:
+                    pending.unlink(missing_ok=True)
+                    raise
+            pending.replace(weights)
     (out_dir / "model_gen.h").write_text("\n".join(h) + "\n")
     (out_dir / "model_io.h").write_text("\n".join(io) + "\n")
     (out_dir / "model_call.c").write_text("\n".join(call_c) + "\n")

@@ -417,6 +417,7 @@ def build(
     output_all_sha256: bool = False,
     full_readback: bool = False,
     group_profile: bool = False,
+    weights_source: str | Path | None = None,
     execution_memory_map: MemoryMapBinding | None = None,
     execution_memory_reservations: tuple[MemoryReservation, ...] = (),
 ) -> dict:
@@ -819,7 +820,8 @@ def build(
     # references cannot be observed by this ELF, and rendering them as C
     # literals makes large captures costly to compile (hundreds of MB of C).
     info = c_runtime.generate(
-        model_dir, cgen, inputs_npz, prepared_dir=work, max_session_steps=1, **projection_options
+        model_dir, cgen, inputs_npz, prepared_dir=work, max_session_steps=1,
+        **({"weights_source": weights_source} if weights_source is not None else {}), **projection_options
     )
     if output_sha256 and info.get("out_dt") not in {"f32", "i64", "i1"}:
         raise SpikeModelError("full-output SHA256 evidence requires f32, i64 or i1 output")

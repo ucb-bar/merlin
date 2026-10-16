@@ -125,9 +125,32 @@ sites with emitted primitives. This establishes a kernel-level result.
 Functional Spike `rdcycle` values are instruction-model counts and cannot be
 reported as accelerator performance cycles.
 
-Full pretrained ResNet-50 and TinyLlama prefill/decode baseline/optimized runs
-remain acceptance gates. Fixed quantization parameters, an independent integer
-reference and separate floating-model quality reporting are required. A
-successful capture, routing census or kernel test does not satisfy that gate.
+One full pretrained ResNet-50 pair now passes all 1000 output logits against
+the independent integer reference with fixed quantization parameters. Its
+functional instruction counts decrease 2.84% inside routed groups and 0.13%
+for the full model. This is one evaluation input, not a dataset accuracy or
+hardware timing qualification. TinyLlama's complete prefill/decode pair
+remains an acceptance gate. Separate floating-model quality reporting is
+required; capture, routing census and kernel checks do not satisfy that gate.
 The complete lifetime/effect verifier, broader capability-driven fusion and
 Atlas integration remain subsequent work through these shared interfaces.
+
+## Bounded storage during model validation
+
+`model_check.full_build.relink` regenerates the input argument table and verifies
+the derived weight size and SHA-256 without writing another checkpoint blob.
+It reuses the original weight object and checks an unchanged argument-table
+call before recompiling the driver. A mismatch refuses relinking.
+
+Saved-model and stage builds accept an optional `weights_source` pointing to
+an existing generated blob. Each stage still derives its own layout and full
+weight bytes; reuse requires identical size and SHA-256. The runtime generator
+then creates a hard link, which requires a compatible filesystem. Ordinary
+weight regeneration replaces the destination atomically, preserving any other
+stage's shared inode. Different stage blobs require separate storage.
+
+These services are independent of accelerator capabilities and live in Merlin.
+They reduce build storage and I/O, without changing target schedules or model
+numerics. An execution adapter must preserve binary output bytes and select
+the machine declared by the final ELF before complete-state comparisons count
+as successful model validation.

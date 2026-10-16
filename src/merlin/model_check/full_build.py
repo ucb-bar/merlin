@@ -153,6 +153,7 @@ def build(
     directory: Path,
     admission=None,
     offload: bool = True,
+    weights_source: Path | None = None,
 ) -> dict[str, Any]:
     """Build ``stage``'s image under ``directory`` (reused when its record matches) and return its record.
 
@@ -167,10 +168,15 @@ def build(
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / ".lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return _build(stage, target, label, submission, submission_sha256, settings, directory, admission, offload)
+        return _build(
+            stage, target, label, submission, submission_sha256, settings, directory, admission, offload, weights_source
+        )
 
 
-def _build(stage, target, label, submission, submission_sha256, settings, directory: Path, admission, offload):
+def _build(
+    stage, target, label, submission, submission_sha256, settings, directory: Path, admission, offload,
+    weights_source=None,
+):
     from merlin.compile.baremetal_model import compile_saved_model
 
     key = {
@@ -180,6 +186,10 @@ def _build(stage, target, label, submission, submission_sha256, settings, direct
         "settings": settings.record(),
         "offload": offload,
     }
+    if weights_source is not None:
+        key["weights_source"] = {
+            "path": str(Path(weights_source).resolve(strict=True)), "sha256": sha256(weights_source)
+        }
     record_path = directory / "build.json"
     if record_path.is_file():
         record = json.loads(record_path.read_text())
@@ -211,6 +221,7 @@ def _build(stage, target, label, submission, submission_sha256, settings, direct
         group_profile=device is not None,
         host_llvm_bitcode=True,
         blob_weights=bool(device is not None and settings.dedup_weights),
+        **({"weights_source": weights_source} if weights_source is not None else {}),
     )
     seconds = time.monotonic() - started
     elf = Path(receipt["output"]["elf"])
@@ -291,11 +302,16 @@ def relink(record: dict[str, Any], stage: Path, inputs: dict[str, np.ndarray], d
     for item in (build_dir / "cgen").iterdir():  # what the driver includes beside the generated files
         if item.suffix == ".h" and item.name not in ("model_io.h", "model_gen.h"):
             shutil.copy2(item, cgen / item.name)
-    c_runtime.generate(shadow, cgen, shadow / "inputs.npz", prepared_dir=build_dir, max_session_steps=1)
+    info = c_runtime.generate(
+        shadow, cgen, shadow / "inputs.npz", prepared_dir=build_dir, max_session_steps=1, materialize_weights=False
+    )
     weights = cgen / "weights.bin"
-    if weights.stat().st_size != record["weights_bin_bytes"] or sha256(weights) != record["weights_bin_sha256"]:
+    if (
+        weights.exists()
+        or info["weights_bytes"] != record["weights_bin_bytes"]
+        or info["weights_sha256"] != record["weights_bin_sha256"]
+    ):
         raise FullBuildError("the regenerated weights blob differs from the build's; refusing to relink")
-    weights.unlink()
     if (cgen / "model_call.c").read_bytes() != (build_dir / "cgen" / "model_call.c").read_bytes():
         raise FullBuildError("the regenerated argument-table call differs from the build's")
     recipe = json.loads((build_dir / "compilation_recipe.json").read_text())

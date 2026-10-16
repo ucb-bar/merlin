@@ -305,11 +305,15 @@ def compile_saved_model(
     respect_captured_quantization_scope: bool = False,
     host_llvm_bitcode: bool = False,
     blob_weights: bool = True,
+    weights_source: str | Path | None = None,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
     ``blob_weights`` stores each routed weight once: the device-layout copy goes to the weights blob and
     the original the device alone read is dropped (:mod:`merlin.llvmlower.blob_weights`).
+
+    ``weights_source`` reuses a previously generated blob only when this stage
+    independently derives identical bytes, size and hash.
 
     ``readback="full"`` builds the image to print every forward result complete
     (:mod:`merlin.runtime.whole_model_readback`); execution then holds each result to the capture's
@@ -468,6 +472,9 @@ def compile_saved_model(
         if selection is not None:
             receipt["engine_selection"] = selection
         build_options = {"math_archive_symbols": math_archive_symbols} if math_archive_symbols is not None else {}
+        if weights_source is not None:
+            receipt["inputs"]["weights_source"] = str(Path(weights_source).resolve(strict=True))
+            build_options["weights_source"] = weights_source
         if golden is not None and golden.size > 4096:
             build_options["output_dump_cap"] = int(golden.size)
         if respect_captured_quantization_scope:
