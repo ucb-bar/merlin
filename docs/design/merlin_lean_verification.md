@@ -3,7 +3,7 @@ title: Lean verification of the Merlin compilation path outside the OOT
 kind: design
 status: draft
 owner: verification
-last_verified: 2026-10-14
+last_verified: 2026-10-15
 related: [compiler_verification, verification, lowering_pipeline, host_device_compilation, gemmini_pass_catalog_plan]
 code_refs:
   - src/merlin/verify/receipts.py
@@ -548,6 +548,11 @@ initialized from `tensor.empty` for exactly this reason. We handle it two ways:
     range on non-NaN) shows the conversion is defined for non-NaN activations.
   - The domain `D` then excludes NaN activations, and the claim says so.
 
+**Current qualification limit:** `supportCheck` establishes `NotStuck`, which permits UB and
+poison results. The separate `Defined₀` analysis and the value-dependent-site enumeration above
+are not implemented. A verified support receipt or refinement chain therefore does not establish
+that the source has a defined numerical result; non-vacuity still needs independent evidence.
+
 ### 4.6 Argument and result maps
 
 Some passes change the entry signature: `qinner.lift` appends arguments, entry-weight projection
@@ -904,7 +909,10 @@ tests and logged in a findings ledger. They are paper material.
 ### 8.6 Guardrails (CI and pre-commit)
 
 - **`lean-guard`:**
-  - scans the verified namespaces for the §1.2 ban list;
+  - scans declarations in the verified namespaces and declarations defined in their modules for the
+    §1.2 ban list, including helpers in other namespaces; compiler-generated recursive twins are
+    exempt only from the unsafe/partial checks, and assumption axioms must originate in locked
+    `MerlinVerify.Assumptions` modules;
   - runs `#print axioms` on every theorem in `Claims/` and compares it to the allow-list. On
     v4.35.0, `bv_decide` adds a per-proof native axiom (`<thm>._native.bv_decide.ax_…`), so this audit
     catches it without a separate tactic ban. Fixed-width lemmas use `decide`/`omega` or are listed in
