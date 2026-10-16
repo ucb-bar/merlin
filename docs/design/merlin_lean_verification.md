@@ -623,6 +623,18 @@ families are independent work.
 - accumulator zero-fill (claim `refine`);
 - the post-offload feature rewrites that WP-0 finds enabled.
 
+**First arithmetic-lowering obligation.** `Spec/Dequant.lean` proposes separate scalar contracts
+for signed-i8 input, i32 zero point and f32 scale/result, based on PyTorch v2.10.0. Per-tensor
+dequantization converts before subtraction; per-channel dequantization subtracts after integer
+promotion and converts once. `Rules/DequantScalar.lean` proves execution of each ordered scalar
+body against its contract for every float model and defined scalar input bit pattern, independent
+of the unused destination value. `checkBody_sound` lifts that result through the proved SSA alpha
+checker. Tests compare the actual MLIR-exported per-tensor lowering body, reject the current
+per-channel float-subtraction body, and accept the proposed integer-subtraction replacement.
+This is a scalar-body obligation only. Source-contract review and capture-producer binding,
+poison-input extension, tensor maps/shapes/bounds, and the C1 site rule remain required before a
+`lower_quant_ext` boundary may be reported verified. The dispatcher still refuses `quant_ext`.
+
 ### 5.2 C2 — outlining (inline-and-compare)
 
 A generalization of `verify/outline_ir.py`, with these steps:

@@ -59,6 +59,7 @@ jobs:
           merlin/tests/ir/test_lean_guard.py
           merlin/tests/ir/test_lean_stages.py
           merlin/tests/ir/test_lean_mlir_differential.py
+          merlin/tests/ir/test_lean_dequant_scalar.py
           -k 'not standalone and not test_round_trip_identical'
           -o junit_family=xunit1
           --junitxml=out/artifacts/verification/lean-mlir.xml

@@ -69,6 +69,14 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
 - **Paper path:** only on the capture route that keeps `quant_ext` ops (FX-importer captures).
 - **Suggested fix (needs sign-off, it changes emitted IR):** emit `extsi` → `subi` → `sitofp` → `mulf`,
   PyTorch's exact order; the rule then needs no float assumption and no input-domain restriction.
+  This applies to the signed-i8/i32-zero-point per-channel case. PyTorch v2.10.0's **per-tensor**
+  implementation instead converts before subtraction; do not apply this change to every granularity.
+- **Scalar proof progress:** `Rules/DequantScalar.lean` proves the two separately specified bodies
+  for defined i8/i32/f32 scalar inputs and every `FloatModel`, and proves the SSA-renaming body
+  check sound. Tests use actual exported lowering output: the per-tensor body matches; the current
+  per-channel body is rejected against the integer-subtraction contract. The proposed replacement
+  passes. Source-contract review, poison-input extension, tensor indexing and C1 integration remain
+  outstanding; the production lowering has not been changed by this proof work.
 
 ## F7 — the torch_mlir route elides the weights, so the capture alone does not define the model
 
