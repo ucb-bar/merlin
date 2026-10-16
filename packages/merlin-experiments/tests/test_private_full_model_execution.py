@@ -60,12 +60,12 @@ def test_the_target_descriptor_declares_every_program_of_the_static_roster():
     engines = {(m, p): e.get("engine") for m, p, e in PFX.roster_of(gate)}
     # Every program has a numerical check: one on the RTL-equivalent engine, the rest functional.
     assert engines == {
-        ("resnet50", "model"): "gsim",
+        ("resnet50", "model"): "spike",
         **{(m, p): "spike" for m, names in roster.items() if m != "resnet50" for p in names},
     }
     for model, program, entry in PFX.roster_of(gate):
         if entry["engine"] == "spike":
-            assert entry["board"] == "gemmini_rocket_spike_functional"
+            assert entry["board"] == "firesim_gemmini_rocket_u250_30mhz"
         else:
             assert entry["board"] == "gemmini_rocket_verilator" and entry["max_cycles"] > 0
         assert entry["group_profile"] is True and entry["timeout_s"] > 0
@@ -594,6 +594,88 @@ def test_complete_refuses_a_record_that_does_not_match_its_declaration(tmp_path)
     assert not PFX.complete(PFX.not_run(gate, "x"), gate, static=fixture.static, candidate_sha256="c" * 64)
 
 
+
+@pytest.mark.parametrize("fault", [
+    "empty", "descriptive_only", "missing_completion", "missing_integer_reference", "missing_host_execution",
+    "missing_fp32_sanity", "missing_per_group_exactness", "completion_passed", "integer_reference_passed",
+    "host_execution_passed", "fp32_sanity_passed", "integer_source", "integer_empty", "integer_index",
+    "integer_row_passed", "integer_mismatch", "completion_count", "completion_elements", "host_empty",
+    "host_index", "host_row_passed", "host_tolerance", "host_coverage", "sanity_source", "sanity_digest",
+    "sanity_empty", "sanity_index", "sanity_row_passed", "sanity_top1", "sanity_margin", "sanity_floor",
+])
+def test_complete_requires_all_declared_checks_and_every_result(tmp_path, fault):
+    first, second = np.array([1.0, 2.0], np.float32), np.array([3.0], np.float32)
+    fixture = Fixture(tmp_path, golden=first, integer=first, host=[first, second],
+                      fp32=[first, second], results=[[2], [1]])
+    gate = _gate(tmp_path)
+    good = PFX.run(
+        fixture.static, gate, target="t", static_out=fixture.static_out,
+        execute=lambda elf, **kwargs: {"console": _console(first, second), "wall_s": 1.0},
+    )
+    assert PFX.complete(good, gate, static=fixture.static, candidate_sha256="c" * 64)
+    checks = good["programs"][0]["checks"]
+    if fault == "empty":
+        checks.clear()
+    elif fault == "descriptive_only":
+        good["programs"][0]["checks"] = {"per_group_exactness": checks["per_group_exactness"]}
+    elif fault.startswith("missing_"):
+        checks.pop(fault.removeprefix("missing_"))
+    elif fault in {"completion_passed", "integer_reference_passed", "host_execution_passed", "fp32_sanity_passed"}:
+        checks[fault.removesuffix("_passed")]["passed"] = 1
+    elif fault == "integer_source":
+        checks["integer_reference"]["reference"] = "unselected.json"
+    elif fault == "integer_empty":
+        checks["integer_reference"]["results"] = []
+    elif fault == "integer_index":
+        checks["integer_reference"]["results"][0]["index"] = 1
+    elif fault == "integer_row_passed":
+        checks["integer_reference"]["results"][0].pop("passed")
+    elif fault == "integer_mismatch":
+        checks["integer_reference"]["results"][0]["mismatched_elements"] = 1
+    elif fault == "completion_count":
+        checks["completion"]["results"] = 1
+    elif fault == "completion_elements":
+        checks["completion"]["elements"] += 1
+    elif fault == "host_empty":
+        checks["host_execution"]["results"] = []
+    elif fault == "host_index":
+        checks["host_execution"]["results"][0]["index"] = 0
+    elif fault == "host_row_passed":
+        checks["host_execution"]["results"][0]["passed"] = False
+    elif fault == "host_tolerance":
+        checks["host_execution"]["results"][0]["atol"] *= 2
+    elif fault == "host_coverage":
+        checks["host_execution"]["results"][0]["within"] = 0
+    elif fault == "sanity_source":
+        checks["fp32_sanity"]["reference"] = "unselected.json"
+    elif fault == "sanity_digest":
+        checks["fp32_sanity"]["sha256"] = "not-a-digest"
+    elif fault == "sanity_empty":
+        checks["fp32_sanity"]["results"] = []
+    elif fault == "sanity_index":
+        checks["fp32_sanity"]["results"][1]["index"] = 0
+    elif fault == "sanity_row_passed":
+        checks["fp32_sanity"]["results"][1]["passed"] = 1
+    elif fault == "sanity_top1":
+        checks["fp32_sanity"]["top1"].pop("passed")
+    elif fault == "sanity_margin":
+        checks["fp32_sanity"]["cosine_margin"] *= 2
+    elif fault == "sanity_floor":
+        checks["fp32_sanity"]["results"][0]["floor"] = -1
+    else:
+        raise AssertionError(fault)
+    assert not PFX.complete(good, gate, static=fixture.static, candidate_sha256="c" * 64)
+
+
+@pytest.mark.parametrize("field,value", [("atol", float("inf")), ("rtol", float("nan")),
+                                         ("cosine_margin", float("inf"))])
+def test_numerical_declarations_require_finite_bounds(tmp_path, field, value):
+    entry = dict(EXECUTED)
+    key = "fp32_sanity" if field == "cosine_margin" else "host_execution"
+    entry[key] = {**entry[key], field: value}
+    with pytest.raises(PFX.ExecutionGateError):
+        _gate(tmp_path, net__model=entry)
+
 def test_the_official_grade_requires_a_declared_execution_gate_to_be_complete(tmp_path, monkeypatch):
     from merlin_experiments.phase1.feedback import certification
 
@@ -630,6 +712,11 @@ def test_the_official_grade_requires_a_declared_execution_gate_to_be_complete(tm
         )["failures"]
 
     assert "private_full_model_execution_incomplete" not in grade(record)
+    missing_model_check = certification._official_grade_result(
+        0, run_dir, required_models=tuple(ROSTER), required_programs=ROSTER,
+        execution_gate=gate, require_model_check=True,
+    )["failures"]
+    assert "model_check_official_incomplete_or_mismatch" in missing_model_check
     assert "private_full_model_execution_incomplete" in grade(None)
     assert "private_full_model_execution_incomplete" in grade(dict(record, passed=False))
     optional = dict(gate, required=False)

@@ -245,3 +245,8 @@ budgets precede expansion; every original memory port is retained. Bit identity
 is conditional on defined known bits, with no write event, software scalar,
 command/axis, allocation/capacity, effect or whole packing admission. Existing
 local, H and C records retain their original meanings.
+
+`spatial_introspect` reports storage widths and structural geometry independently
+from arithmetic. Port/selector names and pipeline-like module names do not prove
+signed numerical formats, accumulation behavior or cycle latency; those fields
+remain unknown until the selected arithmetic dataflow is observed.

@@ -6,11 +6,20 @@ bundle, under ``<model>/<split>/<id>/``:
 - ``fp.npz``            the FP reference's judged outputs (from :mod:`reference_worker`, pinned env);
 - ``int8.npz``          the INT8 reference chain's judged outputs (:mod:`chain`, ``linalg_numpy``);
 - ``metrics_int8.json`` the INT8 reference's metrics against FP (reference admission, contract §4.5);
+- ``fp_baseline.npz`` / ``metrics_baseline.json`` when the models file names a ``reference.baseline``: the
+  float model at that precision and its own error against the FP reference;
 - ``<program>/calls.json`` the device calls of each program's first step (the replayed boundaries).
+
+When the models file names ``reference.seeds`` (an input array and a count), every input is also judged
+under ``count - 1`` further draws of that standard-normal array, each in ``<split>/<id>/seeds/<k>/`` with its
+own ``inputs.npz`` and the same reference files; draw 0 is the stored input. Draw ``k`` is seeded by the
+sha256 of ``<split>/<id>/<array>/<k>``, so a rebuild reproduces it. Device calls are recorded for draw 0
+only; admission is judged over every (input, draw).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from collections.abc import Callable
@@ -51,6 +60,44 @@ def _derived(private: Path, model: str, split: str, ident: str) -> Path:
     raise INP.InputError(f"no derived inputs at {directory}")
 
 
+def _draw_seed(split: str, ident: str, key: str, k: int) -> int:
+    return int.from_bytes(hashlib.sha256(f"{split}/{ident}/{key}/{k}".encode()).digest()[:8], "little")
+
+
+def _cases(bundle: Bundle, model: Model, private: Path, ids: list[tuple[str, str]]) -> list[dict[str, Any]]:
+    """Every (input, draw) to judge: draw 0 is the stored input, further draws re-sample ``reference.seeds``."""
+    seeds = (model.judged.get("reference") or {}).get("seeds") or {}
+    count = int(seeds.get("count", 1))
+    cases = []
+    for split, ident in ids:
+        source = _derived(private, model.name, split, ident)
+        home = bundle.root / model.name / split / ident
+        home.mkdir(parents=True, exist_ok=True)
+        cases.append(
+            {"split": split, "ident": ident, "draw": 0, "inputs": source, "out": home, "name": f"{split}/{ident}"}
+        )
+        for k in range(1, count):
+            out = home / "seeds" / str(k)
+            out.mkdir(parents=True, exist_ok=True)
+            with np.load(source) as data:
+                arrays = {n: np.asarray(data[n]) for n in data.files}
+            key = str(seeds["input"])
+            rng = np.random.default_rng(_draw_seed(split, ident, key, k))
+            arrays[key] = rng.standard_normal(arrays[key].shape).astype(arrays[key].dtype)
+            INP._save_npz(out / "inputs.npz", **arrays)  # noqa: SLF001
+            cases.append(
+                {
+                    "split": split,
+                    "ident": ident,
+                    "draw": k,
+                    "inputs": out / "inputs.npz",
+                    "out": out,
+                    "name": f"{split}/{ident}#s{k}",
+                }
+            )
+    return cases
+
+
 def build(
     bundle: Bundle,
     model: Model,
@@ -67,50 +114,65 @@ def build(
     if not ids:
         raise INP.InputError(f"no prepared inputs for {model.name} under {private}")
     kind = model.judged["kind"]
-    out_dir = {key: bundle.root / model.name / key[0] / key[1] for key in ids}
-    for directory in out_dir.values():
-        directory.mkdir(parents=True, exist_ok=True)
+    cases = _cases(bundle, model, private, ids)
     started = time.monotonic()
-    items = [
-        {"id": f"{s}/{i}", "inputs": str(_derived(private, model.name, s, i)), "out": str(out_dir[(s, i)] / "fp.npz")}
-        for s, i in ids
-    ]
+    items = [{"id": c["name"], "inputs": str(c["inputs"]), "out": str(c["out"] / "fp.npz")} for c in cases]
+    reference = dict(model.judged.get("reference") or {})
     request = {**fp_request, "items": items, "input_worker": str(INP.WORKER)}
     if kind == "next_token_distribution":
         request.update(prefill_tokens=int(model.chain["prefill_tokens"]), decode_steps=int(model.chain["decode_steps"]))
-    INP.run_worker(
-        fp_python,
-        FP_TASK[kind],
-        request,
-        bundle.root / model.name / ".fp_work",
-        worker=REFERENCE_WORKER,
-        env={**fp_env, **FP_NUMERICS_ENV},
-    )
-    log(f"[references] {model.name}: FP reference for {len(ids)} inputs in {time.monotonic() - started:.0f} s")
+    runs = {"fp.npz": reference.get("precision", "native")}
+    if reference.get("baseline"):
+        runs["fp_baseline.npz"] = reference["baseline"]
+    for name, precision in runs.items():
+        INP.run_worker(
+            fp_python,
+            FP_TASK[kind],
+            {
+                **request,
+                "precision": precision,
+                "items": [{**i, "out": str(Path(i["out"]).with_name(name))} for i in items],
+            },
+            bundle.root / model.name / ".fp_work",
+            worker=REFERENCE_WORKER,
+            env={**fp_env, **FP_NUMERICS_ENV},
+        )
+    log(f"[references] {model.name}: FP reference for {len(cases)} cases in {time.monotonic() - started:.0f} s")
     catalogs = {p.name: bundle.catalog(model.name, p.name) for p in model.programs}
     blobs = bundle.blobs(model.name)
-    summary: dict[str, Any] = {"model": model.name, "fp_numerics_env": FP_NUMERICS_ENV, "inputs": {}}
-    for split, ident in ids:
+    summary: dict[str, Any] = {"model": model.name, "fp_numerics_env": FP_NUMERICS_ENV, "fp_runs": runs, "inputs": {}}
+    rows: list[dict[str, Any]] = []
+    baseline_rows: list[dict[str, Any]] = []
+    for case in cases:
+        split, ident, here = case["split"], case["ident"], case["out"]
         t0 = time.monotonic()
-        with np.load(_derived(private, model.name, split, ident)) as data:
+        with np.load(case["inputs"]) as data:
             arrays = {k: np.asarray(data[k]) for k in data.files}
         calls_by_program: dict[str, list[dict[str, Any]]] = {}
 
-        def record(program: str, step: int, catalog: CAT.ProgramCatalog, args: list[np.ndarray]) -> None:
-            if step != 0 or not catalog.interfaces:
+        def record(
+            program: str, step: int, catalog: CAT.ProgramCatalog, args: list[np.ndarray], draw: int = case["draw"]
+        ) -> None:
+            if step != 0 or draw != 0 or not catalog.interfaces:
                 return
             calls_by_program[program] = CAT.record_calls(catalog, args, blobs=blobs, keep_call=keep_call)
 
         run = CH.run_reference(model, catalogs, arrays, bundle.root / model.name / ".chain_work", record=record)
         judged = CH.judged_outputs(model, run)
-        with np.load(out_dir[(split, ident)] / "fp.npz") as data:
+        with np.load(here / "fp.npz") as data:
             fp = [np.asarray(data[k]) for k in data.files]
         metrics = M.model_metrics(kind, judged, fp, model.judged)
-        _save(out_dir[(split, ident)] / "int8.npz", judged)
-        (out_dir[(split, ident)] / "metrics_int8.json").write_text(json.dumps(metrics, indent=1) + "\n")
+        _save(here / "int8.npz", judged)
+        (here / "metrics_int8.json").write_text(json.dumps(metrics, indent=1) + "\n")
+        rows.append({"split": split, "draw": case["draw"], **metrics})
+        if "fp_baseline.npz" in runs:
+            with np.load(here / "fp_baseline.npz") as data:
+                base = M.model_metrics(kind, [np.asarray(data[k]) for k in data.files], fp, model.judged)
+            (here / "metrics_baseline.json").write_text(json.dumps(base, indent=1) + "\n")
+            baseline_rows.append({"split": split, "draw": case["draw"], **base})
         for program, calls in calls_by_program.items():
             CAT.write_calls(
-                out_dir[(split, ident)] / program / "calls.json",
+                here / program / "calls.json",
                 calls,
                 model=model.name,
                 program=program,
@@ -118,12 +180,19 @@ def build(
                 step=0,
             )
         headline = {k: v for k, v in metrics.items() if k != "per_channel"}
-        summary["inputs"][f"{split}/{ident}"] = {
+        summary["inputs"][case["name"]] = {
             **headline,
             "steps": CH.summary(run),
             "seconds": round(time.monotonic() - t0, 1),
         }
-        log(f"[references] {model.name} {split}/{ident}: {json.dumps(headline)}")
+        log(f"[references] {model.name} {case['name']}: {json.dumps(headline)}")
+    rules = model.judged.get("admission") or ()
+    summary["admission"] = {
+        split: M.admission(
+            rules, [r for r in rows if r["split"] == split], [r for r in baseline_rows if r["split"] == split]
+        )
+        for split in sorted({r["split"] for r in rows})
+    }
     (bundle.root / model.name / "reference_quality.json").write_text(json.dumps(summary, indent=1) + "\n")
     return summary
 

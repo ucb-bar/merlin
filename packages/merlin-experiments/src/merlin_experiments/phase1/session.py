@@ -626,7 +626,8 @@ def _prepare(
     _seed_submission_record = None
     if _seed_source:
         _seed_submission_record = RI.seed_submission(
-            ws, _seed_source_preflight, run_dir, require_stable_source=bool(a.qualify_submission)
+            ws, _seed_source_preflight, run_dir, require_stable_source=bool(a.qualify_submission),
+            require_lineage=bool(a.seed_submission)
         )
     _bundle_snapshot_record = None
     _model_host_lane_snapshot = None
@@ -859,6 +860,8 @@ def _prepare(
     if _resuming:
         _identity = {
             "run_id": a.run_id,
+            "lineage_id": (((_environment_record.get("seed_submission") or {}).get("lineage") or {})
+                           .get("lineage_id") or a.run_id),
             "arm": arm,
             "sandbox": a.sandbox,
             "bundle_id": bundle["bundle_id"],
@@ -913,6 +916,7 @@ def _prepare(
         _client_runtime = select_client(a, context, bundle, ws, run_dir)
         _environment_record = {
             "run_id": a.run_id,
+            "lineage_id": ((_seed_submission_record or {}).get("lineage") or {}).get("lineage_id") or a.run_id,
             "arm": arm,
             "model": a.model,
             "effort": a.effort,

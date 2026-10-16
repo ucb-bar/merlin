@@ -22,8 +22,8 @@ epilogue; read `merlin/contract/command_buffer_abi.yaml` for precise epilogue/`a
 `merlin/contract/interface_grammar.md` for the input grammar, and `schemas/command_buffer.schema.json`
 for the command-buffer schema. Derive everything (rounding rules and dtypes included) from
 the granted facts and contracts (no Gemmini C ISA headers are provided) — nothing
-is restated here. Each capsule dir gives you `capsule.yaml`, `capsule.interface.mlir`, and
-`expected_instruction_coverage.yaml`. The numeric `golden.yaml` is intentionally withheld — you do NOT
+is restated here. Each capsule dir gives you `capsule.yaml` and `capsule.interface.mlir`.
+Required instruction-coverage answers and the numeric `golden.yaml` are withheld — you do NOT
 get the answers; see the QA gate below. Build one **general** backend that handles every family — do not
 special-case individual capsules.
 

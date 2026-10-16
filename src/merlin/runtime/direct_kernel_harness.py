@@ -307,6 +307,7 @@ def render_direct_kernel(
     output_poison=None,
     prelude_symbol=None,
     complete_call_timing=None,
+    kernel_call_timing=None,
     source_owned_mutables=(),
 ):
     """Render complete pointer-call storage with explicitly selected readback.
@@ -326,6 +327,14 @@ def render_direct_kernel(
         ):
             raise ValueError("complete-call timing requires one original invocation and its exact normal timer")
         complete_call_timing.verify()
+    if kernel_call_timing is not None:
+        from .kernel_call_timing import KernelCallTiming
+
+        if type(kernel_call_timing) is not KernelCallTiming or any(
+            p is not None for p in (invocation_plan, counter_plan, phase_plan, complete_call_timing)
+        ):
+            raise ValueError("kernel-call timing requires one original invocation and its exact timer")
+        kernel_call_timing.verify()
     abi.verify()
     if output_poison is not None and (type(output_poison) is not int or not 0 <= output_poison <= 255):
         raise ValueError("direct output poison must be an explicit byte")
@@ -479,6 +488,9 @@ def render_direct_kernel(
         declarations.extend(_OUTPUT_POISON_C.replace("merlin_poison_bytes", poison_symbol).splitlines())
     if complete_call_timing is not None:
         declarations.extend(complete_call_timing.declarations())
+    if kernel_call_timing is not None:
+        declarations.append(kernel_call_timing.source_marker())
+        declarations.extend(kernel_call_timing.declarations())
     for name, (index, access, (count, width, dtype)) in slots.items():
         if width > abi.tensor_alignment:
             raise ValueError("direct kernel software alignment is smaller than a container word")
@@ -560,9 +572,13 @@ def render_direct_kernel(
         body.extend(poison("  "))
         if counter_roster is not None:
             body.extend(counter_plan.begin("  "))
+        if kernel_call_timing is not None:
+            body.extend(kernel_call_timing.begin())
         body.append("  " + call)
         if abi.completion_symbol:
             body.append(f"  {abi.completion_symbol}();")
+        if kernel_call_timing is not None:
+            body.extend(kernel_call_timing.end())
         if counter_roster is not None:
             body.extend(counter_plan.end("  "))
             body.extend(counter_plan.store(kind="call", index="0", byte_order=abi.byte_order, indent="  "))

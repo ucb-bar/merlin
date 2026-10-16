@@ -1,20 +1,10 @@
 #!/usr/bin/env python3
-"""model2MLIR capture worker — runs INSIDE the m2m venv (the only interpreter with torch), never inside
-the merlin venv. :mod:`merlin.targetgen.capsule_source` invokes it as a subprocess with the m2m venv's
-python and ingests the artifacts it writes.
+"""Capture a model through model2MLIR inside its torch-enabled environment.
 
-Given a request JSON on argv (a loader ``.py`` exposing ``get_model_and_inputs()``, a canonical dtype
-token, and an output dir) it:
-  1. builds the model + example inputs from the loader;
-  2. casts / torchAO-quantizes per the dtype token (the SAME scheme table ``workloads/capture.py`` uses);
-  3. lowers to linalg-on-tensors via ``m2m.convert`` (fx_importer backend), externalizing weights;
-  4. asserts 0 opaque ops (a capsule whose program still has opaque ops is not a valid input program);
-  5. runs the model EAGER on host CPU to produce the reference (golden) output;
-  6. writes ``linalg.mlir``, ``weights.safetensors`` and its argument manifest,
-     ``inputs.json``, ``golden.json``, ``meta.json``.
-
-This file carries no target-name dispatch. Scoped quantization recipes use the
-selected worker package's shared Merlin admission screen inside the m2m/torch process.
+The request names a loader, dtype and output directory. The worker constructs and
+quantizes the model, lowers it through m2m, rejects opaque operations, evaluates the
+host reference and writes the MLIR, weights, inputs, golden output and metadata.
+Scoped quantization recipes use the selected package's Merlin admission screen.
 """
 
 from __future__ import annotations
@@ -285,6 +275,14 @@ def _input_abi(inputs):
     if bad:
         raise RuntimeError(f"model loader inputs must have only tensor leaves; got {bad}")
     return leaves, [{"shape": list(x.shape), "dtype": _mlir_dtype(x.dtype)} for x in leaves]
+
+
+def _calibration_stream_limit(RQ, recipe) -> int:
+    """Samples a calibration stream must supply: what the recipe observes, and the agreement receipt."""
+    observed = RQ.calibration_limit(
+        recipe, inspect.signature(RQ.apply_recipe).parameters["calibration_samples"].default
+    )
+    return max(observed, inspect.signature(RQ.agreement).parameters["limit"].default)
 
 
 def _freeze_calibration(samples, *, limit, normalize, torch):
@@ -940,10 +938,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             if isinstance(stream, torch.Tensor) and stream.shape[0] > 0:
                 samples = ((stream[i],) for i in range(int(stream.shape[0])))
         if samples is not None:
-            calibration_limit = max(
-                inspect.signature(RQ.apply_recipe).parameters["calibration_samples"].default,
-                inspect.signature(RQ.agreement).parameters["limit"].default,
-            )
+            calibration_limit = _calibration_stream_limit(RQ, json.loads(Path(a.recipe).read_text(encoding="utf-8")))
             calibration = _freeze_calibration(samples, limit=calibration_limit, normalize=RQ._as_tuple, torch=torch)
     original_snapshot = {
         "status": "unavailable",
@@ -1093,7 +1088,13 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         if not a.stage_fp32:
             hook = getattr(loader, "get_calibration_inputs", None)
             if callable(hook):
-                calibration = list(hook(mdl, tuple(inputs)))
+                # A hook may decline (None): the stage then calibrates on its own example, as
+                # without one. A stream is read only as far as the recipe and the receipt use it.
+                samples = hook(mdl, tuple(inputs))
+                if samples is not None:
+                    from itertools import islice
+
+                    calibration = list(islice(samples, _calibration_stream_limit(RQ, recipe)))
             else:
                 stream = getattr(mdl, "session_images", None)
                 if isinstance(stream, torch.Tensor) and stream.shape[0] > 0:
@@ -1154,7 +1155,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         mdl = apply_quantization(mdl, q, **quant_trace_options)
         quant_stats = getattr(mdl, "_m2m_quantization_stats", None)
     integerization_receipt = None
-    if q is not None and q.scheme == "int8_static_act_int8_weight" and not a.already_quantized:
+    # A recipe whose dynamic block emitted every integer contraction leaves PT2E nothing to integerize.
+    pt2e_selected = not isinstance(quant_stats, dict) or quant_stats.get("annotated_contractions") != 0
+    if q is not None and q.scheme == "int8_static_act_int8_weight" and not a.already_quantized and pt2e_selected:
         # Account for every selected PT2E contraction: genuine integer work or
         # an explicitly preserved non-FP32 floating Q/DQ operation. Preserving
         # precision is not accelerator/host admission. The independent reference

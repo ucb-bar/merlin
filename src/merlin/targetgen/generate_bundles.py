@@ -503,6 +503,13 @@ def generate_bundles(
         if selected_facts is not None:
             _select_rtl_facts_grant(out[bid], te, selected_facts[0])
         if common_substrate == "merlin.common_compiler_substrate.v3":
+            # The common generated task is the sole authoring instruction owner.
+            # Legacy target task directories remain operator inputs, not grants.
+            legacy_task = te.experiment_resource("task") + "/"
+            out[bid]["allowed"] = [row for row in out[bid]["allowed"] if row.get("path") != legacy_task]
+            out[bid]["host_inputs"].append(
+                {"path": legacy_task, "note": "retained task text for release custody; never a candidate grant"}
+            )
             # Resolve original semantic inputs only after ordinary source/facts
             # grants have reached their final canonical selected locations.
             software = [

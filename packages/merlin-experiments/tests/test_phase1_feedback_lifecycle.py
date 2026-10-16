@@ -459,6 +459,7 @@ def test_actual_caller_finally_preserves_primary_and_stops_brokers(tmp_path, mon
         "sys": sys,
         "ws": tmp_path,
         "broker": [child],
+        "model_gate": None,
         "cmd": "unused",
         "a": SimpleNamespace(timeout=1),
         "run_provider": run_provider,

@@ -20,9 +20,11 @@ compiler_obligations: []
 hardware_promises: []
 runtime_promises: []
 runtime:
-  # Regenerate/verify facts for this exact configuration. The old example's
-  # GemminiRocketConfig elaboration is not evidence for this selection.
-  rtl_sim_config: FireSimGemminiRocketConfig
+  # The capsule engine is a gSIM TestHarness built from the same Chipyard and
+  # Gemmini commits as the full FireSim bitstream. It must also reproduce the
+  # FireSim chip's 16 GiB map and execution-visible config settings. Reproduce
+  # facts from this exact harness FIRRTL; do not include FireSim bridges.
+  rtl_sim_config: GemminiGsimFireSimAlignedConfig
 runner:
   backend: chipyard_rocc
   suite: gemmini-capsule-bench
@@ -31,7 +33,7 @@ runner:
   sim_via: chipyard
   chipyard_rocc:
     version: 1
-    config: FireSimGemminiRocketConfig
+    config: GemminiGsimFireSimAlignedConfig
     toolchain:
       compiler: {path: /REVIEWED_TOOLCHAIN/riscv64-unknown-elf-gcc}
       link_script: {path: /REVIEWED_INPUTS/logical-layout.ld}

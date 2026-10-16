@@ -3,7 +3,7 @@ title: Set up Phase 0 and Phase 1
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-14
+last_verified: 2026-10-15
 related: [gsim_worker_setup, neutral_runtime_tooling, phase0_specification, target_resolution]
 code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/targetgen/generalization_prompt.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_demand.py]
 ---
@@ -28,7 +28,9 @@ diagnostic prototypes. Do not copy their legacy harness includes, issue order,
 padding or preferred lowering into a fresh compiler experiment.
 
 The [deployment template](../../examples/gemmini/phase0/execution-declaration.template.yaml)
-illustrates `FireSimGemminiRocketConfig`. It is deliberately incomplete:
+names the planned `GemminiGsimFireSimAlignedConfig` for the capsule TestHarness.
+This new Chipyard configuration must be implemented and elaborated before use;
+the template is deliberately incomplete:
 replace every marked field and attach freshly derived capability declarations.
 Its facts must describe that exact configuration; the diagnostic example's
 `GemminiRocketConfig` elaboration cannot qualify it. The checked-in templates
@@ -271,6 +273,102 @@ binary, then keep it on PATH for preflight and authoring:
 ```sh
 export PATH="$FILECHECK_BIN:$PATH"
 ```
+
+For the Gemmini six-program full-model gate, the authored descriptor now selects
+the full FireSim board even when the program executes on Spike. Prepare a **new**
+private model specification using that board, its FireSim DTS and the newly
+frozen board catalog. Before launch, run the operator alignment check on the
+FireSim source checkout selected for the pinned U250 bitstream:
+
+```sh
+python -m merlin_experiments.phase1.spike_alignment \
+  --contract "$PREPARED_CONTRACT" \
+  --chipyard-root "$FIRESIM_CHIPYARD_ROOT" \
+  --machines examples/gemmini/phase2/whole-model-machines.yaml \
+  --hardware-pins merlin/contract/hardware_pins.yaml \
+  --board-catalog examples/gemmini/platform/board-catalog.yaml \
+  --private-model-spec "$PRIVATE_MODEL_SPEC"
+```
+
+Require `spike_aligned: true`. This checks the exact Spike executable and Gemmini
+extension, their source commits, full-design ABI header, FireSim DTS and 16 GiB
+board declaration, and every model row's board/DTS/catalog pins. It does not
+prove gSIM/FireSim RTL equivalence or that the FPGA can use the entire declared
+memory span; qualify those independently. A missing pinned checkout or DTS is a
+failed selection, not a reason to reuse the Verilator DTS.
+
+For capsule execution, select `GemminiGsimFireSimAlignedConfig` in the Phase 0
+execution contract and derive facts from its exact TestHarness FIRRTL. Build it
+from the [pinned configuration source](../../build_tools/chipyard/GemminiGsimFireSimAlignedConfig.scala)
+added unchanged to a clean descendant of the FireSim-recorded Chipyard commit,
+with the Gemmini submodule still at its recorded commit. The gSIM alignment
+audit permits that one committed Chipyard source addition and no other source
+changes. This configuration must preserve the gSIM harness
+clock and serial adapter while matching FireSim's chip-visible 16 GiB memory
+map, Rocket ISA and execution-relevant bus/peripheral settings. The older
+`GemminiGsimSerialClkConfig` only fixes the harness clock path and is not enough.
+The aligned config also includes `WithDefaultFireSimBridges` so the chip uses
+FireSim's IO cell models, and gives the TestHarness a block-device port binder.
+Generate the TestHarness FIRRTL with the `firechip` SBT project and the Chipyard
+generator:
+
+```sh
+make -C "$CHIPYARD_ROOT/sims/verilator" firrtl \
+  SBT_PROJECT=firechip GENERATOR_PACKAGE=chipyard \
+  CONFIG_PACKAGE=firechip.chip CONFIG=GemminiGsimFireSimAlignedConfig
+```
+
+For the native gSIM build, apply the
+[16 GiB harness patch](../../build_tools/gsim/fire_aligned_16gib.patch) to a
+task-local checkout of gSIM `f38de1704dac25b540d1552fbe1d23fc48463212`.
+It widens SimDRAM's AXI addresses and refuses block-device requests when no
+block image is attached. The selected bare-metal Phase 1 programs do not use
+block storage. Preserve the patched C++ source with the native build receipt.
+The [16 GiB DRAM smoke](../../build_tools/gsim/high_dram_16gib.S) has a
+[reproducible ELF build script](../../build_tools/gsim/build_high_dram_16gib.sh).
+It writes and reads 0x100001000 and 0x47ffff000, crossing the 32-bit boundary
+and touching the final mapped 4 KiB page. Run the exact resulting ELF on gSIM,
+Spike with the selected 16 GiB map, and the U250 bitstream; record each exit
+status and the ELF hash.
+
+The U250 source handoff supplies the exact Saturn Git commit
+`e16a301d261fa4b5a374eb7069b78107a8c9aefb` as a complete bundle
+(SHA256 `8d7ee0b552e80548d3c2d9754a21fce280ec0f478097533cb89c8c2bb5c2fb75`)
+and a source-only archive (SHA256
+`683de65b0c7ed56621a84657f0bd67bf0ae452e3c5a5b17f6c9b761ce1616bad`).
+Verify the archive with its `verify.py`, import the bundle into the task-local
+Saturn submodule, and check the three exact Chipyard Git links for Gemmini,
+Saturn and FireSim. These sources replace the temporary OPU/Kodiak compile
+stubs. The source-only archive excludes the bitstream, driver and large
+generated RTL. It also does not prove the complete historical dirty FireSim
+source state of the bitstream.
+
+On the receiving worker, the clean pinned source plus the one committed gSIM
+configuration addition reproduced FIRRTL SHA256
+`6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149`.
+The gSIM DTS exactly matched the handoff FireSim DTS SHA256
+`c4a2009a405945ea98f731713e0f4e7dc483031ab8cd5156d871e4eb7594f1df`.
+A local diagnostic alignment audit passed all seven source, facts, host-map and
+native-receipt checks. Reproduce this chain with the prepared release contract:
+issue the two-run source-to-FIRRTL elaboration receipt, pass it to the RTL source
+selection, derive facts, and bind the strict v3 native gSIM receipt. Before
+launch, check the complete chain:
+
+```sh
+python -m merlin_experiments.phase1.gsim_alignment \
+  --contract "$PREPARED_CONTRACT" --rtl-facts "$PREPARED_FACTS" \
+  --chipyard-root "$FIRESIM_CHIPYARD_ROOT" \
+  --hardware-pins merlin/contract/hardware_pins.yaml \
+  --board-catalog examples/gemmini/platform/board-catalog.yaml \
+  --gsim-dts "$GSIM_DTS"
+```
+
+Require `gsim_source_aligned: true`. This checks the generated gSIM and FireSim
+DTS memory maps and ISA as well as source/FIRRTL/emulator identities. The
+system-installed gSIM and old `GemminiRocketConfig` DTS cannot satisfy this
+selection; use the pinned aligned build. A passing source gate still needs an
+explicit chip comparison and matched-ELF gSIM/FireSim checks before its cycles
+can be treated as representative board timing.
 
 Then run ordinary `--preflight-only` with the released descriptor, seal, regenerated
 bundle and oracle timing. Run the fresh Codex client canary in the same sandbox

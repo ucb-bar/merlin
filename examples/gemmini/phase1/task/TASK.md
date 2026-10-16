@@ -28,7 +28,7 @@ submission/
 ## What you may read
 The frozen contract `merlin/contract/` (schemas, `interface_grammar.md`, `command_buffer_abi.yaml`,
 `integrity_policy.md`), the **public/dev capsules** under `merlin/contract/capsules/{isa,layers,
-model_slices}/` (each has `capsule.yaml` + `capsule.interface.mlir` + `expected_instruction_coverage.yaml`),
+model_slices}/` (each has `capsule.yaml` + `capsule.interface.mlir`),
 the hardware facts your bundle grants (for example RTL-derived facts or a target contract; no Gemmini
 C ISA headers are provided), and the LLVM/MLIR toolchain.
 

@@ -146,6 +146,11 @@ def append_resource_guidance(ws: Path, run_dir: Path, options, *, device_ir_budg
                              public_codegen_policy=None) -> None:
     """Append before provenance, including when a treatment supplied its own task."""
     task = Path(ws) / "TASK.md"
+    if task.read_text().startswith("# Phase 1: Gemmini compiler for complete models"):  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        if task.stat().st_size > 12 * 1024:
+            raise RuntimeError("full-model TASK.md exceeds 12 KB")
+        (Path(run_dir) / "TASK.md").write_bytes(task.read_bytes())
+        return
     selected = {} if device_ir_budget is None else {"device_ir_budget": device_ir_budget}
     if public_codegen_policy is not None:
         selected["public_codegen_policy"] = public_codegen_policy

@@ -59,7 +59,6 @@ _WORK_OPERATIONS = (
 _EXTENT_PRESERVING_EPILOGUES = frozenset(("bias_add", "acc_scale", "relu"))
 
 ARM_WORKSPACE = "m{index:03d}_{arm}"
-_BASELINE_ARM_GLOB = "m*_baseline"
 RECOVERABLE_RANK_LIMIT = 8
 
 
@@ -202,34 +201,20 @@ def recoverable_cycles(
 
 
 def derived_peak_macs_per_cycle(rtl_facts_path: Path, target: str) -> tuple[int | None, str]:
-    """The machine's structural MAC ceiling, DERIVED from its own RTL facts.
+    """Optimistic whole-machine capacity from every explicitly counted arithmetic site.
 
-    This is the denominator of utilization, and it must never be a literal: it comes from
-    ``merlin.perf.contract``, which reads the discovered array's geometry (rows x cols x the
-    multipliers per element that the mac_idiom fact states) and refuses rather than inventing a peak
-    when no array grounds the unit. If more than one compute resource carries a peak, this refuses
-    too -- picking one would be choosing which machine the number describes.
+    Use the same prerequisite as the conservative workload floor. Geometry alone
+    cannot define the utilization denominator, and omitting another array could
+    understate capacity. This is no guarantee of achievable sustained throughput.
     """
     try:
-        from merlin.perf.contract import derive_contract  # noqa: PLC0415
+        from merlin.perf.capsule_roofline import compute_peak_from_facts  # noqa: PLC0415
 
         facts = json.loads(Path(rtl_facts_path).read_text(encoding="utf-8"))
-        contract = derive_contract(target, facts=facts)
+        peak, basis = compute_peak_from_facts(facts)
     except Exception as exc:  # noqa: BLE001 - an underivable ceiling is reported, never guessed
         return None, f"peak is not derivable from this target's RTL facts ({type(exc).__name__})"
-    peaks: list[tuple[str, int]] = []
-    for resource in contract.resources:
-        term = (resource.terms or {}).get("peak_macs_per_cycle")
-        value = getattr(term, "value", None)
-        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
-            peaks.append((resource.name, value))
-    if not peaks:
-        return None, "this target's RTL facts evidence no compute array, so it has no derived peak"
-    if len(peaks) > 1:
-        names = ", ".join(sorted(name for name, _ in peaks))
-        return None, f"this target evidences several compute units ({names}); utilization needs one"
-    name, value = peaks[0]
-    return value, f"facts-derived peak of compute unit {name!r}"
+    return peak, f"facts-derived peak: {basis}" if peak is not None else basis
 
 
 def declared_capsule_contractions(
@@ -768,79 +753,6 @@ def unmeasured_cell(member: Any, *, reason: str, machine: Mapping[str, Any] | No
         "measured": False,
         "skip_reason": reason,
     }
-
-
-def harvest_baseline_points(work_root: Path) -> list:
-    """Measured points from the FROZEN-BASELINE arm of this run, and nothing else.
-
-    The baseline package is phase 1's submission, sha-pinned before the first member runs and
-    re-executed unchanged for every one, so these points cannot depend on anything the agent wrote.
-    CANDIDATE arms are excluded by construction and that exclusion is the whole safety argument: a
-    ceiling the agent can raise is a target the agent authors, and `share_of_achievable` would then
-    pin its own candidate near 1.0 while pushing every other member down.
-
-    Scoped to ONE run's work root on purpose. Harvesting across stages would make the objective
-    depend on what happens to be on disk at launch -- two trials of one configuration would be
-    scored differently, and clearing `out/` would silently move the target.
-
-    The filter is the workspace directory THIS module creates, not a parse of the runner's run-id:
-    that name is minted in another module and matching it would be exactly the brittleness the
-    no-regex rule exists to prevent.
-    """
-    from . import calibration as PMODEL  # noqa: PLC0415
-
-    root = Path(work_root)
-    if not root.is_dir():
-        return []
-    found: dict[str, Any] = {}
-    for arm_dir in sorted(root.glob(f"round_*/call_*/{_BASELINE_ARM_GLOB}")):
-        for point in PMODEL.harvest_measured_points(arm_dir)[0]:
-            found.setdefault(point.capsule, point)
-    return sorted(found.values(), key=lambda p: p.capsule)
-
-
-def harvest_member_cost(roots: Sequence[Path]) -> dict[str, float]:
-    """Median measured simulation seconds per capsule, from runs already on disk.
-
-    ORDER THE SWEEP BY WHAT IT COSTS, and derive that from measurement rather than from a proxy.
-    Declared MACs are the obvious proxy and they are WRONG here: measured on this corpus, a
-    262144-MAC deep-K member simulates in 74.9 s while a 65536-MAC wide-M/N member takes 178.5 s --
-    the proxy inverts on exactly the pair it would need to get right. Simulation cost tracks the
-    shape of the program, not the size of its arithmetic, so it is read from prior runs.
-
-    Absent history yields an empty table and the caller keeps the declared order, saying so. An
-    empty table is never a claim that every member costs the same.
-    """
-    seconds: dict[str, list[float]] = {}
-    for root in roots:
-        if not root or not Path(root).is_dir():
-            continue
-        for path in Path(root).rglob("capsule_result.json"):
-            try:
-                document = json.loads(path.read_text(encoding="utf-8"))
-            except Exception:  # noqa: BLE001 - an unreadable result contributes no cost, not a zero
-                continue
-            capsule = str(document.get("capsule") or "")
-            tier = (document.get("tiers") or {}).get("L3") or {}
-            active = (tier.get("timing") or {}).get("sim_active_s")
-            # A WALL TIME MEASURED UNDER FAN-OUT DOES NOT PRICE THE MEMBER. Cycles are
-            # concurrency-invariant on this stack; wall times are emphatically not -- the same query
-            # measured 3.7 s serial and 23.4 s at 16 workers, a 6.3x spread. Mixing those into the
-            # median would inflate exactly the members that happened to run beside others and
-            # silently corrupt the cheapest-first ordering the early stop depends on. The runner
-            # stamps the fan-out it ran at; a row that does not say, or says more than one, is not
-            # a price.
-            fanout = (tier.get("concurrency") or {}).get("workers")
-            if fanout is not None and fanout != 1:
-                continue
-            if capsule and isinstance(active, (int, float)) and not isinstance(active, bool) and active > 0:
-                seconds.setdefault(capsule, []).append(float(active))
-    table: dict[str, float] = {}
-    for capsule, values in seconds.items():
-        values.sort()
-        middle = len(values) // 2
-        table[capsule] = values[middle] if len(values) % 2 else 0.5 * (values[middle - 1] + values[middle])
-    return table
 
 
 def order_members_by_cost(members: Sequence[Any], cost: Mapping[str, float]) -> tuple[tuple, str]:

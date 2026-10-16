@@ -131,8 +131,13 @@ def build_parser() -> argparse.ArgumentParser:
     binding.add_argument("--spec", type=Path, default=None, help="binding spec (default: binding.yaml by --models)")
     binding.add_argument("--image", type=Path, action="append", default=[], help="replay image to check (repeatable)")
 
-    verify = sub.add_parser("bundle-verify", help="check every file of a numerics bundle")
+    verify = sub.add_parser("bundle-verify", help="check every file of a numerics bundle against its seal")
     _common(verify, submission=False)
+    verify.add_argument("--jobs", type=int, default=8, help="files hashed at once")
+
+    seal = sub.add_parser("bundle-seal", help="record a sha256 of every file of a numerics bundle (freeze it)")
+    _common(seal, submission=False)
+    seal.add_argument("--jobs", type=int, default=8, help="files hashed at once")
 
     build = sub.add_parser("bundle-build", help="catalog, census and reference calls for a model's programs")
     _common(build, submission=False)

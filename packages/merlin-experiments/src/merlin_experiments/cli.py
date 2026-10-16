@@ -489,10 +489,15 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="fresh release root; defaults to out/artifacts/protocols/<target>/phase0-<TS>-<sha7>",
     )
-    prepare.add_argument(
-        "--generated-only",
-        action="store_true",
-        help="use only the selected Phase-0 output for public capsules; never read the historical corpus",
+    corpus_mode = prepare.add_mutually_exclusive_group()
+    prepare.set_defaults(generated_only=True)
+    corpus_mode.add_argument(
+        "--generated-only", action="store_true",
+        help="use only selected Phase-0 public capsules (default); never read the historical corpus",
+    )
+    corpus_mode.add_argument(
+        "--historical-overlay", dest="generated_only", action="store_false",
+        help="explicitly retain a historical public corpus; held-out validation sources are refused",
     )
     prepare.add_argument(
         "--phase1-policy-descriptor",

@@ -190,6 +190,35 @@ def test_interleaved_invocations_keep_snapshot_policy_order_and_publication(tmp_
         events.clear()
 
 
+def test_in_turn_grade_reaches_agent_after_source_changes(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import promotion
+
+    ws, run = tmp_path / "ws", tmp_path / "run"
+    (ws / "submission").mkdir(parents=True)
+    (ws / "submission/manifest.yaml").write_text("language: python\n")
+    (ws / "submission/compiler.py").write_text("VALUE = 1\n")
+    inputs = G.GradingInputs(context(tmp_path), "raw_baseline", tmp_path / "public", (), None)
+    monkeypatch.setattr(G, "_write_stage_ledger", lambda *a, **kw: None)
+    monkeypatch.setattr(G, "_attach_shape_generalization", lambda *a, **kw: None)
+    monkeypatch.setattr(G, "_attach_codegen_scalability", lambda *a, **kw: None)
+    monkeypatch.setattr(G, "_record_plateau", lambda *a: None)
+    monkeypatch.setattr(G.FL, "record_channel_health", lambda *a: None)
+    monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **kw: (None, None, None))
+
+    def grade_snapshot(candidate, *args, **kwargs):
+        assert (Path(candidate) / "compiler.py").read_text() == "VALUE = 1\n"
+        (ws / "submission/compiler.py").write_text("VALUE = 2\n")
+        assert kwargs["defer_pending"]() == "background source superseded"
+        return {"all_pass": False, "n_passed": 0, "n_capsules": 1, "per_capsule": []}
+
+    G.grade(ws, run, 900, False, 10, label="inturn", inputs=inputs,
+            qa_runner=grade_snapshot, advisory_background=True)
+    visible = json.loads((ws / "qa/verdict.json").read_text())
+    assert visible["snapshot_current"] is False
+    assert visible["background_grade"]["reason"] == "background source superseded"
+    assert len(visible["graded_source_sha256"]) == 64
+
+
 def test_selected_object_build_reaches_grade_and_candidate_matched_continuous_brief(tmp_path, monkeypatch):
     from merlin_experiments.phase1.feedback import brief, promotion
     from merlin_experiments.phase1.feedback import codegen_scalability as S

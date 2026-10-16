@@ -50,6 +50,7 @@ and the capture's. Results carry counts and error magnitudes, never tensor value
 
 from __future__ import annotations
 
+import math
 import os
 import threading
 import time
@@ -104,7 +105,7 @@ def _positive_int(value: Any, where: str) -> int:
 
 
 def _tolerance(value: Any, where: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value) or value < 0:
         raise ExecutionGateError(f"{where} must be a non-negative number")
     return float(value)
 
@@ -164,7 +165,7 @@ def _program_entry(entry: Any, where: str) -> dict[str, Any]:
         raise ExecutionGateError(f"{where}: fp32_sanity declares exactly reference, cosine_margin and top1")
     if sanity is not None:
         margin = sanity["cosine_margin"]
-        if isinstance(margin, bool) or not isinstance(margin, int | float) or margin < 1:
+        if isinstance(margin, bool) or not isinstance(margin, int | float) or not math.isfinite(margin) or margin < 1:
             raise ExecutionGateError(f"{where}.fp32_sanity.cosine_margin must be a number of at least 1")
     board = entry.get("board")
     if board is not None and (not isinstance(board, str) or not board):
@@ -350,10 +351,10 @@ def run_engine(
         revalidate()
         started = time.monotonic()
         bounded = _selected_run_timeout(backend, engine, timeout_s, deadline)
-        if engine == "spike" and target == "gemmini":
+        if engine == "spike" and target == "gemmini":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
             run_declared = getattr(backend, "run_declared_model_elf", None)
             if not callable(run_declared):
-                raise ExecutionGateError("selected Gemmini backend cannot run the linked model's declared machine")
+                raise ExecutionGateError("selected Gemmini backend cannot run the linked model's declared machine")  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
             console = run_declared(elf, timeout=bounded, capture_bytes=capture_bytes)
         else:
             options = {"private_max_cycles": max_cycles} if private_bound_gsim else {}
@@ -722,11 +723,13 @@ def judge_full(
                 **_fp32_sanity(values, quantized, fp32, sanity),
             }
     checks["per_group_exactness"] = {"status": "not_observable", "why": PER_GROUP_SCOPE}
+    from .private_execution_checks import complete_checks
+
     cycles = metrics.get("cycles")
     return {
         "checks": checks,
         "cycles": int(cycles) if isinstance(cycles, str) and cycles.isdigit() else None,
-        "passed": all(check.get("passed", True) for check in checks.values()),
+        "passed": complete_checks(checks, entry),
     }
 
 
@@ -991,6 +994,8 @@ def complete(
     roster = roster_of(gate)
     if not isinstance(rows, list) or len(rows) != len(roster):
         return False
+    from .private_execution_checks import complete_checks
+
     built = _static_programs(static)
     for row, (model, program, entry) in zip(rows, roster, strict=True):
         if not isinstance(row, Mapping) or row.get("model") != model or row.get("program") != program:
@@ -1005,8 +1010,7 @@ def complete(
             or row.get("engine") != entry["engine"]
             or not isinstance(expected, str)
             or row.get("elf_sha256") != expected
-            or not isinstance(row.get("checks"), Mapping)
-            or not all(isinstance(c, Mapping) and c.get("passed", True) for c in row["checks"].values())
+            or not complete_checks(row.get("checks"), entry)
         ):
             return False
     return True

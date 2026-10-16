@@ -109,3 +109,53 @@ def mean_of(rows: Sequence[dict[str, Any]]) -> dict[str, float]:
     """Each float metric's mean over ``rows`` (a per-input agreement of 0 or 1 averages to the split's rate)."""
     keys = sorted({k for row in rows for k, v in row.items() if isinstance(v, float)})
     return {key: float(np.mean([row[key] for row in rows if isinstance(row.get(key), float)])) for key in keys}
+
+
+AGGREGATES = {"mean": lambda values: float(np.mean(values)), "max": max, "min": min}
+
+
+def aggregate(how: str, values: Sequence[float]) -> float:
+    """``mean``, ``max``, ``min`` or ``p<NN>`` (the NN-th percentile, linear interpolation)."""
+    if how in AGGREGATES:
+        return float(AGGREGATES[how](values))
+    return float(np.percentile(np.asarray(values, np.float64), float(how[1:])))
+
+
+def is_aggregate(how: str) -> bool:
+    return how in AGGREGATES or (how[:1] == "p" and how[1:].isdigit() and 0 < int(how[1:]) < 100)
+
+
+def admission(
+    rules: Sequence[dict[str, Any]], rows: Sequence[dict[str, Any]], baseline: Sequence[dict[str, Any]] = ()
+) -> dict:
+    """Judge an INT8 reference's per-input metric ``rows`` against the models file's admission ``rules``.
+
+    A rule names a ``metric`` of the rows, an ``aggregate`` over the rows (mean, max, min or ``p<NN>``) and one bound:
+    ``max`` / ``min`` (absolute), or ``max_ratio_to_baseline`` (at most that multiple of the same aggregate of
+    the ``baseline`` rows, the reference precision's own error on the same inputs). A ``report_only`` rule is
+    computed and listed with status ``info`` but never decides the verdict.
+    """
+    checks = []
+    for rule in rules:
+        metric, how = str(rule["metric"]), str(rule.get("aggregate", "mean"))
+        values = [float(r[metric]) for r in rows if isinstance(r.get(metric), (int, float))]
+        if not values:
+            checks.append({**rule, "status": "unknown", "detail": f"no {metric!r} in the rows"})
+            continue
+        value = aggregate(how, values)
+        if "max_ratio_to_baseline" in rule:
+            base = [float(r[metric]) for r in baseline if isinstance(r.get(metric), (int, float))]
+            if not base:
+                checks.append({**rule, "value": value, "status": "unknown", "detail": "no baseline rows"})
+                continue
+            bound = float(rule["max_ratio_to_baseline"]) * aggregate(how, base)
+            ok = value <= bound
+        elif "max" in rule:
+            bound, ok = float(rule["max"]), value <= float(rule["max"])
+        else:
+            bound, ok = float(rule["min"]), value >= float(rule["min"])
+        status = "info" if rule.get("report_only") else "pass" if ok else "fail"
+        checks.append({**rule, "value": value, "bound": bound, "status": status, "within": bool(ok)})
+    statuses = {c["status"] for c in checks if not c.get("report_only")}
+    status = "fail" if "fail" in statuses else "unknown" if "unknown" in statuses or not statuses else "pass"
+    return {"status": status, "inputs": len(rows), "checks": checks}

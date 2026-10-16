@@ -29,6 +29,7 @@ Build, run and judge complete quantized models for a device submission.
 - `references.py` — Per-input references of a bundle: FP outputs, the INT8 reference chain, its metrics, and device calls.
 - `replay.py` — Replay device kernels on frozen boundary inputs: one small image per batch of calls, judged exactly.
 - `report.py` — The ``model_check_report`` document: construction, agent view, validation and exit codes.
+- `seal.py` — Seal a numerics bundle and verify it (contract §8): a sha256 of every file, checked before use.
 - `twins.py` — The differential's host twins, run once per release: every step's outputs cached in the bundle.
 - `variants.py` — Seeded shape-perturbed variants of every unique device kernel, stored and judged as sealed cases.
 

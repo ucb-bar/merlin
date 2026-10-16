@@ -18,7 +18,9 @@ from types import SimpleNamespace
 
 import pytest
 from merlin_experiments.phase1.brokers import cca, isa_tools, simjob
+from merlin_experiments.phase1.brokers import selfcheck as selfcheck_broker
 from merlin_experiments.phase1.context import InvocationContext
+from merlin_experiments.phase1.tools import simjob as simjob_client
 
 from merlin.common.paths import module_source_path, python_import_roots
 
@@ -27,6 +29,24 @@ def _invocation(root, target="synthetic"):
     descriptor = root / f"{target}.yaml"
     descriptor.write_text(f"target: {target}\n")
     return InvocationContext(root, descriptor, root, target, root / "runs", root / "reports", root / "bundles", ())
+
+
+def test_selfcheck_snapshot_keeps_graded_bytes_while_author_edits(tmp_path, monkeypatch):
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    workspace = tmp_path / "workspace"
+    submission = workspace / "submission"
+    submission.mkdir(parents=True)
+    (submission / "manifest.yaml").write_text("commands: {}\n")
+    (submission / "compiler.py").write_text("VALUE = 1\n")
+    digest = selfcheck_broker._submission_digest(submission)
+    snapshot = selfcheck_broker._working_snapshot(workspace, digest)
+    try:
+        (submission / "compiler.py").write_text("VALUE = 2\n")
+        assert (snapshot / "submission/compiler.py").read_text() == "VALUE = 1\n"
+        assert selfcheck_broker._submission_digest(snapshot / "submission") == digest
+        assert selfcheck_broker._submission_digest(submission) != digest
+    finally:
+        shutil.rmtree(snapshot)
 
 
 def test_simjob_parallel_capsules_respect_global_verilator_slots(tmp_path, monkeypatch):
@@ -43,6 +63,74 @@ def test_simjob_parallel_capsules_respect_global_verilator_slots(tmp_path, monke
     simjob._release_veril_workers(first[1:])
     simjob._release_veril_workers(second)
     assert not list(tmp_path.glob("slot_*"))
+
+
+def test_simjob_repeated_capsule_names_cannot_reserve_extra_workers(tmp_path):
+    (tmp_path / "A").mkdir()
+    names = simjob._valid_capsules("A,A,A,A", tmp_path)
+    assert names == ["A"]
+    assert simjob._capsule_workers(4, sim="gsim", n_capsules=len(names)) == 1
+    assert simjob._valid_capsules("A,../private,A", tmp_path) is None
+
+
+def test_simjob_dedupes_only_exact_source_capsule_engine_and_tier(tmp_path):
+    key = ("a" * 64, "SY_conv_operand_capacity_boundary", "gsim", "L3")
+    active = {"original": {"dedupe_key": key, "aliases": []}}
+    assert simjob._dedupe_sim_job(tmp_path, "duplicate", key, active, {})
+    assert active["original"]["aliases"] == ["duplicate"]
+    assert (tmp_path / "simrun_duplicate").is_file()
+    assert not simjob._dedupe_sim_job(tmp_path, "new_source", ("b" * 64, *key[1:]), active, {})
+    assert not simjob._dedupe_sim_job(tmp_path, "new_capsule", (key[0], "other", *key[2:]), active, {})
+    result = {"all_pass": True, "per_capsule": [{"capsule": key[1], "pass": True}]}
+    assert simjob._dedupe_sim_job(tmp_path, "after", key, {}, {key: ("original", result)})
+    assert json.loads((tmp_path / "simresp_after.json").read_text()) == result
+    assert (tmp_path / "simdone_after").is_file()
+
+
+def test_simjob_cancellation_stops_process_group_and_releases_slots(tmp_path):
+    import subprocess
+    import sys
+    import time
+
+    ch = tmp_path / "channel"
+    ch.mkdir()
+    slot = tmp_path / "slot_0"
+    slot.write_text("held")
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                               start_new_session=True, stdout=subprocess.DEVNULL)
+    log = (ch / "simlog_job.txt").open("wb")
+    job = {"proc": process, "timing": {"job_id": "job"}, "started_monotonic": time.monotonic(),
+           "sim": "gsim", "aliases": ["duplicate"], "log": log, "slots": (slot,),
+           "snapshot_root": snapshot}
+    try:
+        simjob._cancel_running_job(ch, "job", job, "submission source superseded")
+        assert process.poll() is not None
+        assert not slot.exists() and not snapshot.exists() and log.closed
+        for jid in ("job", "duplicate"):
+            response = json.loads((ch / f"simresp_{jid}.json").read_text())
+            assert response["state"] == "cancelled" and response["all_pass"] is False
+            assert (ch / f"simerr_{jid}").exists()
+        assert json.loads((ch / "simtiming_job.json").read_text())["state"] == "cancelled"
+    finally:
+        simjob._stop_sim_process(process)
+
+
+def test_simjob_poll_reports_completed_capsules_while_long_tail_is_pending(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(simjob_client, "CH", tmp_path)
+    (tmp_path / "simreq_job.json").write_text("{}")
+    (tmp_path / "simrun_job").write_text("running")
+    progress = {"status": "running", "n_expected": 2, "n_finished": 1, "n_remaining": 1,
+                "per_capsule": [{"capsule": "A", "status": "pass"}]}
+    (tmp_path / "progress_job.json").write_text(json.dumps(progress))
+    assert simjob_client.main(["poll", "--job-id", "job"]) == 0
+    observed = json.loads(capsys.readouterr().out)
+    assert observed["state"] == "pending" and observed["result"] == progress
+    (tmp_path / "simresp_job.json").write_text(json.dumps({"all_pass": True}))
+    (tmp_path / "simdone_job").write_text("ok")
+    assert simjob_client.main(["poll", "--job-id", "job"]) == 0
+    assert json.loads(capsys.readouterr().out)["state"] == "done"
 
 
 def test_context_caches_models_per_invocation_but_reloads_schedule(tmp_path, monkeypatch):

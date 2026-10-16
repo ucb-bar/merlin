@@ -3765,6 +3765,10 @@ def write_model_capsule(
         cap["performance"] = copy.deepcopy(entry["performance"])
     if src is not None:
         cap["capture_tool"] = _freeze_selected_m2m_tool(src.m2m_dir, d)
+    if artifact is not None and art.meta["materialized_capture"].get("workload_role") == "performance_scale":
+        from .capsule_privacy import capture_reference_closure
+
+        cap["reference_closure"] = capture_reference_closure(art.meta["materialized_artifact_identities"])
     (d / "capsule.yaml").write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
     (d / "capsule.interface.mlir").write_text(linalg, encoding="utf-8")
     (d / "expected_instruction_coverage.yaml").write_text(

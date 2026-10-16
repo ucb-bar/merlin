@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -38,6 +39,25 @@ from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worke
 from merlin_experiments.phase1.feedback.snapshots import recover_promotion_snapshot
 
 PY = sys.executable
+
+
+def _dedupe_sim_job(ch: Path, jid: str, key: tuple[str, str, str, str],
+                    running: dict, completed: dict) -> bool:
+    """Attach an identical request to its one active or completed simulator job."""
+    equivalent = next((active_id for active_id, active in running.items()
+                       if active["dedupe_key"] == key), None)
+    if equivalent is not None:
+        running[equivalent].setdefault("aliases", []).append(jid)
+        (ch / f"simrun_{jid}").write_text(f"deduplicated with {equivalent}\n")
+        return True
+    if key in completed:
+        original, cached = completed[key]
+        (ch / f"simresp_{jid}.json").write_text(json.dumps(cached, indent=2))
+        (ch / (f"simerr_{jid}" if cached.get("error") else f"simdone_{jid}")).write_text(
+            f"deduplicated with {original}"
+        )
+        return True
+    return False
 
 
 def _freeze_direct_job_source(ws):
@@ -98,10 +118,13 @@ def _valid_capsules(spec: str, capsules_root: Path) -> list[str] | None:
         return ["all"]
     names = [c.strip() for c in spec.split(",") if c.strip()]
     out = []
+    seen = set()
     for n in names:
         if not all(c.isascii() and (c.isalnum() or c == "_") for c in n) or not (capsules_root / n).is_dir():
             return None  # reject ../, globs, unknown names
-        out.append(n)
+        if n not in seen:
+            out.append(n)
+            seen.add(n)
     return out or None
 
 
@@ -501,7 +524,44 @@ def _spawn_selfcheck(argv, *, cwd, env, job_log, timeout_s):
         stdin=subprocess.DEVNULL,
         stdout=job_log,
         stderr=subprocess.STDOUT,
+        start_new_session=True,
     )
+
+
+def _stop_sim_process(process) -> None:
+    """Stop the simulator's complete process group, including a child of ``timeout``."""
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+
+
+def _cancel_running_job(ch: Path, jid: str, job: dict, reason: str) -> None:
+    """Publish cancellation and release every resource held by an obsolete job."""
+    _stop_sim_process(job["proc"])
+    timing = dict(job["timing"], finished_at_unix=time.time(), state="cancelled",
+                  worker_runtime_s=max(0.0, time.monotonic() - job["started_monotonic"]),
+                  returncode=job["proc"].returncode)
+    (ch / f"simtiming_{jid}.json").write_text(json.dumps(timing, indent=2))
+    response = {"sim": job["sim"], "state": "cancelled", "all_pass": False, "error": reason}
+    for recipient in (jid, *job.get("aliases", [])):
+        (ch / f"simresp_{recipient}.json").write_text(json.dumps(response, indent=2))
+        (ch / f"simerr_{recipient}").write_text("cancelled")
+    if job.get("log"):
+        job["log"].close()
+    _release_veril_workers(job["slots"])
+    if job.get("snapshot_root"):
+        shutil.rmtree(job["snapshot_root"], ignore_errors=True)
 
 
 def _per_capsule_timeout(
@@ -621,6 +681,7 @@ def main(
     print(f"[budget] per-capsule cert timeout {vpc}s: {_budget_why}", file=sys.stderr, flush=True)
 
     running: dict[str, dict] = {}  # jid -> {proc, slot, resp_tmp, sim}
+    completed_by_key: dict[tuple[str, str, str, str], tuple[str, dict]] = {}
     # One broker is created per round, but the channel and its queue survive across rounds.  Starting
     # from an empty set replays every historical request, including paid L3 work.  A response is the
     # durable commit record; a bare simrun marker is not (the previous broker may have died mid-job), so
@@ -644,6 +705,7 @@ def main(
     # spawned for a round that never started. Exit when the process that started us is gone.
     queued_since = {}
     orig_ppid = os.getppid()
+    next_source_check = 0.0
     while True:
         if (ch / "STOP").exists() or os.getppid() != orig_ppid:
             break
@@ -689,6 +751,10 @@ def main(
                           file=sys.stderr, flush=True)
             resp.write_text(json.dumps(out, indent=2))
             (ch / (f"simerr_{jid}" if out.get("error") else f"simdone_{jid}")).write_text("ok")
+            completed_by_key[j["dedupe_key"]] = (jid, out)
+            for alias in j.get("aliases", []):
+                (ch / f"simresp_{alias}.json").write_text(json.dumps(out, indent=2))
+                (ch / (f"simerr_{alias}" if out.get("error") else f"simdone_{alias}")).write_text("deduplicated")
             # PROMOTE: a capsule that just passed the loop tier earns the cert tier now, not at a round
             # boundary hours away. Skipped for a job that WAS a promotion, so a cert verdict cannot
             # re-enqueue itself.
@@ -736,6 +802,20 @@ def main(
             if j.get("snapshot_root"):
                 shutil.rmtree(j["snapshot_root"], ignore_errors=True)
             running.pop(jid)
+        # An edit supersedes paid simulation of the old source. Detect it within five seconds,
+        # release its slots, and leave completed evidence for an unchanged source in place.
+        now = time.monotonic()
+        if running and now >= next_source_check:
+            next_source_check = now + 5
+            try:
+                current_source = _TP._submission_digest(ws)
+            except (OSError, ValueError):
+                current_source = None  # a mid-edit source is retried at the next observation
+            if current_source is not None:
+                for jid, job in list(running.items()):
+                    if job["source_digest"] != current_source:
+                        _cancel_running_job(ch, jid, job, "submission source superseded")
+                        running.pop(jid)
         # launch queued (respect local + global caps)
         queued = _observe_pending(ch.glob("simreq_*.json"), claimed, queued_since, time.monotonic())
         if len(running) < a.max_jobs:
@@ -854,6 +934,8 @@ def main(
                     str(to),
                     "--out",
                     str(resp_tmp),
+                    "--progress-out",
+                    str(ch / f"progress_{jid}.json"),
                 ]
                 if sim != _NEUTRAL_SIM:  # --sim is meaningless where the contract picks the tier
                     argv2 += ["--sim", sim]
@@ -891,6 +973,12 @@ def main(
                     continue
                 if _tiers:  # validated downstream against the RESOLVED adapter map
                     argv2 += ["--tiers", _tiers]
+                dedupe_key = (launched_source_digest, capspec, sim, _tiers)
+                if _dedupe_sim_job(ch, jid, dedupe_key, running, completed_by_key):
+                    _release_veril_workers(slots)
+                    shutil.rmtree(snapshot_root, ignore_errors=True)
+                    claimed.add(jid)
+                    continue
                 (ch / f"simrun_{jid}").write_text("running")
                 # KEEP THE CHILD'S OUTPUT. This was stdout/stderr=DEVNULL, so when a job exited without
                 # writing its verdict file the only trace was the broker's own "no verdict produced" --
@@ -932,12 +1020,14 @@ def main(
                     "source_digest": launched_source_digest,
                     "cert_instrument": launched_instrument,
                     "snapshot_root": snapshot_root,
+                    "dedupe_key": dedupe_key,
+                    "aliases": [],
                 }
                 claimed.add(jid)
         time.sleep(a.poll)
     # drain on STOP
     for j in running.values():
-        j["proc"].kill()
+        _stop_sim_process(j["proc"])
         _release_veril_workers(j["slots"])
         if j.get("snapshot_root"):
             shutil.rmtree(j["snapshot_root"], ignore_errors=True)
