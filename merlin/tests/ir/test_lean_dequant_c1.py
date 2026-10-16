@@ -6,7 +6,7 @@ import json
 import subprocess
 
 import pytest
-from test_lean_dequant_scalar import corrected_channel_body, dequant_source
+from test_lean_dequant_scalar import corrected_channel_body, dequant_source, legacy_channel_body
 
 from merlin.llvmlower.passes_xdsl import lower_quant_ext
 from merlin.verify.lean.export import export_file
@@ -49,7 +49,7 @@ def invoke(tools, *args):
     ],
 )
 def test_source_support_and_whole_function_c1(tmp_path, lean_tools, kind, shape, axis):
-    before, after = export_pair(tmp_path, lean_tools, kind, shape, axis, correct_channel=kind == "per_channel")
+    before, after = export_pair(tmp_path, lean_tools, kind, shape, axis, correct_channel=False)
     support = invoke(lean_tools, "check-support", before, "forward")
     assert support["verdict"] == "verified", support
     result = invoke(lean_tools, "check-c1", before, after, "forward")
@@ -59,8 +59,15 @@ def test_source_support_and_whole_function_c1(tmp_path, lean_tools, kind, shape,
     assert result["verdict"] == "verified", result
 
 
-def test_current_per_channel_bug_is_refused(tmp_path, lean_tools):
+def test_legacy_per_channel_bug_is_refused(tmp_path, lean_tools):
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+
     before, after = export_pair(tmp_path, lean_tools, "per_channel")
+    path = tmp_path / "after.mlir"
+    module = parse_mlir_text(path.read_text())
+    legacy_channel_body(next(op for op in module.walk() if op.name == "linalg.generic"))
+    path.write_text(str(module))
+    export_file(path, after, backend="mlir", m2m_python=lean_tools.m2m_python)
     assert invoke(lean_tools, "check-support", before, "forward")["verdict"] == "verified"
     assert invoke(lean_tools, "check-c1", before, after, "forward")["verdict"] == "abstracted"
 
@@ -134,3 +141,19 @@ def test_source_quantization_bounds_are_checked(tmp_path, lean_tools, bounds, su
     before.write_text(json.dumps(document))
     assert (invoke(lean_tools, "check-support", before, "forward")["verdict"] == "verified") == supported
     assert (invoke(lean_tools, "check-c1", before, after, "forward")["verdict"] == "verified") == supported
+
+
+def test_textual_per_channel_lowering_verifies(tmp_path, lean_tools):
+    from merlin.llvmlower.passes_xdsl import preprocess_text_textual
+
+    before_text = str(dequant_source("per_channel", (2, 3), 1))
+    after_text, stats = preprocess_text_textual(before_text)
+    assert stats["dequantize_lowered"] == 1
+    documents = []
+    for name, text in (("before", before_text), ("after", after_text)):
+        source, document = tmp_path / f"{name}.mlir", tmp_path / f"{name}.json"
+        source.write_text(text)
+        export_file(source, document, backend="mlir", m2m_python=lean_tools.m2m_python)
+        documents.append(document)
+    assert invoke(lean_tools, "check-support", documents[0], "forward")["verdict"] == "verified"
+    assert invoke(lean_tools, "check-c1", *documents, "forward")["verdict"] == "verified"

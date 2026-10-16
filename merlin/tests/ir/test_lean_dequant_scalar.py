@@ -1,7 +1,7 @@
 """First lowering obligation: the scalar body, with independently specified arithmetic order.
 
-These tests deliberately do not report the enclosing tensor lowering as verified. The current
-per-channel body must be refused until its operation order is corrected in the compiler.
+These scalar tests complement the whole-function C1 tests. The legacy per-channel floating
+subtraction body remains an explicit negative control.
 """
 
 from __future__ import annotations
@@ -57,6 +57,22 @@ def corrected_channel_body(generic):
     block.add_ops([promoted, diff, converted, scaled, YieldOp(scaled.result)])
 
 
+def legacy_channel_body(generic):
+    """Reconstruct the historical bug as a negative control after the production fix."""
+    from xdsl.dialects import arith
+    from xdsl.dialects.builtin import f32
+    from xdsl.dialects.linalg.ops import YieldOp
+
+    block = generic.body.block
+    for op in reversed(list(block.ops)):
+        block.erase_op(op)
+    q = arith.SIToFPOp(block.args[0], f32)
+    z = arith.SIToFPOp(block.args[2], f32)
+    difference = arith.SubfOp(q.result, z.result)
+    result = arith.MulfOp(difference.result, block.args[1])
+    block.add_ops([q, z, difference, result, YieldOp(result.result)])
+
+
 def export_module(module, root, tools):
     source, target = root / "lowered.mlir", root / "lowered.json"
     source.write_text(str(module))
@@ -85,7 +101,7 @@ def check_body(document, kind):
 def test_actual_lowering_scalar_body(tmp_path, lean_tools, kind):
     module, _ = lowered(kind)
     document = export_module(module, tmp_path, lean_tools)
-    assert check_body(document, kind) == (kind == "per_tensor")
+    assert check_body(document, kind)
 
 
 def test_integer_subtraction_channel_body_matches_proof(tmp_path, lean_tools):
@@ -153,6 +169,8 @@ CASES = [
     (127, -3, -0.5),
     (-128, -(1 << 31), 1.0),
     (1, (1 << 31) - 1, 1.0),
+    (127, -(1 << 31), 1.0),
+    (-128, (1 << 31) - 1, 1.0),
     (0, 0, -0.0),
 ]
 
@@ -186,8 +204,6 @@ def folded_bits(module, tmp_path, lean_tools):
 @pytest.mark.parametrize("channel", [False, True])
 def test_scalar_arithmetic_against_mlir_folder(tmp_path, lean_tools, q, zero, scale, channel):
     _, generic = lowered("per_channel" if channel else "per_tensor")
-    if channel:
-        corrected_channel_body(generic)
     module = scalarize(generic, q, zero, scale)
     if channel:
         signed_difference = ((q - zero + (1 << 31)) % (1 << 32)) - (1 << 31)
@@ -198,10 +214,14 @@ def test_scalar_arithmetic_against_mlir_folder(tmp_path, lean_tools, q, zero, sc
     assert folded_bits(module, tmp_path, lean_tools) == expected_bits
 
 
-def test_current_per_channel_large_zero_point_counterexample(tmp_path, lean_tools):
+def test_per_channel_large_zero_point_regression(tmp_path, lean_tools):
     _, generic = lowered("per_channel")
     actual = folded_bits(scalarize(generic, 1, 16777217, 1.0), tmp_path, lean_tools)
     current_bits = struct.unpack("<I", struct.pack("<f", -16777215.0))[0]
     source_bits = struct.unpack("<I", struct.pack("<f", -16777216.0))[0]
-    assert actual == current_bits
-    assert actual != source_bits
+    assert actual == source_bits
+    _, legacy = lowered("per_channel")
+    legacy_channel_body(legacy)
+    old = folded_bits(scalarize(legacy, 1, 16777217, 1.0), tmp_path, lean_tools)
+    assert old == current_bits
+    assert old != source_bits

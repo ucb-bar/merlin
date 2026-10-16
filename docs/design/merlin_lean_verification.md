@@ -650,8 +650,10 @@ this one-to-two site to C1; the existing C1 and module checkers recheck it. Unsu
 remain refused. This source-family addition is the frozen-dispatch interface extension requested
 by the narrow-lowering verification work; the dispatcher change and family are pinned in SPEC_LOCK.
 Source-contract review and capture-producer binding remain necessary for paper qualification.
-The current production per-channel floating-subtraction body is still refused; an integer-subtraction
-replacement verifies, while actual per-tensor lowering verifies without modification.
+The production signed-i8/i32/f32 per-channel lowering now emits the proved integer-subtraction
+body. Both narrow granularities verify on actual pass output. The historical floating-subtraction
+per-channel body is retained as a refused negative control, including its large-zero-point numeric
+counterexample. Other datatype and precision combinations remain outside this lowering proof.
 
 ### 5.2 C2 — outlining (inline-and-compare)
 
