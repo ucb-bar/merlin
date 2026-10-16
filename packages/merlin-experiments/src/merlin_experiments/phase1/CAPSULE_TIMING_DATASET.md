@@ -98,11 +98,44 @@ have no usable timing label.
 ## Spike calibration and Phase 2 handoff
 
 The intended Phase 2 model is annotated Spike **with its Gemmini accelerator
-observer**. Fit the observer's primitive latency/occupancy and transfer prices,
-and CPU/cache parameters against the gSIM whole-call labels. Pin resource and
-queue capacities from the selected RTL where possible; test unresolved capacity
-choices with targeted capsule families. The labels constrain combined behavior; they do
-not identify any individual command latency by themselves. Keep unsupported or
+observer**. Calibrate in two stages. First, derive the architectural structure
+from the *elaborated, selected* RTL and its pinned source/configuration: mesh
+geometry, scratchpad and accumulator banks/ports, reservation-station entries,
+command-queue depths and issue rules, DMA maximum transfer and outstanding
+request limits, cache geometry, and the CPU/Gemmini clock relationship. The
+selected INT8 [GemminiConfigs.defaultConfig](https://github.com/copparihollmann/gemmini/blob/63f0b68a68f185a016a2993f2fb32e1661ea9e6c/src/main/scala/gemmini/Configs.scala)
+source declares a 16x16 mesh,
+4 scratchpad banks, 2 accumulator banks, 8/16/4 load/execute/store reservation
+entries, 8/8/2 corresponding command-queue depths, 16 outstanding memory
+requests and a 64-byte DMA maximum. Verify those effective values against the
+FireSim-aligned gSIM elaboration rather than assuming no config override.
+Record each fact's generated artifact or source path, SHA256, derivation and
+mapping into the timing model. A hardware queue entry is not automatically a
+generic observer resource lane; match the model field's admission/issue
+semantics before assigning a number.
+
+The existing FireSim-aligned gSIM receipt already contains a generated FIRRTL
+(`6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149`)
+and DTS (`c4a2009a405945ea98f731713e0f4e7dc483031ab8cd5156d871e4eb7594f1df`).
+In the FIRRTL `ReservationStation` module, instantiated `entries_ld[0..7]`,
+`entries_ex[0..15]` and `entries_st[0..3]` corroborate those source entry
+counts; `LoadController` and `StoreController` instantiate the 8- and 2-entry
+command queue modules. The DTS declares 16 GiB RAM at `0x80000000`, 32 KiB
+I/D caches and a 512 KiB L2. A reproducible fact extractor should read the
+pinned config chain and generated artifacts, emit a machine-readable
+`rtl_facts.json` with each value, unit, source digest and evidence selector,
+then check that source and elaboration agree. It should refuse a differing
+generated design instead of silently filling the Spike profile from source
+defaults. The current `fire_aligned_30mhz.json` is not yet populated this way.
+The DTS's CPU `clock-frequency = <0>` is not a usable guest-cycle frequency;
+clock/counter semantics need their own reviewed sources and timing contract.
+
+Second, fit only the remaining primitive latency/occupancy, transfer,
+host/cache and memory-service prices against the gSIM whole-call labels and
+targeted diagnostics. RTL pipeline structure can constrain minimum latencies,
+but queueing, cache warmth, contention and effective DRAM service depend on the
+executed workload. The labels constrain combined behavior; they do not identify
+an individual command latency by themselves. Keep unsupported or
 unidentifiable parameters unknown, and use held-out capsule families to test the
 result. `merlin_timing.fitting.fit` currently produces a diagnostic linear
 feature screen, not a calibrated Gemmini event-model configuration. The event
@@ -238,8 +271,10 @@ counter-pair guess is not the capsule label's scope.
 The annotated Spike branch now has a separate `fire_aligned_30mhz.json` profile
 associated with archive SHA256 `0af6f26e…`, with the FireSim-selected `5b1254a7…`
 functional receiver. The older `stock_u250.json` belongs to `a9a190b9…`.
-The new profile's primitive prices and queue capacities remain unknown until
-calibration. Fitting them to gSIM labels must bind the gSIM executable, FIRRTL
+The new profile's primitive prices and queue capacities are currently null.
+Populate RTL-derived facts before fitting workload-dependent prices, and keep
+any field without a defensible mapping unknown. Fitting to gSIM labels must
+bind the gSIM executable, FIRRTL
 and counter scope as the timing target; the archive association is only source
 context. Matching ABI header `3758ae96…` does not make the two bitstreams
 one timing target. Launch Spike with the selected 16 GiB map beginning at
