@@ -664,6 +664,17 @@ empty tensors and nonzero channel axes. This is verification relative to the pro
 model (T3), with nonnegative axes, rank-zero per-tensor parameters, and omitted or full-range
 signed-i8 bounds; it is not yet paper-qualified capture-to-execution verification.
 
+The separate CPU source oracle in `lean-torch-requirements.txt` pins PyTorch 2.10.0+cpu by wheel
+hash and all installed package versions. `test_lean_dequant_torch.py` executes the actual source
+operations for 63 finite-input tensor cases (539 element results), including signed zero, both i32
+wraparound directions and the historical large-zero-point counterexample. It compares every result
+bit with independent NumPy arithmetic and 49 selected points with actual compiler bodies folded
+by authoritative MLIR. Set `MERLIN_TORCH_PYTHON` to that isolated interpreter; required-mode runs
+fail if it is absent. These bounded fidelity checks supplement the universal parametric proofs;
+NaN payload and complete IEEE-instance qualification, human specification review, and exact
+capture-producer binding remain outstanding. CI is configured to provision the separate oracle;
+commits made with `[skip ci]` are validated locally.
+
 ### 5.2 C2 — outlining (inline-and-compare)
 
 A generalization of `verify/outline_ir.py`, with these steps:

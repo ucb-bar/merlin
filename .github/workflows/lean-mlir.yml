@@ -24,6 +24,7 @@ jobs:
     env:
       MERLIN_LEAN_REQUIRED: '1'
       MERLIN_M2M_PYTHON: ${{ github.workspace }}/out/build/lean/mlir-venv/bin/python
+      MERLIN_TORCH_PYTHON: ${{ github.workspace }}/out/build/lean/torch-venv/bin/python
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,6 +38,10 @@ jobs:
           uv sync --frozen --extra dev --extra verify --extra targetgen
           uv venv --python 3.12 out/build/lean/mlir-venv
           uv pip install --python "$MERLIN_M2M_PYTHON" --no-deps -r build_tools/toolchains/lean-mlir-requirements.txt
+      - name: install isolated pinned CPU source oracle
+        run: |
+          uv venv --python 3.12 out/build/lean/torch-venv
+          uv pip install --python "$MERLIN_TORCH_PYTHON" --no-deps -r build_tools/toolchains/lean-torch-requirements.txt
       - name: install Lean (repository toolchain pin)
         run: |
           set -euo pipefail
@@ -62,6 +67,7 @@ jobs:
           merlin/tests/ir/test_lean_dequant_scalar.py
           merlin/tests/ir/test_lean_dequant_layout.py
           merlin/tests/ir/test_lean_dequant_c1.py
+          merlin/tests/ir/test_lean_dequant_torch.py
           -k 'not standalone and not test_round_trip_identical'
           -o junit_family=xunit1
           --junitxml=out/artifacts/verification/lean-mlir.xml
