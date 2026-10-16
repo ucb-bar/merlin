@@ -152,10 +152,11 @@ fence/wait position, unknown decoding reasons and the selected counter-window
 membership. Bind the graph to ELF, input, target-config and observer hashes.
 This graph is a reconstruction from the functional execution, not a hardware
 timestamp trace; keep its schema/version separate from the measured label.
-The current annotated Spike observer rejects loop/FSM functs, so any capsule
-containing them needs an explicit loop decoder before it can yield a complete
-Gemmini timing prediction. The MX model's loop expansion is an implementation
-reference, subject to the pinned INT8 RTL's actual behavior.
+The selected Phase 1 command contract excludes loop/FSM functs. Verify that
+with a pre-launch replay census of the compiled capsules; if the census holds,
+the current observer's rejection of those functs is irrelevant to this corpus.
+The MX model's loop expansion remains a reference only for a future command
+contract that admits them.
 
 For a bounded diagnostic subset, add Gemmini performance-counter snapshots or
 RTL event captures to separate load, compute, store, overlap, queue waits and
@@ -178,6 +179,48 @@ completeness and cycle prediction; require functional equivalence separately.
 The reported 100x speedup has no published comparable benchmark in this source
 revision and must be treated as a claim until the selected build and workload
 reproduce it.
+
+## Qualification for Phase 2 optimization ranking
+
+Phase 2 primarily needs to choose among candidate implementations of the
+**same** workload, input and measurement scope. One measured implementation
+per capsule is insufficient to test that decision, even if many different
+capsules have labels. Before the Phase 1 measurement window closes, retain
+several numerically passing ELFs per representative capsule: a baseline and
+controlled variants of tiling, data reuse, transfer schedule, fence placement
+and CPU/accelerator partition where the command contract permits them. Keep
+these calibration/validation variants separate from the scored agent submission.
+Run each variant on the same pinned gSIM, hash its ELF and input, and archive
+its compiler provenance and kernel-call cycle label. If the Phase 1 agent
+naturally produced multiple retained candidate ELFs, use them too; do not
+assume that the final capsule archive contains enough matched alternatives.
+
+Choose variants and shapes that separately stress command count, DMA bytes,
+mesh work, local-memory reuse, queue pressure and host work, with both small
+and large cases. This gives the fit a chance to distinguish fixed command
+cost from per-byte and per-MAC cost. Read hardware geometry, capacities and
+issue rules from the pinned RTL; fit only a small set of remaining timing
+prices. Store every trial's parameter file and training/validation membership
+so the selected model can be reproduced. Repeated gSIM runs on a subset should
+measure label stability; near-tied candidates need more repeats or should be
+reported as ties.
+
+Hold out entire workload/shape groups before fitting, with each mechanism
+family represented in both train and test; reserve some transformation types
+for a separate extrapolation stress test. Evaluate within-workload pair ordering,
+sign of predicted speedup,
+top-choice regret and coverage, broken down by mechanism and by measured
+speedup size. The existing `merlin_timing.validation` gate requires 90% order
+agreement for held pairs separated by more than 5%, at least 20 eligible pairs
+across three mechanism families, plus absolute-error limits. Report those
+limits without silently weakening its existing qualification status. A separate
+Phase 2 ranking decision may weigh held-out ordering and measured regret more
+heavily than absolute cycle error. Preserve an uncertainty/abstention rule:
+when predicted alternatives
+are closer than observed label noise or the held-out error band, ask the LLM
+to treat them as tied or request another measurement, not claim a winner.
+Do not claim rank validation if the corpus supplies fewer than the required
+matched pairs; cross-workload comparisons do not replace them.
 
 The annotated Spike model at
 [`806ec0adda22`](https://github.com/copparihollmann/riscv-isa-sim-gemmini/tree/806ec0adda2242597b253ebf17adfaa5cdb395e3)
