@@ -87,6 +87,9 @@ def fp_smolvla(request: dict) -> dict:
         strict=True,  # noqa: SLF001
     )
     model = policy.model.cpu().eval()
+    if request.get("precision") == "float32":
+        # The FP reference at a higher precision than the checkpoint's own: every weight upcast, every op in f32.
+        model = model.float()
     prefix = loader.SmolVLAPrefixStage(model).eval()
     flow = loader.SmolVLAFlowSession(model).eval()
     steps = int(model.config.num_steps)

@@ -7,9 +7,9 @@ implementation that must run **the same int8 models with the same numerics** so 
 compared.
 
 Sections 1–7 describe code and capture records. Each claim names the file or record a reader can
-check. Section 8 is a dated status report (2026-10-15) and will change. Section 9 lists what is not
-yet settled. The judging contract is [`docs/reference/model_check.md`](../../docs/reference/model_check.md).
-The evaluation and calibration inputs are described in [`numerics/README.md`](numerics/README.md).
+check. Section 8 is a dated status report (2026-10-16) and will change. Section 9 lists what is not
+yet settled. The judging contract is [`docs/reference/model_check.md`](../../../docs/reference/model_check.md).
+The evaluation and calibration inputs are described in [`README.md`](README.md).
 
 "r53b" names the current development captures. They are kept in a private, sealed capture store,
 and every fact quoted from them below is structural (counts, settings, hashes). No tensor data is quoted.
@@ -95,9 +95,9 @@ the exact steps:
 - TinyLlama linears (no bias) and SmolVLA's f32 projections: the f32 result, plus an f32 bias where
   the layer has one.
 
-**Gemmini readout.** Sources: `target/contracts/target_contract.yaml` (`scaling`,
+**Gemmini readout.** Sources: [`target/contracts/target_contract.yaml`](../target/contracts/target_contract.yaml) (`scaling`,
 `epilogue_capability`, `stage_routes`, `scalar_abi`, `operand_sum`, which cite `gemmini_params.h`),
-[`merlin/contract/command_buffer_abi.yaml`](../../merlin/contract/command_buffer_abi.yaml), and the
+[`merlin/contract/command_buffer_abi.yaml`](../../../merlin/contract/command_buffer_abi.yaml), and the
 RTL facts of the Phase 1 release payload, whose readout section matches.
 
 - An int8 × int8 product accumulates into an int32 accumulator.
@@ -229,7 +229,7 @@ outer-product rescale of every score element per plane, plus element-wise absmax
 
 ## 6. How numerics are judged
 
-Contract: [`docs/reference/model_check.md`](../../docs/reference/model_check.md), §3–§4.
+Contract: [`docs/reference/model_check.md`](../../../docs/reference/model_check.md), §3–§4.
 
 - **INT8 reference.** The prepared program (§1), evaluated by `merlin.runtime.linalg_numpy.evaluate`,
   which reads each op's semantics from the IR and shares no code with any lowering. Integers wrap at
@@ -242,15 +242,20 @@ Contract: [`docs/reference/model_check.md`](../../docs/reference/model_check.md)
   `metric(y, y_fp) ≤ max(1.1 × metric(y_ref, y_fp), floor)`, with floors (§4.3).
 - **FP reference.** The float model in PyTorch eager with `ATEN_CPU_CAPABILITY=default` on one
   thread. Vectorized ATen kernels round bf16 differently: SmolVLA's final flow state moves by about 1 %
-  between two valid hosts otherwise.
-- **Reference admission (§4.5)**, for bundles rather than submissions:
-  - ResNet50: top-1 agreement ≥ 15/16 and mean logits cosine ≥ 0.99 (approved).
-  - TinyLlama: mean KL ≤ 0.05 nats and top-1 ≥ 90 % (proposed).
-  - SmolVLA: per input, the worst action dim's relRMSE (dims 0–5); its mean and its maximum over the
-    inputs must each be ≤ 2 × the same statistic of the float noise, i.e. the gap between two valid float
-    runs (FP with portable vs vectorized ATen kernels). Approved; stated in this form in contract 1.8.
-- **Inputs.** 8 visible inputs per model, plus calibration item lists, are in
-  [`numerics/`](numerics/README.md). The sealed inputs are private.
+  between two valid hosts otherwise. SmolVLA's FP reference runs in float32, with the stock bf16 model
+  as its baseline (`judged.reference` in [`models.yaml`](models.yaml)).
+- **Reference admission (§4.5)**, for bundles rather than submissions. The bars are data:
+  `judged.admission` in [`models.yaml`](models.yaml), evaluated per split when the references are built
+  (into `reference_quality.json`; a rule without data is `unknown`, never a pass).
+  - ResNet50: top-1 agreement ≥ 15/16 and **mean** logits cosine ≥ 0.99 (approved).
+  - TinyLlama: mean KL ≤ 0.05 nats (about +5 % perplexity) and top-1 ≥ 90 % (proposed).
+  - SmolVLA: per input, the worst action dim's relRMSE (dims 0–5, over the 50-step action chunk),
+    measured against an **fp32 execution** of the same checkpoint. Its mean and its maximum over the
+    inputs must each be ≤ 2 × the stock bf16 model's own error against that fp32 run. On the 8 visible
+    inputs the bf16 error is 0.0345 / 0.052, so the bar is 0.069 / 0.104. This is FlashAttention's rule
+    (approved, contract 1.9). The old comparison with the bf16 float noise is reported, not gated.
+- **Inputs.** 8 visible inputs per model, plus calibration item lists, are in this folder (see
+  [`README.md`](README.md)). The sealed inputs are private.
 - **Running the check:** `python -m merlin.model_check check --submission S --model M --split visible
   --out R.json` (contract §2). `kernels-export` writes every kernel's `interface.mlir` and `abi.json`,
   which are exactly what a device implementation must compute.
@@ -300,7 +305,7 @@ To match Merlin bit for bit, an independent implementation needs the following.
    over every reachable accumulator value. `group_exact_float.prove` checks exactly this. Otherwise,
    return int32 and apply the reference epilogue on the host.
 
-## 8. Status and work in progress (2026-10-15; this section will change)
+## 8. Status and work in progress (2026-10-16; this section will change)
 
 The r53b INT8 references do not yet meet their admission bars. Values below cover 16 inputs (8
 visible, 8 sealed) from the development bundle's `reference_quality.json`:
@@ -318,7 +323,7 @@ The device-kernel forms stay plain int8 × int8 → int32 matmuls and convolutio
 The following techniques are under evaluation. They are screening results, not commitments.
 
 - **Calibration with real data**: 260 Imagenette train images, 128 WikiText-2 train segments and
-  50 ALOHA frames, listed in `numerics/calibration/*.json` and disjoint from every evaluation input.
+  50 ALOHA frames, listed in [`calibration/*.json`](calibration/) and disjoint from every evaluation input.
 - **Per-channel weight scales.** The device still computes int8 → int32; the per-column scale moves to
   the host epilogue.
 - **Function-preserving outlier-channel splitting** in gated MLPs. In
@@ -339,14 +344,14 @@ Best results screened so far:
 - **TinyLlama**: real calibration, per-channel weights, outlier-channel splitting and SmoothQuant-style
   migration (PyTorch screen, 8 visible inputs). Mean KL 0.042, top-1 92 %. **Meets the proposed bar.**
   Per-token dynamic activations alone screen at KL 0.009 and top-1 94.7 %.
-- **SmolVLA**: not yet within its bar. Real calibration alone gives a worst-dim relRMSE of 1.2 (full
-  capture). Attention passes with the finer scales of §5. The linear layers are the open problem.
-  With static per-tensor activations and per-channel weights on every linear, the error is about 25×
-  the float noise. Per-token scales bring it to about 7×, and 2-plane (≈15-bit) activations on every
-  linear to about 4×. Most of the error comes from a few units: the text model's `down_proj` (text
-  layer 3 alone is 44 % of the squared error) and the vision tower's `fc2`. The flow stage alone in
-  int8 is close to the bar (per-token scales: 2.1× the noise). Hadamard rotation of linear inputs,
-  SmoothQuant and calibration choices are being measured next.
+- **SmolVLA**: GPTQ weights and static int8 activations, with 2 int8 parts (≈15-bit) on the prefix's
+  linear layers, pass the fp32-based bar (§6) in PyTorch measurements on the 8 visible inputs, at about
+  1.7× the linear MACs, all on Gemmini. Confirmation on the hidden inputs and in the capture pipeline is
+  pending. Earlier screens, measured against the bf16 float noise, located the error: real calibration
+  alone gives a worst-dim relRMSE of 1.2 (full capture); attention passes with the finer scales of §5;
+  with static per-tensor activations and per-channel weights on every linear the error is about 25× the
+  float noise, and per-token scales bring it to about 7×. Most of it comes from a few units: the text
+  model's `down_proj` (text layer 3 alone is 44 % of the squared error) and the vision tower's `fc2`.
 
 The sealed recapture will use whichever recipe is approved. Its recipe digest and capture hashes will
 replace those in §3 and §7.
