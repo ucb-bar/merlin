@@ -796,7 +796,11 @@ Implemented for refinement chains: `Check/Chain.lean` proves `chain_refinesC` (a
 `FuncRefinesC` boundaries composes) and `chain_refines` (with the capture's support, strict
 refinement on typed inputs). `merlin.verify.lean.check.compose_chain` checks hash continuity from
 the support subject through every boundary and writes a `merlin.lean.chain.v1` document with the
-union of assumptions. Argument maps (`equiv_args`) and receipt replay are not composed yet.
+union of assumptions. Composition requires `m2m_python` and replays every claim against private
+snapshots of the actual stage files, comparing the claim metadata with the fresh checker result.
+Stored verdicts alone cannot produce a verified chain. Support receipts record the positive integer
+`index_bits` checked by Lean; older receipts without that field must be regenerated. The receipt
+files and live inputs are checked again after replay. Argument maps (`equiv_args`) are not composed yet.
 
 ### 5.11 C11 — upstream tensor passes (Tier B) and bufferization (Tier C)
 

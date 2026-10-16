@@ -179,6 +179,8 @@ def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
     ``verified`` means the function is never ``stuck`` on inputs of its declared types in any
     context with ``index_bits``-bit ``index`` (``supportCheck_sound``); an op outside the proved
     fragment makes it ``abstracted``, with the first refused op as the reason."""
+    if type(index_bits) is not int or index_bits <= 0:
+        raise ValueError("index_bits must be a positive integer")
     run = _workdir(work)
     snapshot = run / "program.mlir"
     subject = _snapshot(program, snapshot)
@@ -190,6 +192,7 @@ def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
         "theorem": SUPPORT_THEOREM,
         "subject": subject,
         "function": function,
+        "index_bits": index_bits,
         "domain": f"inputs of the declared argument types; contexts with {index_bits}-bit index",
         "exporter": _exporter_block(m2m_python),
         "lean": _lean_block(),
@@ -212,7 +215,10 @@ def check_support(program: Path, function: str, work: Path, *, m2m_python: Path,
         receipt.update(verdict="unmeasured", reason=f"checker error: {proc.stderr.strip()[-300:]}")
         return _write(work, receipt)
     result = json.loads(proc.stdout)
-    if result["verdict"] == "verified":
+    if result.get("function") != function or result.get("index_bits") != index_bits:
+        receipt.update(verdict="unmeasured",
+                       reason="the checker did not confirm the requested function and index width")
+    elif result["verdict"] == "verified":
         receipt["verdict"] = "verified"
     else:
         receipt.update(verdict="abstracted", reason=f"outside the proved fragment: {result['first_refusal']}")
@@ -245,8 +251,33 @@ def _stale(receipt: dict[str, Any], what: str) -> list[str]:
 CHAIN_THEOREM = "MerlinVerify.Check.chain_refines"
 
 
+def _replay(receipt: dict[str, Any], inputs: dict[str, Path], root: Path, *, m2m_python: Path) -> list[str]:
+    """Re-establish the claim from its bound MLIR, without overwriting the original evidence."""
+    work = _workdir(root)
+    for key, source in inputs.items():
+        copied = _snapshot(source, work / f"{key}.mlir")
+        if any(copied[k] != receipt[key][k] for k in ("sha256", "bytes")):
+            return [f"{key} bytes do not match the receipt"]
+    if receipt["claim_type"] == "refine_conditional":
+        (work / "meta.json").write_text(json.dumps({"boundary": receipt["boundary"]}))
+        fresh = check_stage(work, m2m_python=m2m_python)
+    else:
+        bits = receipt.get("index_bits")
+        if type(bits) is not int or bits <= 0:
+            return ["support receipt has no valid recorded index width; regenerate it"]
+        fresh = check_support(work / "subject.mlir", receipt["function"], work / "support",
+                              m2m_python=m2m_python, index_bits=bits)
+        # The filename is just a label, not a hypothesis of supportCheck_sound.
+        fresh["boundary"] = receipt["boundary"]
+    if fresh["verdict"] != "verified":
+        return [f"checker replay returned {fresh['verdict']}: {fresh.get('reason', '')}"]
+    fields = ("schema", "claim_type", "checker", "theorem", "function", "domain", "index_bits",
+              "exporter", "lean", "axioms", "assumptions")
+    return [f"recorded {key} does not match the replay" for key in fields if receipt.get(key) != fresh.get(key)]
+
+
 def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
-                  handoff: Path | None = None) -> dict[str, Any]:
+                  handoff: Path | None = None, *, m2m_python: Path | None = None) -> dict[str, Any]:
     """Compose checked boundaries (``stage/receipt.json``, in order) and the capture's support
     receipt into ``out`` (schema ``merlin.lean.chain.v1``); returns the document.
 
@@ -255,24 +286,34 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     of ``chain_refines`` -- and every receipt still describes the current bytes, checker build and
     ``SPEC_LOCK``. With ``handoff`` (the ``handoff.json`` the lowering recorded), the chain must also
     end at the exact bytes handed to the upstream lowering, and the handoff file must still match
-    its recorded digest and size. Anything missing makes the chain
+    its recorded digest and size. Verification additionally requires replaying every receipt with
+    ``m2m_python``; saved verdicts are untrusted. Anything missing makes the chain
     ``abstracted`` with the reasons."""
     links, reasons, assumptions = [], [], []
     receipts = []
+    receipt_refs = []
+    replay_inputs = []
     for stage in stages:
         path = stage / "receipt.json"
-        receipt = json.loads(path.read_text())
+        data = path.read_bytes()
+        receipt = json.loads(data)
+        ref = _bytes_ref(path, data)
+        receipt_refs.append(ref)
         if receipt.get("claim_type") != "refine_conditional":
             raise ValueError(f"{path} is not a boundary receipt (claim_type {receipt.get('claim_type')!r})")
         reasons += _stale(receipt, receipt["boundary"])
         receipts.append(receipt)
-        links.append({"boundary": receipt["boundary"], "receipt_sha256": _sha(path),
+        replay_inputs.append({"before": stage / "before.mlir", "after": stage / "after.mlir"})
+        links.append({"boundary": receipt["boundary"], "receipt_sha256": ref["sha256"],
                       "before_sha256": receipt["before"]["sha256"], "after_sha256": receipt["after"]["sha256"],
                       "verdict": receipt["verdict"]})
         if receipt["verdict"] != "verified":
             reasons.append(f"{receipt['boundary']}: {receipt['verdict']}: {receipt.get('reason', '')}")
         assumptions += [a for a in receipt.get("assumptions", []) if a not in assumptions]
-    sup = json.loads(support.read_text())
+    data = support.read_bytes()
+    sup = json.loads(data)
+    support_ref = _bytes_ref(support, data)
+    receipt_refs.append(support_ref)
     if sup.get("claim_type") != "not_stuck" or sup.get("function") != function:
         raise ValueError(f"{support} is not a not_stuck receipt for {function}")
     if sup["verdict"] != "verified":
@@ -282,11 +323,12 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     chained = bool(receipts) and sup["subject"]["sha256"] == receipts[0]["before"]["sha256"] and all(
         a["after"]["sha256"] == b["before"]["sha256"] for a, b in zip(receipts, receipts[1:]))
     handoff_sha = None
+    ref_handoff = None
     if handoff is not None:
-        ref = json.loads(handoff.read_text())
-        handoff_sha = ref["sha256"]
-        path = Path(ref["path"])
-        if not path.is_file() or _sha(path) != handoff_sha or path.stat().st_size != ref["bytes"]:
+        ref_handoff = json.loads(handoff.read_bytes())
+        handoff_sha = ref_handoff["sha256"]
+        path = Path(ref_handoff["path"])
+        if not path.is_file() or _sha(path) != handoff_sha or path.stat().st_size != ref_handoff["bytes"]:
             reasons.append("handoff: file changed or missing since it was recorded")
     if receipts and handoff_sha is not None and receipts[-1]["after"]["sha256"] != handoff_sha:
         chained = False
@@ -295,14 +337,43 @@ def compose_chain(stages: list[Path], support: Path, function: str, out: Path,
         reasons.append("no boundaries")
     elif not chained:
         reasons.append("the boundaries do not form a chain from the support subject")
+    replayed = False
+    if m2m_python is None:
+        reasons.append("receipt replay requires m2m_python; saved verdicts are not proof")
+    elif not reasons:
+        for receipt, inputs in zip([*receipts, sup], [*replay_inputs, {"subject": stages[0] / "before.mlir"}]):
+            try:
+                errors = _replay(receipt, inputs, out.parent, m2m_python=m2m_python)
+            except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+                errors = [f"replay could not run: {type(exc).__name__}: {exc}"]
+            reasons += [f"{receipt['boundary']}: {error}" for error in errors]
+        replayed = not reasons
+        # Recheck the live evidence after replay; a concurrent writer must not retarget the chain.
+        for ref in receipt_refs:
+            path = Path(ref["path"])
+            if not path.is_file() or _sha(path) != ref["sha256"]:
+                reasons.append(f"{path}: receipt changed during composition")
+        for receipt in [*receipts, sup]:
+            reasons += _stale(receipt, receipt["boundary"])
+        for receipt, inputs in zip(receipts, replay_inputs):
+            for key, path in inputs.items():
+                if not path.is_file() or _sha(path) != receipt[key]["sha256"]:
+                    reasons.append(f"{receipt['boundary']}: live {key} changed during composition")
+        if handoff is not None:
+            current = json.loads(handoff.read_bytes())
+            path = Path(current["path"])
+            if (current != ref_handoff or not path.is_file() or _sha(path) != handoff_sha
+                    or path.stat().st_size != current["bytes"]):
+                reasons.append("handoff changed during composition")
     doc: dict[str, Any] = {
         "schema": "merlin.lean.chain.v1",
         "theorem": CHAIN_THEOREM,
         "function": function,
         "links": links,
-        "support": {"receipt_sha256": _sha(support), "subject_sha256": sup["subject"]["sha256"],
+        "support": {"receipt_sha256": support_ref["sha256"], "subject_sha256": sup["subject"]["sha256"],
                     "verdict": sup["verdict"], "domain": sup["domain"]},
         "chained": chained,
+        "replayed": replayed,
         **({"handoff_sha256": handoff_sha} if handoff_sha is not None else {}),
         "verdict": "verified" if not reasons else "abstracted",
         "assumptions": assumptions,

@@ -4,6 +4,8 @@ each checked, plus the capture's support, compose into a verified chain; a broke
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -26,6 +28,7 @@ def test_chain_revalidates_handoff_file(tmp_path, monkeypatch, change):
     (tmp_path / "SPEC_LOCK").write_text("lock")
     monkeypatch.setattr(check, "lean_exe", lambda: checker)
     monkeypatch.setattr(check, "lean_root", lambda: tmp_path)
+    monkeypatch.setattr(check, "_replay", lambda *args, **kwargs: [])
     lean = {
         "checker_sha256": check._sha(checker),
         "spec_lock_sha256": check._sha(tmp_path / "SPEC_LOCK"),
@@ -52,6 +55,7 @@ def test_chain_revalidates_handoff_file(tmp_path, monkeypatch, change):
         json.dumps(
             {
                 "claim_type": "not_stuck",
+                "boundary": "support",
                 "function": "forward",
                 "verdict": "verified",
                 "subject": check._file_ref(before),
@@ -75,7 +79,9 @@ def test_chain_revalidates_handoff_file(tmp_path, monkeypatch, change):
         ref = json.loads(handoff.read_text())
         ref["bytes"] += 1
         handoff.write_text(json.dumps(ref))
-    doc = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", handoff=handoff)
+    doc = check.compose_chain(
+        [stage], support, "forward", tmp_path / "chain.json", handoff=handoff, m2m_python=Path(sys.executable)
+    )
     assert doc["verdict"] == ("verified" if change == "unchanged" else "abstracted")
     if change != "unchanged":
         assert "handoff: file changed or missing" in doc["reason"]
@@ -96,15 +102,26 @@ def test_chain_composes_real_preprocessing(tmp_path, monkeypatch, lean_tools):
     check_support(capture, "forward", tmp_path / "support", m2m_python=lean_tools.m2m_python)
     schema = json.loads(SCHEMA.read_text())
 
-    doc = compose_chain(stages, tmp_path / "support" / "receipt.json", "forward", tmp_path / "chain.json")
+    doc = compose_chain(
+        stages,
+        tmp_path / "support" / "receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        m2m_python=lean_tools.m2m_python,
+    )
     jsonschema.validate(doc, schema)
     assert doc["chained"] and doc["verdict"] == "verified", doc.get("reason")
     assert [link["boundary"] for link in doc["links"]] == [
-        "xdsl-parse", "xdsl-pruned", "xdsl-quant-lowered", "xdsl-c-interface"]
+        "xdsl-parse",
+        "xdsl-pruned",
+        "xdsl-quant-lowered",
+        "xdsl-c-interface",
+    ]
 
     # Dropping a boundary breaks the chain: the composition must not verify.
-    broken = compose_chain([stages[0], *stages[2:]], tmp_path / "support" / "receipt.json", "forward",
-                           tmp_path / "broken.json")
+    broken = compose_chain(
+        [stages[0], *stages[2:]], tmp_path / "support" / "receipt.json", "forward", tmp_path / "broken.json"
+    )
     jsonschema.validate(broken, schema)
     assert not broken["chained"] and broken["verdict"] == "abstracted"
 
@@ -114,7 +131,9 @@ def test_chain_composes_real_preprocessing(tmp_path, monkeypatch, lean_tools):
     handed.write_bytes((stages[-1] / "after.mlir").read_bytes())
     lean_stages.record_handoff(handed)
     handoff = tmp_path / "stages" / "handoff.json"
-    ok = compose_chain(stages, support, "forward", tmp_path / "handoff-ok.json", handoff=handoff)
+    ok = compose_chain(
+        stages, support, "forward", tmp_path / "handoff-ok.json", handoff=handoff, m2m_python=lean_tools.m2m_python
+    )
     jsonschema.validate(ok, schema)
     assert ok["verdict"] == "verified" and ok["handoff_sha256"] == json.loads(handoff.read_text())["sha256"]
     handed.write_text(handed.read_text() + "\n// edited after preprocessing\n")

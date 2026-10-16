@@ -85,7 +85,13 @@ def main (args : List String) : IO UInt32 := do
         verified
     | .error e, _ | _, .error e => IO.eprintln s!"decode error: {e}"; return 2
   | "check-support" :: inp :: fn :: rest =>
-    let ib := (rest.head? >>= String.toNat?).getD 64
+    let bits? := match rest with
+      | [] => some 64
+      | [s] => s.toNat? >>= fun n => if n > 0 then some n else none
+      | _ => none
+    let some ib := bits? |
+      IO.eprintln "check-support expects one optional positive integer index width"
+      return 2
     match Decode.module (← IO.FS.readFile inp) with
     | .ok m =>
       let (ok, why) := match funcSig? ib m fn with

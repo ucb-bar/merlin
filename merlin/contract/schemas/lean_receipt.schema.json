@@ -7,7 +7,7 @@
   "required": ["schema", "boundary", "claim_type", "checker", "theorem", "exporter", "lean", "axioms", "verdict"],
   "allOf": [{
     "if": {"properties": {"claim_type": {"const": "not_stuck"}}, "required": ["claim_type"]},
-    "then": {"required": ["subject", "function", "domain"]},
+    "then": {"required": ["subject", "function", "domain", "index_bits"]},
     "else": {"required": ["before", "after"]}
   }],
   "additionalProperties": false,
@@ -22,6 +22,7 @@
     "after": {"$ref": "#/$defs/fileRef"},
     "subject": {"$ref": "#/$defs/fileRef", "description": "The one program a not_stuck claim is about."},
     "function": {"type": "string", "description": "The function a not_stuck claim is about."},
+    "index_bits": {"type": "integer", "minimum": 1, "description": "The exact index width checked by the support theorem."},
     "domain": {"type": "string", "description": "The inputs and contexts a not_stuck claim quantifies over."},
     "cert": {"$ref": "#/$defs/fileRef"},
     "exporter": {

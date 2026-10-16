@@ -137,3 +137,140 @@ def test_failed_publication_preserves_the_previous_result(tmp_path, monkeypatch)
         check._atomic_json(receipt, {"verdict": "verified"})
     assert json.loads(receipt.read_text()) == {"verdict": "abstracted"}
     assert list(tmp_path.iterdir()) == [receipt]
+
+
+@pytest.fixture
+def checked_chain(tmp_path, monkeypatch, standalone_round_trip):
+    monkeypatch.setattr(check, "round_trip", standalone_round_trip)
+
+    def make(after=ADD, bits=64):
+        stage = tmp_path / "stage"
+        stage.mkdir()
+        (stage / "before.mlir").write_text(ADD)
+        (stage / "after.mlir").write_text(after)
+        (stage / "meta.json").write_text(json.dumps({"boundary": "identity"}))
+        boundary = check.check_stage(stage, m2m_python=Path(sys.executable))
+        support = tmp_path / "support"
+        receipt = check.check_support(
+            stage / "before.mlir", "forward", support, m2m_python=Path(sys.executable), index_bits=bits
+        )
+        assert receipt["verdict"] == "verified", receipt.get("reason")
+        assert receipt["index_bits"] == bits
+        return stage, support / "receipt.json", boundary
+
+    return make
+
+
+@pytest.mark.parametrize("bits", [32, 64])
+def test_chain_replays_genuine_claims_without_overwriting_evidence(tmp_path, checked_chain, bits):
+    import jsonschema
+
+    stage, support, boundary = checked_chain(bits=bits)
+    assert boundary["verdict"] == "verified"
+    originals = {p: p.read_bytes() for p in (stage / "receipt.json", support)}
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    assert result["verdict"] == "verified", result.get("reason")
+    assert result["replayed"]
+    schema = check.repo_root() / "merlin" / "contract" / "schemas"
+    jsonschema.validate(result, json.loads((schema / "lean_chain.schema.json").read_text()))
+    jsonschema.validate(json.loads(support.read_bytes()), json.loads((schema / "lean_receipt.schema.json").read_text()))
+    assert all(p.read_bytes() == data for p, data in originals.items())
+
+
+def test_chain_requires_replay(tmp_path, checked_chain):
+    stage, support, _ = checked_chain()
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json")
+    assert result["verdict"] == "abstracted" and not result["replayed"]
+    assert "requires m2m_python" in result["reason"]
+
+
+def test_chain_rejects_forged_verified_verdict(tmp_path, checked_chain):
+    stage, support, boundary = checked_chain(after=SUB)
+    assert boundary["verdict"] == "abstracted"
+    boundary["verdict"] = "verified"
+    (stage / "receipt.json").write_text(json.dumps(boundary))
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    assert result["verdict"] == "abstracted"
+    assert "checker replay returned abstracted" in result["reason"]
+
+
+@pytest.mark.parametrize("field", ["checker", "theorem", "exporter", "axioms", "assumptions", "domain", "index_bits"])
+def test_chain_rejects_changed_claim_metadata(tmp_path, checked_chain, field):
+    stage, support, _ = checked_chain()
+    path = support if field in ("domain", "index_bits") else stage / "receipt.json"
+    receipt = json.loads(path.read_bytes())
+    if field == "index_bits":
+        receipt[field] = 32
+    elif field in ("axioms", "assumptions"):
+        receipt[field] = []
+    elif field == "exporter":
+        receipt[field]["executable_sha256"] = "0" * 64
+    else:
+        receipt[field] = "forged"
+    path.write_text(json.dumps(receipt))
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    assert result["verdict"] == "abstracted"
+    assert "does not match the replay" in result["reason"]
+
+
+def test_chain_rejects_legacy_support_without_recorded_width(tmp_path, checked_chain):
+    stage, support, _ = checked_chain()
+    receipt = json.loads(support.read_bytes())
+    del receipt["index_bits"]
+    support.write_text(json.dumps(receipt))
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    assert result["verdict"] == "abstracted"
+    assert "regenerate it" in result["reason"]
+
+
+def test_chain_binds_replay_to_stage_files(tmp_path, checked_chain):
+    stage, support, _ = checked_chain()
+    # The stored reference remains genuine, but the actual pipeline stage now subtracts.
+    original = tmp_path / "original.mlir"
+    original.write_text(ADD)
+    receipt = json.loads((stage / "receipt.json").read_bytes())
+    receipt["after"] = check._file_ref(original)
+    (stage / "receipt.json").write_text(json.dumps(receipt))
+    (stage / "after.mlir").write_text(SUB)
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    assert result["verdict"] == "abstracted"
+    assert "after bytes do not match" in result["reason"]
+
+
+def test_chain_rejects_receipt_replaced_during_replay(tmp_path, monkeypatch, checked_chain):
+    stage, support, _ = checked_chain()
+    path = stage / "receipt.json"
+    digest = check._sha(path)
+    replay = check._replay
+
+    def race(*args, **kwargs):
+        errors = replay(*args, **kwargs)
+        path.write_bytes(path.read_bytes() + b"\n")
+        return errors
+
+    monkeypatch.setattr(check, "_replay", race)
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    assert result["verdict"] == "abstracted"
+    assert "receipt changed during composition" in result["reason"]
+    assert result["links"][0]["receipt_sha256"] == digest
+
+
+def test_chain_rechecks_actual_stage_after_replay(tmp_path, monkeypatch, checked_chain):
+    stage, support, _ = checked_chain()
+    original = tmp_path / "original.mlir"
+    original.write_text(ADD)
+    path = stage / "receipt.json"
+    receipt = json.loads(path.read_bytes())
+    receipt["after"] = check._file_ref(original)
+    path.write_text(json.dumps(receipt))
+    replay = check._replay
+
+    def race(*args, **kwargs):
+        errors = replay(*args, **kwargs)
+        (stage / "after.mlir").write_text(SUB)
+        return errors
+
+    monkeypatch.setattr(check, "_replay", race)
+    result = check.compose_chain([stage], support, "forward", tmp_path / "chain.json", m2m_python=Path(sys.executable))
+    assert result["verdict"] == "abstracted"
+    assert "live after changed during composition" in result["reason"]
