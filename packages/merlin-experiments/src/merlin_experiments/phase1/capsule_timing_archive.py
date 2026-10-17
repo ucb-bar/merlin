@@ -698,12 +698,16 @@ def finalize_run(run_dir: Path) -> dict:
             training_archive_sha256=None,
         )
         if index["training_ready"]:
-            subset = training_index(index)
-            training = run_dir / f"capsule_timing_training_{_digest(subset)[:12]}.tar"
-            if not training.exists():
-                training_archive(run_dir, training, index=index)
-            status["training_archive"] = str(training)
-            status["training_archive_sha256"] = _file_sha256(training)
+            # A failure here (e.g. evidence rewritten after the audit) must not hide the archives above.
+            try:
+                subset = training_index(index)
+                training = run_dir / f"capsule_timing_training_{_digest(subset)[:12]}.tar"
+                if not training.exists():
+                    training_archive(run_dir, training, index=index)
+                status["training_archive"] = str(training)
+                status["training_archive_sha256"] = _file_sha256(training)
+            except (OSError, ValueError, tarfile.TarError) as exc:
+                status["training_error"] = f"{type(exc).__name__}: {exc}"
     except (OSError, ValueError, tarfile.TarError) as exc:
         status = {
             "timing_ready": False,
@@ -734,7 +738,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.finalize:
             status = finalize_run(args.run_dir)
             print(json.dumps(status, sort_keys=True, indent=2))
-            return 0 if status.get("error") is None or status.get("training_ready") else 1
+            return 0 if status.get("timing_ready") or status.get("training_archive") else 1
         if args.training_out:
             result = training_archive(args.run_dir, args.training_out)
         else:

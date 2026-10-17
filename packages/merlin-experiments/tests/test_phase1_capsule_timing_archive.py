@@ -362,6 +362,21 @@ def test_per_engine_executions_are_recovered_from_process_records(tmp_path):
     assert row["training_exclusions"] == ["current_program_differs_from_gsim_execution"]
 
 
+def test_training_archive_failure_keeps_the_other_finalized_archives(tmp_path, monkeypatch, capsys):
+    _graded(tmp_path, "grading_public", "HOST_FAIL", 400, result_status="fail")
+
+    def refuse(*_args, **_kwargs):
+        raise A.TimingArchiveError("capsule artifact changed after its audit")
+
+    monkeypatch.setattr(A, "training_archive", refuse)
+    status = A.finalize_run(tmp_path)
+    assert status["training_ready"] is True and status["training_archive"] is None
+    assert "changed after its audit" in status["training_error"]
+    assert Path(status["evidence_archive"]).is_file()
+    assert A.main([str(tmp_path), "--finalize"]) == 1
+    capsys.readouterr()
+
+
 def test_finalize_writes_training_archive_for_an_incomplete_run(tmp_path, capsys):
     _graded(tmp_path, "grading_public", "PASS", 300)
     _graded(tmp_path, "grading_public", "HOST_FAIL", 400, result_status="fail")
