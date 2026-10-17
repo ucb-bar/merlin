@@ -56,6 +56,13 @@ class GradingInputs:
     driver_grade_completed: Callable[[object], None] | None = None
 
 
+def _history_runs_roots(run_dir: Path) -> tuple[Path, ...]:
+    """This run's earlier grade and selfcheck runs roots; they only order capsule work."""
+    work = Path(run_dir) / "_qa_work"
+    roots = [*sorted(work.glob("runs_*")), *sorted(work.glob("fruns_*")), *sorted(work.glob("selfchecks/*"))]
+    return tuple(root for root in roots if root.is_dir() and not root.is_symlink())
+
+
 def compiler_execution(inputs, *, candidate, run_dir):
     from .compiler_profile_runtime import original_compiler_execution
 
@@ -226,6 +233,31 @@ def grade(
         )
         temporary.replace(progress_path)
 
+    def publish_pending_shape():
+        # Capsule rows for this snapshot are complete; the mandatory shape gate is not. The interim
+        # document can never converge anything: all_pass stays unknown (or a failure stays a failure)
+        # until the probes land and the final verdict replaces this one.
+        interim = dict(verdict)
+        if interim.get("all_pass") is not False:
+            interim["all_pass"] = None
+        interim["shape_coverage"] = {
+            "ran": False,
+            "status": "pending",
+            "note": "the required shape-coverage probes are still running for this snapshot; "
+            "all_pass is unknown until they finish and the final verdict replaces this one.",
+        }
+        interim["graded_request_sha256"] = background_guard.source
+        interim["snapshot_current"] = background_guard.current()
+        if not interim["snapshot_current"]:
+            interim.update(all_pass=None, gradeable=False)
+        write_verdict(ws / "qa" / "verdict.json", interim)
+        if progress_rows:
+            progress = json.loads(progress_path.read_text())
+            progress.update(state="shape_coverage_pending", snapshot_current=interim["snapshot_current"])
+            temporary = progress_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(progress, indent=2) + "\n")
+            temporary.replace(progress_path)
+
     background_workers = 0
     if advisory_background:
         from .background_admission import BackgroundGuard, source_digest
@@ -294,9 +326,10 @@ def grade(
         ]
         if no_oracle:
             argv.append("--no-oracle")
+        from merlin.targetgen.capsule_scheduling import timing_history
         from merlin_experiments.phase1.feedback import qa
 
-        with compiler_execution(inputs, candidate=cand, run_dir=run_dir):
+        with compiler_execution(inputs, candidate=cand, run_dir=run_dir), timing_history(_history_runs_roots(run_dir)):
             verdict = (qa_runner or partial(qa.run, context=inputs.context))(
                 str(cand),
                 str(public_root),
@@ -338,12 +371,15 @@ def grade(
                 artifact_key=scratch_key,
                 previous_artifact_key=previous_scratch_key,
             )
+            shape_skip = _shape_skip_reason(verdict)
             if background_guard is not None and not background_guard.current():
                 verdict.update(all_pass=None, gradeable=False)
                 verdict["shape_coverage"] = {
                     "ran": False,
                     "reason": "superseded source; required probes deferred to current or final grade",
                 }
+            elif shape_skip is not None:
+                _skip_shape_generalization(verdict, shape_skip)
             else:
                 _attach_shape_generalization(
                     verdict,
@@ -355,6 +391,16 @@ def grade(
                     context=inputs.context,
                     contract=inputs.contract,
                     additional_forbidden=inputs.additional_forbidden,
+                    **(
+                        {"compiler_profile_service": inputs.compiler_profile_service}
+                        if inputs.compiler_profile_service is not None
+                        else {}
+                    ),
+                    **(
+                        {"before_probe": publish_pending_shape}
+                        if background_guard is not None and os.environ.get("MERLIN_BACKGROUND_PROGRESS") == "1"
+                        else {}
+                    ),
                 )
             if background_guard is not None and (
                 not background_guard.current() or os.environ.get("MERLIN_BACKGROUND_CODEGEN_SCALABILITY") == "0"
@@ -670,8 +716,10 @@ def fast_grade(
             completed_promotion = _completed_loop_promoter(ws, cand.parent, fruns, loop, cert, cover, inputs=inputs)
     except Exception as exc:  # noqa: BLE001 -- scheduling cannot invalidate completed loop evidence
         print(f"[first-grade] streaming promotion unavailable: {type(exc).__name__}: {exc}", flush=True)
+    from merlin.targetgen.capsule_scheduling import timing_history
+
     try:
-        with compiler_execution(inputs, candidate=cand, run_dir=run_dir):
+        with compiler_execution(inputs, candidate=cand, run_dir=run_dir), timing_history(_history_runs_roots(run_dir)):
             _fast_score = (
                 _CG.grade(
                     str(cand),
@@ -765,6 +813,30 @@ def fast_grade(
     return verdict
 
 
+def _shape_skip_reason(verdict: dict) -> str | None:
+    """Why this grade's shape probes need not run, or None when its gate needs them.
+
+    Only a grade that is not gradeable and cannot converge skips: nothing it reports may terminate
+    authoring, so the probes wait for a gradeable grade. A structure-only grade whose ``all_pass`` is
+    still true keeps its probes, because that gate depends on them.
+    """
+    if verdict.get("gradeable") is False and verdict.get("all_pass") is not True:
+        return "grade is not gradeable; required shape probes run on the next gradeable grade"
+    return None
+
+
+def _skip_shape_generalization(verdict: dict, reason: str) -> None:
+    verdict["shape_coverage"] = {
+        "ran": False,
+        "skipped": True,
+        "reason": reason,
+        "note": "the shape-coverage probes did NOT run for this grade; this is NOT a pass.",
+    }
+    if verdict.get("all_pass"):
+        verdict["all_pass"] = False
+        verdict["not_converged_reason"] = "the required shape-coverage probes did not run; not a pass"
+
+
 # The public suite is the set of shapes an agent can see, so a backend that keys on those shapes passes
 # it by construction and the loop has nothing left to say. Measured: a submission converged at 14/26 with
 # every failure a shape it had never implemented, its self-check clean on everything it HAD, and no round
@@ -786,6 +858,8 @@ def _attach_shape_generalization(
     context: InvocationContext,
     contract: Path | None = None,
     additional_forbidden: tuple[str, ...] = (),
+    compiler_profile_service=None,
+    before_probe: Callable[[], None] | None = None,
 ) -> None:
     """Probe whether this round's candidate LOWERS shapes past a single tile, and fold it into the gate.
 
@@ -795,19 +869,29 @@ def _attach_shape_generalization(
 
     Failure to run is RECORDED, never treated as clean -- a probe that did not run reading as a pass is
     the same class of bug as an unavailable oracle scoring as one.
+
+    ``MERLIN_SHAPE_COVERAGE_WORKERS`` runs corners concurrently and ``MERLIN_SHAPE_COVERAGE_CACHE=1``
+    reuses a sweep of byte-identical inputs (see :func:`shape_coverage.measure`). ``before_probe`` runs
+    only when probes are actually about to run, so a caller can publish its pending capsule verdict first.
     """
+    from . import shape_coverage
+
     key = artifact_key or f"{rnd:02d}"
     out = run_dir / "qa_history" / f"shape_coverage_round_{key}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
+    workers, use_cache = shape_coverage.selected_workers(), shape_coverage.cache_selected()
     try:
-        from merlin.targetgen import lowering_coverage as LC
-
-        cov = LC.sweep(
+        cov = shape_coverage.measure(
             cand,
-            target=context.target,
+            run_dir,
+            context=context,
             contract=str(contract if contract is not None else context.repo / "merlin/contract"),
             timeout=min(timeout, 300),
             additional_forbidden=additional_forbidden,
+            service=compiler_profile_service,
+            before_probe=before_probe,
+            workers=workers,
+            use_cache=use_cache,
         )
         out.write_text(json.dumps(cov, indent=2))
     except Exception as e:  # noqa: BLE001 -- record it; never let it read as clean
