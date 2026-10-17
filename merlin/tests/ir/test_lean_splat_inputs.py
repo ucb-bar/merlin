@@ -1,13 +1,13 @@
 """Execute actual default splat compaction through both the Lean denotation and native MLIR.
 
-The separate semantic kernel proves uniform-input compaction. These tests qualify the pass's
-execution; they do not claim that a whole-program SSA rewrite checker has been implemented.
+These tests independently compare the actual input and output with upstream execution.
+The separate binding suite exercises the proof-backed whole-program checker.
 """
 
 import json
 
 import pytest
-from test_lean_differential import _tensor_samples
+from test_lean_differential import _floats, _tensor_samples
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower.splat_inputs import scalarize_splat_inputs
@@ -124,3 +124,81 @@ def test_nonuniform_inputs_do_not_acquire_a_splat_rewrite():
     before, after, count = _compact(source)
     assert count == 0
     assert before == after
+
+
+def _captured_source():
+    return _source(escape=True, multiple=True).replace(
+        "%sum = arith.addi %data_element, %uniform_element : i32",
+        "%captured = arith.addi %data_element, %other : i32\n%sum = arith.addi %captured, %uniform_element : i32",
+    )
+
+
+def _tensor_capture_source():
+    return (
+        _source()
+        .replace("%uniform = tensor.splat %value", "%index = arith.constant 0 : index\n%uniform = tensor.splat %value")
+        .replace(
+            "%sum = arith.addi %data_element, %uniform_element : i32",
+            "%captured = tensor.extract %uniform[%index, %index] : tensor<2x3xi32>\n"
+            "%sum = arith.addi %data_element, %captured : i32",
+        )
+    )
+
+
+@pytest.mark.parametrize("capture", ["scalar", "tensor"])
+def test_splat_compaction_native_preserves_captures(tmp_path, fidelity_tools, capture):
+    source = _captured_source() if capture == "scalar" else _tensor_capture_source()
+    before, after, count = _compact(source)
+    assert count == (2 if capture == "scalar" else 1)
+    samples = _tensor_samples(before, tmp_path, fidelity_tools)
+    expected = []
+    for value, data, init, other in samples:
+        result = [
+            (x + value[0] + y + (2 * other[0] if capture == "scalar" else 0)) % (1 << 32)
+            for x, y in zip(data, init, strict=True)
+        ]
+        if capture == "scalar":
+            result += [value[0]] * len(data)
+        expected.append([str(x) for x in result])
+    for name, program in [("before", before), ("after", after)]:
+        work = tmp_path / name
+        diff.compare(program, samples, work, fidelity_tools)
+        assert json.loads((work / "native-results.json").read_text())["results"] == expected
+
+
+@pytest.mark.parametrize("element", ["f32", "f64"])
+def test_splat_compaction_preserves_exact_float_payloads(tmp_path, fidelity_tools, element):
+    before, after, count = _compact(_source((2,), element, escape=True, multiple=True))
+    assert count == 2
+    samples = _tensor_samples(before, tmp_path, fidelity_tools)
+    edges = _floats(int(element[1:])) + [0x7FC01234 if element == "f32" else 0x7FF8000000001234]
+    samples.extend([[arg.copy() for arg in samples[0]] for _ in range(max(0, len(edges) - len(samples)))])
+    for i, sample in enumerate(samples):
+        sample[0] = [edges[i % len(edges)]]
+        sample[3] = [edges[(i + 1) % len(edges)]]
+    expected = [[str(sample[0][0])] * 4 for sample in samples]
+    for name, program in [("before", before), ("after", after)]:
+        work = tmp_path / name
+        diff.compare(program, samples, work, fidelity_tools)
+        assert json.loads((work / "native-results.json").read_text())["results"] == expected
+
+
+def _repeated_source():
+    source = _source(escape=True)
+    generic = "%r =" + source.partition("%r =")[2].partition("return")[0]
+    second = generic.replace("%r =", "%second =").replace("ins(%data,", "ins(%r,")
+    return source.replace("return %r,", second + "return %second,")
+
+
+def test_splat_compaction_native_repeated_producer_uses(tmp_path, fidelity_tools):
+    before, after, count = _compact(_repeated_source())
+    assert count == 2
+    samples = _tensor_samples(before, tmp_path, fidelity_tools)
+    expected = []
+    for value, data, init, _other in samples:
+        result = [(x + 2 * value[0] + 2 * y) % (1 << 32) for x, y in zip(data, init, strict=True)]
+        expected.append([str(x) for x in result + [value[0]] * len(data)])
+    for name, program in [("before", before), ("after", after)]:
+        work = tmp_path / name
+        diff.compare(program, samples, work, fidelity_tools)
+        assert json.loads((work / "native-results.json").read_text())["results"] == expected
