@@ -248,3 +248,25 @@ def test_iteration_scope_rejects_full_sweep_without_narrowing_denominator(monkey
     assert B._feedback_scope_error({'capsules': 'all', 'compile_only': True}) is None
     monkeypatch.delenv('MERLIN_SELFCHECK_MAX_CAPSULES')
     assert B._feedback_scope_error({'capsules': 'all'}) is None
+
+
+@pytest.mark.parametrize(("raw", "limit"), [("auto", 64), ("16", 16), ("64", 64)])
+def test_the_ordinary_capsule_bound_can_be_sized_from_the_compute_pool(tmp_path, monkeypatch, raw, limit):
+    # A private slot directory that is never created: sizing reads the roster, it takes no lease.
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", ",".join(str(cpu) for cpu in range(6, 14)))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "slots"))
+    monkeypatch.setenv("MERLIN_SELFCHECK_MAX_CAPSULES", raw)
+    names = [f"C{index}" for index in range(limit + 1)]
+    assert B._ordinary_capsule_limit() == limit
+    assert B._feedback_scope_error({"capsules": ",".join(names[:limit])}) is None
+    assert f"at most {limit} named capsules" in B._feedback_scope_error({"capsules": ",".join(names)})
+    assert B._feedback_scope_error({"capsules": "all"}) is not None
+    assert not (tmp_path / "slots").exists()
+
+
+def test_an_invalid_capsule_bound_refuses(monkeypatch):
+    monkeypatch.setenv("MERLIN_SELFCHECK_MAX_CAPSULES", "many")
+    with pytest.raises(ValueError, match="positive integer or 'auto'"):
+        B._feedback_scope_error({"capsules": "A"})
+    monkeypatch.delenv("MERLIN_SELFCHECK_MAX_CAPSULES")
+    assert B._feedback_scope_error({"capsules": "all"}) is None

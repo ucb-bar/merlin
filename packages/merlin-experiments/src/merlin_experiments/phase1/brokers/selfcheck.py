@@ -356,19 +356,44 @@ def _dispatch_capacity() -> int:
     return int(value)
 
 
-def _feedback_scope_error(request):
-    """Operator-selected iteration bound; formal qualification uses its own path."""
+#: Named capsules one ordinary request may carry per leased compute CPU under
+#: ``MERLIN_SELFCHECK_MAX_CAPSULES=auto``. Each build or simulator step of a capsule leases one CPU
+#: from the shared pool, so a request this size keeps the pool busy for several waves without the
+#: author splitting one affected operator family across requests (eight CPUs -> 64 capsules).
+CAPSULES_PER_COMPUTE_CPU = 8
+
+
+def _ordinary_capsule_limit() -> int | None:
+    """The operator's per-request capsule bound, or ``None`` when none is selected.
+
+    ``auto`` sizes it from the shared compute pool the request's tiers will lease from
+    (``MERLIN_COMPUTE_CPUS``), falling back to this process's CPU affinity when no pool is selected.
+    An incomplete pool selection refuses, as it does for every other shared-compute consumer.
+    """
     raw = os.environ.get("MERLIN_SELFCHECK_MAX_CAPSULES", "").strip()
     if not raw:
         return None
+    if raw == "auto":
+        from merlin.common.cpu_pool import grading_cpus
+
+        cpus = len(grading_cpus()) or len(os.sched_getaffinity(0))
+        return CAPSULES_PER_COMPUTE_CPU * max(1, cpus)
     if not raw.isdecimal() or int(raw) < 1:
-        raise ValueError("MERLIN_SELFCHECK_MAX_CAPSULES must be a positive integer")
+        raise ValueError("MERLIN_SELFCHECK_MAX_CAPSULES must be a positive integer or 'auto'")
+    return int(raw)
+
+
+def _feedback_scope_error(request):
+    """Operator-selected iteration bound; formal qualification uses its own path."""
+    limit = _ordinary_capsule_limit()
+    if limit is None:
+        return None
     if request.get("action") or request.get("caller_layout") or any(request.get(key) for key in FORWARDED_PROBES):
         return None
     selected = str(request.get("capsules", "all"))
     names = {name.strip() for name in selected.split(",") if name.strip()}
-    if selected.strip() == "all" or len(names) > int(raw):
-        return (f"iteration feedback accepts at most {raw} named capsules per request; select affected capsules. "
+    if selected.strip() == "all" or len(names) > limit:
+        return (f"iteration feedback accepts at most {limit} named capsules per request; select affected capsules. "
                 "Full-suite feedback during authoring is disabled by the operator. "
                 "The separate final frozen qualification still covers the complete corpus.")
     return None
