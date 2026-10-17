@@ -60,6 +60,18 @@ PINNED = {
     "MerlinVerify.Check.TypedModule.check_sound": "MerlinVerify.Check.TypedModule",
     "MerlinVerify.Check.chain_typed_refines": "MerlinVerify.Check.TypedChain",
     "MerlinVerify.Check.chain_typed_defined_refines": "MerlinVerify.Check.TypedChain",
+    "MerlinVerify.Rules.DequantScalar.perTensor_body_sound": "MerlinVerify.Rules.DequantScalar",
+    "MerlinVerify.Rules.DequantScalar.perChannel_body_sound": "MerlinVerify.Rules.DequantScalar",
+    "MerlinVerify.Rules.DequantScalar.checkBody_sound": "MerlinVerify.Rules.DequantScalar",
+    "MerlinVerify.Rules.DequantScalar.body_poison_sound": "MerlinVerify.Rules.DequantScalar",
+    "MerlinVerify.Rules.DequantScalar.checkBody_poison_sound": "MerlinVerify.Rules.DequantScalar",
+    "MerlinVerify.Rules.DequantTensor.region_sound": "MerlinVerify.Rules.DequantTensor",
+    "MerlinVerify.Rules.DequantTensor.checkLayout_sound": "MerlinVerify.Rules.DequantTensor",
+    "MerlinVerify.Rules.DequantTensor.checked_generic_sound": "MerlinVerify.Rules.DequantTensor",
+    "MerlinVerify.Rules.DequantTensor.tensor_contract_sound": "MerlinVerify.Rules.DequantTensor",
+    "MerlinVerify.Rules.DequantSource.generic_result_sound": "MerlinVerify.Rules.DequantSource",
+    "MerlinVerify.Rules.DequantSite.check_sound": "MerlinVerify.Rules.DequantSite",
+    "MerlinVerify.Check.dequantRule_sound": "MerlinVerify.Check.RulesDequant",
 }
 
 
@@ -83,8 +95,13 @@ def _lake_env() -> dict[str, str]:
 def pinned_statements() -> dict[str, str] | None:
     """SHA-256 of each pinned theorem's elaborated statement (needs a built checker)."""
     mods = sorted(set(PINNED.values()))
-    proc = subprocess.run(["lake", "exe", "merlin-lean-audit", "--statements", ",".join(PINNED), *mods],
-                          cwd=LEAN, env=_lake_env(), capture_output=True, text=True)
+    proc = subprocess.run(
+        ["lake", "exe", "merlin-lean-audit", "--statements", ",".join(PINNED), *mods],
+        cwd=LEAN,
+        env=_lake_env(),
+        capture_output=True,
+        text=True,
+    )
     if proc.returncode != 0:
         print("[FAIL] could not read pinned statements:\n" + proc.stderr[-2000:])
         return None
@@ -116,8 +133,13 @@ def check_lock(update: bool, statements: dict[str, str] | None) -> bool:
 def build() -> bool:
     # The library alone is the default target; the checker and audit executables must be rebuilt
     # too, or receipts would be written by a stale checker.
-    proc = subprocess.run(["lake", "build", "MerlinVerify", "merlin-lean", "merlin-lean-audit"], cwd=LEAN,
-                          env=_lake_env(), capture_output=True, text=True)
+    proc = subprocess.run(
+        ["lake", "build", "MerlinVerify", "merlin-lean", "merlin-lean-audit"],
+        cwd=LEAN,
+        env=_lake_env(),
+        capture_output=True,
+        text=True,
+    )
     if proc.returncode != 0:
         print("[FAIL] lake build failed:\n" + proc.stdout[-2000:] + proc.stderr[-2000:])
     return proc.returncode == 0
@@ -125,10 +147,12 @@ def build() -> bool:
 
 def run_audit() -> bool:
     env = _lake_env()
-    mods = sorted(str(p.relative_to(LEAN).with_suffix("")).replace("/", ".")
-                  for p in (LEAN / "MerlinVerify").rglob("*.lean"))
-    audit = subprocess.run(["lake", "exe", "merlin-lean-audit", *mods], cwd=LEAN, env=env, capture_output=True,
-                           text=True)
+    mods = sorted(
+        str(p.relative_to(LEAN).with_suffix("")).replace("/", ".") for p in (LEAN / "MerlinVerify").rglob("*.lean")
+    )
+    audit = subprocess.run(
+        ["lake", "exe", "merlin-lean-audit", *mods], cwd=LEAN, env=env, capture_output=True, text=True
+    )
     if audit.returncode not in (0, 1):
         print("[FAIL] merlin-lean-audit error:\n" + audit.stderr[-2000:])
         return False

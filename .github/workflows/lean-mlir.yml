@@ -1,0 +1,78 @@
+name: lean-mlir
+
+on:
+  push:
+    paths:
+      - 'merlin/lean/**'
+      - 'src/merlin/verify/lean/**'
+      - 'merlin/contract/schemas/lean_*.json'
+      - 'merlin/tests/ir/*lean*'
+      - 'merlin/tests/ir/conftest.py'
+      - 'merlin/tests/fixtures/lean*'
+      - 'build_tools/scripts/check_lean_guard.py'
+      - 'build_tools/toolchains/*'
+      - '.github/workflows/lean-mlir.yml'
+      - 'pyproject.toml'
+      - 'uv.lock'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lean-mlir:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      MERLIN_LEAN_REQUIRED: '1'
+      MERLIN_M2M_PYTHON: ${{ github.workspace }}/out/build/lean/mlir-venv/bin/python
+      MERLIN_TORCH_PYTHON: ${{ github.workspace }}/out/build/lean/torch-venv/bin/python
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: install test dependencies and pinned MLIR bindings
+        run: |
+          uv sync --frozen --extra dev --extra verify --extra targetgen
+          uv venv --python 3.12 out/build/lean/mlir-venv
+          uv pip install --python "$MERLIN_M2M_PYTHON" --no-deps -r build_tools/toolchains/lean-mlir-requirements.txt
+      - name: install isolated pinned CPU source oracle
+        run: |
+          uv venv --python 3.12 out/build/lean/torch-venv
+          uv pip install --python "$MERLIN_TORCH_PYTHON" --no-deps -r build_tools/toolchains/lean-torch-requirements.txt
+      - name: install Lean (repository toolchain pin)
+        run: |
+          set -euo pipefail
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: fetch Mathlib cache
+        working-directory: merlin/lean
+        run: lake exe cache get
+      - name: build and audit all Lean declarations and pinned statements
+        run: uv run --no-sync python build_tools/scripts/check_lean_guard.py
+      - name: authoritative round trips, receipts, races and semantic differential tests
+        # Secondary xDSL/standalone comparisons run locally; this job requires the actual Python
+        # MLIR parser/pass implementation and must not silently substitute another backend.
+        run: >-
+          uv run --no-sync pytest -q
+          merlin/tests/ir/test_lean_export.py
+          merlin/tests/ir/test_lean_support.py
+          merlin/tests/ir/test_lean_chain.py
+          merlin/tests/ir/test_lean_snapshots.py
+          merlin/tests/ir/test_lean_guard.py
+          merlin/tests/ir/test_lean_stages.py
+          merlin/tests/ir/test_lean_mlir_differential.py
+          merlin/tests/ir/test_lean_dequant_scalar.py
+          merlin/tests/ir/test_lean_dequant_layout.py
+          merlin/tests/ir/test_lean_dequant_c1.py
+          merlin/tests/ir/test_lean_dequant_torch.py
+          -k 'not standalone and not test_round_trip_identical'
+          -o junit_family=xunit1
+          --junitxml=out/artifacts/verification/lean-mlir.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lean-mlir-test-results
+          path: out/artifacts/verification/lean-mlir.xml

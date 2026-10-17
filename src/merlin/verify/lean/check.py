@@ -88,6 +88,7 @@ def _file_ref(path: Path) -> dict[str, Any]:
 def _snapshot(source: Path, target: Path) -> dict[str, Any]:
     data = source.read_bytes()
     target.write_bytes(data)
+    target.chmod(0o444)
     return {"path": str(source.resolve()), "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
 
 
@@ -377,7 +378,10 @@ def _validate_receipt(receipt: dict[str, Any], *, obligation: _Obligation, funct
     import jsonschema
 
     schema = repo_root() / "merlin/contract/schemas/lean_receipt.schema.json"
-    jsonschema.validate(receipt, json.loads(schema.read_text()))
+    try:
+        jsonschema.validate(receipt, json.loads(schema.read_text()))
+    except jsonschema.ValidationError as exc:
+        return [f"receipt does not match the replay schema; regenerate it: {exc.message}"]
     single = obligation in (_SUPPORT, _DEFINED)
     expected = (obligation.checker, obligation.theorem, obligation.claim_type)
     if tuple(receipt[k] for k in ("checker", "theorem", "claim_type")) != expected:
@@ -427,7 +431,7 @@ def _validate_receipt(receipt: dict[str, Any], *, obligation: _Obligation, funct
     _check_exit(proc, result)
     _result_identity(result, obligation)
     if result["verdict"] != "verified":
-        return ["checker rejected receipt replay"]
+        return [f"checker replay returned {result['verdict']}"]
     assumptions = list(LEDGER)
     if single:
         if result.get("index_bits") != receipt["index_bits"] or result.get("function") != function:
@@ -442,6 +446,19 @@ def _validate_receipt(receipt: dict[str, Any], *, obligation: _Obligation, funct
     if receipt.get("assumptions") != assumptions:
         return ["receipt assumptions do not match the replayed obligation"]
     return _stale(receipt, "replayed receipt")
+
+
+
+def _replay(receipt: dict[str, Any], inputs: dict[str, Path], root: Path, *,
+            obligation: _Obligation, function: str, m2m_python: Path) -> list[str]:
+    """Bind the replayed claim to the actual pipeline stage, then recheck its exact exports."""
+    for key, source in inputs.items():
+        current = _file_ref(source)
+        if any(current[k] != receipt[key][k] for k in ("sha256", "bytes")):
+            return [f"{key} bytes do not match the receipt"]
+    errors = _validate_receipt(receipt, obligation=obligation, function=function,
+                               m2m_python=m2m_python, work=root)
+    return [f"receipt does not match the replay: {error}" for error in errors]
 
 
 def _domain(index_bits: int, *, defined_inputs: bool = False) -> str:
@@ -497,13 +514,16 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     links, reasons, assumptions = [], [], []
     receipts = []
     witnesses = []
+    live_inputs = []
     for index, stage in enumerate(stages):
         path = stage / "receipt.json"
         receipt, digest = _read_receipt(path)
         witnesses.append((path, digest, receipt))
         obligation = _TYPED_MODULE if receipt.get("checker") == _TYPED_MODULE.checker else _MODULE
-        reasons += _validate_receipt(receipt, obligation=obligation, function=function, m2m_python=m2m_python,
-                                     work=work / f"stage_{index}")
+        inputs = {key: stage / f"{key}.mlir" for key in ("before", "after")}
+        live_inputs.append((receipt, inputs))
+        reasons += _replay(receipt, inputs, work / f"stage_{index}", obligation=obligation,
+                           function=function, m2m_python=m2m_python)
         receipts.append(receipt)
         links.append({"boundary": receipt["boundary"], "receipt_sha256": digest,
                       "before_sha256": receipt["before"]["sha256"], "after_sha256": receipt["after"]["sha256"],
@@ -513,8 +533,9 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
         assumptions += [a for a in receipt.get("assumptions", []) if a not in assumptions]
     sup, support_digest = _read_receipt(support)
     witnesses.append((support, support_digest, sup))
-    reasons += _validate_receipt(sup, obligation=_SUPPORT, function=function, m2m_python=m2m_python,
-                                 work=work / "support")
+    support_inputs = {"subject": stages[0] / "before.mlir"} if stages else {}
+    reasons += _replay(sup, support_inputs, work / "support", obligation=_SUPPORT,
+                       function=function, m2m_python=m2m_python)
     if sup["verdict"] != "verified":
         reasons.append(f"support: {sup['verdict']}: {sup.get('reason', '')}")
     assumptions += [a for a in sup.get("assumptions", []) if a not in assumptions]
@@ -541,7 +562,8 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
     elif not chained:
         reasons.append("the boundaries do not form a chain from the support subject")
     refinement_verdict = "verified" if not reasons else "abstracted"
-    domain = _domain(sup["index_bits"], defined_inputs=True)
+    domain = (_domain(sup["index_bits"], defined_inputs=True) if type(sup.get("index_bits")) is int
+              and sup["index_bits"] > 0 else "unavailable; invalid or missing source input domain")
     defined_info: dict[str, Any] = {
         "verdict": "unmeasured", "checker": DEFINED_CHECKER, "theorem": DEFINED_THEOREM,
         "domain": domain, "reason": "no source-definedness receipt was provided; NotStuck permits UB and poison",
@@ -565,8 +587,15 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
         if failures:
             refinement_verdict = "abstracted"
             reasons += failures
+    for receipt, inputs in live_inputs:
+        for key, path in inputs.items():
+            if (not path.is_file() or _sha(path) != receipt[key]["sha256"] or
+                    path.stat().st_size != receipt[key]["bytes"]):
+                reasons.append(f"{receipt['boundary']}: live {key} changed during composition")
+                refinement_verdict = "abstracted"
     if handoff is not None:
         if (bound.get("schema") != "merlin.lean.handoff.v1" or _sha(handoff) != handoff_digest or
+                not Path(bound["path"]).is_file() or
                 _file_ref(Path(bound["path"])) != {k: bound[k] for k in ("path", "sha256", "bytes")}):
             reasons.append("handoff file changed or is not a valid recorded handoff")
             refinement_verdict = "abstracted"
@@ -581,6 +610,7 @@ def _compose_chain(stages: list[Path], support: Path, function: str, out: Path,
         "support": {"receipt_sha256": support_digest, "subject_sha256": sup["subject"]["sha256"],
                     "verdict": sup["verdict"], "domain": sup["domain"]},
         "chained": chained,
+        "replayed": refinement_verdict == "verified",
         "refinement_verdict": refinement_verdict,
         "source_definedness": defined_info,
         **({"handoff_sha256": handoff_sha} if handoff_sha is not None else {}),
@@ -601,7 +631,7 @@ def _read_receipt(path: Path) -> tuple[dict[str, Any], str]:
 def _receipt_freshness(path: Path, digest: str, receipt: dict[str, Any]) -> list[str]:
     reasons = _stale(receipt, "chain receipt")
     if _sha(path) != digest:
-        reasons.append("receipt changed during chain replay")
+        reasons.append("receipt changed during composition")
     return reasons
 
 

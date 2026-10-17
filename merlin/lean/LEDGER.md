@@ -22,7 +22,19 @@ assumed, why, and what evidence stands behind it. A claim that relies on an entr
 |---|---|
 | T1 | Lean kernel; Lean compiler and runtime for the compiled checker (including the compiler-generated `_unsafe_rec` twins of recursive definitions); `Lean.Json`. |
 | T2 | The MLIR parser/printer bundled with `torch_mlir` (the pipeline's own), used for export and round trip. |
-| T3 | Fidelity of the MerlinSem op semantics to MLIR. Not proved. In addition to hand-built `#guard` cases, `merlin/tests/ir/test_lean_differential.py` compares the actual Lean denotation with native upstream MLIR on a deterministic integer/tensor/f32/f64 corpus and checks named-op generalization. The map signature mismatch is corrected and its corpus must pass. Probes bind the installed contract to compiler fingerprints; package versions do not establish LLVM revisions. Coverage limits and required-tool instructions are in `docs/guides/lean_differential_tests.md`; untested forms and targets remain trusted. |
+| T3 | Fidelity of the MerlinSem op semantics to MLIR and the captured source producer. Not proved. In addition to hand-built `#guard` cases, `merlin/tests/ir/test_lean_differential.py` compares the actual Lean denotation with native upstream MLIR on a deterministic integer/tensor/f32/f64 corpus and checks named-op generalization. The map signature mismatch is corrected and its corpus must pass. Probes bind the installed contract to compiler fingerprints; package versions do not establish LLVM revisions. Coverage limits and required-tool instructions are in `docs/guides/lean_differential_tests.md`; untested forms and targets remain trusted. New bounded integer-folder/named-op and dequantization tests use hash-pinned MLIR. A separate hash-pinned PyTorch 2.10.0+cpu oracle checks both dequantization source operations against NumPy and selected actual MLIR-folded compiler bodies. NaN payloads, complete IEEE-instance qualification, human specification review, and capture-producer binding remain outstanding. |
 | T4 | Upstream MLIR lowering below the verified tensor stage, LLVM, the linker, the C runtime. The qualified scalar/parallel defaults and native oracle generalize maps before bufferization. A regression checks the required initializer copy survives; [LLVM issue 213241](https://github.com/llvm/llvm-project/issues/213241) documents the separate direct-map bufferization bug. This is not a proof of downstream lowering. |
 | T5 | Accelerator kernels meeting their stated contracts (the OOT hole, design D8). |
 | T6 | Floating-point accuracy (measured, never proved; floats are parametric in every theorem). |
+
+## Proposed dequantization source contract
+
+`Spec/Dequant.lean` specifies the distinct per-tensor and per-channel arithmetic orders from
+PyTorch v2.10.0 for signed-i8 input, i32 zero point and f32 scale/result, including tensor
+coordinates and poison propagation. Its theorems add no axioms or float algebra laws.
+`Sem/Ops/Dequant.lean` dispatches that proposed source contract only for checked tensor types,
+shapes and metadata. The source support rule proves non-stuck evaluation on typed inputs, and
+the registered C1 site rule connects accepted target loops to it. Such receipts prove refinement
+relative to this model; they do not establish that the model is the captured producer's meaning.
+Human specification review and exact capture-producer/version binding remain required before
+paper qualification (T3). Unsupported granularities, types and attributes remain refused.

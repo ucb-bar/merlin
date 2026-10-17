@@ -4,10 +4,11 @@ the two programs by greedy alignment, and `c1Check` re-checks every step. A wron
 synthesis can only make the boundary `abstracted`, never `verified`.
 
 Current alignment tries alpha-equivalent prefixes, closed-expression CSE and adjacent motion,
-proved operation expansions, and DCE.
+proved operation expansions, dequantization sites, and DCE.
 Rules that need certificates from the pass (rewrites that create ops)
 add their own synthesis or read the pass's certificate.
 -/
+import MerlinVerify.Rules.DequantSite
 import MerlinVerify.Rules.Dce
 import MerlinVerify.Rules.Cse
 import MerlinVerify.Rules.Motion
@@ -46,12 +47,15 @@ def synthLocal (ρ : Rho) : List Op → List Op → List Step
         match Rules.Motion.check ρ ((s :: ss).take 2) ((t :: ts).take 2) with
         | some ρ' => .site Rules.Motion.rule 2 2 :: synthLocal ρ' (ss.drop 1) (ts.drop 1)
         | none =>
-          match localRewrite? ρ s t with
-          | some (r, ρ') => .site r 1 1 :: synthLocal ρ' ss ts
+          match Rules.DequantSite.check ρ [s] ((t :: ts).take 2) with
+          | some ρ' => .site Rules.DequantSite.rule 1 2 :: synthLocal ρ' ss (ts.drop 1)
           | none =>
-            match alphaOp ρ s t with
-            | some ρ' => .same :: synthLocal ρ' ss ts
-            | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss (t :: ts)
+            match localRewrite? ρ s t with
+            | some (r, ρ') => .site r 1 1 :: synthLocal ρ' ss ts
+            | none =>
+              match alphaOp ρ s t with
+              | some ρ' => .same :: synthLocal ρ' ss ts
+              | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss (t :: ts)
   termination_by ss ts => ss.length + ts.length
   decreasing_by
     all_goals simp_all

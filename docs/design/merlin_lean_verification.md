@@ -583,6 +583,12 @@ initialized from `tensor.empty` for exactly this reason. We handle it two ways:
     `FloatLaws` (clamp range on non-NaN) showing the conversion is defined for non-NaN activations.
   - Its domain `D` would then exclude NaN activations, and the claim must say so.
 
+**Current qualification limit:** `supportCheck` establishes `NotStuck`, which permits UB and
+poison results. The separate definedness analysis above covers its stated initial fragment;
+value-dependent-site enumeration remains unimplemented. A verified support receipt or refinement
+claim alone does not establish defined source results. The overall chain verdict requires a
+separate source-definedness proof, and remains abstracted for the new dequantization source family.
+
 ### 4.6 Argument and result maps
 
 Some passes change the entry signature: `qinner.lift` appends arguments, entry-weight projection
@@ -719,6 +725,59 @@ explicitly invalid linalg (`collapse_overrank_matmul`), so proving refinement ag
 MLIR meaning is insufficient. It belongs with independently declared frontend semantics in order 6.
 Boolean cast repairs have the same distinction. Quantization policy authors must use independently
 declared software contracts/references rather than reconstruct the policy from the implementing pass.
+**First arithmetic-lowering obligation.** `Spec/Dequant.lean` proposes separate scalar contracts
+for signed-i8 input, i32 zero point and f32 scale/result, based on PyTorch v2.10.0. Per-tensor
+dequantization converts before subtraction; per-channel dequantization subtracts after integer
+promotion and converts once. `Rules/DequantScalar.lean` proves execution of each ordered scalar
+body against its contract for every float model and scalar input bit pattern, including all
+combinations of poison arithmetic operands and an arbitrary unused destination value.
+`checkBody_poison_sound` lifts that result through the proved SSA alpha
+checker. Tests compare the actual MLIR-exported per-tensor lowering body, reject the current
+per-channel float-subtraction body, and accept the proposed integer-subtraction replacement.
+`Rules/DequantTensor.lean` lifts accepted bodies to regions closed over arbitrary SSA environments
+and entire generic loop nests, including empty iteration spaces. Its `checkLayout` checks the
+source-derived identity/broadcast/channel-projection maps, parameter shapes, axis, iterator kinds,
+and interval-proved access bounds. `tensor_contract_sound` then proves that the complete generic
+loop computes the independently specified `Spec.Dequant.tensor`: q uses the output coordinate,
+parameters use either the empty coordinate or the selected channel coordinate. It derives the
+pointwise reads, covers arbitrary ranks and poison elements, and permits any destination values.
+The narrow `Sem/Ops/Dequant.lean` source family now checks runtime shapes and observable element
+values, and evaluates that independent source contract. `Check/RulesDequant.lean` proves source
+support on typed inputs; this prevents the claim from depending on an unsupported source.
+`Rules/DequantSource.lean` connects actual runtime tensors to the loop proof. The C1 rule in
+`Rules/DequantSite.lean` checks source/target operation structure, every operand mapping, output
+and parameter shapes, attributes, fresh result/temporary names, maps, iterators and the scalar body.
+Its soundness proof preserves SSA correspondence across the target-only allocation. `Synth` offers
+this one-to-two site to C1; the existing C1 and module checkers recheck it. Unsupported variants
+remain refused. This source-family addition is the frozen-dispatch interface extension requested
+by the narrow-lowering verification work; the dispatcher change and family are pinned in SPEC_LOCK.
+Source-contract review and capture-producer binding remain necessary for paper qualification.
+The production signed-i8/i32/f32 per-channel lowering now emits the proved integer-subtraction
+body. Both narrow granularities verify on actual pass output. The historical floating-subtraction
+per-channel body is retained as a refused negative control, including its large-zero-point numeric
+counterexample. Other datatype and precision combinations remain outside this lowering proof.
+
+**Narrow whole-pass milestone.** Authoritative tests now export real preprocessing boundaries
+with the full signed-i8 bounds and `input_dtype = "i8"` metadata, check every stage and source
+support, bind the upstream handoff, and replay the receipts into a strict `chain_refines` claim
+reported as `refinement_verdict`. Overall verification remains abstracted because the separate
+source-definedness checker does not yet cover the dequantization source operations.
+Changing emitted subtraction to addition after verification invalidates the chain. Additional
+checks cover multiple dequantization sites, reversed returned-result order, rank-zero tensors,
+empty tensors and nonzero channel axes. This is verification relative to the proposed source
+model (T3), with nonnegative axes, rank-zero per-tensor parameters, and omitted or full-range
+signed-i8 bounds; it is not yet paper-qualified capture-to-execution verification.
+
+The separate CPU source oracle in `lean-torch-requirements.txt` pins PyTorch 2.10.0+cpu by wheel
+hash and all installed package versions. `test_lean_dequant_torch.py` executes the actual source
+operations for 63 finite-input tensor cases (539 element results), including signed zero, both i32
+wraparound directions and the historical large-zero-point counterexample. It compares every result
+bit with independent NumPy arithmetic and 49 selected points with actual compiler bodies folded
+by authoritative MLIR. Set `MERLIN_TORCH_PYTHON` to that isolated interpreter; required-mode runs
+fail if it is absent. These bounded fidelity checks supplement the universal parametric proofs;
+NaN payload and complete IEEE-instance qualification, human specification review, and exact
+capture-producer binding remain outstanding. CI is configured to provision the separate oracle;
+commits made with `[skip ci]` are validated locally.
 
 ### 5.2 C2 — outlining (inline-and-compare)
 
@@ -900,8 +959,9 @@ under the recorded assumptions; source UB and poison are still permitted by that
 Passing its path as `compose_chain(..., definedness=...)` requires replay of that proof on the same
 source, function, and index width. `chain_defined_refines` then establishes refinement and successful,
 nonpoison target execution on typed, nonpoison inputs. Without that receipt, or outside its fragment,
-the overall verdict remains `abstracted`. Earlier receipts, sources, and the handoff are checked
-again before publication. Argument maps (`equiv_args`) and numerical policies are not composed yet.
+the overall verdict remains `abstracted`. Replay also binds the actual stage files to the recorded byte references, so a receipt cannot
+retarget a live stage to another file. Earlier receipts, live stage files, sources, and the handoff
+are checked again before publication. Argument maps (`equiv_args`) and numerical policies are not composed yet.
 This claim covers the recorded chain, not the entire compilation pipeline. No caller-provided
 definedness flag can replace the proof.
 
@@ -1022,7 +1082,10 @@ tests and logged in a findings ledger. They are paper material.
 ### 8.6 Guardrails (CI and pre-commit)
 
 - **`lean-guard`:**
-  - scans the verified namespaces for the §1.2 ban list;
+  - scans declarations in the verified namespaces and declarations defined in their modules for the
+    §1.2 ban list, including helpers in other namespaces; compiler-generated recursive twins are
+    exempt only from the unsafe/partial checks, and assumption axioms must originate in locked
+    `MerlinVerify.Assumptions` modules;
   - runs `#print axioms` on every theorem in `Claims/` and compares it to the allow-list. On
     v4.35.0, `bv_decide` adds a per-proof native axiom (`<thm>._native.bv_decide.ax_…`), so this audit
     catches it without a separate tactic ban. Fixed-width lemmas use `decide`/`omega` or are listed in
@@ -1067,6 +1130,42 @@ frozen:
 5. **Spec review.** Every `Spec/` file is reviewed by a human (Jeremy or Agustin) against its cited
    source (MLIR op docs, TorchAO, `torch._refs`), and the review is recorded in `SPEC_LOCK`.
 6. **Axioms and ban audit**, and receipt replay from a clean checkout on a second machine.
+
+**Executable MLIR integration tests.** `.github/workflows/lean-mlir.yml` builds and audits Lean,
+then requires the pinned compiler Python MLIR bindings for round trips, receipts, chain replay,
+and the receipt-forgery and file-race regressions. `test_lean_mlir_differential.py` compares concrete
+integer results with MLIR's constant folder at widths 1, 2, 8, 32 and 64, including boundary values,
+division, shifts and overflow flags. Immediate UB is classified independently from the generated
+inputs; a Lean `ub` answer alone never exempts a case from comparison. The JUnit results record
+constant, poison, UB and unfolded counts, and require measured coverage for every tested operation.
+Legal folds from poison to concrete values are counted separately from exact-value agreement.
+Named map, reduce, matmul and transpose also compare with MLIR's generalization and independently
+specified expected tensors, including nonzero destination initializers. These are bounded tests,
+not a proof of MLIR fidelity. Full `mlir-runner` census coverage and IEEE-instance testing remain
+qualification work; the concrete Lean test driver deliberately supplies no IEEE float oracle.
+
+To reproduce the authoritative tests on Linux x86_64 with Python 3.12 and `uv` installed:
+
+```sh
+uv sync --frozen --extra dev --extra verify --extra targetgen
+uv venv --python 3.12 out/build/lean/mlir-venv
+export MERLIN_M2M_PYTHON="$PWD/out/build/lean/mlir-venv/bin/python"
+uv pip install --python "$MERLIN_M2M_PYTHON" --no-deps -r build_tools/toolchains/lean-mlir-requirements.txt
+# Install elan, then fetch Mathlib's cache in merlin/lean: lake exe cache get
+export PATH="$HOME/.elan/bin:$PATH"
+uv run --no-sync python build_tools/scripts/check_lean_guard.py
+MERLIN_LEAN_REQUIRED=1 uv run --no-sync pytest -q merlin/tests/ir/test_lean*.py \
+  -k 'not standalone and not test_round_trip_identical' \
+  -o junit_family=xunit1 \
+  --junitxml=out/artifacts/verification/lean-mlir.xml
+```
+
+The isolated binding environment uses the same torch-mlir version as
+`build_tools/toolchains/compiler-python.toml`, with a checksum-bound wheel. It needs no model capture
+checkout or PyTorch frontend. `MERLIN_COMPILER_PYTHON` also selects the test interpreter when the
+compatibility variable `MERLIN_M2M_PYTHON` is absent. Standalone xDSL/`mlir-opt` comparisons remain
+available separately through `MERLIN_VERIFY_MLIR_OPT`; they do not substitute for the authoritative
+tests in this workflow.
 
 **What would make this verification fake, and the guard against each:**
 

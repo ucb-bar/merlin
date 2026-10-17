@@ -8,6 +8,8 @@ and the lowering's xDSL preprocessing runs it only when the pass is selected.
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 
@@ -144,3 +146,30 @@ def test_preprocessing_runs_it_only_when_selected(monkeypatch):
     assert preprocess_text(raw)[0] == baseline  # an explicit deselection wins over the variable
     monkeypatch.delenv(OP.ENV)
     assert MARKER in preprocess_text(raw)[0]  # the variable alone still selects it, for A/B builds
+
+
+@pytest.mark.parametrize("preprocess", [preprocess_text, preprocess_text_with_transform_map])
+def test_selected_rewrite_has_a_contiguous_recorded_boundary(tmp_path, monkeypatch, preprocess):
+    from merlin.verify.lean import stages
+
+    monkeypatch.setenv(OP.ENV, "layer-norm-chunked-sums")
+    raw = source(width=256)
+    plain = preprocess(raw)
+    monkeypatch.setenv(stages.ENV, str(tmp_path / "stages"))
+    recorded = preprocess(raw)
+    assert recorded == plain
+    boundaries = stages.completed(tmp_path / "stages")
+    assert [json.loads((p / "meta.json").read_text())["boundary"] for p in boundaries] == [
+        "xdsl-parse",
+        "xdsl-pruned",
+        "xdsl-quant-lowered",
+        "xdsl-layer-norm-chunked-sums",
+        "xdsl-c-interface",
+    ]
+    for prev, nxt in zip(boundaries, boundaries[1:]):
+        assert (prev / "after.mlir").read_bytes() == (nxt / "before.mlir").read_bytes()
+    rewrite = boundaries[3]
+    assert json.loads((rewrite / "meta.json").read_text())["changed"]
+    assert MARKER not in (rewrite / "before.mlir").read_text()
+    assert MARKER in (rewrite / "after.mlir").read_text()
+    assert (boundaries[-1] / "after.mlir").read_text() == recorded[0]

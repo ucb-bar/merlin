@@ -65,9 +65,12 @@ def test_dequant_granularity_lowers_generically(kind):
     assert gen.attributes["prov.transforms"].data == f"dequant_{kind}"
     # scale operand (2nd input) indexing map encodes the granularity
     assert str(gen.indexing_maps.data[1]) == expected_scale_map
-    # dequant body: (sitofp(w) - sitofp(zp)) * scale
+    # Per-channel promotion/subtraction precedes conversion in the signed-i8/i32/f32 contract.
     body_ops = [o.name for o in gen.body.blocks[0].ops]
-    assert body_ops == ["arith.sitofp", "arith.sitofp", "arith.subf", "arith.mulf", "linalg.yield"]
+    if kind == "per_channel":
+        assert body_ops == ["arith.extsi", "arith.subi", "arith.sitofp", "arith.mulf", "linalg.yield"]
+    else:
+        assert body_ops == ["arith.sitofp", "arith.sitofp", "arith.subf", "arith.mulf", "linalg.yield"]
 
 
 def test_multiple_granularities_in_one_module():
@@ -76,8 +79,10 @@ def test_multiple_granularities_in_one_module():
   func.func @m(%w0: tensor<2x8xi8>, %s0: tensor<2xf32>, %z0: tensor<2xi32>,
                %w1: tensor<2x8xi8>, %s1: tensor<2x2xf32>, %z1: tensor<2x2xi32>)
                -> (tensor<2x8xf32>, tensor<2x8xf32>) {
-    %a = "quant_ext.dequantize_per_channel"(%w0, %s0, %z0) <{axis = 0 : i64}> : (tensor<2x8xi8>, tensor<2xf32>, tensor<2xi32>) -> tensor<2x8xf32>
-    %b = "quant_ext.dequantize_per_group"(%w1, %s1, %z1) <{group_size = 4 : i64, axis = 1 : i64}> : (tensor<2x8xi8>, tensor<2x2xf32>, tensor<2x2xi32>) -> tensor<2x8xf32>
+    %a = "quant_ext.dequantize_per_channel"(%w0, %s0, %z0) <{axis = 0 : i64}> :
+      (tensor<2x8xi8>, tensor<2xf32>, tensor<2xi32>) -> tensor<2x8xf32>
+    %b = "quant_ext.dequantize_per_group"(%w1, %s1, %z1) <{group_size = 4 : i64, axis = 1 : i64}> :
+      (tensor<2x8xi8>, tensor<2x2xf32>, tensor<2x2xi32>) -> tensor<2x8xf32>
     return %a, %b : tensor<2x8xf32>, tensor<2x8xf32>
   }
 }""")
@@ -122,7 +127,8 @@ def test_dequant_f32_scale_to_bf16_result_verifies(kind, attrs, scale_type):
 def test_per_tensor_quantize_lowers_to_exact_standard_qdq_expression():
     mod = parse_mlir_text("""module {
   func.func @q(%x: tensor<2x8xf32>, %s: tensor<f32>, %z: tensor<i64>) -> tensor<2x8xi8> {
-    %r = "quant_ext.quantize_per_tensor"(%x, %s, %z) <{quant_min = -128 : i64, quant_max = 127 : i64}> : (tensor<2x8xf32>, tensor<f32>, tensor<i64>) -> tensor<2x8xi8>
+    %r = "quant_ext.quantize_per_tensor"(%x, %s, %z) <{quant_min = -128 : i64, quant_max = 127 : i64}> :
+      (tensor<2x8xf32>, tensor<f32>, tensor<i64>) -> tensor<2x8xi8>
     return %r : tensor<2x8xi8>
   }
 }""")
@@ -170,7 +176,8 @@ def test_per_tensor_quantize_promotes_bf16_activation_to_f32():
 def test_dead_qdq_cone_is_pruned_without_touching_unknown_side_effects():
     mod = parse_mlir_text("""module {
   func.func @f(%x: tensor<2x8xf32>, %w: tensor<2x8xi8>, %s: tensor<f32>, %z: tensor<i32>) -> tensor<2x8xf32> {
-    %dead = "quant_ext.dequantize_per_tensor"(%w, %s, %z) : (tensor<2x8xi8>, tensor<f32>, tensor<i32>) -> tensor<2x8xf32>
+    %dead = "quant_ext.dequantize_per_tensor"(%w, %s, %z) :
+      (tensor<2x8xi8>, tensor<f32>, tensor<i32>) -> tensor<2x8xf32>
     %zero = arith.constant 0.0 : f32
     %out = tensor.splat %zero : tensor<2x8xf32>
     return %out : tensor<2x8xf32>
@@ -187,7 +194,9 @@ def test_prune_preserves_constants_captured_by_a_live_linalg_region():
   func.func @f(%x: tensor<2xf32>) -> tensor<2xf32> {
     %c = arith.constant 3.0 : f32
     %e = tensor.empty() : tensor<2xf32>
-    %r = linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%x : tensor<2xf32>) outs(%e : tensor<2xf32>) {
+    %r = linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
+      iterator_types = ["parallel"]}
+      ins(%x : tensor<2xf32>) outs(%e : tensor<2xf32>) {
     ^bb0(%v: f32, %o: f32):
       %p = arith.mulf %v, %c : f32
       linalg.yield %p : f32
