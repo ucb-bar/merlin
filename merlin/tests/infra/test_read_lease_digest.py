@@ -474,3 +474,67 @@ def test_fork_during_cached_validation_keeps_parent_lease(payload, monkeypatch):
         assert os.waitstatus_to_exitcode(status) == 0
         assert result.result(timeout=3) == expected
     assert L._CACHE is cache and cache.readers == 0 and L.digest(payload) == expected
+
+
+def test_batch_reuse_rechecks_admitted_members_without_hashing(payload, tmp_path, monkeypatch):
+    expected = require_lease(payload)
+    other = tmp_path / "never-admitted"
+    other.write_bytes(b"q" * 8192)
+    reads = []
+    original = L.hashlib.file_digest
+    monkeypatch.setattr(L.hashlib, "file_digest", lambda stream, *a: reads.append(1) or original(stream, *a))
+    assert L.reuse([]) == {}
+    assert L.reuse([other]) == {}
+    assert L.reuse([payload, other]) == {payload: expected}
+    assert L.reuse([payload], required=True) == {payload: expected}
+    assert reads == []
+    with L.verification() as owner:
+        L.reuse([payload])
+    assert set(owner[2]) == {payload}  # Registered for the surrounding verification's exit recheck.
+    with pytest.raises(RuntimeError, match="lease custody changed"):
+        L.reuse([payload, other], required=True)
+
+
+def test_small_admission_is_explicit_and_bounded(tmp_path):
+    small = tmp_path / "small"
+    small.write_bytes(b"pinned header")
+    assert L.digest(small) is None
+    value = L.digest(small, minimum_bytes=0)
+    if value is None:
+        pytest.skip("Linux read leases unavailable for the selected temporary filesystem")
+    assert value == hashlib.sha256(b"pinned header").hexdigest()
+    assert L.reuse([small]) == {small: value}
+    for bad in (-1, 1.5, True):
+        with pytest.raises(ValueError, match="nonnegative integer"):
+            L.digest(small, minimum_bytes=bad)
+
+
+@pytest.mark.parametrize("change", ["write", "truncate", "replace", "symlink", "custodian"])
+def test_batch_reuse_declines_then_ordinary_hit_refuses(payload, tmp_path, change):
+    require_lease(payload)
+    if change in ("write", "truncate"):
+        break_lease(payload, truncate=change == "truncate")
+    elif change == "replace":
+        replacement = tmp_path / "replacement"
+        replacement.write_bytes(payload.read_bytes())
+        os.replace(replacement, payload)
+    elif change == "symlink":
+        replacement = tmp_path / "replacement"
+        replacement.write_bytes(payload.read_bytes())
+        payload.unlink()
+        payload.symlink_to(replacement)
+    else:
+        L._CACHE.process.kill()
+        L._CACHE.process.wait(timeout=3)
+    assert L.reuse([payload]) is None
+    with pytest.raises(RuntimeError, match="lease custody changed"):
+        L.digest(payload)
+    assert L.reuse([payload]) is None and L.digest(payload) is None
+
+
+def test_required_batch_reuse_refuses_lost_custody(payload):
+    require_lease(payload)
+    break_lease(payload)
+    with pytest.raises(RuntimeError, match="lease custody changed"):
+        L.reuse([payload], required=True)
+    assert L._CACHE.disabled and L.reuse([payload]) is None

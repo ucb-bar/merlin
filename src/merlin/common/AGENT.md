@@ -145,3 +145,10 @@ kernel read lease. Cached path checks pin an O_PATH lookup and compare its
 kernel-resolved ordinary name and inode; replaced, indirect or deleted names
 refuse. Descriptor headroom is reserved at cache admission without a quadratic
 per-member descriptor enumeration.
+`read_lease_digest.reuse` batches hits for a closed pin set that one process
+reverifies repeatedly. It returns only members admitted earlier by `digest`,
+after rechecking every member's O_PATH name, identity and lease, then every lease
+again with one custodian check. A failed member declines so the caller's ordinary
+per-file hit reaches the existing refusal; `required=True` refuses directly. It
+never admits, hashes or trusts timestamps. An explicit `minimum_bytes` admission
+threshold changes only which files may be leased, never capacity or custody.

@@ -186,6 +186,12 @@ launching, capsule grading, golden generation, sandboxing and certification. The
   zero-payload assumptions are not hardware legality; keep them out of the
   shared grader. Provenance reads existing decoder facts without role-probe
   execution or schedule claims.
+- Strict v3 gSIM receipt checks read each distinct pinned path once per call. With
+  `MERLIN_SNAPSHOT_LEASE_CACHE=1` every pin is admitted to the shared read-lease cache at any
+  size, and later checks in the process reuse those digests only through
+  `read_lease_digest.reuse`; writes, truncation, inode or symlink replacement and custodian loss
+  refuse exactly as for frozen snapshot inputs. Pins outside the cache keep full reads, and
+  reused pins are rechecked after any slower reads in the same call.
 - `rtl_engine_policy.gsim_runtime_slot` admits synchronous native runs under one per-user
   mutex from the union of kernel slot reservations and an upper bound on same-user native
   plusarg processes. It discounts a duplicate only when a unique kernel FLOCK owner has a
