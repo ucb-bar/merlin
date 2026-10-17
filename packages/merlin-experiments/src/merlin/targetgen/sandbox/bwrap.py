@@ -1413,17 +1413,16 @@ def apply_final_answer_masks(
 def full_argv(
     te: TargetExperiment, ws: Path, bundle: dict | None = None, *, _policy_test_live_inputs: bool = False
 ) -> list[str]:
-    """The complete isolation argv for one target+arm: deny-by-default base + claude runtime + toolchain
-    binds + derived answer masks. ``bundle`` may be ``{}``/None for a descriptor-only (bundle-less)
-    target — the answer masks are then driven purely by the descriptor."""
-    from merlin.targetgen.sandbox import (
-        toolchain as TC,  # local: avoid a heavy import at module load
-    )
+    """The complete isolation argv for one target+arm: deny-by-default base + claude runtime (never the
+    operator's Claude state; no caller runs the CLI) + toolchain binds + derived answer masks. ``bundle``
+    may be ``{}``/None for a descriptor-only target — the masks are then driven purely by the descriptor."""
+    from merlin.targetgen.sandbox import claude_home as CH  # local: avoid a heavy import at module load
+    from merlin.targetgen.sandbox import toolchain as TC
 
     bundle = bundle or {}
     argv = (
-        base_argv(ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs)
-        + claude_runtime_binds()
+        base_argv(ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs, include_claude_home=False)
+        + CH.without_operator_state(claude_runtime_binds())
         + TC.toolchain_binds(te)
     )
     if bundle:

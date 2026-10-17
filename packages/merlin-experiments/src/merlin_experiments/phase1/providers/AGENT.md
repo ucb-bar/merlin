@@ -13,7 +13,10 @@ prefix. Both callers use bwrap.apply_final_answer_masks after all runtime binds 
 grant reapplication, so host-only input aliases and private snapshot metadata stay withheld.
 Mount-table tests do not qualify kernel isolation; payload integrity remains the existing
 native snapshot verification boundary, not a repeated full-corpus hash on every shell command.
-Never recreate a second sandbox policy here. Installed bridge startup requires explicit proxy config
+Never recreate a second sandbox policy here. No composition mounts the operator's `~/.claude` or
+`~/.claude.json`; a command that runs the `claude` CLI gets a fresh per-launch home from
+`merlin.targetgen.sandbox.claude_home`, whose only operator bind is the OAuth credential file.
+Installed bridge startup requires explicit proxy config
 and executable paths; checkout defaults require a physically detected source checkout.
 The resource sampler is a standalone stdlib CLI, also runnable with the canonical module name.
 

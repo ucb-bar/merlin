@@ -267,7 +267,8 @@ def test_sandbox_composition_preserves_original_order_and_payload(tmp_path, monk
         "environment",
         "compose",
     ]
-    assert events[0][1:] == ((workspace, bundle), {"repo": tmp_path})
+    # The operator's Claude state is never part of the base; a claude launch stages its own home.
+    assert events[0][1:] == ((workspace, bundle), {"repo": tmp_path, "include_claude_home": False})
     expected = [
         "bwrap",
         "base",
