@@ -439,6 +439,13 @@ def main(argv: list[str] | None = None) -> int:
         help="after issuing, replay the capture and write its sealed execution attestation here "
         "(v3 for a v2 checkpoint selection) as a fresh owner-only file",
     )
+    issue_capture.add_argument(
+        "--concurrent-replay",
+        action="store_true",
+        help="with --attestation-output: run the attestation replay beside issuance instead of after it, "
+        "the issue on the lower half of this process's CPUs and the replay on the upper half; the "
+        "replay is the same fresh sandboxed execution with the same byte comparison",
+    )
     attest_capture = capture_ops.add_parser(
         "attest", help="replay an issued preselected capture and write its sealed execution attestation"
     )
@@ -601,16 +608,31 @@ def main(argv: list[str] | None = None) -> int:
                             args.attestation_output.exists() or not args.attestation_output.parent.is_dir()
                         ):
                             raise ValueError("capture attestation output must be fresh, under an existing parent")
-                        receipt = capture_selection.issue(args.selection, expected_sha256=args.expected_sha256)
-                        result = {"sealed_receipt": str(receipt), "phase0_admission": "not_granted"}
-                        if args.attestation_output is not None:
-                            result.update(
-                                capture_selection.attest(
+                        if args.concurrent_replay and args.attestation_output is None:
+                            raise ValueError("--concurrent-replay needs --attestation-output")
+                        if args.concurrent_replay:
+                            from .capture_execution import sealed_m2m
+
+                            result = {
+                                "phase0_admission": "not_granted",
+                                **capture_selection.issue_and_attest(
                                     args.selection,
                                     expected_sha256=args.expected_sha256,
                                     output=args.attestation_output,
+                                    cpus=sealed_m2m.replay_cpu_sets(os.sched_getaffinity(0)),
+                                ),
+                            }
+                        else:
+                            receipt = capture_selection.issue(args.selection, expected_sha256=args.expected_sha256)
+                            result = {"sealed_receipt": str(receipt), "phase0_admission": "not_granted"}
+                            if args.attestation_output is not None:
+                                result.update(
+                                    capture_selection.attest(
+                                        args.selection,
+                                        expected_sha256=args.expected_sha256,
+                                        output=args.attestation_output,
+                                    )
                                 )
-                            )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
                 print(json.dumps(result, indent=2))
