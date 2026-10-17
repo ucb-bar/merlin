@@ -601,10 +601,11 @@ def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | 
         with _gsim_runtime_slot(wait_timeout_s=wait_timeout_s, slot_root=slot_root):
             yield
         return
+    queued_since_ns = time.monotonic_ns()  # Retries keep their place in the CPU queue.
     while True:
         remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
         with ExitStack() as ownership:
-            ownership.enter_context(shared_compute_pool(timeout_s=remaining))
+            ownership.enter_context(shared_compute_pool(timeout_s=remaining, queued_since_ns=queued_since_ns))
             try:
                 ownership.enter_context(_gsim_runtime_slot(wait_timeout_s=0, slot_root=slot_root))
             except TimeoutError:

@@ -103,6 +103,30 @@ def test_busy_native_capacity_leaves_compute_available_for_builds(shared_pool, m
     assert finished.is_set() and not errors
 
 
+def test_gsim_native_retries_keep_their_compute_queue_position(shared_pool, monkeypatch):
+    positions, attempts = [], []
+    original = cpu_pool.shared_compute_pool
+
+    @contextmanager
+    def recorded(**kwargs):
+        positions.append(kwargs.get("queued_since_ns"))
+        with original(**kwargs):
+            yield
+
+    @contextmanager
+    def native(**kwargs):
+        attempts.append(kwargs)
+        if len(attempts) < 3:
+            raise TimeoutError("native capacity busy")
+        yield
+
+    monkeypatch.setattr(cpu_pool, "shared_compute_pool", recorded)
+    monkeypatch.setattr(policy, "_gsim_runtime_slot", native)
+    with policy.gsim_runtime_slot(wait_timeout_s=5):
+        pass
+    assert len(positions) == 3 and positions[0] is not None and len(set(positions)) == 1
+
+
 def test_kernel_timeout_is_not_retried_as_an_admission_failure(shared_pool):
     with pytest.raises(TimeoutError, match='actual kernel timeout'):
         with policy.gsim_runtime_slot(wait_timeout_s=1):
@@ -158,3 +182,4 @@ def test_standalone_spike_launch_uses_the_common_compute_lease(shared_pool, monk
 
     monkeypatch.setattr(spike.subprocess, "run", launch)
     assert spike.run_elf("selected.elf", timeout=1) == "DONE\n"
+

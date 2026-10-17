@@ -14,6 +14,11 @@ An explicit shared compute roster and slot directory provide one namespace for
 build, simulation and bounded preparation steps. Same-process/thread nested steps
 reuse one active lease; incompatible nested selections refuse. Preparation worker
 affinity never holds a capsule-wide slot across child or RPC waits.
+The pool is divided only by lease priority (`cpu_priority`: AUTHOR 1, GRADE 2,
+PREPARATION 3, AUXILIARY 4; `MERLIN_CPU_PRIORITY` carries it to children). A
+cross-process `waiters/` queue in the slot directory serves more urgent classes
+first and FIFO within a class; no CPU is reserved for a class, and dead or
+stopped waiters never block. Unset engine caps default to `compute_capacity()`.
 The common access registry contains only target-neutral identities; the experiments
 sandbox extends it with mandatory packaged historical target denials before launch.
 `frozen_imports` provides stdlib-only, process-local source import isolation for
