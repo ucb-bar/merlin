@@ -210,3 +210,13 @@ def test_the_installed_cli_reads_the_frozen_capacity_without_a_model_call(tmp_pa
         rendered[count] = text
     assert "There are 4 available concurrency slots" in rendered[None]
     assert "There are 17 available concurrency slots" in rendered[16]
+
+
+def test_round_guidance_asks_for_delegation_only_when_helpers_are_available():
+    from merlin_experiments.phase1 import author_subagents as AS
+
+    assert AS.round_guidance(None, None) == "" and AS.continuation_guidance(None, None) == ""
+    assert AS.round_guidance(8, 4) == "" and AS.continuation_guidance(8, 4) == ""  # legacy flag already asks
+    text = AS.round_guidance(8, None)
+    assert "up to 8 helper sub-agents" in text and "variants/<name>" in text and "--capsules all" in text
+    assert "up to 8 at once" in AS.continuation_guidance(8, None)

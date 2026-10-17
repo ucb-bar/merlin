@@ -154,3 +154,42 @@ def summary_record(capacity: int | None, delegation: int | None) -> dict:
         "delegation_prompt": delegation is not None,
         **({} if capacity is not None else {"provider_default": PROVIDER_DEFAULT}),
     }
+
+
+def round_guidance(capacity: int | None, delegation: int | None) -> str:
+    """Author-facing request to delegate, appended when helpers are available.
+
+    Codex's own instructions forbid spawning sub-agents unless the user explicitly asks, so a raised
+    ceiling alone is never used. The legacy ``--codex-max-subagents`` delegation text already asks;
+    this is added only when that text is absent.
+    """
+    if capacity is None or delegation is not None:
+        return ""
+    return (
+        "\n\nSub-agents are available and I am asking you to use them: this session can run up to "
+        f"{capacity} helper sub-agents at once (spawn_agent, wait_agent, followup_task). When the work "
+        "splits into independent parts -- lowering for a disjoint group of operations or capsule "
+        "families, diagnosing one failing capsule cluster, answering one specific ISA or ABI question -- "
+        "delegate those parts instead of doing everything serially. Give each helper a self-contained "
+        "brief: the goal, the exact files it owns, the capsules it should check, and what to report "
+        'back; prefer fork_turns "none" (or a few turns) with that brief over a full-history fork, '
+        "which re-sends your entire context to every helper. Helpers share your workspace and see each "
+        "other's edits immediately, so never give two agents the same file; give each helper its own "
+        "variants/<name>/ copy and have it check that copy with `python3 agent_selfcheck.py "
+        "--submission variants/<name> --capsules <names>`. Helpers check only their focused capsules, "
+        "never `--capsules all`. You own integration: wait with long wait_agent timeouts rather than "
+        "polling, merge helper work into submission/, and run the focused and regression checks on "
+        "submission/ yourself. Helpers follow the same TASK.md rules, tools and permissions; delegation "
+        "grants no additional access."
+    )
+
+
+def continuation_guidance(capacity: int | None, delegation: int | None) -> str:
+    """Short reminder for continuation turns, under the same condition as :func:`round_guidance`."""
+    if capacity is None or delegation is not None:
+        return ""
+    return (
+        f" Keep delegating independent parts to sub-agents (up to {capacity} at once), each with a "
+        "self-contained brief naming the files it owns and the capsules it checks; merge their work "
+        "into submission/ yourself before checking it."
+    )

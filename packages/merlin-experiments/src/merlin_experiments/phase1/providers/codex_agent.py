@@ -981,6 +981,7 @@ def run_round(
         )
     )
     msg = delegation_user_prompt(msg, max_concurrent_subagents)
+    msg += _AS.round_guidance(capacity, max_concurrent_subagents)
     prompt_path.write_text(msg)
 
     inner_final = last_message_path(ws, final_path, sandbox)
@@ -1054,6 +1055,7 @@ def run_round(
         )
     )
     _CONTINUE_MSG = delegation_user_prompt(_CONTINUE_MSG, max_concurrent_subagents)
+    _CONTINUE_MSG += _AS.continuation_guidance(capacity, max_concurrent_subagents)
     turn_index = 0
     rc = 0
     active_proc: subprocess.Popen | None = None
