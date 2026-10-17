@@ -100,12 +100,14 @@ budgets:
   # 5 h authoring cap (--max-wall-s and --round-timeout); the continuous
   # schedule stops earlier on convergence (target about 2 h).
   authoring_s: 18000
-  # Supervisor backstop beyond the authoring cap: startup and post-turn grade margin.
-  supervisor_backstop_s: 1800
+  # Supervisor backstop beyond the authoring cap: startup allowance (900 s) plus author-stop slack
+  # (300 s). Once the author has stopped, post-author grading gets its own allowance of
+  # clamp(1.5 x the run's measured full grade, 900 s, 3600 s) before the frozen-qualification fallback.
+  supervisor_backstop_s: 1200
   grade_interval_s: 120
-  qa_timeout_s: 300
+  qa_timeout_s: 1200  # >= 2x the slowest measured capsule (SY_conv_operand_capacity_boundary ~622 s wall)
   model_budget_s: 600
-  sim_per_capsule_timeout_s: 300
+  sim_per_capsule_timeout_s: 1200
 
 origin:
   # Fresh empty origin: no --seed-submission, no --resume, no prior candidate.
