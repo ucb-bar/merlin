@@ -11,7 +11,7 @@ import pytest
 from test_lean_integer_fold import BINARY, MUTATE, binary_source, canonicalize
 
 from merlin.verify.lean import differential as diff
-from merlin.verify.lean.check import check_stage
+from merlin.verify.lean.check import check_definedness, check_stage, check_support, compose_chain
 
 
 def _signed(value, width):
@@ -150,3 +150,49 @@ def test_wrong_fold_constant_changes_native_results(tmp_path, fidelity_tools):
     original = json.loads((tmp_path / "original/native-results.json").read_text())["results"]
     mutated = json.loads((tmp_path / "mutated/native-results.json").read_text())["results"]
     assert original == [["10", "19"]] and mutated == [["11", "19"]]
+
+
+def test_long_integer_fold_certified_chain_and_native_execution(tmp_path, fidelity_tools):
+    constants = [37 * (i + 1) for i in range(64)]
+    body = ["%seed = arith.constant -17 : i13"]
+    previous = "%seed"
+    for i, value in enumerate(constants):
+        body.extend(
+            [
+                f"%c{i} = arith.constant {value} : i13",
+                f"%r{i} = arith.addi {previous}, %c{i} : i13",
+            ]
+        )
+        previous = f"%r{i}"
+    source = (
+        "func.func @forward(%keep: i32) -> (i13, i32) {\n"
+        + "\n".join(body)
+        + f"\nreturn {previous}, %keep : i13, i32\n}}"
+    )
+    stage, before, after = canonicalize(tmp_path, SimpleNamespace(m2m_python=fidelity_tools.compiler_python), source)
+    assert before.read_text().count("arith.addi") == 64
+    assert after.read_text().count("arith.constant") == 1
+    assert "arith.addi" not in after.read_text()
+    boundary = check_stage(stage, m2m_python=fidelity_tools.compiler_python)
+    assert boundary["verdict"] == "verified", boundary.get("reason")
+    for checker, name in [(check_support, "support"), (check_definedness, "defined")]:
+        checked = checker(before, "forward", tmp_path / name, m2m_python=fidelity_tools.compiler_python)
+        assert checked["verdict"] == "verified", checked.get("reason")
+    chain = compose_chain(
+        [stage],
+        tmp_path / "support/receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        m2m_python=fidelity_tools.compiler_python,
+        definedness=tmp_path / "defined/receipt.json",
+    )
+    assert chain["verdict"] == "verified", chain.get("reason")
+    assert chain["theorem"] == "MerlinVerify.Check.chain_defined_refines"
+
+    samples = [[[keep]] for keep in [0, 1 << 31, (1 << 32) - 1]]
+    expected = str((-17 + sum(constants)) % 8192)
+    for name, path in [("before", before), ("after", after)]:
+        work = tmp_path / name
+        diff.compare(path.read_text(), samples, work, fidelity_tools, function="forward")
+        native = json.loads((work / "native-results.json").read_text())["results"]
+        assert native == [[expected, str(sample[0][0])] for sample in samples]
