@@ -8,4 +8,4 @@ The background grader finishes each immutable compiler snapshot and writes qa/pr
 
 Public native host checks select board gemmini_rocket_gsim_fire_aligned, whose RTL configuration and FireSim DTS match the gSIM execution selected through verified correspondence from FireSimGemminiRocketConfig facts and 16 GiB map. The selected functional Spike runtime and untuned timing profile remain Fire-aligned.
 
-Whole-model execution is deferred to the separate post-experiment check. Private source preflight records known input failures for SmolVLA (capture seal/result-format selection) and TinyLlama (decode lineage); these are not compiler failures or passing full-model results.
+Whole-model execution is deferred to the separate post-experiment check. Private source preflight records known input failures for SmolVLA (native result-format selection) and TinyLlama (decode lineage); these are not compiler failures or passing full-model results.
