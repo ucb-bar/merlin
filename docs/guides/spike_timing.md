@@ -3,7 +3,7 @@ title: Calibrating and validating annotated timing
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-15
+last_verified: 2026-10-17
 related: [architecture, performance_budget_unit]
 code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py]
 ---
@@ -185,10 +185,20 @@ payloads or simulation environments.
 
 ## Original Phase 1 capsule archives
 
-The archive intake accepts `merlin.phase1.capsule_timing_archive.v2` from
-`merlin_experiments.phase1.capsule_timing_archive`. Supply the archive SHA256
-from the immutable producer handoff, rather than substituting a locally invented
-source or simulator identity:
+The archive intake accepts `merlin.phase1.capsule_timing_archive.v2` and `.v3`
+from `merlin_experiments.phase1.capsule_timing_archive`. A v2 archive prepares
+observations only when it is `timing_ready` (every passing gSIM record belongs
+to a passing capsule). A v3 archive, normally the run's
+`capsule_timing_training_<digest>.tar`, is judged per record: intake recomputes
+each row's `training_eligible` verdict (a fresh, console-verified, kernel-window
+gSIM measurement whose gSIM tier passed numerics with every identity present,
+whatever the capsule's overall verdict) and refuses an archive whose declared
+verdicts, visibility or training counts disagree. Only public eligible rows can
+be bound; a hidden row refuses. A binding must cover every eligible public row
+and every executed public repeat of a bound ELF; a result whose gSIM tier never
+ran is not a repeat. Carried (copied) verdicts never count as measurements.
+Supply the archive SHA256 from the immutable producer handoff, rather than
+substituting a locally invented source or simulator identity:
 
 ```sh
 spike-timing archive-inspect --archive capsule_timing.tar \
