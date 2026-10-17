@@ -31,6 +31,7 @@
   "statement:MerlinVerify.Check.Definedness.definedCheck_sound": "089f43188f28b3dc3d37003cc306a87ef162dd31823a365d71bd72f941ea2e90",
   "statement:MerlinVerify.Check.Definedness.dequantDefinedRule_sound": "43f963aaa9a8b66e88036ee95255b07f257627604712bab4a77f723302067f55",
   "statement:MerlinVerify.Check.Definedness.dequant_result_defined": "cf2a729aff465731dd3667f7bbe47bfa01b2477ea88b3758811f6b552a12744a",
+  "statement:MerlinVerify.Check.Definedness.layoutDefinedRule_sound": "9927f34ebcb32fb5cbc44ee830097ce7bbbe03fb48fbcd1bb77c8e11c58b15c0",
   "statement:MerlinVerify.Check.TypedC1.check_sound": "c46d9758bbcd4b5acf6421439862028848fed51b0a1fccfb25c432a7fe8b9eaa",
   "statement:MerlinVerify.Check.TypedModule.check_sound": "63eb2326c7572f01af645ed755030efbefd0a4093c0d5e757bf8f38c2adb4e3e",
   "statement:MerlinVerify.Check.UniformFacts.coupled": "a7c92c186ffe9ca10422bb3fd565c4053268bd73826a3e6c80b69ea4a037ab80",
@@ -45,6 +46,7 @@
   "statement:MerlinVerify.Check.dequantRule_sound": "9bab6b4bdbd0be7190c8d0dcf429d59819b0d5267b4b0768074be1d0061036e0",
   "statement:MerlinVerify.Check.funcRefines_of_support": "acab6fae9591d825d59ab1c2fe05266d95d2dc1c7450be044a145498f1ac24c8",
   "statement:MerlinVerify.Check.moduleCheck_sound": "351695da5f4d1377d0c7a5c9beebcab10117903abcc6153bae8e4bd77ba1c81e",
+  "statement:MerlinVerify.Check.reduceRule_sound": "640a9af6ac7a46947c1bb9006a6ecd8635e324297baca515096e0e2eb27455ea",
   "statement:MerlinVerify.Check.supportCheck_safe": "b59b52d6b9bf4cba339111b4a65d64a62bb68c217838acd84cba58bc8962011f",
   "statement:MerlinVerify.Check.supportCheck_sound": "5d04b5409b2343452edd58190b1cf7b8186447637dc52e3dcac22d89333d1ac9",
   "statement:MerlinVerify.Rules.CopyGeneralize.expand_sound": "8cb9b8a1727dd57bcdb5ff8a3e97d8a53219346039dd1e4afb8a85cb0b1bf238",
@@ -61,6 +63,8 @@
   "statement:MerlinVerify.Rules.DequantTensor.region_sound": "aec4b4839909a4d8456e66e97393ce411f2edddaaa3444f7cb80a30b23b375cc",
   "statement:MerlinVerify.Rules.DequantTensor.tensor_contract_sound": "318a05cbf38f3c893e560e3c34999eff60b4a3af8740c005ea07be79eafc72da",
   "statement:MerlinVerify.Rules.FillGeneralize.expand_sound": "732b1567af35ae5f0b1a49350bec97888bdccbe21383d4a43e17f33a57457ffe",
+  "statement:MerlinVerify.Rules.LayoutGeneralize.expand_sound": "1e84239d17b06c8c804f4805b25209286976c5cc3e991330febcf4c14e4a571d",
+  "statement:MerlinVerify.Rules.LayoutGeneralize.meaning_success": "5c34a018c720165c5b25d995a3eafec4e305c9203bcec9a5a3b3f4c07fce75df",
   "statement:MerlinVerify.Rules.SplatInputs.checkLayout_sound": "c70055842229f76d2fc4e2ce9eeb8e2cb5b37aac9d0599d91f0b40dccb7ee56b",
   "statement:MerlinVerify.Rules.StructuredInputs.genericSem_congr": "fdb2c12094fc70c2cae18e24ef72c245a0dbc53e0e8c0c9fad8adb23a45e829b"
 }

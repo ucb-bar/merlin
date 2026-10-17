@@ -22,6 +22,8 @@ code_refs:
   - merlin/lean/MerlinVerify/Check/UniformFacts.lean
   - merlin/lean/MerlinVerify/Rules/CopyGeneralize.lean
   - merlin/tests/ir/test_lean_copy_generalize.py
+  - merlin/lean/MerlinVerify/Rules/LayoutGeneralize.lean
+  - merlin/tests/ir/test_lean_layout_generalize.py
 ---
 
 # Run Lean semantics differential tests
@@ -136,6 +138,32 @@ arithmetic cases explicitly allow different NaN payloads/signs when both results
 results, infinities and signed zero remain exact. Data movement and bitcast cases compare NaN
 payloads bit for bit. A seeded add-to-subtract fault demonstrates that a wrong model result is
 detected.
+
+## Transpose, broadcast and reduction rules
+
+The typed checker also certifies actual transpose, broadcast and variadic reduction generalization.
+`Rules/LayoutGeneralize.lean` derives indexing maps and iterator kinds from the actual source
+attributes and checked SSA types, preserves the scalar body and captures, and checks the actual
+generic header. Source support and source definedness are independent obligations. Transpose and
+broadcast may fully overwrite uninitialized destinations; reductions that read accumulators need
+initialized destinations. The integer reduction definedness rule supports multiple inputs/results
+and empty iteration spaces. Floating reductions retain their order in the refinement proof;
+the current definedness leaf rulebook still abstains on floating arithmetic.
+
+`test_lean_layout_generalize.py` checks both index widths, actual pass output, receipt replay,
+stale source rejection, valid MLIR mutations, poisoned inputs, captured values and composition
+through intermediate fill/broadcast/transpose/reduce results. The native suite compares both sides
+with an independent coordinate-based reference. Data movement includes f32/f64 NaN payloads,
+signed zeros, infinities and subnormals. Reduction references use modular integer accumulation or
+explicit per-add floating rounding, including cancellation-sensitive inputs. BF16 movement has
+binding/proof coverage only; no native BF16 claim is made.
+
+Two boundaries remain explicit: the upstream greedy pass folds some identity operations away,
+which requires a separate rewrite rule; the typed checker currently abstains on those outputs.
+Rank-zero transpose is not qualified: the current installed binding crashes during verification,
+and an assertion-enabled upstream `mlir-opt` reproduces the empty-permutation-map assertion in
+`TransposeOp::getIndexingMaps`. Rank-zero broadcasts and scalar reduction results are separate
+cases. Generated failure evidence belongs under `out/artifacts/verification/shared-passes/`.
 
 ## Map contract and initialization
 

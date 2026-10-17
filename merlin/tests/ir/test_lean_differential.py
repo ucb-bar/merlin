@@ -14,6 +14,7 @@ import struct
 from pathlib import Path
 
 import pytest
+from test_lean_layout_generalize import Case as LayoutCase
 
 from merlin.verify.lean import differential as diff
 
@@ -790,3 +791,154 @@ def test_copy_wrong_input_is_detected_by_native_execution(tmp_path, fidelity_too
     original = json.loads((tmp_path / "original/native-results.json").read_text())["results"]
     mutated = json.loads((tmp_path / "mutated/native-results.json").read_text())["results"]
     assert original == [["7"] * 4] and mutated == [["13"] * 4]
+
+
+def _layout_reference(case, sample):
+    """Coordinate-level oracle independent of Lean's affine maps and structured loop evaluator."""
+    import math
+
+    def offset(point, shape):
+        result = 0
+        for coordinate, extent in zip(point, shape, strict=True):
+            result = result * extent + coordinate
+        return result
+
+    def points(shape):
+        return itertools.product(*(range(extent) for extent in shape))
+
+    ni = case.outputs if case.family == "reduce" else 1
+    output = [list(sample[ni + 1 + i]) for i in range(case.outputs)]
+    if case.family == "broadcast":
+        for point in points(case.result_shape):
+            source_point = tuple(d for i, d in enumerate(point) if i not in case.dimensions)
+            output[0][offset(point, case.result_shape)] = sample[0][offset(source_point, case.shape)]
+    else:
+        for point in points(case.shape):
+            target = (
+                tuple(point[d] for d in case.dimensions)
+                if case.family == "transpose"
+                else tuple(d for i, d in enumerate(point) if i not in case.dimensions)
+            )
+            src, dst = offset(point, case.shape), offset(target, case.result_shape)
+            for i in range(case.outputs):
+                value = sample[i][src]
+                if case.family == "reduce":
+                    if case.element.startswith("f"):
+                        width = int(case.element[1:])
+                        fmt, integer_fmt = ("<f", "<I") if width == 32 else ("<d", "<Q")
+                        left, right = [
+                            struct.unpack(fmt, struct.pack(integer_fmt, bits))[0] for bits in [value, output[i][dst]]
+                        ]
+                        summed = left + right
+                        try:
+                            packed = struct.pack(fmt, summed)
+                        except OverflowError:
+                            packed = struct.pack(fmt, math.copysign(math.inf, summed))
+                        value = struct.unpack(integer_fmt, packed)[0]
+                    else:
+                        value = (value + output[i][dst]) % (1 << int(case.element[1:]))
+                output[i][dst] = value
+    return [str(v) for result in output for v in result] + [str(v) for v in sample[0]]
+
+
+# This native suite stays in the existing explicitly tool-qualified module; the binding-only
+# layout suite is collected automatically by CI's Lean test glob.
+LAYOUT_NATIVE_CASES = [
+    LayoutCase("transpose", (2, 3, 4), (1, 2, 0)),
+    LayoutCase("transpose", (2, 3, 4), (2, 0, 1), "i13"),
+    LayoutCase("transpose", (0, 3), (1, 0)),
+    LayoutCase("transpose", (2, 3), (1, 0), "f32"),
+    LayoutCase("transpose", (2, 3), (1, 0), "f64"),
+    LayoutCase("broadcast", (), (0, 1), broadcast_shape=(2, 3)),
+    LayoutCase("broadcast", (), (), broadcast_shape=()),
+    LayoutCase("broadcast", (2, 3), (0, 2), broadcast_shape=(4, 2, 5, 3)),
+    LayoutCase("broadcast", (3,), (0,), "i13", (0, 3)),
+    LayoutCase("broadcast", (2,), (1,), "f32", (2, 3)),
+    LayoutCase("broadcast", (2,), (0,), "f64", (3, 2)),
+    LayoutCase("reduce", (2, 3, 4), (0, 2), outputs=2),
+    LayoutCase("reduce", (2, 3), (0, 1), "i8"),
+    LayoutCase("reduce", (2, 3), (1,), "i13"),
+    LayoutCase("reduce", (2, 0, 3), (1,)),
+    LayoutCase("reduce", (0, 3), (1,)),
+    LayoutCase("reduce", (2, 3), (), outputs=2),
+    LayoutCase("reduce", (2, 3, 4), (0, 2), "f32"),
+    LayoutCase("reduce", (2, 3, 4), (0, 2), "f64"),
+]
+
+
+@pytest.mark.parametrize(
+    "case",
+    LAYOUT_NATIVE_CASES,
+    ids=lambda c: f"{c.family}-{c.shape}-{c.dimensions}-{c.element}-{c.outputs}",
+)
+def test_layout_generalization_native_and_independent_reference(tmp_path, fidelity_tools, case):
+    from types import SimpleNamespace
+
+    from test_lean_generalize import _generalize
+    from test_lean_layout_generalize import _source
+
+    source = _source(case).replace("@forward", "@subject")
+    _, before, after = _generalize(tmp_path, SimpleNamespace(m2m_python=fidelity_tools.compiler_python), source)
+    samples = _tensor_samples(source, tmp_path, fidelity_tools)
+    arithmetic = case.family == "reduce" and case.element.startswith("f")
+    if case.element.startswith("f"):
+        width = int(case.element[1:])
+        if arithmetic:
+            # Large cancellation terms make reordering observable; finite edges avoid relying on
+            # unspecified arithmetic NaN payloads. Each native add rounds back to its source format.
+            edges = [_float_bits(v, width) for v in [1e20, 1.0, -1e20, 3.0, -0.0, 0.0, -2.0]] + [1]
+        else:
+            edges = _floats(width) + [0x7FC01234 if width == 32 else 0x7FF8000000001234]
+        samples.extend([[arg.copy() for arg in samples[0]] for _ in range(max(0, len(edges) - len(samples)))])
+        for index, sample in enumerate(samples):
+            for number, argument in enumerate(sample):
+                sample[number] = [edges[(index + number + j) % len(edges)] for j in range(len(argument))]
+    expected = [_layout_reference(case, sample) for sample in samples]
+    observed = []
+    for name, program in [("before", before), ("after", after)]:
+        work = tmp_path / name
+        diff.compare(program.read_text(), samples, work, fidelity_tools, arithmetic_nans=arithmetic)
+        actual = json.loads((work / "native-results.json").read_text())["results"]
+        assert actual == expected
+        observed.append(actual)
+    assert observed[0] == observed[1]
+
+
+@pytest.mark.parametrize("family", ["transpose", "broadcast", "reduce"])
+def test_layout_wrong_input_is_observable_in_native_execution(tmp_path, fidelity_tools, family):
+    from types import SimpleNamespace
+
+    from test_lean_generalize import _generalize
+    from test_lean_layout_generalize import MUTATE, MUTATION_CASES, _source
+
+    case = next(case for case in MUTATION_CASES if case.family == family)
+    source = _source(case).replace("@forward", "@subject")
+    _, before, after = _generalize(tmp_path, SimpleNamespace(m2m_python=fidelity_tools.compiler_python), source)
+    samples = _tensor_samples(source, tmp_path, fidelity_tools)[:1]
+    samples[0] = [[value] * len(arg) for value, arg in zip([7, 13, 19], samples[0], strict=True)]
+    diff.compare(before.read_text(), samples, tmp_path / "original", fidelity_tools)
+    diff._run([str(fidelity_tools.compiler_python), "-c", MUTATE, str(after), "input", family])
+    diff.compare(after.read_text(), samples, tmp_path / "mutated", fidelity_tools)
+    original = json.loads((tmp_path / "original/native-results.json").read_text())["results"]
+    mutated = json.loads((tmp_path / "mutated/native-results.json").read_text())["results"]
+    assert original == [_layout_reference(case, samples[0])]
+    assert original != mutated
+
+
+def test_mixed_layout_chain_native_execution(tmp_path, fidelity_tools):
+    from types import SimpleNamespace
+
+    from test_lean_generalize import _generalize
+    from test_lean_layout_generalize import MIXED_SOURCE
+
+    source = MIXED_SOURCE.replace("@forward", "@subject")
+    _, before, after = _generalize(tmp_path, SimpleNamespace(m2m_python=fidelity_tools.compiler_python), source)
+    samples = [[[value], [1, 0xFFFFFFFF]] for value in [0, 1, 7, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF]]
+    expected = [
+        [str((3 * sample[0][0] + init) % (1 << 32)) for init in sample[1]] + [str(sample[0][0])] * 6
+        for sample in samples
+    ]
+    for name, program in [("before", before), ("after", after)]:
+        work = tmp_path / name
+        diff.compare(program.read_text(), samples, work, fidelity_tools)
+        assert json.loads((work / "native-results.json").read_text())["results"] == expected

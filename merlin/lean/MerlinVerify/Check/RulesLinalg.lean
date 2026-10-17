@@ -808,17 +808,100 @@ theorem transposeRule_sound (ib : Nat) : RuleSound ib transposeRule := by
     · cases h
   · cases h
 
+/-- Reduction's existing semantics permits either explicit segments or an equal-half split.
+The implicit split is the representation exported by upstream variadic `linalg.reduce`. -/
+def reductionSplit {α : Type} (op : Op) (xs : List α) : List α × List α :=
+  (splitInsOuts op xs).getD (xs.take (xs.length / 2), xs.drop (xs.length / 2))
+
+theorem splitInsOuts_isSome_length {α β : Type} (op : Op) (xs : List α) (ys : List β)
+    (hlen : xs.length = ys.length) :
+    (splitInsOuts op xs).isSome = (splitInsOuts op ys).isSome := by
+  unfold splitInsOuts
+  split
+  · simp only [hlen]; split <;> rfl
+  · rfl
+
+theorem reductionSplit_typed {ib : Nat} {op : Op} {args : List RVal}
+    {tys ins outs : List VTy} (h : reductionSplit op tys = (ins, outs))
+    (ha : HasTys ib args tys) : ∃ xs ys, reductionSplit op args = (xs, ys) ∧
+      HasTys ib xs ins ∧ HasTys ib ys outs := by
+  cases hs : splitInsOuts op tys with
+  | some pair =>
+    simp only [reductionSplit, hs, Option.getD_some] at h
+    subst pair
+    obtain ⟨xs, ys, hv, hx, hy⟩ := splitInsOuts_typed hs ha
+    exact ⟨xs, ys, by simp [reductionSplit, hv], hx, hy⟩
+  | none =>
+    have hv : splitInsOuts op args = none := by
+      have his : (splitInsOuts op args).isSome = false := by
+        rw [splitInsOuts_isSome_length op args tys (HasTys.length ha), hs]
+        rfl
+      cases hv : splitInsOuts op args <;> simp_all
+    simp only [reductionSplit, hs, Option.getD_none, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    refine ⟨args.take (tys.length / 2), args.drop (tys.length / 2), ?_,
+      List.forall₂_take _ ha, List.forall₂_drop _ ha⟩
+    simp only [reductionSplit, hv, Option.getD_none, HasTys.length ha]
+
+theorem reductionSplit_append {α : Type} (op : Op) (xs ins outs : List α)
+    (h : reductionSplit op xs = (ins, outs)) : xs = ins ++ outs := by
+  unfold reductionSplit splitInsOuts at h
+  split at h
+  · split at h
+    all_goals
+      simp only [Option.getD_some, Option.getD_none, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact (List.take_append_drop _ xs).symm
+  · simp only [Option.getD_none, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    exact (List.take_append_drop _ xs).symm
+
+/-- Variadic reduction retains input order, output order and the original scalar body. -/
+def reduceRule : OpRule := fun _ op argTys resTys =>
+  if dialectOf op.name = "linalg" ∧ op.name = "linalg.reduce" then
+    match reductionSplit op argTys, LinalgNamed.natArray? op "dimensions" with
+    | (ti :: ins, outs), some dims =>
+      let n := ti.shape.length
+      let kept := (List.range n).filter (fun d => !(dims.contains d))
+      namedOk (List.replicate (ins.length + 1) (identityMap n) ++
+          List.replicate outs.length (LinalgNamed.mapOf n kept))
+        ((List.range n).map fun d => if dims.contains d then .reduction else .parallel)
+        (ti :: ins) outs op resTys
+    | _, _ => none
+  else none
+
+theorem reduceRule_sound (ib : Nat) : RuleSound ib reduceRule := by
+  intro d op argTys resTys sigs hm h
+  simp only [reduceRule] at h
+  split at h
+  · next hc =>
+    obtain ⟨hd, hn⟩ := hc
+    split at h
+    · next ti ins outs dims hsplit hdims =>
+      intro ctx call args regions hib _ hargs hregs
+      obtain ⟨xs, ys, hio, hxs, hys⟩ := reductionSplit_typed hsplit hargs
+      obtain _ | ⟨hi, hrest⟩ := hxs
+      obtain ⟨body, rfl, hsafe⟩ := namedOk_safe hib h (.cons hi hrest) hys hregs
+      rw [named_sem_of hm hd (by simp [hn])]
+      dsimp only [reductionSplit] at hio
+      simp only [LinalgNamed.sem, Op.blind_name, hn, natArray?_blind, hdims,
+        splitInsOuts_blind, hio, shapeOf_typed hi,
+        List.map_const', List.length_cons, HasTys.length hrest, HasTys.length hys]
+      exact hsafe
+    · cases h
+  · cases h
+
 /-- The `linalg` typing rule: structured ops with explicit maps, `fill`, `index`, and the named ops
 defined by their generic form. -/
 def linalgRule : OpRule :=
   firstRule [genericRule, fillRule, indexRule, matmulRule, batchMatmulRule, quantizedMatmulRule,
-    copyRule, broadcastRule, transposeRule, mapRule]
+    copyRule, broadcastRule, transposeRule, mapRule, reduceRule]
 
 theorem linalgRule_sound (ib : Nat) : RuleSound ib linalgRule := by
   apply firstRule_sound
   simp only [List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff, implies_true, and_true]
   exact ⟨genericRule_sound ib, fillRule_sound ib, indexRule_sound ib, matmulRule_sound ib,
     batchMatmulRule_sound ib, quantizedMatmulRule_sound ib, copyRule_sound ib, broadcastRule_sound ib,
-    transposeRule_sound ib, mapRule_sound ib⟩
+    transposeRule_sound ib, mapRule_sound ib, reduceRule_sound ib⟩
 
 end MerlinVerify.Check

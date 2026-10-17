@@ -31,6 +31,7 @@ code_refs:
   - merlin/lean/MerlinVerify/Check/UniformFacts.lean
   - merlin/lean/MerlinVerify/Rules/MapGeneralize.lean
   - merlin/lean/MerlinVerify/Rules/CopyGeneralize.lean
+  - merlin/lean/MerlinVerify/Rules/LayoutGeneralize.lean
   - merlin/lean/MerlinVerify/Rules/Motion.lean
 ---
 
@@ -547,7 +548,7 @@ initialized from `tensor.empty` for exactly this reason. We handle it two ways:
     `Check/DefinedLinalg.lean` checks these conditions against actual `linalg.fill` and `linalg.generic`
     IR. It accepts initialized integer matmul with widening casts, multiple-output reductions,
     captured values, and single-output full overwrites. Structured bodies currently use the leaf
-    rulebook; nested structured operations, named transpose, direct tensor arithmetic,
+    rulebook; nested structured operations, direct tensor arithmetic,
     division, shifts, and overflow-flagged arithmetic still lack definedness rules.
   - The theorem requires typed, nonpoison inputs. The initialized-matmul fixture passes real xDSL
     preprocessing and obtains a `verified` chain after independent source support/definedness checks.
@@ -702,7 +703,7 @@ model/tensor layer is outside this sequence.
 
 | Order | Family | Proof obligation and completion criterion |
 |---|---|---|
-| 1 | Named operation generalization | Matmul/batch-matmul use universal expansion; map/fill/copy use checked typed SSA facts. Implemented for these top-level forms, with actual pass output and defined chains qualified. Other named families remain outstanding. |
+| 1 | Named operation generalization | Matmul/batch-matmul use universal expansion; map/fill/copy/transpose/broadcast/reduce use checked typed SSA facts. Implemented for supported top-level forms, including variadic reduction. Source-definedness, actual pass output and defined chains are checked separately. Identity folds and other named families remain outstanding. |
 | 2 | Exact integer arithmetic | Operand commutation and typed one-operation normalization are implemented. Next extend typed sites to width/flag-aware multi-operation cast and constant simplifications. Check signedness, poison and actual canonicalizer output. |
 | 3 | Valid static shape rewrites | Prove reshape cancellation/composition and indexing equivalence, including zero extents, reassociation, element type, and all escaping uses. |
 | 4 | Rewrites inside operation bodies | Lift proved local rules into actual linalg region closures with captures and block-argument shadowing; preserve reduction order and unchanged computation. |
@@ -730,6 +731,22 @@ is map-to-generic; fill and copy generalization use the same interface. Copy ret
 body and proves both conditional refinement and transfer of successful generic execution back
 to the original named source. Its definedness rule independently checks full overwrite or an
 initialized destination, so copying poison never becomes a defined-source claim.
+
+`Rules/LayoutGeneralize.lean` shares layout reconstruction, generic header decoding, typed
+expansion and successful-source transfer for transpose, broadcast and variadic reduce. Transpose
+uses the inverse permutation for its input map; broadcast projects away inserted dimensions;
+reduce keeps the original input/output ordering, projected output maps and reduction iterators.
+No scalar body or floating arithmetic order changes. Reduction operand partitioning matches the
+existing semantics, including the implicit equal-half split exported by upstream MLIR. A separate
+support rule proves progress for that variadic reduction representation. The definedness checker
+reuses generic totality and complete-overwrite proofs, then transfers success to the actual named
+source. Initialized integer reductions, captured scalar inputs and multiple results are covered;
+floating reduction refinement is available, but its arithmetic definedness remains unsupported by
+the current leaf rulebook. Identity operations folded away by upstream greedy rewriting require
+a separate rule and remain explicit abstentions. Rank-zero transpose cannot be qualified with the
+current native tools: upstream verification attempts to construct an empty permutation map and
+crashes. This is retained as an upstream discrepancy, not counted as a passing comparison.
+
 This one-operation interface does not yet implement multi-operation cast
 fusion, reshape elimination, nested rewriting or numerical policies.
 

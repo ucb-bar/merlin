@@ -3,10 +3,12 @@ import MerlinVerify.Check.TypedComposition
 import MerlinVerify.Rules.FillGeneralize
 import MerlinVerify.Rules.MapGeneralize
 import MerlinVerify.Rules.CopyGeneralize
+import MerlinVerify.Rules.LayoutGeneralize
 
 namespace MerlinVerify.Rules.TypedGeneralize
 
 def expansion : Check.TypedExpansion :=
-  MapGeneralize.expansion.orElse (FillGeneralize.expansion.orElse CopyGeneralize.expansion)
+  MapGeneralize.expansion.orElse (FillGeneralize.expansion.orElse
+    (CopyGeneralize.expansion.orElse LayoutGeneralize.expansion))
 
 end MerlinVerify.Rules.TypedGeneralize

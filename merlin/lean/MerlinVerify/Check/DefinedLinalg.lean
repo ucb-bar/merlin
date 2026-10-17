@@ -4,6 +4,7 @@ import MerlinVerify.Check.DefinedComposition
 import MerlinVerify.Check.DefinedDequant
 import MerlinVerify.Rules.Generalize
 import MerlinVerify.Rules.CopyGeneralize
+import MerlinVerify.Rules.LayoutGeneralize
 
 namespace MerlinVerify.Check.Definedness
 
@@ -376,11 +377,53 @@ theorem copyDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
     · cases h
   · cases h
 
+/-- Named layout operations reuse the proved generic totality checks. Reductions retain
+initialized accumulators; transpose and broadcast may establish complete overwrites. -/
+def layoutDefinedRule (ib : Nat) (Γ : FEnv) (op : Op) (fs : List Fact) : Option (List Fact) := do
+  let l ← Rules.LayoutGeneralize.layout op (fs.map (·.ty))
+  let v := Rules.LayoutGeneralize.generic op l
+  if Rules.LayoutGeneralize.legal op v l ∧ op.regions.length = 1 then
+    (overwriteDefinedRule ib Γ v fs).orElse fun _ => genericDefinedRule ib Γ v fs
+  else none
+
+theorem layoutDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
+    layoutDefinedRule ib Γ op fs = some rs → ∀ ctx call env args,
+    ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
+    ∃ vs, opSem ctx call op args (evalRegions opSem call env op.regions) = .ok vs ∧
+      FactsHold ib vs rs := by
+  intro Γ op fs rs h ctx call env args hib hΓ ha
+  unfold layoutDefinedRule at h
+  cases hl : Rules.LayoutGeneralize.layout op (fs.map (·.ty)) with
+  | none => simp [hl] at h
+  | some l =>
+    simp only [hl, bind, Option.bind] at h
+    split at h
+    · next hc =>
+      have hv : ∃ vs, opSem ctx call (Rules.LayoutGeneralize.generic op l) args
+          (evalRegions opSem call env (Rules.LayoutGeneralize.generic op l).regions) = .ok vs ∧
+          FactsHold ib vs rs := by
+        cases ho : overwriteDefinedRule ib Γ (Rules.LayoutGeneralize.generic op l) fs with
+        | none =>
+          simp only [ho, Option.orElse_none] at h
+          exact genericDefinedRule_sound ib _ _ _ _ h ctx call env args hib hΓ ha
+        | some ys =>
+          simp only [ho, Option.orElse_some, Option.some.injEq] at h
+          subst rs
+          exact overwriteDefinedRule_sound ib _ _ _ _ ho ctx call env args hib hΓ ha
+      obtain ⟨vs, hv, hrf⟩ := hv
+      obtain ⟨body, hregs⟩ := List.length_eq_one_iff.1 hc.2
+      have hr : (Rules.LayoutGeneralize.generic op l).regions = op.regions := rfl
+      rw [hr, hregs] at hv
+      refine ⟨vs, ?_, hrf⟩
+      rw [hregs]
+      exact Rules.LayoutGeneralize.meaning_success hl hc.1 ctx call args ha.typed _ hv
+    · cases h
+
 def structuredBook (ib : Nat) : Book opSem ib where
   rule Γ op fs := match (leafBook ib).rule Γ op fs with
     | some rs => some rs
     | none => [fillDefinedRule ib, genericDefinedRule ib, overwriteDefinedRule ib,
-        contractionDefinedRule ib, mapDefinedRule ib, copyDefinedRule ib].findSome? fun r => r Γ op fs
+        contractionDefinedRule ib, mapDefinedRule ib, copyDefinedRule ib, layoutDefinedRule ib].findSome? fun r => r Γ op fs
   sound Γ op fs rs h ctx call env args hib hΓ ha := by
     split at h
     · next _ hl =>
@@ -388,13 +431,14 @@ def structuredBook (ib : Nat) : Book opSem ib where
       exact (leafBook ib).sound Γ op fs _ hl ctx call env args hib hΓ ha
     · obtain ⟨r, hmem, hr⟩ := List.exists_of_findSome?_eq_some h
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
-      rcases hmem with rfl | rfl | rfl | rfl | rfl | rfl
+      rcases hmem with rfl | rfl | rfl | rfl | rfl | rfl | rfl
       · exact fillDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact genericDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact overwriteDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact contractionDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact mapDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact copyDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
+      · exact layoutDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
 
 /-- Independent families compose through their totality proofs. The structured family retains
 its existing behavior; dequantization adds source-definedness on its explicitly checked domain. -/
