@@ -1163,16 +1163,16 @@ def expand_sweeps(
                         }
                     )
                 continue
-        if sweep.get("requires_form_scope") is not None:
-            # The FORM-PERF tier: members come from the frozen requirement's derived form classes,
-            # never from axes, and are materialized onto the same runnable direct corpus path.
-            from .form_perf import form_perf_entries
+        if sweep.get("requires_form_scope") is not None or sweep.get("requires_capacity_scope") is not None:
+            # Form-perf and capacity members are derived (form classes / RTL facts), never from axes.
+            from .capacity_families import scope_members
 
-            for entry in form_perf_entries(
+            for entry in scope_members(
                 sweep,
-                selected_requirement,
-                requirement_sha256,
-                source_window_entries=entries,
+                binding=binding,
+                evidence=evidence,
+                requirement=(selected_requirement, requirement_sha256),
+                entries=entries,
                 skipped=skipped,
                 blocked=blocked_unimplemented,
             ):
