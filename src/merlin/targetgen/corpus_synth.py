@@ -51,6 +51,47 @@ class SynthesisError(ValueError):
     """A requirement that cannot be turned into a capsule, named so it can be fixed."""
 
 
+def declares_accelerator_placement(entry: dict) -> bool:
+    """Whether an entry's DECLARED placement leaves any of its work to the accelerator.
+
+    A public capsule grades the author's accelerator compiler. Host placement is Merlin's own generic
+    host codegen, so a capsule whose declared placement is host-only grades nobody's accelerator work:
+    an entry that forbids the mesh lane, or a probe declared neither required nor eligible to
+    accelerate, carries no accelerator placement. Read from the declared lane and eligibility, never
+    from a capsule name or family.
+    """
+    lanes = entry.get("lanes") or {}
+    generalization = entry.get("generalization") or {}
+    if "on_mesh" in (lanes.get("forbid") or ()):
+        return False
+    return not (generalization.get("must_accelerate") is False and generalization.get("eligible") is False)
+
+
+def withhold_host_placed(entries: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Split entries into publishable ones and host-placed ones reported instead of emitted.
+
+    A withheld entry is recorded with its family and dtype so a host requirement stays visible in
+    provenance; it is never emitted as a public capsule, because nothing in it is the author's work.
+    Held-out members follow the same rule: a hidden capsule grades the same accelerator compiler.
+    """
+    kept, withheld = [], []
+    for entry in entries:
+        if declares_accelerator_placement(entry):
+            kept.append(entry)
+            continue
+        withheld.append(
+            {
+                "name": entry.get("name"),
+                "op": entry.get("op"),
+                "operand_dtype": entry.get("operand_dtype"),
+                "source": entry.get("source"),
+                "generalization_axis": (entry.get("generalization") or {}).get("generalization_axis"),
+                "reason": "declared placement carries no accelerator work; host placement is Merlin-supplied",
+            }
+        )
+    return kept, withheld
+
+
 def _op_family_map() -> dict[str, str]:
     from merlin.targetgen import semantic_families as sf
 
@@ -2549,6 +2590,9 @@ def synthesize(
         if any("acc_scale" in (item.get("epilogue") or ()) for item in staged):
             entry.setdefault("acc_scale", SYNTH_ACC_SCALE)
 
+    # Placement decides publication: an entry with no accelerator placement is reported, not emitted.
+    entries, host_placed = withhold_host_placed(entries)
+
     cap = int(budget if budget is not None else (ws.get("max_synthesized_capsules") or 160))
     if len(entries) > cap:
         raise SynthesisError(
@@ -2585,6 +2629,12 @@ def synthesize(
                 "the derived inventory produces. A shape listed here that the micro model does not "
                 "reach is not covered by synthesis -- emitting a capsule per shape would mean inventing "
                 "inventories no capture supports"
+            ),
+            "host_placement_not_published": host_placed,
+            "host_placement_note": (
+                "an entry whose declared placement carries no accelerator work. Host placement is "
+                "compiled by Merlin's own generic host codegen, so such a capsule would grade none of the "
+                "author's work; the requirement stays listed here instead of becoming a public capsule"
             ),
             "host_only_unsynthesizable": unsized_host,
             "host_only_note": (

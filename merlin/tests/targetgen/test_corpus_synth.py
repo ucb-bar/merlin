@@ -586,22 +586,36 @@ _HOST_SPEC = {
 }
 
 
-def test_a_host_only_family_becomes_a_forbidding_capsule():
+def _withheld(out: dict) -> dict:
+    return {row["name"]: row for row in out["provenance"]["host_placement_not_published"]}
+
+
+def test_a_host_only_family_is_reported_not_published():
+    """Host placement is Merlin's generic host codegen, so a capsule with no accelerator placement grades
+    none of the author's work. The family stays visible in provenance with the probe it would use."""
     out = CS.synthesize(_HOST_SPEC)
-    made = {e["name"]: e for e in out["capsules"]}
+    made = {e["name"] for e in out["capsules"]}
+    withheld = _withheld(out)
     for family in ("normalization", "reduction"):
-        e = made[f"{CS.SYNTH_PREFIX}_host_only_{family}"]
-        assert e["lanes"] == {"forbid": ["on_mesh"]}
-        assert e["generalization"]["must_accelerate"] is False
-        assert e["operand_dtype"] == "bf16"
+        name = f"{CS.SYNTH_PREFIX}_host_only_{family}"
+        assert name not in made
+        assert withheld[name]["operand_dtype"] == "bf16"
+        assert "Merlin-supplied" in withheld[name]["reason"]
 
 
-def test_a_host_only_capsule_requires_no_lane_it_cannot_be_graded_on():
-    """Requiring the host lane too would add a demand no op-path grade can measure, turning the capsule
-    into a permanent `incomplete` instead of a test. The forbid alone IS enforceable."""
+def test_every_published_entry_declares_accelerator_placement():
     out = CS.synthesize(_HOST_SPEC)
-    e = next(x for x in out["capsules"] if x["name"].endswith("_host_only_normalization"))
-    assert "require" not in e["lanes"]
+    assert out["capsules"]
+    assert all(CS.declares_accelerator_placement(entry) for entry in out["capsules"])
+
+
+def test_declared_placement_decides_publication_not_the_name():
+    accelerated = {"name": "SY_host_only_anything", "generalization": {"generalization_axis": "host_lane"}}
+    forbidden = {"name": "SY_contraction_i8_aligned", "lanes": {"forbid": ["on_mesh"]}}
+    ineligible = {"name": "X", "generalization": {"must_accelerate": False, "eligible": False}}
+    kept, withheld = CS.withhold_host_placed([accelerated, forbidden, ineligible])
+    assert kept == [accelerated]
+    assert [row["name"] for row in withheld] == ["SY_contraction_i8_aligned", "X"]
 
 
 def test_a_host_family_with_no_observed_dtype_is_reported_not_defaulted():
@@ -626,7 +640,8 @@ def test_float_movement_host_lane_has_a_pytorch_representative():
         "host_lane": {"required": [{"family": "movement", "dtype": "f32", "n_regions": 19}]},
     }
     result = CS.synthesize(spec, capability_contract={"name": "t", "compute_units": []})
-    entry = next(item for item in result["capsules"] if item["name"] == "SY_host_lane_movement_f32")
+    assert all(item["name"] != "SY_host_lane_movement_f32" for item in result["capsules"])
+    entry = _withheld(result)["SY_host_lane_movement_f32"]
     # A historical requirement (no observed host operations) keeps a family-level choice: any movement
     # op the PyTorch writer expresses, which ties by name among equally cheap candidates.
     assert CS._op_family_map()[entry["op"]] == "movement"
@@ -638,13 +653,12 @@ def test_host_only_dedup_preserves_other_dtypes_of_the_same_family():
     spec = {
         **_HOST_SPEC,
         "host_only": {"families": ["movement"], "dtypes": {"movement": "bf16"}},
-        "host_lane": {"required": [
-            {"family": "movement", "dtype": dtype, "n_regions": 1}
-            for dtype in ("bf16", "f32")
-        ]},
+        "host_lane": {
+            "required": [{"family": "movement", "dtype": dtype, "n_regions": 1} for dtype in ("bf16", "f32")]
+        },
     }
     result = CS.synthesize(spec, capability_contract={"name": "t", "compute_units": []})
-    members = {entry["name"]: entry for entry in result["capsules"]}
+    members = _withheld(result)
     assert members["SY_host_only_movement"]["operand_dtype"] == "bf16"
     assert members["SY_host_lane_movement_f32"]["operand_dtype"] == "f32"
     assert "SY_host_lane_movement_bf16" not in members

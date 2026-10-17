@@ -406,9 +406,7 @@ def test_the_derivation_inventory_records_each_capture_placements(tmp_path):
         program_admission.derive_inventory(inventory, target="fixture", evidence=_evidence(), captures={})
     capture.write_text(_INT_MATMUL + "\n")
     with pytest.raises(ValueError, match="inventoried bytes"):
-        program_admission.derive_inventory(
-            inventory, target="fixture", evidence=_evidence(), captures={"app": capture}
-        )
+        program_admission.derive_inventory(inventory, target="fixture", evidence=_evidence(), captures={"app": capture})
 
 
 def test_only_a_definite_refusal_of_a_non_probe_entry_is_final_before_writing():
@@ -417,3 +415,45 @@ def test_only_a_definite_refusal_of_a_non_probe_entry_is_final_before_writing():
     assert not program_admission.entry_refusal_is_final({"op": "matmul"}, unknown)
     probe = {"op": "permute", "generalization": {"must_accelerate": False, "eligible": False}}
     assert not program_admission.entry_refusal_is_final(probe, refused)
+
+
+@pytest.mark.parametrize(
+    ("screen", "fragment"),
+    [
+        ({"status": "admitted", "placements": {"host": 9}}, "host=9"),
+        ({"status": "admitted", "placements": {}}, "no placed operation"),
+        ({"status": "admitted", "placements": {"accelerator": 0, "host": 1}}, "Merlin-supplied"),
+        ({"status": "admitted"}, "no frozen per-operation placement"),
+        (None, "no frozen per-operation placement"),
+        ({"placements": {"accelerator": "1"}}, "malformed"),
+    ],
+)
+def test_a_program_without_accelerator_placement_is_not_publishable(screen, fragment):
+    reason = program_admission.accelerator_placement_refusal(screen)
+    assert reason is not None and fragment in reason
+
+
+def test_a_mixed_program_with_accelerator_placement_is_publishable():
+    assert program_admission.accelerator_placement_refusal({"placements": {"accelerator": 1, "host": 15}}) is None
+
+
+def test_generation_removes_and_records_a_written_member_without_accelerator_placement(tmp_path):
+    from merlin_experiments.phase0.generation import withhold_unaccelerated
+
+    host_only = tmp_path / "model_slices" / "host_member"
+    host_only.mkdir(parents=True)
+    (host_only / "capsule.yaml").write_text("name: host_member\n")
+    record = withhold_unaccelerated("host_member", {"status": "admitted", "placements": {"host": 2}}, host_only)
+    assert record == {
+        "capsule": "host_member",
+        "placements": {"host": 2},
+        "reason": program_admission.accelerator_placement_refusal({"placements": {"host": 2}}),
+    }
+    assert not host_only.exists()
+
+    mixed = tmp_path / "model" / "mixed"
+    mixed.mkdir(parents=True)
+    assert withhold_unaccelerated("mixed", {"status": "admitted", "placements": {"accelerator": 1}}, mixed) is None
+    # A refused screen leaves through the diagnostic path, not this one.
+    assert withhold_unaccelerated("mixed", {"status": "unsupported", "placements": {}}, mixed) is None
+    assert mixed.is_dir()

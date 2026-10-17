@@ -26,6 +26,35 @@ def _selected_contract(spec_doc: dict, inputs: dict | None) -> dict | None:
     return contract
 
 
+#: Requirement axes that ask for capsules whose whole program lands on the host lane.
+HOST_PLACEMENT_AXES = ("host_lane", "host_only")
+
+
+def merlin_supplied_host_axis(spec_doc: dict, axis: str) -> dict:
+    """Report a host-placement axis as Merlin's responsibility, never as a public-capsule obligation.
+
+    Host-placed operations are compiled by Merlin's own generic host codegen from the frozen Phase 0
+    placement, so no public capsule may consist of host work alone, and the author's compiler cannot
+    move work between lanes. The derived requirement is retained by count for the record.
+    """
+    if axis not in HOST_PLACEMENT_AXES:
+        raise ValueError(f"{axis!r} is not a host-placement requirement axis")
+    required = (spec_doc.get(axis) or {}).get("families" if axis == "host_only" else "required")
+    return {
+        "status": "not_applicable",
+        "n_required": 0,
+        "n_covered": 0,
+        "uncovered": [],
+        "merlin_supplied_host": {
+            "n_derived_requirements": len(required) if isinstance(required, list) else None,
+            "reason": (
+                "host placement is compiled by Merlin's generic host codegen from the frozen Phase 0 "
+                "placement; public capsules carry accelerator work only"
+            ),
+        },
+    }
+
+
 def selected_cohort_coverage(
     spec_doc: dict,
     roots: list[Path],
@@ -67,7 +96,7 @@ def selected_cohort_coverage(
     }
     for axis, reader in readers.items():
         if axis == "scope" and phase == "phase2":
-            performance = ((spec_doc.get("scope") or {}).get("performance") or {})
+            performance = (spec_doc.get("scope") or {}).get("performance") or {}
             result["source_scope_instances"] = len(
                 ((spec_doc.get("scope") or {}).get("typed_required_instances") or {}).get("instances") or []
             )
@@ -89,7 +118,9 @@ def selected_cohort_coverage(
                 continue
             if performance.get("status") == "no_eligible_chain":
                 result[axis] = {
-                    "status": "not_applicable", "n_required": 0, "uncovered": [],
+                    "status": "not_applicable",
+                    "n_required": 0,
+                    "uncovered": [],
                     "n_software_refused": len(performance.get("excluded") or []),
                 }
                 continue
@@ -141,29 +172,10 @@ def selected_cohort_coverage(
                 ),
             },
         }
-    selected_contract = _selected_contract(spec_doc, inputs)
-    from merlin.targetgen import boundary
-
-    for axis, reader in (
-        ("host_lane", boundary.host_lane_coverage),
-        ("host_only", boundary.host_only_coverage),
-    ):
-        required = (spec_doc.get(axis) or {}).get("families" if axis == "host_only" else "required")
-        if required is not None and not required:
-            result[axis] = {"status": "not_applicable", "n_required": 0, "uncovered": []}
-        elif selected_contract is None:
-            result[axis] = {
-                "status": "not_measured",
-                "reason": "exact selected capability contract is absent from coverage inputs or requirement",
-                "required": required,
-            }
-        else:
-            result[axis] = reader(
-                spec_doc,
-                roots,
-                labels=labels,
-                capability_contract=selected_contract,
-            )
+    # The selected contract still has to be the frozen one, even though no host axis reads it now.
+    _selected_contract(spec_doc, inputs)
+    for axis in HOST_PLACEMENT_AXES:
+        result[axis] = merlin_supplied_host_axis(spec_doc, axis)
     memory = (spec_doc.get("memory_mapping") or {}).get("required")
     if memory is None:
         result["memory_mapping"] = {
@@ -176,9 +188,7 @@ def selected_cohort_coverage(
         selected = inputs or {}
         raw = selected.get("raw_facts_utf8")
         selected_digest = (selected.get("evidence") or {}).get("raw_facts_sha256")
-        required_digest = ((spec_doc.get("derivation") or {}).get("phase0_execution") or {}).get(
-            "raw_facts_sha256"
-        )
+        required_digest = ((spec_doc.get("derivation") or {}).get("phase0_execution") or {}).get("raw_facts_sha256")
         if not isinstance(raw, str) or not selected_digest or not required_digest:
             result["memory_mapping"] = {
                 "status": "not_measured",
