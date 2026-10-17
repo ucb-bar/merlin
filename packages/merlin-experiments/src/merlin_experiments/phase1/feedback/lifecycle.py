@@ -45,8 +45,10 @@ class BrokerConfig:
     def __post_init__(self):
         from ..options import MAX_SIM_PER_CAPSULE_TIMEOUT_S
 
-        if (type(self.sim_per_capsule_timeout) is not int
-                or not 0 <= self.sim_per_capsule_timeout <= MAX_SIM_PER_CAPSULE_TIMEOUT_S):
+        if (
+            type(self.sim_per_capsule_timeout) is not int
+            or not 0 <= self.sim_per_capsule_timeout <= MAX_SIM_PER_CAPSULE_TIMEOUT_S
+        ):
             raise ValueError("sim per-capsule timeout must be an explicit integer in 0..86400")
 
 
@@ -145,7 +147,8 @@ def start_brokers(ws: Path, config: BrokerConfig):
             if name == "merlin_experiments.phase1.brokers.simjob":
                 argv += ["--timing-file", str(config.timing_file)]
             if config.compiler_bundle_manifest is not None and name in {
-                "merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob",
+                "merlin_experiments.phase1.brokers.selfcheck",
+                "merlin_experiments.phase1.brokers.simjob",
             }:
                 argv += ["--compiler-bundle-manifest", str(config.compiler_bundle_manifest)]
             if name in {"merlin_experiments.phase1.brokers.selfcheck", "merlin_experiments.phase1.brokers.simjob"}:
@@ -186,8 +189,9 @@ def start_brokers(ws: Path, config: BrokerConfig):
 
                     launch_kwargs["env"] = broker_environment(config.raw_evidence_root, ws)
                 brokers.append(
-                    subprocess.Popen(inherited_python_command(argv), stdout=output,
-                                     stderr=subprocess.STDOUT, **launch_kwargs)
+                    subprocess.Popen(
+                        inherited_python_command(argv), stdout=output, stderr=subprocess.STDOUT, **launch_kwargs
+                    )
                 )
                 owned_channels.append(channel)
             except BaseException as error:
@@ -224,8 +228,12 @@ def stop_brokers(ws: Path, brokers, *, primary_error: BaseException | None = Non
     propagating provider/launch exception remains primary; callers pass it from
     their finally block. Cleanup details are attached to it, never substituted.
     """
-    _stop_brokers(ws, brokers, primary_error=primary_error,
-                  channels=(".qa_channel", ".model_check_channel", ".isa_channel", ".cca_channel"))
+    _stop_brokers(
+        ws,
+        brokers,
+        primary_error=primary_error,
+        channels=(".qa_channel", ".model_check_channel", ".isa_channel", ".cca_channel"),
+    )
 
 
 def _stop_brokers(ws: Path, brokers, *, primary_error: BaseException | None, channels: tuple[str, ...]) -> None:
@@ -400,10 +408,10 @@ def start_background(
     from merlin.common.cpu_pool import AUXILIARY, GRADE, cpu_priority, preparation_cpus, selected_pool
 
     stop = threading.Event()
-    start_cadence = os.environ.get('MERLIN_GRADE_START_TO_START', '0')
-    if start_cadence not in {'0', '1'}:
-        raise ValueError('MERLIN_GRADE_START_TO_START must be 0 or 1')
-    if source_identity is None and start_cadence == '1':
+    start_cadence = os.environ.get("MERLIN_GRADE_START_TO_START", "0")
+    if start_cadence not in {"0", "1"}:
+        raise ValueError("MERLIN_GRADE_START_TO_START must be 0 or 1")
+    if source_identity is None and start_cadence == "1":
         from .background_admission import source_digest
 
         def source_identity():
@@ -474,11 +482,11 @@ def start_background(
                 print(f"[in-turn grade {t}] skipped: {type(e).__name__}: {e}", flush=True)
                 delay = min(30, interval)
                 continue
-            if start_cadence == '1':
+            if start_cadence == "1":
                 delay = max(0, interval - (time.monotonic() - started))
             if source_identity is not None:
                 after = source_identity()
-                if before == after and v.get('snapshot_current') is True and not v.get('package_failure'):
+                if before == after and v.get("snapshot_current") is True and not v.get("package_failure"):
                     completed_source = before
                 elif after is not None and after != before:
                     delay = 0  # Finish the old snapshot, then immediately grade the new compiler.
