@@ -315,8 +315,10 @@ error policy.
 
 ## Available tools
 
-- `python agent_selfcheck.py --help`: focused public capsule checks.
-- `python simjob.py --help`: asynchronous public RTL jobs.
+- `python agent_selfcheck.py --submission submission --capsules A,B`: focused public capsule checks.
+  Without `--sim` it runs every tier each capsule declares mandatory (Spike, L3 gSIM, provided host)
+  and reports a certified pass/fail per capsule; `--sim spike` is a faster screen that cannot certify.
+- `python simjob.py --help`: asynchronous public capsule jobs (`--sim required` runs every tier).
 - `python await_verdict.py --help`: wait for a new harness verdict.
 - `python agent_model_check.py check --model MODEL --out REPORT.json`: visible model check through the broker.
 - `python agent_model_check.py replay-kernel --model MODEL --program PROGRAM`

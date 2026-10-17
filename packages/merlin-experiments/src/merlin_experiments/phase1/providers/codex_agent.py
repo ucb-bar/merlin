@@ -952,7 +952,9 @@ def run_round(
             "Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
             "backend under submission/ per those instructions. During iteration, check the smallest affected capsule "
             "or coherent comma-separated capsule cluster with `python3 agent_selfcheck.py --submission submission "
-            "--sim spike --capsules <names>`; do not repeatedly grade the whole corpus. Run `--capsules all` only "
+            "--capsules <names>`. Without `--sim` it runs every tier each capsule declares mandatory, with the "
+            "grade's own simulators, and reports a certified pass/fail per capsule; `--sim spike` is only a faster "
+            "screen that cannot certify. Do not repeatedly grade the whole corpus. Run `--capsules all` only "
             "after the focused checks improve and the candidate is ready for a regression sweep. You may edit "
             "submission/ while a self-check runs; compare the verdict's source digest with your current bytes. "
             "Goldens are withheld; "
@@ -1032,7 +1034,8 @@ def run_round(
         if continuation_prompt is not None
         else (
             "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
-            "backend under submission/. With agent_selfcheck, re-check only the smallest affected "
+            "backend under submission/. With agent_selfcheck (no `--sim`: every mandatory tier, a "
+            "certified pass/fail), re-check only the smallest affected "
             "capsule or coherent cluster after each edit; use `--capsules all` only after focused "
             "checks improve. You may edit while a check runs; compare the verdict's source digest."
         )

@@ -546,7 +546,11 @@ def test_the_default_prompt_requires_narrow_iteration_before_a_full_sweep(tmp_pa
 
     assert "smallest affected capsule" in prompt
     assert "only after the focused checks improve" in prompt
-    assert "Do not edit submission/ while a self-check is running" in prompt
+    assert "You may edit submission/ while a self-check runs" in prompt
+    # The recommended focused check is the certifying one: no single-engine screen in the command.
+    assert "`python3 agent_selfcheck.py --submission submission --capsules <names>`" in prompt
+    assert "certified pass/fail per capsule" in prompt
+    assert "--sim spike --capsules" not in prompt
     assert "Build something minimal and write submission/manifest.yaml FIRST" in prompt
     assert "then use await_verdict.py rather than a poll loop" in prompt
     assert "do not launch `--capsules all` merely to refresh it" in prompt
