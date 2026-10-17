@@ -245,6 +245,28 @@ def match_row_normalization(final):
                 visit(operand)
 
         visit(final.results[0])
+
+        def include_prefix(value):
+            # Keep an existing same-shape pointwise producer inside the row
+            # island rather than introducing a materialization boundary.
+            op = value.owner
+            if not isinstance(op, Operation) or op.parent is not final.parent or value.type != source.type:
+                return
+            if op in selected:
+                return
+            if not any(_generic(op, cls, 2) for cls in (arith.AddfOp, arith.SubfOp, arith.MulfOp, arith.DivfOp)):
+                return
+            if len(op.operands) != 3 or not isinstance(op.operands[-1].owner, tensor.EmptyOp):
+                return
+            if any(v.type != source.type and prod(_shape(v)) != 1 for v in op.operands[:-1]):
+                return
+            if len(selected) + 2 > 64:
+                raise ValueError("normalization pointwise prefix exceeds its structural budget")
+            selected.update((op, op.operands[-1].owner))
+            for operand in op.operands[:-1]:
+                include_prefix(operand)
+
+        include_prefix(source)
         ordered = tuple(op for op in final.parent.ops if op in selected)
         if ordered[-1] is not final:
             return None
@@ -276,7 +298,6 @@ def match_row_normalization(final):
 def emit_row_normalization(group):
     """Emit ordinary tensor/SCF/linalg; upstream still owns CPU bufferization."""
     source = group.source
-    element = source.type.get_element_type()
     zero = arith.ConstantOp.from_int_and_width(0, builtin.IndexType())
     end = arith.ConstantOp.from_int_and_width(group.rows, builtin.IndexType())
     one = arith.ConstantOp.from_int_and_width(1, builtin.IndexType())
@@ -300,17 +321,26 @@ def emit_row_normalization(group):
         static_offsets.append(builtin.DYNAMIC_INDEX)
     static_offsets.append(0)
     sizes = [1] * (len(group.shape) - 1) + [group.columns]
-    sliced = tensor.ExtractSliceOp.build(
-        operands=[source, coordinates, [], []],
-        result_types=[builtin.TensorType(element, (group.columns,))],
-        properties={
-            "static_offsets": builtin.DenseArrayBase.from_list(builtin.i64, static_offsets),
-            "static_sizes": builtin.DenseArrayBase.from_list(builtin.i64, sizes),
-            "static_strides": builtin.DenseArrayBase.from_list(builtin.i64, [1] * len(group.shape)),
-        },
-    )
-    block.add_op(sliced)
-    mapped = {group.source: sliced.result}
+    mapped = {}
+    for value in row_input_values(group):
+        scalar = prod(_shape(value)) == 1
+        shape = _shape(value)
+        if not shape:
+            mapped[value] = value
+            continue
+        sliced = tensor.ExtractSliceOp.build(
+            operands=[value, [] if scalar else coordinates, [], []],
+            result_types=[local_type(value, group)],
+            properties={
+                "static_offsets": builtin.DenseArrayBase.from_list(
+                    builtin.i64, [0] * len(shape) if scalar else static_offsets
+                ),
+                "static_sizes": builtin.DenseArrayBase.from_list(builtin.i64, [1] * len(shape) if scalar else sizes),
+                "static_strides": builtin.DenseArrayBase.from_list(builtin.i64, [1] * len(shape)),
+            },
+        )
+        block.add_op(sliced)
+        mapped[value] = sliced.result
     for old in group.operations:
         if isinstance(old, arith.ConstantOp):
             op = old.clone()
@@ -359,16 +389,31 @@ def emit_row_normalization(group):
     return tuple(prefix), loop.results[0]
 
 
+def row_input_values(group):
+    members = set(group.operations)
+    values = {}
+    for op in group.operations:
+        for value in op.operands:
+            if isinstance(value.type, builtin.TensorType) and value.owner not in members:
+                if value.type != group.source.type and prod(_shape(value)) != 1:
+                    raise ValueError("row input frontier has an unsupported shape or broadcast")
+                values[value] = None
+    return tuple(values)
+
+
 def row_state_cost_reason(group):
     """Conservative unknown-cost policy, including existing fusion boundaries."""
     if group.rows <= group.columns + 2:
         return "row_state_not_smaller"
     try:
-        source = _view(group.source)
+        for value in row_input_values(group):
+            source = _view(value)
+            if prod(_shape(value)) == 1 and isinstance(source.owner, (arith.ConstantOp, tensor.SplatOp)):
+                continue
+            if not isinstance(source, BlockArgument) and not isinstance(source.owner, (L.MatmulOp, func.CallOp)):
+                return "producer_fusion_boundary_or_unknown"
     except ValueError:
         return "unknown_source_view"
-    if not isinstance(source, BlockArgument) and not isinstance(source.owner, (L.MatmulOp, func.CallOp)):
-        return "producer_fusion_boundary_or_unknown"
     pending = [group.operations[-1].results[0]]
     visited = set()
     while pending:
@@ -462,7 +507,9 @@ def fuse_row_normalizations(
                 mapped = {}
                 snapshot = tuple(op.clone(value_mapper=mapped) for op in group.operations)
                 record = RowNormalizationRewrite(
-                    RowNormalizationGroup(group.source, snapshot, group.shape), emitted, result
+                    RowNormalizationGroup(mapped.get(group.source, group.source), snapshot, group.shape),
+                    emitted,
+                    result,
                 )
                 checker.verify_row_normalization_record(record)
                 Rewriter.replace_op(group.operations[-1], emitted, new_results=[result])
@@ -482,6 +529,8 @@ def fuse_row_normalizations(
                         "intermediate_full_row_elements_after": group.columns,
                         "logical_row_state_before": group.rows,
                         "logical_row_state_after": group.columns + 2,
+                        "row_input_frontier": [str(value.type) for value in row_input_values(group)],
+                        "pointwise_source_prefix": group.source.owner in set(group.operations),
                     }
                 )
         return {"row_candidates": len(records)}

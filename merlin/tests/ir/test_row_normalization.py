@@ -440,7 +440,7 @@ def test_native_complete_outputs_and_realized_allocation(tmp_path, monkeypatch, 
     assert metrics[1]["peak"] < metrics[0]["peak"]
 
 
-def _attention_module(rows=128, columns=19, head=7, width=5, *, masked=True):
+def _attention_module(rows=128, columns=19, head=7, width=5, *, masked=True, scale=False):
     types = [
         builtin.TensorType(builtin.f32, shape)
         for shape in ((rows, head), (head, columns), (columns, width), (rows, columns), (rows, width))
@@ -471,6 +471,18 @@ def _attention_module(rows=128, columns=19, head=7, width=5, *, masked=True):
         return emit(_generic((a, b), empty, block, (AffineMap.identity(rank),) * 3))
 
     scores = matmul(q, key, (rows, columns))
+    if scale:
+        scalar = emit(arith.ConstantOp(builtin.FloatAttr(0.5, builtin.f32)))
+        scalar = emit(tensor.SplatOp(scalar, (), builtin.TensorType(builtin.f32, ())))
+        empty = emit(tensor.EmptyOp((), scores.type))
+        local = Block(arg_types=[builtin.f32] * 3)
+        product = arith.MulfOp(*local.args[:2])
+        local.add_ops((product, L.YieldOp(product.result)))
+        scores = emit(
+            _generic(
+                (scores, scalar), empty, local, (AffineMap.identity(2), AffineMap(2, 0, ()), AffineMap.identity(2))
+            )
+        )
     admitted_scores = add(scores, mask) if masked else scores
     ops, normalized = _normalization(admitted_scores)
     body.add_ops(ops)
@@ -487,15 +499,15 @@ def _attention_module(rows=128, columns=19, head=7, width=5, *, masked=True):
     return module
 
 
-@pytest.mark.parametrize("masked", [True, False])
-def test_ordinary_complete_attention_graph_and_carried_state(tmp_path, monkeypatch, record_property, masked):
-    original = _attention_module(masked=masked)
+@pytest.mark.parametrize("masked,scale", [(True, False), (False, False), (True, True)])
+def test_ordinary_complete_attention_graph_and_carried_state(tmp_path, monkeypatch, record_property, masked, scale):
+    original = _attention_module(masked=masked, scale=scale)
     arms = []
     for label, enabled in (("baseline", False), ("optimized", True)):
         directory = tmp_path / label
         directory.mkdir()
         arms.append(_compile_ordinary(directory, original, enabled, monkeypatch))
-    assert arms[1][2]["rewrites"] == (0 if masked else 1)
+    assert arms[1][2]["rewrites"] == 1
     assert arms[0][2]["library_sources_sha256"] == arms[1][2]["library_sources_sha256"]
     rng = np.random.default_rng(17)
     q, key, value = [rng.normal(0, 0.5, shape).astype("f4") for shape in ((128, 7), (7, 19), (19, 5))]
@@ -508,6 +520,8 @@ def test_ordinary_complete_attention_graph_and_carried_state(tmp_path, monkeypat
         return result
 
     scores = ordered_product(q, key)
+    if scale:
+        scores = np.multiply(scores, np.float32(0.5), dtype="f4")
     if masked:
         scores = np.add(scores, mask, dtype="f4")
     expected = ordered_product(_reference_normalization(scores), value)
@@ -550,3 +564,32 @@ def test_ordinary_complete_attention_graph_and_carried_state(tmp_path, monkeypat
     record_property(
         "attention_pair", json.dumps(dict(compilation=[r[2]["experiment"] for r in arms], execution=measurements))
     )
+
+
+@pytest.mark.parametrize("fault", ["mask_source", "mask_tail", "prefix_math", "shared_prefix", "unknown_prefix"])
+def test_pointwise_prefix_frontier_and_source_body_are_checked(fault):
+    original = _attention_module(width=19, masked=True, scale=True)
+    if fault in {"shared_prefix", "unknown_prefix"}:
+        source = next(g.source for o in original.walk() if (g := match_row_normalization(o)))
+        if fault == "shared_prefix":
+            # An external observation prevents absorbing the private prefix.
+            ret = source.owner.parent.last_op
+            ret.operands = (source, *ret.operands[1:])
+        else:
+            source.owner.attributes["unknown.effect"] = builtin.UnitAttr()
+        result, report = fuse_row_normalizations(original, numerical_policy="source")
+        assert report["rewrites"] == 0 and result.is_structurally_equivalent(original)
+        return
+    modified, record = _with_record(original)
+    loop = next(o for o in record.emitted if isinstance(o, scf.ForOp))
+    extracts = [o for o in loop.body.block.ops if isinstance(o, tensor.ExtractSliceOp)]
+    assert len(extracts) == 2
+    if fault == "mask_source":
+        extracts[-1].operands = (extracts[0].operands[0], *extracts[-1].operands[1:])
+    elif fault == "mask_tail":
+        extracts[-1].properties["static_sizes"] = builtin.DenseArrayBase.from_list(builtin.i64, [1, 18])
+    else:
+        product = next(o for o in loop.walk() if isinstance(o, arith.MulfOp))
+        Rewriter.replace_op(product, arith.AddfOp(*product.operands))
+    with pytest.raises(ValueError, match="conformance"):
+        verify_row_normalizations(original, modified, (record,))

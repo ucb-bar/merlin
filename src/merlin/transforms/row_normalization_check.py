@@ -16,7 +16,7 @@ from xdsl.dialects.linalg import ops as L
 from xdsl.ir.affine import AffineDimExpr, AffineMap
 from xdsl.rewriter import Rewriter
 
-from .row_normalization import local_type
+from .row_normalization import local_type, row_input_values
 
 
 def _require(condition, reason):
@@ -44,10 +44,9 @@ def _slice(operation, source, coordinates, shape, *, destination=None):
     _require(not operation.properties.keys() - allowed, "unknown slice properties")
 
 
-def _local_replay(record, loop, extracted, position, coordinates):
+def _local_replay(record, loop, mapped, position, coordinates):
     group = record.source
     body = tuple(loop.body.block.ops)
-    mapped = {group.source: extracted.result}
     for original in group.operations:
         result = original.results[0]
         if isinstance(original, (tensor.CollapseShapeOp, tensor.ExpandShapeOp)):
@@ -182,14 +181,36 @@ def verify_row_normalization_record(record):
             "source row prefix coordinate changed",
         )
         coordinates.append(coordinate.result)
-    _require(len(body) > position, "row source extraction is missing")
-    extracted = body[position]
-    _slice(extracted, group.source, tuple(coordinates), group.shape)
-    _require(
-        extracted.result.type == builtin.TensorType(group.source.type.get_element_type(), (group.columns,)),
-        "row extraction does not expose one complete source row",
-    )
-    _local_replay(record, loop, extracted, position + 1, tuple(coordinates))
+    mapped = {}
+    for value in row_input_values(group):
+        shape = value.type.get_shape()
+        if not shape:
+            mapped[value] = value
+            continue
+        _require(len(body) > position, "row source extraction is missing")
+        extracted = body[position]
+        position += 1
+        if prod(shape) == 1:
+            _require(
+                type(extracted) is tensor.ExtractSliceOp and tuple(extracted.operands) == (value,),
+                "scalar input source changed",
+            )
+            _require(
+                not extracted.attributes
+                and not extracted.properties.keys()
+                - {"static_offsets", "static_sizes", "static_strides", "operandSegmentSizes"},
+                "scalar slice metadata changed",
+            )
+            _require(_integers(extracted.static_offsets) == (0,) * len(shape), "scalar slice offset changed")
+            _require(_integers(extracted.static_sizes) == (1,) * len(shape), "scalar slice coverage changed")
+            _require(_integers(extracted.static_strides) == (1,) * len(shape), "scalar slice stride changed")
+        else:
+            _slice(extracted, value, tuple(coordinates), group.shape)
+        _require(
+            extracted.result.type == local_type(value, group), "row extraction changes input type or complete domain"
+        )
+        mapped[value] = extracted.result
+    _local_replay(record, loop, mapped, position, tuple(coordinates))
     _require(record.result is loop.results[0], "published result is not the completed row loop output")
 
 
