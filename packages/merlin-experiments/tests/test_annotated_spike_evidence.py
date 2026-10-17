@@ -307,3 +307,36 @@ def test_the_functional_tiers_own_program_must_reproduce_its_retained_console(tm
     assert rows[E.FUNCTIONAL_PROGRAM_ROLE]["capsule"] == "SCREENED"
     assert rows[E.FUNCTIONAL_PROGRAM_ROLE]["retained_console_reproduced"] is reproduced
     assert summary["counts"]["retained_consoles_checked"] == 1
+
+
+def _model(profile):
+    identities = ("device_sha256", "feature_engine_sha256", "feature_schema_sha256", "label_engine_sha256")
+    return E.count_only_model(
+        device_profile=profile,
+        **{key: "0" * 64 for key in identities},
+        scope_sha256="5" * 64,
+        libraries=["6" * 64],
+        isa="rv64imafdc",
+    )
+
+
+def test_count_only_model_binds_only_fully_known_profile_resources():
+    profile = {
+        "resources": {
+            "unit.issue": {"capacity": 2, "queue_capacity": 4},
+            "unit.transfer": {"capacity": 1, "queue_capacity": None},
+        },
+        "target": {
+            "hardware": {"dim": 4},
+            "prices": {"load": {"latency_cycles": None}},
+            "structure": {"live_command_credits": {"unit.issue": 8}},
+        },
+        "capacity_facts": {"sha256": "f" * 64},
+    }
+    model = _model(profile)
+    assert model["resources"] == [{"id": 0, "name": "unit.issue", "capacity": 2, "queue_capacity": 4}]
+    assert model["parameters"] == {} and model["target"]["prices"] == {}
+    assert model["target"]["structure"] == {"live_command_credits": {"unit.issue": 8}}
+    assert model["capacity_facts"] == {"sha256": "f" * 64}
+    # With no resource fully known, the engine gets a named placeholder that nothing binds.
+    assert [row["name"] for row in _model({"target": {"hardware": {}}})["resources"]] == ["unbound.placeholder"]

@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-10-17
 related: [architecture, performance_budget_unit]
-code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py]
+code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/capacities.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py]
 ---
 
 # Calibrating and validating annotated timing
@@ -267,6 +267,52 @@ and require a reviewed semantic mapping.
 With `--spike-profile`, the same command also checks the selected Spike
 profile's mesh, element widths, scratchpad/accumulator rows, memory base/size,
 target name and original DTS hash. A structural match does not qualify timing.
+
+### Loading structural facts into the device profile
+
+Structural facts reach the observer's device profile through one closed,
+target-neutral document, `merlin.timing_capacity_facts.v1`, and one command:
+
+```sh
+spike-timing apply-capacities --profile SELECTED_SPIKE_PROFILE.json \
+  --facts capacity_facts.json --output profile-with-facts.json
+```
+
+The document names the exact profile it was derived against
+(`device_profile_sha256`, the SHA256 of the profile file), the elaborated
+design (`elaboration`: artifact name to SHA256, e.g. FIRRTL and DTS) and a list
+of `facts`. Each fact has a unique `id`, a semantic `role`, the profile name it
+`applies_to`, an integer `value` in the role's `unit`, 1..16 pinned `sources`
+(`path`, `sha256`, `selector` naming the RTL element or field read) and a
+`derivation`. The **role**, never a field name, decides where a value may go:
+
+| Role | Unit | Placed at | Meaning |
+| --- | --- | --- | --- |
+| `occupancy_lanes` | commands | `resources.<name>.capacity` | Simultaneous occupancy lanes of an engine resource |
+| `start_queue_entries` | commands | `resources.<name>.queue_capacity` | Reservations that may wait to start on that resource |
+| `live_command_credits` | commands | `target.structure.live_command_credits.<name>` | Entries held from allocation through completion (a reservation station) |
+| `command_queue_entries` | commands | `target.structure.command_queue_entries.<name>` | Buffer after issue, distinct from live-command credits |
+| `outstanding_requests` | requests | `target.structure.outstanding_requests.<name>` | In-flight memory request limit |
+| `max_transfer_bytes` | bytes | `target.structure.max_transfer_bytes.<name>` | Largest single transfer request |
+| `datapath_bytes_per_beat` | bytes | `target.structure.datapath_bytes_per_beat.<name>` | Transfer datapath width |
+| `minimum_latency_cycles` | cycles | `target.constraints.<class>.minimum_latency_cycles` | Fixed pipeline delay; a lower bound when fitting that price class |
+| `declared_hardware_fact` | its own | `target.hardware.<name>` | Fills a hardware fact the profile already declares (e.g. a reset state left null) |
+
+A fact can fill only a slot the profile declares (a resource, hardware fact or
+price class), an already known value must agree, a role is stated once per
+target, and nothing supplies or fits a price. The output carries a
+`capacity_facts` receipt (document digest, profile digest, elaboration and every
+placement). For the selected target, the extractor's reservation-station entries
+are `live_command_credits`, its controller queue lengths `command_queue_entries`,
+its in-flight memory request limit `outstanding_requests`, its DMA maximum
+`max_transfer_bytes`, and its DMA bus width (in bits, divided by eight)
+`datapath_bytes_per_beat`. `occupancy_lanes` and `start_queue_entries` assert a
+reviewed mapping onto the generic engine's lane and wait-queue semantics; do not
+derive them from reservation entries. The observer evidence pass reads the loaded
+profile as its device profile: resources whose lanes and start queue are both
+known become engine resources, the rest stay unbound and are reported
+unresolved, and `structure`/`constraints` ride in the model for providers and
+fitting.
 
 ### Fitting for Phase 2 ranking
 

@@ -257,9 +257,26 @@ def count_only_model(
 ) -> dict:
     """An observer model with every price unknown: it counts events and estimates no cycles.
 
-    The generic engine requires at least one resource; ``cpu.issue`` is a structural placeholder that no
-    price ever uses. Accelerator resources stay unbound (reported unresolved), because their capacities
-    are RTL facts this pass does not have."""
+    ``device_profile`` is the simulator repository's exported profile, optionally with RTL structural
+    facts already placed by role (``spike-timing apply-capacities``). Its hardware facts configure the
+    provider, its ``structure`` and ``constraints`` ride along for providers and fitting, and every
+    resource whose lanes and start queue are both known becomes an engine resource. A resource with
+    either unknown stays unbound and is reported unresolved -- never given an invented default. The
+    generic engine needs at least one resource, so a profile with none known gets a named placeholder
+    that nothing binds (the CPU issue and accelerator resources are then reported unspecified)."""
+    known = [
+        {"name": name, "capacity": slot["capacity"], "queue_capacity": slot["queue_capacity"]}
+        for name, slot in sorted((device_profile.get("resources") or {}).items())
+        if isinstance(slot, dict)
+        and type(slot.get("capacity")) is int
+        and slot["capacity"] > 0
+        and type(slot.get("queue_capacity")) is int
+        and slot["queue_capacity"] >= 0
+    ]
+    resources = [{"id": index, **row} for index, row in enumerate(known)] or [
+        {"id": 0, "name": "unbound.placeholder", "capacity": 1, "queue_capacity": 0}
+    ]
+    target = device_profile["target"]
     return {
         "schema": MODEL_SCHEMA,
         "profile": "phase1-public",
@@ -275,9 +292,14 @@ def count_only_model(
         "scope": {"kind": "counter_pc_pair"},
         "libraries": libraries,
         "cpu": {"isa": isa},
-        "resources": [{"id": 0, "name": "cpu.issue", "capacity": 1, "queue_capacity": 0}],
+        "resources": resources,
         "parameters": {},
-        "target": {"hardware": dict(device_profile["target"]["hardware"]), "prices": {}},
+        "target": {
+            "hardware": dict(target["hardware"]),
+            "prices": {},
+            **{key: target[key] for key in ("structure", "constraints") if isinstance(target.get(key), dict)},
+        },
+        **({"capacity_facts": device_profile["capacity_facts"]} if "capacity_facts" in device_profile else {}),
     }
 
 

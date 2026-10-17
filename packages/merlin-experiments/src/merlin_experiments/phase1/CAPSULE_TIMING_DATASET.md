@@ -173,7 +173,9 @@ python -m merlin_experiments.phase1.capsule_timing_archive RUN_DIR --finalize
 
 `CONFIG.json` (`merlin.annotated_spike_evidence_config.v1`) names the annotated
 Spike and its timing-source manifest, the built timing provider and its source
-bundle manifest, the exported device profile, a disassembler and the target
+bundle manifest, the exported device profile (optionally with RTL structural
+facts placed by `spike-timing apply-capacities`; its fully known resources become
+engine resources), a disassembler and the target
 contract. The functional configuration is not configured: it is the exact argv
 of the run's own functional-tier launches, recovered from their process records
 (all launches must agree). The pass derives each program's counter window from
