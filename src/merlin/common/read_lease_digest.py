@@ -64,15 +64,19 @@ def _descriptor_budget():
         soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
         if soft == resource.RLIM_INFINITY:
             return maximum_files()
-        opened = len(os.listdir('/proc/self/fd'))
+        opened = len(os.listdir("/proc/self/fd"))
         return max(0, min(maximum_files(), soft - opened - FD_HEADROOM - _FD_OVERHEAD))
     except OSError:
         return 0
 
 
 def enabled():
-    return (os.environ.get("MERLIN_SNAPSHOT_LEASE_CACHE") == "1" and sys.platform == "linux"
-            and fcntl is not None and hasattr(fcntl, "F_SETLEASE"))
+    return (
+        os.environ.get("MERLIN_SNAPSHOT_LEASE_CACHE") == "1"
+        and sys.platform == "linux"
+        and fcntl is not None
+        and hasattr(fcntl, "F_SETLEASE")
+    )
 
 
 class _Cache:
@@ -123,8 +127,10 @@ class _Cache:
         try:
             self.process = subprocess.Popen(
                 [sys.executable, "-B", str(Path(__file__).resolve()), str(child.fileno())],
-                pass_fds=(child.fileno(),), stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                pass_fds=(child.fileno(),),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
             parent.settimeout(5)
             self.channel = parent
@@ -151,7 +157,7 @@ class _Cache:
             try:
                 current = os.fstat(current_fd)
                 return (
-                    os.readlink(f'/proc/self/fd/{current_fd}') == str(path)
+                    os.readlink(f"/proc/self/fd/{current_fd}") == str(path)
                     and stat.S_ISREG(current.st_mode)
                     and _identity(current) == original == _identity(os.fstat(descriptor))
                     and fcntl.fcntl(descriptor, fcntl.F_GETLEASE) == fcntl.F_RDLCK
@@ -162,12 +168,46 @@ class _Cache:
         except OSError:
             return False
 
-    def digest(self, path, metadata):
+    def valid_batch(self, members):
+        """``valid`` for many borrowed entries with one custodian check per batch.
+
+        Each member repeats the O_PATH kernel-resolved name, regular-file and
+        identity comparison. Every lease is then read again after all names are
+        checked: a lease never returns to an admitted descriptor, so a held lease
+        at the end proves no writer opened the file since its original hash.
+        """
+        try:
+            if self.process is None or self.process.poll() is not None:
+                return False
+            for path, (descriptor, _, original) in members:
+                if not path.is_absolute():
+                    return False
+                current_fd = os.open(path, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC)
+                try:
+                    current = os.fstat(current_fd)
+                    if (
+                        os.readlink(f"/proc/self/fd/{current_fd}") != str(path)
+                        or not stat.S_ISREG(current.st_mode)
+                        or _identity(current) != original
+                        or fcntl.fcntl(descriptor, fcntl.F_GETLEASE) != fcntl.F_RDLCK
+                    ):
+                        return False
+                finally:
+                    os.close(current_fd)
+            return (
+                all(fcntl.fcntl(entry[0], fcntl.F_GETLEASE) == fcntl.F_RDLCK for _, entry in members)
+                and self.process.poll() is None
+            )
+        except OSError:
+            return False
+
+    def digest(self, path, metadata, minimum_bytes=None):
         """Admit a miss under the creation lock; existing hits borrow outside it."""
         key = metadata.st_dev, metadata.st_ino
         if self.disabled or self.retiring or key in self.unsupported or len(self.entries) >= self.capacity:
             return None
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size < self.minimum_bytes:
+        minimum = self.minimum_bytes if minimum_bytes is None else minimum_bytes
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size < minimum:
             return None
         if not path.is_absolute() or path.resolve() != path:
             raise RuntimeError("original snapshot read lease requires a canonical file")
@@ -180,9 +220,7 @@ class _Cache:
                 self.start()
             elif self.process.poll() is not None:
                 self.refuse()
-            self.channel.sendmsg(
-                [b"add"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [descriptor]))]
-            )
+            self.channel.sendmsg([b"add"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [descriptor]))])
             response = self.channel.recv(32)
             if response != b"ok":
                 if len(self.unsupported) < maximum_files() * 16:
@@ -211,11 +249,17 @@ class _Cache:
                 os.close(descriptor)
 
 
-def digest(path: Path):
-    """Return a leased SHA-256 or None for the caller's existing full-read path."""
+def digest(path: Path, *, minimum_bytes: int | None = None):
+    """Return a leased SHA-256 or None for the caller's existing full-read path.
+
+    ``minimum_bytes`` lets a caller that re-verifies one closed pin set admit
+    smaller files than the operator default; capacity and custody are unchanged.
+    """
     global _CACHE
     if not enabled():
         return None
+    if minimum_bytes is not None and (type(minimum_bytes) is not int or minimum_bytes < 0):
+        raise ValueError("lease admission threshold must be a nonnegative integer")
     path = Path(path)
     metadata = path.stat(follow_symlinks=False)
     key = metadata.st_dev, metadata.st_ino
@@ -233,7 +277,7 @@ def digest(path: Path):
         if hit:
             _borrow(cache)
         else:
-            entry = cache.digest(path, metadata)
+            entry = cache.digest(path, metadata, minimum_bytes)
     if hit:
         good = False
         try:
@@ -244,6 +288,61 @@ def digest(path: Path):
     if entry is not None and owner is not None and owner[:2] == (os.getpid(), threading.current_thread()):
         owner[2][path] = cache, entry
     return None if entry is None else entry[1]
+
+
+def reuse(paths, *, required: bool = False):
+    """Batch the hits of exact paths already admitted by ``digest`` in this process.
+
+    Returns ``{path: sha256}`` only after ``_Cache.valid_batch`` rechecks every
+    returned member's name, identity and lease following all lookups. Paths
+    never admitted are omitted for the caller's ordinary ``digest``/full read.
+    A failed or ownerless member declines with ``None``, so the caller's
+    ordinary per-file path reaches the existing refusal. ``required`` refuses
+    instead unless every path is still a live hit; use it to recheck reused
+    members before accepting a verification that also performed slower reads.
+    Nothing is admitted, hashed or cached by mtime here.
+    """
+    # Keep caller Path objects: rebuilding them discards their parsed form.
+    paths = [path if isinstance(path, Path) else Path(path) for path in paths]
+    changed = "original snapshot read lease custody changed"
+    if not enabled():
+        if required:
+            raise RuntimeError(changed)
+        return None
+    with _LOCK:
+        cache = _CACHE
+        if cache is None or cache.owner != os.getpid() or cache.disabled or cache.retiring:
+            if required:
+                raise RuntimeError(changed)
+            return None
+        members = []
+        for path in paths:
+            key = cache.paths.get(path)
+            entry = None if key is None else cache.entries.get(key)
+            if entry is not None:
+                members.append((path, entry))
+            elif required:
+                raise RuntimeError(changed)
+        if not members:
+            return {}
+        cache.readers += 1
+    good = False
+    try:
+        good = cache.valid_batch(members)
+    finally:
+        with _LOCK:
+            cache.readers -= 1
+            _CHANGED.notify_all()
+            good = good and cache is _CACHE and not cache.retiring and not cache.disabled
+            if required and not good:
+                cache.refuse()
+    if not good:
+        return None
+    owner = _VERIFICATION.get()
+    if owner is not None and owner[:2] == (os.getpid(), threading.current_thread()):
+        for path, entry in members:
+            owner[2][path] = cache, entry
+    return {path: entry[1] for path, entry in members}
 
 
 def _borrow(cache):
@@ -352,7 +451,7 @@ def _custodian(channel_fd):
             descriptors = array.array("i")
             for level, kind, data in ancillary:
                 if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
-                    descriptors.frombytes(data[:len(data) - len(data) % descriptors.itemsize])
+                    descriptors.frombytes(data[: len(data) - len(data) % descriptors.itemsize])
             if message != b"add" or len(descriptors) != 1 or len(held) >= capacity:
                 for descriptor in descriptors:
                     os.close(descriptor)
@@ -377,7 +476,8 @@ def _custodian(channel_fd):
 
 atexit.register(close)
 if hasattr(os, "register_at_fork"):
-    os.register_at_fork(before=lambda: _LOCK.acquire(), after_in_parent=lambda: _LOCK.release(),
-                        after_in_child=_after_fork)
+    os.register_at_fork(
+        before=lambda: _LOCK.acquire(), after_in_parent=lambda: _LOCK.release(), after_in_child=_after_fork
+    )
 if __name__ == "__main__":
     _custodian(int(sys.argv[1]))
