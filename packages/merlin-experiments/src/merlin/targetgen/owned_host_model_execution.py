@@ -18,6 +18,15 @@ from merlin.compile.model_execution_inputs import file_sha256
 from merlin.compile.owned_host_model import OwnedHostModelCompiler
 
 
+class CandidateDispatchRefusal(ValueError):
+    """The candidate's own emitted program fails a source-attribution requirement of its dispatch.
+
+    Raised only from checks of the candidate's emitted device code, never for a harness, input or
+    tool fault, so the grade can report the compiler's failure as a failure rather than leaving it
+    behind the absent receipt it causes (which reads as unmeasured tooling).
+    """
+
+
 def _selected_file(selection, role):
     record = selection.get(role)
     if not isinstance(record, dict) or set(record) != {"path", "sha256"}:
@@ -397,7 +406,8 @@ def _mandatory_source_commands(function, commands, obligations):
                 )
             }
         if not _mandatory_command_blocks(function, matched):
-            raise ValueError(
+            # The candidate's emitted device code, not the harness, is what lacks the work.
+            raise CandidateDispatchRefusal(
                 f"eligible source operation {obligation['source_op_index']} lacks unavoidable "
                 f"attributed {family} work; fused transforms need independent evidence"
             )
@@ -1011,6 +1021,41 @@ def _same_owned_frozen_policy(recorded, fresh) -> bool:
     return True
 
 
+def _stopped_before_receipt(stopped):
+    """The audit verdict for a run that stopped before producing its receipt: its root cause first.
+
+    The absent receipt is only a consequence. Reporting it ("receipt ... is absent") hid the actual
+    reason, and when that reason is the candidate's own dispatch refusal, it turned a compiler failure
+    into what reads as unmeasured tooling. Any other stop stays incomplete (NOT_RUN_IS_NOT_PASS) and
+    names its stage and exception; host paths are scrubbed from the quoted message.
+    """
+    from merlin.common.path_scrub import scrub_host_paths
+
+    stage, kind = str(stopped.get("stage") or "unknown stage"), str(stopped.get("type") or "error")
+    message = scrub_host_paths(str(stopped.get("detail") or ""))[:2000]
+    if kind == CandidateDispatchRefusal.__name__ and stage == "owned_host_execution":
+        return {
+            "status": "fail",
+            "kind": "owned_host_model_execution",
+            "violations": ["candidate_dispatch_attribution_refused"],
+            "detail": message,
+            "failure": {
+                "plane": "candidate_compilation",
+                "category": "CANDIDATE_EMISSION_FAILED",
+                "detail": message,
+                "stage": stage,
+            },
+        }
+    detail = f"the model run stopped at {stage} with {kind} before producing its receipt: {message}"
+    return {
+        "status": "incomplete",
+        "kind": "owned_host_model_execution",
+        "violations": ["candidate_completed_dispatch_unverified", "candidate_required_tiers_unverified"],
+        "detail": detail,
+        "failure": {"plane": "candidate_model_execution", "category": "NOT_RUN_IS_NOT_PASS", "detail": detail},
+    }
+
+
 def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
     """Independently reopen the provided-host result before promoting any tier."""
     import os
@@ -1026,6 +1071,9 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
 
     try:
         record = result.get("owned_host_native_execution")
+        stopped = result.get("candidate_emission_failure")
+        if not isinstance(record, dict) and isinstance(stopped, dict):
+            return _stopped_before_receipt(stopped)
         if not isinstance(record, dict) or not isinstance(capsule, dict):
             raise ValueError("owned host model receipt or original frozen capsule is absent")
         root = Path(capsule["__dir__"])

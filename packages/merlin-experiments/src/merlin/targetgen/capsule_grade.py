@@ -827,6 +827,9 @@ def enforce_model_execution_check(result: dict, capsule: dict | None, *, target:
         }
         if check["status"] == "pass":
             result.pop("failure", None)
+        elif isinstance(check.get("failure"), dict):
+            # The audit named the run's root cause (a stop before any receipt); report that, not its effect.
+            result["failure"] = dict(check["failure"])
         else:
             result["failure"] = {
                 "plane": "candidate_model_execution",
