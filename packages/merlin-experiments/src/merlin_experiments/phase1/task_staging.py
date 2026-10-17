@@ -319,6 +319,14 @@ error policy.
 - `python agent_selfcheck.py --submission submission --capsules A,B`: focused public capsule checks.
   Without `--sim` it runs every tier each capsule declares mandatory (Spike, L3 gSIM, provided host)
   and reports a certified pass/fail per capsule; `--sim spike` is a faster screen that cannot certify.
+  Add `--wait-budget 5` to get a request id back at once, keep working, and collect the verdict with
+  `--attach ID`; `--list` shows your requests. Several requests may be in flight. Put every capsule an
+  edit affects in one request: its capsules run in parallel and per-request overhead dominates.
+  After an edit, `--capsules changed` compiles every capsule and simulates only those whose emitted
+  bytes changed; `--capsules failing` re-checks what did not pass in your most recent check.
+- `--submission variants/NAME`: self-check an alternative kept in `variants/NAME/` (same layout as
+  `submission/`) beside it. Variant results are labelled and never graded officially; only
+  `submission/` counts, so copy the winner there.
 - `python simjob.py --help`: asynchronous public capsule jobs (`--sim required` runs every tier).
 - `python await_verdict.py --help`: wait for a new harness verdict.
 - `python agent_model_check.py check --model MODEL --out REPORT.json`: visible model check through the broker.

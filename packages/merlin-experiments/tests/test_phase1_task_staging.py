@@ -40,6 +40,16 @@ def test_gemmini_full_model_task_is_short_and_allows_edits_during_checks(tmp_pat
     # The advertised focused check is the certifying one; a single-engine screen is named as such.
     assert "`python agent_selfcheck.py --submission submission --capsules A,B`" in task
     assert "certified pass/fail per capsule" in task and "cannot certify" in task
+    # Checks do not block the author: submit, keep working, collect; batch; try variants beside it.
+    assert "`--wait-budget 5`" in task and "`--attach ID`" in task and "`--list`" in task
+    assert "Several requests may be in flight" in task and "per-request overhead dominates" in task
+    assert "`--capsules changed`" in task and "`--capsules failing`" in task
+    assert "`--submission variants/NAME`" in task and "never graded officially" in task
+    assert "copy the winner there" in task
+    assert (
+        len(TS.full_model_task(conf, "bwrap", {"required_public_dev_capsules": 120, "held_out_capsules": 20}).encode())
+        <= 10_000
+    )
     assert task == (run / "TASK.md").read_text()
 
 
