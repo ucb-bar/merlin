@@ -469,3 +469,20 @@ def test_parent_preparation_releases_cpu_before_exposing_transport(setup, monkey
             with cpu_pool.shared_compute_pool(timeout_s=0):
                 pass
     assert not cpu_pool.current_thread_owns_cpu_lease()
+
+
+def test_only_tiers_executed_to_a_verdict_price_the_parent_ladder():
+    """A refused or unavailable tier carries a partial wall clock; the in-process ladder never prices
+    one, so a child must not either -- else a refusal that cost one ELF build reads as the tier's price
+    and the parent reorders its ladder around it."""
+    result = {
+        "tiers": {
+            "L0": {"status": "pass"},
+            "L2": {"status": "pass", "timing": {"adapter_wall_s": 5.25, "build_s": 5.1, "sim_active_s": 0.15}},
+            "L3": {"status": "unavailable", "timing": {"adapter_wall_s": 4.9, "partial": True}},
+            "L4": {"status": "pass", "carried": {"carried": True}, "timing": None},
+            "L5": {"status": "fail", "timing": {"adapter_wall_s": "unknown"}},
+        }
+    }
+    assert OC.completed_tier_costs(result) == {"L2": 5.25}
+    assert OC.completed_tier_costs({}) == {}

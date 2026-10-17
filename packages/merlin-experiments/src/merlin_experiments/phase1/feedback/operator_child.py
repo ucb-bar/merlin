@@ -162,6 +162,24 @@ def _restored_child(*args, **kwargs):
             original.__exit__(None, None, None)
 
 
+def completed_tier_costs(result):
+    """``{tier: adapter wall seconds}`` for each tier this child executed to a compared verdict.
+
+    The parent prices its ladder from these (``tier_policy.record_cost``), exactly as the in-process
+    ladder prices a tier only once its adapter has returned. A tier whose adapter raised -- unavailable,
+    refused before dispatch, timed out -- carries only a ``partial`` wall clock, and pricing it would
+    teach the order that the tier costs what its refusal cost: one ELF build in place of a simulation.
+    """
+    return {
+        tier: record["timing"]["adapter_wall_s"]
+        for tier, record in (result.get("tiers") or {}).items()
+        if isinstance(record, dict)
+        and isinstance(record.get("timing"), dict)
+        and not record["timing"].get("partial")
+        and type(record["timing"].get("adapter_wall_s")) in (int, float)
+    }
+
+
 def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, adapters, timeout, workers, no_oracle):
     from merlin.targetgen import capsule_runner as runner
 
@@ -295,13 +313,7 @@ def main(argv):
             workers=job["workers"],
             _defer_result_publication=True,
         )
-        result["operator_child_costs_s"] = {
-            tier: record["timing"]["adapter_wall_s"]
-            for tier, record in result.get("tiers", {}).items()
-            if isinstance(record, dict)
-            and isinstance(record.get("timing"), dict)
-            and type(record["timing"].get("adapter_wall_s")) in (int, float)
-        }
+        result["operator_child_costs_s"] = completed_tier_costs(result)
         result["operator_child_spend_s"] = tier_policy.spent(target)
     result["original_compiler_child"] = receipt
     args.operator_grade_out.write_text(json.dumps(result, indent=2), encoding="utf-8")
