@@ -25,20 +25,34 @@ def test_actual_mlir_cse_and_defined_chain(tmp_path, lean_tools):
       %b = arith.constant 7 : i32
       return %a, %b : i32, i32
     }""")
-    result = subprocess.run([str(lean_tools.m2m_python), "-c", RUN_CSE, str(before), str(after)],
-                            capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        [str(lean_tools.m2m_python), "-c", RUN_CSE, str(before), str(after)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert result.returncode == 0, result.stderr
     assert before.read_text().count("arith.constant") == 2
     assert after.read_text().count("arith.constant") == 1
     (stage / "meta.json").write_text(json.dumps({"boundary": "upstream-cse"}))
     receipt = check_stage(stage, m2m_python=lean_tools.m2m_python)
     assert receipt["verdict"] == "verified", receipt.get("reason")
-    assert check_support(before, "forward", tmp_path / "support",
-                         m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
-    assert check_definedness(before, "forward", tmp_path / "defined",
-                             m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
-    chain = compose_chain([stage], tmp_path / "support/receipt.json", "forward", tmp_path / "chain.json",
-                          m2m_python=lean_tools.m2m_python, definedness=tmp_path / "defined/receipt.json")
+    assert (
+        check_support(before, "forward", tmp_path / "support", m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
+    assert (
+        check_definedness(before, "forward", tmp_path / "defined", m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
+    chain = compose_chain(
+        [stage],
+        tmp_path / "support/receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        m2m_python=lean_tools.m2m_python,
+        definedness=tmp_path / "defined/receipt.json",
+    )
     assert chain["verdict"] == "verified", chain.get("reason")
     after.write_text(after.read_text().replace("constant 7", "constant 8"))
     assert check_stage(stage, m2m_python=lean_tools.m2m_python)["verdict"] == "abstracted"

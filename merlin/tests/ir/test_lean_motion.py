@@ -32,24 +32,39 @@ def _constants(scalar="i32", a="7", b="8"):
     return before, after
 
 
-@pytest.mark.parametrize("scalar,a,b", [
-    ("i1", "0", "1"), ("i8", "-128", "127"), ("i13", "-17", "19"),
-    ("i32", "7", "8"), ("i64", "-9223372036854775808", "9223372036854775807"),
-    ("index", "7", "8"), ("f32", "-0.0", "1.5"), ("f64", "-0.0", "1.5"),
-])
+@pytest.mark.parametrize(
+    "scalar,a,b",
+    [
+        ("i1", "0", "1"),
+        ("i8", "-128", "127"),
+        ("i13", "-17", "19"),
+        ("i32", "7", "8"),
+        ("i64", "-9223372036854775808", "9223372036854775807"),
+        ("index", "7", "8"),
+        ("f32", "-0.0", "1.5"),
+        ("f64", "-0.0", "1.5"),
+    ],
+)
 def test_swapped_constants_and_defined_chain(tmp_path, lean_tools, scalar, a, b):
     stage = _stage(tmp_path, *_constants(scalar, a, b))
     receipt = check_stage(stage, m2m_python=lean_tools.m2m_python)
     assert receipt["verdict"] == "verified", receipt.get("reason")
     assert receipt["theorem"] == "MerlinVerify.Check.moduleCheck_sound"
     before = stage / "before.mlir"
-    assert check_support(before, "forward", tmp_path / "support",
-                         m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
-    receipt = check_definedness(before, "forward", tmp_path / "defined",
-                               m2m_python=lean_tools.m2m_python)
+    assert (
+        check_support(before, "forward", tmp_path / "support", m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
+    receipt = check_definedness(before, "forward", tmp_path / "defined", m2m_python=lean_tools.m2m_python)
     assert receipt["verdict"] == "verified", receipt.get("reason")
-    chain = compose_chain([stage], tmp_path / "support/receipt.json", "forward", tmp_path / "chain.json",
-                          m2m_python=lean_tools.m2m_python, definedness=tmp_path / "defined/receipt.json")
+    chain = compose_chain(
+        [stage],
+        tmp_path / "support/receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        m2m_python=lean_tools.m2m_python,
+        definedness=tmp_path / "defined/receipt.json",
+    )
     assert chain["verdict"] == "verified", chain.get("reason")
 
 
@@ -87,16 +102,22 @@ def test_independent_operand_taking_motion_remains_unsupported(tmp_path, lean_to
 
 def test_motion_across_external_call_remains_unsupported(tmp_path, lean_tools):
     declaration = "func.func private @external() -> i32\n"
-    before = declaration + """func.func @forward() -> (i32, i32) {
+    before = (
+        declaration
+        + """func.func @forward() -> (i32, i32) {
       %a = arith.constant 7 : i32
       %b = func.call @external() : () -> i32
       return %a, %b : i32, i32
     }"""
-    after = declaration + """func.func @forward() -> (i32, i32) {
+    )
+    after = (
+        declaration
+        + """func.func @forward() -> (i32, i32) {
       %b = func.call @external() : () -> i32
       %a = arith.constant 7 : i32
       return %a, %b : i32, i32
     }"""
+    )
     stage = _stage(tmp_path, before, after)
     receipt = check_stage(stage, m2m_python=lean_tools.m2m_python)
     assert receipt["verdict"] == "abstracted", receipt.get("reason")

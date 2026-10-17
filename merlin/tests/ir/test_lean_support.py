@@ -90,7 +90,11 @@ def test_support_rejects_invalid_width_before_running(tmp_path, width):
 
 @pytest.mark.parametrize("args", [["-1"], ["0"], ["invalid"], ["64", "32"]])
 def test_support_cli_rejects_invalid_width(tmp_path, lean_tools, args):
-    proc = subprocess.run([str(lean_tools.lean_exe), "check-support", str(tmp_path / "missing.json"),
-                           "forward", *args], capture_output=True, text=True, check=False)
+    proc = subprocess.run(
+        [str(lean_tools.lean_exe), "check-support", str(tmp_path / "missing.json"), "forward", *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert proc.returncode == 2
     assert "positive integer" in proc.stderr

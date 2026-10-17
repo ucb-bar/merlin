@@ -185,8 +185,14 @@ def test_defined_chain_replays_real_preprocessing(tmp_path, monkeypatch, lean_to
     assert receipt["verdict"] == "verified", receipt.get("reason")
 
     def compose(path=defined / "receipt.json"):
-        return compose_chain(stages, support / "receipt.json", "forward", tmp_path / "chain.json",
-                             m2m_python=lean_tools.m2m_python, definedness=path)
+        return compose_chain(
+            stages,
+            support / "receipt.json",
+            "forward",
+            tmp_path / "chain.json",
+            m2m_python=lean_tools.m2m_python,
+            definedness=path,
+        )
 
     result = compose()
     jsonschema.validate(result, json.loads(SCHEMA.read_text()))
@@ -205,9 +211,13 @@ def test_defined_chain_replays_real_preprocessing(tmp_path, monkeypatch, lean_to
     assert "required proof obligation" in wrong_obligation["reason"]
 
     for keys, value in [
-        (("domain",), "all inputs"), (("function",), "other"), (("index_bits",), 32),
-        (("axioms",), ["sorryAx"]), (("assumptions",), []),
-        (("exporter", "round_trip"), "not_run"), (("theorem",), "unrelated.theorem"),
+        (("domain",), "all inputs"),
+        (("function",), "other"),
+        (("index_bits",), 32),
+        (("axioms",), ["sorryAx"]),
+        (("assumptions",), []),
+        (("exporter", "round_trip"), "not_run"),
+        (("theorem",), "unrelated.theorem"),
     ]:
         altered = copy.deepcopy(receipt)
         node = altered
@@ -221,12 +231,18 @@ def test_defined_chain_replays_real_preprocessing(tmp_path, monkeypatch, lean_to
     # A valid proof about another source is still irrelevant to this chain.
     other = tmp_path / "other.mlir"
     other.write_text("func.func @forward(%a: i32, %b: i32) -> i32 { return %a : i32 }")
-    assert check_definedness(other, "forward", tmp_path / "other-proof",
-                             m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    assert (
+        check_definedness(other, "forward", tmp_path / "other-proof", m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
     unrelated = compose(tmp_path / "other-proof/receipt.json")
     assert unrelated["verdict"] == "abstracted" and "another source" in unrelated["reason"]
-    assert check_definedness(capture, "forward", tmp_path / "width32",
-                             m2m_python=lean_tools.m2m_python, index_bits=32)["verdict"] == "verified"
+    assert (
+        check_definedness(capture, "forward", tmp_path / "width32", m2m_python=lean_tools.m2m_python, index_bits=32)[
+            "verdict"
+        ]
+        == "verified"
+    )
     another_width = compose(tmp_path / "width32/receipt.json")
     assert another_width["verdict"] == "abstracted" and "another source or index width" in another_width["reason"]
 
@@ -243,10 +259,14 @@ def test_chain_rechecks_earlier_files_before_publication(tmp_path, monkeypatch, 
     (stage / "meta.json").write_text('{"boundary":"identity"}')
     assert check.check_stage(stage, m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
     support, defined = tmp_path / "support", tmp_path / "defined"
-    assert check.check_support(stage / "before.mlir", "forward", support,
-                               m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
-    assert check.check_definedness(stage / "before.mlir", "forward", defined,
-                                   m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    assert (
+        check.check_support(stage / "before.mlir", "forward", support, m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
+    assert (
+        check.check_definedness(stage / "before.mlir", "forward", defined, m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
     monkeypatch.setenv("MERLIN_LEAN_STAGES", str(tmp_path / "recorded"))
     handed = tmp_path / "handed.mlir"
     handed.write_text(source)
@@ -267,9 +287,15 @@ def test_chain_rechecks_earlier_files_before_publication(tmp_path, monkeypatch, 
         return result
 
     monkeypatch.setattr(check, "_validate_receipt", edit_after_replay)
-    result = check.compose_chain([stage], support / "receipt.json", "forward", tmp_path / "chain.json",
-                                 m2m_python=lean_tools.m2m_python, definedness=defined / "receipt.json",
-                                 handoff=handoff)
+    result = check.compose_chain(
+        [stage],
+        support / "receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        m2m_python=lean_tools.m2m_python,
+        definedness=defined / "receipt.json",
+        handoff=handoff,
+    )
     assert result["verdict"] == result["refinement_verdict"] == "abstracted"
     assert "changed" in result["reason"]
 
@@ -288,10 +314,20 @@ def test_dense_tensor_preprocessing_chain_is_defined(tmp_path, monkeypatch, lean
     for stage in stages:
         assert check_stage(stage, m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
     capture = stages[0] / "before.mlir"
-    assert check_support(capture, "forward", tmp_path / "support",
-                         m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
-    assert check_definedness(capture, "forward", tmp_path / "defined",
-                             m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
-    result = compose_chain(stages, tmp_path / "support/receipt.json", "forward", tmp_path / "chain.json",
-                           m2m_python=lean_tools.m2m_python, definedness=tmp_path / "defined/receipt.json")
+    assert (
+        check_support(capture, "forward", tmp_path / "support", m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
+    assert (
+        check_definedness(capture, "forward", tmp_path / "defined", m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
+    result = compose_chain(
+        stages,
+        tmp_path / "support/receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        m2m_python=lean_tools.m2m_python,
+        definedness=tmp_path / "defined/receipt.json",
+    )
     assert result["verdict"] == "verified", result.get("reason")

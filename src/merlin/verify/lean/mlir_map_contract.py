@@ -28,10 +28,21 @@ def probe() -> dict:
     with ir.Context():
         for count in (0, 1, 2):
             arguments = [f"%a{i}: tensor<2xi32>" for i in range(count)] + ["%init: tensor<2xi32>"]
-            inputs = ("ins(" + ", ".join(f"%a{i}" for i in range(count)) + " : "
-                      + ", ".join(["tensor<2xi32>"] * count) + ")") if count else ""
-            prefix = (f"func.func @probe({', '.join(arguments)}) -> tensor<2xi32> {{ "
-                      f"%r = linalg.map {inputs} outs(%init : tensor<2xi32>) ")
+            inputs = (
+                (
+                    "ins("
+                    + ", ".join(f"%a{i}" for i in range(count))
+                    + " : "
+                    + ", ".join(["tensor<2xi32>"] * count)
+                    + ")"
+                )
+                if count
+                else ""
+            )
+            prefix = (
+                f"func.func @probe({', '.join(arguments)}) -> tensor<2xi32> {{ "
+                f"%r = linalg.map {inputs} outs(%init : tensor<2xi32>) "
+            )
             suffix = " return %r : tensor<2xi32> }"
             block_args = [f"%x{i}: i32" for i in range(count)] + ["%old: i32"]
             source = prefix + f"({', '.join(block_args)}) {{ linalg.yield %old : i32 }}" + suffix
@@ -48,8 +59,11 @@ def probe() -> dict:
             )
             generic = module.body.operations[0].regions[0].blocks[0].operations[0]
             block = generic.regions[0].blocks[0]
-            if (generic.operation.name != "linalg.generic" or len(block.arguments) != count + 1
-                    or block.operations[0].operands[0] != block.arguments[count]):
+            if (
+                generic.operation.name != "linalg.generic"
+                or len(block.arguments) != count + 1
+                or block.operations[0].operands[0] != block.arguments[count]
+            ):
                 raise RuntimeError("unsupported linalg.map generalization contract")
             # A legacy body with only the input block arguments must be rejected by the verifier.
             if count:
@@ -69,8 +83,11 @@ def probe() -> dict:
         }""")
         block = short.body.operations[0].regions[0].blocks[0].operations[0].regions[0].blocks[0]
         payload = block.operations[0]
-        if (len(block.arguments) != 3 or payload.operation.name != "arith.addi"
-                or list(payload.operands) != list(block.arguments)[:2]):
+        if (
+            len(block.arguments) != 3
+            or payload.operation.name != "arith.addi"
+            or list(payload.operands) != list(block.arguments)[:2]
+        ):
             raise RuntimeError("unsupported linalg.map shorthand contract")
     return {
         "contract": "map-inputs-then-destination-v1",

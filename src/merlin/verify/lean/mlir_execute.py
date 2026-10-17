@@ -64,10 +64,13 @@ def run(request: dict) -> dict:
         module = ir.Module.parse(source.decode())
         if request.get("bufferize_only"):
             end = next(i for i, stage in enumerate(PASSES) if stage.startswith("one-shot-bufferize"))
-            pipeline = "builtin.module(" + ",".join(PASSES[:end + 1]) + ")"
+            pipeline = "builtin.module(" + ",".join(PASSES[: end + 1]) + ")"
             passmanager.PassManager.parse(pipeline).run(module.operation)
-            return {"mlir": module.operation.get_asm(print_generic_op_form=True),
-                    "pipeline": pipeline, "map_contract": map_contract}
+            return {
+                "mlir": module.operation.get_asm(print_generic_op_form=True),
+                "pipeline": pipeline,
+                "map_contract": map_contract,
+            }
         if request.get("generalize"):
             passmanager.PassManager.parse("builtin.module(func.func(linalg-generalize-named-ops))").run(
                 module.operation

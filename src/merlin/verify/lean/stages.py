@@ -61,8 +61,9 @@ def parse_recorded(name: str, path):
 
     module = parse_mlir_file(path)
     if enabled():
-        record_boundary(name, "merlin.frontends.linalg_mlir.parse_mlir_file", Path(path).read_text(),
-                        generic_text(module))
+        record_boundary(
+            name, "merlin.frontends.linalg_mlir.parse_mlir_file", Path(path).read_text(), generic_text(module)
+        )
     return module
 
 
@@ -80,10 +81,18 @@ def record_handoff(path: Path) -> None:
         data = Path(path).read_bytes()
         root = _dir()
         root.mkdir(parents=True, exist_ok=True)
-        (root / "handoff.json").write_text(json.dumps(
-            {"schema": "merlin.lean.handoff.v1", "path": str(path.resolve()),
-             "sha256": hashlib.sha256(data).hexdigest(),
-             "bytes": len(data)}, indent=2, sort_keys=True))
+        (root / "handoff.json").write_text(
+            json.dumps(
+                {
+                    "schema": "merlin.lean.handoff.v1",
+                    "path": str(path.resolve()),
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "bytes": len(data),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
 
 
 def _reserve(root: Path) -> int:
@@ -130,5 +139,6 @@ def record_boundary(boundary: str, pass_entry: str, before: str, after: str, *, 
 def completed(root: Path) -> list[Path]:
     """The published boundary directories under ``root``, in recording order (never a reservation or
     a stage still being written)."""
-    return sorted(p for p in root.iterdir()
-                  if p.is_dir() and not p.name.startswith(".") and (p / "meta.json").is_file())
+    return sorted(
+        p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".") and (p / "meta.json").is_file()
+    )

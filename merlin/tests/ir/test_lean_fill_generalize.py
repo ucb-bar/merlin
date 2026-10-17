@@ -18,18 +18,20 @@ def _source(shape="2x3xi32", scalar="i32", *, dirty=True):
 
 
 @pytest.mark.parametrize("index_bits", [32, 64])
-@pytest.mark.parametrize("shape,scalar,dirty", [
-    ("i32", "i32", True),
-    ("0x3xi32", "i32", True),
-    ("2x3xi32", "i32", True),
-    ("2x3x4xi8", "i8", False),
-    ("3x2xf32", "f32", True),
-    ("2xf64", "f64", False),
-    ("2xbf16", "bf16", True),
-])
+@pytest.mark.parametrize(
+    "shape,scalar,dirty",
+    [
+        ("i32", "i32", True),
+        ("0x3xi32", "i32", True),
+        ("2x3xi32", "i32", True),
+        ("2x3x4xi8", "i8", False),
+        ("3x2xf32", "f32", True),
+        ("2xf64", "f64", False),
+        ("2xbf16", "bf16", True),
+    ],
+)
 def test_actual_fill_generalization(tmp_path, lean_tools, shape, scalar, dirty, index_bits):
-    stage, _, _ = _generalize(tmp_path, lean_tools, _source(shape, scalar, dirty=dirty),
-                              boundary="fill-generalization")
+    stage, _, _ = _generalize(tmp_path, lean_tools, _source(shape, scalar, dirty=dirty), boundary="fill-generalization")
     result = check_typed_stage(stage, index_bits=index_bits, m2m_python=lean_tools.m2m_python)
     assert result["verdict"] == "verified", result.get("reason")
     assert result["index_bits"] == index_bits
@@ -39,13 +41,18 @@ def test_actual_fill_generalization(tmp_path, lean_tools, shape, scalar, dirty, 
 def test_fill_generalization_composes_with_source_definedness(tmp_path, lean_tools, index_bits):
     stage, before, _ = _generalize(tmp_path, lean_tools, _source(), boundary="fill-generalization")
     for check, name in [(check_support, "support"), (check_definedness, "defined")]:
-        result = check(before, "forward", tmp_path / name, index_bits=index_bits,
-                       m2m_python=lean_tools.m2m_python)
+        result = check(before, "forward", tmp_path / name, index_bits=index_bits, m2m_python=lean_tools.m2m_python)
         assert result["verdict"] == "verified", result.get("reason")
     result = check_typed_stage(stage, index_bits=index_bits, m2m_python=lean_tools.m2m_python)
     assert result["verdict"] == "verified", result.get("reason")
-    result = compose_chain([stage], tmp_path / "support/receipt.json", "forward", tmp_path / "chain.json",
-                           definedness=tmp_path / "defined/receipt.json", m2m_python=lean_tools.m2m_python)
+    result = compose_chain(
+        [stage],
+        tmp_path / "support/receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        definedness=tmp_path / "defined/receipt.json",
+        m2m_python=lean_tools.m2m_python,
+    )
     assert result["verdict"] == "verified", result.get("reason")
     assert result["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
 

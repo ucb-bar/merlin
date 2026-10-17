@@ -18,14 +18,17 @@ def _check(tmp_path, lean_tools, source):
     return check_definedness(program, "forward", tmp_path / "proof", m2m_python=lean_tools.m2m_python)
 
 
-@pytest.mark.parametrize("shape,scalar", [("2x3xi32", "i32"), ("0x3xi32", "i32"), ("i32", "i32"),
-                                        ("2xf32", "f32")])
+@pytest.mark.parametrize("shape,scalar", [("2x3xi32", "i32"), ("0x3xi32", "i32"), ("i32", "i32"), ("2xf32", "f32")])
 def test_fill_initializes_empty_storage(tmp_path, lean_tools, shape, scalar):
-    receipt = _check(tmp_path, lean_tools, f"""func.func @forward(%v: {scalar}) -> tensor<{shape}> {{
+    receipt = _check(
+        tmp_path,
+        lean_tools,
+        f"""func.func @forward(%v: {scalar}) -> tensor<{shape}> {{
       %e = tensor.empty() : tensor<{shape}>
       %r = linalg.fill ins(%v : {scalar}) outs(%e : tensor<{shape}>) -> tensor<{shape}>
       return %r : tensor<{shape}>
-    }}""")
+    }}""",
+    )
     assert receipt["verdict"] == "verified", receipt.get("reason")
 
 
@@ -51,8 +54,9 @@ def _reduction(extent=3, operation="addi", *, captures=False, multiple=False):
     }}"""
 
 
-@pytest.mark.parametrize("extent,captures,multiple", [(3, False, False), (0, False, False),
-                                                    (3, True, False), (3, False, True)])
+@pytest.mark.parametrize(
+    "extent,captures,multiple", [(3, False, False), (0, False, False), (3, True, False), (3, False, True)]
+)
 def test_initialized_reductions(tmp_path, lean_tools, extent, captures, multiple):
     receipt = _check(tmp_path, lean_tools, _reduction(extent, captures=captures, multiple=multiple))
     assert receipt["verdict"] == "verified", receipt.get("reason")
@@ -83,12 +87,20 @@ def test_initialized_matmul_chain(tmp_path, monkeypatch, lean_tools):
         receipt = check_stage(stage, m2m_python=lean_tools.m2m_python)
         assert receipt["verdict"] == "verified", receipt.get("reason")
     source = boundaries[0] / "before.mlir"
-    assert check_support(source, "forward", tmp_path / "support",
-                         m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    assert (
+        check_support(source, "forward", tmp_path / "support", m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
     receipt = check_definedness(source, "forward", tmp_path / "defined", m2m_python=lean_tools.m2m_python)
     assert receipt["verdict"] == "verified", receipt.get("reason")
-    chain = compose_chain(boundaries, tmp_path / "support/receipt.json", "forward", tmp_path / "chain.json",
-                          m2m_python=lean_tools.m2m_python, definedness=tmp_path / "defined/receipt.json")
+    chain = compose_chain(
+        boundaries,
+        tmp_path / "support/receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        m2m_python=lean_tools.m2m_python,
+        definedness=tmp_path / "defined/receipt.json",
+    )
     schema = repo_root() / "merlin/contract/schemas/lean_chain.schema.json"
     jsonschema.validate(chain, json.loads(schema.read_text()))
     assert chain["verdict"] == chain["refinement_verdict"] == "verified", chain.get("reason")
@@ -118,8 +130,11 @@ def test_elementwise_full_overwrite(tmp_path, lean_tools, extent, scalar):
 
 @pytest.mark.parametrize("fault", ["partial_box", "repeated_write", "read_destination"])
 def test_elementwise_overwrite_requires_coverage(tmp_path, lean_tools, fault):
-    source = _elementwise(3, source_extent=2 if fault == "partial_box" else None,
-                          output_map="0" if fault == "repeated_write" else "d0",
-                          read_destination=fault == "read_destination")
+    source = _elementwise(
+        3,
+        source_extent=2 if fault == "partial_box" else None,
+        output_map="0" if fault == "repeated_write" else "d0",
+        read_destination=fault == "read_destination",
+    )
     receipt = _check(tmp_path, lean_tools, source)
     assert receipt["verdict"] == "abstracted", receipt.get("reason")

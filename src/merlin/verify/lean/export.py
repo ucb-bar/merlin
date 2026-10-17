@@ -239,8 +239,12 @@ def _op_json(op, ids: dict[Any, int]) -> dict[str, Any]:
         "attrs": {k: attr_json(v) for k, v in sorted(attributes.items())},
         "props": {k: attr_json(v) for k, v in sorted(op.properties.items())},
         "regions": [
-            {"blocks": [{"args": [value(a) for a in bl.args], "ops": [_op_json(o, ids) for o in bl.ops]}
-                        for bl in reg.blocks]}
+            {
+                "blocks": [
+                    {"args": [value(a) for a in bl.args], "ops": [_op_json(o, ids) for o in bl.ops]}
+                    for bl in reg.blocks
+                ]
+            }
             for reg in op.regions
         ],
         "successors": [],
@@ -292,25 +296,37 @@ def export_file(mlir_path: Path, json_path: Path, *, backend: str = "mlir", m2m_
         return
     if m2m_python is None:
         raise ExportError("the mlir backend needs the model2MLIR interpreter (m2m_python)")
-    proc = subprocess.run([str(m2m_python), str(MLIR_EXPORT), str(mlir_path), str(json_path)],
-                          capture_output=True, text=True, check=False)
+    proc = subprocess.run(
+        [str(m2m_python), str(MLIR_EXPORT), str(mlir_path), str(json_path)], capture_output=True, text=True, check=False
+    )
     if proc.returncode != 0:
         raise ExportError(proc.stderr.strip()[-800:])
 
 
-def canonical_generic(path: Path, *, backend: str, mlir_opt: Path | None = None,
-                      m2m_python: Path | None = None) -> subprocess.CompletedProcess:
+def canonical_generic(
+    path: Path, *, backend: str, mlir_opt: Path | None = None, m2m_python: Path | None = None
+) -> subprocess.CompletedProcess:
     if backend == "mlir":
-        return subprocess.run([str(m2m_python), str(MLIR_EXPORT), "--canonical", str(path)],
-                              capture_output=True, text=True, check=False)
+        return subprocess.run(
+            [str(m2m_python), str(MLIR_EXPORT), "--canonical", str(path)], capture_output=True, text=True, check=False
+        )
     return subprocess.run(
         [str(mlir_opt), "--mlir-print-op-generic", "--allow-unregistered-dialect", str(path)],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
-def round_trip(mlir_path: Path, workdir: Path, *, lean_exe: Path, mlir_opt: Path | None = None,
-               backend: str = "xdsl", m2m_python: Path | None = None) -> RoundTrip:
+def round_trip(
+    mlir_path: Path,
+    workdir: Path,
+    *,
+    lean_exe: Path,
+    mlir_opt: Path | None = None,
+    backend: str = "xdsl",
+    m2m_python: Path | None = None,
+) -> RoundTrip:
     """Export ``mlir_path``, print it back through Lean, and compare canonical generic prints made by
     the same MLIR (``mlir_opt`` for the xdsl backend; torch_mlir for the mlir backend)."""
     workdir.mkdir(parents=True, exist_ok=True)
@@ -319,13 +335,21 @@ def round_trip(mlir_path: Path, workdir: Path, *, lean_exe: Path, mlir_opt: Path
         export_file(mlir_path, jpath, backend=backend, m2m_python=m2m_python)
     except Exception as exc:  # the reason is the result
         return RoundTrip("export_failed", f"{type(exc).__name__}: {exc}")
-    return round_trip_exported(mlir_path, jpath, workdir, lean_exe=lean_exe, mlir_opt=mlir_opt,
-                               backend=backend, m2m_python=m2m_python)
+    return round_trip_exported(
+        mlir_path, jpath, workdir, lean_exe=lean_exe, mlir_opt=mlir_opt, backend=backend, m2m_python=m2m_python
+    )
 
 
-def round_trip_exported(mlir_path: Path, jpath: Path, workdir: Path, *, lean_exe: Path,
-                        mlir_opt: Path | None = None, backend: str = "mlir",
-                        m2m_python: Path | None = None) -> RoundTrip:
+def round_trip_exported(
+    mlir_path: Path,
+    jpath: Path,
+    workdir: Path,
+    *,
+    lean_exe: Path,
+    mlir_opt: Path | None = None,
+    backend: str = "mlir",
+    m2m_python: Path | None = None,
+) -> RoundTrip:
     """Validate this exact export; callers must pass the same JSON to the proof checker."""
     workdir.mkdir(parents=True, exist_ok=True)
     lpath = workdir / "lean.mlir"

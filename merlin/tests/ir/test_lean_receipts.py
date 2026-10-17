@@ -21,8 +21,9 @@ def _stage(path):
     return path
 
 
-@pytest.mark.parametrize("error", [FileNotFoundError("checker missing"), RuntimeError("audit failed"),
-                                 ValueError("malformed checker JSON")])
+@pytest.mark.parametrize(
+    "error", [FileNotFoundError("checker missing"), RuntimeError("audit failed"), ValueError("malformed checker JSON")]
+)
 def test_failed_rerun_replaces_green_receipt(tmp_path, monkeypatch, error):
     check._write(tmp_path, {"verdict": "verified"})
 
@@ -102,18 +103,24 @@ def test_chain_replays_proof_obligations(tmp_path, lean_tools):
     stage = _stage(tmp_path / "stage")
     receipt = check.check_stage(stage, m2m_python=lean_tools.m2m_python)
     support = tmp_path / "support"
-    assert check.check_support(stage / "before.mlir", "forward", support,
-                               m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    assert (
+        check.check_support(stage / "before.mlir", "forward", support, m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
 
     def compose():
-        return check.compose_chain([stage], support / "receipt.json", "forward", tmp_path / "chain.json",
-                                   m2m_python=lean_tools.m2m_python)
+        return check.compose_chain(
+            [stage], support / "receipt.json", "forward", tmp_path / "chain.json", m2m_python=lean_tools.m2m_python
+        )
 
     assert compose()["refinement_verdict"] == "verified"
     for keys, value in [
-        (("claim_type",), "safety"), (("checker",), "unrelated.check"),
-        (("theorem",), "unrelated.theorem"), (("axioms",), ["sorryAx"]),
-        (("exporter", "round_trip"), "not_run"), (("functions",), ["another_function"]),
+        (("claim_type",), "safety"),
+        (("checker",), "unrelated.check"),
+        (("theorem",), "unrelated.theorem"),
+        (("axioms",), ["sorryAx"]),
+        (("exporter", "round_trip"), "not_run"),
+        (("functions",), ["another_function"]),
         (("assumptions",), []),
     ]:
         mutated = copy.deepcopy(receipt)
@@ -141,14 +148,17 @@ def test_chain_replays_proof_obligations(tmp_path, lean_tools):
     assert "round trip" in result["reason"]
 
 
-@pytest.mark.parametrize("body", [
-    """%one = arith.constant 1 : i32
+@pytest.mark.parametrize(
+    "body",
+    [
+        """%one = arith.constant 1 : i32
     %zero = arith.constant 0 : i32
     %r = arith.divsi %one, %zero : i32
     return %r : i32""",
-    """%r = tensor.empty() : tensor<1xi32>
+        """%r = tensor.empty() : tensor<1xi32>
     return %r : tensor<1xi32>""",
-])
+    ],
+)
 def test_support_is_not_a_source_definedness_proof(tmp_path, lean_tools, body):
     import jsonschema
 
@@ -158,10 +168,13 @@ def test_support_is_not_a_source_definedness_proof(tmp_path, lean_tools, body):
         (stage / f"{name}.mlir").write_text(f"func.func @forward() -> {result_type} {{\n{body}\n}}\n")
     assert check.check_stage(stage, m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
     support = tmp_path / "support"
-    assert check.check_support(stage / "before.mlir", "forward", support,
-                               m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
-    result = check.compose_chain([stage], support / "receipt.json", "forward", tmp_path / "chain.json",
-                                 m2m_python=lean_tools.m2m_python)
+    assert (
+        check.check_support(stage / "before.mlir", "forward", support, m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
+    result = check.compose_chain(
+        [stage], support / "receipt.json", "forward", tmp_path / "chain.json", m2m_python=lean_tools.m2m_python
+    )
     schema = json.loads((repo_root() / "merlin/contract/schemas/lean_chain.schema.json").read_text())
     jsonschema.validate(result, schema)
     assert result["refinement_verdict"] == "verified"
@@ -172,10 +185,18 @@ def test_support_is_not_a_source_definedness_proof(tmp_path, lean_tools, body):
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate({**result, "verdict": "verified"}, schema)
     defined = tmp_path / "defined"
-    assert check.check_definedness(stage / "before.mlir", "forward", defined,
-                                   m2m_python=lean_tools.m2m_python)["verdict"] == "abstracted"
-    result = check.compose_chain([stage], support / "receipt.json", "forward", tmp_path / "chain.json",
-                                 m2m_python=lean_tools.m2m_python, definedness=defined / "receipt.json")
+    assert (
+        check.check_definedness(stage / "before.mlir", "forward", defined, m2m_python=lean_tools.m2m_python)["verdict"]
+        == "abstracted"
+    )
+    result = check.compose_chain(
+        [stage],
+        support / "receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        m2m_python=lean_tools.m2m_python,
+        definedness=defined / "receipt.json",
+    )
     assert result["refinement_verdict"] == "verified"
     assert result["verdict"] == result["source_definedness"]["verdict"] == "abstracted"
 
@@ -183,7 +204,6 @@ def test_support_is_not_a_source_definedness_proof(tmp_path, lean_tools, body):
 def test_chain_failure_invalidates_previous_result(tmp_path):
     output = tmp_path / "chain.json"
     output.write_text('{"verdict":"verified"}')
-    result = check.compose_chain([], tmp_path / "missing.json", "forward", output,
-                                 m2m_python=tmp_path / "python")
+    result = check.compose_chain([], tmp_path / "missing.json", "forward", output, m2m_python=tmp_path / "python")
     assert result["verdict"] == "unmeasured"
     assert json.loads(output.read_text()) == result

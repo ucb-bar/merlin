@@ -21,8 +21,11 @@ with ir.Context():
 def _source(name="matmul", scalar="i8", *, extent=3, floating=False, unsigned=False):
     batch = "2x" if name == "batch_matmul" else ""
     output_scalar = "f32" if floating else "i32"
-    a, b, c = (f"tensor<{batch}2x{extent}x{scalar}>", f"tensor<{batch}{extent}x2x{scalar}>",
-               f"tensor<{batch}2x2x{output_scalar}>")
+    a, b, c = (
+        f"tensor<{batch}2x{extent}x{scalar}>",
+        f"tensor<{batch}{extent}x2x{scalar}>",
+        f"tensor<{batch}2x2x{output_scalar}>",
+    )
     cast = "{cast = #linalg.type_fn<cast_unsigned>} " if unsigned else ""
     return f"""func.func @forward(%a: {a}, %b: {b}, %c: {c}) -> {c} {{
       %r = linalg.{name} {cast}ins(%a, %b : {a}, {b}) outs(%c : {c}) -> {c}
@@ -35,26 +38,40 @@ def _generalize(tmp_path, lean_tools, source, *, boundary="named-contraction-gen
     stage.mkdir()
     before, after = stage / "before.mlir", stage / "after.mlir"
     before.write_text(source)
-    result = subprocess.run([str(lean_tools.m2m_python), "-c", RUN_GENERALIZE, str(before), str(after)],
-                            capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        [str(lean_tools.m2m_python), "-c", RUN_GENERALIZE, str(before), str(after)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert result.returncode == 0, result.stderr
     assert "linalg.generic" in after.read_text()
     (stage / "meta.json").write_text(json.dumps({"boundary": boundary}))
     return stage, before, after
 
 
-@pytest.mark.parametrize("name,scalar,unsigned", [("matmul", "i8", False), ("matmul", "i32", False),
-                                                 ("batch_matmul", "i8", False), ("matmul", "i8", True)])
+@pytest.mark.parametrize(
+    "name,scalar,unsigned",
+    [("matmul", "i8", False), ("matmul", "i32", False), ("batch_matmul", "i8", False), ("matmul", "i8", True)],
+)
 def test_actual_contraction_generalization_and_defined_chain(tmp_path, lean_tools, name, scalar, unsigned):
     stage, before, _ = _generalize(tmp_path, lean_tools, _source(name, scalar, unsigned=unsigned))
     receipt = check_stage(stage, m2m_python=lean_tools.m2m_python)
     assert receipt["verdict"] == "verified", receipt.get("reason")
-    assert check_support(before, "forward", tmp_path / "support",
-                         m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    assert (
+        check_support(before, "forward", tmp_path / "support", m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
     receipt = check_definedness(before, "forward", tmp_path / "defined", m2m_python=lean_tools.m2m_python)
     assert receipt["verdict"] == "verified", receipt.get("reason")
-    chain = compose_chain([stage], tmp_path / "support/receipt.json", "forward", tmp_path / "chain.json",
-                          m2m_python=lean_tools.m2m_python, definedness=tmp_path / "defined/receipt.json")
+    chain = compose_chain(
+        [stage],
+        tmp_path / "support/receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        m2m_python=lean_tools.m2m_python,
+        definedness=tmp_path / "defined/receipt.json",
+    )
     assert chain["verdict"] == "verified", chain.get("reason")
 
 

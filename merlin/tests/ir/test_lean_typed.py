@@ -9,14 +9,14 @@ from merlin.common.paths import repo_root
 from merlin.verify.lean.check import check_definedness, check_stage, check_support, check_typed_stage, compose_chain
 
 
-def _source(shape="2x3xi32", scalar="i32", inputs=2, *, dirty=False, read=True, shorthand=False,
-            constant_first=True):
+def _source(shape="2x3xi32", scalar="i32", inputs=2, *, dirty=False, read=True, shorthand=False, constant_first=True):
     ty = f"tensor<{shape}>"
     args = [f"%a{i}: {ty}" for i in range(inputs)]
     if not dirty:
         args.append(f"%init: {ty}")
-    ins = ("ins(" + ", ".join(f"%a{i}" for i in range(inputs)) + " : "
-           + ", ".join([ty] * inputs) + ")") if inputs else ""
+    ins = (
+        ("ins(" + ", ".join(f"%a{i}" for i in range(inputs)) + " : " + ", ".join([ty] * inputs) + ")") if inputs else ""
+    )
     block_args = ", ".join([f"%x{i}: {scalar}" for i in range(inputs)] + [f"%old: {scalar}"])
     prefix = f"%init = tensor.empty() : {ty}" if dirty else ""
     if not inputs:
@@ -25,7 +25,7 @@ def _source(shape="2x3xi32", scalar="i32", inputs=2, *, dirty=False, read=True, 
     value = "%old" if read else "%x0" if inputs else "%captured"
     payload = "{ arith.addi }" if shorthand else ""
     body = "" if shorthand else f"({block_args}) {{ linalg.yield {value} : {scalar} }}"
-    return f"""func.func @forward({', '.join(args)}) -> {ty} {{
+    return f"""func.func @forward({", ".join(args)}) -> {ty} {{
       {prefix}
       %r = linalg.map {payload} {ins} outs(%init : {ty}) {body}
       return %r : {ty}
@@ -46,29 +46,35 @@ with ir.Context():
     passmanager.PassManager.parse('builtin.module(func.func(linalg-generalize-named-ops))').run(m.operation)
     Path(sys.argv[2]).write_text(str(m))
 """
-    result = subprocess.run([str(lean_tools.m2m_python), "-c", program, str(before), str(after)],
-                            capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        [str(lean_tools.m2m_python), "-c", program, str(before), str(after)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert result.returncode == 0, result.stderr
     assert "linalg.generic" in after.read_text()
     (stage / "meta.json").write_text(json.dumps({"boundary": "typed-map-generalization"}))
     return stage
 
 
-@pytest.mark.parametrize("shape,scalar,inputs,dirty,read,shorthand", [
-    ("2x3xi32", "i32", 0, False, True, False),
-    ("2x3xi32", "i32", 1, False, True, False),
-    ("2x3xi32", "i32", 2, False, False, False),
-    ("i32", "i32", 1, False, True, False),
-    ("0x3xi32", "i32", 2, True, False, False),
-    ("2xf32", "f32", 1, False, True, False),
-    ("2xi32", "i32", 0, True, False, False),
-    ("2xi32", "i32", 2, True, False, True),
-])
+@pytest.mark.parametrize(
+    "shape,scalar,inputs,dirty,read,shorthand",
+    [
+        ("2x3xi32", "i32", 0, False, True, False),
+        ("2x3xi32", "i32", 1, False, True, False),
+        ("2x3xi32", "i32", 2, False, False, False),
+        ("i32", "i32", 1, False, True, False),
+        ("0x3xi32", "i32", 2, True, False, False),
+        ("2xf32", "f32", 1, False, True, False),
+        ("2xi32", "i32", 0, True, False, False),
+        ("2xi32", "i32", 2, True, False, True),
+    ],
+)
 def test_actual_typed_map_generalization(tmp_path, lean_tools, shape, scalar, inputs, dirty, read, shorthand):
     import jsonschema
 
-    stage = _stage(tmp_path, lean_tools, _source(shape, scalar, inputs, dirty=dirty, read=read,
-                                               shorthand=shorthand))
+    stage = _stage(tmp_path, lean_tools, _source(shape, scalar, inputs, dirty=dirty, read=read, shorthand=shorthand))
     receipt = check_typed_stage(stage, m2m_python=lean_tools.m2m_python)
     schema = repo_root() / "merlin/contract/schemas/lean_receipt.schema.json"
     jsonschema.validate(receipt, json.loads(schema.read_text()))
@@ -92,13 +98,23 @@ def test_mixed_typed_and_universal_chain(tmp_path, lean_tools, position):
     (identity / "meta.json").write_text(json.dumps({"boundary": "universal-identity"}))
     assert check_stage(identity, m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
     source = stage / "before.mlir"
-    assert check_support(source, "forward", tmp_path / "support",
-                         m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
-    assert check_definedness(source, "forward", tmp_path / "defined",
-                             m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
+    assert (
+        check_support(source, "forward", tmp_path / "support", m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
+    assert (
+        check_definedness(source, "forward", tmp_path / "defined", m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
     stages = [identity, stage] if position == "before" else [stage, identity]
-    chain = compose_chain(stages, tmp_path / "support/receipt.json", "forward", tmp_path / "chain.json",
-                          m2m_python=lean_tools.m2m_python, definedness=tmp_path / "defined/receipt.json")
+    chain = compose_chain(
+        stages,
+        tmp_path / "support/receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        m2m_python=lean_tools.m2m_python,
+        definedness=tmp_path / "defined/receipt.json",
+    )
     jsonschema.validate(chain, json.loads((repo_root() / "merlin/contract/schemas/lean_chain.schema.json").read_text()))
     assert chain["verdict"] == chain["refinement_verdict"] == "verified", chain.get("reason")
     assert chain["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
@@ -130,8 +146,7 @@ def test_typed_map_rejects_corrupted_generalization(tmp_path, lean_tools, fault)
 def test_map_generalization_with_proved_constant_motion(tmp_path, lean_tools):
     # MLIR's rewrite driver hoists this constant across tensor.empty. Map expansion preserves
     # source operation order; the independent Motion rule now proves the adjacent swap.
-    stage = _stage(tmp_path, lean_tools, _source("2xi32", inputs=0, dirty=True, read=False,
-                                               constant_first=False))
+    stage = _stage(tmp_path, lean_tools, _source("2xi32", inputs=0, dirty=True, read=False, constant_first=False))
     before, after = ((stage / name).read_text() for name in ("before.mlir", "after.mlir"))
     assert before.index("tensor.empty") < before.index("arith.constant")
     assert after.index("arith.constant") < after.index("tensor.empty")
@@ -144,15 +159,26 @@ def test_map_generalization_with_proved_constant_motion(tmp_path, lean_tools):
 
 def _source_receipts(tmp_path, lean_tools, stage, *, width=64):
     source = stage / "before.mlir"
-    assert check_support(source, "forward", tmp_path / "support", index_bits=width,
-                         m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
-    return check_definedness(source, "forward", tmp_path / "defined", index_bits=width,
-                             m2m_python=lean_tools.m2m_python)
+    assert (
+        check_support(source, "forward", tmp_path / "support", index_bits=width, m2m_python=lean_tools.m2m_python)[
+            "verdict"
+        ]
+        == "verified"
+    )
+    return check_definedness(
+        source, "forward", tmp_path / "defined", index_bits=width, m2m_python=lean_tools.m2m_python
+    )
 
 
 def _compose(tmp_path, lean_tools, stages):
-    return compose_chain(stages, tmp_path / "support/receipt.json", "forward", tmp_path / "chain.json",
-                         m2m_python=lean_tools.m2m_python, definedness=tmp_path / "defined/receipt.json")
+    return compose_chain(
+        stages,
+        tmp_path / "support/receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        m2m_python=lean_tools.m2m_python,
+        definedness=tmp_path / "defined/receipt.json",
+    )
 
 
 @pytest.mark.parametrize("width", [32, 64])
@@ -246,8 +272,9 @@ def test_function_annotations_do_not_establish_block_argument_types(tmp_path, le
         path = tmp_path / f"{key}.json"
         path.write_text(json.dumps(doc))
         exports.append(str(path))
-    result = subprocess.run([str(lean_tools.lean_exe), "check-module-typed", *exports, "64"],
-                            capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        [str(lean_tools.lean_exe), "check-module-typed", *exports, "64"], capture_output=True, text=True, check=False
+    )
     assert result.returncode == 1, result.stderr
     answer = json.loads(result.stdout)
     assert answer["verdict"] == "abstracted"

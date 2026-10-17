@@ -35,28 +35,52 @@ def _stage(tmp_path, source):
 @pytest.mark.parametrize("name", ["addi", "muli", "andi", "ori", "xori"])
 @pytest.mark.parametrize("width", [8, 32])
 def test_actual_integer_canonicalization_and_chain(tmp_path, lean_tools, name, width):
-    stage, before, after = _stage(tmp_path, f"""func.func @forward(%a: i{width}) -> i{width} {{
+    stage, before, after = _stage(
+        tmp_path,
+        f"""func.func @forward(%a: i{width}) -> i{width} {{
       %c = arith.constant 7 : i{width}
       %r = arith.{name} %c, %a : i{width}
       return %r : i{width}
-    }}""")
-    result = subprocess.run([str(lean_tools.m2m_python), "-c", RUN_CANONICALIZE,
-                             str(before), str(after), name], capture_output=True, text=True, check=False)
+    }}""",
+    )
+    result = subprocess.run(
+        [str(lean_tools.m2m_python), "-c", RUN_CANONICALIZE, str(before), str(after), name],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert result.returncode == 0, result.stderr
     receipt = check_stage(stage, m2m_python=lean_tools.m2m_python)
     assert receipt["verdict"] == "verified", receipt.get("reason")
-    assert check_support(before, "forward", tmp_path / "support",
-                         m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
-    assert check_definedness(before, "forward", tmp_path / "defined",
-                             m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
-    chain = compose_chain([stage], tmp_path / "support/receipt.json", "forward", tmp_path / "chain.json",
-                          m2m_python=lean_tools.m2m_python, definedness=tmp_path / "defined/receipt.json")
+    assert (
+        check_support(before, "forward", tmp_path / "support", m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
+    assert (
+        check_definedness(before, "forward", tmp_path / "defined", m2m_python=lean_tools.m2m_python)["verdict"]
+        == "verified"
+    )
+    chain = compose_chain(
+        [stage],
+        tmp_path / "support/receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        m2m_python=lean_tools.m2m_python,
+        definedness=tmp_path / "defined/receipt.json",
+    )
     assert chain["verdict"] == "verified", chain.get("reason")
 
 
-@pytest.mark.parametrize("name,ty,flags", [("subi", "i32", ""), ("divsi", "i32", ""),
-                                          ("addf", "f32", ""), ("mulf", "f32", ""),
-                                          ("addi", "i32", " overflow<nsw>")])
+@pytest.mark.parametrize(
+    "name,ty,flags",
+    [
+        ("subi", "i32", ""),
+        ("divsi", "i32", ""),
+        ("addf", "f32", ""),
+        ("mulf", "f32", ""),
+        ("addi", "i32", " overflow<nsw>"),
+    ],
+)
 def test_unproved_commutations_are_refused(tmp_path, lean_tools, name, ty, flags):
     source = f"""func.func @forward(%a: {ty}, %b: {ty}) -> {ty} {{
       %r = arith.{name} %a, %b{flags} : {ty}
