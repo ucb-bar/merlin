@@ -42,6 +42,7 @@ from merlin.kernels import shapes as KS
 from merlin.llvmlower.quant_scope import value_preserving_input
 from merlin.xdsl_dialects.lowering import contraction_coverage as CC
 
+from .group_composition import readout_absorbs
 from .scale_geometry import _axis_through as _axis_through
 from .scale_geometry import _granularity as _granularity
 from .scale_geometry import _int_array as _int_array
@@ -158,36 +159,6 @@ def declared_stage_name(kind: str) -> str:
     return names[SCALE] if kind in CONVERSION_OF_SCALED_STORE else names.get(kind, kind)
 
 
-def readout_absorbs(kind: str, readout: Any, *, target: str) -> Admission:
-    """Can ``target``'s DECLARED readout carry stage ``kind`` out of a contraction with it?
-
-    The question a module constant used to answer. It listed one workload's conv-block epilogue --
-    bias, scale, round, clamp, relu, cast, quantize, pool -- and every target got that list whether
-    its store path applied those stages or not. A stage outside it stopped a group with no refusal to
-    show, so the capability oracle was never reached and the missing refusal was stringified into a
-    gap class. The target already declares the truth per readout (``readout_epilogue_capability``,
-    reached through :meth:`merlin.targetgen.readout_facet.TargetReadout.applies_stage`); this asks
-    it, and says no in two ways because they are two different facts: :data:`READOUT_UNDECLARED`,
-    the target describes no readout so the answer is UNKNOWN and absorbing would assume it; and
-    :data:`READOUT_DOES_NOT_APPLY`, the target described its readouts and none lists this stage.
-    """
-    stage = declared_stage_name(kind)
-    applies = readout.applies_stage(stage) if readout is not None else None
-    if applies is None:
-        return Admission(
-            False,
-            READOUT_UNDECLARED,
-            f"{target!r} declares no readout epilogue capability, so whether its store path applies "
-            f"{stage!r} is unknown; absorbing {kind!r} would assume it",
-        )
-    if not applies:
-        return Admission(
-            False,
-            READOUT_DOES_NOT_APPLY,
-            f"no readout {target!r} declares applies {stage!r}, so a group carrying {kind!r} out would "
-            f"compute something its store path discards",
-        )
-    return Admission(True)
 
 
 _ADD = {"arith.addf", "arith.addi"}
@@ -577,6 +548,12 @@ class TargetOracle:
         ):
             return Admission(True)
         return verdict
+
+    def absorbs_sequence(self, kinds: Sequence[str], *, unit: str) -> Admission:
+        """Require one physical readout for all stages; numeric checks follow."""
+        from .group_composition import absorbs_sequence
+
+        return absorbs_sequence(self, kinds, unit=unit)
 
     def ask(
         self,
@@ -1232,6 +1209,11 @@ def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], take
             group.reason = numeric_refusals[id(root)]
             break
         absorbable = oracle.absorbs(stage.kind)
+        sequence_check = getattr(oracle, "absorbs_sequence", None)
+        if absorbable.admitted and sequence_check is not None:
+            absorbable = sequence_check(
+                [*(stage_of[id(member)].kind for member in members), stage.kind], unit=group.placement,
+            )
         if not absorbable.admitted:
             group.stopped_by, group.stopped_at = stage.kind, pending_pad or user
             group.reason, group.refusal = absorbable.reason, absorbable.refusal

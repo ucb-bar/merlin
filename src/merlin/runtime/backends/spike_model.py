@@ -185,7 +185,7 @@ def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
 
     with shared_compute_pool(timeout_s=timeout):
         return _proc.run_checked(
-            cmd, error=SpikeModelError, timeout=timeout, timeout_hint=" (pathological compile)", **kw,
+            cmd, error=SpikeModelError, timeout=timeout, timeout_hint=" (pathological compile)", **kw
         )
 
 
@@ -462,6 +462,7 @@ def build(
     output_sha256: bool = False,
     full_readback: bool = False,
     group_profile: bool = False,
+    weights_source: str | Path | None = None,
     execution_memory_map: MemoryMapBinding | None = None,
     execution_memory_reservations: tuple[MemoryReservation, ...] = (),
 ) -> dict:
@@ -822,7 +823,7 @@ def build(
         from ...llvmlower.host_bitcode_transport import assemble_host_bitcode
 
         compiler_input, bitcode_receipt = assemble_host_bitcode(
-            model_ir, work / "host_bitcode", compiler=clang, compilation=compilation, runner=_run,
+            model_ir, work / "host_bitcode", compiler=clang, compilation=compilation, runner=_run
         )
     compilation.run(
         [clang, CLANG_TARGET, *model_cflags, "-c", compiler_input, "-o", work / "model.o"],
@@ -846,7 +847,13 @@ def build(
     # references cannot be observed by this ELF, and rendering them as C
     # literals makes large captures costly to compile (hundreds of MB of C).
     info = c_runtime.generate(
-        model_dir, cgen, inputs_npz, prepared_dir=work, max_session_steps=1, **projection_options
+        model_dir,
+        cgen,
+        inputs_npz,
+        prepared_dir=work,
+        max_session_steps=1,
+        **({"weights_source": weights_source} if weights_source is not None else {}),
+        **projection_options,
     )
     if full_readback:
         from ..whole_model_readback import render_outputs_header

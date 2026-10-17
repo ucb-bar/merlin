@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import fields
 from pathlib import Path
 
 import yaml
@@ -16,6 +15,22 @@ from merlin.targetgen.tool_profile import verify_tool_profile
 ACTION = "common-transform"
 SCHEMA = "merlin.common_transform_request.v1"
 MAX_REQUEST_BYTES = 256 * 1024
+# V1--V5 request membership is frozen independently of the installed dataclass.
+# Adding a host option must not silently grant it to historical experiments.
+_FROZEN_PIPELINE_OPTIONS = frozenset(
+    {
+        "index_bits",
+        "tile_iterations",
+        "normalize_shapes",
+        "simplify_integers",
+        "reuse_buffers",
+        "dependency_orders",
+        "eliminate_redundancy",
+        "hoist_invariants",
+        "unroll_factors",
+        "max_added_operations",
+    }
+)
 
 
 def _frozen_import_root(root, originals, frozen):
@@ -170,11 +185,22 @@ class CommonTransformService:
         source, options = request["source_ir"], request["options"]
         if not isinstance(source, str) or not source.strip() or not isinstance(options, dict):
             raise ValueError("common transform requires actual structured IR and explicit parameters")
-        if set(options) - {field.name for field in fields(PipelineOptions)}:
-            raise ValueError("common transform contains unsupported transformation parameters")
-        from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3
+        if set(options) - _FROZEN_PIPELINE_OPTIONS:
+            raise ValueError("common transform contains parameters outside the original frozen substrate")
+        from merlin.targetgen.tool_profile import (
+            COMMON_SUBSTRATE_V2,
+            COMMON_SUBSTRATE_V3,
+            COMMON_SUBSTRATE_V4,
+            COMMON_SUBSTRATE_V5,
+        )
 
-        if self.profile.get("common_substrate") not in {COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3} and set(options) & {
+        supports_planning = self.profile.get("common_substrate") in {
+            COMMON_SUBSTRATE_V2,
+            COMMON_SUBSTRATE_V3,
+            COMMON_SUBSTRATE_V4,
+            COMMON_SUBSTRATE_V5,
+        }
+        if not supports_planning and set(options) & {
             "eliminate_redundancy",
             "hoist_invariants",
             "unroll_factors",
@@ -268,7 +294,12 @@ class CommonTransformService:
                 "hardware_conformance": "not_established",
                 "numerical_execution": "not_established",
             }
-            if self.profile.get("common_substrate") in {COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3}:
+            if self.profile.get("common_substrate") in {
+                COMMON_SUBSTRATE_V2,
+                COMMON_SUBSTRATE_V3,
+                COMMON_SUBSTRATE_V4,
+                COMMON_SUBSTRATE_V5,
+            }:
                 from merlin.perf.pass_observation import observe_changes
 
                 document["pass_observations"] = observe_changes(
@@ -282,12 +313,12 @@ class CommonTransformService:
 
     def check(self, request: dict, *, work_root: Path, timeout_s: int | None = None) -> dict:
         """Check authored actual IR without accepting author-selected semantics."""
-        from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3
+        from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5
         from merlin.verify.lean_checked import accepted_authored_receipt, verify_authored_transform
         from merlin.verify.lean_contract import document_digest
         from merlin.verify.lean_isa_semantics import reconstruct_isa_semantics
 
-        if self.profile.get("common_substrate") != COMMON_SUBSTRATE_V3:
+        if self.profile.get("common_substrate") not in {COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5}:
             raise ValueError("authored transformation checks are outside the original frozen substrate")
         if (
             not isinstance(request, dict)

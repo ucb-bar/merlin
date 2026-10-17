@@ -134,3 +134,63 @@ def test_emitter_renders_loops_pointers_and_exact_floats():
     assert "for (int i = 0; i < 4; i++) {" in src
     assert "toy_copy(((uint8_t *)x + (i * 16)), ((uint8_t *)y + (i * 16)), 16, 0x1.99999a0000000p-4f);" in src
     assert src.rstrip().endswith("toy_drain();\n}")
+
+
+def test_selected_c_index_width_bounds_intermediates_without_dynamic_expansion():
+    from merlin.sched.isa import IsaError
+
+    large = _kernel(extent=1 << 20, chunk=1 << 14)
+    with pytest.raises(IsaError, match="overflow"):
+        emit_c_function(large, ISET, symbol="wide", index_bits=32)
+    assert "for (int64_t i" in emit_c_function(large, ISET, symbol="wide", index_bits=64)
+    with pytest.raises(IsaError, match="loop extent"):
+        emit_c_function(_kernel(extent=1 << 31), ISET, symbol="wide", index_bits=32)
+    with pytest.raises(IsaError, match="32 or 64"):
+        emit_c_function(_kernel(), ISET, symbol="wide", index_bits=True)
+    i = Var("i")
+    unsafe = Kernel("k", (), (loop("i", 2, call("value", n=mul(i, 1 << 31))),))
+    with pytest.raises(IsaError, match="overflow"):
+        emit_c_function(unsafe, ISET, symbol="wide", index_bits=32)
+    # Literal-only select branches also carry the selected width; assigning a
+    # 32-bit-overflowed expression to a 64-bit operand would be too late.
+    selected = select(i, 0, (1 << 31) - 1, 0) + select(i, 0, 1, 0)
+    assert "INT64_C(2147483647)" in render(selected, c=True, index_bits=64)
+    assert render(add(-(1 << 63)), c=True, index_bits=64) == "INT64_MIN"
+    cancelled = add(mul(i, (1 << 31) - 1), mul(i, (1 << 31) - 1), -((1 << 31) - 1))
+    kernel = Kernel("k", (), (loop("i", 2, call("value", n=cancelled)),))
+    with pytest.raises(IsaError, match="sum intermediate"):
+        emit_c_function(kernel, ISET, symbol="wide", index_bits=32)
+
+
+def test_selected_c_index_literals_execute_without_narrow_intermediates(tmp_path):
+    import shutil
+    import subprocess
+
+    compiler = shutil.which("cc")
+    if compiler is None:
+        pytest.skip("native C compiler unavailable")
+    i = Var("i")
+    value = select(i, 0, (1 << 31) - 1, 0) + select(i, 0, 1, 0)
+    kernel = Kernel("wide", (), (loop("i", 2, call("save", value=value)),))
+    iset = InstructionSet(
+        "neutral-index-test",
+        {
+            "save": InstrDef(
+                "save", (Operand("value", "int"),), render_c=lambda args: f"values[position++] = {args[0]};"
+            )
+        },
+        {},
+        "/* complete */",
+    )
+    generated = emit_c_function(kernel, iset, symbol="wide", index_bits=64)
+    source = (
+        "#include <stdint.h>\nstatic int64_t values[2]; static int position;\n"
+        + generated
+        + "int main(void) { wide(); return position != 2 || values[0] != INT64_C(2147483648) || values[1] != 0; }\n"
+    )
+    c_file, executable = tmp_path / "index.c", tmp_path / "index"
+    c_file.write_text(source)
+    subprocess.run(
+        [compiler, "-std=c11", "-O2", "-Werror", str(c_file), "-o", str(executable)], check=True, capture_output=True
+    )
+    subprocess.run([str(executable)], check=True, capture_output=True)

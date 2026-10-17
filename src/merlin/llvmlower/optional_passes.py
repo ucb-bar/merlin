@@ -74,6 +74,16 @@ _INTEGER_DATAPATH = "on in the integer (int8 compute) datapath"
 
 REGISTRY: tuple[OptionalPass, ...] = (
     OptionalPass(
+        name="automatic-host-numerics",
+        summary="legalize bounded pure host quantization under the captured numerical policy",
+        changes="replace eligible scalar rounding calls with checked ties-to-even integer arithmetic",
+        exactness=EXACT,
+        default="on with the explicitly selected captured quantization policy",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_NUMERICS",
+        on_by_default=True,
+    ),
+    OptionalPass(
         name="int-softmax-table",
         summary="integer softmax: table-read numerator, int32 row sum, per-row P quantization",
         changes=(
