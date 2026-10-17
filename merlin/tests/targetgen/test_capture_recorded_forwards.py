@@ -13,6 +13,7 @@ import subprocess
 
 import pytest
 
+from merlin.common.paths import python_import_roots
 from merlin.targetgen import _m2m_capture_worker as worker
 
 SCRIPT = r"""
@@ -90,6 +91,41 @@ step2.train()
 before = step2.calls
 recorded2(*samples2[0])
 assert step2.calls == before + 1, "a train/eval change is a different computation"
+
+step3 = Step().eval()
+recorded3 = W._RecordedForwards(step3, limit=4)
+with recorded3:
+    samples3 = list(stream(step3, 3))
+recorded3.kept[0][2][0].add_(100)
+before = step3.calls
+recorded3(*samples3[0])
+assert step3.calls == before + 1, "changed retained output must be recomputed"
+
+step4 = Step().eval()
+recorded4 = W._RecordedForwards(step4, limit=4)
+with recorded4:
+    samples4 = list(stream(step4, 3))
+torch.rand(1)
+before = step4.calls
+recorded4(*samples4[0])
+assert step4.calls == before + 1, "a different RNG state cannot reuse a floating forward"
+
+class Controls(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.calls = 0
+    def forward(self, controls):
+        self.calls += 1
+        return controls[0] * controls[1]
+
+controls = [torch.ones(2), 2]
+controlled = Controls().eval()
+recorded5 = W._RecordedForwards(controlled, limit=4)
+with recorded5:
+    controlled(controls)
+controls[1] = 3
+assert torch.equal(recorded5(controls), torch.full((2,), 3.0))
+assert controlled.calls == 2, "nested mutable non-tensor controls are not cached"
 print("OK")
 """
 
@@ -106,7 +142,12 @@ def test_reused_floating_outputs_are_only_the_same_computation(tmp_path):
         capture_output=True,
         text=True,
         timeout=300,
-        env={**os.environ, "OMP_NUM_THREADS": "1"},
+        env={
+            **os.environ,
+            "OMP_NUM_THREADS": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONPATH": os.pathsep.join(map(str, python_import_roots())),
+        },
     )
     assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-5000:]
     assert result.stdout.strip().endswith("OK")

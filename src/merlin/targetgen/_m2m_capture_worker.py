@@ -323,15 +323,31 @@ class _RecordedForwards:
         return [leaf for leaf in torch.utils._pytree.tree_flatten(values)[0] if isinstance(leaf, torch.Tensor)]
 
     def _fingerprint(self):
+        import random
+
+        import numpy as np
+        import torch
+
         tensors = [*self.module.named_parameters(), *self.module.named_buffers()]
+        numpy_state = np.random.get_state()
         return (
             tuple((name, id(tensor), tensor._version) for name, tensor in tensors),
             tuple(sub.training for sub in self.module.modules()),
+            torch.random.get_rng_state().numpy().tobytes(),
+            random.getstate(),
+            (numpy_state[0], numpy_state[1].tobytes(), *numpy_state[2:]),
         )
 
     def _record(self, _module, args, kwargs, output) -> None:
-        if len(self.kept) < self.limit and not kwargs:
-            self.kept.append((args, [leaf._version for leaf in self._tensors(args)], output))
+        import torch
+
+        # Nested mutable controls and non-tensor inputs lack version counters.
+        if len(self.kept) < self.limit and not kwargs and all(isinstance(arg, torch.Tensor) for arg in args):
+            leaves, specification = torch.utils._pytree.tree_flatten(output)
+            if all(isinstance(leaf, torch.Tensor) for leaf in leaves):
+                self.kept.append(
+                    (args, [leaf._version for leaf in args], output, [leaf._version for leaf in leaves], specification)
+                )
 
     def __enter__(self) -> _RecordedForwards:
         self._state = self._fingerprint()
@@ -342,16 +358,22 @@ class _RecordedForwards:
         self._handle.remove()
 
     def __call__(self, *args):
+        import torch
+
         if self._fingerprint() == self._state:
             leaves = self._tensors(args)
-            for kept_args, versions, output in self.kept:
+            for kept_args, versions, output, output_versions, output_spec in self.kept:
                 kept_leaves = self._tensors(kept_args)
+                current_output, specification = torch.utils._pytree.tree_flatten(output)
                 if (
                     len(kept_args) == len(args)
                     and len(kept_leaves) == len(leaves)
                     and all(a is b for a, b in zip(kept_args, args, strict=True))
                     and all(a is b for a, b in zip(kept_leaves, leaves, strict=True))
                     and [leaf._version for leaf in leaves] == versions
+                    and specification == output_spec
+                    and all(isinstance(leaf, torch.Tensor) for leaf in current_output)
+                    and [leaf._version for leaf in current_output] == output_versions
                 ):
                     return output
         return self.module(*args)
