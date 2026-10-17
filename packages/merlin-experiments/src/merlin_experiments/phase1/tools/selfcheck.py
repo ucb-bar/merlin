@@ -249,14 +249,22 @@ def main(argv=None):
     # got "unrecognized arguments" for it.
     ap.add_argument("--offload-census", action="store_true")
     ap.add_argument("--model-layers", action="store_true")
-    ap.add_argument("--candidate-diagnostics", action="store_true",
-                    help="inspect original public emission without grading")
-    ap.add_argument("--compile-only", action="store_true",
-                    help="compile public scale/frontier tensor sources without executing a probe")
-    ap.add_argument("--scale-probe", action="store_true",
-                    help="with --compile-only, inspect public scale/tail emission before object compilation")
-    ap.add_argument("--dynamic-census", action="store_true",
-                    help="append bounded own-ELF activity after functional screening")
+    ap.add_argument(
+        "--candidate-diagnostics", action="store_true", help="inspect original public emission without grading"
+    )
+    ap.add_argument(
+        "--compile-only",
+        action="store_true",
+        help="compile public scale/frontier tensor sources without executing a probe",
+    )
+    ap.add_argument(
+        "--scale-probe",
+        action="store_true",
+        help="with --compile-only, inspect public scale/tail emission before object compilation",
+    )
+    ap.add_argument(
+        "--dynamic-census", action="store_true", help="append bounded own-ELF activity after functional screening"
+    )
     ap.add_argument(
         "--caller-layout",
         default="",
