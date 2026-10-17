@@ -683,3 +683,44 @@ def test_elementwise_tensor_arithmetic(tmp_path, fidelity_tools, ty):
     source = _function([f"tensor<2x3x{ty}>"] * 2, [f"%r = {op} %a0, %a1 : tensor<2x3x{ty}>"], ["%r"])
     samples = _tensor_samples(source, tmp_path, fidelity_tools)
     diff.compare(source, samples, tmp_path, fidelity_tools, arithmetic_nans=ty == "f32")
+
+
+def test_cli_native_comparison_is_empirical(tmp_path, fidelity_tools, capsys):
+    from merlin.verify.cli import main
+
+    program, samples, work = tmp_path / "input.mlir", tmp_path / "samples.json", tmp_path / "comparison"
+    program.write_text(_function(["i32", "i32"], ["%r = arith.addi %a0, %a1 : i32"], ["%r"]))
+    # Unflagged modular addition is defined for these integer inputs independently of Lean.
+    samples.write_text(json.dumps([[[7], [2]], [[0xFFFFFFFF], [1]]]))
+    command = [
+        "lean",
+        "differential",
+        str(program),
+        "--samples",
+        str(samples),
+        "--work",
+        str(work),
+        "--function",
+        "subject",
+        "--compiler-python",
+        str(fidelity_tools.compiler_python),
+        "--lean-exe",
+        str(fidelity_tools.lean_exe),
+        "--lake",
+        str(fidelity_tools.lake),
+        "--runner-utils",
+        str(fidelity_tools.runner_utils),
+    ]
+    with pytest.raises(SystemExit) as missing_assumption:
+        main(command)
+    assert missing_assumption.value.code == 2 and not work.exists()
+    capsys.readouterr()
+    command.append("--assume-defined-inputs")
+    assert main(command) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "matched_samples" and result["samples"] == 2
+    assert "verdict" not in result
+    assert json.loads((work / "comparison.json").read_text()) == result
+    # Reuse cannot make an older matching artifact look like a new successful attempt.
+    assert main(command) == 2
+    assert json.loads(capsys.readouterr().out)["verdict"] == "unmeasured"

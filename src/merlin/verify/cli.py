@@ -248,8 +248,11 @@ def cmd_split_reduction(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .lean.cli import add_commands
+
     ap = argparse.ArgumentParser(prog="merlin-verify", description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
+    add_commands(sub)
 
     c = sub.add_parser("compile", help="validate a command buffer against its interface program")
     c.add_argument("--interface", required=True, help="the .mlir the backend was handed")

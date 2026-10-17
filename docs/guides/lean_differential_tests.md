@@ -3,7 +3,7 @@ title: Run Lean semantics differential tests
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-15
+last_verified: 2026-10-17
 related: [merlin_lean_verification, compiler_verification]
 code_refs:
   - merlin/lean/Differential.lean
@@ -16,6 +16,8 @@ code_refs:
   - merlin/tests/ir/test_lean_motion.py
   - merlin/lean/MerlinVerify/Rules/Motion.lean
   - src/merlin/verify/lean/check.py
+  - src/merlin/verify/lean/cli.py
+  - merlin/tests/ir/test_lean_cli.py
 ---
 
 # Run Lean semantics differential tests
@@ -57,6 +59,45 @@ hashes of the compiler interpreter, MLIR binding, and aggregate C API library. A
 is not an exact LLVM revision; a separate source checkout does not identify the installed binary.
 The comparison evidence records the Lean adapter, semantics files, specification lock, and NaN
 comparison policy. Retain these files when reporting a mismatch.
+
+## Check recorded compiler output
+
+`merlin-verify lean` exposes the receipt checkers without a Python harness. Select the same
+authoritative compiler interpreter that the build uses. For a recorded stage directory containing
+`before.mlir`, `after.mlir`, and `meta.json`:
+
+```sh
+merlin-verify lean typed-stage out/artifacts/verification/example/stage \
+  --compiler-python "$MERLIN_M2M_PYTHON" --index-bits 64
+merlin-verify lean support out/artifacts/verification/example/stage/before.mlir \
+  --function forward --work out/artifacts/verification/example/support \
+  --compiler-python "$MERLIN_M2M_PYTHON"
+merlin-verify lean definedness out/artifacts/verification/example/stage/before.mlir \
+  --function forward --work out/artifacts/verification/example/definedness \
+  --compiler-python "$MERLIN_M2M_PYTHON"
+merlin-verify lean chain out/artifacts/verification/example/stage \
+  --function forward --support out/artifacts/verification/example/support/receipt.json \
+  --definedness out/artifacts/verification/example/definedness/receipt.json \
+  --output out/artifacts/verification/example/chain.json \
+  --compiler-python "$MERLIN_M2M_PYTHON"
+```
+
+`stage` selects the universal checker; `typed-stage` records a typed domain and index width.
+Every command prints JSON, with exit 0 only for an overall verified receipt. Exit 2 means the
+check did not establish that claim. Chain replay checks the saved proof premises and current
+artifact bytes. A chain with refinement alone, without source definedness, does not exit 0.
+Supply multiple stage directories in execution order and `--handoff` when qualifying the exact
+recorded OOT handoff. Unsupported transformations remain explicit abstentions.
+
+`merlin-verify lean differential --help` describes a separate native comparison command. It
+takes a program, an explicit function, and JSON samples shaped `[sample][argument][element]`;
+every element is an integer bit pattern, including floats. Supply the built checker, Lake,
+compiler interpreter, upstream runner library, and a new work directory. The required
+`--assume-defined-inputs` records the caller's independent defined-execution obligation; the
+Lean model alone cannot establish that native execution is safe. Completed comparisons report
+`matched_samples`, retain both evaluators' evidence, and never issue a verification receipt.
+Failed comparisons and unavailable tools exit 2. Existing comparison directories are refused
+so a failed rerun cannot reuse an earlier success.
 
 ## What is exercised
 
