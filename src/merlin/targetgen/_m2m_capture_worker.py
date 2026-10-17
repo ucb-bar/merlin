@@ -299,6 +299,64 @@ def _freeze_calibration(samples, *, limit, normalize, torch):
     return calibration
 
 
+class _RecordedForwards:
+    """The floating model's own outputs on calibration samples it already ran, for the agreement.
+
+    A causal decode stream is the floating recurrence itself: it calls the stage on each
+    ``(token, kv_cache, position)`` it yields, and the agreement receipt then calls the same stage
+    on the same samples again. While the stream is read, a forward hook keeps the first ``limit``
+    outputs with the exact argument tensors. :meth:`__call__` returns a kept output only for the
+    same argument objects at the same version counters, on the same module whose parameters,
+    buffers and train/eval flags are unchanged; any other call runs the module. The hook is removed
+    before export, so the exported graph never sees it.
+    """
+
+    def __init__(self, module, *, limit: int) -> None:
+        self.module, self.limit, self.kept = module, limit, []
+        self._handle = None
+        self._state = None
+
+    @staticmethod
+    def _tensors(values):
+        import torch
+
+        return [leaf for leaf in torch.utils._pytree.tree_flatten(values)[0] if isinstance(leaf, torch.Tensor)]
+
+    def _fingerprint(self):
+        tensors = [*self.module.named_parameters(), *self.module.named_buffers()]
+        return (
+            tuple((name, id(tensor), tensor._version) for name, tensor in tensors),
+            tuple(sub.training for sub in self.module.modules()),
+        )
+
+    def _record(self, _module, args, kwargs, output) -> None:
+        if len(self.kept) < self.limit and not kwargs:
+            self.kept.append((args, [leaf._version for leaf in self._tensors(args)], output))
+
+    def __enter__(self) -> _RecordedForwards:
+        self._state = self._fingerprint()
+        self._handle = self.module.register_forward_hook(self._record, with_kwargs=True)
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self._handle.remove()
+
+    def __call__(self, *args):
+        if self._fingerprint() == self._state:
+            leaves = self._tensors(args)
+            for kept_args, versions, output in self.kept:
+                kept_leaves = self._tensors(kept_args)
+                if (
+                    len(kept_args) == len(args)
+                    and len(kept_leaves) == len(leaves)
+                    and all(a is b for a, b in zip(kept_args, args, strict=True))
+                    and all(a is b for a, b in zip(kept_leaves, leaves, strict=True))
+                    and [leaf._version for leaf in leaves] == versions
+                ):
+                    return output
+        return self.module(*args)
+
+
 def _float_reference(mdl, inputs, torch) -> dict:
     """The untransformed model's outputs on ``inputs``, in the golden's JSON shape.
 
@@ -1085,6 +1143,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         import _recipe_quantizer as RQ
         from m2m.capture.torchao_pipeline import QuantizationConfig
 
+        recorded = None
         if not a.stage_fp32:
             hook = getattr(loader, "get_calibration_inputs", None)
             if callable(hook):
@@ -1094,13 +1153,16 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
                 if samples is not None:
                     from itertools import islice
 
-                    calibration = list(islice(samples, _calibration_stream_limit(RQ, recipe)))
+                    recorded = _RecordedForwards(mdl, limit=inspect.signature(RQ.agreement).parameters["limit"].default)
+                    with recorded:
+                        calibration = list(islice(samples, _calibration_stream_limit(RQ, recipe)))
             else:
                 stream = getattr(mdl, "session_images", None)
                 if isinstance(stream, torch.Tensor) and stream.shape[0] > 0:
                     calibration = [(stream[i],) for i in range(int(stream.shape[0]))]
         reference = mdl
         static = recipe["activation"]["mode"] == "static"
+        agreement_reference = recorded if static and recorded is not None and recorded.module is mdl else None
         if not static:
             import copy
 
@@ -1120,7 +1182,11 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             )
         # The receipt: the recipe-quantized model against the floating-point one, on the
         # calibration stream and the capture input. Recorded, not judged here.
-        agreement = RQ.agreement(reference, mdl, [tuple(inputs), *(calibration or [])])
+        agreement = RQ.agreement(
+            reference if agreement_reference is None else agreement_reference,
+            mdl,
+            [tuple(inputs), *(calibration or [])],
+        )
         # The capture library is told which lowering family this graph is, and that the
         # quantization is already applied; the numbers are the recipe's.
         formats = {str(recipe[part]["dtype"]) for part in ("activation", "weight")}
