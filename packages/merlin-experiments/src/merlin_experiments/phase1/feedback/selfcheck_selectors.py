@@ -1,8 +1,9 @@
 """Which public capsules one self-check request grades.
 
 ``--capsules`` takes ``all``, comma-separated names, or a selector that names a set by what is already
-known: ``failing`` is what the author's previous self-check did not pass. A selector only chooses
-capsules; it never relaxes a verdict and certifies nothing on its own.
+known: ``failing`` is what the author's previous self-check did not pass, and ``changed`` is what an
+edit changed, decided by exact-byte simulator certificates (:mod:`.selfcheck_changed`). A selector only
+chooses capsules; it never relaxes a verdict and certifies nothing on its own.
 """
 
 from __future__ import annotations
@@ -15,10 +16,15 @@ from pathlib import Path
 @dataclasses.dataclass
 class Selection:
     """What a request grades: ``want`` (``None`` = every public capsule), or the exit code of an answer
-    the selector already gave (``answered``), in which case nothing is graded."""
+    the selector already gave (``answered``), in which case nothing is graded. A ``changed`` selection
+    joins its own classification to the verdict of what it graded (:meth:`report`)."""
 
     want: set[str] | None
     answered: int | None = None
+    changed: object | None = None
+
+    def report(self, out: dict) -> dict:
+        return out if self.changed is None else self.changed.report(out)
 
 
 def _previously_failing() -> tuple:
@@ -67,8 +73,22 @@ def _previously_failing() -> tuple:
     return names, ""
 
 
-def select_capsules(a) -> Selection:
+def select_capsules(a, sub, context, capsules_root, contract, adapters, combined, target, barrier_tier) -> Selection:
     """The capsules ``a.capsules`` names (see the module docstring)."""
+    if a.capsules.strip().lower() == "changed":
+        from .selfcheck_changed import select_changed
+
+        return select_changed(
+            a,
+            sub=sub,
+            context=context,
+            capsules_root=capsules_root,
+            contract=contract,
+            adapters=adapters,
+            combined=combined,
+            target=target,
+            barrier_tier=barrier_tier,
+        )
     if a.capsules.strip().lower() == "failing":
         want, why = _previously_failing()
         if not want:

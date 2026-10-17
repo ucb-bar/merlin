@@ -667,7 +667,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     ap.add_argument(
         "--capsules",
         default="all",
-        help="'all', 'failing' (only what did not pass last time — fast iteration), or comma-separated capsule names",
+        help="'all', 'failing' (only what did not pass last time — fast iteration), 'changed' (build and "
+        "screen every public capsule, reuse exact-byte RTL certificates, simulate only those whose bytes are "
+        "neither certified nor known to fail), or comma-separated capsule names",
     )
     # 0 = derive from this host (see capsule_grade.default_grade_workers): the per-capsule builds and
     # sims are independent, and a literal 8 left most of a 48-core machine idle through every sweep.
@@ -874,7 +876,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     # selection and any other target's contract-derived tiers are read from the adapters.
     barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" and sim in SIM_TIER else max(adapters) if adapters else "L3"
     # subset selection (operator-side capsule dirs)
-    selection = select_capsules(a)
+    selection = select_capsules(a, sub, context, capsules_root, contract, adapters, combined, _tgt, barrier_tier)
     if selection.answered is not None:
         return selection.answered
     want = selection.want
@@ -1467,6 +1469,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 "status": "unavailable",
                 "reason": f"graded-artifact census failed: {type(exc).__name__}: {str(exc)[:200]}",
             }
+    out = selection.report(out)
     txt = json.dumps(out, indent=2)
     print(txt)
     if a.out:

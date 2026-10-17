@@ -167,7 +167,7 @@ def _request_budget_seconds(timeout: int, *, capsules: str, workers: int, suite_
     """
     per_capsule = max(1, int(timeout))
     worker_count = max(1, int(workers))
-    if capsules == "all":
+    if capsules in ("all", "changed"):  # `changed` builds and screens every public capsule first
         count = max(1, int(suite_size or _SUITE_SIZE_FALLBACK))
     else:
         count = max(1, len({name.strip() for name in capsules.split(",") if name.strip()}))
@@ -230,7 +230,12 @@ def main(argv=None):
     # shim never did, so the one way to ask for the cheap tier by NAME (rather than by naming a
     # simulator, which only some targets let you select) was unreachable from inside the box.
     ap.add_argument("--tiers", default="")
-    ap.add_argument("--capsules", default="all")
+    ap.add_argument(
+        "--capsules",
+        default="all",
+        help="'all', 'failing', 'changed' (build and screen every public capsule, reuse exact-byte RTL "
+        "certificates, simulate only those whose bytes are neither certified nor known to fail), or names",
+    )
     ap.add_argument("--workers", type=int, default=0, help="0 uses the host's selected grading worker count")
     # This bounds the entire capsule check, including source setup, object builds,
     # the functional screen, native RTL execution, coherent readback and audits.
@@ -317,7 +322,7 @@ def main(argv=None):
         submission = ws / submission
     submission_sha256 = _submission_digest(submission)
     suite_size = None
-    if a.capsules == "all":
+    if a.capsules in ("all", "changed"):
         public_root = ws / "contract" / "capsules"
         discovered = sum(1 for _ in public_root.rglob("capsule.yaml")) if public_root.is_dir() else 0
         suite_size = discovered or _SUITE_SIZE_FALLBACK
