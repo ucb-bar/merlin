@@ -765,6 +765,41 @@ def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkey
         gate._audit_built_device_host_compute(tmp_path, assigned, source, "fixture")
 
 
+def test_unknown_built_kernel_audit_preserves_actual_diagnostics_and_still_refuses(tmp_path, monkeypatch):
+    from merlin.llvmlower import device_shim
+
+    monkeypatch.setattr(device_shim, "kernel_abi_for", lambda _target: SimpleNamespace(symbol="kernel"))
+    device = tmp_path / "device"
+    device.mkdir()
+    artifact = device / "stem.device.mlir"
+    artifact.write_text('''"builtin.module"() ({
+      "llvm.func"() <{sym_name = "kernel", function_type = !llvm.func<void (i1)>}> ({
+      ^entry(%condition: i1):
+        "llvm.cond_br"(%condition) [^yes, ^no] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+      ^yes:
+        "llvm.return"() : () -> ()
+      ^no:
+        "llvm.return"() : () -> ()
+      }) : () -> ()
+    }) : () -> ()''')
+    (device / "stem.ll").write_text("linked source\n")
+    (device / "stem.o").write_bytes(b"linked object")
+    with pytest.raises(ValueError, match="audit is unknown, not clean; kernel:.*conditional"):
+        gate._audit_built_device_host_compute(
+            tmp_path,
+            [{"symbol": "stem", "group": 1, "source_region_id": "region-a", "source_node_ids": ["node-a"]}],
+            {"eligible_groups": [4], "eligible_group_provenance": [
+                {"source_group": 4, "source_region_id": "region-a", "source_node_ids": ["node-a"]}],
+             "eligible_group_metrics": {4: {"elements": 64, "element_bytes": 4}}}, "fixture",
+            diagnostics=tmp_path / "diagnostics")
+    diagnostics = list((tmp_path / "diagnostics").glob("stem.host-compute-audit-*.json"))
+    assert len(diagnostics) == 1
+    saved = json.loads(diagnostics[0].read_text())
+    assert saved["artifacts"]["llvm_mlir"] == hashlib.sha256(artifact.read_bytes()).hexdigest()
+    assert saved["report"]["proven_clean"] is False
+    assert saved["report"]["groups"][0]["activity_problems"]
+
+
 def test_routed_group_join_uses_complete_source_identity_not_preparation_indices():
     source = {
         "eligible_groups": [4, 8],

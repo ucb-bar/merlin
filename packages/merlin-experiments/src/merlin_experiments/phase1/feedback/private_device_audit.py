@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -43,7 +45,8 @@ def require_static_build_inputs(
 
 
 def audit_built_device_host_compute(
-    build: Path, assigned: Sequence[Mapping[str, Any]], source: Mapping[str, Any], target: str
+    build: Path, assigned: Sequence[Mapping[str, Any]], source: Mapping[str, Any], target: str,
+    *, diagnostics: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Audit the package's actual per-group build inputs, not a fresh diagnostic emission.
 
@@ -117,9 +120,34 @@ def audit_built_device_host_compute(
             input_preparation={abi.symbol: preparation} if preparation is not None else None,
             target=target,
         )
+        # Retain the instrument's complete reasons on the exact built artifact.
+        # A short exception alone used to discard unsupported-CFG diagnostics.
+        # Revalidation of a sealed build remains read-only. Only the builder's
+        # explicitly provided mutable diagnostic directory receives a report.
+        if diagnostics is not None and report.get("proven_clean") is not True:
+            diagnostics.mkdir(parents=True, exist_ok=True)
+            diagnostic = {"schema": "merlin.built_device.host_compute_audit.v1",
+                          "group": index, "source_group": source_group, "symbol": symbol,
+                          "artifacts": {"llvm_mlir": digests[0], "llvm_ir": digests[1], "object": digests[2]},
+                          "report": report}
+            raw = (json.dumps(diagnostic, sort_keys=True, indent=2) + "\n").encode()
+            diagnostic_path = diagnostics / f"{symbol}.host-compute-audit-{hashlib.sha256(raw).hexdigest()}.json"
+            try:
+                with diagnostic_path.open("xb") as stream:
+                    stream.write(raw)
+            except FileExistsError:
+                if diagnostic_path.is_symlink() or diagnostic_path.read_bytes() != raw:
+                    raise ValueError("built device audit diagnostic changed")
         HA.require_clean(report)
         if report.get("proven_clean") is not True or report.get("accelerator_groups_clean") != len(sites):
-            raise ValueError(f"linked group {index} host-compute audit is unknown, not clean")
+            reasons = []
+            for group in report.get("groups", []):
+                if group.get("verdict") == "clean":
+                    continue
+                problems = group.get("activity_problems") or [group.get("why", "no proof detail")]
+                reasons.append(str(group.get("symbol")) + ": " + "; ".join(map(str, problems[-8:])))
+            raise ValueError(f"linked group {index} host-compute audit is unknown, not clean; "
+                             + "; ".join(reasons)[:1600])
         from merlin.llvmlower import toolchain
 
         undefined = subprocess.run(

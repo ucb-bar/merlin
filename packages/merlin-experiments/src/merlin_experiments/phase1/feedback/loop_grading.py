@@ -209,7 +209,10 @@ def grade(
 
     def publish_progress(row):
         # A separate redacted stream cannot replace the final corpus verdict.
+        from .qualification_summary import summarize
+
         progress_rows[row["capsule"]] = row
+        qualification = summarize(list(progress_rows.values()))
         progress_path.parent.mkdir(exist_ok=True)
         temporary = progress_path.with_suffix(".tmp")
         temporary.write_text(
@@ -223,6 +226,8 @@ def grade(
                     "snapshot_current": background_guard.current(),
                     "n_completed": len(progress_rows),
                     "n_passed": sum(r.get("status") == "pass" for r in progress_rows.values()),
+                    "n_execution_passed": qualification["execution_passed"],
+                    "qualification_summary": qualification,
                     "per_capsule": list(progress_rows.values()),
                     "updated_at": _dt.datetime.now(_dt.UTC).isoformat(),
                     "scope": "completed redacted rows; final shape, model and certification gates remain pending",
