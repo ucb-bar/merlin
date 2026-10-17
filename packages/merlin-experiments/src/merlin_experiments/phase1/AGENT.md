@@ -261,3 +261,10 @@ integer exit zero; extra tools/edits refuse. Marker files and usage corroborate 
 Reopen complete prepared inputs after execution. Fake controls certify no real isolation.
 A real result covers its selected installed invocation, not an unselected catalog route
 or compiler, target runtime, correctness or phase qualification. Do not rewrite TASK.md.
+
+`convergence_report.py` is a read-only operator diagnostic over one run directory (and,
+optionally, its operator directory): author blocked time by wait kind, the in-turn grade
+cycle, the self-check/grade capsule taxonomy, measured L3 cost and pool capacity. It reads
+status and timing fields only, never answer material, and refuses to write inside its inputs.
+An absent or partially written input is reported unavailable, never as a zero. Its budget and
+verdict thresholds are published in the report; it decides no grade and gates nothing.
