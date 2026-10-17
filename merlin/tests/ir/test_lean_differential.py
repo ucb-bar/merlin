@@ -9,48 +9,13 @@ from __future__ import annotations
 
 import itertools
 import json
-import os
 import random
-import shutil
 import struct
 from pathlib import Path
 
 import pytest
 
 from merlin.verify.lean import differential as diff
-
-
-@pytest.fixture(scope="module")
-def fidelity_tools(tmp_path_factory):
-    from merlin.llvmlower import toolchain
-    from merlin.verify.lean.check import lean_exe
-
-    compiler = Path(os.environ.get("MERLIN_M2M_PYTHON", toolchain.compiler_python()))
-    lake = Path(shutil.which("lake") or Path.home() / ".elan/bin/lake")
-    runner = Path(
-        os.environ.get("MERLIN_MLIR_RUNNER_UTILS", toolchain.llvm_install() / "lib/libmlir_c_runner_utils.so")
-    )
-    tools = diff.Tools(compiler, lean_exe(), lake, runner)
-    missing = [str(p) for p in (compiler, tools.lean_exe, lake, runner) if not p.is_file()]
-    if missing:
-        reason = "Lean differential prerequisites missing: " + ", ".join(missing)
-        if os.environ.get("MERLIN_LEAN_REQUIRED"):
-            pytest.fail(reason)
-        pytest.skip(reason)
-    # Build the actual evaluator and decoder; the test-only adapter does not replace the checker.
-    from merlin.common.paths import repo_root
-
-    diff._run([str(lake), "build", "MerlinVerify.Core.Json", "MerlinVerify.Sem.Ops"], cwd=repo_root() / "merlin/lean")
-    # An installed but broken compiler environment is a failure, never an unavailable-tool skip.
-    diff._run([str(compiler), "-c", "from torch_mlir.execution_engine import ExecutionEngine"])
-    # Diagnose API drift before comparing model outcomes: a legacy parser must not masquerade as
-    # a Lean execution mismatch. Each native result also records the independently probed contract.
-    work = tmp_path_factory.mktemp("mlir-map-contract")
-    request = work / "request.json"
-    request.write_text(json.dumps({"map_contract": True}))
-    result = diff._run([str(compiler), str(Path(diff.__file__).with_name("mlir_execute.py")), str(request)])
-    (work / "contract.json").write_text(result.stdout)
-    return tools
 
 
 def _function(types, body, results, result_types=None, name="subject"):
@@ -452,25 +417,29 @@ def test_structured_operations_and_named_generalization(tmp_path, fidelity_tools
     assert original == generalized
 
 
-@pytest.mark.parametrize("shape,element,inputs,mode", [
-    ("2x3x", "i32", 0, "read"),
-    ("2x3x", "i32", 1, "ignore"),
-    ("2x3x", "i32", 2, "read"),
-    ("2x3x", "i32", 2, "shorthand"),
-    ("", "i32", 1, "read"),
-    ("0x3x", "i32", 2, "read"),
-    ("2x", "f32", 1, "read"),
-    ("2x", "f32", 1, "ignore"),
-    ("2x", "i32", 1, "capture"),
-    ("2x", "i32", 1, "overwrite"),
-])
+@pytest.mark.parametrize(
+    "shape,element,inputs,mode",
+    [
+        ("2x3x", "i32", 0, "read"),
+        ("2x3x", "i32", 1, "ignore"),
+        ("2x3x", "i32", 2, "read"),
+        ("2x3x", "i32", 2, "shorthand"),
+        ("", "i32", 1, "read"),
+        ("0x3x", "i32", 2, "read"),
+        ("2x", "f32", 1, "read"),
+        ("2x", "f32", 1, "ignore"),
+        ("2x", "i32", 1, "capture"),
+        ("2x", "i32", 1, "overwrite"),
+    ],
+)
 def test_map_contract_and_native_generalization(tmp_path, fidelity_tools, shape, element, inputs, mode):
     ty = f"tensor<{shape}{element}>"
     arguments = [f"%a{i}: {ty}" for i in range(inputs)]
     if mode != "overwrite":
         arguments.append(f"%init: {ty}")
-    ins = ("ins(" + ", ".join(f"%a{i}" for i in range(inputs)) + " : "
-           + ", ".join([ty] * inputs) + ")") if inputs else ""
+    ins = (
+        ("ins(" + ", ".join(f"%a{i}" for i in range(inputs)) + " : " + ", ".join([ty] * inputs) + ")") if inputs else ""
+    )
     block_args = ", ".join([f"%x{i}: {element}" for i in range(inputs)] + [f"%old: {element}"])
     prefix = f"%init = tensor.empty() : {ty}" if mode == "overwrite" else ""
     if mode == "capture":
@@ -485,7 +454,7 @@ def test_map_contract_and_native_generalization(tmp_path, fidelity_tools, shape,
             calculation = f"%sum = {operation} %old, %x0 : {element}"
             value = "%sum"
         payload, body = "", f"({block_args}) {{ {calculation} linalg.yield {value} : {element} }}"
-    source = f"""func.func @subject({', '.join(arguments)}) -> {ty} {{
+    source = f"""func.func @subject({", ".join(arguments)}) -> {ty} {{
       {prefix}
       %r = linalg.map {payload} {ins} outs(%init : {ty}) {body}
       return %r : {ty}
@@ -495,15 +464,15 @@ def test_map_contract_and_native_generalization(tmp_path, fidelity_tools, shape,
     diff.compare(source, samples, tmp_path / "map", fidelity_tools, arithmetic_nans=arithmetic_nans)
     request = tmp_path / "generalize.json"
     request.write_text(json.dumps({"source": str(tmp_path / "signature.mlir"), "generalize": True}))
-    result = diff._run([str(fidelity_tools.compiler_python),
-                        str(Path(diff.__file__).with_name("mlir_execute.py")), str(request)])
+    result = diff._run(
+        [str(fidelity_tools.compiler_python), str(Path(diff.__file__).with_name("mlir_execute.py")), str(request)]
+    )
     generic = json.loads(result.stdout)
     assert generic["map_contract"]["contract"] == "map-inputs-then-destination-v1"
     assert [c["body_arguments"] for c in generic["map_contract"]["cases"]] == [1, 2, 3]
     assert generic["map_contract"]["shorthand_arguments"] == 3
     assert len(generic["map_contract"]["mlir_capi"]["sha256"]) == 64
-    diff.compare(generic["mlir"], samples, tmp_path / "generic", fidelity_tools,
-                 arithmetic_nans=arithmetic_nans)
+    diff.compare(generic["mlir"], samples, tmp_path / "generic", fidelity_tools, arithmetic_nans=arithmetic_nans)
     original = json.loads((tmp_path / "map/results.json").read_text())
     generalized = json.loads((tmp_path / "generic/results.json").read_text())
     assert original["lean"] == generalized["lean"]
@@ -529,8 +498,9 @@ def test_map_generalization_with_closed_constant_motion(tmp_path, fidelity_tools
     before.write_text(source)
     request = tmp_path / "generalize.json"
     request.write_text(json.dumps({"source": str(before), "generalize": True}))
-    result = diff._run([str(fidelity_tools.compiler_python),
-                        str(Path(diff.__file__).with_name("mlir_execute.py")), str(request)])
+    result = diff._run(
+        [str(fidelity_tools.compiler_python), str(Path(diff.__file__).with_name("mlir_execute.py")), str(request)]
+    )
     target = json.loads(result.stdout)["mlir"]
     after.write_text(target)
     # This must exercise actual operation motion, in addition to map expansion.
@@ -540,10 +510,15 @@ def test_map_generalization_with_closed_constant_motion(tmp_path, fidelity_tools
     compiler = fidelity_tools.compiler_python
     assert check_typed_stage(stage, m2m_python=compiler)["verdict"] == "verified"
     assert check_support(before, "subject", tmp_path / "support", m2m_python=compiler)["verdict"] == "verified"
-    assert check_definedness(before, "subject", tmp_path / "defined",
-                             m2m_python=compiler)["verdict"] == "verified"
-    chain = compose_chain([stage], tmp_path / "support/receipt.json", "subject", tmp_path / "chain.json",
-                          m2m_python=compiler, definedness=tmp_path / "defined/receipt.json")
+    assert check_definedness(before, "subject", tmp_path / "defined", m2m_python=compiler)["verdict"] == "verified"
+    chain = compose_chain(
+        [stage],
+        tmp_path / "support/receipt.json",
+        "subject",
+        tmp_path / "chain.json",
+        m2m_python=compiler,
+        definedness=tmp_path / "defined/receipt.json",
+    )
     assert chain["verdict"] == "verified", chain.get("reason")
     samples = [[[0, 1]], [[0xFFFFFFFF, 0x7FFFFFFF]], [[0x80000000, 12345]]]
     expected = [[str((x + 7) % (1 << 32)) for x in sample[0]] + ["7"] for sample in samples]
@@ -601,8 +576,9 @@ def test_map_initializer_copy_survives_bufferization(tmp_path, fidelity_tools):
     }""")
     request = tmp_path / "bufferize.json"
     request.write_text(json.dumps({"source": str(source), "bufferize_only": True}))
-    result = diff._run([str(fidelity_tools.compiler_python),
-                        str(Path(diff.__file__).with_name("mlir_execute.py")), str(request)])
+    result = diff._run(
+        [str(fidelity_tools.compiler_python), str(Path(diff.__file__).with_name("mlir_execute.py")), str(request)]
+    )
     answer = json.loads(result.stdout)
     bufferized, exported = tmp_path / "bufferized.mlir", tmp_path / "bufferized.json"
     bufferized.write_text(answer["mlir"])
@@ -623,8 +599,9 @@ def test_map_initializer_copy_survives_bufferization(tmp_path, fidelity_tools):
     getter = next(op for op in ops if any(r["id"] == copy["operands"][0] for r in op["results"]))
     assert getter["name"] == "memref.get_global"
     symbol = getter["attrs"]["name"]["root"]
-    initializer = next(op for op in module_ops if op["name"] == "memref.global"
-                       and op["attrs"]["sym_name"]["value"] == symbol)
+    initializer = next(
+        op for op in module_ops if op["name"] == "memref.global" and op["attrs"]["sym_name"]["value"] == symbol
+    )
     assert initializer["attrs"]["initial_value"]["hex"] == "0b00"
     block = generic["regions"][0]["blocks"][0]
     store = next(op for op in block["ops"] if op["name"] == "memref.store")

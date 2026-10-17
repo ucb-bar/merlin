@@ -1,5 +1,6 @@
 """Explicit prerequisites for tests that invoke the external host compiler or the Lean checker."""
 
+import json
 import os
 import shutil
 from pathlib import Path
@@ -53,4 +54,35 @@ def lean_tools(lean_checker):
         if os.environ.get("MERLIN_LEAN_REQUIRED"):
             pytest.fail(reason)
         pytest.skip(reason)
+    return tools
+
+
+@pytest.fixture(scope="module")
+def fidelity_tools(tmp_path_factory):
+    """Required Lean and native MLIR tools, with a retained independent API-contract probe."""
+    from merlin.common.paths import repo_root
+    from merlin.verify.lean import differential as diff
+    from merlin.verify.lean.check import lean_exe
+
+    compiler = Path(os.environ.get("MERLIN_M2M_PYTHON", toolchain.compiler_python()))
+    lake = Path(shutil.which("lake") or Path.home() / ".elan/bin/lake")
+    runner = Path(
+        os.environ.get("MERLIN_MLIR_RUNNER_UTILS", toolchain.llvm_install() / "lib/libmlir_c_runner_utils.so")
+    )
+    tools = diff.Tools(compiler, lean_exe(), lake, runner)
+    missing = [str(p) for p in (compiler, tools.lean_exe, lake, runner) if not p.is_file()]
+    if missing:
+        reason = "Lean differential prerequisites missing: " + ", ".join(missing)
+        if os.environ.get("MERLIN_LEAN_REQUIRED"):
+            pytest.fail(reason)
+        pytest.skip(reason)
+    # Build the actual denotation and decoder, without replacing the checker with an interpreter.
+    diff._run([str(lake), "build", "MerlinVerify.Core.Json", "MerlinVerify.Sem.Ops"], cwd=repo_root() / "merlin/lean")
+    diff._run([str(compiler), "-c", "from torch_mlir.execution_engine import ExecutionEngine"])
+    # An installed but incompatible compiler fails here, rather than resembling a semantic mismatch.
+    work = tmp_path_factory.mktemp("mlir-map-contract")
+    request = work / "request.json"
+    request.write_text(json.dumps({"map_contract": True}))
+    result = diff._run([str(compiler), str(Path(diff.__file__).with_name("mlir_execute.py")), str(request)])
+    (work / "contract.json").write_text(result.stdout)
     return tools
