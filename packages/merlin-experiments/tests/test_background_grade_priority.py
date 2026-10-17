@@ -341,6 +341,19 @@ def test_superseded_source_is_sticky_and_never_current(tmp_path):
     assert guard.reason() == "background source superseded"
 
 
+def test_selected_snapshot_completion_keeps_work_but_marks_source_stale(tmp_path, monkeypatch):
+    monkeypatch.setenv('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '1')
+    ws = tmp_path / 'workspace'
+    (ws/'submission').mkdir(parents=True)
+    program = ws/'submission/compiler.py'
+    program.write_text('original\n')
+    guard = admission.BackgroundGuard(ws, tmp_path,
+        SimpleNamespace(compiler_profile_service=None), admission.source_digest(ws))
+    program.write_text('replacement\n')
+    assert guard.reason() is None
+    assert not guard.current()
+
+
 def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(tmp_path, monkeypatch):
     ws, run, public = (tmp_path / name for name in ("workspace", "run", "public"))
     (ws / "submission").mkdir(parents=True)

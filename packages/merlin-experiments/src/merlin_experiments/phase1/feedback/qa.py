@@ -290,7 +290,7 @@ def _redact_detail(detail: str | None) -> str | None:
     return _scrub_numbers(detail)[:800]
 
 
-def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
+def _per_capsule_from_results(runs_root: Path, *, only_capsule: str | None = None) -> dict[str, dict]:
     """Read each capsule_result.json from the operator-only work tree and redact it."""
     out: dict[str, dict] = {}
     # The runner writes under <target>-capsule-bench (target-derived), NOT the one default baked into
@@ -301,6 +301,8 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
     if not rr.exists():
         return out
     for cr in sorted(rr.glob("*/*/capsule_result.json")):
+        if only_capsule is not None and cr.parent.name != only_capsule:
+            continue
         try:
             r = json.loads(cr.read_text())
         except Exception:
@@ -855,6 +857,8 @@ def run(
     contract: Path | None = None,
     additional_forbidden: tuple[str, ...] = (),
     defer_pending=None,
+    on_capsule_complete=None,
+    max_workers: int = 0,
 ) -> dict:
     # Loop gate = L0+L1+trace + the target's full reachable oracle ladder, screened cheapest-first. The
     # adapters are resolved from the descriptor's target+sim_via via the shared factory, so a non-chipyard
@@ -894,6 +898,16 @@ def run(
                 f"target {_target!r} reaches {_reach} — no declared tier is reachable, so this loop "
                 f"cannot grade. Refusing to substitute a tier the capsules never declared."
             )
+    def completed(result):
+        name = result.get('capsule')
+        projected = _per_capsule_from_results(runs_root, only_capsule=name).get(name)
+        if projected is not None:
+            fields = ('status', 'numeric_status', 'mismatch_count', 'tiers',
+                      'trace_requirement_status', 'trace_violations', 'failure_plane',
+                      'failure_category', 'failure_detail', 'execution_digest', 'tier_cycles',
+                      'tier_engines', 'tier_reuse')
+            on_capsule_complete({'capsule': name, **{k: projected.get(k) for k in fields}})
+
     score = CG.grade(
         submission,
         capsules_root=capsules_root,
@@ -907,6 +921,8 @@ def run(
         no_oracle=no_oracle,
         additional_forbidden=additional_forbidden,
         **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+        **({'on_capsule_complete': completed} if on_capsule_complete is not None else {}),
+        **({'max_workers': max_workers} if max_workers else {}),
     )
     redacted = _per_capsule_from_results(runs_root)
 

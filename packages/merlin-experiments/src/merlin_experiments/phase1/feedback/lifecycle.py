@@ -104,7 +104,7 @@ def start_brokers(ws: Path, config: BrokerConfig):
     broker_specs = [
         (spec.module, spec.log, spec.channel)
         for spec in _TR.COMMON_BROKERS
-        if spec.channel != ".model_check_channel" or config.context.target == "gemmini"  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        if spec.channel != ".model_check_channel" or config.context.target == "gemmini"  # target-ok: full-model
     ]
     # Brokered TOOLS (the ISA assembler/disassembler/linter; the two mandated CCA calls) are part of the
     # arm's TREATMENT, so which ones start is read from the bundle's resolved tool set rather than from
@@ -379,6 +379,7 @@ def start_background(
     grade_callback: IntervalGrade,
     fast_grade_callback: FastGrade,
     foreground_has_priority=None,
+    source_identity=None,
 ):
     """Start the in-turn grader for ONE agent turn; returns a handle for `stop_background`.
 
@@ -395,6 +396,9 @@ def start_background(
     import threading
 
     stop = threading.Event()
+    start_cadence = os.environ.get('MERLIN_GRADE_START_TO_START', '0')
+    if start_cadence not in {'0', '1'}:
+        raise ValueError('MERLIN_GRADE_START_TO_START must be 0 or 1')
 
     def _grade_body() -> None:
         if not (ws / "qa" / "verdict.json").exists():
@@ -439,11 +443,20 @@ def start_background(
             return
         t = 0
         previous_key = None
-        while not stop.wait(max(30, int(cadence.grade_interval))):
+        interval = max(30, int(cadence.grade_interval))
+        delay, completed_source = interval, None
+        while not stop.wait(delay):
+            delay = interval
             if foreground_has_priority is not None and foreground_has_priority():
+                delay = min(30, interval)
+                continue
+            before = source_identity() if source_identity is not None else None
+            if source_identity is not None and (before is None or before == completed_source):
+                delay = min(30, interval)
                 continue
             t += 1
             scratch_key = grade_key(round_index, t)
+            started = time.monotonic()
             try:
                 v = grade_callback(
                     ws,
@@ -457,7 +470,16 @@ def start_background(
                 )
             except Exception as e:  # noqa: BLE001 — a mid-write submission must never kill the run
                 print(f"[in-turn grade {t}] skipped: {type(e).__name__}: {e}", flush=True)
+                delay = min(30, interval)
                 continue
+            if start_cadence == '1':
+                delay = max(0, interval - (time.monotonic() - started))
+            if source_identity is not None:
+                after = source_identity()
+                if before == after and v.get('snapshot_current') is True and not v.get('package_failure'):
+                    completed_source = before
+                elif after is not None and after != before:
+                    delay = 0  # Finish the old snapshot, then immediately grade the new compiler.
             previous_key = scratch_key
             print(
                 f"[in-turn grade {t}] {v.get('n_passed')}/{v.get('n_capsules')} all_pass={v.get('all_pass')}",

@@ -240,6 +240,15 @@ GradingInputs keeps invocation roots separate; only the native diagnostic edge m
 defer public-root materialization until after the submission gate. Certification
 policy similarly resolves public roots only after finding additional cert tiers.
 Keep archive-before-shape and publish-after-promotion ordering unchanged.
+Selected background snapshot completion may finish queued work after source edits;
+its exact source stays attached and a superseded snapshot can never converge the
+current compiler. `qa/progress.json` is a separate, noncertifying stream from
+the ordinary QA redactor. It cannot replace `qa/verdict.json` or omit final
+mandatory shape/model/RTL checks. Optional background scalability observations
+may be deferred to the final grade; required shape coverage remains mandatory.
+Bound background fanout independently of foreground requests. Selected grading
+cadence runs from start time, catches up after source changes without overlap,
+and skips a repeated completed current source under the same frozen invocation.
 
 `codegen_scalability.py` observes public contractions at geometric multiples of
 the selected fact-derived tile. It reads no validation capture or answer; the

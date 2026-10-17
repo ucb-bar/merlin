@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import math
+import os
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -192,11 +193,37 @@ def grade(
     if inputs.driver_grade_completed is not None:
         inputs.driver_grade_completed(None)
     background_guard = None
+    progress_rows = {}
+    progress_path = ws / 'qa' / 'progress.json'
+
+    def publish_progress(row):
+        # A separate redacted stream cannot replace the final corpus verdict.
+        progress_rows[row['capsule']] = row
+        progress_path.parent.mkdir(exist_ok=True)
+        temporary = progress_path.with_suffix('.tmp')
+        temporary.write_text(json.dumps({
+            'schema': 'merlin.phase1.grade_progress.v1', 'state': 'running',
+            'all_pass': None, 'certified_complete': False,
+            'graded_source_sha256': snapshot_digest,
+            'snapshot_current': background_guard.current(),
+            'n_completed': len(progress_rows),
+            'n_passed': sum(r.get('status') == 'pass' for r in progress_rows.values()),
+            'per_capsule': list(progress_rows.values()),
+            'updated_at': _dt.datetime.now(_dt.UTC).isoformat(),
+            'scope': 'completed redacted rows; final shape, model and certification gates remain pending',
+        }, indent=2) + '\n')
+        temporary.replace(progress_path)
+
+    background_workers = 0
     if advisory_background:
         from .background_admission import BackgroundGuard, source_digest
 
         public = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
         background_guard = BackgroundGuard(ws, public, inputs, source_digest(ws))
+        raw = os.environ.get('MERLIN_BACKGROUND_GRADE_WORKERS', '0')
+        if not raw.isascii() or not raw.isdecimal() or not 0 <= int(raw) <= 64:
+            raise ValueError('MERLIN_BACKGROUND_GRADE_WORKERS must be an integer between 0 and 64')
+        background_workers = int(raw)
     oot_commit = None
     snapshot_digest = None
     cand = run_dir / "_qa_work" / f"cand_{_key}" / "submission"
@@ -268,6 +295,9 @@ def grade(
                 **({"contract": inputs.contract} if inputs.contract is not None else {}),
                 **({"additional_forbidden": inputs.additional_forbidden} if inputs.additional_forbidden else {}),
                 **({"defer_pending": background_guard.reason} if background_guard is not None else {}),
+                **({'on_capsule_complete': publish_progress}
+                   if background_guard is not None and os.environ.get('MERLIN_BACKGROUND_PROGRESS') == '1' else {}),
+                **({'max_workers': background_workers} if background_workers else {}),
             )
             if background_guard is not None and background_guard.reason() is not None:
                 verdict.update(all_pass=None, gradeable=False,
@@ -287,38 +317,48 @@ def grade(
                 artifact_key=scratch_key,
                 previous_artifact_key=previous_scratch_key,
             )
-            _attach_shape_generalization(
-                verdict,
-                cand,
-                run_dir,
-                rnd,
-                timeout=timeout,
-                artifact_key=scratch_key,
-                context=inputs.context,
-                contract=inputs.contract,
-                additional_forbidden=inputs.additional_forbidden,
-            )
-            _attach_codegen_scalability(
-                verdict,
-                cand,
-                run_dir,
-                rnd,
-                timeout=timeout,
-                artifact_key=scratch_key,
-                context=inputs.context,
-                contract=inputs.contract,
-                additional_forbidden=inputs.additional_forbidden,
-                **(
-                    {
-                        "build_service": inputs.public_build_service,
-                        "build_selection": inputs.public_build_selection,
-                        "build_budget_s": inputs.public_build_budget_s,
-                        "candidate_sha256": candidate_sha256,
-                    }
-                    if inputs.public_build_service is not None
-                    else {}
-                ),
-            )
+            if background_guard is not None and not background_guard.current():
+                verdict.update(all_pass=None, gradeable=False)
+                verdict['shape_coverage'] = {
+                    'ran': False, 'reason': 'superseded source; required probes deferred to current or final grade',
+                }
+            else:
+                _attach_shape_generalization(
+                    verdict,
+                    cand,
+                    run_dir,
+                    rnd,
+                    timeout=timeout,
+                    artifact_key=scratch_key,
+                    context=inputs.context,
+                    contract=inputs.contract,
+                    additional_forbidden=inputs.additional_forbidden,
+                )
+            if background_guard is not None and (not background_guard.current()
+                    or os.environ.get('MERLIN_BACKGROUND_CODEGEN_SCALABILITY') == '0'):
+                verdict['codegen_scalability'] = {'ran': False, 'reason': 'advisory diagnostic deferred to final grade'}
+            else:
+                _attach_codegen_scalability(
+                    verdict,
+                    cand,
+                    run_dir,
+                    rnd,
+                    timeout=timeout,
+                    artifact_key=scratch_key,
+                    context=inputs.context,
+                    contract=inputs.contract,
+                    additional_forbidden=inputs.additional_forbidden,
+                    **(
+                        {
+                            "build_service": inputs.public_build_service,
+                            "build_selection": inputs.public_build_selection,
+                            "build_budget_s": inputs.public_build_budget_s,
+                            "candidate_sha256": candidate_sha256,
+                        }
+                        if inputs.public_build_service is not None
+                        else {}
+                    ),
+                )
             if inputs.driver_grade_completed is not None and not no_oracle:
                 from .grade_reuse import retain_driver_grade
 
@@ -369,9 +409,19 @@ def grade(
     if background_guard is not None:
         verdict["graded_request_sha256"] = background_guard.source
         verdict["snapshot_current"] = background_guard.current()
+        if not verdict["snapshot_current"]:
+            # Completed immutable-source evidence remains useful, but it can
+            # never terminate authoring for a different current compiler.
+            verdict.update(all_pass=None, gradeable=False)
     # The immutable snapshot has a valid result even when the agent has since edited
     # its source. Suppressing that result left R52 without qa/verdict.json for hours.
     verdict = write_verdict(qa_dir / "verdict.json", verdict)
+    if progress_rows:
+        progress = json.loads(progress_path.read_text())
+        progress.update(state='complete', snapshot_current=verdict.get('snapshot_current'))
+        temporary = progress_path.with_suffix('.tmp')
+        temporary.write_text(json.dumps(progress, indent=2) + '\n')
+        temporary.replace(progress_path)
     if oot_commit is None:
         return verdict
     OH.record_round(run_dir, oot_commit, label=label, key=_key, verdict=verdict)

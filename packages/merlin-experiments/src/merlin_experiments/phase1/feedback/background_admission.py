@@ -183,10 +183,15 @@ class BackgroundGuard:
     def __init__(self, ws, public, inputs, source_sha256):
         self.ws, self.public, self.inputs, self.source = ws, public, inputs, source_sha256
         self.deferred = None
+        selected = os.environ.get('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '0')
+        if selected not in {'0', '1'}:
+            raise ValueError('MERLIN_BACKGROUND_FINISH_SNAPSHOT must be 0 or 1')
+        self.finish_snapshot = selected == '1'
 
     def reason(self):
         current = source_digest(self.ws)
-        if self.source is not None and current is not None and current != self.source:
+        if (not self.finish_snapshot and self.source is not None
+                and current is not None and current != self.source):
             self.deferred = "background source superseded"
         elif foreground_covers(self.ws, self.source, self.public, self.inputs):
             self.deferred = "same-source full selfcheck has foreground priority"
