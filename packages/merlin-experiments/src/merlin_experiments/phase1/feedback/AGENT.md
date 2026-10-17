@@ -339,6 +339,14 @@ Under that whole selection a row passes only when certified; a tier that could n
 run is never a pass. A single named engine, or `--tiers`, keeps screen accounting.
 `selfcheck_selection` describes that selection and never relaxes certification.
 
+`selfcheck_selectors` resolves `--capsules` (all, names, `failing`, `changed`).
+`selfcheck_changed` grades every public capsule once under the certificate probe
+(`simulation_certificate.probe_observer`: RTL engines refused before dispatch, an
+exact-byte certificate still carried), then simulates only the capsules with neither
+a certificate nor a noted failure for their bytes, longest first within the request
+bound. It certifies nothing by inference: a missing or unreadable probe record is
+`changed`, and `all_pass` still means every public capsule certified.
+
 `private_model_inputs` owns exact selected-input, capture-tree and recipe bindings;
 the full-model coordinator supplies its current digest and pinned-file callbacks.
 `promotion_sources` owns conservative package import/literal closure; promotion
