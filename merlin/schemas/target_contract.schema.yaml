@@ -56,6 +56,20 @@ validation_notes: >-
   are declared; entries, widths, ID spaces, stage counts and modes are read from the elaborated HW,
   and an anchor the RTL does not contain records that fact UNKNOWN.
   Missing declarations disable their optional reader, while malformed declarations fail closed.
+  `output_epilogue: {module, value, scale, activation}` names the elaborated module that moves the
+  accumulator out and, inside it, the accumulator element, the scale operand and the activation
+  selector; what that module does with them is read by `merlin.targetgen.rtl.output_epilogue`.
+
+  OPTIONAL `output_epilogue` (schema `output_epilogue_v1`, written by contract derivation, never
+  authored): what the contraction unit's output path applies on move-out. Four capabilities, each
+  `{status: derived|UNKNOWN, evidence: [{rung, observed}], ...}`: `scale` (`dtype` and `format` of the
+  scale read from its sign/exponent/fraction split, `accumulator_dtype`, `output_dtypes`, `rounding`,
+  `saturation`, the register `carriers` and the instance `combined_by` that multiplies),
+  `activation` (`functions: {relu: {codes, applied_to}}`, `unrecognized_codes`, `before_scale`),
+  `accumulate` (the `accumulate_on_load` fact) and `pool` (`reductions`, `carriers`). `stages` maps
+  each command-buffer stage an output path can apply (`acc_scale`, `relu`, `maxpool`) to whether it
+  is derived, and `unknown` gives the reason for every capability no rung established. A stage that
+  is not derived licenses nothing; it is never a refusal by the hardware either.
 
   OPTIONAL `operation_capabilities`: the common operation registry shared by generated target
   dialects, RVV or other instruction sets, and target-specific machine dialects. Shape:

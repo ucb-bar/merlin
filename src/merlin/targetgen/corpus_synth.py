@@ -1935,7 +1935,10 @@ def synthesize(
             **({"acc_scale": SYNTH_ACC_SCALE} if "acc_scale" in stages else {}),
             "source_role": SOURCE_ROLE,
             "source_reference": (
-                f"synthesized for the group axis: selected captures form {_group.get('groups')} "
+                "synthesized for the group axis: this target's derived output path applies this stage "
+                "combination to a contraction on move-out, and no per-stage member demands a combination"
+                if "derived_output_epilogue" in (_group.get("evidenced_by") or ())
+                else f"synthesized for the group axis: selected captures form {_group.get('groups')} "
                 "compute group(s) with this stage combination on this "
                 f"target, and no per-stage member demands a combination"
             ),
