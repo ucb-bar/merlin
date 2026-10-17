@@ -23,7 +23,7 @@ from pathlib import Path
 import yaml
 
 from merlin.common import cpu_pool
-from merlin.common.bundle_snapshot import verified_snapshot_scope
+from merlin.common.bundle_snapshot import shared_entry_verification, verified_snapshot_scope
 from merlin.targetgen import package_runtime as P
 from merlin.targetgen import tier_policy
 from merlin.targetgen.contract.readback_policy import ReadbackPolicy
@@ -34,6 +34,8 @@ from . import compiler_profile_runtime as R
 
 ENV = "MERLIN_OPERATOR_GRADE_PROCESSES"
 _ADAPTERS = weakref.WeakKeyDictionary()
+#: original executor -> the snapshot entry its grade verified once before fanning out.
+_GRADE_ENTRIES = weakref.WeakKeyDictionary()
 _LOCK = threading.RLock()
 
 
@@ -76,7 +78,34 @@ def validate(*, target, adapters, config, perf_extractor):
         raise StageGateError("operator processes require an unlimited shared certify budget")
     if type(P.active_package_executor()) is not R._Executor:
         raise StageGateError("operator processes require the original live profile executor")
-    return adapter_selection(adapters, target=target)
+    selection = adapter_selection(adapters, target=target)
+    _open_grade_entry(P.active_package_executor())
+    return selection
+
+
+def _open_grade_entry(executor):
+    """Verify the original bundle snapshot once, before this grade's capsules fan out.
+
+    Every capsule's parent preparation used to repeat the complete entry read
+    (payload digest, roster scan and guard setup) on its own thread, all of it
+    GIL-bound in one controller process. Capsules now start from this entry
+    while its kernel guard observes no change; each keeps its own fresh final
+    verification before its child is launched and again before its result is
+    accepted. Without a live guard every capsule keeps its full entry read.
+    """
+    owner = executor.owner
+    with _LOCK:
+        previous = _GRADE_ENTRIES.pop(executor, None)
+    if previous is not None:
+        previous.close()
+    if type(owner) is not CHILD.CommonTransformService:
+        return
+    entry = shared_entry_verification(owner.workspace, owner.bundle, repo=owner.repo)
+    if entry is None:
+        return
+    with _LOCK:
+        _GRADE_ENTRIES[executor] = entry
+    weakref.finalize(executor, entry.close)
 
 
 def _publish(path, row):
@@ -115,13 +144,22 @@ def _communicate_or_defer(process, *, timeout_s):
 
 @contextlib.contextmanager
 def _prepared_child(document):
-    """Batch only synchronous original-owner issuance; close custody before child launch."""
+    """Batch only synchronous original-owner issuance; close custody before child launch.
+
+    Holds no CPU lease itself. Snapshot verification leases one shared CPU per
+    stage behind its process admission gate, so a grade's capsules waiting to
+    verify never reserve pool CPUs that author requests are queued for; a held
+    slot is never preempted, so a lease held across this GIL-bound preparation
+    used to keep the pool idle and locked for minutes per grade.
+    """
     executor = P.active_package_executor()
     if type(executor) is not R._Executor or type(executor.owner) is not CHILD.CommonTransformService:
         raise StageGateError("operator child requires its original live profile owner")
     owner = executor.owner
+    with _LOCK:
+        entry = _GRADE_ENTRIES.get(executor)
     with contextlib.ExitStack() as lifetime:
-        with cpu_pool.shared_compute_pool(), verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo):
+        with verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo, entry=entry):
             root = CHILD.model_child_temporary_root()  # Retain original import/owner verification.
             if root is None:
                 raise StageGateError("operator child lost its original profile owner")
@@ -228,8 +266,9 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
             raise
         if process.returncode != 0 or not output.is_file():
             raise StageGateError(f"operator grade child exited {process.returncode} without a verified completion")
-        with cpu_pool.shared_compute_pool():
-            row = transport.verify_result(json.loads(output.read_bytes()))
+        # Fresh and complete, and unleased here for the same reason as preparation: its snapshot
+        # read leases its own stage behind the admission gate.
+        row = transport.verify_result(json.loads(output.read_bytes()))
         if row.get("capsule") != capsule["name"] or adapter_selection(adapters, target=target) != selection:
             raise StageGateError("operator child result or selected oracle changed")
         for tier, value in (row.pop("operator_child_costs_s", {}) or {}).items():

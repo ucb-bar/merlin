@@ -73,13 +73,15 @@ class _RosterGuard:
     hard link can resize a file without notifying its parent directory. This
     never caches payload hashes. Entry/exit payload verification stays fresh;
     unsupported watches, any event (including overflow), or mount changes fall
-    back to the ordinary complete roster scan.
+    back to the ordinary complete roster scan. Checks are serialized, so one
+    guard may serve several threads: an event consumed by one ends it for all.
     """
 
     def __init__(self, root, members):
         import ctypes
         import sys
 
+        self._lock = threading.RLock()
         self.fd = None
         self.root = root
         if sys.platform != "linux" or not read_lease_digest.enabled():
@@ -112,26 +114,111 @@ class _RosterGuard:
             self.close()
 
     def unchanged(self):
-        if self.fd is None:
-            return False
-        try:
-            info = self.root.stat(follow_symlinks=False)
-            if (info.st_dev, info.st_ino) != self.identity or Path("/proc/self/mountinfo").read_bytes() != self.mounts:
-                self.close()
+        with self._lock:
+            if self.fd is None:
                 return False
             try:
-                os.read(self.fd, 65536)
-            except BlockingIOError:
-                return True
-        except OSError:
-            pass
-        self.close()
-        return False
+                info = self.root.stat(follow_symlinks=False)
+                if (info.st_dev, info.st_ino) != self.identity or Path(
+                    "/proc/self/mountinfo"
+                ).read_bytes() != self.mounts:
+                    self.close()
+                    return False
+                try:
+                    os.read(self.fd, 65536)
+                except BlockingIOError:
+                    return True
+            except OSError:
+                pass
+            self.close()
+            return False
 
     def close(self):
-        if self.fd is not None:
-            os.close(self.fd)
-            self.fd = None
+        with self._lock:
+            if self.fd is not None:
+                os.close(self.fd)
+                self.fd = None
+
+
+class _GuardView:
+    """A scope's non-owning use of a :class:`SharedEntry` guard; closing the scope keeps it."""
+
+    def __init__(self, guard):
+        self.unchanged = guard.unchanged
+
+    def close(self):
+        pass
+
+
+class SharedEntry:
+    """One full entry verification that several protected scopes of one grade start from.
+
+    Built once, before a grade fans out (:func:`shared_entry_verification`). A
+    :func:`verified_snapshot_scope` opened with ``entry=`` still checks the mapping,
+    canonical paths and membership afresh, but takes the payload digest from this
+    entry instead of re-reading the snapshot, and only while this entry's kernel
+    roster guard has observed nothing at all: any event, overflow or mount change
+    ends reuse for every later scope. Each scope's FINAL verification is unchanged
+    and fully fresh, so nothing is admitted on the strength of this entry alone.
+    """
+
+    def __init__(self, *, root, repo, policy_bytes, marker_bytes, members, document, guard):
+        self.process = os.getpid()
+        self.root, self.repo, self.policy_bytes = root, repo, policy_bytes
+        self.marker_bytes, self.members, self.document, self.guard = marker_bytes, members, document, guard
+        self.signature = tuple(document[key] for key in ("content_sha256", "n_files", "n_bytes"))
+
+    def reusable(self, root, repo, policy_bytes):
+        return (
+            self.process == os.getpid()
+            and (self.root, self.repo, self.policy_bytes) == (root, repo, policy_bytes)
+            and (root / MARKER).read_bytes() == self.marker_bytes
+            and self.guard.unchanged()
+        )
+
+    def close(self):
+        self.guard.close()
+
+
+def shared_entry_verification(workspace: Path, bundle: dict, *, repo: Path) -> SharedEntry | None:
+    """Verify the snapshot once for a grade's scopes, or ``None`` when no live guard can protect reuse.
+
+    The guard is armed BEFORE the payload is hashed, so the digest describes bytes the
+    kernel has watched since. Requires the operator's read-lease selection, which is
+    what enables the roster guard; without it every scope keeps its own full entry.
+    """
+    from .cpu_pool import shared_compute_pool
+
+    if not read_lease_digest.enabled():
+        return None
+    workspace, repo = Path(workspace), Path(repo)
+    previous = _ACTIVE_VERIFICATION.set(None)
+    try:
+        policy = _policy_bytes(bundle)
+        root = bundle_snapshot_root(workspace)
+        with _snapshot_read_admission(), shared_compute_pool():
+            marker_bytes = (root / MARKER).read_bytes()
+            scanned = _scanned_members(root)
+            guard = _RosterGuard(root, scanned)
+        try:
+            document = verify_bundle_snapshot(workspace, bundle, repo=repo)
+            if _policy_bytes(bundle) != policy or json.loads(marker_bytes) != document or not guard.unchanged():
+                guard.close()
+                return None
+        except BaseException:
+            guard.close()
+            raise
+    finally:
+        _ACTIVE_VERIFICATION.reset(previous)
+    return SharedEntry(
+        root=root,
+        repo=repo,
+        policy_bytes=policy,
+        marker_bytes=marker_bytes,
+        members=_scanned_roster(scanned),
+        document=document,
+        guard=guard,
+    )
 
 
 def _current_verification(issued):
@@ -205,15 +292,33 @@ def _member_roster(root, members):
     return tuple(result)
 
 
+def _issue(*, root, marker_bytes, repo, policy_bytes, members, roster_guard, document, leases):
+    issued = _Verification()
+    issued.process, issued.thread = os.getpid(), threading.current_thread()
+    issued.root, issued.marker_bytes = root, marker_bytes
+    issued.repo, issued.policy_bytes = repo, policy_bytes
+    issued.members = members
+    issued.roster_guard = roster_guard
+    issued.signature = tuple(document[key] for key in ("content_sha256", "n_files", "n_bytes"))
+    issued.leases = leases
+    _ISSUED_VERIFICATIONS.add(issued)
+    return issued
+
+
 @contextlib.contextmanager
-def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
-    """Batch payload reads for one protected operation, never across calls.
+def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path, entry: SharedEntry | None = None):
+    """Batch payload reads for one protected operation.
 
     Every ordinary verification still checks mapping, canonical paths and
     membership. Both boundaries independently hash the payload by default.
     With MERLIN_SNAPSHOT_LEASE_CACHE=1, large immutable files may instead reuse
     their SHA-256 under freshly checked Linux read leases; all other files are
     hashed normally. Close this scope before publishing any accepted output.
+
+    ``entry`` (a grade's :class:`SharedEntry`) replaces only the entry payload read,
+    while its guard proves nothing changed; the final verification is always fresh.
+    Each stage leases one shared CPU behind the process admission gate, so callers
+    waiting to verify hold no slot.
     """
     from .cpu_pool import shared_compute_pool
 
@@ -222,26 +327,45 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
     issued = None
     try:
         original_policy = _policy_bytes(bundle)
-        with read_lease_digest.verification() as leases:
+        root = bundle_snapshot_root(workspace)
+        if type(entry) is SharedEntry and entry.reusable(root, repo, original_policy):
+            marker_bytes = entry.marker_bytes
+            issued = _issue(
+                root=root,
+                marker_bytes=marker_bytes,
+                repo=repo,
+                policy_bytes=original_policy,
+                members=entry.members,
+                roster_guard=_GuardView(entry.guard),
+                document=entry.document,
+                leases=None,  # The entry's leases belong to its own thread; its guard and the final read stand.
+            )
+            _ACTIVE_VERIFICATION.set(issued)
+            # Mapping, canonical paths and membership are checked afresh; the payload is the entry's.
             document = verify_bundle_snapshot(workspace, bundle, repo=repo)
-        # The 23k-member roster scan is CPU work too. Acquire only after the
-        # verifier's admission gate; end the slot before yielding to a child.
-        with shared_compute_pool():
-            root = bundle_snapshot_root(workspace)
-            marker_bytes = (root / MARKER).read_bytes()
-            scanned = _scanned_members(root)
-            members = _scanned_roster(scanned)
-            roster_guard = _RosterGuard(root, scanned)
-        issued = _Verification()
-        issued.process, issued.thread = os.getpid(), threading.current_thread()
-        issued.root, issued.marker_bytes = root, marker_bytes
-        issued.repo, issued.policy_bytes = repo, original_policy
-        issued.members = members
-        issued.roster_guard = roster_guard
-        issued.signature = tuple(document[key] for key in ("content_sha256", "n_files", "n_bytes"))
-        issued.leases = leases
-        _ISSUED_VERIFICATIONS.add(issued)
-        _ACTIVE_VERIFICATION.set(issued)
+            if document != entry.document:
+                raise RuntimeError("original snapshot shared entry ownership changed")
+        else:
+            with read_lease_digest.verification() as leases:
+                document = verify_bundle_snapshot(workspace, bundle, repo=repo)
+            # The 23k-member roster scan is CPU work too. Acquire only after the
+            # verifier's admission gate; end the slot before yielding to a child.
+            with _snapshot_read_admission(), shared_compute_pool():
+                marker_bytes = (root / MARKER).read_bytes()
+                scanned = _scanned_members(root)
+                members = _scanned_roster(scanned)
+                roster_guard = _RosterGuard(root, scanned)
+            issued = _issue(
+                root=root,
+                marker_bytes=marker_bytes,
+                repo=repo,
+                policy_bytes=original_policy,
+                members=members,
+                roster_guard=roster_guard,
+                document=document,
+                leases=leases,
+            )
+            _ACTIVE_VERIFICATION.set(issued)
         try:
             yield document
         finally:
@@ -249,7 +373,7 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
             _ACTIVE_VERIFICATION.set(None)
             if _policy_bytes(bundle) != original_policy or (root / MARKER).read_bytes() != marker_bytes:
                 raise RuntimeError("original snapshot scope policy or marker changed")
-            with shared_compute_pool():
+            with _snapshot_read_admission(), shared_compute_pool():
                 read_lease_digest.validate(issued.leases)
             final = verify_bundle_snapshot(workspace, bundle, repo=repo)
             if final != document:
