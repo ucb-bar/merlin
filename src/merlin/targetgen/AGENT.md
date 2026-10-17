@@ -71,6 +71,9 @@ launching, capsule grading, golden generation, sandboxing and certification. The
   A busy native cap releases the admission attempt's compute lease before
   retrying, so waiting simulators cannot occupy all compilation CPUs.
   Shared mode does not assign CPUs by native slot index or change oracle tiers.
+  Unset GSim and Spike caps default to the shared pool size; explicit
+  `MERLIN_GSIM_MAX_SLOTS`/`MERLIN_SPIKE_MAX_SLOTS` still win. Native retries
+  keep their place in the pool's priority queue.
   Contract and FIRRTL build steps use that same compute namespace; absent shared
   configuration retains legacy build and GSim CPU selection.
 - `build_cache.build_identity` includes the independently selected original

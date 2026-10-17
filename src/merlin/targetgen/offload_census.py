@@ -323,17 +323,18 @@ def census(
 ) -> dict[str, Any]:
     """Emit independent programs concurrently, returning accounting in input order.
 
-    Zero workers selects ``MERLIN_GRADE_WORKERS`` (six when unset), bounded by
-    the shared compute roster. Build once before fan-out. Each case inherits the
-    original execution context and owns an independent artifact directory; no
-    parent CPU lease spans package subprocesses or their common-service RPCs.
+    Zero workers selects ``MERLIN_GRADE_WORKERS`` (when unset, the shared compute
+    pool size, else six), bounded by the shared compute roster. Build once before
+    fan-out. Each case inherits the original execution context and owns an
+    independent artifact directory; no parent CPU lease spans package subprocesses
+    or their common-service RPCs.
     """
     from .package_runtime import build_package, integrity_scan, load_package
 
     if type(workers) is not int or workers < 0:
         raise ValueError("offload census workers must be a nonnegative integer")
     if workers == 0:
-        raw = os.environ.get("MERLIN_GRADE_WORKERS", "6")
+        raw = os.environ.get("MERLIN_GRADE_WORKERS", str(cpu_pool.compute_capacity() or 6))
         if not raw.isdecimal() or int(raw) < 1:
             raise ValueError("MERLIN_GRADE_WORKERS must be a positive integer")
         workers = int(raw)

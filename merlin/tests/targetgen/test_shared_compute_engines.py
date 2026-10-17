@@ -183,3 +183,40 @@ def test_standalone_spike_launch_uses_the_common_compute_lease(shared_pool, monk
     monkeypatch.setattr(spike.subprocess, "run", launch)
     assert spike.run_elf("selected.elf", timeout=1) == "DONE\n"
 
+
+_CAP_PROBE = """
+import json, os, sys
+sys.path[:0] = json.loads(sys.argv[1])
+os.cpu_count = lambda: 32
+from merlin.targetgen import rtl_engine_policy as policy
+print(json.dumps({engine: policy.capsule_worker_cap(engine) for engine in ("gsim", "spike", "verilator")}))
+"""
+
+
+@pytest.mark.parametrize(
+    "pool,explicit,expected",
+    [
+        (None, {}, {"gsim": 5, "spike": 8, "verilator": 4}),
+        (18, {}, {"gsim": 18, "spike": 18, "verilator": 4}),
+        (18, {"MERLIN_GSIM_MAX_SLOTS": "4", "MERLIN_SPIKE_MAX_SLOTS": "6"}, {"gsim": 4, "spike": 6, "verilator": 4}),
+    ],
+)
+def test_unset_engine_caps_default_to_the_shared_pool_size(tmp_path, pool, explicit, expected):
+    """Setting MERLIN_COMPUTE_CPUS alone sizes the engines; explicit caps still win; legacy is unchanged."""
+    import json
+    import sys
+
+    from merlin.common.paths import python_import_roots
+
+    env = {key: value for key, value in os.environ.items()
+           if key not in {"MERLIN_COMPUTE_CPUS", "MERLIN_COMPUTE_CPU_SLOTS", "MERLIN_GSIM_MAX_SLOTS",
+                          "MERLIN_SPIKE_MAX_SLOTS"}}
+    if pool is not None:
+        env["MERLIN_COMPUTE_CPUS"] = ",".join(map(str, range(4, 4 + pool)))
+        env["MERLIN_COMPUTE_CPU_SLOTS"] = str(tmp_path / "slots")
+    env.update(explicit)
+    roots = json.dumps([str(root) for root in python_import_roots()])
+    result = subprocess.run([sys.executable, "-c", _CAP_PROBE, roots], env=env, capture_output=True, text=True,
+                            timeout=60)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == expected

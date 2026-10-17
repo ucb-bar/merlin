@@ -45,6 +45,7 @@ def harness(monkeypatch, tmp_path):
 
     monkeypatch.delenv("MERLIN_GRADE_WORKERS", raising=False)
     monkeypatch.setattr(OC.cpu_pool, "grading_cpus", lambda: ())
+    monkeypatch.setattr(OC.cpu_pool, "preparation_cpus", lambda: ())
     monkeypatch.setattr(OC.cpu_pool, "shared_compute_enabled", lambda: False)
     monkeypatch.setattr(OC.cpu_pool, "shared_compute_pool", lease)
     monkeypatch.setattr(OC.cpu_pool, "selected_pool", lambda cpus: contextlib.nullcontext())
@@ -135,6 +136,19 @@ def test_zero_workers_uses_environment_and_shared_pool_caps_explicit_workers(mon
     monkeypatch.setattr(OC.cpu_pool, "grading_cpus", lambda: (31,))
     monkeypatch.setattr(OC.cpu_pool, "shared_compute_enabled", lambda: True)
     assert OC.census("package", target="synthetic", capsules=cases, workers=15)["execution"]["workers"] == 1
+
+
+def test_unset_workers_default_to_the_shared_pool_size(monkeypatch, harness, tmp_path):
+    monkeypatch.setattr(OC, "run_entrypoints", lambda pkg, *args, **kwargs: (pkg, host_buffer(), "artifact"))
+    cases = capsules(*"abcdefghij")
+    assert OC.census("package", target="synthetic", capsules=cases)["execution"]["workers"] == 6  # legacy
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", "1,2,3,4,5,6,7,8,9")
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "slots"))
+    monkeypatch.setattr(OC.cpu_pool, "grading_cpus", lambda: tuple(range(1, 10)))
+    monkeypatch.setattr(OC.cpu_pool, "shared_compute_enabled", lambda: True)
+    assert OC.census("package", target="synthetic", capsules=cases)["execution"]["workers"] == 9
+    monkeypatch.setenv("MERLIN_GRADE_WORKERS", "2")
+    assert OC.census("package", target="synthetic", capsules=cases)["execution"]["workers"] == 2
 
 
 @pytest.mark.parametrize("workers", [-1, True, 1.5])

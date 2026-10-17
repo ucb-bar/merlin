@@ -1091,21 +1091,31 @@ def default_grade_workers(n_capsules: int | None = None) -> int:
     experiments run on it left 30 cores idle through every grade — measured mid-run at a load average
     of 14.9 against 48 cores, with 16 workers. Memory never justified it: 16 workers of the heaviest
     kind reach ~3.5 GB. Applies to every arm's grade (the shared suite grader).
+
+    With a shared compute pool selected (``MERLIN_COMPUTE_CPUS``), the pool's slots arbitrate every
+    CPU step, so an unset count is the pool size, still bounded by memory.
     """
+    from merlin.common.cpu_pool import compute_capacity
+
     env = os.environ.get("MERLIN_GRADE_WORKERS")
     if env and env.isdigit() and int(env) > 0:
         w = int(env)
     else:
-        try:
-            cpus = len(os.sched_getaffinity(0))
-        except AttributeError:  # not every platform exposes affinity; the count is the bound
-            cpus = os.cpu_count() or 4
-        w = max(1, min(cpus - 2, int(cpus * GRADE_HOST_SHARE)))
-        busy = _cores_in_use()
-        if busy is not None:
-            # The floor applies to THIS bound only: yielding cores to other people is courtesy, and a
-            # courtesy must not be able to halt the experiment.
-            w = min(w, max(GRADE_MIN_WORKERS, int(cpus - busy)))
+        if pool := compute_capacity():
+            # A selected shared pool is the only CPU limiter: every worker step leases a
+            # slot, so the pool size replaces the affinity, host-share and load bounds.
+            w = pool
+        else:
+            try:
+                cpus = len(os.sched_getaffinity(0))
+            except AttributeError:  # not every platform exposes affinity; the count is the bound
+                cpus = os.cpu_count() or 4
+            w = max(1, min(cpus - 2, int(cpus * GRADE_HOST_SHARE)))
+            busy = _cores_in_use()
+            if busy is not None:
+                # The floor applies to THIS bound only: yielding cores to other people is courtesy,
+                # and a courtesy must not be able to halt the experiment.
+                w = min(w, max(GRADE_MIN_WORKERS, int(cpus - busy)))
         available = _available_memory_bytes()
         if available is not None:
             raw = os.environ.get("MERLIN_GRADE_WORKER_BYTES", "")
