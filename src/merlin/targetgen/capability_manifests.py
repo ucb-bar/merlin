@@ -562,6 +562,23 @@ def _unit_dtypes_for_synthesis(manifest: dict) -> tuple[str, ...]:
     return tuple(seen)
 
 
+def _derived_output_epilogue(name: str, manifest: dict[str, Any], facts: dict[str, Any]) -> dict[str, Any]:
+    """The contract's ``output_epilogue`` record; a failed derivation is an all-UNKNOWN record with why."""
+    from .rtl import output_epilogue as _oe
+
+    semantic = None
+    try:
+        from .rtl import semantic_facts as _sem
+
+        semantic = _sem.derive(name, only=("accumulate_on_load",))
+    except Exception:  # noqa: BLE001 -- no behavioural facts: accumulate stays UNKNOWN with its reason
+        semantic = None
+    try:
+        return _oe.derive(facts, contract=manifest, semantic_facts=semantic)
+    except Exception as exc:  # noqa: BLE001 -- never block contract derivation on this record
+        return _oe.underived(f"{type(exc).__name__}: {exc}")
+
+
 def derive_manifest(
     descriptor: Any, facts: dict[str, Any], *, residual: dict[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -741,6 +758,13 @@ def derive_manifest(
     from .operation_capabilities import operation_contract_for_target
 
     manifest["operation_capabilities"] = operation_contract_for_target(name, manifest)
+
+    # --- output epilogue: what the contraction unit's output path applies on move-out, DERIVED ---
+    # Scale (and its number format), activation, accumulate and pooling are read from the facts, the
+    # elaborated readout the contract's own probe names and the behavioural accumulate fact; a stage no
+    # rung establishes is UNKNOWN in the record, and grouping treats an absent record as "nothing
+    # derived" rather than as a capability. A derivation failure is recorded, never a blocked contract.
+    manifest["output_epilogue"] = _derived_output_epilogue(name, manifest, facts)
 
     # --- semantic capability: derived from this target's OWN evidence, every run ---
     # The ARR denominator is a claim about hardware, and a claim nothing checks is an assertion. So the
