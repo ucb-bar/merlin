@@ -27,6 +27,15 @@ def test_pure_host_and_support_only_programs_are_not_selected(placements):
     assert not scope.has_accelerator_work({"software_screen": _screen(**placements)})
 
 
+def test_accelerator_refusal_probe_is_retained_without_admitting_its_unknown_epilogue():
+    screen = {"status": "unknown", "constraints_status": "unknown", "placements": {"accelerator": 1},
+              "decisions": [{"placement": "accelerator", "classification": "accelerator_candidate", "status": "admitted"},
+                            {"placement": None, "classification": "unsupported", "status": "unknown"}]}
+    original = copy.deepcopy(screen)
+    assert scope.has_accelerator_work({"software_screen": screen})
+    assert screen == original and screen["status"] == "unknown"
+
+
 @pytest.mark.parametrize("screen", [None, {}, {"status": "unknown"}, _screen(accelerator=True), _screen(host=-1),
                                    _screen(unknown=1)])
 def test_unresolved_or_malformed_screens_are_refused(screen):

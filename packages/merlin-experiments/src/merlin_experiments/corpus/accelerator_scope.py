@@ -25,14 +25,25 @@ def has_accelerator_work(capsule: dict) -> bool:
     screen = capsule.get("software_screen") or {}
     placements = screen.get("placements")
     if (
-        screen.get("status") != "admitted"
-        or screen.get("constraints_status") != "matched"
-        or not isinstance(placements, dict)
+        not isinstance(placements, dict)
         or set(placements) - {"accelerator", "host"}
         or any(type(value) is not int or value < 0 for value in placements.values())
     ):
         raise SpecError("accelerator selection requires an admitted, resolved software screen")
-    return placements.get("accelerator", 0) > 0
+    accelerator = placements.get("accelerator", 0) > 0
+    if screen.get("status") == "admitted" and screen.get("constraints_status") == "matched":
+        return accelerator
+    # A Gemmini refusal test can contain an admitted contraction followed by an
+    # unsupported epilogue. Keep the test; selecting it never grants whole-program
+    # admission or changes the refusal the ordinary native checker must enforce.
+    if accelerator and any(
+        row.get("placement") == "accelerator"
+        and row.get("classification") == "accelerator_candidate"
+        and row.get("status") == "admitted"
+        for row in screen.get("decisions") or []
+    ):
+        return True
+    raise SpecError("accelerator selection requires an admitted, resolved software screen")
 
 
 def select_members(emitted: dict, *, fingerprint) -> tuple[dict, dict]:
