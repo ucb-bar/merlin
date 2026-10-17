@@ -15,6 +15,7 @@ import MerlinVerify.Rules.Motion
 import MerlinVerify.Rules.Generalize
 import MerlinVerify.Rules.Commutative
 import MerlinVerify.Rules.IntegerFold
+import MerlinVerify.Rules.ReshapeCompose
 
 namespace MerlinVerify.Check
 
@@ -43,7 +44,8 @@ structure SiteCandidate where
 
 def multiRewrite? (ρ : Rho) (ss ts : List Op) : Option (SiteCandidate × Rho) :=
   let candidates : List SiteCandidate :=
-    [⟨Rules.Cse.rule, 1, 1⟩, ⟨Rules.Motion.rule, 1, 2⟩, ⟨Rules.DequantSite.rule, 0, 2⟩] ++
+    [⟨Rules.Cse.rule, 1, 1⟩, ⟨Rules.Motion.rule, 1, 2⟩, ⟨Rules.DequantSite.rule, 0, 2⟩,
+      ⟨Rules.ReshapeCompose.rule, 1, 1⟩] ++
     (Rules.IntegerFold.candidateTails ss ts).map (fun n => ⟨Rules.IntegerFold.rule, n, 1⟩)
   candidates.findSome? fun c =>
     if c.sourceTail + 1 ≤ ss.length ∧ c.targetCount ≤ ts.length then
