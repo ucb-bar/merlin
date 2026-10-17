@@ -30,9 +30,9 @@ from merlin_experiments.phase1 import recovery as ROQ
 from merlin_experiments.phase1 import run_inputs as RI
 from merlin_experiments.phase1 import spend as SPEND
 from merlin_experiments.phase1 import treatments as T
-from merlin_experiments.phase1.audit import AnswerAudit
 from merlin_experiments.phase1.authoring_conformance import conformance_ever as _conformance_ever
 from merlin_experiments.phase1.authoring_conformance import workflow_conformance as _workflow_conformance
+from merlin_experiments.phase1.audit import AnswerAudit
 from merlin_experiments.phase1.feedback import certification as CERT
 from merlin_experiments.phase1.feedback import lifecycle as FL
 from merlin_experiments.phase1.feedback import loop_grading as LG
@@ -274,11 +274,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         max(0, int(a.sim_max_jobs)),
         selected_rtl_facts,
         sim_per_capsule_timeout=a.sim_per_capsule_timeout,
-        model_gate_interval=(
-            a.grade_interval
-            if context.target == "gemmini" and a.experiment == "full"  # target-ok: full-model
-            else 0
-        ),
+        model_gate_interval=a.grade_interval if context.target == "gemmini" and a.experiment == "full" else 0,  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
     )
 
     public_build_service = None
@@ -330,7 +326,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     _fast_grade = partial(LG.fast_grade, inputs=grading_inputs)
     _background_grade = T.timed(partial(LG.grade, inputs=grading_inputs,
         qa_runner=treatment.qa_runner, advisory_background=True), "qa", treatment.on_duration)
-    from .feedback.background_admission import foreground_active, source_digest
+    from .feedback.background_admission import foreground_active
     # realistic (abc2): the self-check tool the agent runs logs each invocation here (dev-trajectory /
     # soft-failure / tool-trigger record). T0 anchors wall-offset. Inherited by every claude subprocess.
     if a.experiment == "realistic":
@@ -593,7 +589,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         # FINAL AUTHORITATIVE GRADE: the background grades are progress reports on a moving workspace;
         # the run's verdict is a grade of the submission as the session left it.
         verdict = _grade(ws, run_dir, state["tick"] + 1, a.no_oracle, a.qa_timeout)
-        if context.target == "gemmini" and a.experiment == "full":  # target-ok: full-model
+        if context.target == "gemmini" and a.experiment == "full":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
             from . import oot_history as _OH
 
             _OH.verify_turn_end(run_dir, ws / "submission", verdict.get("oot_commit"))
@@ -675,8 +671,6 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             grade_callback=_background_grade,
             fast_grade_callback=_fast_grade,
             foreground_has_priority=partial(foreground_active, ws, grading_inputs),
-            **({'source_identity': partial(source_digest, ws)}
-               if os.environ.get('MERLIN_GRADE_START_TO_START') == '1' else {}),
         )
         try:
             if _operator_errata_record is not None:
@@ -773,7 +767,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             break
 
         verdict = _grade(ws, run_dir, rnd, a.no_oracle, a.qa_timeout)
-        if context.target == "gemmini" and a.experiment == "full":  # target-ok: full-model
+        if context.target == "gemmini" and a.experiment == "full":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
             from . import oot_history as _OH
 
             _OH.verify_turn_end(run_dir, ws / "submission", verdict.get("oot_commit"))
@@ -1254,12 +1248,12 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     # VERIFIED result (the relaunch design means the converging round's agent never saw the passing
     # verdict, so its self-reported status lags by one round). Guarantees the frozen report matches.
     finalize = None
-    if _authoring_complete() and context.target == "gemmini" and a.experiment == "full":  # target-ok: full-model
+    if _authoring_complete() and context.target == "gemmini" and a.experiment == "full":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
         # A report-finalize turn and the driver's status-line stamp change submission bytes after the
         # last agent-source OOT commit. The model task asks for the report during authoring; preserve
         # that exact tree for the official grade and record the visible model status here.
         finalize = {
-            "skipped": "gemmini model report belongs to the agent's final authoring tree",  # target-ok: full-model
+            "skipped": "gemmini model report belongs to the agent's final authoring tree",  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
             "visible_model_status_line": _verified_status_line(verdict),
             "status_line_stamped_by_driver": False,
         }
@@ -1414,7 +1408,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         official_grade = CERT._official_grade_result(
             grade_rc,
             run_dir,
-            require_model_check=context.target == "gemmini",  # target-ok: full-model
+            require_model_check=context.target == "gemmini",  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
             required_models=PFM.requirements_for(context.descriptor),
             required_programs=PFM.program_requirements_for(context.descriptor),
             execution_gate=PFX.gate_for(

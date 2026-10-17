@@ -399,6 +399,11 @@ def start_background(
     start_cadence = os.environ.get('MERLIN_GRADE_START_TO_START', '0')
     if start_cadence not in {'0', '1'}:
         raise ValueError('MERLIN_GRADE_START_TO_START must be 0 or 1')
+    if source_identity is None and start_cadence == '1':
+        from .background_admission import source_digest
+
+        def source_identity():
+            return source_digest(ws)
 
     def _grade_body() -> None:
         if not (ws / "qa" / "verdict.json").exists():
