@@ -268,3 +268,12 @@ cycle, the self-check/grade capsule taxonomy, measured L3 cost and pool capacity
 status and timing fields only, never answer material, and refuses to write inside its inputs.
 An absent or partially written input is reported unavailable, never as a zero. Its budget and
 verdict thresholds are published in the report; it decides no grade and gates nothing.
+
+`launch_config.py` renders and verifies one operator launch from a checked-in
+`merlin.phase1.launch_config.v1` file (and the `merlin.phase0.release_config.v1`
+release config it names): controller argv, the complete environment, CPU policy,
+runtime pins, numerics lineage and exclusions. Machine roots are variables; the target
+is data, so no target name, opcode or regex belongs here. It never starts a run, reads
+a credential or rewrites a prepared input in place; every disagreement is a listed
+drift, never a silent default. Bind new controller options in one place (`_argv`,
+`SUBAGENT_FLAGS`) and keep the schema in `resources/` fail-closed.
