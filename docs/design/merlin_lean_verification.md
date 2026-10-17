@@ -32,6 +32,10 @@ code_refs:
   - merlin/lean/MerlinVerify/Rules/MapGeneralize.lean
   - merlin/lean/MerlinVerify/Rules/CopyGeneralize.lean
   - merlin/lean/MerlinVerify/Rules/LayoutGeneralize.lean
+  - merlin/lean/MerlinVerify/Rules/IntegerFold.lean
+  - merlin/lean/MerlinVerify/Rules/ReshapeCompose.lean
+  - merlin/lean/MerlinVerify/Check/SplatNormalize.lean
+  - merlin/lean/MerlinVerify/Check/SplatC1.lean
   - merlin/lean/MerlinVerify/Rules/Motion.lean
 ---
 
@@ -704,8 +708,8 @@ model/tensor layer is outside this sequence.
 | Order | Family | Proof obligation and completion criterion |
 |---|---|---|
 | 1 | Named operation generalization | Matmul/batch-matmul use universal expansion; map/fill/copy/transpose/broadcast/reduce use checked typed SSA facts. Implemented for supported top-level forms, including variadic reduction. Source-definedness, actual pass output and defined chains are checked separately. Identity folds and other named families remain outstanding. |
-| 2 | Exact integer arithmetic | Operand commutation and typed one-operation normalization are implemented. Next extend typed sites to width/flag-aware multi-operation cast and constant simplifications. Check signedness, poison and actual canonicalizer output. |
-| 3 | Valid static shape rewrites | Prove reshape cancellation/composition and indexing equivalence, including zero extents, reassociation, element type, and all escaping uses. |
+| 2 | Exact integer arithmetic | Operand commutation, typed one-operation normalization and closed fixed-width integer arithmetic/comparison/select/cast folding are implemented. Closed fragments replay actual semantics and preserve SSA freshness; arbitrary input-dependent cast fusion remains outstanding. |
+| 3 | Valid static shape rewrites | Two-to-one collapse/collapse and expand/expand composition is implemented with recomputed reassociation algebra, zero extents and exact intermediate canonicalization. Escaping intermediate uses, bare-input cancellation and rank-zero unit transitions remain unsupported. |
 | 4 | Rewrites inside operation bodies | Lift proved local rules into actual linalg region closures with captures and block-argument shadowing; preserve reduction order and unchanged computation. |
 | 5 | Exact quantization expansion | Check dequantization and already-declared quantization operations against independent software semantics. Preserve broadcast/granularity maps, zero points, widths, rounding, clamps, and floating operation order. |
 | 6 | Numerical policies and frontend repairs | Add policy-specific claims for dynamic W8A8/approximations and frontend-intent claims for capture repairs. Compose only after independent policy review and qualification on complete upstream runs. |
@@ -747,8 +751,25 @@ a separate rule and remain explicit abstentions. Rank-zero transpose cannot be q
 current native tools: upstream verification attempts to construct an empty permutation map and
 crashes. This is retained as an upstream discrepancy, not counted as a passing comparison.
 
-This one-operation interface does not yet implement multi-operation cast
-fusion, reshape elimination, nested rewriting or numerical policies.
+The one-operation interface remains unchanged. Separate universal C1 site rules add multi-operation
+closed integer folding and reshape composition. `Rules/IntegerFold.lean` replays actual closed,
+fixed-width integer SSA definitions, proves context independence, checks every resulting bit and
+preserves source/target freshness. It covers arithmetic, comparisons, select and fixed-width casts;
+index casts and open, input-dependent expressions are outside this family. Only the final source
+result is mapped to the target constant, so unsupported escaping intermediates are refused.
+`Check/Synth.lean` proposes arbitrary-length closed fragments through a reusable site-candidate
+interface, preserving existing CSE/motion/dequantization priority; every candidate is rechecked.
+
+`Rules/ReshapeCompose.lean` checks two collapses or two expansions against one target reshape.
+`ReshapeGroups.valid_merge` establishes composed groups for actual runtime extents;
+`ReshapeIndex.compose` handles row-major values, zero extents and poison without positivity
+assumptions. Intermediate source results are hidden only when subsequent uses can be checked
+without them. A cancellation lemma reaches the canonicalized input, but the current C1 relation
+requires literal tensor equality, including arbitrary out-of-bounds reads. It does not authorize
+bare-input cancellation. Upstream permits all-unit rank-zero transitions with empty reassociation;
+the current semantics rejects these, so separate support checks and coverage chains abstain even
+when a conditional boundary theorem accepts. These transitions are not qualified.
+Nested rewrite lifting and numerical policies remain outstanding.
 
 **Uniform input compaction.** `Rules/StructuredInputs.lean` proves that two independently checked
 structured layouts execute identically when their loop ranges, output maps and body input values
@@ -764,11 +785,21 @@ and couples source/target payloads only through actual corresponding scalar bind
 proves totality of splat construction from an actually bound scalar. These facts preserve poison
 and do not follow from tensor types. Mutation checks cover payload/tensor shadowing, self-shadowing
 producers, unrelated writes, unsupported attributes, malformed producers and dynamic/encoded types.
-These are proved components, not yet a whole-program SSA rewrite checker or a verified pass
-receipt. Checking the actual rewritten generic headers, result correspondence, all escaping SSA
-uses and region closures remains necessary. Native differential tests execute real `scalarize_splat_inputs` output,
-including multiple splats, retained full-tensor results, affine indexing, empty/rank-zero tensors
-and float bit copies, with a corrupted-payload negative and a separate integer reference.
+`Rules/SplatScalar.lean` and `Check/SplatNormalize.lean` now lift those facts to whole-function
+normalization. The checker derives each generic header and both layouts, substitutes only an
+actually bound payload, and removes a splat producer only after checking the entire canonical
+continuation, including captures. Escaping full tensors remain live. Its bare-scalar generic form
+is an internal proof object, never substituted into exports or native execution.
+`Check/SplatC1.lean` checks both original programs on the same typed domain and proves exact
+normalization equality for both, including stuck/UB outcomes, before alpha comparison. This avoids
+using conditional target normalization to mask unsupported target behavior. `TypedModule` registers
+this additional checker. Actual-pass tests cover scalar/tensor captures, repeated producer uses,
+multiple splats, preserved full results, affine indexing, malformed/stale SSA facts, byte-bound
+chains and MLIR-verified wrong outputs. Native tests compare actual programs and independent
+integer references, including exact floating payloads. The supported domain is top-level static,
+unencoded tensor generics with supported bodies; rewriting nested generics remains outstanding.
+Fact lookup, repeated continuation checks and candidate replay can have superlinear cost.
+Synthetic qualification does not establish performance on a paper model bundle.
 
 Over-rank matmul capture repair is **not** an ordinary shape equivalence obligation. Its source is
 explicitly invalid linalg (`collapse_overrank_matmul`), so proving refinement against its unsupported

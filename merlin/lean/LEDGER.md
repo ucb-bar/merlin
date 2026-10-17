@@ -27,6 +27,20 @@ assumed, why, and what evidence stands behind it. A claim that relies on an entr
 | T5 | Accelerator kernels meeting their stated contracts (the OOT hole, design D8). |
 | T6 | Floating-point accuracy (measured, never proved; floats are parametric in every theorem). |
 
+## Known model and native qualification limits
+
+The current `tensor.reassocValid` predicate rejects all-unit nonzero-rank to rank-zero reshape
+transitions, and their inverse, with empty reassociation. Upstream MLIR accepts and executes
+these forms. This is a conservative support gap: source support and coverage-chain checks
+abstain, even when a conditional composition boundary accepts because the source is stuck.
+These transitions are outside qualified coverage; no semantics change or new assumption is
+introduced by the composition rules.
+
+Rank-zero `linalg.transpose` cannot currently be qualified: the installed MLIR binding crashes
+in verification, and assertion-enabled upstream `mlir-opt` reproduces an empty-permutation-map
+assertion in `TransposeOp::getIndexingMaps`. Passing Lean proofs do not establish native behavior
+for that form. Reproduction evidence is retained with shared-pass verification artifacts.
+
 ## Proposed dequantization source contract
 
 `Spec/Dequant.lean` specifies the distinct per-tensor and per-channel arithmetic orders from

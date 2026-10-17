@@ -24,6 +24,14 @@ code_refs:
   - merlin/tests/ir/test_lean_copy_generalize.py
   - merlin/lean/MerlinVerify/Rules/LayoutGeneralize.lean
   - merlin/tests/ir/test_lean_layout_generalize.py
+  - merlin/tests/ir/test_lean_integer_fold.py
+  - merlin/tests/ir/test_lean_integer_fold_native.py
+  - merlin/tests/ir/test_lean_reshape_compose.py
+  - merlin/tests/ir/test_lean_reshape_differential.py
+  - merlin/tests/ir/test_lean_splat_checker.py
+  - merlin/lean/MerlinVerify/Rules/IntegerFold.lean
+  - merlin/lean/MerlinVerify/Rules/ReshapeCompose.lean
+  - merlin/lean/MerlinVerify/Check/SplatC1.lean
 ---
 
 # Run Lean semantics differential tests
@@ -139,6 +147,31 @@ results, infinities and signed zero remain exact. Data movement and bitcast case
 payloads bit for bit. A seeded add-to-subtract fault demonstrates that a wrong model result is
 detected.
 
+## Closed integer folding and reshape composition
+
+`test_lean_integer_fold.py` certifies actual upstream constant canonicalization through universal
+C1 rules. The checker replays closed scalar fixed-width integer definitions using the actual Lean
+semantics and compares the final value with the actual target constant. It checks flags, widths,
+operand bindings, source/target shadowing and escaping intermediates. The rule excludes floating arithmetic and index-typed definitions. Native tests in the separate
+`test_lean_integer_fold_native.py` use independent signed/unsigned/modular references, cast edges
+and a verified wrong-constant control. Undefined divisions, signed division overflow and invalid shift counts are excluded
+independently before native execution. This is closed-fragment folding, not general constant-DAG
+or input-dependent cast simplification.
+
+`test_lean_reshape_compose.py` checks two collapses or two expansions against upstream's composed
+reshape, including group algebra, exact output shapes/types, escaping inputs, verified mutations
+and defined receipt replay. The native module compares both sides with the unchanged row-major
+input bits, including floating NaN payloads. Escaping intermediate reshapes and bare-input
+cancellation remain explicit refusals. All-unit rank-zero collapse/expand with empty reassociation
+is legal upstream but currently stuck in Lean: two dedicated native tests retain that discrepancy,
+while binding tests require source support and coverage-chain abstention. A passing conditional
+boundary check alone must never be reported as coverage for these unsupported inputs.
+
+Native-only modules are explicitly excluded from binding-only Lean CI. Missing native tools fail
+required qualification runs; no interpreter substitutes for native execution. Checker builds and
+specification locks must be fixed before receipt tests start. Independent workers use separate
+checkouts and binaries, then the coordinator replays integration against one final checker.
+
 ## Transpose, broadcast and reduction rules
 
 The typed checker also certifies actual transpose, broadcast and variadic reduction generalization.
@@ -224,8 +257,13 @@ Integer cases also use an independent modular reference; a corrupted scalar payl
 a different native result. `Rules/SplatInputs.lean` supplies the general semantic proof under
 checked layouts and an actual shared scalar payload. `Check/UniformFacts.lean` proves the actual
 splat-producer facts and invalidates them when either dependency is rebound. Source and target
-payloads can be coupled only through corresponding actual scalar bindings. The whole-program
-rewrite checker remains unimplemented, so these comparisons do not publish whole-pass receipts.
+payloads can be coupled only through corresponding actual scalar bindings. `Check/SplatC1.lean`
+now checks the actual whole-function boundary by independently proving exact normalization of
+both checked programs. A removed producer must be dead in the canonical continuation, including
+nested captures. Escaping full tensors remain live. The bare-scalar generic normal form is internal;
+exports and the native oracle still use only actual compiler IR. The binding suite checks both index
+widths, actual pass output, defined chain replay, stale receipts, captures, repeated generic uses and
+MLIR-verified mutations. Nested generic rewrite lifting remains unsupported.
 
 Typed receipts name `MerlinVerify.Check.TypedModule.check_sound` and record their domain and
 index width. `compose_chain` replays typed and universal boundaries together, requires every
