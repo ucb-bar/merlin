@@ -70,6 +70,9 @@ READOUT_UNDECLARED = "readout_epilogue_undeclared"
 READOUT_REQUIRES_SCALE = "readout_requires_scale"
 #: The captured float readout has no exact integer-bias-and-scale representation.
 FLOAT_EPILOGUE_REASSOCIATION = "float_epilogue_reassociation"
+#: A residual the unit could add into the accumulator on load (its output path is DERIVED to
+#: accumulate), refused because no proof shows the integer sum rounds as the captured float sum does.
+ACCUMULATE_UNPROVED = "accumulate_exactness_unproved"
 #: Growth stopped by a fact about the GRAPH rather than about the target: a value read outside the
 #: group, or a pad no pool consumes. Not a capability question and not a capability gap.
 STRUCTURAL = "graph_structure"
@@ -316,6 +319,73 @@ def _body_ops(op) -> list[str]:
     return [mq.op_name(inner) for inner in op.regions[0].blocks[0].ops]
 
 
+#: MLIR ``arith`` comparison predicates (the dialect's own enum, not a target fact), as
+#: ``predicate -> True`` when it holds for ``lhs > rhs`` and ``False`` when it holds for ``lhs < rhs``.
+#: Only ordered float and signed integer predicates: an unordered one decides NaN differently.
+_CMPF_ORDERED = {2: True, 3: True, 4: False, 5: False}  # ogt, oge, olt, ole
+_CMPI_SIGNED = {4: True, 5: True, 2: False, 3: False}  # sgt, sge, slt, sle
+_ZERO_CASTS = frozenset({"arith.sitofp", "arith.uitofp", "arith.extf", "arith.truncf", "arith.extsi", "arith.trunci"})
+
+
+def _is_zero(value) -> bool:
+    """A value that is the constant zero, possibly converted from one."""
+    for _ in range(4):
+        owner = getattr(value, "owner", None)
+        if owner is None or not hasattr(owner, "operands"):
+            return False
+        name = mq.op_name(owner)
+        if name == "arith.constant":
+            attribute = owner.properties.get("value")
+            if attribute is None:
+                attribute = owner.attributes.get("value")
+            data = getattr(getattr(attribute, "value", None), "data", None)
+            return isinstance(data, (int, float)) and data == 0
+        if name not in _ZERO_CASTS or len(owner.operands) != 1:
+            return False
+        value = owner.operands[0]
+    return False
+
+
+def _is_rectifier(op) -> bool:
+    """A one-input body that computes ``max(x, 0)`` as a compare against zero and a select.
+
+    Recognized by exact structure: the select's condition compares the block argument with a zero,
+    and its arms are that argument and that zero in the order that makes the result the larger one.
+    """
+    if not op.regions or not op.regions[0].blocks:
+        return False
+    block = op.regions[0].blocks[0]
+    if not block.args:
+        return False
+    x = block.args[0]
+    ops = list(block.ops)
+    if not ops or mq.op_name(ops[-1]) != "linalg.yield" or len(ops[-1].operands) != 1:
+        return False
+    pick = getattr(ops[-1].operands[0], "owner", None)
+    if pick is None or mq.op_name(pick) != "arith.select" or len(pick.operands) != 3:
+        return False
+    condition, when_true, when_false = pick.operands
+    compare = getattr(condition, "owner", None)
+    if compare is None or not hasattr(compare, "operands") or len(compare.operands) != 2:
+        return False
+    table = {"arith.cmpf": _CMPF_ORDERED, "arith.cmpi": _CMPI_SIGNED}.get(mq.op_name(compare))
+    if table is None:
+        return False
+    raw = compare.properties.get("predicate") or compare.attributes.get("predicate")
+    code = getattr(getattr(raw, "value", None), "data", None)
+    if code not in table:
+        return False
+    lhs, rhs = compare.operands
+    if lhs is x and _is_zero(rhs):
+        x_greater = table[code]  # cmp(x, 0) holds when x is the greater side
+    elif rhs is x and _is_zero(lhs):
+        x_greater = not table[code]
+    else:
+        return False
+    kept, cleared = (when_true, when_false) if x_greater else (when_false, when_true)
+    return kept is x and _is_zero(cleared)
+
+
 def _body_constants(op) -> list[float]:
     values: list[float] = []
     if not op.regions or not op.regions[0].blocks:
@@ -405,6 +475,8 @@ def classify(op) -> Stage | None:
         if kinds <= _MAX and constants == [0.0]:
             return Stage(RELU)
         return Stage(CLAMP if n_in == 1 else ELEMENTWISE)
+    if n_in == 1 and _is_rectifier(op):
+        return Stage(RELU)
     if kinds and kinds <= _ROUND:
         return Stage(ROUND)
     if kinds and kinds <= _CAST:
@@ -568,6 +640,16 @@ class TargetOracle:
     def absorbs(self, kind: str) -> Admission:
         """Does a readout, or a declared stage route, carry ``kind`` out of a contraction with it?"""
         verdict = readout_absorbs(kind, self.readout, target=self.target)
+        if not verdict.admitted and kind == RESIDUAL_ADD and getattr(self.readout, "accumulates", False):
+            # The hardware CAN add the residual into the accumulator; whether that integer sum rounds as
+            # the capture's float sum does is a proof this pass does not have, so the residual and what
+            # follows it stay on the host, named as such rather than as a missing declaration.
+            return Admission(
+                False,
+                ACCUMULATE_UNPROVED,
+                f"{self.target!r} accumulates an operand on load, but no proof shows the integer residual "
+                "sum equals the captured float sum after rounding",
+            )
         if verdict.admitted or verdict.refusal != READOUT_DOES_NOT_APPLY:
             return verdict
         stage = declared_stage_name(kind)
@@ -685,8 +767,14 @@ def _sole_user_is(op, consumers: set[int]) -> bool:
     return all(len(_users(result)) == 1 and id(_users(result)[0]) in consumers for result in op.results)
 
 
-def form_groups(module, target: str, *, oracle: TargetOracle | None = None, function: str | None = None,
-                numeric_refusals: Mapping[int, str] | None = None) -> list[Group]:
+def form_groups(
+    module,
+    target: str,
+    *,
+    oracle: TargetOracle | None = None,
+    function: str | None = None,
+    numeric_refusals: Mapping[int, str] | None = None,
+) -> list[Group]:
     """Partition ``function``'s computation-carrying operations into compute groups."""
     oracle = oracle or TargetOracle(target)
     functions = [op for op in module.walk() if op.name == "func.func" and op.body.blocks]
@@ -1114,8 +1202,13 @@ def _macs_by_op(module) -> dict[int, int]:
     return out
 
 
-def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], taken: Mapping[int, Group],
-          numeric_refusals: Mapping[int, str]) -> Group:
+def _grow(
+    root,
+    oracle: TargetOracle,
+    stage_of: Mapping[int, Stage | None],
+    taken: Mapping[int, Group],
+    numeric_refusals: Mapping[int, str],
+) -> Group:
     group = Group(index=0, placement=HOST, root=root, members=[root])
 
     # The operands behind the dequantizes are what an integer unit is asked about.
@@ -1221,8 +1314,11 @@ def _grow(root, oracle: TargetOracle, stage_of: Mapping[int, Stage | None], take
             break
         if stage.kind == BIAS_ADD and id(root) in numeric_refusals:
             # Keep a raw device contraction and its unproved float chain on the host.
-            cast = (pending_cast[-1] if pending_cast is not None else
-                    next(member for member in members[converted_at:] if stage_of[id(member)].kind == CAST))
+            cast = (
+                pending_cast[-1]
+                if pending_cast is not None
+                else next(member for member in members[converted_at:] if stage_of[id(member)].kind == CAST)
+            )
             if converted_at is not None:
                 members = members[:converted_at]
             pending_cast = None
@@ -1324,6 +1420,10 @@ def gap_class(refusal: str | None) -> str | None:
         return None
     if refusal == FLOAT_EPILOGUE_REASSOCIATION:
         return "OG0"
+    if refusal == ACCUMULATE_UNPROVED:
+        # The hardware evidence exists and the missing piece is this compiler's exactness proof: the
+        # region is unplaced by us, like a region no device form states.
+        return "OG6"
     if refusal == READOUT_REQUIRES_SCALE:
         # The readout can carry a conversion only when a scale stage precedes it. This instance
         # lacks that required attachment; the owner is the same route/attachment class as fused_only.

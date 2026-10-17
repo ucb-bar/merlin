@@ -405,6 +405,24 @@ def _noncompute_support(row: Mapping[str, Any]) -> bool:
     raise ValueError(f"support-required source operation has no audited lowering class: {operation}")
 
 
+def _exact_source_groups(module, target: str, capture: Path, form) -> tuple[list, int]:
+    """Source groups whose absorbed float epilogue is PROVED to round as the capture does.
+
+    A group that takes a converted accumulator through a stored float bias and a quantize is an
+    integer readout only when the transition proof over its stored weights says so
+    (:mod:`merlin.xdsl_dialects.lowering.group_exact_float`). An unproved group is formed again with
+    its float chain left on the host, so the gate never demands an accelerator epilogue that would
+    compute something other than the reference. Returns the groups and how many were refused.
+    """
+    from merlin.xdsl_dialects.lowering import group_exact_float as GEF
+
+    groups = form(module, target)
+    refused = GEF.refusals(groups, capture)
+    if refused:
+        groups = form(module, target, numeric_refusals=refused)
+    return groups, len(refused)
+
+
 def _source_obligations(
     capture: Path,
     target: str,
@@ -433,7 +451,7 @@ def _source_obligations(
         raise ValueError(f"full-model capture receipt is not verified: {checked.get('errors')}")
     text, _ = normalize_capture_mlir(source.read_text(encoding="utf-8"))
     module = mq.parse(text)
-    groups = form_source_groups(module, target)
+    groups, exact_float_refusals = _exact_source_groups(module, target, capture, form_source_groups)
     plan = CG.plan(module, target, groups=groups)
     CG.require_explained(plan)
     owners = {id(member): group for group in groups for member in group.members}
@@ -673,6 +691,7 @@ def _source_obligations(
         "n_source_operations": inventory["n_operations"],
         "n_linalg_regions": len(descriptors),
         "n_groups": len(groups),
+        "n_exact_float_epilogue_refusals": exact_float_refusals,
         "n_support_lowering_operations": support_lowering,
         "transpose_data_support": transpose_support,
         "generic_copy_data_support": generic_copy_support,
