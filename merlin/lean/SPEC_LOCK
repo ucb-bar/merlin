@@ -52,5 +52,6 @@
   "statement:MerlinVerify.Rules.DequantTensor.checkLayout_sound": "cd1b3753b4ea3757e549156188e487410033a7b8f71b84897af94c59a3194291",
   "statement:MerlinVerify.Rules.DequantTensor.checked_generic_sound": "866fa4d01977c3a3fae2cd65e1314dc3ad8941859ce9d1436ab63f0f12d6a4d5",
   "statement:MerlinVerify.Rules.DequantTensor.region_sound": "aec4b4839909a4d8456e66e97393ce411f2edddaaa3444f7cb80a30b23b375cc",
-  "statement:MerlinVerify.Rules.DequantTensor.tensor_contract_sound": "318a05cbf38f3c893e560e3c34999eff60b4a3af8740c005ea07be79eafc72da"
+  "statement:MerlinVerify.Rules.DequantTensor.tensor_contract_sound": "318a05cbf38f3c893e560e3c34999eff60b4a3af8740c005ea07be79eafc72da",
+  "statement:MerlinVerify.Rules.FillGeneralize.expand_sound": "732b1567af35ae5f0b1a49350bec97888bdccbe21383d4a43e17f33a57457ffe"
 }

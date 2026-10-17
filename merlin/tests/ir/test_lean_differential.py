@@ -351,6 +351,19 @@ def test_internal_calls_and_passing_assertion(tmp_path, fidelity_tools):
 
 
 STRUCTURED_PROGRAMS = {
+    **{
+        f"fill_{name}": f"""func.func @subject(%a0: {scalar}) -> tensor<{shape}> {{
+          %e = tensor.empty() : tensor<{shape}>
+          %r = linalg.fill ins(%a0 : {scalar}) outs(%e : tensor<{shape}>) -> tensor<{shape}>
+          return %r : tensor<{shape}>
+        }}"""
+        for name, shape, scalar in [
+            ("rank_zero", "i32", "i32"),
+            ("empty", "0x3xi32", "i32"),
+            ("f32", "2x3xf32", "f32"),
+            ("f64", "2x3x2xf64", "f64"),
+        ]
+    },
     "fill": """func.func @subject(%a0: i32) -> tensor<2x3xi32> {
       %e = tensor.empty() : tensor<2x3xi32>
       %r = linalg.fill ins(%a0 : i32) outs(%e : tensor<2x3xi32>) -> tensor<2x3xi32>

@@ -123,6 +123,15 @@ to prove the map expansion. `Check/TypedC1.lean` then checks the actual target w
 universal C1 rules. Export retains the original map; normalization is an internal proved step.
 The original universal `check_stage` still refuses this type-dependent rewrite.
 
+The same typed checker certifies `linalg.fill` generalization through
+`Rules/FillGeneralize.lean`. It checks the scalar broadcast map, destination identity map,
+parallel iterators and operand segments, retaining the actual source body. Fill and map families
+compose on one checked SSA domain, including intermediate reshapes. The fill regression suite
+checks both index widths, rank-zero/empty tensors, initialized and dirty destinations, integer
+and floating element types, defined chains, and independently corrupted inputs, yields and returns.
+The native differential corpus executes original and generalized fills on integer, f32 and f64
+inputs. This certifies the named-to-generic boundary; it does not prove later bufferization.
+
 Typed receipts name `MerlinVerify.Check.TypedModule.check_sound` and record their domain and
 index width. `compose_chain` replays typed and universal boundaries together, requires every
 boundary to preserve the capture's declared input types/shapes, and checks that typed widths

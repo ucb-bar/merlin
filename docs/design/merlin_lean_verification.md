@@ -557,6 +557,10 @@ initialized from `tensor.empty` for exactly this reason. We handle it two ways:
     Rank-zero/empty tensors and captured values are qualified. The semantic correction is recorded
     in `SPEC_LOCK` and ledger A6. See [the differential guide](../guides/lean_differential_tests.md)
     for compiler provenance, native comparisons, and the separate bufferization-order regression.
+  - Typed `linalg.fill` generalization now preserves the source body and checks the scalar broadcast,
+    destination identity map and parallel iterators against the checked destination rank. Fill and
+    map expansions compose through intermediate SSA values on the same typed domain. Definedness
+    remains a separate source obligation; the rewrite itself makes no initializer-content assumption.
 - **Support, not just definedness (`NotStuck`).** The semantics returns `stuck` for anything it does
   not model. A per-boundary checker cannot know that the rest of the program is modelled, so each
   boundary claims *conditional* refinement:

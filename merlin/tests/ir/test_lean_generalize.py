@@ -30,7 +30,7 @@ def _source(name="matmul", scalar="i8", *, extent=3, floating=False, unsigned=Fa
     }}"""
 
 
-def _generalize(tmp_path, lean_tools, source):
+def _generalize(tmp_path, lean_tools, source, *, boundary="named-contraction-generalization"):
     stage = tmp_path / "stage"
     stage.mkdir()
     before, after = stage / "before.mlir", stage / "after.mlir"
@@ -39,7 +39,7 @@ def _generalize(tmp_path, lean_tools, source):
                             capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
     assert "linalg.generic" in after.read_text()
-    (stage / "meta.json").write_text(json.dumps({"boundary": "named-contraction-generalization"}))
+    (stage / "meta.json").write_text(json.dumps({"boundary": boundary}))
     return stage, before, after
 
 
