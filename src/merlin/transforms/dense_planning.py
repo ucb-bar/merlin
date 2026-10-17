@@ -150,10 +150,15 @@ def verify_dense_emission(choice: DenseChoice, emission: DenseEmission, *, stati
             raise ValueError(f"dense {role} realization exceeds selected storage or is missing")
 
 
-def dense_blocks(problem: DenseProblem, resources: DenseResources) -> tuple[DenseBlock, ...]:
+def dense_blocks(
+    problem: DenseProblem, resources: DenseResources, *, k_limit: Callable[[int, int], int] | None = None
+) -> tuple[DenseBlock, ...]:
     """Enumerate bounded M/N choices without expanding tensors or dynamic loops.
 
-    One largest resource-legal K panel is considered for each M/N choice. This
+    One largest resource-legal K panel is considered for each M/N choice. An
+    optional physical ``k_limit(bm, bn)`` narrows the logical byte bound for
+    separate stores, row padding or reserved windows; zero declines that M/N.
+    The callback supplies a capacity limit, not a performance estimate. This
     initial family preserves increasing K per output and holds the complete
     output block in private accumulators. Other dataflows need other families.
     """
@@ -171,6 +176,11 @@ def dense_blocks(problem: DenseProblem, resources: DenseResources) -> tuple[Dens
             acc = bm * bn * p.tile_m * p.tile_n * p.accumulator_bytes
             per_k = bm * p.tile_m * p.tile_k * p.lhs_bytes + bn * p.tile_k * p.tile_n * p.rhs_bytes
             bk = min(kt, r.max_k_blocks, r.operand_bytes // per_k)
+            if k_limit is not None:
+                physical = k_limit(bm, bn)
+                if type(physical) is not int or physical < 0:
+                    raise ValueError("physical K limit must be a nonnegative integer")
+                bk = min(bk, physical)
             if acc > r.accumulator_bytes or bk == 0:
                 continue
             choices.append(
@@ -198,6 +208,7 @@ def choose_dense_block(
     price: Callable[[DenseBlock], int | None],
     admits: Callable[[DenseBlock], bool] = lambda block: True,
     require_reuse: bool = True,
+    k_limit: Callable[[int, int], int] | None = None,
 ) -> DenseChoice | None:
     """Choose a resource-legal candidate priced by its actual target emitter.
 
@@ -213,7 +224,7 @@ def choose_dense_block(
     baseline_loads = mt * nt * (2 * kt + int(problem.bias))
     best = None
     considered = 0
-    for block in dense_blocks(problem, resources):
+    for block in dense_blocks(problem, resources, k_limit=k_limit):
         considered += 1
         if require_reuse and block.loads >= baseline_loads:
             continue

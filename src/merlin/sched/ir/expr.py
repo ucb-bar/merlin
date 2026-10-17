@@ -13,8 +13,8 @@ Anything richer belongs in a loop transformation (split a loop, peel an iteratio
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 
 class ExprError(ValueError):
@@ -152,17 +152,31 @@ def free_vars(e: Expr) -> frozenset[str]:
     return frozenset()
 
 
-def render(e: Expr, *, c: bool = False) -> str:
+def render(e: Expr, *, c: bool = False, index_bits: int | None = None) -> str:
     """The expression as text: the IR's own form, or a C expression when ``c``."""
+
+    def integer(value):
+        if index_bits is None:
+            return str(value)
+        if not c or type(index_bits) is not int or index_bits not in (32, 64):
+            raise ExprError("typed integer rendering requires C and an explicit 32 or 64-bit index width")
+        if type(value) is not int or not -(1 << (index_bits - 1)) <= value < (1 << (index_bits - 1)):
+            raise ExprError("integer literal exceeds the selected C index width")
+        if value == -(1 << (index_bits - 1)):
+            return f"INT{index_bits}_MIN"
+        literal = f"INT{index_bits}_C({abs(value)})"
+        return f"(-{literal})" if value < 0 else literal
+
     if isinstance(e, Const):
-        return str(e.value)
+        return integer(e.value)
     if isinstance(e, Var):
         return e.name
     if isinstance(e, Sum):
-        return "(" + " + ".join(render(t, c=c) for t in e.terms) + ")"
+        return "(" + " + ".join(render(t, c=c, index_bits=index_bits) for t in e.terms) + ")"
     if isinstance(e, Scaled):
-        return f"({render(e.expr, c=c)} * {e.factor})"
+        return f"({render(e.expr, c=c, index_bits=index_bits)} * {integer(e.factor)})"
     if isinstance(e, Select):
-        a, b = render(e.then, c=c), render(e.other, c=c)
-        return f"(({e.var} == {e.equals}) ? {a} : {b})" if c else f"select({e.var} == {e.equals}, {a}, {b})"
+        a = render(e.then, c=c, index_bits=index_bits)
+        b = render(e.other, c=c, index_bits=index_bits)
+        return f"(({e.var} == {integer(e.equals)}) ? {a} : {b})" if c else f"select({e.var} == {e.equals}, {a}, {b})"
     raise ExprError(f"unknown expression {e!r}")
