@@ -35,6 +35,7 @@ prepare:
   run_dir: ${PHASE0_RUN}
   output: ${RELEASE}
   generated_only: true
+  capsule_scope: accelerator
   selected_levels: [EL4]
   selected_variants: [public_v0]
   kernel_timing_selection:
@@ -64,7 +65,9 @@ seal:
     sha256: 4ac45372e52573a31d2afddfa702d9044219ba34e8da5acfd0d00fd6e05085c7
   reviewed_by: Codex operator under explicit user authorization to optimize the Phase1 harness and launch fresh empty-origin runs
   review_note: >-
-    Source-qualified infrastructure recovery of same EL4 experiment. Original
+    Fresh Gemmini accelerator-only EL4 experiment. Standalone CPU/host tests
+    are omitted under the user scope instruction; host code remains only for
+    accelerator execution and composition. Original
     numerical files, variants, admission policy and Smol waiver unchanged and
     rehashed; retained host twin numerical outputs match; their original source
     identities remain explicit. Fresh EMPTY-origin compiler: no seed, prior

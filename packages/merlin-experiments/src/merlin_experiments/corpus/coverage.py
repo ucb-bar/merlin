@@ -45,6 +45,10 @@ def selected_cohort_coverage(
 
     if phase not in {"phase1", "phase2"}:
         raise ValueError("cohort coverage phase must be phase1 or phase2")
+    from .accelerator_scope import conformance_for_scope, selected_scope
+
+    scope = selected_scope(inputs)
+    spec_doc = conformance_for_scope(spec_doc, inputs)
     labels = {"public", "dev"} if labels is None else set(labels)
     got = cert_capsule_cover(roots, labels=labels, tile_dim=(spec_doc.get("boundaries") or {}).get("tile_edge"))
     have = set(got.get("cells") or [])
@@ -57,6 +61,8 @@ def selected_cohort_coverage(
         "extra_cells": sorted(have - want),
         "scope": "exact admitted capsule bytes and selected conformance requirements only",
     }
+    if scope is not None:
+        result["capsule_scope"] = {**scope, "standalone_host_tests": "outside_selected_scope"}
     readers = {
         "shape_geometry": conformance._geometry_gap,
         "scope": conformance._scope_gap,

@@ -264,7 +264,7 @@ errata:
   # Served via --operator-errata; render copies it byte-for-byte to ${PREP}.
   source: errata/fresh-empty.md
   path: ${PREP}/operator-errata.md
-  sha256: 00fddc060dba570791a2aed82da568f7622a948c8037d4836410adbe5024eb0b
+  sha256: 8f6f1c4b6ecb59c832528a169b0189e37d37c7f3752b735464635420b4fd7b30
 
 # Inputs that are never part of any run. A path is repo-relative (below
 # inputs.repo): no argv or environment value may name it, and no bundle grant

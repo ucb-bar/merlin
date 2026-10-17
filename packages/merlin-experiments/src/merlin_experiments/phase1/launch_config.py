@@ -542,6 +542,8 @@ def release_prepare_call(launch: Launch) -> dict | None:
         return None
     prepare, seal = release["prepare"], release["seal"]
     kwargs: dict[str, object] = {"generated_only": prepare["generated_only"]}
+    if "capsule_scope" in prepare:
+        kwargs["capsule_scope"] = prepare["capsule_scope"]
     for key in ("selected_levels", "selected_variants", "optional_levels"):
         if key in prepare:
             kwargs[key] = list(prepare[key])
@@ -954,6 +956,8 @@ def _check_release(launch: Launch, report: Report) -> None:
             report.expect("release selected variants", list(prepare["selected_variants"]), found)
         if prepare["generated_only"]:
             report.expect("release assembly mode", "generated_only", _dig(record, "assembly", "mode"))
+        if prepare.get("capsule_scope") == "accelerator":
+            report.expect("release capsule scope", "accelerator", _dig(record, "assembly", "capsule_scope", "kind"))
     sealed = _load_json(launch.path(seal["seal"]), report, "release seal")
     if sealed is not None:
         report.expect("release seal reviewed_by", seal["reviewed_by"], _dig(sealed, "review", "reviewed_by"))

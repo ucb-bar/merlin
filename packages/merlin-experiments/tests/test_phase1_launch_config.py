@@ -155,7 +155,7 @@ class World:
             root / "private" / "preparation.json",
             {
                 "source_run": x(prepare["run_dir"]),
-                "assembly": {"mode": "generated_only"},
+                "assembly": {"mode": "generated_only", "capsule_scope": {"kind": prepare.get("capsule_scope", "all")}},
                 "phase1_policy": {"sha256": prepare["phase1_policy_descriptor"]["sha256"]},
                 "scaffolding": {
                     "bundle_generation": {"selection": {"variants": list(prepare["selected_variants"])}},

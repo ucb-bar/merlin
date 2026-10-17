@@ -22,6 +22,7 @@
         "run_dir": {"$ref": "#/$defs/text"},
         "output": {"$ref": "#/$defs/text"},
         "generated_only": {"type": "boolean"},
+        "capsule_scope": {"enum": ["all", "accelerator"]},
         "selected_levels": {"$ref": "#/$defs/tokens"},
         "selected_variants": {"$ref": "#/$defs/tokens"},
         "optional_levels": {"type": "array", "uniqueItems": true, "items": {"enum": ["EL5", "EL6"]}},
