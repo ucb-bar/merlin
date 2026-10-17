@@ -105,7 +105,7 @@ def test_original_selfcheck_compile_flag_avoids_default_engine_and_baseline(tmp_
     from merlin_experiments.phase1.feedback import selfcheck as S
 
     monkeypatch.setattr(S, "resolve_context", lambda *args: SimpleNamespace(target="selected", repo=tmp_path))
-    monkeypatch.setattr(S, "_default_sim", lambda *args: pytest.fail("compile diagnostics selected a simulator"))
+    monkeypatch.setattr(S, "_adapters", lambda *args, **kwargs: pytest.fail("compile diagnostics selected a simulator"))
     calls = []
     def observe(submission, **kwargs):
         calls.append((submission, kwargs))

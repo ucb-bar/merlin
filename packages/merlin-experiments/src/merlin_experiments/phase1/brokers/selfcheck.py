@@ -35,6 +35,7 @@ import time
 from pathlib import Path
 
 from merlin_experiments.phase1.context import add_context_arguments, context_argv, resolve_context
+from merlin_experiments.phase1.feedback.dispatch import REQUIRED_SIM, grade_selection_for
 from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worker_command
 
 
@@ -127,6 +128,10 @@ def _decorate_response(
             "raw_tail": raw[-1000:],
         }
     requested = request.get("submission_sha256")
+    requested_sim = request.get("sim")
+    if isinstance(requested_sim, str) and requested_sim and requested_sim != body.get("sim", requested_sim):
+        # Said, not hidden: the pinned engine's name is served by the grade's own selection.
+        body["requested_sim"] = requested_sim
     body.update(
         {
             "selfcheck_protocol": PROTOCOL_VERSION,
@@ -164,16 +169,23 @@ def _required_rtl_engine() -> str | None:
 
 
 def _allowed_sims() -> tuple[str, ...]:
-    """Spike plus either the one pinned RTL engine or the closed registered RTL set."""
+    """Spike plus either the one pinned RTL engine or the closed registered RTL set, and the grade's
+    own selection (``REQUIRED_SIM``), which honours the pin itself."""
     required = _required_rtl_engine()
     if required is not None:
-        return ("spike", required) if required in _rtl_engines() else ("spike",)
-    return ("spike",) + _rtl_engines()
+        return ("spike", required, REQUIRED_SIM) if required in _rtl_engines() else ("spike", REQUIRED_SIM)
+    return ("spike",) + _rtl_engines() + (REQUIRED_SIM,)
 
 
-def _default_sim() -> str | None:
-    required = _required_rtl_engine()
-    return required if required in _rtl_engines() else None
+def _default_sim() -> str:
+    """An unnamed engine means every tier the official grade selects, never one engine.
+
+    This returned the pinned RTL engine, so an unflagged request ran ``--sim gsim``: Spike plus a gSIM
+    adapter built WITHOUT the grade's selection record. Its verdict could differ from the grade's and
+    its exact-byte simulator certificates were keyed to a different instrument, so neither side could
+    carry the other's gSIM result. The grade's own selection honours the pin, so nothing is lost.
+    """
+    return REQUIRED_SIM
 
 
 def _sim_policy_error(sim: str) -> str | None:
@@ -356,19 +368,44 @@ def _dispatch_capacity() -> int:
     return int(value)
 
 
-def _feedback_scope_error(request):
-    """Operator-selected iteration bound; formal qualification uses its own path."""
+#: Named capsules one ordinary request may carry per leased compute CPU under
+#: ``MERLIN_SELFCHECK_MAX_CAPSULES=auto``. Each build or simulator step of a capsule leases one CPU
+#: from the shared pool, so a request this size keeps the pool busy for several waves without the
+#: author splitting one affected operator family across requests (eight CPUs -> 64 capsules).
+CAPSULES_PER_COMPUTE_CPU = 8
+
+
+def _ordinary_capsule_limit() -> int | None:
+    """The operator's per-request capsule bound, or ``None`` when none is selected.
+
+    ``auto`` sizes it from the shared compute pool the request's tiers will lease from
+    (``MERLIN_COMPUTE_CPUS``), falling back to this process's CPU affinity when no pool is selected.
+    An incomplete pool selection refuses, as it does for every other shared-compute consumer.
+    """
     raw = os.environ.get("MERLIN_SELFCHECK_MAX_CAPSULES", "").strip()
     if not raw:
         return None
+    if raw == "auto":
+        from merlin.common.cpu_pool import grading_cpus
+
+        cpus = len(grading_cpus()) or len(os.sched_getaffinity(0))
+        return CAPSULES_PER_COMPUTE_CPU * max(1, cpus)
     if not raw.isdecimal() or int(raw) < 1:
-        raise ValueError("MERLIN_SELFCHECK_MAX_CAPSULES must be a positive integer")
+        raise ValueError("MERLIN_SELFCHECK_MAX_CAPSULES must be a positive integer or 'auto'")
+    return int(raw)
+
+
+def _feedback_scope_error(request):
+    """Operator-selected iteration bound; formal qualification uses its own path."""
+    limit = _ordinary_capsule_limit()
+    if limit is None:
+        return None
     if request.get("action") or request.get("caller_layout") or any(request.get(key) for key in FORWARDED_PROBES):
         return None
     selected = str(request.get("capsules", "all"))
     names = {name.strip() for name in selected.split(",") if name.strip()}
-    if selected.strip() == "all" or len(names) > int(raw):
-        return (f"iteration feedback accepts at most {raw} named capsules per request; select affected capsules. "
+    if selected.strip() == "all" or len(names) > limit:
+        return (f"iteration feedback accepts at most {limit} named capsules per request; select affected capsules. "
                 "Full-suite feedback during authoring is disabled by the operator. "
                 "The separate final frozen qualification still covers the complete corpus.")
     return None
@@ -755,6 +792,7 @@ def main(
             _atomic_write(resp, json.dumps(doc))
             _atomic_write(ch / f"done_{rid}", "err")
             continue
+        sim = grade_selection_for(sim)
         to = int(r.get("timeout", 1800))
         worker_kwargs = {"rtl_facts": a.rtl_facts} if a.rtl_facts is not None else {}
         if a.compiler_bundle_manifest is not None:
@@ -926,13 +964,17 @@ def main(
         try:
             import json as _j
 
+            from merlin_experiments.phase1.feedback.promotion import cert_already_executed
             from merlin_experiments.phase1.feedback.promotion import promote as _promote
             from merlin_experiments.phase1.feedback.promotion import resolve_tiers as _resolve
 
             _loop, _cert, _cover = _resolve(ws, context=context, capsules_root=promotion_capsules_root)
             if _loop and _cert and resp.exists():
                 _v = _j.loads(resp.read_text())
-                if isinstance(_v, dict) and not _v.get("error") and promotion_source is not None:
+                if cert_already_executed(_v, _cert):
+                    print(f"[promote] not enqueued: this check already ran {_cert} on its own selection",
+                          file=sys.stderr, flush=True)
+                elif isinstance(_v, dict) and not _v.get("error") and promotion_source is not None:
                     _promote(
                         ws,
                         ch,

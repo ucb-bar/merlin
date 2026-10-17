@@ -32,6 +32,9 @@ def test_gemmini_full_model_task_is_short_and_allows_edits_during_checks(tmp_pat
     assert "per-kernel model gSIM replay is not requested" in task
     assert "--engine spike" in task and "--engine gsim" not in task
     assert "You may continue editing while a self-check or grade runs" in task
+    # The advertised focused check is the certifying one; a single-engine screen is named as such.
+    assert "`python agent_selfcheck.py --submission submission --capsules A,B`" in task
+    assert "certified pass/fail per capsule" in task and "cannot certify" in task
     assert task == (run / "TASK.md").read_text()
 
 
