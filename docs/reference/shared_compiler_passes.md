@@ -456,11 +456,22 @@ multiple consumers, extra operands, asynchronous barriers and mutation controls
 exercise the shared mechanism. Negative controls expose both incorrect target
 arithmetic and hidden temporary traffic despite plausible declarations.
 
+The same mechanism also composes a typed identity accumulator readout with an
+integer bias/clamp/narrowing epilogue after a completed contraction. Native tests
+execute complete two-layer integer graphs through final encoded bytes, including
+an observed first-layer activation, both contractions, separate accumulator/scratch
+stores, 8/16-bit input elements and i32 wrap before saturation. Counters observe
+actual staged requests and result accesses; both intermediate readout stores and
+reloads disappear. Missing bias support retains the original materializations.
+This scope requires addressable accumulators and contiguous elementwise bias
+matrices; it does not infer broadcast bias or packing. A falsely implemented
+wider fused addition fails the independent complete-output comparison.
+
 Synthetic tests do not qualify a target. Existing providers must expose a
 public, independently qualified scalar/effect projection, complete layouts and
 the physical composition emitter, together with final actual-byte decoding.
 The initial read-only target integrations do not provide these hooks. Physical
-floating readouts, contraction-to-epilogue fusion, noncontiguous layouts,
+floating readouts, direct contraction-body fusion, noncontiguous layouts,
 cross-memory handoffs and asynchronous fusion remain incomplete. Traffic
 reductions in these tests are not full-model latency results.
 
