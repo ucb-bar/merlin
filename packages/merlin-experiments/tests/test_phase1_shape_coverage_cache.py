@@ -372,7 +372,11 @@ def test_a_deferred_background_grade_skips_the_sweep(tmp_path, monkeypatch):
     from merlin_experiments.phase1.feedback import background_admission
 
     ws, run, inputs = _grade_setup(tmp_path, monkeypatch)
-    monkeypatch.setattr(background_admission, "foreground_covers", lambda *a: True)
+    # Only a superseded source defers a background grade; the author's own
+    # same-source requests now outrank it in the CPU pool instead.
+    monkeypatch.setenv("MERLIN_BACKGROUND_FINISH_SNAPSHOT", "0")
+    digests = iter(["a" * 64])
+    monkeypatch.setattr(background_admission, "source_digest", lambda ws: next(digests, "b" * 64))
     monkeypatch.setattr(LC, "sweep", lambda *a, **k: pytest.fail("probed a deferred background grade"))
     result = G.grade(
         ws,
@@ -385,7 +389,8 @@ def test_a_deferred_background_grade_skips_the_sweep(tmp_path, monkeypatch):
         qa_runner=lambda *a, **k: {"all_pass": True, "n_capsules": 1, "n_passed": 1, "per_capsule": []},
     )
     assert result["all_pass"] is None and result["gradeable"] is False
-    assert result["shape_coverage"]["skipped"] is True
+    assert result["background_grade"]["status"] == "deferred"
+    assert result["shape_coverage"]["ran"] is False
 
 
 def test_a_structure_only_pass_still_needs_its_shape_probes(tmp_path, monkeypatch):
