@@ -3,6 +3,8 @@
 import fcntl
 import os
 import subprocess
+import threading
+from contextlib import contextmanager
 
 import pytest
 
@@ -64,6 +66,47 @@ def test_shared_gsim_ignores_fixed_legacy_slot_cpu_mapping(shared_pool, monkeypa
         assert_cpu_owned(cpu, slots)
         with policy.gsim_runtime_slot(wait_timeout_s=0):
             assert_cpu_owned(cpu, slots)
+
+
+def test_busy_native_capacity_leaves_compute_available_for_builds(shared_pool, monkeypatch):
+    ready, finished = threading.Event(), threading.Event()
+    errors = []
+    original = policy._gsim_runtime_slot
+
+    @contextmanager
+    def observed(*args, **kwargs):
+        ready.set()
+        with original(*args, **kwargs):
+            yield
+
+    monkeypatch.setattr(policy, '_gsim_runtime_slot', observed)
+
+    def wait_for_native():
+        try:
+            with policy.gsim_runtime_slot(wait_timeout_s=0.4):
+                errors.append('unexpected native capacity')
+        except TimeoutError:
+            pass
+        finally:
+            finished.set()
+
+    # A different native owner fills the cap without taking our compute CPU.
+    with original(wait_timeout_s=0):
+        worker = threading.Thread(target=wait_for_native)
+        worker.start()
+        try:
+            assert ready.wait(1)
+            with cpu_pool.shared_compute_pool(timeout_s=0.2):
+                assert not finished.is_set()
+        finally:
+            worker.join(2)
+    assert finished.is_set() and not errors
+
+
+def test_kernel_timeout_is_not_retried_as_an_admission_failure(shared_pool):
+    with pytest.raises(TimeoutError, match='actual kernel timeout'):
+        with policy.gsim_runtime_slot(wait_timeout_s=1):
+            raise TimeoutError('actual kernel timeout')
 
 
 @pytest.mark.parametrize("owner", ["firtool", "contract", "llvm"])

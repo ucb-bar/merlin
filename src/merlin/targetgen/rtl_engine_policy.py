@@ -40,7 +40,7 @@ import stat
 import threading
 import time
 from collections.abc import Callable
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -593,14 +593,29 @@ def _gsim_cpu_slot(index: int):
 
 @contextmanager
 def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | None = None):
-    """Lease compute before reserving native capacity; nested calls reuse both."""
-    from merlin.common.cpu_pool import shared_compute_pool
+    """Lease compute first, but release it while waiting for native capacity."""
+    from merlin.common.cpu_pool import shared_compute_enabled, shared_compute_pool
 
     deadline = None if wait_timeout_s is None else time.monotonic() + max(0.0, wait_timeout_s)
-    with shared_compute_pool(timeout_s=wait_timeout_s):
-        remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
-        with _gsim_runtime_slot(wait_timeout_s=remaining, slot_root=slot_root):
+    if not shared_compute_enabled():
+        with _gsim_runtime_slot(wait_timeout_s=wait_timeout_s, slot_root=slot_root):
             yield
+        return
+    while True:
+        remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+        with ExitStack() as ownership:
+            ownership.enter_context(shared_compute_pool(timeout_s=remaining))
+            try:
+                ownership.enter_context(_gsim_runtime_slot(wait_timeout_s=0, slot_root=slot_root))
+            except TimeoutError:
+                pass
+            else:
+                yield
+                return
+        # No CPU or native reservation is held by this admission attempt.
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TimeoutError('timed out waiting for GSim native capacity')
+        time.sleep(0.05 if deadline is None else min(0.05, max(0, deadline - time.monotonic())))
 
 
 @contextmanager

@@ -68,6 +68,8 @@ launching, capsule grading, golden generation, sandboxing and certification. The
 - `rtl_engine_policy.simulation_runtime_slot` uses the explicitly selected shared
   compute lease for every simulator. GSim retains its separate conservative
   native census/cap, acquiring compute first and reusing synchronous ownership.
+  A busy native cap releases the admission attempt's compute lease before
+  retrying, so waiting simulators cannot occupy all compilation CPUs.
   Shared mode does not assign CPUs by native slot index or change oracle tiers.
   Contract and FIRRTL build steps use that same compute namespace; absent shared
   configuration retains legacy build and GSim CPU selection.
