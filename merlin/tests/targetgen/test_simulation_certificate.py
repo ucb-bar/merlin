@@ -300,3 +300,92 @@ def test_role_declared_outputs_do_not_need_redundant_explicit_output_list(select
         assert _read(selected, _context(selected)) is not None
         cb["tensors"]["C"]["role"] = "input"
         assert _context(selected) is None
+
+
+def _owner_record(owner):
+    from merlin_experiments.phase1.feedback import compiler_profile_child as child
+
+    return child._owner_record(owner)
+
+
+def _relocated_run(selected, name, *, host_index_bits=64):
+    """Another run's owner for the same frozen bytes: its own workspace, archived manifest and snapshot.
+
+    Each run archives a manifest naming its own run-owned inputs, so the manifest bytes and the snapshot
+    location differ between an authoring run and the frozen qualification of its final compiler.
+    """
+    import copy
+    import shutil
+    from types import SimpleNamespace
+
+    import yaml
+    from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
+
+    from merlin.common.paths import repo_root
+    from merlin.targetgen.sandbox import bwrap
+    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V3, attach_common_substrate
+
+    repo, root = repo_root(), selected.private.parent / name
+    workspace = root / "workspace"
+    workspace.mkdir(parents=True)
+    if host_index_bits == 64:
+        bundle = copy.deepcopy(selected.owner.bundle)
+    else:
+        bundle = {"arm": "raw_baseline", "tools": [], "allowed": [], "denied": [], "host_inputs": []}
+        attach_common_substrate(
+            bundle, version=COMMON_SUBSTRATE_V3, python_source_root=repo / "src", host_index_bits=host_index_bits
+        )
+        for row in bundle["allowed"]:
+            if row["path"].startswith("merlin/python/"):
+                row["path"] = str(repo / "src" / row["path"].removeprefix("merlin/python/"))
+    bundle["denied"] = [*bundle["denied"], {"path": str(root / "private_corpus_input"), "reason": "run-owned"}]
+    manifest = root / "input_bundle_manifest.yaml"
+    manifest.write_text(yaml.safe_dump(bundle))
+    bwrap.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    owner = CommonTransformService(workspace=workspace, bundle_manifest=manifest, repo=repo)
+    shutil.copytree(selected.candidate, workspace / "submission")
+    (root / "private").mkdir()
+    return SimpleNamespace(
+        owner=owner,
+        candidate=workspace / "submission",
+        target=selected.target,
+        inputs=selected.inputs,
+        private=root / "private",
+    )
+
+
+def test_frozen_qualification_of_the_same_bytes_in_another_run_reuses_the_certificate(selected):
+    with _scope(selected):
+        _write(selected, _context(selected))
+    later = _relocated_run(selected, "frozen-qualification")
+    assert later.owner.bundle_bytes != selected.owner.bundle_bytes
+    assert _owner_record(later.owner) != _owner_record(selected.owner)
+    selected.inputs_to_cache["package_dir"] = later.candidate
+    with _scope(later):
+        context = _context(selected)
+        assert context is not None and context.profile == _owner_record(later.owner)
+        carried = _read(selected, context)
+        assert carried is not None and carried.status == "pass" and carried.cycles == 19
+        assert carried.timing is None and carried.carried["carried"] is True
+
+
+def test_another_run_with_any_changed_byte_or_compiler_profile_cannot_reuse(selected):
+    with _scope(selected):
+        _write(selected, _context(selected))
+    later = _relocated_run(selected, "frozen-qualification")
+    selected.inputs_to_cache["package_dir"] = later.candidate
+    with _scope(later):
+        (selected.generated / "kernel.elf").write_bytes(b"\x7fELF-relocated-different-program")
+        assert _read(selected, _context(selected)) is None
+        (selected.generated / "kernel.elf").write_bytes(b"\x7fELF-exact-current-program")
+        selected.inputs_to_cache["gold"]["C"][1] = 9
+        assert _read(selected, _context(selected)) is None
+        selected.inputs_to_cache["gold"]["C"][1] = 4
+        assert _read(selected, _context(selected)) is not None
+    other = _relocated_run(selected, "other-profile", host_index_bits=32)
+    assert _owner_record(other.owner)["profile_sha256"] != _owner_record(selected.owner)["profile_sha256"]
+    selected.inputs_to_cache["package_dir"] = other.candidate
+    with _scope(other):
+        context = _context(selected)
+        assert context is not None
+        assert _read(selected, context) is None
