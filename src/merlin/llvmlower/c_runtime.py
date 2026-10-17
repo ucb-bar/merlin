@@ -17,7 +17,10 @@ Nothing here is target-specific: the same artifacts feed the host and the spike 
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -145,6 +148,8 @@ def generate(
     prepared_dir: str | Path | None = None,
     entry_projection: EntryWeightProjection | None = None,
     entry_projection_source: str | Path | None = None,
+    materialize_weights: bool = True,
+    weights_source: str | Path | None = None,
 ) -> dict:
     """Emit the runtime-driving artifacts for a captured model into ``out_dir``.
 
@@ -160,7 +165,16 @@ def generate(
     ``max_session_steps`` caps how many steps of a session corpus are embedded (streams and the
     correctness/quality references together, so step k still meets reference k). ``None`` embeds the
     whole corpus, which is what every existing caller gets.
+
+    Hash-only generation derives the complete blob without writing it. Explicit
+    ``weights_source`` may share immutable bytes only after exact verification.
+    All writes replace atomically, so regenerating an output cannot overwrite
+    an existing shared inode. Mutable invocation state is never shared here.
     """
+    if type(materialize_weights) is not bool:
+        raise TypeError("materialize_weights must be a bool")
+    if weights_source is not None and not materialize_weights:
+        raise ValueError("weights_source requires materialize_weights=True")
     model_dir, out_dir = Path(model_dir).resolve(), Path(out_dir).resolve()
     prepared_dir = Path(prepared_dir).resolve() if prepared_dir is not None else out_dir
     if entry_projection is not None:
@@ -670,7 +684,30 @@ def generate(
         f"void {invoke_name}(void **d) {{ _mlir_ciface_{ciface_name}({call}); }}",
     ]
 
-    (out_dir / "weights.bin").write_bytes(bytes(blob) + bytes(appended))
+    weight_digest = hashlib.sha256()
+    weight_digest.update(blob)
+    weight_digest.update(appended)
+    if materialize_weights:
+        weights = out_dir / "weights.bin"
+        # The temporary directory also makes link publication atomic when an
+        # earlier generated destination already exists.
+        with tempfile.TemporaryDirectory(dir=out_dir, prefix="weights-") as temporary:
+            pending = Path(temporary) / "weights.bin"
+            if weights_source is not None:
+                source = Path(weights_source).resolve(strict=True)
+                with source.open("rb") as stream:
+                    digest = hashlib.file_digest(stream, "sha256").hexdigest()
+                if source.stat().st_size != len(blob) + len(appended) or digest != weight_digest.hexdigest():
+                    raise ValueError("selected weight blob differs from this stage's derived bytes")
+                os.link(source, pending)
+                with pending.open("rb") as stream:
+                    if hashlib.file_digest(stream, "sha256").hexdigest() != weight_digest.hexdigest():
+                        raise ValueError("selected weight blob changed during reuse")
+            else:
+                with pending.open("wb") as stream:
+                    stream.write(blob)
+                    stream.write(appended)
+            pending.replace(weights)
     (out_dir / "model_gen.h").write_text("\n".join(h) + "\n")
     (out_dir / "model_io.h").write_text("\n".join(io) + "\n")
     (out_dir / "model_call.c").write_text("\n".join(call_c) + "\n")
@@ -695,6 +732,7 @@ def generate(
         "n_qinner": len(qinner_args),
         "n_quant_hoist": len(quant_hoist_args),
         "weights_bytes": len(blob) + len(appended),
+        "weights_sha256": weight_digest.hexdigest(),
         "static_io_bytes": static_io_bytes + output_bytes,
     }
     if entry_projection is not None:

@@ -2,17 +2,188 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from xdsl.dialects import builtin
 
-from .certificates import TRANSFORM_SCOPES, TransformationChange, Witness, ir_text, make_change
+from .certificates import TRANSFORM_SCOPES, TransformationChange, Witness, ir_digest, ir_text, make_change
 from .loops import segment_loops
 from .normalization import normalize_shapes, simplify_integers
 from .planning import DependencyPlan, StoragePlan, apply_order, plan_dependencies, plan_storage, reuse_storage
 from .validation import validate_change
+
+
+@dataclass(frozen=True)
+class PipelineContext:
+    """Identities of the selected contracts, not declarations of hardware support.
+
+    Missing identities remain unknown. They cannot authorize an optimization
+    requiring hardware, numerical or execution facts. Hosts supply their own
+    reviewed contracts; an author cannot obtain permissions by naming a digest.
+    """
+
+    hardware: str | None = None
+    numerical_policy: str | None = None
+    resources: str | None = None
+    execution: str | None = None
+    library: str | None = None
+
+    def __post_init__(self):
+        for identity in vars(self).values():
+            if identity is not None and (not isinstance(identity, str) or not identity.strip()):
+                raise ValueError("pipeline contract identities must be nonempty strings or unknown")
+
+
+@dataclass(frozen=True)
+class AnalysisStamp:
+    source_sha256: str
+    context: PipelineContext
+    ir_level: str
+
+
+@dataclass(frozen=True)
+class PassSpec:
+    """Small execution contract shared by structured and ordinary model passes."""
+
+    name: str
+    stage: int
+    requires: tuple[str, ...] = ()
+    produces: tuple[str, ...] = ()
+    invalidates: tuple[str, ...] = ()
+    mutates_ir: bool = True
+    ir_level: str = "structured"
+
+    def __post_init__(self):
+        if not self.name or not self.ir_level or type(self.stage) is not int or self.stage < 0:
+            raise ValueError("passes require a name, IR level and nonnegative stage")
+        if type(self.mutates_ir) is not bool:
+            raise ValueError("pass mutation declaration must be Boolean")
+        for names in (self.requires, self.produces, self.invalidates):
+            if type(names) is not tuple or len(set(names)) != len(names) or any(not name for name in names):
+                raise ValueError("analysis declarations require unique nonempty names")
+
+
+@dataclass(frozen=True)
+class PassRecord:
+    name: str
+    before: AnalysisStamp
+    after: AnalysisStamp
+    invalidated: tuple[str, ...]
+    produced: tuple[str, ...]
+    repair_round: int
+
+
+def validate_pass_order(specs: tuple[PassSpec, ...]) -> None:
+    """Reject explicit ordering errors before executing any transformation."""
+    available: set[str] = set()
+    seen: set[str] = set()
+    stage = -1
+    level = specs[0].ir_level if specs else "structured"
+    for spec in specs:
+        if spec.name in seen:
+            raise ValueError(f"duplicate pass: {spec.name}")
+        if spec.ir_level != level:
+            raise ValueError(f"pass {spec.name} requires a different IR level")
+        if spec.stage < stage:
+            raise ValueError(f"invalid explicit pass ordering before {spec.name}")
+        missing = set(spec.requires) - available
+        if missing:
+            raise ValueError(f"pass {spec.name} lacks prerequisites: {', '.join(sorted(missing))}")
+        # These analyses describe the current IR. A potentially mutating pass
+        # cannot carry them into an explicitly ordered consumer unless it
+        # produces fresh facts itself, even if its declaration omitted '*'.
+        if spec.mutates_ir or "*" in spec.invalidates:
+            available.clear()
+        else:
+            available.difference_update(spec.invalidates)
+        available.update(spec.produces)
+        seen.add(spec.name)
+        stage = spec.stage
+
+
+class PipelineSession:
+    """Current-IR analysis custody and bounded repair, without proof authority.
+
+    Consumers still validate their analyses independently. Fingerprints detect
+    out-of-band mutations, including changes made without this runner. A pass
+    failure poisons this private session; its partially rewritten IR cannot be
+    consumed or reported as a successful compilation.
+    """
+
+    def __init__(self, module, *, context=None, ir_level="structured", max_repairs=2):
+        if type(max_repairs) is not int or max_repairs < 0:
+            raise ValueError("repair budget must be a nonnegative integer")
+        self.module = module
+        self.context = context if context is not None else PipelineContext()
+        if type(self.context) is not PipelineContext or not ir_level:
+            raise ValueError("explicit pipeline context and IR level required")
+        self.ir_level = ir_level
+        self.max_repairs = max_repairs
+        self.repair_round = 0
+        self.records: list[PassRecord] = []
+        self._analyses: dict[str, tuple[AnalysisStamp, object]] = {}
+        self._stage = -1
+        self._failed = False
+
+    def stamp(self):
+        if self._failed:
+            raise ValueError("pipeline session failed; discard its private IR")
+        return AnalysisStamp(ir_digest(self.module), self.context, self.ir_level)
+
+    def analysis(self, name):
+        stamp, value = self._analyses.get(name, (None, None))
+        if stamp != self.stamp():
+            raise ValueError(f"missing or stale analysis: {name}")
+        return value
+
+    def run(self, spec: PassSpec, action: Callable[[], Mapping[str, object]]):
+        before = self.stamp()
+        if spec.ir_level != self.ir_level or spec.stage < self._stage:
+            raise ValueError(f"pass {spec.name} has invalid IR level or ordering")
+        for name in spec.requires:
+            self.analysis(name)
+        try:
+            products = action()
+            self.module.verify()
+            after = self.stamp()
+            if before.context != after.context:
+                raise ValueError(f"pass {spec.name} changed the selected contracts")
+            if not spec.mutates_ir and before != after:
+                raise ValueError(f"analysis pass {spec.name} changed IR or context")
+            if set(products) != set(spec.produces):
+                raise ValueError(f"pass {spec.name} produced a different analysis set")
+        except BaseException:
+            self._failed = True
+            self._analyses.clear()
+            raise
+        # Every IR change invalidates old stamps, even if a pass forgot to
+        # declare an invalidation. Context changes likewise cannot retain facts.
+        invalidated = set(self._analyses) if before != after or "*" in spec.invalidates else set(spec.invalidates)
+        invalidated.intersection_update(self._analyses)
+        for name in invalidated:
+            del self._analyses[name]
+        self._analyses.update((name, (after, value)) for name, value in products.items())
+        self.records.append(
+            PassRecord(spec.name, before, after, tuple(sorted(invalidated)), spec.produces, self.repair_round)
+        )
+        self._stage = spec.stage
+
+    def repair(self, *, stage: int, reason: str):
+        """Invalidate facts before replanning an already selected legal fallback.
+
+        This does not manufacture a fallback, undo a failed pass, or approve a
+        changed program. The caller must restore/check its own private candidate.
+        """
+        self.stamp()
+        if type(stage) is not int or stage < 0 or not reason:
+            raise ValueError("repair requires a nonnegative restart stage and reason")
+        if self.repair_round >= self.max_repairs:
+            raise ValueError(f"pipeline repair budget exhausted: {reason}")
+        self.repair_round += 1
+        self._analyses.clear()
+        self._stage = stage
 
 
 @dataclass(frozen=True)
@@ -27,6 +198,7 @@ class PipelineOptions:
     hoist_invariants: bool = False
     unroll_factors: tuple[int, ...] = ()
     max_added_operations: int = 4096
+    pass_order: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -36,6 +208,8 @@ class PipelineResult:
     storage_plan: StoragePlan
     dependency_plan: DependencyPlan
     plan_only: bool
+    analyses_stamp: AnalysisStamp | None = None
+    passes: tuple[PassRecord, ...] = ()
 
 
 def apply_common_pipeline(
@@ -44,6 +218,7 @@ def apply_common_pipeline(
     *,
     verifier: Callable[[TransformationChange], object] | None = None,
     plan_only: bool = False,
+    context: PipelineContext | None = None,
 ) -> PipelineResult:
     """Transform a private clone; dispatch every covered change to verification.
 
@@ -59,12 +234,19 @@ def apply_common_pipeline(
     module.verify()
     current = module.clone()
     changes: list[TransformationChange] = []
+    session = PipelineSession(current, context=context)
+    actions: dict[str, tuple[PassSpec, Callable[[], Mapping[str, object]]]] = {}
+
+    def register(name, stage, action, *, requires=(), produces=(), mutates=True):
+        actions[name] = (PassSpec(name, stage, requires, produces, ("*",) if mutates else (), mutates), action)
 
     def run(kind: str, action: Callable[[], tuple[Witness, ...]], parameters: dict[str, Any], scope: tuple[str, ...]):
         before = ir_text(current)
         witnesses = action()
         if not witnesses:
-            return
+            if before != ir_text(current):
+                raise ValueError("transformation changed IR without a structural witness")
+            return {}
         if scope != TRANSFORM_SCOPES[kind]:
             raise ValueError("internal transformation coverage differs from its registry")
         change = make_change(kind, before, current, parameters, witnesses, scope)
@@ -79,64 +261,36 @@ def apply_common_pipeline(
                 if not accepted_pipeline_receipt(receipt, change):
                     raise ValueError("covered transformation lacks fresh host Lean completion for this exact change")
         changes.append(change)
+        return {}
+
+    def transform(kind, stage, action, parameters=None, requires=()):
+        register(kind, stage, lambda: run(kind, action, parameters or {}, TRANSFORM_SCOPES[kind]), requires=requires)
 
     if options.normalize_shapes:
-        run(
-            "shape_view_normalization",
-            lambda: normalize_shapes(current),
-            {},
-            ("identical_memref_cast", "static_dimensions"),
-        )
+        transform("shape_view_normalization", 0, lambda: normalize_shapes(current))
     if options.simplify_integers:
-        run(
-            "exact_integer_simplification",
-            lambda: simplify_integers(current),
-            {},
-            ("scalar_signless_wrapping_integers",),
-        )
+        transform("exact_integer_simplification", 0, lambda: simplify_integers(current))
     if options.eliminate_redundancy:
         from .pure_scalar import eliminate_scalar_redundancy
 
-        run(
-            "scalar_redundancy_elimination",
-            lambda: eliminate_scalar_redundancy(current),
-            {},
-            TRANSFORM_SCOPES["scalar_redundancy_elimination"],
-        )
+        transform("scalar_redundancy_elimination", 0, lambda: eliminate_scalar_redundancy(current))
     if options.hoist_invariants:
         from .pure_scalar import hoist_scalar_invariants
 
-        run(
-            "scalar_loop_invariant_motion",
-            lambda: hoist_scalar_invariants(current),
-            {},
-            TRANSFORM_SCOPES["scalar_loop_invariant_motion"],
-        )
-    storage = plan_storage(current)
-    if options.reuse_buffers:
-        run(
-            "buffer_reuse",
-            lambda: reuse_storage(current, storage),
-            {},
-            ("static_contiguous_initialized_integer_buffers", "sequential_nonoverlapping_lifetimes"),
-        )
+        transform("scalar_loop_invariant_motion", 0, lambda: hoist_scalar_invariants(current))
     if options.tile_iterations:
-        run(
+        transform(
             "ordered_loop_segmentation",
+            2,
             lambda: segment_loops(current, options.tile_iterations, index_bits=options.index_bits),
             {"tile_iterations": options.tile_iterations, "index_bits": options.index_bits},
-            (
-                "static_nonnegative_index_bounds",
-                "positive_step",
-                "exact_iteration_order",
-                "forwarded_loop_carried_state",
-            ),
         )
     if options.unroll_factors:
         from .unrolling import unroll_ordered_loops
 
-        run(
+        transform(
             "ordered_loop_unrolling",
+            2,
             lambda: unroll_ordered_loops(
                 current,
                 options.unroll_factors,
@@ -148,14 +302,66 @@ def apply_common_pipeline(
                 "index_bits": options.index_bits,
                 "max_added_operations": options.max_added_operations,
             },
-            TRANSFORM_SCOPES["ordered_loop_unrolling"],
         )
-    for block_index, order in options.dependency_orders:
-        run(
-            "sequential_dependency_schedule",
-            lambda: (apply_order(current, block_index, order),),
-            {"block_index": block_index, "order": order},
-            ("ssa_dependencies", "sequential_effect_order"),
+
+    if options.reuse_buffers:
+        # This narrow source rewrite needs the original rectangular initializer.
+        # Physical allocation belongs after tiling; this is normalization of
+        # already explicit, disjoint source lifetimes, not device placement.
+        register(
+            "storage_analysis", 1, lambda: {"storage": plan_storage(current)}, produces=("storage",), mutates=False
         )
-    current.verify()
-    return PipelineResult(current, tuple(changes), storage, plan_dependencies(current), plan_only)
+        transform("buffer_reuse", 1, lambda: reuse_storage(current, session.analysis("storage")), requires=("storage",))
+    if options.dependency_orders:
+        register(
+            "dependency_analysis",
+            4,
+            lambda: {"dependencies": plan_dependencies(current)},
+            produces=("dependencies",),
+            mutates=False,
+        )
+
+        def schedule():
+            # Each requested order is separately witnessed against the IR at
+            # that point. apply_order independently reconstructs dependencies.
+            session.analysis("dependencies")
+            for block_index, order in options.dependency_orders:
+                run(
+                    "sequential_dependency_schedule",
+                    lambda: (apply_order(current, block_index, order),),
+                    {"block_index": block_index, "order": order},
+                    TRANSFORM_SCOPES["sequential_dependency_schedule"],
+                )
+            return {}
+
+        register("sequential_dependency_schedule", 4, schedule, requires=("dependencies",))
+
+    def final_analyses():
+        # Keep the historical standalone source closure intact. Rich alias and
+        # liveness analyses remain separately callable; this fact records the
+        # verified current structure, not a new semantic proof.
+        current.verify()
+        return {
+            "structure": ir_digest(current),
+            "storage": plan_storage(current),
+            "dependencies": plan_dependencies(current),
+        }
+
+    register("final_analyses", 5, final_analyses, produces=("structure", "storage", "dependencies"), mutates=False)
+    register("final_verification", 5, lambda: {}, requires=("structure", "storage", "dependencies"), mutates=False)
+    names = options.pass_order or tuple(sorted(actions, key=lambda name: actions[name][0].stage))
+    if type(names) is not tuple or len(names) != len(actions) or set(names) != set(actions):
+        raise ValueError("explicit pass order must name every selected pass exactly once")
+    specs = tuple(actions[name][0] for name in names)
+    validate_pass_order(specs)
+    for name in names:
+        session.run(*actions[name])
+    return PipelineResult(
+        current,
+        tuple(changes),
+        session.analysis("storage"),
+        session.analysis("dependencies"),
+        plan_only,
+        session.stamp(),
+        tuple(session.records),
+    )

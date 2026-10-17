@@ -150,6 +150,24 @@ def test_math_archive_symbol_request_is_opt_in_and_forwarded_unchanged(tmp_path,
     assert default["inputs"] == selected["inputs"]
 
 
+def test_verified_weight_source_is_forwarded_only_when_selected(tmp_path, monkeypatch):
+    inputs, out = _fixture(tmp_path, monkeypatch)
+    source = tmp_path / "weights.bin"
+    source.write_bytes(b"existing derived weights")
+    observed = []
+
+    def build(bundle, work, **kwargs):
+        observed.append(dict(kwargs))
+        return _fake_build(bundle, work, **kwargs)
+
+    monkeypatch.setattr(BM.spike_model, "build", build)
+    default = BM.compile_saved_model(**inputs, output=out / "default-weights", run="none")
+    selected = BM.compile_saved_model(**inputs, output=out / "shared-weights", run="none", weights_source=source)
+    assert "weights_source" not in observed[0] and "weights_source" not in default["inputs"]
+    assert observed[1] == {**observed[0], "weights_source": source}
+    assert selected["inputs"]["weights_source"] == str(source.resolve())
+
+
 def test_compile_only_and_native_engine_reuse_one_saved_elf(tmp_path, monkeypatch):
     inputs, out = _fixture(tmp_path, monkeypatch)
     selected_device = DeviceRouting("sample", tmp_path / "device", "i8", "i32")
