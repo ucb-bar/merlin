@@ -239,7 +239,8 @@ class PackageSandboxPolicy:
     env_prefix: str | None = None
     frozen_inputs: FrozenPackageSandboxInputs | None = None
     selected_inputs: PackageSandboxInputs | FrozenPackageSandboxInputs | None = dataclass_field(
-        default=None, repr=False, compare=False)
+        default=None, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         # Preserve the six-argument constructor while capturing its defaults once.
@@ -1193,10 +1194,16 @@ def _run_boxed(
         if policy.selected_inputs is None:
             raise CampaignGateError("original profile call lost its explicit package runtime selection")
         with tempfile.TemporaryDirectory(prefix="profile-call-", dir=policy.workspace.parent) as raw:
-            executor = _Executor(original_service, policy.target_experiment, pkg.directory,
-                Path(raw), sandbox_inputs=policy.selected_inputs)
-            return executor.run_entrypoint(pkg, name, input_mlir, output_json, timeout=timeout,
-                invocation_directory=invocation_directory)
+            executor = _Executor(
+                original_service,
+                policy.target_experiment,
+                pkg.directory,
+                Path(raw),
+                sandbox_inputs=policy.selected_inputs,
+            )
+            return executor.run_entrypoint(
+                pkg, name, input_mlir, output_json, timeout=timeout, invocation_directory=invocation_directory
+            )
     argv = oot_runner._resolve_argv(pkg, name, input_mlir, output_json)
     if oot_runner._needs_interpreter(pkg, argv):
         argv = [sys.executable, *argv]

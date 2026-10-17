@@ -36,6 +36,7 @@ def finish_snapshot_invocation():
 
 def snapshot_scoped_entrypoint(function):
     """Only exact original execution owners can batch one compiler invocation."""
+
     @functools.wraps(function)
     def call(self, *args, **kwargs):
         from merlin.common.bundle_snapshot import verified_snapshot_scope
@@ -61,7 +62,9 @@ def snapshot_scoped_entrypoint(function):
                 return function(self, *args, **kwargs)
             finally:
                 _INVOCATION_PUBLICATION.reset(token)
+
     return call
+
 
 def selected_service(*, workspace, run_dir, repo):
     """Read only the original archived manifest; historical runs keep no scope."""
@@ -89,8 +92,9 @@ def functional_service(run_dir):
     if environment.get("compiler_tool_profile") is None:
         return None
     original = PC.verify_private_input_snapshot(Path(run_dir), environment)
-    service = CommonTransformService(workspace=original["workspace"],
-        bundle_manifest=original["bundle_path"], repo=original["repo"])
+    service = CommonTransformService(
+        workspace=original["workspace"], bundle_manifest=original["bundle_path"], repo=original["repo"]
+    )
     if service.profile != environment["compiler_tool_profile"]:
         raise ValueError("compiler execution differs from the original Phase 1 tool profile")
     return service
@@ -102,17 +106,21 @@ def compiler_profile_binding(service, *, run_dir):
         if functional_service(run_dir) is not None:
             raise ValueError("ordinary compiler lost its admitted original profile")
         return None
-    if (type(service) is not CommonTransformService
-        or service.bundle_manifest != Path(run_dir) / "input_bundle_manifest.yaml"):
-
+    if (
+        type(service) is not CommonTransformService
+        or service.bundle_manifest != Path(run_dir) / "input_bundle_manifest.yaml"
+    ):
         raise ValueError("ordinary compiler selected another original profile owner")
     service._verify()
     from merlin_experiments.phase2.contracts import mapping_file
 
     if service.profile != mapping_file(Path(run_dir) / "environment.yaml", yaml_file=True)["compiler_tool_profile"]:
         raise ValueError("ordinary compiler changed its original profile")
-    return {"archive": str(service.bundle_manifest), "profile_sha256": service.profile["sha256"],
-            "snapshot_sha256": service.snapshot_digest}
+    return {
+        "archive": str(service.bundle_manifest),
+        "profile_sha256": service.profile["sha256"],
+        "snapshot_sha256": service.snapshot_digest,
+    }
 
 
 @contextlib.contextmanager
@@ -141,11 +149,15 @@ def selfcheck_execution(bundle_manifest, *, context, submission, work_root):
     bundle = yaml.safe_load(Path(bundle_manifest).read_bytes())
     with contextlib.ExitStack() as execution:
         with verified_snapshot_scope(workspace, bundle, repo=context.repo):
-            owner = CommonTransformService(
-                workspace=workspace, bundle_manifest=bundle_manifest, repo=context.repo)
-            execution.enter_context(_original_execution_lifetime(
-                owner, target_experiment=load_target_experiment(context.descriptor),
-                candidate=Path(submission), work_root=Path(work_root)))
+            owner = CommonTransformService(workspace=workspace, bundle_manifest=bundle_manifest, repo=context.repo)
+            execution.enter_context(
+                _original_execution_lifetime(
+                    owner,
+                    target_experiment=load_target_experiment(context.descriptor),
+                    candidate=Path(submission),
+                    work_root=Path(work_root),
+                )
+            )
         # The full final setup read has completed. Actual grading is outside reuse.
         yield
 
@@ -173,8 +185,9 @@ def selfcheck_diagnostics(bundle_manifest, *, context, arguments):
             manifest.chmod(0o444)
         arguments.submission = str(source)
         try:
-            with selfcheck_execution(bundle_manifest, context=context, submission=source,
-                    work_root=Path(temporary) / "profile-package-work"):
+            with selfcheck_execution(
+                bundle_manifest, context=context, submission=source, work_root=Path(temporary) / "profile-package-work"
+            ):
                 yield
         finally:
             arguments.submission = original
@@ -191,8 +204,9 @@ def selfcheck_compile_only(a, *, context):
 
         if a.compiler_bundle_manifest is None or a.rtl_facts is None or a.contract is None:
             raise ValueError("compile-only requires the original frozen bundle, facts and contract")
-        owner = CommonTransformService(workspace=Path.cwd(), bundle_manifest=a.compiler_bundle_manifest,
-                                       repo=context.repo)
+        owner = CommonTransformService(
+            workspace=Path.cwd(), bundle_manifest=a.compiler_bundle_manifest, repo=context.repo
+        )
         owner._verify()
         from .public_scalability_gate import selected_budget
 
@@ -204,17 +218,30 @@ def selfcheck_compile_only(a, *, context):
             from .compile_only import snapshot_submission
 
             copied = snapshot_submission(Path(a.submission).absolute(), Path(temporary) / "compiler")
-            result = run(submission=copied,
+            result = run(
+                submission=copied,
                 target_experiment=load_target_experiment(context.descriptor),
-                capsules_root=a.capsules_root, contract=a.contract, facts_path=a.rtl_facts,
-                common_service=owner, work_root=Path(temporary) / "products",
-                timeout_s=min(a.timeout, 600), selected=a.capsules,
-                scale_probe=scale_probe, ir_budget=ir_budget)
+                capsules_root=a.capsules_root,
+                contract=a.contract,
+                facts_path=a.rtl_facts,
+                common_service=owner,
+                work_root=Path(temporary) / "products",
+                timeout_s=min(a.timeout, 600),
+                selected=a.capsules,
+                scale_probe=scale_probe,
+                ir_budget=ir_budget,
+            )
         owner._verify()
     except Exception as error:
-        result = {"schema": "merlin.public_compile_only_feedback.v1", "status": "unavailable",
-                  "reason": type(error).__name__, "all_pass": False, "numeric": "not_attempted",
-                  "rtl": "not_attempted", "timing_cycles": None}
+        result = {
+            "schema": "merlin.public_compile_only_feedback.v1",
+            "status": "unavailable",
+            "reason": type(error).__name__,
+            "all_pass": False,
+            "numeric": "not_attempted",
+            "rtl": "not_attempted",
+            "timing_cycles": None,
+        }
     txt = json.dumps(result, indent=2, sort_keys=True)
     print(txt)
     if a.out:
@@ -231,13 +258,17 @@ def _public_python_roots(owner):
     sources = list(owner.profile["common_sources"])
     for name in owner.profile["treatment_tools"]:
         if name in {"isa_dialect_generation", "lean_proof_authoring"}:
-            sources.extend({"path": path, "sha256": None} for path in tool_registry.spec(name).bundle_paths
-                           if path.endswith(".py"))
+            sources.extend(
+                {"path": path, "sha256": None} for path in tool_registry.spec(name).bundle_paths if path.endswith(".py")
+            )
     roots = set()
     for row in sources:
         tail = row["path"].removeprefix("merlin/python/")
-        matches = [(destination, source) for declared, destination, source in grants
-                   if declared == row["path"] or declared.endswith("/" + tail)]
+        matches = [
+            (destination, source)
+            for declared, destination, source in grants
+            if declared == row["path"] or declared.endswith("/" + tail)
+        ]
         if len(matches) != 1:
             raise ValueError("original compiler API has no unique pinned public destination")
         destination, source = matches[0]
@@ -270,8 +301,9 @@ def public_package_policy(policy, *, target, owner):
         prefix = [*policy.argv, *BW._bundle_mount_args(owner.workspace, owner.bundle, owner.repo)]
         prefix = BW.apply_final_answer_masks(prefix, target, owner.workspace, owner.bundle, repo=owner.repo)
         root = shlex.quote(":".join(map(str, roots)))
-        return replace(policy, argv=tuple(prefix),
-                       env_prefix=policy.env_prefix + f"export PYTHONPATH={root}:$PYTHONPATH; ")
+        return replace(
+            policy, argv=tuple(prefix), env_prefix=policy.env_prefix + f"export PYTHONPATH={root}:$PYTHONPATH; "
+        )
 
 
 def active_public_package_policy(policy, *, target):
@@ -280,6 +312,7 @@ def active_public_package_policy(policy, *, target):
 
     owner = active_compiler_imports()
     return policy if owner is None else public_package_policy(policy, target=target, owner=owner)
+
 
 def active_profile_service():
     """Recover only the original live scope's service for a normal compiler call."""
@@ -292,12 +325,12 @@ def active_profile_service():
     admission = active_compiler_imports()
     if admission is None:
         return None
-    service = CommonTransformService(workspace=admission.workspace,
-        bundle_manifest=admission.bundle_manifest, repo=admission.repo)
+    service = CommonTransformService(
+        workspace=admission.workspace, bundle_manifest=admission.bundle_manifest, repo=admission.repo
+    )
     if service.profile != admission.profile or service.snapshot_digest != admission.snapshot_sha256:
         raise ValueError("normal compiler call changed its live original profile")
     return service
-
 
 
 class _Executor:
@@ -305,8 +338,9 @@ class _Executor:
         self.owner, self.target, self.work_root, self.inputs = owner, target, Path(work_root), sandbox_inputs
         from merlin_experiments.phase2.retained_revisions import source_inventory
 
-        self.source_sha256 = source_inventory(Path(candidate), max_bytes=32 << 20,
-            max_files=8192, exclude_generated=True)["sha256"]
+        self.source_sha256 = source_inventory(
+            Path(candidate), max_bytes=32 << 20, max_files=8192, exclude_generated=True
+        )["sha256"]
         if not self.source_sha256 or self.work_root.resolve() != self.work_root or self.work_root.is_symlink():
             raise ValueError("original compiler execution requires actual source and an ordinary private owner")
         if self.work_root.is_relative_to(Path(candidate).resolve()):
@@ -334,17 +368,35 @@ class _Executor:
         from merlin_experiments.phase2 import normal_resource_launch as resources
 
         owner = evidence or policy.workspace
-        with resources.bounded_normal_scratch(policy.argv, owner=owner,
-                boundary=resources.resources.active_resource_boundary()) as prefix:
-            command = [*prefix, "--chdir", str(package), "bash", "-c", policy.env_prefix + 'exec "$@"',
-                       "original-package", *argv]
+        with resources.bounded_normal_scratch(
+            policy.argv, owner=owner, boundary=resources.resources.active_resource_boundary()
+        ) as prefix:
+            command = [
+                *prefix,
+                "--chdir",
+                str(package),
+                "bash",
+                "-c",
+                policy.env_prefix + 'exec "$@"',
+                "original-package",
+                *argv,
+            ]
             if evidence is None:
                 return bwrap_args.run(
-                    command, policy_end=len(prefix)+2, capture_output=True, text=True, timeout=timeout)
+                    command, policy_end=len(prefix) + 2, capture_output=True, text=True, timeout=timeout
+                )
             return bwrap_args.run(
-                command, policy_end=len(prefix)+2, directory=evidence, stage="original_profile_package",
-                inputs=inputs, outputs=outputs, dependencies=(Path(__file__), *dependencies),
-                capture_output=True, text=True, timeout=timeout)
+                command,
+                policy_end=len(prefix) + 2,
+                directory=evidence,
+                stage="original_profile_package",
+                inputs=inputs,
+                outputs=outputs,
+                dependencies=(Path(__file__), *dependencies),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
 
     def build_package(self, pkg, *, timeout=1800):
         self._verify(pkg)
@@ -362,17 +414,22 @@ class _Executor:
             policy = replace(policy, argv=(*policy.argv, "--bind", str(pkg.directory), str(pkg.directory)))
             mlir, llvm = str(toolchain.mlir_cmake_dir()), str(toolchain.mlir_install() / "lib/cmake/llvm")
             subst = {"{package}": str(pkg.directory), "{mlir_dir}": mlir, "{llvm_dir}": llvm}
-            policy = replace(policy, env_prefix=policy.env_prefix
-                + f"export MLIR_DIR={shlex.quote(mlir)} LLVM_DIR={shlex.quote(llvm)} CM=cmake CMAKE=cmake; ")
+            policy = replace(
+                policy,
+                env_prefix=policy.env_prefix
+                + f"export MLIR_DIR={shlex.quote(mlir)} LLVM_DIR={shlex.quote(llvm)} CM=cmake CMAKE=cmake; ",
+            )
             deadline = time.monotonic() + timeout
             for name in ("configure", "command"):
                 step = build.get(name)
                 if not step:
                     continue
+
                 def text(value):
                     for source, destination in subst.items():
                         value = value.replace(source, destination)
                     return value
+
                 argv = ["bash", "-c", text(step)] if isinstance(step, str) else [text(value) for value in step]
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -383,15 +440,26 @@ class _Executor:
         self._verify(pkg)
 
     @snapshot_scoped_entrypoint
-    def run_entrypoint(self, pkg, name, input_mlir, output_json=None, *, timeout=600,
-                      invocation_directory=None, write_bytecode=False, artifact_profile=None):
+    def run_entrypoint(
+        self,
+        pkg,
+        name,
+        input_mlir,
+        output_json=None,
+        *,
+        timeout=600,
+        invocation_directory=None,
+        write_bytecode=False,
+        artifact_profile=None,
+    ):
         from merlin.common import cpu_pool
 
         with cpu_pool.shared_compute_pool():
             self._verify(pkg)
             if write_bytecode:
                 raise ValueError(
-                    "original profile execution cannot write Python bytecode into immutable compiler source")
+                    "original profile execution cannot write Python bytecode into immutable compiler source"
+                )
             # The caller owns the structural profile. It is never a compiler-selected
             # runtime adapter, namespace grant, LLVM artifact or numerical admission.
             P._admit_artifact_protocol(pkg, artifact_profile)
@@ -422,12 +490,25 @@ class _Executor:
                     argv = [sys.executable, *argv]
             from merlin_experiments.phase1.brokers.compiler_call_channel import compiler_call_transport
 
-            with compiler_call_transport(self.owner, workspace=workspace, package=pkg.directory,
-                    input_path=incoming, command_name=name, timeout_s=timeout, borrow_compute=True) as transport:
+            with compiler_call_transport(
+                self.owner,
+                workspace=workspace,
+                package=pkg.directory,
+                input_path=incoming,
+                command_name=name,
+                timeout_s=timeout,
+                borrow_compute=True,
+            ) as transport:
                 policy = replace(policy, env_prefix=transport.env_prefix(policy.env_prefix))
-                result = self._invoke(policy, pkg.directory, argv, timeout=transport.remaining_timeout(),
-                                      evidence=invocation_directory, inputs=(Path(input_mlir),),
-                                      dependencies=dependencies)
+                result = self._invoke(
+                    policy,
+                    pkg.directory,
+                    argv,
+                    timeout=transport.remaining_timeout(),
+                    evidence=invocation_directory,
+                    inputs=(Path(input_mlir),),
+                    dependencies=dependencies,
+                )
             # Reopen both selections before publishing any staged output. A
             # profile changed during the process cannot authorize its stdout.
             with cpu_pool.shared_compute_pool():
@@ -473,9 +554,15 @@ def original_compiler_execution(service, *, target_experiment, candidate, work_r
         raise ValueError("original profile execution requires its exact owner and no foreign executor")
     with contextlib.ExitStack() as execution:
         with verified_snapshot_scope(service.workspace, service.bundle, repo=service.repo):
-            execution.enter_context(_original_execution_lifetime(
-                service, target_experiment=target_experiment, candidate=candidate,
-                work_root=work_root, sandbox_inputs=sandbox_inputs))
+            execution.enter_context(
+                _original_execution_lifetime(
+                    service,
+                    target_experiment=target_experiment,
+                    candidate=candidate,
+                    work_root=work_root,
+                    sandbox_inputs=sandbox_inputs,
+                )
+            )
         yield
 
 

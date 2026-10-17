@@ -753,7 +753,11 @@ def materialize_bundle_inputs(
 
 
 def _bundle_mount_args(
-    ws: Path, bundle: dict, repo: Path, *, _policy_test_live_inputs: bool = False,
+    ws: Path,
+    bundle: dict,
+    repo: Path,
+    *,
+    _policy_test_live_inputs: bool = False,
     visibility_prefix: Sequence[str] | None = None,
 ) -> list[str]:
     """Frozen allow mounts and deny overlays, ordered so the MOST SPECIFIC declaration wins.
@@ -1197,7 +1201,7 @@ class _MountPathIndex:
         start = bisect.bisect_left(self.ordered, prefix)
         for index in range(start, len(self.ordered)):
             parts = self.ordered[index]
-            if parts[:len(prefix)] != prefix:
+            if parts[: len(prefix)] != prefix:
                 break
             found.update(self.exact[parts])
         return found
