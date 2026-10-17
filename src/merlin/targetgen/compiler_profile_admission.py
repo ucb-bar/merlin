@@ -78,6 +78,7 @@ def _optional_modules(owner):
 
     from . import tool_registry
 
+    selected = []
     for name in set(owner.profile["treatment_tools"]) & _OPTIONAL:
         for logical in tool_registry.spec(name).bundle_paths:
             module = module_name_for(logical)
@@ -94,10 +95,19 @@ def _optional_modules(owner):
             original = Path(matching[0])
             if not original.is_absolute():
                 original = owner.repo / original
-            [source] = bwrap.snapshot_input_paths(owner.workspace, owner.bundle, [original], repo=owner.repo)
-            if source.is_symlink() or not source.is_file():
-                raise ValueError("optional compiler API is not an original frozen source leaf")
-            yield module
+            selected.append((module, original))
+    if not selected:
+        return
+    sources = bwrap.snapshot_input_paths(
+        owner.workspace,
+        owner.bundle,
+        [original for _, original in selected],
+        repo=owner.repo,
+    )
+    for (module, _), source in zip(selected, sources, strict=True):
+        if source.is_symlink() or not source.is_file():
+            raise ValueError("optional compiler API is not an original frozen source leaf")
+        yield module
 
 
 @contextlib.contextmanager
