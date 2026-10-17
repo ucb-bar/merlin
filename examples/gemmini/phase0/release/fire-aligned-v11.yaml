@@ -62,7 +62,7 @@ seal:
   post_experiment_descriptor:
     path: ${PREP}/post-experiment-descriptor.yaml
     sha256: 4ac45372e52573a31d2afddfa702d9044219ba34e8da5acfd0d00fd6e05085c7
-  reviewed_by: Claude operator under explicit user authorization to optimize the Phase1 harness and launch fresh empty-origin runs
+  reviewed_by: Codex operator under explicit user authorization to optimize the Phase1 harness and launch fresh empty-origin runs
   review_note: >-
     Source-qualified infrastructure recovery of same EL4 experiment. Original
     numerical files, variants, admission policy and Smol waiver unchanged and
