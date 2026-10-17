@@ -483,9 +483,9 @@ def generate_bundles(
 
             if python_source_root is None:
                 raise ValueError("common substrate requires the selected Python source root")
-            from .tool_profile import COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4
+            from .tool_profile import COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5
 
-            if common_substrate not in {COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4}:
+            if common_substrate not in {COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5}:
                 attach_common_substrate(
                     out[bid],
                     version=common_substrate,
@@ -502,7 +502,10 @@ def generate_bundles(
             _select_llvm_grant(out[bid], llvm_toolchain_root)
         if selected_facts is not None:
             _select_rtl_facts_grant(out[bid], te, selected_facts[0])
-        if common_substrate in {"merlin.common_compiler_substrate.v3", "merlin.common_compiler_substrate.v4"}:
+        if common_substrate in {
+            "merlin.common_compiler_substrate.v3", "merlin.common_compiler_substrate.v4",
+            "merlin.common_compiler_substrate.v5",
+        }:
             # The common generated task is the sole authoring instruction owner.
             # Legacy target task directories remain operator inputs, not grants.
             legacy_task = te.experiment_resource("task") + "/"
@@ -899,11 +902,18 @@ def _main(argv: list[str] | None = None) -> int:
         help="absolute ordinary directory containing the selected Phase 0 facts.json",
     )
     ap.add_argument("--list-tools", action="store_true", help="print the tool catalog and exit")
-    from .tool_profile import COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4
+    from .tool_profile import (
+        COMMON_SUBSTRATE_V1,
+        COMMON_SUBSTRATE_V2,
+        COMMON_SUBSTRATE_V3,
+        COMMON_SUBSTRATE_V4,
+        COMMON_SUBSTRATE_V5,
+    )
 
     ap.add_argument(
         "--common-substrate",
-        choices=(COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4),
+        choices=(COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3,
+                 COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5),
         help="select versioned common transforms and strict covered-domain verification for a fresh release",
     )
     ap.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")

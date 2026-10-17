@@ -71,7 +71,8 @@ COMMON_SUBSTRATE_V1 = "merlin.common_compiler_substrate.v1"
 COMMON_SUBSTRATE_V2 = "merlin.common_compiler_substrate.v2"
 COMMON_SUBSTRATE_V3 = "merlin.common_compiler_substrate.v3"
 COMMON_SUBSTRATE_V4 = "merlin.common_compiler_substrate.v4"
-_ISA_SUBSTRATES = frozenset({COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4})
+COMMON_SUBSTRATE_V5 = "merlin.common_compiler_substrate.v5"
+_ISA_SUBSTRATES = frozenset({COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5})
 _PY = "merlin/python/merlin/"
 COMMON_PUBLIC_MODULES = (
     "merlin.transforms.certificates",
@@ -119,6 +120,7 @@ COMMON_PUBLIC_MODULES_V4 = (
     "merlin.transforms.dense_planning",
     "merlin.transforms.dense_ir",
 )
+COMMON_PUBLIC_MODULES_V5 = (*COMMON_PUBLIC_MODULES_V4, "merlin.compile.scheduling.block_schedule")
 COMMON_NAMESPACE_MODULES_V3 = (*COMMON_NAMESPACE_MODULES_V2, "merlin.targetgen.__init__")
 AUTOMATIC_CHECKER_MODULES_V3 = (
     *AUTOMATIC_CHECKER_MODULES_V2,
@@ -168,6 +170,8 @@ def substrate_inventory(version: str) -> tuple[tuple[str, ...], tuple[str, ...],
         return COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V2, AUTOMATIC_CHECKER_MODULES_V3
     if version == COMMON_SUBSTRATE_V4:
         return COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V4, AUTOMATIC_CHECKER_MODULES_V3
+    if version == COMMON_SUBSTRATE_V5:
+        return COMMON_NAMESPACE_MODULES_V3, COMMON_PUBLIC_MODULES_V5, AUTOMATIC_CHECKER_MODULES_V3
     raise ValueError("unknown common compiler substrate")
 
 
@@ -177,10 +181,10 @@ def substrate_data(version: str) -> tuple[str, ...]:
 
 
 def _policy_version(version: str) -> str:
-    # V4 extends authoring tools without changing the V3 proof domains.
+    # V4/V5 extend authoring tools without changing the V3 proof domains.
     return {
         COMMON_SUBSTRATE_V1: "1", COMMON_SUBSTRATE_V2: "2",
-        COMMON_SUBSTRATE_V3: "3", COMMON_SUBSTRATE_V4: "3",
+        COMMON_SUBSTRATE_V3: "3", COMMON_SUBSTRATE_V4: "3", COMMON_SUBSTRATE_V5: "3",
     }[version]
 
 
@@ -522,7 +526,7 @@ def tool_profile_prompt(bundle: dict) -> str:
             "the isolated request workspace for the same public transformation/check client. "
             "Replies establish only their reported scope."
         )
-    if profile["common_substrate"] == COMMON_SUBSTRATE_V4:
+    if profile["common_substrate"] in {COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5}:
         lines.append(
             "Shared dense scheduling is available as `merlin.transforms.dense_planning`: "
             "provide explicit primitive geometry, available storage after reservations, "
@@ -530,6 +534,16 @@ def tool_profile_prompt(bundle: dict) -> str:
             "a bounded choice, not a numerical or execution proof. Emit and verify its "
             "`merlin.transforms.dense_ir.DenseScheduleOp` against the realized commands. "
             "Version 4 retains version 3's formal coverage policy."
+        )
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V5:
+        lines.append(
+            "Shared `merlin.compile.scheduling.block_schedule` provides checked synchronous "
+            "matmul/convolution schedules. Supply explicit fact-derived Geometry; "
+            "check_residency verifies operand contents, ordered reductions, accumulator "
+            "lifetimes and complete output stores. It does not establish asynchronous "
+            "completion or external view aliasing. Project emitted operations explicitly; "
+            "load counts alone cannot establish lifetime conformance. Version 5 keeps "
+            "version 4's automatic checkers and formal coverage policy."
         )
     for name in profile["treatment_tools"]:
         if name in _OPTIONAL_TOOLS:

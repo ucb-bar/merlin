@@ -23,7 +23,13 @@ from merlin.targetgen import package_runtime as P
 from merlin.targetgen.common_transforms import CommonTransformService
 from merlin.targetgen.contract import compile as C
 from merlin.targetgen.sandbox import bwrap
-from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V3, attach_common_substrate
+from merlin.targetgen.tool_profile import (
+    COMMON_SUBSTRATE_V1,
+    COMMON_SUBSTRATE_V3,
+    COMMON_SUBSTRATE_V4,
+    COMMON_SUBSTRATE_V5,
+    attach_common_substrate,
+)
 from merlin.verify import lean_emission_chain as E
 from merlin.verify import lean_emission_context as X
 
@@ -789,3 +795,11 @@ def test_historical_versioned_profile_keeps_lowering_memo_and_no_chain(emission,
         assert X.active_emission_checks() is None
     assert len(memo) == 1 and emission["calls"] == []
     assert not _reports(emission["tmp"])
+
+
+@pytest.mark.parametrize("version", [COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5])
+def test_scheduler_profiles_retain_the_original_emission_scope(emission, monkeypatch, version):
+    owner = _owner(emission, monkeypatch, version)
+    with _scope(owner):
+        assert X.active_emission_checks() is not None
+    assert X.active_emission_checks() is None

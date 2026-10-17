@@ -122,6 +122,51 @@ overruns. Both compiler entrypoints also reject corrupted target transfers.
 Synthetic geometries exercise abstraction coverage; they do not qualify new
 RTL configurations or numerical modes.
 
+## Synchronous schedule lifetimes
+
+`compile.scheduling.block_schedule.check_residency` now checks both operand
+residency and accumulator lifetimes. `schedule_contraction` and
+`schedule_convolution` invoke it before returning a schedule. No model selection
+or additional user annotation is required for this existing representation.
+
+| Schedule state | Required invariant |
+| --- | --- |
+| Loaded operand | The expected block, gathered rows, row offsets and sufficient columns remain resident. |
+| Resident weights | A preload establishes the weight block; each compute agrees with its reduction index and dimensions. |
+| Pending preload | Exactly one compute consumes it before another preload or store. |
+| Accumulator rows | Each row belongs to the output and reduction prefix being updated. |
+| Reduction | Initialization precedes increasing source K; later updates accumulate. |
+| Output store | Every output tile is stored exactly once, after its complete reduction, from its own accumulator. |
+
+The checker derives the reduction sequence and edge dimensions from the
+contraction. For convolution the sequence is kernel taps followed by channel
+blocks, including channel tails. It does not assume that all targets use the
+same primitive size or that one physical accumulator must hold an output for
+the entire program. Rows can be reused after their previous output is stored.
+Tests exercise such reuse with a smaller accumulator than the original layout,
+as well as all six loop orders, matrix tails and gathered convolution.
+
+```python
+from merlin.compile.scheduling.block_schedule import check_residency
+
+# Recheck an adapter's transformed BlockSchedule before lowering it.
+check_residency(transformed_schedule)
+```
+
+State scales with represented rows and output tiles, without allocating model
+tensors or enumerating tensor elements. Unknown operations, evident output
+aliasing, or shared operand/accumulator backing without an alias model are
+refused. This is the synchronous abstract schedule contract. It does not prove
+that asynchronous hardware has completed a transfer or that distinct external
+views have different backing storage. Such targets need qualified effect and
+completion adapters; physical byte mappings cannot be inferred from row counts.
+
+This check applies to the existing `BlockSchedule` path. The dense backends'
+`DenseEmission` reports remain transfer/budget observations. Connecting their
+emitted instruction streams to this full lifetime contract requires an explicit
+projection; a matching count report alone does not satisfy it. Capability-driven
+fusion must preserve this distinction when introducing new handoffs.
+
 ## Physical epilogue composition
 
 Compute-group formation asks `TargetReadout.applies_composition` about the
@@ -143,11 +188,14 @@ on the currently tested runtime: its local-store instruction traps.
 
 ## Fresh Phase 1 releases and standalone packages
 
-Select `--common-substrate merlin.common_compiler_substrate.v4` when generating
-a fresh Phase 1 release. V4 adds only the shared planner and decision IR to the
-V3 public module inventory. It retains V3's checker inventory and formal
-coverage policy. Historical V1/V2/V3 releases keep their original inventories;
-existing grants are not silently expanded.
+Select `--common-substrate merlin.common_compiler_substrate.v5` for a fresh
+Phase 1 release that includes the checked block scheduler. V5 adds exactly
+`merlin.compile.scheduling.block_schedule` to the V4 public source inventory.
+Its isolated source closure supports importing that module without the broader
+compile package, RTL derivation helpers or a local Merlin installation.
+V4 adds the dense planner and decision IR to V3. V4 and V5 retain V3's checker
+inventory and formal coverage policy. Historical V1/V2/V3/V4 releases keep
+their original inventories; existing grants are not silently expanded.
 
 Standalone compilers can export the exact canonical sources:
 
@@ -175,8 +223,12 @@ the independent integer reference with fixed quantization parameters. Its
 functional instruction counts decrease 2.84% inside routed groups and 0.13%
 for the full model. This is one evaluation input, not a dataset accuracy or
 hardware timing qualification. TinyLlama's complete prefill/decode pair
-remains an acceptance gate. Separate floating-model quality reporting is
-required; capture, routing census and kernel checks do not satisfy that gate.
+now completes 128 prefill tokens and 32 teacher-forced decode steps per variant
+with identical complete outputs and carried state. Functional counts decrease
+7.45% inside routed groups and 0.30% for the full session. The frozen integer
+reference and both compiled variants still fail the existing absolute floating
+model quality gate on this input. Compiler/reference drift also remains.
+Completion and paired equivalence do not satisfy those numerical gates.
 The complete lifetime/effect verifier, broader capability-driven fusion and
 Atlas integration remain subsequent work through these shared interfaces.
 
