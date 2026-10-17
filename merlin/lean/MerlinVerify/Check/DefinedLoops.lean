@@ -1,5 +1,6 @@
 /- Totality and initialization proofs for structured tensor programs. -/
 import MerlinVerify.Check.DefinedRules
+import MerlinVerify.Check.StructuredRuntime
 
 namespace MerlinVerify.Check.Definedness
 
@@ -145,13 +146,6 @@ theorem foldlM_total {α β : Type} (f : β → α → Outcome β) (I : β → P
       (fun x hx => hl x (List.mem_cons_of_mem _ hx)) hi
     exact ⟨c, by rw [List.foldlM_cons, hb', Outcome.bindOp_eq, Outcome.bind_ok, hc], hci⟩
 
-theorem mapM_tensors_total (g : RVal → Outcome Tensor) (h : ∀ t, g (.tensor t) = .ok t) :
-    ∀ ts : List Tensor, (ts.map RVal.tensor).mapM g = .ok ts
-  | [] => rfl
-  | t :: ts => by
-    simp only [List.map_cons, List.mapM_cons, Outcome.bindOp_eq, h, mapM_tensors_total g h ts,
-      Outcome.bind_ok, Outcome.pure_eq]
-
 theorem clean_canonize {ib : Nat} : ∀ {ts : List Tensor} {tys : List VTy},
     FactsHold ib (ts.map RVal.tensor) (clean tys) →
       FactsHold ib (ts.map fun t => RVal.tensor t.canonize) (clean tys)
@@ -161,27 +155,6 @@ theorem clean_canonize {ib : Nat} : ∀ {ts : List Tensor} {tys : List VTy},
     intro _ i hi
     change Idx.InBounds t.shape i at hi
     simpa only [Tensor.canonize, Tensor.canon, hi, ↓reduceIte] using ht.2 rfl i hi
-
-/-- Static bounds checks imply that the semantic evaluator accepts the runtime shapes. -/
-theorem structured_runtime {ib : Nat} {maps : List AffineMap} {n : Nat} {tys : List VTy}
-    {ranges : List Nat} {args : List RVal} (hs : StructuredOk maps n tys ranges)
-    (ht : HasTys ib args tys) :
-    maps.length = args.length ∧
-    maps.any (fun m => m.numDims ≠ n || m.numSyms ≠ 0) = false ∧
-    (maps.zip (args.map shapeOf)).any (fun p => p.1.results.length ≠ p.2.length) = false ∧
-    loopRanges maps (args.map shapeOf) n = .ok ranges := by
-  have hshapes := shapes_typed ht
-  refine ⟨hs.len.trans (HasTys.length ht).symm, ?_, ?_, ?_⟩
-  · rw [List.any_eq_false]
-    intro m hm
-    simp [(hs.dims m hm).1, (hs.dims m hm).2]
-  · rw [hshapes, List.zip_map_right, List.any_map, List.any_eq_false]
-    intro p hp
-    have hin := List.forall₂_iff_zip.1 hs.inBounds |>.2 hp
-    simp only [mapInBounds, Bool.and_eq_true, beq_iff_eq] at hin
-    simp [Function.comp, hin.1]
-  · rw [hshapes]
-    exact mapM_ofOption _ _ _ _ hs.loops
 
 /-- Initialized destinations stay initialized across every reduction step, including empty loops.
 Inputs may be uninitialized only when the checked body can still prove clean outputs. -/

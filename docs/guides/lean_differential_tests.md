@@ -132,6 +132,14 @@ and floating element types, defined chains, and independently corrupted inputs, 
 The native differential corpus executes original and generalized fills on integer, f32 and f64
 inputs. This certifies the named-to-generic boundary; it does not prove later bufferization.
 
+`test_lean_splat_inputs.py` executes the default uniform-input compaction pass and compares both
+programs through the Lean denotation and native MLIR. It covers multiple compacted inputs, a full
+splat result that must remain live, affine indexing, empty/rank-zero tensors and f32/f64 bit copies.
+Integer cases also use an independent modular reference; a corrupted scalar payload must produce
+a different native result. `Rules/SplatInputs.lean` supplies the general semantic proof under
+checked layouts and an actual shared scalar payload. Its SSA binding checker remains unimplemented,
+so these comparisons do not publish whole-pass verification receipts.
+
 Typed receipts name `MerlinVerify.Check.TypedModule.check_sound` and record their domain and
 index width. `compose_chain` replays typed and universal boundaries together, requires every
 boundary to preserve the capture's declared input types/shapes, and checks that typed widths

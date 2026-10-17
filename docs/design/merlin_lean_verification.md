@@ -699,7 +699,7 @@ model/tensor layer is outside this sequence.
 
 | Order | Family | Proof obligation and completion criterion |
 |---|---|---|
-| 1 | Named operation generalization | Matmul/batch-matmul use universal expansion; map uses checked typed SSA facts. Implemented for these top-level forms, with actual pass output and defined chains qualified. |
+| 1 | Named operation generalization | Matmul/batch-matmul use universal expansion; map/fill use checked typed SSA facts. Implemented for these top-level forms, with actual pass output and defined chains qualified. |
 | 2 | Exact integer arithmetic | Operand commutation and typed one-operation normalization are implemented. Next extend typed sites to width/flag-aware multi-operation cast and constant simplifications. Check signedness, poison and actual canonicalizer output. |
 | 3 | Valid static shape rewrites | Prove reshape cancellation/composition and indexing equivalence, including zero extents, reassociation, element type, and all escaping uses. |
 | 4 | Rewrites inside operation bodies | Lift proved local rules into actual linalg region closures with captures and block-argument shadowing; preserve reduction order and unchanged computation. |
@@ -725,6 +725,19 @@ operands, result bindings and region closures. `TypedC1.check_sound` and `TypedM
 are separately pinned claims on typed inputs at one index width. The first qualified expansion
 is map-to-generic. This one-operation interface does not yet implement multi-operation cast
 fusion, reshape elimination, nested rewriting or numerical policies.
+
+**Uniform input compaction.** `Rules/StructuredInputs.lean` proves that two independently checked
+structured layouts execute identically when their loop ranges, output maps and body input values
+agree. It retains the actual body, captures, output tensors and lexicographic reduction order.
+`Rules/SplatInputs.lean` instantiates this theorem for full uniform tensors replaced by rank-zero
+uniform tensors and empty indexing maps. Uniformity follows from construction with the same scalar
+payload, including poison; a tensor type alone supplies no uniformity fact. The layout checker
+rejects a lost or changed loop extent, invalid access and unsupported affine geometry.
+This is a proved semantic kernel, not yet a whole-program SSA rewrite checker or a verified pass
+receipt. Connecting the actual source/target splat operands, all escaping SSA uses and region
+closures remains necessary. Native differential tests execute real `scalarize_splat_inputs` output,
+including multiple splats, retained full-tensor results, affine indexing, empty/rank-zero tensors
+and float bit copies, with a corrupted-payload negative and a separate integer reference.
 
 Over-rank matmul capture repair is **not** an ordinary shape equivalence obligation. Its source is
 explicitly invalid linalg (`collapse_overrank_matmul`), so proving refinement against its unsupported
