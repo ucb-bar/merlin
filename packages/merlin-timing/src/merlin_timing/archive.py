@@ -16,6 +16,11 @@ from . import fitting as F
 from . import validation as V
 
 ARCHIVE = "merlin.phase1.capsule_timing_archive.v2"
+#: The per-record producer: rows declare ``visibility`` and a ``training_eligible`` verdict that intake
+#: recomputes rather than trusts. Its training subset need not be ``timing_ready``.
+TRAINING_ARCHIVE = "merlin.phase1.capsule_timing_archive.v3"
+ARCHIVES = (ARCHIVE, TRAINING_ARCHIVE)
+VISIBILITIES = ("public", "hidden")
 BINDING = "merlin.phase1.spike_archive_binding.v1"
 PLAN = "merlin.phase1.spike_observation_plan.v1"
 MAX_ARCHIVE_BYTES = 16 * 1024**3
@@ -105,7 +110,9 @@ def _positive_cycles(row: dict) -> bool:
 
 
 def _passing(row: dict) -> bool:
-    return row.get("engine") == "gsim" and row.get("status") == "pass"
+    # A carried verdict is a copy of an earlier observation, not a measurement (the producer counts
+    # only ``measured_now`` records as passing gSIM executions).
+    return row.get("engine") == "gsim" and row.get("status") == "pass" and row.get("measured_now") is True
 
 
 def _complete(row: dict) -> bool:
@@ -128,6 +135,64 @@ def _complete(row: dict) -> bool:
             artifacts.get(name)
             for name in ("harness", "input_interface", "command_buffer", "static_instruction_trace", "numeric_report")
         )
+    )
+
+
+def _hex(value) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def _training_eligible(row: dict) -> bool:
+    """One fresh, fully identified kernel-window gSIM measurement, whatever the capsule's overall verdict.
+
+    Recomputed from the row, never trusted from the producer's flag. The executed-program check refuses a
+    row whose archived ELF or caller is not the one the gSIM process recorded executing."""
+    artifacts = row.get("artifacts") or {}
+    executed = (row.get("executions") or {}).get("L3")
+    return (
+        _passing(row)
+        and _positive_cycles(row)
+        and row.get("derived_from_rtl") is True
+        and row.get("cycle_accurate") is True
+        and row.get("cycle_scope") == "entry-through-completion"
+        and isinstance(row.get("timing_selection"), dict)
+        and bool(row["timing_selection"])
+        and _hex(row.get("timing_selection_sha256"))
+        and isinstance(row.get("sim_provenance"), dict)
+        and _hex(row["sim_provenance"].get("sha256"))
+        and bool(row.get("elf"))
+        and row.get("console_cycle_verified") is True
+        and all(
+            _hex(row.get(field))
+            for field in ("elf_sha256", "harness_sha256", "candidate_sha256", "command_buffer_sha256")
+        )
+        and isinstance(artifacts, dict)
+        and all(
+            artifacts.get(name)
+            for name in (
+                "harness",
+                "input_interface",
+                "command_buffer",
+                "static_instruction_trace",
+                "numeric_report",
+                "rtl_console",
+            )
+        )
+        and (
+            executed is None
+            or (
+                isinstance(executed, dict)
+                and executed.get("elf_sha256") == row["elf_sha256"]
+                and executed.get("harness_sha256") in (None, row["harness_sha256"])
+            )
+        )
+    )
+
+
+def _executed_repeat(row: dict) -> bool:
+    """A fresh public execution whose gSIM tier ran (and passed or failed) on its ELF."""
+    return (
+        row.get("measured_now") is True and row.get("status") in ("pass", "fail") and row.get("visibility") == "public"
     )
 
 
@@ -217,7 +282,13 @@ def _verify_contexts(path: str | Path, wanted: dict[str, list[tuple[str, dict]]]
                                 raise C.ContractError(
                                     "indexed verdict or cycles differ from original capsule_result.json"
                                 )
-                            compiler = result.get("original_compiler_child") or {}
+                            # The ordinary producer's retained compiler snapshot outranks a
+                            # restored child record, exactly as the producer selects it.
+                            compiler = (
+                                result.get("compiler_source")
+                                if result.get("compiler_source") is not None
+                                else result.get("original_compiler_child")
+                            ) or {}
                             buffer = result.get("command_buffer_artifact") or {}
                             tensors = (buffer.get("command_buffer") or {}).get("tensors") or {}
                             shape = {
@@ -299,8 +370,9 @@ def inspect_archive(path: str | Path, expected_sha256: str) -> dict:
             after.st_ctime_ns,
         ):
             raise C.ContractError("archive changed during verification")
-    if index is None or index.get("schema") != ARCHIVE:
-        raise C.ContractError("expected a Phase 1 capsule timing v2 index")
+    if index is None or index.get("schema") not in ARCHIVES:
+        raise C.ContractError("expected a Phase 1 capsule timing v2 or v3 index")
+    per_record = index["schema"] == TRAINING_ARCHIVE
     records = index.get("records")
     if not isinstance(records, list) or len(records) > C.MAX_RECORDS:
         raise C.ContractError("archive record count exceeds its bound")
@@ -328,7 +400,12 @@ def inspect_archive(path: str | Path, expected_sha256: str) -> dict:
                 raise C.ContractError("original ELF is not verified by the artifact roster")
             if isinstance(row["artifacts"], dict) and row["artifacts"].get("elf", {}).get("path") != row["elf"]:
                 raise C.ContractError("original ELF differs from its role in this row")
-        if _complete(row):
+        if per_record:
+            if row.get("visibility") not in VISIBILITIES:
+                raise C.ContractError("per-record archive rows require an explicit public/hidden visibility")
+            if row.get("training_eligible") is not _training_eligible(row):
+                raise C.ContractError("declared training eligibility disagrees with its own record")
+        if _complete(row) or (per_record and _training_eligible(row)):
             if row.get("cycle_scope") != "entry-through-completion":
                 raise C.ContractError("archive label is outside the kernel-call boundary")
             if row["timing_selection"].get("selection_sha256") != C.sha(
@@ -365,12 +442,29 @@ def inspect_archive(path: str | Path, expected_sha256: str) -> dict:
     ready = counts["gsim_pass_records"] > 0 and counts["gsim_pass_records"] == counts["gsim_pass_complete"]
     if type(index.get("timing_ready")) is not bool or index["timing_ready"] != ready:
         raise C.ContractError("archive timing_ready disagrees with its record roster")
+    training = {"training_ready": False, "training_eligible_public_records": 0}
+    if per_record:
+        eligible = [row for row in records if _training_eligible(row)]
+        public = sum(row["visibility"] == "public" for row in eligible)
+        training = {"training_ready": public > 0, "training_eligible_public_records": public}
+        declared = {
+            "training_eligible_records": len(eligible),
+            "training_eligible_public_records": public,
+            "training_eligible_hidden_records": len(eligible) - public,
+        }
+        if any(type(index.get(key)) is not int or index[key] != value for key, value in declared.items()) or (
+            index.get("training_ready") is not training["training_ready"]
+        ):
+            raise C.ContractError("archive training summary disagrees with its record roster")
     _verify_contexts(path, contexts, files)
     return {
         "schema": "merlin.phase1.spike_archive_inventory.v1",
         "archive_sha256": expected_sha256,
         "index_sha256": files["index.json"]["sha256"],
+        "archive_schema": index["schema"],
+        "export_scope": index.get("export_scope"),
         "timing_ready": ready,
+        **training,
         **counts,
         "records": results,
         "members": len(files),
@@ -386,8 +480,14 @@ def prepare(inventory: dict, binding: dict) -> dict:
     C.closed(binding, {"schema", "archive_sha256", "domain", "feature_names", "review", "cases"}, "archive binding")
     if binding["schema"] != BINDING or binding["archive_sha256"] != inventory["archive_sha256"]:
         raise C.ContractError("archive binding differs from the exact immutable archive")
-    if inventory["timing_ready"] is not True:
+    per_record = inventory.get("archive_schema") == TRAINING_ARCHIVE
+    if inventory["timing_ready"] is not True and not (per_record and inventory.get("training_ready") is True):
         raise C.ContractError("incomplete timing archive cannot prepare calibration observations")
+
+    def selectable(row):
+        # Per-record archives judge each measurement; hidden records never enter public calibration.
+        return _training_eligible(row) and row.get("visibility") == "public" if per_record else _complete(row)
+
     C.domain(binding["domain"])
     if binding["domain"]["label_engine"] != "gsim":
         raise C.ContractError("Phase 1 archive labels require their original gSIM selection")
@@ -465,7 +565,14 @@ def prepare(inventory: dict, binding: dict) -> dict:
     for item in binding["cases"]:
         C.closed(item, {"case", "results", "candidate_sha256", "shape_sha256", "counter_scope"}, "archive case binding")
         case = C.closed(item["case"], C.CASE_KEYS, "archive case")
-        C.sha(item["candidate_sha256"], "candidate identity")
+        # Different compiler versions can emit byte-identical programs. The execution (ELF, input,
+        # scope) stays one case; its binding may then name every candidate that emitted those bytes.
+        declared = item["candidate_sha256"]
+        candidates = declared if isinstance(declared, list) else [declared]
+        if not candidates or candidates != sorted(set(candidates)):
+            raise C.ContractError("case candidates must be one identity or a sorted list of distinct identities")
+        for candidate in candidates:
+            C.sha(candidate, "candidate identity")
         C.sha(item["shape_sha256"], "logical shape identity")
         pcs = C.closed(
             item["counter_scope"], {"begin_pc", "end_pc", "occurrence", "evidence_sha256"}, "counter-PC review"
@@ -485,11 +592,13 @@ def prepare(inventory: dict, binding: dict) -> dict:
             seen.add(result)
             original = by_result[result]
             row = original["row"]
-            if (row.get("elf_sha256"), row.get("candidate_sha256"), C.digest(row.get("shape"))) != (
-                case["elf_sha256"],
-                item["candidate_sha256"],
-                item["shape_sha256"],
-            ):
+            if per_record and row.get("visibility") != "public":
+                raise C.ContractError("hidden or unknown-visibility records cannot enter public calibration")
+            if (
+                row.get("elf_sha256"),
+                row.get("candidate_sha256") in candidates,
+                C.digest(row.get("shape")),
+            ) != (case["elf_sha256"], True, item["shape_sha256"]):
                 raise C.ContractError("case ELF/candidate/logical shape differs from its original record")
             # This deliberately binds the complete caller input context. It does
             # not claim to hash just tensor bytes or infer an input from shape.
@@ -498,7 +607,7 @@ def prepare(inventory: dict, binding: dict) -> dict:
             )
             if case["input_sha256"] != input_sha:
                 raise C.ContractError("embedded input identity differs from the original caller context")
-            eligible = _complete(row)
+            eligible = selectable(row)
             if eligible and (
                 row["timing_selection"] != review["timing_selection"]
                 or row["cycle_scope"] != review["cycle_scope"]
@@ -520,7 +629,7 @@ def prepare(inventory: dict, binding: dict) -> dict:
                     "record_id": original["record_id"],
                     "case_id": case["case_id"],
                     "result": result,
-                    "candidate_sha256": item["candidate_sha256"],
+                    "candidate_sha256": row["candidate_sha256"],
                     "shape_sha256": item["shape_sha256"],
                     "shape": row["shape"],
                     "elf_member": "run/" + row["elf"],
@@ -545,10 +654,13 @@ def prepare(inventory: dict, binding: dict) -> dict:
             )
     # A known failed repeat cannot be removed to improve its execution's label.
     bound_elfs = {case["elf_sha256"] for case in cases}
-    if any(
-        row["row"]["result"] not in seen and (_passing(row["row"]) or row["row"].get("elf_sha256") in bound_elfs)
-        for row in inventory["records"]
-    ):
+
+    def required(row):
+        if per_record:
+            return selectable(row) or (_executed_repeat(row) and row.get("elf_sha256") in bound_elfs)
+        return _passing(row) or row.get("elf_sha256") in bound_elfs
+
+    if any(row["row"]["result"] not in seen and required(row["row"]) for row in inventory["records"]):
         raise C.ContractError("binding omitted a passing case or a repeat of a bound ELF")
     empty = {
         "schema": C.DATASET,

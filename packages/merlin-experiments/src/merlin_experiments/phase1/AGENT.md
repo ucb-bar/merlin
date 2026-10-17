@@ -281,3 +281,10 @@ is data, so no target name, opcode or regex belongs here. It never starts a run,
 a credential or rewrites a prepared input in place; every disagreement is a listed
 drift, never a silent default. Bind new controller options in one place (`_argv`,
 `SUBAGENT_FLAGS`) and keep the schema in `resources/` fail-closed.
+`annotated_spike_evidence.py` is an operator-side, evidence-only pass over a finished run.
+It runs each training-eligible public gSIM program on the observer-enabled Spike with an
+explicitly selected provider and a count-only model (no prices), scoped by counter PCs it
+derives from the linked ELF with a selected disassembler, the caller's reviewed counter
+template and the contract's entry/completion symbols. It must reproduce the run's own
+functional console byte-for-byte; it grades nothing, never runs during authoring, and
+leases shared compute at AUXILIARY priority.
