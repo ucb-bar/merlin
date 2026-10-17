@@ -231,6 +231,8 @@ def _member(root: Path, category: str, name: str, label: str) -> None:
         "expected": {"instruction_classes": [], "modes": {}},
         "required_oracle_tiers": ["L0"],
         "interface_mlir": "capsule.interface.mlir",
+        # The frozen Phase 0 placement every public member must carry.
+        "software_screen": {"status": "admitted", "placements": {"accelerator": 1}},
     }
     (path / "capsule.yaml").write_text(yaml.safe_dump(capsule))
     (path / "capsule.interface.mlir").write_text("module {}\n")
@@ -384,10 +386,19 @@ def test_release_rejects_absent_selected_llvm(release_fixture, capsys):
         main(["run", str(release_fixture["definition"]), "--phase", "0", "--run-dir", str(release_fixture["run"])]) == 0
     )
     capsys.readouterr()
-    assert main(
-        ["corpus", "prepare", "--historical-overlay", str(release_fixture["run"]),
-         "--output", str(release_fixture["release"])]
-    ) == 2
+    assert (
+        main(
+            [
+                "corpus",
+                "prepare",
+                "--historical-overlay",
+                str(release_fixture["run"]),
+                "--output",
+                str(release_fixture["release"]),
+            ]
+        )
+        == 2
+    )
     failure = json.loads((release_fixture["release"] / "private/failure.json").read_text())
     assert "selected LLVM/MLIR toolchain is absent" in failure["error"]
     assert not (release_fixture["release"] / "private/seal.json").exists()
@@ -469,7 +480,8 @@ def test_explicit_phase1_policy_is_additive_retained_and_review_bound(release_fi
             [
                 "corpus",
                 "prepare",
-                "--historical-overlay", str(fixture["run"]),
+                "--historical-overlay",
+                str(fixture["run"]),
                 "--output",
                 str(fixture["release"]),
                 "--phase1-policy-descriptor",
@@ -505,7 +517,8 @@ def test_phase1_policy_refuses_any_non_gate_descriptor_change(release_fixture, c
             [
                 "corpus",
                 "prepare",
-                "--historical-overlay", str(fixture["run"]),
+                "--historical-overlay",
+                str(fixture["run"]),
                 "--output",
                 str(fixture["release"]),
                 "--phase1-policy-descriptor",
@@ -528,7 +541,8 @@ def test_phase1_policy_retained_projection_is_checked_before_review(release_fixt
             [
                 "corpus",
                 "prepare",
-                "--historical-overlay", str(fixture["run"]),
+                "--historical-overlay",
+                str(fixture["run"]),
                 "--output",
                 str(fixture["release"]),
                 "--phase1-policy-descriptor",
@@ -569,7 +583,8 @@ def test_external_private_baseline_is_explicit_and_receipted(release_fixture, ca
             [
                 "corpus",
                 "prepare",
-                "--historical-overlay", str(fixture["run"]),
+                "--historical-overlay",
+                str(fixture["run"]),
                 "--output",
                 str(fixture["release"]),
                 "--private-baseline",
@@ -587,6 +602,76 @@ def test_external_private_baseline_is_explicit_and_receipted(release_fixture, ca
     }
     assert (fixture["release"] / "payload/corpus/hidden/private_member_identity/capsule.yaml").is_file()
     assert private_source.is_dir()
+
+
+def _place(directory: Path, placements: dict | None) -> None:
+    path = directory / "capsule.yaml"
+    document = yaml.safe_load(path.read_text())
+    if placements is None:
+        document.pop("software_screen", None)
+    else:
+        document["software_screen"] = {"status": "admitted", "placements": placements}
+    path.write_text(yaml.safe_dump(document))
+
+
+@pytest.mark.parametrize(
+    ("placements", "reason"),
+    [
+        ({"host": 3}, "no operation of the written program is placed on the accelerator (host=3)"),
+        ({}, "no placed operation"),
+        (None, "no frozen per-operation placement record"),
+    ],
+)
+def test_assembly_refuses_a_public_member_without_accelerator_placement(release_fixture, tmp_path, placements, reason):
+    import shutil
+
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    fixture = release_fixture
+    te = load_target_experiment(fixture["root"] / "source-experiment/target_experiment.yaml")
+    generated = tmp_path / "generated"
+    _member(generated, "isa", "generated_member", "public")
+    _member(generated, "model_slices", "host_member", "public")
+    _place(generated / "model_slices/host_member", placements)
+    (generated / "MANIFEST.yaml").write_text(
+        yaml.safe_dump(
+            {"generated": ["isa/generated_member", "model_slices/host_member"], "held_out": {"n_generated": 0}}
+        )
+    )
+    private_source = tmp_path / "operator-private"
+    (fixture["baseline"] / "hidden").rename(private_source)
+    shutil.rmtree(fixture["baseline"])
+    with pytest.raises(SpecError, match="1 public capsule\\(s\\) carry no accelerator placement") as refused:
+        assemble(te, generated, tmp_path / "release-corpus", private_baseline=private_source, generated_only=True)
+    detail = str(refused.value).split("host_member: ", 1)[1]
+    assert reason in detail
+    assert "generated_member" not in str(refused.value)
+
+
+def test_prepare_refuses_a_public_capsule_without_accelerator_placement(release_fixture, capsys):
+    fixture = release_fixture
+    _place(fixture["baseline"] / "isa/generated_member", {"host": 2})
+    assert main(["run", str(fixture["definition"]), "--phase", "0", "--run-dir", str(fixture["run"])]) == 0
+    capsys.readouterr()
+    command = ["corpus", "prepare", str(fixture["run"]), "--output", str(fixture["release"]), "--generated-only"]
+    assert main(command) == 2
+    failure = json.loads((fixture["release"] / "private/failure.json").read_text())
+    assert "generated_member: no operation of the written program is placed on the accelerator" in failure["error"]
+    assert "host placement is Merlin-supplied" in failure["error"]
+    assert not (fixture["release"] / "private/preparation.json").exists()
+
+
+def test_admission_rechecks_accelerator_placement_of_the_reviewed_payload(tmp_path):
+    from merlin_experiments.corpus.publication import require_accelerator_placement
+
+    _member(tmp_path, "isa", "accelerated", "public")
+    _member(tmp_path, "hidden", "withheld", "hidden")
+    _place(tmp_path / "hidden/withheld", {"host": 1})
+    # Only the openly graded cohort is judged; the count names what was checked.
+    assert require_accelerator_placement([tmp_path / "isa", tmp_path / "hidden"]) == 1
+    _place(tmp_path / "isa/accelerated", {"accelerator": 0, "host": 4})
+    with pytest.raises(SpecError, match="accelerated: no operation"):
+        require_accelerator_placement([tmp_path / "isa"])
 
 
 def test_generated_only_assembly_needs_no_legacy_corpus(release_fixture, tmp_path):
@@ -624,12 +709,14 @@ def test_generated_only_release_accepts_no_historical_corpus_selection(release_f
     authored.pop("capsule_corpus")
     authored["grading"]["expected_cohort"] = {"source_capsules": 1, "admitted_capsules": 1}
     descriptor.write_text(yaml.safe_dump(authored))
-    assert main(
-        ["run", str(release_fixture["definition"]), "--phase", "0", "--run-dir", str(release_fixture["run"])]
-    ) == 0
+    assert (
+        main(["run", str(release_fixture["definition"]), "--phase", "0", "--run-dir", str(release_fixture["run"])]) == 0
+    )
     capsys.readouterr()
     report = corpus_release.prepare(
-        release_fixture["run"], release_fixture["release"], generated_only=True,
+        release_fixture["run"],
+        release_fixture["release"],
+        generated_only=True,
         private_baseline=release_fixture["baseline"] / "hidden",
     )
     assert report["counts"]["public_source"] == report["counts"]["public_admitted"] == 1
@@ -871,7 +958,8 @@ def test_external_private_baseline_rejects_incomplete_or_aliased_source(release_
             [
                 "corpus",
                 "prepare",
-                "--historical-overlay", str(fixture["run"]),
+                "--historical-overlay",
+                str(fixture["run"]),
                 "--output",
                 str(fixture["release"]),
                 "--private-baseline",
@@ -1406,9 +1494,10 @@ def test_curated_harness_link_must_remain_inside_declared_tree(release_fixture, 
 
     assert main(["run", str(fixture["definition"]), "--phase", "0", "--run-dir", str(fixture["run"])]) == 0
     capsys.readouterr()
-    assert main(
-        ["corpus", "prepare", "--historical-overlay", str(fixture["run"]), "--output", str(fixture["release"])]
-    ) == 2
+    assert (
+        main(["corpus", "prepare", "--historical-overlay", str(fixture["run"]), "--output", str(fixture["release"])])
+        == 2
+    )
     expected = "outside the declared harness" if kind == "external_file" else "directory or broken symlink"
     assert expected in (fixture["release"] / "private/failure.json").read_text()
 
@@ -1439,9 +1528,10 @@ def test_invalid_task_resource_is_not_treated_as_generated_prompt_absence(releas
         source.symlink_to(retained if kind == "symlink" else fixture["root"] / "absent")
     assert main(["run", str(fixture["definition"]), "--phase", "0", "--run-dir", str(fixture["run"])]) == 0
     capsys.readouterr()
-    assert main(
-        ["corpus", "prepare", "--historical-overlay", str(fixture["run"]), "--output", str(fixture["release"])]
-    ) != 0
+    assert (
+        main(["corpus", "prepare", "--historical-overlay", str(fixture["run"]), "--output", str(fixture["release"])])
+        != 0
+    )
     assert not (fixture["release"] / "private/seal.json").exists()
 
 
@@ -1527,10 +1617,19 @@ def test_failed_generation_has_no_prepare_or_implicit_review(release_fixture, ca
     script.write_text("raise SystemExit(3)\n")
     assert main(["run", str(release_fixture["definition"]), "--run-dir", str(release_fixture["run"])]) == 3
     capsys.readouterr()
-    assert main(
-        ["corpus", "prepare", "--historical-overlay", str(release_fixture["run"]),
-         "--output", str(release_fixture["release"])]
-    ) == 2
+    assert (
+        main(
+            [
+                "corpus",
+                "prepare",
+                "--historical-overlay",
+                str(release_fixture["run"]),
+                "--output",
+                str(release_fixture["release"]),
+            ]
+        )
+        == 2
+    )
     assert not release_fixture["release"].exists()
 
 
@@ -1568,8 +1667,10 @@ def test_native_harness_binds_seal_before_any_agent_launch():
     continuation = next(node for node in authoring.body if isinstance(node, ast.FunctionDef) and node.name == "execute")
     session = ast.parse(module_source_path("merlin_experiments.phase1.session").read_text())
     prepare_entry = next(node for node in session.body if isinstance(node, ast.FunctionDef) and node.name == "prepare")
-    assert any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_prepare"
-               for node in ast.walk(prepare_entry))
+    assert any(
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_prepare"
+        for node in ast.walk(prepare_entry)
+    )
     admission = next(node for node in session.body if isinstance(node, ast.FunctionDef) and node.name == "_prepare")
     calls = [node for node in ast.walk(admission) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)]
     verification = [node.lineno for node in calls if node.func.id == "verify_snapshot_for_phase1"]
@@ -1601,9 +1702,10 @@ def test_derivation_bytes_changed_after_receipt_cannot_be_prepared(release_fixtu
     assert main(["run", str(fixture["definition"]), "--run-dir", str(fixture["run"])]) == 0
     capsys.readouterr()
     (fixture["run"] / "phase0/capsules/isa/generated_member/README.md").write_text("post-run drift")
-    assert main(
-        ["corpus", "prepare", "--historical-overlay", str(fixture["run"]), "--output", str(fixture["release"])]
-    ) == 2
+    assert (
+        main(["corpus", "prepare", "--historical-overlay", str(fixture["run"]), "--output", str(fixture["release"])])
+        == 2
+    )
     assert "output changed" in capsys.readouterr().err
     assert not fixture["release"].exists()
 
@@ -1640,9 +1742,10 @@ def test_prepare_refuses_ambiguous_or_unsafe_assembly(release_fixture, capsys, d
     original = (baseline / "MANIFEST.yaml").read_bytes()
     assert main(["run", str(fixture["definition"]), "--run-dir", str(fixture["run"])]) == 0
     capsys.readouterr()
-    assert main(
-        ["corpus", "prepare", "--historical-overlay", str(fixture["run"]), "--output", str(fixture["release"])]
-    ) == 2
+    assert (
+        main(["corpus", "prepare", "--historical-overlay", str(fixture["run"]), "--output", str(fixture["release"])])
+        == 2
+    )
     output = capsys.readouterr()
     assert "private_member_identity" not in output.out + output.err
     assert (baseline / "MANIFEST.yaml").read_bytes() == original
