@@ -11,10 +11,10 @@ It runs in two passes over one isolated copy of the submission, so both see the 
 
 1. **Probe.** Every public capsule is graded on the grade's own adapters, in parallel over the shared
    CPU pool, with each elaborated-RTL engine refused just before dispatch
-   (:func:`merlin.targetgen.simulation_certificate.probe_observer`). Emission, the ELF build and the
-   functional screen run as they always do -- the grade never carries its first tier -- and the RTL
-   tier is decided by the certificate lookup alone: a hit carries the certified verdict, a miss is
-   refused unexecuted. Nothing is simulated at an RTL tier.
+   (:func:`merlin.targetgen.simulation_certificate.probe_observer`). Emission, the ELF builds and the
+   functional screen run as they always do -- no certificate carries the screen -- and the RTL tier is
+   decided by the certificate lookup alone: a hit carries the certified verdict, a miss is refused
+   unexecuted. Nothing is simulated at an RTL tier.
 2. **Simulate.** The ``changed`` capsules then take the ordinary certifying ladder as a named
    request, bounded by ``MERLIN_SELFCHECK_MAX_CAPSULES`` and ordered longest first.
 
