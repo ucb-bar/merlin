@@ -1106,7 +1106,7 @@ def _build_facts(
         raise ValueError("build_facts requires an explicit target (no default is assumed)")
     from . import datapaths as datapath_reader
     from . import feature_gates as feature_reader
-    from . import hw_graph, memory_roles, mlc_bridge, source_selection, timing
+    from . import hw_graph, memory_roles, mlc_bridge, source_selection, timing, timing_structure
     from .facts import target_contract_path
 
     readers = [
@@ -1121,6 +1121,7 @@ def _build_facts(
             mlc_bridge,
             timing,
             memory_roles,
+            timing_structure,
         )
     ]
     extractor_digest = _sha256(Path(__file__))
@@ -1213,6 +1214,7 @@ def _build_facts(
     sourced += _datapaths_from_cells(target, v1)
     sourced += _lane_datapaths_from_units(target, v1)
     sourced += _timing_from_discovery(target, v1)
+    sourced += timing_structure.add_to_facts(target, v1)  # capacities, in-flight limits, fixed delays
 
     # Decoder comparison field: preserve RTL-observed values over the weaker
     # header parse, without treating either as an exhaustive legal set. NAMES

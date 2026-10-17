@@ -46,6 +46,15 @@ validation_notes: >-
   the type and width come from that exact field, never a contract numeric literal.
   `boolean_feature_gate` has `feature`, `module`, `node`, `dynamic_operand_contains`, and
   `config_field`; the literal build-gate value is still read from exact elaborated FIRRTL.
+  `timing_structure` anchors `merlin.targetgen.rtl.timing_structure`: `dispatch: {module, classes:
+  {<class>: <issue port prefix>}}`, `memory_protocol: {request, response, id, data, size,
+  size_encoding}` (the bus field vocabulary), `memory_clients: {<client>: {module, port_prefix}}`,
+  `dataflow: {cell_module, select_port}`, `latencies: {<name>: {module, from, to, mode?|pins?}}`,
+  `array_paths: {<name>: {module, from_prefix, to_prefix, mode?}}` and `profile_resources:
+  {<resource>: {capacity, queue_capacity, basis}}`, whose terms are dotted paths into the derived
+  record, `{buffer_instance: <path>}` or `{from, minus}` (`null` leaves a field to fitting). Only names
+  are declared; entries, widths, ID spaces, stage counts and modes are read from the elaborated HW,
+  and an anchor the RTL does not contain records that fact UNKNOWN.
   Missing declarations disable their optional reader, while malformed declarations fail closed.
 
   OPTIONAL `operation_capabilities`: the common operation registry shared by generated target

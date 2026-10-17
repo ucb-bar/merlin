@@ -252,6 +252,21 @@ source tree) from the declared core root's own FIRRTL module locator. A supplied
 core root the outermost dominant census unit is recorded as inconsistent and refused
 by `circt_introspect` before the census, instead of producing an empty unit census.
 
+`timing_structure` fills the structural half of what `timing.py` leaves UNKNOWN for
+sequenced units, from the selected generic HW (`hw_design` walks). Capacities are storage
+locations readable at a port (dispatch slots at an issue port, FIFO entries at a dequeue
+port), in-flight limits are slots selected by a response ID, and stage counts carry the
+conditions that keep them from being fixed (`fixed_when_enabled`, `variable`). They are
+never written to `pipeline_depth` and never become prices; the target's
+`rtl_extraction.timing_structure` names the anchors and the engine-resource mapping.
+Combinational cones are acyclic and computed once; feedback is found on the register graph
+(holds through carriers are enables, computed self-loops and register cycles are feedback).
+
+`unit_correspondence` compares one unit's FIRRTL bodies and canonical HW modules across two
+configurations. Printed locations and `sv.namehint` never count; SoC-level file operations
+are listed with the modules they reference. Only an equivalent unit lets measurements on a
+simulation configuration stand for the target configuration's unit-internal timing.
+
 `spatial_introspect` reports storage widths and structural geometry independently
 from arithmetic. Port/selector names and pipeline-like module names do not prove
 signed numerical formats, accumulation behavior or cycle latency; those fields
