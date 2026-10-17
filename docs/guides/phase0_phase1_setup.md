@@ -465,8 +465,22 @@ synthetic receipts do not substitute for an executed compiler qualification.
 
 ## Reserve CPU pools before the fresh launch
 
-On a 32-CPU worker, an operator may reserve CPUs 8–30 for the experiment and
-leave 0–7 and 31 for other workloads. Within that reservation, pin the manager
+The preferred selection is one shared compute pool: set only
+`MERLIN_COMPUTE_CPUS` (the CPU roster) and an absolute task-local
+`MERLIN_COMPUTE_CPU_SLOTS` directory. Every build, simulator, grading and
+bounded preparation step then leases one CPU slot from it, and every unset
+concurrency cap (`MERLIN_GSIM_MAX_SLOTS`, `MERLIN_SPIKE_MAX_SLOTS`,
+`MERLIN_GRADE_WORKERS`, `MERLIN_SELFCHECK_BROKER_JOBS`,
+`MERLIN_SELFCHECK_ORDINARY_JOBS`, the simulation broker's job count) defaults
+to the pool size. No CPU is reserved per engine; waiting steps are served by
+priority — author-requested self-checks, simulation jobs and model checks
+first, then grade capsules, then run preparation, then advisory probes and
+telemetry — and FIFO within a priority. `MERLIN_PREPARATION_CPUS` is optional
+and may overlap the pool. Explicit caps still override the defaults.
+
+The fixed-reservation layout below remains supported. On a 32-CPU worker, an
+operator may reserve CPUs 8–30 for the experiment and leave 0–7 and 31 for other
+workloads. Within that reservation, pin the manager
 to 8–9, select `MERLIN_CODEX_CPUS=10,11,12,13`, and select
 `MERLIN_BUILD_CPUS=14,15` with an absolute task-local `MERLIN_BUILD_SLOT_ROOT`.
 Native builds acquire an exclusive CPU slot across processes and threads;

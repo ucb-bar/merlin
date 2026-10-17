@@ -957,4 +957,7 @@ def main(
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from merlin.common.cpu_pool import AUTHOR, cpu_priority
+
+    with cpu_priority(AUTHOR, export=True):  # Author-requested self-checks lease first.
+        raise SystemExit(main())
