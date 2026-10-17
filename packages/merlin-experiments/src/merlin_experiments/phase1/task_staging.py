@@ -322,8 +322,8 @@ error policy.
   Add `--wait-budget 5` to get a request id back at once, keep working, and collect the verdict with
   `--attach ID`; `--list` shows your requests. Several requests may be in flight. Put every capsule an
   edit affects in one request: its capsules run in parallel and per-request overhead dominates.
-  After an edit, `--capsules changed` compiles every capsule and simulates only those whose emitted
-  bytes changed; `--capsules failing` re-checks what did not pass in your most recent check.
+  Check edits by naming the affected capsules; `--capsules changed` rebuilds every capsule (a slow
+  sweep for occasional regression checks); `--capsules failing` re-checks your last check's failures.
 - `--submission variants/NAME`: self-check an alternative kept in `variants/NAME/` (same layout as
   `submission/`) beside it. Variant results are labelled and never graded officially; only
   `submission/` counts, so copy the winner there.
