@@ -87,22 +87,29 @@ def _selected(adapter, target, tier):
 
     from . import capsule_runner as runner
 
-    original_code = next(value for value in runner.simulator_adapter.__code__.co_consts
-                         if isinstance(value, types.CodeType) and value.co_name == "run")
+    original_code = next(
+        value
+        for value in runner.simulator_adapter.__code__.co_consts
+        if isinstance(value, types.CodeType) and value.co_name == "run"
+    )
     if type(adapter) is not types.FunctionType or adapter.__code__ is not original_code:
         raise ValueError("simulation certificate requires an original native factory adapter")
     selected = adapter_selection({tier: adapter}, target=target)[tier]
     closure = dict(zip(adapter.__code__.co_freevars, (cell.cell_contents for cell in adapter.__closure__)))
     policy = closure["readback_policy"]
-    if (closure["target"] != target or closure["sim"] != selected["engine"]
-            or closure["selection"] != selected["selection"]
-            or (policy.record() if policy is not None else None) != selected["readback_policy"]):
+    if (
+        closure["target"] != target
+        or closure["sim"] != selected["engine"]
+        or closure["selection"] != selected["selection"]
+        or (policy.record() if policy is not None else None) != selected["readback_policy"]
+    ):
         raise ValueError("simulation certificate adapter selection changed")
     return selected
 
 
-def capture(*, capsule, cb, gold, reference, direct_oracle_golden, policy, llvm_text,
-            adapter, target, tier, package_dir):
+def capture(
+    *, capsule, cb, gold, reference, direct_oracle_golden, policy, llvm_text, adapter, target, tier, package_dir
+):
     """Snapshot existing trusted operator inputs; no new corpus/reference reads."""
     if os.environ.get(ENV) != "1":
         return None
@@ -121,22 +128,55 @@ def capture(*, capsule, cb, gold, reference, direct_oracle_golden, policy, llvm_
         backend = base.get_backend(target)
         if type(backend) is not BoundRoCCBackend:
             return None
-        if (type(capsule) is not dict or capsule.get("kind") == "model" or type(cb) is not dict
-                or not (cb.get("outputs") or any(isinstance(spec, dict) and spec.get("role") == "output"
-                    for spec in (cb.get("tensors") or {}).values()))
-                or type(gold) is not dict or not gold or type(policy) is not dict
-                or type(llvm_text) is not str or not llvm_text
-                or type(direct_oracle_golden) is not bool
-                or (not direct_oracle_golden and (type(reference) is not dict or not reference))):
+        if (
+            type(capsule) is not dict
+            or capsule.get("kind") == "model"
+            or type(cb) is not dict
+            or not (
+                cb.get("outputs")
+                or any(
+                    isinstance(spec, dict) and spec.get("role") == "output"
+                    for spec in (cb.get("tensors") or {}).values()
+                )
+            )
+            or type(gold) is not dict
+            or not gold
+            or type(policy) is not dict
+            or type(llvm_text) is not str
+            or not llvm_text
+            or type(direct_oracle_golden) is not bool
+            or (not direct_oracle_golden and (type(reference) is not dict or not reference))
+        ):
             return None
         source = child._source(package_dir)
         if source != executor.source_sha256:
             return None
-        request = {"capsule": capsule, "command_buffer_and_stimulus": cb, "gold": gold, "reference": reference,
-                   "direct_oracle_golden": direct_oracle_golden, "numeric_policy": policy, "llvm_text": llvm_text}
-        value = _Request(os.getpid(), threading.current_thread(), executor, adapter, backend, target, tier,
-                         selected, backend.execution_engine_identity(selected["engine"]), Path(package_dir),
-                         source, profile, request, _request_digest(request), _instrument(target))
+        request = {
+            "capsule": capsule,
+            "command_buffer_and_stimulus": cb,
+            "gold": gold,
+            "reference": reference,
+            "direct_oracle_golden": direct_oracle_golden,
+            "numeric_policy": policy,
+            "llvm_text": llvm_text,
+        }
+        value = _Request(
+            os.getpid(),
+            threading.current_thread(),
+            executor,
+            adapter,
+            backend,
+            target,
+            tier,
+            selected,
+            backend.execution_engine_identity(selected["engine"]),
+            Path(package_dir),
+            source,
+            profile,
+            request,
+            _request_digest(request),
+            _instrument(target),
+        )
         _ISSUED.add(value)
         return value
     except Exception:  # noqa: BLE001 -- incomplete authority/data is an ordinary cache miss
@@ -148,24 +188,30 @@ def key(request, executables, *, expected=None):
     try:
         from merlin_experiments.phase1.feedback import compiler_profile_child as child
 
-        if (os.environ.get(ENV) != '1' or type(request) is not _Request or request not in _ISSUED
-                or request.process != os.getpid()
-                or request.thread is not threading.current_thread()
-                or child.P.active_package_executor() is not request.executor):
+        if (
+            os.environ.get(ENV) != "1"
+            or type(request) is not _Request
+            or request not in _ISSUED
+            or request.process != os.getpid()
+            or request.thread is not threading.current_thread()
+            or child.P.active_package_executor() is not request.executor
+        ):
             return None, None
-        if expected is not None and expected != (request.request['capsule'].get('name'), request.tier, request.target):
+        if expected is not None and expected != (request.request["capsule"].get("name"), request.tier, request.target):
             return None, None
         owner = request.executor.owner
         with verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo):
             if child._original_executor() is not request.executor or child._owner_record(owner) != request.profile:
                 return None, None
         backend = base.get_backend(request.target)
-        if (type(backend) is not BoundRoCCBackend
-                or backend.execution_engine_identity(request.selection["engine"]) != request.engine_identity
-                or _selected(request.adapter, request.target, request.tier) != request.selection
-                or child._source(request.package_dir) != request.source_sha256
-                or _request_digest(request.request) != request.request_sha256
-                or _instrument(request.target) != request.instrument):
+        if (
+            type(backend) is not BoundRoCCBackend
+            or backend.execution_engine_identity(request.selection["engine"]) != request.engine_identity
+            or _selected(request.adapter, request.target, request.tier) != request.selection
+            or child._source(request.package_dir) != request.source_sha256
+            or _request_digest(request.request) != request.request_sha256
+            or _instrument(request.target) != request.instrument
+        ):
             return None, None
         programs = {}
         for item in executables:
@@ -179,12 +225,18 @@ def key(request, executables, *, expected=None):
                 programs[path.name] = hashlib.file_digest(stream, "sha256").hexdigest()
         if not programs:
             return None, None
-        identity = _digest({"namespace": NAMESPACE, "target": request.target, "tier": request.tier,
-                            "programs": programs,
-                            "profile": request.profile, "request": request.request_sha256,
-                            "engine_identity": request.engine_identity})
-        instrument = _digest({"namespace": NAMESPACE, "grading_path": request.instrument,
-                              "adapter": request.selection})
+        identity = _digest(
+            {
+                "namespace": NAMESPACE,
+                "target": request.target,
+                "tier": request.tier,
+                "programs": programs,
+                "profile": request.profile,
+                "request": request.request_sha256,
+                "engine_identity": request.engine_identity,
+            }
+        )
+        instrument = _digest({"namespace": NAMESPACE, "grading_path": request.instrument, "adapter": request.selection})
         return identity, instrument
     except Exception:  # noqa: BLE001 -- unreadable/changed authority or bytes never produce a hit
         return None, None

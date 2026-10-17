@@ -63,12 +63,29 @@ def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy, befor
     )
 
 
-def run_with_readback(cb, llvm_text, *, sim: str, target: str, backend: Any, workdir: str | Path, timeout: int,
-                      policy, before_execution=None):
+def run_with_readback(
+    cb,
+    llvm_text,
+    *,
+    sim: str,
+    target: str,
+    backend: Any,
+    workdir: str | Path,
+    timeout: int,
+    policy,
+    before_execution=None,
+):
     """One oracle run of ``cb`` on ``sim`` with the readback selected as the module docstring states."""
     if sim != "gsim" or policy is not None or not _digest_for_gsim():
         return _run(
-            cb, llvm_text, sim=sim, target=target, backend=backend, workdir=workdir, timeout=timeout, policy=policy,
+            cb,
+            llvm_text,
+            sim=sim,
+            target=target,
+            backend=backend,
+            workdir=workdir,
+            timeout=timeout,
+            policy=policy,
             **({"before_execution": before_execution} if before_execution is not None else {}),
         )
     if before_execution is not None:

@@ -223,7 +223,8 @@ def _progress_snapshot(cb_root: Path, *, expected: int, started_ns: int) -> dict
             tiers = {
                 tier: record["status"]
                 for tier, record in recorded.items()
-                if tier in {"L0", "L1", "L2", "L3"} and isinstance(record, dict)
+                if tier in {"L0", "L1", "L2", "L3"}
+                and isinstance(record, dict)
                 and isinstance(record.get("status"), str)
                 and record.get("status") in {"pass", "fail", "unverified", "unavailable", "incomplete", "skipped"}
             }
@@ -300,8 +301,10 @@ def _previously_failing() -> tuple:
     out = Path("selfcheck_out")
     latest, newest = None, -1.0
     try:
-        completed = [Path(".qa_channel") / f"resp_{done.name[len('done_'):]}.json"
-                     for done in Path(".qa_channel").glob("done_*")]
+        completed = [
+            Path(".qa_channel") / f"resp_{done.name[len('done_') :]}.json"
+            for done in Path(".qa_channel").glob("done_*")
+        ]
         for cand in list(out.glob("*.json")) + [Path("selfcheck.json")] + completed:
             if cand.is_file() and cand.stat().st_mtime > newest:
                 latest, newest = cand, cand.stat().st_mtime
@@ -386,9 +389,14 @@ def _streaming_completion(*, context, capsules_root, contract, source, runs, ada
     from ..brokers.selfcheck import _submission_digest
     from . import loop_grading, promotion
 
-    ws, root, digest = (os.environ.get(key) for key in (
-        "MERLIN_SELFCHECK_PROMOTION_WS", "MERLIN_SELFCHECK_PROMOTION_ROOT", "MERLIN_SELFCHECK_PROMOTION_SHA256"
-    ))
+    ws, root, digest = (
+        os.environ.get(key)
+        for key in (
+            "MERLIN_SELFCHECK_PROMOTION_WS",
+            "MERLIN_SELFCHECK_PROMOTION_ROOT",
+            "MERLIN_SELFCHECK_PROMOTION_SHA256",
+        )
+    )
     if not any((ws, root, digest)):
         return None
     if not all((ws, root, digest)):
@@ -399,8 +407,12 @@ def _streaming_completion(*, context, capsules_root, contract, source, runs, ada
     if not loop or not cert or loop not in adapters or cert in adapters:
         return None
     inputs = loop_grading.GradingInputs(
-        context=context, arm="selfcheck", public_root=Path(capsules_root), policy_roots=(Path(root),),
-        contract=contract, promotion_root=Path(root),
+        context=context,
+        arm="selfcheck",
+        public_root=Path(capsules_root),
+        policy_roots=(Path(root),),
+        contract=contract,
+        promotion_root=Path(root),
     )
     completed = loop_grading._completed_loop_promoter(
         Path(ws), Path(source).parent, Path(runs), loop, cert, cover, inputs=inputs
@@ -657,7 +669,7 @@ def _request_artifact_root(value: str, *, progress: str, output: str) -> Path:
         record.name.startswith("progress_") and record.name.endswith(".json")
     ):
         raise ValueError("artifact root requires the original request progress record")
-    rid = record.name[len("progress_"):-len(".json")]
+    rid = record.name[len("progress_") : -len(".json")]
     if not rid or rid in {".", ".."}:
         raise ValueError("artifact root requires a valid request identity")
     staged = Path(output)
@@ -666,9 +678,9 @@ def _request_artifact_root(value: str, *, progress: str, output: str) -> Path:
     ):
         raise ValueError("artifact root differs from the original response identity")
     expected = workspace / "selfcheck_out" / "requests" / rid
-    if Path(value).absolute() != expected or any(path.is_symlink() for path in (
-        workspace / "selfcheck_out", workspace / "selfcheck_out" / "requests", expected
-    )):
+    if Path(value).absolute() != expected or any(
+        path.is_symlink() for path in (workspace / "selfcheck_out", workspace / "selfcheck_out" / "requests", expected)
+    ):
         raise ValueError("artifact root must be the original per-request output directory")
     return expected
 
@@ -689,7 +701,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     # Measured on one run: 166 of 217 self-check capsule results were incomplete because each request
     # ran a single engine, and pass/fail was learned only from the background grade.
     ap.add_argument(
-        "--sim", choices=list(SIM_CHOICES), default=None,
+        "--sim",
+        choices=list(SIM_CHOICES),
+        default=None,
         help=f"default {REQUIRED_SIM!r}: every tier the official grade runs; one engine name is a narrower screen",
     )
     ap.add_argument(
@@ -749,20 +763,29 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         "extents. Not part of your score. A backend that passes the suite and fails these runs "
         "toy shapes only. Honors --capsules: name one layer to check one layer.",
     )
-    ap.add_argument("--candidate-diagnostics", action="store_true",
-                    help="INSTEAD of grading, inspect own public source/emission/host work; no simulator or baseline")
-    ap.add_argument("--compile-only", action="store_true",
-                    help="compile original public scale/frontier tensor sources and link a no-data probe; no execution")
-    ap.add_argument("--scale-probe", action="store_true",
-                    help="with --compile-only, inspect public scale/tail LLVM emission before object compilation")
+    ap.add_argument(
+        "--candidate-diagnostics",
+        action="store_true",
+        help="INSTEAD of grading, inspect own public source/emission/host work; no simulator or baseline",
+    )
+    ap.add_argument(
+        "--compile-only",
+        action="store_true",
+        help="compile original public scale/frontier tensor sources and link a no-data probe; no execution",
+    )
+    ap.add_argument(
+        "--scale-probe",
+        action="store_true",
+        help="with --compile-only, inspect public scale/tail LLVM emission before object compilation",
+    )
     ap.add_argument("--compiler-bundle-manifest", type=Path, help=argparse.SUPPRESS)
-    ap.add_argument("--dynamic-census", action="store_true",
-                    help="append bounded own-ELF activity after functional screen")
+    ap.add_argument(
+        "--dynamic-census", action="store_true", help="append bounded own-ELF activity after functional screen"
+    )
     a = ap.parse_args(argv)
     if a.artifact_root:
         try:
-            a.artifact_root = _request_artifact_root(
-                a.artifact_root, progress=a.progress_out, output=a.out)
+            a.artifact_root = _request_artifact_root(a.artifact_root, progress=a.progress_out, output=a.out)
         except ValueError as error:
             ap.error(str(error))
     if a.scale_probe and not a.compile_only:
@@ -825,8 +848,13 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 )
             if a.offload_census:
                 return _offload_census(
-                    Path(a.submission), a.out, context=context, capsules_root=capsules_root, contract=contract,
-                    timeout=a.timeout, workers=a.workers,
+                    Path(a.submission),
+                    a.out,
+                    context=context,
+                    capsules_root=capsules_root,
+                    contract=contract,
+                    timeout=a.timeout,
+                    workers=a.workers,
                 )
 
     sub = Path(a.submission)
@@ -886,9 +914,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     combined = grade_tiers is not None and set(adapters) == grade_tiers
     # barrier = the deepest resolved RTL tier: chipyard maps a named engine from --sim; the grade's own
     # selection and any other target's contract-derived tiers are read from the adapters.
-    barrier_tier = (
-        SIM_TIER[sim] if _sim_via == "chipyard" and sim in SIM_TIER else max(adapters) if adapters else "L3"
-    )
+    barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" and sim in SIM_TIER else max(adapters) if adapters else "L3"
     # subset selection (operator-side capsule dirs)
     if a.capsules.strip().lower() == "failing":
         want, _why_failing = _previously_failing()
@@ -945,8 +971,12 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         _progress_thread.start()
     try:
         completion = _streaming_completion(
-            context=context, capsules_root=caps_root, contract=contract,
-            source=sub, runs=runs_root, adapters=adapters,
+            context=context,
+            capsules_root=caps_root,
+            contract=contract,
+            source=sub,
+            runs=runs_root,
+            adapters=adapters,
         )
         model_continuations = []
         if a.model_gate_voucher:
@@ -955,14 +985,22 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
 
             if not want or set(adapters) != {"L2", "L3"}:
                 raise ValueError("model continuation requires an explicit L2/L3 model selection")
-            model_continuations = [verify(
-                path, source_digest=promotion_digest(sub.parent), capsules=want,
-                context=context, cert_tier="L3", contract=contract,
-            ) for path in a.model_gate_voucher]
+            model_continuations = [
+                verify(
+                    path,
+                    source_digest=promotion_digest(sub.parent),
+                    capsules=want,
+                    context=context,
+                    cert_tier="L3",
+                    contract=contract,
+                )
+                for path in a.model_gate_voucher
+            ]
         from .compiler_profile_runtime import selfcheck_execution
 
-        with selfcheck_execution(a.compiler_bundle_manifest, context=context, submission=sub,
-                work_root=_isodir / "profile-package-work"):
+        with selfcheck_execution(
+            a.compiler_bundle_manifest, context=context, submission=sub, work_root=_isodir / "profile-package-work"
+        ):
             _score = CG.grade(
                 str(sub),
                 capsules_root=str(caps_root),
@@ -1029,7 +1067,8 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     closed_rows = _qc._per_capsule_from_results(runs_root)
     try:
         selected = CR.discover_capsules(
-            caps_root, labels={"public", "dev"},
+            caps_root,
+            labels={"public", "dev"},
             contract=contract if contract is not None else context.repo / "merlin/contract",
         )
         original_capsules = {cap["name"]: cap for cap in selected}
@@ -1133,7 +1172,10 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         certified, screened, refused_as_required, _structural = _operator_feedback_state(
             # Under the grade's selection the barrier is the capsule's own deepest mandatory tier; one
             # that could not run has no verdict, so it is accounted as absent (never as a pass).
-            d, _original, target=_tgt, barrier_status=None if combined and bar == "unavailable" else bar,
+            d,
+            _original,
+            target=_tgt,
+            barrier_status=None if combined and bar == "unavailable" else bar,
         )
         # Under the grade's own selection a tier that could not run is not a property of the engine
         # the caller picked, so a screened row is NOT a pass: only certification passes.
@@ -1210,11 +1252,13 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         if d.get("declined"):
             row["declined"] = d["declined"]
             row["declined_note"] = (
-                "declined as required by this capsule; no native execution is claimed"
-            ) if refused_as_required else (
-                "your backend DECLINED this capsule -- it never emitted a program. "
-                "This is a coverage gap (a shape/op you do not lower), not a "
-                "numeric bug; do not debug the arithmetic."
+                ("declined as required by this capsule; no native execution is claimed")
+                if refused_as_required
+                else (
+                    "your backend DECLINED this capsule -- it never emitted a program. "
+                    "This is a coverage gap (a shape/op you do not lower), not a "
+                    "numeric bug; do not debug the arithmetic."
+                )
             )
         if not passed:
             # Only the selected barrier tier can supply this diagnostic. A lower-tier DONE log
@@ -1258,8 +1302,14 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         if a.dynamic_census:
             from .candidate_census import attach_candidate_census
 
-            attach_candidate_census(row, gen, result=d, context=context, compiler=sub,
-                                    remaining_s=max(0, census_deadline - time.monotonic()))
+            attach_candidate_census(
+                row,
+                gen,
+                result=d,
+                context=context,
+                compiler=sub,
+                remaining_s=max(0, census_deadline - time.monotonic()),
+            )
         rows.append(row)
     n_result = len(rows)
     try:
@@ -1407,8 +1457,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 if gated
                 else ""
             )
-            + selection_note(combined=combined, required=sim == REQUIRED_SIM, sim=sim,
-                             adapters=adapters, barrier_tier=barrier_tier)
+            + selection_note(
+                combined=combined, required=sim == REQUIRED_SIM, sim=sim, adapters=adapters, barrier_tier=barrier_tier
+            )
             + (
                 "Candidate whole-program rows show only submitted-artifact numeric status, "
                 "required-tier status and closed verification codes; the separate runner-owned "
@@ -1457,7 +1508,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
 
         try:
             out["offload_census"] = OC.census_from_graded_artifacts(
-                target=_tgt, capsules=selected, suite_runs=cb_root,
+                target=_tgt,
+                capsules=selected,
+                suite_runs=cb_root,
             )
         except Exception as exc:  # noqa: BLE001 -- the grade remains authoritative
             out["offload_census"] = {
