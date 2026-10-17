@@ -66,3 +66,136 @@ def test_constant_control_refuses_data_dependent_control_poison_and_budget():
     add.properties["overflowFlags"] = IntegerAttr(1, 32)
     with pytest.raises(ValueError, match="poison flags"):
         constant_control_counts(simple)
+
+
+def _tiled(rows, tile, *, inner_blocks=1, inner_extra="", step="1", width="i64"):
+    """Outer tiles over ``rows``; an inner straight-line loop runs ``min(tile, rows - i)`` trips."""
+    chain = []
+    for index in range(inner_blocks):
+        target = "^inner" if index == inner_blocks - 1 else f"^body{index + 1}"
+        args = "(%next : " + width + ")" if index == inner_blocks - 1 else ""
+        update = f"%next = llvm.add %j, %step : {width}\n" if index == inner_blocks - 1 else ""
+        chain.append(f"""
+    ^body{index}:
+      %v{index} = llvm.add %i, %j : {width}
+      {inner_extra}
+      {update}llvm.br {target}{args}""")
+    return f"""
+      %zero = llvm.mlir.constant(0) : {width}
+      %rows = llvm.mlir.constant({rows}) : {width}
+      %tile = llvm.mlir.constant({tile}) : {width}
+      %step = llvm.mlir.constant({step}) : {width}
+      llvm.br ^outer(%zero : {width})
+    ^outer(%i: {width}):
+      %more = llvm.icmp "slt" %i, %rows : {width}
+      llvm.cond_br %more, ^tile, ^done
+    ^tile:
+      %left = llvm.sub %rows, %i : {width}
+      %short = llvm.icmp "ult" %left, %tile : {width}
+      %count = llvm.select %short, %left, %tile : i1, {width}
+      llvm.br ^inner(%zero : {width})
+    ^inner(%j: {width}):
+      %again = llvm.icmp "ult" %j, %count : {width}
+      llvm.cond_br %again, ^body0, ^latch
+    {"".join(chain)}
+    ^latch:
+      %following = llvm.add %i, %tile : {width}
+      llvm.br ^outer(%following : {width})
+    ^done:
+      llvm.return
+    """
+
+
+@pytest.mark.parametrize(
+    ("rows", "tile", "inner_blocks", "step"),
+    [(37, 16, 1, "1"), (32, 16, 2, "1"), (5, 16, 1, "3"), (0, 16, 1, "1"), (40, 8, 3, "2")],
+)
+def test_summarized_remainder_loops_match_the_exact_stepped_trace(rows, tile, inner_blocks, step):
+    f = function(_tiled(rows, tile, inner_blocks=inner_blocks, step=step))
+    summarized = constant_control_counts(f)
+    stepped = constant_control_counts(f, summarize_loops=False)
+    assert summarized == stepped
+    blocks = list(f.body.blocks)
+    expected_body = sum(-(-min(tile, rows - i) // int(step)) for i in range(0, rows, tile))
+    assert all(summarized[blocks[4 + k]] == expected_body for k in range(inner_blocks))
+
+
+def test_summarized_loops_keep_the_block_budget_for_remaining_control():
+    # 64 tiles of a 100000-trip inner loop: stepping needs about 13M block visits.
+    f = function(_tiled(64 * 100000, 100000))
+    counts = constant_control_counts(f, max_blocks=1000)
+    assert counts[list(f.body.blocks)[4]] == 64 * 100000
+    with pytest.raises(ValueError, match="block budget"):
+        constant_control_counts(f, max_blocks=1000, summarize_loops=False)
+
+
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        # A body branch, a carried accumulator and an unsigned wrap are stepped exactly.
+        ('%odd = llvm.icmp "eq" %v0, %zero : i64', None),
+        (None, "carried"),
+        (None, "wrap"),
+    ],
+)
+def test_unsummarizable_loops_are_still_stepped_exactly(change, reason):
+    if reason == "carried":
+        f = function("""
+          %zero = llvm.mlir.constant(0) : i64
+          %one = llvm.mlir.constant(1) : i64
+          %five = llvm.mlir.constant(5) : i64
+          llvm.br ^loop(%zero, %zero : i64, i64)
+        ^loop(%i: i64, %sum: i64):
+          %again = llvm.icmp "ult" %i, %five : i64
+          llvm.cond_br %again, ^body, ^done
+        ^body:
+          %total = llvm.add %sum, %i : i64
+          %next = llvm.add %i, %one : i64
+          llvm.br ^loop(%next, %total : i64, i64)
+        ^done:
+          llvm.return
+        """)
+    elif reason == "wrap":
+        # i8 unsigned bound 255 with step 2 from 0: the update after 254 wraps to 0 and keeps looping.
+        f = function("""
+          %zero = llvm.mlir.constant(0) : i8
+          %two = llvm.mlir.constant(2) : i8
+          %bound = llvm.mlir.constant(-1) : i8
+          llvm.br ^loop(%zero : i8)
+        ^loop(%i: i8):
+          %again = llvm.icmp "ult" %i, %bound : i8
+          llvm.cond_br %again, ^body, ^done
+        ^body:
+          %next = llvm.add %i, %two : i8
+          llvm.br ^loop(%next : i8)
+        ^done:
+          llvm.return
+        """)
+        with pytest.raises(ValueError, match="block budget"):
+            constant_control_counts(f, max_blocks=10_000)
+        return
+    else:
+        body = _tiled(37, 16, inner_extra=change)
+        body = body.replace(
+            "llvm.br ^inner(%next : i64)", "llvm.cond_br %odd, ^inner(%next : i64), ^inner(%next : i64)"
+        )
+        f = function(body)
+    assert constant_control_counts(f) == constant_control_counts(f, summarize_loops=False)
+
+
+def test_summarized_induction_update_keeps_the_poison_refusal():
+    f = function(_tiled(37, 16))
+    update = next(op for op in f.walk() if op.name == "llvm.add" and op.results[0].name_hint == "next")
+    update.properties["overflowFlags"] = IntegerAttr(1, 32)
+    with pytest.raises(ValueError, match="poison flags"):
+        constant_control_counts(f)
+
+
+def test_inner_loop_bound_from_tensor_data_stays_unknown():
+    body = _tiled(37, 16).replace(
+        "%count = llvm.select %short, %left, %tile : i1, i64",
+        "%count = llvm.load %input : !llvm.ptr -> i64",
+    )
+    f = function(body, "%input: !llvm.ptr")
+    with pytest.raises(ValueError, match="tensor data"):
+        constant_control_counts(f)
