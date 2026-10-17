@@ -74,6 +74,7 @@ from .private_model_inputs import _tree as _verify_input_tree
 SCHEMA = "merlin.phase1.private_full_models.v1"
 RESULT_SCHEMA = "merlin.phase1.private_full_model_build_gate.v15"
 BUILD_BOARD_SCOPE = "static_memory_layout_and_host_ISA_only; no board execution"
+SOURCE_PREFLIGHT_SCOPE = "compiler-independent private inputs and source obligations only; no build or gate claim"
 TRANSPOSE_DATA_SUPPORT_SCOPE = data_movement.SCOPE
 _transpose_data_support = data_movement.prove_transpose_source
 _verify_transpose_data_support = data_movement.verify_transpose
@@ -818,6 +819,7 @@ def run(
     build_options: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
     linked_elf_admission=None,
     native_result_format_selection=None,
+    source_only: bool = False,
 ) -> dict[str, Any]:
     """Build the frozen roster, one canonical partition, or a prebuilt diagnostic.
 
@@ -827,6 +829,8 @@ def run(
     ``selected_model`` retains the complete required roster and source freeze; it
     builds all programs of one declared model and never passes the full gate.
     Separate host processes may run these partitions under one original owner.
+    ``source_only`` (no ``submission``) stops each model after the same compiler-independent
+    input checks and source obligations: an operator preflight, never a build or gate result.
     """
     from merlin.compile.baremetal_model import compile_saved_model
     from merlin.compile.model_execution_inputs import selected_firrtl
@@ -887,8 +891,10 @@ def run(
             raise ValueError("prebuilt diagnostic receipts differ from the complete selected model")
     elif prebuilt_receipts is not None:
         raise ValueError("prebuilt receipts cannot enter the canonical full-model build")
-    package = Path(submission)
-    package_digest = strict_tree_sha256(package)
+    if source_only and (diagnostic or submission is not None):
+        raise ValueError("source preflight takes no candidate compiler or prebuilt diagnostic")
+    package = None if source_only else Path(submission)
+    package_digest = None if source_only else strict_tree_sha256(package)
     base = Path(out)
     base.mkdir(mode=0o700, parents=True, exist_ok=True)
     results = []
@@ -1095,6 +1101,9 @@ def run(
             if not any(source["eligible_groups"] for source in sources.values()):
                 raise ValueError("full model has no independently eligible accelerator computation")
             item["checks"]["source"] = sources
+            if source_only:
+                item["status"] = "source_inputs_verified"
+                continue
             compiled = []
             diagnostic_receipts = {}
             for program, stage in programs:
@@ -1255,17 +1264,20 @@ def run(
             item["status"] = "diagnostic_static_checks_passed" if diagnostic else "pass"
         except Exception as exc:  # noqa: BLE001 -- one model's refusal must not hide the others
             item["reason"] = _public_failure_reason(exc)
+            if source_only and isinstance(exc, SourceAdmissionError):
+                item["operator_unresolved"] = json.loads(json.dumps(exc._private_unresolved, default=str))
     result = {
         "schema": RESULT_SCHEMA,
         "target": target,
         "private_spec_sha256": spec_digest,
-        "candidate_tree_sha256": package_digest["sha256"],
+        "candidate_tree_sha256": package_digest["sha256"] if package_digest else None,
         "required_models": list(required_models),
         "required_programs": {name: list(required_programs[name]) for name in required_models},
         "models": results,
         "passed": (
             selected_model is None
             and not diagnostic
+            and not source_only
             and bool(results)
             and all(item["status"] == "pass" for item in results)
         ),
@@ -1301,8 +1313,13 @@ def run(
             partition_passed=len(results) == 1 and results[0]["status"] == "pass",
             scope="one complete declared model, canonical source and linked-ELF evidence; full roster gate incomplete",
         )
+    if source_only:
+        verified = bool(results) and all(item["status"] == "source_inputs_verified" for item in results)
+        result.update(mode="source_preflight", source_preflight_passed=verified, scope=SOURCE_PREFLIGHT_SCOPE)
     report = (
-        base / "private_full_model_gate.json"
+        base / "private_full_model_source_preflight.json"
+        if source_only
+        else base / "private_full_model_gate.json"
         if selected_model is None
         else base / f"private_full_model_partition-{sha256(selected_model.encode()).hexdigest()}.json"
     )

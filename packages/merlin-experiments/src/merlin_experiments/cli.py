@@ -168,6 +168,11 @@ def main(argv: list[str] | None = None) -> int:
         from merlin.perf import census_cli
 
         return census_cli.main(raw[1:])
+    if raw[:1] == ["private-preflight"]:
+        # The private full-model gate's compiler-independent input checks, before a launch.
+        from .phase1.feedback import private_source_preflight
+
+        return private_source_preflight.main(raw[1:])
     if raw[:1] == ["study"]:
         # A comparison study's register beside its run matrices, and the baseline its arms are scored on.
         from merlin.benchharness import study_status
@@ -478,7 +483,10 @@ def main(argv: list[str] | None = None) -> int:
     coverage.add_argument("--spec", type=Path, required=True, help="explicit conformance requirement YAML")
     prepare = operations.add_parser("prepare")
     prepare.add_argument(
-        "--with-level", action="append", choices=("EL5", "EL6"), default=[],
+        "--with-level",
+        action="append",
+        choices=("EL5", "EL6"),
+        default=[],
         help="also prepare an optional ISA-generation or interactive Lean level; never changes existing runs",
     )
     prepare.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
@@ -492,11 +500,14 @@ def main(argv: list[str] | None = None) -> int:
     corpus_mode = prepare.add_mutually_exclusive_group()
     prepare.set_defaults(generated_only=True)
     corpus_mode.add_argument(
-        "--generated-only", action="store_true",
+        "--generated-only",
+        action="store_true",
         help="use only selected Phase-0 public capsules (default); never read the historical corpus",
     )
     corpus_mode.add_argument(
-        "--historical-overlay", dest="generated_only", action="store_false",
+        "--historical-overlay",
+        dest="generated_only",
+        action="store_false",
         help="explicitly retain a historical public corpus; held-out validation sources are refused",
     )
     prepare.add_argument(
