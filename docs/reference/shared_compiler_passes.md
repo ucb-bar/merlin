@@ -22,6 +22,10 @@ code_refs:
   - src/merlin/llvmlower/cpu_softmax.py
   - src/merlin/llvmlower/automatic_host.py
   - src/merlin/llvmlower/quant_round_check.py
+  - src/merlin/compile/scheduling/configuration.py
+  - src/merlin/transforms/row_normalization.py
+  - src/merlin/transforms/row_normalization_check.py
+  - src/merlin/llvmlower/automatic_rows.py
 ---
 
 # Shared compiler pass contracts
@@ -31,6 +35,11 @@ eligible bounded quantization arithmetic. Compact dense scheduling is a shared
 compiler entry point over the existing counted-loop kernel IR. Its encoder and
 actual-operand decoder are explicit integration inputs. It has no automatic
 interpretation of an opaque backend program.
+
+Ordinary serial host lowering also schedules eligible closed source row
+normalization islands. This source-to-source route is separate from the explicit
+hardware counted-row entry: it preserves the source's own scalar operations and
+continues through the existing CPU toolchain. See the scope below.
 
 ## Inputs and ownership
 
@@ -202,6 +211,12 @@ storage. It constructs checked physical candidates privately; storage selects a
 candidate only after allocation succeeds. Fusion allocation fallback consumes
 the same repair budget as spills and copy fallback.
 
+Selecting `configuration_adapter` inserts checked configuration cleanup after
+admission and before fusion/storage. All later candidates consume its actual
+rewritten calls. The default removes redundant pure writes; the paired control
+is `ScheduleBudgets(eliminate_configuration=False)`. Configuration, fusion and
+storage share the same current hardware identity, final emission and byte checks.
+
 Replacing an analysis also invalidates its consumers transitively, even if the
 owning IR is unchanged. Analyses produced together share invalidation: replacing
 an encoded byte image cannot leave its old size or conformance result current.
@@ -254,6 +269,49 @@ full-model target providers still need this public encoder/semantic-decoder
 boundary before the schedule pipeline can enter their ordinary model lowering.
 This entry is not evidence of that missing target integration or hardware
 execution qualification.
+
+## Redundant configuration writes
+
+`eliminate_redundant_configuration` uses existing `sched.ir.Kernel` calls and a
+selected `ConfigurationAdapter` that decodes actual operands into integer field
+reads, writes, clobbers and qualified ordering. A pure write must be independently
+qualified as an idempotent persistent-state update with no other effect. The
+existing `sets`/`assumes` annotations and instruction names alone grant no deletion.
+RTL can identify fields and widths; it does not establish this software-interface
+contract. Queue commands, pulses, status acknowledgements and fences are not pure
+configuration writes.
+
+Each invocation starts with unknown state. The first write stays. A later pure
+instruction is omitted only when every written field already has its exact value.
+A partial match retains the entire instruction. Known clobbers invalidate their
+fields; unknown operations or ordering invalidate all fields and remain in place.
+The pass neither moves instructions nor assumes persistent state between calls.
+Loops retain their existing lowering or diagnose; no dynamic expansion is used.
+
+`verify_configuration_rewrite` reconstructs omissions from actual retained calls,
+checks identical surrounding instructions/interfaces and proves the same known
+state before every retained operation and at return. It accepts no removed-call
+witness. In `compile_schedule`, the storage decoder must additionally agree that
+each pure setter has no memory or asynchronous effect. Final actual-byte decoding
+independently projects configuration effects and rejects reintroduced setup or
+altered fields. Explicit ordering requires configuration before fusion/storage,
+and repair uses the checked configured input. Completion checks rederive required
+register values after fusion, relocation and inserted spills. An exact memory
+transfer is not assumed to preserve registers.
+
+If final size checks split the program into launches, the existing `Continuation`
+contract must explicitly list every affected field in `preserved_configuration`.
+Preserving only memory spaces is insufficient. Unknown configuration effects or
+ordering refuse segmentation. Native negative controls demonstrate incorrect
+results when registers reset between otherwise memory-preserving launches.
+
+Native paired tests execute actual little-endian 32-bit-field and big-endian
+64-bit-field encodings, compare complete outputs and final register state, and
+observe commands and requested payload bytes independently. Unknown visibility,
+resets, whole-register writes, source misconfiguration, allocation fallback,
+corrupted actual output and a falsely declared pulse are covered. These tests
+qualify the shared mechanism, not a hardware adapter. No target provider currently
+supplies this new boundary automatically. No latency improvement is claimed.
 
 ## Private temporary storage
 
@@ -563,6 +621,60 @@ finite straight-line final-byte pipeline by expanding loops. Native reference
 agreement establishes the tested source algorithm, not hardware qualification,
 full-model gains, accelerator latency, or calibrated performance.
 
+## Automatic source row normalization
+
+Ordinary `lower_model`/`lower_model_file` serial CPU lowering selects
+`automatic-host-rows` by default. Disable it with the existing optional-pass
+selector or `MERLIN_AUTOMATIC_HOST_ROWS=0`. The selection report records both arms'
+identical shared source hashes, source/output byte identities and refusals.
+This pass requires no separately captured quantization policy: the original typed
+source is the numerical algorithm and the pass changes no scalar arithmetic.
+
+The matcher admits closed static unencoded f32/f64 tensor islands consisting of
+last-axis maximum, subtraction, exponential, complete sum and division, including
+checked row-scalar reshape/broadcast views. It retains original scalar regions,
+initializers, operation order and attributes. Arbitrary input masks/nonfinite
+values retain their original arithmetic. It emits complete-row tensor slices in
+one counted loop, then uses the ordinary upstream bufferization and native object
+path. It does not replace source exponentials or choose a different sum tree.
+
+Unknown effects, attributes, algorithms, layouts, escaping intermediates and
+intervening operations retain the original route. Vector/parallel/explicit
+schedules, explicit data layouts/32-bit indexing and source-bound observation/graph
+selections retain their existing route. Static code/group budgets bound growth. The default unknown-cost policy
+requires fewer logical row-state elements and preserves existing producer/consumer
+pointwise-fusion boundaries, including through views. This prevents the observed
+whole-graph regression where isolating a normalization materialized an additional
+full tensor. It is a conservative policy, not a timing or physical-allocation
+guarantee. Explicit mechanism tests may disable that cost filter.
+
+The independent checker reconstructs actual loop bounds, mixed-radix row
+coordinates, complete slices, original scalar regions and local SSA. Inverting
+the checked islands must restore the entire original module, including external
+operations, interfaces and carried state. Source admission, scheduling and
+conformance use the existing `PipelineSession` with numerical, resource and
+library identities. These are structural source checks outside the existing
+integer Lean domains; machine equivalence is not claimed.
+
+Reproduce the paired native experiment without model downloads:
+
+```sh
+python -B -m pytest merlin/tests/ir/test_row_normalization.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/source-row-test" \
+  -o junit_family=xunit1 --junitxml "$TMPDIR/source-row-pair.xml"
+```
+
+Native tests compare all output bits with the unchanged baseline and independent
+ordered arithmetic/libm references, including tails, NaNs and infinities. Complete
+QK–normalization–PV graphs additionally check recurrent state, positions and
+input preservation over three invocations. The masked producer-fusion case keeps
+its original program; the admitted unmasked case uses row scheduling. JUnit
+properties record compilation wall time, object/text bytes, requested heap payload
+and whole native host-call wall samples. Heap payload is not RSS; compile peak
+memory and transfer bytes remain unmeasured. Host-call samples include ABI overhead
+and are too few for a speedup claim. These neutral CPU graphs establish no KV-cache
+ownership, real target support or absolute accuracy for an external model.
+
 ## Existing mechanisms and remaining integration requirements
 
 | Concern | Existing mechanism | Requirement beyond the scope above |
@@ -570,7 +682,8 @@ full-model gains, accelerator latency, or calibrated performance.
 | Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line storage relocation | Target effect/rewrite adapters and ordinary lowering integration; general loop and persistent-storage allocation |
 | Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks and independent actual byte provenance | Qualified device register/transfer adapters and ordinary target integration; CPU allocation stays with the native toolchain |
 | Fusion and transfers | Readout composition admission and connected dispatch; exact private-copy forwarding; consumed total-integer elementwise physical composition with layout/numerical checks, allocation fallback and reconstructed final traffic | Floating/contraction epilogues, noncontiguous and asynchronous handoffs, and qualified full-model target integration |
-| Reductions and attention | Complete-domain counted row softmax with explicit source sum order, masks, physical intermediate allocation, emitted C and independent references; ordered source loops and complete CPU reductions | Automatic full-model source admission, qualified target hooks/final decoding, QK–softmax–PV/KV composition and broader source algorithms |
+| Reductions and attention | Complete-domain counted row softmax; automatic narrow CPU source row scheduling and native QK–softmax–PV graphs with carried state; ordered source loops and complete CPU reductions | Qualified source-to-device connection, target hooks/final decoding, device QK–softmax–PV/KV composition and broader source algorithms |
+| Configuration | Checked persistent-state cleanup through ordinary shared schedule compilation and actual final bytes; existing configuration checker/hoist primitive | Independently qualified target state decoder and ordinary model integration |
 | Final program limits | Actual decoded instruction size, branch/address checks and closed-region segmentation through declared interfaces | Independently qualified target decoder and runtime continuation integration; ordinary targets retain their existing linked-image admission |
 | Persistent state | Runtime state binding, immutable weight hashing/reuse and recurrent relinking | Qualified address windows, ownership and persistence for each device runtime |
 | Whole-model coverage | Source routing/census and compiled CPU fallback machinery | Complete realized coverage and unchanged numerical gates for each selected full model |
