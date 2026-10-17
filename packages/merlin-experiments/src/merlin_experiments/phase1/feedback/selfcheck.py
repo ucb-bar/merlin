@@ -78,6 +78,10 @@ from merlin_experiments.phase1.feedback.selfcheck_selection import (
     selection_note,
     tier_engines,
 )
+from merlin_experiments.phase1.feedback.selfcheck_selectors import (
+    _previously_failing as _previously_failing,
+)
+from merlin_experiments.phase1.feedback.selfcheck_selectors import select_capsules
 from merlin_experiments.phase1.timing import barrier_measurements
 
 
@@ -280,52 +284,6 @@ def _suite_size(capsules_root: Path) -> int:
         return len({cy.parent for cy in capsules_root.rglob("capsule.yaml")})
     except OSError:
         return 0
-
-
-def _previously_failing() -> tuple:
-    """``(set of capsule names that did not pass last time, why not)`` for ``--capsules failing``.
-
-    THE CHEAP LOOP SHOULD BE THE EASY ONE. Re-checking only what is still broken was always possible
-    -- the docstring above spells the comma-separated form -- but it required the agent to read a
-    verdict, extract the names and paste them, so the reflex was `--capsules all`. Measured on one
-    6.1 h run: 25 full sweeps, ~6 min each, while a typical edit leaves 82% of emitted programs
-    byte-identical.
-
-    Read from the LAST SELF-CHECK's own output, not from the harness verdict: this is the agent's own
-    loop, the file is one it already owns, and taking the harness's grade would make a self-check
-    depend on a grade that may be many minutes stale.
-
-    Never guesses. If no previous self-check is on disk, the answer is empty with a reason -- returning
-    "nothing is failing" would silently grade zero capsules and report success.
-    """
-    out = Path("selfcheck_out")
-    latest, newest = None, -1.0
-    try:
-        completed = [
-            Path(".qa_channel") / f"resp_{done.name[len('done_') :]}.json"
-            for done in Path(".qa_channel").glob("done_*")
-        ]
-        for cand in list(out.glob("*.json")) + [Path("selfcheck.json")] + completed:
-            if cand.is_file() and cand.stat().st_mtime > newest:
-                latest, newest = cand, cand.stat().st_mtime
-    except OSError:
-        pass
-    if latest is None:
-        return set(), "no previous self-check output was found on disk"
-    try:
-        doc = json.loads(latest.read_text())
-    except (OSError, ValueError) as exc:
-        return set(), f"the previous self-check output could not be read ({type(exc).__name__})"
-    rows = doc.get("per_capsule")
-    if not isinstance(rows, list) or not rows:
-        return set(), f"{latest} records no per-capsule rows"
-    names = {r.get("capsule") for r in rows if isinstance(r, dict) and not r.get("pass") and r.get("capsule")}
-    if not names:
-        return set(), (
-            f"every capsule in {latest} passed, so there is nothing to re-check; "
-            "use --capsules all to confirm the whole suite"
-        )
-    return names, ""
 
 
 def _target_sim_via(context: InvocationContext) -> tuple[str, str | None]:
@@ -916,21 +874,10 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     # selection and any other target's contract-derived tiers are read from the adapters.
     barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" and sim in SIM_TIER else max(adapters) if adapters else "L3"
     # subset selection (operator-side capsule dirs)
-    if a.capsules.strip().lower() == "failing":
-        want, _why_failing = _previously_failing()
-        if not want:
-            print(
-                json.dumps(
-                    {
-                        "error": "--capsules failing: " + _why_failing,
-                        "hint": "run once with --capsules all to establish what is failing",
-                    },
-                    indent=2,
-                )
-            )
-            return 2
-    else:
-        want = None if a.capsules == "all" else set(s.strip() for s in a.capsules.split(",") if s.strip())
+    selection = select_capsules(a)
+    if selection.answered is not None:
+        return selection.answered
+    want = selection.want
     import tempfile
 
     from .raw_selfcheck_evidence import create_runs_root
