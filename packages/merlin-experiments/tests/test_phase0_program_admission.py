@@ -457,3 +457,55 @@ def test_generation_removes_and_records_a_written_member_without_accelerator_pla
     # A refused screen leaves through the diagnostic path, not this one.
     assert withhold_unaccelerated("mixed", {"status": "unsupported", "placements": {}}, mixed) is None
     assert mixed.is_dir()
+
+
+@pytest.mark.parametrize("mesh_rows", [8, 16, 32])
+def test_tail_isolation_members_are_generated_with_accelerator_placement(tmp_path, mesh_rows):
+    """A ragged-K matmul under aligned M/N and a single-row GEMV with a ragged N, sized from RTL facts."""
+    from merlin_experiments.phase0.sweeps import resolve_extent
+
+    from merlin.targetgen import corpus_spec, corpus_synth
+
+    facts = {"facts": {"arrays": [{"name": "mesh", "rows": mesh_rows, "cols": mesh_rows}]}}
+    tile = corpus_spec._tile_dim("fixture", _CONTRACT, operand="int8", facts=facts)
+    assert tile == mesh_rows
+    requirement = {
+        "target": "fixture",
+        "cells": [
+            {
+                "cell": "contraction/i8/aligned",
+                "family": "contraction",
+                "dtype": "i8",
+                "alignment": "aligned",
+                "basis": "observed",
+            }
+        ],
+        "boundaries": {"extent_probes": [{"boundary": "tile_edge", "edge": tile, "points": [tile - 1, tile]}]},
+    }
+    members = {entry["name"]: entry for entry in corpus_synth.synthesize(requirement)["capsules"]}
+    binding = corpus_spec.CorpusBinding(
+        target="fixture",
+        tile_dim=tile,
+        operand_dtype="int8",
+        accum_dtype="i32",
+        integer=True,
+        tiers=["L0"],
+        compare="exact_int",
+    )
+    extents = {}
+    for name in ("SY_contraction_i8_k_tail", "SY_contraction_i8_gemv_n_tail"):
+        entry = members[name]
+        assert entry["label"] == "public" and entry["generalization"]["generalization_axis"] == "tail_isolation"
+        extents[name] = {axis: resolve_extent(entry[axis], tile) for axis in ("M", "K", "N")}
+        capsule, program = corpus_spec.build_matmul({**entry, **extents[name]}, binding)
+        directory = tmp_path / name
+        directory.mkdir()
+        (directory / "capsule.interface.mlir").write_text(program)
+        screen = program_admission.screen_written(capsule, directory, target="fixture", evidence=_evidence())
+        assert screen["status"] == "admitted", screen["reason"]
+        assert screen["placements"].get("accelerator", 0) >= 1
+        assert program_admission.accelerator_placement_refusal(screen) is None
+    k_tail = extents["SY_contraction_i8_k_tail"]
+    assert k_tail["M"] % tile == 0 and k_tail["N"] % tile == 0 and k_tail["K"] % tile != 0
+    gemv = extents["SY_contraction_i8_gemv_n_tail"]
+    assert gemv["M"] == 1 and gemv["N"] % tile != 0 and gemv["K"] % tile == 0

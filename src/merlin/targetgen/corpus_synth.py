@@ -1111,6 +1111,63 @@ def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[
     return entries, refused
 
 
+#: One ragged extent at a time, every other extent on the tile edge. The tile token resolves against the
+#: binding's edge, which the target's RTL facts derive, so no mesh dimension is spelled here.
+TAIL_ISOLATION_SHAPES = (
+    (
+        "k_tail",
+        {"M": "tile", "K": "2*tile-1", "N": "tile"},
+        "only the reduction extent is ragged: M and N sit on the tile edge while K stops one short of "
+        "two tiles, so a compiler that pads or masks only the output tile fails here alone",
+    ),
+    (
+        "gemv_n_tail",
+        {"M": 1, "K": "2*tile", "N": "2*tile-1"},
+        "a single-row matrix-vector product whose output extent stops one short of two tiles, so the "
+        "last output tile is partial while the reduction is whole",
+    ),
+)
+
+
+def _tail_isolation_entries(op: str | None, dtype: str | None, spec_doc: dict, *, emitted: set[str]) -> list[dict]:
+    """Contraction members that rag exactly one extent, on the dtype the geometry axis certifies.
+
+    `partial` rags K and N together and the geometry classes are real model shapes, so no member asks
+    for a ragged reduction under aligned M and N, or for a single-row product whose output alone is
+    ragged. Both rest on the certified aligned sibling; without one they are not emitted.
+    """
+    sibling = f"{SYNTH_PREFIX}_contraction_{dtype}_aligned"
+    if not op or not dtype or sibling not in emitted:
+        return []
+    members = []
+    for label, extents, why in TAIL_ISOLATION_SHAPES:
+        entry = {
+            "cat": "isa",
+            "kind": "isa",
+            "name": f"{SYNTH_PREFIX}_contraction_{dtype}_{label}".replace("-", "_"),
+            "op": op,
+            "operand_dtype": dtype,
+            "out": "Y0",
+            "lhs": "A0",
+            "weight": "W",
+            "source_role": SOURCE_ROLE,
+            "source_reference": f"synthesized for the tail-isolation axis: {why}",
+            "label": "public",
+            "generalization": {"generalization_axis": "tail_isolation"},
+            **extents,
+        }
+        if _writer_for(entry) is None:
+            continue
+        if _writer_for(entry) == "pytorch":
+            entry["source"] = "pytorch"
+        reason = cap_to_affordable(entry, spec_doc, extends=sibling)
+        if reason:
+            entry["source_reference"] += f". {reason}"
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        members.append(entry)
+    return members
+
+
 def _multi_block_members(output_bound: dict, op: str, dtype: str, sibling: str, spec_doc: dict) -> list[dict]:
     """Members whose output spans several blocks on BOTH parallel axes, with tails, derived from facts.
 
@@ -2276,6 +2333,10 @@ def synthesize(
             entry["source"] = "pytorch"
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
+
+    entries.extend(
+        _tail_isolation_entries(geom_op, geom_dtype, spec_doc, emitted={str(e.get("name")) for e in entries})
+    )
 
     # ---- the ACCUMULATION-DEPTH axis ----------------------------------------------------------------
     # How deep a reduction the accumulator survives. The memory-regime axis proves the operand store is

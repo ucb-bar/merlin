@@ -98,6 +98,8 @@ def test_every_required_cell_becomes_an_entry(target):
         # What the stores held before the operation, and outputs larger than one accumulator buffer.
         "residual-state axis",
         "multi-block axis",
+        # One ragged extent at a time under otherwise tile-aligned extents.
+        "tail-isolation axis",
     )
     unattributed = [e["name"] for e in other if not any(a in (e.get("source_reference") or "") for a in axes)]
     assert not unattributed, f"entries no declared axis asked for: {unattributed}"
@@ -248,6 +250,9 @@ def test_extents_are_tile_relative_not_baked_integers():
             # the unit can be asked for a batched region at all, and WHICH extent is the alignment
             # axis's question. What this test forbids is a baked INTEGER, so an absent key is skipped.
             if axis not in entry:
+                continue
+            # A single row is the same on every edge: a matrix-vector product, not a baked geometry.
+            if entry[axis] == 1:
                 continue
             assert isinstance(entry[axis], str) and "tile" in entry[axis], (
                 f"{entry['name']}.{axis} = {entry[axis]!r} is not tile-relative"
@@ -616,6 +621,24 @@ def test_declared_placement_decides_publication_not_the_name():
     kept, withheld = CS.withhold_host_placed([accelerated, forbidden, ineligible])
     assert kept == [accelerated]
     assert [row["name"] for row in withheld] == ["SY_contraction_i8_aligned", "X"]
+
+
+def test_tail_isolation_rags_one_extent_on_tile_relative_tokens():
+    out = CS.synthesize(_HOST_SPEC)
+    made = {e["name"]: e for e in out["capsules"]}
+    k_tail = made[f"{CS.SYNTH_PREFIX}_contraction_i8_k_tail"]
+    gemv = made[f"{CS.SYNTH_PREFIX}_contraction_i8_gemv_n_tail"]
+    # Spelled against the binding's tile edge, never as a resolved mesh dimension.
+    assert (k_tail["M"], k_tail["K"], k_tail["N"]) == ("tile", "2*tile-1", "tile")
+    assert (gemv["M"], gemv["K"], gemv["N"]) == (1, "2*tile", "2*tile-1")
+    for entry in (k_tail, gemv):
+        assert entry["op"] == made[f"{CS.SYNTH_PREFIX}_contraction_i8_aligned"]["op"]
+        assert entry["label"] == "public" and CS.declares_accelerator_placement(entry)
+
+
+def test_tail_isolation_needs_its_certified_sibling():
+    assert CS._tail_isolation_entries("matmul", "i8", _HOST_SPEC, emitted=set()) == []
+    assert CS._tail_isolation_entries(None, "i8", _HOST_SPEC, emitted={"SY_contraction_i8_aligned"}) == []
 
 
 def test_a_host_family_with_no_observed_dtype_is_reported_not_defaulted():
