@@ -267,7 +267,8 @@ or compiler, target runtime, correctness or phase qualification. Do not rewrite 
 
 `convergence_report.py` is a read-only operator diagnostic over one run directory (and,
 optionally, its operator directory): author blocked time by wait kind, the in-turn grade
-cycle, the self-check/grade capsule taxonomy, measured L3 cost and pool capacity. It reads
-status and timing fields only, never answer material, and refuses to write inside its inputs.
+cycle, the self-check/grade capsule taxonomy, measured L3 cost, pool capacity and per-agent
+accounting (lead and sub-agents, `telemetry/author_agents.py`). It reads status, timing,
+usage and client-invocation fields only, never answer material, and refuses to write inside its inputs.
 An absent or partially written input is reported unavailable, never as a zero. Its budget and
 verdict thresholds are published in the report; it decides no grade and gates nothing.
