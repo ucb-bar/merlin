@@ -49,6 +49,10 @@ PACKAGE_ELF_NAME = "package_kernel.elf"
 #: An oracle declares the exact executed non-ELF word stream with this suffix.
 PROGRAM_ARTIFACT_SUFFIX = ".program"
 
+#: Per-engine copies of the exact program each simulator tier executed, under its build directory.
+#: Run evidence rather than build output: the build cache neither stores nor restores this subtree.
+EXECUTED_PROGRAMS_DIR = "executed"
+
 #: Routing-plan vocabulary shared by emitters, static inspection and host grading.
 ACCELERATOR_LANE = "on_mesh"
 WHOLE_PROGRAM_COMPLETION_EVIDENCE = "whole_program_exact_completion_with_source_bound_cfg"

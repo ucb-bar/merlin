@@ -380,3 +380,44 @@ def test_finalize_writes_training_archive_for_an_incomplete_run(tmp_path, capsys
     assert {row["capsule"] for row in index["records"]} == {"PASS", "HOST_FAIL"}
     # Re-finalizing an unchanged run (an operator after a stopped supervisor) rewrites nothing.
     assert A.finalize_run(tmp_path) == status
+
+
+def test_retained_tier_programs_join_both_engines_and_enter_the_training_archive(tmp_path):
+    from merlin.targetgen import executed_program
+    from merlin.targetgen.capsule_source_identity import _capture_compiler_source, _finish_compiler_source
+
+    capsule = _capsule(tmp_path, "runs_a", "A", 100)
+    generated = capsule / "generated"
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "compiler.py").write_text("print('compiler')\n")
+    captured = _capture_compiler_source(package, generated)
+    gsim_elf, gsim_caller = (generated / "package_kernel.elf").read_bytes(), (generated / "harness.c").read_bytes()
+    (generated / "kernel.o").write_bytes(b"one kernel object")
+
+    def retain(engine, sha):
+        res = {"elf": str(generated / "package_kernel.elf"), "oracle": {"provenance": {"sha256": sha}}}
+        executed_program.retain(res, sim=engine, workdir=generated)
+
+    # The functional tier linked a console caller first; the RTL tier relinked its own afterwards.
+    (generated / "package_kernel.elf").write_bytes(b"console caller program")
+    (generated / "harness.c").write_bytes(b"console caller")
+    retain("spike", "f" * 64)
+    (generated / "package_kernel.elf").write_bytes(gsim_elf)
+    (generated / "harness.c").write_bytes(gsim_caller)
+    retain("gsim", "e" * 64)
+    result = capsule / "capsule_result.json"
+    document = json.loads(result.read_text())
+    document["tiers"]["L2"] = {"status": "pass", "engine": "spike", "sim_provenance": {"sha256": "f" * 64}}
+    document["compiler_source"] = _finish_compiler_source(captured, generated)
+    result.write_text(json.dumps(document))
+    row = A.audit(tmp_path)["records"][0]
+    assert row["candidate_sha256"] == captured["candidate_sha256"] and row["training_eligible"] is True
+    assert row["executions"]["L2"]["source"] == row["executions"]["L3"]["source"] == "capsule_result"
+    assert row["join"]["same_elf"] is False and row["join"]["same_kernel_object"] is True
+    assert row["join"]["spike_elf_sha256"] == hashlib.sha256(b"console caller program").hexdigest()
+    assert row["artifacts"]["L2_executed_elf"]["sha256"] == row["join"]["spike_elf_sha256"]
+    assert row["artifacts"]["L3_executed_elf"]["sha256"] == row["elf_sha256"]
+    with tarfile.open(A.training_archive(tmp_path, tmp_path / "training.tar")["archive"]) as tar:
+        member = tar.extractfile("run/" + row["artifacts"]["L2_executed_elf"]["path"])
+        assert member.read() == b"console caller program"

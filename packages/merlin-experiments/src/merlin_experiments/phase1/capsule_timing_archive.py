@@ -167,6 +167,37 @@ def _members(entries, generated: Path) -> dict[str, str]:
     return members
 
 
+def _relative_parts(value) -> tuple[str, ...]:
+    """A recorded path inside the capsule's build directory, as safe components."""
+    parts = PurePosixPath(value).parts if isinstance(value, str) and value else ()
+    if not parts or PurePosixPath(value).is_absolute() or any(part in {"", ".", ".."} for part in parts):
+        raise TimingArchiveError(f"executed program path escapes its capsule: {value!r}")
+    return parts
+
+
+def _retained_execution(records, engine_sha256):
+    """The capsule result's own record of what this engine binary executed (the latest such run)."""
+    if not _sha256(engine_sha256) or not isinstance(records, list):
+        return None
+    runs = [
+        row
+        for row in records
+        if isinstance(row, dict) and row.get("engine_sha256") == engine_sha256 and row.get("status") == "retained"
+    ]
+    if not runs:
+        return None
+    row = runs[-1]
+    return {
+        "source": "capsule_result",
+        "engine_sha256": engine_sha256,
+        "runs": len(runs),
+        "elf_sha256": (row.get("elf") or {}).get("sha256"),
+        "kernel_object_sha256": (row.get("kernel_object") or {}).get("sha256"),
+        "harness_sha256": (row.get("harness") or {}).get("sha256"),
+        "retained": {role: row[role] for role in ("elf", "harness") if isinstance(row.get(role), dict)},
+    }
+
+
 def _recovered_execution(records: list[dict], generated: Path, engine_sha256, elf_name: str, kernel_name: str):
     """What one engine binary executed in this capsule, from the build/run process records.
 
@@ -285,13 +316,22 @@ def _row(root: Path, path: Path, area: str, visibility: str) -> dict:
         }.items()
     }
     records = _invocations(generated) if (generated / "invocations").is_dir() else []
+    retained = ((document.get("compiler_source") or {}).get("executed_programs")) or []
     executions = {}
     for name in ("L2", "L3"):
         if isinstance(tiers.get(name), dict) and tiers[name].get("measured_now") is not False:
             engine = (tiers[name].get("sim_provenance") or {}).get("sha256")
-            executed = _recovered_execution(records, generated, engine, "package_kernel.elf", kernel_name)
+            executed = _retained_execution(retained, engine) or _recovered_execution(
+                records, generated, engine, "package_kernel.elf", kernel_name
+            )
             if executed is not None:
                 executions[name] = executed
+                for role, entry in (executed.get("retained") or {}).items():
+                    # The tier's own copy, evidence only while it still holds the recorded bytes.
+                    observed = artifact(generated.joinpath(*_relative_parts(entry.get("path"))))
+                    artifacts[f"{name}_executed_{role}"] = (
+                        observed if observed and observed["sha256"] == entry.get("sha256") else None
+                    )
     elf_ref, harness_ref = artifacts["elf"], artifacts["harness"]
     harness = generated / "harness.c"
     scope_matches = _kernel_scopes(harness.read_text(encoding="utf-8")) if harness_ref else []

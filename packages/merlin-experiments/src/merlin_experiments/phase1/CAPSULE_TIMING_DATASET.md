@@ -96,6 +96,21 @@ source before lowering and afterward and binds the emitted ELF, harness, input
 interface and command buffer. The archive verifies this retained source and its
 artifact hashes; it never infers source identity from a mutable submission path.
 
+Spike reads a capsule's outputs from its console and gSIM from a memory dump, so
+the two tiers link different callers around the same kernel object into one
+`generated/` directory, and the later link overwrites the earlier ELF. Every
+completed simulator run therefore copies the exact ELF and caller it executed to
+`generated/executed/<engine>/<elf-sha256>/` with an `executed_program.json`
+record (engine binary digest, ELF, caller and kernel-object digests). The
+receipt's `executed_programs` lists this invocation's records in `capsule_result.json`
+(an earlier invocation's copies are removed when the receipt is captured), and the
+build cache never stores this subtree. The audit joins each tier to the record
+whose engine digest is that tier's simulator binary and indexes the copies as
+`L2_executed_elf`, `L2_executed_harness`, `L3_executed_elf` and
+`L3_executed_harness`, so the training subset carries the Spike-executed bytes
+beside the gSIM-labelled ones. Older runs fall back to the retained process
+records, which identify both programs by digest but kept only the last one's bytes.
+
 A carried simulator certificate is labelled `measured_now: false`, retains its
 original evidence reference and contributes to `gsim_reused_records`. It is not
 a new timing observation. If strict training export is incomplete, finalization
@@ -126,7 +141,7 @@ paid executions:
 | `elf`, `elf_sha256`, `harness_sha256` | Exact linked program and generated caller identities |
 | `artifacts` | Run-relative path, SHA256 and byte count for ELF, caller, kernel object, input interface, command buffer, numeric report, static instruction trace, and both console logs when present |
 | `sim_provenance`, `derived_from_rtl`, `cycle_accurate`, `timing` | Simulator binary/provenance, L3 evidence class and host wall durations |
-| `executions` | Per tier (`L2`, `L3`): the ELF, caller and kernel-object digests that tier's simulator binary executed, recovered from the capsule's retained process records |
+| `executions` | Per tier (`L2`, `L3`): the ELF, caller and kernel-object digests that tier's simulator binary executed, from the result's `executed_programs` record (`source: capsule_result`, with the retained copies) or else recovered from the capsule's retained process records (`source: invocation_records`) |
 | `join` | Pairing keys: gSIM and Spike ELF digests, their kernel objects, whether they are the same bytes, the timing selection, a proposed source group (capsule plus its frozen input interface) and visibility |
 | `training_eligible`, `training_exclusions` | The per-record verdict above and every reason it failed |
 
