@@ -93,6 +93,14 @@ def _spike_extension(args: argparse.Namespace) -> int:
     return 0
 
 
+def _unit_correspondence(args: argparse.Namespace) -> int:
+    """Compare one accelerator unit's elaborated structure across two configurations' facts."""
+    from .rtl import unit_correspondence
+
+    argv = ["--target-facts", args.target_facts, "--simulation-facts", args.simulation_facts, "--out", args.out]
+    return unit_correspondence.main(argv + (["--facts-out", args.facts_out] if args.facts_out else []))
+
+
 def _rtl_source_audit(args: argparse.Namespace) -> int:
     """Compare selected source ports with extracted facts and authored audit questions."""
     from .rtl import source_audit
@@ -619,6 +627,13 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--hardware-spec", required=True)
     audit.add_argument("--output", required=True)
     audit.set_defaults(func=_rtl_source_audit)
+
+    unit = sub.add_parser("unit-correspondence", help="compare an accelerator unit across two configurations")
+    unit.add_argument("--target-facts", required=True, help="facts extracted from the chosen target bundle")
+    unit.add_argument("--simulation-facts", required=True, help="facts extracted from the simulation bundle")
+    unit.add_argument("--out", required=True, help="fresh correspondence record path")
+    unit.add_argument("--facts-out", help="optional fresh copy of --target-facts with the record attached")
+    unit.set_defaults(func=_unit_correspondence)
 
     counter = sub.add_parser("counter-source-observation", help="check complete source-local counter/state rows")
     counter.add_argument("--source", required=True, help="exact selected HW MLIR source")
