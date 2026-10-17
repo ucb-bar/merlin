@@ -54,7 +54,9 @@ def _public_rtl_board(selected, private_arena_mb, *, descriptor, target):
 
     Private whole models may use a larger functional Spike memory span. Public
     host leaves need an ELF that can execute on the selected RTL board as well.
-    The separate private build selection is never rewritten here.
+    The separate private build selection is never rewritten here. An explicit
+    operator board selection may choose another catalog entry only if its exact
+    RTL configuration and DTS still match the protected native facts.
     """
     from merlin.runtime.boards import load_boards
     from merlin.targetgen.owned_host_model_execution import _selected_facts
@@ -68,7 +70,8 @@ def _public_rtl_board(selected, private_arena_mb, *, descriptor, target):
         hashlib.sha256(catalog.read_bytes()).hexdigest() != selected["board_catalog"]["sha256"]
     ):
         raise ValueError("public host board catalog differs from the frozen private input")
-    board = load_boards(catalog).get(experiment.host_board)
+    board_name = os.environ.get("MERLIN_PHASE1_PUBLIC_HOST_BOARD") or experiment.host_board
+    board = load_boards(catalog).get(board_name)
     facts = _selected_facts(selected["rtl_facts"]["path"], target=target)
     if (
         board is None or board.target != target or board.rtl_sim_config != facts["config"]
@@ -81,7 +84,7 @@ def _public_rtl_board(selected, private_arena_mb, *, descriptor, target):
     arena_ceiling_mb = (board.dram_bytes - board.code_reserve) // (2 * 1024 * 1024)
     if arena_ceiling_mb < 1:
         raise ValueError("selected RTL board has no bounded public host arena")
-    selected["board"] = experiment.host_board
+    selected["board"] = board_name
     selected["arena_mb"] = min(private_arena_mb, arena_ceiling_mb)
 
 

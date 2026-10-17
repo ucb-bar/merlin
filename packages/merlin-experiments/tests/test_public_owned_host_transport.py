@@ -150,3 +150,37 @@ def test_host_only_inputs_do_not_require_accelerator_instruction_declaration(fac
         selected_facts=public, selected_facts_sha256=hashlib.sha256(public.read_bytes()).hexdigest())
     projected = json.loads(Path(record['path']).read_text())
     assert set(projected) == {'board_catalog', 'dts', 'rtl_facts', 'board', 'arena_mb'}
+
+
+@pytest.mark.parametrize('override,passes', [(None, False), ('selected_native', True), ('wrong', False)])
+def test_explicit_public_board_still_requires_exact_native_config_and_dts(tmp_path, monkeypatch, override, passes):
+    from types import SimpleNamespace
+
+    from merlin.runtime import boards
+    from merlin.targetgen import owned_host_model_execution as execution
+    from merlin.targetgen import target_experiment
+
+    catalog = tmp_path / 'catalog.yaml'
+    catalog.write_text('fixture catalog')
+    experiment = SimpleNamespace(target='fixture', host_board='legacy', selected_board_catalog=lambda: catalog)
+    monkeypatch.setattr(target_experiment, 'load_target_experiment', lambda path: experiment)
+    matching = SimpleNamespace(target='fixture', rtl_sim_config='current', host_dts_sha256='b' * 64,
+        code_reserve=64 << 20, dram_bytes=256 << 20)
+    wrong = SimpleNamespace(**{**vars(matching), 'rtl_sim_config': 'other'})
+    monkeypatch.setattr(boards, 'load_boards', lambda path: {'legacy': wrong, 'wrong': wrong,
+                                                          'selected_native': matching})
+    monkeypatch.setattr(execution, '_selected_facts', lambda path, **kwargs: {'config': 'current'})
+    monkeypatch.delenv('MERLIN_PHASE1_PUBLIC_HOST_BOARD', raising=False)
+    if override:
+        monkeypatch.setenv('MERLIN_PHASE1_PUBLIC_HOST_BOARD', override)
+    selected = {'board_catalog': {'sha256': hashlib.sha256(catalog.read_bytes()).hexdigest()},
+        'dts': {'sha256': 'b' * 64}, 'rtl_facts': {'path': 'fixture'}, 'board': 'private'}
+    if passes:
+        selection._public_rtl_board(selected, 128, descriptor=tmp_path/'descriptor', target='fixture')
+        assert selected['board'] == 'selected_native' and selected['arena_mb'] == 96
+        selected['dts']['sha256'] = 'c' * 64
+        with pytest.raises(ValueError, match='different configurations'):
+            selection._public_rtl_board(selected, 128, descriptor=tmp_path/'descriptor', target='fixture')
+    else:
+        with pytest.raises(ValueError, match='different configurations'):
+            selection._public_rtl_board(selected, 128, descriptor=tmp_path/'descriptor', target='fixture')
