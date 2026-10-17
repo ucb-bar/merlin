@@ -587,7 +587,9 @@ initialized from `tensor.empty` for exactly this reason. We handle it two ways:
 poison results. The separate definedness analysis above covers its stated initial fragment;
 value-dependent-site enumeration remains unimplemented. A verified support receipt or refinement
 claim alone does not establish defined source results. The overall chain verdict requires a
-separate source-definedness proof, and remains abstracted for the new dequantization source family.
+separate source-definedness proof. `Check/DefinedDequant.lean` now supplies that proof for the
+locked signed-i8/i32/f32 per-tensor and per-channel source contract on initialized inputs, including
+an explicit axis-bounds obligation. Other quantization forms remain unsupported.
 
 ### 4.6 Argument and result maps
 
@@ -760,8 +762,10 @@ counterexample. Other datatype and precision combinations remain outside this lo
 **Narrow whole-pass milestone.** Authoritative tests now export real preprocessing boundaries
 with the full signed-i8 bounds and `input_dtype = "i8"` metadata, check every stage and source
 support, bind the upstream handoff, and replay the receipts into a strict `chain_refines` claim
-reported as `refinement_verdict`. Overall verification remains abstracted because the separate
-source-definedness checker does not yet cover the dequantization source operations.
+reported as `refinement_verdict`. A separate dequantization definedness proof establishes successful,
+nonpoison source results on initialized inputs for every parametric float model. Replaying its
+receipt gives an overall verified chain for this narrow contract; omitting that receipt retains an
+abstracted overall verdict. Definedness does not establish IEEE fidelity or producer binding.
 Changing emitted subtraction to addition after verification invalidates the chain. Additional
 checks cover multiple dequantization sites, reversed returned-result order, rank-zero tensors,
 empty tensors and nonzero channel axes. This is verification relative to the proposed source

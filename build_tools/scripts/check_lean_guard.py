@@ -72,6 +72,8 @@ PINNED = {
     "MerlinVerify.Rules.DequantSource.generic_result_sound": "MerlinVerify.Rules.DequantSource",
     "MerlinVerify.Rules.DequantSite.check_sound": "MerlinVerify.Rules.DequantSite",
     "MerlinVerify.Check.dequantRule_sound": "MerlinVerify.Check.RulesDequant",
+    "MerlinVerify.Check.Definedness.dequant_result_defined": "MerlinVerify.Check.DefinedDequant",
+    "MerlinVerify.Check.Definedness.dequantDefinedRule_sound": "MerlinVerify.Check.DefinedDequant",
 }
 
 

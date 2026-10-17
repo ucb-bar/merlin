@@ -1,5 +1,7 @@
 /- Proved definedness rules for structured tensor programs and the assembled checker. -/
 import MerlinVerify.Check.DefinedLoops
+import MerlinVerify.Check.DefinedComposition
+import MerlinVerify.Check.DefinedDequant
 import MerlinVerify.Rules.Generalize
 
 namespace MerlinVerify.Check.Definedness
@@ -320,7 +322,7 @@ theorem mapDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
     · cases h
   · cases h
 
-def book (ib : Nat) : Book opSem ib where
+def structuredBook (ib : Nat) : Book opSem ib where
   rule Γ op fs := match (leafBook ib).rule Γ op fs with
     | some rs => some rs
     | none => [fillDefinedRule ib, genericDefinedRule ib, overwriteDefinedRule ib,
@@ -338,6 +340,10 @@ def book (ib : Nat) : Book opSem ib where
       · exact overwriteDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact contractionDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact mapDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
+
+/-- Independent families compose through their totality proofs. The structured family retains
+its existing behavior; dequantization adds source-definedness on its explicitly checked domain. -/
+def book (ib : Nat) : Book opSem ib := (structuredBook ib).orElse (dequantBook ib)
 
 /-- Acceptance proves successful, nonpoison results for every typed, nonpoison input. -/
 theorem definedCheck_sound {ib : Nat} {m : Module} {f : String} {argTys resTys : List VTy}

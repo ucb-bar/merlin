@@ -34,7 +34,10 @@ PyTorch v2.10.0 for signed-i8 input, i32 zero point and f32 scale/result, includ
 coordinates and poison propagation. Its theorems add no axioms or float algebra laws.
 `Sem/Ops/Dequant.lean` dispatches that proposed source contract only for checked tensor types,
 shapes and metadata. The source support rule proves non-stuck evaluation on typed inputs, and
-the registered C1 site rule connects accepted target loops to it. Such receipts prove refinement
-relative to this model; they do not establish that the model is the captured producer's meaning.
+the registered C1 site rule connects accepted target loops to it. A separate definedness rule
+proves successful, nonpoison results on typed, initialized inputs, with an explicit parameter-axis
+check. Definedness receipts compose with the refinement chain to retain that input domain.
+Such receipts prove refinement relative to this model; they do not establish that the model is
+the captured producer's meaning.
 Human specification review and exact capture-producer/version binding remain required before
 paper qualification (T3). Unsupported granularities, types and attributes remain refused.

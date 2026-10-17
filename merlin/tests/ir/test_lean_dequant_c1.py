@@ -173,13 +173,14 @@ def test_capture_storage_dtype_is_checked(tmp_path, lean_tools, dtype, supported
 
 
 @pytest.mark.parametrize("kind", ["per_tensor", "per_channel"])
-def test_real_preprocessing_receipts_compose(tmp_path, monkeypatch, lean_tools, kind):
+@pytest.mark.parametrize("with_definedness", [False, True])
+def test_real_preprocessing_receipts_compose(tmp_path, monkeypatch, lean_tools, kind, with_definedness):
     import jsonschema
     from xdsl.dialects.builtin import IntegerAttr, StringAttr, i64
 
     from merlin.llvmlower.passes_xdsl import preprocess_text
     from merlin.verify.lean import stages
-    from merlin.verify.lean.check import check_stage, check_support, compose_chain
+    from merlin.verify.lean.check import check_definedness, check_stage, check_support, compose_chain
 
     schema_root = repo_root() / "merlin" / "contract" / "schemas"
     receipt_schema = json.loads((schema_root / "lean_receipt.schema.json").read_text())
@@ -201,6 +202,12 @@ def test_real_preprocessing_receipts_compose(tmp_path, monkeypatch, lean_tools, 
     capture = recorded[0] / "before.mlir"
     support = check_support(capture, "forward", tmp_path / "support", m2m_python=lean_tools.m2m_python)
     assert support["verdict"] == "verified", support.get("reason")
+    definedness = None
+    if with_definedness:
+        receipt = check_definedness(capture, "forward", tmp_path / "defined", m2m_python=lean_tools.m2m_python)
+        jsonschema.validate(receipt, receipt_schema)
+        assert receipt["verdict"] == "verified", receipt.get("reason")
+        definedness = tmp_path / "defined" / "receipt.json"
     handoff = tmp_path / "handoff.mlir"
     handoff.write_text(lowered_text)
     stages.record_handoff(handoff)
@@ -211,12 +218,13 @@ def test_real_preprocessing_receipts_compose(tmp_path, monkeypatch, lean_tools, 
         tmp_path / "chain.json",
         handoff=tmp_path / "stages" / "handoff.json",
         m2m_python=lean_tools.m2m_python,
+        definedness=definedness,
     )
     jsonschema.validate(chain, chain_schema)
     assert chain["refinement_verdict"] == "verified", chain.get("reason")
     assert chain["refinement_theorem"] == "MerlinVerify.Check.chain_refines"
-    assert chain["verdict"] == "abstracted"
-    assert chain["source_definedness"]["verdict"] == "unmeasured"
+    assert chain["verdict"] == ("verified" if with_definedness else "abstracted"), chain.get("reason")
+    assert chain["source_definedness"]["verdict"] == ("verified" if with_definedness else "unmeasured")
     assert chain["replayed"] is True
     assert chain["chained"] is True
     # A previously verified lowering is not reusable after its emitted arithmetic changes.

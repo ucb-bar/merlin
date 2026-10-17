@@ -27,6 +27,8 @@
   "schemas/lean_ir.schema.json": "1c4c73ed6f824b2d19dfaf4b3edb381ec156c8612d03f6877267478bc84a9644",
   "schemas/lean_receipt.schema.json": "e224d00164799fd9e30e5ecd4c8483e7ae1f31bd4cf15cb650a5d9917664b69f",
   "statement:MerlinVerify.Check.Definedness.definedCheck_sound": "089f43188f28b3dc3d37003cc306a87ef162dd31823a365d71bd72f941ea2e90",
+  "statement:MerlinVerify.Check.Definedness.dequantDefinedRule_sound": "43f963aaa9a8b66e88036ee95255b07f257627604712bab4a77f723302067f55",
+  "statement:MerlinVerify.Check.Definedness.dequant_result_defined": "cf2a729aff465731dd3667f7bbe47bfa01b2477ea88b3758811f6b552a12744a",
   "statement:MerlinVerify.Check.TypedC1.check_sound": "c46d9758bbcd4b5acf6421439862028848fed51b0a1fccfb25c432a7fe8b9eaa",
   "statement:MerlinVerify.Check.TypedModule.check_sound": "63eb2326c7572f01af645ed755030efbefd0a4093c0d5e757bf8f38c2adb4e3e",
   "statement:MerlinVerify.Check.c1Check_sound": "62ae1580fe183e4c72ea3ce7ec32eec663fda2693cfc4ec95002dd9e546274ab",
