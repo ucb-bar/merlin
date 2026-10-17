@@ -649,24 +649,32 @@ values retain their original arithmetic. It emits complete-row tensor slices in
 one counted loop, then uses the ordinary upstream bufferization and native object
 path. It does not replace source exponentials or choose a different sum tree.
 
-An adjacent closed same-shape add/subtract/multiply/divide prefix can join the
-island, including scalar tensor operands. The emitted loop slices every actual
-input frontier and replays those original scalar regions before normalization.
-Shared prefix results, unknown effects and unsupported broadcasts retain the
-original route. This avoids introducing a full-tensor boundary between a mask or
-scale and its normalization. It does not yet absorb broadcast masks with a
-different row shape, as found in the preserved larger-model source.
+An adjacent closed add/subtract/multiply/divide prefix can join the island,
+including scalar operands and statically projected singleton broadcasts. The
+pass derives each actual input slice from the original typed indexing map,
+preserving batch/head/row coordinates and complete columns. Permutations,
+repeated axes, nonprojection maps and inconsistent uses remain unsupported.
+Scalar splats between a producer's destination and body can join the island when
+they have no external observer. Checked identity readouts after normalization can
+also join it. This avoids introducing a full-tensor boundary around masks/scales
+or leaving a redundant source copy between normalization and its consumer.
 
 Unknown effects, attributes, algorithms, layouts, escaping intermediates and
 intervening operations retain the original route. Vector/parallel/explicit
-schedules, explicit data layouts/32-bit indexing and source-bound observation/graph
+schedules, 32-bit indexing, layouts without a selected index width and source-bound observation/graph
 selections retain their existing route. Static code/group budgets bound growth.
 The default unknown-cost policy
 requires fewer logical row-state elements and preserves existing producer/consumer
 pointwise-fusion boundaries, including through views. This prevents the observed
 whole-graph regression where isolating a normalization materialized an additional
 full tensor. It is a conservative policy, not a timing or physical-allocation
-guarantee. Explicit mechanism tests may disable that cost filter.
+guarantee. Typed ordered multiply/add contractions are recognized as unchanged
+boundaries, including through views; their reduction bodies are never moved into
+normalization. Other pointwise consumers remain a conservative barrier.
+Explicit mechanism tests may disable that cost filter. Selected 64-bit layouts
+use the same route, with layout identity and index width bound into the source
+analysis context. A native test obtains its layout from the actual selected
+compiler, rather than embedding a target layout constant.
 
 The independent checker reconstructs actual loop bounds, mixed-radix row
 coordinates, complete slices, original scalar regions and local SSA. Inverting
@@ -687,8 +695,9 @@ python -B -m pytest merlin/tests/ir/test_row_normalization.py \
 Native tests compare all output bits with the unchanged baseline and independent
 ordered arithmetic/libm references, including tails, NaNs and infinities. Complete
 QK–normalization–PV graphs additionally check recurrent state, positions and
-input preservation over three invocations, with and without same-shape masks and
-scalar scaling. In these neutral examples, both masked and unmasked forms reduce
+input preservation over three invocations, with projected masks, scalar scaling,
+generic contraction bodies and identity readouts. In these neutral examples,
+both masked and unmasked forms reduce
 native text size. The unmasked case reduces requested temporary heap, while the
 masked case adds one row of scratch despite reducing logical row-scalar state.
 This observed whole-graph tradeoff is not a memory or latency improvement claim.

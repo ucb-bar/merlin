@@ -287,7 +287,7 @@ void reset_observer(void){if(live)abort();peak=total=calls=0;}
 """
 
 
-def _compile_ordinary(tmp_path, original, enabled, monkeypatch):
+def _compile_ordinary(tmp_path, original, enabled, monkeypatch, **lowering_options):
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.abi import HostModel
     from merlin.llvmlower.codegen import mlir_runtime_c
@@ -311,7 +311,7 @@ def _compile_ordinary(tmp_path, original, enabled, monkeypatch):
     monkeypatch.setenv("MERLIN_AUTOMATIC_HOST_NUMERICS", "1")
     monkeypatch.setenv("MERLIN_AUTOMATIC_HOST_ROWS", "1" if enabled else "0")
     prepared = prepare_automatic_host(source, tmp_path / "prepare", policy_path=policy)
-    lowered = lower_model_file(prepared, tmp_path / "lower", targets=(), textual=True)
+    lowered = lower_model_file(prepared, tmp_path / "lower", targets=(), textual=True, **lowering_options)
     report = lowered.stats["automatic_host_rows"]
     identity = hashlib.sha256(lowered.ll_path.read_bytes()).hexdigest()[:16]
     observer = tmp_path / "observe.c"
@@ -440,10 +440,27 @@ def test_native_complete_outputs_and_realized_allocation(tmp_path, monkeypatch, 
     assert metrics[1]["peak"] < metrics[0]["peak"]
 
 
-def _attention_module(rows=128, columns=19, head=7, width=5, *, masked=True, scale=False):
+def _attention_module(
+    rows=128,
+    columns=19,
+    head=7,
+    width=5,
+    *,
+    masked=True,
+    scale=False,
+    broadcast_mask=False,
+    generic_contractions=False,
+    identity_readout=False,
+):
     types = [
         builtin.TensorType(builtin.f32, shape)
-        for shape in ((rows, head), (head, columns), (columns, width), (rows, columns), (rows, width))
+        for shape in (
+            (rows, head),
+            (head, columns),
+            (columns, width),
+            (1 if broadcast_mask else rows, columns),
+            (rows, width),
+        )
     ]
     position_type = builtin.TensorType(builtin.i32, (1,))
     body = Block(arg_types=[*types, position_type])
@@ -457,7 +474,33 @@ def _attention_module(rows=128, columns=19, head=7, width=5, *, masked=True, sca
         typ = builtin.TensorType(builtin.f32, shape)
         zero = emit(arith.ConstantOp(builtin.FloatAttr(0.0, builtin.f32)))
         initial = emit(tensor.SplatOp(zero, (), typ))
-        return emit(L.MatmulOp((a, b), (initial,), (typ,)))
+        if not generic_contractions:
+            return emit(L.MatmulOp((a, b), (initial,), (typ,)))
+        block = Block(arg_types=[builtin.f32] * 3)
+        product = arith.MulfOp(*block.args[:2])
+        added = arith.AddfOp(block.args[2], product.result)
+        block.add_ops((product, added, L.YieldOp(added.result)))
+        maps = _maps(
+            AffineMap(3, 0, (AffineDimExpr(0), AffineDimExpr(2))),
+            AffineMap(3, 0, (AffineDimExpr(2), AffineDimExpr(1))),
+            AffineMap(3, 0, (AffineDimExpr(0), AffineDimExpr(1))),
+        )
+        return emit(
+            L.GenericOp(
+                (a, b),
+                (initial,),
+                Region(block),
+                maps,
+                builtin.ArrayAttr(
+                    [
+                        L.IteratorTypeAttr(L.IteratorType.PARALLEL),
+                        L.IteratorTypeAttr(L.IteratorType.PARALLEL),
+                        L.IteratorTypeAttr(L.IteratorType.REDUCTION),
+                    ]
+                ),
+                (typ,),
+            )
+        )
 
     def add(a, b):
         typ = a.type
@@ -468,13 +511,20 @@ def _attention_module(rows=128, columns=19, head=7, width=5, *, masked=True, sca
             arith.AddfOp(*block.args[:2]) if typ.get_element_type() == builtin.f32 else arith.AddiOp(*block.args[:2])
         )
         block.add_ops((added, L.YieldOp(added.result)))
-        return emit(_generic((a, b), empty, block, (AffineMap.identity(rank),) * 3))
+        bmap = AffineMap(
+            rank,
+            0,
+            tuple(AffineConstantExpr(0) if n == 1 else AffineDimExpr(i) for i, n in enumerate(b.type.get_shape())),
+        )
+        return emit(_generic((a, b), empty, block, (AffineMap.identity(rank), bmap, AffineMap.identity(rank))))
 
     scores = matmul(q, key, (rows, columns))
     if scale:
+        # Captured producers may place a scalar splat between their empty
+        # destination and the pointwise operation. It is part of the island.
+        empty = emit(tensor.EmptyOp((), scores.type))
         scalar = emit(arith.ConstantOp(builtin.FloatAttr(0.5, builtin.f32)))
         scalar = emit(tensor.SplatOp(scalar, (), builtin.TensorType(builtin.f32, ())))
-        empty = emit(tensor.EmptyOp((), scores.type))
         local = Block(arg_types=[builtin.f32] * 3)
         product = arith.MulfOp(*local.args[:2])
         local.add_ops((product, L.YieldOp(product.result)))
@@ -486,6 +536,11 @@ def _attention_module(rows=128, columns=19, head=7, width=5, *, masked=True, sca
     admitted_scores = add(scores, mask) if masked else scores
     ops, normalized = _normalization(admitted_scores)
     body.add_ops(ops)
+    if identity_readout:
+        empty = emit(tensor.EmptyOp((), normalized.type))
+        local = Block(arg_types=[builtin.f32] * 2)
+        local.add_op(L.YieldOp(local.args[0]))
+        normalized = emit(_generic((normalized,), empty, local, (AffineMap.identity(2),) * 2))
     output = matmul(normalized, value, (rows, width))
     carried = add(output, state)
     one = emit(arith.ConstantOp.from_int_and_width(1, builtin.i32))
@@ -499,9 +554,23 @@ def _attention_module(rows=128, columns=19, head=7, width=5, *, masked=True, sca
     return module
 
 
-@pytest.mark.parametrize("masked,scale", [(True, False), (False, False), (True, True)])
-def test_ordinary_complete_attention_graph_and_carried_state(tmp_path, monkeypatch, record_property, masked, scale):
-    original = _attention_module(masked=masked, scale=scale)
+@pytest.mark.parametrize(
+    "masked,scale,broadcast,generic,identity",
+    [
+        (True, False, False, False, False),
+        (False, False, False, False, False),
+        (True, True, False, False, False),
+        (True, True, True, False, False),
+        (True, True, True, True, False),
+        (True, True, True, True, True),
+    ],
+)
+def test_ordinary_complete_attention_graph_and_carried_state(
+    tmp_path, monkeypatch, record_property, masked, scale, broadcast, generic, identity
+):
+    original = _attention_module(
+        masked=masked, scale=scale, broadcast_mask=broadcast, generic_contractions=generic, identity_readout=identity
+    )
     arms = []
     for label, enabled in (("baseline", False), ("optimized", True)):
         directory = tmp_path / label
@@ -512,6 +581,8 @@ def test_ordinary_complete_attention_graph_and_carried_state(tmp_path, monkeypat
     rng = np.random.default_rng(17)
     q, key, value = [rng.normal(0, 0.5, shape).astype("f4") for shape in ((128, 7), (7, 19), (19, 5))]
     mask = np.where(np.arange(19)[None, :] <= np.arange(128)[:, None] % 19, np.float32(0), np.float32(-np.inf))
+    if broadcast:
+        mask = mask[7:8].copy()
 
     def ordered_product(a, b):
         result = np.zeros((a.shape[0], b.shape[1]), dtype="f4")
@@ -591,5 +662,149 @@ def test_pointwise_prefix_frontier_and_source_body_are_checked(fault):
     else:
         product = next(o for o in loop.walk() if isinstance(o, arith.MulfOp))
         Rewriter.replace_op(product, arith.AddfOp(*product.operands))
+    with pytest.raises(ValueError, match="conformance"):
+        verify_row_normalizations(original, modified, (record,))
+
+
+def _broadcast_module(shape, mask_shape, dtype):
+    typ, mask_type = (builtin.TensorType(dtype, s) for s in (shape, mask_shape))
+    rank = len(shape)
+    body = Block(arg_types=[typ, mask_type])
+    empty = tensor.EmptyOp((), typ)
+    local = Block(arg_types=[dtype] * 3)
+    add = arith.AddfOp(*local.args[:2])
+    local.add_ops((add, L.YieldOp(add.result)))
+    mapping = AffineMap(
+        rank,
+        0,
+        tuple(
+            AffineConstantExpr(0) if n == 1 else AffineDimExpr(i + rank - len(mask_shape))
+            for i, n in enumerate(mask_shape)
+        ),
+    )
+    prefix = _generic(body.args, empty.tensor, local, (AffineMap.identity(rank), mapping, AffineMap.identity(rank)))
+    ops, result = _normalization(prefix.results[0])
+    body.add_ops((empty, prefix, *ops, func.ReturnOp(result)))
+    original = builtin.ModuleOp([func.FuncOp("forward", ([typ, mask_type], [typ]), Region(body))])
+    original.verify()
+    return original
+
+
+@pytest.mark.parametrize(
+    "shape,mask_shape,dtype",
+    [
+        ((2, 3, 7, 19), (1, 3, 1, 19), builtin.f32),
+        ((2, 3, 7, 11), (2, 1, 7, 11), builtin.f64),
+        ((53, 19), (1,), builtin.f32),
+    ],
+)
+def test_native_projected_broadcasts_preserve_rows_and_complete_columns(
+    tmp_path, monkeypatch, shape, mask_shape, dtype
+):
+    original = _broadcast_module(shape, mask_shape, dtype)
+    rng = np.random.default_rng(47)
+    native_type = "f4" if dtype == builtin.f32 else "f8"
+    scores = rng.normal(0, 3, shape).astype(native_type)
+    mask = rng.normal(0, 1, mask_shape).astype(native_type)
+    if mask_shape[-1] == shape[-1]:
+        mask[..., 3::5] = -np.inf
+    expected = _reference_normalization(np.add(scores, mask, dtype=native_type))
+    results = []
+    for name, enabled in (("baseline", False), ("optimized", True)):
+        directory = tmp_path / name
+        directory.mkdir()
+        host, observer, report = _compile_ordinary(directory, original, enabled, monkeypatch)
+        output = np.empty_like(scores)
+        unchanged = [scores.copy(), mask.copy()]
+        observer.reset_observer()
+        arrays = [scores, mask, output]
+        host([(v.ctypes.data, v.shape) for v in arrays])
+        assert observer.current_requested() == 0
+        word = "u4" if dtype == builtin.f32 else "u8"
+        for old, actual in zip(unchanged, arrays, strict=False):
+            np.testing.assert_array_equal(old.view(word), actual.view(word))
+        np.testing.assert_array_equal(output, expected)
+        assert report["rewrites"] == int(enabled)
+        results.append(output.copy().view(word))
+    np.testing.assert_array_equal(*results)
+
+
+@pytest.mark.parametrize("fault", ["row_projection", "broadcast_offset", "source_columns"])
+def test_actual_broadcast_projection_mutations_refuse(fault):
+    original = _broadcast_module((2, 3, 7, 19), (1, 3, 1, 19), builtin.f32)
+    modified, record = _with_record(original)
+    loop = record.emitted[-1]
+    extracts = [o for o in loop.body.block.ops if isinstance(o, tensor.ExtractSliceOp)]
+    mask = extracts[-1]
+    if fault == "row_projection":
+        mask.operands = (mask.operands[0], extracts[0].operands[1])
+    elif fault == "broadcast_offset":
+        mask.properties["static_offsets"] = builtin.DenseArrayBase.from_list(
+            builtin.i64, [1, builtin.DYNAMIC_INDEX, 0, 0]
+        )
+    else:
+        mask.properties["static_sizes"] = builtin.DenseArrayBase.from_list(builtin.i64, [1, 1, 1, 18])
+    with pytest.raises(ValueError, match="conformance"):
+        verify_row_normalizations(original, modified, (record,))
+
+
+def test_selected_native_layout_and_64_bit_index_use_the_same_row_path(tmp_path, monkeypatch):
+    from merlin.llvmlower import toolchain
+
+    if not toolchain.available():
+        pytest.skip("native MLIR toolchain unavailable")
+    query = subprocess.run(
+        [str(toolchain.clang()), "-S", "-emit-llvm", "-x", "c", "-", "-o", "-"],
+        input="void layout_probe(void) {}",
+        text=True,
+        check=True,
+        capture_output=True,
+    ).stdout
+    line = next(row for row in query.splitlines() if row.startswith("target datalayout = "))
+    layout = json.loads(line.partition(" = ")[2])
+    original = module((128, 19), builtin.f64)
+    values = np.random.default_rng(59).normal(0, 2, (128, 19)).astype("f8")
+    expected = _reference_normalization(values)
+    outputs = []
+    for name, enabled in (("baseline", False), ("optimized", True)):
+        directory = tmp_path / name
+        directory.mkdir()
+        host, observer, report = _compile_ordinary(
+            directory, original, enabled, monkeypatch, data_layout=layout, index_bits=64
+        )
+        output = np.empty_like(values)
+        observer.reset_observer()
+        host([(v.ctypes.data, v.shape) for v in (values, output)])
+        assert observer.current_requested() == 0 and report["rewrites"] == int(enabled)
+        assert report["hardware_identity"] == "llvm-datalayout:" + hashlib.sha256(layout.encode()).hexdigest()
+        if enabled:
+            assert report["realization"]["context"]["hardware"] == report["hardware_identity"]
+            assert "index_bits=64" in report["realization"]["context"]["resources"]
+        np.testing.assert_array_equal(output.view("u8"), expected.view("u8"))
+        outputs.append(output.copy().view("u8"))
+    np.testing.assert_array_equal(*outputs)
+
+
+def test_unsupported_index_width_retains_the_ordinary_source():
+    from merlin.llvmlower.automatic_rows import prepare_automatic_rows
+
+    source = text(module(), generic=True)
+    result, report = prepare_automatic_rows(source, serial=True, index_bits=32)
+    assert result == source and report["rewrites"] == 0 and report["index_bits"] == 32
+    with pytest.raises(ValueError, match="64-bit index"):
+        fuse_row_normalizations(module(), numerical_policy="source", index_bits=32)
+
+
+def test_identity_readout_is_checked_instead_of_assumed():
+    original = _attention_module(
+        masked=True, scale=True, broadcast_mask=True, generic_contractions=True, identity_readout=True
+    )
+    modified, record = _with_record(original)
+    # Last replayed generic is the source identity readout. Reading its
+    # undefined destination instead of its input changes the actual program.
+    copied = tuple(record.emitted[-1].body.block.ops)[-3]
+    assert isinstance(copied, L.GenericOp)
+    yielded = copied.regions[0].block.last_op
+    yielded.operands = (copied.regions[0].block.args[-1],)
     with pytest.raises(ValueError, match="conformance"):
         verify_row_normalizations(original, modified, (record,))

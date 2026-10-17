@@ -177,9 +177,11 @@ def lower_model(
             or source_observation_effects is not None
             or source_scalar_carrier is not None
             or index_bits not in (None, 64)
-            or data_layout is not None
+            or (data_layout is not None and index_bits is None)
         )
-        mlir_text, row_report = prepare_automatic_rows(mlir_text, serial=serial_rows)
+        mlir_text, row_report = prepare_automatic_rows(
+            mlir_text, serial=serial_rows, index_bits=64 if index_bits is None else index_bits, data_layout=data_layout
+        )
         if row_report["rewrites"]:
             audit.stage("host-row-scheduled", mlir_text)
         if textual:

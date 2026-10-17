@@ -101,6 +101,27 @@ def _reduce(operation, scalar_class):
     return isinstance(operation, L.ReduceOp) and len(operation.operands) == 2 and _body(operation, scalar_class, 2)
 
 
+def _identity_copy(operation, value):
+    if not isinstance(operation, L.GenericOp) or len(operation.operands) != 2 or len(operation.results) != 1:
+        return False
+    if (
+        operation.operands[0] is not value
+        or operation.results[0].type != value.type
+        or not isinstance(operation.operands[1].owner, tensor.EmptyOp)
+        or len(operation.regions) != 1
+        or len(operation.regions[0].blocks) != 1
+    ):
+        return False
+    block = operation.regions[0].block
+    ops = tuple(block.ops)
+    return (
+        len(block.args) == 2
+        and len(ops) == 1
+        and type(ops[0]) is L.YieldOp
+        and tuple(ops[0].operands) == (block.args[0],)
+    )
+
+
 def _linear(expression, rank):
     if isinstance(expression, AffineConstantExpr):
         return (expression.value, *([0] * rank))
@@ -156,6 +177,29 @@ def local_type(value, group):
     return builtin.TensorType(value.type.get_element_type(), shape)
 
 
+def row_input_projection(mapping, shape, loop_shape):
+    """Interpret a static axis projection/broadcast; never flatten unknown maps."""
+    rank = len(loop_shape)
+    if mapping.num_dims != rank or mapping.num_symbols or len(mapping.results) != len(shape):
+        raise ValueError("row input projection has incompatible ranks")
+    axes = []
+    for extent, expression in zip(shape, mapping.results, strict=True):
+        if isinstance(expression, AffineConstantExpr) and expression.value == 0 and extent == 1:
+            axes.append(None)
+        elif (
+            isinstance(expression, AffineDimExpr)
+            and 0 <= expression.position < rank
+            and extent == loop_shape[expression.position]
+        ):
+            axes.append(expression.position if extent > 1 else None)
+        else:
+            raise ValueError("row input requires a bounded axis projection or singleton broadcast")
+    nonunit = [axis for axis in axes if axis is not None]
+    if nonunit != sorted(set(nonunit)) or rank - 1 in axes[:-1]:
+        raise ValueError("row input permutes, repeats or mixes the source column domain")
+    return tuple(axes)
+
+
 def _check_operation(operation, group):
     _metadata(operation)
     if len(operation.results) != 1:
@@ -174,6 +218,9 @@ def _check_operation(operation, group):
         ):
             raise ValueError("normalization pointwise body has an unknown iteration algorithm")
         for value, attr in zip(operation.operands, operation.indexing_maps, strict=True):
+            if value.owner not in set(group.operations):
+                row_input_projection(attr.data, _shape(value), shape)
+                continue
             count = prod(_shape(value))
             kind = "full" if count == group.rows * group.columns else "row" if count == group.rows else "scalar"
             _fiber_map(attr.data, _shape(value), shape, kind)
@@ -258,8 +305,8 @@ def match_row_normalization(final):
                 return
             if len(op.operands) != 3 or not isinstance(op.operands[-1].owner, tensor.EmptyOp):
                 return
-            if any(v.type != source.type and prod(_shape(v)) != 1 for v in op.operands[:-1]):
-                return
+            for v, mapping in zip(op.operands[:-1], tuple(op.indexing_maps)[:-1], strict=True):
+                row_input_projection(mapping.data, _shape(v), shape)
             if len(selected) + 2 > 64:
                 raise ValueError("normalization pointwise prefix exceeds its structural budget")
             selected.update((op, op.operands[-1].owner))
@@ -267,29 +314,51 @@ def match_row_normalization(final):
                 include_prefix(operand)
 
         include_prefix(source)
+        published = final
+        for _ in range(8):
+            uses = tuple(published.results[0].uses)
+            if (
+                len(uses) != 1
+                or uses[0].operation.parent is not final.parent
+                or not _identity_copy(uses[0].operation, published.results[0])
+            ):
+                break
+            published = uses[0].operation
+            selected.update((published, published.operands[1].owner))
         ordered = tuple(op for op in final.parent.ops if op in selected)
-        if ordered[-1] is not final:
+        if ordered[-1] is not published:
             return None
         active = False
         for op in final.parent.ops:
             active |= op is ordered[0]
             if active and isinstance(op, arith.ConstantOp) and not isinstance(op.results[0].type, builtin.TensorType):
                 selected.add(op)
-            if op is final:
+            if (
+                active
+                and isinstance(op, tensor.SplatOp)
+                and prod(_shape(op.results[0])) == 1
+                and isinstance(op.operands[0].owner, arith.ConstantOp)
+                and all(use.operation in selected for use in op.results[0].uses)
+            ):
+                selected.add(op)
+            if op is published:
                 break
         ordered = tuple(op for op in final.parent.ops if op in selected)
+        if len(ordered) > 64:
+            return None
         group = RowNormalizationGroup(source, ordered, shape)
         for op in ordered:
             _check_operation(op, group)
-            if op is not final and any(use.operation not in selected for value in op.results for use in value.uses):
+            if op is not published and any(use.operation not in selected for value in op.results for use in value.uses):
                 return None
         first = False
         for op in final.parent.ops:
             first |= op is ordered[0]
-            if op is final:
+            if op is published:
                 break
             if first and op not in selected:
                 return None
+        row_input_specs(group)
         return group
     except (ValueError, IndexError):
         return None
@@ -305,6 +374,7 @@ def emit_row_normalization(group):
     prefix = [zero, end, one, output]
     block = Block(arg_types=[builtin.IndexType(), source.type])
     coordinates = []
+    row_axes = {}
     static_offsets = []
     # Keep the public output's original rank. A collapse/expand around a
     # returned loop buffer hides it from ordinary out-parameter forwarding.
@@ -318,24 +388,26 @@ def emit_row_normalization(group):
         coordinate = arith.RemUIOp(quotient.result, dimension.result)
         block.add_ops((stride, quotient, dimension, coordinate))
         coordinates.append(coordinate.result)
+        row_axes[axis] = coordinate.result
         static_offsets.append(builtin.DYNAMIC_INDEX)
     static_offsets.append(0)
     sizes = [1] * (len(group.shape) - 1) + [group.columns]
     mapped = {}
-    for value in row_input_values(group):
-        scalar = prod(_shape(value)) == 1
+    for value, projection in row_input_specs(group):
         shape = _shape(value)
         if not shape:
             mapped[value] = value
             continue
+        offsets = [row_axes[axis] for axis in projection if axis in row_axes]
+        input_offsets = [builtin.DYNAMIC_INDEX if axis in row_axes else 0 for axis in projection]
+        input_sizes = [group.columns if axis == len(group.shape) - 1 else 1 for axis in projection]
+        local_shape = (group.columns,) if len(group.shape) - 1 in projection else ()
         sliced = tensor.ExtractSliceOp.build(
-            operands=[value, [] if scalar else coordinates, [], []],
-            result_types=[local_type(value, group)],
+            operands=[value, offsets, [], []],
+            result_types=[builtin.TensorType(value.type.get_element_type(), local_shape)],
             properties={
-                "static_offsets": builtin.DenseArrayBase.from_list(
-                    builtin.i64, [0] * len(shape) if scalar else static_offsets
-                ),
-                "static_sizes": builtin.DenseArrayBase.from_list(builtin.i64, [1] * len(shape) if scalar else sizes),
+                "static_offsets": builtin.DenseArrayBase.from_list(builtin.i64, input_offsets),
+                "static_sizes": builtin.DenseArrayBase.from_list(builtin.i64, input_sizes),
                 "static_strides": builtin.DenseArrayBase.from_list(builtin.i64, [1] * len(shape)),
             },
         )
@@ -390,15 +462,56 @@ def emit_row_normalization(group):
 
 
 def row_input_values(group):
+    return tuple(value for value, _ in row_input_specs(group))
+
+
+def row_input_specs(group):
     members = set(group.operations)
     values = {}
     for op in group.operations:
-        for value in op.operands:
+        for i, value in enumerate(op.operands):
             if isinstance(value.type, builtin.TensorType) and value.owner not in members:
-                if value.type != group.source.type and prod(_shape(value)) != 1:
-                    raise ValueError("row input frontier has an unsupported shape or broadcast")
-                values[value] = None
-    return tuple(values)
+                if isinstance(op, L.GenericOp):
+                    mapping = op.indexing_maps.data[i].data
+                elif isinstance(op, L.ReduceOp) and i == 0 and value.type == group.source.type:
+                    mapping = AffineMap.identity(len(group.shape))
+                else:
+                    raise ValueError("row input frontier has an unsupported source use")
+                projection = row_input_projection(mapping, _shape(value), group.shape)
+                if value in values and values[value] != projection:
+                    raise ValueError("one row input has different source projections")
+                values[value] = projection
+    return tuple(values.items())
+
+
+def ordered_contraction(operation):
+    """Recognize a typed ordered multiply/add boundary for the cost policy.
+
+    This classifies unchanged consumers/producers; it neither lowers a
+    contraction nor grants a target primitive or reassociation capability.
+    """
+    if not isinstance(operation, L.GenericOp) or len(operation.regions) != 1 or len(operation.regions[0].blocks) != 1:
+        return False
+    block = operation.regions[0].block
+    ops = tuple(block.ops)
+    if len(block.args) != 3 or len(ops) != 3 or len(operation.operands) != 3 or len(operation.results) != 1:
+        return False
+    product, addition, yielded = ops
+    if type(product) is not arith.MulfOp or type(addition) is not arith.AddfOp or type(yielded) is not L.YieldOp:
+        return False
+    if (
+        tuple(product.operands) != tuple(block.args[:2])
+        or tuple(addition.operands) not in ((product.result, block.args[2]), (block.args[2], product.result))
+        or tuple(yielded.operands) != (addition.result,)
+        or any(get_effects(o) != set() for o in ops[:2])
+    ):
+        return False
+    iterators = tuple(operation.iterator_types)
+    return (
+        len(iterators) >= 3
+        and iterators[-1] == L.IteratorTypeAttr(L.IteratorType.REDUCTION)
+        and all(i == L.IteratorTypeAttr(L.IteratorType.PARALLEL) for i in iterators[:-1])
+    )
 
 
 def row_state_cost_reason(group):
@@ -408,9 +521,22 @@ def row_state_cost_reason(group):
     try:
         for value in row_input_values(group):
             source = _view(value)
-            if prod(_shape(value)) == 1 and isinstance(source.owner, (arith.ConstantOp, tensor.SplatOp)):
+            if prod(_shape(value)) < prod(group.shape):
+                # A projected broadcast input remains outside the island and
+                # is reused without duplicating its producer for each row.
                 continue
-            if not isinstance(source, BlockArgument) and not isinstance(source.owner, (L.MatmulOp, func.CallOp)):
+            if (
+                isinstance(source.owner, arith.ConstantOp)
+                or prod(_shape(value)) == 1
+                and isinstance(source.owner, tensor.SplatOp)
+            ):
+                continue
+            reduction = ordered_contraction(source.owner)
+            if (
+                not reduction
+                and not isinstance(source, BlockArgument)
+                and not isinstance(source.owner, (L.MatmulOp, func.CallOp))
+            ):
                 return "producer_fusion_boundary_or_unknown"
     except ValueError:
         return "unknown_source_view"
@@ -424,7 +550,7 @@ def row_state_cost_reason(group):
         if len(visited) > 64:
             return "consumer_view_budget"
         for use in value.uses:
-            if isinstance(use.operation, (L.GenericOp, L.ReduceOp)):
+            if isinstance(use.operation, (L.GenericOp, L.ReduceOp)) and not ordered_contraction(use.operation):
                 return "consumer_fusion_boundary"
             if isinstance(use.operation, (tensor.CollapseShapeOp, tensor.ExpandShapeOp)):
                 pending.extend(use.operation.results)
@@ -432,7 +558,14 @@ def row_state_cost_reason(group):
 
 
 def fuse_row_normalizations(
-    module, *, numerical_policy, max_added_operations=4096, max_groups=256, require_smaller_row_state=True
+    module,
+    *,
+    numerical_policy,
+    max_added_operations=4096,
+    max_groups=256,
+    require_smaller_row_state=True,
+    index_bits=64,
+    hardware_identity=None,
 ):
     """Automatically row-schedule admitted closed source islands on a private IR.
 
@@ -448,6 +581,8 @@ def fuse_row_normalizations(
         raise ValueError("row scheduling requires explicit bounded code and group budgets")
     if type(require_smaller_row_state) is not bool:
         raise ValueError("row scheduling needs an explicit conservative storage selection")
+    if type(index_bits) is not int or index_bits != 64:
+        raise ValueError("source row scheduling currently requires selected 64-bit index lowering")
     from . import pipeline
     from . import row_normalization_check as checker
 
@@ -457,10 +592,11 @@ def fuse_row_normalizations(
         for p in (Path(__file__), Path(checker.__file__), Path(pipeline.__file__))
     }
     context = PipelineContext(
+        hardware=hardware_identity,
         numerical_policy=numerical_policy,
         resources=(
             f"max_added_operations={max_added_operations};max_groups={max_groups};"
-            f"smaller_row_state={require_smaller_row_state}"
+            f"smaller_row_state={require_smaller_row_state};index_bits={index_bits}"
         ),
         library=hashlib.sha256(json.dumps(sources, sort_keys=True).encode()).hexdigest(),
     )

@@ -16,7 +16,7 @@ from xdsl.dialects.linalg import ops as L
 from xdsl.ir.affine import AffineDimExpr, AffineMap
 from xdsl.rewriter import Rewriter
 
-from .row_normalization import local_type, row_input_values
+from .row_normalization import local_type, row_input_specs
 
 
 def _require(condition, reason):
@@ -158,6 +158,7 @@ def verify_row_normalization_record(record):
     body = tuple(loop.body.block.ops)
     position = 0
     coordinates = []
+    row_axes = {}
     for axis, extent in enumerate(group.shape[:-1]):
         if extent == 1:
             continue
@@ -181,8 +182,9 @@ def verify_row_normalization_record(record):
             "source row prefix coordinate changed",
         )
         coordinates.append(coordinate.result)
+        row_axes[axis] = coordinate.result
     mapped = {}
-    for value in row_input_values(group):
+    for value, projection in row_input_specs(group):
         shape = value.type.get_shape()
         if not shape:
             mapped[value] = value
@@ -190,24 +192,32 @@ def verify_row_normalization_record(record):
         _require(len(body) > position, "row source extraction is missing")
         extracted = body[position]
         position += 1
-        if prod(shape) == 1:
-            _require(
-                type(extracted) is tensor.ExtractSliceOp and tuple(extracted.operands) == (value,),
-                "scalar input source changed",
-            )
-            _require(
-                not extracted.attributes
-                and not extracted.properties.keys()
-                - {"static_offsets", "static_sizes", "static_strides", "operandSegmentSizes"},
-                "scalar slice metadata changed",
-            )
-            _require(_integers(extracted.static_offsets) == (0,) * len(shape), "scalar slice offset changed")
-            _require(_integers(extracted.static_sizes) == (1,) * len(shape), "scalar slice coverage changed")
-            _require(_integers(extracted.static_strides) == (1,) * len(shape), "scalar slice stride changed")
-        else:
-            _slice(extracted, value, tuple(coordinates), group.shape)
+        offsets = tuple(row_axes[axis] for axis in projection if axis in row_axes)
         _require(
-            extracted.result.type == local_type(value, group), "row extraction changes input type or complete domain"
+            type(extracted) is tensor.ExtractSliceOp and tuple(extracted.operands) == (value, *offsets),
+            "projected row input source or coordinates changed",
+        )
+        _require(
+            not extracted.attributes
+            and not extracted.properties.keys()
+            - {"static_offsets", "static_sizes", "static_strides", "operandSegmentSizes"},
+            "row input slice metadata changed",
+        )
+        _require(
+            _integers(extracted.static_offsets)
+            == tuple(builtin.DYNAMIC_INDEX if axis in row_axes else 0 for axis in projection),
+            "row input broadcast offsets changed",
+        )
+        _require(
+            _integers(extracted.static_sizes)
+            == tuple(group.columns if axis == len(group.shape) - 1 else 1 for axis in projection),
+            "row input slice lost the complete source column domain",
+        )
+        _require(_integers(extracted.static_strides) == (1,) * len(shape), "row input slice stride changed")
+        local_shape = (group.columns,) if len(group.shape) - 1 in projection else ()
+        _require(
+            extracted.result.type == builtin.TensorType(value.type.get_element_type(), local_shape),
+            "row extraction changes input type or complete domain",
         )
         mapped[value] = extracted.result
     _local_replay(record, loop, mapped, position, tuple(coordinates))
