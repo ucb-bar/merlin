@@ -194,7 +194,7 @@ def test_source_change_before_child_restoration_never_publishes(setup, monkeypat
     monkeypatch.setattr(OC.subprocess, "Popen", changed)
     with _scope(setup), pytest.raises(StageGateError, match="without a verified completion"):
         grade(setup, "changed")
-    assert not list(setup.runs.glob("runs/*/*/capsule_result.json"))
+    assert not list((setup.runs / "runs").glob("*/*/capsule_result.json"))
 
 
 def test_foreign_owner_and_forged_adapter_marker_cannot_select_process_grading(setup):
@@ -292,7 +292,7 @@ def test_parent_final_hash_refuses_same_size_restored_mtime_mutation_before_Pope
         with _scope(setup):
             grade(setup, "changed-before-launch")
     assert launched == [] and issued_fds
-    assert not list(setup.runs.glob("runs/*/*/capsule_result.json"))
+    assert not list((setup.runs / "runs").glob("*/*/capsule_result.json"))
     for fd in issued_fds:
         with pytest.raises(OSError):
             os.fstat(fd)
@@ -387,7 +387,7 @@ def test_expired_original_owner_cannot_issue_or_launch_operator_child(setup, mon
         pass
     with pytest.raises(StageGateError, match="original live profile owner"):
         grade(setup, "expired-owner")
-    assert not launched and not list(setup.runs.glob("runs/*/*/capsule_result.json"))
+    assert not launched and not list((setup.runs / "runs").glob("*/*/capsule_result.json"))
 
 
 @pytest.mark.parametrize("failure", [None, "entry", "body", "exit"])
