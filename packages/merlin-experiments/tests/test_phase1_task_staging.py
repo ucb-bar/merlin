@@ -21,8 +21,13 @@ def test_gemmini_full_model_task_is_short_and_allows_edits_during_checks(tmp_pat
     ws, run = conf.context.repo / "workspace", conf.context.repo / "run"
     ws.mkdir()
     run.mkdir()
-    TS.build_task("merlin_assisted", ws, run, config=conf,
-                  task_scope={"required_public_dev_capsules": 120, "held_out_capsules": 20})
+    TS.build_task(
+        "merlin_assisted",
+        ws,
+        run,
+        config=conf,
+        task_scope={"required_public_dev_capsules": 120, "held_out_capsules": 20},
+    )
     resource_prompt.append_resource_guidance(ws, run, object())
     task = (ws / "TASK.md").read_text()
     assert len(task.encode()) <= 12 * 1024
@@ -121,7 +126,8 @@ def test_tools_are_observed_after_callback_creation_and_again_after_changes(tmp_
 
 
 @pytest.mark.parametrize(
-    "level", [level for level in LEVELS if level["id"] not in {"EL5", "EL6"}],
+    "level",
+    [level for level in LEVELS if level["id"] not in {"EL5", "EL6"}],
     ids=[level["id"] for level in LEVELS if level["id"] not in {"EL5", "EL6"}],
 )
 def test_actual_tool_inventory_follows_selected_level_and_explicit_ablation(tmp_path, level):

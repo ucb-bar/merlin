@@ -278,8 +278,9 @@ def task_runtime_scope_block(te, sandbox: str, *, context: InvocationContext, sc
 
 def full_model_task(config: TaskStagingConfig, sandbox: str, scope: dict) -> str:
     """The Gemmini Phase 1 charter, with no unenforced process checklist."""
-    names = resolved_tools(config.bundle_id, bundle_dir=config.bundle_dir,
-                           add_tools=config.add_tools, drop_tools=config.drop_tools)
+    names = resolved_tools(
+        config.bundle_id, bundle_dir=config.bundle_dir, add_tools=config.add_tools, drop_tools=config.drop_tools
+    )
     tools = "\n".join(f"- `{name}`: {_TR.spec(name).blurb}" for name in names)
     body = """# Phase 1: Gemmini compiler for complete models
 
@@ -349,10 +350,13 @@ Lead with a table of all six programs: model, program, compile/link, numerics, a
 Report capsule RTL status separately. Then name the submission path, test artifacts, and remaining failures. Report only
 measured results.
 """  # target-ok: this is the selected Gemmini full-model task text
-    body += task_runtime_scope_block(load_target_experiment(config.context.descriptor), sandbox,
-                                     context=config.context, scope=scope)
+    body += task_runtime_scope_block(
+        load_target_experiment(config.context.descriptor), sandbox, context=config.context, scope=scope
+    )
     if len(body.encode("utf-8")) > 10_000:
-        raise RuntimeError("Gemmini full-model task exceeds its 10 KB pre-resource budget")  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        raise RuntimeError(
+            "Gemmini full-model task exceeds its 10 KB pre-resource budget"  # target-ok: selected full-model path
+        )
     return body
 
 
@@ -374,7 +378,11 @@ def build_task(
     bundle_dir, experiment = config.bundle_dir, config.experiment
     _te = partial(load_target_experiment, context.descriptor)
     _manifest = partial(load_capability_manifest, context.target)
-    if context.target == "gemmini" and arm == "merlin_assisted" and experiment == "full":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+    if (
+        context.target == "gemmini"  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        and arm == "merlin_assisted"
+        and experiment == "full"
+    ):
         body = full_model_task(config, sandbox, task_scope)
         (ws / "TASK.md").write_text(body)
         shutil.copy(ws / "TASK.md", run_dir / "TASK.md")

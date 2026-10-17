@@ -1,4 +1,5 @@
 """Project closed self-check results without exposing expected values or private paths."""
+
 from __future__ import annotations
 
 import json
@@ -10,9 +11,14 @@ from . import qa as _qc
 def _successful_expected_refusal(result: dict) -> bool:
     """A completed refusal obligation has no executable or numerical tier to measure."""
     record = result.get("expected_refusal")
-    return (result.get("status") == "pass" and result.get("failure") is None
-            and isinstance(record, dict) and record.get("status") == "met"
-            and isinstance(result.get("declined"), dict) and bool(result["declined"]))
+    return (
+        result.get("status") == "pass"
+        and result.get("failure") is None
+        and isinstance(record, dict)
+        and record.get("status") == "met"
+        and isinstance(result.get("declined"), dict)
+        and bool(result["declined"])
+    )
 
 
 def _operator_structural_feedback(result, capsule, *, target):
@@ -28,15 +34,17 @@ def _operator_structural_feedback(result, capsule, *, target):
     if (result.get("failure") or {}).get("category") == "host_compute_in_accelerator_group":
         return {"status": "failed", "component": "host_accelerator_placement"}
     if selected_host_leaf(capsule):
-        return {"status": "pass" if qualified_host_result(capsule, result, target=target) else "unavailable",
-                "component": "provided_host_infrastructure"}
+        return {
+            "status": "pass" if qualified_host_result(capsule, result, target=target) else "unavailable",
+            "component": "provided_host_infrastructure",
+        }
     trace = result.get("trace_check") or {}
     requirement = trace.get("trace_requirement_status")
     complete = requirements_complete(trace)
     return {
-        "status": "pass" if complete else requirement or (
-            "failed" if trace.get("status") == "fail" else "unavailable_record"
-        ),
+        "status": "pass"
+        if complete
+        else requirement or ("failed" if trace.get("status") == "fail" else "unavailable_record"),
         "component": "instruction_trace",
         "violations": [str(reason)[:240] for reason in (trace.get("violations") or [])[:8]],
         "unavailable_requirements": list(trace.get("unavailable_requirements") or [])[:16],
@@ -53,11 +61,19 @@ def _operator_feedback_state(result, capsule, *, target, barrier_status):
     certified = refusal or (numeric_native_pass and structural["status"] == "pass")
     failure = result.get("failure") or {}
     selection_blocked = failure.get("category") == "NOT_RUN_IS_NOT_PASS" and failure.get("tier_status") == "unavailable"
-    ran = {tier: row.get("status") for tier, row in (result.get("tiers") or {}).items()
-           if isinstance(row, dict) and row.get("status") not in (None, "skipped", "unavailable")}
+    ran = {
+        tier: row.get("status")
+        for tier, row in (result.get("tiers") or {}).items()
+        if isinstance(row, dict) and row.get("status") not in (None, "skipped", "unavailable")
+    }
     screened = not certified and (
-        (selection_blocked and bool(ran) and all(status == "pass" for status in ran.values())
-         and barrier_status in ("pass", None)) or numeric_native_pass
+        (
+            selection_blocked
+            and bool(ran)
+            and all(status == "pass" for status in ran.values())
+            and barrier_status in ("pass", None)
+        )
+        or numeric_native_pass
     )
     return certified, screened, refusal, structural
 
@@ -118,15 +134,22 @@ def _candidate_selfcheck_row(result: dict, closed: dict | None, *, name: str, ba
         and (summary.get("status") == "pass" and required_pass and source_verified and component_pass and bar == "pass")
     )
     screened = (
-        barrier_tier == "L2" and source_verified
+        barrier_tier == "L2"
+        and source_verified
         and summary.get("status") == "incomplete"
         and not summary.get("violations")
         and all(tiers.get(tier) == "pass" for tier in ("L0", "L1", "L2"))
         and tiers.get("L3") == "unverified"
         and set(required) == {"L0", "L1", "L2", "L3"}
-        and all(components.get(key) == expected for key, expected in (
-            ("emitted_host_compute", "clean"), ("source_placement", "clean"),
-            ("completed_dispatch", "verified"), ("candidate_required_tiers", "incomplete")))
+        and all(
+            components.get(key) == expected
+            for key, expected in (
+                ("emitted_host_compute", "clean"),
+                ("source_placement", "clean"),
+                ("completed_dispatch", "verified"),
+                ("candidate_required_tiers", "incomplete"),
+            )
+        )
     )
     row = {
         "capsule": name,
@@ -273,8 +296,14 @@ def _selfcheck_counts(
 
 
 def _offload_census(
-    sub: Path, out_path: str, *, context: InvocationContext, capsules_root: Path,
-    contract: Path | None = None, timeout: int = 300, workers: int = 0,
+    sub: Path,
+    out_path: str,
+    *,
+    context: InvocationContext,
+    capsules_root: Path,
+    contract: Path | None = None,
+    timeout: int = 300,
+    workers: int = 0,
 ) -> int:
     """The agent-facing offload census (see ``--offload-census``).
 
