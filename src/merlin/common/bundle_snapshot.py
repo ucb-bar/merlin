@@ -116,8 +116,7 @@ class _RosterGuard:
             return False
         try:
             info = self.root.stat(follow_symlinks=False)
-            if ((info.st_dev, info.st_ino) != self.identity
-                    or Path("/proc/self/mountinfo").read_bytes() != self.mounts):
+            if (info.st_dev, info.st_ino) != self.identity or Path("/proc/self/mountinfo").read_bytes() != self.mounts:
                 self.close()
                 return False
             try:
