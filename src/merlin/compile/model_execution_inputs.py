@@ -152,6 +152,26 @@ def _corresponding_firrtl(document: dict, source: Path, *, target: str, config: 
     }
 
 
+def selected_execution_firrtl(path: str | Path, *, target: str) -> dict[str, str]:
+    """Select the bound runner's FIRRTL, retaining the original facts identity.
+
+    Legacy backends without a bound runner retain their explicitly selected facts
+    configuration. Cross-configuration admission is always owned by selected_firrtl.
+    """
+    from merlin.runtime.backends import base as backends
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+
+    backend = backends.get_backend(target)
+    if isinstance(backend, BoundRoCCBackend):
+        config = backend._block()["config"]  # noqa: SLF001 -- original selected runner, not facts provenance
+    else:
+        document = json.loads(Path(path).read_text(encoding="utf-8"))
+        config = ((document.get("facts") or {}).get("source") or {}).get("config")
+    if not isinstance(config, str) or not config:
+        raise ModelExecutionInputError("selected execution has no explicit configuration")
+    return selected_firrtl(path, target=target, config=config)
+
+
 def native_engine(target: str, simulator: str, facts: dict[str, str]):
     """Resolve one public backend engine, cite exact lineage, and return a revalidator.
 

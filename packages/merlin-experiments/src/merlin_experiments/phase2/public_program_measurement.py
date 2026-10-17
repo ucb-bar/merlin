@@ -23,11 +23,18 @@ def selection(capsule, rtl_identity, *, simulator="gsim"):
     if not path.is_file() or path.stat().st_size > 16 << 20:
         raise ValueError("public program requires the selected ordinary RTL facts")
     document = json.loads(path.read_bytes())
+    body = document.get("facts") or {}
+    config = (body.get("source") or {}).get("config")
+    if "simulation_correspondence" in body:
+        from merlin.targetgen.rtl.unit_correspondence import execution_binding
+
+        simulation = (body["simulation_correspondence"].get("configs") or {}).get("simulation") or {}
+        config = execution_binding(document, config=simulation.get("config"))["config"]
     value = {
         "schema": SCHEMA,
         "simulator": simulator,
         "rtl_facts": pin,
-        "board_config": ((document.get("facts") or {}).get("source") or {}).get("config"),
+        "board_config": config,
         "complete_call_timing": simulator == "gsim",
     }
     verify_selection(capsule, value)

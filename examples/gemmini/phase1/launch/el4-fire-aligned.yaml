@@ -28,7 +28,7 @@ description: Fresh empty-origin EL4 functional compiler authoring on the fire-al
 
 # The reviewed Phase 0 release this launch consumes. Its variables (REPO,
 # RELEASE, RELEASE_VERSION, TARGET_CONTRACT, ...) are visible here.
-release_config: ../../phase0/release/fire-aligned-v10.yaml
+release_config: ../../phase0/release/fire-aligned-v11.yaml
 
 # Built-ins: ${TASK_ROOT} (--task-root), ${PREP} (--prep), ${RUN_ID} (--run-id,
 # else launcher.run_id_placeholder) and ${HOME} (the invoking environment).
@@ -46,7 +46,7 @@ variables:
   SPIKE_RUNTIME: ${TASK_ROOT}/out/fire-aligned-spike-30mhz/runtime
   GSIM_EMULATOR: ${TASK_ROOT}/.tmp/gsim-fire-aligned-provisional-v3/native/emulator
   TIMING_PROFILE: ${TASK_ROOT}/.tmp/fire-aligned-timing-profile-v2.json
-  RTL_FACTS: ${REPO}/out/artifacts/probes/gemmini/fire-aligned-30mhz/input/facts-v5.json
+  RTL_FACTS: ${REPO}/out/artifacts/probes/gemmini/fire-aligned-30mhz/input/facts-v6.json
   MODEL2MLIR: ${TASK_ROOT}/model2mlir
   INSTRUCTION_SELECTION: ${TASK_ROOT}/private/instruction-selection
 
@@ -229,10 +229,10 @@ runtime_pins:
 target_selection:
   contract:
     path: ${TARGET_CONTRACT}
-    sha256: 9c6456af508d44c11a3073a110b12f6fb02f98d60263539ef1b51e1379f3f639
+    sha256: 599ed01f395d081e5c45a46267eccd2c347bc7f49b24d8ff29c2d9f65f294f56
   rtl_facts:
     path: ${RTL_FACTS}
-    sha256: ba50873ca690db0a6697461e71a4e974a7a6d246c19b764d7373557ee8428767
+    sha256: b8ff28edc096392cec356f9fececdf17ba70cd3e4b02e6c5931aedc43bb117af
 
 numerics:
   # Owner-approved numerical evidence; every launch bundle is a byte-identical
@@ -264,7 +264,7 @@ errata:
   # Served via --operator-errata; render copies it byte-for-byte to ${PREP}.
   source: errata/fresh-empty.md
   path: ${PREP}/operator-errata.md
-  sha256: bfea960da515b1fa732384f207438df412b8b3bd4d2ff09f8ff8f49b7186fbdd
+  sha256: d9db15900a996e5c4f3ab8acfc57ce1b91d361e9355b1d92b6396601f9955155
 
 # Inputs that are never part of any run. A path is repo-relative (below
 # inputs.repo): no argv or environment value may name it, and no bundle grant

@@ -6,4 +6,6 @@ All self-checks, simulations and grading share one pool of compute CPUs schedule
 
 The background grader finishes each immutable compiler snapshot and writes qa/progress.json after each completed capsule; qa/verdict.json carries the completed grade (it may show shape coverage as pending until the shape probes finish). A changed source is graded next; an unchanged completed source is not graded again. Iterate with targeted certifying self-checks rather than waiting for a full background grade. Full-suite qualification occurs on the frozen compiler.
 
-Public native host checks select board gemmini_rocket_gsim_fire_aligned, whose RTL configuration and FireSim DTS match the protected GemminiGsimFireSimAlignedConfig facts and 16 GiB map. The selected functional Spike runtime and untuned timing profile remain Fire-aligned.
+Public native host checks select board gemmini_rocket_gsim_fire_aligned, whose RTL configuration and FireSim DTS match the gSIM execution selected through verified correspondence from FireSimGemminiRocketConfig facts and 16 GiB map. The selected functional Spike runtime and untuned timing profile remain Fire-aligned.
+
+Whole-model execution is deferred to the separate post-experiment check. Private source preflight records known input failures for SmolVLA (capture seal/result-format selection) and TinyLlama (decode lineage); these are not compiler failures or passing full-model results.

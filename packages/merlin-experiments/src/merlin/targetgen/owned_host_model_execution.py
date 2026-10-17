@@ -729,8 +729,11 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
     output = record["build"]["output"]
     inputs = record["build"]["inputs"]
     board = load_boards(Path(inputs["board_catalog"])).get(inputs["board"])
-    if board is None or board.target != target or board.rtl_sim_config != facts["config"]:
+    if board is None or board.target != target:
         raise ValueError("owned model selected board and RTL facts identify different configurations")
+    from merlin.compile.model_execution_inputs import selected_firrtl
+
+    selected_firrtl(facts["path"], target=target, config=board.rtl_sim_config)
     elf = Path(output["elf"])
     recipe = output["compilation_recipe"]
     compilation = verify_completed_recipe(Path(recipe["path"]), executable=elf, expected_recipe_sha256=recipe["sha256"])
@@ -815,13 +818,9 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
 
 
 def _selected_facts(path, *, target):
-    from merlin.compile.model_execution_inputs import selected_firrtl
+    from merlin.compile.model_execution_inputs import selected_execution_firrtl
 
-    document = json.loads(Path(path).read_text())
-    config = ((document.get("facts") or {}).get("source") or {}).get("config")
-    if not isinstance(config, str) or not config:
-        raise ValueError("owned model lacks selected RTL configuration")
-    return selected_firrtl(path, target=target, config=config)
+    return selected_execution_firrtl(path, target=target)
 
 
 def _native_engine_for_facts(target, engine, facts):

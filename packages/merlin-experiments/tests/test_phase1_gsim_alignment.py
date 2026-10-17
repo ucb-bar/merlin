@@ -28,14 +28,14 @@ def test_gsim_alignment_requires_firesim_source_and_exact_receipts(tmp_path, mon
     )
     firesim_dts.parent.mkdir(parents=True)
     gsim_dts = tmp_path / "gsim.dts"
-    dts = '''/dts-v1/;
+    dts = """/dts-v1/;
 / {
     #address-cells = <2>;
     #size-cells = <2>;
     cpus { cpu@0 { device_type = "cpu"; riscv,isa = "rv64imafdcbzicsr"; }; };
     memory@80000000 { device_type = "memory"; reg = <0x0 0x80000000 0x4 0x0>; };
 };
-'''
+"""
     firesim_dts.write_text(dts)
     gsim_dts.write_text(dts)
     firrtl = tmp_path / "model.fir"
@@ -53,43 +53,142 @@ def test_gsim_alignment_requires_firesim_source_and_exact_receipts(tmp_path, mon
         return path
 
     config = A.GSIM_CONFIG
-    contract = write("contract.yaml", {
-        "runtime": {"rtl_sim_config": config},
-        "runner": {"chipyard_rocc": {"config": config, "engines": {"gsim": {
-            "binary": {"path": str(binary), "sha256": _sha(binary)},
-            "receipt": {"path": str(receipt), "sha256": _sha(receipt)},
-        }}}},
-    })
-    facts = write("facts.json", {
-        "inputs": {"target": "gemmini", "fir_path": str(firrtl), "fir_sha256": _sha(firrtl)},
-        "facts": {"source": {"config": config, "fir_sha256": _sha(firrtl)}},
-        "source_consistency": {
-            "status": "verified", "config": config,
-            "elaboration": {"status": "reproduced_exact_firrtl", "receipt_sha256": _sha(elaboration)},
-            "production": {"elaboration": {"path": str(elaboration), "sha256": _sha(elaboration)}},
+    contract = write(
+        "contract.yaml",
+        {
+            "runtime": {"rtl_sim_config": config},
+            "runner": {
+                "chipyard_rocc": {
+                    "config": config,
+                    "engines": {
+                        "gsim": {
+                            "binary": {"path": str(binary), "sha256": _sha(binary)},
+                            "receipt": {"path": str(receipt), "sha256": _sha(receipt)},
+                        }
+                    },
+                }
+            },
         },
-    }, json_document=True)
-    pins = write("pins.yaml", {
-        "pins": {"gemmini_rocket_chipyard": {"commit": "chip"},
-                 "gemmini_rocket_rtl": {"commit": "gem"}},
-        "artifacts": {"firesim_gemmini_rocket_30mhz": {
-            "built_from": ["gemmini_rocket_chipyard", "gemmini_rocket_rtl"]}},
-    })
-    catalog = write("boards.yaml", {"boards": {"firesim_gemmini_rocket_u250_30mhz": {
-        "dram_base": 0x80000000, "dram_bytes": "16 GiB", "harts": 1,
-        "vector_harts": 0, "host_dts_sha256": _sha(firesim_dts),
-    }}})
-    source = {"root": str(chipyard), "revision": "chip-config",
-              "config_file": A.CONFIG_SOURCE, "config_sha256": A.CONFIG_SOURCE_SHA256,
-              "submodules": {"generators/gemmini": "gem"}}
+    )
+    facts = write(
+        "facts.json",
+        {
+            "inputs": {"target": "gemmini", "fir_path": str(firrtl), "fir_sha256": _sha(firrtl)},
+            "facts": {"source": {"config": config, "fir_sha256": _sha(firrtl)}},
+            "source_consistency": {
+                "status": "verified",
+                "config": config,
+                "elaboration": {"status": "reproduced_exact_firrtl", "receipt_sha256": _sha(elaboration)},
+                "production": {"elaboration": {"path": str(elaboration), "sha256": _sha(elaboration)}},
+            },
+        },
+        json_document=True,
+    )
+    pins = write(
+        "pins.yaml",
+        {
+            "pins": {"gemmini_rocket_chipyard": {"commit": "chip"}, "gemmini_rocket_rtl": {"commit": "gem"}},
+            "artifacts": {
+                "firesim_gemmini_rocket_30mhz": {"built_from": ["gemmini_rocket_chipyard", "gemmini_rocket_rtl"]}
+            },
+        },
+    )
+    catalog = write(
+        "boards.yaml",
+        {
+            "boards": {
+                "firesim_gemmini_rocket_u250_30mhz": {
+                    "dram_base": 0x80000000,
+                    "dram_bytes": "16 GiB",
+                    "harts": 1,
+                    "vector_harts": 0,
+                    "host_dts_sha256": _sha(firesim_dts),
+                }
+            }
+        },
+    )
+    source = {
+        "root": str(chipyard),
+        "revision": "chip-config",
+        "config_file": A.CONFIG_SOURCE,
+        "config_sha256": A.CONFIG_SOURCE_SHA256,
+        "submodules": {"generators/gemmini": "gem"},
+    }
     monkeypatch.setattr(A.elaboration, "verify", lambda *args, **kwargs: {"source": source})
     monkeypatch.setattr(A, "_source_variant", lambda *args: True)
-    monkeypatch.setattr(A.gsim_emulator, "_validate_receipt", lambda *args: (
-        "bound", "valid", {"schema_version": A.gsim_emulator.STRICT_RECEIPT_SCHEMA,
-                           "firrtl_sha256": _sha(firrtl), "binary_sha256": _sha(binary)}
-    ))
+    monkeypatch.setattr(
+        A.gsim_emulator,
+        "_validate_receipt",
+        lambda *args: (
+            "bound",
+            "valid",
+            {
+                "schema_version": A.gsim_emulator.STRICT_RECEIPT_SCHEMA,
+                "firrtl_sha256": _sha(firrtl),
+                "binary_sha256": _sha(binary),
+            },
+        ),
+    )
 
     assert A.audit(contract, facts, chipyard, pins, catalog, gsim_dts)["gsim_source_aligned"] is True
+    # A target's own FIRRTL stays distinct from the simulation's, whose exact
+    # bundle and elaboration must agree with the correspondence and engine.
+    from merlin.targetgen.rtl import source_selection as SS
+    from merlin.targetgen.rtl import unit_correspondence as UC
+
+    original = facts.read_bytes()
+    target_fir = tmp_path / "target.fir"
+    target_fir.write_text("circuit Target :\n")
+    selection = write(
+        "simulation-selection.json",
+        {
+            "schema": SS.SCHEMA,
+            "target": "gemmini",
+            "config": config,
+            "sources": {
+                role: {"path": str(firrtl), "sha256": _sha(firrtl)}
+                for role in ("firrtl", "hierarchy", "core_hw", "soc_hw")
+            },
+            "production": {"elaboration": {"path": str(elaboration), "sha256": _sha(elaboration)}},
+        },
+        json_document=True,
+    )
+    document = json.loads(original)
+    document["inputs"].update(
+        fir_path=str(target_fir), fir_sha256=_sha(target_fir), core_hw_sha256="a" * 64, source_bundle_sha256="b" * 64
+    )
+    document["facts"]["source"].update(
+        config="FireSimGemminiRocketConfig", fir_sha256=_sha(target_fir), hierarchy_sha256="c" * 64
+    )
+    document["source_consistency"]["config"] = "FireSimGemminiRocketConfig"
+    target_hashes = {"firrtl": _sha(target_fir), "core_hw": "a" * 64, "hierarchy": "c" * 64, "selection": "b" * 64}
+    document["facts"]["simulation_correspondence"] = {
+        "schema": UC.SCHEMA,
+        "status": "structurally_equivalent",
+        "unit_root": "Unit",
+        "configs": {
+            "target": {
+                "config": "FireSimGemminiRocketConfig",
+                "core_root": "Unit",
+                **{role: {"path": str(target_fir), "sha256": sha} for role, sha in target_hashes.items()},
+            },
+            "simulation": {
+                "config": config,
+                "core_root": "Unit",
+                **{role: {"path": str(firrtl), "sha256": _sha(firrtl)} for role in ("firrtl", "hierarchy", "core_hw")},
+                "selection": {"path": str(selection), "sha256": _sha(selection)},
+            },
+        },
+    }
+    with monkeypatch.context() as patch:
+        patch.setattr(SS, "production_consistency", lambda selected: json.loads(original)["source_consistency"])
+        facts.write_text(json.dumps(document))
+        assert A.audit(contract, facts, chipyard, pins, catalog, gsim_dts)["gsim_source_aligned"] is True
+        document["facts"]["simulation_correspondence"]["configs"]["simulation"]["firrtl"]["sha256"] = "0" * 64
+        facts.write_text(json.dumps(document))
+        with pytest.raises(ValueError, match="bundle differs"):
+            A.audit(contract, facts, chipyard, pins, catalog, gsim_dts)
+    facts.write_bytes(original)
     source["submodules"]["generators/gemmini"] = "old-gemmini"
     report = A.audit(contract, facts, chipyard, pins, catalog, gsim_dts)
     assert report["gsim_source_aligned"] is False
@@ -108,9 +207,12 @@ def test_gsim_alignment_requires_firesim_source_and_exact_receipts(tmp_path, mon
 
 
 def test_source_variant_refuses_any_other_source_change(tmp_path, monkeypatch):
-    source = {"revision": "patched", "config_file": A.CONFIG_SOURCE,
-              "config_sha256": A.CONFIG_SOURCE_SHA256,
-              "submodules": {name: name + "-commit" for name in A.BUILD_SUBMODULES}}
+    source = {
+        "revision": "patched",
+        "config_file": A.CONFIG_SOURCE,
+        "config_sha256": A.CONFIG_SOURCE_SHA256,
+        "submodules": {name: name + "-commit" for name in A.BUILD_SUBMODULES},
+    }
     changes = [A.CONFIG_SOURCE]
 
     def run(argv, **kwargs):
@@ -140,10 +242,21 @@ def test_elaboration_refuses_untracked_scala_source(tmp_path):
     config.write_text("class SelectedConfig\n")
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "add", config.name], check=True)
-    subprocess.run([
-        "git", "-C", str(root), "-c", "user.name=Test", "-c", "user.email=test@example.org",
-        "commit", "-qm", "selected source",
-    ], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.org",
+            "commit",
+            "-qm",
+            "selected source",
+        ],
+        check=True,
+    )
     revision = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
     assert A.elaboration._source(root, revision, config.name, "SelectedConfig", {})["revision"] == revision
     (root / "UntrackedHelper.scala").write_text("class UntrackedHelper\n")
