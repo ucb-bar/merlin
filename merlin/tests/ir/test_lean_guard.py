@@ -9,6 +9,8 @@ import subprocess
 
 import pytest
 
+from merlin.common.paths import repo_root
+
 
 @pytest.mark.parametrize(
     "attack",
@@ -22,7 +24,10 @@ import pytest
         "safe_helper",
     ],
 )
-def test_audit_checks_defining_modules(tmp_path, lean_checker, attack):
+def test_audit_checks_defining_modules(tmp_path, lean_checker, attack, monkeypatch):
+    # Caller CWD and a developer's global Elan default must not select the compiler or its sysroot.
+    monkeypatch.chdir(tmp_path)
+    project = repo_root() / "merlin/lean"
     lean = shutil.which("lean")
     if lean is None:
         if os.environ.get("MERLIN_LEAN_REQUIRED"):
@@ -73,6 +78,7 @@ theorem MerlinVerify.bogus : False := MerlinVerify.Assumptions.unreviewed
         check=True,
         capture_output=True,
         text=True,
+        cwd=project,
     )
     env = dict(os.environ, LEAN_PATH=str(tmp_path))
     proc = subprocess.run(
@@ -80,6 +86,7 @@ theorem MerlinVerify.bogus : False := MerlinVerify.Assumptions.unreviewed
         env=env,
         capture_output=True,
         text=True,
+        cwd=project,
     )
     report = json.loads(proc.stdout)
     if attack == "safe_helper":
