@@ -103,6 +103,53 @@ class DenseChoice:
     cost_unit: str = "requested_operand_bytes_then_commands"
 
 
+@dataclass(frozen=True)
+class DenseEmission:
+    """Observations reconstructed by an adapter from its emitted operations.
+
+    Load/store counts include loop multiplicities; static commands count each
+    instruction site once. High-water marks are exclusive byte offsets relative
+    to the assigned operand and accumulator regions, after decoding addresses.
+    These observations do not prove aliases, completion or numerical semantics.
+    """
+
+    static_commands: int
+    lhs_loads: int
+    rhs_loads: int
+    bias_loads: int
+    output_tiles: int
+    operand_high_water: int
+    accumulator_high_water: int
+
+    def __post_init__(self):
+        if any(type(value) is not int or value < 0 for value in vars(self).values()):
+            raise ValueError("dense emission observations require nonnegative integers")
+
+
+def verify_dense_emission(choice: DenseChoice, emission: DenseEmission, *, static_budget: int) -> None:
+    """Require selected reuse and storage bounds to survive target emission.
+
+    The adapter must inspect the actual operation stream, including loop bounds
+    and memory addresses. Copying the planned counts into this report supplies
+    no evidence. Instruction decoding and physical legality remain target-owned.
+    A target's price may be a conservative static upper bound.
+    """
+    if type(static_budget) is not int or static_budget < 0:
+        raise ValueError("static command budget must be a nonnegative integer")
+    block = choice.block
+    for name in ("lhs_loads", "rhs_loads", "bias_loads", "output_tiles"):
+        if getattr(emission, name) != getattr(block, name):
+            raise ValueError(f"dense transfer realization differs: {name}")
+    if emission.static_commands > min(choice.static_commands, static_budget):
+        raise ValueError("dense command realization exceeds selected bound")
+    for role, used, reserved in (
+        ("operand", emission.operand_high_water, block.operand_bytes),
+        ("accumulator", emission.accumulator_high_water, block.accumulator_bytes),
+    ):
+        if not 0 < used <= reserved:
+            raise ValueError(f"dense {role} realization exceeds selected storage or is missing")
+
+
 def dense_blocks(problem: DenseProblem, resources: DenseResources) -> tuple[DenseBlock, ...]:
     """Enumerate bounded M/N choices without expanding tensors or dynamic loops.
 

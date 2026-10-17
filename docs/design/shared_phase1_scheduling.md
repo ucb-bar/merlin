@@ -77,6 +77,51 @@ backend supports bounded loop bodies; the handwritten backend retains its
 straight-line emission limit. A shared decision algorithm does not promise
 identical instruction sequences or equal supported shape ranges.
 
+## Shared emission conformance
+
+`DenseEmission` is the common observation interface for this candidate family.
+Each adapter walks its emitted operations and reconstructs separate LHS, RHS
+and bias load counts, output tile stores, static command sites and transfer
+address high-water marks. Dynamic transfer counts include loop multiplicities;
+static command counts count each site once. The high-water marks are exclusive
+byte offsets relative to the assigned regions, rather than device addresses.
+
+```python
+from merlin.transforms.dense_planning import DenseEmission, verify_dense_emission
+
+# Reconstruct from emitted operations, not from the chosen block's estimates.
+observed = DenseEmission(
+    static_commands=static_sites,
+    lhs_loads=dynamic_counts["lhs"], rhs_loads=dynamic_counts["rhs"],
+    bias_loads=dynamic_counts["bias"], output_tiles=dynamic_counts["output"],
+    operand_high_water=operand_end, accumulator_high_water=accumulator_end,
+)
+verify_dense_emission(choice, observed, static_budget=command_budget)
+```
+
+The shared check requires each transfer role to match the selected plan and
+both storage bounds and the command bound to hold. Equal total load counts do
+not excuse replacing an A load with a B load. Static prices may be conservative
+upper bounds. Missing storage observations refuse validation. Target adapters
+also check their address spaces, operand ownership and transfer extents.
+Both regular backends record the checked observation in their command-buffer
+schedule report. These checks run during ordinary lowering, without an agent.
+
+This is a small common adapter interface, not the complete scheduling adapter.
+It does not prove alias safety, asynchronous completion, compute addresses,
+epilogue semantics or eliminated intermediate transfers. The complete
+lifetime/effect and fusion realization contracts remain required before those
+optimizations can be admitted.
+
+The target-free conformance tests evaluate every candidate for three distinct
+rectangular primitive geometries, with output/reduction tails and optional bias.
+An enumerated traversal checks all output elements, increasing K order and
+actual edge payloads against a direct integer contraction. Separate mutation
+tests reject role substitutions, missing transfers, storage overflow and command
+overruns. Both compiler entrypoints also reject corrupted target transfers.
+Synthetic geometries exercise abstraction coverage; they do not qualify new
+RTL configurations or numerical modes.
+
 ## Physical epilogue composition
 
 Compute-group formation asks `TargetReadout.applies_composition` about the
