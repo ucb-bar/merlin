@@ -122,7 +122,9 @@ def capture(*, capsule, cb, gold, reference, direct_oracle_golden, policy, llvm_
         if type(backend) is not BoundRoCCBackend:
             return None
         if (type(capsule) is not dict or capsule.get("kind") == "model" or type(cb) is not dict
-                or not cb.get("outputs") or type(gold) is not dict or not gold or type(policy) is not dict
+                or not (cb.get("outputs") or any(isinstance(spec, dict) and spec.get("role") == "output"
+                    for spec in (cb.get("tensors") or {}).values()))
+                or type(gold) is not dict or not gold or type(policy) is not dict
                 or type(llvm_text) is not str or not llvm_text
                 or type(direct_oracle_golden) is not bool
                 or (not direct_oracle_golden and (type(reference) is not dict or not reference))):

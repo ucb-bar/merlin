@@ -231,3 +231,16 @@ def test_relocated_targeted_capsule_reuses_only_identical_complete_source(select
         assert _read(selected, _context(selected)) is not None
         (second / "input.interface.mlir").write_text("changed sidecar source\n")
         assert _read(selected, _context(selected)) is None
+
+
+def test_role_declared_outputs_do_not_need_redundant_explicit_output_list(selected):
+    cb = selected.inputs_to_cache["cb"]
+    cb.pop("outputs")
+    cb["tensors"]["C"]["role"] = "output"
+    with _scope(selected):
+        context = _context(selected)
+        assert context is not None
+        _write(selected, context)
+        assert _read(selected, _context(selected)) is not None
+        cb["tensors"]["C"]["role"] = "input"
+        assert _context(selected) is None
