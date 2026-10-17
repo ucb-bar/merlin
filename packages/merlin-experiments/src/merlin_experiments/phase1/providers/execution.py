@@ -17,6 +17,7 @@ from pathlib import Path
 from merlin.common import arrival_stamp as AS
 from merlin.targetgen import experiment_tokens as ET
 
+from .. import author_subagents
 from ..context import InvocationContext
 from ..feedback import lifecycle as FL
 
@@ -364,6 +365,9 @@ def launch(
                     if config.provider.codex_max_subagents is not None
                     else {}
                 ),
+                # The helper-thread ceiling this run RECORDED (environment.yaml), so the frozen home
+                # carries exactly the audited value, including across a resume.
+                **author_subagents.launch_kwargs(run_dir, sandbox),
                 **codex_call_kwargs(
                     config.provider.codex_runtime, context=config.context, run_dir=run_dir, model=model
                 ),

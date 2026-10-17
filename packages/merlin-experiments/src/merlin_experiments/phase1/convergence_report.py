@@ -17,11 +17,14 @@ directory that supervised it.  Five analyses, each from the run's own retained r
    simulated throughput, and a projected full-pass cost and wall floor.
 5. **Capacity** -- the operator log's ``[resources]`` and ``[heartbeat]`` samples (load average
    against the CPU pool, pending simulator jobs).
+6. **Agents** -- the lead author and every Codex sub-agent from their own rollouts: concurrency over
+   time, per-agent active time, tokens, commands, edits, self-check requests and the simulations
+   attributable to each (:mod:`merlin_experiments.phase1.telemetry.author_agents`).
 
 Every analysis tolerates missing or partially written files: an absent input yields
 ``available: false`` with a reason, never a zero that reads as a measurement.  The report reads
-status and timing fields only; it never opens answer material and never writes under the run or
-operator directory.
+status, timing, usage and client-invocation fields only; it never opens answer material and never
+writes under the run or operator directory.
 
     python -m merlin_experiments.phase1.convergence_report --run-dir RUN [--operator-dir DIR] [--out report.json]
 """
@@ -37,7 +40,7 @@ from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from merlin_experiments.phase1.telemetry import timeline
+from merlin_experiments.phase1.telemetry import author_agents, timeline
 
 SCHEMA = "merlin.phase1_convergence_report.v1"
 
@@ -1125,6 +1128,44 @@ def _run_state(run_dir: Path, author: dict, now: float) -> dict:
     }
 
 
+def _agents(run_dir: Path, now: float) -> dict:
+    """Per-agent accounting; a defect there is reported in its section and never fails the report."""
+    try:
+        return author_agents.account(run_dir, now=now, window_s=WINDOW_S)
+    except Exception as exc:  # noqa: BLE001 -- diagnostic composition must not lose the other sections
+        return {"available": False, "reason": f"agent accounting failed: {type(exc).__name__}: {exc}"}
+
+
+def _k(n) -> str:
+    return "n/a" if not isinstance(n, (int, float)) else (f"{n / 1000:.0f}k" if n >= 1000 else str(n))
+
+
+def _agent_lines(agents: dict) -> list[str]:
+    if not agents.get("available"):
+        return [f"  agents: unavailable ({agents.get('reason')})"]
+    t = agents["totals"]
+    helpers = t["tokens_subagents"].get("total", 0) if t["subagents"] else 0
+    lines = [
+        f"  agents: {t['threads']} threads ({t['subagents']} sub-agents), max {agents['concurrency']['max_active']} "
+        f"active at once; tokens lead {_k(t['tokens_lead'].get('total'))} / sub-agents {_k(helpers)}; commands "
+        f"{t['commands_all']} ({t['commands_subagents']} by sub-agents); self-checks {t['selfcheck_requests']} "
+        f"({t['selfcheck_requests_unattributed']} unattributed); sims {t['simulations_by_engine']}"
+        + ("" if agents["complete"] else f"; INCOMPLETE, missing rollouts {agents['missing_subagents']}")
+    ]
+    for row in agents["agents"]:
+        sims: dict[str, int] = {}
+        for part in row["simulations"].values():
+            for engine, n in part.items():
+                sims[engine] = sims.get(engine, 0) + n
+        lines.append(
+            f"  agent {row['agent_path']} ({row['agent_nickname'] or row['role']}): {row['state']}, active "
+            f"{_mins(row['active_s'])} ({_pct(row['share_of_agent_activity'])}), tokens "
+            f"{_k(row['tokens'].get('total'))}, cmds {row['commands']['n']}, edits {row['edits']['items']}, "
+            f"self-checks {len(row['selfcheck_requests'])}, sims {sims}"
+        )
+    return lines
+
+
 def build_report(
     run_dir: Path, operator_dir: Path | None = None, *, cpus: list[int] | None = None, now: float | None = None
 ) -> dict:
@@ -1140,6 +1181,7 @@ def build_report(
     cpu_list = sorted(set((cpus or [8, 16, 32]) + ([cap["pool_size"]] if cap.get("pool_size") else [])))
     cost = l3_cost(records, suite, cpu_list)
     selfchecks = selfcheck_latency(run_dir)
+    agents = _agents(run_dir, now)
     report = {
         "schema": SCHEMA,
         "run_dir": str(run_dir),
@@ -1152,6 +1194,7 @@ def build_report(
         "l3_cost": cost,
         "capacity": cap,
         "selfcheck_latency": selfchecks,
+        "agents": agents,
         "budget": _budget(author, grades, selfchecks),
         "verdicts": _verdicts(author, grades, taxonomy, cost, cap, selfchecks),
         "thresholds": THRESHOLDS,
@@ -1201,6 +1244,7 @@ def summary_lines(report: dict) -> list[str]:
             f"  L3 full pass: {p.get('cpu_minutes')} CPU-min; wall at N CPUs {p.get('wall_minutes_at')} min; "
             f"longest-capsule floor {p.get('longest_capsule_floor_s')} s"
         )
+    lines.extend(_agent_lines(report["agents"]))
     for name, check in report["budget"].items():
         mark = {True: "MET", False: "MISSED", None: "n/a"}[check["met"]]
         values = ", ".join(f"{k} {v}" for k, v in check.items() if k not in ("met", "rule"))

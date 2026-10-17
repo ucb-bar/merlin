@@ -98,7 +98,7 @@ def fixture(tmp_path):
         for repeat in range(2):
             # Original paid repeats have different result paths but the same ELF.
             result = f"_qa_work/paid{repeat}/runs/suite/capsule{number}/capsule_result.json"
-            console_path = str(PurePosixPath(result).parent / "artifacts/rtl_console.log")
+            console_path = str(PurePosixPath(result).parent / "artifacts" / "rtl_console.log")
             console_raw = f"METRIC cycles {100 + repeat}\n".encode()
             payload["run/" + console_path] = console_raw
             record_artifacts = dict(
@@ -117,6 +117,7 @@ def fixture(tmp_path):
                 "engine": "gsim",
                 "cycles": 100 + repeat,
                 "cycles_measured": True,
+                "measured_now": True,
                 "console_cycle_verified": True,
                 "cycle_scope": review["cycle_scope"],
                 "timing_selection_sha256": selection["selection_sha256"],
@@ -496,3 +497,147 @@ def test_extended_metadata_refuses_before_reading_a_large_payload(tmp_path, kind
     path.write_bytes(header.tobuf(format=tarfile.USTAR_FORMAT))
     with pytest.raises(C.ContractError, match="metadata|sparse"):
         A.inspect_archive(path, hashlib.sha256(path.read_bytes()).hexdigest())
+
+
+def per_record(index, *, visibility="public"):
+    """The fixture as a producer v3 index: explicit visibility and a per-record eligibility verdict."""
+    for row in index["records"]:
+        row.setdefault("visibility", visibility)
+        row["training_eligible"] = A._training_eligible(row)
+    eligible = [row for row in index["records"] if row["training_eligible"]]
+    public = sum(row["visibility"] == "public" for row in eligible)
+    index.update(
+        schema=A.TRAINING_ARCHIVE,
+        training_eligible_records=len(eligible),
+        training_eligible_public_records=public,
+        training_eligible_hidden_records=len(eligible) - public,
+        training_ready=public > 0,
+    )
+    return index
+
+
+def per_record_prepared(tmp_path, change=None):
+    index, payload, binding = fixture(tmp_path)
+    if change is not None:
+        change(index, payload)
+    per_record(index)
+    index["gsim_pass_complete"] = sum(map(A._complete, index["records"]))
+    index["timing_ready"] = index["gsim_pass_records"] == index["gsim_pass_complete"]
+    path, checksum = write_archive(tmp_path, index, payload)
+    binding["archive_sha256"] = checksum
+    return A.inspect_archive(path, checksum), binding
+
+
+def failed_capsule(index, payload):
+    """The first capsule failed a host-side rule after its gSIM tier passed: not timing_ready."""
+    for row in index["records"][:2]:
+        row["result_status"] = "fail"
+        original = json.loads(payload["run/" + row["result"]])
+        original["status"] = "fail"
+        payload["run/" + row["result"]] = json.dumps(original).encode()
+
+
+def test_per_record_archive_prepares_measurements_of_failed_capsules(tmp_path):
+    inventory, binding = per_record_prepared(tmp_path, failed_capsule)
+    assert inventory["archive_schema"] == A.TRAINING_ARCHIVE
+    assert inventory["timing_ready"] is False and inventory["training_ready"] is True
+    assert inventory["training_eligible_public_records"] == 6
+    plan = A.prepare(inventory, binding)
+    assert all(row["label"]["status"] == "pass" for row in plan["observations"])
+    data = A.attach(plan, reports_for(plan))
+    assert len(data["records"]) == 6
+
+
+def test_v2_archive_still_requires_every_capsule_to_pass(tmp_path):
+    index, payload, binding = fixture(tmp_path)
+    failed_capsule(index, payload)
+    index["gsim_pass_complete"] = 4
+    index["timing_ready"] = False
+    path, checksum = write_archive(tmp_path, index, payload)
+    binding["archive_sha256"] = checksum
+    with pytest.raises(C.ContractError, match="incomplete timing archive"):
+        A.prepare(A.inspect_archive(path, checksum), binding)
+
+
+def test_hidden_records_never_enter_public_calibration(tmp_path):
+    def hide_first(index, payload):
+        for row in index["records"][:2]:
+            row["visibility"] = "hidden"
+
+    inventory, binding = per_record_prepared(tmp_path, hide_first)
+    assert inventory["training_eligible_public_records"] == 4
+    assert inventory["training_ready"] is True
+    with pytest.raises(C.ContractError, match="hidden"):
+        A.prepare(inventory, binding)
+
+
+@pytest.mark.parametrize("damage", ["eligibility", "visibility", "summary"])
+def test_per_record_declarations_are_recomputed(tmp_path, damage):
+    index, payload, _ = fixture(tmp_path)
+    per_record(index)
+    if damage == "eligibility":
+        index["records"][0]["training_eligible"] = False
+    elif damage == "visibility":
+        index["records"][0]["visibility"] = "unknown"
+    else:
+        index["training_eligible_hidden_records"] = 1
+    path, checksum = write_archive(tmp_path, index, payload)
+    with pytest.raises(C.ContractError):
+        A.inspect_archive(path, checksum)
+
+
+def test_executed_failed_repeat_cannot_be_dropped_but_unexecuted_result_can(tmp_path):
+    def add(status):
+        def change(index, payload):
+            row = dict(index["records"][0], result=f"_qa_work/{status}/runs/suite/capsule0/capsule_result.json")
+            row.update(status=status, cycles=None, cycles_measured=False, console_cycle_verified=False)
+            index["records"].append(row)
+            index["capsule_records"] += 1
+            payload["run/" + row["result"]] = json.dumps({"status": "fail", "tiers": {}}).encode()
+
+        return change
+
+    inventory, binding = per_record_prepared(tmp_path, add("fail"))
+    with pytest.raises(C.ContractError, match="omitted"):
+        A.prepare(inventory, binding)
+    binding["cases"][0]["results"].append("_qa_work/fail/runs/suite/capsule0/capsule_result.json")
+    plan = A.prepare(inventory, binding)
+    failed = [row for row in plan["observations"] if row["result"].startswith("_qa_work/fail/")]
+    assert failed[0]["label"]["status"] == "unknown"
+    (tmp_path / "unexecuted").mkdir()
+    inventory, binding = per_record_prepared(tmp_path / "unexecuted", add("unavailable"))
+    assert len(A.prepare(inventory, binding)["observations"]) == 6
+
+
+def test_carried_verdict_is_not_a_passing_measurement(tmp_path):
+    index, payload, _ = fixture(tmp_path)
+    index["records"][1]["measured_now"] = False
+    path, checksum = write_archive(tmp_path, index, payload)
+    with pytest.raises(C.ContractError, match="summary counts"):
+        A.inspect_archive(path, checksum)
+    index["gsim_pass_records"] = index["gsim_pass_with_cycles"] = index["gsim_pass_complete"] = 5
+    path, checksum = write_archive(tmp_path, index, payload)
+    assert A.inspect_archive(path, checksum)["gsim_pass_records"] == 5
+
+
+def test_byte_identical_program_from_two_compilers_stays_one_case(tmp_path):
+    other = C.digest("another compiler version")
+    index, payload, binding = fixture(tmp_path)
+    row = index["records"][1]  # the second repeat of the first case's ELF
+    row["candidate_sha256"] = other
+    original = json.loads(payload["run/" + row["result"]])
+    original["original_compiler_child"]["candidate_sha256"] = other
+    payload["run/" + row["result"]] = json.dumps(original).encode()
+    path, checksum = write_archive(tmp_path, index, payload)
+    binding["archive_sha256"] = checksum
+    inventory = A.inspect_archive(path, checksum)
+    with pytest.raises(C.ContractError, match="candidate"):
+        A.prepare(inventory, binding)
+    binding["cases"][0]["candidate_sha256"] = sorted({C.digest("candidate"), other})
+    plan = A.prepare(inventory, binding)
+    first = [obs for obs in plan["observations"] if obs["case_id"] == binding["cases"][0]["case"]["case_id"]]
+    assert sorted(obs["candidate_sha256"] for obs in first) == sorted({C.digest("candidate"), other})
+    assert len(A.attach(plan, reports_for(plan))["records"]) == 6
+    binding["cases"][0]["candidate_sha256"] = [other, C.digest("candidate"), other]
+    with pytest.raises(C.ContractError, match="sorted list"):
+        A.prepare(inventory, binding)

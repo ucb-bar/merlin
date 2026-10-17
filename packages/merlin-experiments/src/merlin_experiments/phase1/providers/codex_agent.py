@@ -847,6 +847,7 @@ def run_round(
     auth_source: Path | None = None,
     continuation_prompt: str | None = None,
     max_concurrent_subagents: int | None = None,
+    subagent_capacity: int | None = None,
     **_ignored,
 ) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via ``codex exec``. Returns ``(rc, transcript_path)``.
@@ -870,13 +871,13 @@ def run_round(
     Explicit ``max_concurrent_subagents`` selects the native multi-agent limit
     in the frozen home; the same strict-config preflight applies on AWS. It does
     not prove that an agent delegated or change its sandbox and runtime grants.
+    ``subagent_capacity`` is the run's recorded ceiling: the same config keys, no prompt change.
     """
     # Explicit round inputs avoid changing another concurrent round's executable
     # or credential-isolated home placement. Defaults retain historical callers.
-    if max_concurrent_subagents is not None and (
-        type(max_concurrent_subagents) is not int or max_concurrent_subagents < 1 or sandbox != "bwrap"
-    ):
-        raise ValueError("explicit Codex subagent concurrency requires a positive isolated selection")
+    from merlin_experiments.phase1 import author_subagents as _AS
+
+    capacity = _AS.effective_capacity(max_concurrent_subagents, subagent_capacity, sandbox)
     if codex_binary is not None and (not isinstance(codex_binary, (str, Path)) or not str(codex_binary).strip()):
         raise ValueError("explicit codex_binary must be a nonempty executable path or name")
     if auth_source is not None:
@@ -950,11 +951,20 @@ def run_round(
         if prompt is not None
         else (
             "Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
-            "backend under submission/ per those instructions. During iteration, check the smallest affected capsule "
-            "or coherent comma-separated capsule cluster with `python3 agent_selfcheck.py --submission submission "
-            "--capsules <names>`. Without `--sim` it runs every tier each capsule declares mandatory, with the "
-            "grade's own simulators, and reports a certified pass/fail per capsule; `--sim spike` is only a faster "
-            "screen that cannot certify. Do not repeatedly grade the whole corpus. Run `--capsules all` only "
+            "backend under submission/ per those instructions. During iteration, check the capsules an edit affects "
+            "with `python3 agent_selfcheck.py --submission submission --capsules <names>`. Without `--sim` it runs "
+            "every tier each capsule declares mandatory, with the grade's own simulators, and reports a certified "
+            "pass/fail per capsule; `--sim spike` is only a faster screen that cannot certify. KEEP WORKING WHILE "
+            "CHECKS RUN: add `--wait-budget 5` to get a request id back within seconds, keep editing (each check "
+            "grades a snapshot taken when it starts), and collect the verdict later with `python3 agent_selfcheck.py "
+            "--attach <id>`; `--list` shows your requests. Several requests may be in flight at once. Put every "
+            "capsule an edit affects into ONE comma-separated request rather than one per capsule: they run in "
+            "parallel across the CPU pool and per-request overhead dominates small checks. After an edit, "
+            "`--capsules changed` compiles every capsule and simulates only those whose emitted bytes changed; "
+            "`--capsules failing` re-checks what did not pass in your most recent check. To try alternatives side by "
+            "side, copy submission/ to variants/<name>/, change the copy, and check it with `--submission "
+            "variants/<name>`; variant results are labelled self-check results only, never graded officially, so "
+            "copy the winner into submission/. Do not repeatedly grade the whole corpus. Run `--capsules all` only "
             "after the focused checks improve and the candidate is ready for a regression sweep. You may edit "
             "submission/ while a self-check runs; compare the verdict's source digest with your current bytes. "
             "Goldens are withheld; "
@@ -971,6 +981,7 @@ def run_round(
         )
     )
     msg = delegation_user_prompt(msg, max_concurrent_subagents)
+    msg += _AS.round_guidance(capacity, max_concurrent_subagents)
     prompt_path.write_text(msg)
 
     inner_final = last_message_path(ws, final_path, sandbox)
@@ -997,8 +1008,8 @@ def run_round(
         home_options = {"candidate_read_paths": candidate_read_paths} if candidate_read_paths is not None else {}
         if auth_source is not None:
             home_options["auth_source"] = auth_source
-        if max_concurrent_subagents is not None:
-            home_options["max_concurrent_subagents"] = max_concurrent_subagents
+        if capacity is not None:
+            home_options["max_concurrent_subagents"] = capacity
         home_info = prepare_codex_home(codex_home, model=resolved, effort=effort, workspace=ws, **home_options)
         runtime_selector = codex_runtime_binds if runtime_binds is None else runtime_binds
         _verify_frozen_config(codex_home, home_info["config_sha256"])
@@ -1035,12 +1046,16 @@ def run_round(
         else (
             "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
             "backend under submission/. With agent_selfcheck (no `--sim`: every mandatory tier, a "
-            "certified pass/fail), re-check only the smallest affected "
-            "capsule or coherent cluster after each edit; use `--capsules all` only after focused "
-            "checks improve. You may edit while a check runs; compare the verdict's source digest."
+            "certified pass/fail), check all capsules an edit affects in one request with "
+            "`--wait-budget 5`, keep working, and collect it with `--attach <id>`; several requests "
+            "may be in flight. After an edit use `--capsules changed`; `--capsules failing` re-checks "
+            "what did not pass. Try alternatives with `--submission variants/<name>` and copy the "
+            "winner into submission/. Use `--capsules all` only after focused checks improve. You "
+            "may edit while a check runs; compare the verdict's source digest."
         )
     )
     _CONTINUE_MSG = delegation_user_prompt(_CONTINUE_MSG, max_concurrent_subagents)
+    _CONTINUE_MSG += _AS.continuation_guidance(capacity, max_concurrent_subagents)
     turn_index = 0
     rc = 0
     active_proc: subprocess.Popen | None = None
@@ -1437,6 +1452,7 @@ def run_round(
         # ChatGPT-auth runs consume a subscription, not metered dollars. Any USD
         # figure downstream is notional and must not enter a money budget.
         "billing_mode": BILLING_MODE,
+        "subagent_capacity": _AS.summary_record(capacity, max_concurrent_subagents),
         "codex_home": home_info,
         "artifacts": {
             "raw": str(raw_path),

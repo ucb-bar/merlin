@@ -18,6 +18,15 @@ from merlin.compile.model_execution_inputs import file_sha256
 from merlin.compile.owned_host_model import OwnedHostModelCompiler
 
 
+class CandidateDispatchRefusal(ValueError):
+    """The candidate's own emitted program fails a source-attribution requirement of its dispatch.
+
+    Raised only from checks of the candidate's emitted device code, never for a harness, input or
+    tool fault, so the grade can report the compiler's failure as a failure rather than leaving it
+    behind the absent receipt it causes (which reads as unmeasured tooling).
+    """
+
+
 def _selected_file(selection, role):
     record = selection.get(role)
     if not isinstance(record, dict) or set(record) != {"path", "sha256"}:
@@ -67,8 +76,12 @@ def execute_owned_host_model(
     from merlin.common.artifacts import new_product
 
     product = new_product(
-        "owned-host-model", version=1, target=target, update_latest=False,
-        sources=[str(output)], notes="Owned-host model build and source-bound native evidence custody",
+        "owned-host-model",
+        version=1,
+        target=target,
+        update_latest=False,
+        sources=[str(output)],
+        notes="Owned-host model build and source-bound native evidence custody",
     )
     output = product.path
     from merlin.targetgen.contract.readback_policy import FULL_VALUES_BIN, selected
@@ -131,10 +144,16 @@ def execute_owned_host_model(
         "runtime_inputs": str(retained.absolute()),
         "readback_policy": readback_policy.record() if readback_policy is not None else None,
     }
-    record.update(_execute_required_tiers(
-        capsule, record, target=target, facts=facts, timeout=timeout,
-        reachable_oracle_tiers=reachable_oracle_tiers,
-    ))
+    record.update(
+        _execute_required_tiers(
+            capsule,
+            record,
+            target=target,
+            facts=facts,
+            timeout=timeout,
+            reachable_oracle_tiers=reachable_oracle_tiers,
+        )
+    )
     verify()
     materialized.verify(bundle)
     prepared.verify()
@@ -239,9 +258,12 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
         raise ValueError("owned host linked ELF changed")
     _linked_symbols(elf, routed_kernel_symbols(emitted))
     source["conv_input_preparation"] = {
-        row["symbol"]: {"entry": emitted["entries"][row["symbol"]],
-                        "call_buffers": emitted["call_buffers"][row["symbol"]]}
-        for row in assigned if emitted.get("entries", {}).get(row["symbol"], {}).get("op") == "conv2d"
+        row["symbol"]: {
+            "entry": emitted["entries"][row["symbol"]],
+            "call_buffers": emitted["call_buffers"][row["symbol"]],
+        }
+        for row in assigned
+        if emitted.get("entries", {}).get(row["symbol"], {}).get("op") == "conv2d"
         and emitted["signatures"].get(row["symbol"]) == []
     }
     audits = audit_built_device_host_compute(elf.parent, assigned, source, target)
@@ -384,7 +406,8 @@ def _mandatory_source_commands(function, commands, obligations):
                 )
             }
         if not _mandatory_command_blocks(function, matched):
-            raise ValueError(
+            # The candidate's emitted device code, not the harness, is what lacks the work.
+            raise CandidateDispatchRefusal(
                 f"eligible source operation {obligation['source_op_index']} lacks unavoidable "
                 f"attributed {family} work; fused transforms need independent evidence"
             )
@@ -427,7 +450,9 @@ def _host_call_proof(host_ir, *, assigned, output):
     generic = Path(output) / "owned_host_cfg.generic.mlir"
     printed = subprocess.run(
         [str(printer), str(translated), "--mlir-print-op-generic", "-o", str(generic)],
-        capture_output=True, text=True, timeout=60,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     if printed.returncode != 0 or _digest(printer) != printer_before:
         raise ValueError("actual host CFG cannot be printed generically with selected MLIR")
@@ -840,8 +865,8 @@ def _run_selected_rtl(elf, *, target, engine, facts, timeout, elf_sha256):
     import time
     from contextlib import nullcontext
 
-    from merlin.compile.model_execution_inputs import selected_firrtl
     from merlin.common.execution_deadline import ExecutionDeadline
+    from merlin.compile.model_execution_inputs import selected_firrtl
     from merlin.targetgen.contract.compile import _selected_run_timeout
     from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
 
@@ -858,9 +883,7 @@ def _run_selected_rtl(elf, *, target, engine, facts, timeout, elf_sha256):
     bounded = _selected_run_timeout(backend, engine, timeout, ExecutionDeadline.start(timeout))
     deadline = ExecutionDeadline.start(bounded)
     with gsim_runtime_slot(wait_timeout_s=bounded) if engine == "gsim" else nullcontext():
-        console = backend.run_elf(
-            elf, simulator=engine, timeout=deadline.remaining(), capture_bytes=True
-        )
+        console = backend.run_elf(elf, simulator=engine, timeout=deadline.remaining(), capture_bytes=True)
     if command is not None:
         command.revalidate()
     revalidate()
@@ -889,7 +912,8 @@ def _execute_required_tiers(capsule, record, *, target, facts, timeout, reachabl
             continue
         if reachable_oracle_tiers is not None and tier not in reachable_oracle_tiers:
             tiers[tier] = {
-                "status": "unavailable", "elf": identity,
+                "status": "unavailable",
+                "elf": identity,
                 "detail": "required owned-model tier is not selected in this grading request",
             }
             continue
@@ -986,12 +1010,50 @@ def _same_owned_frozen_policy(recorded, fresh) -> bool:
         original = _read_pinned_payload(recorded, role)
         selected = _read_pinned_payload(fresh, role)
         old_pin, new_pin = recorded[role], fresh[role]
-        if (set(old_pin) != {"path", "sha256", "size_bytes"}
-                or set(new_pin) != {"path", "sha256", "size_bytes"}
-                or old_pin["sha256"] != new_pin["sha256"]
-                or old_pin["size_bytes"] != new_pin["size_bytes"] or original != selected):
+        if (
+            set(old_pin) != {"path", "sha256", "size_bytes"}
+            or set(new_pin) != {"path", "sha256", "size_bytes"}
+            or old_pin["sha256"] != new_pin["sha256"]
+            or old_pin["size_bytes"] != new_pin["size_bytes"]
+            or original != selected
+        ):
             return False
     return True
+
+
+def _stopped_before_receipt(stopped):
+    """The audit verdict for a run that stopped before producing its receipt: its root cause first.
+
+    The absent receipt is only a consequence. Reporting it ("receipt ... is absent") hid the actual
+    reason, and when that reason is the candidate's own dispatch refusal, it turned a compiler failure
+    into what reads as unmeasured tooling. Any other stop stays incomplete (NOT_RUN_IS_NOT_PASS) and
+    names its stage and exception; host paths are scrubbed from the quoted message.
+    """
+    from merlin.common.path_scrub import scrub_host_paths
+
+    stage, kind = str(stopped.get("stage") or "unknown stage"), str(stopped.get("type") or "error")
+    message = scrub_host_paths(str(stopped.get("detail") or ""))[:2000]
+    if kind == CandidateDispatchRefusal.__name__ and stage == "owned_host_execution":
+        return {
+            "status": "fail",
+            "kind": "owned_host_model_execution",
+            "violations": ["candidate_dispatch_attribution_refused"],
+            "detail": message,
+            "failure": {
+                "plane": "candidate_compilation",
+                "category": "CANDIDATE_EMISSION_FAILED",
+                "detail": message,
+                "stage": stage,
+            },
+        }
+    detail = f"the model run stopped at {stage} with {kind} before producing its receipt: {message}"
+    return {
+        "status": "incomplete",
+        "kind": "owned_host_model_execution",
+        "violations": ["candidate_completed_dispatch_unverified", "candidate_required_tiers_unverified"],
+        "detail": detail,
+        "failure": {"plane": "candidate_model_execution", "category": "NOT_RUN_IS_NOT_PASS", "detail": detail},
+    }
 
 
 def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
@@ -1009,6 +1071,9 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
 
     try:
         record = result.get("owned_host_native_execution")
+        stopped = result.get("candidate_emission_failure")
+        if not isinstance(record, dict) and isinstance(stopped, dict):
+            return _stopped_before_receipt(stopped)
         if not isinstance(record, dict) or not isinstance(capsule, dict):
             raise ValueError("owned host model receipt or original frozen capsule is absent")
         root = Path(capsule["__dir__"])
@@ -1081,10 +1146,8 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
                 continue
             evidence = (record.get("tiers") or {}).get(tier)
             if tier == "L3" and (
-                evidence is None or (
-                    isinstance(evidence, dict)
-                    and evidence.get("status") in {"unavailable", "unverified", "not_run"}
-                )
+                evidence is None
+                or (isinstance(evidence, dict) and evidence.get("status") in {"unavailable", "unverified", "not_run"})
             ):
                 tiers[tier] = {"status": "unverified", "detail": "selected native tier has not completed"}
                 continue

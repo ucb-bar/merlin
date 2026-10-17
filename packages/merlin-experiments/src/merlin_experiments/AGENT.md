@@ -48,3 +48,9 @@ never rewrite an archive or substitute current code for its historical verifier.
 
 `runner_process` owns bounded process/group inspection and shutdown; `runner`
 retains its existing imports and overrides at plan execution boundaries.
+
+`timing_probes/` owns the operator calibration stage between Phase 1 and Phase 2
+(`python -m merlin_experiments.timing_probes`). It derives probe requests from a target's
+timing space, existing labels and the Phase 2 domain. A per-target backend realizes them
+from the target's data directory. Phase code never imports it, and its inputs and labels
+are never author-visible.

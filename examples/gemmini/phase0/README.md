@@ -401,6 +401,18 @@ Preparation reports unmatched public models and a missing or withheld hidden
 cohort; it does not choose exclusions for the operator. Acknowledging a seal
 does not repair incomplete coverage or missing execution receipts.
 
+The fire-aligned EL4 release is prepared from one checked-in file,
+[`release/fire-aligned-v10.yaml`](release/fire-aligned-v10.yaml): the source run,
+`generated_only`, the EL4/`public_v0` selection, the kernel-timing contract,
+Lean toolchain and Phase 1 policy descriptor (each with its SHA256), the host
+index width and the seal statement. The
+[Phase 1 launch config](../phase1/launch/el4-fire-aligned.yaml) names it;
+`python -m merlin_experiments.phase1.launch_config render` writes its exact
+`release.prepare(...)` arguments to `release-prepare.json`, and `verify` compares
+an existing release's `private/preparation.json` and seal against it. A new release
+always takes a new version (`--var RELEASE_VERSION=N`); sealed releases are never
+edited.
+
 Review coverage, placement and independent numerical checks before preparing
 [the reviewed Phase 0 handoff](../../../experiments/README.md#reviewed-phase-0-handoff).
 Changing a status field cannot qualify old artifacts. New inputs require newly

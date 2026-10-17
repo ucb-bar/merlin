@@ -20,6 +20,9 @@ legacy target-name fallback remain exclusively in the checkout `_common` adapter
 `options.py` owns the one functional-loop CLI parser and typed invocation values.
 Defaults are computed at invocation, not import; parsing/help never initializes a target.
 Keep scheduling defaults and policy validation separate from mutable runtime session state.
+`author_subagents.py` resolves the Codex author's helper-thread ceiling once (option,
+delegation bound, environment, else pool-derived) into `run_config.author_subagents`;
+the provider applies that recorded value, and resume refuses a changed explicit one.
 
 `controller.py` composes real admission, task staging, workspace transport and authoring under
 one workspace lease and one restored environment. Native launchers select legacy defaults and
@@ -264,7 +267,24 @@ or compiler, target runtime, correctness or phase qualification. Do not rewrite 
 
 `convergence_report.py` is a read-only operator diagnostic over one run directory (and,
 optionally, its operator directory): author blocked time by wait kind, the in-turn grade
-cycle, the self-check/grade capsule taxonomy, measured L3 cost and pool capacity. It reads
-status and timing fields only, never answer material, and refuses to write inside its inputs.
+cycle, the self-check/grade capsule taxonomy, measured L3 cost, pool capacity and per-agent
+accounting (lead and sub-agents, `telemetry/author_agents.py`). It reads status, timing,
+usage and client-invocation fields only, never answer material, and refuses to write inside its inputs.
 An absent or partially written input is reported unavailable, never as a zero. Its budget and
 verdict thresholds are published in the report; it decides no grade and gates nothing.
+
+`launch_config.py` renders and verifies one operator launch from a checked-in
+`merlin.phase1.launch_config.v1` file (and the `merlin.phase0.release_config.v1`
+release config it names): controller argv, the complete environment, CPU policy,
+runtime pins, numerics lineage and exclusions. Machine roots are variables; the target
+is data, so no target name, opcode or regex belongs here. It never starts a run, reads
+a credential or rewrites a prepared input in place; every disagreement is a listed
+drift, never a silent default. Bind new controller options in one place (`_argv`,
+`SUBAGENT_FLAGS`) and keep the schema in `resources/` fail-closed.
+`annotated_spike_evidence.py` is an operator-side, evidence-only pass over a finished run.
+It runs each training-eligible public gSIM program on the observer-enabled Spike with an
+explicitly selected provider and a count-only model (no prices), scoped by counter PCs it
+derives from the linked ELF with a selected disassembler, the caller's reviewed counter
+template and the contract's entry/completion symbols. It must reproduce the run's own
+functional console byte-for-byte; it grades nothing, never runs during authoring, and
+leases shared compute at AUXILIARY priority.

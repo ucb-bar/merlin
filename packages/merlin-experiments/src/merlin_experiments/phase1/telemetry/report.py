@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
 from merlin_experiments.phase1.context import InvocationContext, add_context_arguments, resolve_context
-from merlin_experiments.phase1.telemetry import evidence, timeline
+from merlin_experiments.phase1.telemetry import author_agents, evidence, timeline
 
 
 def transcript_paths(run_dir: Path) -> list[Path]:
@@ -204,9 +205,7 @@ def decompose_run(run_dir: Path) -> dict:
     rec["llm"] = evidence.rollout_telemetry(run_dir)
     if rec["llm"].get("available") and rec["llm"].get("threads"):
         rec["tokens"] = {"available": True, **rec["llm"]["tokens"]}
-        rec["rates"] = timeline._token_rates(
-            rec["tokens"], rec.get("think_generate_s"), rec.get("measured_span_s")
-        )
+        rec["rates"] = timeline._token_rates(rec["tokens"], rec.get("think_generate_s"), rec.get("measured_span_s"))
     rec["oracle"] = oracle_timing(run_dir)
     rec["artifacts"] = evidence.artifact_inventory(run_dir)
     rec["stream_reconciliation"] = evidence.stream_reconciliation(run_dir)
@@ -218,6 +217,9 @@ def decompose_run(run_dir: Path) -> dict:
     rec["telemetry_integrity"] = _codex_round_integrity(
         run_dir, rec, integrity_tokens, rec["stream_reconciliation"], rec["resources"]
     )
+    # Every author thread (lead + sub-agents). Accounting only: computed after, and never part of,
+    # the integrity verdict above, and a defect in it is recorded rather than raised.
+    rec["author_agents"] = _author_agents(run_dir)
     rec["generated_at"] = datetime.now(UTC).isoformat()
     rec["measurement_limits"] = {
         "provider_server_latency": "unavailable: provider request-start/TTFT is not emitted",
@@ -231,13 +233,29 @@ def decompose_run(run_dir: Path) -> dict:
     return rec
 
 
+def _author_agents(run_dir: Path) -> dict:
+    try:
+        return author_agents.account(run_dir)
+    except Exception as exc:  # noqa: BLE001 -- accounting must never fail the timing record
+        return {"available": False, "reason": f"agent accounting failed: {type(exc).__name__}: {exc}"}
+
+
 def write_run_timing(run_dir: Path) -> Path:
-    """Seal volatile evidence and write ``<run_dir>/timing_detailed.json``."""
+    """Seal volatile evidence and write ``<run_dir>/timing_detailed.json``.
+
+    The run's cost record then gains the sub-agent fields (``subagent_tool_calls_tracked`` and the
+    per-agent totals); its own ``tool_calls`` keeps meaning the lead stream's count.
+    """
     run_dir = Path(run_dir)
     evidence.snapshot_codex_rollouts(run_dir)
     evidence.snapshot_agent_evidence(run_dir)
     out = run_dir / "timing_detailed.json"
-    out.write_text(json.dumps(decompose_run(run_dir), indent=2))
+    record = decompose_run(run_dir)
+    out.write_text(json.dumps(record, indent=2))
+    try:
+        author_agents.annotate_cost_record(run_dir, report=record["author_agents"])
+    except Exception as exc:  # noqa: BLE001 -- the cost annotation is accounting, never a gate
+        print(f"[telemetry] cost record not annotated with agents: {type(exc).__name__}: {exc}", file=sys.stderr)
     return out
 
 

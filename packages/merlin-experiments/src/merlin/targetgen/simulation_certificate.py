@@ -4,6 +4,15 @@ Only an original native factory adapter and original compiler owner may issue a
 request. All semantic inputs and the selected byte-bound engine are reopened at
 lookup/publication. Unsupported or incomplete selections always miss.
 
+The identity names bytes, never locations. Each run archives its own bundle
+manifest and input snapshot, and both embed that run's directory, so an identity
+over the whole owner record could never match a later run grading the same
+frozen bytes: measured, a frozen qualification re-simulated all 102 L3 passes its
+authoring run had just recorded for those exact ELFs. The owner contributes only
+its admitted compiler-substrate profile digest; the executed programs, complete
+request, engine and instrument stay bound. The full owner record is still
+re-verified at every lookup, so a request never outlives its owner.
+
 A certificate PROBE (:func:`probe_observer`) asks the same question without paying for the answer: a
 probed engine builds its ELF, looks up the certificate for exactly those bytes, and is refused before
 dispatch when there is none. It never executes the engine and never produces a verdict of its own.
@@ -25,7 +34,7 @@ from merlin.runtime.backends import base
 from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
 
 ENV = "MERLIN_SIMULATION_CERT_CACHE"
-NAMESPACE = "same-byte-simulator-verdict-v2"
+NAMESPACE = "same-byte-simulator-verdict-v3"
 _ISSUED = weakref.WeakSet()
 
 #: Engines (comma-separated) a self-check certificate probe must never dispatch. Set only by the trusted
@@ -43,6 +52,14 @@ PROBE_FAILING = (
 PROBE_REASONS = {PROBE_CHANGED: "changed", PROBE_FAILING: "failing"}
 #: The request this thread issued last; a probe refusal keys its noted-failure lookup on it.
 _CURRENT = threading.local()
+
+
+def _owner_identity(record):
+    """The location-free part of an execution owner record (see the module docstring)."""
+    digest = record["profile_sha256"]
+    if type(digest) is not str or len(digest) != 64:
+        raise ValueError("simulation certificate owner has no admitted profile digest")
+    return {"profile_sha256": digest}
 
 
 def _digest(value):
@@ -253,7 +270,7 @@ def key(request, executables, *, expected=None):
                 "target": request.target,
                 "tier": request.tier,
                 "programs": programs,
-                "profile": request.profile,
+                "owner": _owner_identity(request.profile),
                 "request": request.request_sha256,
                 "engine_identity": request.engine_identity,
             }
