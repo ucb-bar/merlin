@@ -207,7 +207,7 @@ def emit_cases(
                     },
                 )
                 groups.append((spec, result))
-            environment = dict(os.environ)
+            environment = cpu_pool.child_environment()
             transports = (
                 lifetime.enter_context(
                     CHILD.prepare_model_children(

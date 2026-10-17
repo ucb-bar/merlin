@@ -810,17 +810,41 @@ def shared_compute_pool(*, timeout_s: float | None = None, queued_since_ns: int 
         yield
 
 
+def _carried_priority(env: Mapping[str, str]) -> int | None:
+    """The caller's explicit lease class that a worker launched with ``env`` must carry."""
+    if _shared_compute_selection(env) is None:
+        return None
+    return _explicit_priority()
+
+
+def child_environment(environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """A copy of ``environ`` (default: this process's) carrying the caller's lease class.
+
+    Build a worker environment with this whenever it is recorded or sealed before
+    launch. :func:`worker_pool_command` then finds the class already present and
+    adds no ``env`` prefix, so the worker receives exactly the recorded mapping.
+    Without a shared pool or an explicit class the copy is unchanged.
+    """
+    environment = dict(os.environ if environ is None else environ)
+    level = _carried_priority(environment)
+    if level is not None:
+        environment[PRIORITY_ENV] = str(level)
+    return environment
+
+
 def worker_pool_command(command: list[str], env: dict[str, str]) -> list[str]:
     """Select unleased preparation affinity before the worker interpreter imports code.
 
     This parent-side command owns no CPU slot: actual child step owners acquire
     theirs after launch, so waiting parent workers cannot exhaust the pool. With
-    a shared pool, the caller's lease class travels with the worker.
+    a shared pool, the caller's lease class travels with the worker; an ``env``
+    prefix supplies it when ``env`` lacks it, which changes the worker's
+    environment, so a caller that records ``env`` first builds it with
+    :func:`child_environment`.
     """
-    if _shared_compute_selection(env) is not None:
-        level = _explicit_priority()
-        if level is not None and env.get(PRIORITY_ENV) != str(level):
-            command = ["env", f"{PRIORITY_ENV}={level}", *command]
+    level = _carried_priority(env)
+    if level is not None and env.get(PRIORITY_ENV) != str(level):
+        command = ["env", f"{PRIORITY_ENV}={level}", *command]
     cpus = preparation_cpus(env)
     if not cpus:
         return command

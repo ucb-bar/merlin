@@ -180,7 +180,7 @@ def emit_cases(
                 _write(spec, document)
                 jobs.append((index, spec, result))
             if jobs:
-                environment = dict(os.environ)
+                environment = cpu_pool.child_environment()
                 transports = lifetime.enter_context(
                     CHILD.prepare_model_children(
                         spec_paths=tuple(spec for _, spec, _ in jobs), environment=environment, package_dir=candidate

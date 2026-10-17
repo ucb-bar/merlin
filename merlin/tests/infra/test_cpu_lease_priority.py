@@ -18,6 +18,7 @@ import time
 import pytest
 
 from merlin.common import cpu_pool as C
+from merlin.common import invocation_record as I
 from merlin.common.paths import python_import_roots
 
 FORK = multiprocessing.get_context("fork")
@@ -326,6 +327,40 @@ def test_worker_launch_carries_the_callers_class_only_with_a_shared_pool(pool):
         assert "env" not in C.worker_pool_command(command, inherited)  # already inherited
     level, affinity = json.loads(subprocess.check_output(launched, env=environment, text=True, timeout=60))
     assert level == C.AUXILIARY and affinity == [cpu]
+
+
+_ENVIRONMENT_CHILD = (
+    "import json, os; from merlin.common import cpu_pool as C, invocation_record as I\n"
+    "print(json.dumps([I.environment_identity(os.environ), C.lease_priority()]))\n"
+)
+
+
+def test_a_sealed_worker_environment_is_the_one_the_worker_receives(pool):
+    """A context-only class is stamped before the environment is recorded, never added by the launcher.
+
+    The in-turn grader selects GRADE in its context alone. A launcher ``env`` prefix supplied the class
+    after the parent sealed the child's environment, so the child saw another mapping and refused.
+    """
+    cpu, _ = pool
+    environment = _child_environment()
+    assert C.PRIORITY_ENV not in environment
+    assert C.child_environment(environment) == environment  # no explicit class: an unchanged copy
+
+    @C.with_priority(C.GRADE)
+    def seal_and_launch():
+        sealed = C.child_environment(environment)
+        command = [sys.executable, "-c", _ENVIRONMENT_CHILD]
+        return sealed, C.worker_pool_command(command, sealed), C.worker_pool_command(command, environment)
+
+    sealed, command, prefixed = seal_and_launch()
+    assert sealed == {**environment, C.PRIORITY_ENV: str(C.GRADE)}
+    assert command[:4] == ["taskset", "--cpu-list", str(cpu), sys.executable] and "env" not in command
+    received, level = json.loads(subprocess.check_output(command, env=sealed, text=True, timeout=60))
+    assert received == I.environment_identity(sealed) and level == C.GRADE
+    # The unstamped launch still runs at the caller's class, but not with the environment recorded for it.
+    assert prefixed[3:5] == ["env", f"{C.PRIORITY_ENV}={C.GRADE}"]
+    received, level = json.loads(subprocess.check_output(prefixed, env=environment, text=True, timeout=60))
+    assert received != I.environment_identity(environment) and level == C.GRADE
 
 
 def test_preparation_folds_into_the_pool_without_deadlock(pool):

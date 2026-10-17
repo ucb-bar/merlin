@@ -23,7 +23,7 @@ from pathlib import Path
 
 import yaml
 
-from merlin.common import invocation_record
+from merlin.common import cpu_pool, invocation_record
 from merlin.common.bundle_snapshot import verified_snapshot_scope
 from merlin.common.digest import sha256_file
 from merlin.targetgen import compiler_profile_admission as API
@@ -382,7 +382,12 @@ def restored_case_checkpoint():
 
 @contextlib.contextmanager
 def prepare_model_child(*, spec_path, environment, package_dir):
-    """Issue a sealed FD only from the actual original parent execution scope."""
+    """Issue a sealed FD only from the actual original parent execution scope.
+
+    ``environment`` is the exact mapping the child is launched with; build it
+    with :func:`merlin.common.cpu_pool.child_environment` so the launcher adds
+    nothing after it is sealed.
+    """
     executor = _original_executor()
     if executor is None:
         yield None
@@ -397,6 +402,9 @@ def prepare_model_child(*, spec_path, environment, package_dir):
     boundary = resources.active_resource_boundary()
     if boundary is not None and type(boundary) is not resources.ExternalResourceBoundary:
         raise StageGateError("model child resources require the exact live kernel-issued owner")
+    if cpu_pool.child_environment(environment) != dict(environment):
+        # Its launcher would add the class after sealing; the child would then refuse its environment.
+        raise StageGateError("model child environment lacks the caller's CPU lease class")
     document = {
         "schema": SCHEMA,
         "parent": _process(os.getpid()),

@@ -319,6 +319,67 @@ def test_parent_scope_ends_before_Popen_and_result_verification(setup, monkeypat
     assert seen == ["launch", "result"]
 
 
+def test_context_only_grade_class_reaches_the_sealed_child_unchanged(setup, monkeypatch, tmp_path):
+    """The in-turn grader selects GRADE in its context alone, never in the process environment.
+
+    With a shared pool, the launcher used to add ``env MERLIN_CPU_PRIORITY=2`` after the parent sealed
+    the child's environment, so the restored child refused its provenance and every grade was skipped.
+    """
+    from merlin.common import cpu_pool
+    from merlin.common import invocation_record as I
+
+    cpu = min(os.sched_getaffinity(0))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "cpu-slots"))
+    for key in (cpu_pool.PRIORITY_ENV, "MERLIN_PREPARATION_CPUS", "MERLIN_GRADE_CPUS"):
+        monkeypatch.delenv(key, raising=False)
+    prepare, launch = OC.CHILD.prepare_model_child, OC.subprocess.Popen
+    sealed, launched = [], []
+
+    @contextlib.contextmanager
+    def recorded_seal(**kwargs):
+        with prepare(**kwargs) as transport:
+            sealed.append(transport.document["environment"])
+            yield transport
+
+    def recorded_launch(command, **kwargs):
+        launched.append((list(command), dict(kwargs["env"])))
+        return launch(command, **kwargs)
+
+    monkeypatch.setattr(OC.CHILD, "prepare_model_child", recorded_seal)
+    monkeypatch.setattr(OC.subprocess, "Popen", recorded_launch)
+    with cpu_pool.cpu_priority(cpu_pool.GRADE), _scope(setup):
+        row = grade(setup, "in-turn-grade")
+    assert row["status"] == "pass" and row["original_compiler_child"]["schema"] == OC.CHILD.SCHEMA
+    ((command, environment),) = launched
+    assert command[:3] == ["taskset", "--cpu-list", str(cpu)] and "env" not in command
+    assert environment[cpu_pool.PRIORITY_ENV] == str(cpu_pool.GRADE)
+    assert sealed == [I.environment_identity(environment)]
+
+
+def test_sealing_refuses_an_environment_its_launcher_would_change(setup, monkeypatch, tmp_path):
+    from merlin.common import cpu_pool
+
+    cpu = min(os.sched_getaffinity(0))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "cpu-slots"))
+    monkeypatch.delenv(cpu_pool.PRIORITY_ENV, raising=False)
+    with _scope(setup), cpu_pool.cpu_priority(cpu_pool.GRADE):
+        root = OC.CHILD.model_child_temporary_root()
+        with tempfile.TemporaryDirectory(dir=root) as temporary:
+            spec = Path(temporary) / "spec.json"
+            spec.write_text(json.dumps({"package_dir": str(setup.candidate)}))
+            with pytest.raises(StageGateError, match="lease class"):
+                with OC.CHILD.prepare_model_child(
+                    spec_path=spec, environment=dict(os.environ), package_dir=setup.candidate
+                ):
+                    pass
+            with OC.CHILD.prepare_model_child(
+                spec_path=spec, environment=cpu_pool.child_environment(), package_dir=setup.candidate
+            ) as transport:
+                assert transport is not None
+
+
 def test_expired_original_owner_cannot_issue_or_launch_operator_child(setup, monkeypatch):
     launched = []
     monkeypatch.setattr(OC.subprocess, "Popen", lambda *args, **kwargs: launched.append(True))

@@ -2511,7 +2511,9 @@ def _grade_model_capsule_unlocked(
         # this is a preamble and not a call at the top of main().
         cmd = [sys.executable, "-c", _CHILD_PREAMBLE, "--model-grade", str(spec_p), "--model-grade-out", str(out_p)]
         started = time.monotonic()
-        _child_env = dict(os.environ)
+        from merlin.common.cpu_pool import child_environment
+
+        _child_env = child_environment()  # sealed below: it must already carry the caller's lease class
         # A budgeted model grade runs in another interpreter, so the parent's ContextVar cannot carry
         # the capsule attribution into it. The pass recorder already accepts this explicit environment
         # fallback; set it on the child only so concurrent model grades cannot cross-attribute calls.

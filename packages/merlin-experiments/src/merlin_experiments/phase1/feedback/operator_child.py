@@ -128,7 +128,7 @@ def _prepared_child(document):
             private = Path(lifetime.enter_context(tempfile.TemporaryDirectory(prefix="operator-grade-", dir=root)))
             spec, output = private / "spec.json", private / "result.json"
             spec.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
-            environment = dict(os.environ)
+            environment = cpu_pool.child_environment()
             if environment.get("MERLIN_PASS_LOG"):
                 environment["MERLIN_PASS_LOG_CAPSULE"] = str(document["capsule"]["name"])
                 environment["MERLIN_PASS_LOG_REQUIREMENTS"] = json.dumps(
