@@ -5,9 +5,14 @@ on:
     paths:
       - 'merlin/lean/**'
       - 'src/merlin/verify/lean/**'
+      - 'src/merlin/llvmlower/**'
+      - 'src/merlin/runtime/backends/zephyr_model.py'
+      - 'src/merlin/runtime/dispatch_runtime.py'
       - 'merlin/contract/schemas/lean_*.json'
       - 'merlin/tests/ir/*lean*'
       - 'merlin/tests/ir/conftest.py'
+      - 'merlin/tests/ir/test_lower_quant_ext_granularities.py'
+      - 'merlin/tests/ir/test_normalization_reassociation.py'
       - 'merlin/tests/fixtures/lean*'
       - 'build_tools/scripts/check_lean_guard.py'
       - 'build_tools/toolchains/*'
@@ -53,24 +58,24 @@ jobs:
       - name: build and audit all Lean declarations and pinned statements
         run: uv run --no-sync python build_tools/scripts/check_lean_guard.py
       - name: authoritative round trips, receipts, races and semantic differential tests
-        # Secondary xDSL/standalone comparisons run locally; this job requires the actual Python
-        # MLIR parser/pass implementation and must not silently substitute another backend.
-        run: >-
-          uv run --no-sync pytest -q
-          merlin/tests/ir/test_lean_export.py
-          merlin/tests/ir/test_lean_support.py
-          merlin/tests/ir/test_lean_chain.py
-          merlin/tests/ir/test_lean_snapshots.py
-          merlin/tests/ir/test_lean_guard.py
-          merlin/tests/ir/test_lean_stages.py
-          merlin/tests/ir/test_lean_mlir_differential.py
-          merlin/tests/ir/test_lean_dequant_scalar.py
-          merlin/tests/ir/test_lean_dequant_layout.py
-          merlin/tests/ir/test_lean_dequant_c1.py
-          merlin/tests/ir/test_lean_dequant_torch.py
-          -k 'not standalone and not test_round_trip_identical'
-          -o junit_family=xunit1
-          --junitxml=out/artifacts/verification/lean-mlir.xml
+        # Collect every binding-only Lean suite, including new rewrite/definedness families.
+        # Native execution and standalone parser comparisons require separately installed LLVM
+        # tools and run out of band. Keep that exclusion explicit; no backend substitution.
+        run: |
+          set -euo pipefail
+          lean_suites=()
+          for suite in merlin/tests/ir/test_lean_*.py; do
+            case "$suite" in
+              */test_lean_differential.py|*/test_lean_splat_inputs.py) continue ;;
+            esac
+            lean_suites+=("$suite")
+          done
+          uv run --no-sync pytest -q "${lean_suites[@]}" \
+            merlin/tests/ir/test_lower_quant_ext_granularities.py \
+            merlin/tests/ir/test_normalization_reassociation.py \
+            -k 'not standalone and not test_round_trip_identical' \
+            -o junit_family=xunit1 \
+            --junitxml=out/artifacts/verification/lean-mlir.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
