@@ -159,8 +159,11 @@ def golden_files(te: TargetExperiment) -> list[Path]:
         if corpus and corpus.is_dir():
             files += sorted(corpus.rglob("golden.*"))
             for declaration in sorted(corpus.rglob("capsule.yaml")):
-                files += [declaration.parent / member for member, origin in
-                          capsule_answer_members(declaration.parent).items() if origin == "golden"]
+                files += [
+                    declaration.parent / member
+                    for member, origin in capsule_answer_members(declaration.parent).items()
+                    if origin == "golden"
+                ]
             # Instruction-coverage expectations are used by the grader in the same way as numerical
             # goldens. Exposing them tells the agent the exact command mix it must synthesize, so they
             # are an answer surface even though their filename does not begin with ``golden``.
