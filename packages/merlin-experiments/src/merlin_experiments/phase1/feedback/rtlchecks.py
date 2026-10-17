@@ -200,7 +200,15 @@ def treatment(context: InvocationContext, *, filecheck_candidates: tuple[Path, .
     """Create source-attributed callbacks bound to one explicit target invocation."""
 
     def qa_runner(
-        submission, capsules_root, runs_root, labels, no_oracle, timeout, *, contract=None, additional_forbidden=(),
+        submission,
+        capsules_root,
+        runs_root,
+        labels,
+        no_oracle,
+        timeout,
+        *,
+        contract=None,
+        additional_forbidden=(),
         defer_pending=None,
     ):
         return run(
