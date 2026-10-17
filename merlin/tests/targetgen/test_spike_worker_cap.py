@@ -45,12 +45,15 @@ def probe(tmp_path, value=None, compute_count=None):
 
 @pytest.mark.parametrize(
     "value,compute_count,expected",
-    [(None, None, 8), ("", 15, 8), ("15", 15, 15), ("32", None, 32), ("32", 15, 15), ("15", 3, 3), ("1", 15, 1)],
+    [(None, None, 8), ("", 15, 15), (None, 3, 3), ("15", 15, 15), ("32", None, 32), ("32", 15, 15), ("15", 3, 3),
+     ("1", 15, 1)],
 )
 def test_fresh_worker_cap_and_actual_grading_bound(tmp_path, value, compute_count, expected):
+    # An unset cap is the shared compute pool's size when one is selected, else the legacy 8.
     result = probe(tmp_path, value, compute_count)
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == {"initial": expected, "bounded": min(15, expected), "unset_after_reload": 8}
+    assert json.loads(result.stdout) == {"initial": expected, "bounded": min(15, expected),
+                                         "unset_after_reload": compute_count or 8}
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "33", "1.5", "false"])

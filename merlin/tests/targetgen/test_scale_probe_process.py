@@ -148,6 +148,10 @@ def test_invalid_worker_selection_refuses(setup, monkeypatch, value):
 def test_worker_selection_is_bounded_by_actual_shared_pool(setup, monkeypatch):
     monkeypatch.setenv("MERLIN_GRADE_WORKERS", "100")
     assert S.workers() == 2
+    monkeypatch.setenv("MERLIN_GRADE_WORKERS", "1")
+    assert S.workers() == 1
+    monkeypatch.delenv("MERLIN_GRADE_WORKERS")  # unset: the shared pool alone sizes the probe
+    assert S.workers() == 2
 
 
 def test_parent_reopens_products_before_accepting_child_completion(setup, monkeypatch):

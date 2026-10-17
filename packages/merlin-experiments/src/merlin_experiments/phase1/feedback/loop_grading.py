@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-from merlin.common.cpu_pool import shared_compute_pool
+from merlin.common.cpu_pool import AUXILIARY, shared_compute_pool, with_priority
 from merlin.common.tree_hash import hash_tree
 from merlin.targetgen.target_experiment import load_target_experiment
 from merlin_experiments.phase1 import oot_history as OH
@@ -700,6 +700,7 @@ def fast_grade(
 # loop tier. Restricted to the multi-tile corners: the question is "does this backend generalize past ONE
 # tile, and along WHICH axis" -- per-axis, because a backend that loops over K and N but not M passes two
 # of the three, and only naming the axis makes the result actionable.
+@with_priority(AUXILIARY)  # Advisory probe CPU yields to author requests and grade capsules.
 def _attach_shape_generalization(
     verdict: dict,
     cand,
@@ -833,6 +834,7 @@ def _public_object_build_projection(observation: dict, *, budget_s: int, candida
     }
 
 
+@with_priority(AUXILIARY)  # Advisory probe CPU yields to author requests and grade capsules.
 def _attach_codegen_scalability(
     verdict: dict,
     cand,

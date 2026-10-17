@@ -52,6 +52,9 @@ ENGINE_PRIORITY: tuple[str, ...] = ("vcs", "gsim", "verilator")
 # for more workers. Host-load sizing is a snapshot: two independent grades can
 # both observe an idle host and otherwise each start a full-width pool. The
 # asynchronous broker and direct/scheduled graders must use the same caps.
+# With a shared compute pool selected, its per-CPU leases already bound every
+# engine, so unset GSim and Spike caps become the pool size (resolved at import,
+# like the explicit overrides).
 CAPSULE_WORKER_CAP: dict[str, int] = {"verilator": 4, "gsim": 5, "spike": 8}
 
 
@@ -82,10 +85,22 @@ def _spike_cap_override() -> int | None:
     return min(value, len(grading_cpus())) if shared_compute_enabled() else value
 
 
+def _shared_pool_cap() -> int:
+    """A selected shared compute pool is the only limiter: unset caps default to its size."""
+    from merlin.common.cpu_pool import compute_capacity
+
+    return min(compute_capacity(), os.cpu_count() or 1)
+
+
+_pool_cap = _shared_pool_cap()
 if (_override := _gsim_cap_override()) is not None:
     CAPSULE_WORKER_CAP["gsim"] = _override
+elif _pool_cap:
+    CAPSULE_WORKER_CAP["gsim"] = _pool_cap
 if (_override := _spike_cap_override()) is not None:
     CAPSULE_WORKER_CAP["spike"] = _override
+elif _pool_cap:
+    CAPSULE_WORKER_CAP["spike"] = _pool_cap
 GSIM_RUNTIME_SLOT_PROTOCOL = "reentrant_per_thread_v1"
 
 # Host runners and selected backends may both guard the same synchronous native
@@ -601,10 +616,11 @@ def gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path | 
         with _gsim_runtime_slot(wait_timeout_s=wait_timeout_s, slot_root=slot_root):
             yield
         return
+    queued_since_ns = time.monotonic_ns()  # Retries keep their place in the CPU queue.
     while True:
         remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
         with ExitStack() as ownership:
-            ownership.enter_context(shared_compute_pool(timeout_s=remaining))
+            ownership.enter_context(shared_compute_pool(timeout_s=remaining, queued_since_ns=queued_since_ns))
             try:
                 ownership.enter_context(_gsim_runtime_slot(wait_timeout_s=0, slot_root=slot_root))
             except TimeoutError:

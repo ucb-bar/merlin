@@ -378,7 +378,6 @@ def start_background(
     on_tick=None,
     grade_callback: IntervalGrade,
     fast_grade_callback: FastGrade,
-    foreground_has_priority=None,
     source_identity=None,
 ):
     """Start the in-turn grader for ONE agent turn; returns a handle for `stop_background`.
@@ -392,8 +391,13 @@ def start_background(
     --grade-interval with the FULL mandatory ladder, which is the grade that can converge the run.
     Neither phase touches the driver's own `verdict`: the authoritative round verdict is still the
     post-turn `qa_grade`, and neither phase checkpoints (a background tick is not a round number).
+
+    Both phases lease shared compute at the GRADE class: a concurrent author self-check (AUTHOR)
+    is served first CPU by CPU, but a cadence is never skipped while one runs.
     """
     import threading
+
+    from merlin.common.cpu_pool import AUXILIARY, GRADE, cpu_priority, preparation_cpus, selected_pool
 
     stop = threading.Event()
     start_cadence = os.environ.get('MERLIN_GRADE_START_TO_START', '0')
@@ -409,10 +413,6 @@ def start_background(
         if not (ws / "qa" / "verdict.json").exists():
             landed, tries = False, 0
             while not stop.is_set():
-                if foreground_has_priority is not None and foreground_has_priority():
-                    if stop.wait(FIRST_GRADE_POLL_S):
-                        break
-                    continue
                 tries += 1
                 try:
                     v = fast_grade_callback(ws, run_dir, FIRST_BACKGROUND_TICK, min(cadence.qa_timeout, 900))
@@ -452,9 +452,6 @@ def start_background(
         delay, completed_source = interval, None
         while not stop.wait(delay):
             delay = interval
-            if foreground_has_priority is not None and foreground_has_priority():
-                delay = min(30, interval)
-                continue
             before = source_identity() if source_identity is not None else None
             if source_identity is not None and (before is None or before == completed_source):
                 delay = min(30, interval)
@@ -492,17 +489,18 @@ def start_background(
             )
             if on_tick is not None:
                 try:
-                    on_tick(t)
+                    with cpu_priority(AUXILIARY):  # Telemetry yields to every grade and author request.
+                        on_tick(t)
                 except Exception as e:  # noqa: BLE001 - a tick hook must never kill the grader
                     print(f"[in-turn grade {t}] on_tick skipped: {type(e).__name__}: {e}", flush=True)
 
     def _body() -> None:
-        from merlin.common.cpu_pool import preparation_cpus, selected_pool
-
         # A new thread inherits the manager's CPU pool. Establish the grading
         # base before callbacks create executors so nested build/sim leases
         # restore preparation CPUs, including between-capsule provenance work.
-        with selected_pool(preparation_cpus()):
+        # A new thread also starts without a lease class: grade at GRADE, below
+        # author-requested work and above preparation and probes.
+        with selected_pool(preparation_cpus()), cpu_priority(GRADE):
             _grade_body()
 
     th = threading.Thread(target=_body, name="in-turn-grader", daemon=True)

@@ -362,7 +362,10 @@ def _should_stop(ch: Path, orig_ppid: int) -> str | None:
 
 
 def _dispatch_capacity() -> int:
-    value = os.environ.get("MERLIN_SELFCHECK_BROKER_JOBS", "1")
+    from merlin.common.cpu_pool import compute_capacity
+
+    # A shared compute pool arbitrates the handlers' CPU, so it selects the dispatcher by default.
+    value = os.environ.get("MERLIN_SELFCHECK_BROKER_JOBS", "2" if compute_capacity() else "1")
     if value not in {"1", "2"}:
         raise ValueError("MERLIN_SELFCHECK_BROKER_JOBS must be 1 or 2")
     return int(value)
@@ -412,9 +415,13 @@ def _feedback_scope_error(request):
 
 
 def _ordinary_capacity():
-    raw = os.environ.get("MERLIN_SELFCHECK_ORDINARY_JOBS", "1")
-    if raw not in {"1", "2"}:
-        raise ValueError("MERLIN_SELFCHECK_ORDINARY_JOBS must be 1 or 2")
+    from merlin.common.cpu_pool import compute_capacity
+
+    # Concurrent numerical handlers; each one's steps lease the shared pool, which is the only limiter.
+    pool = compute_capacity()
+    raw = os.environ.get("MERLIN_SELFCHECK_ORDINARY_JOBS", str(pool or 1))
+    if not raw.isascii() or not raw.isdecimal() or not 1 <= int(raw) <= max(2, pool):
+        raise ValueError("MERLIN_SELFCHECK_ORDINARY_JOBS must be 1 or 2, or at most the shared compute pool size")
     return int(raw)
 
 
@@ -992,4 +999,7 @@ def main(
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from merlin.common.cpu_pool import AUTHOR, cpu_priority
+
+    with cpu_priority(AUTHOR, export=True):  # Author-requested self-checks lease first.
+        raise SystemExit(main())

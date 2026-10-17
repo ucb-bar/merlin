@@ -477,7 +477,10 @@ def prepare(
     request: RunRequest, transport: WorkspaceTransport, stage_task: TaskStager, *, workspace_leases: list
 ) -> PreparedRun | int:
     """Close all preparation verification scopes before returning or refusing."""
-    with ExitStack() as snapshot_scopes:
+    from merlin.common.cpu_pool import PREPARATION, cpu_priority
+
+    # Preparation shares the compute pool; its leased steps queue behind author and grade work.
+    with cpu_priority(PREPARATION), ExitStack() as snapshot_scopes:
         return _prepare(
             request, transport, stage_task, workspace_leases=workspace_leases,
             snapshot_scopes=snapshot_scopes,

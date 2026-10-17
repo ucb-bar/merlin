@@ -44,7 +44,7 @@ def batch_workers():
 def workers():
     if not cpu_pool.shared_compute_enabled():
         return 1
-    value = os.environ.get("MERLIN_GRADE_WORKERS", "1")
+    value = os.environ.get("MERLIN_GRADE_WORKERS", str(cpu_pool.compute_capacity()))
     if not value.isdecimal() or int(value) < 1:
         raise ValueError("public scale preparation requires a positive original worker count")
     return min(int(value), len(cpu_pool.grading_cpus()))

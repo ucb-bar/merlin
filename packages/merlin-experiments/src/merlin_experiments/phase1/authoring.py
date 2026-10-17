@@ -326,7 +326,6 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     _fast_grade = partial(LG.fast_grade, inputs=grading_inputs)
     _background_grade = T.timed(partial(LG.grade, inputs=grading_inputs,
         qa_runner=treatment.qa_runner, advisory_background=True), "qa", treatment.on_duration)
-    from .feedback.background_admission import foreground_active
     # realistic (abc2): the self-check tool the agent runs logs each invocation here (dev-trajectory /
     # soft-failure / tool-trigger record). T0 anchors wall-offset. Inherited by every claude subprocess.
     if a.experiment == "realistic":
@@ -670,7 +669,6 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             on_tick=lambda t: _sink_telemetry_now(f"round {rnd} tick {t}"),
             grade_callback=_background_grade,
             fast_grade_callback=_fast_grade,
-            foreground_has_priority=partial(foreground_active, ws, grading_inputs),
         )
         try:
             if _operator_errata_record is not None:

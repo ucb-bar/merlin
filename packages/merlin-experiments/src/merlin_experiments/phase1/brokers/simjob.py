@@ -11,10 +11,11 @@ maps those to a FIXED agent_selfcheck.py argv — it NEVER execs anything the re
 gets full sim power on its OWN submission + the harness capsules, but cannot read goldens/oracle or run
 arbitrary shell outside the sandbox.
 
-Bounded local pool (--max-jobs) + a GLOBAL cross-arm verilator slot cap (file semaphore in a shared dir)
-so the 3 concurrent arms don't launch 3x the verilator load. Exits on the existing STOP sentinel.
+Bounded local pool (--max-jobs; unset = the shared compute pool size, else 4) + a GLOBAL cross-arm
+verilator slot cap (file semaphore in a shared dir) so the 3 concurrent arms don't launch 3x the verilator
+load. Exits on the existing STOP sentinel.
 
-Usage: simjob_broker.py --ws <workspace> [--max-jobs 4] [--veril-slots 2] [--poll 0.5]
+Usage: simjob_broker.py --ws <workspace> [--max-jobs N] [--veril-slots 2] [--poll 0.5]
 """
 
 from __future__ import annotations
@@ -645,6 +646,13 @@ def _job_timeout_s(sim: str, ncaps: int, vpc: int) -> int:
     return (max(1, int(vpc)) * max(1, int(ncaps))) if rtl else _SCREEN_TIMEOUT_S
 
 
+def _default_max_jobs() -> int:
+    """Every job's steps lease the shared compute pool, so its size is the only limiter (legacy: 4)."""
+    from merlin.common.cpu_pool import compute_capacity
+
+    return compute_capacity() or 4
+
+
 def main(
     argv=None,
     *,
@@ -665,13 +673,16 @@ def main(
     ap.add_argument("--ws", required=True)
     ap.add_argument("--rtl-facts", type=Path, help="Selected facts in the verified frozen input snapshot")
     ap.add_argument("--compiler-bundle-manifest", type=Path, help="host-owned archived common compiler profile")
-    ap.add_argument("--max-jobs", type=int, default=4)
+    ap.add_argument("--max-jobs", type=int, default=None,
+                    help="concurrent jobs; unset = the shared compute pool size, else 4")
     ap.add_argument("--veril-slots", type=int, default=2)
     ap.add_argument("--poll", type=float, default=0.5)
     ap.add_argument(
         "--per-capsule-timeout", type=int, default=0, help="0=derive from the cert engine's own measured cost law"
     )
     a = ap.parse_args(argv)
+    if a.max_jobs is None:
+        a.max_jobs = _default_max_jobs()
     from ..frozen_facts import select
 
     select(Path(a.ws), a.rtl_facts)
@@ -1057,4 +1068,7 @@ def main(
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from merlin.common.cpu_pool import AUTHOR, cpu_priority
+
+    with cpu_priority(AUTHOR, export=True):  # Author-requested simulation jobs lease first.
+        raise SystemExit(main())
