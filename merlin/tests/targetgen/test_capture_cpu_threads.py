@@ -50,5 +50,8 @@ def test_the_worker_runs_and_records_its_selected_thread_count(tmp_path):
 @pytest.mark.parametrize("bad", ["0", "257"])
 def test_an_out_of_range_thread_count_is_refused_before_capture(tmp_path, bad, capsys):
     with pytest.raises(SystemExit):
-        worker.main(["--loader", str(tmp_path / "loader.py"), "--out", str(tmp_path / "out"), "--cpu-threads", bad])
+        worker.main([
+            "--loader", str(tmp_path / "loader.py"), "--dtype", "fp32",
+            "--out", str(tmp_path / "out"), "--cpu-threads", bad,
+        ])
     assert "--cpu-threads must be between 1 and 256" in capsys.readouterr().err
