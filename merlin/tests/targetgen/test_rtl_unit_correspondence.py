@@ -1,6 +1,7 @@
 """Accelerator-unit structural correspondence across two SoC configurations."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -143,3 +144,75 @@ def test_unverified_sources_refuse(tmp_path):
     target["source_consistency"]["status"] = "unverified"
     with pytest.raises(ValueError, match="verified source consistency"):
         uc.compare_unit(target, _facts(tmp_path, "simulation", generic=_generic()))
+
+
+def _bindable(tmp_path):
+    target = _facts(tmp_path, "target", generic=_generic(path="t.mlir", hint=False))
+    simulation = _facts(tmp_path, "simulation", generic=_generic(path="s.mlir"))
+    record = uc.compare_unit(target, simulation)
+    selection = json.loads(Path(target["inputs"]["source_bundle_path"]).read_text())
+    target["inputs"].update(
+        target="accel",
+        fir_sha256=selection["sources"]["firrtl"]["sha256"],
+        core_hw_sha256=selection["sources"]["core_hw"]["sha256"],
+    )
+    target["source_consistency"]["config"] = "TargetConfig"
+    target["facts"] = {
+        "source": {
+            "config": "TargetConfig",
+            "fir_sha256": selection["sources"]["firrtl"]["sha256"],
+            "hierarchy_sha256": selection["sources"]["hierarchy"]["sha256"],
+        },
+        "simulation_correspondence": record,
+    }
+    return target
+
+
+def test_execution_binding_returns_the_verified_simulation_identity(tmp_path):
+    facts = _bindable(tmp_path)
+    binding = uc.execution_binding(facts, config="SimulationConfig")
+    simulated = facts["facts"]["simulation_correspondence"]["configs"]["simulation"]
+    assert binding["basis"] == "simulation_correspondence" and binding["facts_config"] == "TargetConfig"
+    assert binding["firrtl"] == simulated["firrtl"] and binding["hierarchy"] == simulated["hierarchy"]
+    own = uc.execution_binding(facts, config="TargetConfig")
+    assert own["basis"] == "same_configuration" and own["firrtl"]["sha256"] == facts["inputs"]["fir_sha256"]
+    assert uc.bound_firrtl_digests(facts) == {facts["inputs"]["fir_sha256"], simulated["firrtl"]["sha256"]}
+
+
+def _set(path, value):
+    def mutate(facts):
+        node = facts
+        for key in path[:-1]:
+            node = node[key]
+        node[path[-1]] = value
+
+    return mutate
+
+
+CORRESPONDENCE = ("facts", "simulation_correspondence")
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda facts: facts["facts"].pop("simulation_correspondence"),
+        _set((*CORRESPONDENCE, "status"), "different"),
+        _set((*CORRESPONDENCE, "schema"), "other"),
+        _set((*CORRESPONDENCE, "configs", "target", "hierarchy", "sha256"), "0" * 64),
+        _set((*CORRESPONDENCE, "configs", "target", "config"), "Other"),
+        _set((*CORRESPONDENCE, "configs", "simulation", "core_hw", "sha256"), "x"),
+        _set((*CORRESPONDENCE, "unit_root"), "Elsewhere"),
+        _set(("source_consistency", "config"), "SimulationConfig"),
+    ],
+)
+def test_execution_binding_fails_closed(tmp_path, mutation):
+    facts = _bindable(tmp_path)
+    mutation(facts)
+    with pytest.raises(uc.ExecutionBindingError):
+        uc.execution_binding(facts, config="SimulationConfig")
+    assert uc.bound_firrtl_digests(facts) <= {facts["inputs"]["fir_sha256"]}
+
+
+def test_execution_binding_refuses_an_unrelated_configuration(tmp_path):
+    with pytest.raises(uc.ExecutionBindingError, match="binds SimulationConfig, not ThirdConfig"):
+        uc.execution_binding(_bindable(tmp_path), config="ThirdConfig")

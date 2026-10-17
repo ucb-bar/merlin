@@ -85,7 +85,13 @@ def require_elf_isa_supported(arch: list[str], host_isa: str, *, require_scalar:
 
 
 def selected_firrtl(path: str | Path, *, target: str, config: str) -> dict[str, str]:
-    """Read one explicitly selected RTL facts document and recheck its FIRRTL bytes."""
+    """Read one explicitly selected RTL facts document and recheck the FIRRTL ``config`` executes.
+
+    Facts of ``config`` itself yield their own FIRRTL input. Facts of another configuration yield
+    the FIRRTL of their verified simulation correspondence to ``config`` (see
+    :func:`merlin.targetgen.rtl.unit_correspondence.execution_binding`), byte-verified on disk and
+    marked with ``facts_config``; anything else refuses.
+    """
     lexical = Path(path)
     if lexical.is_symlink() or not lexical.is_file():
         raise ModelExecutionInputError("selected RTL facts are missing or a symlink")
@@ -95,6 +101,8 @@ def selected_firrtl(path: str | Path, *, target: str, config: str) -> dict[str, 
     origin = facts.get("source") or {}
     inputs = document.get("inputs") or {}
     rows = inputs.get("firrtl_inputs") or []
+    if inputs.get("target") == target and origin.get("config") != config:
+        return _corresponding_firrtl(document, source, target=target, config=config)
     if inputs.get("target") != target or origin.get("config") != config or len(rows) != 1:
         raise ModelExecutionInputError("selected RTL facts do not name the board target/config and one FIRRTL input")
     row = rows[0]
@@ -117,6 +125,30 @@ def selected_firrtl(path: str | Path, *, target: str, config: str) -> dict[str, 
         "firrtl_sha256": digest,
         "target": target,
         "config": config,
+    }
+
+
+def _corresponding_firrtl(document: dict, source: Path, *, target: str, config: str) -> dict[str, str]:
+    from merlin.targetgen.rtl.unit_correspondence import ExecutionBindingError, execution_binding
+
+    try:
+        binding = execution_binding(document, config=config)
+    except ExecutionBindingError as exc:
+        raise ModelExecutionInputError(
+            "selected RTL facts do not name the board target/config and one FIRRTL input"
+        ) from exc
+    firrtl = Path(str(binding["firrtl"].get("path") or ""))
+    digest = binding["firrtl"]["sha256"]
+    if not firrtl.is_absolute() or firrtl.is_symlink() or not firrtl.is_file() or file_sha256(firrtl) != digest:
+        raise ModelExecutionInputError("selected RTL facts have no byte-verified corresponding simulation FIRRTL")
+    return {
+        "path": str(source),
+        "sha256": file_sha256(source),
+        "firrtl": str(firrtl.resolve()),
+        "firrtl_sha256": digest,
+        "target": target,
+        "config": config,
+        "facts_config": binding["facts_config"],
     }
 
 

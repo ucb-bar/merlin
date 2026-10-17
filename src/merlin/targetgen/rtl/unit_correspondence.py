@@ -191,6 +191,7 @@ def _side(facts: dict, label: str) -> dict[str, Any]:
         "core_root": production.get("core_root"),
         "selection": {"path": selection["selection_path"], "sha256": selection["selection_sha256"]},
         "firrtl": selection["sources"]["firrtl"],
+        "hierarchy": selection["sources"]["hierarchy"],
         "soc_hw": selection["sources"]["soc_hw"],
         "core_hw": selection["sources"]["core_hw"],
         "core_hw_generic": {"path": generic["path"], "sha256": generic["sha256"]},
@@ -303,6 +304,120 @@ def compare_unit(target_facts: dict, simulation_facts: dict) -> dict[str, Any]:
             "(memory system, clocks, bridges) is not compared here and must be qualified separately"
         ),
     }
+
+
+#: Correspondence results under which one configuration's unit stands for the other's.
+EQUIVALENT = frozenset({"identical", "structurally_equivalent"})
+
+
+class ExecutionBindingError(ValueError):
+    """Facts that cannot bind an execution of the requested configuration."""
+
+
+def _hex(value) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def facts_config(document: dict) -> str:
+    """The one configuration a facts document describes; every place it is declared must agree."""
+    body = document.get("facts") if isinstance(document, dict) else None
+    source = body.get("source") if isinstance(body, dict) else None
+    consistency = document.get("source_consistency") if isinstance(document, dict) else None
+    if not isinstance(source, dict) or not isinstance(consistency, dict):
+        raise ExecutionBindingError("facts omit their source configuration binding")
+    configs = [source.get("config"), consistency.get("config")]
+    if "source" in document:
+        if not isinstance(document["source"], dict):
+            raise ExecutionBindingError("facts have an ambiguous source configuration")
+        configs.append(document["source"].get("config"))
+    if any(not isinstance(config, str) or not config for config in configs) or len(set(configs)) != 1:
+        raise ExecutionBindingError("facts declare no single source configuration")
+    return configs[0]
+
+
+def execution_binding(document: dict, *, config: str) -> dict[str, Any]:
+    """How facts of one configuration may bind an execution of ``config``.
+
+    Same configuration: the facts' own FIRRTL/hierarchy/core identity. Another configuration only
+    through the facts' own ``simulation_correspondence``: its status must be equivalent, its target
+    side must be exactly these facts' source (configuration, FIRRTL, hierarchy, core HW and source
+    bundle), and its simulation side must be ``config`` with complete hashes. The returned
+    simulation identity is what an executed engine or bundle must then match; everything else
+    refuses. The record's equivalence result is data checked for binding, not recomputed here.
+    """
+    if not isinstance(config, str) or not config:
+        raise ExecutionBindingError("execution binding requires an explicit configuration")
+    own = facts_config(document)
+    inputs = document.get("inputs") if isinstance(document.get("inputs"), dict) else {}
+    source = document["facts"]["source"]
+    if own == config:
+        return {
+            "basis": "same_configuration",
+            "config": config,
+            "facts_config": own,
+            "firrtl": {"path": inputs.get("fir_path"), "sha256": inputs.get("fir_sha256")},
+            "hierarchy": {"path": source.get("hierarchy_path"), "sha256": source.get("hierarchy_sha256")},
+            "core_hw": {"path": inputs.get("core_hw_path"), "sha256": inputs.get("core_hw_sha256")},
+        }
+    record = document["facts"].get("simulation_correspondence")
+    if not isinstance(record, dict) or record.get("schema") != SCHEMA:
+        raise ExecutionBindingError(f"facts of {own} carry no simulation correspondence for {config}")
+    if record.get("status") not in EQUIVALENT:
+        raise ExecutionBindingError(f"facts of {own} do not correspond to {config}: {record.get('status')}")
+    sides = record.get("configs") if isinstance(record.get("configs"), dict) else {}
+    target, simulation = sides.get("target"), sides.get("simulation")
+    if not isinstance(target, dict) or not isinstance(simulation, dict):
+        raise ExecutionBindingError("simulation correspondence omits a configuration side")
+
+    def sha(side: dict, role: str) -> str | None:
+        member = side.get(role)
+        return member.get("sha256") if isinstance(member, dict) else None
+
+    own_identity = {
+        "firrtl": inputs.get("fir_sha256"),
+        "hierarchy": source.get("hierarchy_sha256"),
+        "core_hw": inputs.get("core_hw_sha256"),
+        "selection": inputs.get("source_bundle_sha256"),
+    }
+    if (
+        target.get("config") != own
+        or source.get("fir_sha256") != own_identity["firrtl"]
+        or any(not _hex(value) or sha(target, role) != value for role, value in own_identity.items())
+    ):
+        raise ExecutionBindingError("simulation correspondence target side is not these facts' own source")
+    if simulation.get("config") != config:
+        raise ExecutionBindingError(f"simulation correspondence binds {simulation.get('config')}, not {config}")
+    if target.get("core_root") != record.get("unit_root") or simulation.get("core_root") != record.get("unit_root"):
+        raise ExecutionBindingError("simulation correspondence compares different unit roots")
+    if any(not _hex(sha(simulation, role)) for role in ("firrtl", "hierarchy", "core_hw", "selection")):
+        raise ExecutionBindingError("simulation correspondence has an incomplete simulation identity")
+    return {
+        "basis": "simulation_correspondence",
+        "status": record["status"],
+        "config": config,
+        "facts_config": own,
+        "unit_root": record["unit_root"],
+        **{role: dict(simulation[role]) for role in ("firrtl", "hierarchy", "core_hw", "selection")},
+    }
+
+
+def bound_firrtl_digests(document: dict) -> set[str]:
+    """FIRRTL digests an engine built for these facts may carry: their own, or a verified simulation's.
+
+    For readers that see an engine build receipt but no execution configuration. A simulation digest
+    is admitted only through :func:`execution_binding` of the correspondence's own simulation side.
+    """
+    inputs = document.get("inputs") if isinstance(document, dict) else None
+    own = inputs.get("fir_sha256") if isinstance(inputs, dict) else None
+    digests = {own} if _hex(own) else set()
+    record = ((document.get("facts") or {}) if isinstance(document, dict) else {}).get("simulation_correspondence")
+    simulation = ((record or {}).get("configs") or {}).get("simulation") if isinstance(record, dict) else None
+    if isinstance(simulation, dict) and isinstance(simulation.get("config"), str):
+        try:
+            digests.add(execution_binding(document, config=simulation["config"])["firrtl"]["sha256"])
+        except ExecutionBindingError:
+            pass
+    return digests
 
 
 def _public(side: dict) -> dict:

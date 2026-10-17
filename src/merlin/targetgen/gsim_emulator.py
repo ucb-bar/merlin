@@ -702,9 +702,14 @@ def selected_firrtl_status(target: str, *, env_var: str | None = None, backend=N
     actual = receipt.get("firrtl_sha256")
     if model.receipt_status != "bound" or not isinstance(actual, str) or len(actual) != 64:
         return False, "gsim has no bound FIRRTL build receipt for the selected RTL facts"
-    if actual.lower() != expected.lower():
-        return False, f"gsim selected FIRRTL {expected[:12]} differs from model receipt {actual[:12]}"
-    return True, f"gsim FIRRTL {expected[:12]} matches the selected RTL facts"
+    if actual.lower() == expected.lower():
+        return True, f"gsim FIRRTL {expected[:12]} matches the selected RTL facts"
+    from .rtl.unit_correspondence import bound_firrtl_digests
+
+    # Facts of another configuration admit only the FIRRTL of their verified simulation correspondence.
+    if actual.lower() in bound_firrtl_digests(facts):
+        return True, f"gsim FIRRTL {actual[:12]} is the verified simulation of the selected RTL facts"
+    return False, f"gsim selected FIRRTL {expected[:12]} differs from model receipt {actual[:12]}"
 
 
 def probe(target: str, *, env_var: str | None = None) -> tuple[bool, str]:
