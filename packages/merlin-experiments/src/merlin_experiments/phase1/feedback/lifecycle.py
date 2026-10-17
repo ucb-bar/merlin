@@ -375,6 +375,113 @@ def channel_health(ws: Path, *, now: float | None = None, live: bool = False) ->
     }
 
 
+GRADE_FAILURE_ALERT_ENV = "MERLIN_GRADE_FAILURE_ALERT_AFTER"
+GRADE_FAILURE_ALERT_DEFAULT = 3
+
+
+def grade_failure_alert_threshold() -> int:
+    """Consecutive identical in-turn grade failures that raise the alert (``0`` records but never alerts)."""
+    raw = os.environ.get(GRADE_FAILURE_ALERT_ENV, str(GRADE_FAILURE_ALERT_DEFAULT))
+    if not raw.isascii() or not raw.isdecimal() or not 0 <= int(raw) <= 1000:
+        raise ValueError(f"{GRADE_FAILURE_ALERT_ENV} must be an integer between 0 and 1000")
+    return int(raw)
+
+
+def _failure_class(error: BaseException) -> str:
+    """A failure's identity for repeat counting: type and message, with every run of digits folded.
+
+    Ticks, PIDs and scratch keys differ between failures that are otherwise the same failure.
+    """
+    folded, digits = [], False
+    for character in f"{type(error).__name__}: {error}"[:500]:
+        if not (character.isdigit() and digits):
+            folded.append("#" if character.isdigit() else character)
+        digits = character.isdigit()
+    return "".join(folded)
+
+
+class GradeFailureAlert:
+    """Operator-side alarm for in-turn grades that keep failing the same way. Never raises.
+
+    One failed grade is ordinary (a tree caught mid-write). The same failure again and again is not:
+    measured, 75 consecutive in-turn grades died with one identical ``StageGateError`` over 4.8 h, each
+    printed as an ordinary "skipped" line, and nothing said the agent had no grade feedback for the
+    whole run. At ``threshold`` repeats, and every ``threshold`` after, this prints ``[grade-alert]`` and
+    ``grade_health.json`` (run directory only, never the agent's workspace: feedback defines an arm)
+    carries ``alert: true`` until a grade completes.
+    """
+
+    SCHEMA = "merlin.phase1.grade_health.v1"
+
+    def __init__(self, run_dir: Path, *, threshold: int):
+        self.path = Path(run_dir) / "grade_health.json"
+        self.threshold = threshold
+        self.signature: str | None = None
+        self.error: str | None = None
+        self.count = 0
+        self.first_failed_at: str | None = None
+        self.last_failed_at: str | None = None
+        self.last_completed_at: str | None = None
+        self.alerts_raised = 0
+
+    @property
+    def alert(self) -> bool:
+        return self.threshold > 0 and self.count >= self.threshold
+
+    def failed(self, error: BaseException) -> None:
+        try:
+            now = _utc_now()
+            signature = _failure_class(error)
+            if signature != self.signature:
+                self.signature, self.count, self.first_failed_at = signature, 0, now
+            self.count += 1
+            self.error, self.last_failed_at = f"{type(error).__name__}: {error}"[:500], now
+            if self.alert and self.count % self.threshold == 0:
+                self.alerts_raised += 1
+                print(
+                    f"[grade-alert] {self.count} consecutive in-turn grades failed with the same error since "
+                    f"{self.first_failed_at}: {self.error[:300]} — the agent is getting no grade feedback; "
+                    f"inspect the grader, not the submission",
+                    flush=True,
+                )
+            self._write()
+        except Exception:  # noqa: BLE001 -- diagnostics may never fail a grade
+            return
+
+    def succeeded(self) -> None:
+        try:
+            self.signature, self.error, self.count = None, None, 0
+            self.last_completed_at = _utc_now()
+            self._write()
+        except Exception:  # noqa: BLE001 -- diagnostics may never fail a grade
+            return
+
+    def _write(self) -> None:
+        record = {
+            "schema": self.SCHEMA,
+            "updated_at": _utc_now(),
+            "alert": self.alert,
+            "consecutive_identical_failures": self.count,
+            "threshold": self.threshold,
+            "error": self.error,
+            "error_class": self.signature,
+            "first_failed_at": self.first_failed_at if self.count else None,
+            "last_failed_at": self.last_failed_at if self.count else None,
+            "last_completed_at": self.last_completed_at,
+            "alerts_raised": self.alerts_raised,
+            "scope": "in-turn interval grades; operator-side record, never shown to the agent",
+        }
+        temporary = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
+        temporary.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, self.path)
+
+
+def _utc_now() -> str:
+    import datetime as dt
+
+    return dt.datetime.now(dt.UTC).isoformat()
+
+
 def grade_key(round_index: int, tick: int) -> str:
     """A run-wide scratch identity for one in-turn grade.
 
@@ -427,6 +534,8 @@ def start_background(
 
         def source_identity():
             return source_digest(ws)
+
+    failures = GradeFailureAlert(run_dir, threshold=grade_failure_alert_threshold())
 
     def _grade_body() -> None:
         if not (ws / "qa" / "verdict.json").exists():
@@ -491,8 +600,10 @@ def start_background(
                 )
             except Exception as e:  # noqa: BLE001 — a mid-write submission must never kill the run
                 print(f"[in-turn grade {t}] skipped: {type(e).__name__}: {e}", flush=True)
+                failures.failed(e)
                 delay = min(30, interval)
                 continue
+            failures.succeeded()
             if start_cadence == "1":
                 delay = max(0, interval - (time.monotonic() - started))
             if source_identity is not None:
