@@ -4,7 +4,9 @@ The checker reconstructs byte provenance from actual decoded instructions, not
 from a spill plan. It operates on written intervals, never tensor elements or
 individual bytes. Opaque arithmetic keeps its original operation order and
 decoded nonaddress semantics. Only independently qualified exact private copies
-may be inserted between those original operations.
+may be inserted or, when selected explicitly, omitted between those operations.
+Omission propagates original byte definitions and compares every retained
+operation's actual inputs and all external state.
 """
 
 from __future__ import annotations
@@ -128,13 +130,13 @@ class _Memory:
         self.spaces[space] = sorted(retained, key=lambda row: row[0])
 
 
-def verify_device_spills(
+def verify_storage_dataflow(
     original,
     realized,
     objects,
     banks,
     adapter,
-    classes,
+    classes=(),
     *,
     reservations=(),
     external_windows=(),
@@ -142,6 +144,7 @@ def verify_device_spills(
     max_calls=4096,
     max_objects=256,
     max_inserted_copies=8,
+    eliminate_private_copies=False,
 ):
     """Compare actual original dataflow and actual final storage byte provenance.
 
@@ -149,6 +152,8 @@ def verify_device_spills(
     This checker establishes their preservation, not machine-code conformance
     or target execution qualification. It accepts no selected spill locations.
     """
+    if type(eliminate_private_copies) is not bool:
+        raise ValueError("private-copy elimination must be explicitly boolean")
     validate_spill_classes(classes, banks)
     _check_reservations(reservations)
     bank_map, source, bindings, _intervals, _graph, _order, _ids, _placement_banks = _problem(
@@ -203,30 +208,49 @@ def verify_device_spills(
         return False
 
     expected_memory, actual_memory = _Memory(), _Memory()
-    ordinal, copies = 0, 0
+    ordinal, copies, removed = 0, 0, 0
+
+    def removable(effect):
+        return (
+            eliminate_private_copies
+            and effect.exact_copy
+            and all(access.space in bank_map for access in effect.accesses)
+            and not _overlap(*effect.accesses, bank_map)
+        )
+
+    def advance_copy(effect):
+        read, write = effect.accesses
+        expected_memory.write(
+            key(write), write.start, write.size, expected_memory.read(key(read), read.start, read.size)
+        )
+
     for effect in actual:
         if any(not valid_actual(access) for access in effect.accesses):
             raise ValueError("actual spilled access exceeds its original declared address window")
-        before = source[ordinal] if ordinal < len(source) else None
-        matches = (
-            before is not None
-            and before.semantic_key == effect.semantic_key
-            and before.exact_copy == effect.exact_copy
-            and len(before.accesses) == len(effect.accesses)
-            and all(
-                (a.space, a.size, a.writes) == (b.space, b.size, b.writes)
-                and (a.space in bank_map or a.start == b.start)
-                for a, b in zip(before.accesses, effect.accesses, strict=True)
-            )
-        )
-        if matches:
-            # Every input must contain the exact original byte definitions,
-            # including partial reads and overwritten aliases.
-            matches = all(
+
+        def matches_source(before):
+            return (
+                before is not None
+                and before.semantic_key == effect.semantic_key
+                and before.exact_copy == effect.exact_copy
+                and len(before.accesses) == len(effect.accesses)
+                and all(
+                    (a.space, a.size, a.writes) == (b.space, b.size, b.writes)
+                    and (a.space in bank_map or a.start == b.start)
+                    for a, b in zip(before.accesses, effect.accesses, strict=True)
+                )
+            ) and all(
                 expected_memory.read(key(a), a.start, a.size) == actual_memory.read(key(b), b.start, b.size)
                 for a, b in zip(before.accesses, effect.accesses, strict=True)
                 if not a.writes
             )
+
+        before = source[ordinal] if ordinal < len(source) else None
+        while before is not None and not matches_source(before) and removable(before):
+            advance_copy(before)
+            ordinal, removed = ordinal + 1, removed + 1
+            before = source[ordinal] if ordinal < len(source) else None
+        matches = matches_source(before)
         if not matches:
             if not copy_allowed(effect):
                 raise ValueError("actual spill program changed ordered original semantics or read overwritten storage")
@@ -267,6 +291,9 @@ def verify_device_spills(
                 expected_memory.write(key(a), a.start, a.size, parts)
                 actual_memory.write(key(b), b.start, b.size, parts)
         ordinal += 1
+    while ordinal < len(source) and removable(source[ordinal]):
+        advance_copy(source[ordinal])
+        ordinal, removed = ordinal + 1, removed + 1
     if ordinal != len(source):
         raise ValueError("actual spill program omitted original operations")
     for window in external_windows:
@@ -275,8 +302,8 @@ def verify_device_spills(
             space, window.start, window.size
         ):
             raise ValueError("actual spill program changed complete external outputs or carried state")
-    return {
-        "schema": "merlin.device_spill_conformance.v1",
+    report = {
+        "schema": "merlin.storage_dataflow.v1" if eliminate_private_copies else "merlin.device_spill_conformance.v1",
         "configuration_identity": adapter.configuration_identity,
         "numerical_policy_identity": adapter.numerical_policy_identity,
         "adapter_qualification_identity": adapter.qualification_identity,
@@ -309,3 +336,15 @@ def verify_device_spills(
         "machine_emission": "not_established",
         "timing": "UNKNOWN",
     }
+    if eliminate_private_copies:
+        report["eliminated_exact_copies"] = removed
+        report["original_requested_read_bytes"] = sum(a.size for op in source for a in op.accesses if not a.writes)
+        report["original_requested_write_bytes"] = sum(a.size for op in source for a in op.accesses if a.writes)
+    return report
+
+
+def verify_device_spills(original, realized, objects, banks, adapter, classes, **options):
+    """Verify exact device spill insertion without permitting operation removal."""
+    if options.get("eliminate_private_copies", False) is not False:
+        raise ValueError("spill-only verification cannot authorize original operation removal")
+    return verify_storage_dataflow(original, realized, objects, banks, adapter, classes, **options)

@@ -186,7 +186,11 @@ def allocate_with_spills(
     )
     current, current_objects, repairs = kernel, objects, []
     for attempt in range(max_spills + 1):
-        result = allocate_temporary_storage(current, current_objects, banks, adapter, timeout_ms=timeout_ms, **model)
+        # Copy forwarding is selected by the outer allocator before repair.
+        # Keep this loop's transformation family within its insertion proof.
+        result = allocate_temporary_storage(
+            current, current_objects, banks, adapter, timeout_ms=timeout_ms, eliminate_copies=False, **model
+        )
         if result is not None:
             proof = verify_device_spills(
                 kernel, result.kernel, objects, banks, adapter, classes, max_inserted_copies=2 * max_spills, **model

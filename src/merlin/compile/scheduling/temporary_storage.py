@@ -445,11 +445,14 @@ def allocate_temporary_storage(
     timeout_ms=5000,
     spill_classes=(),
     max_spills=4,
+    eliminate_copies=True,
 ) -> TemporaryStorageResult | None:
     """Allocate, consume addresses in actual calls, then independently verify.
 
     Infeasible storage returns None for the caller's existing legal route.
     Unsupported effects/ownership and unavailable checking diagnose precisely.
+    By default, forward exact private copies before allocation; retain the
+    original composition when its longer source lifetime cannot be allocated.
     This entry neither expands loops nor schedules away required completion.
     """
     model = dict(
@@ -471,14 +474,69 @@ def allocate_temporary_storage(
         from .spill_conformance import validate_spill_classes
 
         validate_spill_classes(spill_classes, banks)
+    if type(eliminate_copies) is not bool:
+        raise ValueError("private-copy elimination must be explicitly boolean")
+    fallback = None
+    if eliminate_copies:
+        from .copy_elimination import eliminate_private_copies
+        from .spill_conformance import verify_storage_dataflow
+
+        candidate = eliminate_private_copies(
+            kernel,
+            objects,
+            banks,
+            adapter,
+            external_windows=external_windows,
+            private_ownership=private_ownership,
+            max_calls=max_calls,
+            max_objects=max_objects,
+        )
+        if candidate is not None:
+            optimized = allocate_temporary_storage(
+                candidate.kernel,
+                candidate.objects,
+                banks,
+                adapter,
+                timeout_ms=timeout_ms,
+                spill_classes=spill_classes,
+                max_spills=max_spills,
+                eliminate_copies=False,
+                **model,
+            )
+            if optimized is not None:
+                proof = verify_storage_dataflow(
+                    kernel,
+                    optimized.kernel,
+                    objects,
+                    banks,
+                    adapter,
+                    spill_classes,
+                    eliminate_private_copies=True,
+                    max_inserted_copies=2 * max_spills,
+                    **model,
+                )
+                report = {**optimized.report, "copy_elimination": proof}
+                report["repair_rounds"] = [
+                    {
+                        "before_sha256": kernel.digest(),
+                        "after_sha256": candidate.kernel.digest(),
+                        "invalidated": ["liveness", "allocation", "completion", "emission", "program_size"],
+                    },
+                    *report.get("repair_rounds", []),
+                ]
+                return TemporaryStorageResult(optimized.kernel, report)
+            fallback = {"status": "allocation_fallback", "candidate_sha256": candidate.kernel.digest()}
     result = allocate(graph, order, placement_banks, reservations=reservations, timeout_ms=timeout_ms)
     if result.status == "infeasible_candidate":
         if spill_classes and max_spills:
             from .device_spills import allocate_with_spills
 
-            return allocate_with_spills(
+            spilled = allocate_with_spills(
                 kernel, objects, banks, adapter, spill_classes, timeout_ms=timeout_ms, max_spills=max_spills, **model
             )
+            if spilled is not None and fallback is not None:
+                return TemporaryStorageResult(spilled.kernel, {**spilled.report, "copy_elimination": fallback})
+            return spilled
         return None
     if result.status != "feasible":
         raise StorageOptimizationUnavailable(f"temporary allocation {result.status}: {result.reason}")
@@ -491,4 +549,6 @@ def allocate_temporary_storage(
         calls.append(call if accesses == effect.accesses else adapter.rewrite(call, accesses))
     realized = replace(kernel, body=tuple(calls))
     report = verify_temporary_storage(kernel, realized, objects, banks, adapter, **model)
+    if fallback is not None:
+        report["copy_elimination"] = fallback
     return TemporaryStorageResult(realized, report)

@@ -13,6 +13,7 @@ code_refs:
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/device_spills.py
   - src/merlin/compile/scheduling/spill_conformance.py
+  - src/merlin/compile/scheduling/copy_elimination.py
   - src/merlin/llvmlower/automatic_host.py
   - src/merlin/llvmlower/quant_round_check.py
 ---
@@ -212,6 +213,46 @@ Existing targets need the public effect/address-rewrite adapter and
 independent execution qualification before this pass can enter their ordinary
 lowering. That integration remains incomplete.
 
+## Private copy elimination
+
+The ordinary `allocate_temporary_storage` entry defaults to
+`eliminate_copies=True`. It identifies complete, synchronous, bit-preserving
+private copies through the existing qualified `StorageAdapter`. A destination
+that is only read may share its source's bytes when both typed address views
+refer to the same physical backing and the source interval is unchanged until
+the last destination read. Subrange offsets, other aliases, destination
+alignment and every actual view's capacity remain constraints. Copy chains are
+forwarded with work bounded by the original call and object budgets.
+
+The rewritten calls are reprojected and allocation, liveness and completion are
+recomputed. If extending the source lifetime makes the composition impossible
+to allocate, the pass restores the original composition and replans it. A
+decoder or invariant failure diagnoses rather than accepting an unchecked
+rewrite. `eliminate_copies=False` selects the original fixed-operation family
+for a paired comparison. Device spill repair keeps its insertion family fixed;
+the outer allocator selects forwarding before that bounded repair.
+
+`verify_storage_dataflow` independently reconstructs the original and final
+byte definitions, permits omission only of qualified private copies, and
+compares every retained operation's inputs and numerical semantics, physical
+alias relations and complete external output and state windows. The receipt counts
+eliminated copies, actual calls, and requested bytes from the decoded realized
+program. It does not use the optimizer's list of removed calls as evidence.
+The existing `verify_temporary_storage` checker retains its narrower role of
+verifying relocation with the original operation count; it cannot certify
+copy elimination. Native C tests execute both actual allocated programs on
+identical input, compare all output bytes to an independent reference, preserve
+unwritten output bytes, and count executed calls and byte requests.
+
+This family does not eliminate packing or conversions unless the operation is
+independently qualified as an exact byte copy. It does not infer asynchronous
+handoffs, different-memory transfers, in-place epilogues, persistent ownership
+or executable target support. Source/destination overwrites keep the copy.
+Physical arithmetic fusion and target integration remain incomplete. Existing
+targets require a public, independently qualified actual-effect decoder and
+address rewriter before this mechanism can enter their normal lowering.
+Traffic results from synthetic execution are not hardware latency results.
+
 ## Exact device register spills
 
 The ordinary `allocate_temporary_storage` entry accepts selected `SpillClass`
@@ -289,7 +330,7 @@ targets.
 | --- | --- | --- |
 | Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line storage relocation | Target effect/rewrite adapters and ordinary lowering integration; general loop and persistent-storage allocation |
 | Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks and independent actual byte provenance | Qualified device register/transfer adapters and ordinary target integration; CPU allocation stays with the native toolchain |
-| Fusion and transfers | Readout composition admission, connected dispatch and checked global-plan realization; logical host layout/fusion transforms | Allocation fallback and realized transfer elimination for each independently supported physical handoff |
+| Fusion and transfers | Readout composition admission, connected dispatch and checked global-plan realization; logical host transforms; consumed exact private-copy forwarding with allocation fallback and independently checked realized traffic | Physical arithmetic epilogue composition, different-memory handoffs, and qualified target integration |
 | Reductions and attention | Ordered source loops, complete CPU reductions and explicit numerical policies | Shared multi-tile lowering with full domains, masks and intermediate storage; per-tile softmax is insufficient |
 | Final program limits | Actual decoded instruction size, branch/address checks and closed-region segmentation through declared interfaces | Independently qualified target decoder and runtime continuation integration; ordinary targets retain their existing linked-image admission |
 | Persistent state | Runtime state binding, immutable weight hashing/reuse and recurrent relinking | Qualified address windows, ownership and persistence for each device runtime |
