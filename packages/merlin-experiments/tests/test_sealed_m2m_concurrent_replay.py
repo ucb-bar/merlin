@@ -202,9 +202,10 @@ def test_a_concurrent_replay_is_compared_exactly_as_a_replay_run_now(tmp_path, m
         sealed_m2m.replay_verify(run, _executed=(dict(process), replay))
 
 
-def test_receipts_of_the_previous_issuer_still_replay(tmp_path, monkeypatch):
+@pytest.mark.parametrize("issuer", ["_PRE_CONCURRENT_REPLAY_ISSUER_SHA256", "_PRE_SELECTED_THREADS_ISSUER_SHA256"])
+def test_receipts_of_the_previous_issuers_still_replay(tmp_path, monkeypatch, issuer):
     run, receipt, _process, _replays = _pending_v3(tmp_path, monkeypatch)
-    receipt["issuer_sha256"] = sealed_m2m._PRE_CONCURRENT_REPLAY_ISSUER_SHA256
+    receipt["issuer_sha256"] = getattr(sealed_m2m, issuer)
     (run / "sealed_m2m_pending.json").write_text(json.dumps(receipt))
     assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"
 

@@ -116,7 +116,7 @@ def _diagnostic_model_copy(out: Path, loader: Path, *, capture_api: dict[str, li
     (out / "diagnostic-capture.json").write_text(json.dumps(record, sort_keys=True, indent=2) + "\n")
 
 
-def _seed_capture(seed: int, torch) -> dict:
+def _seed_capture(seed: int, torch, threads: int = 1) -> dict:
     """Seed loader imports as well as construction; refuse nondeterministic kernels.
 
     This binds the numerical capture policy, not reproducibility across different
@@ -128,8 +128,11 @@ def _seed_capture(seed: int, torch) -> dict:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    # Parallel CPU reductions can change reference bytes when affinity changes.
-    torch.set_num_threads(1)
+    # Parallel CPU reductions split work by thread count, so reference bytes depend on it: a
+    # capture runs at its selected count (one unless selected), records it, and is replayed at it.
+    torch.set_num_threads(threads)
+    if torch.get_num_threads() != threads:
+        raise RuntimeError(f"the capture selected {threads} CPU threads but runs {torch.get_num_threads()}")
     torch.use_deterministic_algorithms(True)
     return {
         "seed": seed,
@@ -852,6 +855,12 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     ap.add_argument(
         "--seed", type=int, default=0, help="Python/NumPy/Torch RNG seed applied before loader import and construction"
     )
+    ap.add_argument(
+        "--cpu-threads",
+        type=int,
+        default=1,
+        help="intra-op CPU threads; reference bytes depend on it, so it is recorded and replayed (default 1)",
+    )
     ap.add_argument("--agreement-atol", type=float, default=1e-3)
     ap.add_argument("--agreement-rtol", type=float, default=1e-3)
     ap.add_argument(
@@ -887,6 +896,8 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         ap.error("--materialize-bundle and --diagnostic-model-copy are mutually exclusive")
     if not 0 <= a.seed < 2**32:
         ap.error("--seed must be an unsigned 32-bit integer")
+    if not 1 <= a.cpu_threads <= 256:
+        ap.error("--cpu-threads must be between 1 and 256")
     if not all(math.isfinite(value) and value >= 0 for value in (a.agreement_atol, a.agreement_rtol)):
         ap.error("agreement tolerances must be finite and nonnegative")
     if a.already_quantized and (a.recipe or a.scheme):
@@ -954,7 +965,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     if a.diagnostic_model_copy and out.exists() and any(out.iterdir()):
         raise ValueError("diagnostic model copy requires a fresh output directory")
     out.mkdir(parents=True, exist_ok=True)
-    determinism = _seed_capture(a.seed, torch)
+    determinism = _seed_capture(a.seed, torch, a.cpu_threads)
     modules_before_loader = set(sys.modules)
     if prepared_program is None:
         loader = _load_loader(Path(a.loader))

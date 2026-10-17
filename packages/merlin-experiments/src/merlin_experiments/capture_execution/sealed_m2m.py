@@ -70,6 +70,9 @@ _PRE_CONCURRENT_REPLAY_ISSUER_SHA256 = "6c60fb10e4a2b2e05ff67a8b215f86317242346a
 # Moving replay scratch outside protected captures changes no selected guest
 # path, command, policy or byte comparison. Admit exactly the previous issuer.
 _PRE_EXTERNAL_REPLAY_SCRATCH_ISSUER_SHA256 = "fe672aaf62efcf1f2c5cec499af646d59ca0f458107e459a2fbdc59271c4586b"
+# Exact issuer before a plan could select the worker's CPU thread count. Its plans
+# cannot select one, so their command, policy and replay are unchanged.
+_PRE_SELECTED_THREADS_ISSUER_SHA256 = "ba57b6e1bd00734b95b7cb4a64c30f636f715cc313aa048986b3812da04b5fb8"
 _V1_SCOPE = "isolated selected FP32 CPU M2M capture; no Phase 0 admission"
 _V2_SCOPE = "isolated selected CPU M2M capture; no Phase 0 admission"
 _V3_SCOPE = "isolated selected CPU M2M capture with declared model inputs; no Phase 0 admission"
@@ -120,10 +123,12 @@ def _worker_options(options: Any) -> dict[str, Any]:
     """Validate the worker options a plan may select; nothing outside this vocabulary is accepted."""
     if options is None:
         return {}
-    if not isinstance(options, dict) or set(options) - {"agreement_tolerance", "stage_fp32"}:
+    if not isinstance(options, dict) or set(options) - {"agreement_tolerance", "stage_fp32", "cpu_threads"}:
         raise SealedM2MError("sealed capture worker options are unsupported")
     if "stage_fp32" in options and type(options["stage_fp32"]) is not bool:
         raise SealedM2MError("sealed capture stage_fp32 must be a boolean")
+    if "cpu_threads" in options and (type(options["cpu_threads"]) is not int or not 1 <= options["cpu_threads"] <= 256):
+        raise SealedM2MError("sealed capture cpu_threads must be an integer from 1 to 256")
     tolerance = options.get("agreement_tolerance")
     if tolerance is not None and (
         not isinstance(tolerance, list)
@@ -165,6 +170,10 @@ def _command_v2(
         argv += ["--agreement-atol", repr(float(atol)), "--agreement-rtol", repr(float(rtol))]
     if options.get("stage_fp32"):
         argv.append("--stage-fp32")
+    if options.get("cpu_threads") is not None:
+        # Reference bytes depend on the intra-op thread count, so the selected count is part of
+        # the command, its policy digest and the replay; absent, the worker runs one thread.
+        argv += ["--cpu-threads", str(options["cpu_threads"])]
     program = (
         "import runpy,sys;"
         "sys.path[:0]=['/source/m2m-src','/source/merlin-src',"
@@ -1828,6 +1837,7 @@ def replay_verify(
         supported_issuer.add(_PRE_INVENTORY_REUSE_ISSUER_SHA256)
         supported_issuer.add(_PRE_CONCURRENT_REPLAY_ISSUER_SHA256)
         supported_issuer.add(_PRE_EXTERNAL_REPLAY_SCRATCH_ISSUER_SHA256)
+        supported_issuer.add(_PRE_SELECTED_THREADS_ISSUER_SHA256)
     if schema in {SCHEMA, SCHEMA_V3} and "frozen_origin" not in plan:
         supported_issuer.add(_PRE_FROZEN_ORIGIN_ISSUER_SHA256)
     if (

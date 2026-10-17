@@ -90,9 +90,14 @@ def _full_capture_inputs(args: argparse.Namespace) -> dict:
         selected["loader_env"] = environment
     if args.execution_timeout_seconds is not None:
         selected["execution_timeout_seconds"] = args.execution_timeout_seconds
+    options = {}
     if args.stage_fp32:
         # A worker option: absent keeps the historical plan bytes.
-        selected["worker_options"] = {"stage_fp32": True}
+        options["stage_fp32"] = True
+    if args.cpu_threads is not None:
+        options["cpu_threads"] = args.cpu_threads
+    if options:
+        selected["worker_options"] = options
     return selected
 
 
@@ -416,6 +421,13 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         metavar="NAME",
         help="loader environment read selected as deliberately absent (v2 only; repeatable)",
+    )
+    select_capture.add_argument(
+        "--cpu-threads",
+        type=int,
+        help="intra-op CPU threads for the capture worker; the reference bytes depend on the count, so it "
+        "is selected into the plan, the command and the replay (default: one thread, recorded nowhere so "
+        "old selections keep their bytes)",
     )
     select_capture.add_argument(
         "--stage-fp32",
