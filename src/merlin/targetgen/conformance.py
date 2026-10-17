@@ -2332,6 +2332,56 @@ def _group_signature(op: str, epilogue, dtype: str | None) -> str:
     )
 
 
+def _derived_epilogue_groups(target: str, oracle) -> list[dict]:
+    """Fused-epilogue group demands from the target's DERIVED output path, not from a capture.
+
+    A capture forms a group only where its numbers let the readout hold them: a model quantized per
+    output channel on a unit holding one scale per command forms none, and a corpus derived from such
+    captures alone would never ask a backend for the epilogue the hardware performs on every
+    contraction. So each contraction format the target declares gets the requantizing chain its
+    output path is DERIVED to apply on move-out -- a contraction-scoped bias route, then the scale,
+    then the rectifier -- and the same chain closed by the derived pool. Only stages the epilogue axis
+    requires are chained, so every demand is one a capsule builder writes and a readout declaration
+    does not contradict. Extents and values are the capsule builder's own: nothing here is a
+    workload's shape.
+    """
+    readout = getattr(oracle, "readout", None)
+    derived = {stage for facet in getattr(readout, "facets", ()) or () for stage in facet.derived_stages}
+    if not derived:
+        return []
+    from merlin.runtime.commandbuffer import BIAS_STAGES
+
+    writable = {str(row.get("stage")) for row in (_epilogue_axis(target) or {}).get("required") or ()}
+    routes = getattr(oracle, "routes", ()) or ()
+    bias = [
+        stage
+        for stage in BIAS_STAGES
+        if stage in writable and any(r.stage == stage and r.composed_with == "contraction" for r in routes)
+    ][:1]
+    core = [*bias, *(stage for stage in ("acc_scale", "relu") if stage in derived and stage in writable)]
+    chains = [core] + ([[*core, "maxpool"]] if "maxpool" in derived and "maxpool" in writable else [])
+    contraction = (getattr(oracle, "cap_map", {}) or {}).get("contraction")
+    granularities = [g for g in getattr(readout, "scale_granularities", ()) if g == "tensor"]
+    rows = []
+    for chain in chains:
+        if len(chain) < 2 or "acc_scale" not in chain:
+            continue  # a single stage is the epilogue axis's member; an unscaled chain is not a readout
+        for dtype in getattr(contraction, "dtypes", ()) or ():
+            rows.append(
+                {
+                    "signature": _group_signature("matmul", chain, dtype),
+                    "op": "matmul",
+                    "epilogue": list(chain),
+                    "dtype": dtype,
+                    "scale_granularities": granularities,
+                    "groups": 0,
+                    "observed_in": [],
+                    "evidenced_by": ["derived_output_epilogue"],
+                }
+            )
+    return rows
+
+
 def _group_axis(captures: dict[str, str | Path], target: str) -> dict:
     """The compute groups the target's captured models form, as capsule demands.
 
@@ -2390,13 +2440,17 @@ def _group_axis(captures: dict[str, str | Path], target: str) -> dict:
             granularity = entry.get("scale_granularity")
             if granularity and granularity not in row["scale_granularities"]:
                 row["scale_granularities"].append(granularity)
+    for row in _derived_epilogue_groups(target, oracle):
+        required.setdefault(row["signature"], row)
     return {
         "status": "ok",
         "required": sorted(required.values(), key=lambda r: (-r["groups"], r["signature"])),
         "unstated": dict(unstated),
         "captures_unreadable": unreadable,
         "axis_basis": (
-            "the compute groups this target's captured models form: a contraction with the stages "
+            "the compute groups this target's captured models form, and the fused epilogue its "
+            "DERIVED output path performs on every contraction family it declares (whether or not a "
+            "capture happens to form it): a contraction with the stages "
             "its unit absorbs, by op, epilogue COMBINATION and operand format. A corpus that "
             "demands each stage once demands no combination, so a backend that fuses any one stage "
             "and no two passes it; and the model route is only as good as the patterns some capsule "
