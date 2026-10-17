@@ -985,6 +985,52 @@ def calibration_limit(recipe: Mapping[str, Any], default: int) -> int:
     return value
 
 
+class _RepeatedObservationSkip:
+    """Skip a min/max observer's call when its input is the exact tensor it observed last.
+
+    A stored weight reaches its observer as the same parameter on every calibration sample, and
+    TorchAO's ``MinMaxObserver`` and ``PerChannelMinMaxObserver`` keep only a running min and max:
+    a second observation of the same values leaves both buffers bit-identical. Only those two exact
+    classes are covered (a moving average or a histogram is not idempotent). The skip requires the
+    same tensor object, still alive, with the same version counter, storage, shape, strides and
+    dtype, so an in-place update or a fresh activation is always observed. The instance-level
+    ``forward`` is removed again when calibration ends.
+    """
+
+    def __init__(self, prepared: Any) -> None:
+        from torchao.quantization.pt2e import MinMaxObserver, PerChannelMinMaxObserver
+
+        self._modules = [
+            module for module in prepared.modules() if type(module) in (MinMaxObserver, PerChannelMinMaxObserver)
+        ]
+
+    @staticmethod
+    def _key(x: Any) -> tuple:
+        return (x._version, x.data_ptr(), tuple(x.shape), x.stride(), x.dtype, x.device)
+
+    def __enter__(self) -> _RepeatedObservationSkip:
+        import weakref
+
+        for module in self._modules:
+            observe = type(module).forward.__get__(module)
+            last: list[Any] = [None]
+
+            def forward(x: Any, _observe: Any = observe, _last: list[Any] = last) -> Any:
+                seen = _last[0]
+                if seen is not None and seen[0]() is x and seen[1] == self._key(x):
+                    return x
+                result = _observe(x)
+                _last[0] = (weakref.ref(x), self._key(x))
+                return result
+
+            module.forward = forward
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        for module in self._modules:
+            module.__dict__.pop("forward", None)
+
+
 def _no_batch_norm_fold_needed(original_snapshot: Any, exported: Any) -> bool:
     """Prove the selected original and PT2E-input graphs contain no BN to fold.
 
@@ -1205,7 +1251,7 @@ def apply_recipe(
     if weight_rounding is not None:
         samples = weight_rounding.track(samples)
     calibrated = 0
-    with torch.no_grad():
+    with torch.no_grad(), _RepeatedObservationSkip(prepared):
         for sample in samples:
             if calibrated >= sample_limit:
                 break
