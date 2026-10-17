@@ -1,10 +1,10 @@
 """Capsule grading is pipelined: no wave barrier, dependents wait only for their own sibling."""
 
-import threading
-import time
 import os
 import subprocess
 import sys
+import threading
+import time
 
 import pytest
 
@@ -207,3 +207,23 @@ def test_invalid_capsule_order_refuses_before_execution(monkeypatch):
     monkeypatch.setenv("MERLIN_CAPSULE_ORDER", "unknown")
     with pytest.raises(ValueError, match="MERLIN_CAPSULE_ORDER"):
         run_pipelined([_cap("unused")], lambda *a: pytest.fail("invalid selection started work"), max_workers=2)
+
+
+def test_zero_operator_calibration_wait_starts_independent_workers_immediately(monkeypatch):
+    monkeypatch.setenv("MERLIN_CAPSULE_CALIBRATION_S", "0")
+    barrier = threading.Barrier(2)
+
+    def run(cap, workers):
+        barrier.wait(timeout=2)
+        return {"capsule": cap["name"], "status": "pass"}
+
+    result = run_pipelined([_cap("first"), _cap("second")], run, max_workers=2,
+        calibrate=lambda: set(), calibration_cap=3)
+    assert len(result) == 2 and all(row["status"] == "pass" for row in result)
+
+
+@pytest.mark.parametrize("value", ["-1", "nan", "inf", "invalid"])
+def test_invalid_operator_calibration_wait_refuses(monkeypatch, value):
+    monkeypatch.setenv("MERLIN_CAPSULE_CALIBRATION_S", value)
+    with pytest.raises(ValueError, match="MERLIN_CAPSULE_CALIBRATION_S"):
+        run_pipelined([_cap("first")], lambda c, n: {}, max_workers=2)

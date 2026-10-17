@@ -19,7 +19,7 @@ import os
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextvars import ContextVar, copy_context
-from math import prod
+from math import isfinite, prod
 from typing import Any
 
 #: Wall seconds a serial calibration member may run before the pool fans out around it. Calibration
@@ -94,6 +94,14 @@ def run_pipelined(
     if order not in ("", "legacy", "operators-small-first"):
         raise ValueError("MERLIN_CAPSULE_ORDER must be legacy or operators-small-first")
     small_operators_first = order == "operators-small-first"
+    head_wait = os.environ.get("MERLIN_CAPSULE_CALIBRATION_S")
+    if head_wait is not None:
+        try:
+            calibration_budget_s = float(head_wait)
+        except ValueError as error:
+            raise ValueError("MERLIN_CAPSULE_CALIBRATION_S requires finite nonnegative seconds") from error
+        if not isfinite(calibration_budget_s) or calibration_budget_s < 0:
+            raise ValueError("MERLIN_CAPSULE_CALIBRATION_S requires finite nonnegative seconds")
     deps = dependencies(capsules)
     # Linux affinity is per thread. Keep unleased preparation on the selected
     # manager cores; actual build/simulator step owners lease shared compute slots.
@@ -163,7 +171,8 @@ def run_pipelined(
         if small_operators_first:
             # Explicit feedback scheduling: only ready/admitted members compete.
             # Keep models behind ready operators, then prefer smaller declared operands.
-            key = lambda entry: (capsules[entry[1]].get("kind") == "model", -entry[0], entry[1])
+            def key(entry):
+                return capsules[entry[1]].get("kind") == "model", -entry[0], entry[1]
         else:
             key = ((lambda entry: (-entry[0], entry[1])) if calibration else
                    (lambda entry: ((priority(capsules[entry[1]]) if priority else 0), entry)))
