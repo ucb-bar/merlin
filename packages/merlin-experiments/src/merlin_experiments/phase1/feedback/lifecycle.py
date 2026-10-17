@@ -286,12 +286,18 @@ def _stop_brokers(ws: Path, brokers, *, primary_error: BaseException | None, cha
             raise cleanup
 
 
-def channel_health(ws: Path, *, now: float | None = None) -> dict:
+def channel_health(ws: Path, *, now: float | None = None, live: bool = False) -> dict:
     """Durable end-of-run accounting for the synchronous self-check channel.
 
     Expired requests are abandoned clients, not model failures, but they still prove the promised
     synchronous feedback was not delivered. Any request without an atomic response+done pair makes the
     channel unhealthy; ``expired`` versus ``stranded`` distinguishes a past timeout from live work.
+
+    ``live`` is the account taken WHILE the brokers still serve: a request that is still inside its own
+    deadline is ``in_flight``, not stranded, and does not fail the channel. Without it the first grade's
+    pool lock-out raised "channel UNHEALTHY ... 3 stranded" at minute four of a run for three requests
+    that were merely queued and were all answered. At the end of a run (the default) nobody will answer
+    an incomplete request, so it stays stranded there.
     """
     ch = Path(ws) / ".qa_channel"
     now = time.time() if now is None else now
@@ -302,6 +308,7 @@ def channel_health(ws: Path, *, now: float | None = None) -> dict:
             "completed": 0,
             "expired": 0,
             "stranded": 0,
+            **({"in_flight": 0} if live else {}),
             "orphan_responses": 0,
             "done_without_response": 0,
             "replayed": 0,
@@ -320,6 +327,7 @@ def channel_health(ws: Path, *, now: float | None = None) -> dict:
     universe = set(requests) | set(responses) | done
     completed = {rid for rid in universe if rid in responses and rid in done}
     expired: set[str] = set()
+    in_flight: set[str] = set()
     from merlin_experiments.phase1.brokers.selfcheck import _request_deadline
 
     for rid, req in requests.items():
@@ -327,11 +335,13 @@ def channel_health(ws: Path, *, now: float | None = None) -> dict:
             try:
                 if now > _request_deadline(req):
                     expired.add(rid)
+                elif live:
+                    in_flight.add(rid)
             except (FileNotFoundError, OSError, ValueError):
                 pass
     # An incomplete rid whose req_ file is gone cannot have a deadline read, so it can never be shown to
     # have expired; it is stranded, which is the reportable half either way.
-    stranded = universe - completed - expired
+    stranded = universe - completed - expired - in_flight
     broker_stats = {}
     health_file = ch / "broker_health.json"
     if health_file.is_file():
@@ -355,6 +365,7 @@ def channel_health(ws: Path, *, now: float | None = None) -> dict:
         "completed_without_request": len(completed_without_request),
         "expired": len(expired),
         "stranded": len(stranded),
+        **({"in_flight": len(in_flight)} if live else {}),
         "orphan_responses": len(orphan_responses),
         "done_without_response": len(done_without_response),
         "replayed": int(broker_stats.get("replayed", 0)),
@@ -549,9 +560,13 @@ def record_channel_health(ws: Path, run_dir: Path) -> None:
 
     Operator-side only, for the reason `_write_stage_ledger` gives: telling the agent its feedback
     channel is broken is feedback, and feedback defines an arm.
+
+    While the brokers serve (no ``STOP`` in the channel) a request still inside its deadline is in
+    flight, not stranded; once they are stopped nothing will answer it, so the end-of-run account
+    applies.
     """
     try:
-        health = channel_health(ws)
+        health = channel_health(ws, live=not (Path(ws) / ".qa_channel" / "STOP").exists())
         (run_dir / "feedback_health.json").write_text(json.dumps(health, indent=2))
         if not health.get("healthy", True):
             print(

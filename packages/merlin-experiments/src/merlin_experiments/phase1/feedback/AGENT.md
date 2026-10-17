@@ -281,7 +281,9 @@ corpora or independently sanitize its trusted redacted inputs. Only its generate
 brief is candidate-visible; the implementation remains in the private feedback tree.
 
 `lifecycle.py` owns client staging, broker child lifetimes, the background-grading
-cadence/single-flight handoff and durable channel-health accounting. BrokerConfig
+cadence/single-flight handoff and durable channel-health accounting. While brokers
+serve, a request inside its deadline is in flight, not stranded; after STOP the
+end-of-run account applies. BrokerConfig
 supplies invocation context, resolved treatment tools, explicit timing storage and
 distinct public/policy/schema roots; GradeCadence supplies only scheduler settings.
 Grade callbacks are mandatory and contain the caller's existing numerical policy.
