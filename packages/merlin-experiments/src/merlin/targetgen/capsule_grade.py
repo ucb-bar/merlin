@@ -1502,6 +1502,15 @@ def grade(
         if on_capsule_complete is not None:
             on_capsule_complete(result)
 
+    # A per-capsule budget below what this run already measured a capsule needs can only ever leave
+    # that capsule cert_not_measured. Raise it from the measurement, bounded and recorded.
+    from .capsule_budget import measured_capsule_budget, timed_out
+    from .capsule_scheduling import selected_history
+
+    _budget = measured_capsule_budget(caps, selected_history(), timeout=timeout)
+    if _budget["raised"]:
+        print(f"  per-capsule budget: {_budget['basis']}", flush=True)
+    timeout = _budget["budget_s"]
     results = CR.run_suite(
         caps,
         pkg_dir,
@@ -1669,6 +1678,18 @@ def grade(
             "screen may eliminate; it may never certify -- so they are in neither n_passed nor "
             "n_capsules, and nothing here is a verdict on them. Each reason is quoted above."
         )
+    # WHICH BUDGET STOPPED IT, said with the number. The tier reason quotes only the clipped tail of
+    # the killed command, which named neither the budget nor the option that sets it.
+    score["per_capsule_budget"] = _budget
+    _stopped = timed_out(results, _budget)
+    if _stopped:
+        score["timed_out"] = _stopped
+        for _name, _row in sorted(_stopped.items()):
+            print(
+                f"  [timeout] {_name} {_row['tier']}: stopped by the {_row['budget_s']} s per-capsule wall "
+                f"budget (requested {_row['requested_s']} s); unmeasured, not failed -- {_row['remedy']}",
+                flush=True,
+            )
     # SCREENED BUT NOT CERTIFIED, listed by name. A headline of "14/14" over a suite where nine more
     # capsules were screened and never certified is only honest if the nine are visible next to it.
     score["n_screened_only"] = len(screened)
