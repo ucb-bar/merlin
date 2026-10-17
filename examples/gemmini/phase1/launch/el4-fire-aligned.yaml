@@ -1,0 +1,286 @@
+# Operator-only launch configuration: fresh empty-origin EL4 Phase 1 run on the
+# fire-aligned Gemmini selection.
+#
+# This file is the single source of truth for the launch: the controller argv,
+# the complete process environment, the CPU policy, the pinned native runtime
+# bytes, the selected target contract and RTL facts, the numerics lineage, the
+# approved instruction selection and the served operator errata. Machine roots
+# are variables, never literals. Render the operator inputs, then verify them
+# (and later the live controller) against this file:
+#
+#   python -m merlin_experiments.phase1.launch_config render \
+#       --config examples/gemmini/phase1/launch/el4-fire-aligned.yaml \
+#       --task-root "$TASK_ROOT" --prep "$PREP" [--run-id RUN_ID] [--out DIR]
+#   python -m merlin_experiments.phase1.launch_config verify \
+#       --config examples/gemmini/phase1/launch/el4-fire-aligned.yaml \
+#       --task-root "$TASK_ROOT" --prep "$PREP" [--controller-pid PID]
+#
+# `verify` exits non-zero and lists every drift: a missing or extra variable, a
+# wrong flag value, a wrong hash, a broken numerics lineage or a reachable
+# exclusion. It selects; it does not qualify a compiler or start a run.
+#
+# Never granted to an author sandbox or copied into a release payload
+# (merlin/tests/infra/test_launch_config_not_author_visible.py). The author sees
+# the errata text only through the harness's archived and re-verified ERRATA copy.
+schema: merlin.phase1.launch_config.v1
+id: gemmini-el4-fire-aligned
+description: Fresh empty-origin EL4 functional compiler authoring on the fire-aligned release.
+
+# The reviewed Phase 0 release this launch consumes. Its variables (REPO,
+# RELEASE, RELEASE_VERSION, TARGET_CONTRACT, ...) are visible here.
+release_config: ../../phase0/release/fire-aligned-v10.yaml
+
+# Built-ins: ${TASK_ROOT} (--task-root), ${PREP} (--prep), ${RUN_ID} (--run-id,
+# else launcher.run_id_placeholder) and ${HOME} (the invoking environment).
+# Every value may be overridden with --var NAME=VALUE; absolute results are
+# path-normalized.
+variables:
+  WORKSPACE_ROOT: ${TASK_ROOT}/../..
+  NUMERICS_VERSION: "14"
+  # Informational copy source for the numerics rebinding (never a lineage claim).
+  NUMERICS_PARENT_VERSION: "13"
+  NUMERICS_BUNDLE: ${TASK_ROOT}/private/gemmini/numerics/launch-v${NUMERICS_VERSION}
+  RUN: ${REPO}/out/runs/gemmini/phase1/${RUN_ID}
+  PYTHON: ${REPO}/.venv/bin/python
+  CHIPYARD: ${TASK_ROOT}/.tmp/chipyard-fire-aligned
+  SPIKE_RUNTIME: ${TASK_ROOT}/out/fire-aligned-spike-30mhz/runtime
+  GSIM_EMULATOR: ${TASK_ROOT}/.tmp/gsim-fire-aligned-provisional-v3/native/emulator
+  TIMING_PROFILE: ${TASK_ROOT}/.tmp/fire-aligned-timing-profile-v2.json
+  RTL_FACTS: ${REPO}/out/artifacts/probes/gemmini/fire-aligned-30mhz/input/facts-v5.json
+  MODEL2MLIR: ${TASK_ROOT}/model2mlir
+  INSTRUCTION_SELECTION: ${TASK_ROOT}/private/instruction-selection
+
+identity:
+  target: gemmini
+  # EL4 derives the historical execution keys below; load refuses a mismatch.
+  level: EL4
+  arm: merlin_assisted
+  treatment: rtlchecks
+  bundle: merlin_assisted_rtlchecks_public_v0
+  experiment: full
+  # Continuous: the run stops on convergence or the authoring budget.
+  schedule: continuous
+
+launcher:
+  python: ${PYTHON}
+  module: merlin_experiments.phase1
+  cwd: ${REPO}
+  run_id_placeholder: <set by supervisor>
+  # Operator files the supervisor reads; render writes them under --out (default ${PREP}).
+  environment_file: ${PREP}/environment.sh
+  plan: ${PREP}/phase1-launch-plan.json
+
+inputs:
+  repo: ${REPO}
+  descriptor: ${RELEASE}/payload/experiment/target_experiment.yaml
+  bundle_manifest: ${RELEASE}/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/input_bundle_manifest.yaml
+  corpus_seal: ${RELEASE}/private/seal.json
+  oracle_timing:
+    path: ${PREP}/oracle-timing.json
+    sha256: 73694d44ca6b060a1fe1b590b01d39a106ddd0b08da8f4f93f5e5875d305bb46
+  # Rewritten by the numerics rebinding, so it is checked structurally
+  # (numerics_bundle.path names ${NUMERICS_BUNDLE}) rather than by hash.
+  private_full_model_spec: ${PREP}/private-full-models.yaml
+
+author:
+  driver: codex
+  model: gpt-6.1-sol
+  effort: high
+  # Concurrent author subagents. Bound to the driver's subagent option
+  # (--codex-max-subagents for codex); see launch_config.SUBAGENT_FLAGS.
+  max_subagents: 16
+  sandbox: bwrap
+  codex:
+    binary: ${HOME}/.local/share/codex-0.162.0/bin/codex
+    # Credential path only: never read, hashed or copied by these tools.
+    auth_source: ${HOME}/.codex/auth.json
+    home_root: ${TASK_ROOT}/private/codex-phase1-homes
+
+budgets:
+  # 5 h authoring cap (--max-wall-s and --round-timeout); the continuous
+  # schedule stops earlier on convergence (target about 2 h).
+  authoring_s: 18000
+  # Supervisor backstop beyond the authoring cap: startup and post-turn grade margin.
+  supervisor_backstop_s: 1800
+  grade_interval_s: 120
+  qa_timeout_s: 300
+  model_budget_s: 600
+  sim_per_capsule_timeout_s: 300
+
+origin:
+  # Fresh empty origin: no --seed-submission, no --resume, no prior candidate.
+  initial_submission: empty; fresh start from scratch
+  seed_submission: null
+  resume: false
+
+cpu:
+  # Controller affinity (taskset -c); the manager does no compute.
+  manager: [0]
+  author:
+    env: MERLIN_CODEX_CPUS
+    cpus: [4, 5]
+  # One shared 18-CPU priority pool: self-checks before background grading.
+  compute_pool:
+    env: MERLIN_COMPUTE_CPUS
+    cpus: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+  # The pool is the only limiter: the simulator broker takes one job per pool CPU.
+  sim_max_jobs: pool
+
+# The complete process environment, exported in this order by environment.sh.
+# A value is a string, or {prepend: DIR} for a search path. Groups are for
+# reading only; names are unique across groups.
+environment:
+  paths:
+    TMPDIR: ${TASK_ROOT}/.tmp
+    PATH: {prepend: "${WORKSPACE_ROOT}/hw/bubblewrap-0.11.0/bin"}
+  toolchain:
+    MERLIN_EXT_CHIPYARD: ${CHIPYARD}
+    MERLIN_CHIPYARD: ${CHIPYARD}
+    MERLIN_CHIPYARD_GEMMINI_ROCKET: ${CHIPYARD}
+  simulators:
+    MERLIN_FIRE_ALIGNED_SPIKE_RUNTIME: ${SPIKE_RUNTIME}
+    MERLIN_SPIKE: ${SPIKE_RUNTIME}/bin/spike
+    LD_LIBRARY_PATH: {prepend: "${SPIKE_RUNTIME}/lib"}
+    MERLIN_GSIM_EMU_GEMMINI: ${GSIM_EMULATOR}
+    MERLIN_GEMMINI_GSIM_EMU: ${GSIM_EMULATOR}
+  target:
+    MERLIN_TARGET_CONTRACT: ${TARGET_CONTRACT}
+    MERLIN_RTL_FACTS: ${RTL_FACTS}
+    MERLIN_PHASE1_PUBLIC_HOST_BOARD: gemmini_rocket_gsim_fire_aligned
+  numerics:
+    MERLIN_MODEL_CHECK_BUNDLE: ${NUMERICS_BUNDLE}
+  threads:
+    PYTHONUNBUFFERED: "1"
+    OMP_NUM_THREADS: "1"
+    OPENBLAS_NUM_THREADS: "1"
+    MKL_NUM_THREADS: "1"
+  model_reference:
+    MERLIN_M2M_PYTHON: ${MODEL2MLIR}/.venv/bin/python
+    MERLIN_M2M_DIR: ${MODEL2MLIR}
+    MERLIN_MODEL2MLIR: ${MODEL2MLIR}
+  compute_pool:
+    # MERLIN_CODEX_CPUS and MERLIN_COMPUTE_CPUS come from `cpu` above.
+    MERLIN_COMPUTE_CPU_SLOTS: ${TASK_ROOT}/.tmp/phase1-compute-slots
+    MERLIN_GSIM_SLOT_ROOT: ${TASK_ROOT}/.tmp/phase1-gsim-slots
+  self_check:
+    # Capsule cap per request derived from the pool, never a fixed count.
+    MERLIN_SELFCHECK_MAX_CAPSULES: auto
+    # Longest measured capsule first, from this run's own timing history.
+    MERLIN_CAPSULE_ORDER: measured-longest-first
+    # Certified simulation results are reused for identical bytes.
+    MERLIN_SIMULATION_CERT_CACHE: "1"
+    MERLIN_CAPSULE_CALIBRATION_S: "0"
+  grading:
+    MERLIN_OPERATOR_GRADE_PROCESSES: "1"
+    MERLIN_BACKGROUND_PROGRESS: "1"
+    MERLIN_BACKGROUND_FINISH_SNAPSHOT: "1"
+    MERLIN_BACKGROUND_CODEGEN_SCALABILITY: "0"
+    MERLIN_GRADE_START_TO_START: "1"
+  caches:
+    MERLIN_SHAPE_COVERAGE_CACHE: "1"
+    MERLIN_SNAPSHOT_LEASE_CACHE: "1"
+    MERLIN_SNAPSHOT_LEASE_MIN_BYTES: "65536"
+    MERLIN_SNAPSHOT_LEASE_MAX_FILES: "65536"
+
+# Set by the supervisor immediately before it starts the controller; not part
+# of environment.sh. A live controller must carry these values.
+launch_environment:
+  MERLIN_TARGET_CONTRACT: ${RELEASE}/payload/experiment/contracts/target_contract.yaml
+  MERLIN_REQUIRED_RTL_ENGINE: gsim
+  MERLIN_MODEL_CHECK_BUNDLE: ${NUMERICS_BUNDLE}
+  MERLIN_CAPSULE_TIMING_HISTORY: ${RUN}/_qa_work:${RUN}/_qa_work/selfchecks
+
+environment_policy:
+  # Any other variable with these prefixes is drift, in environment.sh and in
+  # a live controller alike.
+  owned_prefixes: [MERLIN_]
+  # Per-engine caps stay unset: every engine derives its width from the shared pool.
+  forbidden:
+    - MERLIN_GSIM_MAX_SLOTS
+    - MERLIN_SPIKE_MAX_SLOTS
+    - MERLIN_GSIM_CPUS
+    - MERLIN_GRADE_CPUS
+    - MERLIN_GRADE_WORKERS
+    - MERLIN_BACKGROUND_GRADE_WORKERS
+    - MERLIN_SELFCHECK_BROKER_JOBS
+    - MERLIN_SELFCHECK_ORDINARY_JOBS
+    - MERLIN_SHAPE_COVERAGE_WORKERS
+    - MERLIN_PUBLIC_SCALE_BATCH_WORKERS
+    - MERLIN_DEVICE_BUILD_JOBS
+
+# Exact native runtime bytes; the supervisor and `verify` refuse any other bytes.
+runtime_pins:
+  spike:
+    path: ${SPIKE_RUNTIME}/bin/spike
+    sha256: 5df9c82ca3e921823da8606284a258b491541defbafee4586fb938639e03c6b9
+  libgemmini:
+    path: ${SPIKE_RUNTIME}/lib/libgemmini.so
+    sha256: 2dbd8445376cdda0df63abcf217c7a19f974d34a16ada21b549ed82fffd718eb
+  gsim_emulator:
+    path: ${GSIM_EMULATOR}
+    sha256: 76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651
+  timing_profile:
+    path: ${TIMING_PROFILE}
+    sha256: 12a1a0b45fe7767f03f1b277349b7600c7c68243f7161aba52242df1921721e0
+
+# Selected target contract (the release's kernel-timing selection) and RTL facts.
+target_selection:
+  contract:
+    path: ${TARGET_CONTRACT}
+    sha256: 9c6456af508d44c11a3073a110b12f6fb02f98d60263539ef1b51e1379f3f639
+  rtl_facts:
+    path: ${RTL_FACTS}
+    sha256: ba50873ca690db0a6697461e71a4e974a7a6d246c19b764d7373557ee8428767
+
+numerics:
+  # Owner-approved numerical evidence; every launch bundle is a byte-identical
+  # rebinding of it, proven against its SHA256SUMS by the reuse proof.
+  approved:
+    id: launch-v8
+    bundle: ${TASK_ROOT}/private/gemmini/numerics/launch-v8
+    manifest_sha256: 6177d5626831cfc1a5a2335e41022436d94c2b1ec3f777b8a2c76cde34bc7a32
+    signoff:
+      source: ${WORKSPACE_ROOT}/tasks/model-check/TASK.md
+      marker: NUMERICS SIGN-OFF (18:14 UTC)
+      verdict: APPROVED
+  launch_bundle: ${NUMERICS_BUNDLE}
+  copy_from: ${TASK_ROOT}/private/gemmini/numerics/launch-v${NUMERICS_PARENT_VERSION}
+  reuse_proof: ${PREP}/numerical-reuse-proof.json
+  # Records the supervisor reads to select the bundle and release it launches.
+  finalization_report: ${PREP}/finalization-status.json
+  verify_report: ${PREP}/bundle-verify.json
+
+instruction_selection:
+  # Approved fire-aligned selection (prohibits the 15 LOOP_WS*/LOOP_CONV_WS* symbols).
+  path: ${INSTRUCTION_SELECTION}/selection.json
+  sha256: 93c2102f37914cffb7e6a2c884b7d62d8a3149f0cc4ef72703a3ea026d265ec6
+  approval:
+    path: ${INSTRUCTION_SELECTION}/approval.json
+    sha256: 20524cfe3f4447bea7d83a0668f626a3b093b84972d6d2e82d1fd1496fec7340
+
+errata:
+  # Served via --operator-errata; render copies it byte-for-byte to ${PREP}.
+  source: errata/fresh-empty.md
+  path: ${PREP}/operator-errata.md
+  sha256: bfea960da515b1fa732384f207438df412b8b3bd4d2ff09f8ff8f49b7186fbdd
+
+# Inputs that are never part of any run. A path is repo-relative (below
+# inputs.repo): no argv or environment value may name it, and no bundle grant
+# may reach it or a parent of it. Content digests must not occur in the release
+# payload.
+exclusions:
+  - id: conv-input-residency-r39
+    reason: Operator-authored convolution compiler patches from seeded r39 work.
+    paths: [examples/gemmini/phase1/patches/]
+    content_sha256:
+      - 6d862eb5e6c13d3268aa1bd12daf14e751887e3b83aa77491797b5180e02e592  # r39-input-residency.patch
+      - 7be4d8989fe357b20e5f6267d548222c0aa76a91ad3cce6f8355c5e73710d372  # r39-input-slab.patch
+      - a5c97dd44e9d493e82470736d50bf4ca8ec2c372c7f36406004df855d876eaf7  # r39-horizontal-tap-fusion.patch
+    # Provenance only (feat/conv-input-residency); not a gate.
+    source_commits:
+      - 615940e9a939c054be654bbf97bb85bbdf8b975f
+      - 3324a6273096ca0c8b17e8a42f363b49b9be78f1
+      - 9b228d2f6cbc9eebbbc5aeb95eee364272b535df
+  - id: operator-launch-config
+    reason: This config, its errata and the release config are operator inputs.
+    paths: [examples/gemmini/phase1/launch/, examples/gemmini/phase0/release/]
