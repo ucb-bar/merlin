@@ -1147,6 +1147,7 @@ def _build_facts(
     if selected is not None:
         elaborated_fir = Path(selected["sources"]["firrtl"]["path"])
         selected_hierarchy = Path(selected["sources"]["hierarchy"]["path"])
+        source_selection.require_generator_scope(selected)  # a wrong scope would census nothing
         v1 = V1.census_facts(elaborated_fir, selected_hierarchy, generator=selected["generator"])
         # Legacy declared role probes are supplemental readers of the same bytes,
         # never an alternate selected elaboration.
@@ -1161,7 +1162,8 @@ def _build_facts(
             if not v1.get("memories"):
                 v1["memories"] = [
                     {**row, "source": "selected_firrtl_role_probe", "view_kind": "address_space"}
-                    for row in probes.get("memories", ()) if row.get("bytes") is not None
+                    for row in probes.get("memories", ())
+                    if row.get("bytes") is not None
                 ]
         v1["source"] = {
             "kind": "explicit_source_bundle",

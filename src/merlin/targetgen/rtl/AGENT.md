@@ -246,6 +246,12 @@ is conditional on defined known bits, with no write event, software scalar,
 command/axis, allocation/capacity, effect or whole packing admission. Existing
 local, H and C records retain their original meanings.
 
+`source_selection.generator_scope` derives the census scope (the `generators/<tree>/`
+source tree) from the declared core root's own FIRRTL module locator. A supplied
+`--generator` is only a check; a bundle whose declared generator does not make the
+core root the outermost dominant census unit is recorded as inconsistent and refused
+by `circt_introspect` before the census, instead of producing an empty unit census.
+
 `spatial_introspect` reports storage widths and structural geometry independently
 from arithmetic. Port/selector names and pipeline-like module names do not prove
 signed numerical formats, accumulation behavior or cycle latency; those fields
