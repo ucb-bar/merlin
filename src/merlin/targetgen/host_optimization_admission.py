@@ -66,10 +66,10 @@ def _original_entry(admission, target, build_service):
 def _original_context(admission, entry):
     from merlin.common import bundle_snapshot as bwrap
 
-    from .tool_profile import COMMON_SUBSTRATE_V3
+    from .tool_profile import COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5
 
     admission.verify()
-    if admission.profile["common_substrate"] != COMMON_SUBSTRATE_V3:
+    if admission.profile["common_substrate"] not in {COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5}:
         raise ValueError("host choices require the original substrate V3 profile")
     row = admission.profile["semantic_inputs"]["software_spec"]
     if row is None:
