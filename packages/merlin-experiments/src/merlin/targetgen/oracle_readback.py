@@ -75,7 +75,14 @@ def run_with_readback(
     policy,
     before_execution=None,
 ):
-    """One oracle run of ``cb`` on ``sim`` with the readback selected as the module docstring states."""
+    """One oracle run of ``cb`` on ``sim`` with the readback selected as the module docstring states.
+
+    Under a self-check certificate probe a probed engine is refused before dispatch
+    (:func:`merlin.targetgen.simulation_certificate.probe_observer`).
+    """
+    from .simulation_certificate import probe_observer
+
+    before_execution = probe_observer(sim, before_execution)
     if sim != "gsim" or policy is not None or not _digest_for_gsim():
         return _run(
             cb,

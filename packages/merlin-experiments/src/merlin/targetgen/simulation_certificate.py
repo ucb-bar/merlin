@@ -3,6 +3,10 @@
 Only an original native factory adapter and original compiler owner may issue a
 request. All semantic inputs and the selected byte-bound engine are reopened at
 lookup/publication. Unsupported or incomplete selections always miss.
+
+A certificate PROBE (:func:`probe_observer`) asks the same question without paying for the answer: a
+probed engine builds its ELF, looks up the certificate for exactly those bytes, and is refused before
+dispatch when there is none. It never executes the engine and never produces a verdict of its own.
 """
 
 from __future__ import annotations
@@ -23,6 +27,22 @@ from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
 ENV = "MERLIN_SIMULATION_CERT_CACHE"
 NAMESPACE = "same-byte-simulator-verdict-v2"
 _ISSUED = weakref.WeakSet()
+
+#: Engines (comma-separated) a self-check certificate probe must never dispatch. Set only by the trusted
+#: ``--capsules changed`` worker around its probe grade, and inherited by that grade's children; it can
+#: only refuse an execution, never supply a verdict.
+PROBE_ENV = "MERLIN_SELFCHECK_CERTIFICATE_PROBE"
+#: The tier reasons a probe refusal records, exactly, and what each one established.
+PROBE_CHANGED = (
+    "not simulated by the certificate probe: no simulator certificate exists for these exact bytes "
+    "under this engine selection"
+)
+PROBE_FAILING = (
+    "not simulated by the certificate probe: these exact bytes already failed this tier under this engine selection"
+)
+PROBE_REASONS = {PROBE_CHANGED: "changed", PROBE_FAILING: "failing"}
+#: The request this thread issued last; a probe refusal keys its noted-failure lookup on it.
+_CURRENT = threading.local()
 
 
 def _digest(value):
@@ -111,6 +131,7 @@ def capture(
     *, capsule, cb, gold, reference, direct_oracle_golden, policy, llvm_text, adapter, target, tier, package_dir
 ):
     """Snapshot existing trusted operator inputs; no new corpus/reference reads."""
+    _CURRENT.request = None
     if os.environ.get(ENV) != "1":
         return None
     try:
@@ -178,6 +199,7 @@ def capture(
             _instrument(target),
         )
         _ISSUED.add(value)
+        _CURRENT.request = value
         return value
     except Exception:  # noqa: BLE001 -- incomplete authority/data is an ordinary cache miss
         return None
@@ -257,3 +279,52 @@ def cache_root():
 
 def scope():
     return {"certificate_scope": NAMESPACE, "hardware_source_revision_claim": False}
+
+
+def probe_engines() -> frozenset[str]:
+    """The engines this process's certificate probe refuses (empty: no probe)."""
+    return frozenset(part.strip() for part in os.environ.get(PROBE_ENV, "").split(",") if part.strip())
+
+
+def probe_observer(sim, before_execution):
+    """``before_execution`` for one dispatch of ``sim``, refusing it when a certificate probe is active.
+
+    Outside a probe, or for an engine it does not name, the observer is returned unchanged. Inside, the
+    engine's own pre-dispatch observer still runs first, so a certificate for exactly these bytes raises
+    its carried verdict there as it always does; whatever returns is refused with
+    ``OracleUnavailable`` before the engine starts. An engine with no observer has no certificate
+    request at all and is refused before its build. The refusal names what the probe established
+    (:data:`PROBE_REASONS`); it is an unavailable tier, never a pass and never a failure.
+    """
+    if sim not in probe_engines():
+        return before_execution
+    from .capsule_runner import OracleUnavailable
+
+    if before_execution is None:
+        raise OracleUnavailable(PROBE_CHANGED)
+
+    def refuse(elf):
+        before_execution(elf)  # An exact-byte certificate hit leaves here as the carried verdict.
+        raise OracleUnavailable(_probe_reason(Path(elf)))
+
+    return refuse
+
+
+def _probe_reason(elf: Path) -> str:
+    """Whether a refused dispatch's exact key already FAILED (a noted verdict), else unknown/changed."""
+    try:
+        from .capsule_runner import run_executables
+        from .elf_lanes import PACKAGE_ELF_NAME
+        from .tier_cache import noted_failure
+
+        request = getattr(_CURRENT, "request", None)
+        root = cache_root()
+        if type(request) is not _Request or elf.name != PACKAGE_ELF_NAME or root is None:
+            return PROBE_CHANGED
+        name = request.request["capsule"].get("name")
+        identity, instrument = key(request, run_executables(elf.parent), expected=(name, request.tier, request.target))
+        if identity and noted_failure(name, request.tier, identity, instrument, root=root):
+            return PROBE_FAILING
+    except Exception:  # noqa: BLE001 -- an unestablished key is unknown, never a known failure
+        pass
+    return PROBE_CHANGED
