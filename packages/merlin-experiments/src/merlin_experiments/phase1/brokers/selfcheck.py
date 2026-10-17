@@ -35,6 +35,7 @@ import time
 from pathlib import Path
 
 from merlin_experiments.phase1.context import add_context_arguments, context_argv, resolve_context
+from merlin_experiments.phase1.feedback.dispatch import REQUIRED_SIM, grade_selection_for
 from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worker_command
 
 
@@ -127,6 +128,10 @@ def _decorate_response(
             "raw_tail": raw[-1000:],
         }
     requested = request.get("submission_sha256")
+    requested_sim = request.get("sim")
+    if isinstance(requested_sim, str) and requested_sim and requested_sim != body.get("sim", requested_sim):
+        # Said, not hidden: the pinned engine's name is served by the grade's own selection.
+        body["requested_sim"] = requested_sim
     body.update(
         {
             "selfcheck_protocol": PROTOCOL_VERSION,
@@ -164,16 +169,23 @@ def _required_rtl_engine() -> str | None:
 
 
 def _allowed_sims() -> tuple[str, ...]:
-    """Spike plus either the one pinned RTL engine or the closed registered RTL set."""
+    """Spike plus either the one pinned RTL engine or the closed registered RTL set, and the grade's
+    own selection (``REQUIRED_SIM``), which honours the pin itself."""
     required = _required_rtl_engine()
     if required is not None:
-        return ("spike", required) if required in _rtl_engines() else ("spike",)
-    return ("spike",) + _rtl_engines()
+        return ("spike", required, REQUIRED_SIM) if required in _rtl_engines() else ("spike", REQUIRED_SIM)
+    return ("spike",) + _rtl_engines() + (REQUIRED_SIM,)
 
 
-def _default_sim() -> str | None:
-    required = _required_rtl_engine()
-    return required if required in _rtl_engines() else None
+def _default_sim() -> str:
+    """An unnamed engine means every tier the official grade selects, never one engine.
+
+    This returned the pinned RTL engine, so an unflagged request ran ``--sim gsim``: Spike plus a gSIM
+    adapter built WITHOUT the grade's selection record. Its verdict could differ from the grade's and
+    its exact-byte simulator certificates were keyed to a different instrument, so neither side could
+    carry the other's gSIM result. The grade's own selection honours the pin, so nothing is lost.
+    """
+    return REQUIRED_SIM
 
 
 def _sim_policy_error(sim: str) -> str | None:
@@ -780,6 +792,7 @@ def main(
             _atomic_write(resp, json.dumps(doc))
             _atomic_write(ch / f"done_{rid}", "err")
             continue
+        sim = grade_selection_for(sim)
         to = int(r.get("timeout", 1800))
         worker_kwargs = {"rtl_facts": a.rtl_facts} if a.rtl_facts is not None else {}
         if a.compiler_bundle_manifest is not None:
@@ -951,13 +964,17 @@ def main(
         try:
             import json as _j
 
+            from merlin_experiments.phase1.feedback.promotion import cert_already_executed
             from merlin_experiments.phase1.feedback.promotion import promote as _promote
             from merlin_experiments.phase1.feedback.promotion import resolve_tiers as _resolve
 
             _loop, _cert, _cover = _resolve(ws, context=context, capsules_root=promotion_capsules_root)
             if _loop and _cert and resp.exists():
                 _v = _j.loads(resp.read_text())
-                if isinstance(_v, dict) and not _v.get("error") and promotion_source is not None:
+                if cert_already_executed(_v, _cert):
+                    print(f"[promote] not enqueued: this check already ran {_cert} on its own selection",
+                          file=sys.stderr, flush=True)
+                elif isinstance(_v, dict) and not _v.get("error") and promotion_source is not None:
                     _promote(
                         ws,
                         ch,

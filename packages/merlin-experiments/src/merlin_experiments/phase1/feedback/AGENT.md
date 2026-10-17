@@ -316,6 +316,15 @@ the protected worker. Broker-only context enables the same durable per-capsule
 completion promotion for loop-only requests; public progress files never authorize
 certification. The worker checks that frozen source digest before scheduling,
 and omits this extra handoff when its own selected adapters already execute cert.
+The brokers likewise enqueue no cert promotion for a verdict whose `oracle_tiers`
+already include the cert tier.
+
+An unflagged selfcheck (and an author request naming the pinned L3 engine) runs
+`dispatch.REQUIRED_SIM`: the grade's own `qa_checkpoint_adapters`, so one request
+runs every mandatory tier and shares the grade's simulator certificate instrument.
+Under that whole selection a row passes only when certified; a tier that could not
+run is never a pass. A single named engine, or `--tiers`, keeps screen accounting.
+`selfcheck_selection` describes that selection and never relaxes certification.
 
 `private_model_inputs` owns exact selected-input, capture-tree and recipe bindings;
 the full-model coordinator supplies its current digest and pinned-file callbacks.

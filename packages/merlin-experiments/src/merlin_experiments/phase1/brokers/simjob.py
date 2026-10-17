@@ -32,7 +32,10 @@ from pathlib import Path
 from merlin_experiments.phase1.context import InvocationContext, add_context_arguments, resolve_context
 from merlin_experiments.phase1.feedback import completions as _completions
 from merlin_experiments.phase1.feedback import promotion as _TP
+from merlin_experiments.phase1.feedback.dispatch import REQUIRED_SIM
 from merlin_experiments.phase1.feedback.dispatch import allowed_sims as _allowed_sims
+from merlin_experiments.phase1.feedback.dispatch import grade_selection_for as _grade_selection_for
+from merlin_experiments.phase1.feedback.promotion import cert_already_executed as _cert_already_executed
 from merlin_experiments.phase1.feedback.promotion import promote as _promote  # noqa: E402
 from merlin_experiments.phase1.feedback.promotion import resolve_tiers as _resolve_tiers
 from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worker_command
@@ -363,15 +366,33 @@ def _release_veril_workers(slots: tuple[Path, ...]) -> None:
 
 
 def _capsule_workers(requested: object, *, sim: str, n_capsules: int) -> int:
-    """Bound the agent's parallelism without allowing a batch to bypass the Verilator semaphore."""
+    """Bound the agent's parallelism without allowing a batch to bypass the Verilator semaphore.
+
+    The grade's own selection names no engine, so it takes the tightest elaborated-RTL cap: its cert
+    tier runs on one of those engines, and each engine's native slots still admit the actual runs.
+    """
     from merlin.targetgen.rtl_engine_policy import capsule_worker_cap
 
-    limit = capsule_worker_cap(sim)
+    if sim == REQUIRED_SIM:
+        limit = min(capsule_worker_cap(engine) for engine in _rtl_engines())
+    else:
+        limit = capsule_worker_cap(sim)
     try:
         named = int(requested)
     except (TypeError, ValueError):
         named = 0
     return max(1, min(named if named > 0 else limit, limit, n_capsules))
+
+
+def _uses_verilator_slots(sim: str) -> bool:
+    """Whether a job must hold the cross-arm Verilator semaphore.
+
+    The grade's own selection names no engine; unless the run pins a different one it may select
+    Verilator, so it is admitted conservatively under the same semaphore.
+    """
+    if sim == REQUIRED_SIM:
+        return os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() in ("", "verilator")
+    return sim == "verilator"
 
 
 def _reclaim_if_stale(slot: Path) -> bool:
@@ -617,9 +638,11 @@ def _job_timeout_s(sim: str, ncaps: int, vpc: int) -> int:
     This read ``(vpc * ncaps) if sim == "verilator" else 900``, so the engine `rtl_engine_policy`
     actually prefers was handed a flat 900 s no matter how large the request or how expensive the
     engine -- the literal "timed out after 900 seconds" that abandoned the heaviest capsules. The
-    functional screen and the contract sentinel are not elaborated RTL and keep their own budget.
+    functional screen and the contract sentinel are not elaborated RTL and keep their own budget. The
+    grade's own selection includes the elaborated-RTL tier, so it takes the RTL budget.
     """
-    return (max(1, int(vpc)) * max(1, int(ncaps))) if sim in _rtl_engines() else _SCREEN_TIMEOUT_S
+    rtl = sim in _rtl_engines() or sim == REQUIRED_SIM
+    return (max(1, int(vpc)) * max(1, int(ncaps))) if rtl else _SCREEN_TIMEOUT_S
 
 
 def main(
@@ -760,18 +783,12 @@ def main(
             # re-enqueue itself.
             if not j.get("promoted") and not out.get("error"):
                 try:
-                    _promote(
-                        ws,
-                        ch,
-                        out,
-                        _LOOP_TIER,
-                        _CERT_TIER,
-                        _COVER,
-                        sys.stderr,
-                        context=context,
-                        capsules_root=promotion_capsules_root,
-                        source_ws=j["snapshot_root"],
-                    )
+                    if _cert_already_executed(out, _CERT_TIER):
+                        print(f"[promote] {jid}: not enqueued; it already ran {_CERT_TIER}",
+                              file=sys.stderr, flush=True)
+                    else:
+                        _promote(ws, ch, out, _LOOP_TIER, _CERT_TIER, _COVER, sys.stderr, context=context,
+                                 capsules_root=promotion_capsules_root, source_ws=j["snapshot_root"])
                 except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
                     print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)
             elif j.get("promoted") and not out.get("error"):
@@ -874,10 +891,15 @@ def main(
                     (ch / f"simerr_{jid}").write_text("rejected")
                     claimed.add(jid)
                     continue
+                if not r.get("promoted"):
+                    # An author job naming the pinned engine runs the grade's own selection (same
+                    # tiers). A promotion keeps its single cert tier and its own ledger accounting.
+                    sim = _grade_selection_for(sim)
                 ncaps = len(_valid_capsules("all", capsules_root) or []) if caps == ["all"] else len(caps)
                 workers = _capsule_workers(r.get("workers", 0), sim=sim, n_capsules=ncaps)
-                slots = _reserve_veril_workers(workers, a.veril_slots) if sim == "verilator" else ()
-                if sim == "verilator":
+                veril = _uses_verilator_slots(sim)
+                slots = _reserve_veril_workers(workers, a.veril_slots) if veril else ()
+                if veril:
                     if not slots:
                         continue  # global verilator budget full; try later
                     workers = len(slots)
