@@ -414,14 +414,14 @@ def select_changed(a, *, sub, context, capsules_root, contract, adapters, combin
     engines, why = probe_engines(adapters, target)
     if why:
         return refuse(why)
-    try:
-        bound = _ordinary_capsule_limit()
-    except ValueError as error:
-        return refuse(str(error))
     contract_root = contract if contract is not None else context.repo / "merlin/contract"
     capsules = {
         cap["name"]: cap for cap in CR.discover_capsules(capsules_root, labels=set(LABELS), contract=contract_root)
     }
+    try:
+        bound = _ordinary_capsule_limit(len(capsules))  # `auto` covers the public corpus; a number is exact
+    except ValueError as error:
+        return refuse(str(error))
     not_covered = sorted(name for name, cap in capsules.items() if cap.get("kind") == "model")
     provided = sorted(name for name, cap in capsules.items() if name not in not_covered and selected_host_leaf(cap))
     names = sorted(name for name in capsules if name not in not_covered and name not in provided)
