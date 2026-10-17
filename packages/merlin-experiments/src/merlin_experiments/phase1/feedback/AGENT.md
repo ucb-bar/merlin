@@ -63,6 +63,11 @@ the ordinary root contract and receipts. It refuses missing, extra, opaque or
 indirect stage inputs, and reports only the attested loader's declared input
 provenance without private paths. It neither selects a validation subset nor certifies code.
 
+`private_source_preflight.py` runs `private_full_models.run(source_only=True)` on an
+operator spec before a launch: the gate's own input and source-obligation checks,
+with no candidate. Add a compiler-independent check to the gate before the
+`source_only` stop so the preflight sees it; a preflight record never passes the gate.
+
 `caller_layout.py` gives an answer-free, layout-only projection from an explicitly
 selected harness provider for a submission-owned command buffer. It never grades or
 imports candidate code; absent provider inspection support refuses.

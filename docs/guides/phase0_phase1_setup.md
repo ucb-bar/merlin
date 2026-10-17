@@ -3,9 +3,9 @@ title: Set up Phase 0 and Phase 1
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-15
+last_verified: 2026-10-17
 related: [gsim_worker_setup, neutral_runtime_tooling, phase0_specification, target_resolution]
-code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/targetgen/generalization_prompt.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_demand.py]
+code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/targetgen/generalization_prompt.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_demand.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_preflight.py]
 ---
 
 # Set up Phase 0 and Phase 1
@@ -307,6 +307,21 @@ The `changes` list must equal the complete diff returned by
 The gate still verifies the original derivation, software, RTL facts and host
 profile before checking the review. The review records a numerical choice;
 it grants no new hardware capability or numerical pass. Keep this review private.
+
+Before a launch, run the private gate's compiler-independent checks on the final
+specification, with the launch's descriptor and, when the launch passes one, its
+`--native-result-format-selection` file:
+
+```sh
+merlin-experiment private-preflight --spec "$PRIVATE_MODEL_SPEC" \
+  --descriptor "$DESCRIPTOR" --target gemmini --out "$FRESH_PRIVATE_DIR"
+```
+
+Require every model to report `source_inputs_verified`. Each refusal here (a
+capture that is not its preselected sealed run output, a sealed run that no
+longer re-verifies, missing source ancestry, an undecided source operation)
+fails the full-model gate for every compiler. The output directory holds
+operator-only diagnostics; a passing preflight is not a gate result.
 
 To retain kernel cycle measurements when preparing a new release from an
 existing Phase 0 corpus, pass `kernel_timing_selection=(contract_path, sha256)`
