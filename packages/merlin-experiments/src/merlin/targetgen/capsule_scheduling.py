@@ -7,19 +7,25 @@ corpus whose first member was a full-shape layer ran that one capsule alone for 
 
 Here a capsule starts the moment a worker is free and the ``extends`` sibling it cites (if selected)
 has FINISHED -- a dependent still never starts before its evidence exists, which is the one ordering
-the waves were for. Ready members start longest first (declared operand volume). Calibration runs once
-for the whole suite, on the CHEAPEST ready members, and only while tiers remain unpriced. Results come
-back in input order.
+the waves were for. Ready members start longest first (declared operand volume, or with
+``MERLIN_CAPSULE_ORDER=measured-longest-first`` the costs this run already measured). Calibration runs
+once for the whole suite, on the CHEAPEST ready members, and only while tiers remain unpriced. Results
+come back in input order.
 """
 
 from __future__ import annotations
 
 import heapq
+import json
 import os
-from collections.abc import Callable, Mapping, Sequence
+import statistics
+import threading
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from contextvars import ContextVar, copy_context
 from math import isfinite, prod
+from pathlib import Path
 from typing import Any
 
 #: Wall seconds a serial calibration member may run before the pool fans out around it. Calibration
@@ -28,10 +34,162 @@ from typing import Any
 CALIBRATION_BUDGET_S = 120.0
 _DEFER_PROBE: ContextVar[Callable[[], str | None] | None] = ContextVar("merlin_capsule_defer_probe", default=None)
 
+#: Operator-selected directories (``os.pathsep``-separated) whose immediate subdirectories are earlier
+#: runs roots of this run; their completed capsule results price ``measured-longest-first``.
+TIMING_HISTORY_ENV = "MERLIN_CAPSULE_TIMING_HISTORY"
+_TIMING_HISTORY: ContextVar[tuple[Path, ...] | None] = ContextVar("merlin_capsule_timing_history", default=None)
+_ORDERS = ("", "legacy", "operators-small-first", "measured-longest-first")
+#: Parsed timing rows by (path, size, mtime_ns): one long run re-reads its history every grade.
+_PARSED: dict[tuple[str, int, int], tuple[str, dict[str, float], dict[str, int]] | None] = {}
+_PARSED_LOCK = threading.Lock()
+
 
 def active_defer_probe() -> Callable[[], str | None] | None:
     """The scheduler's observed deferral reason for this worker, if it is a background grade."""
     return _DEFER_PROBE.get()
+
+
+@contextmanager
+def timing_history(runs_roots: Iterable[str | Path]) -> Iterator[None]:
+    """Select earlier runs roots (``<root>/runs/<suite>/<capsule>/``) that price this caller's grades.
+
+    The history only orders ready work. It is never a result, a reuse of a result, or a reason to
+    skip a capsule; an unreadable or absent history leaves capsules on the static fallback.
+    """
+    token = _TIMING_HISTORY.set(tuple(Path(root) for root in runs_roots))
+    try:
+        yield
+    finally:
+        _TIMING_HISTORY.reset(token)
+
+
+def selected_history() -> tuple[Path, ...]:
+    """The caller's :func:`timing_history`, else every subdirectory of ``MERLIN_CAPSULE_TIMING_HISTORY``."""
+    selected = _TIMING_HISTORY.get()
+    if selected is not None:
+        return selected
+    roots = []
+    for raw in os.environ.get(TIMING_HISTORY_ENV, "").split(os.pathsep):
+        parent = Path(raw.strip())
+        if raw.strip() and parent.is_absolute() and parent.is_dir():
+            roots.extend(child for child in sorted(parent.iterdir()) if child.is_dir() and not child.is_symlink())
+    return tuple(roots)
+
+
+def _seconds(value) -> float | None:
+    return float(value) if type(value) in (int, float) and isfinite(value) and value >= 0 else None
+
+
+def _measured_row(path: Path) -> tuple[str, dict[str, float], dict[str, int]] | None:
+    """``(capsule, {tier: measured seconds}, {tier: cycles})`` from one completed result, or None.
+
+    A tier counts as measured only when THIS result executed it (``measured_now``) and recorded its
+    own timing; a carried certificate costs nothing to grade again and says nothing about its cost.
+    The cost is build plus active simulation as recorded. Queue wait belongs to contention, so the
+    adapter wall time is used only when the active split was not recorded. Recorded seconds include
+    harness work inside the timing window, so they rank members relative to each other; they are
+    not a simulator stopwatch.
+    """
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    key = (str(path), stat.st_size, stat.st_mtime_ns)
+    with _PARSED_LOCK:
+        if key in _PARSED:
+            return _PARSED[key]
+    row = None
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        document = None  # a result still being written is simply not history yet
+    if isinstance(document, dict) and isinstance(document.get("capsule"), str):
+        seconds: dict[str, float] = {}
+        cycles: dict[str, int] = {}
+        for tier, record in (document.get("tiers") or {}).items():
+            if not isinstance(record, dict):
+                continue
+            if type(record.get("cycles")) is int and record["cycles"] > 0:
+                cycles[str(tier)] = record["cycles"]
+            timing = record.get("timing")
+            if record.get("measured_now") is not True or not isinstance(timing, dict):
+                continue
+            fields = ("sim_active_s", "build_s", "adapter_wall_s")
+            active, build, wall = (_seconds(timing.get(field)) for field in fields)
+            cost = active + (build or 0.0) if active is not None else wall
+            if cost is not None:
+                seconds[str(tier)] = cost
+        row = (document["capsule"], seconds, cycles)
+    if row is not None or document is not None:
+        with _PARSED_LOCK:
+            if len(_PARSED) > 65536:
+                _PARSED.clear()
+            _PARSED[key] = row
+    return row
+
+
+def measured_costs(runs_roots: Iterable[str | Path]) -> tuple[dict[str, float], dict[str, int]]:
+    """Per-capsule seconds from the newest measured run of each tier across earlier runs roots.
+
+    Each runs root holds ``runs/<suite>/<capsule>/capsule_result.json``. For every capsule each tier
+    contributes its newest MEASURED cost, so a capsule whose latest grade failed early still keeps
+    the price of the deepest tier it last reached. Also returns the newest observed cycle count
+    (carried certificates included), the static-cost fallback for capsules with no measured seconds.
+    """
+    files = []
+    for root in runs_roots:
+        base = Path(root)
+        if base.is_absolute() and base.is_dir():
+            files.extend((base / "runs").glob("*/*/capsule_result.json"))
+    dated = []
+    for path in files:
+        try:
+            dated.append((path.stat().st_mtime_ns, str(path), path))
+        except OSError:
+            continue
+    newest_seconds: dict[str, dict[str, float]] = {}
+    newest_cycles: dict[str, int] = {}
+    for _, _, path in sorted(dated, reverse=True):
+        row = _measured_row(path)
+        if row is None:
+            continue
+        name, seconds, cycles = row
+        tiers = newest_seconds.setdefault(name, {})
+        for tier, cost in seconds.items():
+            tiers.setdefault(tier, cost)
+        if cycles and name not in newest_cycles:
+            newest_cycles[name] = max(cycles.values())
+    return {name: sum(t.values()) for name, t in newest_seconds.items() if t}, newest_cycles
+
+
+def cost_estimates(
+    capsules: Sequence[Mapping], seconds: Mapping[str, float], cycles: Mapping[str, int]
+) -> dict[str, float]:
+    """Seconds per capsule: measured, else predicted from observed cycles, else the median.
+
+    The cycle prediction is a least-squares line through this history's own measured
+    ``(cycles, seconds)`` pairs (a simulator start-up floor plus a per-cycle slope), used only when
+    at least three capsules priced both. A capsule with neither ranks as the median measured one, so
+    it is neither starved behind known work nor allowed to displace a known long member.
+    """
+    names = [str(cap.get("name")) for cap in capsules]
+    known = {name: float(seconds[name]) for name in names if name in seconds}
+    pairs = [(float(cycles[name]), float(seconds[name])) for name in seconds if name in cycles]
+    line = None
+    if len(pairs) >= 3:
+        mean_x = sum(x for x, _ in pairs) / len(pairs)
+        mean_y = sum(y for _, y in pairs) / len(pairs)
+        spread = sum((x - mean_x) ** 2 for x, _ in pairs)
+        if spread > 0:
+            slope = sum((x - mean_x) * (y - mean_y) for x, y in pairs) / spread
+            if slope > 0:
+                line = (mean_y - slope * mean_x, slope)
+    estimates = dict(known)
+    for name in names:
+        if name not in estimates and line is not None and name in cycles:
+            estimates[name] = max(0.0, line[0] + line[1] * cycles[name])
+    fallback = statistics.median(estimates.values()) if estimates else 0.0
+    return {name: estimates.get(name, fallback) for name in names}
 
 
 def dependencies(capsules: Sequence[Mapping]) -> dict[str, set[str]]:
@@ -88,12 +246,24 @@ def run_pipelined(
     A head member still running after ``calibration_budget_s`` ends calibration and the pool fans out
     around it (``None`` waits for it). Explicit ``MERLIN_CAPSULE_ORDER=operators-small-first``
     prioritizes ready operators by ascending operand volume before models; absent selection
-    preserves legacy priorities. Neither profile bypasses dependencies or readiness gates.
+    preserves legacy priorities. ``measured-longest-first`` starts ready members by descending
+    measured cost from the selected :func:`timing_history` (or ``MERLIN_CAPSULE_TIMING_HISTORY``),
+    falling back to observed cycles, then declared operand volume, then name, after any caller
+    ``priority``. No profile bypasses dependencies or readiness gates, and none changes a result.
     """
     order = os.environ.get("MERLIN_CAPSULE_ORDER", "").strip()
-    if order not in ("", "legacy", "operators-small-first"):
-        raise ValueError("MERLIN_CAPSULE_ORDER must be legacy or operators-small-first")
+    if order not in _ORDERS:
+        raise ValueError("MERLIN_CAPSULE_ORDER must be legacy, operators-small-first or measured-longest-first")
     small_operators_first = order == "operators-small-first"
+    measured_first = order == "measured-longest-first"
+    estimate: dict[str, float] = {}
+    if measured_first:
+        from merlin.targetgen.tier_policy import budget_seconds
+
+        if budget_seconds() is not None:
+            # Under a certify budget the start order decides which members are certified at all.
+            raise ValueError("measured-longest-first requires an unlimited certify budget")
+        estimate = cost_estimates(capsules, *measured_costs(selected_history()))
     head_wait = os.environ.get("MERLIN_CAPSULE_CALIBRATION_S")
     if head_wait is not None:
         try:
@@ -167,7 +337,13 @@ def run_pipelined(
     heapq.heapify(ready)
 
     def take_ready(*, calibration=False):
-        if not calibration and can_start is None and priority is None and not small_operators_first:
+        if (
+            not calibration
+            and can_start is None
+            and priority is None
+            and not small_operators_first
+            and not measured_first
+        ):
             return heapq.heappop(ready) if ready else None
         selectable = [
             item
@@ -182,6 +358,11 @@ def run_pipelined(
             # Keep models behind ready operators, then prefer smaller declared operands.
             def key(entry):
                 return capsules[entry[1]].get("kind") == "model", -entry[0], entry[1]
+        elif measured_first and not calibration:
+            # Makespan: the member that bounds the grade starts first. Caller priority (models when
+            # admitted) still leads; the name is the final deterministic tie-break.
+            def key(entry):
+                return ((priority(capsules[entry[1]]) if priority else 0), -estimate[entry[2]], entry[0], entry[2])
         else:
             key = (
                 (lambda entry: (-entry[0], entry[1]))

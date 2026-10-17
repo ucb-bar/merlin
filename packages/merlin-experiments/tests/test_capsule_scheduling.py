@@ -240,3 +240,147 @@ def test_invalid_operator_calibration_wait_refuses(monkeypatch, value):
     monkeypatch.setenv("MERLIN_CAPSULE_CALIBRATION_S", value)
     with pytest.raises(ValueError, match="MERLIN_CAPSULE_CALIBRATION_S"):
         run_pipelined([_cap("first")], lambda c, n: {}, max_workers=2)
+
+
+# --------------------------------------------------------------- measured longest-first
+
+
+def _result(root, name, *, mtime, tiers):
+    import json
+
+    path = root / "runs" / "fixture-capsule-bench" / name / "capsule_result.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"capsule": name, "status": "pass", "tiers": tiers}))
+    os.utime(path, ns=(mtime, mtime))
+
+
+def _timed(active, build=1.0, wall=None, cycles=None, measured=True):
+    return {
+        "status": "pass",
+        "measured_now": measured,
+        "cycles": cycles,
+        "timing": {
+            "build_s": build,
+            "sim_active_s": active,
+            "oracle_wait_s": 50.0,
+            "adapter_wall_s": wall if wall is not None else active + build + 50.0,
+        },
+    }
+
+
+@pytest.fixture()
+def history(tmp_path):
+    old, new = tmp_path / "runs_r0000_t000001", tmp_path / "selfchecks" / "selfcheck_x"
+    _result(old, "boundary", mtime=10**18, tiers={"L2": _timed(2.0), "L3": _timed(466.0, cycles=369000)})
+    _result(old, "beyond", mtime=10**18, tiers={"L3": _timed(137.0, cycles=62000)})
+    _result(old, "kdepth", mtime=10**18, tiers={"L3": _timed(101.0, cycles=40000)})
+    _result(old, "tiny", mtime=10**18, tiers={"L3": _timed(25.0, cycles=300)})
+    # Newer evidence wins per tier; a carried certificate is not a cost measurement.
+    _result(
+        new,
+        "tiny",
+        mtime=2 * 10**18,
+        tiers={"L2": _timed(1.0), "L3": {"status": "pass", "measured_now": False, "cycles": 300, "timing": None}},
+    )
+    _result(new, "kdepth", mtime=2 * 10**18, tiers={"L3": _timed(5.0, cycles=40000)})
+    return (old, new)
+
+
+def test_measured_costs_use_newest_measured_tier_and_ignore_carried(history):
+    from merlin.targetgen.capsule_scheduling import measured_costs
+
+    seconds, cycles = measured_costs(history)
+    assert seconds == {"boundary": 3.0 + 467.0, "beyond": 138.0, "kdepth": 6.0, "tiny": 2.0 + 26.0}
+    assert cycles["boundary"] == 369000 and cycles["tiny"] == 300
+
+
+def test_measured_longest_first_starts_the_known_tail_first(monkeypatch, history):
+    from merlin.targetgen.capsule_scheduling import timing_history
+
+    monkeypatch.setenv("MERLIN_CAPSULE_ORDER", "measured-longest-first")
+    caps = [_cap(name, shape=(1,)) for name in ("tiny", "kdepth", "fresh", "beyond", "boundary")]
+    order = []
+
+    def run(cap, parallel):
+        order.append(cap["name"])
+        return {"capsule": cap["name"], "status": "pass" if cap["name"] != "beyond" else "fail"}
+
+    with timing_history(history):
+        rows = run_pipelined(caps, run, max_workers=1)
+    # Unmeasured "fresh" ranks as the median priced member of this batch (83 s): after the known
+    # long members, ahead of the known short ones.
+    assert order == ["boundary", "beyond", "fresh", "tiny", "kdepth"]
+    monkeypatch.setenv("MERLIN_CAPSULE_ORDER", "legacy")
+    legacy = run_pipelined(caps, run, max_workers=1)
+    assert rows == legacy, "start order never changes a result or its input-order position"
+
+
+def test_cycles_predict_unmeasured_members_and_operand_volume_then_name_break_ties(monkeypatch, history):
+    from merlin.targetgen.capsule_scheduling import cost_estimates, measured_costs, timing_history
+
+    seconds, cycles = measured_costs(history)
+    names = ("b_unknown", "kdepth", "long_unmeasured", "tiny", "beyond", "boundary", "a_unknown", "c_wide")
+    caps = [_cap(name, shape=(64, 64) if name == "c_wide" else (4,)) for name in names]
+    estimate = cost_estimates(caps, seconds, {**cycles, "long_unmeasured": 300000})
+    assert estimate["boundary"] == 470.0
+    assert estimate["boundary"] > estimate["long_unmeasured"] > estimate["beyond"] == estimate["a_unknown"]
+    monkeypatch.setenv("MERLIN_CAPSULE_ORDER", "measured-longest-first")
+    _result(
+        history[1],
+        "long_unmeasured",
+        mtime=3 * 10**18,
+        tiers={"L3": {"status": "pass", "measured_now": False, "cycles": 300000, "timing": None}},
+    )
+    order = []
+    with timing_history(history):
+        run_pipelined(caps, lambda c, n: order.append(c["name"]) or {}, max_workers=1)
+    assert order == ["boundary", "long_unmeasured", "c_wide", "a_unknown", "b_unknown", "beyond", "tiny", "kdepth"]
+
+
+def test_measured_order_keeps_dependencies_caller_priority_and_parallel_results(monkeypatch, history):
+    from merlin.targetgen.capsule_scheduling import timing_history
+
+    monkeypatch.setenv("MERLIN_CAPSULE_ORDER", "measured-longest-first")
+    caps = [_cap("tiny"), _cap("boundary", extends="tiny"), dict(_cap("model"), kind="model"), _cap("beyond")]
+    order = []
+
+    def run(cap, parallel):
+        order.append(cap["name"])
+        if cap["name"] == "boundary":
+            assert "tiny" in order[:-1], "a dependent never starts before its sibling"
+        return {"capsule": cap["name"], "status": "pass"}
+
+    with timing_history(history):
+        rows = run_pipelined(caps, run, max_workers=1, priority=lambda cap: 0 if cap.get("kind") == "model" else 1)
+    assert order == ["model", "beyond", "tiny", "boundary"]
+    with timing_history(history):
+        parallel = run_pipelined(caps, lambda c, n: {"capsule": c["name"], "status": "pass"}, max_workers=3)
+    assert [row["capsule"] for row in rows] == [row["capsule"] for row in parallel] == [c["name"] for c in caps]
+
+
+def test_selfcheck_processes_read_history_from_the_selected_environment(monkeypatch, history, tmp_path):
+    from merlin.targetgen.capsule_scheduling import selected_history
+
+    monkeypatch.setenv("MERLIN_CAPSULE_TIMING_HISTORY", os.pathsep.join([str(tmp_path), str(tmp_path / "selfchecks")]))
+    roots = selected_history()
+    assert history[0] in roots and history[1] in roots
+    monkeypatch.setenv("MERLIN_CAPSULE_ORDER", "measured-longest-first")
+    order = []
+    run_pipelined([_cap("tiny"), _cap("boundary")], lambda c, n: order.append(c["name"]) or {}, max_workers=1)
+    assert order == ["boundary", "tiny"]
+
+
+def test_measured_order_refuses_a_certify_budget(monkeypatch):
+    monkeypatch.setenv("MERLIN_CAPSULE_ORDER", "measured-longest-first")
+    monkeypatch.setenv("MERLIN_CERTIFY_BUDGET_S", "600")
+    with pytest.raises(ValueError, match="unlimited certify budget"):
+        run_pipelined([_cap("a")], lambda *a: pytest.fail("started under a budget"), max_workers=1)
+
+
+def test_without_history_measured_order_is_longest_declared_operands_then_name(monkeypatch):
+    monkeypatch.setenv("MERLIN_CAPSULE_ORDER", "measured-longest-first")
+    monkeypatch.delenv("MERLIN_CAPSULE_TIMING_HISTORY", raising=False)
+    order = []
+    caps = [_cap("b_small", shape=(2,)), _cap("big", shape=(64, 64)), _cap("a_small", shape=(2,))]
+    run_pipelined(caps, lambda c, n: order.append(c["name"]) or {}, max_workers=1)
+    assert order == ["big", "a_small", "b_small"]
