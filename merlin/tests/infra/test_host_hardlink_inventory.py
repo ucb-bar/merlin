@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from collections import Counter
 from pathlib import Path
 
@@ -132,3 +133,88 @@ def test_missing_live_source_preserves_frozen_private_alias_mask(tmp_path):
     runtime.mkdir()
     os.link(secret, runtime / "alias")
     assert _masked_aliases(runtime, [("private", original, frozen)]) == {Path("alias")}
+
+
+def _path_object_inventory(records) -> set[tuple[int, int]]:
+    """The inventory exactly as it was written with a ``Path`` per member (the reference result)."""
+    inodes, members, directories, indirect = set(), set(), set(), set()
+    roots = {root for _, original, frozen in records for root in (original, frozen)}
+
+    def remember(path, info):
+        members.add(path)
+        if stat.S_ISREG(info.st_mode) and info.st_nlink > 1:
+            inodes.add((info.st_dev, info.st_ino))
+
+    for root in sorted(roots, key=lambda path: (len(path.parts), str(path))):
+        if root in members and root not in indirect:
+            continue
+        if not root.exists():
+            continue
+        info = root.stat()
+        remember(root, info)
+        if not stat.S_ISDIR(info.st_mode):
+            continue
+        pending = [root]
+        while pending:
+            directory = pending.pop()
+            if directory in directories:
+                continue
+            directories.add(directory)
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    member = Path(entry.path)
+                    if member in members:
+                        continue
+                    info = entry.stat()
+                    remember(member, info)
+                    if stat.S_ISDIR(info.st_mode):
+                        if entry.is_symlink():
+                            indirect.add(member)
+                        else:
+                            pending.append(member)
+    return inodes
+
+
+def test_string_member_inventory_matches_the_path_object_inventory(tmp_path, monkeypatch):
+    """Tracking members by normalized strings changes the cost, never the discovered identities."""
+    private = tmp_path / "private"
+    nested = private / "nested" / "deeper"
+    nested.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    (outside / "tree").mkdir(parents=True)
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    linked = []
+    for index, directory in enumerate((private, private / "nested", nested, outside / "tree")):
+        shared = directory / f"shared-{index}"
+        shared.write_text("synthetic private input")
+        os.link(shared, runtime / f"alias-{index}")
+        linked.append(shared)
+        (directory / f"single-{index}").write_text("one name only")
+    (private / "leaf-to-outside").symlink_to(outside / "tree" / "shared-3")
+    (private / "unselected-dir").symlink_to(outside / "tree", target_is_directory=True)
+    selected_dir = private / "nested" / "selected-dir"
+    selected_dir.symlink_to(outside / "tree", target_is_directory=True)
+    (private / "cycle").symlink_to(private, target_is_directory=True)
+    file_root = private / "single-0"
+    shapes = {
+        "one root": [_record(private)],
+        "overlapping roots": [_record(nested), _record(private), _record(private / "nested")],
+        "file and live/frozen pair": [_record(file_root), ("pair", tmp_path / "absent-live", private)],
+        "selected directory symlink": [_record(private), _record(selected_dir)],
+        "linked file root": [_record(linked[1]), _record(linked[3])],
+        "nothing present": [_record(tmp_path / "absent")],
+    }
+    argv = ["--ro-bind", str(runtime), str(tmp_path / "view")]
+    discovered = set()
+    for name, records in shapes.items():
+        expected = _path_object_inventory(records)
+        assert HS._private_hardlink_inodes(records) == expected, name
+        discovered |= expected
+        actual = HS._host_hardlink_surfaces(argv, records, set())
+        with monkeypatch.context() as reference:
+            reference.setattr(HS, "_private_hardlink_inodes", _path_object_inventory)
+            assert actual == HS._host_hardlink_surfaces(argv, records, set()), name
+    assert len(discovered) == len(linked)  # every shape class above found something to compare
+    everything = [_record(private), _record(selected_dir), _record(outside)]
+    assert HS._private_hardlink_inodes(everything) == {(path.stat().st_dev, path.stat().st_ino) for path in linked}

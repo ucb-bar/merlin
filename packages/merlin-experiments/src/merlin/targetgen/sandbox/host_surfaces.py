@@ -79,28 +79,33 @@ def _private_hardlink_inodes(records: list[tuple[str, Path, Path]]) -> set[tuple
     spelling. Keep this inventory local: a subsequent call must observe newly
     created links. Leaf symlinks retain their referent identity, but directory
     symlinks are traversed only when explicitly selected as a root.
+
+    Members are tracked by their normalized path strings: a selected private
+    tree holds hundreds of thousands of files, and building a ``Path`` per entry
+    cost four times the directory scan itself (measured 2.0 s against 0.5 s for
+    one Phase 1 policy). Every root is normalized by ``str(Path)`` and every entry
+    joins one name to it, so string and ``Path`` equality select the same members.
     """
     inodes: set[tuple[int, int]] = set()
-    members: set[Path] = set()
-    directories: set[Path] = set()
-    indirect_directories: set[Path] = set()
+    members: set[str] = set()
+    directories: set[str] = set()
+    indirect_directories: set[str] = set()
     roots = {root for _, original, frozen in records for root in (original, frozen)}
-
-    def remember(path: Path, info: os.stat_result) -> None:
-        members.add(path)
-        if stat.S_ISREG(info.st_mode) and info.st_nlink > 1:
-            inodes.add((info.st_dev, info.st_ino))
+    is_regular, is_directory = stat.S_ISREG, stat.S_ISDIR
 
     for root in sorted(roots, key=lambda path: (len(path.parts), str(path))):
-        if root in members and root not in indirect_directories:
+        name = str(root)
+        if name in members and name not in indirect_directories:
             continue
         if not root.exists():  # A resumed run may have lost its live source.
             continue
         info = root.stat()
-        remember(root, info)
-        if not stat.S_ISDIR(info.st_mode):
+        members.add(name)
+        if is_regular(info.st_mode) and info.st_nlink > 1:
+            inodes.add((info.st_dev, info.st_ino))
+        if not is_directory(info.st_mode):
             continue
-        pending = [root]
+        pending = [name]
         while pending:
             directory = pending.pop()
             if directory in directories:
@@ -108,12 +113,15 @@ def _private_hardlink_inodes(records: list[tuple[str, Path, Path]]) -> set[tuple
             directories.add(directory)
             with os.scandir(directory) as entries:
                 for entry in entries:
-                    member = Path(entry.path)
+                    member = entry.path
                     if member in members:
                         continue
                     info = entry.stat()  # Follow leaf referents; unreadable/broken ones refuse.
-                    remember(member, info)
-                    if stat.S_ISDIR(info.st_mode):
+                    members.add(member)
+                    if is_regular(info.st_mode):
+                        if info.st_nlink > 1:
+                            inodes.add((info.st_dev, info.st_ino))
+                    elif is_directory(info.st_mode):
                         if entry.is_symlink():
                             indirect_directories.add(member)
                         else:
