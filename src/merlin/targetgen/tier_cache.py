@@ -51,6 +51,11 @@ its category, its detail, its first mismatch -- and a record that carries only t
 replace actionable feedback with an assertion. Re-running a failing capsule is also the cheap direction:
 the ladder fail-fasts, so a refuted capsule never reaches the expensive tier anyway.
 
+A compared ``fail`` is still NOTED, apart from the store (:data:`NOTES`), under the same key and with
+no detail: :func:`noted_failure` answers only "did these exact bytes already fail this tier on this
+instrument?", so a selector can decline to re-buy a known failure without calling it anything but a
+failure. :func:`lookup` never reads a note, and a certificate for the same key outranks one.
+
 **The legacy first-tier path executes freshly.** The executable identity is only available
 once something in THIS run has built the ELF, and it is the first executed tier's adapter that builds
 it -- so that tier is never carried, on any target, without a single rule saying so. Which tier that is
@@ -124,6 +129,8 @@ __all__ = [
     "instrument_digest",
     "lookup",
     "record",
+    "noted_failure",
+    "NOTES",
     "carried_block",
     "reuse_block",
     "disabled",
@@ -146,6 +153,12 @@ _OFF = frozenset({"0", "off", "no", "false", "none", "disabled"})
 
 #: The one status that may be carried. See the module docstring: a stored failure is re-run.
 _CARRYABLE = "pass"
+
+#: The one status that is NOTED instead: a tier executed and compared that disagreed. Never carried.
+_NOTED = "fail"
+
+#: Subdirectory of a store holding noted (never carried) verdicts, apart from its carryable records.
+NOTES = "noted-verdicts"
 
 #: Keys dropped from a carried tier record because they describe an act of measurement that did not
 #: happen now. Everything else is a property of the program and the device, which the key pins.
@@ -575,17 +588,21 @@ def record(
     """Store one EXECUTED tier verdict against the bytes and the instrument that produced it.
 
     Returns the file written, or ``None`` when nothing was stored (cache off, no identity, no
-    instrument, a status that may not be carried, or an unwritable store). Never raises: a cache that
-    can fail a grade is worse than no cache.
+    instrument, a status that may not be carried, or an unwritable store). A compared ``fail`` is only
+    noted (:func:`noted_failure`) and still returns ``None``. Never raises: a cache that can fail a
+    grade is worse than no cache.
     """
     from .oracle_schedule import valid_execution_digest
 
-    if status != _CARRYABLE or not isinstance(tier_result, dict):
+    if status not in (_CARRYABLE, _NOTED) or not isinstance(tier_result, dict):
         return None
     if not valid_execution_digest(identity) or not valid_execution_digest(instrument):
         return None
     root = root if root is not None else cache_root()
     if root is None:
+        return None
+    if status == _NOTED:
+        _note(root, capsule, tier, identity, instrument, run_id=run_id)
         return None
     payload = _key_fields(capsule, tier, identity, instrument)
     payload.update(
@@ -605,6 +622,46 @@ def record(
     except OSError:
         return None
     return dest
+
+
+def _note_path(root: Path, capsule: str, tier: str, identity: str, instrument: str) -> Path:
+    return root / NOTES / _record_path(root, capsule, tier, identity, instrument).name
+
+
+def _note(root: Path, capsule: str, tier: str, identity: str, instrument: str, *, run_id: str | None) -> None:
+    """Write the key a compared failure was earned under, and nothing about the failure itself."""
+    dest = _note_path(root, capsule, tier, identity, instrument)
+    payload = _key_fields(capsule, tier, identity, instrument)
+    payload.update({"status": _NOTED, "recorded_at": _dt.datetime.now(_dt.UTC).isoformat(), "run_id": run_id})
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(f".{dest.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        os.replace(tmp, dest)
+    except OSError:
+        return
+
+
+def noted_failure(capsule: str, tier: str, identity, instrument, *, root: Path | None = None) -> bool:
+    """Whether EXACTLY these bytes already failed ``tier`` on EXACTLY this instrument.
+
+    ``True`` only for a readable note whose own copy of the key matches and while no certificate for
+    the same key exists. Anything absent, unreadable or mismatched is ``False``: unknown, never failing.
+    A note is not a verdict to carry; it only lets a caller decline to simulate a known failure again.
+    """
+    from .oracle_schedule import valid_execution_digest
+
+    if not valid_execution_digest(identity) or not valid_execution_digest(instrument):
+        return False
+    root = root if root is not None else cache_root()
+    if root is None or lookup(capsule, tier, identity, instrument, root=root, ledgers=False) is not None:
+        return False
+    try:
+        raw = json.loads(_note_path(root, capsule, tier, identity, instrument).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    want = _key_fields(capsule, tier, identity, instrument)
+    return isinstance(raw, dict) and raw.get("status") == _NOTED and all(raw.get(k) == v for k, v in want.items())
 
 
 # ---------------------------------------------------------------------------------------------
