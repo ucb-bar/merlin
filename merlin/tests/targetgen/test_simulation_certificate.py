@@ -213,3 +213,21 @@ def test_first_native_tier_can_carry_only_after_fresh_engine_build(selected):
                 generated=selected.generated, shas=lambda: SHAS, from_rtl=True,
                 simulation_context=_context(selected)):
             CR._PREPARED_EXECUTION_OBSERVER.get()(package_elf)  # Miss: execute normally.
+
+
+def test_relocated_targeted_capsule_reuses_only_identical_complete_source(selected):
+    import shutil
+
+    first = selected.private / "first-capsule"
+    first.mkdir()
+    (first / "capsule.yaml").write_text("name: synthetic\n")
+    (first / "input.interface.mlir").write_text("complete original interface\n")
+    second = selected.private / "second-capsule"
+    shutil.copytree(first, second)
+    selected.inputs_to_cache["capsule"]["__dir__"] = str(first)
+    with _scope(selected):
+        _write(selected, _context(selected))
+        selected.inputs_to_cache["capsule"]["__dir__"] = str(second)
+        assert _read(selected, _context(selected)) is not None
+        (second / "input.interface.mlir").write_text("changed sidecar source\n")
+        assert _read(selected, _context(selected)) is None

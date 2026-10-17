@@ -32,6 +32,22 @@ def _digest(value):
     return hashlib.sha256(raw).hexdigest()
 
 
+def _request_digest(request):
+    # Discovery stamps a copy-specific location. Bind the complete source tree
+    # bytes at that location so targeted cohorts can move without changing their
+    # meaning. Reopening it at each lookup also rejects changed sidecar inputs.
+    capsule = request["capsule"]
+    if "__dir__" not in capsule:
+        return _digest(request)
+    from merlin_experiments.phase2.retained_revisions import source_inventory
+
+    directory = Path(capsule["__dir__"])
+    if directory.resolve() != directory or directory.is_symlink():
+        raise ValueError("simulation certificate capsule source must be canonical")
+    tree = source_inventory(directory, max_bytes=32 << 20, max_files=8192)
+    return _digest({**request, "capsule": {**capsule, "__dir__": {"source_tree_sha256": tree["sha256"]}}})
+
+
 def _instrument(target):
     from .tier_cache import grading_path
 
@@ -118,7 +134,7 @@ def capture(*, capsule, cb, gold, reference, direct_oracle_golden, policy, llvm_
                    "direct_oracle_golden": direct_oracle_golden, "numeric_policy": policy, "llvm_text": llvm_text}
         value = _Request(os.getpid(), threading.current_thread(), executor, adapter, backend, target, tier,
                          selected, backend.execution_engine_identity(selected["engine"]), Path(package_dir),
-                         source, profile, request, _digest(request), _instrument(target))
+                         source, profile, request, _request_digest(request), _instrument(target))
         _ISSUED.add(value)
         return value
     except Exception:  # noqa: BLE001 -- incomplete authority/data is an ordinary cache miss
@@ -146,7 +162,7 @@ def key(request, executables, *, expected=None):
                 or backend.execution_engine_identity(request.selection["engine"]) != request.engine_identity
                 or _selected(request.adapter, request.target, request.tier) != request.selection
                 or child._source(request.package_dir) != request.source_sha256
-                or _digest(request.request) != request.request_sha256
+                or _request_digest(request.request) != request.request_sha256
                 or _instrument(request.target) != request.instrument):
             return None, None
         programs = {}
