@@ -204,9 +204,7 @@ def decompose_run(run_dir: Path) -> dict:
     rec["llm"] = evidence.rollout_telemetry(run_dir)
     if rec["llm"].get("available") and rec["llm"].get("threads"):
         rec["tokens"] = {"available": True, **rec["llm"]["tokens"]}
-        rec["rates"] = timeline._token_rates(
-            rec["tokens"], rec.get("think_generate_s"), rec.get("measured_span_s")
-        )
+        rec["rates"] = timeline._token_rates(rec["tokens"], rec.get("think_generate_s"), rec.get("measured_span_s"))
     rec["oracle"] = oracle_timing(run_dir)
     rec["artifacts"] = evidence.artifact_inventory(run_dir)
     rec["stream_reconciliation"] = evidence.stream_reconciliation(run_dir)

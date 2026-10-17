@@ -203,8 +203,12 @@ def declared_home_usage(run_dir: Path) -> dict:
     ]
     declared = [v for v in declared if v is not None]
     workspace = env.get("workspace_path")
-    if (not declared or any(not isinstance(v, str) for v in declared)
-        or len(set(declared)) != 1 or not isinstance(workspace, str)):
+    if (
+        not declared
+        or any(not isinstance(v, str) for v in declared)
+        or len(set(declared)) != 1
+        or not isinstance(workspace, str)
+    ):
         return unavailable
     home = Path(declared[0])
     if not home.is_absolute() or not Path(workspace).is_absolute():
@@ -232,15 +236,22 @@ def declared_home_usage(run_dir: Path) -> dict:
             latest = None
             for row in records:
                 payload = row.get("payload") or {}
-                if (row.get("type") != "event_msg" or not isinstance(payload, dict)
-                    or payload.get("type") != "token_count"):
+                if (
+                    row.get("type") != "event_msg"
+                    or not isinstance(payload, dict)
+                    or payload.get("type") != "token_count"
+                ):
                     continue
                 info = payload.get("info") or {}
                 usage = info.get("total_token_usage") if isinstance(info, dict) else None
                 if not isinstance(usage, dict):
                     continue
                 names = (
-                    "input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens"
+                    "input_tokens",
+                    "cached_input_tokens",
+                    "output_tokens",
+                    "reasoning_output_tokens",
+                    "total_tokens",
                 )
                 if any(type(usage.get(k)) is not int or usage[k] < 0 for k in names):
                     continue
@@ -251,9 +262,11 @@ def declared_home_usage(run_dir: Path) -> dict:
                 if fingerprint in seen:
                     continue
                 seen.add(fingerprint)
-                if (usage["cached_input_tokens"] + write > usage["input_tokens"]
+                if (
+                    usage["cached_input_tokens"] + write > usage["input_tokens"]
                     or usage["reasoning_output_tokens"] > usage["output_tokens"]
-                    or usage["total_tokens"] != usage["input_tokens"] + usage["output_tokens"]):
+                    or usage["total_tokens"] != usage["input_tokens"] + usage["output_tokens"]
+                ):
                     continue
                 stamp = timeline._stamp(row.get("timestamp"))
                 if stamp is None:
@@ -277,31 +290,47 @@ def declared_home_usage(run_dir: Path) -> dict:
         buckets = {
             "input_total": usage["input_tokens"],
             "fresh_input": usage["input_tokens"] - usage["cached_input_tokens"] - item["write"],
-            "cache_read": usage["cached_input_tokens"], "cache_write": item["write"],
-            "output": usage["output_tokens"], "reasoning": usage["reasoning_output_tokens"],
+            "cache_read": usage["cached_input_tokens"],
+            "cache_write": item["write"],
+            "output": usage["output_tokens"],
+            "reasoning": usage["reasoning_output_tokens"],
             "total": usage["total_tokens"],
         }
         span = item["stamp"] - item["start"] if item["start"] is not None else None
         span = span if span is not None and span > 0 else None
-        threads.append({
-            "thread_id": actor, "rounds": sorted(item["rounds"]), "source": item["source"],
-            "sampled_through": item["at"],
-            "tokens": buckets, "usage_sample_span_s": span, "cost_usd": None,
-            "input_tokens_per_client_observed_s": buckets["input_total"] / span if span else None,
-            "output_tokens_per_client_observed_s": buckets["output"] / span if span else None,
-            "reasoning_share_of_output": buckets["reasoning"] / buckets["output"] if buckets["output"] else None,
-        })
+        threads.append(
+            {
+                "thread_id": actor,
+                "rounds": sorted(item["rounds"]),
+                "source": item["source"],
+                "sampled_through": item["at"],
+                "tokens": buckets,
+                "usage_sample_span_s": span,
+                "cost_usd": None,
+                "input_tokens_per_client_observed_s": buckets["input_total"] / span if span else None,
+                "output_tokens_per_client_observed_s": buckets["output"] / span if span else None,
+                "reasoning_share_of_output": buckets["reasoning"] / buckets["output"] if buckets["output"] else None,
+            }
+        )
         for key in totals:
             totals[key] += buckets[key]
     return {
-        "available": bool(threads), "threads": threads, "cost_usd": None,
+        "available": bool(threads),
+        "threads": threads,
+        "cost_usd": None,
         "tokens": {
-            "tokens_input_total": totals["input_total"], "tokens_input_traffic": totals["input_total"],
-            "tokens_fresh_input": totals["fresh_input"], "tokens_cache_read": totals["cache_read"],
-            "tokens_cache_write": totals["cache_write"], "tokens_output": totals["output"],
-            "tokens_reasoning": totals["reasoning"], "tokens_total": totals["total"],
+            "tokens_input_total": totals["input_total"],
+            "tokens_input_traffic": totals["input_total"],
+            "tokens_fresh_input": totals["fresh_input"],
+            "tokens_cache_read": totals["cache_read"],
+            "tokens_cache_write": totals["cache_write"],
+            "tokens_output": totals["output"],
+            "tokens_reasoning": totals["reasoning"],
+            "tokens_total": totals["total"],
             "reasoning_is_subset_of_output": True,
-        } if threads else {},
+        }
+        if threads
+        else {},
         "usage_complete": False,
         "scope": "latest cumulative provider usage per exactly matched thread; volatile observation, not billing",
         "rate_note": "client-observed usage-sample traffic rates; not provider decode throughput or TTFT",
