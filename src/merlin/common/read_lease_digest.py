@@ -64,15 +64,19 @@ def _descriptor_budget():
         soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
         if soft == resource.RLIM_INFINITY:
             return maximum_files()
-        opened = len(os.listdir('/proc/self/fd'))
+        opened = len(os.listdir("/proc/self/fd"))
         return max(0, min(maximum_files(), soft - opened - FD_HEADROOM - _FD_OVERHEAD))
     except OSError:
         return 0
 
 
 def enabled():
-    return (os.environ.get("MERLIN_SNAPSHOT_LEASE_CACHE") == "1" and sys.platform == "linux"
-            and fcntl is not None and hasattr(fcntl, "F_SETLEASE"))
+    return (
+        os.environ.get("MERLIN_SNAPSHOT_LEASE_CACHE") == "1"
+        and sys.platform == "linux"
+        and fcntl is not None
+        and hasattr(fcntl, "F_SETLEASE")
+    )
 
 
 class _Cache:
@@ -123,8 +127,10 @@ class _Cache:
         try:
             self.process = subprocess.Popen(
                 [sys.executable, "-B", str(Path(__file__).resolve()), str(child.fileno())],
-                pass_fds=(child.fileno(),), stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                pass_fds=(child.fileno(),),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
             parent.settimeout(5)
             self.channel = parent
@@ -151,7 +157,7 @@ class _Cache:
             try:
                 current = os.fstat(current_fd)
                 return (
-                    os.readlink(f'/proc/self/fd/{current_fd}') == str(path)
+                    os.readlink(f"/proc/self/fd/{current_fd}") == str(path)
                     and stat.S_ISREG(current.st_mode)
                     and _identity(current) == original == _identity(os.fstat(descriptor))
                     and fcntl.fcntl(descriptor, fcntl.F_GETLEASE) == fcntl.F_RDLCK
@@ -180,9 +186,7 @@ class _Cache:
                 self.start()
             elif self.process.poll() is not None:
                 self.refuse()
-            self.channel.sendmsg(
-                [b"add"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [descriptor]))]
-            )
+            self.channel.sendmsg([b"add"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [descriptor]))])
             response = self.channel.recv(32)
             if response != b"ok":
                 if len(self.unsupported) < maximum_files() * 16:
@@ -352,7 +356,7 @@ def _custodian(channel_fd):
             descriptors = array.array("i")
             for level, kind, data in ancillary:
                 if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
-                    descriptors.frombytes(data[:len(data) - len(data) % descriptors.itemsize])
+                    descriptors.frombytes(data[: len(data) - len(data) % descriptors.itemsize])
             if message != b"add" or len(descriptors) != 1 or len(held) >= capacity:
                 for descriptor in descriptors:
                     os.close(descriptor)
@@ -377,7 +381,8 @@ def _custodian(channel_fd):
 
 atexit.register(close)
 if hasattr(os, "register_at_fork"):
-    os.register_at_fork(before=lambda: _LOCK.acquire(), after_in_parent=lambda: _LOCK.release(),
-                        after_in_child=_after_fork)
+    os.register_at_fork(
+        before=lambda: _LOCK.acquire(), after_in_parent=lambda: _LOCK.release(), after_in_child=_after_fork
+    )
 if __name__ == "__main__":
     _custodian(int(sys.argv[1]))
