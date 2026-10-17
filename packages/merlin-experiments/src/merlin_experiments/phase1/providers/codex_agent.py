@@ -847,6 +847,7 @@ def run_round(
     auth_source: Path | None = None,
     continuation_prompt: str | None = None,
     max_concurrent_subagents: int | None = None,
+    subagent_capacity: int | None = None,
     **_ignored,
 ) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via ``codex exec``. Returns ``(rc, transcript_path)``.
@@ -870,13 +871,13 @@ def run_round(
     Explicit ``max_concurrent_subagents`` selects the native multi-agent limit
     in the frozen home; the same strict-config preflight applies on AWS. It does
     not prove that an agent delegated or change its sandbox and runtime grants.
+    ``subagent_capacity`` is the run's recorded ceiling: the same config keys, no prompt change.
     """
     # Explicit round inputs avoid changing another concurrent round's executable
     # or credential-isolated home placement. Defaults retain historical callers.
-    if max_concurrent_subagents is not None and (
-        type(max_concurrent_subagents) is not int or max_concurrent_subagents < 1 or sandbox != "bwrap"
-    ):
-        raise ValueError("explicit Codex subagent concurrency requires a positive isolated selection")
+    from merlin_experiments.phase1 import author_subagents as _AS
+
+    capacity = _AS.effective_capacity(max_concurrent_subagents, subagent_capacity, sandbox)
     if codex_binary is not None and (not isinstance(codex_binary, (str, Path)) or not str(codex_binary).strip()):
         raise ValueError("explicit codex_binary must be a nonempty executable path or name")
     if auth_source is not None:
@@ -997,8 +998,8 @@ def run_round(
         home_options = {"candidate_read_paths": candidate_read_paths} if candidate_read_paths is not None else {}
         if auth_source is not None:
             home_options["auth_source"] = auth_source
-        if max_concurrent_subagents is not None:
-            home_options["max_concurrent_subagents"] = max_concurrent_subagents
+        if capacity is not None:
+            home_options["max_concurrent_subagents"] = capacity
         home_info = prepare_codex_home(codex_home, model=resolved, effort=effort, workspace=ws, **home_options)
         runtime_selector = codex_runtime_binds if runtime_binds is None else runtime_binds
         _verify_frozen_config(codex_home, home_info["config_sha256"])
@@ -1437,6 +1438,7 @@ def run_round(
         # ChatGPT-auth runs consume a subscription, not metered dollars. Any USD
         # figure downstream is notional and must not enter a money budget.
         "billing_mode": BILLING_MODE,
+        "subagent_capacity": _AS.summary_record(capacity, max_concurrent_subagents),
         "codex_home": home_info,
         "artifacts": {
             "raw": str(raw_path),

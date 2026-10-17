@@ -25,6 +25,7 @@ from merlin.benchharness import repo_sha
 from merlin.targetgen.sandbox import bwrap as _BWS
 from merlin.targetgen.target_experiment import load_target_experiment
 
+from . import author_subagents as AS
 from . import corpus_inputs as CI
 from . import oot_history as _oot_history
 from . import run_inputs as RI
@@ -65,6 +66,7 @@ def _verify_client_selection(options, environment: dict) -> None:
     prior = (environment.get("run_config") or {}).get("codex_max_subagents")
     if prior != options.codex_max_subagents:
         raise RuntimeError("explicit Codex delegation limit changed")
+    AS.verify_resume(options, environment.get("run_config") or {})
     recorded = (environment.get("run_config") or {}).get("codex_runtime")
     if recorded != _client_selection(options):
         raise RuntimeError("explicit client selection changed")
@@ -140,6 +142,7 @@ class RunRequest:
             ),
             **({"codex_runtime": _client_selection(a)} if a.codex_binary else {}),
             **({"codex_max_subagents": a.codex_max_subagents} if a.codex_max_subagents is not None else {}),
+            **({"author_subagents": subagents} if (subagents := AS.selection(a)) is not None else {}),
             **({"readback_policy": readback_record(self.context)} if self.context.readback_policy is not None else {}),
         }
 

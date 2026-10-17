@@ -20,6 +20,9 @@ legacy target-name fallback remain exclusively in the checkout `_common` adapter
 `options.py` owns the one functional-loop CLI parser and typed invocation values.
 Defaults are computed at invocation, not import; parsing/help never initializes a target.
 Keep scheduling defaults and policy validation separate from mutable runtime session state.
+`author_subagents.py` resolves the Codex author's helper-thread ceiling once (option,
+delegation bound, environment, else pool-derived) into `run_config.author_subagents`;
+the provider applies that recorded value, and resume refuses a changed explicit one.
 
 `controller.py` composes real admission, task staging, workspace transport and authoring under
 one workspace lease and one restored environment. Native launchers select legacy defaults and

@@ -84,6 +84,7 @@ class RunOptions:
     codex_home_root: str = ""
     hidden_capsule_mode: str = ""
     native_result_format_selection: str = ""
+    author_max_subagents: int | None = None
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -125,6 +126,14 @@ def build_parser(
         default=None,
         metavar="N",
         help="opt in to at most N concurrent Codex child agents in the existing bwrap sandbox",
+    )
+    ap.add_argument(
+        "--author-max-subagents",
+        type=positive_subagent_count,
+        default=None,
+        metavar="N",
+        help="recorded Codex helper-thread ceiling for the author session (no prompt change); default "
+        "MERLIN_AUTHOR_MAX_SUBAGENTS, else min(16, compute-pool CPUs)",
     )
     ap.add_argument(
         "--codex-binary", default="", help="explicit canonical Codex executable; requires complete client selection"

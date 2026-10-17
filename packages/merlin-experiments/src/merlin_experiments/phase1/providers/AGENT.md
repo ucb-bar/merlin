@@ -47,6 +47,10 @@ to both initial and continued user prompts, with the same recorded concurrency b
 Helpers implement disjoint compiler changes; the parent joins changes before candidate
 freezing or self-checks. This grants no additional tools, access or model selection.
 Omitting the option preserves the existing prompt bytes exactly.
+Every isolated Codex round also receives the run's recorded helper-thread ceiling
+(`phase1/author_subagents.py`, read back from `environment.yaml`) as the same frozen
+config keys. That capacity changes no prompt bytes and grants no access; a delegation
+bound must equal it. Unrecorded legacy runs keep the provider default.
 
 `codex_usage` owns the pure token-subset conversion. Unreported usage remains
 unknown; the provider preserves its existing public conversion import.
