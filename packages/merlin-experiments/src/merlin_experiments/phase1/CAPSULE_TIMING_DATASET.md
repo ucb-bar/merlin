@@ -55,16 +55,39 @@ counter_semantics:
 ```
 
 At completion, Phase 1 writes `capsule_timing_audit.json` and
-`capsule_timing_archive_status.json` in the run directory. If every passing gSIM
-L3 result has a positive label, matching kernel-scope caller marker, original
-ELF, compiler and command-buffer identities, input, numeric and simulator artifacts,
-and an RTL-derived/cycle-accurate/pass verdict,
-it also writes `capsule_timing.tar`. The operator can rerun the host-only audit
-or export on a retained run:
+`capsule_timing_archive_status.json` in the run directory. The audit indexes
+authoring-time results under `_qa_work/**/runs/` and the formal
+`grading_public/runs/` and `grading_hidden/runs/` suites. Each row carries its
+`area` and `visibility` (`public`, or `hidden` for `grading_hidden`).
+
+Training eligibility is decided **per record**, independently of the capsule's
+overall verdict: a capsule may fail a host-side or structural rule while its
+gSIM tier measured and numerically verified the same bytes. A record is
+`training_eligible` when its gSIM tier passed and was measured now (not
+carried), its cycles are positive, RTL-derived and cycle-accurate, its caller
+carries exactly one kernel-window selection, its RTL console has exactly one
+matching marker, its ELF, caller, compiler, command-buffer and simulator
+identities and its input/numeric/trace/console artifacts are present, and the
+current ELF is the one the gSIM process actually executed. Otherwise
+`training_exclusions` names every reason. Hidden records are counted but never
+enter a public calibration subset.
+
+When at least one public record is eligible, finalization writes
+`capsule_timing_training_<digest>.tar` (`export_scope: training_eligible_public`).
+It contains only the indexed evidence (result, artifacts) of the eligible public
+records plus every executed public repeat of the same ELF, whatever its verdict,
+so a consumer cannot drop a slower or failed repeat. `source_audit` records the
+full audit's counts and digest. If every passing gSIM record is also attributed
+to a passing capsule, finalization additionally writes the full-directory
+`capsule_timing.tar` (`timing_ready`), as before. The operator can rerun the
+host-only audit or exports on a retained run, and `--finalize` performs the
+complete finalization for a run whose supervisor stopped before doing so:
 
 ```sh
 python -m merlin_experiments.phase1.capsule_timing_archive RUN_DIR
+python -m merlin_experiments.phase1.capsule_timing_archive RUN_DIR --training-out TRAINING.tar
 python -m merlin_experiments.phase1.capsule_timing_archive RUN_DIR --out RUN_DIR/capsule_timing.tar
+python -m merlin_experiments.phase1.capsule_timing_archive RUN_DIR --finalize
 ```
 
 Ordinary capsule producers also retain the exact compiler tree under
@@ -85,25 +108,32 @@ file names the reason and records the tar's SHA256 when ready; a missing tar is
 not a measured calibration dataset. A resumed run with new capsule records gets
 a new content-named tar, preserving the earlier archive.
 
-## Archive format (`merlin.phase1.capsule_timing_archive.v2`)
+## Archive format (`merlin.phase1.capsule_timing_archive.v3`)
 
-The uncompressed tar has `index.json` and every file from every retained
-`_qa_work/**/runs/<suite>/<capsule>/` directory under `run/<relative-path>`.
-This includes failed and unavailable capsule executions for audit, even though
-only passing gSIM records can train the timing model. `index.json.records` has
-one row per `capsule_result.json`, including repeated paid executions:
+The full and diagnostic tars have `index.json` and every file from every indexed
+capsule directory under `run/<relative-path>`. This includes failed and
+unavailable capsule executions for audit, even though only eligible gSIM records
+can train the timing model. The training tar holds only indexed members.
+`index.json.records` has one row per `capsule_result.json`, including repeated
+paid executions:
 
 | Field | Meaning |
 | --- | --- |
-| `result`, `capsule`, `status`, `result_status`, `engine` | Exact run-relative result path and L3/overall verdicts |
+| `result`, `capsule`, `status`, `result_status`, `result_failure`, `engine` | Exact run-relative result path, L3/overall verdicts and the overall failure category |
+| `area`, `visibility` | Which result area held it (`authoring`, `grading_public`, `grading_hidden`) and whether it may enter public calibration |
 | `cycles`, `cycles_measured`, `console_cycle_verified`, `cycle_scope`, `timing_selection_sha256`, `timing_selection` | L3 counter delta, exactly one matching RTL console marker, measured call boundary, reviewed selection identity and full pinned counter/clock record |
 | `shape`, `command_buffer_sha256`, `candidate_sha256` | Logical tensor shapes/dtypes, command buffer and submitted compiler identities |
 | `elf`, `elf_sha256`, `harness_sha256` | Exact linked program and generated caller identities |
-| `artifacts` | Run-relative path, SHA256 and byte count for ELF, caller, input interface, command buffer, numeric report, static instruction trace, and both console logs when present |
+| `artifacts` | Run-relative path, SHA256 and byte count for ELF, caller, kernel object, input interface, command buffer, numeric report, static instruction trace, and both console logs when present |
 | `sim_provenance`, `derived_from_rtl`, `cycle_accurate`, `timing` | Simulator binary/provenance, L3 evidence class and host wall durations |
+| `executions` | Per tier (`L2`, `L3`): the ELF, caller and kernel-object digests that tier's simulator binary executed, recovered from the capsule's retained process records |
+| `join` | Pairing keys: gSIM and Spike ELF digests, their kernel objects, whether they are the same bytes, the timing selection, a proposed source group (capsule plus its frozen input interface) and visibility |
+| `training_eligible`, `training_exclusions` | The per-record verdict above and every reason it failed |
 
-`index.json` also contains `capsule_records`, `gsim_pass_records`,
-`gsim_pass_with_cycles`, `gsim_pass_complete`, `timing_ready`, and
+`index.json` also contains `capsule_records`, `records_by_area`,
+`gsim_pass_records`, `gsim_pass_with_cycles`, `gsim_pass_complete`,
+`timing_ready`, `training_eligible_records`, `training_eligible_public_records`,
+`training_eligible_hidden_records`, `training_exclusions`, `training_ready`, and
 `timing_target_scope: selected_gsim_elaboration_only`. A consumer
 must verify tar members against indexed SHA256 values before use. The original
 ELF embeds the harness's exact input bytes; the archived `harness.c`,
