@@ -139,3 +139,9 @@ external hard-link resize invalidates the shortcut. Mount-table changes, events
 (including overflow), unavailable watches or closed custody restore complete
 scanning. Payload hashing and selected read-lease checks remain independent at
 both operation boundaries; this shortcut never authenticates payload bytes.
+Explicit bounded `MERLIN_SNAPSHOT_LEASE_MIN_BYTES` and
+`MERLIN_SNAPSHOT_LEASE_MAX_FILES` select cache admission, never replace a live
+kernel read lease. Cached path checks pin an O_PATH lookup and compare its
+kernel-resolved ordinary name and inode; replaced, indirect or deleted names
+refuse. Descriptor headroom is reserved at cache admission without a quadratic
+per-member descriptor enumeration.

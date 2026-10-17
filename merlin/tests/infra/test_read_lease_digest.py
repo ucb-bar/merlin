@@ -176,6 +176,19 @@ def test_symlink_replacement_refuses(payload, tmp_path):
         L.digest(payload)
 
 
+def test_parent_symlink_to_same_inode_refuses(tmp_path):
+    parent = tmp_path / 'selected'
+    parent.mkdir()
+    path = parent / 'input'
+    path.write_bytes(b'x' * 8192)
+    require_lease(path)
+    relocated = tmp_path / 'relocated'
+    parent.rename(relocated)
+    parent.symlink_to(relocated, target_is_directory=True)
+    with pytest.raises(RuntimeError, match='lease custody changed'):
+        L.digest(path)
+
+
 def test_custodian_loss_refuses_and_falls_back_later(payload):
     require_lease(payload)
     L._CACHE.process.kill()
@@ -193,6 +206,34 @@ def test_cache_caps_descriptors_and_does_not_recycle_active_entries(payload, tmp
     assert L.digest(other) is None
     assert len(L._CACHE.entries) == 1
     assert L.digest(payload) is not None
+
+
+def test_operator_can_cover_small_files_without_weakening_write_custody(tmp_path, monkeypatch):
+    monkeypatch.setenv('MERLIN_SNAPSHOT_LEASE_MIN_BYTES', '0')
+    monkeypatch.setenv('MERLIN_SNAPSHOT_LEASE_MAX_FILES', '32')
+    paths = [tmp_path / f'member-{i}' for i in range(20)]
+    for path in paths:
+        path.write_bytes(b'exact small frozen input')
+    for path in paths:
+        require_lease(path)
+    assert len(L._CACHE.entries) == len(paths)
+    with pytest.raises(RuntimeError, match='lease custody changed'):
+        with L.verification():
+            assert L.digest(paths[-1]) is not None
+            break_lease(paths[-1])
+
+
+@pytest.mark.parametrize('name,raw', [
+    ('MERLIN_SNAPSHOT_LEASE_MIN_BYTES', '-1'),
+    ('MERLIN_SNAPSHOT_LEASE_MIN_BYTES', '1.5'),
+    ('MERLIN_SNAPSHOT_LEASE_MIN_BYTES', str((1 << 30) + 1)),
+    ('MERLIN_SNAPSHOT_LEASE_MAX_FILES', '65537'),
+    ('MERLIN_SNAPSHOT_LEASE_MAX_FILES', ''),
+])
+def test_operator_cache_limits_are_bounded(payload, monkeypatch, name, raw):
+    monkeypatch.setenv(name, raw)
+    with pytest.raises(ValueError, match=name):
+        L.digest(payload)
 
 
 @pytest.mark.parametrize('available', [0, 1])

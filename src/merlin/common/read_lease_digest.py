@@ -35,6 +35,24 @@ _CACHE = None
 _VERIFICATION = contextvars.ContextVar("read_lease_digest_verification", default=None)
 
 
+def _bounded_setting(name, default, maximum):
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    if not raw.isascii() or not raw.isdecimal() or not 0 <= int(raw) <= maximum:
+        raise ValueError(f"{name} must be an integer between 0 and {maximum}")
+    return int(raw)
+
+
+def minimum_bytes():
+    """Operator-selected admission threshold; every hit still needs a live lease."""
+    return _bounded_setting("MERLIN_SNAPSHOT_LEASE_MIN_BYTES", MIN_BYTES, 1 << 30)
+
+
+def maximum_files():
+    return _bounded_setting("MERLIN_SNAPSHOT_LEASE_MAX_FILES", MAX_FILES, 1 << 16)
+
+
 def _identity(metadata):
     return metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_uid, metadata.st_gid
 
@@ -45,9 +63,9 @@ def _descriptor_budget():
     try:
         soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
         if soft == resource.RLIM_INFINITY:
-            return MAX_FILES
+            return maximum_files()
         opened = len(os.listdir('/proc/self/fd'))
-        return max(0, min(MAX_FILES, soft - opened - FD_HEADROOM - _FD_OVERHEAD))
+        return max(0, min(maximum_files(), soft - opened - FD_HEADROOM - _FD_OVERHEAD))
     except OSError:
         return 0
 
@@ -64,6 +82,7 @@ class _Cache:
         self.pending = set()
         self.process, self.channel, self.disabled = None, None, False
         self.capacity = _descriptor_budget()
+        self.minimum_bytes = minimum_bytes()
         self.readers, self.retiring = 0, False
 
     def close(self, *, inherited=False):
@@ -122,14 +141,24 @@ class _Cache:
                 return False
             if fcntl.fcntl(descriptor, fcntl.F_GETLEASE) != fcntl.F_RDLCK:
                 return False
-            current = path.stat(follow_symlinks=False)
-            return (
-                path.is_absolute() and path.resolve() == path
-                and stat.S_ISREG(current.st_mode)
-                and _identity(current) == original == _identity(os.fstat(descriptor))
-                and fcntl.fcntl(descriptor, fcntl.F_GETLEASE) == fcntl.F_RDLCK
-                and self.process.poll() is None
-            )
+            if not path.is_absolute():
+                return False
+            # O_PATH pins this namespace lookup without opening a reader or
+            # writer. /proc exposes the kernel's resolved ordinary pathname;
+            # parent/final symlinks, replacement and deleted names refuse.
+            # This replaces a Python realpath walk on every cached member.
+            current_fd = os.open(path, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC)
+            try:
+                current = os.fstat(current_fd)
+                return (
+                    os.readlink(f'/proc/self/fd/{current_fd}') == str(path)
+                    and stat.S_ISREG(current.st_mode)
+                    and _identity(current) == original == _identity(os.fstat(descriptor))
+                    and fcntl.fcntl(descriptor, fcntl.F_GETLEASE) == fcntl.F_RDLCK
+                    and self.process.poll() is None
+                )
+            finally:
+                os.close(current_fd)
         except OSError:
             return False
 
@@ -138,12 +167,12 @@ class _Cache:
         key = metadata.st_dev, metadata.st_ino
         if self.disabled or self.retiring or key in self.unsupported or len(self.entries) >= self.capacity:
             return None
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size < MIN_BYTES:
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size < self.minimum_bytes:
             return None
         if not path.is_absolute() or path.resolve() != path:
             raise RuntimeError("original snapshot read lease requires a canonical file")
-        if _descriptor_budget() < 1:
-            return None
+        # Capacity reserves descriptor headroom once. Enumerating /proc/self/fd
+        # for every admission makes large immutable input sets quadratic.
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         self.pending.add(descriptor)
         try:
@@ -156,7 +185,7 @@ class _Cache:
             )
             response = self.channel.recv(32)
             if response != b"ok":
-                if len(self.unsupported) < MAX_FILES * 16:
+                if len(self.unsupported) < maximum_files() * 16:
                     self.unsupported.add(key)
                 return None
             entry = descriptor, None, _identity(os.fstat(descriptor))
@@ -232,7 +261,7 @@ def _return(cache, good, *, path=None, key=None):
         _CHANGED.notify_all()
         if not good or cache.retiring or cache.disabled or cache is not _CACHE:
             cache.refuse()
-        if path is not None and len(cache.paths) < MAX_FILES * 16:
+        if path is not None and len(cache.paths) < maximum_files() * 16:
             cache.paths[path] = key
 
 
