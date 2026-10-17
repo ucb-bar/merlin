@@ -160,8 +160,11 @@ def candidate_native_model_check(result: dict, *, target: str, readback_policy=N
     )
     native_identity_ok = candidate_artifact_identity_ok and isinstance(native.get("console"), dict)
     required_engine = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip()
-    if (oracle_tier_ceiling is None and required_engine
-        and (not isinstance(native, dict) or native.get("simulator") != required_engine)):
+    if (
+        oracle_tier_ceiling is None
+        and required_engine
+        and (not isinstance(native, dict) or native.get("simulator") != required_engine)
+    ):
         violations.append("candidate_required_rtl_engine_mismatch")
     dispatch = audit_candidate_completed_dispatch(
         result.get("candidate_emission"),
@@ -303,9 +306,11 @@ def model_execution_check(
     from .owned_host_model_selection import owned_model_required
 
     requires_owned = owned_model_required(capsule, target=target) if isinstance(capsule, dict) else False
-    if "owned_host_native_execution" in result or (requires_owned
-            and not result.get("public_program_execution")
-            and not bool(((capsule or {}).get("semantic") or {}).get("must_accelerate"))):
+    if "owned_host_native_execution" in result or (
+        requires_owned
+        and not result.get("public_program_execution")
+        and not bool(((capsule or {}).get("semantic") or {}).get("must_accelerate"))
+    ):
         from .owned_host_model_execution import audit_owned_host_model
 
         return audit_owned_host_model(result, capsule, target=target, readback_policy=readback_policy)
@@ -806,16 +811,19 @@ def enforce_model_execution_check(result: dict, capsule: dict | None, *, target:
             result["owned_host_model_check"] = check["owned_host_model_check"]
         result["tiers"] = {
             tier: {
-                "tier": tier, "status": (audited.get(tier) or {}).get("status", "unverified"),
+                "tier": tier,
+                "status": (audited.get(tier) or {}).get("status", "unverified"),
                 "mandatory": True,
-                "evidence": "owned_host_model_same_elf" if tier in {"L2", "L3"}
+                "evidence": "owned_host_model_same_elf"
+                if tier in {"L2", "L3"}
                 else "owned_host_model_structural_legality",
                 "derived_from_rtl": tier == "L3"
                 and (audited.get(tier) or {}).get("status") == "pass"
                 and ((audited.get(tier) or {}).get("selection") or {}).get("fidelity") == "elaborated_rtl",
                 "cycle_accurate": False,
                 "candidate_evidence": audited.get(tier) or {},
-            } for tier in required
+            }
+            for tier in required
         }
         if check["status"] == "pass":
             result.pop("failure", None)
@@ -823,7 +831,8 @@ def enforce_model_execution_check(result: dict, capsule: dict | None, *, target:
             result["failure"] = {
                 "plane": "candidate_model_execution",
                 "category": "FUNCTIONAL_MISMATCH" if check["status"] == "fail" else "NOT_RUN_IS_NOT_PASS",
-                "detail": check.get("detail") or ", ".join(check.get("violations") or [])
+                "detail": check.get("detail")
+                or ", ".join(check.get("violations") or [])
                 or "mandatory native tier has not completed",
             }
         return result
@@ -1286,10 +1295,13 @@ def grade(
     (``no_oracle=False``) keep the ``not_run_is_not_pass`` behavior byte-for-byte."""
     labels = labels or {"public", "dev"}
     if functional_hidden_tier is not None and (
-        functional_hidden_tier != 'L2' or labels != {'hidden'} or not capability_admission
-        or no_oracle or set(oracle_adapters or {}) != {'L2'}
+        functional_hidden_tier != "L2"
+        or labels != {"hidden"}
+        or not capability_admission
+        or no_oracle
+        or set(oracle_adapters or {}) != {"L2"}
     ):
-        raise ValueError('functional hidden grading requires hidden-only admitted L2 oracle evaluation')
+        raise ValueError("functional hidden grading requires hidden-only admitted L2 oracle evaluation")
     # Source the target's own tooling paths before resolving any adapter, exactly as the harness does
     # for an arm. Without this a grade run outside the harness can lose a target's certifying-tier sim
     # and report the whole suite `incomplete` -- fail-closed, but describing the environment rather than
@@ -1436,12 +1448,15 @@ def grade(
             if expects_refusal(capsule):
                 selected.append(capsule)  # A declared refusal has no invented execution obligation.
                 continue
-            required = capsule.get('required_oracle_tiers')
-            if (type(required) is not list or 'L2' not in required
-                    or any(tier not in _cap_tiers('L5') for tier in required)):
-                raise ValueError('functional hidden capsule has no declared L2 oracle obligation')
-            kept, _ = _cap_required(required, set(_cap_tiers('L2')))
-            selected.append({**capsule, 'required_oracle_tiers': kept, 'oracle_tier_ceiling': 'L2'})
+            required = capsule.get("required_oracle_tiers")
+            if (
+                type(required) is not list
+                or "L2" not in required
+                or any(tier not in _cap_tiers("L5") for tier in required)
+            ):
+                raise ValueError("functional hidden capsule has no declared L2 oracle obligation")
+            kept, _ = _cap_required(required, set(_cap_tiers("L2")))
+            selected.append({**capsule, "required_oracle_tiers": kept, "oracle_tier_ceiling": "L2"})
         caps = selected
     workers = _bounded_grade_workers(workers, oracle_adapters)
     import time as _time
@@ -1568,20 +1583,21 @@ def grade(
     graded = [r for r in results if r.get("status") not in NOT_MEASURED_STATUSES]
     from . import expected_refusal as _ER
 
-    _declared_refusals = {str(cap.get('name')): cap for cap in caps if _ER.expects_refusal(cap)}
+    _declared_refusals = {str(cap.get("name")): cap for cap in caps if _ER.expects_refusal(cap)}
     _validated_refusals = sum(
-        sum(row.get('capsule') == name for row in results) == 1
-        and any(_ER.validated_result(cap, row) for row in results if row.get('capsule') == name)
+        sum(row.get("capsule") == name for row in results) == 1
+        and any(_ER.validated_result(cap, row) for row in results if row.get("capsule") == name)
         for name, cap in _declared_refusals.items()
     )
     if _declared_refusals:
-        score['expected_refusal_scope'] = {
-            'binding': 'original_capsule_declaration_and_canonical_result_v1',
-            'n_admitted_capsules': len(caps), 'n_declared_refusals': len(_declared_refusals),
-            'n_validated_refusals': _validated_refusals,
-            'n_executable_capsules': len(caps) - len(_declared_refusals),
+        score["expected_refusal_scope"] = {
+            "binding": "original_capsule_declaration_and_canonical_result_v1",
+            "n_admitted_capsules": len(caps),
+            "n_declared_refusals": len(_declared_refusals),
+            "n_validated_refusals": _validated_refusals,
+            "n_executable_capsules": len(caps) - len(_declared_refusals),
         }
-    _execution_rows = [row for row in graded if str(row.get('capsule')) not in _declared_refusals]
+    _execution_rows = [row for row in graded if str(row.get("capsule")) not in _declared_refusals]
     n_pass = sum(1 for r in graded if r["status"] == "pass")
     score["n_capsules"] = len(graded)
     score["n_passed"] = n_pass
@@ -1795,8 +1811,7 @@ def grade(
     )
     _trace_requirements = Counter(
         (r.get("trace_check") or {}).get("trace_requirement_status")
-        or ({"pass": "pass", "fail": "failed"}.get(
-            (r.get("trace_check") or {}).get("status"), "unavailable_record"))
+        or ({"pass": "pass", "fail": "failed"}.get((r.get("trace_check") or {}).get("status"), "unavailable_record"))
         for r in _trace_rows
     )
     score["trace_requirement_summary"] = dict(sorted(_trace_requirements.items()))
@@ -1806,9 +1821,9 @@ def grade(
         else all(r.get("model_execution_check", {}).get("status") == "pass" for r in _model_rows)
     )
     score["provided_host_execution_all_pass"] = (
-        None if not _host_rows else all(
-            _OH.qualified_host_result(_caps_by_name[r["capsule"]], r, target=target) for r in _host_rows
-        )
+        None
+        if not _host_rows
+        else all(_OH.qualified_host_result(_caps_by_name[r["capsule"]], r, target=target) for r in _host_rows)
     )
     score["structural_evidence_scope"] = {
         "n_instruction_trace_capsules": len(_trace_rows),
@@ -1885,22 +1900,26 @@ def grade(
 
     _passed = [r for r in graded if r.get("status") == "pass"]
     if functional_hidden_tier is not None:
-        score['functional_hidden_evidence'] = {
-            'tier': 'L2', 'engine': 'spike', 'fidelity': 'functional_model',
-            'claim': 'functional_corroboration', 'n_admitted_capsules': len(caps),
-            'n_validated_refusals': _validated_refusals,
-            'n_spike_passed': sum(
-                row.get('status') == 'pass'
-                and _tier_status((row.get('tiers') or {}).get('L2')) == 'pass'
-                and _tier_field((row.get('tiers') or {}).get('L2'), 'engine') == 'spike'
-                and _tier_field((row.get('tiers') or {}).get('L2'), 'fidelity') == 'functional_model'
-                and _tier_field((row.get('tiers') or {}).get('L2'), 'derived_from_rtl') is False
+        score["functional_hidden_evidence"] = {
+            "tier": "L2",
+            "engine": "spike",
+            "fidelity": "functional_model",
+            "claim": "functional_corroboration",
+            "n_admitted_capsules": len(caps),
+            "n_validated_refusals": _validated_refusals,
+            "n_spike_passed": sum(
+                row.get("status") == "pass"
+                and _tier_status((row.get("tiers") or {}).get("L2")) == "pass"
+                and _tier_field((row.get("tiers") or {}).get("L2"), "engine") == "spike"
+                and _tier_field((row.get("tiers") or {}).get("L2"), "fidelity") == "functional_model"
+                and _tier_field((row.get("tiers") or {}).get("L2"), "derived_from_rtl") is False
                 for row in results
             ),
-            'n_higher_tier_measured': sum(
-                _tier_status(value) in {'pass', 'fail'}
-                for row in results for tier, value in (row.get('tiers') or {}).items()
-                if tier in {'L3', 'L4', 'L5'}
+            "n_higher_tier_measured": sum(
+                _tier_status(value) in {"pass", "fail"}
+                for row in results
+                for tier, value in (row.get("tiers") or {}).items()
+                if tier in {"L3", "L4", "L5"}
             ),
         }
     _rtl_backed = [r for r in _passed if any(_is_rtl_pass(r, n, t) for n, t in (r.get("tiers") or {}).items())]
@@ -2040,10 +2059,14 @@ def grade(
         }
         if isinstance(r.get("background_deferred"), str):
             entry["background_deferred"] = r["background_deferred"]
-        _original_refusal = _declared_refusals.get(str(r.get('capsule')))
+        _original_refusal = _declared_refusals.get(str(r.get("capsule")))
         if _original_refusal is not None and _ER.validated_result(_original_refusal, r):
-            entry.update(validated_refusal=True, qualification='expected_refusal', native_executed=False,
-                         expected_refusal=r['expected_refusal'])
+            entry.update(
+                validated_refusal=True,
+                qualification="expected_refusal",
+                native_executed=False,
+                expected_refusal=r["expected_refusal"],
+            )
         # WHY EACH TIER DID NOT PASS. The projection above renders a tier record as its bare status
         # STRING, and that projection is where the diagnosis died: the ladder writes a good sentence
         # onto every non-passing tier ("the console carries no completion witness", "injected operand
@@ -2216,10 +2239,13 @@ def grade(
 def emit_perf_ledger(results: list, *, target: str, runs_root: str | Path, version: int = 1) -> dict:
     """Publish using the current grader callbacks, preserving legacy overrides."""
     return _emit_perf_ledger(
-        results, target=target, runs_root=runs_root, version=version,
-        activity_source=_activity_source, suite_for=CR.suite_for,
+        results,
+        target=target,
+        runs_root=runs_root,
+        version=version,
+        activity_source=_activity_source,
+        suite_for=CR.suite_for,
     )
-
 
 
 def _headline(score: dict) -> str:
