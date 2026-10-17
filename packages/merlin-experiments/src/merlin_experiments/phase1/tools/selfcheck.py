@@ -503,6 +503,9 @@ def main(argv=None):
     # Resuming (--attach): the request is already on the channel and the broker is already working it.
     # Writing a second req_ for the same work would run a duplicate beside the first and double its cost.
     if not a.attach:
+        # The Codex thread running this client (the lead or one of its sub-agents) exports its own id.
+        # Forwarded for operator accounting only; the broker neither reads nor trusts it.
+        caller_thread = os.environ.get("CODEX_THREAD_ID", "").strip()[:128]
         _atomic_write(
             ch / f"req_{rid}.json",
             json.dumps(
@@ -510,6 +513,7 @@ def main(argv=None):
                     "protocol": PROTOCOL_VERSION,
                     "request_id": rid,
                     "requester": _requester_identity(),
+                    **({"caller_thread_id": caller_thread} if caller_thread else {}),
                     "requested_at_unix_ns": requested_at_ns,
                     "submission": label,
                     "submission_sha256": submission_sha256,
