@@ -787,6 +787,16 @@ def _run_el4_compiler_engines(
             }
         return result
     result["status"] = grade.get("status")
+    if capsule.get("kind") == "model":
+        # What a score over this whole program may contain: Merlin-supplied host compute is never
+        # the candidate's. A split program's absolute count stays unscored; only a delta over
+        # byte-identical Merlin host code is (metric_scope.paired_delta).
+        from . import metric_scope as SCOPE
+
+        try:
+            result["metric_scope"] = SCOPE.declared_scope(capsule)
+        except SCOPE.MetricScopeRefusal as exc:
+            result["metric_scope"] = {"schema": SCOPE.SCHEMA, "status": "refused", "reason": str(exc)}
     numeric = grade.get("numeric")
     result["numeric"] = numeric.get("status") if isinstance(numeric, Mapping) else numeric
     work = grade.get("work_volume") if isinstance(grade.get("work_volume"), Mapping) else {}

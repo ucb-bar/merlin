@@ -19,6 +19,9 @@ def capsule():
         "kind": "model",
         "label": "dev",
         "semantic": {"must_accelerate": False},
+        # Phase 0 publishes only capsules with accelerator placement; this one keeps no compute on the
+        # host, so the candidate-whole-program route may score its complete call.
+        "software_screen": {"status": "admitted", "placements": {"accelerator": 1}},
         "performance": {
             "gate": {
                 "source_execution_basis": {
@@ -407,3 +410,20 @@ def test_numerical_native_dispatch_never_queries_or_runs_rtl(tmp_path, monkeypat
     assert result["tiers"]["L2"]["numeric"]["status"] == "pass"
     assert "L3" not in result["tiers"] and "complete_call_timing" not in result
     assert result["execution_invocations"]["L2"]["sha256"]
+
+
+def test_a_frozen_host_placement_routes_to_the_merlin_host_split(capsule, rtl):
+    """The candidate never emits, and is never scored on, compute Phase 0 placed on the host."""
+    capsule["software_screen"]["placements"] = {"accelerator": 2, "host": 1}
+    assert P.selection(capsule, rtl) is None
+    capsule["oracle_tier_ceiling"] = "L2"
+    assert P.selection(capsule, rtl, simulator="spike") is None
+
+
+@pytest.mark.parametrize("screen", [None, {"status": "admitted", "placements": {"host": 3}}])
+def test_a_public_program_without_accelerator_placement_has_no_scorable_scope(capsule, rtl, screen):
+    from merlin_experiments.phase2.metric_scope import MetricScopeRefusal
+
+    capsule["software_screen"] = screen
+    with pytest.raises(MetricScopeRefusal):
+        P.selection(capsule, rtl)
