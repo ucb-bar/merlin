@@ -154,14 +154,21 @@ def test_shared_scheduler_does_not_hold_slots_while_children_acquire(monkeypatch
     assert os.sched_getaffinity(0) == original
 
 
-@pytest.mark.parametrize("ordering,expected", [
-    ("legacy", ["model", "large", "small", "dependent"]),
-    ("operators-small-first", ["small", "large", "dependent", "model"]),
-])
+@pytest.mark.parametrize(
+    "ordering,expected",
+    [
+        ("legacy", ["model", "large", "small", "dependent"]),
+        ("operators-small-first", ["small", "large", "dependent", "model"]),
+    ],
+)
 def test_optional_shortest_operator_order_preserves_dependencies_and_legacy_priority(monkeypatch, ordering, expected):
     monkeypatch.setenv("MERLIN_CAPSULE_ORDER", ordering)
-    caps = [_cap("large", shape=(64, 64)), dict(_cap("model", shape=(1,)), kind="model"),
-            _cap("small", shape=(2,)), _cap("dependent", extends="large", shape=(1,))]
+    caps = [
+        _cap("large", shape=(64, 64)),
+        dict(_cap("model", shape=(1,)), kind="model"),
+        _cap("small", shape=(2,)),
+        _cap("dependent", extends="large", shape=(1,)),
+    ]
     order = []
 
     def run(cap, parallel):
@@ -182,7 +189,7 @@ def test_small_first_keeps_immediate_completion_and_explicit_model_prerequisites
 
     def run(cap, parallel):
         if cap["name"] == "fast":
-            time.sleep(.02)
+            time.sleep(0.02)
         elif cap["name"] == "large":
             assert model_started.wait(timeout=2), "an admitted model waited for an unrelated active operator"
         else:
@@ -196,8 +203,13 @@ def test_small_first_keeps_immediate_completion_and_explicit_model_prerequisites
             fast_done.set()
 
     caps = [_cap("large", shape=(64, 64)), dict(_cap("model", shape=(1,)), kind="model"), _cap("fast", shape=(2,))]
-    rows = run_pipelined(caps, run, max_workers=2, on_complete=complete,
-                        can_start=lambda cap: cap.get("kind") != "model" or fast_done.is_set())
+    rows = run_pipelined(
+        caps,
+        run,
+        max_workers=2,
+        on_complete=complete,
+        can_start=lambda cap: cap.get("kind") != "model" or fast_done.is_set(),
+    )
     assert callbacks[0] == "fast"
     assert model_started.is_set()
     assert [row["capsule"] for row in rows] == [cap["name"] for cap in caps]
@@ -217,8 +229,9 @@ def test_zero_operator_calibration_wait_starts_independent_workers_immediately(m
         barrier.wait(timeout=2)
         return {"capsule": cap["name"], "status": "pass"}
 
-    result = run_pipelined([_cap("first"), _cap("second")], run, max_workers=2,
-        calibrate=lambda: set(), calibration_cap=3)
+    result = run_pipelined(
+        [_cap("first"), _cap("second")], run, max_workers=2, calibrate=lambda: set(), calibration_cap=3
+    )
     assert len(result) == 2 and all(row["status"] == "pass" for row in result)
 
 

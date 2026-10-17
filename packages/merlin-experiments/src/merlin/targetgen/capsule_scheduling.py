@@ -150,10 +150,16 @@ def run_pipelined(
     def deferred_results():
         for i, cap in enumerate(capsules):
             if i not in results:
-                results[i] = {"capsule": cap["name"], "kind": cap.get("kind"), "label": cap.get("label"),
-                              "status": "gated", "background_deferred": deferred,
-                              "failure": {"plane": "gate", "category": "BACKGROUND_DEFERRED", "detail": deferred}}
+                results[i] = {
+                    "capsule": cap["name"],
+                    "kind": cap.get("kind"),
+                    "label": cap.get("label"),
+                    "status": "gated",
+                    "background_deferred": deferred,
+                    "failure": {"plane": "gate", "category": "BACKGROUND_DEFERRED", "detail": deferred},
+                }
         return [results[i] for i in range(len(capsules))]
+
     # LONGEST FIRST (by declared operand volume, then input order): the classical makespan rule. The
     # member that bounds the suite starts as soon as a worker is free instead of after the small ones.
     volume = {name: operand_volume(cap) for name, cap in zip(names, capsules, strict=True)}
@@ -163,9 +169,12 @@ def run_pipelined(
     def take_ready(*, calibration=False):
         if not calibration and can_start is None and priority is None and not small_operators_first:
             return heapq.heappop(ready) if ready else None
-        selectable = [item for item in ready if
-                      (can_start is None or can_start(capsules[item[1]])) and
-                      (not calibration or calibration_eligible is None or calibration_eligible(capsules[item[1]]))]
+        selectable = [
+            item
+            for item in ready
+            if (can_start is None or can_start(capsules[item[1]]))
+            and (not calibration or calibration_eligible is None or calibration_eligible(capsules[item[1]]))
+        ]
         if not selectable:
             return None
         if small_operators_first:
@@ -174,8 +183,11 @@ def run_pipelined(
             def key(entry):
                 return capsules[entry[1]].get("kind") == "model", -entry[0], entry[1]
         else:
-            key = ((lambda entry: (-entry[0], entry[1])) if calibration else
-                   (lambda entry: ((priority(capsules[entry[1]]) if priority else 0), entry)))
+            key = (
+                (lambda entry: (-entry[0], entry[1]))
+                if calibration
+                else (lambda entry: ((priority(capsules[entry[1]]) if priority else 0), entry))
+            )
         item = min(selectable, key=key)
         ready.remove(item)
         heapq.heapify(ready)
@@ -249,8 +261,7 @@ def run_pipelined(
             # A changed source can supersede a long native child without any
             # other worker completing. Recheck the original guard periodically
             # so an in-flight operator child can cooperatively release its slot.
-            done, _ = wait(running, timeout=5 if defer_pending is not None else None,
-                           return_when=FIRST_COMPLETED)
+            done, _ = wait(running, timeout=5 if defer_pending is not None else None, return_when=FIRST_COMPLETED)
             for future in done:
                 finished(running.pop(future), future.result())
     return [results[i] for i in range(len(capsules))]
