@@ -17,6 +17,9 @@ code_refs:
   - src/merlin/compile/scheduling/schedule_pipeline.py
   - src/merlin/compile/scheduling/fusion.py
   - src/merlin/compile/scheduling/fusion_semantics.py
+  - src/merlin/compile/scheduling/row_softmax.py
+  - src/merlin/compile/scheduling/row_softmax_verification.py
+  - src/merlin/llvmlower/cpu_softmax.py
   - src/merlin/llvmlower/automatic_host.py
   - src/merlin/llvmlower/quant_round_check.py
 ---
@@ -474,6 +477,92 @@ not supply this final decoder/continuation boundary automatically. Final machine
 program checks therefore remain an explicit integration requirement for those
 targets.
 
+## Complete-domain counted row softmax
+
+`compile_row_softmax` consumes a typed `RowSoftmaxProblem`, an explicit
+`RowSoftmaxNumerics` source algorithm, chunk resources, selected byte-addressed
+banks, four role-to-bank bindings and a `RowSoftmaxAdapter`. The adapter supplies
+actual instruction encoding/projection, configuration and qualification
+identities, index width, exact source order, addressable state and synchronous
+completion. A declaration is conditional on independent qualification; the
+neutral test implementations do not establish hardware support.
+
+The source algorithm names its f32/f64 exponential, lane count, exact binary sum
+tree and division versus reciprocal multiplication. Each lane starts with its
+first exponential and continues in increasing source-column order across every
+chunk. `cpu_softmax_row_numerics` exposes the existing pinned CPU f32 algorithm;
+the tensor CPU builder and counted scheduler share its eight-lane/tree data.
+Finite inputs and the selected RNE, nontrapping, unobserved-status contract remain
+explicit prerequisites. No approximation policy or admission threshold changes.
+
+For each row, the emitted counted kernel initializes and completes the **whole
+row maximum**, computes **all shifted exponentials**, initializes source lanes,
+completes the **whole denominator** and its ordered tree, then normalizes every
+column. No chunk normalizes independently. Optional `CausalRowMask(period,
+offset)` uses `column <= row % period + offset` in both score passes. Positive
+period and nonnegative offset prove every nonempty row has an active element.
+
+The existing allocator places a complete row of exponentials, source lane sums,
+maximum and normalization factor. Lifetimes include actual synchronous finish
+phases: maximum/factor can reuse bytes, while lane sums/factor cannot overlap
+during the final tree. Explicit backing aliases, per-bank alignment and packing
+or DMA reservations constrain placement. Workspace is invocation-private;
+immutable inputs and outputs require disjoint runtime bindings. Rows reuse
+storage only after normalization completes. The source algorithm needs one
+full-row exponential allocation; this family refuses if that state cannot fit.
+
+The ordinary shared entry runs `row_semantics` (stage 0), `row_tiling` (2),
+`row_allocation` (3), and `row_schedule` (4) through `PipelineSession`.
+Prerequisites and explicit order are checked before execution; scheduling
+invalidates source, tiling and allocation analyses and produces a fresh
+realization. Context stamps bind problem/mask, current shared library sources,
+hardware, numerical algorithm, ownership, resources, reservations and execution
+qualification. Different chunks use the same interfaces and rules in Phase 2.
+
+Unknown costs select the largest legal chunk. Without tail support, or when
+peeled tails exceed the static budget, a bounded descending divisor search tries
+at most 64 candidates and retains the primitive granularity as a legal fallback
+when it divides the complete domain. An explicit alternative must satisfy the
+same limits. Counted loops hold static calls to seven or eleven regardless of
+row/column extents; no compiler loop expands the tensor. This policy does not
+estimate cycles or imply that smaller chunks improve execution time.
+
+`verify_row_softmax` reconstructs the actual projected calls, phase ordering,
+loop bounds, full coverage, affine source/output/state addresses, mask and
+numerical identity. It rechecks completed-phase physical ownership and emitted
+integer intermediates. Reports contain actual projected command/payload counts
+and assigned storage. Instrumented native tests independently observe requested
+bytes, commands and touched physical high-water addresses; they compare complete
+outputs, input preservation and guards across baseline/tiled programs and an
+independent pinned Torch CPU reference. A separate f64 one-lane/direct-division
+source exercises different widths, arithmetic order and separate memories.
+An intentionally incorrect per-chunk lane reset fails independent output checks.
+
+Reproduce with the native toolchain and pinned reference available:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_row_softmax.py \
+  merlin/tests/ir/test_cpu_softmax.py -p no:cacheprovider \
+  --basetemp "$TMPDIR/row-softmax-check"
+```
+
+The entry returns the actual `Kernel`, physical views, realization and pass
+records. `result.emit_c(instruction_set, symbol=...)` uses the existing emitter
+and checked index width; instruction implementations remain target-owned.
+`RowSoftmaxUnavailable` diagnoses unsupported capacity, ownership, numerical or
+execution contracts so a caller can retain its original source implementation.
+All-masked/arbitrary masks, nonfinite source domains, asynchronous primitives,
+unaddressable state, cross-row aliasing and unknown effects are unsupported.
+
+This is an executable shared counted-row path. It does **not** yet match and
+replace full-model source softmax automatically, integrate a real target's
+primitives, compose full QK–softmax–PV/KV execution, or verify final machine bytes.
+Those require source admission, public target primitive/projection hooks and a
+counted-program final decoder/completion contract. It does not run through the
+finite straight-line final-byte pipeline by expanding loops. Native reference
+agreement establishes the tested source algorithm, not hardware qualification,
+full-model gains, accelerator latency, or calibrated performance.
+
 ## Existing mechanisms and remaining integration requirements
 
 | Concern | Existing mechanism | Requirement beyond the scope above |
@@ -481,7 +570,7 @@ targets.
 | Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line storage relocation | Target effect/rewrite adapters and ordinary lowering integration; general loop and persistent-storage allocation |
 | Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks and independent actual byte provenance | Qualified device register/transfer adapters and ordinary target integration; CPU allocation stays with the native toolchain |
 | Fusion and transfers | Readout composition admission and connected dispatch; exact private-copy forwarding; consumed total-integer elementwise physical composition with layout/numerical checks, allocation fallback and reconstructed final traffic | Floating/contraction epilogues, noncontiguous and asynchronous handoffs, and qualified full-model target integration |
-| Reductions and attention | Ordered source loops, complete CPU reductions and explicit numerical policies | Shared multi-tile lowering with full domains, masks and intermediate storage; per-tile softmax is insufficient |
+| Reductions and attention | Complete-domain counted row softmax with explicit source sum order, masks, physical intermediate allocation, emitted C and independent references; ordered source loops and complete CPU reductions | Automatic full-model source admission, qualified target hooks/final decoding, QK–softmax–PV/KV composition and broader source algorithms |
 | Final program limits | Actual decoded instruction size, branch/address checks and closed-region segmentation through declared interfaces | Independently qualified target decoder and runtime continuation integration; ordinary targets retain their existing linked-image admission |
 | Persistent state | Runtime state binding, immutable weight hashing/reuse and recurrent relinking | Qualified address windows, ownership and persistence for each device runtime |
 | Whole-model coverage | Source routing/census and compiled CPU fallback machinery | Complete realized coverage and unchanged numerical gates for each selected full model |

@@ -116,7 +116,8 @@ def _hash(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
-def _library_sources():
+def shared_library_sources():
+    """Current shared implementation identities, equal for every treatment."""
     names = (
         "merlin.transforms.pipeline",
         "merlin.compile.scheduling.schedule_pipeline",
@@ -127,6 +128,12 @@ def _library_sources():
         "merlin.compile.scheduling.program_limits",
         "merlin.compile.scheduling.fusion",
         "merlin.compile.scheduling.fusion_semantics",
+        "merlin.compile.scheduling.row_softmax",
+        "merlin.compile.scheduling.row_softmax_verification",
+        "merlin.compile.scheduling.compact_dense",
+        "merlin.compile.scheduling.compact_verification",
+        "merlin.transforms.dense_planning",
+        "merlin.llvmlower.cpu_softmax",
         "merlin.transforms.pure_scalar",
         "merlin.transforms.certificates",
         "merlin.verify.epilogue_applicability",
@@ -135,6 +142,7 @@ def _library_sources():
         "merlin.semantic_compiler.rules",
         "merlin.sched.ir.kernel",
         "merlin.sched.ir.expr",
+        "merlin.sched.codegen",
     )
     return {
         name: hashlib.sha256(Path(importlib.import_module(name).__file__).read_bytes()).hexdigest() for name in names
@@ -274,7 +282,7 @@ def compile_schedule(
         raise ValueError("schedule compilation requires immutable typed storage and continuation declarations")
     _check_reservations(reservations)
     validate_spill_classes(spill_classes, banks)
-    sources = _library_sources()
+    sources = shared_library_sources()
     resources = {
         "objects": [asdict(obj) for obj in objects],
         "banks": [bank.record() for bank in banks],
