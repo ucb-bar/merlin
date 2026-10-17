@@ -174,3 +174,42 @@ def test_context_cannot_answer_another_capsule_target_or_tier(selected):
         for expected in (('other', 'L3', selected.target.target), ('synthetic', 'L2', selected.target.target),
                          ('synthetic', 'L3', 'other')):
             assert SC.key(context, programs, expected=expected) == (None, None)
+
+
+def test_fresh_source_revision_with_identical_program_and_inputs_reuses(selected):
+    # Old issued authority must never survive source movement. A new original
+    # execution owner may reuse the exact executable's independently earned pass.
+    with _scope(selected):
+        context = _context(selected)
+        _write(selected, context)
+    (selected.candidate / 'tool.py').write_text('changed compiler implementation, same emitted program\n')
+    with _scope(selected):
+        fresh = _context(selected)
+        assert fresh is not None
+        carried = _read(selected, fresh)
+        assert carried is not None and carried.status == 'pass'
+        assert carried.timing is None
+
+
+def test_first_native_tier_can_carry_only_after_fresh_engine_build(selected):
+    with _scope(selected):
+        context = _context(selected)
+        _write(selected, context)
+        elf = selected.generated / 'kernel.elf'
+        package_elf = selected.generated / 'package_kernel.elf'
+        # Use the normal fixed capsule ELF name in both actual build receipts.
+        elf.rename(package_elf)
+        _write(selected, _context(selected))
+        context = _context(selected)
+        with pytest.raises(CR._CarriedPreparedTier) as caught:
+            with CR._prepared_tier_reuse('synthetic', 'L3', True, target=selected.target.target,
+                    generated=selected.generated, shas=lambda: SHAS, from_rtl=True,
+                    simulation_context=context):
+                CR._PREPARED_EXECUTION_OBSERVER.get()(package_elf)
+        assert caught.value.result.carried and caught.value.result.timing is None
+        assert CR._PREPARED_EXECUTION_OBSERVER.get() is None
+        package_elf.write_bytes(b'\x7fELF-changed-current-build')
+        with CR._prepared_tier_reuse('synthetic', 'L3', True, target=selected.target.target,
+                generated=selected.generated, shas=lambda: SHAS, from_rtl=True,
+                simulation_context=_context(selected)):
+            CR._PREPARED_EXECUTION_OBSERVER.get()(package_elf)  # Miss: execute normally.

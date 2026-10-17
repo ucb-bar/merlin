@@ -30,6 +30,8 @@ import sys
 import time
 import traceback as _traceback
 from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -38,6 +40,7 @@ import yaml
 from .capsule_lane_evidence import dispatch_boundary_report as dispatch_boundary_report
 from .capsule_lane_evidence import lane_report as _lane_report
 from .capsule_lane_evidence import whole_program_completion_lane_report as whole_program_completion_lane_report
+from .capsule_source_identity import _capture_compiler_source, _finish_compiler_source
 from .capsule_tier_result import TierResult as TierResult
 
 if TYPE_CHECKING:
@@ -374,6 +377,35 @@ def _readout_epilogue_capabilities(target: str):
     return reader() if callable(reader) else None
 
 
+_PREPARED_EXECUTION_OBSERVER = ContextVar("capsule_prepared_execution_observer", default=None)
+
+
+class _CarriedPreparedTier(Exception):
+    def __init__(self, result):
+        self.result = result
+
+
+@contextmanager
+def _prepared_tier_reuse(capsule_name, tier, mandatory, *, target, generated, shas, from_rtl,
+                         simulation_context):
+    """Look up an exact semantic certificate after this engine builds its ELF."""
+    def observe(elf):
+        from .elf_lanes import PACKAGE_ELF_NAME
+
+        if Path(elf).resolve() != (Path(generated) / PACKAGE_ELF_NAME).resolve():
+            return
+        result, _ = carried_tier_result(capsule_name, tier, mandatory, target=target,
+            generated=generated, shas=shas(), from_rtl=from_rtl, simulation_context=simulation_context)
+        if result is not None:
+            raise _CarriedPreparedTier(result)
+
+    token = _PREPARED_EXECUTION_OBSERVER.set(observe if simulation_context is not None else None)
+    try:
+        yield
+    finally:
+        _PREPARED_EXECUTION_OBSERVER.reset(token)
+
+
 def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, readback_policy=None) -> Callable:
     """Run one declared engine, retaining its selected identity and policy record."""
 
@@ -400,6 +432,8 @@ def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, r
         res = run_with_readback(
             cb, llvm_text, sim=sim, target=target, backend=backend, workdir=workdir, timeout=timeout,
             policy=readback_policy,
+            **({"before_execution": _PREPARED_EXECUTION_OBSERVER.get()}
+               if _PREPARED_EXECUTION_OBSERVER.get() is not None else {}),
         )
         if selection and isinstance(res.get("oracle"), dict):
             res["oracle"]["selection"] = dict(selection)
@@ -730,14 +764,13 @@ def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, sh
     from . import tier_cache as _TC
 
     executables = run_executables(generated)
+    if simulation_context is not None:
+        from .simulation_certificate import key
+
+        identity, instrument = key(simulation_context, executables, expected=(capsule_name, tier, target))
+        return identity, instrument, "" if identity else "original simulation request identity is unavailable"
     identity = _TC.execution_identity(target=target, executables=executables, toolchain_shas=shas)
     if identity is None:
-        if simulation_context is not None:
-            from .simulation_certificate import key
-
-            simulated, instrument = key(simulation_context, executables, expected=(capsule_name, tier, target))
-            if simulated is not None:
-                return simulated, instrument, ""
         return None, None, _TC.execution_identity_reason(target=target, executables=executables, toolchain_shas=shas)
     instrument = _TC.instrument_digest(target, tier, rtl_tier=from_rtl)
     if instrument is None:
@@ -797,8 +830,7 @@ def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target
     )
     if identity is None:
         return None, why
-    simulated = simulation_context is not None and _TC.execution_identity(
-        target=target, executables=run_executables(generated), toolchain_shas=shas) is None
+    simulated = simulation_context is not None
     if simulated:
         from . import simulation_certificate as _SC
 
@@ -866,8 +898,7 @@ def record_tier_certificate(
         if identity is None:
             return
         arguments = {}
-        if simulation_context is not None and _TC.execution_identity(
-                target=target, executables=run_executables(generated), toolchain_shas=shas) is None:
+        if simulation_context is not None:
             from .simulation_certificate import cache_root
 
             root = cache_root()
@@ -4850,8 +4881,10 @@ def run_capsule(
     failure: dict | None = None
     declined: dict | None = None  # the backend's STATED refusal ({reason, shape, op})
     status = "pass"
+    compiler_source = None
 
     try:
+        compiler_source = _grade_cpu_step(_capture_compiler_source, package_dir, paths.generated)
         # shared front half: build + the 4 contract entrypoints (parse/target/cb/artifact), validated.
         pkg, cb, llvm_text = run_entrypoints(
             pkg,
@@ -5572,7 +5605,13 @@ def run_capsule(
                     if not isinstance(_cycle_policy, dict):
                         raise ValueError("evaluation_stage with predecessor cycles requires cycle_budget policy")
                     oracle_cb["_oracle_gsim_cycle_policy"] = dict(_cycle_policy)
-                res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
+                with _prepared_tier_reuse(name, tier, mand, target=eff_target, generated=paths.generated,
+                        shas=_pin_shas, from_rtl=tier in cfg.rtl_tiers,
+                        simulation_context=_simulation_context):
+                    res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
+            except _CarriedPreparedTier as carried:
+                tiers[tier] = carried.result
+                continue
             except _PODidNotHalt as e:
                 # The oracle RAN and returned a verdict: the program never halted. That is the AGENT's
                 # bug, not a missing oracle — record it as a tier FAIL (not "unavailable") so the
@@ -6162,6 +6201,7 @@ def run_capsule(
         decoded_trace=decoded_trace,
         execution_tiers=_available_tiers,
         extra={
+            "compiler_source": _grade_cpu_step(_finish_compiler_source, compiler_source, paths.generated),
             "work_volume": _work_volume,
             "command_buffer_artifact": _cb_artifact,
             "movement_volume": _movement_volume,

@@ -67,6 +67,19 @@ python -m merlin_experiments.phase1.capsule_timing_archive RUN_DIR
 python -m merlin_experiments.phase1.capsule_timing_archive RUN_DIR --out RUN_DIR/capsule_timing.tar
 ```
 
+Ordinary capsule producers also retain the exact compiler tree under
+`generated/compiler-source/<sha256>/`. Their `compiler_source` receipt checks the
+source before lowering and afterward and binds the emitted ELF, harness, input
+interface and command buffer. The archive verifies this retained source and its
+artifact hashes; it never infers source identity from a mutable submission path.
+
+A carried simulator certificate is labelled `measured_now: false`, retains its
+original evidence reference and contributes to `gsim_reused_records`. It is not
+a new timing observation. If strict training export is incomplete, finalization
+still writes a separate content-named `capsule_evidence_*.tar` with all diagnostic
+artifacts and the actual readiness status. This preserves paid execution data
+without turning failed, incomplete or unattributed records into training labels.
+
 The export refuses an existing destination or incomplete timing. The status
 file names the reason and records the tar's SHA256 when ready; a missing tar is
 not a measured calibration dataset. A resumed run with new capsule records gets

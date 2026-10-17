@@ -923,6 +923,14 @@ def compile_lowered_to_elf(
             kwargs["warm_profile"] = warm_profile
         return link_elf(cb, obj, work, **kwargs)
     _explicit_prepack_inputs(inputs, prepack_authorizations)
+    if readback_policy is not None and prepack_authorizations is None:
+        # This path is already cache-free. Avoid a separate full snapshot read
+        # solely to ask whether a traced product may use the legacy ELF cache.
+        # llvm_mlir_to_object still performs its actual fresh emission/object
+        # custody checks; linking still reopens the selected readback receipt.
+        obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
+        return link_elf(cb, obj, work, target=target, inputs=inputs,
+                        warm_profile=warm_profile, readback_policy=readback_policy)
     if prepack_authorizations is not None or active_selection() is not None or (
         requires_original_object(lowered_mlir_text)
     ):
@@ -934,19 +942,6 @@ def compile_lowered_to_elf(
         if readback_policy is not None:
             kwargs["readback_policy"] = readback_policy
         return link_elf(cb, obj, work, **kwargs)
-    if readback_policy is not None:
-        # This invocation-only harness choice is absent from the historical
-        # shared cache key. Never reuse or publish a legacy/digest-only ELF.
-        obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
-        return link_elf(
-            cb,
-            obj,
-            work,
-            target=target,
-            inputs=inputs,
-            warm_profile=warm_profile,
-            readback_policy=readback_policy,
-        )
     if warm_profile is not None:
         # The profile changes the runner-owned harness but is deliberately not
         # serialized into the command buffer.  Never let the legacy build key
@@ -1042,6 +1037,7 @@ def run_on_oracle(
     readback_policy=None,
     memory_readback=None,
     oracle_revalidate=None,
+    before_execution=None,
     _build_service=None,
     execution_revalidate=None,
     _execution_service=None,
@@ -1189,6 +1185,20 @@ def run_on_oracle(
         memory_engine = deepcopy(oracle_revalidate())
         if type(memory_engine) is not dict or not memory_engine:
             raise ValueError("memory output requires a selected-engine citation")
+    # An explicitly supplied host observer may inspect the freshly built,
+    # admitted ELF and abort before dispatch. It supplies no execution result;
+    # cached verdict interpretation remains entirely with the trusted caller.
+    if before_execution is not None:
+        if not callable(before_execution):
+            raise ValueError("preexecution observation requires an explicit callable")
+        before_execution(Path(elf))
+        check_budget()
+        verify_execution()
+        if readback_policy is not None and readback_build != require_current_build_receipt(
+            cb=cb, target=target, workdir=work, elf_path=elf, policy=readback_policy,
+            **({"build_service": _build_service} if _build_service is not None else {}),
+        ):
+            raise ValueError("preexecution observation changed the completed readback build")
     artifact_selection = (
         compare_selected_artifacts(
             simulator=simulator,

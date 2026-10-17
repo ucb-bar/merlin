@@ -110,13 +110,16 @@ def prepare(spec, declaration, *, target, output, selected_facts=None, selected_
     selected["rtl_facts"] = _public_facts_pin(
         selected["rtl_facts"], target=target, path=selected_facts, sha256=selected_facts_sha256
     )
-    declaration = Path(declaration)
-    if declaration.is_symlink() or not declaration.is_file():
-        raise ValueError("owned host selection requires exact operator instruction declaration")
-    selected["instruction_declaration"] = {
-        "path": str(declaration.absolute()),
-        "sha256": hashlib.sha256(declaration.read_bytes()).hexdigest(),
-    }
+    # Pure provided-host leaves use only the pinned board/DTS/facts. Device
+    # model builds separately require the complete instruction declaration.
+    if declaration is not None:
+        declaration = Path(declaration)
+        if declaration.is_symlink() or not declaration.is_file():
+            raise ValueError("owned host selection requires exact operator instruction declaration")
+        selected["instruction_declaration"] = {
+            "path": str(declaration.absolute()),
+            "sha256": hashlib.sha256(declaration.read_bytes()).hexdigest(),
+        }
     selected["arena_mb"] = max(arenas)
     if descriptor is not None:
         _public_rtl_board(selected, selected["arena_mb"], descriptor=descriptor, target=target)
@@ -131,7 +134,7 @@ def install_for_session(spec, declaration, *, target, run_dir, selected_facts=No
                         descriptor=None):
     """Publish pinned operator inputs before authoring and broker subprocess startup."""
     os.environ.pop(ENV, None)
-    if spec is None or declaration is None:
+    if spec is None:
         return None
     record = prepare(
         spec,

@@ -21,7 +21,7 @@ from merlin.runtime.backends import base
 from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
 
 ENV = "MERLIN_SIMULATION_CERT_CACHE"
-NAMESPACE = "same-byte-simulator-verdict-v1"
+NAMESPACE = "same-byte-simulator-verdict-v2"
 _ISSUED = weakref.WeakSet()
 
 
@@ -162,7 +162,7 @@ def key(request, executables, *, expected=None):
         if not programs:
             return None, None
         identity = _digest({"namespace": NAMESPACE, "target": request.target, "tier": request.tier,
-                            "programs": programs, "compiler_source": request.source_sha256,
+                            "programs": programs,
                             "profile": request.profile, "request": request.request_sha256,
                             "engine_identity": request.engine_identity})
         instrument = _digest({"namespace": NAMESPACE, "grading_path": request.instrument,

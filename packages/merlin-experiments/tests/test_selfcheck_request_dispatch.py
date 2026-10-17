@@ -145,7 +145,8 @@ def test_owned_worker_stop_reaps_children_and_releases_locks(tmp_path):
             B._stop_owned_worker(process)
 
 
-def test_two_process_lanes_overlap_and_cancel_independently(tmp_path, monkeypatch):
+@pytest.mark.parametrize("ordinary_jobs", [1, 2])
+def test_two_process_lanes_overlap_and_cancel_independently(tmp_path, monkeypatch, ordinary_jobs):
     """Use the actual request handler; substitute only the external grading executable."""
     ws = tmp_path / "workspace"
     ch = ws / ".qa_channel"
@@ -179,6 +180,7 @@ raise SystemExit(B.main())
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     monkeypatch.setenv("MERLIN_SELFCHECK_BROKER_JOBS", "2")
+    monkeypatch.setenv("MERLIN_SELFCHECK_ORDINARY_JOBS", str(ordinary_jobs))
     diagnostic = request(ch, "diagnostic", offload_census=True)
     time.sleep(.01)
     numerical = request(ch, "numerical")
@@ -200,7 +202,12 @@ raise SystemExit(B.main())
             while not all((ch / ("started_" + rid)).exists() for rid in ("diagnostic", "numerical")):
                 assert time.monotonic() < end
                 time.sleep(.02)
-            assert not (ch / "started_later_numeric").exists()
+            if ordinary_jobs == 1:
+                assert not (ch / "started_later_numeric").exists()
+            else:
+                while not (ch / "started_later_numeric").exists():
+                    assert time.monotonic() < end
+                    time.sleep(.02)
             numerical.unlink()  # Existing ordinary cancellation protocol.
             while not (ch / "done_numerical").exists():
                 assert time.monotonic() < end
@@ -221,7 +228,8 @@ raise SystemExit(B.main())
     B._dispatch_requests(a, context, tmp_path, None, None)
     thread.join(timeout=20)
     assert not observed, observed
-    assert launch_order[:2] == [numerical.name, diagnostic.name]
+    assert launch_order[:2] == ([numerical.name, diagnostic.name] if ordinary_jobs == 1
+                                else [numerical.name, later.name])
     canceled = json.loads((ch / "resp_numerical.json").read_bytes())
     finished = json.loads((ch / "resp_diagnostic.json").read_bytes())
     assert "cancelled" in canceled["error"] and canceled["all_pass"] is False
@@ -230,3 +238,13 @@ raise SystemExit(B.main())
     for rid in ("diagnostic", "numerical"):
         info = json.loads((ch / ("started_" + rid)).read_bytes())
         assert B._process_record(info["pid"]) is None
+
+
+def test_iteration_scope_rejects_full_sweep_without_narrowing_denominator(monkeypatch):
+    monkeypatch.setenv('MERLIN_SELFCHECK_MAX_CAPSULES', '2')
+    assert B._feedback_scope_error({'capsules': 'all'})
+    assert B._feedback_scope_error({'capsules': 'a,b,c'})
+    assert B._feedback_scope_error({'capsules': 'a,a,b'}) is None
+    assert B._feedback_scope_error({'capsules': 'all', 'compile_only': True}) is None
+    monkeypatch.delenv('MERLIN_SELFCHECK_MAX_CAPSULES')
+    assert B._feedback_scope_error({'capsules': 'all'}) is None

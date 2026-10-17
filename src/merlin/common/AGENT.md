@@ -132,3 +132,10 @@ marker bytes. It has no experiment dependency and does not decide candidate
 visibility. The experiment freezer delegates payload hashing; its independent
 mount/answer checks remain mandatory. A verified input is not an execution or
 semantic receipt, and host-only inputs do not become public grants.
+
+Inside one `verified_snapshot_scope`, Linux watches of every file and directory
+may reuse the names/types/sizes roster. Watches include individual inodes so an
+external hard-link resize invalidates the shortcut. Mount-table changes, events
+(including overflow), unavailable watches or closed custody restore complete
+scanning. Payload hashing and selected read-lease checks remain independent at
+both operation boundaries; this shortcut never authenticates payload bytes.

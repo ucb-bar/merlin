@@ -66,6 +66,75 @@ class _Verification:
     pass
 
 
+class _RosterGuard:
+    """Kernel-observed names/types/sizes inside one bounded verification scope.
+
+    Every file is watched as well as every directory: writes through an outside
+    hard link can resize a file without notifying its parent directory. This
+    never caches payload hashes. Entry/exit payload verification stays fresh;
+    unsupported watches, any event (including overflow), or mount changes fall
+    back to the ordinary complete roster scan.
+    """
+
+    def __init__(self, root, members):
+        import ctypes
+        import sys
+
+        self.fd = None
+        self.root = root
+        if sys.platform != "linux" or not read_lease_digest.enabled():
+            return
+        try:
+            library = ctypes.CDLL(None, use_errno=True)
+            initialize, watch = library.inotify_init1, library.inotify_add_watch
+            initialize.argtypes, initialize.restype = (ctypes.c_int,), ctypes.c_int
+            watch.argtypes, watch.restype = (ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32), ctypes.c_int
+            self.mounts = Path("/proc/self/mountinfo").read_bytes()
+            info = root.stat(follow_symlinks=False)
+            self.identity = info.st_dev, info.st_ino
+            descriptor = initialize(os.O_CLOEXEC | os.O_NONBLOCK)
+            if descriptor < 0:
+                return
+            self.fd = descriptor
+            # Linux UAPI: modify/attrib/close-write/moves/create/delete/self,
+            # with IN_DONT_FOLLOW. Any delivered event invalidates the shortcut.
+            mask = 0x00000FCE | 0x02000000
+            directories = [root, *(path for _, path, kind, _ in members if kind == "directory")]
+            files = [path for _, path, kind, _ in members if kind == "file"]
+            for path in (*directories, *files):
+                if watch(descriptor, os.fsencode(path), mask) < 0:
+                    self.close()
+                    return
+            # Close setup races after all parents and individual inodes are watched.
+            if _scanned_roster(_scanned_members(root)) != _scanned_roster(members) or not self.unchanged():
+                self.close()
+        except (AttributeError, OSError):
+            self.close()
+
+    def unchanged(self):
+        if self.fd is None:
+            return False
+        try:
+            info = self.root.stat(follow_symlinks=False)
+            if ((info.st_dev, info.st_ino) != self.identity
+                    or Path("/proc/self/mountinfo").read_bytes() != self.mounts):
+                self.close()
+                return False
+            try:
+                os.read(self.fd, 65536)
+            except BlockingIOError:
+                return True
+        except OSError:
+            pass
+        self.close()
+        return False
+
+    def close(self):
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
+
+
 def _current_verification(issued):
     return (
         type(issued) is _Verification
@@ -161,12 +230,15 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
         with shared_compute_pool():
             root = bundle_snapshot_root(workspace)
             marker_bytes = (root / MARKER).read_bytes()
-            members = _scanned_roster(_scanned_members(root))
+            scanned = _scanned_members(root)
+            members = _scanned_roster(scanned)
+            roster_guard = _RosterGuard(root, scanned)
         issued = _Verification()
         issued.process, issued.thread = os.getpid(), threading.current_thread()
         issued.root, issued.marker_bytes = root, marker_bytes
         issued.repo, issued.policy_bytes = repo, original_policy
         issued.members = members
+        issued.roster_guard = roster_guard
         issued.signature = tuple(document[key] for key in ("content_sha256", "n_files", "n_bytes"))
         issued.leases = leases
         _ISSUED_VERIFICATIONS.add(issued)
@@ -185,6 +257,7 @@ def verified_snapshot_scope(workspace: Path, bundle: dict, *, repo: Path):
                 raise RuntimeError("original snapshot scope ownership changed")
     finally:
         if issued is not None:
+            issued.roster_guard.close()
             _ISSUED_VERIFICATIONS.discard(issued)
         _ACTIVE_VERIFICATION.reset(previous)
 
@@ -200,15 +273,16 @@ def snapshot_content(root: Path) -> tuple[str, int, int]:
 def _snapshot_content_in_cpu_scope(root: Path) -> tuple[str, int, int]:
     """Calculate one synchronous payload digest and validate every reused lease."""
     rows = []
-    members = _scanned_members(root)
     issued = _ACTIVE_VERIFICATION.get()
     if _current_verification(issued) and issued.root == root:
         if (root / MARKER).read_bytes() != issued.marker_bytes:
             raise RuntimeError("original snapshot scope marker changed")
-        if _scanned_roster(members) != issued.members:
+        guard = getattr(issued, "roster_guard", None)
+        if (guard is None or not guard.unchanged()) and _scanned_roster(_scanned_members(root)) != issued.members:
             raise RuntimeError("original snapshot scope member roster changed")
         read_lease_digest.validate(getattr(issued, "leases", None))
         return issued.signature
+    members = _scanned_members(root)
     ordered = enumerate(members)
     if read_lease_digest.enabled():
         # Spend a constrained descriptor budget on the largest immutable files.

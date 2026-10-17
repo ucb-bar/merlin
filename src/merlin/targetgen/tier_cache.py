@@ -51,13 +51,17 @@ its category, its detail, its first mismatch -- and a record that carries only t
 replace actionable feedback with an assertion. Re-running a failing capsule is also the cheap direction:
 the ladder fail-fasts, so a refuted capsule never reaches the expensive tier anyway.
 
-**The first tier the ladder executes is always paid for.** The executable identity is only available
+**The legacy first-tier path executes freshly.** The executable identity is only available
 once something in THIS run has built the ELF, and it is the first executed tier's adapter that builds
 it -- so that tier is never carried, on any target, without a single rule saying so. Which tier that is
 belongs to ``tier_policy.tier_order`` (cheapest-measured-first, with never-yet-measured tiers ahead of
 priced ones so the ladder always learns a price); on a calibrated target it is the screen, which is
 exactly where this wants it: the cheap tier is re-executed against the bytes on disk every time, and the
-expensive one is what gets carried.
+expensive one is what gets carried. An explicitly issued original semantic
+simulation request additionally permits lookup after a fresh engine-specific
+ELF build and before dispatch, including a first native tier. It binds all
+stimulus, oracle, policy, engine and grader inputs and reports a carry without
+new execution, wall timing or an independent measurement.
 
 **"The cheap tier is cheap" was true of its SIMULATION and false of its cost.** The 94.7% above is an
 adapter-wall figure measured while the cert tier was still being re-bought; once certificates carry, what
@@ -160,7 +164,7 @@ def disabled() -> bool:
     return (os.environ.get(_CACHE_ENV, "") or "").strip().lower() in _OFF
 
 
-def cache_root() -> "Path | None":
+def cache_root() -> Path | None:
     """The store directory, or ``None`` when the cache is off or its root cannot be created."""
     if disabled():
         return None
@@ -214,7 +218,7 @@ def _valid_pin(name, value) -> bool:
     )
 
 
-def execution_identity(*, target, executables, toolchain_shas) -> "str | None":
+def execution_identity(*, target, executables, toolchain_shas) -> str | None:
     """Content identity for exactly what one capsule's hardware tier executes, or ``None``.
 
     ``{the bytes of every executable this run produced} x {target} x {every declared hardware pin}``.
@@ -244,7 +248,7 @@ def execution_identity_reason(*, target, executables, toolchain_shas) -> str:
     return _identity(target=target, executables=executables, toolchain_shas=toolchain_shas)[1]
 
 
-def _identity(*, target, executables, toolchain_shas) -> "tuple[str | None, str]":
+def _identity(*, target, executables, toolchain_shas) -> tuple[str | None, str]:
     """``(identity, refusal reason)`` -- one implementation, so the two public forms agree."""
     try:
         if not isinstance(target, str) or not target.strip():
@@ -308,6 +312,7 @@ _GRADING_MODULES = (
     "merlin.targetgen.conformance",
     "merlin.targetgen.contract.materialize",
     "merlin.targetgen.capsule_runner",
+    "merlin.targetgen.capsule_source_identity",
     "merlin.targetgen.capsule_grade",
     "merlin.targetgen.capsule_golden",
     "merlin.targetgen.capsule_inputs",
@@ -331,7 +336,7 @@ _GRADING_MODULES = (
 )
 
 
-def grading_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
+def grading_path(target: str | None = None) -> tuple[Path, ...] | None:
     """Every file whose bytes decide a verdict, or ``None`` when one of them cannot be located.
 
     ``None`` is not "no instrument" -- it is "the instrument cannot be established", and the caller must
@@ -410,7 +415,7 @@ def grading_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
 _INSTRUMENT_MEMO: dict = {}
 
 
-def _engine_token(target: "str | None", tier: str, rtl_tier: bool) -> "str | None":
+def _engine_token(target: str | None, tier: str, rtl_tier: bool) -> str | None:
     """The elaborated-RTL engine that would answer ``tier`` today, ``""`` for a non-RTL tier, or ``None``.
 
     A tier index names a FIDELITY, and two engines answering at that fidelity are two instruments. When
@@ -433,7 +438,7 @@ def _engine_token(target: "str | None", tier: str, rtl_tier: bool) -> "str | Non
     return engine or None
 
 
-def instrument_digest(target: "str | None", tier: str, *, rtl_tier: bool) -> "str | None":
+def instrument_digest(target: str | None, tier: str, *, rtl_tier: bool) -> str | None:
     """Identity of the JUDGE for one (target, tier): the grading path's bytes plus the engine.
 
     ``None`` whenever any input is missing, which makes the tier re-run. Uses
@@ -484,7 +489,7 @@ def _record_path(root: Path, capsule: str, tier: str, identity: str, instrument:
     return root / (_digest_of(_key_fields(capsule, tier, identity, instrument)) + ".json")
 
 
-def lookup(capsule: str, tier: str, identity, instrument, *, root: "Path | None" = None, ledgers=()) -> "dict | None":
+def lookup(capsule: str, tier: str, identity, instrument, *, root: Path | None = None, ledgers=()) -> dict | None:
     """The record that certifies EXACTLY these bytes on EXACTLY this instrument, or ``None``.
 
     Everything is re-verified against the stored record's own copy of the key, so a record reached by a
@@ -512,7 +517,7 @@ def lookup(capsule: str, tier: str, identity, instrument, *, root: "Path | None"
     return None
 
 
-def _from_ledger(path, capsule: str, tier: str, identity: str, instrument: str) -> "dict | None":
+def _from_ledger(path, capsule: str, tier: str, identity: str, instrument: str) -> dict | None:
     """A promotion ledger entry (``qa/tier_state.json``) that certifies these bytes on this instrument.
 
     The ledger is ``tier_promote``'s: ``{capsule: {"<certs>": {tier: {identity: entry}}}}``, where an
@@ -564,9 +569,9 @@ def record(
     *,
     status: str,
     tier_result: dict,
-    root: "Path | None" = None,
-    run_id: "str | None" = None,
-) -> "Path | None":
+    root: Path | None = None,
+    run_id: str | None = None,
+) -> Path | None:
     """Store one EXECUTED tier verdict against the bytes and the instrument that produced it.
 
     Returns the file written, or ``None`` when nothing was stored (cache off, no identity, no
@@ -586,7 +591,7 @@ def record(
     payload.update(
         {
             "status": status,
-            "recorded_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+            "recorded_at": _dt.datetime.now(_dt.UTC).isoformat(),
             "run_id": run_id,
             "tier_result": {k: v for k, v in tier_result.items() if k not in _NOT_MEASURED_NOW},
         }

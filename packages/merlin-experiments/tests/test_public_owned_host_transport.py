@@ -142,3 +142,11 @@ def test_projection_refuses_partial_selection_and_links(facts_projection, tmp_pa
             selected_facts=link,
             selected_facts_sha256=hashlib.sha256(public.read_bytes()).hexdigest(),
         )
+
+
+def test_host_only_inputs_do_not_require_accelerator_instruction_declaration(facts_projection, tmp_path):
+    spec, _, public, _ = facts_projection
+    record = selection.install_for_session(spec, None, target='selected_target', run_dir=tmp_path / 'run',
+        selected_facts=public, selected_facts_sha256=hashlib.sha256(public.read_bytes()).hexdigest())
+    projected = json.loads(Path(record['path']).read_text())
+    assert set(projected) == {'board_catalog', 'dts', 'rtl_facts', 'board', 'arena_mb'}

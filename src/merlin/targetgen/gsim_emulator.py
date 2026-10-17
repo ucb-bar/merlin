@@ -217,8 +217,13 @@ class Resolution:
 
 
 def _digest(path: Path) -> str:
-    from merlin.common import provenance
+    from merlin.common import provenance, read_lease_digest
 
+    if read_lease_digest.enabled():
+        with read_lease_digest.verification():
+            value = read_lease_digest.digest(path)
+            if value is not None:
+                return value
     return provenance.file_digest(path)
 
 

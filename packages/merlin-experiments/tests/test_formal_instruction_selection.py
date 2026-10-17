@@ -319,6 +319,15 @@ def _formal_attempt(selected, monkeypatch, *, choose=True, fault=None, build_pas
     (run / "submission/manifest.yaml").write_text("{}")
     spec = run.parent / "owned-private-spec.yaml"
     spec.write_text("{}")
+    # This fixture isolates instruction-coordinator wiring. Host projection has
+    # its own byte-pin/board tests and must not consume this intentionally empty spec.
+    from merlin_experiments.phase1.feedback import public_owned_host_selection
+
+    def project(*args, output, **kwargs):
+        output.write_text("{}")
+        return {"path": str(output), "sha256": file_digest(output)}
+
+    monkeypatch.setattr(public_owned_host_selection, "prepare", project)
     context = SimpleNamespace(
         target=selected.target,
         descriptor=Path(selected.document["hardware"]["descriptor"]["path"]),

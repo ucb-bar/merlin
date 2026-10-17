@@ -210,6 +210,7 @@ def _closure():
             resources.__name__,
             resources.kernel.__name__,
             "merlin.targetgen.capsule_runner",
+            "merlin.targetgen.capsule_source_identity",
             "merlin_experiments.phase1.feedback.operator_child",
             "merlin_experiments.phase1.feedback.scale_probe_child",
             "merlin_experiments.phase1.feedback.scale_probe_batch",

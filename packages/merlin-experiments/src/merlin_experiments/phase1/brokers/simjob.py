@@ -802,8 +802,10 @@ def main(
             if j.get("snapshot_root"):
                 shutil.rmtree(j["snapshot_root"], ignore_errors=True)
             running.pop(jid)
-        # An edit supersedes paid simulation of the old source. Detect it within five seconds,
-        # release its slots, and leave completed evidence for an unchanged source in place.
+        # A running job owns an immutable source snapshot. Finish it so its exact
+        # executable certificate can serve a later revision that emits identical
+        # bytes. The result remains attributed to its original source; queued
+        # obsolete promotions are still filtered before spending a native slot.
         now = time.monotonic()
         if running and now >= next_source_check:
             next_source_check = now + 5
@@ -814,8 +816,7 @@ def main(
             if current_source is not None:
                 for jid, job in list(running.items()):
                     if job["source_digest"] != current_source:
-                        _cancel_running_job(ch, jid, job, "submission source superseded")
-                        running.pop(jid)
+                        job["superseded_by_source"] = current_source
         # launch queued (respect local + global caps)
         queued = _observe_pending(ch.glob("simreq_*.json"), claimed, queued_since, time.monotonic())
         if len(running) < a.max_jobs:

@@ -117,7 +117,9 @@ def test_archive_requires_elf_and_simulator_identity(tmp_path):
     assert report["gsim_pass_with_cycles"] == 1
     assert report["gsim_pass_complete"] == 0
     assert report["timing_ready"] is False
-    with pytest.raises(A.TimingArchiveError, match="ELF, compiler, command-buffer, simulator and kernel-scope identities"):
+    with pytest.raises(
+        A.TimingArchiveError, match="ELF, compiler, command-buffer, simulator and kernel-scope identities"
+    ):
         A.archive(tmp_path, tmp_path / "capsules.tar")
 
 
@@ -157,6 +159,12 @@ def test_run_finalization_writes_audit_and_training_tar_only_when_ready(tmp_path
     assert status["timing_ready"] is False
     assert (tmp_path / "capsule_timing_audit.json").is_file()
     assert not (tmp_path / "capsule_timing.tar").exists()
+    evidence = status['evidence_archive']
+    with tarfile.open(evidence) as raw:
+        index = json.load(raw.extractfile('index.json'))
+        assert index['timing_ready'] is False
+        assert index['export_scope'].startswith('diagnostic_all_results')
+        assert any(name.endswith('/capsule_result.json') for name in raw.getnames())
     assert json.loads((tmp_path / "capsule_timing_archive_status.json").read_text()) == status
 
     _capsule(tmp_path, "runs_r0000_t000001", "A", 100)
@@ -171,3 +179,18 @@ def test_run_finalization_writes_audit_and_training_tar_only_when_ready(tmp_path
     assert extended["timing_ready"] is True
     assert extended["archive"] != status["archive"]
     assert (tmp_path / "capsule_timing.tar").is_file()
+
+
+def test_carried_rtl_pass_is_not_a_new_timing_measurement(tmp_path):
+    _capsule(tmp_path, "fresh", "A", 10)
+    carried = _capsule(tmp_path, "reused", "B", 20)
+    result = carried / "capsule_result.json"
+    document = json.loads(result.read_bytes())
+    document['tiers']['L3']['carried'] = {'source': 'original exact program certificate'}
+    result.write_text(json.dumps(document))
+    (carried / 'artifacts/rtl_console.log').unlink()
+    audit = A.audit(tmp_path)
+    assert audit['timing_ready'] is True
+    assert audit['gsim_pass_records'] == 1
+    assert audit['gsim_reused_records'] == 1
+    assert audit['gsim_pass_complete'] == 1

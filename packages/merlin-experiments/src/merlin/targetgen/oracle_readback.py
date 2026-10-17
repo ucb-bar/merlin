@@ -25,7 +25,7 @@ def _digest_for_gsim() -> bool:
     return mode == "digest"
 
 
-def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy):
+def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy, before_execution=None):
     from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
     from merlin.targetgen.contract import compile as oot_compile
     from merlin.targetgen.contract.readback_policy import MEMORY_TRANSPORTS, engine_readback
@@ -35,6 +35,8 @@ def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy):
     if policy is None:  # a serial console: the fastest exact readback, not text
         cb, policy = engine_readback(cb, sim, target=target, backend=backend)
     kwargs: dict[str, Any] = {"readback_policy": policy} if policy is not None else {}
+    if before_execution is not None:
+        kwargs["before_execution"] = before_execution
     if policy is not None and policy.transport in MEMORY_TRANSPORTS:
         from merlin_experiments.phase1.feedback.native_memory_readback import (
             NativeLogicalMemoryReadback,
@@ -61,12 +63,16 @@ def _run(cb, llvm_text, *, sim, target, backend, workdir, timeout, policy):
     )
 
 
-def run_with_readback(cb, llvm_text, *, sim: str, target: str, backend: Any, workdir: str | Path, timeout: int, policy):
+def run_with_readback(cb, llvm_text, *, sim: str, target: str, backend: Any, workdir: str | Path, timeout: int,
+                      policy, before_execution=None):
     """One oracle run of ``cb`` on ``sim`` with the readback selected as the module docstring states."""
     if sim != "gsim" or policy is not None or not _digest_for_gsim():
         return _run(
-            cb, llvm_text, sim=sim, target=target, backend=backend, workdir=workdir, timeout=timeout, policy=policy
+            cb, llvm_text, sim=sim, target=target, backend=backend, workdir=workdir, timeout=timeout, policy=policy,
+            **({"before_execution": before_execution} if before_execution is not None else {}),
         )
+    if before_execution is not None:
+        raise ValueError("prepared verdict reuse is unavailable for the separate digest corroboration path")
     from merlin_experiments.phase2 import gsim_digest_readback as DIGEST
 
     def oracle(cb_, llvm_, *, simulator, target, workdir, timeout, readback_policy=None):

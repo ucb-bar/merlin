@@ -356,6 +356,31 @@ def _dispatch_capacity() -> int:
     return int(value)
 
 
+def _feedback_scope_error(request):
+    """Operator-selected iteration bound; formal qualification uses its own path."""
+    raw = os.environ.get("MERLIN_SELFCHECK_MAX_CAPSULES", "").strip()
+    if not raw:
+        return None
+    if not raw.isdecimal() or int(raw) < 1:
+        raise ValueError("MERLIN_SELFCHECK_MAX_CAPSULES must be a positive integer")
+    if request.get("action") or request.get("caller_layout") or any(request.get(key) for key in FORWARDED_PROBES):
+        return None
+    selected = str(request.get("capsules", "all"))
+    names = {name.strip() for name in selected.split(",") if name.strip()}
+    if selected.strip() == "all" or len(names) > int(raw):
+        return (f"iteration feedback accepts at most {raw} named capsules per request; select affected capsules. "
+                "Full-suite feedback during authoring is disabled by the operator. "
+                "The separate final frozen qualification still covers the complete corpus.")
+    return None
+
+
+def _ordinary_capacity():
+    raw = os.environ.get("MERLIN_SELFCHECK_ORDINARY_JOBS", "1")
+    if raw not in {"1", "2"}:
+        raise ValueError("MERLIN_SELFCHECK_ORDINARY_JOBS must be 1 or 2")
+    return int(raw)
+
+
 def _process_record(pid):
     try:
         stat = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
@@ -443,7 +468,8 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
         health = json.loads(health_path.read_bytes())
     except (OSError, ValueError):
         health = {}
-    health.update(protocol=PROTOCOL_VERSION, dispatch_capacity=2,
+    ordinary_capacity = _ordinary_capacity()
+    health.update(protocol=PROTOCOL_VERSION, dispatch_capacity=ordinary_capacity + 1,
                   broker_starts=int(health.get("broker_starts", 0)) + 1,
                   processed=int(health.get("processed", 0)),
                   max_queue_depth=int(health.get("max_queue_depth", 0)),
@@ -472,7 +498,9 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                 except FileNotFoundError:
                     continue
                 diagnostic = _diagnostic_request(request, request_bytes=request_bytes)
-                if len(active) >= 2 or any(j["diagnostic"] == diagnostic for j in active.values()):
+                lane_capacity = 1 if diagnostic else ordinary_capacity
+                if (len(active) >= ordinary_capacity + 1
+                        or sum(j["diagnostic"] == diagnostic for j in active.values()) >= lane_capacity):
                     continue
                 stop = ch / f".handler-stop_{secrets.token_hex(12)}"
                 try:
@@ -632,6 +660,14 @@ def main(
             _atomic_write(ch / f"done_{rid}", "err")
             continue
         started_ns = time.time_ns()
+        scope_error = _feedback_scope_error(r)
+        if scope_error is not None:
+            doc = _decorate_response(json.dumps({"status": "not_scheduled", "all_pass": None,
+                "error": scope_error, "numeric_assessment": "not_run"}), r, rid,
+                r.get("submission_sha256"), started_ns=started_ns, completed_ns=time.time_ns())
+            _atomic_write(resp, json.dumps(doc))
+            _atomic_write(ch / f"done_{rid}", "not_scheduled")
+            continue
         graded_digest = _submission_digest(ws / "submission")
         if int(r.get("protocol", 1)) >= PROTOCOL_VERSION:
             # A REQUEST WHOSE BYTES MOVED IS SERVED, NOT REFUSED. Rejecting it was a livelock: the
