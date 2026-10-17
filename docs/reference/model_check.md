@@ -130,7 +130,10 @@ L3 gSIM qualification and timing collection remain required; model-kernel gSIM r
 - Cache: `check` and `replay-kernel` reuse kernel objects (keyed by package content, interface sha256,
   compile flags, tool identities, target contract and facts, and Merlin's build sources) and replay
   consoles (keyed by image sources, operand bytes, linked objects, toolchain and simulator) under
-  `build_dir()/model_check/cache`. `--no-cache` disables both; **an official grade passes `--no-cache`**.
+  `build_dir()/model_check/cache`. A stored object's linked symbol is named by its compiled code and
+  objects link in content order, so a package edit that leaves a kernel's code unchanged rebuilds it into
+  the same bytes and its replay consoles are reused. `--no-cache` disables both; **an official grade
+  passes `--no-cache`**.
 - `--agent-view`: omit every per-input value of the `sealed` split, keeping only aggregate status per
   gate. Anything shown to an agent must be produced with it.
 
