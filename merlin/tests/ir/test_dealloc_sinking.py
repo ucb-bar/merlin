@@ -349,6 +349,29 @@ def test_the_placement_check_accepts_the_unsunk_baseline():
     assert P.dealloc_placement_violations(_bufferized_and_deallocated([])) == []
 
 
+@m2m
+@pytest.mark.parametrize('outer', [True,False])
+def test_loop_free_must_match_the_allocation_lifetime(outer):
+    source='''builtin.module {
+      func.func @forward() {
+        %zero=arith.constant 0:index
+        %end=arith.constant 3:index
+        %one=arith.constant 1:index
+        OUTER
+        scf.for %i=%zero to %end step %one {
+          INNER
+          memref.dealloc %a:memref<4xf32>
+        }
+        return
+      }
+    }'''
+    alloc='%a=memref.alloc():memref<4xf32>'
+    source=source.replace('OUTER',alloc if outer else '').replace('INNER','' if outer else alloc)
+    violations=P.dealloc_placement_violations(source)
+    assert bool(violations)==outer
+    if outer: assert any('repeating control flow' in row for row in violations)
+
+
 #: The stage's own output with ONE free moved back before the buffer's last use -- the mutation that
 #: turns a correct program into a use-after-free, and with the arena bound on top of it hands the
 #: freed bytes to another buffer while this one is still being read.

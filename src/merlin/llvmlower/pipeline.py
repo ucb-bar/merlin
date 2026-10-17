@@ -111,9 +111,14 @@ _UPSTREAM_PASSES = [
     "func.func(linalg-fuse-elementwise-ops)",
     "func.func(linalg-generalize-named-ops)",
     "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}",
+    # Expose invariant carried buffers before forwarding static result storage
+    # to caller out-parameters. Otherwise a row loop keeps a full result copy.
+    "canonicalize",
     "buffer-results-to-out-params{modify-public-functions hoist-static-allocs}",
-    "__DEALLOC__",
+    # Derive ownership after the last allocation move. Hoisting allocations
+    # after placing frees can leave repeated frees in their original loop.
     "func.func(buffer-hoisting,buffer-loop-hoisting)",
+    "__DEALLOC__",
     "func.func(convert-linalg-to-loops)",
     "convert-scf-to-cf",
     # memref.expand/collapse_shape/subview must be expanded before LLVM conversion.
@@ -138,8 +143,8 @@ _UPSTREAM_PASSES = [
 def _splice(passes: list[str]) -> str:
     """Join a pass list, expanding the ``__DEALLOC__`` marker in place.
 
-    The marker names *where* deallocation belongs in each pipeline (immediately after
-    bufferization) so the position is visible in the pass list itself rather than computed by an
+    The marker names *where* deallocation belongs (after allocation movement,
+    before control-flow lowering), so its position is visible rather than computed by an
     index that drifts when the list is edited.
 
     The generalize/fuse reorder is applied HERE, at the one point every pipeline in this file passes
@@ -152,6 +157,9 @@ def _splice(passes: list[str]) -> str:
     out: list[str] = []
     for p in passes:
         out.extend(_dealloc_passes() if p == "__DEALLOC__" else [p])
+    dealloc = next((i for i, p in enumerate(out) if "ownership-based-buffer-deallocation" in p), None)
+    if dealloc is not None and any("buffer-hoisting" in p or "buffer-loop-hoisting" in p for p in out[dealloc + 1:]):
+        raise ValueError("allocation hoisting invalidates ownership: schedule it before buffer deallocation")
     return ",".join(out)
 
 
@@ -860,6 +868,22 @@ def _dealloc_placement_violations(module):
     violations, sunk = [], 0
     for rid, alloc in roots.items():
         abid = block_of[_op_key(alloc)]
+        # Moving an allocation outside a loop must also replan its free.
+        # A same-block last-use check misses a retained per-iteration free.
+        for use in uses.get(rid, []):
+            if use.operation.name != 'memref.dealloc':
+                continue
+            bid = block_of[_op_key(use)]
+            while bid != abid:
+                parent = owner_of_block[bid]
+                if parent is None:
+                    break
+                if parent.operation.name in ('scf.for', 'scf.while', 'scf.parallel', 'scf.forall',
+                                              'affine.for', 'affine.parallel'):
+                    violations.append(str(alloc.results[0].type) +
+                                      ': freed inside repeating control flow outside its allocation lifetime')
+                    break
+                bid = block_of[_op_key(parent)]
         here = [u for u in uses.get(rid, [])
                 if u.operation.name == 'memref.dealloc' and block_of[_op_key(u)] == abid]
         if not here:
@@ -1061,12 +1085,15 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
     head, tail = passes[:at], passes[at + 1:]
     if 'ownership-based-buffer-deallocation' not in head:
         raise RuntimeError('aggregate dealloc split must follow ownership analysis')
-    if any('buffer-loop-hoisting' in p or 'convert-scf-to-openmp' in p for p in head):
-        raise RuntimeError('aggregate dealloc split moved past a stage anchor')
-    _SPLIT_ORIG_RUN_STAGES(ctx, module, ','.join(head), 0, (), (), (),
+    if any('convert-scf-to-openmp' in p for p in head):
+        raise RuntimeError('aggregate dealloc split must precede parallel control-flow lowering')
+    hoist_head = any('buffer-loop-hoisting' in p for p in head)
+    _SPLIT_ORIG_RUN_STAGES(ctx, module, ','.join(head),
+                           erase if hoist_head else 0, mid if hoist_head else (), (), (),
                            pre_generalize)
     _split_fresh_local_deallocs(ctx, module)
-    _SPLIT_ORIG_RUN_STAGES(ctx, module, ','.join(tail), erase, mid, late,
+    _SPLIT_ORIG_RUN_STAGES(ctx, module, ','.join(tail),
+                           0 if hoist_head else erase, () if hoist_head else mid, late,
                            post_openmp, ())
 """
 
