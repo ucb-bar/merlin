@@ -348,8 +348,11 @@ def launch(
                 background_model=config.provider.background_model,
                 effort=effort,
                 continue_session=continuous,
-                **({"max_concurrent_subagents": config.provider.codex_max_subagents}
-                   if config.provider.codex_max_subagents is not None else {}),
+                **(
+                    {"max_concurrent_subagents": config.provider.codex_max_subagents}
+                    if config.provider.codex_max_subagents is not None
+                    else {}
+                ),
                 **codex_call_kwargs(
                     config.provider.codex_runtime, context=config.context, run_dir=run_dir, model=model
                 ),

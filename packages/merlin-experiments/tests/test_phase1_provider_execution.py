@@ -112,8 +112,9 @@ def test_actual_dispatch_configuration_order_and_primary_cleanup(tmp_path, monke
     from merlin.targetgen import target_experiment
 
     events = []
-    config = replace(_config(tmp_path, driver, lambda: events.append("tools") or ("cca_tools",)),
-                     sim_per_capsule_timeout=3600)
+    config = replace(
+        _config(tmp_path, driver, lambda: events.append("tools") or ("cca_tools",)), sim_per_capsule_timeout=3600
+    )
     ws = tmp_path / "workspace"
     ws.mkdir()
     public, policy, contract = (tmp_path / p for p in ("public", "policy", "contract"))
