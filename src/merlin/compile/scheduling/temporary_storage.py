@@ -446,6 +446,7 @@ def allocate_temporary_storage(
     spill_classes=(),
     max_spills=4,
     eliminate_copies=True,
+    on_repair=None,
 ) -> TemporaryStorageResult | None:
     """Allocate, consume addresses in actual calls, then independently verify.
 
@@ -476,6 +477,8 @@ def allocate_temporary_storage(
         validate_spill_classes(spill_classes, banks)
     if type(eliminate_copies) is not bool:
         raise ValueError("private-copy elimination must be explicitly boolean")
+    if on_repair is not None and not callable(on_repair):
+        raise ValueError("storage repair notification must be an explicit callable")
     fallback = None
     if eliminate_copies:
         from .copy_elimination import eliminate_private_copies
@@ -501,6 +504,7 @@ def allocate_temporary_storage(
                 spill_classes=spill_classes,
                 max_spills=max_spills,
                 eliminate_copies=False,
+                on_repair=on_repair,
                 **model,
             )
             if optimized is not None:
@@ -526,13 +530,23 @@ def allocate_temporary_storage(
                 ]
                 return TemporaryStorageResult(optimized.kernel, report)
             fallback = {"status": "allocation_fallback", "candidate_sha256": candidate.kernel.digest()}
+            if on_repair is not None:
+                on_repair("private-copy allocation failed; restore original composition and replan")
     result = allocate(graph, order, placement_banks, reservations=reservations, timeout_ms=timeout_ms)
     if result.status == "infeasible_candidate":
         if spill_classes and max_spills:
             from .device_spills import allocate_with_spills
 
             spilled = allocate_with_spills(
-                kernel, objects, banks, adapter, spill_classes, timeout_ms=timeout_ms, max_spills=max_spills, **model
+                kernel,
+                objects,
+                banks,
+                adapter,
+                spill_classes,
+                timeout_ms=timeout_ms,
+                max_spills=max_spills,
+                on_repair=on_repair,
+                **model,
             )
             if spilled is not None and fallback is not None:
                 return TemporaryStorageResult(spilled.kernel, {**spilled.report, "copy_elimination": fallback})

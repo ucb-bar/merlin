@@ -14,6 +14,7 @@ code_refs:
   - src/merlin/compile/scheduling/device_spills.py
   - src/merlin/compile/scheduling/spill_conformance.py
   - src/merlin/compile/scheduling/copy_elimination.py
+  - src/merlin/compile/scheduling/schedule_pipeline.py
   - src/merlin/llvmlower/automatic_host.py
   - src/merlin/llvmlower/quant_round_check.py
 ---
@@ -168,6 +169,81 @@ encoder/decoder contract. They keep their existing legal lowering. Integration
 requires that public semantic boundary, actual addressing and tail legality,
 completion/continuation qualification, and final emitted-effect checks. It does
 not require changing a target's instruction implementation to fit Merlin.
+
+## Executable schedule pipeline
+
+`compile_schedule` connects the existing storage passes, effect checks and final
+program checks through `PipelineSession`. Its finite straight-line family uses
+the existing `sched.ir.Kernel`, without introducing another schedule IR or pass
+manager. The session accepts explicit fingerprint and structural-verifier
+callbacks for that representation; xDSL callers retain the original defaults.
+Fingerprints, IR level, hardware, numerical policy, resource declarations,
+execution contracts and shared-library source identity bind every analysis.
+The callbacks establish structural custody, not numerical proof authority.
+
+The default schedule sequence is `semantic_admission`, `storage`, `completion`,
+`emission`, then `final_program`. Explicit ordering must contain all selected
+passes exactly once and satisfy stages and prerequisites before a target
+callback runs. Storage rewrites invalidate all earlier facts and produce newly
+checked realization. Failed copy allocation and inserted spills call the same
+session's bounded repair mechanism; both consume `ScheduleBudgets.max_repairs`.
+Repair clears analyses before allocation and completion are recomputed.
+Instruction changes invalidate existing emission and size facts even when a
+pass omits an explicit invalidation declaration. Failed actions poison their
+private session and return no compiled result.
+
+Replacing an analysis also invalidates its consumers transitively, even if the
+owning IR is unchanged. Analyses produced together share invalidation: replacing
+an encoded byte image cannot leave its old size or conformance result current.
+Both explicit-order validation and runtime custody enforce these dependencies.
+
+The target supplies a `ScheduleEncoding` with an encoder, actual-byte call
+decoder, `ProgramDecoder`, numerical-policy identity and independent
+qualification identity. Configuration and policy must match the selected
+`StorageAdapter`. One actual decoded instruction corresponds to one typed call
+in this family. The shared pass compares all actual decoded accesses and
+completion behavior across both decoders and requires the complete numerical
+and memory-effect sequence to match the verified schedule. The decoder cannot
+substitute retained requests for actual operands. Independent qualification
+must establish each decoder's interpretation, all state effects and executable
+instruction semantics; the shared checks cannot establish that a lying decoder
+describes its target correctly.
+
+Final size, instruction count, address and branch checks run on the encoded
+bytes after storage rewrites and spill insertion. Segmentation requires the
+existing qualified continuation contract. Every declared external window is
+conservatively treated as published, including inputs, aliases and carried
+state. Each final segment is decoded again for numerical and memory conformance,
+as well as the existing final-program checks. Receipts retain actual byte
+hashes, final counts, requested transfer bytes, pass stamps, selected parameters
+and shared source hashes. Timing remains unknown without paired timing evidence.
+
+For an integration that supplies those public contracts:
+
+```python
+from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, compile_schedule
+
+result = compile_schedule(
+    source_kernel, private_objects, selected_banks, storage_adapter,
+    selected_encoding, selected_program_limits,
+    external_windows=selected_runtime_windows,
+    private_ownership=True,
+    budgets=ScheduleBudgets(max_repairs=2),
+)
+checked_segments = result.program.segments
+```
+
+These declarations come from selected capabilities and the compiler's ownership
+analysis, rather than inferred target names. Unsupported effects, counted loops,
+asynchronous instructions, missing ownership and infeasible allocation produce
+a diagnostic for the caller's existing legal lowering route. Counted dense
+loops and asynchronous storage allocation retain their separately checked
+interfaces; this finite encoded family does not silently claim their semantics.
+Native C and byte-interpreter tests qualify shared mechanisms only. Existing
+full-model target providers still need this public encoder/semantic-decoder
+boundary before the schedule pipeline can enter their ordinary model lowering.
+This entry is not evidence of that missing target integration or hardware
+execution qualification.
 
 ## Private temporary storage
 

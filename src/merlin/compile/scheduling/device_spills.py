@@ -167,6 +167,7 @@ def allocate_with_spills(
     max_objects=256,
     timeout_ms=5000,
     max_spills=4,
+    on_repair=None,
 ) -> TemporaryStorageResult | None:
     """Try legal placement, then bounded exact spill/reload insertion and replan.
 
@@ -177,6 +178,8 @@ def allocate_with_spills(
     validate_spill_classes(classes, banks)
     if type(max_spills) is not int or max_spills < 0:
         raise ValueError("device spill insertion requires a nonnegative bounded repair count")
+    if on_repair is not None and not callable(on_repair):
+        raise ValueError("device spill repair notification must be an explicit callable")
     model = dict(
         reservations=reservations,
         external_windows=external_windows,
@@ -209,6 +212,8 @@ def allocate_with_spills(
             return None
         previous = current.digest()
         current, current_objects, repair = _insert(current, current_objects, banks, adapter, selected, attempt)
+        if on_repair is not None:
+            on_repair("inserted exact device spill/reload; recompute liveness, allocation and completion")
         repairs.append(
             {
                 **repair,
