@@ -380,6 +380,7 @@
             "seen",
             "shape",
             "shape_geometry",
+            "tail_isolation",
             "layout",
             "rank",
             "dtype",

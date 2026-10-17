@@ -111,6 +111,10 @@ def execute_owned_host_model(
         validator_identity=provenance["tool"],
         source_identity=provenance["source"],
     )
+    # Before the candidate is invoked: Merlin's own device groups must hold exactly what the frozen
+    # Phase 0 placement puts on the accelerator, so no host work reaches the author and no accelerator
+    # work stays on Merlin's host. Re-checked against fresh eligibility after the build.
+    frozen_split = _frozen_split(capsule, Path(bundle) / "model.mlir", target=target)
     receipt = service.compile(
         capture=bundle,
         candidate_package=candidate_package,
@@ -138,6 +142,7 @@ def execute_owned_host_model(
         "host_provider": identity,
         "build": receipt,
         "source_device_join": audit,
+        "frozen_placement": frozen_split,
         "instruction_selection": prepared.record(),
         "materialization": materialized.record(),
         "selection_record": selection_record,
@@ -163,6 +168,36 @@ def execute_owned_host_model(
         product.add_artifact(artifact)
     product.write_manifest()
     return record
+
+
+def _frozen_declaration(capsule):
+    """The pinned capsule's own declaration, never an in-memory copy a caller could have edited."""
+    import yaml
+
+    root = Path(capsule["__dir__"])
+    declaration = yaml.safe_load((root / "capsule.yaml").read_text())
+    if not isinstance(declaration, dict):
+        raise ValueError("frozen model capsule declaration is malformed")
+    return declaration, root
+
+
+def _frozen_split(capsule, source_path, *, target, groups=None, eligible=None):
+    """Bind Merlin's device groups (and, when given, fresh eligibility) to the frozen placement."""
+    from merlin.common import mlir_query as mq
+    from merlin.xdsl_dialects.lowering import compute_groups as groups_api
+
+    from . import frozen_placement
+
+    declaration, root = _frozen_declaration(capsule)
+    frozen = frozen_placement.read(declaration, root)
+    if groups is None:
+        groups = groups_api.form_groups(mq.parse(Path(source_path).read_text()), target)
+    return frozen_placement.require_split(
+        frozen,
+        source_sha256=file_sha256(source_path),
+        device=frozen_placement.device_operations(groups, groups_api.HOST),
+        eligible=eligible,
+    )
 
 
 def _independently_eligible_group_ids(placement, groups):
@@ -357,8 +392,11 @@ def _source_placement(capsule, certificate, module, groups, *, target, source_pa
         )
     if not eligible:
         raise ValueError("accelerated model has no independently eligible source operation")
+    eligible_operations = Counter(name(ops[row["source_op_index"]]) for row in eligible)
+    frozen = _frozen_split(capsule, source_path, target=target, groups=groups, eligible=dict(eligible_operations))
     return {
         "status": "clean",
+        "frozen_placement": frozen,
         "source_sha256": fresh["source_mlir_sha256"],
         "n_source_operations": len(ops),
         "eligible_source_regions": eligible,
@@ -1131,6 +1169,8 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             capsule=capsule,
             certificate=result.get("candidate_source_eligibility"),
         )
+        if record.get("frozen_placement") != _frozen_split(capsule, root / "model.mlir", target=target):
+            raise ValueError("owned model split differs from the sealed capsule's frozen placement")
         fresh_record = {**record, "source_device_join": source}
         facts = _selected_facts(paths["rtl_facts"], target=target)
         if record.get("rtl_facts") != facts:

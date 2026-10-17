@@ -227,14 +227,17 @@ def test_a_host_lane_capsule_is_written_by_the_frontend_or_reported(target):
 
     doc = _spec(target)
     res = CS.synthesize(doc)
-    emitted = [e for e in res["capsules"] if _axis(e) == "host_lane"]
+    # Host placement is Merlin-supplied: a host-lane probe is reported in provenance, never published.
+    assert not [e for e in res["capsules"] if _axis(e) == "host_lane"]
+    emitted = [
+        row for row in res["provenance"]["host_placement_not_published"] if row["generalization_axis"] == "host_lane"
+    ]
     for e in emitted:
         assert e["op"] not in BUILDERS, (
             f"{e['name']} uses {e['op']!r}, which has an iface builder; its capsule would assert the "
             f"accelerator interface for work that must stay off the accelerator"
         )
         assert e.get("source") == "pytorch"
-        assert (e.get("lanes") or {}).get("forbid") == ["on_mesh"]
     # Whatever could not be written is reported by name, never dropped.
     required = {f"{p['family']}/{p['dtype']}" for p in ((doc.get("host_lane") or {}).get("required") or [])}
     narrow = {str(f) for f in ((doc.get("host_only") or {}).get("families") or ())}

@@ -51,6 +51,47 @@ class SynthesisError(ValueError):
     """A requirement that cannot be turned into a capsule, named so it can be fixed."""
 
 
+def declares_accelerator_placement(entry: dict) -> bool:
+    """Whether an entry's DECLARED placement leaves any of its work to the accelerator.
+
+    A public capsule grades the author's accelerator compiler. Host placement is Merlin's own generic
+    host codegen, so a capsule whose declared placement is host-only grades nobody's accelerator work:
+    an entry that forbids the mesh lane, or a probe declared neither required nor eligible to
+    accelerate, carries no accelerator placement. Read from the declared lane and eligibility, never
+    from a capsule name or family.
+    """
+    lanes = entry.get("lanes") or {}
+    generalization = entry.get("generalization") or {}
+    if "on_mesh" in (lanes.get("forbid") or ()):
+        return False
+    return not (generalization.get("must_accelerate") is False and generalization.get("eligible") is False)
+
+
+def withhold_host_placed(entries: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Split entries into publishable ones and host-placed ones reported instead of emitted.
+
+    A withheld entry is recorded with its family and dtype so a host requirement stays visible in
+    provenance; it is never emitted as a public capsule, because nothing in it is the author's work.
+    Held-out members follow the same rule: a hidden capsule grades the same accelerator compiler.
+    """
+    kept, withheld = [], []
+    for entry in entries:
+        if declares_accelerator_placement(entry):
+            kept.append(entry)
+            continue
+        withheld.append(
+            {
+                "name": entry.get("name"),
+                "op": entry.get("op"),
+                "operand_dtype": entry.get("operand_dtype"),
+                "source": entry.get("source"),
+                "generalization_axis": (entry.get("generalization") or {}).get("generalization_axis"),
+                "reason": "declared placement carries no accelerator work; host placement is Merlin-supplied",
+            }
+        )
+    return kept, withheld
+
+
 def _op_family_map() -> dict[str, str]:
     from merlin.targetgen import semantic_families as sf
 
@@ -1068,6 +1109,63 @@ def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[
         }
         entries.append(entry)
     return entries, refused
+
+
+#: One ragged extent at a time, every other extent on the tile edge. The tile token resolves against the
+#: binding's edge, which the target's RTL facts derive, so no mesh dimension is spelled here.
+TAIL_ISOLATION_SHAPES = (
+    (
+        "k_tail",
+        {"M": "tile", "K": "2*tile-1", "N": "tile"},
+        "only the reduction extent is ragged: M and N sit on the tile edge while K stops one short of "
+        "two tiles, so a compiler that pads or masks only the output tile fails here alone",
+    ),
+    (
+        "gemv_n_tail",
+        {"M": 1, "K": "2*tile", "N": "2*tile-1"},
+        "a single-row matrix-vector product whose output extent stops one short of two tiles, so the "
+        "last output tile is partial while the reduction is whole",
+    ),
+)
+
+
+def _tail_isolation_entries(op: str | None, dtype: str | None, spec_doc: dict, *, emitted: set[str]) -> list[dict]:
+    """Contraction members that rag exactly one extent, on the dtype the geometry axis certifies.
+
+    `partial` rags K and N together and the geometry classes are real model shapes, so no member asks
+    for a ragged reduction under aligned M and N, or for a single-row product whose output alone is
+    ragged. Both rest on the certified aligned sibling; without one they are not emitted.
+    """
+    sibling = f"{SYNTH_PREFIX}_contraction_{dtype}_aligned"
+    if not op or not dtype or sibling not in emitted:
+        return []
+    members = []
+    for label, extents, why in TAIL_ISOLATION_SHAPES:
+        entry = {
+            "cat": "isa",
+            "kind": "isa",
+            "name": f"{SYNTH_PREFIX}_contraction_{dtype}_{label}".replace("-", "_"),
+            "op": op,
+            "operand_dtype": dtype,
+            "out": "Y0",
+            "lhs": "A0",
+            "weight": "W",
+            "source_role": SOURCE_ROLE,
+            "source_reference": f"synthesized for the tail-isolation axis: {why}",
+            "label": "public",
+            "generalization": {"generalization_axis": "tail_isolation"},
+            **extents,
+        }
+        if _writer_for(entry) is None:
+            continue
+        if _writer_for(entry) == "pytorch":
+            entry["source"] = "pytorch"
+        reason = cap_to_affordable(entry, spec_doc, extends=sibling)
+        if reason:
+            entry["source_reference"] += f". {reason}"
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        members.append(entry)
+    return members
 
 
 def _multi_block_members(output_bound: dict, op: str, dtype: str, sibling: str, spec_doc: dict) -> list[dict]:
@@ -2236,6 +2334,10 @@ def synthesize(
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
         entries.append(entry)
 
+    entries.extend(
+        _tail_isolation_entries(geom_op, geom_dtype, spec_doc, emitted={str(e.get("name")) for e in entries})
+    )
+
     # ---- the ACCUMULATION-DEPTH axis ----------------------------------------------------------------
     # How deep a reduction the accumulator survives. The memory-regime axis proves the operand store is
     # LOADED to each residency level; this proves the ACCUMULATION that fills it completes -- different
@@ -2549,6 +2651,9 @@ def synthesize(
         if any("acc_scale" in (item.get("epilogue") or ()) for item in staged):
             entry.setdefault("acc_scale", SYNTH_ACC_SCALE)
 
+    # Placement decides publication: an entry with no accelerator placement is reported, not emitted.
+    entries, host_placed = withhold_host_placed(entries)
+
     cap = int(budget if budget is not None else (ws.get("max_synthesized_capsules") or 160))
     if len(entries) > cap:
         raise SynthesisError(
@@ -2585,6 +2690,12 @@ def synthesize(
                 "the derived inventory produces. A shape listed here that the micro model does not "
                 "reach is not covered by synthesis -- emitting a capsule per shape would mean inventing "
                 "inventories no capture supports"
+            ),
+            "host_placement_not_published": host_placed,
+            "host_placement_note": (
+                "an entry whose declared placement carries no accelerator work. Host placement is "
+                "compiled by Merlin's own generic host codegen, so such a capsule would grade none of the "
+                "author's work; the requirement stays listed here instead of becoming a public capsule"
             ),
             "host_only_unsynthesizable": unsized_host,
             "host_only_note": (
