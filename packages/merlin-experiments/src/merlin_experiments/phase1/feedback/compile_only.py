@@ -219,9 +219,9 @@ def snapshot_submission(source, destination):
 class _Executor:
     """Reuse the ordinary original package command, isolated input and output."""
 
-    def __init__(self, target, candidate, output, *, common_service, inputs=None):
+    def __init__(self, target, candidate, output, *, common_service, inputs=None, scope=None):
         self.target, self.candidate, self.output, self.inputs = target, candidate, output, inputs
-        self.common_service = common_service
+        self.common_service, self.scope = common_service, scope
 
     def build_package(self, pkg, *, timeout):
         if pkg.directory != self.candidate or any(
@@ -257,7 +257,9 @@ class _Executor:
 
             copy_plain_file(input_mlir, incoming)
             outgoing = workspace / "output.json" if output_json is not None else None
-            policy = PC.package_sandbox_policy(self.target, workspace, self.candidate, inputs=self.inputs)
+            policy = PC.package_sandbox_policy(
+                self.target, workspace, self.candidate, inputs=self.inputs, scope=self.scope
+            )
             # The normal package policy reuses the exact live original profile's
             # public snapshot leaves and destination-derived import roots.
             policy = replace(policy, argv=(*policy.argv, "--ro-bind", str(incoming), str(incoming)))
@@ -519,6 +521,8 @@ def observe(
         )
     deadline_started = time.monotonic()
     deadline, rows = deadline_started + timeout_s, []
+    # Every case of this one request shares its immutable package-policy setup.
+    policy_scope = PC.PackagePolicyScope()
     dispatch_timing = {}
     from . import scale_probe_child
 
@@ -552,7 +556,12 @@ def observe(
             started = time.monotonic()
             try:
                 executor = _Executor(
-                    target_experiment, candidate, root, common_service=common_service, inputs=sandbox_inputs
+                    target_experiment,
+                    candidate,
+                    root,
+                    common_service=common_service,
+                    inputs=sandbox_inputs,
+                    scope=policy_scope,
                 )
                 with (
                     P.scoped_package_executor(executor),

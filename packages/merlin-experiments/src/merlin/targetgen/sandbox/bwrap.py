@@ -31,7 +31,7 @@ from merlin.common import content_store
 from merlin.common.access import contract_resource_roots
 from merlin.common.path_relations import LexicalPathIndex, minimal_roots
 from merlin.common.paths import repo_root
-from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, answer_surfaces
+from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, CapsuleMetadata, answer_surfaces
 from merlin.targetgen.target_experiment import TargetExperiment
 
 _EXPOSE_OPS = ("--ro-bind", "--bind", "--dev-bind", "--ro-bind-try", "--bind-try")
@@ -1288,7 +1288,12 @@ def _frozen_support_surfaces(ws: Path, bundle: dict, surfaces: list[AnswerSurfac
 
 
 def _frozen_answer_surfaces(
-    ws: Path, bundle: dict, te: TargetExperiment, live: list[AnswerSurface], repo: Path
+    ws: Path,
+    bundle: dict,
+    te: TargetExperiment,
+    live: list[AnswerSurface],
+    repo: Path,
+    capsules: CapsuleMetadata | None = None,
 ) -> list[AnswerSurface]:
     """Classify answer bytes in pinned public grants, independent of mutable live sources.
 
@@ -1341,7 +1346,8 @@ def _frozen_answer_surfaces(
                         if member.name == "capsule.yaml":
                             from merlin.targetgen.capsule_privacy import capsule_answer_members
 
-                            for relative, origin in capsule_answer_members(member.parent).items():
+                            declared = {} if capsules is None else {"capsule": capsules.load(member.parent)}
+                            for relative, origin in capsule_answer_members(member.parent, **declared).items():
                                 add(member.parent / relative, "file", origin)
                         if member.name.startswith("golden.") or member.name == "expected_instruction_coverage.yaml":
                             add(member, "file", "golden")
@@ -1364,6 +1370,7 @@ def apply_final_answer_masks(
     bundle: dict,
     *,
     repo: Path | None = None,
+    capsules: CapsuleMetadata | None = None,
     _policy_test_live_inputs: bool = False,
 ) -> list[str]:
     """Withhold descriptor answers and verified private-input aliases after all binds.
@@ -1372,6 +1379,9 @@ def apply_final_answer_masks(
     frozen bundle. This shared final policy examines that complete mount list:
     canonical-path masks alone cannot withhold a private input mounted under a
     different name. No grants or snapshot authority are created here.
+
+    ``capsules`` lets one execution scope reuse capsule metadata parsed from
+    byte-identical files; every walk, listing and host-input scan stays fresh.
     """
     from merlin.targetgen.sandbox.host_surfaces import host_input_surfaces
 
@@ -1380,7 +1390,7 @@ def apply_final_answer_masks(
     private = host_input_surfaces(
         argv, ws, bundle, repo=repo or repo_root(), _policy_test_live_inputs=_policy_test_live_inputs
     )
-    answers = answer_surfaces(te)
+    answers = answer_surfaces(te) if capsules is None else answer_surfaces(te, capsules=capsules)
     frozen_support = (
         []
         if _policy_test_live_inputs or not bundle
@@ -1389,7 +1399,7 @@ def apply_final_answer_masks(
     frozen_answers = (
         []
         if _policy_test_live_inputs or not bundle
-        else _frozen_answer_surfaces(ws, bundle, te, answers, (repo or repo_root()).absolute())
+        else _frozen_answer_surfaces(ws, bundle, te, answers, (repo or repo_root()).absolute(), capsules)
     )
     support = [surface for surface in [*answers, *frozen_support] if surface.origin == "backend"]
     result = apply_answer_masks(argv, [*answers, *frozen_support, *frozen_answers, *private])

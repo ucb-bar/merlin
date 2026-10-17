@@ -36,7 +36,8 @@ def execution(tmp_path, monkeypatch):
     # real emission context is exercised separately with an actual snapshot.
     monkeypatch.setattr(lean_emission_context, "original_emission_checks", lambda service: nullcontext())
 
-    def policy(target, workspace, package, *, inputs):
+    def policy(target, workspace, package, *, inputs, scope):
+        assert type(scope) is C.PackagePolicyScope
         return C.PackageSandboxPolicy(
             ("box", "--bind", str(workspace), str(workspace), "--ro-bind", str(package), str(package)),
             (),
@@ -162,7 +163,7 @@ def test_entrypoint_preparation_owns_cpu_but_releases_before_command(execution, 
         checks.append("source")
         return original_verify(self, package)
 
-    def policy(target, workspace, package, *, inputs):
+    def policy(target, workspace, package, *, inputs, scope):
         leased()
         assert (workspace / "input.mlir").read_bytes() == incoming.read_bytes()
         with cpu_pool.shared_compute_pool(timeout_s=0):
@@ -243,8 +244,8 @@ def test_frozen_public_policy_uses_only_original_read_only_grants(tmp_path, monk
     monkeypatch.setattr(B, "_bundle_mount_args", lambda ws, bundle, repo: ["--ro-bind", str(selected), str(selected)])
     masked = []
 
-    def mask(argv, target, workspace, bundle, *, repo):
-        assert workspace == original and bundle is owner.bundle and repo == owner.repo
+    def mask(argv, target, workspace, bundle, *, repo, capsules):
+        assert workspace == original and bundle is owner.bundle and repo == owner.repo and capsules is None
         masked.append(True)
         return [*argv, "--tmpfs", str(tmp_path / "private-checker")]
 

@@ -32,7 +32,12 @@ from merlin.targetgen import oot_runner
 from merlin.targetgen.oracle_schedule import CapsuleState, Verdict
 from merlin.targetgen.sandbox import bwrap as BW
 from merlin.targetgen.sandbox import toolchain as TC
-from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, answer_surfaces, audit_hit_is_violation
+from merlin.targetgen.sandbox.answer_surfaces import (
+    AnswerSurface,
+    CapsuleMetadata,
+    answer_surfaces,
+    audit_hit_is_violation,
+)
 from merlin.targetgen.target_experiment import TargetExperiment
 from merlin_experiments.phase2.prompt import PerfCell, PerfPromptContractError
 
@@ -221,10 +226,27 @@ class FrozenPackageSandboxInputs:
     surfaces: tuple[AnswerSurface, ...]
 
 
-def select_package_sandbox_inputs(te: TargetExperiment) -> PackageSandboxInputs:
+class PackagePolicyScope:
+    """What every package entrypoint policy of one execution scope may share.
+
+    One grade, self-check request or probe owns one instance for its executor lifetime and passes it
+    to :func:`package_sandbox_policy`. It shares only capsule metadata parsed from byte-identical
+    files (:class:`CapsuleMetadata`, keyed by the SHA-256 of the bytes read). Every walk, member
+    listing, live selection, host-input and hardlink scan is still derived on each call, so the
+    mounts, masks and probes equal a policy derived without a scope.
+    """
+
+    def __init__(self) -> None:
+        self.capsules = CapsuleMetadata()
+
+
+def select_package_sandbox_inputs(
+    te: TargetExperiment, *, scope: PackagePolicyScope | None = None
+) -> PackageSandboxInputs:
     """Resolve the live selection once, before freezing an execution declaration."""
+    answers = answer_surfaces(te) if scope is None else answer_surfaces(te, capsules=scope.capsules)
     return PackageSandboxInputs(
-        TC.ToolchainPaths.from_checkout(), TC._sim(te), TC.curated_harness_dir(te), tuple(answer_surfaces(te))
+        TC.ToolchainPaths.from_checkout(), TC._sim(te), TC.curated_harness_dir(te), tuple(answers)
     )
 
 
@@ -940,8 +962,13 @@ def package_sandbox_policy(
     package: Path,
     *,
     inputs: PackageSandboxInputs | FrozenPackageSandboxInputs | None = None,
+    scope: PackagePolicyScope | None = None,
 ) -> PackageSandboxPolicy:
-    """Derive a credential-free, answer-closed bwrap policy for untrusted package entrypoints."""
+    """Derive a credential-free, answer-closed bwrap policy for untrusted package entrypoints.
+
+    ``scope`` shares one execution scope's parsed capsule metadata between calls; the resulting
+    policy is identical to one derived without it.
+    """
     workspace = Path(workspace).resolve()
     package = Path(package).resolve()
     if not workspace.is_dir() or not package.is_dir() or workspace == package:
@@ -972,7 +999,7 @@ def package_sandbox_policy(
         argv += list(inputs.argv)
         surfaces = inputs.surfaces
     elif inputs is None:
-        discovered = select_package_sandbox_inputs(te)
+        discovered = select_package_sandbox_inputs(te, scope=scope)
         selected = {
             "paths": discovered.paths,
             "sim": discovered.sim,
@@ -1016,7 +1043,7 @@ def package_sandbox_policy(
     )
     from merlin_experiments.phase1.feedback.compiler_profile_runtime import active_public_package_policy
 
-    return active_public_package_policy(policy, target=te)
+    return active_public_package_policy(policy, target=te, scope=scope)
 
 
 def _verify_frozen_policy(policy: PackageSandboxPolicy) -> None:

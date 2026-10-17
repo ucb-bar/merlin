@@ -39,7 +39,9 @@ this class of bug, and this assertion closes it).
 
 from __future__ import annotations
 
+import hashlib
 import os
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -74,6 +76,7 @@ from merlin.common.access import (
     module_name_for as module_name_for,
 )
 from merlin.common.paths import artifacts_dir, repo_root
+from merlin.targetgen import capsule_privacy
 from merlin.targetgen.capsule_privacy import capsule_answer_members
 from merlin.targetgen.target_experiment import TargetExperiment
 
@@ -138,7 +141,37 @@ def experimenter_memory_dir() -> Path:
     return Path(os.path.expanduser(f"~/.claude/projects/{str(repo_root()).replace('/', '-')}/memory"))
 
 
-def golden_files(te: TargetExperiment) -> list[Path]:
+class CapsuleMetadata:
+    """``capsule.yaml`` documents parsed once per exact byte content within one execution scope.
+
+    Every package policy classifies each capsule of its live and frozen corpora, and parsing that
+    metadata dominates the classification. The corpus walk, the member listing and the bytes read
+    stay fresh on every call, so a capsule that appears, disappears or changes is observed; only the
+    parse of byte-identical metadata is reused. The document is keyed by the SHA-256 of the bytes
+    actually read, parsed by the same loader :func:`capsule_answer_members` uses, and only read by it.
+    A scope owns one instance; it is never process-global.
+    """
+
+    def __init__(self) -> None:
+        self._documents: dict[bytes, object] = {}
+        self._lock = threading.Lock()
+
+    def load(self, directory: Path) -> object:
+        """The parsed ``directory/capsule.yaml`` (``{}`` when absent), exactly as the classifier reads it."""
+        source = Path(directory) / "capsule.yaml"
+        if not source.is_file():
+            return {}
+        data = source.read_bytes()
+        key = hashlib.sha256(data).digest()
+        with self._lock:
+            if key in self._documents:
+                return self._documents[key]
+        document = capsule_privacy.fast_safe_load(data)
+        with self._lock:
+            return self._documents.setdefault(key, document)
+
+
+def golden_files(te: TargetExperiment, *, capsules: CapsuleMetadata | None = None) -> list[Path]:
     """Every golden/expected-grading file the agent must not read. Globbed recursively (any nesting
     depth) from the DECLARED corpus + its sibling corpora AND the whole capsule tree — so a run never sees
     a DEEPER-nested capsule's or ANOTHER target's golden (both escaped the old one-level ``*/golden.yaml``
@@ -161,7 +194,10 @@ def golden_files(te: TargetExperiment) -> list[Path]:
             for declaration in sorted(corpus.rglob("capsule.yaml")):
                 files += [
                     declaration.parent / member
-                    for member, origin in capsule_answer_members(declaration.parent).items()
+                    for member, origin in capsule_answer_members(
+                        declaration.parent,
+                        **({} if capsules is None else {"capsule": capsules.load(declaration.parent)}),
+                    ).items()
                     if origin == "golden"
                 ]
             # Instruction-coverage expectations are used by the grader in the same way as numerical
@@ -479,10 +515,12 @@ def _backend_package_dirs(te: TargetExperiment) -> list[Path]:
     return sorted(roots)
 
 
-def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
+def answer_surfaces(te: TargetExperiment, *, capsules: CapsuleMetadata | None = None) -> list[AnswerSurface]:
     """The COMPLETE derived answer-surface set for one target — the single source the sandbox masks and
     the coverage guard checks. Only surfaces that actually exist on this host are returned (a masked
-    non-existent path is a no-op); the coverage guard therefore checks a real, achievable set."""
+    non-existent path is a no-op); the coverage guard therefore checks a real, achievable set.
+
+    ``capsules`` reuses one execution scope's parsed capsule metadata; the walk itself stays fresh."""
     require_current_policy()
     root = repo_root()
     out: list[AnswerSurface] = []
@@ -491,7 +529,7 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
         return path.relative_to(root) if path.is_relative_to(root) else path
 
     examples_dirs = contract_resource_roots(root, "examples")
-    for g in golden_files(te):
+    for g in golden_files(te, capsules=capsules):
         origin = "example" if any(p in g.parents for p in examples_dirs) else "golden"
         out.append(AnswerSurface(f"{origin}:{shown_path(g)}", g, "file", origin))
     for weights in weight_files(te):

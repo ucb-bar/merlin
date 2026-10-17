@@ -248,7 +248,7 @@ assert response["invocation_input_sha256"]==hashlib.sha256(Path(sys.argv[1]).rea
 Path(sys.argv[2]).write_text(json.dumps(response))
 """)
 
-    def policy(target, workspace, package, *, inputs):
+    def policy(target, workspace, package, *, inputs, scope):
         prefix = [
             "bwrap",
             "--unshare-user",
@@ -283,7 +283,7 @@ Path(sys.argv[2]).write_text(json.dumps(response))
         basic = PC.PackageSandboxPolicy(
             tuple(prefix), (), (), Path(workspace), Path(package), target, "export PYTHONDONTWRITEBYTECODE=1; "
         )
-        return R.active_public_package_policy(basic, target=target)
+        return R.active_public_package_policy(basic, target=target, scope=scope)
 
     monkeypatch.setattr(PC, "package_sandbox_policy", policy)
     monkeypatch.setattr(B, "apply_final_answer_masks", lambda argv, *a, **k: argv)

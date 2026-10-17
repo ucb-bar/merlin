@@ -286,8 +286,12 @@ def _public_python_roots(owner):
     return tuple(sorted(roots))
 
 
-def public_package_policy(policy, *, target, owner):
-    """Reapply exact original public grants without the original workspace mount."""
+def public_package_policy(policy, *, target, owner, scope=None):
+    """Reapply exact original public grants without the original workspace mount.
+
+    ``scope`` (a ``PackagePolicyScope``) shares capsule metadata parsed from
+    byte-identical files across one execution scope; the argv is unchanged.
+    """
     from dataclasses import replace
 
     from merlin.common.cpu_pool import shared_compute_pool
@@ -295,23 +299,31 @@ def public_package_policy(policy, *, target, owner):
 
     # Alias discovery walks real runtime trees. Schedule this synchronous CPU
     # work with compilation/simulation, and release its slot before any RPC or
-    # child wait. The original source and final privacy checks still run fresh.
+    # child wait. The original source and final privacy checks still run fresh;
+    # a scope shares only capsule metadata parsed from byte-identical files.
     with shared_compute_pool():
         roots = _public_python_roots(owner)
         prefix = [*policy.argv, *BW._bundle_mount_args(owner.workspace, owner.bundle, owner.repo)]
-        prefix = BW.apply_final_answer_masks(prefix, target, owner.workspace, owner.bundle, repo=owner.repo)
+        prefix = BW.apply_final_answer_masks(
+            prefix,
+            target,
+            owner.workspace,
+            owner.bundle,
+            repo=owner.repo,
+            capsules=None if scope is None else scope.capsules,
+        )
         root = shlex.quote(":".join(map(str, roots)))
         return replace(
             policy, argv=tuple(prefix), env_prefix=policy.env_prefix + f"export PYTHONPATH={root}:$PYTHONPATH; "
         )
 
 
-def active_public_package_policy(policy, *, target):
+def active_public_package_policy(policy, *, target, scope=None):
     """The normal package box consumes only a live original core admission."""
     from merlin.targetgen.compiler_profile_admission import active_compiler_imports
 
     owner = active_compiler_imports()
-    return policy if owner is None else public_package_policy(policy, target=target, owner=owner)
+    return policy if owner is None else public_package_policy(policy, target=target, owner=owner, scope=scope)
 
 
 def active_profile_service():
@@ -336,6 +348,11 @@ def active_profile_service():
 class _Executor:
     def __init__(self, owner, target, candidate, work_root, *, sandbox_inputs=None):
         self.owner, self.target, self.work_root, self.inputs = owner, target, Path(work_root), sandbox_inputs
+        from merlin_experiments.phase2.campaign import PackagePolicyScope
+
+        # One executor is one original execution scope: its entrypoint calls
+        # share capsule metadata parsed from byte-identical files.
+        self.policy_scope = PackagePolicyScope()
         from merlin_experiments.phase2.retained_revisions import source_inventory
 
         self.source_sha256 = source_inventory(
@@ -360,7 +377,7 @@ class _Executor:
     def _policy(self, workspace, package):
         from merlin_experiments.phase2 import campaign as PC
 
-        policy = PC.package_sandbox_policy(self.target, workspace, package, inputs=self.inputs)
+        policy = PC.package_sandbox_policy(self.target, workspace, package, inputs=self.inputs, scope=self.policy_scope)
         return policy
 
     def _invoke(self, policy, package, argv, *, timeout, evidence=None, inputs=(), outputs=(), dependencies=()):
