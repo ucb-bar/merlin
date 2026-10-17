@@ -575,6 +575,9 @@ def test_selected_fp32_staging_requires_audited_original_and_staged_abi(tmp_path
 
 @pytest.mark.parametrize("version", ["v1", "v2", "v2-timed", "v3"])
 def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypatch, version):
+    scratch = tmp_path / "replay-scratch"
+    scratch.mkdir()
+    monkeypatch.setenv("TMPDIR", str(scratch))
     run = tmp_path / "run"
     source, runtime, output = run / "snapshots/source", run / "snapshots/guest-root", run / "capture"
     for path in (source, runtime, output):
@@ -656,7 +659,13 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
     monkeypatch.setattr(sealed_m2m, "_declared_loader_env", lambda *_: ({}, []))
     monkeypatch.setattr(sealed_m2m, "_verify_selected_input", lambda *_: None)
     executed = []
-    monkeypatch.setattr(sealed_m2m, "_execute", lambda *_args, **kwargs: executed.append(kwargs) or process)
+    def replay_process(*args, **kwargs):
+        assert args[3].parent == scratch
+        assert args[5] == output, "guest output path remains selected by the receipt"
+        executed.append(kwargs)
+        return process
+
+    monkeypatch.setattr(sealed_m2m, "_execute", replay_process)
     monkeypatch.setattr(sealed_m2m, "_bwrap_binary", lambda *_: tmp_path / "bwrap")
     monkeypatch.setattr(
         sealed_m2m,
@@ -691,6 +700,9 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
         pending.write_text(json.dumps(receipt))
     if not old:
         pending = run / "sealed_m2m_pending.json"
+        receipt["issuer_sha256"] = sealed_m2m._PRE_EXTERNAL_REPLAY_SCRATCH_ISSUER_SHA256
+        pending.write_text(json.dumps(receipt))
+        assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"
         receipt["issuer_sha256"] = sealed_m2m._PRE_INVENTORY_REUSE_ISSUER_SHA256
         pending.write_text(json.dumps(receipt))
         assert sealed_m2m.replay_verify(run)["status"] == "verified_sandbox_replay"

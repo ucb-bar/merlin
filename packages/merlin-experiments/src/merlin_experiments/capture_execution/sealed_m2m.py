@@ -67,6 +67,9 @@ _ARCHIVED_SELECTED_V2_ISSUER_SHA256 = "83af01552173c2ddd24d78996838bfb9d72b79abe
 # receipts are byte-compatible with the current issuer's; replay still checks
 # every selected policy, source, runtime and output byte.
 _PRE_CONCURRENT_REPLAY_ISSUER_SHA256 = "6c60fb10e4a2b2e05ff67a8b215f86317242346a7cd72b3865a603fc1d2813c4"
+# Moving replay scratch outside protected captures changes no selected guest
+# path, command, policy or byte comparison. Admit exactly the previous issuer.
+_PRE_EXTERNAL_REPLAY_SCRATCH_ISSUER_SHA256 = "fe672aaf62efcf1f2c5cec499af646d59ca0f458107e459a2fbdc59271c4586b"
 _V1_SCOPE = "isolated selected FP32 CPU M2M capture; no Phase 0 admission"
 _V2_SCOPE = "isolated selected CPU M2M capture; no Phase 0 admission"
 _V3_SCOPE = "isolated selected CPU M2M capture with declared model inputs; no Phase 0 admission"
@@ -1824,6 +1827,7 @@ def replay_verify(
     if schema in {SCHEMA, SCHEMA_V3}:
         supported_issuer.add(_PRE_INVENTORY_REUSE_ISSUER_SHA256)
         supported_issuer.add(_PRE_CONCURRENT_REPLAY_ISSUER_SHA256)
+        supported_issuer.add(_PRE_EXTERNAL_REPLAY_SCRATCH_ISSUER_SHA256)
     if schema in {SCHEMA, SCHEMA_V3} and "frozen_origin" not in plan:
         supported_issuer.add(_PRE_FROZEN_ORIGIN_ISSUER_SHA256)
     if (
@@ -1960,7 +1964,9 @@ def replay_verify(
             raise SealedM2MError("concurrent M2M replay output is not this run's fresh replay directory")
         compare(process, replay)
     else:
-        with tempfile.TemporaryDirectory(prefix="m2m-replay-", dir=run_dir) as temporary:
+        # The host scratch directory is mounted at the original output path.
+        # Keep it outside chattr-protected captures when the operator selects TMPDIR.
+        with tempfile.TemporaryDirectory(prefix="m2m-replay-", dir=os.environ.get("TMPDIR") or run_dir) as temporary:
             replay = Path(temporary)
             replay.chmod(output.stat().st_mode & 0o777)
             compare(
