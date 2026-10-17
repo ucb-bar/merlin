@@ -155,6 +155,10 @@ def validate(manifest: dict[str, Any]) -> dict[str, Any]:
     """Schema-validate the contract and parse its compute_units (raises on any problem)."""
     _schemas.validate_or_raise(manifest, "target_contract")
     _cu.compute_units(manifest)  # validates kinds/dtypes/scaling
+    if "output_epilogue" in manifest:
+        from .rtl import output_epilogue as _oe
+
+        _oe.validate(manifest["output_epilogue"])  # a malformed declaration refuses, never reads as absent
     return manifest
 
 

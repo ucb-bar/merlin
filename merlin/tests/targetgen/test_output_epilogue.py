@@ -187,6 +187,34 @@ def test_a_derived_contract_declares_its_output_epilogue(tmp_path):
     assert not any(OE.validate(bare[OE.FIELD])["stages"].values())
 
 
+def test_contract_validation_refuses_a_malformed_declaration(tmp_path):
+    from merlin.targetgen import capability_manifests as cm
+
+    residual = {"compute_units": [{"name": "array", "kind": "systolic", "ops": ["matmul"], "dtypes": ["int8"]}]}
+    manifest = cm.derive_manifest({"target": "unbound"}, {}, residual=residual)
+    manifest[OE.FIELD] = {**manifest[OE.FIELD], "stages": {"acc_scale": True}}
+    with pytest.raises(ValueError, match="stages"):
+        cm.validate(manifest)
+
+
+def test_a_selected_contract_is_declared_once_from_its_own_facts(tmp_path):
+    import json
+
+    contract = _contract()
+    contract.pop("rtl_extraction")
+    contract_path, facts_path, out = tmp_path / "c.json", tmp_path / "f.json", tmp_path / "declared.json"
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+    facts_path.write_text(json.dumps(_facts(_fir(tmp_path))), encoding="utf-8")
+    argv = ["--contract", str(contract_path), "--facts", str(facts_path), "--probe", json.dumps(_PROBE)]
+    assert OE.main([*argv, "--out", str(out)]) == 0
+    declared = json.loads(out.read_text(encoding="utf-8"))
+    assert declared["rtl_extraction"][OE.FIELD] == _PROBE
+    assert declared[OE.FIELD]["stages"] == {"acc_scale": True, "relu": True, "maxpool": True}
+    assert "rtl_extraction" not in contract  # the selected contract itself is not edited
+    with pytest.raises(SystemExit):
+        OE.main([*argv, "--out", str(out)])  # never overwritten
+
+
 def test_an_underived_record_is_well_formed_and_claims_nothing():
     record = OE.underived("no facts")
     assert record["stages"] == {"acc_scale": False, "relu": False, "maxpool": False}

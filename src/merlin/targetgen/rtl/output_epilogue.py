@@ -513,3 +513,53 @@ def underived(reason: str) -> dict[str, Any]:
     record["stages"] = dict.fromkeys(STAGE_CAPABILITY, False)
     record["unknown"] = {"derivation": str(reason)}
     return validate(record)
+
+
+def declare(
+    contract: Mapping[str, Any],
+    facts: Mapping[str, Any] | None,
+    *,
+    probe: Mapping[str, Any] | None = None,
+    semantic_facts: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """A copy of ``contract`` carrying its derived ``output_epilogue`` (and ``probe``, when given).
+
+    For a selected contract that is not produced by contract derivation
+    (:func:`merlin.targetgen.capability_manifests.derive_manifest`): the record is derived from the
+    facts the contract is selected with, so the declaration and the facts describe one design.
+    """
+    out = copy.deepcopy(dict(contract))
+    if probe is not None:
+        out.setdefault("rtl_extraction", {})[FIELD] = dict(probe)
+    out[FIELD] = derive(facts, contract=out, semantic_facts=semantic_facts)
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    """``python -m merlin.targetgen.rtl.output_epilogue --contract C --facts F [--probe JSON] --out O``."""
+    import argparse
+    import json
+
+    import yaml
+
+    parser = argparse.ArgumentParser(description="Declare a contract's derived output epilogue.")
+    parser.add_argument("--contract", required=True, type=Path)
+    parser.add_argument("--facts", required=True, type=Path)
+    parser.add_argument("--probe", help="JSON {module, value, scale, activation} naming the readout")
+    parser.add_argument("--semantic-facts", type=Path, help="a semantic_facts_v1 document")
+    parser.add_argument("--out", required=True, type=Path)
+    args = parser.parse_args(argv)
+    if args.out.exists():
+        parser.error(f"{args.out} exists; a declared contract is written once, never overwritten")
+    contract = yaml.safe_load(args.contract.read_text(encoding="utf-8"))
+    facts = json.loads(args.facts.read_text(encoding="utf-8"))
+    semantic = json.loads(args.semantic_facts.read_text(encoding="utf-8")) if args.semantic_facts else None
+    declared = declare(contract, facts, probe=json.loads(args.probe) if args.probe else None, semantic_facts=semantic)
+    args.out.write_text(json.dumps(declared, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    summary = {"out": str(args.out), "stages": declared[FIELD]["stages"], "unknown": declared[FIELD]["unknown"]}
+    print(json.dumps(summary))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
