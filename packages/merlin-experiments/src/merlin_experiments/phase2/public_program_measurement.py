@@ -16,7 +16,19 @@ from merlin.targetgen.public_program_timing import SCHEMA, is_public_program, ve
 
 
 def selection(capsule, rtl_identity, *, simulator="gsim"):
+    """The candidate-whole-program selection, or ``None`` when the capsule is not that route's.
+
+    The candidate emits the whole program on this route, host code included, so only a capsule whose
+    frozen Phase 0 placement keeps no compute on the host may take it. A capsule whose placement
+    does returns ``None`` and takes the owned-host split, where Merlin supplies the host part and the
+    candidate cannot be scored on it (:mod:`.metric_scope`). A capsule with no frozen placement, or
+    none on the accelerator, has no scorable scope and is refused.
+    """
     if not is_public_program(capsule):
+        return None
+    from .metric_scope import declared_scope
+
+    if not declared_scope(capsule)["candidate_whole_program_admissible"]:
         return None
     pin = dict(rtl_identity.get("rtl_facts") or {})
     path = Path(str(pin.get("path") or ""))
@@ -137,6 +149,13 @@ def project(capsule, grade, *, target, readback_policy=None):
     import yaml
 
     declaration = yaml.safe_load(declaration_path.read_text())
+    from .metric_scope import ACCELERATOR_ONLY, bound_scope, scored_cycles
+
+    # The frozen placement of the exact pinned declaration, bound to its program bytes: the complete
+    # call is a candidate score only when that placement keeps no compute on the host.
+    scope = bound_scope(declaration, declaration_path.parent)
+    if scope["kind"] != ACCELERATOR_ONLY:
+        raise ValueError("public whole-program timing would score Merlin-supplied host compute")
     golden = load_golden(declaration_path.parent)
     if set(observed) != set(golden["outputs"]) or set(observed) != set(cb["kernel_abi"]["outputs"]):
         raise ValueError("public native output names differ from the original complete result roster")
@@ -184,4 +203,6 @@ def project(capsule, grade, *, target, readback_policy=None):
         "execution_invocations": native.get("execution_invocations"),
         "actual_source": native["source"],
         "actual_candidate": grade["candidate_emission"],
+        "metric_scope": scope,
+        "scored": scored_cycles(scope, cycles),
     }
