@@ -25,7 +25,7 @@ target: gemmini
 # the earlier release); a new release always takes a new, unused version.
 variables:
   REPO: ${TASK_ROOT}/merlin
-  RELEASE_VERSION: "19"
+  RELEASE_VERSION: "20"
   RELEASE: ${REPO}/out/artifacts/protocols/gemmini/phase0-fire-aligned-v10-timed-v${RELEASE_VERSION}
   PHASE0_RUN: ${REPO}/out/runs/gemmini/phase0/fire-aligned-v11
   # Fire-aligned 30 MHz capability contract with the kernel-call timing selection.

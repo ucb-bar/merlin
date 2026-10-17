@@ -36,7 +36,7 @@ release_config: ../../phase0/release/fire-aligned-v11.yaml
 # path-normalized.
 variables:
   WORKSPACE_ROOT: ${TASK_ROOT}/../..
-  NUMERICS_VERSION: "14"
+  NUMERICS_VERSION: "15"
   # Informational copy source for the numerics rebinding (never a lineage claim).
   NUMERICS_PARENT_VERSION: "13"
   NUMERICS_BUNDLE: ${TASK_ROOT}/private/gemmini/numerics/launch-v${NUMERICS_VERSION}
