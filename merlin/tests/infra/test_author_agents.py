@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -464,3 +465,40 @@ def test_the_convergence_report_has_an_agents_section(tmp_path):
     text = "\n".join(report["summary"])
     assert "agents: 4 threads (3 sub-agents)" in text
     assert "/root/a/c" in text
+
+
+def test_the_run_timing_record_retains_helper_rollouts_and_annotates_cost(tmp_path):
+    from merlin_experiments.phase1.telemetry import report as TR
+
+    run, _workspace, ids = _synthetic_run(tmp_path)
+    (run / "cost_time_toolcalls.yaml").write_text(yaml.safe_dump({"tool_calls": 3}))
+    out = TR.write_run_timing(run)
+    snapshot = run / "rounds" / "round_00.codex_rollout_snapshot"
+    retained = {path.name for path in snapshot.rglob("*.jsonl")}
+    assert {f"rollout-{ids[k]}.jsonl" for k in ("lead", "a", "b", "c")} <= retained
+    record = json.loads(out.read_text())
+    assert record["author_agents"]["totals"]["subagents"] == 3
+    assert "author_agents" not in json.dumps(record["telemetry_integrity"])  # accounting is not a gate
+    cost = yaml.safe_load((run / "cost_time_toolcalls.yaml").read_text())
+    assert cost["tool_calls"] == 3 and cost["subagent_tool_calls_tracked"] is True
+    # The retained copies alone (live homes purged) still account every thread.
+    shutil.rmtree(tmp_path / "homes")
+    assert AA.account(run, now=T0 + 1000)["totals"]["subagents"] == 3
+
+
+def test_a_defect_in_accounting_never_fails_the_timing_record(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.telemetry import report as TR
+
+    run, _workspace, _ids = _synthetic_run(tmp_path)
+
+    def broken(*_a, **_k):
+        raise RuntimeError("synthetic accounting defect")
+
+    monkeypatch.setattr(AA, "account", broken)
+    monkeypatch.setattr(AA, "threads", broken)
+    record = json.loads(TR.write_run_timing(run).read_text())
+    assert record["author_agents"] == {
+        "available": False,
+        "reason": "agent accounting failed: RuntimeError: synthetic accounting defect",
+    }
+    assert CR.build_report(run, now=T0)["agents"]["available"] is False

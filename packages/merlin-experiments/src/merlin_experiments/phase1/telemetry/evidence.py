@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import sys
 from pathlib import Path
 
 from merlin_experiments.phase1.telemetry import timeline
@@ -119,6 +120,7 @@ def snapshot_codex_rollouts(run_dir: Path) -> list[Path]:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         copied.append(target)
+    copied.extend(_snapshot_thread_rollouts(run_dir, already=set(copied)))
     repo = _repo_from_run(run_dir)
     if repo is None:
         return copied
@@ -132,6 +134,43 @@ def snapshot_codex_rollouts(run_dir: Path) -> list[Path]:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
             copied.append(target)
+    return copied
+
+
+def _snapshot_thread_rollouts(run_dir: Path, *, already: set[Path]) -> list[Path]:
+    """Retain the rollout of every lead thread and every sub-agent descended from one.
+
+    A helper's file carries two ``session_meta`` rows (its own, then its parent's copied history), so
+    the exact-identity usage selection above never retains it; a lead without a usage sample is not
+    retained there either. Lineage comes from each thread's own metadata. A failure here is reported
+    and never fails the evidence seal.
+    """
+    from merlin_experiments.phase1.telemetry import author_agents
+
+    copied = []
+    try:
+        records = author_agents.threads(run_dir)["records"].values()
+    except Exception as exc:  # noqa: BLE001 -- accounting evidence must not gate the telemetry seal
+        print(f"[telemetry] thread rollouts not retained: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return copied
+    for record in records:
+        source = Path(record["rollout"]["path"])
+        if source.is_relative_to(run_dir):
+            continue  # Already a retained snapshot; never copy onto itself.
+        session = next((parent for parent in source.parents if parent.name == "sessions"), None)
+        suffix = session.parent.name.removeprefix(f"{run_dir.name}_r") if session is not None else ""
+        if not suffix.isdigit():
+            continue
+        target = run_dir / "rounds" / f"round_{suffix}.codex_rollout_snapshot" / source.relative_to(session)
+        if target in already:
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+        except OSError as exc:
+            print(f"[telemetry] rollout {source.name} not retained: {exc}", file=sys.stderr)
+            continue
+        copied.append(target)
     return copied
 
 
@@ -350,6 +389,7 @@ def rollout_telemetry(run_dir: Path) -> dict:
         return live
     paths = sorted((Path(run_dir) / "rounds").glob("round_*.codex_rollout_snapshot/**/*.jsonl"))
     responses = []
+    seen_responses: set = set()
     total = {"input_total": 0, "fresh_input": 0, "cache_read": 0, "cache_write": 0, "output": 0, "reasoning": 0}
     for path in paths:
         pending_start = None
@@ -378,6 +418,11 @@ def rollout_telemetry(run_dir: Path) -> dict:
                 usage = payload.get("usage") or {}
                 if not isinstance(usage, dict):
                     continue
+                # A forked sub-agent rollout may repeat a parent row; one response is counted once.
+                response_id = payload.get("response_id")
+                if response_id is not None and response_id in seen_responses:
+                    continue
+                seen_responses.add(response_id)
                 input_total = int(usage.get("input_tokens", 0) or 0)
                 cache_read = int(usage.get("cached_input_tokens", 0) or 0)
                 cache_write = int(usage.get("cache_write_input_tokens", 0) or 0)
