@@ -278,8 +278,9 @@ def task_runtime_scope_block(te, sandbox: str, *, context: InvocationContext, sc
 
 def full_model_task(config: TaskStagingConfig, sandbox: str, scope: dict) -> str:
     """The Gemmini Phase 1 charter, with no unenforced process checklist."""
-    names = resolved_tools(config.bundle_id, bundle_dir=config.bundle_dir,
-                           add_tools=config.add_tools, drop_tools=config.drop_tools)
+    names = resolved_tools(
+        config.bundle_id, bundle_dir=config.bundle_dir, add_tools=config.add_tools, drop_tools=config.drop_tools
+    )
     tools = "\n".join(f"- `{name}`: {_TR.spec(name).blurb}" for name in names)
     body = """# Phase 1: Gemmini compiler for complete models
 
@@ -318,6 +319,14 @@ error policy.
 - `python agent_selfcheck.py --submission submission --capsules A,B`: focused public capsule checks.
   Without `--sim` it runs every tier each capsule declares mandatory (Spike, L3 gSIM, provided host)
   and reports a certified pass/fail per capsule; `--sim spike` is a faster screen that cannot certify.
+  Add `--wait-budget 5` to get a request id back at once, keep working, and collect the verdict with
+  `--attach ID`; `--list` shows your requests. Several requests may be in flight. Put every capsule an
+  edit affects in one request: its capsules run in parallel and per-request overhead dominates.
+  After an edit, `--capsules changed` compiles every capsule and simulates only those whose emitted
+  bytes changed; `--capsules failing` re-checks what did not pass in your most recent check.
+- `--submission variants/NAME`: self-check an alternative kept in `variants/NAME/` (same layout as
+  `submission/`) beside it. Variant results are labelled and never graded officially; only
+  `submission/` counts, so copy the winner there.
 - `python simjob.py --help`: asynchronous public capsule jobs (`--sim required` runs every tier).
 - `python await_verdict.py --help`: wait for a new harness verdict.
 - `python agent_model_check.py check --model MODEL --out REPORT.json`: visible model check through the broker.
@@ -349,10 +358,13 @@ Lead with a table of all six programs: model, program, compile/link, numerics, a
 Report capsule RTL status separately. Then name the submission path, test artifacts, and remaining failures. Report only
 measured results.
 """  # target-ok: this is the selected Gemmini full-model task text
-    body += task_runtime_scope_block(load_target_experiment(config.context.descriptor), sandbox,
-                                     context=config.context, scope=scope)
+    body += task_runtime_scope_block(
+        load_target_experiment(config.context.descriptor), sandbox, context=config.context, scope=scope
+    )
     if len(body.encode("utf-8")) > 10_000:
-        raise RuntimeError("Gemmini full-model task exceeds its 10 KB pre-resource budget")  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        raise RuntimeError(
+            "Gemmini full-model task exceeds its 10 KB pre-resource budget"  # target-ok: selected full-model path
+        )
     return body
 
 
@@ -374,7 +386,11 @@ def build_task(
     bundle_dir, experiment = config.bundle_dir, config.experiment
     _te = partial(load_target_experiment, context.descriptor)
     _manifest = partial(load_capability_manifest, context.target)
-    if context.target == "gemmini" and arm == "merlin_assisted" and experiment == "full":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+    if (
+        context.target == "gemmini"  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        and arm == "merlin_assisted"
+        and experiment == "full"
+    ):
         body = full_model_task(config, sandbox, task_scope)
         (ws / "TASK.md").write_text(body)
         shutil.copy(ws / "TASK.md", run_dir / "TASK.md")

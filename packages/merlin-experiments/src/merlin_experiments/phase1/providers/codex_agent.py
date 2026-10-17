@@ -950,11 +950,20 @@ def run_round(
         if prompt is not None
         else (
             "Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
-            "backend under submission/ per those instructions. During iteration, check the smallest affected capsule "
-            "or coherent comma-separated capsule cluster with `python3 agent_selfcheck.py --submission submission "
-            "--capsules <names>`. Without `--sim` it runs every tier each capsule declares mandatory, with the "
-            "grade's own simulators, and reports a certified pass/fail per capsule; `--sim spike` is only a faster "
-            "screen that cannot certify. Do not repeatedly grade the whole corpus. Run `--capsules all` only "
+            "backend under submission/ per those instructions. During iteration, check the capsules an edit affects "
+            "with `python3 agent_selfcheck.py --submission submission --capsules <names>`. Without `--sim` it runs "
+            "every tier each capsule declares mandatory, with the grade's own simulators, and reports a certified "
+            "pass/fail per capsule; `--sim spike` is only a faster screen that cannot certify. KEEP WORKING WHILE "
+            "CHECKS RUN: add `--wait-budget 5` to get a request id back within seconds, keep editing (each check "
+            "grades a snapshot taken when it starts), and collect the verdict later with `python3 agent_selfcheck.py "
+            "--attach <id>`; `--list` shows your requests. Several requests may be in flight at once. Put every "
+            "capsule an edit affects into ONE comma-separated request rather than one per capsule: they run in "
+            "parallel across the CPU pool and per-request overhead dominates small checks. After an edit, "
+            "`--capsules changed` compiles every capsule and simulates only those whose emitted bytes changed; "
+            "`--capsules failing` re-checks what did not pass in your most recent check. To try alternatives side by "
+            "side, copy submission/ to variants/<name>/, change the copy, and check it with `--submission "
+            "variants/<name>`; variant results are labelled self-check results only, never graded officially, so "
+            "copy the winner into submission/. Do not repeatedly grade the whole corpus. Run `--capsules all` only "
             "after the focused checks improve and the candidate is ready for a regression sweep. You may edit "
             "submission/ while a self-check runs; compare the verdict's source digest with your current bytes. "
             "Goldens are withheld; "
@@ -1035,9 +1044,12 @@ def run_round(
         else (
             "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
             "backend under submission/. With agent_selfcheck (no `--sim`: every mandatory tier, a "
-            "certified pass/fail), re-check only the smallest affected "
-            "capsule or coherent cluster after each edit; use `--capsules all` only after focused "
-            "checks improve. You may edit while a check runs; compare the verdict's source digest."
+            "certified pass/fail), check all capsules an edit affects in one request with "
+            "`--wait-budget 5`, keep working, and collect it with `--attach <id>`; several requests "
+            "may be in flight. After an edit use `--capsules changed`; `--capsules failing` re-checks "
+            "what did not pass. Try alternatives with `--submission variants/<name>` and copy the "
+            "winner into submission/. Use `--capsules all` only after focused checks improve. You "
+            "may edit while a check runs; compare the verdict's source digest."
         )
     )
     _CONTINUE_MSG = delegation_user_prompt(_CONTINUE_MSG, max_concurrent_subagents)
