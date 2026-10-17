@@ -18,6 +18,7 @@ import time
 import pytest
 
 from merlin.common import cpu_pool as C
+from merlin.common import invocation_record as I
 from merlin.common.paths import python_import_roots
 
 FORK = multiprocessing.get_context("fork")
@@ -77,8 +78,14 @@ def test_more_urgent_classes_take_the_slot_first_and_each_class_is_fifo(pool):
     _, root = pool
     holder, release = _start_holder()
     results = FORK.Queue()
-    arrivals = [(C.AUXILIARY, "probe"), (C.GRADE, "grade"), (C.AUTHOR, "author-1"),
-                (C.PREPARATION, "prepare"), (C.AUTHOR, "author-2"), (C.GRADE, "grade-2")]
+    arrivals = [
+        (C.AUXILIARY, "probe"),
+        (C.GRADE, "grade"),
+        (C.AUTHOR, "author-1"),
+        (C.PREPARATION, "prepare"),
+        (C.AUTHOR, "author-2"),
+        (C.GRADE, "grade-2"),
+    ]
     contenders = []
     try:
         for count, (level, label) in enumerate(arrivals, start=1):
@@ -91,7 +98,13 @@ def test_more_urgent_classes_take_the_slot_first_and_each_class_is_fifo(pool):
     _join([holder, *contenders])
     order = [results.get(timeout=5) for _ in arrivals]
     assert [label for label, _ in sorted(order, key=lambda row: row[1])] == [
-        "author-1", "author-2", "grade", "grade-2", "prepare", "probe"]
+        "author-1",
+        "author-2",
+        "grade",
+        "grade-2",
+        "prepare",
+        "probe",
+    ]
     assert _queued(root) == []
 
 
@@ -124,8 +137,9 @@ def test_a_stale_free_slot_view_never_admits_a_lower_class_past_a_queued_one(poo
     entry = directory / f"{C.AUTHOR}-{time.monotonic_ns():020d}-1-1-live{C._WAITER_SUFFIX}"
     counted = C._free_slots
     # A cached view that still shows a slot freed a moment ago, beside the one that is really free.
-    monkeypatch.setattr(C, "_free_slots", lambda root, cpus, fresh=False: counted(root, cpus, fresh=True) + (
-        0 if fresh else 1))
+    monkeypatch.setattr(
+        C, "_free_slots", lambda root, cpus, fresh=False: counted(root, cpus, fresh=True) + (0 if fresh else 1)
+    )
     with open(entry, "w") as owner:
         fcntl.flock(owner, fcntl.LOCK_EX)
         with C.cpu_priority(C.AUXILIARY), pytest.raises(TimeoutError):
@@ -315,6 +329,40 @@ def test_worker_launch_carries_the_callers_class_only_with_a_shared_pool(pool):
     assert level == C.AUXILIARY and affinity == [cpu]
 
 
+_ENVIRONMENT_CHILD = (
+    "import json, os; from merlin.common import cpu_pool as C, invocation_record as I\n"
+    "print(json.dumps([I.environment_identity(os.environ), C.lease_priority()]))\n"
+)
+
+
+def test_a_sealed_worker_environment_is_the_one_the_worker_receives(pool):
+    """A context-only class is stamped before the environment is recorded, never added by the launcher.
+
+    The in-turn grader selects GRADE in its context alone. A launcher ``env`` prefix supplied the class
+    after the parent sealed the child's environment, so the child saw another mapping and refused.
+    """
+    cpu, _ = pool
+    environment = _child_environment()
+    assert C.PRIORITY_ENV not in environment
+    assert C.child_environment(environment) == environment  # no explicit class: an unchanged copy
+
+    @C.with_priority(C.GRADE)
+    def seal_and_launch():
+        sealed = C.child_environment(environment)
+        command = [sys.executable, "-c", _ENVIRONMENT_CHILD]
+        return sealed, C.worker_pool_command(command, sealed), C.worker_pool_command(command, environment)
+
+    sealed, command, prefixed = seal_and_launch()
+    assert sealed == {**environment, C.PRIORITY_ENV: str(C.GRADE)}
+    assert command[:4] == ["taskset", "--cpu-list", str(cpu), sys.executable] and "env" not in command
+    received, level = json.loads(subprocess.check_output(command, env=sealed, text=True, timeout=60))
+    assert received == I.environment_identity(sealed) and level == C.GRADE
+    # The unstamped launch still runs at the caller's class, but not with the environment recorded for it.
+    assert prefixed[3:5] == ["env", f"{C.PRIORITY_ENV}={C.GRADE}"]
+    received, level = json.loads(subprocess.check_output(prefixed, env=environment, text=True, timeout=60))
+    assert received != I.environment_identity(environment) and level == C.GRADE
+
+
 def test_preparation_folds_into_the_pool_without_deadlock(pool):
     """Unleased preparation waits on leasing workers; neither the parent nor its bounded steps strand a slot.
 
@@ -345,8 +393,12 @@ def test_preparation_folds_into_the_pool_without_deadlock(pool):
                 pass  # a bounded preparation step leases, then releases before any child wait
             with C.selected_pool(C.preparation_cpus()):
                 workers = [
-                    subprocess.Popen(C.worker_pool_command([sys.executable, "-c", _LEASING_CHILD], environment),
-                                     env=environment, stdout=subprocess.PIPE, text=True)
+                    subprocess.Popen(
+                        C.worker_pool_command([sys.executable, "-c", _LEASING_CHILD], environment),
+                        env=environment,
+                        stdout=subprocess.PIPE,
+                        text=True,
+                    )
                     for _ in range(3)
                 ]
                 assert not C.current_thread_owns_cpu_lease()  # the waiting parent holds no slot

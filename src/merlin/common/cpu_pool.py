@@ -411,16 +411,23 @@ def _slot_identity(root, cpu, fd):
     path = root / f"cpu-{cpu}.lock"
     before = os.fstat(fd)
     current = path.stat(follow_symlinks=False)
-    if (not stat.S_ISREG(before.st_mode) or not stat.S_ISREG(current.st_mode)
-            or (before.st_dev, before.st_ino) != (current.st_dev, current.st_ino)):
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or not stat.S_ISREG(current.st_mode)
+        or (before.st_dev, before.st_ino) != (current.st_dev, current.st_ino)
+    ):
         raise RuntimeError("CPU lease lost its exact ordinary slot file")
     return before.st_dev, before.st_ino
 
 
 def _verify_lease(lease):
-    if (type(lease) is not _Lease or not lease.active or lease.pid != os.getpid()
-            or lease.thread is not threading.current_thread()
-            or _ISSUED_LEASES.get(lease) != _lease_fields(lease)):
+    if (
+        type(lease) is not _Lease
+        or not lease.active
+        or lease.pid != os.getpid()
+        or lease.thread is not threading.current_thread()
+        or _ISSUED_LEASES.get(lease) != _lease_fields(lease)
+    ):
         raise RuntimeError("CPU lease is not its unchanged live original thread owner")
     _slot_identity(lease.root, lease.cpu, lease.fd)
     if lease.check is not None:
@@ -457,6 +464,7 @@ def _birth(pid, tid=None):
 @dataclass(frozen=True)
 class CompilerCPUTransfer:
     """Private inherited FDs, never a compiler request/environment capability."""
+
     metadata_fd: int
     slot_fd: int
     lifetime_fd: int
@@ -478,19 +486,29 @@ def transfer_compiler_cpu(*, owner_sha256):
         yield None
         return
     _verify_lease(lease)
-    if (not isinstance(owner_sha256, str) or len(owner_sha256) != 64
-            or any(char not in "0123456789abcdef" for char in owner_sha256)):
+    if (
+        not isinstance(owner_sha256, str)
+        or len(owner_sha256) != 64
+        or any(char not in "0123456789abcdef" for char in owner_sha256)
+    ):
         raise ValueError("compiler CPU transfer needs its exact original owner digest")
     if os.sched_getaffinity(0) != {lease.cpu}:
         raise RuntimeError("compiler CPU transfer differs from its issuer affinity")
     fd = os.memfd_create("original-compiler-cpu", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
     read_fd, write_fd = os.pipe2(os.O_CLOEXEC)
     try:
-        body = {"version": 1, "owner_sha256": owner_sha256, "issuer_pid": os.getpid(),
-                "issuer_birth": _birth(os.getpid()), "issuer_tid": threading.get_native_id(),
-                "issuer_thread_birth": _birth(os.getpid(), threading.get_native_id()),
-                "root": str(lease.root), "cpu": lease.cpu, "slot_fd": lease.fd,
-                "slot_identity": list(_slot_identity(lease.root, lease.cpu, lease.fd))}
+        body = {
+            "version": 1,
+            "owner_sha256": owner_sha256,
+            "issuer_pid": os.getpid(),
+            "issuer_birth": _birth(os.getpid()),
+            "issuer_tid": threading.get_native_id(),
+            "issuer_thread_birth": _birth(os.getpid(), threading.get_native_id()),
+            "root": str(lease.root),
+            "cpu": lease.cpu,
+            "slot_fd": lease.fd,
+            "slot_identity": list(_slot_identity(lease.root, lease.cpu, lease.fd)),
+        }
         os.write(fd, json.dumps(body, sort_keys=True).encode())
         fcntl.fcntl(fd, _ADD_SEALS, _SEALS)
         yield CompilerCPUTransfer(fd, lease.fd, read_fd)
@@ -512,11 +530,28 @@ def borrow_compiler_cpu(transfer, *, owner_sha256):
     if not 0 < size <= 8192:
         raise RuntimeError("compiler CPU metadata exceeds its bounded record")
     body = json.loads(os.pread(transfer.metadata_fd, size, 0))
-    if (type(body) is not dict or set(body) != {"version", "owner_sha256", "issuer_pid", "issuer_birth",
-            "issuer_tid", "issuer_thread_birth", "root", "cpu", "slot_fd", "slot_identity"}
-            or body["version"] != 1 or body["owner_sha256"] != owner_sha256
-            or type(body["cpu"]) is not int or type(body["issuer_pid"]) is not int
-            or type(body["issuer_tid"]) is not int or body["slot_fd"] != transfer.slot_fd):
+    if (
+        type(body) is not dict
+        or set(body)
+        != {
+            "version",
+            "owner_sha256",
+            "issuer_pid",
+            "issuer_birth",
+            "issuer_tid",
+            "issuer_thread_birth",
+            "root",
+            "cpu",
+            "slot_fd",
+            "slot_identity",
+        }
+        or body["version"] != 1
+        or body["owner_sha256"] != owner_sha256
+        or type(body["cpu"]) is not int
+        or type(body["issuer_pid"]) is not int
+        or type(body["issuer_tid"]) is not int
+        or body["slot_fd"] != transfer.slot_fd
+    ):
         raise RuntimeError("compiler CPU metadata differs from its original owner")
     root, cpu = Path(body["root"]), body["cpu"]
     if not root.is_absolute() or root.resolve() != root or root.is_symlink():
@@ -525,11 +560,14 @@ def borrow_compiler_cpu(transfer, *, owner_sha256):
     poll.register(transfer.lifetime_fd, select.POLLIN | select.POLLHUP | select.POLLERR)
 
     def live():
-        if (os.getppid() != body["issuer_pid"] or poll.poll(0)
-                or _birth(body["issuer_pid"]) != body["issuer_birth"]
-                or _birth(body["issuer_pid"], body["issuer_tid"]) != body["issuer_thread_birth"]
-                or os.sched_getaffinity(body["issuer_tid"]) != {cpu}
-                or list(_slot_identity(root, cpu, transfer.slot_fd)) != body["slot_identity"]):
+        if (
+            os.getppid() != body["issuer_pid"]
+            or poll.poll(0)
+            or _birth(body["issuer_pid"]) != body["issuer_birth"]
+            or _birth(body["issuer_pid"], body["issuer_tid"]) != body["issuer_thread_birth"]
+            or os.sched_getaffinity(body["issuer_tid"]) != {cpu}
+            or list(_slot_identity(root, cpu, transfer.slot_fd)) != body["slot_identity"]
+        ):
             raise RuntimeError("compiler CPU issuer/slot lifetime is no longer live")
         original = Path(f"/proc/{body['issuer_pid']}/fd/{body['slot_fd']}").stat()
         current = os.fstat(transfer.slot_fd)
@@ -568,8 +606,9 @@ def parse_roster(raw: str) -> tuple[int, ...]:
     return cpus
 
 
-def _acquire_slot(root: Path, cpus: tuple[int, ...], *, timeout_s: float | None,
-                  queued_since_ns: int | None) -> tuple[int, int]:
+def _acquire_slot(
+    root: Path, cpus: tuple[int, ...], *, timeout_s: float | None, queued_since_ns: int | None
+) -> tuple[int, int]:
     """Take one free slot in priority order across every thread and process of the namespace.
 
     A waiter may take a free slot only while fewer live waiters are queued ahead
@@ -630,8 +669,13 @@ def _acquire_slot(root: Path, cpus: tuple[int, ...], *, timeout_s: float | None,
 
 
 @contextmanager
-def selected_pool(cpus: tuple[int, ...], *, slot_root: Path | None = None, timeout_s: float | None = None,
-                  queued_since_ns: int | None = None):
+def selected_pool(
+    cpus: tuple[int, ...],
+    *,
+    slot_root: Path | None = None,
+    timeout_s: float | None = None,
+    queued_since_ns: int | None = None,
+):
     """Children inherit this thread's affinity; restore it without preexec callbacks.
 
     An explicit slot directory grants one exclusive build per selected CPU across
@@ -641,13 +685,10 @@ def selected_pool(cpus: tuple[int, ...], *, slot_root: Path | None = None, timeo
     if not cpus:
         yield
         return
-    if timeout_s is not None and (
-        type(timeout_s) not in (int, float) or not math.isfinite(timeout_s) or timeout_s < 0
-    ):
+    if timeout_s is not None and (type(timeout_s) not in (int, float) or not math.isfinite(timeout_s) or timeout_s < 0):
         raise ValueError("CPU pool wait budget must be finite and nonnegative")
     held = _ACTIVE_LEASE.get()
-    if (held is not None and held.active and held.pid == os.getpid()
-            and held.thread is threading.current_thread()):
+    if held is not None and held.active and held.pid == os.getpid() and held.thread is threading.current_thread():
         _verify_lease(held)
         if slot_root is None:
             if set(cpus) != {held.cpu}:
@@ -698,8 +739,13 @@ def _shared_compute_selection(environ: Mapping[str, str]) -> tuple[tuple[int, ..
         return None
     cpus = parse_roster(environ.get(keys[0], "").strip())
     root = Path(environ.get(keys[1], "").strip())
-    if (not cpus or not environ.get(keys[1], "").strip() or not root.is_absolute() or root.is_symlink()
-            or (root.exists() and not root.is_dir())):
+    if (
+        not cpus
+        or not environ.get(keys[1], "").strip()
+        or not root.is_absolute()
+        or root.is_symlink()
+        or (root.exists() and not root.is_dir())
+    ):
         raise ValueError("shared compute requires CPU roster and absolute ordinary CPU slot directory")
     return cpus, root
 
@@ -764,17 +810,41 @@ def shared_compute_pool(*, timeout_s: float | None = None, queued_since_ns: int 
         yield
 
 
+def _carried_priority(env: Mapping[str, str]) -> int | None:
+    """The caller's explicit lease class that a worker launched with ``env`` must carry."""
+    if _shared_compute_selection(env) is None:
+        return None
+    return _explicit_priority()
+
+
+def child_environment(environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """A copy of ``environ`` (default: this process's) carrying the caller's lease class.
+
+    Build a worker environment with this whenever it is recorded or sealed before
+    launch. :func:`worker_pool_command` then finds the class already present and
+    adds no ``env`` prefix, so the worker receives exactly the recorded mapping.
+    Without a shared pool or an explicit class the copy is unchanged.
+    """
+    environment = dict(os.environ if environ is None else environ)
+    level = _carried_priority(environment)
+    if level is not None:
+        environment[PRIORITY_ENV] = str(level)
+    return environment
+
+
 def worker_pool_command(command: list[str], env: dict[str, str]) -> list[str]:
     """Select unleased preparation affinity before the worker interpreter imports code.
 
     This parent-side command owns no CPU slot: actual child step owners acquire
     theirs after launch, so waiting parent workers cannot exhaust the pool. With
-    a shared pool, the caller's lease class travels with the worker.
+    a shared pool, the caller's lease class travels with the worker; an ``env``
+    prefix supplies it when ``env`` lacks it, which changes the worker's
+    environment, so a caller that records ``env`` first builds it with
+    :func:`child_environment`.
     """
-    if _shared_compute_selection(env) is not None:
-        level = _explicit_priority()
-        if level is not None and env.get(PRIORITY_ENV) != str(level):
-            command = ["env", f"{PRIORITY_ENV}={level}", *command]
+    level = _carried_priority(env)
+    if level is not None and env.get(PRIORITY_ENV) != str(level):
+        command = ["env", f"{PRIORITY_ENV}={level}", *command]
     cpus = preparation_cpus(env)
     if not cpus:
         return command

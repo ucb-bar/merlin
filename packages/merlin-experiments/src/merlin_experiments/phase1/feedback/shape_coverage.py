@@ -231,7 +231,7 @@ def _process_probe_runner(cand, run_dir, *, context, contract, timeout, addition
                     spec.write_text(json.dumps({**common, "probes": group}), encoding="utf-8")
                     log = (Path(private) / f"child-{index}.log").open("wb")
                     command = _child_command(spec, out)
-                    environment = dict(os.environ)
+                    environment = cpu_pool.child_environment()
                     process = subprocess.Popen(
                         cpu_pool.worker_pool_command(command, environment),
                         env=environment,

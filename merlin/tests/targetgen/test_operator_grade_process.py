@@ -69,8 +69,10 @@ def setup(original, monkeypatch):  # noqa: F811 -- imported pytest fixture, shar
     monkeypatch.setattr(CR, "_CHILD_PREAMBLE", CR._CHILD_GUARD + CONTROL)
     monkeypatch.setattr(CR, "_config_for_target", lambda *args: SimpleNamespace(suite="synthetic"))
     monkeypatch.delenv("MERLIN_CERTIFY_BUDGET_S", raising=False)
-    adapters = {"L2": CR.simulator_adapter("spike", original.target.target),
-                "L3": CR.simulator_adapter("gsim", original.target.target)}
+    adapters = {
+        "L2": CR.simulator_adapter("spike", original.target.target),
+        "L3": CR.simulator_adapter("gsim", original.target.target),
+    }
     original.adapters = adapters
     original.runs = original.private / "runs"
     original.runs.mkdir()
@@ -94,18 +96,36 @@ def setup(original, monkeypatch):  # noqa: F811 -- imported pytest fixture, shar
 
 
 def grade(setup, name, **extra):
-    capsule = {"name": name, "kind": "isa", "label": "public", "target": setup.target.target,
-               "required_oracle_tiers": ["L2", "L3"], **extra}
-    return OC.grade(capsule, setup.candidate, runs_root=setup.runs, contract=None, target=setup.target.target,
-        suite="synthetic", dtype="i8", adapters=setup.adapters, timeout=10, workers=2, no_oracle=False)
+    capsule = {
+        "name": name,
+        "kind": "isa",
+        "label": "public",
+        "target": setup.target.target,
+        "required_oracle_tiers": ["L2", "L3"],
+        **extra,
+    }
+    return OC.grade(
+        capsule,
+        setup.candidate,
+        runs_root=setup.runs,
+        contract=None,
+        target=setup.target.target,
+        suite="synthetic",
+        dtype="i8",
+        adapters=setup.adapters,
+        timeout=10,
+        workers=2,
+        no_oracle=False,
+    )
 
 
 def test_two_fresh_children_overlap_and_publish_only_verified_required_tiers(setup):
     with _scope(setup):
         OC.validate(target=setup.target.target, adapters=setup.adapters, config=None, perf_extractor=None)
         with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = [pool.submit(copy_context().run, grade, setup, name, barrier=True)
-                       for name in ("first", "second")]
+            futures = [
+                pool.submit(copy_context().run, grade, setup, name, barrier=True) for name in ("first", "second")
+            ]
             rows = [future.result() for future in futures]
     assert len({row["operator_grade_process"]["pid"] for row in rows}) == 2
     assert all(row["original_compiler_child"]["schema"] == OC.CHILD.SCHEMA for row in rows)
@@ -124,9 +144,15 @@ def test_missing_required_L3_is_incomplete_in_the_same_child_ladder(setup):
 
 def test_expected_refusal_is_preserved_without_invented_native_tiers(setup):
     with _scope(setup):
-        row = grade(setup, "must_refuse", state_decline=True, expected={
-            "outcome": "refuse", "refusal": {"reason": "unsupported declared operation", "evidence": "fixture"},
-        })
+        row = grade(
+            setup,
+            "must_refuse",
+            state_decline=True,
+            expected={
+                "outcome": "refuse",
+                "refusal": {"reason": "unsupported declared operation", "evidence": "fixture"},
+            },
+        )
     assert row["status"] == "pass" and row["expected_refusal"]["status"] == "met"
     assert row["tiers"] == {} and row["declined"]["reason"] == "synthetic declared refusal"
 
@@ -145,9 +171,15 @@ def test_suite_dispatch_preserves_case_completion_callback(setup, monkeypatch):
 
     monkeypatch.setattr(OC, "grade", child)
     with _scope(setup):
-        rows = CR._run_suite([{"name": "operator", "kind": "isa"}], setup.candidate,
-            target=setup.target.target, runs_root=setup.runs, oracle_adapters=setup.adapters,
-            max_workers=2, on_capsule_complete=completed.append)
+        rows = CR._run_suite(
+            [{"name": "operator", "kind": "isa"}],
+            setup.candidate,
+            target=setup.target.target,
+            runs_root=setup.runs,
+            oracle_adapters=setup.adapters,
+            max_workers=2,
+            on_capsule_complete=completed.append,
+        )
     assert invoked == [("operator", setup.adapters, 1)]
     assert rows == completed == [{"capsule": "operator", "status": "pass"}]
 
@@ -168,8 +200,10 @@ def test_source_change_before_child_restoration_never_publishes(setup, monkeypat
 def test_foreign_owner_and_forged_adapter_marker_cannot_select_process_grading(setup):
     with pytest.raises(StageGateError, match="original live profile"):
         OC.validate(target=setup.target.target, adapters=setup.adapters, config=None, perf_extractor=None)
+
     def forged(*args):
         return None
+
     forged._merlin_simulator_engine = "spike"
     with _scope(setup):
         with pytest.raises(StageGateError, match="original selected simulator"):
@@ -213,8 +247,9 @@ def test_parent_issuance_batches_payload_reads_and_closes_before_launch(setup, m
         with tempfile.TemporaryDirectory(dir=root) as temporary:
             spec = Path(temporary) / "spec.json"
             spec.write_text(json.dumps({"package_dir": str(setup.candidate)}))
-            with OC.CHILD.prepare_model_child(spec_path=spec, environment=dict(os.environ),
-                                             package_dir=setup.candidate):
+            with OC.CHILD.prepare_model_child(
+                spec_path=spec, environment=dict(os.environ), package_dir=setup.candidate
+            ):
                 baseline = len(reads), sum(reads)
         reads.clear()
         document = {"package_dir": str(setup.candidate), "capsule": {"name": "synthetic"}}
@@ -228,8 +263,10 @@ def test_parent_issuance_batches_payload_reads_and_closes_before_launch(setup, m
             os.fstat(transport.fd)
         assert batched[0] == 2 and baseline[0] > batched[0]
         assert batched[1] < baseline[1]
-        print(f"parent issuance payload reads: {baseline[0]} -> {batched[0]}; "
-              f"selected member bytes: {baseline[1]} -> {batched[1]}")
+        print(
+            f"parent issuance payload reads: {baseline[0]} -> {batched[0]}; "
+            f"selected member bytes: {baseline[1]} -> {batched[1]}"
+        )
 
 
 def test_parent_final_hash_refuses_same_size_restored_mtime_mutation_before_Popen(setup, monkeypatch):
@@ -280,6 +317,67 @@ def test_parent_scope_ends_before_Popen_and_result_verification(setup, monkeypat
     with _scope(setup):
         grade(setup, "independent-child")
     assert seen == ["launch", "result"]
+
+
+def test_context_only_grade_class_reaches_the_sealed_child_unchanged(setup, monkeypatch, tmp_path):
+    """The in-turn grader selects GRADE in its context alone, never in the process environment.
+
+    With a shared pool, the launcher used to add ``env MERLIN_CPU_PRIORITY=2`` after the parent sealed
+    the child's environment, so the restored child refused its provenance and every grade was skipped.
+    """
+    from merlin.common import cpu_pool
+    from merlin.common import invocation_record as I
+
+    cpu = min(os.sched_getaffinity(0))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "cpu-slots"))
+    for key in (cpu_pool.PRIORITY_ENV, "MERLIN_PREPARATION_CPUS", "MERLIN_GRADE_CPUS"):
+        monkeypatch.delenv(key, raising=False)
+    prepare, launch = OC.CHILD.prepare_model_child, OC.subprocess.Popen
+    sealed, launched = [], []
+
+    @contextlib.contextmanager
+    def recorded_seal(**kwargs):
+        with prepare(**kwargs) as transport:
+            sealed.append(transport.document["environment"])
+            yield transport
+
+    def recorded_launch(command, **kwargs):
+        launched.append((list(command), dict(kwargs["env"])))
+        return launch(command, **kwargs)
+
+    monkeypatch.setattr(OC.CHILD, "prepare_model_child", recorded_seal)
+    monkeypatch.setattr(OC.subprocess, "Popen", recorded_launch)
+    with cpu_pool.cpu_priority(cpu_pool.GRADE), _scope(setup):
+        row = grade(setup, "in-turn-grade")
+    assert row["status"] == "pass" and row["original_compiler_child"]["schema"] == OC.CHILD.SCHEMA
+    ((command, environment),) = launched
+    assert command[:3] == ["taskset", "--cpu-list", str(cpu)] and "env" not in command
+    assert environment[cpu_pool.PRIORITY_ENV] == str(cpu_pool.GRADE)
+    assert sealed == [I.environment_identity(environment)]
+
+
+def test_sealing_refuses_an_environment_its_launcher_would_change(setup, monkeypatch, tmp_path):
+    from merlin.common import cpu_pool
+
+    cpu = min(os.sched_getaffinity(0))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", str(cpu))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "cpu-slots"))
+    monkeypatch.delenv(cpu_pool.PRIORITY_ENV, raising=False)
+    with _scope(setup), cpu_pool.cpu_priority(cpu_pool.GRADE):
+        root = OC.CHILD.model_child_temporary_root()
+        with tempfile.TemporaryDirectory(dir=root) as temporary:
+            spec = Path(temporary) / "spec.json"
+            spec.write_text(json.dumps({"package_dir": str(setup.candidate)}))
+            with pytest.raises(StageGateError, match="lease class"):
+                with OC.CHILD.prepare_model_child(
+                    spec_path=spec, environment=dict(os.environ), package_dir=setup.candidate
+                ):
+                    pass
+            with OC.CHILD.prepare_model_child(
+                spec_path=spec, environment=cpu_pool.child_environment(), package_dir=setup.candidate
+            ) as transport:
+                assert transport is not None
 
 
 def test_expired_original_owner_cannot_issue_or_launch_operator_child(setup, monkeypatch):
