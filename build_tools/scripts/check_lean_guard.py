@@ -82,6 +82,7 @@ PINNED = {
     "MerlinVerify.Rules.LayoutGeneralize.meaning_success": "MerlinVerify.Rules.LayoutGeneralize",
     "MerlinVerify.Check.reduceRule_sound": "MerlinVerify.Check.RulesLinalg",
     "MerlinVerify.Check.Definedness.layoutDefinedRule_sound": "MerlinVerify.Check.DefinedLinalg",
+    "MerlinVerify.Check.Definedness.floatBinaryRule_sound": "MerlinVerify.Check.DefinedRules",
     "MerlinVerify.Rules.IntegerFold.context_independent": "MerlinVerify.Rules.IntegerFold",
     "MerlinVerify.Rules.IntegerFold.run_sound": "MerlinVerify.Rules.IntegerFold",
     "MerlinVerify.Rules.IntegerFold.check_sound": "MerlinVerify.Rules.IntegerFold",

@@ -32,6 +32,8 @@ code_refs:
   - merlin/lean/MerlinVerify/Rules/IntegerFold.lean
   - merlin/lean/MerlinVerify/Rules/ReshapeCompose.lean
   - merlin/lean/MerlinVerify/Check/SplatC1.lean
+  - merlin/lean/MerlinVerify/Check/DefinedRules.lean
+  - merlin/tests/ir/test_lean_float_definedness.py
 ---
 
 # Run Lean semantics differential tests
@@ -180,8 +182,14 @@ attributes and checked SSA types, preserves the scalar body and captures, and ch
 generic header. Source support and source definedness are independent obligations. Transpose and
 broadcast may fully overwrite uninitialized destinations; reductions that read accumulators need
 initialized destinations. The integer reduction definedness rule supports multiple inputs/results
-and empty iteration spaces. Floating reductions retain their order in the refinement proof;
-the current definedness leaf rulebook still abstains on floating arithmetic.
+and empty iteration spaces. Floating reductions retain their order in the refinement proof.
+The definedness leaf rulebook proves totality of the nine default same-format scalar float binary
+operations on initialized inputs, under every float interpretation. This permits strict defined
+chains for supported floating reductions; it assumes no arithmetic identities or accuracy laws.
+Fast-math promises, float-to-integer range checks and arithmetic on poisoned inputs remain refused.
+The f32/f64 native reduction cases require source and target definedness and compare with the
+independent order-preserving reference. Binding-only checks also cover f16/bf16; those formats have
+no new native arithmetic qualification.
 
 `test_lean_layout_generalize.py` checks both index widths, actual pass output, receipt replay,
 stale source rejection, valid MLIR mutations, poisoned inputs, captured values and composition

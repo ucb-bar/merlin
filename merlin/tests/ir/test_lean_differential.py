@@ -881,6 +881,17 @@ def test_layout_generalization_native_and_independent_reference(tmp_path, fideli
     _, before, after = _generalize(tmp_path, SimpleNamespace(m2m_python=fidelity_tools.compiler_python), source)
     samples = _tensor_samples(source, tmp_path, fidelity_tools)
     arithmetic = case.family == "reduce" and case.element.startswith("f")
+    if arithmetic:
+        from merlin.verify.lean.check import check_definedness
+
+        for label, program in [("before", before), ("after", after)]:
+            receipt = check_definedness(
+                program,
+                "subject",
+                tmp_path / f"{label}-defined",
+                m2m_python=fidelity_tools.compiler_python,
+            )
+            assert receipt["verdict"] == "verified", receipt.get("reason")
     if case.element.startswith("f"):
         width = int(case.element[1:])
         if arithmetic:

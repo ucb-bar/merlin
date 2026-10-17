@@ -31,6 +31,7 @@
   "statement:MerlinVerify.Check.Definedness.definedCheck_sound": "089f43188f28b3dc3d37003cc306a87ef162dd31823a365d71bd72f941ea2e90",
   "statement:MerlinVerify.Check.Definedness.dequantDefinedRule_sound": "43f963aaa9a8b66e88036ee95255b07f257627604712bab4a77f723302067f55",
   "statement:MerlinVerify.Check.Definedness.dequant_result_defined": "cf2a729aff465731dd3667f7bbe47bfa01b2477ea88b3758811f6b552a12744a",
+  "statement:MerlinVerify.Check.Definedness.floatBinaryRule_sound": "e50140bdffcfc2af91e4aee3afbd5964be71822c34d754b1f060465a1f4c4164",
   "statement:MerlinVerify.Check.Definedness.layoutDefinedRule_sound": "9927f34ebcb32fb5cbc44ee830097ce7bbbe03fb48fbcd1bb77c8e11c58b15c0",
   "statement:MerlinVerify.Check.SplatC1.check_sound": "02392e53b30bd160b32ecc7e1b1c5b225676f98a19a0ae24f0ba93e2fd5d037f",
   "statement:MerlinVerify.Check.SplatNormalize.normalize_sound": "6600c75148700487518bfbd1346028ae9acf7df32215164f77b2df81b010c95a",

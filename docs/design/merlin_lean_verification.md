@@ -744,10 +744,11 @@ No scalar body or floating arithmetic order changes. Reduction operand partition
 existing semantics, including the implicit equal-half split exported by upstream MLIR. A separate
 support rule proves progress for that variadic reduction representation. The definedness checker
 reuses generic totality and complete-overwrite proofs, then transfers success to the actual named
-source. Initialized integer reductions, captured scalar inputs and multiple results are covered;
-floating reduction refinement is available, but its arithmetic definedness remains unsupported by
-the current leaf rulebook. Identity operations folded away by upstream greedy rewriting require
-a separate rule and remain explicit abstentions. Rank-zero transpose cannot be qualified with the
+source. Initialized integer and floating reductions, captured scalar inputs and multiple results
+are covered. The scalar float leaf rule proves totality of default same-format binary operations
+under arbitrary float models; fast-math promises remain outside its domain. It introduces no
+arithmetic identities or accuracy assumptions. Identity operations folded away by upstream greedy
+rewriting require a separate rule and remain explicit abstentions. Rank-zero transpose cannot be qualified with the
 current native tools: upstream verification attempts to construct an empty permutation map and
 crashes. This is retained as an upstream discrepancy, not counted as a passing comparison.
 

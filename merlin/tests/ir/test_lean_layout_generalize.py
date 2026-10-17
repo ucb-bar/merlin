@@ -258,7 +258,7 @@ def test_separate_identity_fold_is_explicitly_unverified(tmp_path, lean_tools, c
 
 
 @pytest.mark.parametrize("element", ["f32", "f64"])
-def test_float_reduction_refinement_keeps_separate_definedness_obligation(tmp_path, lean_tools, element):
+def test_float_reduction_has_proved_definedness(tmp_path, lean_tools, element):
     case = Case("reduce", (2, 3, 4), (0, 2), element)
     stage, before, _ = _generalize(tmp_path, lean_tools, _source(case))
     assert (
@@ -266,10 +266,18 @@ def test_float_reduction_refinement_keeps_separate_definedness_obligation(tmp_pa
         == "verified"
     )
     assert check_typed_stage(stage, m2m_python=lean_tools.m2m_python)["verdict"] == "verified"
-    # The current definedness leaf book has no floating arithmetic rule. Do not turn the
-    # body-preserving rewrite proof into a claim that this missing obligation was discharged.
     result = check_definedness(before, "forward", tmp_path / "defined", m2m_python=lean_tools.m2m_python)
-    assert result["verdict"] == "abstracted", result.get("reason")
+    assert result["verdict"] == "verified", result.get("reason")
+    chain = compose_chain(
+        [stage],
+        tmp_path / "support/receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        definedness=tmp_path / "defined/receipt.json",
+        m2m_python=lean_tools.m2m_python,
+    )
+    assert chain["verdict"] == "verified", chain.get("reason")
+    assert chain["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
 
 
 MIXED_SOURCE = """func.func @forward(%value: i32, %init: tensor<2xi32>) -> (tensor<2xi32>, tensor<3x2xi32>) {

@@ -174,6 +174,62 @@ theorem intBinaryRule_sound (ib : Nat) : RuleSound ib intBinaryRule := by
     · cases h
   · cases h
 
+/-- An initialized scalar float has an actual bit pattern, in every float interpretation. -/
+theorem initialized_float {ib : Nat} {k : FKind} {v : RVal}
+    (h : Fact.Holds ib v ⟨.scalar (.float k), true⟩) :
+    ∃ x : BitVec k.width, v = .scalar (.some (.flt k x)) := by
+  cases v with
+  | tensor t => cases h.1
+  | scalar x =>
+    rcases hasTy_float h.1 with hp | ⟨a, ha⟩
+    · exact (h.2 rfl hp).elim
+    · exact ⟨a, congrArg RVal.scalar ha⟩
+
+/-- Default same-format scalar arithmetic returns initialized bits under every float model.
+This proves totality only: it does not assume any arithmetic identities or IEEE accuracy.
+Fast-math promises are deliberately outside this definedness rule. -/
+def floatBinaryRule : Rule := fun op fs =>
+  match fs, op.results with
+  | [⟨.scalar (.float k), true⟩, ⟨.scalar (.float k'), true⟩], [r] =>
+    if dialectOf op.name = "arith" ∧ op.name ∈ fltBinNames ∧ k' = k ∧
+        r.ty = .float k ∧ Arith.fastmathKey op = "0" then
+      some [⟨.scalar (.float k), true⟩]
+    else none
+  | _, _ => none
+
+theorem floatBinaryRule_sound (ib : Nat) : RuleSound ib floatBinaryRule := by
+  intro op fs rs hm h ctx call args _ hargs
+  unfold floatBinaryRule at h
+  split at h
+  · split at h
+    · next hc =>
+      obtain ⟨hd, hn, hk, hty, hfast⟩ := hc
+      subst hk
+      cases h
+      obtain _ | ⟨ha, hb⟩ := hargs
+      obtain _ | ⟨hb, hnil⟩ := hb
+      cases hnil
+      obtain ⟨x, rfl⟩ := initialized_float ha
+      obtain ⟨y, rfl⟩ := initialized_float hb
+      rename_i k r hr
+      have hresult : Arith.resultElt op.blind = some (.float k) := by
+        simp only [Arith.resultElt, Op.blind_results, hr, List.map_cons, List.map_nil, hty]
+      rw [opSem_modelled hm]
+      simp only [dispatch, Op.blind_name, hd]
+      simp only [fltBinNames, List.mem_cons, List.not_mem_nil, or_false] at hn
+      rcases hn with hn | hn | hn | hn | hn | hn | hn | hn | hn
+      all_goals
+        simp only [Arith.sem, Op.blind_name, hn, Arith.binOp, Arith.pureN, hresult,
+          Outcome.bindOp_eq]
+        rw [show [.scalar (.some (.flt k x)), .scalar (.some (.flt k y))] =
+          ([.some (.flt k x), .some (.flt k y)] : List Val).map RVal.scalar from rfl,
+          liftEager_scalars]
+        simp only [Arith.fltBin, ↓reduceDIte, Outcome.bind_ok]
+        exact ⟨_, rfl, List.Forall₂.cons ⟨by simp [RVal.HasTy, Val.HasTy, Scalar.conforms],
+          by simp [RVal.Defined]⟩ .nil⟩
+    · cases h
+  · cases h
+
 /-- Static reassociation preserves initialization because every result element reads an in-bounds
 source element. Reuse the existing reassociation validator and size/bounds proofs. -/
 def reshapeRule : Rule := fun op fs =>
@@ -367,17 +423,19 @@ theorem intCastRule_sound (ib : Nat) : RuleSound ib intCastRule := by
   · cases h
 
 def rules (ib : Nat) : Rule := fun op fs =>
-  [constantRule ib, emptyRule, splatRule, intBinaryRule, reshapeRule, denseConstantRule, intCastRule].findSome? fun r => r op fs
+  [constantRule ib, emptyRule, splatRule, intBinaryRule, floatBinaryRule, reshapeRule,
+    denseConstantRule, intCastRule].findSome? fun r => r op fs
 
 theorem rules_sound (ib : Nat) : RuleSound ib (rules ib) := by
   intro op fs rs hm hr
   obtain ⟨r, hmem, h⟩ := List.exists_of_findSome?_eq_some hr
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
-  rcases hmem with rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hmem with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact constantRule_sound ib op fs rs hm h
   · exact emptyRule_sound ib op fs rs hm h
   · exact splatRule_sound ib op fs rs hm h
   · exact intBinaryRule_sound ib op fs rs hm h
+  · exact floatBinaryRule_sound ib op fs rs hm h
   · exact reshapeRule_sound ib op fs rs hm h
   · exact denseConstantRule_sound ib op fs rs hm h
   · exact intCastRule_sound ib op fs rs hm h
