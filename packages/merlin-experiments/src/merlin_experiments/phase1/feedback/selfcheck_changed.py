@@ -26,8 +26,15 @@ Categories, per capsule:
 * ``unchanged-failing`` -- every mandatory RTL tier refused by the probe already FAILED for these exact
   bytes under the same key (a noted, never carried verdict: ``tier_cache.noted_failure``), and every
   other mandatory tier passed. It is not re-simulated and it is not a pass.
-* ``changed`` -- anything else: no certificate for these bytes, an unreadable or missing probe record,
-  a screen or build failure, a result that is not certifiable without a fresh run.
+* ``failing`` -- the probe's own verdict already fails with no RTL simulation left to run: the build,
+  emission or screen failed, or every RTL verdict was carried and the capsule still is not certified
+  (a structural requirement). Simulating cannot change that verdict, so it is reported from the probe,
+  not re-run; naming the capsule shows its full diagnostics.
+* ``changed`` -- anything else: an RTL tier with no certificate and no noted failure for these bytes,
+  or an unreadable or missing probe record. Only these are simulated. A provided-host capsule (the
+  platform's own host image, ``owned_host_leaf_execution``) executes its RTL tier on a route with no
+  exact-byte certificate, so it is not probed -- probing it would simulate it -- and is always
+  ``changed``.
 
 Pure selection. A capsule is certified only by an existing exact-byte certificate or by a fresh
 certifying run in this request, so ``all_pass`` keeps its meaning: every public capsule certified. Only
@@ -50,8 +57,10 @@ SCHEMA = "merlin.selfcheck_changed_selection.v1"
 UNCHANGED_CERTIFIED = "unchanged-certified"
 UNCHANGED_FAILING = "unchanged-failing"
 CHANGED = "changed"
-CATEGORIES = (UNCHANGED_CERTIFIED, UNCHANGED_FAILING, CHANGED)
+FAILING = "failing"
+CATEGORIES = (UNCHANGED_CERTIFIED, UNCHANGED_FAILING, FAILING, CHANGED)
 LABELS = frozenset({"public", "dev"})
+PROVIDED_HOST = "provided-host capsule: its RTL tier runs on a route with no exact-byte certificate"
 
 
 def probe_engines(adapters: dict, target: str) -> tuple[frozenset[str], str]:
@@ -113,28 +122,44 @@ def classify(result, capsule, *, adapters: dict, barrier_tier: str, target: str)
         for tier, record in tiers.items()
         if record.get("mandatory") and record.get("status") == "unavailable" and record.get("reason") in PROBE_REASONS
     }
+    others = [record.get("status") for tier, record in tiers.items() if record.get("mandatory") and tier not in refused]
+    if refused and "fail" in others:
+        return FAILING, _failure(result, statuses)  # A mandatory tier that ran already refutes it.
     if refused:
-        others_passed = all(
-            record.get("status") == "pass"
-            for tier, record in tiers.items()
-            if record.get("mandatory") and tier not in refused
-        )
-        if others_passed and set(refused.values()) == {"failing"}:
+        if all(status == "pass" for status in others) and set(refused.values()) == {"failing"}:
             return UNCHANGED_FAILING, {"tiers": statuses, "failed_tiers": sorted(refused)}
         return CHANGED, {"tiers": statuses, "why": "no simulator certificate for these exact bytes"}
     bar_used = capsule_barrier(tiers, adapters, barrier_tier)
     bar = statuses.get(bar_used)
-    certified, *_ = _operator_feedback_state(
+    certified, _, _, structural = _operator_feedback_state(
         result, capsule, target=target, barrier_status=None if bar == "unavailable" else bar
     )
     if not certified:
-        return CHANGED, {"tiers": statuses, "why": "not certified without a fresh run"}
+        return FAILING, {**_failure(result, statuses), "structural_qualification": structural}
     reused = sorted(
         tier
         for tier, record in tiers.items()
         if isinstance(record.get("carried"), dict) and record["carried"].get("carried")
     )
     return UNCHANGED_CERTIFIED, {"tiers": statuses, "reused_tiers": reused, "barrier_tier": bar_used}
+
+
+def _failure(result: dict, statuses: dict) -> dict:
+    """The probe verdict's own failure, golden-free: plane, category, tier and redacted detail."""
+    from . import qa as _qc
+
+    failure = result.get("failure") if isinstance(result.get("failure"), dict) else {}
+    found = {"tiers": statuses, "status": result.get("status")}
+    if failure:
+        found["failure"] = {
+            "plane": failure.get("plane"),
+            "category": failure.get("category"),
+            "tier": failure.get("tier"),
+            "detail": _qc._redact_detail(failure.get("detail")),
+        }
+    if result.get("declined"):
+        found["declined"] = result["declined"]
+    return found
 
 
 def longest_first(names, capsules: dict) -> list[str]:
@@ -191,7 +216,7 @@ def _probe_progress(path: Path, judge, names, *, started_ns: int, stop: threadin
 class ChangedSelection:
     """The probe's classification, and how it joins the ordinary verdict of the simulated subset."""
 
-    def __init__(self, *, evidence, simulated, deferred, bound, not_covered, n_public, probe_s):
+    def __init__(self, *, evidence, simulated, deferred, bound, not_covered, n_public, probe_s, n_probed):
         self.evidence = evidence  # name -> (category, evidence)
         self.simulated = list(simulated)
         self.deferred = list(deferred)
@@ -199,6 +224,7 @@ class ChangedSelection:
         self.not_covered = list(not_covered)
         self.n_public = n_public
         self.probe_s = probe_s
+        self.n_probed = n_probed
 
     def names(self, category):
         return sorted(name for name, (found, _) in self.evidence.items() if found == category)
@@ -229,6 +255,19 @@ class ChangedSelection:
                         "note": "not re-simulated: these exact bytes already failed "
                         + ", ".join(found["failed_tiers"])
                         + " under this engine selection. Name the capsule to see the failure again.",
+                    }
+                )
+            elif category == FAILING:
+                rows.append(
+                    {
+                        "capsule": name,
+                        "pass": False,
+                        "certified": False,
+                        "selection": category,
+                        "simulated": False,
+                        **found,
+                        "note": "fails on these bytes with no RTL simulation left to run (build, emission, screen "
+                        "or a structural requirement); not re-run. Name the capsule for full diagnostics.",
                     }
                 )
             elif name in self.deferred:
@@ -290,12 +329,17 @@ class ChangedSelection:
                 "counts": counts,
                 "unchanged_certified": self.names(UNCHANGED_CERTIFIED),
                 "unchanged_failing": self.names(UNCHANGED_FAILING),
+                "failing": self.names(FAILING),
                 "changed": self.names(CHANGED),
                 "simulated": sorted(self.simulated),
                 "not_simulated": sorted(self.deferred),
                 "n_not_simulated": len(self.deferred),
                 "bound": self.bound,
                 "not_covered": sorted(self.not_covered),
+                "n_probed": self.n_probed,
+                "provided_host": sorted(
+                    n for n, (_, found) in self.evidence.items() if found.get("why") == PROVIDED_HOST
+                ),
                 "probe_s": self.probe_s,
             },
             note=self.note(counts),
@@ -307,11 +351,15 @@ class ChangedSelection:
     def note(self, counts) -> str:
         bound = f" of {self.bound}" if self.bound is not None else ""
         return (
-            f"CHANGED: all {self.n_public} public capsule(s) were built and screened and their RTL tier looked up "
-            f"by exact-byte simulator certificate, without simulating it ({self.probe_s:.0f}s). "
+            f"CHANGED: {self.n_probed} of {self.n_public} public capsule(s) were built and screened and their RTL "
+            f"tier looked up by exact-byte simulator certificate, without simulating it ({self.probe_s:.0f}s)"
+            + (f"; {len(self.not_covered)} whole-model capsule(s) are not covered" if self.not_covered else "")
+            + ". "
             f"{counts[UNCHANGED_CERTIFIED]} unchanged-certified (a certificate for these exact bytes and this "
             f"engine selection was reused; no simulation). {counts[UNCHANGED_FAILING]} unchanged-failing (these "
             f"exact bytes already failed an RTL tier; not re-simulated and not passes; name them to see why). "
+            f"{counts[FAILING]} failing with no RTL simulation left to run (build, emission, screen, or a "
+            f"structural requirement on carried RTL verdicts; see each row). "
             f"{counts[CHANGED]} changed: {len(self.simulated)} simulated now on the grade's own ladder"
             + (
                 f", {len(self.deferred)} NOT simulated because they exceed this request's bound{bound} (run "
@@ -341,6 +389,7 @@ def select_changed(a, *, sub, context, capsules_root, contract, adapters, combin
     from merlin.targetgen import capsule_grade as CG
     from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen import simulation_certificate as SC
+    from merlin.targetgen.owned_host_leaf_execution import selected_host_leaf
 
     from ..brokers.selfcheck import _ordinary_capsule_limit
     from .compiler_profile_runtime import selfcheck_execution
@@ -374,10 +423,11 @@ def select_changed(a, *, sub, context, capsules_root, contract, adapters, combin
         cap["name"]: cap for cap in CR.discover_capsules(capsules_root, labels=set(LABELS), contract=contract_root)
     }
     not_covered = sorted(name for name, cap in capsules.items() if cap.get("kind") == "model")
-    names = sorted(name for name in capsules if name not in not_covered)
+    provided = sorted(name for name, cap in capsules.items() if name not in not_covered and selected_host_leaf(cap))
+    names = sorted(name for name in capsules if name not in not_covered and name not in provided)
     work = Path(tempfile.mkdtemp(prefix="changed-probe-", dir=Path(sub).parent))
     probe_root = Path(capsules_root)
-    if not_covered:
+    if not_covered or provided:
         probe_root = work / "capsules"
         for name in names:  # A corpus root is its set of capsules: a subset is a root of its own.
             shutil.copytree(capsules[name]["__dir__"], probe_root / name)
@@ -426,7 +476,7 @@ def select_changed(a, *, sub, context, capsules_root, contract, adapters, combin
         if publisher is not None:
             publisher.join(timeout=5)
     probe_s = round(time.monotonic() - started, 1)
-    evidence = {}
+    evidence = {name: (CHANGED, {"why": PROVIDED_HOST}) for name in provided}
     for name in names:
         try:
             result = json.loads((results / name / "capsule_result.json").read_text(encoding="utf-8"))
@@ -444,6 +494,7 @@ def select_changed(a, *, sub, context, capsules_root, contract, adapters, combin
         not_covered=not_covered,
         n_public=len(capsules),
         probe_s=probe_s,
+        n_probed=len(names),
     )
     if simulated:
         return Selection(set(simulated), changed=selection)

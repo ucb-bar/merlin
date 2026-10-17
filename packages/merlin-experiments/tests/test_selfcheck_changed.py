@@ -123,7 +123,9 @@ def bench(tmp_path, monkeypatch):
         for name in names:
             key = (name, program(Path(sub), name), state.engine)
             tiers = {"L0": _tier("pass"), "L1": _tier("pass"), "L2": _tier("pass")}
-            if probing:
+            if "BROKEN_SCREEN" in key[1]:  # the functional screen refutes it; the ladder stops there
+                tiers.update(L2=_tier("fail"), L3=_tier("skipped"))
+            elif probing:
                 stored = state.store.get(key)
                 if stored == "pass":
                     tiers["L3"] = _tier("pass", carried={"carried": True})
@@ -136,15 +138,27 @@ def bench(tmp_path, monkeypatch):
                 state.store[key] = verdict
                 tiers["L3"] = _tier(verdict)
             status = {"pass": "pass", "fail": "fail"}.get(tiers["L3"]["status"], "incomplete")
+            if tiers["L2"]["status"] == "fail":
+                status = "fail"
+            trace = {"status": "pass", "trace_requirement_status": "pass"}
+            if "NO_TRACE" in key[1]:  # numerically right, structurally unqualified
+                trace = {"status": "fail", "trace_requirement_status": "failed", "violations": ["no matmul"]}
             result = {
                 "capsule": name,
                 "kind": "op",
                 "status": status,
                 "numeric": {"status": "pass"},
-                "trace_check": {"status": "pass", "trace_requirement_status": "pass"},
+                "trace_check": trace,
                 "tiers": tiers,
             }
-            if status == "incomplete":
+            if tiers["L2"]["status"] == "fail":
+                result["failure"] = {
+                    "plane": "numeric",
+                    "category": "FUNCTIONAL_MISMATCH",
+                    "tier": "L2",
+                    "detail": "12 of 64 elements differ",
+                }
+            elif status == "incomplete":
                 result["failure"] = {
                     "plane": "oracle_unavailable",
                     "category": "NOT_RUN_IS_NOT_PASS",
@@ -191,7 +205,7 @@ def test_unchanged_bytes_reuse_their_certificates_and_simulate_nothing(bench):
     assert bench.probes == [list(NAMES)]
     assert code == 0 and report["all_pass"] is True and report["certified_complete"] is True
     selection = report["changed_selection"]
-    assert selection["counts"] == {"unchanged-certified": 3, "unchanged-failing": 0, "changed": 0}
+    assert selection["counts"] == {"unchanged-certified": 3, "unchanged-failing": 0, "failing": 0, "changed": 0}
     assert selection["simulated"] == [] and report["n_simulated"] == 0 and report["n_reused"] == 3
     rows = _rows(report)
     assert set(rows) == set(NAMES)
@@ -277,6 +291,19 @@ def test_the_bound_simulates_the_longest_changed_first_and_says_what_remains(ben
     assert bench.simulated == [["cap_a"]] and code == 0 and rest["all_pass"]
 
 
+def test_a_provided_host_capsule_is_never_probed_and_always_simulated(bench, monkeypatch):
+    """Its RTL tier runs on a route with no exact-byte certificate: probing it would simulate it."""
+    from merlin.targetgen import owned_host_leaf_execution as leaf
+
+    monkeypatch.setattr(leaf, "selected_host_leaf", lambda capsule: capsule.get("name") == "cap_b")
+    bench.run(",".join(NAMES))
+    code, report = bench.run("changed")
+    assert bench.probes == [["cap_a", "cap_c"]] and bench.simulated == [["cap_b"]]
+    assert report["changed_selection"]["provided_host"] == ["cap_b"]
+    assert report["changed_selection"]["n_probed"] == 2
+    assert _rows(report)["cap_b"]["simulated"] is True  # its own verdict comes from this request's run
+
+
 def test_hidden_capsules_are_never_probed_simulated_or_reported(bench):
     bench.run(",".join(NAMES))
     (bench.submission / "cap_b.prog").write_text("cap_b-v2")
@@ -322,18 +349,43 @@ def test_the_probe_streams_its_classification_as_progress(bench):
 
 def test_classification_fails_closed():
     adapters = {"L2": _adapter("spike"), "L3": _adapter("gsim")}
+
+    def category(result):
+        return selfcheck_changed.classify(result, {"name": "x"}, adapters=adapters, barrier_tier="L3", target="x")[0]
+
     for result in (None, {}, {"tiers": "garbage"}, {"capsule": "x", "kind": "model", "tiers": {}}):
-        assert (
-            selfcheck_changed.classify(result, {"name": "x"}, adapters=adapters, barrier_tier="L3", target="fixture")[0]
-            == selfcheck_changed.CHANGED
-        )
-    screen_failed = {"capsule": "x", "status": "fail", "tiers": {"L2": _tier("fail"), "L3": _tier("skipped")}}
-    assert (
-        selfcheck_changed.classify(
-            screen_failed, {"name": "x"}, adapters=adapters, barrier_tier="L3", target="fixture"
-        )[0]
-        == selfcheck_changed.CHANGED
-    )
+        assert category(result) == selfcheck_changed.CHANGED, "an unreadable record is changed, never certified"
+    refused = _tier("unavailable", reason=SC.PROBE_FAILING)
+    assert category({"capsule": "x", "tiers": {"L2": _tier("pass"), "L3": refused}}) == "unchanged-failing"
+    assert category({"capsule": "x", "tiers": {"L2": _tier("fail"), "L3": refused}}) == "failing"
+    assert category({"capsule": "x", "tiers": {"L2": _tier("unavailable"), "L3": refused}}) == "changed"
+    other = _tier("unavailable", reason="gsim not available")  # not the probe's refusal
+    assert category({"capsule": "x", "status": "incomplete", "tiers": {"L2": _tier("pass"), "L3": other}}) == (
+        "failing"
+    ), "a tier the engine itself could not run fails the same way when simulated; nothing to re-run"
+
+
+def test_a_screen_failure_is_reported_from_the_probe_not_resimulated(bench):
+    bench.run(",".join(NAMES))
+    (bench.submission / "cap_b.prog").write_text("cap_b-BROKEN_SCREEN")
+    code, report = bench.run("changed")
+    assert bench.simulated == [], "the screen already refuted it; the ladder would stop at the same tier"
+    assert code == 1 and report["all_pass"] is False
+    row = _rows(report)["cap_b"]
+    assert row["selection"] == "failing" and row["pass"] is False and row["certified"] is False
+    assert row["failure"]["category"] == "FUNCTIONAL_MISMATCH" and row["failure"]["tier"] == "L2"
+    assert report["changed_selection"]["failing"] == ["cap_b"]
+
+
+def test_a_structural_failure_on_carried_rtl_verdicts_is_not_resimulated(bench):
+    (bench.submission / "cap_c.prog").write_text("cap_c-NO_TRACE")
+    code, first = bench.run(",".join(NAMES))
+    assert not _rows(first)["cap_c"]["certified"]
+    code, report = bench.run("changed")
+    assert bench.simulated == []
+    row = _rows(report)["cap_c"]
+    assert row["selection"] == "failing" and row["structural_qualification"]["status"] != "pass"
+    assert row["tiers"]["L3"] == "pass", "the carried RTL verdict is shown, and is not a certification"
 
 
 def test_the_shim_and_worker_offer_changed_and_budget_it_like_the_whole_suite():
