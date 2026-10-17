@@ -309,6 +309,10 @@ The closed `merlin.phase1.spike_archive_binding.v1` object contains:
   `sim_provenance_sha256`, normalized `counter` and optional `cache_protocol`;
 - `cases`, each with an existing dataset `case`, all original `results` paths,
   `candidate_sha256`, `shape_sha256` and a reviewed `counter_scope`.
+  Different compiler versions can emit byte-identical programs; such an execution
+  stays one case, and `candidate_sha256` is then the sorted list of every
+  candidate that emitted those bytes. Each observation keeps its own result's
+  candidate.
 
 `review.counter` requires `unit: cycles`, integer `width_bits: 64`,
 `wrap: modulo`, the declared `clock`, integer `max_delta_cycles` strictly between

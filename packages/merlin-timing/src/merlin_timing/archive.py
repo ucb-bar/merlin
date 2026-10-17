@@ -565,7 +565,14 @@ def prepare(inventory: dict, binding: dict) -> dict:
     for item in binding["cases"]:
         C.closed(item, {"case", "results", "candidate_sha256", "shape_sha256", "counter_scope"}, "archive case binding")
         case = C.closed(item["case"], C.CASE_KEYS, "archive case")
-        C.sha(item["candidate_sha256"], "candidate identity")
+        # Different compiler versions can emit byte-identical programs. The execution (ELF, input,
+        # scope) stays one case; its binding may then name every candidate that emitted those bytes.
+        declared = item["candidate_sha256"]
+        candidates = declared if isinstance(declared, list) else [declared]
+        if not candidates or candidates != sorted(set(candidates)):
+            raise C.ContractError("case candidates must be one identity or a sorted list of distinct identities")
+        for candidate in candidates:
+            C.sha(candidate, "candidate identity")
         C.sha(item["shape_sha256"], "logical shape identity")
         pcs = C.closed(
             item["counter_scope"], {"begin_pc", "end_pc", "occurrence", "evidence_sha256"}, "counter-PC review"
@@ -587,11 +594,11 @@ def prepare(inventory: dict, binding: dict) -> dict:
             row = original["row"]
             if per_record and row.get("visibility") != "public":
                 raise C.ContractError("hidden or unknown-visibility records cannot enter public calibration")
-            if (row.get("elf_sha256"), row.get("candidate_sha256"), C.digest(row.get("shape"))) != (
-                case["elf_sha256"],
-                item["candidate_sha256"],
-                item["shape_sha256"],
-            ):
+            if (
+                row.get("elf_sha256"),
+                row.get("candidate_sha256") in candidates,
+                C.digest(row.get("shape")),
+            ) != (case["elf_sha256"], True, item["shape_sha256"]):
                 raise C.ContractError("case ELF/candidate/logical shape differs from its original record")
             # This deliberately binds the complete caller input context. It does
             # not claim to hash just tensor bytes or infer an input from shape.
@@ -622,7 +629,7 @@ def prepare(inventory: dict, binding: dict) -> dict:
                     "record_id": original["record_id"],
                     "case_id": case["case_id"],
                     "result": result,
-                    "candidate_sha256": item["candidate_sha256"],
+                    "candidate_sha256": row["candidate_sha256"],
                     "shape_sha256": item["shape_sha256"],
                     "shape": row["shape"],
                     "elf_member": "run/" + row["elf"],

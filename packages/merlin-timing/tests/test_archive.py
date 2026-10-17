@@ -618,3 +618,26 @@ def test_carried_verdict_is_not_a_passing_measurement(tmp_path):
     index["gsim_pass_records"] = index["gsim_pass_with_cycles"] = index["gsim_pass_complete"] = 5
     path, checksum = write_archive(tmp_path, index, payload)
     assert A.inspect_archive(path, checksum)["gsim_pass_records"] == 5
+
+
+def test_byte_identical_program_from_two_compilers_stays_one_case(tmp_path):
+    other = C.digest("another compiler version")
+    index, payload, binding = fixture(tmp_path)
+    row = index["records"][1]  # the second repeat of the first case's ELF
+    row["candidate_sha256"] = other
+    original = json.loads(payload["run/" + row["result"]])
+    original["original_compiler_child"]["candidate_sha256"] = other
+    payload["run/" + row["result"]] = json.dumps(original).encode()
+    path, checksum = write_archive(tmp_path, index, payload)
+    binding["archive_sha256"] = checksum
+    inventory = A.inspect_archive(path, checksum)
+    with pytest.raises(C.ContractError, match="candidate"):
+        A.prepare(inventory, binding)
+    binding["cases"][0]["candidate_sha256"] = sorted({C.digest("candidate"), other})
+    plan = A.prepare(inventory, binding)
+    first = [obs for obs in plan["observations"] if obs["case_id"] == binding["cases"][0]["case"]["case_id"]]
+    assert sorted(obs["candidate_sha256"] for obs in first) == sorted({C.digest("candidate"), other})
+    assert len(A.attach(plan, reports_for(plan))["records"]) == 6
+    binding["cases"][0]["candidate_sha256"] = [other, C.digest("candidate"), other]
+    with pytest.raises(C.ContractError, match="sorted list"):
+        A.prepare(inventory, binding)
