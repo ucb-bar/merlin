@@ -1,0 +1,642 @@
+{
+ "buffers": [
+  {
+   "locations": [
+    2
+   ],
+   "module": "DMACommandTracker",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    2
+   ],
+   "module": "DMACommandTracker_1",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    2
+   ],
+   "module": "MultiHeadedQueue",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    8
+   ],
+   "module": "MultiHeadedQueue_1",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    2
+   ],
+   "module": "Queue2_GemminiCmd",
+   "occurrences": 5
+  },
+  {
+   "locations": [
+    2
+   ],
+   "module": "Queue2_NormalizedInput",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    2
+   ],
+   "module": "Queue2_ScratchpadMemWriteRequest",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    2
+   ],
+   "module": "Queue2_TLBundleA_a35d128s4k4z4u",
+   "occurrences": 2
+  },
+  {
+   "locations": [
+    2
+   ],
+   "module": "Queue2_TLBundleA_a35d128s5k4z4u",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    2
+   ],
+   "module": "Queue2_TLBundleD_a35d128s4k4z4u",
+   "occurrences": 2
+  },
+  {
+   "locations": [
+    2
+   ],
+   "module": "Queue2_TLBundleD_a35d128s5k4z4u",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    2
+   ],
+   "module": "Queue2_VectorScalarMultiplierReq",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    2
+   ],
+   "module": "Queue2_VectorScalarMultiplierReq_1",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    4
+   ],
+   "module": "Queue4_ScratchpadReadResp",
+   "occurrences": 8
+  },
+  {
+   "locations": [
+    5
+   ],
+   "module": "Queue5_ComputeCntlSignals",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    5
+   ],
+   "module": "Queue5_ScratchpadMemReadRequest",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    5
+   ],
+   "module": "Queue5_ScratchpadMemWriteRequest",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    6
+   ],
+   "module": "Queue6_ScratchpadMemWriteRequest",
+   "occurrences": 2
+  },
+  {
+   "locations": [
+    6
+   ],
+   "module": "Queue6_TagWithIdAndTotalRows",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    8
+   ],
+   "module": "Queue8_GemminiCmd",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    4,
+    8,
+    16
+   ],
+   "module": "ReservationStation",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    1,
+    6
+   ],
+   "module": "TagQueue",
+   "occurrences": 1
+  },
+  {
+   "locations": [
+    512
+   ],
+   "module": "TwoPortSyncMem",
+   "occurrences": 2
+  },
+  {
+   "locations": [
+    1,
+    16
+   ],
+   "module": "XactTracker",
+   "occurrences": 1
+  }
+ ],
+ "description": "Trimmed timing_structure and simulation_correspondence derived from the elaborated FireSimGemminiRocketConfig RTL (facts-v6); evidence lists, matrices and local paths removed.",
+ "facts_sha256_source": "d6727032a997cc22ec76fef04633804631ad6a1ad5c7df36d83cd0b9b5e5affe",
+ "simulation_correspondence": {
+  "configs": {
+   "simulation": {
+    "config": "GemminiGsimFireSimAlignedConfig",
+    "core_hw": {
+     "sha256": "54dc7b257bac59368c2f1b2eb5cba36274f914dd6c32de7e62fed6b21c799258"
+    },
+    "firrtl": {
+     "sha256": "6748b9756799c086a6fb06e6d80b4b052f2771f9eb1858c172e14dcf441ba149"
+    },
+    "generator": "gemmini"
+   },
+   "target": {
+    "config": "FireSimGemminiRocketConfig",
+    "core_hw": {
+     "sha256": "042bdccfd29e8cafd43fe1d4fa76dc6a9013ed0865cb2eb48d4b1c0f512c6e8d"
+    },
+    "firrtl": {
+     "sha256": "b7d9826b1c9f16fd00bc757b4334a7f330a842c6a494e0c28608dc351b305bf0"
+    },
+    "generator": "gemmini"
+   }
+  },
+  "firrtl_module_bodies": {
+   "basis": "exact elaborated FIRRTL text of each unit module declaration",
+   "compared": 110,
+   "differ": [],
+   "missing": []
+  },
+  "hw_file_level_operations": {
+   "anchored_in_unit": []
+  },
+  "hw_module_differences": [
+   {
+    "differing_operations": 1,
+    "kind": "name_hints_only",
+    "module": "DTLB_2"
+   }
+  ],
+  "hw_modules": {
+   "compared": 110,
+   "exact_identical": 109,
+   "structurally_identical": 110
+  },
+  "module_set": {
+   "identical": true,
+   "only_simulation": [],
+   "only_target": [],
+   "simulation": 110,
+   "target": 110
+  },
+  "soc_level_file_operations": 15,
+  "status": "structurally_equivalent",
+  "unit_root": "Gemmini"
+ },
+ "timing_structure": {
+  "array_paths": {
+   "mesh_activation_to_partial_sum_ws": {
+    "affine": {
+     "offset": 17,
+     "per_sink_index": 1,
+     "per_source_index": -1
+    },
+    "max_stages": 32,
+    "min_stages": 2,
+    "mode": "weight_stationary",
+    "module": "Mesh",
+    "pins": {
+     "PE_256": {
+      "io_in_control_dataflow": 1
+     }
+    },
+    "sinks": 16,
+    "sources": 16,
+    "status": "derived",
+    "statuses": [
+     "fixed",
+     "fixed_when_enabled"
+    ]
+   }
+  },
+  "command_classes": {
+   "classes": {
+    "execute": {
+     "command_queue": {
+      "chain": [
+       {
+        "entries": 2,
+        "instance": "Gemmini/ex_controller/unrolled_cmd_mod/q",
+        "module": "MultiHeadedQueue"
+       },
+       {
+        "entries": 8,
+        "instance": "Gemmini/ex_controller/cmd_q",
+        "module": "MultiHeadedQueue_1"
+       }
+      ],
+      "entries_total": 10,
+      "method": "buffers the intact widest issue payload crosses from the dispatch port",
+      "payload_ports": [
+       "io_issue_ex_cmd_cmd_rs1",
+       "io_issue_ex_cmd_cmd_rs2"
+      ],
+      "status": "derived"
+     },
+     "downstream_buffers": [
+      {
+       "entries": [
+        5
+       ],
+       "instance": "Gemmini/ex_controller/mesh_cntl_signals_q"
+      },
+      {
+       "entries": [
+        1,
+        6
+       ],
+       "instance": "Gemmini/ex_controller/mesh/tagq"
+      },
+      {
+       "entries": [
+        6
+       ],
+       "instance": "Gemmini/ex_controller/mesh/total_rows_q"
+      }
+     ],
+     "entries": {
+      "method": "distinct dispatch-table registers readable at the class issue payload outputs",
+      "status": "derived",
+      "value": 16
+     },
+     "issue_prefix": "io_issue_ex_"
+    },
+    "load": {
+     "command_queue": {
+      "chain": [
+       {
+        "entries": 8,
+        "instance": "Gemmini/load_controller/cmd_q",
+        "module": "Queue8_GemminiCmd"
+       }
+      ],
+      "entries_total": 8,
+      "method": "buffers the intact widest issue payload crosses from the dispatch port",
+      "payload_ports": [
+       "io_issue_ld_cmd_cmd_rs1",
+       "io_issue_ld_cmd_cmd_rs2"
+      ],
+      "status": "derived"
+     },
+     "downstream_buffers": [
+      {
+       "entries": [
+        2
+       ],
+       "instance": "Gemmini/load_controller/cmd_tracker"
+      },
+      {
+       "entries": [
+        5
+       ],
+       "instance": "Gemmini/spad/read_issue_q"
+      },
+      {
+       "entries": [
+        1
+       ],
+       "instance": "Gemmini/spad/reader/core"
+      },
+      {
+       "entries": [
+        16
+       ],
+       "instance": "Gemmini/spad/reader/xactTracker"
+      },
+      {
+       "entries": [
+        1
+       ],
+       "instance": "Gemmini/spad/zero_writer"
+      },
+      {
+       "entries": [
+        1
+       ],
+       "instance": "Gemmini/spad/zero_writer_pixel_repeater"
+      }
+     ],
+     "entries": {
+      "method": "distinct dispatch-table registers readable at the class issue payload outputs",
+      "status": "derived",
+      "value": 8
+     },
+     "issue_prefix": "io_issue_ld_"
+    },
+    "store": {
+     "command_queue": {
+      "chain": [
+       {
+        "entries": 2,
+        "instance": "Gemmini/store_controller/cmd_q",
+        "module": "Queue2_GemminiCmd"
+       }
+      ],
+      "entries_total": 2,
+      "method": "buffers the intact widest issue payload crosses from the dispatch port",
+      "payload_ports": [
+       "io_issue_st_cmd_cmd_rs1",
+       "io_issue_st_cmd_cmd_rs2"
+      ],
+      "status": "derived"
+     },
+     "downstream_buffers": [
+      {
+       "entries": [
+        2
+       ],
+       "instance": "Gemmini/store_controller/cmd_tracker"
+      },
+      {
+       "entries": [
+        2
+       ],
+       "instance": "Gemmini/spad/write_dispatch_q_q"
+      },
+      {
+       "entries": [
+        6
+       ],
+       "instance": "Gemmini/spad/write_norm_q"
+      },
+      {
+       "entries": [
+        6
+       ],
+       "instance": "Gemmini/spad/write_scale_q"
+      },
+      {
+       "entries": [
+        5
+       ],
+       "instance": "Gemmini/spad/write_issue_q"
+      },
+      {
+       "entries": [
+        2
+       ],
+       "instance": "Gemmini/spad/norm_unit_passthru_q"
+      }
+     ],
+     "entries": {
+      "method": "distinct dispatch-table registers readable at the class issue payload outputs",
+      "status": "derived",
+      "value": 4
+     },
+     "issue_prefix": "io_issue_st_"
+    }
+   },
+   "dispatch_instance": "Gemmini/reservation_station",
+   "dispatch_module": "ReservationStation",
+   "status": "derived",
+   "total_entries": 28
+  },
+  "dataflow": {
+   "cell_module": "PE_256",
+   "cell_occurrences": 256,
+   "method": "per select value: a product reaching a cell output with no register is weight-stationary; a product written only into cell registers is output-stationary; the select is runtime-driven when every cell occurrence's select is reached from a unit input",
+   "modes": {
+    "0": "output_stationary",
+    "1": "weight_stationary"
+   },
+   "select_port": "io_in_control_dataflow",
+   "select_runtime_driven": true,
+   "status": "derived",
+   "support": "both"
+  },
+  "fit_from_measurement": [
+   "memory_round_trip_latency_cycles",
+   "dma_bytes_per_cycle_sustained",
+   "command_issue_and_completion_overhead_cycles",
+   "address_translation_miss_latency_cycles",
+   "bus_arbitration_and_contention_cycles",
+   "per_command_occupancy_cycles"
+  ],
+  "fixed_latencies": {
+   "accumulator_adder": {
+    "enable_or_retention_on_path": false,
+    "from": "io_op1",
+    "max_stages": 1,
+    "min_stages": 1,
+    "mode": null,
+    "module": "AccPipe",
+    "occurrences": 16,
+    "opaque_on_path": false,
+    "pins": {},
+    "status": "fixed",
+    "to": "io_sum"
+   },
+   "accumulator_bank_read": {
+    "enable_or_retention_on_path": true,
+    "from": "io_read_req_bits_addr",
+    "max_stages": 2,
+    "min_stages": 1,
+    "mode": null,
+    "module": "AccumulatorMem",
+    "occurrences": 2,
+    "opaque_on_path": false,
+    "pins": {},
+    "status": "variable",
+    "to": "io_read_resp_bits_data_0_0"
+   },
+   "accumulator_read": {
+    "enable_or_retention_on_path": true,
+    "from": "io_acc_read_req_0_bits_addr",
+    "max_stages": null,
+    "min_stages": 10,
+    "mode": null,
+    "module": "Scratchpad",
+    "occurrences": 1,
+    "opaque_on_path": false,
+    "pins": {},
+    "status": "variable",
+    "to": "io_acc_read_resp_0_bits_data_0_0"
+   },
+   "mesh_with_delays_ws": {
+    "enable_or_retention_on_path": true,
+    "from": "io_a_bits_0_0",
+    "max_stages": 50,
+    "min_stages": 33,
+    "mode": "weight_stationary",
+    "module": "MeshWithDelays",
+    "occurrences": 1,
+    "opaque_on_path": false,
+    "pins": {
+     "PE_256": {
+      "io_in_control_dataflow": 1
+     }
+    },
+    "status": "variable",
+    "to": "io_resp_bits_data_0_0"
+   },
+   "scratchpad_bank_read": {
+    "enable_or_retention_on_path": true,
+    "from": "io_read_req_bits_addr",
+    "max_stages": 2,
+    "min_stages": 1,
+    "mode": null,
+    "module": "ScratchpadBank",
+    "occurrences": 4,
+    "opaque_on_path": false,
+    "pins": {},
+    "status": "variable",
+    "to": "io_read_resp_bits_data"
+   },
+   "scratchpad_read": {
+    "enable_or_retention_on_path": true,
+    "from": "io_srams_read_0_req_bits_addr",
+    "max_stages": 3,
+    "min_stages": 2,
+    "mode": null,
+    "module": "Scratchpad",
+    "occurrences": 1,
+    "opaque_on_path": false,
+    "pins": {},
+    "status": "variable",
+    "to": "io_srams_read_0_resp_bits_data"
+   }
+  },
+  "memory_clients": {
+   "clients": {
+    "dma_read": {
+     "beat_bytes": 16,
+     "id_bits": 4,
+     "id_space": 16,
+     "in_flight": {
+      "method": "transaction state slots selected by the response ID (indexed table, one-hot decode or per-slot comparison), bounded by the request ID space",
+      "status": "derived",
+      "tracked_slots": 16,
+      "value": 16
+     },
+     "instance": "Gemmini/spad/reader",
+     "max_request_beats": 4,
+     "max_request_bytes": 64,
+     "module": "StreamReader",
+     "request_channels": 1,
+     "request_data_bits": 128,
+     "request_sizes_log2": [
+      4,
+      5,
+      6
+     ],
+     "response_data_bits": 128,
+     "size_basis": "finite value set of the request size field (upper bound on reachable sizes)"
+    },
+    "dma_write": {
+     "beat_bytes": 16,
+     "id_bits": 4,
+     "id_space": 16,
+     "in_flight": {
+      "method": "transaction state slots selected by the response ID (indexed table, one-hot decode or per-slot comparison), bounded by the request ID space",
+      "status": "derived",
+      "tracked_slots": 16,
+      "value": 16
+     },
+     "instance": "Gemmini/spad/writer",
+     "max_request_beats": 4,
+     "max_request_bytes": 64,
+     "module": "StreamWriter",
+     "request_channels": 1,
+     "request_data_bits": 128,
+     "request_sizes_log2": [
+      4,
+      5,
+      6
+     ],
+     "response_data_bits": null,
+     "size_basis": "finite value set of the request size field (upper bound on reachable sizes)"
+    }
+   },
+   "protocol": {
+    "data": "data",
+    "id": "source",
+    "request": "a_bits_",
+    "response": "d_bits_",
+    "size": "size",
+    "size_encoding": "log2_bytes"
+   },
+   "status": "derived"
+  },
+  "provenance": {
+   "config": "FireSimGemminiRocketConfig",
+   "core_hw": {
+    "sha256": "042bdccfd29e8cafd43fe1d4fa76dc6a9013ed0865cb2eb48d4b1c0f512c6e8d"
+   },
+   "core_hw_generic": {
+    "sha256": "cbe3c0e4f6148a69725b71cb2c7b51818c96f7e1a9d9b02749abe3ef18b2f993"
+   },
+   "core_root": "Gemmini",
+   "declarations_sha256": "77bf0fe1e3b0b2b1a8301215aa62e88551de13956f55401afd87fd6f0215d60b",
+   "firrtl": {
+    "sha256": "b7d9826b1c9f16fd00bc757b4334a7f330a842c6a494e0c28608dc351b305bf0"
+   },
+   "firtool": {
+    "sha256": "cd4a5be2461207f2d1261f8cfba7ddb8c74648ddc3f2bf64a4a1a23abe11726a",
+    "version": "firtool-1.75.0"
+   },
+   "generator": "gemmini",
+   "readers": [
+    {
+     "sha256": "a463826853fe2e0fd4dc0be78f03ed1395af8b38fcdedb6eecac244665c56690"
+    },
+    {
+     "sha256": "7cb65a56f4e7cc43a0c1e36b8deec40ace8929124f52f1d23b137bb27de7b015"
+    }
+   ],
+   "source_bundle": {
+    "sha256": "997aa27fda4fe5b0673cf8bb8d256423de8de94e32589c065b662b46e63e6953"
+   }
+  },
+  "schema": "merlin.rtl_timing_structure.v1",
+  "status": "derived",
+  "unit_root": "Gemmini",
+  "unknown": []
+ }
+}

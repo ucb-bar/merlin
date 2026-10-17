@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-10-17
 related: [architecture, performance_budget_unit]
-code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/capacities.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py]
+code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/capacities.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py, src/merlin/targetgen/rtl/timing_structure.py, src/merlin/targetgen/rtl/unit_correspondence.py]
 ---
 
 # Calibrating and validating annotated timing
@@ -313,6 +313,52 @@ profile as its device profile: resources whose lanes and start queue are both
 known become engine resources, the rest stay unbound and are reported
 unresolved, and `structure`/`constraints` ride in the model for providers and
 fitting.
+
+### Timing structure derived from the elaborated RTL
+
+The facts extractor's `timing_structure` section reads the timing-relevant
+structure from the selected elaborated HW instead of Chisel sources
+(`merlin.targetgen.rtl.timing_structure`). The target contract names anchors
+only (`rtl_extraction.timing_structure`): the dispatch module and per-class
+issue-port prefixes, the bus field vocabulary, memory-client port families,
+the dataflow cell select, and port pairs for stage counts. The section then
+records:
+
+- dispatch entries per class (slots readable at the issue port) and the
+  command buffers the intact issued command crosses;
+- per memory client: beat width, request ID space, the request-size values
+  the size field can carry, and in-flight transactions (state slots selected
+  by the response ID);
+- register stages between declared ports, classified `fixed`,
+  `fixed_when_enabled` (enable-gated stages), `variable` (storage occupancy
+  or feedback) or `unknown`;
+- the dataflow modes the cell select chooses, classified structurally as
+  weight- or output-stationary, and whether the select is runtime-driven.
+
+Values the readers cannot reach are UNKNOWN with a reason. Memory round
+trips, sustained DMA bandwidth, issue/completion overheads, translation
+misses, contention and per-command occupancy are not RTL facts. They are
+listed under `fit_from_measurement` and remain gSIM fits.
+
+`simulation_correspondence` records whether the accelerator unit is the same
+hardware under the simulation configuration and the chosen target
+configuration. It compares FIRRTL module bodies, canonical HW per module and
+SoC-level anchors (`merlin-target-tools unit-correspondence`). Measurements
+on the simulation configuration stand for the target's unit-internal timing
+only when the result is `identical` or `structurally_equivalent`.
+
+The engine-resource mapping is a reviewed, target-owned declaration
+(`profile_resources`): each `capacity`/`queue_capacity` names a structural
+quantity, or `null` to leave it to fitting. Apply it to a profile copy:
+
+```sh
+merlin-target-tools timing-profile-structure --target TARGET \
+  --facts facts.json --profile profile.json --out profile-structure.json
+```
+
+The copy records the mapping, its stated basis and every field that is still
+to be fitted under `structural_mapping`. No price is derived, and the profile
+stays unqualified until native validation passes.
 
 ### Fitting for Phase 2 ranking
 
