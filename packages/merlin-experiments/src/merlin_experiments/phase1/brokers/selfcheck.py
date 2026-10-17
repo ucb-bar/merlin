@@ -405,12 +405,26 @@ def _dispatch_capacity() -> int:
 CAPSULES_PER_COMPUTE_CPU = 8
 
 
-def _ordinary_capsule_limit() -> int | None:
+def _public_corpus_size(capsules_root) -> int | None:
+    """Capsules in the public corpus this broker grades, or ``None`` when it cannot be counted."""
+    if capsules_root is None:
+        return None
+    roots = [capsules_root] if isinstance(capsules_root, (str, Path)) else list(capsules_root)
+    try:
+        return len({path.parent for root in roots for path in Path(root).rglob("capsule.yaml")}) or None
+    except OSError:
+        return None
+
+
+def _ordinary_capsule_limit(corpus_size: int | None = None) -> int | None:
     """The operator's per-request capsule bound, or ``None`` when none is selected.
 
     ``auto`` sizes it from the shared compute pool the request's tiers will lease from
     (``MERLIN_COMPUTE_CPUS``), falling back to this process's CPU affinity when no pool is selected.
     An incomplete pool selection refuses, as it does for every other shared-compute consumer.
+    ``auto`` is never below the public corpus (``corpus_size``): sized from the pool alone it was
+    8 x 18 = 144 against a 146-capsule suite, which refused the full check the author is told to run.
+    An explicit number is the operator's own bound and is used exactly.
     """
     raw = os.environ.get("MERLIN_SELFCHECK_MAX_CAPSULES", "").strip()
     if not raw:
@@ -419,22 +433,27 @@ def _ordinary_capsule_limit() -> int | None:
         from merlin.common.cpu_pool import grading_cpus
 
         cpus = len(grading_cpus()) or len(os.sched_getaffinity(0))
-        return CAPSULES_PER_COMPUTE_CPU * max(1, cpus)
+        return max(CAPSULES_PER_COMPUTE_CPU * max(1, cpus), corpus_size or 0)
     if not raw.isdecimal() or int(raw) < 1:
         raise ValueError("MERLIN_SELFCHECK_MAX_CAPSULES must be a positive integer or 'auto'")
     return int(raw)
 
 
-def _feedback_scope_error(request):
-    """Operator-selected iteration bound; formal qualification uses its own path."""
-    limit = _ordinary_capsule_limit()
+def _feedback_scope_error(request, *, corpus_size: int | None = None):
+    """Operator-selected iteration bound; formal qualification uses its own path.
+
+    Under ``auto`` a full-suite request is admitted once the corpus is counted, because the bound
+    covers it; an explicit number keeps full-suite feedback disabled, as that operator chose.
+    """
+    limit = _ordinary_capsule_limit(corpus_size)
     if limit is None:
         return None
     if request.get("action") or request.get("caller_layout") or any(request.get(key) for key in FORWARDED_PROBES):
         return None
     selected = str(request.get("capsules", "all"))
     names = {name.strip() for name in selected.split(",") if name.strip()}
-    if selected.strip() == "all" or len(names) > limit:
+    full_suite_fits = bool(corpus_size) and os.environ.get("MERLIN_SELFCHECK_MAX_CAPSULES", "").strip() == "auto"
+    if (selected.strip() == "all" and not full_suite_fits) or len(names) > limit:
         return (
             f"iteration feedback accepts at most {limit} named capsules per request; select affected capsules. "
             "Full-suite feedback during authoring is disabled by the operator. "
@@ -810,7 +829,7 @@ def main(
             _atomic_write(ch / f"done_{rid}", "err")
             continue
         started_ns = time.time_ns()
-        scope_error = _feedback_scope_error(r)
+        scope_error = _feedback_scope_error(r, corpus_size=_public_corpus_size(capsules_root))
         if scope_error is not None:
             doc = _decorate_response(
                 json.dumps(

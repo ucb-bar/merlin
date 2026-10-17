@@ -7,6 +7,8 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
 from pathlib import Path
@@ -194,7 +196,7 @@ def test_source_change_before_child_restoration_never_publishes(setup, monkeypat
     monkeypatch.setattr(OC.subprocess, "Popen", changed)
     with _scope(setup), pytest.raises(StageGateError, match="without a verified completion"):
         grade(setup, "changed")
-    assert not list(setup.runs.glob("runs/*/*/capsule_result.json"))
+    assert not list((setup.runs / "runs").glob("*/*/capsule_result.json"))
 
 
 def test_foreign_owner_and_forged_adapter_marker_cannot_select_process_grading(setup):
@@ -292,7 +294,7 @@ def test_parent_final_hash_refuses_same_size_restored_mtime_mutation_before_Pope
         with _scope(setup):
             grade(setup, "changed-before-launch")
     assert launched == [] and issued_fds
-    assert not list(setup.runs.glob("runs/*/*/capsule_result.json"))
+    assert not list((setup.runs / "runs").glob("*/*/capsule_result.json"))
     for fd in issued_fds:
         with pytest.raises(OSError):
             os.fstat(fd)
@@ -387,7 +389,7 @@ def test_expired_original_owner_cannot_issue_or_launch_operator_child(setup, mon
         pass
     with pytest.raises(StageGateError, match="original live profile owner"):
         grade(setup, "expired-owner")
-    assert not launched and not list(setup.runs.glob("runs/*/*/capsule_result.json"))
+    assert not launched and not list((setup.runs / "runs").glob("*/*/capsule_result.json"))
 
 
 @pytest.mark.parametrize("failure", [None, "entry", "body", "exit"])
@@ -446,7 +448,7 @@ def test_restoration_leases_only_entry_and_exit_and_releases_on_failure(tmp_path
         fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
-def test_parent_preparation_releases_cpu_before_exposing_transport(setup, monkeypatch):
+def test_parent_preparation_holds_no_cpu_and_releases_before_exposing_transport(setup, monkeypatch):
     from merlin.common import cpu_pool
 
     affinity = os.sched_getaffinity(0)
@@ -456,8 +458,10 @@ def test_parent_preparation_releases_cpu_before_exposing_transport(setup, monkey
     original_root = OC.CHILD.model_child_temporary_root
 
     def root():
-        assert cpu_pool.current_thread_owns_cpu_lease()
-        assert os.sched_getaffinity(0) == {cpu}
+        # Preparation between the verifier's own leased stages owns no slot: the only CPU stays free.
+        assert not cpu_pool.current_thread_owns_cpu_lease()
+        with cpu_pool.shared_compute_pool(timeout_s=0):
+            pass
         return original_root()
 
     monkeypatch.setattr(OC.CHILD, "model_child_temporary_root", root)
@@ -469,3 +473,121 @@ def test_parent_preparation_releases_cpu_before_exposing_transport(setup, monkey
             with cpu_pool.shared_compute_pool(timeout_s=0):
                 pass
     assert not cpu_pool.current_thread_owns_cpu_lease()
+
+
+def test_background_capsules_verifying_hold_no_pool_cpu_and_an_author_request_runs(setup, monkeypatch):
+    """A grade's capsules preparing at once never hold the pool an author request is queued for.
+
+    Each capsule thread used to lease a CPU before verifying the input snapshot. That verification is
+    GIL-bound in one controller process, and a held slot is never preempted, so a background grade held
+    the whole pool for minutes while its CPUs idled and the author's self-checks waited.
+    """
+    from merlin.common import cpu_pool
+
+    available = sorted(os.sched_getaffinity(0))
+    if len(available) < 2:
+        pytest.skip("requires two available CPUs")
+    cpus, slots = (available[0], available[-1]), setup.private / "cpu-slots"
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", ",".join(map(str, cpus)))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(slots))
+    capsules = 4
+    arrived, release = threading.Barrier(capsules + 1), threading.Event()
+    owned_in_body, held_while_verifying = [], []
+    scan, original_root = BW._scanned_members, OC.CHILD.model_child_temporary_root
+
+    def held():
+        return len(cpus) - cpu_pool._free_slots(slots, cpus, fresh=True)
+
+    def verifying(root):
+        held_while_verifying.append(held())
+        return scan(root)
+
+    def preparing():
+        owned_in_body.append(cpu_pool.current_thread_owns_cpu_lease())
+        arrived.wait(timeout=5)
+        assert release.wait(timeout=10)
+        return original_root()
+
+    def prepare(name):
+        with cpu_pool.cpu_priority(cpu_pool.GRADE):
+            with OC._prepared_child({"package_dir": str(setup.candidate), "capsule": {"name": name}}):
+                return name
+
+    monkeypatch.setattr(BW, "_scanned_members", verifying)
+    monkeypatch.setattr(OC.CHILD, "model_child_temporary_root", preparing)
+    with _scope(setup), ThreadPoolExecutor(max_workers=capsules) as pool:
+        futures = [pool.submit(copy_context().run, prepare, f"capsule-{index}") for index in range(capsules)]
+        try:
+            # Every capsule reaches preparation at once: none is parked behind another's lease.
+            arrived.wait(timeout=5)
+            held_while_all_prepare = held()
+            started = time.monotonic()
+            with cpu_pool.cpu_priority(cpu_pool.AUTHOR), cpu_pool.shared_compute_pool(timeout_s=1):
+                author_wait_s = time.monotonic() - started
+        finally:
+            release.set()
+        assert sorted(future.result(timeout=20) for future in futures) == [f"capsule-{i}" for i in range(capsules)]
+    assert held_while_all_prepare == 0 and owned_in_body == [False] * capsules
+    assert author_wait_s < 0.5
+    # Verification stages run one at a time behind the admission gate, each on one leased CPU.
+    assert held_while_verifying and max(held_while_verifying) == 1
+    assert held() == 0
+
+
+@pytest.mark.parametrize("mutation", [None, "between capsules", "during preparation"])
+def test_grade_reads_the_snapshot_once_before_fan_out_and_keeps_every_final_read(setup, monkeypatch, mutation):
+    from merlin.targetgen import package_runtime as P
+
+    reads = []
+    original_digest = BW.hashlib.file_digest
+    prepare = OC.CHILD.prepare_model_child
+    mutate_during = []
+
+    def measured(stream, *args, **kwargs):
+        if str(stream.name) == str(setup.frozen):
+            reads.append(os.fstat(stream.fileno()).st_size)
+        return original_digest(stream, *args, **kwargs)
+
+    def mutate():
+        metadata = setup.frozen.stat()
+        setup.frozen.chmod(0o600)
+        with setup.frozen.open("r+b") as stream:
+            first = stream.read(1)
+            stream.seek(0)
+            stream.write(bytes([first[0] ^ 1]))
+        os.utime(setup.frozen, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
+
+    @contextlib.contextmanager
+    def changed(*args, **kwargs):
+        with prepare(*args, **kwargs) as transport:
+            if mutate_during:
+                mutate()
+            yield transport
+
+    def capsule(name):
+        with OC._prepared_child({"package_dir": str(setup.candidate), "capsule": {"name": name}}):
+            pass
+
+    monkeypatch.setattr(BW.hashlib, "file_digest", measured)
+    monkeypatch.setattr(OC.CHILD, "prepare_model_child", changed)
+    monkeypatch.setenv("MERLIN_SNAPSHOT_LEASE_CACHE", "1")  # the operator selection that arms the roster guard
+    with _scope(setup):
+        reads.clear()
+        OC.validate(target=setup.target.target, adapters=setup.adapters, config=None, perf_extractor=None)
+        assert len(reads) == 1  # the grade's one entry read, before any capsule fans out
+        entry = OC._GRADE_ENTRIES[P.active_package_executor()]
+        for index in range(3):
+            reads.clear()
+            capsule(f"capsule-{index}")
+            assert len(reads) == 1  # each capsule's own fresh final read before its child could launch
+        if mutation == "between capsules":
+            mutate()
+            with pytest.raises(RuntimeError, match="content differs"):
+                capsule("after-change")
+            assert entry.guard.fd is None  # the observed change ends reuse for every later capsule
+        elif mutation == "during preparation":
+            mutate_during.append(True)
+            with pytest.raises(RuntimeError, match="content differs"):
+                capsule("changed-in-preparation")
+        if mutation is not None:
+            mutate()  # Flip the byte back so the owner's own closing checks see the original bytes.
