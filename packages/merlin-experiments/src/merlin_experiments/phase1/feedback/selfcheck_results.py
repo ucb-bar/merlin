@@ -196,10 +196,14 @@ def _log_telemetry(out: dict, capsules_arg: str) -> None:
     if not log_path:
         return
     try:
+        from merlin_experiments.phase1.brokers.selfcheck_sources import LABEL_ENV, SUBMISSION
+
         t0 = float(os.environ.get("SELFCHECK_T0", "0") or 0)
         rows = out.get("per_capsule") or []
         line = {
             "wall_offset_s": round(_t.time() - t0, 1) if t0 else None,
+            # Which tree: a variants/<name> line is an author-side experiment, not submission/ progress.
+            "submission": os.environ.get(LABEL_ENV) or SUBMISSION,
             "sim": out.get("sim"),
             "barrier_tier": out.get("barrier_tier"),
             # The EFFECTIVE barrier each capsule was scored against, distinct from the declared one.

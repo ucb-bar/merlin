@@ -300,6 +300,13 @@ def test_broker_hides_the_childs_partial_response_until_it_is_complete(tmp_path,
     ws = tmp_path / "ws"
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True)
+    # Every check grades a private snapshot of a real submission under a task-owned TMPDIR, in the
+    # single-lane loop this test drives in-process.
+    (ws / "submission").mkdir()
+    (ws / "submission" / "manifest.yaml").write_text("name: t\n")
+    (tmp_path / "tmp").mkdir()
+    monkeypatch.setenv("TMPDIR", str(tmp_path / "tmp"))
+    monkeypatch.setenv("MERLIN_SELFCHECK_BROKER_JOBS", "1")
     fake = tmp_path / "fake_selfcheck.py"
     fake.write_text(
         "import argparse, os, time\n"

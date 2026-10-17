@@ -9,11 +9,15 @@ redacted verdict + the agent's OWN artifacts back into the workspace. The agent 
 shim staged at <ws>/agent_selfcheck.py.
 
 Channel (under <ws>/.qa_channel/, RW from both sides via the bind mount):
-  req_<id>.json   agent -> broker : {capsules, workers, timeout, shape_coverage,
+  req_<id>.json   agent -> broker : {submission, capsules, workers, timeout, shape_coverage,
                                      offload_census, model_layers, optional sim/tiers}
   resp_<id>.json  broker -> agent : the redacted self-check JSON (golden expected values withheld)
   done_<id>       broker -> agent : marker that resp is complete
+  detached_<id>   agent -> broker : the waiting client returned on purpose; keep the request until
+                                    its deadline instead of judging it by the client's process
   STOP            driver -> broker: sentinel to exit (written after the agent round)
+
+``submission`` is ``submission`` (the default) or ``variants/<name>``: see ``selfcheck_sources``.
 
 Usage: selfcheck_broker.py --ws <workspace> [--poll 0.5]
 """
@@ -34,6 +38,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from merlin_experiments.phase1.brokers import selfcheck_sources as sources
 from merlin_experiments.phase1.context import add_context_arguments, context_argv, resolve_context
 from merlin_experiments.phase1.feedback.dispatch import REQUIRED_SIM, grade_selection_for
 from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worker_command
@@ -57,23 +62,28 @@ def _freeze_passed_source(ws: Path, expected_digest: str, *, source_ws: Path | N
     return source
 
 
-def _working_snapshot(ws: Path, expected_digest: str) -> Path:
-    """Copy one request's source under the task temp root before launching the grader."""
-    source = ws / "submission"
-    if source.is_symlink() or any(path.is_symlink() for path in source.rglob("*")):
-        raise ValueError("self-check source contains a symlink")
+def _working_snapshot(ws: Path, expected_digest: str, *, label: str = sources.SUBMISSION) -> Path:
+    """Copy one request's source under the task temp root before launching the grader.
+
+    The selected tree (``submission/`` or ``variants/<name>/``) is read through a directory opened
+    without following symlinks and always lands at ``<snapshot>/submission``, so the grader sees the
+    same package layout whichever tree was asked for.
+    """
     tmpdir = os.environ.get("TMPDIR")
-    if not tmpdir or not Path(tmpdir).is_absolute():
-        raise ValueError("self-check requires a task-owned TMPDIR")
-    root = Path(tempfile.mkdtemp(prefix="merlin_selfcheck_", dir=tmpdir))
-    try:
-        shutil.copytree(source, root / "submission", ignore=shutil.ignore_patterns(*_DIGEST_IGNORES))
-        if _submission_digest(root / "submission") != expected_digest:
-            raise ValueError("submission changed while taking self-check snapshot")
-        return root
-    except Exception:
-        shutil.rmtree(root)
-        raise
+    with sources.pinned_source(ws, label) as source:
+        if any(path.is_symlink() for path in source.rglob("*")):
+            raise ValueError("self-check source contains a symlink")
+        if not tmpdir or not Path(tmpdir).is_absolute():
+            raise ValueError("self-check requires a task-owned TMPDIR")
+        root = Path(tempfile.mkdtemp(prefix="merlin_selfcheck_", dir=tmpdir))
+        try:
+            shutil.copytree(source, root / "submission", ignore=shutil.ignore_patterns(*_DIGEST_IGNORES))
+            if _submission_digest(root / "submission") != expected_digest:
+                raise ValueError(f"{label} changed while taking self-check snapshot")
+            return root
+        except Exception:
+            shutil.rmtree(root)
+            raise
 
 
 #: request key -> the real self-check's flag, for every probe that replaces the capsule suite. The
@@ -146,15 +156,16 @@ def _decorate_response(
             "graded_at_unix_ns": completed_ns,
         }
     )
-    if requested and requested != submission_sha256:
+    if requested and submission_sha256 and requested != submission_sha256:
         # SAID, NOT HIDDEN. The verdict describes bytes NEWER than the ones asked about, which is more
         # useful than the ones asked about -- but only while it is stated, or the agent would read a
         # verdict as being about code it has since replaced.
         body["graded_newer_bytes"] = True
-        body["graded_newer_note"] = (
-            "you edited the submission while this check was queued, so it graded your CURRENT bytes "
-            "rather than the ones present when you asked. The verdict is about the newer code."
+        body["graded_newer_note"] = sources.newer_bytes_note(
+            request.get("submission", sources.SUBMISSION) if isinstance(request, dict) else sources.SUBMISSION
         )
+    # Which tree this verdict is about, on every response; a variant's also says it is not official.
+    body.update(sources.response_fields(request, submission_sha256))
     return body
 
 
@@ -294,6 +305,18 @@ def _requester_alive(request: dict) -> bool | None:
     return state != "Z" and actual_start == expected_start
 
 
+def _detached(request: Path) -> bool:
+    """Whether the request's client returned on purpose and left it to its deadline lease.
+
+    A client that submits with a short wait budget and collects later with ``--attach`` exits while
+    its request is still queued or running. Judged by that process alone, a same-namespace request
+    would be dropped or aborted as abandoned the moment the client returned. The marker is written
+    before the client exits, so its absence still means a client that died mid-wait.
+    """
+    rid = request.name[len("req_") : -len(".json")]
+    return bool(rid) and (request.parent / f"detached_{rid}").exists()
+
+
 def _pending_requests(ch: Path, seen: set[str], *, now: float | None = None) -> list[Path]:
     """Outstanding, live requests in arrival order.
 
@@ -311,7 +334,7 @@ def _pending_requests(ch: Path, seen: set[str], *, now: float | None = None) -> 
             continue
         try:
             body = json.loads(req.read_text(encoding="utf-8"))
-            if _requester_alive(body) is False:
+            if _requester_alive(body) is False and not _detached(req):
                 continue
             if now > _request_deadline(req):
                 continue
@@ -340,7 +363,7 @@ def _abort_reason(
     if not request.exists():
         return "the requester cancelled it"
     try:
-        if _requester_alive(json.loads(request.read_bytes())) is False:
+        if _requester_alive(json.loads(request.read_bytes())) is False and not _detached(request):
             return "requester exited"
     except (OSError, ValueError, AttributeError):
         return "request changed or became unreadable"
@@ -485,6 +508,23 @@ def _diagnostic_request(request: Path, *, request_bytes=None) -> bool:
         return False  # The unchanged handler reports the malformed request.
 
 
+def _lane_admits(active, *, diagnostic: bool, variant: bool, ordinary_capacity: int, variant_capacity: int) -> bool:
+    """Whether one more handler of this kind may start beside the ``active`` ones.
+
+    Up to ``ordinary_capacity`` numerical requests run at once plus one diagnostic probe. Variant
+    requests share the numerical lane, at most ``variant_capacity`` of them, so a queue of variants
+    never holds every slot a ``submission/`` check could use. A request skipped here stays queued in
+    arrival order without blocking a later request of another kind.
+    """
+    active = tuple(active)
+    if len(active) >= ordinary_capacity + 1:
+        return False
+    if sum(job["diagnostic"] == diagnostic for job in active) >= (1 if diagnostic else ordinary_capacity):
+        return False
+    variants = sum(job["variant"] and not job["diagnostic"] for job in active)
+    return not (variant and not diagnostic and variants >= variant_capacity)
+
+
 def _handler_command(a, context, capsules_root, contract, promotion_root, request, stop, *, request_bytes=None):
     """Original command and input paths; request data cannot choose a handler."""
     command = [sys.executable, "-m", "merlin_experiments.phase1.brokers.selfcheck"]
@@ -532,9 +572,13 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
     except (OSError, ValueError):
         health = {}
     ordinary_capacity = _ordinary_capacity()
+    # Variants share the ordinary lane; their own bound keeps the rest of it for submission/ checks.
+    variant_capacity = sources.variant_capacity(ordinary_capacity)
     health.update(
         protocol=PROTOCOL_VERSION,
         dispatch_capacity=ordinary_capacity + 1,
+        ordinary_capacity=ordinary_capacity,
+        variant_capacity=variant_capacity,
         broker_starts=int(health.get("broker_starts", 0)) + 1,
         processed=int(health.get("processed", 0)),
         max_queue_depth=int(health.get("max_queue_depth", 0)),
@@ -556,6 +600,7 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                                 "selfcheck_protocol": PROTOCOL_VERSION,
                                 "selfcheck_request_id": rid,
                                 "submission_sha256": None,
+                                **job["source_fields"],
                             }
                         ),
                     )
@@ -572,10 +617,13 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                 except FileNotFoundError:
                     continue
                 diagnostic = _diagnostic_request(request, request_bytes=request_bytes)
-                lane_capacity = 1 if diagnostic else ordinary_capacity
-                if (
-                    len(active) >= ordinary_capacity + 1
-                    or sum(j["diagnostic"] == diagnostic for j in active.values()) >= lane_capacity
+                variant = sources.is_variant_request(request_bytes)
+                if not _lane_admits(
+                    active.values(),
+                    diagnostic=diagnostic,
+                    variant=variant,
+                    ordinary_capacity=ordinary_capacity,
+                    variant_capacity=variant_capacity,
                 ):
                     continue
                 stop = ch / f".handler-stop_{secrets.token_hex(12)}"
@@ -590,11 +638,17 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                 )
                 stat = _process_record(process.pid)
                 seen.add(request.name)
+                try:
+                    body = json.loads(request_bytes)
+                except ValueError:
+                    body = {}
                 active[request.name] = {
                     "process": process,
                     "request": request,
                     "stop": stop,
                     "diagnostic": diagnostic,
+                    "variant": variant,
+                    "source_fields": sources.response_fields(body if isinstance(body, dict) else {}, None),
                     "start_ticks": stat[1] if stat else None,
                 }
             health["active_handlers"] = len(active)
@@ -604,9 +658,11 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                     "pid": job["process"].pid,
                     "start_ticks": job["start_ticks"],
                     "diagnostic": job["diagnostic"],
+                    "submission": job["source_fields"]["selfcheck_submission"],
                 }
                 for name, job in active.items()
             ]
+            health["active_variants"] = sum(job["variant"] for job in active.values())
             health["queued_requests"] = len(_pending_requests(ch, seen))
             _atomic_write(health_path, json.dumps(health, sort_keys=True))
             time.sleep(a.poll)
@@ -769,7 +825,26 @@ def main(
             _atomic_write(resp, json.dumps(doc))
             _atomic_write(ch / f"done_{rid}", "not_scheduled")
             continue
-        graded_digest = _submission_digest(ws / "submission")
+        try:
+            # WHICH TREE: submission/ or an author-side variants/<name>/, refused before any work when
+            # the request names anything else or the tree is not a real directory in the workspace.
+            label = sources.request_label(r)
+            graded_digest = sources.source_digest(ws, label, _submission_digest)
+        except (OSError, ValueError) as error:
+            from merlin.common.path_scrub import scrub_host_paths
+
+            doc = _decorate_response(
+                json.dumps({"error": f"broker: {scrub_host_paths(str(error))}", "all_pass": False}),
+                r,
+                rid,
+                None,
+                started_ns=started_ns,
+                completed_ns=time.time_ns(),
+            )
+            _atomic_write(resp, json.dumps(doc))
+            _atomic_write(ch / f"done_{rid}", "err")
+            continue
+        variant = label != sources.SUBMISSION
         if int(r.get("protocol", 1)) >= PROTOCOL_VERSION:
             # A REQUEST WHOSE BYTES MOVED IS SERVED, NOT REFUSED. Rejecting it was a livelock: the
             # agent asks for a check and keeps working -- which is the behaviour the tool is for -- so
@@ -919,10 +994,11 @@ def main(
             aborted = False
             # Every check grades a private request snapshot. The author can keep
             # editing, and the response stays bound to the selected digest.
-            snapshot_root = _working_snapshot(ws, graded_digest)
+            snapshot_root = _working_snapshot(ws, graded_digest, label=label)
             argv2[argv2.index("--submission") + 1] = str(snapshot_root / "submission")
-            worker_env = dict(os.environ)
-            if not r.get("caller_layout") and not any(r.get(key) for key in FORWARDED_PROBES):
+            worker_env = dict(os.environ, **{sources.LABEL_ENV: label})
+            # Only submission/ may feed promotion: a variant's verdict never reaches the cert ledger.
+            if not variant and not r.get("caller_layout") and not any(r.get(key) for key in FORWARDED_PROBES):
                 worker_env.update(
                     MERLIN_SELFCHECK_PROMOTION_WS=str(ws),
                     MERLIN_SELFCHECK_PROMOTION_ROOT=str(promotion_capsules_root or capsules_root),
@@ -942,8 +1018,10 @@ def main(
                 )
                 from ..feedback.background_admission import active_full_selfcheck
 
-                priority.enter_context(
-                    active_full_selfcheck(
+                # The foreground marker describes submission/ work; a variant publishes none.
+                foreground = contextlib.nullcontext()
+                if not variant:
+                    foreground = active_full_selfcheck(
                         ws=ws,
                         process=proc,
                         request=r,
@@ -955,7 +1033,7 @@ def main(
                         sim=sim,
                         dispatcher_pid=orig_ppid if a.one_request is not None else None,
                     )
-                )
+                priority.enter_context(foreground)
                 while proc.poll() is None:
                     why = _abort_reason(ch, orig_ppid, req, deadline, request_stop=a.request_stop)
                     if why:
@@ -1008,7 +1086,7 @@ def main(
                 json.dumps({"error": f"broker: {type(e).__name__}: {str(e)[:200]}", "all_pass": False}),
                 r,
                 rid,
-                _submission_digest(ws / "submission"),
+                graded_digest if variant else _submission_digest(ws / "submission"),
                 started_ns=started_ns,
                 completed_ns=time.time_ns(),
             )
@@ -1017,7 +1095,7 @@ def main(
         # The optional queueing below must never hash the newly edited live workspace.
         promotion_source = None
         try:
-            if resp.exists():
+            if resp.exists() and not variant:
                 passed = json.loads(resp.read_text())
                 if not passed.get("error") and any(row.get("pass") is True for row in passed.get("per_capsule", [])):
                     promotion_source = _freeze_passed_source(ws, graded_digest, source_ws=snapshot_root)
@@ -1038,9 +1116,10 @@ def main(
         # optional promotion: promotion is not part of the request and must not delay broker shutdown.
         if _should_stop(ch, orig_ppid):
             continue
-        if inspection:
+        if inspection or variant:
             # Static observations cannot trigger a numerical/RTL promotion or
             # pay for a simulator after a deliberately no-execution request.
+            # A variant is never submission/: its verdict promotes nothing.
             continue
 
         # PROMOTE off the SYNCHRONOUS path too. Promotion was first hooked into the async oracle alone,
