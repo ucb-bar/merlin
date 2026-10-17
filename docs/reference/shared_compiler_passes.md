@@ -41,6 +41,49 @@ normalization islands. This source-to-source route is separate from the explicit
 hardware counted-row entry: it preserves the source's own scalar operations and
 continues through the existing CPU toolchain. See the scope below.
 
+## Abstractions and the research question
+
+Phase 0/1/2 describe a procedure. The interfaces below describe what compiler
+authors and search agents can reason about, and what the shared compiler checks.
+They extend existing Merlin representations rather than introduce one universal
+IR for both source computations and arbitrary target instructions.
+
+| Abstraction | Concrete interface | What becomes reusable | A falsifiable check |
+| --- | --- | --- | --- |
+| Typed computation and numerical boundaries | Existing dense/Scheduling IR, `ElementwiseSemantics`, and checked source scalar regions | Choose blocking or composition from shapes, layouts and arithmetic instead of operation names | Preserve the complete reduction and conversions; reject a changed mask coordinate or accumulator order |
+| Physical resources and execution effects | `DenseResources`, `StorageBank`, `TemporaryObject`, `StorageEffects` and `ConfigurationEffects` | Use the same reuse, allocation and state-cleanup algorithms with different capacities, separate memories and completion behavior | Reject reuse before a pending transfer completes; retain setup after an unknown state change |
+| Analyses tied to their inputs | `PassSpec`, `PipelineContext`, `AnalysisStamp` and `PipelineSession` | Compose passes and bounded repairs without reusing facts from an earlier program or hardware selection | Reject stale allocation after a rewrite and invalid explicit pass order |
+| Realization checked at the relevant IR level | `DenseEmission`, `ScheduleEncoding`, actual-byte decoders and the source-row inverse checker | Require evidence that the emitted transformation implements its selected alternative | Reject an encoder that restores removed setup, changes an address or omits part of a reduction |
+
+Structural hardware facts and qualified execution semantics have different
+authority. RTL can supply widths and capacities; the adapter must separately
+establish persistence, completion, arithmetic and decoding. A contract identity
+binds that evidence to an analysis; it does not prove the evidence correct.
+
+Phase 1 can choose a deterministic legal alternative through these interfaces.
+Phase 2 can search the same bounded alternatives with calibrated costs while
+using the same legality and realization checks. A chosen schedule alone is not
+a transferable compiler rule. A rule must consume the current operation and
+capability inputs and make a checked decision on new inputs.
+
+The research hypothesis is that these interfaces reduce the effort needed to
+build a correct compiler and help optimization decisions transfer to unseen
+workloads and hardware configurations. The existence of familiar passes does
+not establish that hypothesis or its novelty. Evaluation must measure authoring
+effort, correctness, held-out whole-model performance and target integration
+effort, with and without the interfaces under the same access boundaries and
+shared-library version. Calibrated timing proxies are one input to that
+evaluation, not the compiler abstraction itself.
+
+Executable examples include
+`merlin/tests/infra/test_configuration_elimination.py` (persistent writes,
+resets and launch-state changes),
+`merlin/tests/infra/test_readout_model_fusion.py` (complete integer graphs and
+unsupported physical compositions), and
+`merlin/tests/ir/test_row_normalization.py` (complete rows, projected masks,
+carried state and source mutations). Their neutral execution models test shared
+mechanisms; they do not independently qualify a hardware adapter.
+
 ## Inputs and ownership
 
 Select the original hardware configuration and numerical policy. Supply resource
