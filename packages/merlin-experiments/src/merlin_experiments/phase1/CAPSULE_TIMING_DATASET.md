@@ -161,6 +161,46 @@ capsule roster with the frozen corpus and grading manifest before describing a
 dataset as an all-capsule measurement sweep. Failed or screened-only capsules
 have no usable timing label.
 
+## Annotated-Spike event counts (evidence only)
+
+After a run finishes (never during authoring), the operator can observe every
+training-eligible public gSIM program on the observer-enabled Spike:
+
+```sh
+python -m merlin_experiments.phase1.annotated_spike_evidence RUN_DIR --config CONFIG.json --jobs 4
+python -m merlin_experiments.phase1.capsule_timing_archive RUN_DIR --finalize
+```
+
+`CONFIG.json` (`merlin.annotated_spike_evidence_config.v1`) names the annotated
+Spike and its timing-source manifest, the built timing provider and its source
+bundle manifest, the exported device profile, a disassembler and the target
+contract. The functional configuration is not configured: it is the exact argv
+of the run's own functional-tier launches, recovered from their process records
+(all launches must agree). The pass derives each program's counter window from
+its linked ELF -- the one function calling the contract's entry and completion
+symbols must contain exactly two reads matching the caller's reviewed
+`counter_asm`, one before the entry call and one after the completion call --
+and writes a `merlin.counter_window_review.v1` record and the
+`merlin.spike_scope_binding.v1` that cites its digest. It then runs the program
+twice, on the functional configuration and on the annotated Spike with the
+provider loaded after the functional extension and a count-only model (every
+price unknown, accelerator resources unbound), and requires byte-identical
+consoles and exit codes. Where the run kept the functional tier's own program,
+both reruns must also reproduce its retained functional console, which carries
+the full output values. Evidence lands in
+`<capsule>/annotated_spike/gsim_program/` (and `spike_program/`) beside
+`annotated_spike_evidence.json`; the audit indexes the report and counter review
+as artifacts only while they name the ELF still in place, so finalizing again
+carries them into the training subset.
+
+The report's `feature_counts` are the selected window's per-class event counts
+(`target.commands`, requested DMA bytes, padded and useful MACs,
+`target.class.<primitive>`, `cpu.<class>`), and its window instruction count
+equals the functional `METRIC cycles` (Spike's counter is instret). With no
+prices and unbound resources the report is honestly `timing_complete: false`
+and lists every missing price, resource and semantic; the counts are features,
+not a timing estimate.
+
 ## Spike calibration and Phase 2 handoff
 
 The intended Phase 2 model is annotated Spike **with its Gemmini accelerator

@@ -332,6 +332,22 @@ def _row(root: Path, path: Path, area: str, visibility: str) -> dict:
                     artifacts[f"{name}_executed_{role}"] = (
                         observed if observed and observed["sha256"] == entry.get("sha256") else None
                     )
+    # Evidence-only annotated-Spike observations of the gSIM-measured program, when a pass wrote them
+    # (merlin_experiments.phase1.annotated_spike_evidence). Indexed only while the report names the
+    # exact ELF still in place, so a stale observation never rides beside a different program.
+    from .annotated_spike_evidence import EVIDENCE_DIR, PROGRAM_ROLE
+
+    observation = path.parent / EVIDENCE_DIR / PROGRAM_ROLE
+    for name, location in (
+        ("annotated_spike_report", observation / "report.json"),
+        ("annotated_spike_counter_review", observation / "counter_window_review.json"),
+    ):
+        observed = artifact(location)
+        try:
+            named = json.loads(location.read_text(encoding="utf-8")).get("elf_sha256") if observed else None
+        except (OSError, ValueError, AttributeError):
+            named = None
+        artifacts[name] = observed if named is not None and named == (artifacts["elf"] or {}).get("sha256") else None
     elf_ref, harness_ref = artifacts["elf"], artifacts["harness"]
     harness = generated / "harness.c"
     scope_matches = _kernel_scopes(harness.read_text(encoding="utf-8")) if harness_ref else []

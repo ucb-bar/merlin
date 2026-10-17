@@ -268,3 +268,11 @@ cycle, the self-check/grade capsule taxonomy, measured L3 cost and pool capacity
 status and timing fields only, never answer material, and refuses to write inside its inputs.
 An absent or partially written input is reported unavailable, never as a zero. Its budget and
 verdict thresholds are published in the report; it decides no grade and gates nothing.
+
+`annotated_spike_evidence.py` is an operator-side, evidence-only pass over a finished run.
+It runs each training-eligible public gSIM program on the observer-enabled Spike with an
+explicitly selected provider and a count-only model (no prices), scoped by counter PCs it
+derives from the linked ELF with a selected disassembler, the caller's reviewed counter
+template and the contract's entry/completion symbols. It must reproduce the run's own
+functional console byte-for-byte; it grades nothing, never runs during authoring, and
+leases shared compute at AUXILIARY priority.
