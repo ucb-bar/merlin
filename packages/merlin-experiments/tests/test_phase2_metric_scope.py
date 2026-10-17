@@ -76,6 +76,10 @@ def test_a_paired_delta_needs_byte_identical_merlin_host_code():
     }
     for other in ("b" * 64, None):
         refused = S.paired_delta(
-            split, candidate_cycles=900, baseline_cycles=1000, candidate_host_sha256="a" * 64, baseline_host_sha256=other
+            split,
+            candidate_cycles=900,
+            baseline_cycles=1000,
+            candidate_host_sha256="a" * 64,
+            baseline_host_sha256=other,
         )
         assert refused["status"] == "refused" and refused["delta_cycles"] is None

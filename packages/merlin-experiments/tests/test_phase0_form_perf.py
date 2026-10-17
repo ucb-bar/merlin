@@ -268,9 +268,7 @@ def test_coverage_requires_a_member_and_a_vendor_bar_above_the_threshold():
     }
     pool_row = next(row for row in complete["classes"] if row["status"] == FP.MERLIN_SUPPLIED_HOST)
     assert pool_row["required"] is False and complete["merlin_supplied_host"] == [pool_row["class_id"]]
-    without_body = [
-        e for e in entries if e["performance"]["form"]["key"].get("activation_source") != "intermediate"
-    ]
+    without_body = [e for e in entries if e["performance"]["form"]["key"].get("activation_source") != "intermediate"]
     incomplete = FP.form_perf_coverage(requirement, without_body, threshold=threshold)
     assert incomplete["status"] == "incomplete" and len(incomplete["missing"]) == 1
     unbarred = copy.deepcopy(entries)

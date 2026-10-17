@@ -295,13 +295,17 @@ def test_fast_member_passes_original_spike_selection_and_exact_grade_to_product_
         monkeypatch.setattr(F, "observe_passed_census", lambda *a, **kw: {"status": "UNKNOWN"})
         monkeypatch.setattr(F.RTL_FACTS, "observed_facts", lambda *a: nullcontext())
     policy = SimpleNamespace(
-        _contract_root=tmp_path, target_experiment=SimpleNamespace(target="synthetic"),
+        _contract_root=tmp_path,
+        target_experiment=SimpleNamespace(target="synthetic"),
         feedback_evaluator=SimpleNamespace(rtl_identity=rtl, rtl_facts_path=Path(rtl["rtl_facts"]["path"])),
     )
     result = F._member_arm(
-        policy=policy, revision=SimpleNamespace(source=candidate, source_sha256="a" * 64),
+        policy=policy,
+        revision=SimpleNamespace(source=candidate, source_sha256="a" * 64),
         member=SimpleNamespace(source_dir=member, source_sha256="b" * 64),
-        workspace=tmp_path / "work", deadline=time.monotonic() + 20, workers=1,
+        workspace=tmp_path / "work",
+        deadline=time.monotonic() + 20,
+        workers=1,
     )
     assert calls == ["original_capsule_call", "same_grade_product_join"]
     assert result["pending_tiers"] == ["L3"] and result["timing_cycles"] is None

@@ -155,9 +155,10 @@ def _movement(
     )
     read_rate, write_rate = ports.get("read_bytes_per_cycle"), ports.get("write_bytes_per_cycle")
     if not read_rate or not write_rate:
-        unresolved["movement_rate"] = "; ".join(
-            f"{k}: {v}" for k, v in sorted((ports.get("unresolved") or {}).items())
-        ) or "no movement port rate is derived"
+        unresolved["movement_rate"] = (
+            "; ".join(f"{k}: {v}" for k, v in sorted((ports.get("unresolved") or {}).items()))
+            or "no movement port rate is derived"
+        )
         out["cycles"] = None
         return out, unresolved
     out["read_cycles"] = physical_read / float(read_rate)
@@ -227,7 +228,9 @@ def staged_roofline(
     floor = sum(value for _name, value in stages) if stages else None
     return {
         "schema": SCHEMA,
-        "status": "derived" if floor is not None and not unresolved else ("partial" if floor is not None else "unknown"),
+        "status": "derived"
+        if floor is not None and not unresolved
+        else ("partial" if floor is not None else "unknown"),
         "compute": compute,
         "movement": movement,
         "host": host,

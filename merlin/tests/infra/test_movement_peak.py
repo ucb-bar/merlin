@@ -92,9 +92,7 @@ def test_the_derived_bound_and_capsule_roofline_read_the_ports() -> None:
 
 def test_padded_and_useful_arithmetic_are_both_reported() -> None:
     machine = _machine()
-    doc = SR.staged_roofline(
-        [SR.Contraction(9, 8, 8)], machine, MP.movement_peak({"facts": _BODY}), result_bytes=1
-    )
+    doc = SR.staged_roofline([SR.Contraction(9, 8, 8)], machine, MP.movement_peak({"facts": _BODY}), result_bytes=1)
     compute = doc["compute"]
     assert compute["useful_macs"] == 9 * 8 * 8 and compute["padded_macs"] == 16 * 8 * 8
     assert compute["padding_efficiency"] == pytest.approx(9 / 16)
