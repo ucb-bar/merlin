@@ -21,9 +21,6 @@ import yaml
 from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
 from merlin_experiments.phase1.feedback import private_bucketize_support as bucketize_support
 from merlin_experiments.phase1.feedback import private_compilation_inputs as compilation_support
-from merlin_experiments.phase1.feedback.private_contraction_support import (
-    contraction_zero_init_fill as _contraction_zero_init_fill,
-)
 from merlin_experiments.phase1.feedback import private_control_support as control_support
 from merlin_experiments.phase1.feedback import private_data_movement as data_movement
 from merlin_experiments.phase1.feedback import private_f32_maximum_support as maximum_support
@@ -42,6 +39,9 @@ from merlin_experiments.phase1.feedback.private_capture_roster import (
     captured_input_provenance as _captured_input_provenance,
 )
 from merlin_experiments.phase1.feedback.private_capture_roster import captured_programs as _captured_programs
+from merlin_experiments.phase1.feedback.private_contraction_support import (
+    contraction_zero_init_fill as _contraction_zero_init_fill,
+)
 from merlin_experiments.phase1.feedback.private_device_audit import (
     audit_built_device_host_compute as _audit_built_device_host_compute,
 )
@@ -68,11 +68,13 @@ from .private_model_inputs import _capture_tree_bindings as _verify_capture_bind
 from .private_model_inputs import _expected_input_provenance as _expected_input_provenance
 from .private_model_inputs import _recipe_derivation as _derive_recipe_binding
 from .private_model_inputs import _require_selected_input_bindings as _require_selected_input_bindings
+from .private_model_inputs import _selected_admission_views as _selected_admission_views
 from .private_model_inputs import _tree as _verify_input_tree
 
 SCHEMA = "merlin.phase1.private_full_models.v1"
 RESULT_SCHEMA = "merlin.phase1.private_full_model_build_gate.v15"
 BUILD_BOARD_SCOPE = "static_memory_layout_and_host_ISA_only; no board execution"
+SOURCE_PREFLIGHT_SCOPE = "compiler-independent private inputs and source obligations only; no build or gate claim"
 TRANSPOSE_DATA_SUPPORT_SCOPE = data_movement.SCOPE
 _transpose_data_support = data_movement.prove_transpose_source
 _verify_transpose_data_support = data_movement.verify_transpose
@@ -389,61 +391,6 @@ def _recipe_derivation(spec: Path, row: Mapping[str, Any], plan: Mapping[str, An
     return _derive_recipe_binding(spec, row, plan, pinned_file=_file, file_digest=file_sha256, **bindings)
 
 
-def _selected_admission_views(
-    software: Any,
-    profiles: Any,
-    *,
-    target: str,
-    host_package: Path,
-    host_package_sha256: str,
-    host_capabilities_path: Path,
-    host_capabilities_sha256: str,
-) -> tuple[dict, dict]:
-    """Use only a resolved exported spec and the exact selected host profile."""
-    from merlin.targetgen.host_capabilities import validate_host_capabilities
-    from merlin.targetgen.software_spec import validate_software_spec
-
-    if not isinstance(software, Mapping) or not isinstance(software.get("operations"), list):
-        raise ValueError("selected software admission view is not a normalized specification")
-    checked_software = validate_software_spec(dict(software), target=target, source="verified Phase 0 export")
-    if (
-        checked_software != software
-        or checked_software.get("status") != "reviewed"
-        or any("hardware" in operation for operation in checked_software["operations"])
-    ):
-        raise ValueError("selected software admission view is not a reviewed resolved specification")
-    if (
-        not isinstance(profiles, Mapping)
-        or host_capabilities_path.is_symlink()
-        or file_sha256(host_capabilities_path) != host_capabilities_sha256
-        or strict_tree_sha256(host_package)["sha256"] != host_package_sha256
-    ):
-        raise ValueError("selected host profile has no pinned package and capability document")
-    document = yaml.safe_load(host_capabilities_path.read_bytes())
-    if not isinstance(document, dict) or document.get("status") != "reviewed":
-        raise ValueError("selected host profile has no reviewed capability document")
-    compiler = document.get("compiler")
-    if not isinstance(compiler, Mapping) or not isinstance(compiler.get("dtype_strategy"), str):
-        raise ValueError("selected host profile has no precision lane")
-    dtype_strategy = compiler["dtype_strategy"]
-    validate_host_capabilities(document, package_sha256=host_package_sha256, dtype_strategy=dtype_strategy)
-    if len(profiles) != 1:
-        raise ValueError("selected host profile is not unique")
-    profile_name, profile = next(iter(profiles.items()))
-    if (
-        not isinstance(profile_name, str)
-        or not profile_name
-        or not isinstance(profile, Mapping)
-        or profile.get("status") != "reviewed"
-        or profile.get("package_sha256") != host_package_sha256
-        or profile.get("capability_spec_sha256") != host_capabilities_sha256
-        or profile.get("dtype_strategy") != dtype_strategy
-        or profile.get("capability_spec") != document
-    ):
-        raise ValueError("selected host profile differs from the pinned package or capability document")
-    return checked_software, {profile_name: dict(profile)}
-
-
 def _noncompute_support(row: Mapping[str, Any]) -> bool:
     """Only known control/data support may skip independent compute admission."""
     if row.get("disposition") != "support_required":
@@ -465,7 +412,9 @@ def _source_obligations(
     capability: Mapping,
     host: Mapping,
     selected_index_observation: Mapping[str, Any] | None = None,
-    *, facts_sha256: str | None = None, numeric_policy_sha256: str | None = None,
+    *,
+    facts_sha256: str | None = None,
+    numeric_policy_sha256: str | None = None,
 ) -> dict:
     """Recompute eligibility over the actual source, independently of the candidate route."""
     from merlin.common import mlir_query as mq
@@ -497,9 +446,16 @@ def _source_obligations(
     normalized_sha = sha256(text.encode("utf-8")).hexdigest()
     raw_verdicts = tuple(is_eligible(descriptor, cap_map) for descriptor in descriptors)
     demand = source_demand.derive(
-        groups, operations, raw_verdicts, source_sha256=source_sha, normalized_sha256=normalized_sha,
-        capability=capability, software=software, facts_sha256=facts_sha256,
-        numeric_policy_sha256=numeric_policy_sha256, source_operations=tuple(mq.walk(module)),
+        groups,
+        operations,
+        raw_verdicts,
+        source_sha256=source_sha,
+        normalized_sha256=normalized_sha,
+        capability=capability,
+        software=software,
+        facts_sha256=facts_sha256,
+        numeric_policy_sha256=numeric_policy_sha256,
+        source_operations=tuple(mq.walk(module)),
     )
     inventory = AI._application_operation_inventory(  # noqa: PLC2701 -- trusted exact inventory primitive
         source,
@@ -653,9 +609,11 @@ def _source_obligations(
             # standalone eligible op absent from grouping cannot disappear into host.
             if not row["mlir_operation"].startswith("linalg."):
                 unresolved.append({"row": row, "admission": admission, "reason": "eligible operation is not outlined"})
-        elif (hardware.get("status") != "unsupported"
-              or hardware.get("basis") != "selected_capability_contract"
-              or hardware.get("refusal") not in _EXPLICIT_HARDWARE_EXCLUSIONS):
+        elif (
+            hardware.get("status") != "unsupported"
+            or hardware.get("basis") != "selected_capability_contract"
+            or hardware.get("refusal") not in _EXPLICIT_HARDWARE_EXCLUSIONS
+        ):
             unresolved.append(
                 {"row": row, "admission": admission, "reason": "host compute is not proved hardware-unsupported"}
             )
@@ -861,6 +819,7 @@ def run(
     build_options: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
     linked_elf_admission=None,
     native_result_format_selection=None,
+    source_only: bool = False,
 ) -> dict[str, Any]:
     """Build the frozen roster, one canonical partition, or a prebuilt diagnostic.
 
@@ -870,6 +829,8 @@ def run(
     ``selected_model`` retains the complete required roster and source freeze; it
     builds all programs of one declared model and never passes the full gate.
     Separate host processes may run these partitions under one original owner.
+    ``source_only`` (no ``submission``) stops each model after the same compiler-independent
+    input checks and source obligations: an operator preflight, never a build or gate result.
     """
     from merlin.compile.baremetal_model import compile_saved_model
     from merlin.compile.model_execution_inputs import selected_firrtl
@@ -881,8 +842,10 @@ def run(
     if native_result_format_selection is not None:
         from .private_result_format_selection import FrozenSelection
 
-        if (type(native_result_format_selection) is not FrozenSelection
-            or native_result_format_selection.target != target):
+        if (
+            type(native_result_format_selection) is not FrozenSelection
+            or native_result_format_selection.target != target
+        ):
             raise ValueError("native result format selection has no matching original run owner")
         native_result_format_selection.verify()
     spec = Path(private_spec)
@@ -928,8 +891,10 @@ def run(
             raise ValueError("prebuilt diagnostic receipts differ from the complete selected model")
     elif prebuilt_receipts is not None:
         raise ValueError("prebuilt receipts cannot enter the canonical full-model build")
-    package = Path(submission)
-    package_digest = strict_tree_sha256(package)
+    if source_only and (diagnostic or submission is not None):
+        raise ValueError("source preflight takes no candidate compiler or prebuilt diagnostic")
+    package = None if source_only else Path(submission)
+    package_digest = None if source_only else strict_tree_sha256(package)
     base = Path(out)
     base.mkdir(mode=0o700, parents=True, exist_ok=True)
     results = []
@@ -1061,8 +1026,7 @@ def run(
             if software.get("target") != target or capability.get("name") != target:
                 raise ValueError("selected software or capability declaration names another target")
             program_options = {
-                program: dict(((build_options or {}).get(name) or {}).get(program) or {})
-                for program, _ in programs
+                program: dict(((build_options or {}).get(name) or {}).get(program) or {}) for program, _ in programs
             }
             from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
 
@@ -1074,8 +1038,7 @@ def run(
                         raise ValueError("device_ir_budget must be explicit original build policy data")
                     program_ir_budgets[program] = DeviceIRBudget(**selected_budget)
             program_boards = {
-                program: options.pop("board", row["board"])
-                for program, options in program_options.items()
+                program: options.pop("board", row["board"]) for program, options in program_options.items()
             }
             if any(not isinstance(board, str) or not board for board in program_boards.values()):
                 raise ValueError("every program requires an explicit valid selected build board")
@@ -1093,24 +1056,36 @@ def run(
                 binding = (sha256(original_contract_bytes).hexdigest(), sha256(original_facts_bytes).hexdigest())
                 if binding not in native_result_ceilings:
                     native_result_ceilings[binding] = native_result_format_selection.issue(
-                        original_contract_bytes=original_contract_bytes, original_facts_bytes=original_facts_bytes,
+                        original_contract_bytes=original_contract_bytes,
+                        original_facts_bytes=original_facts_bytes,
                     )
                 native_result_ceiling = native_result_ceilings[binding]
             native_scope = (
                 original_result_format_scope(
-                    native_result_ceiling, target=target, original_contract_bytes=original_contract_bytes,
+                    native_result_ceiling,
+                    target=target,
+                    original_contract_bytes=original_contract_bytes,
                     original_facts_bytes=original_facts_bytes,
-                ) if native_result_ceiling is not None else nullcontext()
+                )
+                if native_result_ceiling is not None
+                else nullcontext()
             )
             with (
-                target_registry.observed_contract(target, dict(capability), source_path=capability_path), native_scope,
+                target_registry.observed_contract(target, dict(capability), source_path=capability_path),
+                native_scope,
             ):
                 sources, unresolved_demands = {}, {}
                 for program, stage in programs:
                     try:
                         sources[program] = _source_obligations(
-                            stage, target, software, capability, host, selected_index_observations[program],
-                            facts_sha256=facts["sha256"], numeric_policy_sha256=recipe_proof["recipe_semantic_sha256"],
+                            stage,
+                            target,
+                            software,
+                            capability,
+                            host,
+                            selected_index_observations[program],
+                            facts_sha256=facts["sha256"],
+                            numeric_policy_sha256=recipe_proof["recipe_semantic_sha256"],
                         )
                         if native_result_ceiling is not None:
                             sources[program]["accelerator_source_demand"]["native_result_format_ceiling"] = (
@@ -1126,6 +1101,9 @@ def run(
             if not any(source["eligible_groups"] for source in sources.values()):
                 raise ValueError("full model has no independently eligible accelerator computation")
             item["checks"]["source"] = sources
+            if source_only:
+                item["status"] = "source_inputs_verified"
+                continue
             compiled = []
             diagnostic_receipts = {}
             for program, stage in programs:
@@ -1286,16 +1264,21 @@ def run(
             item["status"] = "diagnostic_static_checks_passed" if diagnostic else "pass"
         except Exception as exc:  # noqa: BLE001 -- one model's refusal must not hide the others
             item["reason"] = _public_failure_reason(exc)
+            if source_only and isinstance(exc, SourceAdmissionError):
+                item["operator_unresolved"] = json.loads(json.dumps(exc._private_unresolved, default=str))
     result = {
         "schema": RESULT_SCHEMA,
         "target": target,
         "private_spec_sha256": spec_digest,
-        "candidate_tree_sha256": package_digest["sha256"],
+        "candidate_tree_sha256": package_digest["sha256"] if package_digest else None,
         "required_models": list(required_models),
         "required_programs": {name: list(required_programs[name]) for name in required_models},
         "models": results,
         "passed": (
-            selected_model is None and not diagnostic and bool(results)
+            selected_model is None
+            and not diagnostic
+            and not source_only
+            and bool(results)
             and all(item["status"] == "pass" for item in results)
         ),
         "scope": (
@@ -1330,8 +1313,13 @@ def run(
             partition_passed=len(results) == 1 and results[0]["status"] == "pass",
             scope="one complete declared model, canonical source and linked-ELF evidence; full roster gate incomplete",
         )
+    if source_only:
+        verified = bool(results) and all(item["status"] == "source_inputs_verified" for item in results)
+        result.update(mode="source_preflight", source_preflight_passed=verified, scope=SOURCE_PREFLIGHT_SCOPE)
     report = (
-        base / "private_full_model_gate.json"
+        base / "private_full_model_source_preflight.json"
+        if source_only
+        else base / "private_full_model_gate.json"
         if selected_model is None
         else base / f"private_full_model_partition-{sha256(selected_model.encode()).hexdigest()}.json"
     )
