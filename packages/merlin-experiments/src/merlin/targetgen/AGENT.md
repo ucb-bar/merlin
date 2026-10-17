@@ -50,7 +50,12 @@ original calibration and grade worker. Keep original dependency order, full
 roster and worker joins; copied contexts carry existing package/resource owners,
 never new numerical or timing authority. Explicit operator-small-first feedback
 ordering selects only ready/admitted operators before models and preserves immediate
-completion callbacks; absent selection keeps legacy ordering.
+completion callbacks; absent selection keeps legacy ordering. Explicit
+`measured-longest-first` starts ready/admitted members by this run's newest measured
+per-tier cost (selected `timing_history` runs roots or `MERLIN_CAPSULE_TIMING_HISTORY`),
+then observed cycles, operand volume and name, after caller priority. Carried
+certificates are not cost measurements. History orders work only: it never reuses,
+skips or changes a result, and the profile refuses a certify budget.
 
 The selected native component route spends one explicit wall deadline across
 package build, all ordinary lowering commands, source checks, object/link,

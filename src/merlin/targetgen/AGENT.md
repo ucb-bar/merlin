@@ -456,3 +456,9 @@ profile, payload and marker, selected source inventory, software/facts and forma
 toolchain; candidate requests cannot replace any of these authorities. Core
 import admission is independent of optional experiment packages; sandbox views
 and grading remain separately selected by the original experiment owner.
+
+`lowering_coverage.sweep_plan` resolves every target-derived probe input (tile,
+dtypes, extents) and `plan_identity` hashes it with each staged interface. Sweeps
+may run corners on threads (one shared compute slot per in-flight corner, caller
+context copied) or through a trusted `runner`; either way the summary is assembled
+in plan order and a missing or malformed outcome is an `error`, never coverage.

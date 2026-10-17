@@ -249,6 +249,19 @@ may be deferred to the final grade; required shape coverage remains mandatory.
 Bound background fanout independently of foreground requests. Selected grading
 cadence runs from start time, catches up after source changes without overlap,
 and skips a repeated completed current source under the same frozen invocation.
+A grade that is not gradeable and cannot pass skips the shape probes and records
+them as not run. With selected progress, a background grade whose probes must run
+first publishes its capsule rows with `all_pass` unknown and shape coverage
+pending; only the final verdict, still published after promotion, can pass.
+`MERLIN_SHAPE_COVERAGE_CACHE=1` reuses a sweep only under the original profile and
+an exact key over candidate bytes/modes, probe plan, contract, selected facts,
+executor identity, interpreter and grader code; emit errors are never reused.
+`MERLIN_SHAPE_COVERAGE_WORKERS` probes corners concurrently: under the original
+profile in fresh grader processes that re-open the same archived owner (its
+per-entrypoint policy work is interpreter-bound), otherwise on threads. Each
+in-flight corner group holds one shared compute slot; the parent holds none while
+waiting, and a failed child's corners are errors, never coverage.
+Grades hand this run's earlier runs roots to measured capsule ordering.
 
 `codegen_scalability.py` observes public contractions at geometric multiples of
 the selected fact-derived tile. It reads no validation capture or answer; the
