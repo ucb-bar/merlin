@@ -233,6 +233,7 @@ def verify_storage_dataflow(
                 before is not None
                 and before.semantic_key == effect.semantic_key
                 and before.exact_copy == effect.exact_copy
+                and before.elementwise == effect.elementwise
                 and len(before.accesses) == len(effect.accesses)
                 and all(
                     (a.space, a.size, a.writes) == (b.space, b.size, b.writes)

@@ -20,6 +20,7 @@ from merlin.sched.ir.kernel import check_structure
 from merlin.semantic_compiler.allocation_types import StorageBank
 from merlin.transforms.pipeline import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
+from .fusion import plan_fusion, validate_fusion_capabilities
 from .program_limits import (
     AddressWindow,
     Continuation,
@@ -80,6 +81,9 @@ class ScheduleBudgets:
     max_repairs: int = 4
     solver_timeout_ms: int = 5000
     eliminate_copies: bool = True
+    max_fusions: int = 8
+    max_scalar_operations: int = 128
+    max_scalar_ir_bytes: int = 65536
 
     def __post_init__(self):
         if (
@@ -89,9 +93,13 @@ class ScheduleBudgets:
                     self.max_calls,
                     self.max_objects,
                     self.solver_timeout_ms,
+                    self.max_scalar_operations,
+                    self.max_scalar_ir_bytes,
                 )
             )
-            or any(type(value) is not int or value < 0 for value in (self.max_spills, self.max_repairs))
+            or any(
+                type(value) is not int or value < 0 for value in (self.max_spills, self.max_repairs, self.max_fusions)
+            )
             or type(self.eliminate_copies) is not bool
         ):
             raise ValueError("schedule compilation requires explicit finite work, repair and solver budgets")
@@ -117,6 +125,11 @@ def _library_sources():
         "merlin.compile.scheduling.device_spills",
         "merlin.compile.scheduling.spill_conformance",
         "merlin.compile.scheduling.program_limits",
+        "merlin.compile.scheduling.fusion",
+        "merlin.compile.scheduling.fusion_semantics",
+        "merlin.transforms.pure_scalar",
+        "merlin.transforms.certificates",
+        "merlin.verify.epilogue_applicability",
         "merlin.semantic_compiler.allocate",
         "merlin.semantic_compiler.allocation_types",
         "merlin.semantic_compiler.rules",
@@ -178,6 +191,7 @@ def compile_schedule(
     spill_classes=(),
     continuation=None,
     pass_order=(),
+    fusion_capabilities=(),
 ) -> ScheduleCompilation:
     """Allocate, check, encode and finalize through the existing pass session.
 
@@ -229,6 +243,17 @@ def compile_schedule(
             ir_level="schedule",
         ),
     )
+    validate_fusion_capabilities(fusion_capabilities, adapter)
+    if fusion_capabilities:
+        fusion_spec = PassSpec(
+            "fusion",
+            2,
+            requires=("source_effects",),
+            produces=("fusion_candidate",),
+            mutates_ir=False,
+            ir_level="schedule",
+        )
+        specs = (specs[0], fusion_spec, replace(specs[1], requires=("source_effects", "fusion_candidate")), *specs[2:])
     if pass_order:
         names = {spec.name: spec for spec in specs}
         if type(pass_order) is not tuple or len(pass_order) != len(specs) or set(pass_order) != set(names):
@@ -258,6 +283,7 @@ def compile_schedule(
         "private_ownership": private_ownership,
         "limits": asdict(limits),
         "budgets": asdict(budgets),
+        "fusion_capabilities": [capability.record() for capability in fusion_capabilities],
         "spill_classes": [
             {
                 name: getattr(capability, name)
@@ -310,25 +336,56 @@ def compile_schedule(
             raise StorageOptimizationUnavailable("encoded schedule pipeline requires qualified synchronous completion")
         return {"source_effects": effects}
 
+    def fusion():
+        return {
+            "fusion_candidate": plan_fusion(
+                session.module,
+                objects,
+                banks,
+                adapter,
+                fusion_capabilities,
+                external_windows=external_windows,
+                private_ownership=private_ownership,
+                max_calls=budgets.max_calls,
+                max_objects=budgets.max_objects,
+                max_fusions=budgets.max_fusions,
+                max_scalar_operations=budgets.max_scalar_operations,
+                max_scalar_ir_bytes=budgets.max_scalar_ir_bytes,
+            )
+        }
+
     def storage():
-        result = allocate_temporary_storage(
-            session.module,
-            objects,
-            banks,
-            adapter,
-            timeout_ms=budgets.solver_timeout_ms,
-            spill_classes=spill_classes,
-            max_spills=budgets.max_spills,
-            eliminate_copies=budgets.eliminate_copies,
-            on_repair=lambda reason: session.repair(stage=3, reason=reason),
-            **model,
-        )
+        def allocate(source, source_objects):
+            return allocate_temporary_storage(
+                source,
+                source_objects,
+                banks,
+                adapter,
+                timeout_ms=budgets.solver_timeout_ms,
+                spill_classes=spill_classes,
+                max_spills=budgets.max_spills,
+                eliminate_copies=budgets.eliminate_copies,
+                on_repair=lambda reason: session.repair(stage=3, reason=reason),
+                **model,
+            )
+
+        candidate = session.analysis("fusion_candidate") if fusion_capabilities else None
+        result = allocate(candidate.kernel, candidate.objects) if candidate is not None else None
+        fusion_status = "realized"
+        if candidate is not None and result is None:
+            session.repair(stage=3, reason="fusion allocation failed; restore original composition and replan")
+            fusion_status = "allocation_fallback"
+        if result is None:
+            result = allocate(session.module, objects)
         if result is None:
             raise StorageOptimizationUnavailable(
                 "no legal temporary allocation within the selected schedule repair family"
             )
         session.module = result.kernel
-        return {"storage": result.report, "realization": result.report}
+        report = dict(result.report)
+        if candidate is not None:
+            report["fusion"] = {"status": fusion_status, "checked_steps": list(candidate.checks)}
+        return {"storage": report, "realization": report}
 
     def completion():
         effects = _project(session.module, adapter, budgets.max_calls)
@@ -365,6 +422,7 @@ def compile_schedule(
 
     actions = {
         "semantic_admission": admission,
+        "fusion": fusion,
         "storage": storage,
         "completion": completion,
         "emission": emission,

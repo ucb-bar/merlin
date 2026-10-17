@@ -15,6 +15,8 @@ code_refs:
   - src/merlin/compile/scheduling/spill_conformance.py
   - src/merlin/compile/scheduling/copy_elimination.py
   - src/merlin/compile/scheduling/schedule_pipeline.py
+  - src/merlin/compile/scheduling/fusion.py
+  - src/merlin/compile/scheduling/fusion_semantics.py
   - src/merlin/llvmlower/automatic_host.py
   - src/merlin/llvmlower/quant_round_check.py
 ---
@@ -192,6 +194,11 @@ Instruction changes invalidate existing emission and size facts even when a
 pass omits an explicit invalidation declaration. Failed actions poison their
 private session and return no compiled result.
 
+Selecting `fusion_capabilities` inserts `fusion` between semantic admission and
+storage. It constructs checked physical candidates privately; storage selects a
+candidate only after allocation succeeds. Fusion allocation fallback consumes
+the same repair budget as spills and copy fallback.
+
 Replacing an analysis also invalidates its consumers transitively, even if the
 owning IR is unchanged. Analyses produced together share invalidation: replacing
 an encoded byte image cannot leave its old size or conformance result current.
@@ -329,6 +336,73 @@ targets require a public, independently qualified actual-effect decoder and
 address rewriter before this mechanism can enter their normal lowering.
 Traffic results from synthetic execution are not hardware latency results.
 
+## Physical elementwise fusion
+
+`compile_schedule(..., fusion_capabilities=selected_capabilities)` discovers
+adjacent producer-consumer compositions from decoded effects and
+`ElementwiseSemantics`. Each declaration contains actual typed scalar MLIR,
+the element count, ordered stages, and an explicit byte order for every read
+and write. Values are contiguous, with one corresponding scalar value per
+element and no broadcast, hidden effects, volatile access or cross-element
+dependency. All arguments of one element are read before its result is written.
+Shifted or differently typed aliases are refused. Exact in-place aliases retain
+that explicitly qualified execution rule.
+
+This family supports total fixed-width integer arithmetic, constants, casts,
+comparisons, selection and signed/unsigned min/max. It reuses the existing
+scalar eligibility checks and admits additional exact standard scalar classes
+under this new composition scope. Floating arithmetic, poison flags, unknown
+operations, calls, reductions, side effects and unmodeled metadata remain
+barriers. Existing frozen numerical proof domains and authoring grants are
+unchanged. No approximation or new numerical policy is selected.
+
+Merlin uses the actual completion-aware lifetime to require a newly initialized,
+invocation-private intermediate with no other observer or writer. The complete
+typed producer result must be consumed with the same byte layout. One selected
+`ReadoutCapability` must apply every stage, and the returned instruction's
+decoded readout identity must match it. Capabilities from different readouts
+cannot be combined. The target-owned `FusionCapability.emit` either returns one
+actual instruction or declines. Selection uses the first compatible qualified
+capability in declaration order; it invents no cycle estimates.
+
+`verify_fusion_step` reconstructs the collapsed pair from original and returned
+calls without accepting a selected-pair witness. It checks all unaffected
+effects, actual input and output byte intervals, explicit layouts, widths and
+stage order. Typed scalar expression DAGs must match after substituting the
+producer into the consumer. Widening, wrapping arithmetic, clamp order and
+narrowing remain observable nodes; algebraic reassociation is not inferred.
+The immutable graph cache and scalar work budgets bound compiler space by IR
+size rather than element count.
+
+The candidate's objects and lifetimes are then replanned through the ordinary
+allocator. An incompatible physical view or insufficient capacity restores the
+original composition and recomputes allocation. Scalar operation/source-byte
+budgets and `ScheduleBudgets.max_fusions` can retain the original route. Actual
+arithmetic mismatches diagnose; they never authorize an unchecked candidate.
+If both routes fail allocation, the caller receives the existing precise
+unavailable diagnostic. A receipt marked `allocation_fallback` describes a
+discarded candidate, not eliminated traffic in the final program.
+
+Allocation/spill verification binds the checked candidate to the realized
+schedule; actual-byte decoding then checks the complete final instruction
+effects and numerical declarations. Final receipts report actual commands,
+encoded size and requested read/write bytes after all rewrites. Tests execute
+the emitted byte program in native code and check complete outputs, input
+state, intermediate signed wrap, clamp-before-narrowing and actual transfer
+counters against an independent vector reference. Separate-memory and aliased
+view models, different element widths/byte orders, tails, alignment fallback,
+multiple consumers, extra operands, asynchronous barriers and mutation controls
+exercise the shared mechanism. Negative controls expose both incorrect target
+arithmetic and hidden temporary traffic despite plausible declarations.
+
+Synthetic tests do not qualify a target. Existing providers must expose a
+public, independently qualified scalar/effect projection, complete layouts and
+the physical composition emitter, together with final actual-byte decoding.
+The initial read-only target integrations do not provide these hooks. Physical
+floating readouts, contraction-to-epilogue fusion, noncontiguous layouts,
+cross-memory handoffs and asynchronous fusion remain incomplete. Traffic
+reductions in these tests are not full-model latency results.
+
 ## Exact device register spills
 
 The ordinary `allocate_temporary_storage` entry accepts selected `SpillClass`
@@ -406,7 +480,7 @@ targets.
 | --- | --- | --- |
 | Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line storage relocation | Target effect/rewrite adapters and ordinary lowering integration; general loop and persistent-storage allocation |
 | Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks and independent actual byte provenance | Qualified device register/transfer adapters and ordinary target integration; CPU allocation stays with the native toolchain |
-| Fusion and transfers | Readout composition admission, connected dispatch and checked global-plan realization; logical host transforms; consumed exact private-copy forwarding with allocation fallback and independently checked realized traffic | Physical arithmetic epilogue composition, different-memory handoffs, and qualified target integration |
+| Fusion and transfers | Readout composition admission and connected dispatch; exact private-copy forwarding; consumed total-integer elementwise physical composition with layout/numerical checks, allocation fallback and reconstructed final traffic | Floating/contraction epilogues, noncontiguous and asynchronous handoffs, and qualified full-model target integration |
 | Reductions and attention | Ordered source loops, complete CPU reductions and explicit numerical policies | Shared multi-tile lowering with full domains, masks and intermediate storage; per-tile softmax is insufficient |
 | Final program limits | Actual decoded instruction size, branch/address checks and closed-region segmentation through declared interfaces | Independently qualified target decoder and runtime continuation integration; ordinary targets retain their existing linked-image admission |
 | Persistent state | Runtime state binding, immutable weight hashing/reuse and recurrent relinking | Qualified address windows, ownership and persistence for each device runtime |
