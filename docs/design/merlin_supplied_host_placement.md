@@ -5,7 +5,7 @@ status: current
 owner: merlin-experiments
 last_verified: 2026-10-17
 related: [capsule_phase_split, agentic_experiment_integrity, derived_capsule_axes]
-code_refs: [packages/merlin-experiments/src/merlin/targetgen/owned_host_model_selection.py, packages/merlin-experiments/src/merlin/targetgen/owned_host_model_execution.py, packages/merlin-experiments/src/merlin_experiments/phase0/program_admission.py, packages/merlin-experiments/src/merlin_experiments/corpus/publication.py, src/merlin/compile/owned_host_model.py]
+code_refs: [packages/merlin-experiments/src/merlin/targetgen/frozen_placement.py, packages/merlin-experiments/src/merlin/targetgen/owned_host_model_selection.py, packages/merlin-experiments/src/merlin/targetgen/owned_host_model_execution.py, packages/merlin-experiments/src/merlin_experiments/phase0/program_admission.py, packages/merlin-experiments/src/merlin_experiments/corpus/publication.py, src/merlin/compile/owned_host_model.py]
 ---
 
 # Merlin supplies the host part of a whole-program capsule
