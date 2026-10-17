@@ -110,7 +110,7 @@ packages/merlin-experiments/src/merlin_experiments/phase1/feedback/qa.py::_liven
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/qa.py::_liveness_screen::swallowed-error::Exception
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/qa.py::run::get-default::n_declined
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/qa.py::run::get-default::n_not_measured
-packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::_previously_failing::swallowed-error::OSError
+packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck_selectors.py::_previously_failing::swallowed-error::OSError
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::_log_telemetry::swallowed-error::Exception
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::_strip_build_state::swallowed-error::Exception
 packages/merlin-experiments/src/merlin_experiments/phase1/feedback/selfcheck.py::_progress_snapshot::swallowed-error::OSError/ValueError
