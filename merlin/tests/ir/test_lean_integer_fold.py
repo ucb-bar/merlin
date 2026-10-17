@@ -346,3 +346,20 @@ def test_float_constant_folding_still_requires_float_laws(tmp_path, lean_tools):
     assert supported["verdict"] == "verified", supported.get("reason")
     receipt = check_stage(stage, m2m_python=lean_tools.m2m_python)
     assert receipt["verdict"] == "abstracted", receipt.get("reason")
+
+
+@pytest.mark.parametrize("index_bits", [32, 64])
+def test_index_constant_folding_is_outside_fixed_width_rules(tmp_path, lean_tools, index_bits):
+    source = """func.func @forward() -> index {
+      %a = arith.constant 7 : index
+      %b = arith.constant 3 : index
+      %r = arith.addi %a, %b : index
+      return %r : index
+    }"""
+    stage, before, _ = canonicalize(tmp_path, lean_tools, source)
+    supported = check_support(
+        before, "forward", tmp_path / "support", index_bits=index_bits, m2m_python=lean_tools.m2m_python
+    )
+    assert supported["verdict"] == "verified", supported.get("reason")
+    receipt = check_typed_stage(stage, index_bits=index_bits, m2m_python=lean_tools.m2m_python)
+    assert receipt["verdict"] == "abstracted", receipt.get("reason")

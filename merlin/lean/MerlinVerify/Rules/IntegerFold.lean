@@ -19,7 +19,7 @@ def names : List String :=
    "arith.maxsi", "arith.minsi", "arith.maxui", "arith.minui", "arith.divui", "arith.divsi",
    "arith.remui", "arith.remsi", "arith.ceildivui", "arith.ceildivsi", "arith.floordivsi",
    "arith.shli", "arith.shrui", "arith.shrsi", "arith.cmpi", "arith.select",
-   "arith.extsi", "arith.extui", "arith.trunci", "arith.index_cast", "arith.index_castui"]
+   "arith.extsi", "arith.extui", "arith.trunci"]
 
 def fixedConstant (op : Op) : Bool :=
   op.name == "arith.constant" && match op.attr? "value" with
@@ -58,7 +58,7 @@ theorem context_independent {op : Op} (h : eligible op) (ctx : Ctx) (call : Call
       simp_all [Arith.sem, Op.blind_name, Op.blind_attr?, Op.blind_results, scalarOfAttr]
   · simp only [names, List.mem_cons, List.not_mem_nil, or_false] at hn
     rcases hn with hn | hn | hn | hn | hn | hn | hn | hn | hn | hn | hn | hn | hn |
-      hn | hn | hn | hn | hn | hn | hn | hn | hn | hn | hn | hn | hn | hn
+      hn | hn | hn | hn | hn | hn | hn | hn | hn | hn | hn | hn
     all_goals simp [Arith.sem, Op.blind_name, hn, Arith.widthOf, Arith.resultElt,
       Op.blind_results, hr, ht, Ty.bitWidth?]
 

@@ -43,6 +43,7 @@ structure SiteCandidate where
   targetCount : Nat
 
 def multiRewrite? (ρ : Rho) (ss ts : List Op) : Option (SiteCandidate × Rho) :=
+  -- Preserve intermediate correspondences before trying a fold that maps only the last result.
   let candidates : List SiteCandidate :=
     [⟨Rules.Cse.rule, 1, 1⟩, ⟨Rules.Motion.rule, 1, 2⟩, ⟨Rules.DequantSite.rule, 0, 2⟩,
       ⟨Rules.ReshapeCompose.rule, 1, 1⟩] ++
