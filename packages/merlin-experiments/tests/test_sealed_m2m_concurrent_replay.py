@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -265,3 +266,62 @@ def test_concurrent_replay_flag_splits_this_process_cpus(tmp_path, monkeypatch, 
     assert cli.main([*argv, "--attestation-output", str(output), "--concurrent-replay"]) == 0
     assert calls == [(frozenset({24, 25, 26, 27}), frozenset({28, 29, 30, 31}))]
     assert json.loads(capsys.readouterr().out)["phase0_admission"] == "not_granted"
+
+
+def _minimal_root(root: Path, mount: Path) -> None:
+    """A guest root holding only ``/bin/sh`` (dash), its libraries and the sandbox mount points."""
+    import subprocess
+
+    shell = Path(shutil.which("dash") or "/usr/bin/dash")
+    if not shell.is_file():
+        pytest.skip("dash is unavailable for a minimal guest root")
+    libraries = [
+        Path(word)
+        for line in subprocess.run(["ldd", str(shell)], capture_output=True, text=True, check=True).stdout.splitlines()
+        for word in line.split()
+        if word.startswith("/")
+    ]
+    for path in (shell, *libraries):
+        target = root / path.resolve().relative_to("/")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path.resolve(), target)
+        if path != path.resolve():
+            alias = root / path.relative_to("/")
+            alias.parent.mkdir(parents=True, exist_ok=True)
+            if not alias.exists():
+                alias.symlink_to(path.resolve())
+    (root / "bin").mkdir(exist_ok=True)
+    if not (root / "bin/sh").exists():
+        shutil.copy2(shell.resolve(), root / "bin/sh")
+    for name in ("source", "tmp", "dev", *mount.relative_to("/").parts[:1]):
+        (root / name).mkdir(exist_ok=True)
+    (root / mount.relative_to("/")).mkdir(parents=True, exist_ok=True)
+
+
+def test_real_sandboxes_each_see_only_their_own_empty_output(tmp_path):
+    bwrap = os.environ.get("MERLIN_BWRAP") or shutil.which("bwrap")
+    if bwrap is None:
+        pytest.skip("bubblewrap is unavailable (MERLIN_BWRAP selects one)")
+    cpus = _two_cpu_sets()
+    mount = Path("/capture-out/run/capture")
+    root, source = tmp_path / "guest-root", tmp_path / "source"
+    outputs = (tmp_path / "issued", tmp_path / "replayed")
+    for path in (root, source, *outputs):
+        path.mkdir()
+    _minimal_root(root, mount)
+    # Shell builtins only: refuse a non-empty output, write one file, stay alive so both overlap.
+    script = (
+        f'set -- {mount}/*; [ "$1" = "{mount}/*" ] || exit 7; echo fresh > {mount}/out; '
+        "i=0; while [ $i -lt 300000 ]; do i=$((i+1)); done; echo done"
+    )
+    try:
+        issued, replayed = sealed_m2m._execute_beside(
+            Path(bwrap), root, source, outputs, ("/bin/sh", "-c", script), mount, cpus=cpus, timeout_seconds=60
+        )
+    except SealedM2MError as exc:
+        if "Unknown option" in str(exc) or "namespace" in str(exc).lower():
+            pytest.skip(f"this bubblewrap or host cannot run the sealed sandbox flags: {exc}")
+        raise
+    assert issued == replayed and issued["stdout"]["bytes"] == len("done\n")
+    assert [sorted(p.name for p in path.iterdir()) for path in outputs] == [["out"], ["out"]]
+    assert not any((root / mount.relative_to("/")).iterdir()), "the guest mount point itself is never written"
