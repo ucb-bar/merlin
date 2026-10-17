@@ -91,3 +91,17 @@ def test_typed_decision_roundtrips_and_rejects_invented_storage():
     decision.attributes["storage_bytes"] = builtin.DenseArrayBase.from_list(builtin.i64, [1, 1])
     with pytest.raises(VerifyException, match="storage differs"):
         decision.verify()
+
+
+def test_standalone_lifetime_export_is_opt_in_and_byte_exact(tmp_path):
+    from pathlib import Path
+
+    from merlin.compile.scheduling import block_schedule
+    from merlin.compile.scheduling.export import export_dense_planner
+
+    old = export_dense_planner(tmp_path / "old")
+    assert old["schema"] == "merlin.dense_planner.v1"
+    assert set(old["files_sha256"]) == {"common_dense_planning.py", "common_dense_ir.py"}
+    new = export_dense_planner(tmp_path / "new", include_block_schedule=True)
+    assert new["schema"] == "merlin.dense_planner.v2"
+    assert (tmp_path / "new/common_block_schedule.py").read_bytes() == Path(block_schedule.__file__).read_bytes()

@@ -3,7 +3,7 @@ title: Shared Phase 1 scheduling
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-16
+last_verified: 2026-10-17
 ---
 
 # Shared Phase 1 scheduling
@@ -161,11 +161,19 @@ that asynchronous hardware has completed a transfer or that distinct external
 views have different backing storage. Such targets need qualified effect and
 completion adapters; physical byte mappings cannot be inferred from row counts.
 
-This check applies to the existing `BlockSchedule` path. The dense backends'
-`DenseEmission` reports remain transfer/budget observations. Connecting their
-emitted instruction streams to this full lifetime contract requires an explicit
-projection; a matching count report alone does not satisfy it. Capability-driven
-fusion must preserve this distinction when introducing new handoffs.
+The regular dense backends now project bounded, unseeded emitted regions into
+this representation. Their adapters decode actual source addresses, row strides,
+local addresses, accumulator flags and readout widths. They reconstruct operand
+identities from emitted loads, rather than copying the planned block identities.
+The generated adapter expands runtime loops only after checking an explicit
+operation budget. Unsupported bias seeds, outer batch effects or large dynamic
+regions report `unavailable`; existing legal lowering remains available.
+
+`DenseEmission` remains a transfer/budget report. A separate `lifetime` report
+records this synchronous projection's status and scope. A checked local lifetime
+does not establish numerical policy, external-view aliasing or hardware
+completion. Those obligations remain explicitly unestablished, so this result
+alone cannot authorize cross-region fusion or a new local handoff.
 
 ## Physical epilogue composition
 
@@ -208,6 +216,108 @@ The command prints the release schema and both source hashes. Package both
 The planner requires only Python's standard library; the decision IR uses
 xDSL. Two independent backends and rectangular synthetic geometries exercise
 the same planner; an isolated test imports only the published source closure.
+Add `--include-block-schedule` to export the byte-exact canonical checker as
+`common_block_schedule.py`. This opt-in export returns schema v2; the original
+two-file v1 export is unchanged. Standalone copies contain no target-specific
+fork of the shared scheduling or lifetime algorithms.
+
+## Reusable pass catalogue and phase ownership
+
+Shared passes belong in Merlin. Phase 1 target implementations provide explicit
+adapters and integrate the passes into their compiler pipeline. Phase 1 builds
+and qualifies that compiler; ordinary model compilation executes its passes.
+Phase 2 may search and calibrate the same legal choices. It must not be needed
+to repair missing correctness mechanisms in a claimed Phase 1 workload scope.
+
+The following is a capability roadmap, not a claim that every row is complete:
+
+| Capability | Shared mechanism | Target inputs and responsibilities | Current boundary |
+| --- | --- | --- | --- |
+| Temporary memory | Alias-aware liveness, lifetime packing and allocation verification | Physical backing, units, alignment, banks, packing and DMA reservations | Existing SSA resource allocation and host arena reuse cover narrower representations; general device VMEM/DRAM allocation remains open. |
+| Register spilling | Pressure analysis, spill placement, slot reuse, liveness and rescheduling | Register classes, exact spill/reload conversions, legal storage and instructions | A general device spill rewrite is not delivered here. Native CPU register allocation remains the selected toolchain's responsibility. |
+| Looped tiling | Bounded candidate search, ordered loops, affine addressing and tail domains | Primitive shapes, capacity, layouts and legal accumulator continuation | Shared dense planning and loop segmentation exist; arbitrary target lowering and affine emission verification are not established by a tile example. |
+| Reductions and attention | Full-domain reduction planning, masks and explicit intermediate lifetimes | Accumulation type, reduction order, conversions and supported numerical algorithms | Existing CPU softmax and attention preparation do not qualify independent per-tile softmax as a whole-row reduction. |
+| Numerical lowering | Ordered conversions, explicit quantization boundaries and contract checks | Arithmetic domains, rounding, saturation, scaling and qualified instruction semantics | Existing typed policies and checks are partial coverage, not equivalence for every available hardware instruction. |
+| Program size | Code budgets and final size diagnostics; bounded unrolling and legal segmentation planning | Encoded instruction widths, branch reach, IMEM limits, relocations and launch semantics | Existing command-site budgets bound selected emitters. Final branch repair and segmentation still require target emission support. |
+| Persistent state | State ownership, weight/KV placement, rebinding and address-range planning | Loader/runtime ABI, supported DMA windows, address arithmetic and persistence | Existing model state binding and verified weight reuse do not establish arbitrary device addressability or resident-session timing. |
+| Whole-model placement | Source operation census, legal route selection and realized coverage accounting | Supported compositions and actual device/compiled-CPU implementations | Existing pre-build routing must still prove each requested model's coverage, linking and numerical behavior. |
+
+These mechanisms are parameterized by semantics and resource/execution contracts,
+not model names or target names. RTL can supply structural geometry and encoding
+facts. It cannot by itself establish a software allocator policy, model accuracy,
+completion across an unqualified interface, a numerical approximation contract
+or a measured cost. Missing evidence leaves the corresponding implementation
+unavailable, with an explicit supported fallback or diagnostic.
+
+Phase 1 must provide correct allocation, bounded whole-region code generation,
+numerical lowering, execution ordering, placement and state/address handling for
+its declared scope. Spilling is required when that scope exceeds register
+capacity and no other legal schedule/fallback suffices. Supported fusion is a
+Phase 1 implementation obligation; Phase 2 chooses among qualified fusion,
+tiling and placement alternatives using measured feedback.
+
+For comparisons across Phase 1 implementations, freeze the common source
+version and expose the same shared passes and verification rules to all
+treatments. Record declared parameters separately from measured tuning results.
+Target-specific emitter implementations and protected tuning results remain
+subject to their own grants. A compiler calling a common planner still needs
+emission and execution checks; neither the library call nor an advertised
+capability proves that the decision was realized.
+
+An illustrative ordering is:
+
+```text
+source coverage and numerical legality
+  -> placement and supported composition planning
+  -> looped tiling and full-domain reductions
+  -> buffer/register allocation, spills and DMA staging
+  -> dependency scheduling and lifetime verification
+  -> target instruction emission
+  -> final instruction size, branch and address checks
+  -> linking, runtime binding and execution qualification
+```
+
+These stages may need bounded iteration. Spilling introduces accesses and
+temporaries, so liveness, allocation and scheduling must be recomputed. Final
+program size must be checked after spills and branch repair. Register spills
+and branch relaxation may operate on machine IR rather than tensor MLIR.
+Generic algorithms still belong in Merlin; the target adapter supplies exact
+encodings, instruction effects and the legal repair/reload sequences.
+
+### Pass prerequisites and invalidation
+
+The ordering above is a design contract, not a claim that one pass manager
+already enforces every stage. The existing common transformation pipeline has
+a fixed Python order and per-change checks. Dense adapters currently enforce
+selection, emission and realization checks through their ordinary entrypoints.
+Neither mechanism yet manages the complete catalogue's analysis dependencies.
+
+The shared pipeline should give each pass explicit prerequisites, results and
+invalidations. A dependent pass must consume analyses for the current IR,
+selected configuration and numerical policy. An old successful check cannot
+approve a changed program. A deterministic dependency order supplies the
+default pipeline; an incompatible explicit order must fail with a diagnostic.
+
+| Stage | Required inputs | Changes that require recomputation |
+| --- | --- | --- |
+| Composition selection | Operation semantics, numerical boundaries, target legality and effects | Placement, conversion or graph changes |
+| Tiling and operand retention | Legal compositions, layouts, usable capacities and emission budget | Composition, layout or resource changes |
+| Physical allocation and spills | Selected tiles, aliases, lifetimes and address restrictions | Added transfers, new temporaries or changed retention |
+| Dependency and lifetime verification | Actual allocated accesses and completion rules | Reordering, spilling, address reuse or instruction substitution |
+| Emission conformance | Selected schedule and actual emitted operations | Any subsequent instruction or control-flow change |
+| Final program checks | Final instructions, addresses and branch displacements | Spill insertion, segmentation, relaxation or linking changes |
+
+Fusion selection before allocation is provisional. Allocation must either
+realize its local-storage requirements or select a legal fallback and invalidate
+the affected schedule. Spill insertion likewise returns to allocation and
+dependency scheduling. These repair loops need explicit iteration and code-size
+budgets; failure must terminate with a fallback or diagnostic.
+
+Tests for that future orchestration must reject a consumer before its producer,
+reject stale analyses after a mutation, and verify recomputation after spills
+and fusion fallback. Adapter tests must separately mutate emitted operations,
+since a correctly ordered plan can still be emitted incorrectly. The existing
+dense corruption tests cover that last obligation within their bounded scope.
 
 ## Qualification and remaining scope
 

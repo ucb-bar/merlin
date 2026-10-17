@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 
-def export_dense_planner(directory: Path) -> dict:
+def export_dense_planner(directory: Path, *, include_block_schedule: bool = False) -> dict:
     """Write exact public sources and return identities for the complete release."""
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -18,14 +18,21 @@ def export_dense_planner(directory: Path) -> dict:
         destination = directory / ("common_" + name + ".py")
         destination.write_bytes(source)
         files[destination.name] = hashlib.sha256(source).hexdigest()
-    return {"schema": "merlin.dense_planner.v1", "files_sha256": files}
+    if include_block_schedule:
+        source = Path(__file__).with_name("block_schedule.py").read_bytes()
+        destination = directory / "common_block_schedule.py"
+        destination.write_bytes(source)
+        files[destination.name] = hashlib.sha256(source).hexdigest()
+    return {"schema": "merlin.dense_planner.v2" if include_block_schedule else "merlin.dense_planner.v1",
+            "files_sha256": files}
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--include-block-schedule", action="store_true")
     args = parser.parse_args(argv)
-    identity = export_dense_planner(args.output_dir)
+    identity = export_dense_planner(args.output_dir, include_block_schedule=args.include_block_schedule)
     print(json.dumps(identity, sort_keys=True))
 
 

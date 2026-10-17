@@ -49,6 +49,10 @@ LHS = "lhs"
 WEIGHT = "weight"
 ROLES = (LHS, WEIGHT)
 
+# Conservative compiler verification policy, independent of hardware capacity.
+# Adapters preflight dynamic operation counts before materializing a projection.
+DEFAULT_PROJECTION_OPERATION_LIMIT = 4096
+
 #: ``load_grouping`` values -- how the loads inside one emission group are ordered.
 #: ``NEST``: exactly as the loop nest produces them (a weight load at its own position, each streamed
 #: block immediately before the compute that reads it). ``ROLE``: all of one role's loads, then the
