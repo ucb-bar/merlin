@@ -30,25 +30,41 @@ CASE_SCHEMA = "merlin.original_public_scale_batch_case.v1"
 def _jobs(document, spec):
     """Validate the exact per-case producer roster before using any worker slot."""
     fields = {"schema", "package_dir", "target", "jobs", "deadline", "output"}
-    if (set(document) != fields or document["schema"] != SCHEMA
-            or CHILD._plain(document["output"]) != spec.parent
-            or type(document["deadline"]) not in (int, float) or not math.isfinite(document["deadline"])
-            or type(document["jobs"]) is not list or not 1 <= len(document["jobs"]) <= 8192):
+    if (
+        set(document) != fields
+        or document["schema"] != SCHEMA
+        or CHILD._plain(document["output"]) != spec.parent
+        or type(document["deadline"]) not in (int, float)
+        or not math.isfinite(document["deadline"])
+        or type(document["jobs"]) is not list
+        or not 1 <= len(document["jobs"]) <= 8192
+    ):
         raise StageGateError("public scale worker requires its closed original batch")
     jobs, indices, paths, outputs = [], set(), set(), set()
     for item in document["jobs"]:
-        if (type(item) is not dict or set(item) != {"index", "spec", "case"}
-                or type(item["index"]) is not int or item["index"] < 0):
+        if (
+            type(item) is not dict
+            or set(item) != {"index", "spec", "case"}
+            or type(item["index"]) is not int
+            or item["index"] < 0
+        ):
             raise StageGateError("public scale batch has an invalid original case index")
         path = CHILD._plain(item["spec"]["path"])
         if CHILD._pin(path) != item["spec"] or path.stat().st_size > 1 << 20:
             raise StageGateError("public scale batch case specification changed")
         job = json.loads(path.read_bytes())
         output = CHILD._plain(job["output"])
-        if (item["index"] in indices or path in paths or output in outputs or output != path.parent
-                or output.parent != spec.parent.parent
-                or job["package_dir"] != document["package_dir"] or job["target"] != document["target"]
-                or job["deadline"] != document["deadline"] or job["case"] != item["case"]):
+        if (
+            item["index"] in indices
+            or path in paths
+            or output in outputs
+            or output != path.parent
+            or output.parent != spec.parent.parent
+            or job["package_dir"] != document["package_dir"]
+            or job["target"] != document["target"]
+            or job["deadline"] != document["deadline"]
+            or job["case"] != item["case"]
+        ):
             raise StageGateError("public scale batch substituted or repeated an original case owner")
         indices.add(item["index"])
         paths.add(path)
@@ -61,9 +77,9 @@ def _verify_payload(root, payload, budget):
     if payload.get("lowering_status") in {"emitted", "resource_refused"}:
         analysis = S._verify_products(root, payload)
         expected = budget.evaluate(analysis) if budget is not None else {"mode": "not_selected"}
-        if (CHILD._digest(payload.get("resource_budget")) != CHILD._digest(expected)
-                or payload["lowering_status"] != (
-                    "resource_refused" if expected.get("status") == "refused" else "emitted")):
+        if CHILD._digest(payload.get("resource_budget")) != CHILD._digest(expected) or payload["lowering_status"] != (
+            "resource_refused" if expected.get("status") == "refused" else "emitted"
+        ):
             raise StageGateError("public scale batch changed its original resource policy")
     elif set(payload) != {"lowering_status", "reason"} or payload["lowering_status"] != "unavailable":
         raise StageGateError("public scale batch supplied an unrecognized case observation")
@@ -85,21 +101,52 @@ def _read_case(spec, item, transport, worker, *, started, ended):
     if CHILD._plain(path) != path or path.stat().st_size > 8 << 20:
         raise StageGateError("public scale case receipt is not its bounded original worker product")
     row = json.loads(path.read_bytes())
-    if (type(row) is not dict or set(row) != {"schema", "index", "case", "spec", "observation",
-            "started_monotonic", "finished_monotonic", "original_case_checkpoint"}
-            or row["schema"] != CASE_SCHEMA or row["index"] != item["index"]
-            or row["case"] != item["case"] or row["spec"] != item["spec"]):
+    if (
+        type(row) is not dict
+        or set(row)
+        != {
+            "schema",
+            "index",
+            "case",
+            "spec",
+            "observation",
+            "started_monotonic",
+            "finished_monotonic",
+            "original_case_checkpoint",
+        }
+        or row["schema"] != CASE_SCHEMA
+        or row["index"] != item["index"]
+        or row["case"] != item["case"]
+        or row["spec"] != item["spec"]
+    ):
         raise StageGateError("public scale case receipt substituted its original case/specification")
     transport._verify_checkpoint_fields(row["original_case_checkpoint"], worker=worker)
-    if (any(type(row[name]) not in (int, float) or not math.isfinite(row[name])
-            for name in ("started_monotonic", "finished_monotonic"))
-            or not started <= row["started_monotonic"] <= row["finished_monotonic"] <= ended):
+    if (
+        any(
+            type(row[name]) not in (int, float) or not math.isfinite(row[name])
+            for name in ("started_monotonic", "finished_monotonic")
+        )
+        or not started <= row["started_monotonic"] <= row["finished_monotonic"] <= ended
+    ):
         raise StageGateError("public scale case receipt has another worker observation interval")
     return row
 
 
-def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract, facts_path,
-               work_root, deadline, ir_budget, sandbox_inputs=None, timing=None):
+def emit_cases(
+    *,
+    owner,
+    candidate,
+    target_experiment,
+    capsules,
+    cases,
+    contract,
+    facts_path,
+    work_root,
+    deadline,
+    ir_budget,
+    sandbox_inputs=None,
+    timing=None,
+):
     from merlin.targetgen.capsule_runner import _kill_tree
 
     from . import compile_only as C
@@ -110,9 +157,15 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
     groups, active, completed, worker_identities = [], [], [], {}
     with contextlib.ExitStack() as lifetime:
         with C._snapshot_operation(owner):
-            lifetime.enter_context(R._original_execution_lifetime(owner,
-                target_experiment=target_experiment, candidate=candidate,
-                work_root=work_root / "child-owner", sandbox_inputs=sandbox_inputs))
+            lifetime.enter_context(
+                R._original_execution_lifetime(
+                    owner,
+                    target_experiment=target_experiment,
+                    candidate=candidate,
+                    work_root=work_root / "child-owner",
+                    sandbox_inputs=sandbox_inputs,
+                )
+            )
             common = {"contract": S._input_pin(contract), "facts": CHILD._pin(facts_path)}
             for index, case in enumerate(cases):
                 case.verify()
@@ -121,35 +174,73 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                 source = work_root / "sources" / f"case-{index:03d}.mlir"
                 source.write_text(case.source_ir)
                 spec = root / ".scale_child_spec.json"
-                selected = [cap for cap in capsules
-                    if str(cap.get("name") or Path(cap["__dir__"]).name) == case.member]
-                S._write(spec, {"schema": S.SCHEMA, "package_dir": str(candidate),
-                    "target": target_experiment.target, "case": case.record(), "capsules": CHILD._data(selected),
-                    "source": CHILD._pin(source), **common, "output": str(root), "deadline": deadline,
-                    "ir_budget": ir_budget.record() if ir_budget is not None else None})
+                selected = [cap for cap in capsules if str(cap.get("name") or Path(cap["__dir__"]).name) == case.member]
+                S._write(
+                    spec,
+                    {
+                        "schema": S.SCHEMA,
+                        "package_dir": str(candidate),
+                        "target": target_experiment.target,
+                        "case": case.record(),
+                        "capsules": CHILD._data(selected),
+                        "source": CHILD._pin(source),
+                        **common,
+                        "output": str(root),
+                        "deadline": deadline,
+                        "ir_budget": ir_budget.record() if ir_budget is not None else None,
+                    },
+                )
                 case_jobs.append({"index": index, "spec": CHILD._pin(spec), "case": case.record()})
             for worker in range(count):
                 root = work_root / f"worker-{worker:03d}"
                 root.mkdir(mode=0o700)
                 spec, result = root / ".scale_batch_spec.json", root / ".scale_batch_result.json"
-                S._write(spec, {"schema": SCHEMA, "package_dir": str(candidate),
-                    "target": target_experiment.target, "jobs": case_jobs[worker::count],
-                    "deadline": deadline, "output": str(root)})
+                S._write(
+                    spec,
+                    {
+                        "schema": SCHEMA,
+                        "package_dir": str(candidate),
+                        "target": target_experiment.target,
+                        "jobs": case_jobs[worker::count],
+                        "deadline": deadline,
+                        "output": str(root),
+                    },
+                )
                 groups.append((spec, result))
             environment = dict(os.environ)
-            transports = lifetime.enter_context(CHILD.prepare_model_children(
-                spec_paths=tuple(spec for spec, _ in groups), environment=environment,
-                package_dir=candidate)) if groups else ()
+            transports = (
+                lifetime.enter_context(
+                    CHILD.prepare_model_children(
+                        spec_paths=tuple(spec for spec, _ in groups), environment=environment, package_dir=candidate
+                    )
+                )
+                if groups
+                else ()
+            )
         prepared_at, prepared_cpu = time.monotonic(), time.process_time()
         try:
             for (spec, result), transport in zip(groups, transports, strict=True):
                 if time.monotonic() >= deadline:
                     break
                 log = lifetime.enter_context((spec.parent / ".scale_batch.log").open("w"))
-                command = [sys.executable, "-m", __name__, "--spec", str(spec),
-                           "--result", str(result), *transport.argv]
-                process = subprocess.Popen(cpu_pool.worker_pool_command(command, environment), env=environment,
-                    pass_fds=transport.pass_fds, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                command = [
+                    sys.executable,
+                    "-m",
+                    __name__,
+                    "--spec",
+                    str(spec),
+                    "--result",
+                    str(result),
+                    *transport.argv,
+                ]
+                process = subprocess.Popen(
+                    cpu_pool.worker_pool_command(command, environment),
+                    env=environment,
+                    pass_fds=transport.pass_fds,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
                 worker_identities[process.pid] = CHILD._process(process.pid)
                 active.append((spec, result, transport, process, time.monotonic()))
             while active:
@@ -180,12 +271,19 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                     raise StageGateError("public scale original batch specification changed")
                 jobs = _jobs(json.loads(spec.read_bytes()), spec)
                 result = None
-                if (process.returncode == 0 and output.is_file() and not output.is_symlink()
-                        and output.stat().st_size <= 8 << 20):
+                if (
+                    process.returncode == 0
+                    and output.is_file()
+                    and not output.is_symlink()
+                    and output.stat().st_size <= 8 << 20
+                ):
                     result = transport.verify_result(json.loads(output.read_bytes()))
-                    if (set(result) != {"schema", "observations", "original_compiler_child"}
-                            or result["schema"] != SCHEMA or type(result["observations"]) is not list
-                            or len(result["observations"]) != len(jobs)):
+                    if (
+                        set(result) != {"schema", "observations", "original_compiler_child"}
+                        or result["schema"] != SCHEMA
+                        or type(result["observations"]) is not list
+                        or len(result["observations"]) != len(jobs)
+                    ):
                         raise StageGateError("public scale batch completion changed its original case roster")
                 else:
                     # One fresh entry per actual worker, including interrupted
@@ -201,29 +299,47 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
                     for name in ("source", "contract", "facts"):
                         if CHILD._digest(S._input_pin(job[name]["path"])) != CHILD._digest(job[name]):
                             raise StageGateError("public scale batch original case input changed before publication")
-                    actual = _read_case(spec, item, transport, worker_identities[process.pid],
-                        started=started, ended=ended)
+                    actual = _read_case(
+                        spec, item, transport, worker_identities[process.pid], started=started, ended=ended
+                    )
                     if result is not None:
                         final = result["observations"][position]
-                        if (type(final) is not dict or set(final) != {
-                                "index", "case", "observation", "started_monotonic", "finished_monotonic"}
-                                or final["index"] != index or final["case"] != cases[index].record()
-                                or actual is None or any(final[name] != actual[name] for name in final)):
+                        if (
+                            type(final) is not dict
+                            or set(final) != {"index", "case", "observation", "started_monotonic", "finished_monotonic"}
+                            or final["index"] != index
+                            or final["case"] != cases[index].record()
+                            or actual is None
+                            or any(final[name] != actual[name] for name in final)
+                        ):
                             raise StageGateError("public scale batch completion disagrees with closed case custody")
                     if actual is None or actual["finished_monotonic"] > deadline:
-                        row.update(lowering_status="unavailable", reason=(
-                            "original aggregate compile budget exhausted" if outcome == "original_compile_deadline"
-                            else "original public scale batch refused"))
+                        row.update(
+                            lowering_status="unavailable",
+                            reason=(
+                                "original aggregate compile budget exhausted"
+                                if outcome == "original_compile_deadline"
+                                else "original public scale batch refused"
+                            ),
+                        )
                     else:
                         _verify_payload(case_spec.parent, actual["observation"], ir_budget)
                         row.update(actual["observation"])
-                        row["case_observation"] = {"started_monotonic": actual["started_monotonic"],
+                        row["case_observation"] = {
+                            "started_monotonic": actual["started_monotonic"],
                             "finished_monotonic": actual["finished_monotonic"],
-                            "pending_until_parent_custody": False, "scope": "closed original per-case checkpoint"}
+                            "pending_until_parent_custody": False,
+                            "scope": "closed original per-case checkpoint",
+                        }
                     cases[index].verify()
-                    row["preparation_process"] = {"pid": process.pid, "started_monotonic": started,
-                        "finished_monotonic": ended, "mode": "original_sealed_persistent_batch", "outcome": outcome,
-                        "worker_returncode": process.returncode}
+                    row["preparation_process"] = {
+                        "pid": process.pid,
+                        "started_monotonic": started,
+                        "finished_monotonic": ended,
+                        "mode": "original_sealed_persistent_batch",
+                        "outcome": outcome,
+                        "worker_returncode": process.returncode,
+                    }
                     row["wall_seconds"] = ended - started
             for row in rows:
                 if row["lowering_status"] == "not_attempted":
@@ -239,12 +355,22 @@ def emit_cases(*, owner, candidate, target_experiment, capsules, cases, contract
             lifetime.close()
     ended, ended_cpu = time.monotonic(), time.process_time()
     if timing is not None:
-        timing.update(parent_setup_s=prepared_at - entered, dispatch_wait_s=joining_at - prepared_at,
-            parent_final_join_s=ended - joining_at, total_dispatch_s=ended - entered,
-            workers=count, children_launched=len(completed), mode="original_sealed_persistent_batch",
-            parent_process_cpu_s={"setup": prepared_cpu - entered_cpu,
-                "dispatch_wait": joining_cpu - prepared_cpu, "final_join": ended_cpu - joining_cpu,
-                "total": ended_cpu - entered_cpu}, scope="complete parent stages; no parent lease during child waits")
+        timing.update(
+            parent_setup_s=prepared_at - entered,
+            dispatch_wait_s=joining_at - prepared_at,
+            parent_final_join_s=ended - joining_at,
+            total_dispatch_s=ended - entered,
+            workers=count,
+            children_launched=len(completed),
+            mode="original_sealed_persistent_batch",
+            parent_process_cpu_s={
+                "setup": prepared_cpu - entered_cpu,
+                "dispatch_wait": joining_cpu - prepared_cpu,
+                "final_join": ended_cpu - joining_cpu,
+                "total": ended_cpu - entered_cpu,
+            },
+            scope="complete parent stages; no parent lease during child waits",
+        )
     return rows
 
 
@@ -271,17 +397,32 @@ def main(argv=None):
         def progress():
             path = args.spec.parent / ".scale_batch_progress.json"
             temporary = path.with_suffix(".pending")
-            S._write(temporary, {"schema": SCHEMA, "accepted": False,
-                "source_inventory_sha256": executor.source_sha256,
-                "scope": "observations pending final worker custody", "events": events})
+            S._write(
+                temporary,
+                {
+                    "schema": SCHEMA,
+                    "accepted": False,
+                    "source_inventory_sha256": executor.source_sha256,
+                    "scope": "observations pending final worker custody",
+                    "events": events,
+                },
+            )
             os.replace(temporary, path)
 
         for item, spec, job in jobs:
             if CHILD._pin(spec) != item["spec"]:
                 raise StageGateError("public scale case changed before worker consumption")
             started = time.monotonic()
-            events.append({"index": item["index"], "case": item["case"], "event": "begin",
-                "at_monotonic": started, "at_utc_ns": time.time_ns(), "pid": os.getpid()})
+            events.append(
+                {
+                    "index": item["index"],
+                    "case": item["case"],
+                    "event": "begin",
+                    "at_monotonic": started,
+                    "at_utc_ns": time.time_ns(),
+                    "pid": os.getpid(),
+                }
+            )
             progress()
             with CHILD.restored_case_checkpoint() as checkpoint:
                 observation = S.observe_case(job, spec_path=spec, executor=executor, original_budget=budget)
@@ -289,18 +430,33 @@ def main(argv=None):
                     raise StageGateError("public scale case changed during worker consumption")
                 _verify_payload(spec.parent, observation, budget)
             finished = time.monotonic()
-            completed = {"index": item["index"], "case": item["case"], "observation": observation,
-                "started_monotonic": started, "finished_monotonic": finished}
+            completed = {
+                "index": item["index"],
+                "case": item["case"],
+                "observation": observation,
+                "started_monotonic": started,
+                "finished_monotonic": finished,
+            }
             # A later interrupted case cannot erase a closed case owner/product
             # boundary. Parent final custody is still required for acceptance.
             path = _case_path(args.spec, item["index"])
             temporary = path.with_suffix(".pending")
-            S._write(temporary, {"schema": CASE_SCHEMA, **completed, "spec": item["spec"],
-                "original_case_checkpoint": checkpoint})
+            S._write(
+                temporary,
+                {"schema": CASE_SCHEMA, **completed, "spec": item["spec"], "original_case_checkpoint": checkpoint},
+            )
             os.replace(temporary, path)
             observations.append(completed)
-            events.append({"index": item["index"], "case": item["case"], "event": "end",
-                "at_monotonic": finished, "at_utc_ns": time.time_ns(), "pid": os.getpid()})
+            events.append(
+                {
+                    "index": item["index"],
+                    "case": item["case"],
+                    "event": "end",
+                    "at_monotonic": finished,
+                    "at_utc_ns": time.time_ns(),
+                    "pid": os.getpid(),
+                }
+            )
             progress()
         # Reopen every earlier case as well as the original batch before closing
         # its service/import/emission lifetime and making completion visible.

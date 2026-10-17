@@ -61,8 +61,11 @@ def adapter_selection(adapters, *, target):
             if original is None or original[1] != target or tier not in {"L2", "L3", "L4"}:
                 raise StageGateError("operator processes require original selected simulator adapters")
             engine, _, selection, policy = original
-            document[tier] = {"engine": engine, "selection": CHILD._data(selection),
-                              "readback_policy": policy.record() if policy is not None else None}
+            document[tier] = {
+                "engine": engine,
+                "selection": CHILD._data(selection),
+                "readback_policy": policy.record() if policy is not None else None,
+            }
     return copy.deepcopy(document)
 
 
@@ -129,9 +132,11 @@ def _prepared_child(document):
             if environment.get("MERLIN_PASS_LOG"):
                 environment["MERLIN_PASS_LOG_CAPSULE"] = str(document["capsule"]["name"])
                 environment["MERLIN_PASS_LOG_REQUIREMENTS"] = json.dumps(
-                    list(document["capsule"].get("pass_requirements") or []))
-            transport = lifetime.enter_context(CHILD.prepare_model_child(
-                spec_path=spec, environment=environment, package_dir=document["package_dir"]))
+                    list(document["capsule"].get("pass_requirements") or [])
+                )
+            transport = lifetime.enter_context(
+                CHILD.prepare_model_child(spec_path=spec, environment=environment, package_dir=document["package_dir"])
+            )
             if transport is None:
                 raise StageGateError("operator child requires its original sealed capability")
         # Final independent custody closes before exposing the transport to Popen. Its FD and
@@ -165,25 +170,51 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
         raise StageGateError("operator child cannot replace the whole-model route")
     costs = {tier: tier_policy.observed_cost(target, tier) for tier in selection}
     document = {
-        "grade_kind": "operator", "capsule": CHILD._data(capsule), "package_dir": str(package_dir),
-        "target": target, "runs_root": str(runs_root), "contract": str(contract) if contract else None,
-        "suite": suite, "dtype": dtype, "adapters": selection, "timeout": timeout,
-        "workers": workers, "no_oracle": no_oracle, "observed_costs_s": costs,
+        "grade_kind": "operator",
+        "capsule": CHILD._data(capsule),
+        "package_dir": str(package_dir),
+        "target": target,
+        "runs_root": str(runs_root),
+        "contract": str(contract) if contract else None,
+        "suite": suite,
+        "dtype": dtype,
+        "adapters": selection,
+        "timeout": timeout,
+        "workers": workers,
+        "no_oracle": no_oracle,
+        "observed_costs_s": costs,
     }
     with _prepared_child(document) as (spec, output, environment, transport):
-        command = [sys.executable, "-c", runner._CHILD_PREAMBLE,
-                   "--operator-grade", str(spec), "--operator-grade-out", str(output), *transport.argv]
-        process = subprocess.Popen(cpu_pool.worker_pool_command(command, environment), env=environment,
-            pass_fds=transport.pass_fds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-            start_new_session=True)
+        command = [
+            sys.executable,
+            "-c",
+            runner._CHILD_PREAMBLE,
+            "--operator-grade",
+            str(spec),
+            "--operator-grade-out",
+            str(output),
+            *transport.argv,
+        ]
+        process = subprocess.Popen(
+            cpu_pool.worker_pool_command(command, environment),
+            env=environment,
+            pass_fds=transport.pass_fds,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
         try:
             deferred = _communicate_or_defer(process, timeout_s=max(1, timeout) * (len(selection) + 6))
             if deferred:
                 runner._kill_tree(process.pid)
                 process.wait(timeout=10)
                 row = {
-                    "capsule": capsule["name"], "kind": capsule.get("kind"), "label": capsule.get("label"),
-                    "status": "gated", "background_deferred": deferred,
+                    "capsule": capsule["name"],
+                    "kind": capsule.get("kind"),
+                    "label": capsule.get("label"),
+                    "status": "gated",
+                    "background_deferred": deferred,
                     "failure": {"plane": "gate", "category": "BACKGROUND_DEFERRED", "detail": deferred},
                 }
                 cfg = runner._config_for_target(target, suite, dtype)
@@ -231,9 +262,16 @@ def main(argv):
         if job.get("grade_kind") != "operator" or capsule.get("kind") == "model" or selected_host_leaf(capsule):
             raise StageGateError("operator child requires the original accelerator capsule route")
         adapters = {
-            tier: runner.simulator_adapter(record["engine"], target, selection=record["selection"],
-                        readback_policy=(ReadbackPolicy.from_record(record["readback_policy"])
-                                         if record["readback_policy"] is not None else None))
+            tier: runner.simulator_adapter(
+                record["engine"],
+                target,
+                selection=record["selection"],
+                readback_policy=(
+                    ReadbackPolicy.from_record(record["readback_policy"])
+                    if record["readback_policy"] is not None
+                    else None
+                ),
+            )
             for tier, record in job["adapters"].items()
         }
         for tier, value in job["observed_costs_s"].items():
@@ -241,13 +279,27 @@ def main(argv):
         with cpu_pool.shared_compute_pool():
             pkg = P.load_package(job["package_dir"], contract=job["contract"])
             P.integrity_scan(pkg)
-        result = runner.run_capsule(capsule, job["package_dir"], runs_root=job["runs_root"], run_id=capsule["name"],
-            contract=job["contract"], oracle_adapters=adapters, pkg=pkg, timeout=job["timeout"], target=target,
-            suite=job["suite"], dtype=job["dtype"], no_oracle=job["no_oracle"], workers=job["workers"],
-            _defer_result_publication=True)
+        result = runner.run_capsule(
+            capsule,
+            job["package_dir"],
+            runs_root=job["runs_root"],
+            run_id=capsule["name"],
+            contract=job["contract"],
+            oracle_adapters=adapters,
+            pkg=pkg,
+            timeout=job["timeout"],
+            target=target,
+            suite=job["suite"],
+            dtype=job["dtype"],
+            no_oracle=job["no_oracle"],
+            workers=job["workers"],
+            _defer_result_publication=True,
+        )
         result["operator_child_costs_s"] = {
-            tier: record["timing"]["adapter_wall_s"] for tier, record in result.get("tiers", {}).items()
-            if isinstance(record, dict) and isinstance(record.get("timing"), dict)
+            tier: record["timing"]["adapter_wall_s"]
+            for tier, record in result.get("tiers", {}).items()
+            if isinstance(record, dict)
+            and isinstance(record.get("timing"), dict)
             and type(record["timing"].get("adapter_wall_s")) in (int, float)
         }
         result["operator_child_spend_s"] = tier_policy.spent(target)

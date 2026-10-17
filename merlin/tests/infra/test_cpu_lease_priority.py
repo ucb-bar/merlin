@@ -77,8 +77,14 @@ def test_more_urgent_classes_take_the_slot_first_and_each_class_is_fifo(pool):
     _, root = pool
     holder, release = _start_holder()
     results = FORK.Queue()
-    arrivals = [(C.AUXILIARY, "probe"), (C.GRADE, "grade"), (C.AUTHOR, "author-1"),
-                (C.PREPARATION, "prepare"), (C.AUTHOR, "author-2"), (C.GRADE, "grade-2")]
+    arrivals = [
+        (C.AUXILIARY, "probe"),
+        (C.GRADE, "grade"),
+        (C.AUTHOR, "author-1"),
+        (C.PREPARATION, "prepare"),
+        (C.AUTHOR, "author-2"),
+        (C.GRADE, "grade-2"),
+    ]
     contenders = []
     try:
         for count, (level, label) in enumerate(arrivals, start=1):
@@ -91,7 +97,13 @@ def test_more_urgent_classes_take_the_slot_first_and_each_class_is_fifo(pool):
     _join([holder, *contenders])
     order = [results.get(timeout=5) for _ in arrivals]
     assert [label for label, _ in sorted(order, key=lambda row: row[1])] == [
-        "author-1", "author-2", "grade", "grade-2", "prepare", "probe"]
+        "author-1",
+        "author-2",
+        "grade",
+        "grade-2",
+        "prepare",
+        "probe",
+    ]
     assert _queued(root) == []
 
 
@@ -124,8 +136,9 @@ def test_a_stale_free_slot_view_never_admits_a_lower_class_past_a_queued_one(poo
     entry = directory / f"{C.AUTHOR}-{time.monotonic_ns():020d}-1-1-live{C._WAITER_SUFFIX}"
     counted = C._free_slots
     # A cached view that still shows a slot freed a moment ago, beside the one that is really free.
-    monkeypatch.setattr(C, "_free_slots", lambda root, cpus, fresh=False: counted(root, cpus, fresh=True) + (
-        0 if fresh else 1))
+    monkeypatch.setattr(
+        C, "_free_slots", lambda root, cpus, fresh=False: counted(root, cpus, fresh=True) + (0 if fresh else 1)
+    )
     with open(entry, "w") as owner:
         fcntl.flock(owner, fcntl.LOCK_EX)
         with C.cpu_priority(C.AUXILIARY), pytest.raises(TimeoutError):
@@ -345,8 +358,12 @@ def test_preparation_folds_into_the_pool_without_deadlock(pool):
                 pass  # a bounded preparation step leases, then releases before any child wait
             with C.selected_pool(C.preparation_cpus()):
                 workers = [
-                    subprocess.Popen(C.worker_pool_command([sys.executable, "-c", _LEASING_CHILD], environment),
-                                     env=environment, stdout=subprocess.PIPE, text=True)
+                    subprocess.Popen(
+                        C.worker_pool_command([sys.executable, "-c", _LEASING_CHILD], environment),
+                        env=environment,
+                        stdout=subprocess.PIPE,
+                        text=True,
+                    )
                     for _ in range(3)
                 ]
                 assert not C.current_thread_owns_cpu_lease()  # the waiting parent holds no slot
