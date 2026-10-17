@@ -30,6 +30,7 @@ code_refs:
   - merlin/lean/MerlinVerify/Check/BindingFacts.lean
   - merlin/lean/MerlinVerify/Check/UniformFacts.lean
   - merlin/lean/MerlinVerify/Rules/MapGeneralize.lean
+  - merlin/lean/MerlinVerify/Rules/CopyGeneralize.lean
   - merlin/lean/MerlinVerify/Rules/Motion.lean
 ---
 
@@ -701,7 +702,7 @@ model/tensor layer is outside this sequence.
 
 | Order | Family | Proof obligation and completion criterion |
 |---|---|---|
-| 1 | Named operation generalization | Matmul/batch-matmul use universal expansion; map/fill use checked typed SSA facts. Implemented for these top-level forms, with actual pass output and defined chains qualified. |
+| 1 | Named operation generalization | Matmul/batch-matmul use universal expansion; map/fill/copy use checked typed SSA facts. Implemented for these top-level forms, with actual pass output and defined chains qualified. Other named families remain outstanding. |
 | 2 | Exact integer arithmetic | Operand commutation and typed one-operation normalization are implemented. Next extend typed sites to width/flag-aware multi-operation cast and constant simplifications. Check signedness, poison and actual canonicalizer output. |
 | 3 | Valid static shape rewrites | Prove reshape cancellation/composition and indexing equivalence, including zero extents, reassociation, element type, and all escaping uses. |
 | 4 | Rewrites inside operation bodies | Lift proved local rules into actual linalg region closures with captures and block-argument shadowing; preserve reduction order and unchanged computation. |
@@ -725,7 +726,11 @@ Implemented foundation: `Check/TypedRewrite.lean` provides a `TypedExpansion` co
 that successful source steps establish the types of their actual results. Normalization preserves
 operands, result bindings and region closures. `TypedC1.check_sound` and `TypedModule.check_sound`
 are separately pinned claims on typed inputs at one index width. The first qualified expansion
-is map-to-generic. This one-operation interface does not yet implement multi-operation cast
+is map-to-generic; fill and copy generalization use the same interface. Copy retains the actual
+body and proves both conditional refinement and transfer of successful generic execution back
+to the original named source. Its definedness rule independently checks full overwrite or an
+initialized destination, so copying poison never becomes a defined-source claim.
+This one-operation interface does not yet implement multi-operation cast
 fusion, reshape elimination, nested rewriting or numerical policies.
 
 **Uniform input compaction.** `Rules/StructuredInputs.lean` proves that two independently checked

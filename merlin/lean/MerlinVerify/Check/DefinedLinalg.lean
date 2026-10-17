@@ -3,6 +3,7 @@ import MerlinVerify.Check.DefinedLoops
 import MerlinVerify.Check.DefinedComposition
 import MerlinVerify.Check.DefinedDequant
 import MerlinVerify.Rules.Generalize
+import MerlinVerify.Rules.CopyGeneralize
 
 namespace MerlinVerify.Check.Definedness
 
@@ -322,11 +323,64 @@ theorem mapDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
     · cases h
   · cases h
 
+/-- Copy uses its actual checked body. A dirty destination is accepted only after proving a full
+overwrite; an initialized destination may be read. Successful execution transfers to the named
+source through the independently proved copy expansion, rather than conditional refinement. -/
+def copyDefinedRule (ib : Nat) (Γ : FEnv) (op : Op) (fs : List Fact) : Option (List Fact) :=
+  match fs, op.regions with
+  | [_, ⟨.tensor sh _, _⟩], [_] =>
+    let v := Rules.CopyGeneralize.generic op sh.length
+    if Rules.CopyGeneralize.legal op v sh.length then
+      (overwriteDefinedRule ib Γ v fs).orElse fun _ => genericDefinedRule ib Γ v fs
+    else none
+  | _, _ => none
+
+theorem copyDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
+    copyDefinedRule ib Γ op fs = some rs → ∀ ctx call env args,
+    ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
+    ∃ vs, opSem ctx call op args (evalRegions opSem call env op.regions) = .ok vs ∧
+      FactsHold ib vs rs := by
+  intro Γ op fs rs h ctx call env args hib hΓ ha
+  unfold copyDefinedRule at h
+  split at h
+  · next _ _ input sh e initialized body hregs =>
+    dsimp only at h
+    split at h
+    · next hlegal =>
+      have hv : ∃ vs, opSem ctx call (Rules.CopyGeneralize.generic op sh.length) args
+          (evalRegions opSem call env (Rules.CopyGeneralize.generic op sh.length).regions) = .ok vs ∧
+          FactsHold ib vs rs := by
+        cases ho : overwriteDefinedRule ib Γ (Rules.CopyGeneralize.generic op sh.length)
+            [input, ⟨.tensor sh e, initialized⟩] with
+        | none =>
+          simp only [ho, Option.orElse_none] at h
+          exact genericDefinedRule_sound ib _ _ _ _ h ctx call env args hib hΓ ha
+        | some ys =>
+          simp only [ho, Option.orElse_some, Option.some.injEq] at h
+          subst rs
+          exact overwriteDefinedRule_sound ib _ _ _ _ ho ctx call env args hib hΓ ha
+      obtain ⟨vs, hv, hrf⟩ := hv
+      obtain _ | ⟨hi, ht⟩ := ha
+      obtain _ | ⟨ht, hnil⟩ := ht
+      cases hnil
+      rename_i inputValue init
+      cases init with
+      | scalar _ => cases ht.1
+      | tensor t =>
+        have hregions : (Rules.CopyGeneralize.generic op sh.length).regions = op.regions := rfl
+        rw [hregions, hregs] at hv
+        refine ⟨vs, ?_, hrf⟩
+        rw [hregs]
+        exact Rules.CopyGeneralize.meaning_success hlegal ctx call inputValue t
+          (by rw [ht.1.1]) _ hv
+    · cases h
+  · cases h
+
 def structuredBook (ib : Nat) : Book opSem ib where
   rule Γ op fs := match (leafBook ib).rule Γ op fs with
     | some rs => some rs
     | none => [fillDefinedRule ib, genericDefinedRule ib, overwriteDefinedRule ib,
-        contractionDefinedRule ib, mapDefinedRule ib].findSome? fun r => r Γ op fs
+        contractionDefinedRule ib, mapDefinedRule ib, copyDefinedRule ib].findSome? fun r => r Γ op fs
   sound Γ op fs rs h ctx call env args hib hΓ ha := by
     split at h
     · next _ hl =>
@@ -334,12 +388,13 @@ def structuredBook (ib : Nat) : Book opSem ib where
       exact (leafBook ib).sound Γ op fs _ hl ctx call env args hib hΓ ha
     · obtain ⟨r, hmem, hr⟩ := List.exists_of_findSome?_eq_some h
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
-      rcases hmem with rfl | rfl | rfl | rfl | rfl
+      rcases hmem with rfl | rfl | rfl | rfl | rfl | rfl
       · exact fillDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact genericDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact overwriteDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact contractionDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
       · exact mapDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
+      · exact copyDefinedRule_sound ib Γ op fs rs hr ctx call env args hib hΓ ha
 
 /-- Independent families compose through their totality proofs. The structured family retains
 its existing behavior; dequantization adds source-definedness on its explicitly checked domain. -/

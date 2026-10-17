@@ -724,3 +724,69 @@ def test_cli_native_comparison_is_empirical(tmp_path, fidelity_tools, capsys):
     # Reuse cannot make an older matching artifact look like a new successful attempt.
     assert main(command) == 2
     assert json.loads(capsys.readouterr().out)["verdict"] == "unmeasured"
+
+
+@pytest.mark.parametrize(
+    "shape,element,target_element,dirty",
+    [
+        ((), "i32", None, True),
+        ((0, 3), "i8", None, True),
+        ((2, 3), "i13", None, True),
+        ((2, 3), "i8", "i32", True),
+        ((2, 3), "f32", None, True),
+        ((2,), "f64", None, False),
+    ],
+)
+def test_copy_generalization_native_and_independent_reference(
+    tmp_path, fidelity_tools, shape, element, target_element, dirty
+):
+    from types import SimpleNamespace
+
+    from test_lean_copy_generalize import _source
+    from test_lean_generalize import _generalize
+
+    source = _source(shape, element, target_element, dirty=dirty, escape=True).replace("@forward", "@subject")
+    _, before, after = _generalize(tmp_path, SimpleNamespace(m2m_python=fidelity_tools.compiler_python), source)
+    samples = _tensor_samples(source, tmp_path, fidelity_tools)
+    if element.startswith("f"):
+        # Exercise exact data movement of NaN payloads, signed zero, infinities and subnormals.
+        edges = _floats(int(element[1:]))
+        edges.append(0x7FC01234 if element == "f32" else 0x7FF8000000001234)
+    else:
+        width = int(element[1:])
+        edges = [0, 1, (1 << width) - 1, 1 << (width - 1)]
+    samples.extend([[argument.copy() for argument in samples[0]] for _ in range(max(0, len(edges) - len(samples)))])
+    for index, sample in enumerate(samples):
+        sample[0] = [edges[(index + j) % len(edges)] for j in range(len(sample[0]))]
+    for name, program in [("before", before), ("after", after)]:
+        work = tmp_path / name
+        diff.compare(program.read_text(), samples, work, fidelity_tools)
+        actual = json.loads((work / "native-results.json").read_text())["results"]
+        expected = []
+        for sample in samples:
+            values = sample[0]
+            if target_element is not None:
+                # Default integer widening is signed; derive the reference directly from input bits.
+                sign, modulus = 1 << (int(element[1:]) - 1), 1 << int(target_element[1:])
+                copied = [str(((value ^ sign) - sign) % modulus) for value in values]
+            else:
+                copied = [str(value) for value in values]
+            expected.append(copied + [str(value) for value in values])
+        assert actual == expected
+
+
+def test_copy_wrong_input_is_detected_by_native_execution(tmp_path, fidelity_tools):
+    from types import SimpleNamespace
+
+    from test_lean_copy_generalize import MUTATE, _source
+    from test_lean_generalize import _generalize
+
+    source = _source((2, 2), dirty=False).replace("@forward", "@subject")
+    _, before, after = _generalize(tmp_path, SimpleNamespace(m2m_python=fidelity_tools.compiler_python), source)
+    samples = [[[7] * 4, [13] * 4, [19] * 4]]
+    diff.compare(before.read_text(), samples, tmp_path / "original", fidelity_tools)
+    diff._run([str(fidelity_tools.compiler_python), "-c", MUTATE, str(after), "input"])
+    diff.compare(after.read_text(), samples, tmp_path / "mutated", fidelity_tools)
+    original = json.loads((tmp_path / "original/native-results.json").read_text())["results"]
+    mutated = json.loads((tmp_path / "mutated/native-results.json").read_text())["results"]
+    assert original == [["7"] * 4] and mutated == [["13"] * 4]

@@ -20,6 +20,8 @@ code_refs:
   - merlin/tests/ir/test_lean_cli.py
   - merlin/lean/MerlinVerify/Check/BindingFacts.lean
   - merlin/lean/MerlinVerify/Check/UniformFacts.lean
+  - merlin/lean/MerlinVerify/Rules/CopyGeneralize.lean
+  - merlin/tests/ir/test_lean_copy_generalize.py
 ---
 
 # Run Lean semantics differential tests
@@ -174,6 +176,18 @@ checks both index widths, rank-zero/empty tensors, initialized and dirty destina
 and floating element types, defined chains, and independently corrupted inputs, yields and returns.
 The native differential corpus executes original and generalized fills on integer, f32 and f64
 inputs. This certifies the named-to-generic boundary; it does not prove later bufferization.
+
+`Rules/CopyGeneralize.lean` adds `linalg.copy` on static, unencoded tensor destinations. It
+checks both identity maps, parallel iterators, operand segments and supported attributes while
+retaining the actual body, casts and SSA bindings. The copy-definedness rule proves the original
+source succeeds using a separate success-transfer theorem. A fully overwritten destination may
+start uninitialized; a poisoned input still prevents a defined-source claim. The regression suite
+checks actual upstream generalization at both index widths, rank-zero/empty tensors, integer and
+floating storage types, widening integer copies, intermediate fill/reshape results, escaping inputs,
+defined receipt chains and stale output. Numerically wrong mutations first pass MLIR verification
+and must then be refused by Lean. Native tests compare before and after against Lean and an
+independent input-bit/cast reference, including f32/f64 NaN payloads and signed zero. These tests
+cover the named-to-generic boundary; downstream lowering remains outside its formal claim.
 
 `test_lean_splat_inputs.py` executes the default uniform-input compaction pass and compares both
 programs through the Lean denotation and native MLIR. It covers multiple compacted inputs, a full
