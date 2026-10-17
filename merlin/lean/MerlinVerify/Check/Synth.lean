@@ -14,6 +14,7 @@ import MerlinVerify.Rules.Cse
 import MerlinVerify.Rules.Motion
 import MerlinVerify.Rules.Generalize
 import MerlinVerify.Rules.Commutative
+import MerlinVerify.Rules.IntegerFold
 
 namespace MerlinVerify.Check
 
@@ -33,29 +34,44 @@ def localRewrite? (ρ : Rho) (s t : Op) : Option (Rule × Rho) :=
   [Rules.Generalize.rule, Rules.Commutative.rule].findSome? fun r =>
     (r.check ρ [s] [t]).map fun ρ' => (r, ρ')
 
+/-- A candidate always consumes a nonempty source fragment; targets may contain zero or more
+operations. Rules recheck every proposed fragment independently of this synthesizer. -/
+structure SiteCandidate where
+  rule : Rule
+  sourceTail : Nat
+  targetCount : Nat
+
+def multiRewrite? (ρ : Rho) (ss ts : List Op) : Option (SiteCandidate × Rho) :=
+  let candidates : List SiteCandidate :=
+    [⟨Rules.Cse.rule, 1, 1⟩, ⟨Rules.Motion.rule, 1, 2⟩, ⟨Rules.DequantSite.rule, 0, 2⟩] ++
+    (Rules.IntegerFold.candidateTails ss ts).map (fun n => ⟨Rules.IntegerFold.rule, n, 1⟩)
+  candidates.findSome? fun c =>
+    if c.sourceTail + 1 ≤ ss.length ∧ c.targetCount ≤ ts.length then
+      (c.rule.check ρ (ss.take (c.sourceTail + 1)) (ts.take c.targetCount)).map fun ρ' => (c, ρ')
+    else none
+
 def synthLocal (ρ : Rho) : List Op → List Op → List Step
   | [], [] => []
-  | _ :: ss, [] => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss []
+  | s :: ss, [] =>
+    match multiRewrite? ρ (s :: ss) [] with
+    | some (c, ρ') => .site c.rule (c.sourceTail + 1) c.targetCount ::
+        synthLocal ρ' ((s :: ss).drop (c.sourceTail + 1)) ([].drop c.targetCount)
+    | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss []
   | [], _ :: _ => [.same]
   | s :: ss, t :: ts =>
     match samePrefix? ρ (s :: ss) (t :: ts) with
     | some ρ' => .same :: synthLocal ρ' ss ts
     | none =>
-      match Rules.Cse.check ρ ((s :: ss).take 2) [t] with
-      | some ρ' => .site Rules.Cse.rule 2 1 :: synthLocal ρ' (ss.drop 1) ts
+      match multiRewrite? ρ (s :: ss) (t :: ts) with
+      | some (c, ρ') => .site c.rule (c.sourceTail + 1) c.targetCount ::
+          synthLocal ρ' ((s :: ss).drop (c.sourceTail + 1)) ((t :: ts).drop c.targetCount)
       | none =>
-        match Rules.Motion.check ρ ((s :: ss).take 2) ((t :: ts).take 2) with
-        | some ρ' => .site Rules.Motion.rule 2 2 :: synthLocal ρ' (ss.drop 1) (ts.drop 1)
+        match localRewrite? ρ s t with
+        | some (r, ρ') => .site r 1 1 :: synthLocal ρ' ss ts
         | none =>
-          match Rules.DequantSite.check ρ [s] ((t :: ts).take 2) with
-          | some ρ' => .site Rules.DequantSite.rule 1 2 :: synthLocal ρ' ss (ts.drop 1)
-          | none =>
-            match localRewrite? ρ s t with
-            | some (r, ρ') => .site r 1 1 :: synthLocal ρ' ss ts
-            | none =>
-              match alphaOp ρ s t with
-              | some ρ' => .same :: synthLocal ρ' ss ts
-              | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss (t :: ts)
+          match alphaOp ρ s t with
+          | some ρ' => .same :: synthLocal ρ' ss ts
+          | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss (t :: ts)
   termination_by ss ts => ss.length + ts.length
   decreasing_by
     all_goals simp_all
