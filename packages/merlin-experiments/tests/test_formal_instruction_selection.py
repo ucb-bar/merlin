@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,6 +21,7 @@ from merlin_experiments.phase1.feedback import formal
 from merlin_experiments.phase1.feedback import private_instruction_coordinator as C
 from merlin_experiments.phase1.feedback import private_instruction_declaration as D
 
+from merlin.common.cpu_pool import shared_compute_pool
 from merlin.targetgen.contract.build_service import file_digest
 from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
@@ -312,7 +315,38 @@ def test_coordinator_readers_remain_in_registered_private_grader_identity():
         assert not any(module_matches(module.__name__, prefix) for prefix in declared_modules("agent"))
 
 
-def _formal_attempt(selected, monkeypatch, *, choose=True, fault=None, build_passes=False):
+@contextmanager
+def _leased_grader_record(path, **lease):
+    """Record a grader's inherited CPU selection, then hold one shared-pool slot."""
+    unleased = sorted(os.sched_getaffinity(0))
+    with shared_compute_pool(**lease):
+        path.write_text(
+            json.dumps(
+                {
+                    "pid": os.getpid(),
+                    "environment": {
+                        key: os.environ.get(key)
+                        for key in ("MERLIN_COMPUTE_CPUS", "MERLIN_COMPUTE_CPU_SLOTS", "MERLIN_PREPARATION_CPUS")
+                    },
+                    "unleased_affinity": unleased,
+                    "leased": sorted(os.sched_getaffinity(0)),
+                }
+            )
+        )
+        yield
+
+
+def _formal_attempt(
+    selected,
+    monkeypatch,
+    *,
+    choose=True,
+    fault=None,
+    build_passes=False,
+    overlap=False,
+    hidden_fault=False,
+    serial_hidden=False,
+):
     calls, _hardware = _substitute_issuers(selected, monkeypatch)
     run = selected.output.with_name("formal-run")
     (run / "submission").mkdir(parents=True)
@@ -337,7 +371,24 @@ def _formal_attempt(selected, monkeypatch, *, choose=True, fault=None, build_pas
     monkeypatch.setattr(
         formal, "_install_formal_model_simulator", lambda target: ({"engine": "diagnostic_not_executed"}, None)
     )
-    monkeypatch.setattr(formal, "_score", lambda *args, **kwargs: {"per_capsule": [], "gradeable": False})
+
+    graded = []
+
+    def score(*args, **kwargs):
+        graded.append((os.getpid(), args[3]))
+        if overlap and args[3] == {"hidden"}:
+            # Hold one shared slot until the private grader has leased its own.
+            with _leased_grader_record(run / "hidden_started"):
+                deadline = time.monotonic() + 5
+                while not (run / "private_started").exists() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+            if not (run / "private_started").exists():
+                raise RuntimeError("private grading did not overlap hidden grading")
+            if hidden_fault:
+                raise RuntimeError("synthetic hidden grader crash")
+        return {"per_capsule": [], "gradeable": False}
+
+    monkeypatch.setattr(formal, "_score", score)
     monkeypatch.setattr(formal.freeze_run, "repo_sha", lambda **kwargs: "owned_diagnostic_source")
     monkeypatch.setattr(
         formal, "_private_source_freeze_for_formal", lambda *args, **kwargs: {"diagnostic_not_qualified": True}
@@ -368,7 +419,15 @@ def _formal_attempt(selected, monkeypatch, *, choose=True, fault=None, build_pas
     monkeypatch.setattr(C, "prepare", retain)
 
     def build(*args, **kwargs):
-        seen.append(kwargs)
+        if overlap:
+            deadline = time.monotonic() + 5
+            while not (run / "hidden_started").exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert (run / "hidden_started").exists()
+            # The hidden grader still holds its slot: this lease must come from the same pool.
+            with _leased_grader_record(run / "private_started", timeout_s=5):
+                pass
+        seen.append({**kwargs, "hidden_score_written": (run / "grading_hidden" / "score_capsule.json").exists()})
         if fault == "callback":
             object.__setattr__(kwargs["linked_elf_admission"], "evaluator", _never_substituted_evaluator)
         return {"passed": build_passes, "models": [], "reason": "owned diagnostic: no actual build or qualification"}
@@ -381,18 +440,98 @@ def _formal_attempt(selected, monkeypatch, *, choose=True, fault=None, build_pas
         "owned_control",
         "--capsules",
         str(run.parent / "public"),
-        "--skip-hidden",
         "--no-oracle",
         "--private-full-model-spec",
         str(spec),
     ]
+    if overlap or serial_hidden:
+        cpus = sorted(os.sched_getaffinity(0))[:2]
+        if len(cpus) < 2:
+            pytest.skip("overlap through one shared pool needs two schedulable CPUs")
+        if serial_hidden:
+            monkeypatch.setenv("MERLIN_FORMAL_OVERLAP_PRIVATE", "0")
+        else:
+            monkeypatch.delenv("MERLIN_FORMAL_OVERLAP_PRIVATE", raising=False)
+        monkeypatch.setenv("MERLIN_COMPUTE_CPUS", ",".join(map(str, cpus)))
+        monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(run.parent / "cpu-slots"))
+        monkeypatch.delenv("MERLIN_PREPARATION_CPUS", raising=False)
+        arguments += ["--hidden-capsules", str(run.parent / "hidden")]
+    else:
+        arguments += ["--skip-hidden"]
     if choose:
         arguments += ["--instruction-selection", str(selected.path)]
+    if hidden_fault:
+        stale = run / "grading_hidden" / "score_capsule.json"
+        stale.parent.mkdir(parents=True)
+        stale.write_text(json.dumps({"per_capsule": [], "gradeable": True, "stale": True}))
+        with pytest.raises(SystemExit, match="hidden formal child failed"):
+            formal.main(arguments, context=context)
+        assert not stale.exists()
+        assert not (run / "run_manifest.yaml").exists()
+        return None
     assert formal.main(arguments, context=context) == 1
     manifest = yaml.safe_load((run / "run_manifest.yaml").read_text())
     assert manifest["completion"]["formal_grade_complete"] is False
     assert manifest["private_full_models"]["passed"] is build_passes
+    if serial_hidden:
+        return manifest, graded, seen
     return manifest, calls, seen, prepared
+
+
+def test_formal_overlaps_hidden_with_private_through_one_shared_pool(selected, monkeypatch):
+    unleased = sorted(os.sched_getaffinity(0))
+    manifest, _calls, _seen, _prepared = _formal_attempt(selected, monkeypatch, choose=False, overlap=True)
+    run = selected.output.with_name("formal-run")
+    hidden = json.loads((run / "hidden_started").read_text())
+    private = json.loads((run / "private_started").read_text())
+    roster = set(map(int, os.environ["MERLIN_COMPUTE_CPUS"].split(",")))
+    # Concurrent graders in separate processes, both inheriting the unchanged CPU selection.
+    assert hidden["pid"] != private["pid"]
+    for record in (hidden, private):
+        assert record["environment"] == {
+            "MERLIN_COMPUTE_CPUS": os.environ["MERLIN_COMPUTE_CPUS"],
+            "MERLIN_COMPUTE_CPU_SLOTS": os.environ["MERLIN_COMPUTE_CPU_SLOTS"],
+            "MERLIN_PREPARATION_CPUS": None,
+        }
+        assert record["unleased_affinity"] == unleased
+        assert len(record["leased"]) == 1 and set(record["leased"]) <= roster
+    # One pool divides itself: the private lease waited on the hidden grader's held slot.
+    assert set(hidden["leased"]).isdisjoint(private["leased"])
+    assert os.sched_getaffinity(0) == set(unleased)
+    assert manifest["completion"]["formal_grade_complete"] is False
+
+
+@pytest.mark.parametrize(
+    ("environment", "expected"),
+    [
+        ({"MERLIN_COMPUTE_CPUS": "4,5,6", "MERLIN_PREPARATION_CPUS": "2"}, True),
+        ({"MERLIN_COMPUTE_CPUS": "4"}, False),
+        ({"MERLIN_GRADE_CPUS": "4,5", "MERLIN_BUILD_CPUS": "6,7"}, False),
+    ],
+)
+def test_formal_overlap_never_partitions_or_reserves_cpus(tmp_path, environment, expected):
+    if "MERLIN_COMPUTE_CPUS" in environment:
+        environment = {**environment, "MERLIN_COMPUTE_CPU_SLOTS": str(tmp_path / "slots")}
+    before = dict(environment)
+    assert formal._formal_overlap_shares_compute(environment) is expected
+    assert environment == before
+
+
+def test_formal_overlap_refuses_incomplete_shared_selection():
+    with pytest.raises(ValueError, match="shared compute requires"):
+        formal._formal_overlap_shares_compute({"MERLIN_COMPUTE_CPUS": "4,5"})
+
+
+def test_formal_overlap_opt_out_grades_hidden_in_process_before_private(selected, monkeypatch):
+    manifest, graded, seen = _formal_attempt(selected, monkeypatch, choose=False, serial_hidden=True)
+    assert {pid for pid, _labels in graded} == {os.getpid()}
+    assert [labels for _pid, labels in graded][-1] == {"hidden"}
+    assert len(seen) == 1 and seen[0]["hidden_score_written"] is True
+    assert manifest["hidden"]["passed"] != "not_run"
+
+
+def test_formal_hidden_child_failure_cannot_publish_qualification(selected, monkeypatch):
+    _formal_attempt(selected, monkeypatch, choose=False, overlap=True, hidden_fault=True)
 
 
 def test_actual_formal_caller_forwards_the_fresh_service_in_process(selected, monkeypatch):
