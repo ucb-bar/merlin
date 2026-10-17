@@ -18,6 +18,8 @@ code_refs:
   - src/merlin/verify/lean/check.py
   - src/merlin/verify/lean/cli.py
   - merlin/tests/ir/test_lean_cli.py
+  - merlin/lean/MerlinVerify/Check/BindingFacts.lean
+  - merlin/lean/MerlinVerify/Check/UniformFacts.lean
 ---
 
 # Run Lean semantics differential tests
@@ -178,8 +180,10 @@ programs through the Lean denotation and native MLIR. It covers multiple compact
 splat result that must remain live, affine indexing, empty/rank-zero tensors and f32/f64 bit copies.
 Integer cases also use an independent modular reference; a corrupted scalar payload must produce
 a different native result. `Rules/SplatInputs.lean` supplies the general semantic proof under
-checked layouts and an actual shared scalar payload. Its SSA binding checker remains unimplemented,
-so these comparisons do not publish whole-pass verification receipts.
+checked layouts and an actual shared scalar payload. `Check/UniformFacts.lean` proves the actual
+splat-producer facts and invalidates them when either dependency is rebound. Source and target
+payloads can be coupled only through corresponding actual scalar bindings. The whole-program
+rewrite checker remains unimplemented, so these comparisons do not publish whole-pass receipts.
 
 Typed receipts name `MerlinVerify.Check.TypedModule.check_sound` and record their domain and
 index width. `compose_chain` replays typed and universal boundaries together, requires every

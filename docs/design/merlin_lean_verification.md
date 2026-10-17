@@ -27,6 +27,8 @@ code_refs:
   - merlin/lean/MerlinVerify/Check/TypedC1.lean
   - merlin/lean/MerlinVerify/Check/TypedModule.lean
   - merlin/lean/MerlinVerify/Check/TypedChain.lean
+  - merlin/lean/MerlinVerify/Check/BindingFacts.lean
+  - merlin/lean/MerlinVerify/Check/UniformFacts.lean
   - merlin/lean/MerlinVerify/Rules/MapGeneralize.lean
   - merlin/lean/MerlinVerify/Rules/Motion.lean
 ---
@@ -733,9 +735,16 @@ agree. It retains the actual body, captures, output tensors and lexicographic re
 uniform tensors and empty indexing maps. Uniformity follows from construction with the same scalar
 payload, including poison; a tensor type alone supplies no uniformity fact. The layout checker
 rejects a lost or changed loop extent, invalid access and unsupported affine geometry.
-This is a proved semantic kernel, not yet a whole-program SSA rewrite checker or a verified pass
-receipt. Connecting the actual source/target splat operands, all escaping SSA uses and region
-closures remains necessary. Native differential tests execute real `scalarize_splat_inputs` output,
+`Check/BindingFacts.lean` supplies a general dependency-aware fact domain: rebinding an identifier
+invalidates every fact depending on it. `Check/UniformFacts.lean` learns a tensor's precise scalar
+producer from successful splat execution, proves retained facts valid after a whole source prefix,
+and couples source/target payloads only through actual corresponding scalar bindings. It also
+proves totality of splat construction from an actually bound scalar. These facts preserve poison
+and do not follow from tensor types. Mutation checks cover payload/tensor shadowing, self-shadowing
+producers, unrelated writes, unsupported attributes, malformed producers and dynamic/encoded types.
+These are proved components, not yet a whole-program SSA rewrite checker or a verified pass
+receipt. Checking the actual rewritten generic headers, result correspondence, all escaping SSA
+uses and region closures remains necessary. Native differential tests execute real `scalarize_splat_inputs` output,
 including multiple splats, retained full-tensor results, affine indexing, empty/rank-zero tensors
 and float bit copies, with a corrupted-payload negative and a separate integer reference.
 

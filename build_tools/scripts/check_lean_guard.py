@@ -77,6 +77,10 @@ PINNED = {
     "MerlinVerify.Rules.FillGeneralize.expand_sound": "MerlinVerify.Rules.FillGeneralize",
     "MerlinVerify.Rules.StructuredInputs.genericSem_congr": "MerlinVerify.Rules.StructuredInputs",
     "MerlinVerify.Rules.SplatInputs.checkLayout_sound": "MerlinVerify.Rules.SplatInputs",
+    "MerlinVerify.Check.BindingFacts.forget_step": "MerlinVerify.Check.BindingFacts",
+    "MerlinVerify.Check.UniformFacts.splat_exec": "MerlinVerify.Check.UniformFacts",
+    "MerlinVerify.Check.UniformFacts.coupled": "MerlinVerify.Check.UniformFacts",
+    "MerlinVerify.Check.UniformFacts.scan_sound": "MerlinVerify.Check.UniformFacts",
 }
 
 
