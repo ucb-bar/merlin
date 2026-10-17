@@ -1,0 +1,303 @@
+---
+title: Shared compiler pass contracts
+kind: reference
+status: current
+owner: core
+last_verified: 2026-10-17
+related: [../design/shared_phase1_scheduling.md]
+code_refs:
+  - src/merlin/transforms/pipeline.py
+  - src/merlin/compile/scheduling/compact_dense.py
+  - src/merlin/compile/scheduling/compact_verification.py
+  - src/merlin/compile/scheduling/program_limits.py
+  - src/merlin/compile/scheduling/temporary_storage.py
+  - src/merlin/compile/scheduling/device_spills.py
+  - src/merlin/compile/scheduling/spill_conformance.py
+  - src/merlin/llvmlower/automatic_host.py
+  - src/merlin/llvmlower/quant_round_check.py
+---
+
+# Shared compiler pass contracts
+
+The ordinary captured-policy host preparation path automatically legalizes
+eligible bounded quantization arithmetic. Compact dense scheduling is a shared
+compiler entry point over the existing counted-loop kernel IR. Its encoder and
+actual-operand decoder are explicit integration inputs. It has no automatic
+interpretation of an opaque backend program.
+
+## Inputs and ownership
+
+Select the original hardware configuration and numerical policy. Supply resource
+and code-growth budgets, with optional optimization controls. Structural RTL
+facts can establish dimensions, widths and capacity; they do not establish
+instruction arithmetic, completion semantics or measured performance.
+
+Target repositories retain their encodings, physical mapping, instruction
+implementations and execution qualification. Merlin owns candidate search,
+ordering, transformations and shared checks. A contract identity binds a chosen
+input; naming an identity supplies no authority or missing hardware evidence.
+
+## Ordering and analysis freshness
+
+`PassSpec` names a stage, IR level, prerequisites, produced analyses and
+invalidations. `validate_pass_order` rejects duplicate passes, missing producers,
+stage inversions and incompatible IR levels. The common pipeline validates an
+explicit `PipelineOptions.pass_order` before executing any transformation.
+The default order normalizes semantics, performs narrow source buffer reuse,
+segments or unrolls ordered loops, schedules dependencies, then recomputes and
+checks final storage and dependency analyses.
+
+The narrow source buffer rewrite runs before loop segmentation because its
+initializer checker needs the original rectangular nest. Physical device
+allocation needs the selected tile representation and belongs after tiling.
+
+`PipelineSession` stamps analyses with the current IR digest, IR level and
+selected hardware, numerical, resource, execution and library identities.
+Any actual IR mutation invalidates old analyses, including a mutation whose
+pass omitted an invalidation declaration. Changing a selected identity likewise
+makes an old analysis unusable. A failed action poisons its private session.
+An analysis pass that mutates IR is an error.
+
+`repair(stage=..., reason=...)` clears analyses and restarts an already selected
+legal fallback within an explicit repair budget. It cannot revive a failed
+session, manufacture a fallback or approve an unchecked change. Existing covered
+source transformations retain their host verification hooks. `plan_only=True`
+remains explicitly unverified.
+
+## Automatic bounded host arithmetic
+
+`prepare_for_lowering` invokes `prepare_automatic_host` when preparation selected
+the existing `merlin.quantization_policy.v1` captured policy. Missing policy and
+explicit pass ablation preserve the original route. An explicitly selected
+alternative rounding lowering keeps ownership of that choice.
+The policy's `prepared_mlir_sha256` must bind the exact current input bytes.
+A missing or stale binding retains the legal prepared input and writes a
+diagnostic instead of applying a policy from another preparation stage.
+
+The supported rewrite is a pure, straight-line tensor `linalg.generic` carrying
+an admitted round-to-even, integral clamp and signed integer conversion chain.
+The existing matcher checks bounds, widths, uses and safe scale construction.
+No approximation, reduction reassociation or numerical admission threshold is
+introduced. Unknown scalar effects and unsupported bodies are barriers.
+Added operations are bounded; the default budget is 4096.
+Buffer generics, unknown tensor encodings and programs with CFG control flow
+retain the unchanged route. Unchanged IR is checked structurally without
+requiring the arithmetic checker to interpret that control flow.
+
+The independent checker reconstructs the actual scalar output expressions and
+checks unchanged surrounding interfaces, attributes, effects and dataflow.
+The `automatic_host/report.json` artifact records source/output identities,
+selected policy, library digest, actual operation and rounding-site counts,
+refusals and checks. This is a conditional arithmetic check at tensor IR;
+machine equivalence and hardware support remain separate obligations.
+The receipt explicitly reports that this conditional floating-point check is
+outside the existing covered integer transformation proof domains.
+
+Use the ordinary optional-pass selector `automatic-host-numerics` to ablate
+the rewrite in a paired experiment. No tuning is necessary to enable the
+ordinary captured-policy route.
+`MERLIN_AUTOMATIC_HOST_NUMERICS=0` also disables it. An explicit optional-pass
+selection takes precedence over that environment fallback. Receipts include
+the transformation, checker, matcher and pipeline source identities.
+
+## Compact dense loops and operand retention
+
+`schedule_compact_dense` extends `transforms.dense_planning`; it does not expand
+the tensor or enumerate dynamic tiles. The existing bounded M/N search chooses
+one largest legal K panel per candidate. A physical `k_limit(m, n)` narrows that
+panel for separate operand stores, padding and available row windows before
+ranking. Unknown costs use the documented traffic-first ranking, without cycle
+estimates.
+
+Inputs are a typed `DenseProblem`, `DenseResources`, assigned `DenseLoopStorage`
+views and a `DenseLoopAdapter`. Each view declares physical backing, row byte
+width, assigned base, usable capacity and alignment. The usable assignment must
+already exclude packing scratch, DMA staging and other reservations. The three
+live roles may use separate memories or disjoint windows in one backing.
+
+The supported family requires explicit external-buffer disjointness, addressable
+accumulator storage, synchronous completion and exact accumulator continuation.
+It supports rectangular primitives, different element widths, both M/N outer
+orders, peeled panel tails and primitive tails. The first K compute initializes
+each output; subsequent computes continue its accumulator in source K order.
+Bias seeds, gathers, asynchronous completion and unqualified numerical modes
+retain their existing route or require a precise diagnostic.
+
+The emitted program uses the existing `sched.ir.Kernel`, `Loop` and `Call`
+objects. M/N output panels retain complete accumulators while successive K
+panels load each operand once for its consumers. Partial panels are peeled;
+tail dimensions and addresses remain parameterized expressions. Static call
+sites are budgeted independently of executed call counts.
+
+The adapter also selects a signed 32- or 64-bit loop index representation.
+`CompactDenseResult.emit_c` uses that width through the existing C emitter.
+Integer literals and select branches carry the same width, and conservative
+intermediate-expression bounds reject possible arithmetic overflow without
+expanding dynamic loops. This does not establish instruction argument widths,
+physical address windows or pointer ownership; those remain target/runtime
+obligations. Omitting the new width option on the existing emitter preserves
+its historical emitted text.
+
+`verify_compact_dense` projects actual calls, then uses bounded symbolic domains
+to establish complete contraction/output coverage, valid tails and source
+coordinates, initialization, source reduction order, physical residency and
+absence of intervening overwrites. It checks padded high-water marks against
+the current capacities and reconstructs executed commands and requested payload
+bytes from actual operands and loop multiplicities. Unknown execution or
+configuration effects refuse. No dynamic loop is unrolled by the checker.
+
+The checker requires `z3-solver` and an explicit time budget. One bounded repair
+may replace an unproved candidate with a simpler streaming loop and recheck its
+actual output. Concrete invariant failures never trigger repair. Missing tools
+or an unproved final alternative produce a diagnostic. If no candidate fits,
+the scheduling entry returns `None` so the compiler can retain its legal
+original route.
+
+The adapter must independently decode actual instruction operands and establish
+the selected instruction semantics. Reusing retained requests as a decoder is
+not evidence. The shared receipt explicitly leaves final machine emission and
+execution qualification unestablished. Tests compile the actual loop program
+through the existing C emitter using neutral instruction implementations,
+compare complete results to independent ordered arithmetic, and compare executed
+commands and byte requests with reconstructed observations. These tests qualify
+the shared mechanism's stated scope, not a hardware target.
+
+Existing regular target integrations do not expose this new counted-loop
+encoder/decoder contract. They keep their existing legal lowering. Integration
+requires that public semantic boundary, actual addressing and tail legality,
+completion/continuation qualification, and final emitted-effect checks. It does
+not require changing a target's instruction implementation to fit Merlin.
+
+## Private temporary storage
+
+`allocate_temporary_storage` extends the existing semantic graph allocator with
+an executable relocation pass over finite straight-line `sched.ir.Kernel`
+programs. Each `TemporaryObject` declares one invocation-private backing object,
+its virtual source interval, selected byte-addressed bank and alignment. All
+typed views of that object share its backing and byte offsets. Separately named
+banks can alias one physical memory; distinct physical memories retain their
+own capacities. Existing `Reservation` intervals exclude packing scratch, DMA
+staging and other unavailable storage across every alias of the backing.
+
+The target's selected `StorageAdapter` decodes actual memory operands,
+nonaddress semantics and executable completion instructions. It also rewrites
+addresses into actual calls. Every local access must resolve to exactly one
+private object, and external accesses need explicit fixed windows. Private
+ownership and disjointness from external buffers are required. Complete initial
+writes must precede reads, including reads through aliases; a read-modify-write
+instruction cannot establish initialization by listing its write first.
+
+Lifetimes extend through completion of actual asynchronous readers and writers.
+A token annotation without an executable decoded wait is insufficient. Pending
+conflicts, duplicate or missing tokens and a return before completion refuse.
+The derived completion events reuse the existing allocation graph and its
+independent checker; event positions are ordering facts, not estimated cycles.
+Objects read and written by the same instruction remain simultaneously live
+unless a different separately qualified transformation explicitly permits reuse.
+
+The pass consumes selected addresses in the emitted calls. Its independent
+checker derives assignments again from actual output operands, checks alias
+agreement and current reservations/capacities, and compares actual nonaddress
+semantics, access extents, external addresses and completion. Native C tests
+execute baseline and relocated programs with complete byte comparisons and
+independent command/traffic counters, including deferred reads completed by
+actual waits. Storage footprint reduction does not imply a traffic reduction.
+
+Infeasible allocation returns `None` for the compiler's existing legal route.
+Unknown effects, loops, escaped or persistent storage, nonbyte address mappings
+and unsupported completion produce a diagnostic. The entry does not perform
+CPU register allocation or infer a target's physical mapping. Device spill
+insertion requires the additional exact capabilities described below.
+Existing targets need the public effect/address-rewrite adapter and
+independent execution qualification before this pass can enter their ordinary
+lowering. That integration remains incomplete.
+
+## Exact device register spills
+
+The ordinary `allocate_temporary_storage` entry accepts selected `SpillClass`
+capabilities and a `max_spills` repair budget. Each class declares its device
+register bank, a separate addressable spill backing, exact byte width,
+alignment, transfer emitter and independent qualification identity. It grants
+no permission to replace the native toolchain's host CPU register allocation.
+
+When allocation cannot fit, a bounded deterministic search selects unused gaps
+in eligible register lifetimes, emits an exact save and reload, and rebases later
+uses into a fresh private object. Unknown costs use the documented longest-gap
+policy. Each insertion reconstructs actual effects and recomputes liveness,
+allocation and completion; previous emission and program-size checks are
+invalidated. Spill slots are allocated by the same allocator and can be reused
+after their actual last read. Growth and repair budgets bound the search.
+
+The emitted transfer must independently decode as `StorageEffects.exact_copy`:
+one equal-sized read/write, no arithmetic or conversion, and actual synchronous
+completion. This family supports synchronous straight-line device programs.
+Unknown register classes, nonaddressable memory, missing exact transfers,
+unsupported widths and asynchronous spill programs keep the existing route or
+produce a diagnostic. No solver timeout or invariant failure becomes a legal
+unchecked fallback.
+
+`verify_device_spills` reconstructs interval byte provenance from the original
+and actual final programs. It accepts no planned spill locations. It checks
+every original operation and read in order, physical aliases, current capacity,
+alignment and reservations, allowed exact copies, and complete external output
+and state intervals. Provenance storage grows with written intervals, rather
+than tensor element count. Receipts record observed commands and requested
+bytes, with hardware timing and machine-emission qualification explicitly
+unestablished. Native tests include a faulty copy implementation that the
+independent numerical comparison rejects despite its declared copy effects.
+
+Existing backends need independently qualified register-class and transfer
+adapters before this mechanism can enter their ordinary target lowering. A
+synthetic execution qualifies the shared mechanism's stated scope only.
+
+## Final encoded programs
+
+`finalize_program` checks actual encoded bytes through the selected target's
+independently qualified `ProgramDecoder`. `ProgramLimits` declares instruction
+alignment, byte and instruction budgets, memory windows and relative branch
+encodings. Decoding must cover every byte exactly once. Every decoded access
+must fit a declared window, and every branch must fit its declared encoded
+reach and target an instruction boundary inside the program. Unknown structural
+facts produce a diagnostic.
+
+An oversized program can be segmented only with an explicit `Continuation`
+contract: sequential completed launches, entry at zero, preserved memory spaces
+and a launch budget. The caller supplies the original complete output intervals.
+The shared algorithm preserves instruction bytes, keeps relative branch regions
+closed, and checks future reads and published outputs before allowing volatile
+storage to disappear at a launch boundary. It retains partial-overwrite values
+conservatively. With branches or asynchronous operations it also retains future
+reads conservatively rather than inferring path-specific liveness.
+
+An asynchronous instruction prevents a boundary until an actual decoded drain.
+Unknown completion and position-dependent instructions prevent segmentation.
+Every resulting segment is decoded again: its actual normalized effects must
+equal the original instruction effects and meet the final budgets. The receipt
+records actual counts, sizes and hashes; it does not establish execution timing
+or qualify a target decoder or runtime continuation contract. Unsupported cuts
+refuse rather than inventing branch relaxation, state saves or launch support.
+
+Neutral tests execute variable-width byte programs before and after segmentation
+and cover a distinct fixed-word representation. Existing target integrations do
+not supply this final decoder/continuation boundary automatically. Final machine
+program checks therefore remain an explicit integration requirement for those
+targets.
+
+## Existing mechanisms and remaining integration requirements
+
+| Concern | Existing mechanism | Requirement beyond the scope above |
+| --- | --- | --- |
+| Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line storage relocation | Target effect/rewrite adapters and ordinary lowering integration; general loop and persistent-storage allocation |
+| Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks and independent actual byte provenance | Qualified device register/transfer adapters and ordinary target integration; CPU allocation stays with the native toolchain |
+| Fusion and transfers | Readout composition admission, connected dispatch and checked global-plan realization; logical host layout/fusion transforms | Allocation fallback and realized transfer elimination for each independently supported physical handoff |
+| Reductions and attention | Ordered source loops, complete CPU reductions and explicit numerical policies | Shared multi-tile lowering with full domains, masks and intermediate storage; per-tile softmax is insufficient |
+| Final program limits | Actual decoded instruction size, branch/address checks and closed-region segmentation through declared interfaces | Independently qualified target decoder and runtime continuation integration; ordinary targets retain their existing linked-image admission |
+| Persistent state | Runtime state binding, immutable weight hashing/reuse and recurrent relinking | Qualified address windows, ownership and persistence for each device runtime |
+| Whole-model coverage | Source routing/census and compiled CPU fallback machinery | Complete realized coverage and unchanged numerical gates for each selected full model |
+
+An analysis, selected composition, metadata assignment or small executed kernel
+does not establish these remaining integrations. Actual full outputs and carried
+state need paired execution and independent references under unchanged policies.
+Functional simulator instruction counts, traffic reductions, compilation cost
+and qualified latency measurements are different results and must be reported
+separately.

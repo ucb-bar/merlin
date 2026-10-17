@@ -61,6 +61,9 @@ class StorageEffects:
     completion: str = "unknown"
     token: str | None = None
     waits: tuple[str, ...] = ()
+    # Exactly these bytes are copied, with no arithmetic/conversion or other
+    # effects beyond the declared completion. Needs independent qualification.
+    exact_copy: bool = False
 
     def __post_init__(self):
         if (
@@ -73,6 +76,7 @@ class StorageEffects:
             or any(not isinstance(token, str) or not token for token in self.waits)
             or len(set(self.waits)) != len(self.waits)
             or (self.token is not None and (not isinstance(self.token, str) or not self.token))
+            or type(self.exact_copy) is not bool
         ):
             raise ValueError("storage effects require complete typed access and completion declarations")
         if (
@@ -82,6 +86,14 @@ class StorageEffects:
             or (self.completion != "wait" and self.waits)
         ):
             raise ValueError("storage completion tokens must describe actual async operations or pure completion waits")
+        if self.exact_copy and (
+            len(self.accesses) != 2
+            or self.accesses[0].writes
+            or not self.accesses[1].writes
+            or self.accesses[0].size != self.accesses[1].size
+            or self.completion not in {"synchronous", "asynchronous"}
+        ):
+            raise ValueError("exact copy requires one equally sized byte read/write and explicit completion")
 
 
 @dataclass(frozen=True)
@@ -431,6 +443,8 @@ def allocate_temporary_storage(
     max_calls=4096,
     max_objects=256,
     timeout_ms=5000,
+    spill_classes=(),
+    max_spills=4,
 ) -> TemporaryStorageResult | None:
     """Allocate, consume addresses in actual calls, then independently verify.
 
@@ -451,8 +465,20 @@ def allocate_temporary_storage(
     _check_reservations(reservations)
     if type(timeout_ms) is not int or timeout_ms <= 0:
         raise ValueError("temporary allocation requires a positive explicit solver budget")
+    if type(spill_classes) is not tuple or type(max_spills) is not int or max_spills < 0:
+        raise ValueError("device spill selection requires explicit immutable classes and a bounded repair count")
+    if spill_classes:
+        from .spill_conformance import validate_spill_classes
+
+        validate_spill_classes(spill_classes, banks)
     result = allocate(graph, order, placement_banks, reservations=reservations, timeout_ms=timeout_ms)
     if result.status == "infeasible_candidate":
+        if spill_classes and max_spills:
+            from .device_spills import allocate_with_spills
+
+            return allocate_with_spills(
+                kernel, objects, banks, adapter, spill_classes, timeout_ms=timeout_ms, max_spills=max_spills, **model
+            )
         return None
     if result.status != "feasible":
         raise StorageOptimizationUnavailable(f"temporary allocation {result.status}: {result.reason}")
