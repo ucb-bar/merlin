@@ -1,4 +1,5 @@
-"""Validate the private source-input, capture-tree and recipe bindings of a build."""
+"""Validate the private source-input, capture-tree, recipe and admission-view bindings of a build."""
+
 from __future__ import annotations
 
 import json
@@ -6,6 +7,10 @@ from collections.abc import Mapping
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+
+import yaml
+
+from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
 
 
 def _expected_input_provenance(row: Mapping[str, Any]) -> dict[str, bool | None]:
@@ -152,7 +157,8 @@ def _recipe_derivation(
     variant = row.get("capture_recipe_variant")
     wanted = (
         {"sha256": variant.get("base_file_sha256"), "recipe_sha256": variant.get("base_recipe_sha256")}
-        if isinstance(variant, Mapping) else selected
+        if isinstance(variant, Mapping)
+        else selected
     )
     candidates = [
         entry
@@ -196,3 +202,58 @@ def _recipe_derivation(
     if variant_proof is not None:
         proof["variant"] = variant_proof
     return proof, evidence.software_spec, {selected_host_name: host_profiles[selected_host_name]}
+
+
+def _selected_admission_views(
+    software: Any,
+    profiles: Any,
+    *,
+    target: str,
+    host_package: Path,
+    host_package_sha256: str,
+    host_capabilities_path: Path,
+    host_capabilities_sha256: str,
+) -> tuple[dict, dict]:
+    """Use only a resolved exported spec and the exact selected host profile."""
+    from merlin.targetgen.host_capabilities import validate_host_capabilities
+    from merlin.targetgen.software_spec import validate_software_spec
+
+    if not isinstance(software, Mapping) or not isinstance(software.get("operations"), list):
+        raise ValueError("selected software admission view is not a normalized specification")
+    checked_software = validate_software_spec(dict(software), target=target, source="verified Phase 0 export")
+    if (
+        checked_software != software
+        or checked_software.get("status") != "reviewed"
+        or any("hardware" in operation for operation in checked_software["operations"])
+    ):
+        raise ValueError("selected software admission view is not a reviewed resolved specification")
+    if (
+        not isinstance(profiles, Mapping)
+        or host_capabilities_path.is_symlink()
+        or file_sha256(host_capabilities_path) != host_capabilities_sha256
+        or strict_tree_sha256(host_package)["sha256"] != host_package_sha256
+    ):
+        raise ValueError("selected host profile has no pinned package and capability document")
+    document = yaml.safe_load(host_capabilities_path.read_bytes())
+    if not isinstance(document, dict) or document.get("status") != "reviewed":
+        raise ValueError("selected host profile has no reviewed capability document")
+    compiler = document.get("compiler")
+    if not isinstance(compiler, Mapping) or not isinstance(compiler.get("dtype_strategy"), str):
+        raise ValueError("selected host profile has no precision lane")
+    dtype_strategy = compiler["dtype_strategy"]
+    validate_host_capabilities(document, package_sha256=host_package_sha256, dtype_strategy=dtype_strategy)
+    if len(profiles) != 1:
+        raise ValueError("selected host profile is not unique")
+    profile_name, profile = next(iter(profiles.items()))
+    if (
+        not isinstance(profile_name, str)
+        or not profile_name
+        or not isinstance(profile, Mapping)
+        or profile.get("status") != "reviewed"
+        or profile.get("package_sha256") != host_package_sha256
+        or profile.get("capability_spec_sha256") != host_capabilities_sha256
+        or profile.get("dtype_strategy") != dtype_strategy
+        or profile.get("capability_spec") != document
+    ):
+        raise ValueError("selected host profile differs from the pinned package or capability document")
+    return checked_software, {profile_name: dict(profile)}
