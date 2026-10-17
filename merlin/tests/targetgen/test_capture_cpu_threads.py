@@ -12,6 +12,7 @@ import subprocess
 
 import pytest
 
+from merlin.common.paths import python_import_roots
 from merlin.targetgen import _m2m_capture_worker as worker
 
 SCRIPT = r"""
@@ -41,7 +42,8 @@ def test_the_worker_runs_and_records_its_selected_thread_count(tmp_path):
     script = tmp_path / "check.py"
     script.write_text(SCRIPT)
     result = subprocess.run(
-        [python, str(script), worker.__file__], cwd=tmp_path, capture_output=True, text=True, timeout=300
+        [python, str(script), worker.__file__], cwd=tmp_path, capture_output=True, text=True, timeout=300,
+        env=dict(os.environ, PYTHONPATH=os.pathsep.join(str(path) for path in python_import_roots())),
     )
     assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-5000:]
     assert result.stdout.strip().endswith("OK")
