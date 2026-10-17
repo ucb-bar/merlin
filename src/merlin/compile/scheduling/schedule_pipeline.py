@@ -20,6 +20,13 @@ from merlin.sched.ir.kernel import check_structure
 from merlin.semantic_compiler.allocation_types import StorageBank
 from merlin.transforms.pipeline import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
+from .configuration import (
+    ConfigurationAdapter,
+    ConfigurationEffects,
+    eliminate_redundant_configuration,
+    verify_configuration_state,
+)
+from .fusion import plan_fusion, validate_fusion_capabilities
 from .program_limits import (
     AddressWindow,
     Continuation,
@@ -80,6 +87,10 @@ class ScheduleBudgets:
     max_repairs: int = 4
     solver_timeout_ms: int = 5000
     eliminate_copies: bool = True
+    max_fusions: int = 8
+    max_scalar_operations: int = 128
+    max_scalar_ir_bytes: int = 65536
+    eliminate_configuration: bool = True
 
     def __post_init__(self):
         if (
@@ -89,10 +100,15 @@ class ScheduleBudgets:
                     self.max_calls,
                     self.max_objects,
                     self.solver_timeout_ms,
+                    self.max_scalar_operations,
+                    self.max_scalar_ir_bytes,
                 )
             )
-            or any(type(value) is not int or value < 0 for value in (self.max_spills, self.max_repairs))
+            or any(
+                type(value) is not int or value < 0 for value in (self.max_spills, self.max_repairs, self.max_fusions)
+            )
             or type(self.eliminate_copies) is not bool
+            or type(self.eliminate_configuration) is not bool
         ):
             raise ValueError("schedule compilation requires explicit finite work, repair and solver budgets")
 
@@ -108,20 +124,34 @@ def _hash(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
-def _library_sources():
+def shared_library_sources():
+    """Current shared implementation identities, equal for every treatment."""
     names = (
         "merlin.transforms.pipeline",
         "merlin.compile.scheduling.schedule_pipeline",
+        "merlin.compile.scheduling.configuration",
         "merlin.compile.scheduling.temporary_storage",
         "merlin.compile.scheduling.copy_elimination",
         "merlin.compile.scheduling.device_spills",
         "merlin.compile.scheduling.spill_conformance",
         "merlin.compile.scheduling.program_limits",
+        "merlin.compile.scheduling.fusion",
+        "merlin.compile.scheduling.fusion_semantics",
+        "merlin.compile.scheduling.row_softmax",
+        "merlin.compile.scheduling.row_softmax_verification",
+        "merlin.compile.scheduling.compact_dense",
+        "merlin.compile.scheduling.compact_verification",
+        "merlin.transforms.dense_planning",
+        "merlin.llvmlower.cpu_softmax",
+        "merlin.transforms.pure_scalar",
+        "merlin.transforms.certificates",
+        "merlin.verify.epilogue_applicability",
         "merlin.semantic_compiler.allocate",
         "merlin.semantic_compiler.allocation_types",
         "merlin.semantic_compiler.rules",
         "merlin.sched.ir.kernel",
         "merlin.sched.ir.expr",
+        "merlin.sched.codegen",
     )
     return {
         name: hashlib.sha256(Path(importlib.import_module(name).__file__).read_bytes()).hexdigest() for name in names
@@ -133,9 +163,10 @@ def _verify_kernel(kernel):
         raise ValueError("schedule pipeline requires structurally valid typed kernel IR")
 
 
-def _emission_effects(images, kernel, adapter, encoding, limits, max_calls):
+def _emission_effects(images, kernel, adapter, encoding, limits, max_calls, configuration_adapter=None):
     """Reconstruct complete effects from actual output, independently of requests."""
     actual = []
+    actual_configuration = []
     for image in images:
         instructions, _targets = _decode(image, limits, encoding.program_decoder)
         calls = encoding.decode_calls(image)
@@ -155,11 +186,17 @@ def _emission_effects(images, kernel, adapter, encoding, limits, max_calls):
                     "actual emitted effects require matching synchronous straight-line instruction semantics"
                 )
         actual.extend(effects)
+        if configuration_adapter is not None:
+            actual_configuration.extend(configuration_adapter.project(call) for call in calls)
         if len(actual) > max_calls:
             raise ValueError("actual emitted program exceeds its selected call budget")
     expected = _project(kernel, adapter, max_calls)
     if tuple(actual) != expected:
         raise ValueError("actual emitted numerical, storage or completion effects differ from the verified schedule")
+    if configuration_adapter is not None and tuple(actual_configuration) != tuple(
+        configuration_adapter.project(call) for call in kernel.body
+    ):
+        raise ValueError("actual emitted configuration effects differ from the verified schedule")
     return tuple(actual)
 
 
@@ -178,6 +215,8 @@ def compile_schedule(
     spill_classes=(),
     continuation=None,
     pass_order=(),
+    fusion_capabilities=(),
+    configuration_adapter=None,
 ) -> ScheduleCompilation:
     """Allocate, check, encode and finalize through the existing pass session.
 
@@ -229,6 +268,41 @@ def compile_schedule(
             ir_level="schedule",
         ),
     )
+    validate_fusion_capabilities(fusion_capabilities, adapter)
+    if fusion_capabilities:
+        fusion_spec = PassSpec(
+            "fusion",
+            2,
+            requires=("source_effects",),
+            produces=("fusion_candidate",),
+            mutates_ir=False,
+            ir_level="schedule",
+        )
+        specs = (specs[0], fusion_spec, replace(specs[1], requires=("source_effects", "fusion_candidate")), *specs[2:])
+    if configuration_adapter is not None:
+        if (
+            type(configuration_adapter) is not ConfigurationAdapter
+            or configuration_adapter.configuration_identity != adapter.configuration_identity
+        ):
+            raise ValueError("configuration decoder must match the selected hardware contract")
+        configuration_spec = PassSpec(
+            "configuration",
+            1,
+            requires=("source_effects",),
+            produces=("configuration_candidate",),
+            mutates_ir=False,
+            ir_level="schedule",
+        )
+        specs = (
+            specs[0],
+            configuration_spec,
+            *(
+                replace(spec, requires=(*spec.requires, "configuration_candidate"))
+                if spec.name in {"fusion", "storage"}
+                else spec
+                for spec in specs[1:]
+            ),
+        )
     if pass_order:
         names = {spec.name: spec for spec in specs}
         if type(pass_order) is not tuple or len(pass_order) != len(specs) or set(pass_order) != set(names):
@@ -249,7 +323,7 @@ def compile_schedule(
         raise ValueError("schedule compilation requires immutable typed storage and continuation declarations")
     _check_reservations(reservations)
     validate_spill_classes(spill_classes, banks)
-    sources = _library_sources()
+    sources = shared_library_sources()
     resources = {
         "objects": [asdict(obj) for obj in objects],
         "banks": [bank.record() for bank in banks],
@@ -258,6 +332,8 @@ def compile_schedule(
         "private_ownership": private_ownership,
         "limits": asdict(limits),
         "budgets": asdict(budgets),
+        "fusion_capabilities": [capability.record() for capability in fusion_capabilities],
+        "configuration_adapter": configuration_adapter.record() if configuration_adapter is not None else None,
         "spill_classes": [
             {
                 name: getattr(capability, name)
@@ -308,35 +384,110 @@ def compile_schedule(
         )
         if any(effect.completion != "synchronous" for effect in effects):
             raise StorageOptimizationUnavailable("encoded schedule pipeline requires qualified synchronous completion")
+        if configuration_adapter is not None:
+            verify_configuration_state(kernel, configuration_adapter, max_calls=budgets.max_calls)
         return {"source_effects": effects}
 
+    def fusion():
+        return {
+            "fusion_candidate": plan_fusion(
+                configured_kernel(),
+                objects,
+                banks,
+                adapter,
+                fusion_capabilities,
+                external_windows=external_windows,
+                private_ownership=private_ownership,
+                max_calls=budgets.max_calls,
+                max_objects=budgets.max_objects,
+                max_fusions=budgets.max_fusions,
+                max_scalar_operations=budgets.max_scalar_operations,
+                max_scalar_ir_bytes=budgets.max_scalar_ir_bytes,
+            )
+        }
+
     def storage():
-        result = allocate_temporary_storage(
-            session.module,
-            objects,
-            banks,
-            adapter,
-            timeout_ms=budgets.solver_timeout_ms,
-            spill_classes=spill_classes,
-            max_spills=budgets.max_spills,
-            eliminate_copies=budgets.eliminate_copies,
-            on_repair=lambda reason: session.repair(stage=3, reason=reason),
-            **model,
+        configured = configured_kernel()
+        configuration_report = (
+            session.analysis("configuration_candidate").report if configuration_adapter is not None else None
         )
+
+        def allocate(source, source_objects):
+            return allocate_temporary_storage(
+                source,
+                source_objects,
+                banks,
+                adapter,
+                timeout_ms=budgets.solver_timeout_ms,
+                spill_classes=spill_classes,
+                max_spills=budgets.max_spills,
+                eliminate_copies=budgets.eliminate_copies,
+                on_repair=lambda reason: session.repair(stage=3, reason=reason),
+                **model,
+            )
+
+        candidate = session.analysis("fusion_candidate") if fusion_capabilities else None
+        result = allocate(candidate.kernel, candidate.objects) if candidate is not None else None
+        fusion_status = "realized"
+        if candidate is not None and result is None:
+            session.repair(stage=3, reason="fusion allocation failed; restore original composition and replan")
+            fusion_status = "allocation_fallback"
+        if result is None:
+            result = allocate(configured, objects)
         if result is None:
             raise StorageOptimizationUnavailable(
                 "no legal temporary allocation within the selected schedule repair family"
             )
         session.module = result.kernel
-        return {"storage": result.report, "realization": result.report}
+        report = dict(result.report)
+        if candidate is not None:
+            report["fusion"] = {"status": fusion_status, "checked_steps": list(candidate.checks)}
+        if configuration_report is not None:
+            report["configuration"] = configuration_report
+        return {"storage": report, "realization": report}
+
+    def configured_kernel():
+        return (
+            session.analysis("configuration_candidate").kernel if configuration_adapter is not None else session.module
+        )
+
+    def configuration():
+        # Pure setup must also be memory-free and synchronous according to the
+        # independent storage decoder used through final actual-byte checks.
+        for call, effect in zip(session.module.body, session.analysis("source_effects"), strict=True):
+            config = configuration_adapter.project(call)
+            if (
+                config is not None
+                and config.pure_write
+                and (
+                    effect.accesses
+                    or effect.completion != "synchronous"
+                    or effect.exact_copy
+                    or effect.elementwise is not None
+                )
+            ):
+                raise ValueError("pure configuration claim disagrees with decoded execution or memory effects")
+        return {
+            "configuration_candidate": eliminate_redundant_configuration(
+                session.module,
+                configuration_adapter,
+                enabled=budgets.eliminate_configuration,
+                max_calls=budgets.max_calls,
+            )
+        }
 
     def completion():
         effects = _project(session.module, adapter, budgets.max_calls)
-        return {"completion": _completion(effects, {bank.name: bank for bank in banks})}
+        result = {"memory": _completion(effects, {bank.name: bank for bank in banks})}
+        if configuration_adapter is not None:
+            result["configuration"] = verify_configuration_state(
+                session.module, configuration_adapter, max_calls=budgets.max_calls
+            )
+        return {"completion": result}
 
     def emission():
         image = encoding.encode(session.module)
-        _emission_effects((image,), session.module, adapter, encoding, limits, budgets.max_calls)
+        _emission_effects((image,), session.module, adapter, encoding, limits, budgets.max_calls, configuration_adapter)
         return {"encoded": image}
 
     def final():
@@ -347,7 +498,20 @@ def compile_schedule(
         program = finalize_program(
             session.analysis("encoded"), limits, encoding.program_decoder, continuation=continuation, outputs=outputs
         )
-        effects = _emission_effects(program.segments, session.module, adapter, encoding, limits, budgets.max_calls)
+        effects = _emission_effects(
+            program.segments, session.module, adapter, encoding, limits, budgets.max_calls, configuration_adapter
+        )
+        if len(program.segments) > 1 and configuration_adapter is not None:
+            state_effects = tuple(configuration_adapter.project(call) for call in session.module.body)
+            if any(type(effect) is not ConfigurationEffects or not effect.ordered for effect in state_effects):
+                raise StorageOptimizationUnavailable(
+                    "segmentation cannot preserve unknown configuration effects or ordering"
+                )
+            fields = {
+                key for effect in state_effects for key in (*dict(effect.reads), *dict(effect.writes), *effect.clobbers)
+            }
+            if not fields <= set(continuation.preserved_configuration):
+                raise StorageOptimizationUnavailable("segmentation lacks explicit configuration-register persistence")
         return {
             "final_program": program,
             "final_conformance": {
@@ -365,6 +529,8 @@ def compile_schedule(
 
     actions = {
         "semantic_admission": admission,
+        "configuration": configuration,
+        "fusion": fusion,
         "storage": storage,
         "completion": completion,
         "emission": emission,

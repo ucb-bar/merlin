@@ -74,6 +74,16 @@ _INTEGER_DATAPATH = "on in the integer (int8 compute) datapath"
 
 REGISTRY: tuple[OptionalPass, ...] = (
     OptionalPass(
+        name="automatic-host-rows",
+        summary="schedule closed source normalization islands one complete row at a time",
+        changes="retain source arithmetic/reduction order and restrict private tensor intermediates to one row",
+        exactness=EXACT,
+        default="on in ordinary serial source lowering when logical row state decreases",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_ROWS",
+        on_by_default=True,
+    ),
+    OptionalPass(
         name="automatic-host-numerics",
         summary="legalize bounded pure host quantization under the captured numerical policy",
         changes="replace eligible scalar rounding calls with checked ties-to-even integer arithmetic",

@@ -15,8 +15,17 @@ code_refs:
   - src/merlin/compile/scheduling/spill_conformance.py
   - src/merlin/compile/scheduling/copy_elimination.py
   - src/merlin/compile/scheduling/schedule_pipeline.py
+  - src/merlin/compile/scheduling/fusion.py
+  - src/merlin/compile/scheduling/fusion_semantics.py
+  - src/merlin/compile/scheduling/row_softmax.py
+  - src/merlin/compile/scheduling/row_softmax_verification.py
+  - src/merlin/llvmlower/cpu_softmax.py
   - src/merlin/llvmlower/automatic_host.py
   - src/merlin/llvmlower/quant_round_check.py
+  - src/merlin/compile/scheduling/configuration.py
+  - src/merlin/transforms/row_normalization.py
+  - src/merlin/transforms/row_normalization_check.py
+  - src/merlin/llvmlower/automatic_rows.py
 ---
 
 # Shared compiler pass contracts
@@ -26,6 +35,54 @@ eligible bounded quantization arithmetic. Compact dense scheduling is a shared
 compiler entry point over the existing counted-loop kernel IR. Its encoder and
 actual-operand decoder are explicit integration inputs. It has no automatic
 interpretation of an opaque backend program.
+
+Ordinary serial host lowering also schedules eligible closed source row
+normalization islands. This source-to-source route is separate from the explicit
+hardware counted-row entry: it preserves the source's own scalar operations and
+continues through the existing CPU toolchain. See the scope below.
+
+## Abstractions and the research question
+
+Phase 0/1/2 describe a procedure. The interfaces below describe what compiler
+authors and search agents can reason about, and what the shared compiler checks.
+They extend existing Merlin representations rather than introduce one universal
+IR for both source computations and arbitrary target instructions.
+
+| Abstraction | Concrete interface | What becomes reusable | A falsifiable check |
+| --- | --- | --- | --- |
+| Typed computation and numerical boundaries | Existing dense/Scheduling IR, `ElementwiseSemantics`, and checked source scalar regions | Choose blocking or composition from shapes, layouts and arithmetic instead of operation names | Preserve the complete reduction and conversions; reject a changed mask coordinate or accumulator order |
+| Physical resources and execution effects | `DenseResources`, `StorageBank`, `TemporaryObject`, `StorageEffects` and `ConfigurationEffects` | Use the same reuse, allocation and state-cleanup algorithms with different capacities, separate memories and completion behavior | Reject reuse before a pending transfer completes; retain setup after an unknown state change |
+| Analyses tied to their inputs | `PassSpec`, `PipelineContext`, `AnalysisStamp` and `PipelineSession` | Compose passes and bounded repairs without reusing facts from an earlier program or hardware selection | Reject stale allocation after a rewrite and invalid explicit pass order |
+| Realization checked at the relevant IR level | `DenseEmission`, `ScheduleEncoding`, actual-byte decoders and the source-row inverse checker | Require evidence that the emitted transformation implements its selected alternative | Reject an encoder that restores removed setup, changes an address or omits part of a reduction |
+
+Structural hardware facts and qualified execution semantics have different
+authority. RTL can supply widths and capacities; the adapter must separately
+establish persistence, completion, arithmetic and decoding. A contract identity
+binds that evidence to an analysis; it does not prove the evidence correct.
+
+Phase 1 can choose a deterministic legal alternative through these interfaces.
+Phase 2 can search the same bounded alternatives with calibrated costs while
+using the same legality and realization checks. A chosen schedule alone is not
+a transferable compiler rule. A rule must consume the current operation and
+capability inputs and make a checked decision on new inputs.
+
+The research hypothesis is that these interfaces reduce the effort needed to
+build a correct compiler and help optimization decisions transfer to unseen
+workloads and hardware configurations. The existence of familiar passes does
+not establish that hypothesis or its novelty. Evaluation must measure authoring
+effort, correctness, held-out whole-model performance and target integration
+effort, with and without the interfaces under the same access boundaries and
+shared-library version. Calibrated timing proxies are one input to that
+evaluation, not the compiler abstraction itself.
+
+Executable examples include
+`merlin/tests/infra/test_configuration_elimination.py` (persistent writes,
+resets and launch-state changes),
+`merlin/tests/infra/test_readout_model_fusion.py` (complete integer graphs and
+unsupported physical compositions), and
+`merlin/tests/ir/test_row_normalization.py` (complete rows, projected masks,
+carried state and source mutations). Their neutral execution models test shared
+mechanisms; they do not independently qualify a hardware adapter.
 
 ## Inputs and ownership
 
@@ -192,6 +249,17 @@ Instruction changes invalidate existing emission and size facts even when a
 pass omits an explicit invalidation declaration. Failed actions poison their
 private session and return no compiled result.
 
+Selecting `fusion_capabilities` inserts `fusion` between semantic admission and
+storage. It constructs checked physical candidates privately; storage selects a
+candidate only after allocation succeeds. Fusion allocation fallback consumes
+the same repair budget as spills and copy fallback.
+
+Selecting `configuration_adapter` inserts checked configuration cleanup after
+admission and before fusion/storage. All later candidates consume its actual
+rewritten calls. The default removes redundant pure writes; the paired control
+is `ScheduleBudgets(eliminate_configuration=False)`. Configuration, fusion and
+storage share the same current hardware identity, final emission and byte checks.
+
 Replacing an analysis also invalidates its consumers transitively, even if the
 owning IR is unchanged. Analyses produced together share invalidation: replacing
 an encoded byte image cannot leave its old size or conformance result current.
@@ -244,6 +312,49 @@ full-model target providers still need this public encoder/semantic-decoder
 boundary before the schedule pipeline can enter their ordinary model lowering.
 This entry is not evidence of that missing target integration or hardware
 execution qualification.
+
+## Redundant configuration writes
+
+`eliminate_redundant_configuration` uses existing `sched.ir.Kernel` calls and a
+selected `ConfigurationAdapter` that decodes actual operands into integer field
+reads, writes, clobbers and qualified ordering. A pure write must be independently
+qualified as an idempotent persistent-state update with no other effect. The
+existing `sets`/`assumes` annotations and instruction names alone grant no deletion.
+RTL can identify fields and widths; it does not establish this software-interface
+contract. Queue commands, pulses, status acknowledgements and fences are not pure
+configuration writes.
+
+Each invocation starts with unknown state. The first write stays. A later pure
+instruction is omitted only when every written field already has its exact value.
+A partial match retains the entire instruction. Known clobbers invalidate their
+fields; unknown operations or ordering invalidate all fields and remain in place.
+The pass neither moves instructions nor assumes persistent state between calls.
+Loops retain their existing lowering or diagnose; no dynamic expansion is used.
+
+`verify_configuration_rewrite` reconstructs omissions from actual retained calls,
+checks identical surrounding instructions/interfaces and proves the same known
+state before every retained operation and at return. It accepts no removed-call
+witness. In `compile_schedule`, the storage decoder must additionally agree that
+each pure setter has no memory or asynchronous effect. Final actual-byte decoding
+independently projects configuration effects and rejects reintroduced setup or
+altered fields. Explicit ordering requires configuration before fusion/storage,
+and repair uses the checked configured input. Completion checks rederive required
+register values after fusion, relocation and inserted spills. An exact memory
+transfer is not assumed to preserve registers.
+
+If final size checks split the program into launches, the existing `Continuation`
+contract must explicitly list every affected field in `preserved_configuration`.
+Preserving only memory spaces is insufficient. Unknown configuration effects or
+ordering refuse segmentation. Native negative controls demonstrate incorrect
+results when registers reset between otherwise memory-preserving launches.
+
+Native paired tests execute actual little-endian 32-bit-field and big-endian
+64-bit-field encodings, compare complete outputs and final register state, and
+observe commands and requested payload bytes independently. Unknown visibility,
+resets, whole-register writes, source misconfiguration, allocation fallback,
+corrupted actual output and a falsely declared pulse are covered. These tests
+qualify the shared mechanism, not a hardware adapter. No target provider currently
+supplies this new boundary automatically. No latency improvement is claimed.
 
 ## Private temporary storage
 
@@ -329,6 +440,84 @@ targets require a public, independently qualified actual-effect decoder and
 address rewriter before this mechanism can enter their normal lowering.
 Traffic results from synthetic execution are not hardware latency results.
 
+## Physical elementwise fusion
+
+`compile_schedule(..., fusion_capabilities=selected_capabilities)` discovers
+adjacent producer-consumer compositions from decoded effects and
+`ElementwiseSemantics`. Each declaration contains actual typed scalar MLIR,
+the element count, ordered stages, and an explicit byte order for every read
+and write. Values are contiguous, with one corresponding scalar value per
+element and no broadcast, hidden effects, volatile access or cross-element
+dependency. All arguments of one element are read before its result is written.
+Shifted or differently typed aliases are refused. Exact in-place aliases retain
+that explicitly qualified execution rule.
+
+This family supports total fixed-width integer arithmetic, constants, casts,
+comparisons, selection and signed/unsigned min/max. It reuses the existing
+scalar eligibility checks and admits additional exact standard scalar classes
+under this new composition scope. Floating arithmetic, poison flags, unknown
+operations, calls, reductions, side effects and unmodeled metadata remain
+barriers. Existing frozen numerical proof domains and authoring grants are
+unchanged. No approximation or new numerical policy is selected.
+
+Merlin uses the actual completion-aware lifetime to require a newly initialized,
+invocation-private intermediate with no other observer or writer. The complete
+typed producer result must be consumed with the same byte layout. One selected
+`ReadoutCapability` must apply every stage, and the returned instruction's
+decoded readout identity must match it. Capabilities from different readouts
+cannot be combined. The target-owned `FusionCapability.emit` either returns one
+actual instruction or declines. Selection uses the first compatible qualified
+capability in declaration order; it invents no cycle estimates.
+
+`verify_fusion_step` reconstructs the collapsed pair from original and returned
+calls without accepting a selected-pair witness. It checks all unaffected
+effects, actual input and output byte intervals, explicit layouts, widths and
+stage order. Typed scalar expression DAGs must match after substituting the
+producer into the consumer. Widening, wrapping arithmetic, clamp order and
+narrowing remain observable nodes; algebraic reassociation is not inferred.
+The immutable graph cache and scalar work budgets bound compiler space by IR
+size rather than element count.
+
+The candidate's objects and lifetimes are then replanned through the ordinary
+allocator. An incompatible physical view or insufficient capacity restores the
+original composition and recomputes allocation. Scalar operation/source-byte
+budgets and `ScheduleBudgets.max_fusions` can retain the original route. Actual
+arithmetic mismatches diagnose; they never authorize an unchecked candidate.
+If both routes fail allocation, the caller receives the existing precise
+unavailable diagnostic. A receipt marked `allocation_fallback` describes a
+discarded candidate, not eliminated traffic in the final program.
+
+Allocation/spill verification binds the checked candidate to the realized
+schedule; actual-byte decoding then checks the complete final instruction
+effects and numerical declarations. Final receipts report actual commands,
+encoded size and requested read/write bytes after all rewrites. Tests execute
+the emitted byte program in native code and check complete outputs, input
+state, intermediate signed wrap, clamp-before-narrowing and actual transfer
+counters against an independent vector reference. Separate-memory and aliased
+view models, different element widths/byte orders, tails, alignment fallback,
+multiple consumers, extra operands, asynchronous barriers and mutation controls
+exercise the shared mechanism. Negative controls expose both incorrect target
+arithmetic and hidden temporary traffic despite plausible declarations.
+
+The same mechanism also composes a typed identity accumulator readout with an
+integer bias/clamp/narrowing epilogue after a completed contraction. Native tests
+execute complete two-layer integer graphs through final encoded bytes, including
+an observed first-layer activation, both contractions, separate accumulator/scratch
+stores, 8/16-bit input elements and i32 wrap before saturation. Counters observe
+actual staged requests and result accesses; both intermediate readout stores and
+reloads disappear. Missing bias support retains the original materializations.
+This scope requires addressable accumulators and contiguous elementwise bias
+matrices; it does not infer broadcast bias or packing. A falsely implemented
+wider fused addition fails the independent complete-output comparison.
+
+Synthetic tests do not qualify a target. Existing providers must expose a
+public, independently qualified scalar/effect projection, complete layouts and
+the physical composition emitter, together with final actual-byte decoding.
+The initial read-only target integrations do not provide these hooks. Physical
+floating readouts, direct contraction-body fusion, noncontiguous layouts,
+cross-memory handoffs and asynchronous fusion remain incomplete. Traffic
+reductions in these tests are not full-model latency results.
+
 ## Exact device register spills
 
 The ordinary `allocate_temporary_storage` entry accepts selected `SpillClass`
@@ -400,14 +589,177 @@ not supply this final decoder/continuation boundary automatically. Final machine
 program checks therefore remain an explicit integration requirement for those
 targets.
 
+## Complete-domain counted row softmax
+
+`compile_row_softmax` consumes a typed `RowSoftmaxProblem`, an explicit
+`RowSoftmaxNumerics` source algorithm, chunk resources, selected byte-addressed
+banks, four role-to-bank bindings and a `RowSoftmaxAdapter`. The adapter supplies
+actual instruction encoding/projection, configuration and qualification
+identities, index width, exact source order, addressable state and synchronous
+completion. A declaration is conditional on independent qualification; the
+neutral test implementations do not establish hardware support.
+
+The source algorithm names its f32/f64 exponential, lane count, exact binary sum
+tree and division versus reciprocal multiplication. Each lane starts with its
+first exponential and continues in increasing source-column order across every
+chunk. `cpu_softmax_row_numerics` exposes the existing pinned CPU f32 algorithm;
+the tensor CPU builder and counted scheduler share its eight-lane/tree data.
+Finite inputs and the selected RNE, nontrapping, unobserved-status contract remain
+explicit prerequisites. No approximation policy or admission threshold changes.
+
+For each row, the emitted counted kernel initializes and completes the **whole
+row maximum**, computes **all shifted exponentials**, initializes source lanes,
+completes the **whole denominator** and its ordered tree, then normalizes every
+column. No chunk normalizes independently. Optional `CausalRowMask(period,
+offset)` uses `column <= row % period + offset` in both score passes. Positive
+period and nonnegative offset prove every nonempty row has an active element.
+
+The existing allocator places a complete row of exponentials, source lane sums,
+maximum and normalization factor. Lifetimes include actual synchronous finish
+phases: maximum/factor can reuse bytes, while lane sums/factor cannot overlap
+during the final tree. Explicit backing aliases, per-bank alignment and packing
+or DMA reservations constrain placement. Workspace is invocation-private;
+immutable inputs and outputs require disjoint runtime bindings. Rows reuse
+storage only after normalization completes. The source algorithm needs one
+full-row exponential allocation; this family refuses if that state cannot fit.
+
+The ordinary shared entry runs `row_semantics` (stage 0), `row_tiling` (2),
+`row_allocation` (3), and `row_schedule` (4) through `PipelineSession`.
+Prerequisites and explicit order are checked before execution; scheduling
+invalidates source, tiling and allocation analyses and produces a fresh
+realization. Context stamps bind problem/mask, current shared library sources,
+hardware, numerical algorithm, ownership, resources, reservations and execution
+qualification. Different chunks use the same interfaces and rules in Phase 2.
+
+Unknown costs select the largest legal chunk. Without tail support, or when
+peeled tails exceed the static budget, a bounded descending divisor search tries
+at most 64 candidates and retains the primitive granularity as a legal fallback
+when it divides the complete domain. An explicit alternative must satisfy the
+same limits. Counted loops hold static calls to seven or eleven regardless of
+row/column extents; no compiler loop expands the tensor. This policy does not
+estimate cycles or imply that smaller chunks improve execution time.
+
+`verify_row_softmax` reconstructs the actual projected calls, phase ordering,
+loop bounds, full coverage, affine source/output/state addresses, mask and
+numerical identity. It rechecks completed-phase physical ownership and emitted
+integer intermediates. Reports contain actual projected command/payload counts
+and assigned storage. Instrumented native tests independently observe requested
+bytes, commands and touched physical high-water addresses; they compare complete
+outputs, input preservation and guards across baseline/tiled programs and an
+independent pinned Torch CPU reference. A separate f64 one-lane/direct-division
+source exercises different widths, arithmetic order and separate memories.
+An intentionally incorrect per-chunk lane reset fails independent output checks.
+
+Reproduce with the native toolchain and pinned reference available:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_row_softmax.py \
+  merlin/tests/ir/test_cpu_softmax.py -p no:cacheprovider \
+  --basetemp "$TMPDIR/row-softmax-check"
+```
+
+The entry returns the actual `Kernel`, physical views, realization and pass
+records. `result.emit_c(instruction_set, symbol=...)` uses the existing emitter
+and checked index width; instruction implementations remain target-owned.
+`RowSoftmaxUnavailable` diagnoses unsupported capacity, ownership, numerical or
+execution contracts so a caller can retain its original source implementation.
+All-masked/arbitrary masks, nonfinite source domains, asynchronous primitives,
+unaddressable state, cross-row aliasing and unknown effects are unsupported.
+
+This is an executable shared counted-row path. It does **not** yet match and
+replace full-model source softmax automatically, integrate a real target's
+primitives, compose full QK–softmax–PV/KV execution, or verify final machine bytes.
+Those require source admission, public target primitive/projection hooks and a
+counted-program final decoder/completion contract. It does not run through the
+finite straight-line final-byte pipeline by expanding loops. Native reference
+agreement establishes the tested source algorithm, not hardware qualification,
+full-model gains, accelerator latency, or calibrated performance.
+
+## Automatic source row normalization
+
+Ordinary `lower_model`/`lower_model_file` serial CPU lowering selects
+`automatic-host-rows` by default. Disable it with the existing optional-pass
+selector or `MERLIN_AUTOMATIC_HOST_ROWS=0`. The selection report records both arms'
+identical shared source hashes, source/output byte identities and refusals.
+This pass requires no separately captured quantization policy: the original typed
+source is the numerical algorithm and the pass changes no scalar arithmetic.
+
+The matcher admits closed static unencoded f32/f64 tensor islands consisting of
+last-axis maximum, subtraction, exponential, complete sum and division, including
+checked row-scalar reshape/broadcast views. It retains original scalar regions,
+initializers, operation order and attributes. Arbitrary input masks/nonfinite
+values retain their original arithmetic. It emits complete-row tensor slices in
+one counted loop, then uses the ordinary upstream bufferization and native object
+path. It does not replace source exponentials or choose a different sum tree.
+
+An adjacent closed add/subtract/multiply/divide prefix can join the island,
+including scalar operands and statically projected singleton broadcasts. The
+pass derives each actual input slice from the original typed indexing map,
+preserving batch/head/row coordinates and complete columns. Permutations,
+repeated axes, nonprojection maps and inconsistent uses remain unsupported.
+Scalar splats between a producer's destination and body can join the island when
+they have no external observer. Checked identity readouts after normalization can
+also join it. This avoids introducing a full-tensor boundary around masks/scales
+or leaving a redundant source copy between normalization and its consumer.
+
+Unknown effects, attributes, algorithms, layouts, escaping intermediates and
+intervening operations retain the original route. Vector/parallel/explicit
+schedules, 32-bit indexing, layouts without a selected index width and source-bound observation/graph
+selections retain their existing route. Static code/group budgets bound growth.
+The default unknown-cost policy
+requires fewer logical row-state elements and preserves existing producer/consumer
+pointwise-fusion boundaries, including through views. This prevents the observed
+whole-graph regression where isolating a normalization materialized an additional
+full tensor. It is a conservative policy, not a timing or physical-allocation
+guarantee. Typed ordered multiply/add contractions are recognized as unchanged
+boundaries, including through views; their reduction bodies are never moved into
+normalization. Other pointwise consumers remain a conservative barrier.
+Explicit mechanism tests may disable that cost filter. Selected 64-bit layouts
+use the same route, with layout identity and index width bound into the source
+analysis context. A native test obtains its layout from the actual selected
+compiler, rather than embedding a target layout constant.
+
+The independent checker reconstructs actual loop bounds, mixed-radix row
+coordinates, complete slices, original scalar regions and local SSA. Inverting
+the checked islands must restore the entire original module, including external
+operations, interfaces and carried state. Source admission, scheduling and
+conformance use the existing `PipelineSession` with numerical, resource and
+library identities. These are structural source checks outside the existing
+integer Lean domains; machine equivalence is not claimed.
+
+Reproduce the paired native experiment without model downloads:
+
+```sh
+python -B -m pytest merlin/tests/ir/test_row_normalization.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/source-row-test" \
+  -o junit_family=xunit1 --junitxml "$TMPDIR/source-row-pair.xml"
+```
+
+Native tests compare all output bits with the unchanged baseline and independent
+ordered arithmetic/libm references, including tails, NaNs and infinities. Complete
+QK–normalization–PV graphs additionally check recurrent state, positions and
+input preservation over three invocations, with projected masks, scalar scaling,
+generic contraction bodies and identity readouts. In these neutral examples,
+both masked and unmasked forms reduce
+native text size. The unmasked case reduces requested temporary heap, while the
+masked case adds one row of scratch despite reducing logical row-scalar state.
+This observed whole-graph tradeoff is not a memory or latency improvement claim.
+Unsupported producer/consumer fusion boundaries retain their original route. JUnit
+properties record compilation wall time, object/text bytes, requested heap payload
+and whole native host-call wall samples. Heap payload is not RSS; compile peak
+memory and transfer bytes remain unmeasured. Host-call samples include ABI overhead
+and are too few for a speedup claim. These neutral CPU graphs establish no KV-cache
+ownership, real target support or absolute accuracy for an external model.
+
 ## Existing mechanisms and remaining integration requirements
 
 | Concern | Existing mechanism | Requirement beyond the scope above |
 | --- | --- | --- |
 | Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line storage relocation | Target effect/rewrite adapters and ordinary lowering integration; general loop and persistent-storage allocation |
 | Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks and independent actual byte provenance | Qualified device register/transfer adapters and ordinary target integration; CPU allocation stays with the native toolchain |
-| Fusion and transfers | Readout composition admission, connected dispatch and checked global-plan realization; logical host transforms; consumed exact private-copy forwarding with allocation fallback and independently checked realized traffic | Physical arithmetic epilogue composition, different-memory handoffs, and qualified target integration |
-| Reductions and attention | Ordered source loops, complete CPU reductions and explicit numerical policies | Shared multi-tile lowering with full domains, masks and intermediate storage; per-tile softmax is insufficient |
+| Fusion and transfers | Readout composition admission and connected dispatch; exact private-copy forwarding; consumed total-integer elementwise physical composition with layout/numerical checks, allocation fallback and reconstructed final traffic | Floating/contraction epilogues, noncontiguous and asynchronous handoffs, and qualified full-model target integration |
+| Reductions and attention | Complete-domain counted row softmax; automatic narrow CPU source row scheduling and native QK–softmax–PV graphs with carried state; ordered source loops and complete CPU reductions | Qualified source-to-device connection, target hooks/final decoding, device QK–softmax–PV/KV composition and broader source algorithms |
+| Configuration | Checked persistent-state cleanup through ordinary shared schedule compilation and actual final bytes; existing configuration checker/hoist primitive | Independently qualified target state decoder and ordinary model integration |
 | Final program limits | Actual decoded instruction size, branch/address checks and closed-region segmentation through declared interfaces | Independently qualified target decoder and runtime continuation integration; ordinary targets retain their existing linked-image admission |
 | Persistent state | Runtime state binding, immutable weight hashing/reuse and recurrent relinking | Qualified address windows, ownership and persistence for each device runtime |
 | Whole-model coverage | Source routing/census and compiled CPU fallback machinery | Complete realized coverage and unchanged numerical gates for each selected full model |

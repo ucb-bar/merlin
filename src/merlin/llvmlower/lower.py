@@ -55,6 +55,7 @@ STAGES = compile_trace.declare(
     (
         "input",
         "host-graph-optimized",
+        "host-row-scheduled",
         *PREPROCESS_STAGES,
         "upstream",
         "upstream-scheduled",
@@ -160,6 +161,29 @@ def lower_model(
 
             mlir_text, graph_report = optimize_host_graph(mlir_text, graph_optimizations)
             audit.stage("host-graph-optimized", mlir_text)
+        from .automatic_rows import prepare_automatic_rows
+
+        # Select after the actual lowering family is known. Vector/parallel
+        # schedules and explicit source-bound observers retain their route
+        # until their physical output forwarding has independent qualification.
+        serial_rows = not (
+            vectorize
+            or parallel
+            or transform_schedule is not None
+            or parallel_harts is not None
+            or parallel_chunks is not None
+            or graph_optimizations is not None
+            or masked_contraction_effects is not None
+            or source_observation_effects is not None
+            or source_scalar_carrier is not None
+            or index_bits not in (None, 64)
+            or (data_layout is not None and index_bits is None)
+        )
+        mlir_text, row_report = prepare_automatic_rows(
+            mlir_text, serial=serial_rows, index_bits=64 if index_bits is None else index_bits, data_layout=data_layout
+        )
+        if row_report["rewrites"]:
+            audit.stage("host-row-scheduled", mlir_text)
         if textual:
             from .passes_xdsl import preprocess_text_textual
 
@@ -169,6 +193,7 @@ def lower_model(
             upstream_text, stats = preprocess_text(mlir_text, audit=audit) if observed else preprocess_text(mlir_text)
         if graph_report is not None:
             stats["graph_optimizations"] = graph_report
+        stats["automatic_host_rows"] = row_report
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
 
         audit.stage("upstream", upstream_text)

@@ -143,6 +143,7 @@ class Continuation:
     sequential_completion: bool
     starts_at_zero: bool
     max_segments: int
+    preserved_configuration: tuple[str, ...] = ()
 
     def __post_init__(self):
         if (
@@ -155,6 +156,9 @@ class Continuation:
             or type(self.preserved_spaces) is not tuple
             or len(set(self.preserved_spaces)) != len(self.preserved_spaces)
             or any(not isinstance(space, str) or not space for space in self.preserved_spaces)
+            or type(self.preserved_configuration) is not tuple
+            or len(set(self.preserved_configuration)) != len(self.preserved_configuration)
+            or any(not isinstance(key, str) or not key for key in self.preserved_configuration)
         ):
             raise ValueError("segmentation requires explicit sequential launch, entry and state-continuation semantics")
 

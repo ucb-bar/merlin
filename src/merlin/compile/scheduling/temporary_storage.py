@@ -18,6 +18,7 @@ from merlin.semantic_compiler.allocate import allocate, check_assignment
 from merlin.semantic_compiler.allocation_types import CandidateGraph, Reservation, StorageBank, Value
 from merlin.semantic_compiler.rules import AddressConstraint
 
+from .fusion_semantics import ElementwiseSemantics
 from .program_limits import AddressWindow, EncodedAccess
 
 
@@ -64,6 +65,7 @@ class StorageEffects:
     # Exactly these bytes are copied, with no arithmetic/conversion or other
     # effects beyond the declared completion. Needs independent qualification.
     exact_copy: bool = False
+    elementwise: ElementwiseSemantics | None = None
 
     def __post_init__(self):
         if (
@@ -77,6 +79,8 @@ class StorageEffects:
             or len(set(self.waits)) != len(self.waits)
             or (self.token is not None and (not isinstance(self.token, str) or not self.token))
             or type(self.exact_copy) is not bool
+            or self.elementwise is not None
+            and type(self.elementwise) is not ElementwiseSemantics
         ):
             raise ValueError("storage effects require complete typed access and completion declarations")
         if (
@@ -87,7 +91,8 @@ class StorageEffects:
         ):
             raise ValueError("storage completion tokens must describe actual async operations or pure completion waits")
         if self.exact_copy and (
-            len(self.accesses) != 2
+            self.elementwise is not None
+            or len(self.accesses) != 2
             or self.accesses[0].writes
             or not self.accesses[1].writes
             or self.accesses[0].size != self.accesses[1].size
@@ -209,7 +214,6 @@ def _problem(kernel, objects, banks, adapter, external_windows, private_ownershi
         raise ValueError("temporary allocation requires positive explicit work budgets")
     if (
         type(objects) is not tuple
-        or not objects
         or len(objects) > max_objects
         or any(type(obj) is not TemporaryObject for obj in objects)
         or len({obj.name for obj in objects}) != len(objects)
