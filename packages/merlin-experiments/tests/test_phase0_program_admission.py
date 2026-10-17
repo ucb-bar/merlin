@@ -406,9 +406,7 @@ def test_the_derivation_inventory_records_each_capture_placements(tmp_path):
         program_admission.derive_inventory(inventory, target="fixture", evidence=_evidence(), captures={})
     capture.write_text(_INT_MATMUL + "\n")
     with pytest.raises(ValueError, match="inventoried bytes"):
-        program_admission.derive_inventory(
-            inventory, target="fixture", evidence=_evidence(), captures={"app": capture}
-        )
+        program_admission.derive_inventory(inventory, target="fixture", evidence=_evidence(), captures={"app": capture})
 
 
 def test_only_a_definite_refusal_of_a_non_probe_entry_is_final_before_writing():
@@ -417,3 +415,97 @@ def test_only_a_definite_refusal_of_a_non_probe_entry_is_final_before_writing():
     assert not program_admission.entry_refusal_is_final({"op": "matmul"}, unknown)
     probe = {"op": "permute", "generalization": {"must_accelerate": False, "eligible": False}}
     assert not program_admission.entry_refusal_is_final(probe, refused)
+
+
+@pytest.mark.parametrize(
+    ("screen", "fragment"),
+    [
+        ({"status": "admitted", "placements": {"host": 9}}, "host=9"),
+        ({"status": "admitted", "placements": {}}, "no placed operation"),
+        ({"status": "admitted", "placements": {"accelerator": 0, "host": 1}}, "Merlin-supplied"),
+        ({"status": "admitted"}, "no frozen per-operation placement"),
+        (None, "no frozen per-operation placement"),
+        ({"placements": {"accelerator": "1"}}, "malformed"),
+    ],
+)
+def test_a_program_without_accelerator_placement_is_not_publishable(screen, fragment):
+    reason = program_admission.accelerator_placement_refusal(screen)
+    assert reason is not None and fragment in reason
+
+
+def test_a_mixed_program_with_accelerator_placement_is_publishable():
+    assert program_admission.accelerator_placement_refusal({"placements": {"accelerator": 1, "host": 15}}) is None
+
+
+def test_generation_removes_and_records_a_written_member_without_accelerator_placement(tmp_path):
+    from merlin_experiments.phase0.generation import withhold_unaccelerated
+
+    host_only = tmp_path / "model_slices" / "host_member"
+    host_only.mkdir(parents=True)
+    (host_only / "capsule.yaml").write_text("name: host_member\n")
+    record = withhold_unaccelerated("host_member", {"status": "admitted", "placements": {"host": 2}}, host_only)
+    assert record == {
+        "capsule": "host_member",
+        "placements": {"host": 2},
+        "reason": program_admission.accelerator_placement_refusal({"placements": {"host": 2}}),
+    }
+    assert not host_only.exists()
+
+    mixed = tmp_path / "model" / "mixed"
+    mixed.mkdir(parents=True)
+    assert withhold_unaccelerated("mixed", {"status": "admitted", "placements": {"accelerator": 1}}, mixed) is None
+    # A refused screen leaves through the diagnostic path, not this one.
+    assert withhold_unaccelerated("mixed", {"status": "unsupported", "placements": {}}, mixed) is None
+    assert mixed.is_dir()
+
+
+@pytest.mark.parametrize("mesh_rows", [8, 16, 32])
+def test_tail_isolation_members_are_generated_with_accelerator_placement(tmp_path, mesh_rows):
+    """A ragged-K matmul under aligned M/N and a single-row GEMV with a ragged N, sized from RTL facts."""
+    from merlin_experiments.phase0.sweeps import resolve_extent
+
+    from merlin.targetgen import corpus_spec, corpus_synth
+
+    facts = {"facts": {"arrays": [{"name": "mesh", "rows": mesh_rows, "cols": mesh_rows}]}}
+    tile = corpus_spec._tile_dim("fixture", _CONTRACT, operand="int8", facts=facts)
+    assert tile == mesh_rows
+    requirement = {
+        "target": "fixture",
+        "cells": [
+            {
+                "cell": "contraction/i8/aligned",
+                "family": "contraction",
+                "dtype": "i8",
+                "alignment": "aligned",
+                "basis": "observed",
+            }
+        ],
+        "boundaries": {"extent_probes": [{"boundary": "tile_edge", "edge": tile, "points": [tile - 1, tile]}]},
+    }
+    members = {entry["name"]: entry for entry in corpus_synth.synthesize(requirement)["capsules"]}
+    binding = corpus_spec.CorpusBinding(
+        target="fixture",
+        tile_dim=tile,
+        operand_dtype="int8",
+        accum_dtype="i32",
+        integer=True,
+        tiers=["L0"],
+        compare="exact_int",
+    )
+    extents = {}
+    for name in ("SY_contraction_i8_k_tail", "SY_contraction_i8_gemv_n_tail"):
+        entry = members[name]
+        assert entry["label"] == "public" and entry["generalization"]["generalization_axis"] == "tail_isolation"
+        extents[name] = {axis: resolve_extent(entry[axis], tile) for axis in ("M", "K", "N")}
+        capsule, program = corpus_spec.build_matmul({**entry, **extents[name]}, binding)
+        directory = tmp_path / name
+        directory.mkdir()
+        (directory / "capsule.interface.mlir").write_text(program)
+        screen = program_admission.screen_written(capsule, directory, target="fixture", evidence=_evidence())
+        assert screen["status"] == "admitted", screen["reason"]
+        assert screen["placements"].get("accelerator", 0) >= 1
+        assert program_admission.accelerator_placement_refusal(screen) is None
+    k_tail = extents["SY_contraction_i8_k_tail"]
+    assert k_tail["M"] % tile == 0 and k_tail["N"] % tile == 0 and k_tail["K"] % tile != 0
+    gemv = extents["SY_contraction_i8_gemv_n_tail"]
+    assert gemv["M"] == 1 and gemv["N"] % tile != 0 and gemv["K"] % tile == 0
