@@ -31,28 +31,41 @@ def execution(tmp_path, monkeypatch):
     bwrap.materialize_bundle_inputs(owner.workspace, owner.bundle, repo=owner.repo)
     monkeypatch.setattr(R.CommonTransformService, "compiler_imports", lambda self: nullcontext())
     from merlin.verify import lean_emission_context
+
     # This synthetic transport fixture has no original sealed admission. The
     # real emission context is exercised separately with an actual snapshot.
     monkeypatch.setattr(lean_emission_context, "original_emission_checks", lambda service: nullcontext())
-    def policy(target, workspace, package, *, inputs):
-        return C.PackageSandboxPolicy(("box", "--bind", str(workspace), str(workspace),
-            "--ro-bind", str(package), str(package)), (), (), Path(workspace), Path(package), target)
+
+    def policy(target, workspace, package, *, inputs, scope):
+        assert type(scope) is C.PackagePolicyScope
+        return C.PackageSandboxPolicy(
+            ("box", "--bind", str(workspace), str(workspace), "--ro-bind", str(package), str(package)),
+            (),
+            (),
+            Path(workspace),
+            Path(package),
+            target,
+        )
+
     monkeypatch.setattr(C, "package_sandbox_policy", policy)
     from contextlib import contextmanager
 
     from merlin_experiments.phase1.brokers import compiler_call_channel
+
     @contextmanager
     def transport(*args, **kwargs):
-        yield SimpleNamespace(env_prefix=lambda prefix:prefix,remaining_timeout=lambda:kwargs["timeout_s"])
-    monkeypatch.setattr(compiler_call_channel,"compiler_call_transport",transport)
+        yield SimpleNamespace(env_prefix=lambda prefix: prefix, remaining_timeout=lambda: kwargs["timeout_s"])
+
+    monkeypatch.setattr(compiler_call_channel, "compiler_call_transport", transport)
     return owner, candidate, tmp_path / "private"
 
 
 def test_only_exact_original_owner_installs_executor(execution):
     owner, candidate, work = execution
     with pytest.raises(ValueError, match="exact owner"):
-        with R.original_compiler_execution(SimpleNamespace(), target_experiment=None,
-                candidate=candidate, work_root=work):
+        with R.original_compiler_execution(
+            SimpleNamespace(), target_experiment=None, candidate=candidate, work_root=work
+        ):
             pass
     with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
         assert P.active_package_executor() is not None
@@ -90,6 +103,7 @@ def test_original_call_only_mounts_one_input_and_private_output(execution, monke
     monkeypatch.setattr(P, "_resolve_argv", lambda pkg, name, inp, out: ["compiler", str(inp), str(out)])
     monkeypatch.setattr(P, "_needs_interpreter", lambda *args: False)
     observed = []
+
     def invoke(self, policy, package, argv, **kwargs):
         inp, out = map(Path, argv[-2:])
         assert inp.read_bytes() == incoming.read_bytes()
@@ -99,6 +113,7 @@ def test_original_call_only_mounts_one_input_and_private_output(execution, monke
         observed.append(inp.parent)
         out.write_text('{"real_output":1}')
         return subprocess.CompletedProcess(argv, 0, "", "")
+
     monkeypatch.setattr(R._Executor, "_invoke", invoke)
     with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
         result = P.active_package_executor().run_entrypoint(pkg, "emit", incoming, output)
@@ -148,7 +163,7 @@ def test_entrypoint_preparation_owns_cpu_but_releases_before_command(execution, 
         checks.append("source")
         return original_verify(self, package)
 
-    def policy(target, workspace, package, *, inputs):
+    def policy(target, workspace, package, *, inputs, scope):
         leased()
         assert (workspace / "input.mlir").read_bytes() == incoming.read_bytes()
         with cpu_pool.shared_compute_pool(timeout_s=0):
@@ -206,19 +221,34 @@ def test_frozen_public_policy_uses_only_original_read_only_grants(tmp_path, monk
     selected = tmp_path / "other-source/merlin/transforms/client.py"
     selected.parent.mkdir(parents=True)
     selected.write_text("public source")
-    owner = SimpleNamespace(workspace=original, bundle={"frozen":True}, repo=tmp_path / "repo",
-        profile={"common_sources":[{"path":"merlin/python/merlin/transforms/client.py",
-            "sha256":__import__("hashlib").sha256(selected.read_bytes()).hexdigest()}],"treatment_tools":[]})
-    policy = C.PackageSandboxPolicy(("box",), (), (), tmp_path / "private", tmp_path / "pkg", None,
-                                   "export PYTHONPATH=selected; ")
+    owner = SimpleNamespace(
+        workspace=original,
+        bundle={"frozen": True},
+        repo=tmp_path / "repo",
+        profile={
+            "common_sources": [
+                {
+                    "path": "merlin/python/merlin/transforms/client.py",
+                    "sha256": __import__("hashlib").sha256(selected.read_bytes()).hexdigest(),
+                }
+            ],
+            "treatment_tools": [],
+        },
+    )
+    policy = C.PackageSandboxPolicy(
+        ("box",), (), (), tmp_path / "private", tmp_path / "pkg", None, "export PYTHONPATH=selected; "
+    )
     from merlin.targetgen.sandbox import bwrap as B
+
     monkeypatch.setattr(B, "_snapshot_grants", lambda *args: ({}, [(str(selected), selected, selected)]))
     monkeypatch.setattr(B, "_bundle_mount_args", lambda ws, bundle, repo: ["--ro-bind", str(selected), str(selected)])
     masked = []
-    def mask(argv, target, workspace, bundle, *, repo):
-        assert workspace == original and bundle is owner.bundle and repo == owner.repo
+
+    def mask(argv, target, workspace, bundle, *, repo, capsules):
+        assert workspace == original and bundle is owner.bundle and repo == owner.repo and capsules is None
         masked.append(True)
         return [*argv, "--tmpfs", str(tmp_path / "private-checker")]
+
     monkeypatch.setattr(B, "apply_final_answer_masks", mask)
     result = R.public_package_policy(policy, target=None, owner=owner)
     assert "--bind" not in result.argv and str(original) not in result.argv
@@ -268,7 +298,9 @@ def test_public_policy_preparation_leases_and_releases_real_shared_cpu(tmp_path,
             R.public_package_policy(policy, target=None, owner=owner)
     else:
         assert R.public_package_policy(policy, target=None, owner=owner).argv[-2:] == (
-            "--tmpfs", str(tmp_path / "private"))
+            "--tmpfs",
+            str(tmp_path / "private"),
+        )
     assert os.sched_getaffinity(0) == original_affinity
     assert not cpu_pool.current_thread_owns_cpu_lease()
     with (slots / f"cpu-{cpu}.lock").open("rb") as stream:
@@ -292,7 +324,7 @@ def test_actual_frozen_source_box_imports_selected_leaf_at_an_independent_root(t
     shutil.copytree(repo / "src/merlin", selected / "merlin", ignore=shutil.ignore_patterns("__pycache__"))
     workspace = tmp_path / "original"
     workspace.mkdir()
-    bundle = {"arm":"raw_baseline","tools":[],"allowed":[],"denied":[],"host_inputs":[]}
+    bundle = {"arm": "raw_baseline", "tools": [], "allowed": [], "denied": [], "host_inputs": []}
     attach_common_substrate(bundle, version=COMMON_SUBSTRATE_V3, python_source_root=selected, host_index_bits=64)
     for row in bundle["allowed"]:
         row["path"] = str(selected / row["path"].removeprefix("merlin/python/"))
@@ -300,25 +332,58 @@ def test_actual_frozen_source_box_imports_selected_leaf_at_an_independent_root(t
     manifest.write_text(yaml.safe_dump(bundle))
     B.materialize_bundle_inputs(workspace, bundle, repo=repo)
     owner = R.CommonTransformService(workspace=workspace, bundle_manifest=manifest, repo=repo)
-    policy = C.PackageSandboxPolicy(("bwrap", "--unshare-user", "--unshare-net", "--unshare-pid",
-        "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib", "--ro-bind", "/lib64", "/lib64",
-        "--proc", "/proc", "--dev", "/dev", "--tmpfs", str(selected)), (), (), tmp_path, tmp_path, None)
+    policy = C.PackageSandboxPolicy(
+        (
+            "bwrap",
+            "--unshare-user",
+            "--unshare-net",
+            "--unshare-pid",
+            "--ro-bind",
+            "/usr",
+            "/usr",
+            "--ro-bind",
+            "/lib",
+            "/lib",
+            "--ro-bind",
+            "/lib64",
+            "/lib64",
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--tmpfs",
+            str(selected),
+        ),
+        (),
+        (),
+        tmp_path,
+        tmp_path,
+        None,
+    )
     # Final-mask selection is target-owned; this small Linux import control uses
     # only the materialized allow/deny mounts, and tests their private siblings.
     from unittest.mock import patch
-    with owner.compiler_imports(), patch.object(B, "apply_final_answer_masks", side_effect=lambda argv,*a,**k:argv):
+
+    with owner.compiler_imports(), patch.object(B, "apply_final_answer_masks", side_effect=lambda argv, *a, **k: argv):
         actual = R.public_package_policy(policy, target=None, owner=owner)
-        code = ("from merlin.verify.lean_contract import coverage_policy_record; "
-                "assert coverage_policy_record()['mode']=='strict_within_coverage'; "
-                "import importlib.util; assert importlib.util.find_spec('merlin.verify.lean_checker') is None; "
-                "print('selected-public-source')")
-        proc = subprocess.run([*actual.argv,"bash","-c",actual.env_prefix+'exec "$@"',
-            "probe","/usr/bin/python3","-c",code], capture_output=True,text=True,timeout=20)
+        code = (
+            "from merlin.verify.lean_contract import coverage_policy_record; "
+            "assert coverage_policy_record()['mode']=='strict_within_coverage'; "
+            "import importlib.util; assert importlib.util.find_spec('merlin.verify.lean_checker') is None; "
+            "print('selected-public-source')"
+        )
+        proc = subprocess.run(
+            [*actual.argv, "bash", "-c", actual.env_prefix + 'exec "$@"', "probe", "/usr/bin/python3", "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "selected-public-source"
     assert str(selected) in actual.env_prefix and str(repo / "merlin/python") not in actual.env_prefix
     assert hashlib.sha256((selected / "merlin/verify/lean_contract.py").read_bytes()).hexdigest() == next(
-        row['sha256'] for row in owner.profile['common_sources'] if row['module']=='merlin.verify.lean_contract')
+        row["sha256"] for row in owner.profile["common_sources"] if row["module"] == "merlin.verify.lean_contract"
+    )
 
 
 def test_budget_child_cannot_drop_original_executor_and_inline_keeps_it(execution, monkeypatch):
@@ -327,10 +392,13 @@ def test_budget_child_cannot_drop_original_executor_and_inline_keeps_it(executio
     from merlin.targetgen import capsule_runner as CR
 
     owner, candidate, work = execution
-    monkeypatch.setattr(CR, "_grade_candidate_model_capsule_inline", lambda *args,**kwargs: {
-        "scope_owner_present": P.active_package_executor() is not None})
-    monkeypatch.setattr(subprocess, "Popen", lambda *args,**kwargs: pytest.fail("unboxed child launch"))
-    capsule = {"name":"public-program","kind":"model"}
+    monkeypatch.setattr(
+        CR,
+        "_grade_candidate_model_capsule_inline",
+        lambda *args, **kwargs: {"scope_owner_present": P.active_package_executor() is not None},
+    )
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: pytest.fail("unboxed child launch"))
+    capsule = {"name": "public-program", "kind": "model"}
     with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
         # This fixture deliberately substitutes an empty import scope. Genuine
         # sealed child delegation has separate actual-interpreter controls.
@@ -346,8 +414,9 @@ def test_development_executor_consumes_the_original_import_scope(execution, monk
     from merlin_experiments.phase2 import development_feedback as D
 
     owner, _, work = execution
-    entered = ContextVar("test_original_scope",default=False)
+    entered = ContextVar("test_original_scope", default=False)
     from contextlib import contextmanager
+
     @contextmanager
     def admission(self):
         token = entered.set(True)
@@ -355,35 +424,52 @@ def test_development_executor_consumes_the_original_import_scope(execution, monk
             yield
         finally:
             entered.reset(token)
+
     monkeypatch.setattr(R.CommonTransformService, "compiler_imports", admission)
+
     def executor(**kwargs):
         assert entered.get() is True
         assert kwargs["timeout_s"] == 3
         return {"scope": "original"}
-    feedback = D.DevelopmentGsimFeedback(None,None,work,"a"*64,None,{},work,{},executor=executor,
-        _compiler_profile_service=owner)
-    result = feedback._execute(arm="candidate",package=work,package_sha256="a"*64,
-        member=SimpleNamespace(descriptor={}),decision=None,workspace=work,timeout_s=3)
-    assert result == {"scope":"original"} and entered.get() is False
+
+    feedback = D.DevelopmentGsimFeedback(
+        None, None, work, "a" * 64, None, {}, work, {}, executor=executor, _compiler_profile_service=owner
+    )
+    result = feedback._execute(
+        arm="candidate",
+        package=work,
+        package_sha256="a" * 64,
+        member=SimpleNamespace(descriptor={}),
+        decision=None,
+        workspace=work,
+        timeout_s=3,
+    )
+    assert result == {"scope": "original"} and entered.get() is False
 
 
 def test_original_declared_build_keeps_source_and_aggregate_deadline(execution, monkeypatch):
     owner, candidate, work = execution
-    pkg = SimpleNamespace(directory=candidate,integrity_exempt=False,
-        manifest={"build":{"configure":["configure"],"command":["build"]}})
+    pkg = SimpleNamespace(
+        directory=candidate,
+        integrity_exempt=False,
+        manifest={"build": {"configure": ["configure"], "command": ["build"]}},
+    )
     from merlin.targetgen.contract import toolchain
-    monkeypatch.setattr(toolchain,"mlir_cmake_dir",lambda:work / "mlir")
-    monkeypatch.setattr(toolchain,"mlir_install",lambda:work / "llvm")
+
+    monkeypatch.setattr(toolchain, "mlir_cmake_dir", lambda: work / "mlir")
+    monkeypatch.setattr(toolchain, "mlir_install", lambda: work / "llvm")
     timeouts = []
-    def invoke(self,policy,package,argv,**kwargs):
-        assert policy.argv[-3:] == ("--bind",str(candidate),str(candidate))
+
+    def invoke(self, policy, package, argv, **kwargs):
+        assert policy.argv[-3:] == ("--bind", str(candidate), str(candidate))
         assert "CM=cmake" in policy.env_prefix
         timeouts.append(kwargs["timeout"])
-        return subprocess.CompletedProcess(argv,0,"","")
-    monkeypatch.setattr(R._Executor,"_invoke",invoke)
-    with R.original_compiler_execution(owner,target_experiment=None,candidate=candidate,work_root=work):
-        P.active_package_executor().build_package(pkg,timeout=5)
-    assert len(timeouts)==2 and 0 < timeouts[1] <= timeouts[0] <= 5
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(R._Executor, "_invoke", invoke)
+    with R.original_compiler_execution(owner, target_experiment=None, candidate=candidate, work_root=work):
+        P.active_package_executor().build_package(pkg, timeout=5)
+    assert len(timeouts) == 2 and 0 < timeouts[1] <= timeouts[0] <= 5
 
 
 def test_phase1_checkpoint_qa_and_emit_probes_keep_original_scope(execution, monkeypatch):
@@ -394,33 +480,37 @@ def test_phase1_checkpoint_qa_and_emit_probes_keep_original_scope(execution, mon
     owner, candidate, _ = execution
     root = candidate.parent
     ws = root / "workspace"
-    shutil.copytree(candidate,ws / "submission")
+    shutil.copytree(candidate, ws / "submission")
     (ws / "submission/manifest.yaml").write_text("language: python\n")
     run = root / "run"
-    context = InvocationContext(root,root / "descriptor.yaml",root,"fixture",run,
-        root / "reports",root / "bundles",())
-    inputs = G.GradingInputs(context,"raw_baseline",root / "public",(),None,compiler_profile_service=owner)
-    monkeypatch.setattr(G,"load_target_experiment",lambda path:None)
-    monkeypatch.setattr(G,"_language_ok",lambda *args:(True,""))
-    monkeypatch.setattr(G.OH,"commit_graded",lambda *args,**kwargs:None)
-    monkeypatch.setattr(G,"_write_stage_ledger",lambda *args,**kwargs:None)
-    monkeypatch.setattr(G,"_record_plateau",lambda *args:None)
-    monkeypatch.setattr(G.FL,"record_channel_health",lambda *args:None)
-    monkeypatch.setattr(promotion,"resolve_tiers",lambda *args,**kwargs:(None,None,None))
+    context = InvocationContext(
+        root, root / "descriptor.yaml", root, "fixture", run, root / "reports", root / "bundles", ()
+    )
+    inputs = G.GradingInputs(context, "raw_baseline", root / "public", (), None, compiler_profile_service=owner)
+    monkeypatch.setattr(G, "load_target_experiment", lambda path: None)
+    monkeypatch.setattr(G, "_language_ok", lambda *args: (True, ""))
+    monkeypatch.setattr(G.OH, "commit_graded", lambda *args, **kwargs: None)
+    monkeypatch.setattr(G, "_write_stage_ledger", lambda *args, **kwargs: None)
+    monkeypatch.setattr(G, "_record_plateau", lambda *args: None)
+    monkeypatch.setattr(G.FL, "record_channel_health", lambda *args: None)
+    monkeypatch.setattr(promotion, "resolve_tiers", lambda *args, **kwargs: (None, None, None))
     seen = []
-    def qa(selected,*args,**kwargs):
+
+    def qa(selected, *args, **kwargs):
         assert P.active_package_executor() is not None
         assert Path(selected) != ws / "submission"
         seen.append("numeric")
-        return {"all_pass":True,"n_capsules":1,"n_passed":1,"per_capsule":[]}
-    def emit(*args,**kwargs):
+        return {"all_pass": True, "n_capsules": 1, "n_passed": 1, "per_capsule": []}
+
+    def emit(*args, **kwargs):
         assert P.active_package_executor() is not None
         seen.append("emit")
-    monkeypatch.setattr(G,"_attach_shape_generalization",emit)
-    monkeypatch.setattr(G,"_attach_codegen_scalability",emit)
-    result = G.grade(ws,run,0,False,5,inputs=inputs,qa_runner=qa)
+
+    monkeypatch.setattr(G, "_attach_shape_generalization", emit)
+    monkeypatch.setattr(G, "_attach_codegen_scalability", emit)
+    result = G.grade(ws, run, 0, False, 5, inputs=inputs, qa_runner=qa)
     assert result["all_pass"] is True
-    assert seen == ["numeric","emit","emit"]
+    assert seen == ["numeric", "emit", "emit"]
     assert P.active_package_executor() is None
 
 
@@ -438,7 +528,8 @@ def test_setup_mutation_prevents_grading_and_unwinds_execution(execution, monkey
 
     owner, candidate, work = execution
     payload = bundle_snapshot.snapshot_path(
-        bundle_snapshot.bundle_snapshot_root(owner.workspace), owner.repo / "input", owner.repo)
+        bundle_snapshot.bundle_snapshot_root(owner.workspace), owner.repo / "input", owner.repo
+    )
     original = R._Executor.__init__
 
     def changing_setup(self, *args, **kwargs):

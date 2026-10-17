@@ -38,16 +38,26 @@ SCALE_PROBE_FLAG = "--scale-probe"
 
 def _case_row(case):
     return {
-        "member": case.member, "scale": case.scale,
+        "member": case.member,
+        "scale": case.scale,
         "variant": json.loads(case.derivation_json).get("variant", "original"),
         "source_sha256": hashlib.sha256(case.source_ir.encode()).hexdigest(),
         "original_abi_sha256": hashlib.sha256(
-            json.dumps(case.original_abi.record(), sort_keys=True).encode()).hexdigest(),
-        "compilation_status": "not_attempted", "lowering_status": "not_attempted",
-        "numeric": "not_attempted", "rtl": "not_attempted",
-        "static_obligations": {name: "UNKNOWN" for name in (
-            "semantic_coverage", "index_bounds", "resource_legality", "complete_output_coverage",
-        )},
+            json.dumps(case.original_abi.record(), sort_keys=True).encode()
+        ).hexdigest(),
+        "compilation_status": "not_attempted",
+        "lowering_status": "not_attempted",
+        "numeric": "not_attempted",
+        "rtl": "not_attempted",
+        "static_obligations": {
+            name: "UNKNOWN"
+            for name in (
+                "semantic_coverage",
+                "index_bounds",
+                "resource_legality",
+                "complete_output_coverage",
+            )
+        },
     }
 
 
@@ -95,9 +105,15 @@ def _emit_scale_case(candidate, source, output, *, contract, target, timeout_s, 
     generated = output / "generated"
     generated.mkdir(parents=True, mode=0o700)
     source_pin = CO._pin(source)
-    products = tuple(generated / name for name in (
-        "input.interface.mlir", "command_buffer.json", "lowered.target.mlir", "lowered.llvm.mlir",
-    ))
+    products = tuple(
+        generated / name
+        for name in (
+            "input.interface.mlir",
+            "command_buffer.json",
+            "lowered.target.mlir",
+            "lowered.llvm.mlir",
+        )
+    )
     deadline = time.monotonic() + timeout_s
 
     def invoke(*args, **kwargs):
@@ -107,12 +123,17 @@ def _emit_scale_case(candidate, source, output, *, contract, target, timeout_s, 
         return P.run_entrypoint(*args, **{**kwargs, "timeout": remaining, "invocation_directory": generated})
 
     with invocation_record.observe_call(
-        output, stage="public_scale_source_lowering", function=CC.lower_interface,
-        arguments={"target": target, "timeout_s": timeout_s}, inputs=(source,), outputs=products,
+        output,
+        stage="public_scale_source_lowering",
+        function=CC.lower_interface,
+        arguments={"target": target, "timeout_s": timeout_s},
+        inputs=(source,),
+        outputs=products,
         dependencies=(Path(__file__),),
     ) as observed:
-        _, artifact = CC.lower_interface(package, source, generated, contract=contract,
-                                         timeout=timeout_s, invoke=invoke)
+        _, artifact = CC.lower_interface(
+            package, source, generated, contract=contract, timeout=timeout_s, invoke=invoke
+        )
         observed.returned(stdout=artifact)
     if CO._pin(source) != source_pin or products[-1].read_text() != artifact:
         raise ValueError("scale probe original source or actual emitted product changed")
@@ -125,11 +146,18 @@ def _emit_scale_case(candidate, source, output, *, contract, target, timeout_s, 
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise TimeoutError("original scale translation deadline expired")
-    with invocation_record.observe(output, stage="public_scale_llvm_translation", argv=command,
-            inputs=(products[-1],), outputs=(llvm,), dependencies=(Path(__file__),)) as translated:
+    with invocation_record.observe(
+        output,
+        stage="public_scale_llvm_translation",
+        argv=command,
+        inputs=(products[-1],),
+        outputs=(llvm,),
+        dependencies=(Path(__file__),),
+    ) as translated:
         with shared_compute_pool(timeout_s=remaining):
-            process = subprocess.run(command, capture_output=True, text=True,
-                                     timeout=max(0.001, deadline - time.monotonic()))
+            process = subprocess.run(
+                command, capture_output=True, text=True, timeout=max(0.001, deadline - time.monotonic())
+            )
         translated.complete(process)
     if process.returncode:
         raise ValueError("original stock translation refused emitted IR")
@@ -141,14 +169,23 @@ def _emit_scale_case(candidate, source, output, *, contract, target, timeout_s, 
     return {
         "lowering_status": "resource_refused" if decision.get("status") == "refused" else "emitted",
         "compilation_status": "not_attempted",
-        "code_growth": {**analysis, "emitted_mlir_bytes": products[-1].stat().st_size,
-                        "emitted_mlir_sha256": lowered_pin["sha256"]},
+        "code_growth": {
+            **analysis,
+            "emitted_mlir_bytes": products[-1].stat().st_size,
+            "emitted_mlir_sha256": lowered_pin["sha256"],
+        },
         "resource_budget": decision,
         "emission_invocation_sha256": sha256_file(observed.path),
         "translation_invocation_sha256": sha256_file(translated.path),
-        "static_obligations": {name: "UNKNOWN" for name in (
-            "semantic_coverage", "index_bounds", "resource_legality", "complete_output_coverage",
-        )},
+        "static_obligations": {
+            name: "UNKNOWN"
+            for name in (
+                "semantic_coverage",
+                "index_bounds",
+                "resource_legality",
+                "complete_output_coverage",
+            )
+        },
     }
 
 
@@ -182,9 +219,9 @@ def snapshot_submission(source, destination):
 class _Executor:
     """Reuse the ordinary original package command, isolated input and output."""
 
-    def __init__(self, target, candidate, output, *, common_service, inputs=None):
+    def __init__(self, target, candidate, output, *, common_service, inputs=None, scope=None):
         self.target, self.candidate, self.output, self.inputs = target, candidate, output, inputs
-        self.common_service = common_service
+        self.common_service, self.scope = common_service, scope
 
     def build_package(self, pkg, *, timeout):
         if pkg.directory != self.candidate or any(
@@ -210,16 +247,19 @@ class _Executor:
             raise ValueError("compile-only invocation escaped its private product owner")
         if type(self) is not _Executor or P.active_package_executor() is not self:
             raise ValueError("compile-only invocation lost its exact original scoped executor")
-        with _snapshot_operation(self.common_service) as finish_snapshot, tempfile.TemporaryDirectory(
-            prefix="call-", dir=self.output.parent
-        ) as directory:
+        with (
+            _snapshot_operation(self.common_service) as finish_snapshot,
+            tempfile.TemporaryDirectory(prefix="call-", dir=self.output.parent) as directory,
+        ):
             workspace = Path(directory)
             incoming = workspace / "input.mlir"
             from merlin_experiments.phase2.functional_guard_execution import copy_plain_file
 
             copy_plain_file(input_mlir, incoming)
             outgoing = workspace / "output.json" if output_json is not None else None
-            policy = PC.package_sandbox_policy(self.target, workspace, self.candidate, inputs=self.inputs)
+            policy = PC.package_sandbox_policy(
+                self.target, workspace, self.candidate, inputs=self.inputs, scope=self.scope
+            )
             # The normal package policy reuses the exact live original profile's
             # public snapshot leaves and destination-derived import roots.
             policy = replace(policy, argv=(*policy.argv, "--ro-bind", str(incoming), str(incoming)))
@@ -231,22 +271,48 @@ class _Executor:
             from merlin_experiments.phase2 import normal_resource_launch as resources
 
             with ExitStack() as observations:
-                with compiler_call_transport(self.common_service, workspace=workspace, package=pkg.directory,
-                        input_path=incoming, command_name=name, timeout_s=timeout, borrow_compute=True) as transport:
+                with compiler_call_transport(
+                    self.common_service,
+                    workspace=workspace,
+                    package=pkg.directory,
+                    input_path=incoming,
+                    command_name=name,
+                    timeout_s=timeout,
+                    borrow_compute=True,
+                ) as transport:
                     shell = transport.env_prefix(shell) + 'exec "$@"'
                     with resources.bounded_normal_scratch(
                         policy.argv, owner=invocation_directory, boundary=resources.resources.active_resource_boundary()
                     ) as prefix:
-                        command = [*prefix, "--chdir", str(self.candidate), "bash", "-c", shell,
-                                   "compile-package", *argv]
+                        command = [
+                            *prefix,
+                            "--chdir",
+                            str(self.candidate),
+                            "bash",
+                            "-c",
+                            shell,
+                            "compile-package",
+                            *argv,
+                        ]
                         selected_env = dict(os.environ)
-                        observed = observations.enter_context(invocation_record.observe(
-                            invocation_directory, stage=name, argv=command, inputs=(input_mlir,),
-                            dependencies=(Path(__file__),), env=selected_env,
-                        ))
+                        observed = observations.enter_context(
+                            invocation_record.observe(
+                                invocation_directory,
+                                stage=name,
+                                argv=command,
+                                inputs=(input_mlir,),
+                                dependencies=(Path(__file__),),
+                                env=selected_env,
+                            )
+                        )
                         process_started_ns, process_started = time.time_ns(), time.monotonic()
-                        process = subprocess.run(command, capture_output=True, text=True,
-                                                 timeout=transport.remaining_timeout(), env=selected_env)
+                        process = subprocess.run(
+                            command,
+                            capture_output=True,
+                            text=True,
+                            timeout=transport.remaining_timeout(),
+                            env=selected_env,
+                        )
                         process_finished_ns, process_wall_s = time.time_ns(), time.monotonic() - process_started
                 # The real transport has reaped its proof helper and performed
                 # its independent final owner checks. Close full snapshot
@@ -254,7 +320,9 @@ class _Executor:
                 self.common_service._verify()
                 finish_snapshot()
                 observed.document["process_timing"] = {
-                    "started_ns": process_started_ns, "finished_ns": process_finished_ns, "wall_s": process_wall_s,
+                    "started_ns": process_started_ns,
+                    "finished_ns": process_finished_ns,
+                    "wall_s": process_wall_s,
                     "scope": "actual candidate process only; transport and custody checks excluded",
                 }
                 observed.complete(process)
@@ -410,10 +478,15 @@ def observe(
         if scale_probe:
             from merlin_experiments.phase0 import public_scale_sources
 
-            edges = {row.get("cols") for row in (facts.get("facts") or {}).get("arrays", [])
-                     if type(row.get("cols")) is int and row["cols"] > 0}
+            edges = {
+                row.get("cols")
+                for row in (facts.get("facts") or {}).get("arrays", [])
+                if type(row.get("cols")) is int and row["cols"] > 0
+            }
             cases, source_manifest = public_scale_sources.derive(
-                capsules, selected=selected, index_bits=original_profile.get("host_index_bits"),
+                capsules,
+                selected=selected,
+                index_bits=original_profile.get("host_index_bits"),
                 tile_edge=next(iter(edges)) if len(edges) == 1 else None,
             )
         else:
@@ -425,8 +498,9 @@ def observe(
         sources = work_root / "sources"
         sources.mkdir()
         service = None if scale_probe else _build_service_for(target_experiment.target)
-        checker = None if scale_probe else _InstructionPolicy(
-            target_experiment.target, _roles(capsules), facts, facts_path)
+        checker = (
+            None if scale_probe else _InstructionPolicy(target_experiment.target, _roles(capsules), facts, facts_path)
+        )
         pins = sorted(
             set(
                 [
@@ -438,20 +512,34 @@ def observe(
                 ]
             )
         )
-        admission = None if scale_probe else LinkedElfAdmissionService(
-            target_experiment.target, checker.evaluate, tuple((str(path), sha256_file(path)) for path in pins)
+        admission = (
+            None
+            if scale_probe
+            else LinkedElfAdmissionService(
+                target_experiment.target, checker.evaluate, tuple((str(path), sha256_file(path)) for path in pins)
+            )
         )
     deadline_started = time.monotonic()
     deadline, rows = deadline_started + timeout_s, []
+    # Every case of this one request shares its immutable package-policy setup.
+    policy_scope = PC.PackagePolicyScope()
     dispatch_timing = {}
     from . import scale_probe_child
 
     parallel = scale_probe and scale_probe_child.batch_workers() is not None
     if parallel:
         rows = scale_probe_child.emit_cases(
-            owner=common_service, candidate=candidate, target_experiment=target_experiment,
-            capsules=capsules, cases=cases, contract=contract, facts_path=facts_path,
-            work_root=work_root, deadline=deadline, ir_budget=ir_budget, sandbox_inputs=sandbox_inputs,
+            owner=common_service,
+            candidate=candidate,
+            target_experiment=target_experiment,
+            capsules=capsules,
+            cases=cases,
+            contract=contract,
+            facts_path=facts_path,
+            work_root=work_root,
+            deadline=deadline,
+            ir_budget=ir_budget,
+            sandbox_inputs=sandbox_inputs,
             timing=dispatch_timing,
         )
     with nullcontext() if parallel else _compile_imports(common_service):
@@ -468,15 +556,29 @@ def observe(
             started = time.monotonic()
             try:
                 executor = _Executor(
-                    target_experiment, candidate, root, common_service=common_service, inputs=sandbox_inputs
+                    target_experiment,
+                    candidate,
+                    root,
+                    common_service=common_service,
+                    inputs=sandbox_inputs,
+                    scope=policy_scope,
                 )
                 with (
                     P.scoped_package_executor(executor),
                     observed_facts(target_experiment.target, facts, facts_path),
                 ):
                     if scale_probe:
-                        row.update(_emit_scale_case(candidate, source, root, contract=contract,
-                            target=target_experiment.target, timeout_s=remaining, ir_budget=ir_budget))
+                        row.update(
+                            _emit_scale_case(
+                                candidate,
+                                source,
+                                root,
+                                contract=contract,
+                                target=target_experiment.target,
+                                timeout_s=remaining,
+                                ir_budget=ir_budget,
+                            )
+                        )
                         row["wall_seconds"] = time.monotonic() - started
                         case.verify()
                         rows.append(row)
@@ -521,9 +623,11 @@ def observe(
                 if scale_probe and emitted.is_file() and not emitted.is_symlink():
                     # A timed-out/refused later stage must not hide already emitted
                     # growth. No lexical LLVM counts are inferred from MLIR text.
-                    row["partial_emission"] = {"bytes": emitted.stat().st_size,
-                                               "sha256": sha256_file(emitted),
-                                               "scope": "unverified retained MLIR bytes"}
+                    row["partial_emission"] = {
+                        "bytes": emitted.stat().st_size,
+                        "sha256": sha256_file(emitted),
+                        "scope": "unverified retained MLIR bytes",
+                    }
             row["wall_seconds"] = time.monotonic() - started
             case.verify()
             rows.append(row)
@@ -550,10 +654,11 @@ def observe(
             "final_source_custody_s": time.monotonic() - final_checks_started,
             "total_observation_s": time.monotonic() - observation_started,
             "scope": "all original observation wall stages; compile deadline begins after source setup, "
-                     "final custody remains mandatory and separately recorded",
+            "final custody remains mandatory and separately recorded",
         },
-        "scope": "original public emission/code-growth only; no object/ABI/effects or execution proof" if scale_probe
-                 else "original public structural compile-only; not correctness, generality or timing acceptance",
+        "scope": "original public emission/code-growth only; no object/ABI/effects or execution proof"
+        if scale_probe
+        else "original public structural compile-only; not correctness, generality or timing acceptance",
     }
     (work_root / "public_compile_only.json").write_text(json.dumps(result, sort_keys=True, indent=2))
     return result
