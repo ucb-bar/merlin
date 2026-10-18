@@ -31,3 +31,20 @@ def test_a_stationary_activation_is_passed_in_the_weight_slot():
 def test_two_activations_of_any_other_group_are_both_inputs():
     assert _roles({"op": "add"}) == ["input_0", "input_1"]
     assert _roles({"op": "matmul"}) == ["input_0", "input_1"]
+
+
+def test_proved_bias_is_passed_even_without_a_stored_weight():
+    import numpy as np
+
+    left, right = object(), object()
+    entry = {"op": "matmul", GC.STATIONARY_KEY: GC.STATIONARY_ACTIVATION, "epilogue": ["bias_add"]}
+    row = {"bias": {"array": "offsets"}}
+    arrays = {"offsets": np.array([17, -91, 0], dtype=np.int32)}
+    operands, constants, roles, why = _logical_group_call(
+        _GROUP, _NOTHING_STORED, entry, (left, right), row, arrays, ""
+    )
+    assert why == "" and roles == ["input_0", "weight_0", "bias_0"]
+    (constant,) = constants
+    assert operands == [left, right, constant.results[0]]
+    assert list(constant.value.get_values()) == [17, -91, 0]
+    assert str(constant.results[0].type) == "tensor<3xi32>"

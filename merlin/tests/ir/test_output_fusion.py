@@ -365,3 +365,64 @@ def test_a_float_bias_off_the_accumulator_grid_is_refused_not_rounded():
     device, _host = _fused(text, _path())
     assert ("requant", OF.INEXACT) in _codes(device) and ("accumulator", OF.INEXACT) in _codes(device)
     assert device.fusion["cut"] == "bare"
+
+
+@pytest.mark.parametrize("scales", [(0.5,) * 8, (0.5,) * 4 + (0.25,) * 4])
+def test_device_statement_keeps_the_proved_readout_and_reproduces_source_outputs(scales):
+    from merlin.xdsl_dialects.lowering import group_command as GC
+
+    text = _module(weight_scale=scales)
+    device, _host = _fused(text, _path())
+    stated = GC.program(device, weight_args=())
+    entry = stated.entry
+    assert entry["epilogue"] == ["bias_add", "acc_scale", "relu"]
+    gains = entry.get("acc_scale_by_column", [entry.get("acc_scale")] * 8)
+    assert gains == device.fusion["proof"]["device_scale"]
+    assert ("acc_scale_by_column" in entry) == (len(set(scales)) > 1)
+    # Compare the emitted arithmetic against the original multi-stage floating
+    # program over the complete accumulator domain, independently of threshold
+    # selection and the scalar/vector representation choice.
+    chain = OF.source_chain(device.root, OF.Values())
+    lo, hi = device.fusion["proof"]["accumulator_bound"]
+    acc = np.broadcast_to(np.arange(lo, hi + 1, dtype=np.int64)[:, None], (hi - lo + 1, 8))
+    offsets = np.asarray(device.fusion["proof"]["offsets"])
+    converted = (acc + offsets).astype(np.float32)
+    output = np.clip(np.rint(np.maximum(converted * np.asarray(gains, dtype=np.float32), 0)), -128, 127)
+    source = np.stack([OF._evaluate(chain.stages, np.float32, row) for row in acc])
+    np.testing.assert_array_equal(output, source)
+
+
+def test_another_readout_format_is_not_silently_rounded_to_a_native_f32_statement():
+    from merlin.xdsl_dialects.lowering import group_command as GC
+
+    def half(path):
+        path["readout"][1]["to"] = "f16"
+        path["readout"][2]["dtype"] = "f16"
+
+    device, _host = _fused(_module(bias=(0,) * 8), _path(half))
+    assert device.fusion["cut"] == "requant"
+    with pytest.raises(CG.NoCapsuleForm, match="f32 half-even"):
+        GC.program(device, weight_args=())
+
+
+def test_selected_prepack_uses_proved_offsets_without_rederiving_float_bias(tmp_path, monkeypatch):
+    from merlin.xdsl_dialects.lowering import group_numerics as GN
+    from merlin.xdsl_dialects.lowering import group_prepack as GP
+
+    device, _host = _fused(_module(weight_scale=(0.5,) * 4 + (0.25,) * 4), _path())
+    manifest, weights = tmp_path / "manifest.json", tmp_path / "weights.safetensors"
+    manifest.write_text("{}")
+    weights.write_bytes(b"")  # no stored parameter: these source operands are dense constants
+
+    def forbidden(_group):
+        raise AssertionError("selected exact output arithmetic must not use legacy scalar inference")
+
+    monkeypatch.setattr(GN, "numerics_of", forbidden)
+    result = GP.prepack([device], manifest, weights, device_layout=True)
+    assert result["record"]["skipped"] == []
+    (row,) = result["record"]["groups"]
+    np.testing.assert_array_equal(
+        result["arrays"][row["bias"]["array"]], device.fusion["proof"]["offsets"]
+    )
+    assert row["acc_scale_by_column"] == device.fusion["proof"]["device_scale"]
+    assert row["bias"]["fold_rule"] == "source_bound_output_fusion_offsets"

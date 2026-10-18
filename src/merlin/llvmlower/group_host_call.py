@@ -342,8 +342,6 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
     named in the reason rather than dropped from the call. ``bind_weight(array, element_type)``, when
     given, supplies the laid-out weight as a value (:class:`merlin.llvmlower.blob_weights.WeightArgs`)
     instead of an ``arith.constant``."""
-    from xdsl.dialects.builtin import IntegerType
-
     if group.window_mean is not None:
         from xdsl.dialects import tensor
         from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, TensorType, i64
@@ -381,7 +379,9 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
         from merlin.xdsl_dialects.lowering import group_command as GC
 
         second = "weight_0" if GC.stationary_is_activation(entry) else "input_1"
-        return [pair[0], pair[1]], [], ["input_0", second], ""
+        return _with_logical_bias(
+            entry, [pair[0], pair[1]], [], ["input_0", second], row, arrays, why_no_prepack
+        )
     operands, constants, roles = [pair[0]], [], ["input_0", "weight_0"]
     weight_row = (row or {}).get("weight") or {}
     laid_out = arrays.get(weight_row.get("array")) if isinstance(weight_row.get("array"), str) else None
@@ -409,13 +409,22 @@ def _logical_group_call(group, stated, entry, pair, row, arrays, why_no_prepack,
         return None, (), (), f"interface value weight_0 has no host source in the program's layout: {why}"
     else:
         operands.append(pair[1])
+    return _with_logical_bias(entry, operands, constants, roles, row, arrays, why_no_prepack)
+
+
+def _with_logical_bias(entry, operands, constants, roles, row, arrays, why_no_prepack):
+    """Append the prepack's declared signed integer bias for either operand ownership form."""
+    from xdsl.dialects.builtin import IntegerType
+
     if "bias_add" in (entry.get("epilogue") or ()):
         bias_row = (row or {}).get("bias") or {}
         folded = arrays.get(bias_row.get("array")) if isinstance(bias_row.get("array"), str) else None
         if folded is None:
             why = why_no_prepack or "the prepack folded no bias for this group"
             return None, (), (), f"interface value bias_0 has no host source: {why}"
-        constant = _constant_tensor(folded.reshape(-1), IntegerType(32))
+        if folded.dtype.kind != "i":
+            return None, (), (), "interface value bias_0 is not a signed accumulator-domain integer"
+        constant = _constant_tensor(folded.reshape(-1), IntegerType(folded.dtype.itemsize * 8))
         constants.append(constant)
         operands.append(constant.results[0])
         roles.append("bias_0")

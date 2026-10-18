@@ -215,6 +215,19 @@ def prepack(
     for group in groups:
         if group.placement == CG.HOST:
             continue
+        if group.fusion and group.fusion.get("cut") != "bare":
+            from . import group_output_program as GOP
+
+            try:
+                if accumulator_bits != 32:
+                    raise GN.GroupNumericsError("the selected output statement requires its declared i32 accumulator")
+                stated = group_command.program(group, weight_args=weight_args, extents=extents)
+                row, folded = GOP.prepack(group, stated, manifest, Path(safetensors_path), device_layout=device_layout)
+                rows.append(row)
+                arrays.update(folded)
+            except (CG.NoCapsuleForm, GN.GroupNumericsError) as refusal:
+                skipped.append({"group": group.index, "reason": str(refusal)})
+            continue
         if CG.QUANTIZE not in group.stages:
             # A GROUP THAT LEAVES AS THE ACCUMULATOR STILL HAS A DEVICE WEIGHT. This guard skipped
             # it entirely, conflating "has a quantized readout" with "has a stored operand the unit
@@ -358,7 +371,9 @@ def prepack(
                     "stored_tensor": name,
                     "arg_index": numerics.bias_arg_index,
                     "divisor": numerics.bias_divisor,
-                    "fold_rule": "source_bound_exact_float_transition" if exact_float else "roundeven_bias_over_divisor",
+                    "fold_rule": (
+                        "source_bound_exact_float_transition" if exact_float else "roundeven_bias_over_divisor"
+                    ),
                     "array": key,
                     "elements": int(folded.size),
                     "max_abs": int(np.abs(folded).max(initial=0)),

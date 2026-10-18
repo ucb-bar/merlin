@@ -682,6 +682,14 @@ def decide(chain: Chain, path: Mapping[str, Any], values: Values, extents: Mappi
             continue
         absorbed = {id(op) for op in members}
         stages = [stage.kind for stage in chain.stages if id(stage.op) in absorbed]
+        if cut != "bare":
+            # Consumers must preserve the formats the theorem actually modeled.
+            # A vector of Python floats alone cannot distinguish f16 from f32.
+            proof["accumulator"] = dict(path["accumulator"])
+            proof["preload"] = next(
+                (dict(s) for s in path.get("accumulator_stages") or () if s["kind"] == "preload"), None
+            )
+            proof["readout_stages"] = _readout(path, cut) if cut != "accumulator" else []
         return Decision(cut, members, stages, refusals, proof)
     return Decision("bare", [], [], refusals)
 
