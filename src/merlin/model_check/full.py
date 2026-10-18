@@ -190,11 +190,16 @@ def judged_metrics(model: Model, run: CH.ChainRun, fp: list[np.ndarray]) -> dict
 
 
 def execute(
-    target: str, record: Mapping[str, Any], stage: Path, inputs, step_dir: Path, deadline: float, *, twin: bool = False
+    target: str, record: Mapping[str, Any], stage: Path, inputs, step_dir: Path, deadline: float, *, twin: bool = False,
+    admission=None,
 ) -> dict:
     """One program step: ``record``'s image relinked with ``inputs``, run on Spike, every output read back."""
     started = time.monotonic()
-    elf = FB.relink(record, stage, inputs, step_dir)
+    if not twin and admission is None:
+        from merlin.model_check.admission import service
+
+        admission = service(target)
+    elf = FB.relink(record, stage, inputs, step_dir, admission=admission)
     out: dict[str, Any] = {"relink_seconds": round(time.monotonic() - started, 1), "elf_bytes": elf.stat().st_size}
     try:
         remaining = max(1.0, deadline - time.monotonic())
@@ -245,6 +250,7 @@ def run_input(
     twin_pool,
     policy: str = "required",
     deferred: frozenset[str] = frozenset(),
+    admission=None,
     log=print,
 ) -> CH.ChainRun:
     """The submission's chain on one input: every step relinked, run on Spike and read back (each
@@ -274,7 +280,8 @@ def run_input(
                     future = twin_pool.submit(
                         execute, target, twin, stage, inputs, work / f"{program.name}.{step}.host", deadline, twin=True
                     )
-            done = execute(target, builds[program.name], stage, inputs, work / f"{program.name}.{step}", deadline)
+            done = execute(target, builds[program.name], stage, inputs, work / f"{program.name}.{step}", deadline,
+                           admission=admission)
             row = {"program": program.name, "step": step, "engine": "spike", "status": "completed", **done["row"]}
             values = done["values"]
             run.steps[program.name].append(carried(values, specs[program.name]))
@@ -475,6 +482,7 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, log=p
                 rows=result["rows"],
                 twin_pool=twin_pool,
                 policy=policy,
+                admission=admission,
                 deferred=frozenset(deferred),
                 log=log,
             )

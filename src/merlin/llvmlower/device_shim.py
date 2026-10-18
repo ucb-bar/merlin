@@ -505,8 +505,12 @@ def tile_edge_for(device: str) -> int | None:
 def _elem_bytes(token: str) -> int | None:
     """Bytes per element, or None for a sub-byte format (whose offset arithmetic is not a byte count)."""
     try:
+        from merlin.common.quant_formats import machine_bits
         from merlin.targetgen.corpus_spec import dtype_info
 
+        bits = machine_bits(str(token))
+        if bits in (8, 16, 32, 64) and str(token).startswith(("int", "i")):
+            return bits // 8
         return dtype_info(str(token))[2]
     except Exception:  # noqa: BLE001
         return None

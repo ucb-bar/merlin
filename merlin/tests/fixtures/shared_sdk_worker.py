@@ -13,6 +13,7 @@ work = Path(config["work"])
 assert not any(name == "merlin" or name.startswith("merlin.") for name in sys.modules)
 sys.path[:0] = [str(bundle), config["fixtures"], *config["dependencies"]]
 
+import test_async_schedule_pipeline as asynchronous  # noqa: E402
 import test_selected_dense_contracts as dense  # noqa: E402
 import test_selected_fusion_contracts as fusion  # noqa: E402
 import test_selected_program_contracts as program  # noqa: E402
@@ -48,8 +49,11 @@ run("dense_aliased", dense.test_selected_facts_and_semantics_drive_native_paired
     record_property=record, tile=(3, 2, 5), widths=(2, 1, 4), shared=True, shape=(7, 9, 16))
 run("storage", storage.test_selected_allocation_realizes_reuse_and_preserves_complete_native_state,
     native_fixture=storage.native, record_property=record, width=13, separate=True, word_format=">BBBIII")
-run("completion", storage.test_async_lifetimes_use_actual_waits_and_ordinary_emission_remains_disabled,
+run("completion", storage.test_async_lifetimes_use_actual_waits_through_ordinary_final_emission,
     native_fixture=storage.native)
+run("async_allocation", asynchronous.test_async_ordinary_allocation_executes_complete_graph_and_carried_state,
+    native_fixture=storage.native, record_property=record, width=13, separate=True,
+    word_format=">BBBIII", segmented=True)
 run("fusion", fusion.test_selected_fusion_executes_complete_graph_and_checks_realized_transfers,
     native_fixture=fusion.native, record_property=record, shape=(2, 5, 11, 3), width=2, separate=True)
 run("fusion_state", fusion.test_recurrent_graph_invocations_preserve_complete_state_and_mutable_weights,
@@ -71,6 +75,29 @@ execute_row = rows.execute_native
 rows.execute_native = lambda *args, **kw: execute_row(*args, **kw, compiler=config["compiler"])
 run("rows", rows.test_selected_complete_rows_execute_full_native_outputs,
     exp_object=None, record_property=record, dtype="f64", separate=True, index_bits=64, mask=rows.CausalRowMask(2))
+
+def source_dense_from_export(path):
+    from xdsl.context import Context
+    from xdsl.dialects import arith, builtin, func, linalg, tensor
+    from xdsl.parser import Parser
+
+    from merlin.compile.scheduling.dense_source import schedule_source_dense
+    context = Context()
+    for dialect in (arith.Arith, builtin.Builtin, func.Func, linalg.Linalg, tensor.Tensor):
+        context.load_dialect(dialect)
+    source = Path(config["fixtures"]).parent / "fixtures/shared_dense_source.mlir"
+    module = Parser(context, source.read_text()).parse_module()
+    operation = next(op for op in module.walk() if op.name == "linalg.generic")
+    selected, _, storage, adapter = dense.inputs(path, shape=(2, 3, 4))
+    result = schedule_source_dense(module, operation, selected_contracts=selected, storage=storage,
+        adapter=adapter, name="exported_source", static_budget=80, external_buffers_disjoint=True,
+        verification_timeout_ms=20_000)
+    assert result is not None
+    result.revalidate()
+    assert result.compiled.realization["pipeline"]["library_sources_sha256"] == shared_library_sources()
+
+
+run("source_dense", source_dense_from_export)
 
 origins = {}
 for name, module in tuple(sys.modules.items()):

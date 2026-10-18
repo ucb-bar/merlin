@@ -684,7 +684,7 @@ def build(
     #    thread-safe and a delivery builds several images in one process (see common.ir_lock).
     from ...common.ir_lock import IR_LOCK
 
-    with IR_LOCK:
+    with compilation.phase("host preparation and lowering including IR lock"), IR_LOCK:
         # Preparation is what LIFTS a quantized subclass's inner tensors to `@forward` arguments,
         # and `c_runtime.generate` (step 2) appends the matching table rows unconditionally. Lowering
         # the raw module while the table describes two extra arguments is an ABI skew nothing would
@@ -847,15 +847,16 @@ def build(
     # only that step of a captured session: later stream inputs and trajectory
     # references cannot be observed by this ELF, and rendering them as C
     # literals makes large captures costly to compile (hundreds of MB of C).
-    info = c_runtime.generate(
-        model_dir,
-        cgen,
-        inputs_npz,
-        prepared_dir=work,
-        max_session_steps=1,
-        **({"weights_source": weights_source} if weights_source is not None else {}),
-        **projection_options,
-    )
+    with compilation.phase("driver and weight generation"):
+        info = c_runtime.generate(
+            model_dir,
+            cgen,
+            inputs_npz,
+            prepared_dir=work,
+            max_session_steps=1,
+            **({"weights_source": weights_source} if weights_source is not None else {}),
+            **projection_options,
+        )
     if full_readback:
         from ..whole_model_readback import render_outputs_header
 

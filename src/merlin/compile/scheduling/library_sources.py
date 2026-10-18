@@ -21,6 +21,7 @@ LIBRARY_MODULES = (
     'merlin.compile.scheduling.configuration',
     'merlin.compile.scheduling.copy_elimination',
     'merlin.compile.scheduling.dense_contracts',
+    'merlin.compile.scheduling.dense_source',
     'merlin.compile.scheduling.device_spills',
     'merlin.compile.scheduling.fusion',
     'merlin.compile.scheduling.fusion_contracts',

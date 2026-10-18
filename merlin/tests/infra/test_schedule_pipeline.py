@@ -15,7 +15,7 @@ from merlin.compile.scheduling.program_limits import (
 )
 from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, ScheduleEncoding, compile_schedule
 from merlin.compile.scheduling.spill_conformance import SpillClass
-from merlin.compile.scheduling.temporary_storage import StorageEffects, StorageOptimizationUnavailable, TemporaryObject
+from merlin.compile.scheduling.temporary_storage import StorageOptimizationUnavailable, TemporaryObject
 from merlin.sched.ir import Call, Loop, TensorArg, evaluate
 from merlin.transforms.pipeline_state import PassSpec, PipelineSession, validate_pass_order
 
@@ -191,7 +191,7 @@ def test_cached_request_stream_cannot_substitute_for_actual_operand_decoding():
         return codec.encode(wrong)
 
     lying = replace(codec, encode=broken, decode_calls=lambda image: tuple(captured))
-    with pytest.raises(ValueError, match="matching synchronous"):
+    with pytest.raises(ValueError, match="matching straight-line access and completion"):
         compile_schedule(kernel, objects, banks, ADAPTER, lying, limits_for(banks, model, word), **model)
 
 
@@ -545,36 +545,17 @@ def test_missing_effects_and_configuration_do_not_reach_encoding():
         )
 
 
-@pytest.mark.parametrize("family", ["loop", "asynchronous"])
-def test_unsupported_execution_families_refuse_before_target_encoding(family):
+def test_unsupported_loop_execution_refuses_before_target_encoding():
     kernel, objects, banks, model = fixture()
     codec, word = encoding()
     seen = []
-    adapter = ADAPTER
-    if family == "loop":
-        kernel = replace(kernel, body=(Loop("i", 1, kernel.body),))
-        diagnostic = "straight-line"
-    else:
-        kernel = replace(kernel, body=(kernel.body[0], Call("wait", ()), *kernel.body[1:]))
-
-        def decode(call):
-            if call.instr == "wait":
-                return StorageEffects("wait", completion="wait", waits=("ready",))
-            effect = project(call)
-            return (
-                replace(effect, completion="asynchronous", token="ready")
-                if effect.accesses[0].space == "input"
-                else effect
-            )
-
-        adapter = replace(ADAPTER, project=decode)
-        diagnostic = "synchronous completion"
-    with pytest.raises(StorageOptimizationUnavailable, match=diagnostic):
+    kernel = replace(kernel, body=(Loop("i", 1, kernel.body),))
+    with pytest.raises(StorageOptimizationUnavailable, match="straight-line"):
         compile_schedule(
             kernel,
             objects,
             banks,
-            adapter,
+            ADAPTER,
             replace(codec, encode=lambda kernel: seen.append(kernel)),
             limits_for(banks, model, word),
             **model,

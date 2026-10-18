@@ -113,6 +113,11 @@ def ordinary(tmp_path, monkeypatch):
         obj, shim = workdir / "kernel.o", workdir / "shim.o"
         obj.write_bytes(b"owned diagnostic device object")
         shim.write_bytes(b"owned diagnostic shim")
+        # The ordinary artifact roster now includes explicit producer files.
+        # These remain diagnostic substitutes, not claimed compiler invocations.
+        for symbol in signatures:
+            (workdir / f"{symbol}.device.mlir").write_text("diagnostic substituted device MLIR\n")
+            (workdir / f"{symbol}.ll").write_text("diagnostic substituted LLVM IR\n")
         return DeviceBuild(
             device="fixture",
             kernels={symbol: symbol for symbol in signatures},
@@ -120,6 +125,8 @@ def ordinary(tmp_path, monkeypatch):
             shim_object=shim,
             built_from={symbol: "stated_group" for symbol in signatures},
             object_dedup={"unique_artifacts": 1},
+            custody={symbol: {"scope": "diagnostic substitution; no observed device compiler"}
+                     for symbol in signatures},
         )
 
     monkeypatch.setattr(spike_model.c_runtime, "generate", generate)

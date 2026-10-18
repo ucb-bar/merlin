@@ -11,8 +11,10 @@ code_refs:
   - src/merlin/compile/scheduling/export.py
   - src/merlin/compile/scheduling/library_sources.py
   - src/merlin/compile/scheduling/compact_dense.py
+  - src/merlin/compile/scheduling/dense_source.py
   - src/merlin/compile/scheduling/compact_verification.py
   - src/merlin/compile/scheduling/program_limits.py
+  - src/merlin/model_check/program_admission.py
   - src/merlin/compile/scheduling/program_contracts.py
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/device_spills.py
@@ -28,6 +30,7 @@ code_refs:
   - src/merlin/llvmlower/cpu_softmax.py
   - src/merlin/llvmlower/automatic_host.py
   - src/merlin/llvmlower/automatic_destinations.py
+  - src/merlin/llvmlower/insert_slice_destination.py
   - src/merlin/llvmlower/automatic_rounding.py
   - src/merlin/llvmlower/destination_check.py
   - src/merlin/llvmlower/quant_round_check.py
@@ -37,6 +40,14 @@ code_refs:
   - src/merlin/llvmlower/automatic_rows.py
   - src/merlin/model_check/full_build.py
   - src/merlin/llvmlower/codegen_env.py
+  - src/merlin/llvmlower/c_runtime.py
+  - src/merlin/llvmlower/weight_payload.py
+  - src/merlin/llvmlower/blob_weights.py
+  - src/merlin/llvmlower/entry_weight_projection.py
+  - src/merlin/llvmlower/compilation_recipe.py
+  - src/merlin/common/invocation_record.py
+  - src/merlin/common/proc.py
+  - src/merlin/common/cpu_pool.py
   - src/merlin/sched/ir/integer_domain.py
   - src/merlin/compile/scheduling/selected_contracts.py
   - src/merlin/compile/scheduling/dense_contracts.py
@@ -165,9 +176,191 @@ the display snapshot's redaction and long-value summaries cannot establish cache
 identity. Changing pass selection, a pass implementation or the selected target
 invalidates an older image. A hit reopens the ELF and verifies its recorded hash,
 and controls/source identities are rechecked before returning or publishing.
-Legacy records without these bindings rebuild. These are direct-input checks,
-not complete toolchain, capture, provider-resource or transitive dependency
-closure. They confer no numerical or execution qualification.
+The native ABI implementation and the strict tree reader/selection owners are
+also pinned.
+
+`model_check.full_build.build` binds the current complete capture and host-package
+trees, and the device-package tree when offload is enabled. It reuses
+`model_execution_inputs.strict_tree_sha256`: filenames and every file's bytes
+participate, including numerical policy, state, inputs and unknown artifacts.
+Hashes stream file contents; weights are not copied or loaded into a second
+in-memory snapshot. The caller's submission digest cannot replace reading the
+actual package. Host twins need no submission files. Board catalog, host DTS,
+explicit target contract/RTL files and an optional reused weights blob have
+their own byte identities. Selected/scoped RTL and capability documents are
+bound even without backing files; available provider contract and dialect-plan
+files are pinned as metadata, without importing provider implementation code.
+Read-only fact discovery never extracts RTL. Missing facts remain unknown;
+facts appearing or changing during a build require a fresh attempt.
+
+These inputs are read again before publishing a build or returning a hit.
+Same-size changes with restored timestamps cannot reuse an older image. Missing
+inputs, symlinks and input/cache containment produce a diagnostic before
+compilation or reuse. Input-only relinking remains a separate path: it generates
+the requested driver inputs and checks regenerated weights and argument calls.
+The build retains a relink binding to its existing completed compilation recipe,
+generated headers and shared blob/quantization/panel preparation files. Before
+reusing those products, relinking reopens the stored build origin, current input
+and compiler selections, actual recipe, recorded tools, sources, intermediate
+objects, linker script and directly named archive bytes. Newly added preparation
+files and headers also invalidate that binding. The ordinary build repairs stale
+recorded products by rebuilding. A compiler without a completed recipe can still
+produce an executable, but relinking it requires a precise missing-contract
+diagnostic rather than executing unverified commands.
+
+Relinking holds the existing build lock so a simultaneous ordinary rebuild
+cannot remove its inputs. Its output must be disjoint from the original build,
+cache and capture; symlink outputs refuse before deletion. The bound input
+dictionary may change each invocation, including carried state, while the
+original capture and build remain unchanged. Source and artifact checks bracket
+generation, compilation and linking. Each relink emits its own existing-format
+`compilation_recipe.json`, recording the actual driver and linker invocations,
+generated input-header bytes, direct objects and final executable. Completed
+recipes are independently reopened before returning. Failures return no admitted
+executable; these receipts alone confer no numerical or hardware authority.
+
+A cached device image is evaluated by the currently selected
+`LinkedElfAdmissionService`; a prior acceptance never substitutes for today's
+policy. Refusal stops reuse. Source pins, actual ELF bytes and the evaluator's
+actual report are revalidated. A host twin issues no accelerator instructions
+and does not require device admission. A device relink requires an explicitly
+selected service, applies it to the newly linked image, and preserves its source
+selection throughout the operation. The full-model checker forwards the caller's
+service to every relink; it selects its existing structural service when none
+was supplied. Fresh build `seconds` include input and
+source validation; a hit reports its current `cache_lookup_seconds` separately
+from the retained original build cost. Both exclude the outer file-lock wait.
+
+Legacy records without these bindings rebuild. These checks do not establish
+complete toolchain/header, provider-resource or transitive dependency closure,
+nor validate a capture's numerical policy by hashing it. Recorded direct archives
+are checked, but imported native/system headers and implicit linker/library
+resolution still need independent closure. Rechecking complete mutable input
+trees and direct tools/objects costs I/O; no stat-only shortcut or performance
+gain is claimed. They confer no new
+numerical or hardware execution qualification. The focused transaction tests
+and real ordinary build/relink/functional-simulator state test run with:
+
+```bash
+python -B -m pytest merlin/tests/infra/test_full_model_lowering_cache.py \
+  merlin/tests/infra/test_model_check_relink.py merlin/tests/infra/test_model_check_full.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/full-model-input-cache"
+```
+
+`verify_completed_recipe(..., terminal_read_policy="once")` is the ordinary
+default. The terminal command's output metadata is checked first; its content
+hash is deferred until the existing later final-executable check. Complete,
+type-exact equality with the final identity and the caller-selected executable
+is required before that read. This removes one duplicate executable read;
+producers, preparation, tools, direct inputs, intermediate outputs, supplier
+evidence and recipe freshness keep their existing checks. Each invocation
+freshly hashes the final executable. No timestamp or persistent content cache
+substitutes for a read. This is a readonly structural-validation interval, with
+no native command or provider callback between the two output checks.
+
+For paired verification-cost experiments, select
+`terminal_read_policy="repeated"` on the same helper and library version. That
+retains the additional earlier output hash and the mandatory later hash. Unknown
+policies refuse before file access. Neither mode locks arbitrary recorded
+files against concurrent writers or closes implicit toolchain dependencies;
+the caller retains its existing ownership and synchronization obligations.
+Bytes returned by file reads, host verification time and physical disk or DMA
+traffic are separate quantities. This change supplies no model execution or
+accelerator timing qualification.
+
+The real execution test skips when the selected native/cross toolchain and
+functional simulator are unavailable. It checks every output and carried state
+for three calls under each of two changed source programs, plus normal hardware
+pin refusal; this small test is not qualification of a complete model corpus.
+
+### Host compilation timing
+
+Ordinary compilation recipes retain optional, versioned host wall intervals for
+successful commands as well as failures. Each command records its inclusive
+boundary and runner boundary. The existing `proc.run_checked` owner observes
+its actual subprocess wall interval. The shared compute-pool owner separately
+observes lease acquisition, including setup, affinity and slot waiting. Nested
+borrowed leases and disabled pools remain explicitly labeled. Acquisition time
+is not a measurement of contention alone, and subprocess wall is not CPU time
+or accelerator latency.
+
+`CompilationRecipe.phase` records named caller-owned preparation regions. The
+ordinary bare-metal builder observes host preparation/lowering including the IR
+lock, and driver/weight generation. Full-model build and relink retain additional
+same-context intervals for the image lock, current input/library hashing,
+artifact verification and generation. Their per-call timing files live below
+`timings/` in the selected output; build results return that file's path and hash.
+Relink tool recipes still bind actual command inputs and emitted outputs.
+
+Intervals use same-process `monotonic_ns`. Parent phases include their child
+intervals: sum disjoint intervals or take an interval union, never add inclusive
+parent and child durations. Observation covers only these original owners in
+the active Python context. Unobserved runners, child-interpreter work, provider
+queues and other processes are unknown; a missing observation is not zero cost.
+The residual between a command boundary and its runner includes identity reads
+and record work, not a separately measured pure hashing cost.
+
+Writers use `merlin.compilation_recipe.v2`; legacy v1 recipes without timing
+remain verifiable, and timing fields require v2. New interval records
+reject invalid types, negative ranges, changed clock/schema and child intervals
+outside their original process/phase. These diagnostic records cannot authorize
+changed file bytes, waive numerical checks or qualify a hardware cost model.
+No target callback timing fields or opaque output are interpreted as cycle costs.
+The same shared clock/verification rules apply to all selected targets.
+
+```bash
+python -B -m pytest merlin/tests/infra/test_compile_wall_timing.py \
+  merlin/tests/runtime/test_compilation_recipe.py \
+  merlin/tests/infra/test_model_check_compute.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/compile-wall-timing"
+```
+
+### Generated weight storage
+
+Ordinary `c_runtime.generate` defaults to streamed weight assembly. It retains
+the existing manifest/signature, dead-weight compaction, alias, descriptor and
+entry-projection rules; their byte storage uses lazy file/array/zero spans.
+Prepared layouts, lifted quantization operands and generated zero stubs occupy
+the same offsets and padding as before. Complete shapes and dtypes are checked
+when prepared arrays are consumed. Projection and compaction use their existing
+algorithms with either byte storage representation, rather than a second packing
+policy. State, input streams, numerical operations and runtime dispatch remain
+under their existing contracts.
+
+This is host compilation storage, independent of accelerator geometry. The
+existing software ABI and weight declarations determine the bytes; the normal
+board/window checks still determine whether the final program fits. The 1 MiB
+I/O block is a compiler work-buffer budget, not an extracted device transfer
+width. Prepared arrays are loaded individually, so peak array storage still
+depends on the largest selected array. File-span source identity uses bounded
+block hashes, checked when read and reopened after consumption; timestamps alone
+never establish content identity. These checks add I/O. They do not establish a
+filesystem snapshot or replace the ordinary capture/library freshness checks.
+
+Hash-only generation does not assemble a complete blob in Python memory or
+write a temporary weights file. Materializing generation writes bounded chunks,
+then independently reopens the actual pending file to check its complete size
+and hash before atomic publication. A failed array, source or actual-write check
+preserves the previous blob. Explicit immutable `weights_source` reuse keeps
+its existing full-content and hardlink checks. No mutable invocation state is
+shared, and no cross-invocation hash or weight cache is introduced.
+
+For reproducible comparisons through the same library and verification rules,
+`MERLIN_WEIGHT_PAYLOAD_STORAGE=materialized` selects explicit full-payload
+materialization; `streamed` is the default. Unknown values refuse before output.
+This project control participates in the existing image/cache/recipe identities.
+Both choices retain all byte checks, packing algorithms and numerical policy.
+The control is an optional compiler-storage choice, not a target capability or
+calibrated cost model. Lower compiler heap use alone establishes no model
+execution or accelerator latency improvement.
+
+```bash
+python -B -m pytest merlin/tests/runtime/test_weight_payload.py \
+  merlin/tests/runtime/test_entry_weight_projection.py \
+  merlin/tests/runtime/test_blob_weights.py \
+  merlin/tests/infra/test_full_model_lowering_cache.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/streamed-weights"
+```
 
 Shared pass-state types now live in `merlin.transforms.pipeline_state`.
 `transforms.pipeline` reexports the identical objects and retains its existing
@@ -233,13 +426,14 @@ formal-verifier authority and optional native e-graph build resources are not
 public SDK services. External version observations do not qualify dependency
 implementations or hardware, and the bundle is not a Python sandbox.
 
-The export regression runs ten cases covering all seven families in an isolated
+The export regression runs twelve cases covering all seven families in an isolated
 `python -I -S` process. Only the bundle, selected third-party roots and neutral
 test fixtures are available; every imported Merlin module and package path is
 checked to originate in the bundle. Existing ordinary entry points emit actual
 C/encoded programs, execute independent native primitives, and check complete
 outputs/state, rectangular tiling, widths, separate/aliased storage, actual
-completion, unsupported async emission and missing drains. These are portable
+completion, asynchronous allocation through final bytes, source admission and
+missing drains. These are portable
 mechanism tests, not qualification of a real accelerator or complete model.
 
 `repair(stage=..., reason=...)` clears analyses and restarts an already selected
@@ -283,6 +477,74 @@ ordinary captured-policy route.
 `MERLIN_AUTOMATIC_HOST_NUMERICS=0` also disables it. An explicit optional-pass
 selection takes precedence over that environment fallback. Receipts include
 the transformation, checker, matcher and pipeline source identities.
+
+## Direct permuted pointwise destinations
+
+Ordinary serial host lowering runs `automatic-host-permutations` after checked
+rounding selection and before operation profiling and preprocessing. It extends
+the existing destination-forwarding mechanism. A single-use pointwise producer
+followed by `linalg.transpose` writes directly into a fresh tensor with the final
+shape. Its input maps, scalar operations and loop order remain unchanged; only
+the output map and type change. The producer stays at its original position.
+The intermediate tensor and separate permutation operation disappear from the
+selected source. This differs from reading through a transpose: input strides
+are preserved, and output stores may become strided.
+Each original producer/transpose pair is considered once; the pass does not
+reapply itself to generated writers within that traversal.
+
+The accepted domain is a static, unencoded, all-parallel `linalg.generic` with
+one result, an unread `tensor.empty` initializer and exactly one use by the
+transpose. Both operations must belong to the same single-block function, with
+only admitted constants/storage constructors between them. Input maps must be
+complete projections or unit-extent broadcasts. Source formats are integers of
+8/16/32/64 bits or f32/f64, with logical element-byte extents fitting the selected signed
+index width. Unknown scalar operations, effects, semantic attributes, layouts,
+dynamic domains, live observers, initialized outputs and reductions retain the
+original route. Scalar captures may only refer to unchanged scalar integer or
+floating constants in the enclosing block. The existing closed scalar reader
+also admits the already supported standard roundeven intrinsic, preserving its
+exact source operands and metadata; no new numerical lowering is introduced.
+
+The host compiler supplies its selected index width and LLVM data layout. This
+pass uses no accelerator-local memory or instruction capability and infers none
+from RTL. Device resource facts, physical ownership and completion contracts
+remain separate requirements for device scheduling. Tensor bufferization owns
+the eventual native allocation and alias decisions.
+
+Use `lower_model` normally, or deselect with
+`MERLIN_PASSES=-automatic-host-permutations` /
+`MERLIN_AUTOMATIC_HOST_PERMUTATIONS=0` for a same-version baseline. The shared
+source entry is
+`prepare_automatic_destinations(source, serial=True, permuted_outputs=True, ...)`;
+its existing operation/metadata budgets bound construction. Ordinary vector,
+parallel, explicit graph/observation and unsupported compiler-driver selections
+retain their original route until separately qualified.
+
+`automatic-host-permutations.json` records current source/output digests,
+selected layout/index/budgets, direct helper identities and three ordered
+pipeline checks: source legality, forwarding and actual-source conformance.
+The conformance reader reconstructs the complete actual replacement and checks
+every other operation, effect, value binding and function interface unchanged.
+It verifies the original scalar body and input maps independently of the
+emitter's report, including external constant identities and signed-zero words.
+Wrong output permutations, hidden operations, changed arithmetic, shifted
+placement, stale libraries and accounting discrepancies refuse publication.
+
+Selection uses an explicit conservative policy of reducing materialized tensor
+bytes. These bytes describe source storage removed, not measured physical
+traffic or a latency forecast. Native regression tests observe requested memory
+accesses by compiling the actual emitted LLVM through the selected toolchain's
+load/store coverage instrumentation; complete results, caller aliases,
+canaries and carried state are checked independently. These instrumented host
+observations do not measure cache/DRAM traffic, device transfers, machine spill
+traffic or accelerator timing. Final native/model execution remains necessary.
+
+```bash
+python -B -m pytest merlin/tests/ir/test_permuted_destinations.py \
+  merlin/tests/ir/test_automatic_destinations.py \
+  merlin/tests/ir/test_automatic_rounding.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/permuted-destinations"
+```
 
 ## Compact dense loops and operand retention
 
@@ -351,6 +613,117 @@ encoder/decoder contract. They keep their existing legal lowering. Integration
 requires that public semantic boundary, actual addressing and tail legality,
 completion/continuation qualification, and final emitted-effect checks. It does
 not require changing a target's instruction implementation to fit Merlin.
+
+### Deriving a dense schedule from current typed source
+
+`schedule_source_dense` connects the existing dense planner with source
+computation. It takes a verified original module and an operation from that
+module, the selected RTL/software contracts, physical assignments and an
+independently qualified `DenseLoopAdapter`. It derives M, K, N and element
+formats from the actual tensor types and scalar recurrence; a caller cannot
+replace those with a shape-only declaration.
+
+```python
+from merlin.compile.scheduling.dense_source import (
+    DenseSourceUnavailable, schedule_source_dense,
+)
+
+try:
+    compiled = schedule_source_dense(
+        module, operation,
+        selected_contracts=selected,
+        storage=assigned_windows,
+        adapter=qualified_adapter,
+        name=logical_kernel_name,
+        static_budget=command_site_budget,
+        external_buffers_disjoint=original_runtime_disjointness,
+    )
+except DenseSourceUnavailable:
+    compiled = None
+if compiled is not None:
+    source = compiled.emit_c(target_instructions, symbol=target_abi_symbol)
+# Otherwise retain the original legal route, or diagnose its absence.
+```
+
+Source admission currently supports static positive rank-two `linalg.generic`
+matmul maps, signless integer storage with explicitly signed widening, and
+modular multiply/add with no overflow flags. Inputs may have different standard
+integer widths and must not narrow before multiplication. Initialization must
+be an actual integer-zero fill into a fresh tensor destination, with the fill
+body checked too. Encoded layouts, unknown attributes/body operations, dynamic
+shapes, nonzero initialization, floating arithmetic, batched and broader
+contractions remain unavailable in this source matcher. Provenance labels only
+bind source instances; they never select a schedule.
+
+The shared recurrence recognizer in `transforms/dense_ir.py` also serves the
+legacy signed-int8 source reader. There is one scalar-body implementation.
+The logical element budget bounds source admission independently of physical
+storage and command-site budgets. The existing dense contract still checks
+rectangular primitives, byte widths, usable banks, aliases, reservations,
+completion, exact continuation, tails and assigned storage. Unknown physical
+facts do not become inferred capacities or runtime permissions.
+
+An outer `PipelineSession` requires source admission before dense lowering;
+the latter runs the existing checked dense pipeline. The result binds the whole
+original module, selected operation ordinal, selected contracts, shared library
+and exact checked lower-level kernel stamp. Source changes, another operation
+or another independently valid kernel cannot silently replace that binding.
+C emission rechecks it. This is source/emission custody with independent
+execution obligations, not a new proof authority.
+
+Neutral integration tests invoke this entry through the ordinary
+`DeviceRouting.catalog_builder` hook. They compile a complete recurrent graph
+with host addition, two contractions, clamp/narrowing, state history and position
+updates. Both baseline and optimized arms use identical source/inputs and the
+same library; resource controls restrict baseline retention. Different rectangular
+primitives, integer widths and physical backing declarations exercise the same
+entry. Complete functional outputs and all carried states match an independent
+ordered integer reference. Separate native execution of the exact emitted target
+C observes requested primitive commands/bytes and tests a false continuation
+implementation. These byte-memory execution models are not real accelerators.
+
+The integration uses the existing explicit `FreshTensorWriterContract` through
+`post_offload_transform`: the selected borrowed writer must completely write
+its fresh result, preserve inputs, retain/release no buffers and complete before
+return. The caller supplies that qualification and allocation alignment. The
+source matcher does not infer those facts from a function name or matching types.
+An opaque descriptor-returning function cannot be treated as a fresh allocation;
+the lifetime check refuses unsupported ownership. The ordinary pipeline permits
+loop-returned allocations only when its ownership-deallocation pipeline is
+present. The tests retain the loop and every intermediate carried state rather
+than substituting independent calls or a truncated reduction.
+
+Plain standard signed integer type spellings now reach the existing dense
+pointer transport independently of the corpus vocabulary; `i16` input embedding
+uses exact integer storage. This supplies type transport, not device arithmetic
+support. Unsupported element storage remains refused.
+
+The current per-group profiler cannot bracket the fresh-writer symbol handoff
+from the old routed-symbol roster. Those integration tests keep it disabled and
+report per-group contributions as unavailable. Functional forward counts are
+not hardware latency. Requested-byte reductions from neutral native execution
+are not physical bus traffic. Larger native `.text` and compilation costs must
+be reported alongside traffic savings; the default planner has no calibrated
+cycle model. Qualified real target emission/mapping, runtime ownership and
+complete-model timing still require their actual public integration contracts.
+The shared SDK explicitly exports this source entry and its existing semantic
+and checking dependencies; it exports no host compiler or target implementation.
+
+To reproduce the paired experiment from the repository root, select the existing
+MLIR/native toolchain and functional simulator, set `TMPDIR` to the task's
+temporary directory, and run:
+
+```sh
+PYTHONPATH="$PWD/src" python -B -m pytest -p no:cacheprovider \
+  merlin/tests/infra/test_dense_source_whole_model.py \
+  --basetemp "$TMPDIR/source-dense-reproduction" \
+  -o tmp_path_retention_policy=all
+```
+
+Each retained case writes `out/pair.json`, actual build recipes, console bytes,
+catalog commands and the admitted source. Missing native tools skip execution;
+a skip does not qualify the source-to-program path. The adjacent
+`test_dense_source.py` adds source, freshness and false-continuation mutations.
 
 ### Selected RTL and software inputs for dense scheduling
 
@@ -550,10 +923,10 @@ checked_segments = result.program.segments
 
 These declarations come from selected capabilities and the compiler's ownership
 analysis, rather than inferred target names. Unsupported effects, counted loops,
-asynchronous instructions, missing ownership and infeasible allocation produce
+partial completion waits, missing ownership and infeasible allocation produce
 a diagnostic for the caller's existing legal lowering route. Counted dense
-loops and asynchronous storage allocation retain their separately checked
-interfaces; this finite encoded family does not silently claim their semantics.
+loops retain their separately checked interface; this finite encoded family
+does not expand those loops to pretend it understands final branch semantics.
 Native C and byte-interpreter tests qualify shared mechanisms only. Existing
 full-model target providers still need this public encoder/semantic-decoder
 boundary before the schedule pipeline can enter their ordinary model lowering.
@@ -841,11 +1214,50 @@ addresses are not a runnable unoptimized route. The enabled arm uses the
 existing allocator, completion checks and bounded repairs. Shared implementation
 hashes and selected file bytes are revalidated around every schedule pass.
 
-The ordinary final-byte pipeline currently requires synchronous instructions.
-Selected asynchronous effects can enter the standalone allocator and its native
-completion tests; ordinary encoded compilation rejects them until final-byte
-and launch completion support is qualified. No metadata annotation substitutes
-for the actual wait. This remains an explicit integration gap.
+The ordinary final-byte pipeline also accepts explicitly qualified asynchronous
+operations followed by actual waits for all pending tokens. The existing
+storage checker extends every affected lifetime to its wait and rejects reads,
+overwrites or returns before completion. Before encoding, the pipeline checks
+that each wait covers the complete pending set. It maps that wait to the final
+decoder's existing `drain` assertion, which means all prior work is complete and
+visible. It independently checks actual decoded accesses, asynchronous issues,
+drains and numerical effects against the realized schedule. A synchronous
+instruction cannot replace an asynchronous issue or drain in that projection.
+
+Partial waits still work in the standalone allocator, but cannot enter this
+encoded family: the finalizer's global pending-state model cannot express them.
+They diagnose before invoking the encoder. Unknown completion remains a barrier.
+Segmentation uses the existing final-byte checks and may not cross an outstanding
+transfer. Each resulting segment is decoded and checked again with an empty
+initial pending set. A selected launch-continuation contract must preserve every
+required backing and establish completion/visibility between launches; no
+queue-depth assumption, source metadata or launch annotation supplies a wait.
+
+`test_async_schedule_pipeline.py` executes complete transfer/arithmetic graphs
+over three carried-state invocations using actual final bytes. Cases cover both
+shared aliases and separate memories, tail lengths, 32-bit big-endian and 64-bit
+little-endian operands, and single/segmented programs. The native byte machine
+delays the copy until the encoded wait. It observes actual requested bytes and
+high-water storage independently of the plan. Missing/early/wrong waits, pending
+overwrites, falsely synchronous final decoding and removal of the encoded wait
+must fail. A runtime that acknowledges a wait without completing its copy has
+matching command/byte counters but fails the complete numerical reference.
+These tests qualify neither a real accelerator nor its whole-model integration.
+Run them with the selected native C compiler and task-local temporary storage:
+
+```sh
+PYTHONPATH="$PWD/src" python -B -m pytest -p no:cacheprovider \
+  merlin/tests/infra/test_async_schedule_pipeline.py \
+  --basetemp "$TMPDIR/async-schedule-reproduction" \
+  -o tmp_path_retention_policy=all
+```
+
+Each paired case retains source/realized schedules, selected RTL/software files,
+actual encoded segments, native machine source/library, complete invocation
+inputs/outputs, compilation/conformance reports and `pair.json`. Reported process
+memory is explicitly cumulative high-water RSS, excludes children and earlier
+work cannot be subtracted; it is not an isolated per-arm compilation peak.
+Neither native call timings nor requested bytes establish accelerator latency.
 
 `test_selected_storage_contracts.py` exercises actual final bytes on independent
 neutral native machines with 32-bit big-endian and 64-bit little-endian integer
@@ -1332,6 +1744,73 @@ not supply this final decoder/continuation boundary automatically. Final machine
 program checks therefore remain an explicit integration requirement for those
 targets.
 
+### Checking a declared program in the final linked image
+
+`merlin.model_check.program_admission.service` connects the existing finalizer
+with `LinkedElfAdmissionService`. The original caller supplies a section name,
+a bounded reader budget, current `SelectedSchedulingContracts`, an independently
+qualified `ProgramDecoder` and its original source pins. The selected RTL facts
+bound bytes/count/alignment and address windows; software declarations describe
+instruction effects, branches and completion. Optional `ProgramLimits` can
+narrow those bounds through the same existing binder.
+
+```python
+from merlin.model_check.program_admission import service as program_admission
+
+admission = program_admission(
+    prerequisite=original_linked_image_policy,
+    selected_contracts=current_rtl_and_software,
+    decoder=qualified_decoder,
+    decoder_sources=original_decoder_source_pins,
+    section=declared_program_section,
+    reader_max_bytes=extraction_budget,
+)
+# Pass admission=admission to full_build.build(...), and to each relink.
+```
+
+The bridge reads the actual allocated, uncompressed, file-backed ELF section,
+checks its load-segment correspondence and decodes its complete bytes. It
+supports ELF32/ELF64 and both byte orders; malformed, missing, ambiguous,
+unsupported or over-budget sections refuse. Read-only mapping avoids copying
+the complete model image. Metadata, names and selected payload are bounded.
+A writable section is an observation at check time, not a runtime immutability
+claim. Section selection grants no execution, loader-entry or coverage proof;
+the original policy/provider must establish that these are the programs the
+runtime executes, with the declared effects and physical interpretation.
+
+Admission never segments a linked image: an oversized program must be replanned
+before linking and launcher generation. This boundary cannot approve a plan
+whose segments were never installed. Unknown runtime continuation stays
+unavailable. Instruction changes require fresh decoding and checks.
+
+The new service preserves an explicitly selected prerequisite policy. Both
+policies run on the same actual ELF, and a child cannot override a refusal.
+Reports retain only status, ELF digest and original report custody references
+for prerequisites, not their protected findings. Every later revalidation
+reopens all original reports and source selections, then streams the ELF once
+for the complete chain. There is no cross-call digest/verdict reuse. Callback
+selection and direct source pins establish attribution and drift detection,
+not transitive dependencies, source-to-bytecode equivalence or qualification.
+
+`full_build.build` now honors explicitly selected host admission on fresh
+builds and cache hits, and `full_build.relink` honors it before completing its
+recipe. A host build made with admission requires an explicit current service
+for relinks. Current policy is reevaluated; a saved acceptance is never reused
+as today's decision. A host build without an explicit policy retains its
+unselected route. Existing device admission remains required.
+
+Tests link real native ELF sections containing two neutral word formats,
+execute their actual extracted bytes with synchronous and asynchronous effects,
+and reject changed sources, bad addresses, unfinished work and exceeded limits.
+A separate complete neutral interpreter model runs through ordinary compilation,
+cache reuse, relinking and functional Spike. It consumes a program parameter
+from the declared ELF section, preserving complete state, positions and inputs
+against an independent full-word reference across invocations. Original-policy
+and composed-policy runs use the same linked program and inputs. This is an
+admission integration test with interpreted program data, not accelerator
+lowering or a hardware-support/performance result. No target decoder or hidden
+compiler implementation is discovered or exported by the bridge.
+
 ### Final limits selected from RTL and software documents
 
 An optional `program` section of `merlin.schedule_effects.v1`, using schema
@@ -1350,8 +1829,8 @@ compiled = compile_schedule(
 ```
 
 The same binding works at the existing final-byte entry, including actual
-relative branches and asynchronous programs that the finite straight-line
-schedule compiler deliberately does not admit:
+relative branches that the finite straight-line schedule compiler deliberately
+does not admit, and independently qualified asynchronous programs:
 
 ```python
 final = finalize_program(

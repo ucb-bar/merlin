@@ -156,7 +156,7 @@ def test_all_families_execute_from_only_the_exported_library(tmp_path, record_pr
                          capture_output=True, text=True, timeout=180)
     assert run.returncode == 0, run.stdout + run.stderr
     observed = json.loads(result.read_text())
-    assert len(observed["completed"]) == 10
+    assert len(observed["completed"]) == 12
     assert observed["library_sha256"] == manifest["library_sha256"]
     assert len(observed["source_owners"]) == len(LIBRARY_MODULES)
     assert observed["bytecode_disabled"] and not list(bundle.rglob("__pycache__"))

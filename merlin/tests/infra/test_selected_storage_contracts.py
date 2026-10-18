@@ -17,7 +17,7 @@ import yaml
 from test_private_copy_elimination import ADAPTER, SPACES, command, project
 from test_schedule_pipeline import encoding
 
-from merlin.compile.scheduling.program_limits import AddressWindow, ProgramLimits
+from merlin.compile.scheduling.program_limits import AddressWindow, DecodedInstruction, EncodedAccess, ProgramLimits
 from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, compile_schedule
 from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
 from merlin.compile.scheduling.temporary_storage import (
@@ -125,8 +125,22 @@ def inputs(tmp_path, *, width=7, separate=False, word_format="<BBBQQQ", reserve=
             result.append(Call(name, tuple((key, Const(value)) for key, value in values.items())))
         return tuple(result)
 
+    def decode_program(data):
+        actual = []
+        for offset in range(0, len(data), word.size):
+            op, r, w, source, destination, size = word.unpack_from(data, offset)
+            if op not in (0, 1, 2, 3) or r >= len(SPACES) or w >= len(SPACES):
+                raise ValueError("unknown actual instruction or memory selector")
+            accesses = (() if op == 3 else (
+                EncodedAccess(SPACES[r], source, size), EncodedAccess(SPACES[w], destination, size, True)))
+            actual.append(DecodedInstruction(offset, word.size, accesses,
+                completion={0: "synchronous", 1: "synchronous", 2: "asynchronous", 3: "drain"}[op],
+                relocatable=True))
+        return tuple(actual)
+
     codec = replace(codec, encode=encode, decode_calls=decode,
-                    program_decoder=replace(codec.program_decoder, configuration_identity=selected.hardware_identity))
+                    program_decoder=replace(codec.program_decoder, decode=decode_program,
+                                            configuration_identity=selected.hardware_identity))
     # The final-size policy remains an explicit compilation budget. Resource
     # windows themselves are independently derived from the selected documents.
     windows = tuple(AddressWindow(w.resource, w.start, w.size)
@@ -183,7 +197,8 @@ int run(const unsigned char *code,int bytes,int width,int big,int separate,int f
   counts[0]++;
   if(op==3) {
    if(!pending || n!=pn) return 2;
-   memmove(memory[pw]+pd,memory[pr]+ps,pn); pending=0; continue;
+   if(faulty_spill!=2) memmove(memory[pw]+pd,memory[pr]+ps,pn);
+   pending=0; continue;
   }
   if(n==0 || s+n>(uint64_t)limits[r] || d+n>(uint64_t)limits[w]) return 3;
   counts[1]+=n; counts[2]+=n;
@@ -192,7 +207,7 @@ int run(const unsigned char *code,int bytes,int width,int big,int separate,int f
   if(op==2) { if(pending) return 4; pending=1; pr=r; pw=w; ps=s; pd=d; pn=n; }
   else if(op==0 || op==4) {
    memmove(memory[w]+d,memory[r]+s,n);
-   if(faulty_spill && r==0 && w==1) memory[w][d]++;
+   if(faulty_spill==1 && r==0 && w==1) memory[w][d]++;
   }
   else if(op==1) { for(uint64_t i=0;i<n;i++) memory[w][d+i]=(unsigned char)(memory[r][s+i]+1); }
   else return 5;
@@ -209,12 +224,14 @@ int run(const unsigned char *code,int bytes,int width,int big,int separate,int f
                            bytep, bytep, bytep, bytep, ctypes.c_int, ctypes.c_int,
                            ctypes.POINTER(ctypes.c_uint64)]
 
-    def execute(image, first, second, data, output, width=8, big=False, separate=False, faulty_spill=False):
+    def execute(image, first, second, data, output, width=8, big=False, separate=False, faulty_spill=False,
+                faulty_completion=False):
         def buffer(array):
             return (ctypes.c_ubyte * len(array)).from_buffer(array)
         counts = (ctypes.c_uint64 * 5)()
         code = bytearray(image)
-        status = machine.run(buffer(code), len(code), width, big, separate, faulty_spill, buffer(first), buffer(second),
+        fault = 2 if faulty_completion else int(faulty_spill)
+        status = machine.run(buffer(code), len(code), width, big, separate, fault, buffer(first), buffer(second),
                              buffer(data), buffer(output), len(first), len(data), counts)
         assert status == 0, status
         return tuple(counts)
@@ -444,21 +461,23 @@ def test_actual_bytes_and_actual_rewritten_addresses_are_checked(tmp_path):
         compile_case(model)
 
 
-def test_async_lifetimes_use_actual_waits_and_ordinary_emission_remains_disabled(tmp_path, native):
+def test_async_lifetimes_use_actual_waits_through_ordinary_final_emission(tmp_path, native):
     model = list(inputs(tmp_path, reserve=False))
     selected, kernel, objects, _, codec, _, _, length = model
     size = objects[0].size
     body = (kernel.body[0], command("async_copy", 16, 0, size, 1, 3), kernel.body[3],
             command("wait", 0, 0, size), kernel.body[5])
     model[1], model[2] = replace(kernel, body=body), objects[:2]
-    with pytest.raises(StorageOptimizationUnavailable, match="synchronous completion"):
-        compile_case(model)
+    compiled = compile_case(model)
     banks, reservations, external, adapter = bound(model)
     optimized = allocate_temporary_storage(model[1], model[2], banks, adapter, private_ownership=True,
                                            external_windows=external, reservations=reservations, eliminate_copies=False)
     assert optimized.report["lifetime_calls"] == {"value_0": [0, 3], "value_1": [2, 4]}
     assert optimized.report["addresses"] == {"value_0": 16, "value_1": 24}
+    assert compiled.kernel == optimized.kernel
+    assert compiled.report["final_conformance"]["completion_model"] == "explicit_global_drains"
     image = codec.encode(optimized.kernel)
+    assert compiled.program.segments == (image,)
     selected.verify_image(image, codec.decode_calls(image))
     data = bytearray(range(2 * length + 8))
     output = bytearray([91] * len(data))

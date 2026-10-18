@@ -158,6 +158,12 @@ def _splice(passes: list[str]) -> str:
     for p in passes:
         out.extend(_dealloc_passes() if p == "__DEALLOC__" else [p])
     dealloc = next((i for i, p in enumerate(out) if "ownership-based-buffer-deallocation" in p), None)
+    if dealloc is not None:
+        # Valid tensor loops may yield fresh storage. Permit that only when
+        # ownership is derived and releases are inserted by this pipeline.
+        out = [p[:-1] + " allow-return-allocs-from-loops}"
+               if p.startswith("one-shot-bufferize{") and p.endswith("}")
+               and "allow-return-allocs-from-loops" not in p else p for p in out]
     if dealloc is not None and any("buffer-hoisting" in p or "buffer-loop-hoisting" in p for p in out[dealloc + 1:]):
         raise ValueError("allocation hoisting invalidates ownership: schedule it before buffer deallocation")
     return ",".join(out)

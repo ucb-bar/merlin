@@ -252,3 +252,63 @@ def test_original_refusal_never_dispatches_or_returns_numeric_values(owned, tmp_
     assert result["status"] == "refused_before_execution" and not dispatched
     assert result["execution"] == "not_attempted" and "outputs" not in result
     assert "timing" not in result
+
+
+def _chain_report(*, elf, evidence_root, prerequisite_result, override=False, mutate=False):
+    import json
+
+    if mutate:
+        prerequisite_result["status"] = "accepted"
+    path = evidence_root / "child.json"
+    result = {
+        "status": "accepted" if override else prerequisite_result["status"],
+        "elf_sha256": file_digest(elf),
+        "prerequisite": prerequisite_result,
+    }
+    path.write_text(json.dumps(result))
+    return {**result, "report_path": str(path), "report_sha256": file_digest(path)}
+
+
+def _chain(parent, **kwargs):
+    owner = str(Path(__file__).resolve())
+    return LinkedElfAdmissionService(
+        "fixture", partial(_chain_report, **kwargs), ((owner, file_digest(Path(owner))),), prerequisite=parent
+    )
+
+
+@pytest.mark.parametrize("status", ["accepted", "refused"])
+def test_composed_policy_reopens_original_report_and_preserves_refusal(owned, tmp_path, status):
+    import json
+
+    module, artifact, selected = owned
+    parent = selected(partial(module.original, status=status))
+    service = _chain(_chain(parent))
+    result = _evaluate(service, artifact, tmp_path / "composed")
+    assert result["status"] == status
+    assert service.revalidate(elf=artifact, result=result, target="fixture") == status
+    receipt = result["prerequisite"]["prerequisite"]
+    assert set(receipt) == {"status", "elf_sha256", "report_path", "report_sha256"}
+    original = Path(receipt["report_path"])
+    original.write_text(json.dumps({"status": "accepted", "elf_sha256": file_digest(artifact), "changed": True}))
+    with pytest.raises(ValueError, match="unchanged actual file"):
+        service.revalidate(elf=artifact, result=result, target="fixture")
+
+
+@pytest.mark.parametrize("mutation", ["override", "receipt", "selection", "source", "elf"])
+def test_composed_policy_rejects_substitution_or_refusal_override(owned, tmp_path, mutation):
+    module, artifact, selected = owned
+    parent = selected(module.original)  # original policy refuses
+    service = _chain(parent, override=mutation == "override", mutate=mutation == "receipt")
+    if mutation in ("override", "receipt"):
+        with pytest.raises(ValueError, match="refused prerequisite|actual prerequisite"):
+            _evaluate(service, artifact, tmp_path / "composed")
+        return
+    result = _evaluate(service, artifact, tmp_path / "composed")
+    if mutation == "selection":
+        object.__setattr__(service, "prerequisite", selected(module.replacement))
+    elif mutation == "source":
+        Path(module.__file__).write_text(SOURCE + "\n# changed\n")
+    else:
+        artifact.write_bytes(b"different image")
+    with pytest.raises(ValueError, match="prerequisite changed|source pin changed|ELF changed"):
+        service.revalidate(elf=artifact, result=result, target="fixture")
