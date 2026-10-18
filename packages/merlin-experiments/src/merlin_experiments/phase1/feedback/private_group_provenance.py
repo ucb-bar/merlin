@@ -28,7 +28,7 @@ def eligible_source_identity(root: Any) -> tuple[str, tuple[str, ...]]:
     return region.data, identities
 
 
-def source_group_roster(groups, required, *, host_placement) -> dict[str, Any]:
+def source_group_roster(groups, required, *, host_placement, module=None) -> dict[str, Any]:
     """Bind required and optional device groups to original source, before emission.
 
     Optional groups remain outside the mandatory coverage denominator. An optional
@@ -86,6 +86,17 @@ def source_group_roster(groups, required, *, host_placement) -> dict[str, Any]:
     join_routed_source_groups([
         {"group": row["source_group"], **row} for row in source["eligible_group_provenance"]
     ], source)
+    if module is not None:
+        from merlin.kernels.shapes import observe_contractions
+
+        shapes = {id(op): shape for op, shape in observe_contractions(module)}
+        admitted = set(source["eligible_groups"]) | set(source["optional_groups"])
+        source["source_group_contractions"] = {
+            group.index: {"parallel": list(shape.parallel), "reduction": list(shape.reduction),
+                          "dtypes": list(shape.dtypes)}
+            for group in groups
+            if group.index in admitted and (shape := shapes.get(id(group.root))) is not None
+        }
     return source
 
 
@@ -254,6 +265,37 @@ def _conv_entry_signature_matches(emitted, symbol, row):
         and buffers[-1].get("shape") == [m, n]
         and [buffers[i].get("dtype") for i in (0, 1, len(buffers) - 1)] == row.get("dtypes")
     )
+
+
+def convolution_input_preparations(emitted, source):
+    """Bind ordinary logical convolution copies to original source contractions.
+
+    Source formation owns the original dimensions/types; the trusted host rewrite
+    owns the logical call ABI. Neither candidate output nor a matching count can
+    substitute for that join. Arithmetic and all numerical checks remain separate.
+    """
+    joined = join_routed_source_groups(emitted.get("routed"), source)
+    preparations = {}
+    for row in emitted["routed"]:
+        symbol = row["symbol"]
+        entry = emitted.get("entries", {}).get(symbol, {})
+        if entry.get("op") != "conv2d":
+            continue
+        original_group = joined[row["group"]]
+        original = source.get("source_group_contractions", {}).get(original_group)
+        if not isinstance(original, Mapping) or any(
+            row.get(key) != original.get(key) for key in ("parallel", "reduction", "dtypes")
+        ):
+            raise ValueError("convolution entry differs from original source contraction")
+        if emitted.get("signatures", {}).get(symbol) != [] or entry.get("epilogue"):
+            continue
+        if not _conv_entry_signature_matches(emitted, symbol, row):
+            raise ValueError("logical convolution input preparation differs from source-bound call ABI")
+        preparations[symbol] = {
+            "entry": entry, "call_buffers": emitted["call_buffers"][symbol],
+            "source_group": original_group, "argument_alignment": 1,
+        }
+    return preparations
 
 
 def routed_kernel_symbols(emitted: Mapping[str, Any]) -> set[str]:

@@ -234,7 +234,7 @@ def test_concrete_no_wrap_flags_are_proven_before_width_reduction(name, a, b, fl
             constant_control_counts(f)
 
 
-@pytest.mark.parametrize(("name", "key"), [("udiv", "isExact"), ("or", "isDisjoint")])
+@pytest.mark.parametrize(("name", "key"), [("udiv", "isExact")])
 def test_unmodeled_poison_assertions_still_refuse(name, key):
     f = function(f"""
       %a = llvm.mlir.constant(4) : i8
@@ -246,6 +246,23 @@ def test_unmodeled_poison_assertions_still_refuse(name, key):
     op.properties[key] = UnitAttr()
     with pytest.raises(ValueError, match="unproved poison flags"):
         constant_control_counts(f)
+
+
+@pytest.mark.parametrize("rhs,clean", [(2, True), (4, False)])
+def test_disjoint_or_assertion_is_checked_against_original_constant_bits(rhs, clean):
+    f = function(f"""
+      %a = llvm.mlir.constant(4) : i8
+      %b = llvm.mlir.constant({rhs}) : i8
+      %result = llvm.or %a, %b : i8
+      llvm.return
+    """)
+    op = next(op for op in f.walk() if op.name == "llvm.or")
+    op.properties["isDisjoint"] = UnitAttr()
+    if clean:
+        assert list(constant_control_counts(f).values()) == [1]
+    else:
+        with pytest.raises(ValueError, match="disjoint-or poison"):
+            constant_control_counts(f)
 
 
 def test_flagged_posttested_exit_on_equality_is_counted_exactly():
@@ -272,3 +289,105 @@ def test_inner_loop_bound_from_tensor_data_stays_unknown():
     f = function(body, "%input: !llvm.ptr")
     with pytest.raises(ValueError, match="tensor data"):
         constant_control_counts(f)
+
+
+def _repeated_branch_loop():
+    return """
+      %zero = llvm.mlir.constant(0) : i64
+      %one = llvm.mlir.constant(1) : i64
+      %outerbound = llvm.mlir.constant(5) : i64
+      %bound = llvm.mlir.constant(256) : i64
+      %split = llvm.mlir.constant(127) : i64
+      llvm.br ^outer(%zero : i64)
+    ^outer(%iteration: i64):
+      "llvm.inline_asm"() <{asm_string = "", constraints = "", has_side_effects}> : () -> ()
+      %parity = llvm.and %iteration, %one : i64
+      %threshold = llvm.mul %parity, %split : i64
+      llvm.br ^inner(%zero : i64)
+    ^inner(%j: i64):
+      %choose = llvm.icmp "ult" %j, %threshold : i64
+      llvm.cond_br %choose, ^left, ^right
+    ^left:
+      llvm.br ^latch
+    ^right:
+      llvm.br ^latch
+    ^latch:
+      %next = llvm.add %j, %one : i64
+      %last = llvm.icmp "eq" %next, %bound : i64
+      llvm.cond_br %last, ^outer_latch, ^inner(%next : i64)
+    ^outer_latch:
+      %nextouter = llvm.add %iteration, %one : i64
+      %done = llvm.icmp "eq" %nextouter, %outerbound : i64
+      llvm.cond_br %done, ^exit, ^outer(%nextouter : i64)
+    ^exit:
+      llvm.return
+    """
+
+
+def test_repeated_batch_counts_bind_all_external_control_values_within_one_invocation():
+    f = function(_repeated_branch_loop())
+    expected = constant_control_counts(f, summarize_loops=False)
+    assert constant_control_counts(f, max_operations=4000) == expected
+    assert list(expected.values())[3:5] == [254, 1026]
+    # Reopening changed source must compute a fresh witness.
+    changed = function(_repeated_branch_loop().replace('constant(127)', 'constant(53)'))
+    actual = constant_control_counts(changed, max_operations=4000)
+    assert actual == constant_control_counts(changed, summarize_loops=False)
+    assert list(actual.values())[3:5] == [106, 1174]
+
+
+def test_batched_control_observation_keeps_load_results_unknown_even_inside_a_control_cone():
+    body = _repeated_branch_loop().replace(
+        '%choose = llvm.icmp "ult" %j, %threshold : i64',
+        '%datum = llvm.load %input : !llvm.ptr -> i64\n %choose = llvm.icmp "ult" %j, %datum : i64',
+    )
+    with pytest.raises(ValueError, match="tensor data"):
+        constant_control_counts(function(body, "%input: !llvm.ptr"))
+
+
+@pytest.mark.parametrize("kind,expected", [("umin", 1), ("umax", -1), ("smin", -1), ("smax", 1)])
+def test_integer_minimum_maximum_obeys_source_signedness(kind, expected):
+    from merlin.perf.constant_control_cfg import integer_operation
+
+    f = function(f"""
+      %a = llvm.mlir.constant(-1) : i8
+      %b = llvm.mlir.constant(1) : i8
+      %chosen = "llvm.intr.{kind}"(%a, %b) : (i8, i8) -> i8
+      llvm.return
+    """)
+    operation = next(op for op in f.walk() if op.name == "builtin.unregistered")
+    assert integer_operation(operation, [-1, 1]) == expected
+    assert integer_operation(operation, [None, 1]) is None
+
+
+@pytest.mark.parametrize("value,flags,clean", [
+    (127, 3, True), (128, 1, False), (128, 2, True), (256, 2, False),
+    (-128, 1, True), (-129, 1, False), (-1, 2, False),
+])
+def test_truncation_flags_preserve_the_original_signed_or_unsigned_value(value, flags, clean):
+    from merlin.perf.constant_control_cfg import integer_operation
+
+    f = function("""%a = llvm.mlir.constant(1) : i32
+      %result = llvm.trunc %a : i32 to i8
+      llvm.return""")
+    operation = next(op for op in f.walk() if op.name == "llvm.trunc")
+    operation.properties["overflowFlags"] = IntegerAttr(flags, 32)
+    if clean:
+        result = value % 256
+        assert integer_operation(operation, [value]) == result - (256 if result >= 128 else 0)
+    else:
+        with pytest.raises(ValueError, match="poison flags"):
+            integer_operation(operation, [value])
+
+
+def test_nonnegative_extension_assertion_is_proved_before_conversion():
+    from merlin.perf.constant_control_cfg import integer_operation
+
+    f = function("""%a = llvm.mlir.constant(1) : i8
+      %result = llvm.zext %a : i8 to i32
+      llvm.return""")
+    operation = next(op for op in f.walk() if op.name == "llvm.zext")
+    operation.properties["nonNeg"] = UnitAttr()
+    assert integer_operation(operation, [127]) == 127
+    with pytest.raises(ValueError, match="nonnegative poison"):
+        integer_operation(operation, [-1])

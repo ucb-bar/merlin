@@ -108,8 +108,34 @@ host placement remains available for work outside the mandatory set.
 buffer extents to its admitted original source and the selected logical harness ABI. The host-compute
 veto can use `verify.conv_input_preparation` to exclude only independently proven bounded copies,
 padding and their address/control work. Private scratch globals require actual initialization and
-consumption by decoded accelerator loads. CPU arithmetic on tensor values, CPU output stores,
+consumption by decoded accelerator loads. CPU arithmetic on tensor values, fabricated output stores,
 unknown pointers and unproved effects retain the ordinary audit outcome.
+The same proof supports unchanged activation and weight byte copies. It forbids
+arithmetic on either kind of loaded tensor value and CPU reads of the model output.
+Scratch forwarding retains the original source write epoch. Every nonzero write must
+feed a later unchanged tracked copy or a decoded accelerator input before overwrite;
+all finite forwarding chains therefore require an accelerator consumer. Result staging
+starts only at an actual decoded i32 output transfer, with bounded row spans. CPU result
+reads require a command fence, and only unchanged result bytes can reach the output.
+Output publication rejects duplicate destination bytes. This is byte-origin evidence,
+not a proof that a particular output value or location is numerically correct.
+Large copies use exact batched loop domains from the emitted CFG, including conditional
+padding and sibling loops; no tensor values are evaluated. Conflicting writes,
+loop-carried data, escaping loop results and unproved poison flags refuse batching.
+Scalar copy limits remain unchanged; command/control traversal uses the existing finite
+constant-control bounds. Batched observer cost is bounded by executed vector instructions
+and processed payload bytes, with separate lane and expanded per-region work limits.
+Scratch extents derive from the original convolution's logical patch dimensions, with
+a finite aggregate storage cap. Control-count memoization is local to one original
+function traversal and binds every free control input; it never reuses memory effects.
+
+For whole-model builds, the caller's actual LLVM/object pins bind alignment evidence.
+Selected stock LLVM extraction/import/generic printing preserves the original model
+function for structural observation; every source-bound static call must be present.
+Address masks and exact `x - urem(x, power_of_two)` expressions prove alignment bits.
+Unknown origins grant one-byte alignment, and the candidate's own assumptions supply no
+caller evidence. The same source-bound preparation helper is used by public owned-host
+and private full-model audits. These checks confer no full-model numerical or runtime pass.
 The load-state recipe can select an original FIRRTL byte-count sink and its typed row/column fields.
 A shared structural derivation bounds the transfer's element width from every source expression
 alternative, checks the decoder's field offsets/widths, and retains unknown for unsupported forms.

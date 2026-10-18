@@ -7,7 +7,7 @@ signed comparisons, casts and integer wrap are preserved; possible poison refuse
 
 from collections import Counter
 
-from xdsl.dialects.builtin import IntegerAttr, IntegerType
+from xdsl.dialects.builtin import IntegerAttr, IntegerType, UnitAttr
 from xdsl.dialects.llvm import ICmpPredicateFlag
 from xdsl.ir import Operation
 
@@ -43,6 +43,10 @@ def _prove_poison_flags(op, unsigned, signed, width, result):
         attribute = op.properties.get(key)
         if attribute is None:
             continue
+        if key == "isDisjoint" and isinstance(attribute, UnitAttr) and op.name == "llvm.or":
+            if unsigned[0] & unsigned[1]:
+                raise ValueError("constant control violates disjoint-or poison flag")
+            continue
         if not isinstance(attribute, IntegerAttr):
             raise ValueError("constant control arithmetic has unproved poison flags")
         flags = attribute.value.data
@@ -69,9 +73,10 @@ def _prove_poison_flags(op, unsigned, signed, width, result):
 
 def integer_operation(op, args):
     """One exact integer instruction; unknown operands never become constants."""
-    if op.name == "llvm.mlir.constant":
+    name = op.op_name.data if op.name == "builtin.unregistered" else op.name
+    if name == "llvm.mlir.constant":
         return constant_integer(op.results[0])
-    if op.name == "llvm.select":
+    if name == "llvm.select":
         if args[0] is None:
             return None
         return args[1] if args[0] else args[2]
@@ -80,7 +85,6 @@ def integer_operation(op, args):
     width = _width(op.operands[0])
     unsigned = [v % (1 << width) for v in args]
     signed = [_signed(v, width) for v in args]
-    name = op.name
     if name == "llvm.icmp":
         predicate = ICmpPredicateFlag.from_int(op.properties["predicate"].value.data).value
         a, b = signed if predicate.startswith("s") else unsigned
@@ -98,7 +102,13 @@ def integer_operation(op, args):
         }
         return int(comparison[predicate])
     if name in {"llvm.sext", "llvm.zext", "llvm.trunc"}:
+        prove_cast_flags(op, unsigned[0], signed[0])
         result = signed[0] if name == "llvm.sext" else unsigned[0]
+    elif name in {"llvm.intr.umin", "llvm.intr.umax", "llvm.intr.smin", "llvm.intr.smax"}:
+        if _poison_flags(op):
+            raise ValueError("integer minimum/maximum has unproved poison flags")
+        operands = unsigned if name in {"llvm.intr.umin", "llvm.intr.umax"} else signed
+        result = min(operands) if name.endswith("min") else max(operands)
     else:
         a = unsigned[0]
         b = unsigned[1] if len(unsigned) > 1 else None
@@ -133,6 +143,42 @@ def integer_operation(op, args):
             return None
         _prove_poison_flags(op, unsigned, signed, width, result)
     return _signed(result, _width(op.results[0]))
+
+
+def prove_cast_flags(op, unsigned, signed):
+    """Check one concrete LLVM narrowing/nonnegative assertion before conversion.
+
+    https://llvm.org/docs/LangRef.html#conversion-operations: trunc nuw preserves
+    all unsigned bits; trunc nsw preserves the signed value. zext nneg requires
+    a nonnegative signed source. No assertion may authorize its own operand.
+    """
+    destination = _width(op.results[0])
+    for key in ("overflowFlags", "overflow_flags", "isExact", "isDisjoint"):
+        attribute = op.properties.get(key)
+        if attribute is None:
+            continue
+        if isinstance(attribute, IntegerAttr):
+            flags = attribute.value.data
+        elif isinstance(getattr(attribute, "data", None), frozenset):
+            names = {value.value for value in attribute.data}
+            if names - {"nsw", "nuw"}:
+                raise ValueError("integer conversion has unproved poison flags")
+            flags = (1 if "nsw" in names else 0) | (2 if "nuw" in names else 0)
+        else:
+            raise ValueError("integer conversion has unproved poison flags")
+        if not flags:
+            continue
+        if key != "overflowFlags" or op.name != "llvm.trunc" or flags not in {1, 2, 3}:
+            raise ValueError("integer conversion has unproved poison flags")
+        if flags & 1 and not -(1 << (destination - 1)) <= signed < 1 << (destination - 1):
+            raise ValueError("integer truncation violates signed no-wrap poison flags")
+        if flags & 2 and not 0 <= unsigned < 1 << destination:
+            raise ValueError("integer truncation violates unsigned no-wrap poison flags")
+    nonnegative = op.properties.get("nonNeg")
+    if nonnegative is not None and (
+        op.name != "llvm.zext" or not isinstance(nonnegative, UnitAttr) or signed < 0
+    ):
+        raise ValueError("integer conversion violates nonnegative poison flag")
 
 
 def _poison_flags(op):
@@ -276,6 +322,14 @@ def constant_control_counts(
         for destination in source.last_op.successors if source.last_op is not None else ():
             predecessors.setdefault(destination, []).append(source)
     loops, constants = {}, {}
+    if summarize_loops:
+        from merlin.verify.input_copy_batch import execute as batch_control
+        from merlin.verify.input_copy_loops import control_dependencies, copy_regions, region_cost
+
+        batched_regions = copy_regions(function)
+    else:
+        batched_regions = {}
+    control_cones, count_cache = {}, {}
     values = {arg: None for arg in blocks[0].args}
     counts = Counter()
     visits = operations = 0
@@ -303,6 +357,34 @@ def constant_control_counts(
                 args = [values.get(v) for v in loop["branch"].operands]
                 successor, incoming = loop["branch"].successors[1], tuple(args[1:])
                 block = successor
+                continue
+        if block in batched_regions and incoming:
+            region = batched_regions[block]
+            cost = region_cost(region)
+            if cost > 1000:
+                if incoming != (region[0].start,):
+                    raise ValueError("constant control batch entry differs from original loop induction")
+                if block not in control_cones:
+                    control_cones[block] = control_dependencies(region)[1]
+                key = (block, tuple(values.get(value) for value in control_cones[block]))
+                cached = count_cache.get(key)
+                if cached is None:
+                    if cost + operations > max_operations:
+                        raise ValueError("constant control batched operation budget exhausted")
+                    successor, witnessed, _ = batch_control(
+                        region, values, incoming, None, {}, set(), control_only=True
+                    )
+                    count_cache[key] = successor, witnessed
+                    operations += cost
+                else:
+                    successor, witnessed = cached
+                    operations += 1
+                counts.update(witnessed)
+                values.update((arg, None) for member in region[0].nodes for arg in member.args)
+                values.update(
+                    (result, None) for member in region[0].nodes for op in member.ops for result in op.results
+                )
+                block, incoming = successor, ()
                 continue
         counts[block] += 1
         if incoming:
