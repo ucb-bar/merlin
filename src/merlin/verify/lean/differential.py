@@ -15,6 +15,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from merlin.common.owned_process import run_owned
 from merlin.common.paths import repo_root
 from merlin.verify.lean.export import export_file, round_trip_exported
 
@@ -50,7 +51,7 @@ class Tools:
 
 
 def _run(command: list[str], *, cwd: Path | None = None, timeout: int = 120) -> subprocess.CompletedProcess:
-    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False)
+    result = run_owned(command, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False)
     if result.returncode:
         raise RuntimeError(
             f"{command[0]} exited {result.returncode}:\n{result.stdout[-2000:]}\n{result.stderr[-4000:]}"
