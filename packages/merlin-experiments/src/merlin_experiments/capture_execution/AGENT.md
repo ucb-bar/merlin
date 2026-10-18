@@ -28,3 +28,9 @@ Failed sealed child processes retain their complete stdout/stderr and exit statu
 beside the output directory, outside the capture whose bytes are attested.
 The error includes both stream tails; warnings cannot hide a worker's actual
 integerization refusal.
+
+Runtime CAS builders keep exclusive publication locks; independent full inventories
+and hard-link snapshots use shared reader locks. A reader must still hash every
+selected byte and require stable final identity, including the existing bounded
+rehash for link-count-only ctime transitions. Never replace verification with a
+completion-marker check. Persistent churn and any content/mode/owner drift refuse.
