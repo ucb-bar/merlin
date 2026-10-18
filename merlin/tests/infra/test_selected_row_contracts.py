@@ -383,7 +383,9 @@ def test_row_library_changes_during_encoding_and_before_emission_reject(tmp_path
         return original(step)
     with pytest.raises(ValueError, match="library changed"):
         schedule((selected, {**opts, "adapter": replace(opts["adapter"], encode=encode)}))
-    with pytest.raises(ValueError, match="replan before emission"):
+    # Contract revalidation shares the complete roster and now rejects the
+    # expired declaration before the later row emission guard is reached.
+    with pytest.raises(ValueError, match="resolver changed"):
         native_program(result, opts)
 
 

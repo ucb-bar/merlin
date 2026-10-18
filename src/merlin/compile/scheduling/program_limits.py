@@ -13,7 +13,6 @@ from bisect import bisect_right
 from collections import deque
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
-from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -173,7 +172,9 @@ class FinalProgram:
 
 
 def _library_sources():
-    return {__name__: hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+    from .schedule_pipeline import shared_library_sources
+
+    return shared_library_sources()
 
 
 def _decode(image, limits, decoder):

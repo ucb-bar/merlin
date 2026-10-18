@@ -8,7 +8,6 @@ nor a review label qualifies execution.
 from __future__ import annotations
 
 import hashlib
-import importlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -49,17 +48,10 @@ def _read(path, budget):
 
 
 def _resolver_sources():
-    """Resolved declarations are analyses of these specific implementations."""
-    names = (
-        "merlin.compile.scheduling.selected_contracts", "merlin.compile.scheduling.dense_contracts",
-        "merlin.compile.scheduling.storage_contracts", "merlin.compile.scheduling.fusion_contracts",
-        "merlin.compile.scheduling.spill_contracts",
-        "merlin.compile.scheduling.row_contracts", "merlin.compile.scheduling.row_softmax",
-        "merlin.compile.scheduling.program_contracts", "merlin.compile.scheduling.program_limits",
-        "merlin.semantic_compiler.allocation_types", "merlin.targetgen.isa_spec",
-        "merlin.targetgen.isa_dialect_gen",
-    )
-    return tuple((name, _hash(Path(importlib.import_module(name).__file__).read_bytes())) for name in names)
+    """Resolved declarations expire with their shared consumers and checkers."""
+    from .schedule_pipeline import shared_library_sources
+
+    return tuple(sorted(shared_library_sources().items()))
 
 
 @dataclass(frozen=True)

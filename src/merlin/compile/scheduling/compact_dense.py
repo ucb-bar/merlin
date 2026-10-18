@@ -10,6 +10,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from merlin.transforms.pipeline import AnalysisStamp
 
 from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, TensorArg, Var, select
 from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
@@ -141,6 +145,8 @@ class CompactDenseResult:
     realization: dict
     index_bits: int
     selected_contracts: object = None
+    checked_emission: AnalysisStamp | None = None
+    checked_index_bits: int | None = None
 
     def emit_c(self, instruction_set, *, symbol):
         """Use the existing emitter with the selected, checked loop index width.
@@ -153,10 +159,13 @@ class CompactDenseResult:
         def fresh():
             if self.selected_contracts is not None:
                 self.selected_contracts.revalidate()
-            receipt = self.realization.get("pipeline")
-            if receipt is not None and (
-                self.kernel.digest() != receipt["kernel_sha256"]
-                or _dense_library_sources() != receipt["library_sources_sha256"]
+            # Diagnostic dictionaries may be edited or removed. Emission
+            # custody belongs to an immutable current-IR stamp instead.
+            stamp = self.checked_emission
+            if (
+                stamp is None or self.kernel.digest() != stamp.source_sha256
+                or _digest(_dense_library_sources()) != stamp.context.library
+                or type(self.index_bits) is not int or self.index_bits != self.checked_index_bits
             ):
                 raise ValueError("dense checked kernel or shared library changed; replan before emission")
 
@@ -402,7 +411,13 @@ def schedule_compact_dense(
     if type(max_repairs) is not int or max_repairs not in (0, 1):
         raise ValueError("compact dense supports a bounded zero or one repair")
 
-    from merlin.transforms.pipeline import PassSpec, PipelineContext, PipelineSession, validate_pass_order
+    from merlin.transforms.pipeline import (
+        AnalysisStamp,
+        PassSpec,
+        PipelineContext,
+        PipelineSession,
+        validate_pass_order,
+    )
 
     from .compact_verification import DenseVerificationUnavailable, verify_compact_dense
     from .selected_contracts import SelectedSchedulingContracts
@@ -526,7 +541,10 @@ def schedule_compact_dense(
                 "selected_contracts": binding, "passes": [asdict(record) for record in session.records],
                 "repair_rounds": session.repair_round,
             }
-            return CompactDenseResult(state["kernel"], choice, report, adapter.index_bits, selected_contracts)
+            return CompactDenseResult(
+                state["kernel"], choice, report, adapter.index_bits, selected_contracts,
+                AnalysisStamp(state["kernel"].digest(), context, "compact_dense"), adapter.index_bits,
+            )
 
 
 def _digest(value):
@@ -537,25 +555,6 @@ def _digest(value):
 
 
 def _dense_library_sources():
-    import hashlib
-    import importlib
-    from pathlib import Path
+    from .schedule_pipeline import shared_library_sources
 
-    names = (
-        "merlin.compile.scheduling.compact_dense", "merlin.compile.scheduling.compact_verification",
-        "merlin.compile.scheduling.dense_contracts", "merlin.compile.scheduling.selected_contracts",
-        "merlin.compile.scheduling.storage_contracts", "merlin.compile.scheduling.temporary_storage",
-        "merlin.compile.scheduling.fusion_contracts", "merlin.compile.scheduling.fusion_semantics",
-        "merlin.compile.scheduling.spill_contracts",
-        "merlin.compile.scheduling.row_contracts", "merlin.compile.scheduling.row_softmax",
-        "merlin.compile.scheduling.program_contracts", "merlin.compile.scheduling.program_limits",
-        "merlin.compile.scheduling.fusion",
-        "merlin.semantic_compiler.allocation_types", "merlin.semantic_compiler.allocate",
-        "merlin.compile.scheduling.block_schedule", "merlin.transforms.dense_planning",
-        "merlin.transforms.pipeline", "merlin.sched.ir.kernel", "merlin.sched.ir.expr",
-        "merlin.sched.ir.integer_domain", "merlin.sched.codegen", "merlin.sched.isa",
-        "merlin.targetgen.isa_spec",
-    )
-    return {
-        name: hashlib.sha256(Path(importlib.import_module(name).__file__).read_bytes()).hexdigest() for name in names
-    }
+    return shared_library_sources()

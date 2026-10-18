@@ -128,10 +128,34 @@ def _hash(value):
 
 
 def shared_library_sources():
-    """Current shared implementation identities, equal for every treatment."""
+    """One source roster for selection, planning, checking and later emission.
+
+    These identities detect source changes; they grant no library access and
+    are not a transitive dependency or toolchain qualification. Keep shared
+    semantics helpers here even when only another scheduling family uses them:
+    treatments must not silently select different verification versions.
+    """
     names = (
+        "merlin",
+        "merlin.compile",
+        "merlin.compile.scheduling",
+        "merlin.sched",
+        "merlin.sched.ir",
+        "merlin.sched.ir.parse",
+        "merlin.transforms",
+        "merlin.semantic_compiler",
+        "merlin.verify",
+        "merlin.llvmlower",
+        "merlin.targetgen",
         "merlin.transforms.pipeline",
+        "merlin.transforms.loops",
+        "merlin.transforms.normalization",
+        "merlin.transforms.planning",
+        "merlin.transforms.scalar_witness",
+        "merlin.transforms.unrolling",
+        "merlin.transforms.validation",
         "merlin.compile.scheduling.schedule_pipeline",
+        "merlin.compile.scheduling.block_schedule",
         "merlin.compile.scheduling.configuration",
         "merlin.compile.scheduling.temporary_storage",
         "merlin.compile.scheduling.copy_elimination",
@@ -145,6 +169,7 @@ def shared_library_sources():
         "merlin.compile.scheduling.compact_dense",
         "merlin.compile.scheduling.compact_verification",
         "merlin.transforms.dense_planning",
+        "merlin.transforms.dense_ir",
         "merlin.llvmlower.cpu_softmax",
         "merlin.transforms.pure_scalar",
         "merlin.transforms.certificates",
@@ -152,6 +177,7 @@ def shared_library_sources():
         "merlin.semantic_compiler.allocate",
         "merlin.semantic_compiler.allocation_types",
         "merlin.semantic_compiler.rules",
+        "merlin.semantic_compiler.model",
         "merlin.sched.ir.kernel",
         "merlin.sched.ir.expr",
         "merlin.sched.ir.integer_domain",

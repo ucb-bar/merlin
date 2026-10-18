@@ -130,6 +130,23 @@ pass omitted an invalidation declaration. Changing a selected identity likewise
 makes an old analysis unusable. A failed action poisons its private session.
 An analysis pass that mutates IR is an error.
 
+Selected-contract resolution, compact dense scheduling, finite schedule
+compilation, row emission and final-program checks now use the same shared
+source-version roster. It includes the block-operation definitions, scalar
+admission and witness helpers, semantic value types and IR package/parser
+owners. A change detected during a provider callback rejects that compilation;
+a change after checking rejects later emission or contract reuse. Reselect and
+replan with a stable library. Versions describe source bytes, not loaded-code
+attestation, third-party dependencies or a complete transitive import closure.
+This roster grants no candidate import access: the separate reviewed
+compiler-library contract and existing authoring boundaries still apply.
+
+Compact dense C emission binds the actual checked kernel, index width and
+library through an immutable existing `AnalysisStamp`. Editing or deleting its
+printable realization report cannot bypass those checks. Source checks run
+before and after target C rendering; arbitrary C implementation equivalence
+still requires independent qualification.
+
 Ordinary whole-model image reuse also binds the raw `MERLIN_*` control values,
 the Python sources in the host lowering and transform families, direct build
 owners and selected target-input files. Only a digest of raw controls is stored;
