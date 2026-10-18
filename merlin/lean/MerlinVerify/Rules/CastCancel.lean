@@ -88,7 +88,10 @@ theorem eliminate_sound {ib : Nat} {Γ : TEnv} {facts : List Fact}
         obtain ⟨hid, hw, hout, hk, hwiden, hlast, _, _⟩ := hc
         obtain ⟨value, hvalue, hroot, hresult⟩ := hf first (List.mem_of_find?_eq_some hm)
         have hs := IntegerCast.read_legal hl
-        obtain ⟨actual, ha, hty⟩ := he _ _ hs.2.2.2.2.2.2.1
+        have hinput : Γ.lookup last.root = some (.scalar (.int last.inputWidth)) := by
+          obtain ⟨_, _, _, _, _, _, hinput, _, _, _, _, _⟩ := hs
+          exact hinput
+        obtain ⟨actual, ha, hty⟩ := he _ _ hinput
         have hav : actual = .scalar (first.kind.apply first.outputWidth value) := by
           rw [← hid, hresult] at ha
           exact (Option.some.inj ha).symm

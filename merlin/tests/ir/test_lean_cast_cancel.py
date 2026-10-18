@@ -170,3 +170,28 @@ def test_source_unknown_cast_attributes_do_not_gain_strict_defined_chain(tmp_pat
     for check, directory in [(check_support, "support"), (check_definedness, "defined")]:
         result = check(before, "forward", tmp_path / directory, m2m_python=lean_tools.m2m_python)
         assert result["verdict"] == "abstracted", result.get("reason")
+
+
+@pytest.mark.parametrize("kind", ["extui", "extsi"])
+@pytest.mark.parametrize("index_bits", [32, 64])
+def test_poison_prefix_has_conditional_refinement_but_no_defined_chain(tmp_path, lean_tools, kind, index_bits):
+    text = f"""func.func @forward(%keep: i8) -> (i8, i8) {{
+      %empty = tensor.empty() : tensor<i8>
+      %poison = tensor.extract %empty[] : tensor<i8>
+      %mid = arith.{kind} %poison : i8 to i32
+      %r = arith.trunci %mid : i32 to i8
+      return %r, %keep : i8, i8
+    }}"""
+    stage, before, after = canonicalize(tmp_path, lean_tools, text)
+    assert "tensor.empty" in after.read_text() and "tensor.extract" in after.read_text()
+    assert "arith.ext" not in after.read_text() and "arith.trunci" not in after.read_text()
+    result = check_typed_stage(stage, m2m_python=lean_tools.m2m_python, index_bits=index_bits)
+    assert result["verdict"] == "verified", result.get("reason")
+    result = check_support(
+        before, "forward", tmp_path / "support", m2m_python=lean_tools.m2m_python, index_bits=index_bits
+    )
+    assert result["verdict"] == "verified", result.get("reason")
+    result = check_definedness(
+        before, "forward", tmp_path / "defined", m2m_python=lean_tools.m2m_python, index_bits=index_bits
+    )
+    assert result["verdict"] == "abstracted", result.get("reason")
