@@ -2,7 +2,7 @@
 
 A one-program stage (an int8 contraction against a transposed weight, the weight in the stage's
 safetensors) is run as a chain over several inputs: once per case with nothing kept, once with one
-:class:`ChainCache` across the cases.
+:class:`ChainCache` across the cases, and in a pool of worker processes, each with its own scratch.
 """
 
 from __future__ import annotations
@@ -12,10 +12,12 @@ import struct
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from merlin.model_check import catalog as CAT
 from merlin.model_check import chain as CH
 from merlin.model_check import inputs as INP
+from merlin.model_check import references as REF
 from merlin.model_check.models import Model, Program
 from merlin.runtime import dispatch_runtime as DR
 from merlin.runtime import linalg_numpy as LN
@@ -97,7 +99,8 @@ def _setup(tmp_path: Path, count: int = 4):
                 "name": name,
             }
         )
-    return model, catalog, cases
+    job = REF.CaseJob(model=model, catalogs={"p": catalog}, blobs=tmp_path / "bundle" / "m" / "blobs", baseline=False)
+    return model, catalog, cases, job
 
 
 def test_cached_arguments_are_read_once_and_are_the_same_read_only_objects(tmp_path, monkeypatch) -> None:
@@ -121,7 +124,7 @@ def test_cached_arguments_are_read_once_and_are_the_same_read_only_objects(tmp_p
 
 
 def test_a_cached_chain_gives_the_bytes_of_a_plain_one_and_transposes_once(tmp_path, monkeypatch) -> None:
-    model, catalog, cases = _setup(tmp_path)
+    model, catalog, cases, _job = _setup(tmp_path)
     arrays = [dict(np.load(c["inputs"])) for c in cases]
     plain = [CH.judged_outputs(model, CH.run_reference(model, {"p": catalog}, a, tmp_path / "s0")) for a in arrays]
     seen = [0]
@@ -140,3 +143,39 @@ def test_a_cached_chain_gives_the_bytes_of_a_plain_one_and_transposes_once(tmp_p
     assert seen[0] == 1
     assert [o.tobytes() for r in cached for o in r] == [o.tobytes() for r in plain for o in r]
     assert np.array_equal(cached[1][0], arrays[1]["x"].astype(np.int64) @ _WEIGHT.T.astype(np.int64))
+
+
+def test_a_pool_gives_the_serial_bytes_in_case_order_with_a_scratch_per_worker(tmp_path) -> None:
+    _model, _catalog, cases, job = _setup(tmp_path, count=5)
+    serial = [REF.reference_case(job, c, cache=None, scratch=tmp_path / "serial") for c in cases]
+    written = [(c["out"] / "int8.npz").read_bytes() for c in cases]
+    for c in cases:
+        (c["out"] / "int8.npz").unlink()
+    lines: list[str] = []
+    pooled = REF._pooled_cases(job, cases, 2, tmp_path / "work", lines.append)  # noqa: SLF001
+    assert [r["metrics"] for r in pooled] == [r["metrics"] for r in serial]
+    assert [(c["out"] / "int8.npz").read_bytes() for c in cases] == written
+    workers = tmp_path / "work" / "workers"
+    claimed = {i: int((workers / "claims" / str(i)).read_text()) for i in range(len(cases))}
+    assert set(claimed.values()) <= {0, 1}
+    for k in set(claimed.values()):  # a worker binds its inputs in its own shadow directory
+        assert (workers / str(k) / "chain" / "p" / "inputs.npz").is_file()
+        log = (workers / str(k) / "worker.log").read_text().splitlines()
+        assert [line.split()[1].rstrip(":") for line in log] == [cases[i]["name"] for i, w in claimed.items() if w == k]
+
+
+def test_a_pool_refuses_a_job_it_cannot_send_to_a_worker(tmp_path) -> None:
+    _model, _catalog, cases, job = _setup(tmp_path, count=2)
+    job.keep_call = lambda _symbol, ordinal: ordinal < 1
+    with pytest.raises(INP.InputError, match="picklable"):
+        REF._pooled_cases(job, cases, 2, tmp_path / "work", print)  # noqa: SLF001
+
+
+def test_the_worker_count_is_bounded_by_cases_and_memory() -> None:
+    gib = 1 << 30
+    assert REF.worker_count(4, 64, 26 * gib, available=123 * gib) == 4
+    assert REF.worker_count(8, 64, 26 * gib, available=90 * gib) == 3
+    assert REF.worker_count(8, 2, gib, available=123 * gib) == 2
+    assert REF.worker_count(4, 64, 200 * gib, available=123 * gib) == 1
+    assert REF.worker_count(0, 64, gib, available=123 * gib) == 1
+    assert REF._shards(list(range(5)), 2) == [[0, 2, 4], [1, 3]]  # noqa: SLF001

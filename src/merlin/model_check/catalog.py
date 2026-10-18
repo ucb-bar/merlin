@@ -22,6 +22,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,7 +63,8 @@ class BlobStore:
         key = _sha(header + array.tobytes())
         path = self.root / f"{key}.npy"
         if not path.exists():
-            tmp = path.with_suffix(".tmp.npy")
+            # A writer's own temporary name: several processes may store the same operand at once.
+            tmp = path.with_name(f"{key}.{os.getpid()}.{uuid.uuid4().hex}.tmp.npy")
             np.save(tmp, array, allow_pickle=False)
             tmp.replace(path)
         return key
