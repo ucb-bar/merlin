@@ -142,6 +142,9 @@ def _site_edit(index: int, **changes):
         (_site_edit(0, samples=2), "finite verification"),
         (_site_edit(1, finite=False), "finite verification"),
         (_site_edit(1, cosine_min=float("nan")), "finite verification"),
+        (_site_edit(1, samples=True), "finite verification"),
+        (_site_edit(1, max_abs_error=-0.1), "metrics are inconsistent"),
+        (_site_edit(1, rel_rmse_max=-0.1), "metrics are inconsistent"),
         (_site_edit(2, rel_rmse_max=None), "finite verification"),
         (_site_edit(0, schema="other"), "finite verification"),
         (_site_edit(0, cosine_min=0.98), "declared agreement bar"),
@@ -316,3 +319,100 @@ def test_single_program_partition_counts_verified_dynamic_contractions(tmp_path:
     (stage / "meta.json").write_text(json.dumps(low))
     with pytest.raises(sealed_m2m.SealedM2MError, match="declared agreement bar"):
         sealed_m2m._materialized_v3(stage, tmp_path, stage, plan)
+
+
+def _receipt(stage: Path, meta: dict) -> None:
+    """Bind real fixture artifact bytes for the application inventory consumer."""
+    import hashlib
+
+    meta = copy.deepcopy(meta)
+    meta["scheme"] = "int8_static_act_int8_weight"
+    agreement = meta["integerization_receipt"]["golden_agreement"]
+    agreement["source"] = {"sha256": "a" * 64}
+    (stage / "integer-reference.json").write_text('{"reference":"fixture"}')
+    agreement["output"] = {"path": "integer-reference.json", "sha256": _file_digest(stage / "integer-reference.json")}
+    (stage / "meta.json").write_text(json.dumps(meta))
+    (stage / "weights.safetensors").write_bytes(b"fixture weights")
+    (stage / "weights.safetensors.manifest.json").write_text("{}")
+    artifacts = {
+        path.name: {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "bytes": path.stat().st_size}
+        for path in stage.iterdir()
+        if path.name != "capture_receipt.json"
+    }
+    (stage / "capture_receipt.json").write_text(
+        json.dumps(
+            {
+                "schema": "m2m.capture-receipt.v1",
+                "materialized_abi": {"complete": True},
+                "artifacts": artifacts,
+                "tool": {"source_sha256": {"m2m/capture/pt2e_integer_reference.py": "a" * 64}},
+            }
+        )
+    )
+
+
+def test_issuer_and_inventory_share_dynamic_accounting_without_disclosing_private_graph(tmp_path):
+    from merlin.targetgen.application_inventory import verified_static_integerization, verify_capture_receipt
+
+    stage, meta = _stage(tmp_path)
+    meta = _integer_meta(meta, exported=7)
+    meta["recipe"]["why"] = {"private": "/private/model-name/checkpoint"}
+    _receipt(stage, meta)
+    assert _census(stage, meta) == 5
+    observation = verify_capture_receipt(stage / "model.mlir")
+    assert observation["status"] == "verified_materialized", observation
+    assert observation["source_closure_verified"] is False
+    projection = observation["capture_integerization"]
+    assert verified_static_integerization(projection)
+    evidence = projection["dynamic_integerization"]
+    assert evidence["weight_contractions"] == 2
+    assert sum(row["calls"] for row in evidence["dynamic_owners"]) == 5
+    public = json.dumps(evidence)
+    assert "/private/" not in public and "matmul_qk" not in public and "g:prepared:" not in public
+    # Static weight reference accounting remains two, even though the emitted program has seven matmuls.
+    bad = copy.deepcopy(projection)
+    bad["integerization_receipt"]["golden_agreement"]["executed_contractions"]["total"] = 7
+    assert not verified_static_integerization(bad)
+    for edit in (
+        lambda p: p.pop("dynamic_integerization"),
+        lambda p: p["dynamic_integerization"]["contractions"]["sites"][0].pop("verification"),
+        lambda p: p["dynamic_integerization"].update(program_sha256="b" * 64),
+        lambda p: p["dynamic_integerization"]["trace"].update(sha256=None),
+        lambda p: p["dynamic_integerization"]["contractions"]["sites"][1]["verification"].update(cosine_min=0.1),
+        lambda p: p["dynamic_integerization"]["dynamic_owners"][0].update(calls=1),
+    ):
+        bad = copy.deepcopy(projection)
+        edit(bad)
+        assert not verified_static_integerization(bad)
+    # A saved producer observation alone still cannot substitute for a sealed execution attestation.
+
+
+def test_inventory_refuses_changed_or_unbound_dynamic_trace(tmp_path):
+    from merlin.targetgen.application_inventory import verify_capture_receipt
+
+    stage, meta = _stage(tmp_path)
+    meta = _integer_meta(meta, exported=7)
+    _receipt(stage, meta)
+    trace = stage / "frontend-trace.json"
+    trace.write_text(trace.read_text() + " ")
+    observed = verify_capture_receipt(stage / "model.mlir")
+    assert observed["status"] == "unverified" and "capture_integerization" not in observed
+    trace.unlink()
+    _receipt(stage, meta)
+    observed = verify_capture_receipt(stage / "model.mlir")
+    assert observed["status"] == "unverified" and "capture_integerization" not in observed
+
+
+def _orphan(nodes, operations):
+    operations[0]["source_node_ids"] = []
+
+
+def _duplicate_identity(nodes, operations):
+    nodes.append(copy.deepcopy(nodes[0]))
+
+
+@pytest.mark.parametrize("extra", [_orphan, _duplicate_identity])
+def test_ownership_cannot_drop_or_overwrite_an_integer_node(tmp_path, extra):
+    stage, meta = _stage(tmp_path, extra=extra)
+    with pytest.raises(sealed_m2m.SealedM2MError, match="owner|identities"):
+        _census(stage, meta)
