@@ -74,7 +74,7 @@ def _report(result):
 
 
 def _native_reference(program, samples, expected, work, tools, bits):
-    diff.compare(program, samples, work, tools, index_bits=bits)
+    diff.compare(program, samples, work, tools, function="forward", index_bits=bits)
     assert json.loads((work / "native-results.json").read_bytes())["results"] == expected
 
 
