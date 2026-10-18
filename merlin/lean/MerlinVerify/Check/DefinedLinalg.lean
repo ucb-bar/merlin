@@ -1,6 +1,6 @@
 /- Proved definedness rules for structured tensor programs and the assembled checker. -/
 import MerlinVerify.Check.DefinedLoops
-import MerlinVerify.Check.DefinedControl
+import MerlinVerify.Check.DefinedLeaf
 import MerlinVerify.Check.RegionDepth
 import MerlinVerify.Check.DefinedComposition
 import MerlinVerify.Check.DefinedDequant
@@ -36,7 +36,7 @@ def fillDefinedRule (ib : Nat) (Γ : FEnv) (op : Op) (fs : List Fact) : Option (
     | some ([vf], [⟨.tensor sh e, _⟩]), [body] =>
       if op.results.length = 1 ∧
           structuredRanges? (fillMaps sh.length) sh.length [vf.ty, .tensor sh e] = some sh ∧
-          checkRegion (controlLeafBook ib) Γ body [elementFact vf, ⟨.scalar e, false⟩] [.scalar e] then
+          checkRegion (sharedLeafBook ib) Γ body [elementFact vf, ⟨.scalar e, false⟩] [.scalar e] then
         some (clean [.tensor sh e])
       else none
     | _, _ => none
@@ -70,7 +70,7 @@ theorem fillDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
           have hb : BodyTotal ib (fun ctx => evalRegion opSem ctx call env body)
               [elementFact vf, ⟨.scalar e, false⟩] [.scalar e] := by
             intro ctx hib args ha
-            exact checkRegion_sound (controlLeafBook ib) hbody hib hΓ ha
+            exact checkRegion_sound (sharedLeafBook ib) hbody hib hΓ ha
           obtain ⟨rs, hsem, hrf⟩ := fillSem_total hib (structuredRanges?_spec hranges) hv ht.1 hb
           dsimp only [fillMaps] at hsem
           refine ⟨rs, ?_, hrf⟩
@@ -158,13 +158,13 @@ theorem genericDefinedRuleWith_sound (ib : Nat) (bodyBook : Book opSem ib) : ∀
     · cases h
   · cases h
 
-def genericDefinedRule (ib : Nat) := genericDefinedRuleWith ib (controlLeafBook ib)
+def genericDefinedRule (ib : Nat) := genericDefinedRuleWith ib (sharedLeafBook ib)
 
 theorem genericDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
     genericDefinedRule ib Γ op fs = some rs → ∀ ctx call env args,
     ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
     ∃ vs, opSem ctx call op args (evalRegions opSem call env op.regions) = .ok vs ∧
-      FactsHold ib vs rs := genericDefinedRuleWith_sound ib (controlLeafBook ib)
+      FactsHold ib vs rs := genericDefinedRuleWith_sound ib (sharedLeafBook ib)
 
 /-- Single-output generics may start from an uninitialized destination when their output map is
 identity and the iteration box is exactly the output shape. The body must be total even on a dirty
@@ -222,13 +222,13 @@ theorem overwriteDefinedRuleWith_sound (ib : Nat) (bodyBook : Book opSem ib) : �
     · cases h
   · cases h
 
-def overwriteDefinedRule (ib : Nat) := overwriteDefinedRuleWith ib (controlLeafBook ib)
+def overwriteDefinedRule (ib : Nat) := overwriteDefinedRuleWith ib (sharedLeafBook ib)
 
 theorem overwriteDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
     overwriteDefinedRule ib Γ op fs = some rs → ∀ ctx call env args,
     ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
     ∃ vs, opSem ctx call op args (evalRegions opSem call env op.regions) = .ok vs ∧
-      FactsHold ib vs rs := overwriteDefinedRuleWith_sound ib (controlLeafBook ib)
+      FactsHold ib vs rs := overwriteDefinedRuleWith_sound ib (sharedLeafBook ib)
 
 /-- Check a named contraction through its proved generic expansion, then transfer successful
 execution back to the actual source. The input arity and actual body closure are checked as well. -/
@@ -278,7 +278,7 @@ def mapDefinedRule (ib : Nat) (Γ : FEnv) (op : Op) (fs : List Fact) : Option (L
       let maps := List.replicate fs.length (identityMap sh.length)
       if op.results.length = 1 ∧
           structuredRanges? maps sh.length (insRev.reverse.map (·.ty) ++ [.tensor sh e]) = some sh ∧
-          checkRegion (controlLeafBook ib) Γ body ((insRev.reverse ++ [out]).map elementFact) [.scalar e] then
+          checkRegion (sharedLeafBook ib) Γ body ((insRev.reverse ++ [out]).map elementFact) [.scalar e] then
         some (clean [.tensor sh e])
       else none
     | _, _ => none
@@ -317,7 +317,7 @@ theorem mapDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
             have hb : BodyTotal ib (fun ctx => evalRegion opSem ctx call env body)
                 ((insRev.reverse ++ [(⟨.tensor sh e, init⟩ : Fact)]).map elementFact) [.scalar e] := by
               intro ctx hib args ha
-              exact checkRegion_sound (controlLeafBook ib) hbody hib hΓ ha
+              exact checkRegion_sound (sharedLeafBook ib) hbody hib hΓ ha
             have hs : StructuredOk (List.replicate fs.length (identityMap sh.length))
                 (LinalgNamed.parallel sh.length).length
                 (insRev.reverse.map (·.ty) ++ [.tensor sh e]) sh := by
@@ -440,7 +440,7 @@ theorem layoutDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
     · cases h
 
 def structuredBook (ib : Nat) : Book opSem ib where
-  rule Γ op fs := match (controlLeafBook ib).rule Γ op fs with
+  rule Γ op fs := match (sharedLeafBook ib).rule Γ op fs with
     | some rs => some rs
     | none => [fillDefinedRule ib, genericDefinedRule ib, overwriteDefinedRule ib,
         contractionDefinedRule ib, mapDefinedRule ib, copyDefinedRule ib, layoutDefinedRule ib].findSome? fun r => r Γ op fs
@@ -448,7 +448,7 @@ def structuredBook (ib : Nat) : Book opSem ib where
     split at h
     · next _ hl =>
       cases h
-      exact (controlLeafBook ib).sound Γ op fs _ hl ctx call env args hib hΓ ha
+      exact (sharedLeafBook ib).sound Γ op fs _ hl ctx call env args hib hΓ ha
     · obtain ⟨r, hmem, hr⟩ := List.exists_of_findSome?_eq_some h
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
       rcases hmem with rfl | rfl | rfl | rfl | rfl | rfl | rfl
