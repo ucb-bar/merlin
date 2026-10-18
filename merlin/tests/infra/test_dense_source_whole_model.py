@@ -93,7 +93,7 @@ def reference(w0, w1, data, state, position):
 
 @pytest.mark.parametrize("tile,width,shared", [((2, 3, 4), 1, False), ((3, 2, 5), 2, True)])
 def test_source_scheduling_runs_through_complete_ordinary_model(
-    tmp_path, monkeypatch, record_property, tile, width, shared
+    tmp_path, monkeypatch, record_property, tile, width, shared, group_profile=False
 ):
     from merlin.llvmlower import toolchain
     from merlin.runtime.backends import spike, spike_model
@@ -221,7 +221,7 @@ def test_source_scheduling_runs_through_complete_ordinary_model(
                     device=routing,
                     arena_mb=1,
                     readback="full",
-                    group_profile=False,
+                    group_profile=group_profile,
                     respect_captured_quantization_scope=True,
                     host_llvm_bitcode=True,
                 )
@@ -232,6 +232,18 @@ def test_source_scheduling_runs_through_complete_ordinary_model(
             actual, metadata = FB.read(console, capture, receipt["output"]["build_hash"])
             for found, want in zip(actual, expected, strict=True):
                 np.testing.assert_array_equal(found, want)
+            if group_profile:
+                from merlin.runtime.out_bin import binary_console_diagnostics
+                from merlin.runtime.whole_model_readback import group_names, parse_group_profile
+
+                profile = parse_group_profile(binary_console_diagnostics(console).decode())
+                sidecar = json.loads((elf.parent / "device_signatures.json").read_text())
+                rows = sidecar["routed"]
+                assert profile["calls"] == 6 and profile["dropped"] == 0
+                expected_names = [name for name, _ in group_names(rows)] + [r["symbol"] for r in rows] * 2
+                assert [r["name"] for r in profile["groups"]] == expected_names
+                assert all(r["cycles"] > 0 for r in profile["groups"])
+                (root / name / "group_profile_observation.json").write_text(json.dumps(profile, indent=2))
             outputs.append(actual)
             assert len(provider.results) == 2
             qualification, history, carried, lastpos = qualify_native(provider, w0, w1, data, state, 7, root / name)
@@ -249,7 +261,7 @@ def test_source_scheduling_runs_through_complete_ordinary_model(
                     functional_forward_count=metadata["metrics"]["cycles"],
                     counter_unit="functional Spike counter; not accelerator latency",
                     whole_model_requested_transfer_bytes="not measured",
-                    per_group_counters="unavailable for the fresh-writer symbol handoff",
+                    per_group_counters=metadata.get("group_profile", "not selected"),
                     sections=FB.elf_sections(elf),
                     provider_compiler_commands=provider.commands,
                     simulator_process_wall_seconds=wall,

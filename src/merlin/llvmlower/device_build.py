@@ -1075,6 +1075,12 @@ def apply_post_offload_transform(routing, prepared: Path, sidecar: Path, workdir
         raise ValueError("post-offload transform changed source routing identity")
     if not selected.is_file():
         raise ValueError("post-offload transform returned no model file")
+    # Later preparation can overwrite the input path. Retain the actual
+    # pre-callback source for checked call/ABI observations, not just its hash.
+    snapshot = workdir / "post_offload_transform.source.mlir"
+    if snapshot.is_symlink() or selected.resolve() == snapshot.resolve() or prepared.resolve() == snapshot.resolve():
+        raise ValueError("post-offload transform used the reserved original-source snapshot path")
+    snapshot.write_bytes(original_source)
     def digest(data):
         return hashlib.sha256(data).hexdigest()
     (workdir / "post_offload_transform.json").write_text(
@@ -1082,6 +1088,7 @@ def apply_post_offload_transform(routing, prepared: Path, sidecar: Path, workdir
             {
                 "source_path": str(prepared.resolve()),
                 "source_sha256": digest(original_source),
+                "source_snapshot": str(snapshot.resolve()),
                 "routing_sidecar_sha256": digest(original_sidecar),
                 "selected_path": str(selected.resolve()),
                 "selected_sha256": digest(selected.read_bytes()),

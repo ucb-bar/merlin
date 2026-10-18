@@ -705,6 +705,13 @@ Tools: torch-mlir wheel python = full upstream pass registry + translate; clang-
 - `DeviceRouting.post_offload_transform` is an explicit host ABI preparation hook
   after source-bound declaration rewriting. The routing sidecar is immutable,
   selected IR bytes are recorded, and absent hooks perform no I/O or mutation.
+  The original pre-callback source is retained even for in-place callbacks and
+  bound into ordinary build recipes. `group_profile_bindings` observes only
+  exact routed-call retargeting plus the existing private fresh-writer wrapper
+  shape. It derives the borrowed void C-interface prototype, rejects ambiguous
+  calls/unknown helpers/ABI attributes, and reopens source/routing custody. This
+  host-only profiler bridge grants no ownership, numerical or execution support
+  and is not part of the shared author SDK.
   Dense adapter emission reports returned-argument identity only when the caller
   explicitly provides complete kernel output writes; emitted C is unchanged.
   The writer contract can explicitly allow initialized destinations when the

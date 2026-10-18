@@ -12,6 +12,7 @@ code_refs:
   - src/merlin/compile/scheduling/library_sources.py
   - src/merlin/compile/scheduling/compact_dense.py
   - src/merlin/compile/scheduling/dense_source.py
+  - src/merlin/llvmlower/group_profile_bindings.py
   - src/merlin/compile/scheduling/compact_verification.py
   - src/merlin/compile/scheduling/program_limits.py
   - src/merlin/model_check/program_admission.py
@@ -698,10 +699,31 @@ pointer transport independently of the corpus vocabulary; `i16` input embedding
 uses exact integer storage. This supplies type transport, not device arithmetic
 support. Unsupported element storage remains refused.
 
-The current per-group profiler cannot bracket the fresh-writer symbol handoff
-from the old routed-symbol roster. Those integration tests keep it disabled and
-report per-group contributions as unavailable. Functional forward counts are
-not hardware latency. Requested-byte reductions from neutral native execution
+The optional per-group profiler can follow the existing fresh-writer handoff.
+It reopens the retained pre-callback source and current prepared IR, checks that
+all original function bodies differ only in routed-call targets, then reads the
+new private wrapper's actual void ranked C interface. It checks direct borrowed
+calls, every descriptor argument including private scratch, original source
+types/operands/control flow, and unique source-to-callee mapping. Unknown added
+helpers, changed arithmetic, mixed original/new call targets and unknown ABI
+attributes diagnose. The ordinary build derives the mapping afresh, without a
+suffix or backend class; its generated binding JSON is an output, not an
+admission input. Original and selected source join the ordinary compilation recipe;
+the whole-model cache also binds the profiler's source owners.
+
+The linker wraps only the actual referenced borrowed entry, using its derived
+void pointer prototype. Repeated calls retain the original source route's name
+after the static source roster ends. The generated binding observation records
+the prepared-source and model-object hashes and actual undefined symbols. This
+is source/ABI attribution, not proof of target execution or numerical effects.
+The bracket includes the borrowed writer; fresh allocations, source preparation
+and dispatch outside that call contribute to gaps. Profiles with different
+boundaries or instrumentation selections are not paired timing comparisons.
+
+`test_dense_source_profile.py` exercises this through ordinary complete model
+compilation, actual linking and functional execution, preserving every output
+and carried state. Unprofiled execution remains available. Functional forward
+and per-group counts are not hardware latency. Requested-byte reductions from neutral native execution
 are not physical bus traffic. Larger native `.text` and compilation costs must
 be reported alongside traffic savings; the default planner has no calibrated
 cycle model. Qualified real target emission/mapping, runtime ownership and
@@ -716,6 +738,7 @@ temporary directory, and run:
 ```sh
 PYTHONPATH="$PWD/src" python -B -m pytest -p no:cacheprovider \
   merlin/tests/infra/test_dense_source_whole_model.py \
+  merlin/tests/infra/test_dense_source_profile.py \
   --basetemp "$TMPDIR/source-dense-reproduction" \
   -o tmp_path_retention_policy=all
 ```
@@ -842,9 +865,10 @@ a speedup claim. Smaller requested traffic does not establish latency savings.
 
 Existing target providers still need the fact-pinned dense declaration, checked
 allocation windows/reservations, qualified logical-operation projection and
-source-to-final-program conformance. Ordinary `lower_model` target routing has
-not been connected to this selected dense family: it retains its existing
-backend route. The integration must be supplied through public target hooks;
+source-to-final-program conformance. Source-bound catalogs can invoke the shared
+source entry through the ordinary build, as demonstrated above. Existing real
+target providers have not supplied its qualified contracts/adapters and retain
+their backend routes. Integration uses the public target hooks;
 no target source or protected reference compiler is imported by this mechanism.
 
 ## Executable schedule pipeline
