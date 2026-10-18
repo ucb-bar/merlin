@@ -27,6 +27,8 @@ code_refs:
   - src/merlin/compile/scheduling/row_contracts.py
   - src/merlin/llvmlower/cpu_softmax.py
   - src/merlin/llvmlower/automatic_host.py
+  - src/merlin/llvmlower/automatic_destinations.py
+  - src/merlin/llvmlower/destination_check.py
   - src/merlin/llvmlower/quant_round_check.py
   - src/merlin/compile/scheduling/configuration.py
   - src/merlin/transforms/row_normalization.py

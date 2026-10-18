@@ -3,7 +3,7 @@ title: Optional lowering passes — list, select, copy
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-10-08
+last_verified: 2026-10-18
 related: [model_lowering, whole_model_on_accelerator, extending_the_stack]
 code_refs: [src/merlin/llvmlower/optional_passes.py,
             src/merlin/llvmlower/int_softmax_table.py,
@@ -15,9 +15,9 @@ code_refs: [src/merlin/llvmlower/optional_passes.py,
 
 # Optional lowering passes
 
-Merlin's optional transforms are **global and opt-in**. Each one matches IR structure, never a model,
-shape or target name. You can turn one on by name, or copy it into your own out-of-tree package and
-change it there. `merlin.llvmlower.optional_passes` is the one list of them. For each pass it records
+Merlin's optional transforms expose explicit defaults and controls. They derive eligibility from
+IR semantics, shapes and declared capabilities. Merlin owns reusable algorithms; target-specific
+extensions belong in out-of-tree packages. `merlin.llvmlower.optional_passes` is the one list of them. For each pass it records
 the stage it acts in, whether it is exact, its default, and what it changes in the program.
 
 ## List them
@@ -59,6 +59,16 @@ Each entry names the switch that already existed, and selecting it flips that sw
   explicit selection wins over the variable, which still works on its own for A/B builds;
 * a pass of the **integer datapath** (`merlin.llvmlower.quant_passes`), added to or removed from the
   set `apply_quant` runs.
+
+## Automatic host destinations
+
+`automatic-host-destinations` defaults on for the supported serial host route.
+It forwards a closed pointwise producer into a fresh padded destination,
+initializing only the exterior. Unknown effects, observed intermediates,
+unsupported regions and exhausted growth/index budgets retain the original
+source. The actual emitted region partition and scalar body are checked before
+ordinary bufferization. Use `--no-pass automatic-host-destinations` for a paired
+control. See [inputs, guarantees and fallback](../reference/host_tensor_destinations.md).
 
 ## int-softmax-table
 

@@ -74,6 +74,16 @@ _INTEGER_DATAPATH = "on in the integer (int8 compute) datapath"
 
 REGISTRY: tuple[OptionalPass, ...] = (
     OptionalPass(
+        name="automatic-host-destinations",
+        summary="forward closed pointwise writes into fresh padded tensor destinations",
+        changes="initialize only the exact exterior and retain original interior arithmetic and tensor ownership",
+        exactness=EXACT,
+        default="on in ordinary serial host lowering for checked static regions within IR budgets",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_DESTINATIONS",
+        on_by_default=True,
+    ),
+    OptionalPass(
         name="automatic-host-rows",
         summary="schedule closed source normalization islands one complete row at a time",
         changes="retain source arithmetic/reduction order and restrict private tensor intermediates to one row",

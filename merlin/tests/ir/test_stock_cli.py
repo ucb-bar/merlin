@@ -132,3 +132,24 @@ def test_connected_multioutput_host_compiles_links_and_executes(stock, tmp_path)
     recipe = json.loads((tmp_path / "lowering_recipe.json").read_text())
     assert recipe["status"] == "returned"
     assert [entry["argv"][0] for entry in recipe["commands"]] == [str(tools[0]), str(tools[1])]
+
+
+def test_automatic_destination_selection_retains_the_legal_stock_route(stock, tmp_path):
+    from merlin.common.paths import repo_root
+    from merlin.llvmlower.abi import HostModel, PrivateHostImagePolicy
+    from merlin.llvmlower.lower import lower_model
+
+    tools = (toolchain.llvm_install() / "bin" / "mlir-opt", toolchain.mlir_translate(), toolchain.clang())
+    if not all(path.is_file() for path in tools):
+        pytest.skip("requires selected stock MLIR and clang tools")
+    fixture = repo_root() / "merlin/tests/ir/insert_destination_fixture.mlir"
+    source = fixture.read_text().replace("@padded", "@forward")
+    built = lower_model(source, tmp_path, targets=("host",), features=frozenset())
+    assert built.stats["automatic_host_destinations"]["rewrites"] == 0
+    invoke = HostModel.load(str(built.host_so), image_policy=PrivateHostImagePolicy(tmp_path.resolve()))
+    values = np.arange(-3, 3, dtype=np.float32).reshape(2, 3)
+    out = np.full((4, 5), 99, dtype=np.int8)
+    invoke([(array.ctypes.data, array.shape) for array in (values, out)])
+    expected = np.zeros((4, 5), dtype=np.int8)
+    expected[1:3, 1:4] = values.astype(np.int8)
+    np.testing.assert_array_equal(out, expected)

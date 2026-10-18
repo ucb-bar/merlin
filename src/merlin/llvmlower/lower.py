@@ -58,6 +58,7 @@ STAGES = compile_trace.declare(
         "input",
         "host-graph-optimized",
         "host-row-scheduled",
+        "host-destination-reused",
         *PREPROCESS_STAGES,
         "upstream",
         "upstream-scheduled",
@@ -186,6 +187,19 @@ def lower_model(
         )
         if row_report["rewrites"]:
             audit.stage("host-row-scheduled", mlir_text)
+        from .automatic_destinations import prepare_automatic_destinations
+        from .toolchain import _env
+
+        mlir_text, destination_report = prepare_automatic_destinations(
+            mlir_text, serial=serial_rows and _env("MERLIN_COMPILER_DRIVER", "python") == "python",
+            index_bits=64 if index_bits is None else index_bits, data_layout=data_layout
+        )
+        if destination_report["rewrites"]:
+            from .impr_features import normalize
+
+            features = normalize(set(features or ()) | {"reuse_tensor_destination"})
+            audit.stage("host-destination-reused", mlir_text)
+        write_pretty_json(work / "automatic-host-destinations.json", destination_report)
         if textual:
             from .passes_xdsl import preprocess_text_textual
 
@@ -196,6 +210,7 @@ def lower_model(
         if graph_report is not None:
             stats["graph_optimizations"] = graph_report
         stats["automatic_host_rows"] = row_report
+        stats["automatic_host_destinations"] = destination_report
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
         row_report["upstream_file_sha256"] = sha256_text(upstream_text)
         write_pretty_json(work / "automatic-host-rows.json", row_report)
