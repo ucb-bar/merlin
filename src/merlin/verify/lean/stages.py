@@ -16,6 +16,8 @@ import os
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
 
 ENV = "MERLIN_LEAN_STAGES"
@@ -24,11 +26,45 @@ ENV = "MERLIN_LEAN_STAGES"
 RUN = uuid.uuid4().hex
 
 
+@dataclass
+class Capture:
+    """One fresh, scoped recording; only a normally exited capture is complete."""
+
+    root: Path
+    run: str
+    complete: bool = False
+
+
+_ACTIVE: ContextVar[Capture | None] = ContextVar("merlin_lean_capture", default=None)
+
+
+@contextmanager
+def capture(root: Path) -> Iterator[Capture]:
+    """Record this execution without changing process-wide recording environment variables.
+
+    Nested captures refuse rather than silently removing boundaries from the outer chain.
+    Existing directories refuse, so an interrupted build cannot reuse old evidence.
+    """
+    if _ACTIVE.get() is not None:
+        raise ValueError("nested Lean captures are not supported")
+    root = root.resolve()
+    root.mkdir(parents=True, exist_ok=False)
+    recording = Capture(root, uuid.uuid4().hex)
+    token = _ACTIVE.set(recording)
+    try:
+        yield recording
+        recording.complete = True
+    finally:
+        _ACTIVE.reset(token)
+
+
 def enabled() -> bool:
-    return bool(os.environ.get(ENV))
+    return _ACTIVE.get() is not None or bool(os.environ.get(ENV))
 
 
 def _dir() -> Path:
+    if recording := _ACTIVE.get():
+        return recording.root
     return Path(os.environ[ENV])
 
 
@@ -125,7 +161,7 @@ def record_boundary(boundary: str, pass_entry: str, before: str, after: str, *, 
         "schema": "merlin.lean.stage.v1",
         "boundary": boundary,
         "pass": pass_entry,
-        "run": RUN,
+        "run": recording.run if (recording := _ACTIVE.get()) else RUN,
         "before_sha256": hashlib.sha256(before.encode()).hexdigest(),
         "after_sha256": hashlib.sha256(after.encode()).hexdigest(),
         "changed": before != after,

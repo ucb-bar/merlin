@@ -17,6 +17,8 @@ code_refs:
   - merlin/lean/MerlinVerify/Rules/Motion.lean
   - src/merlin/verify/lean/check.py
   - src/merlin/verify/lean/cli.py
+  - src/merlin/verify/lean/handoff.py
+  - merlin/tests/ir/test_lean_handoff.py
   - merlin/tests/ir/test_lean_cli.py
   - merlin/lean/MerlinVerify/Check/BindingFacts.lean
   - merlin/lean/MerlinVerify/Check/UniformFacts.lean
@@ -138,6 +140,40 @@ Lean model alone cannot establish that native execution is safe. Completed compa
 `matched_samples`, retain both evaluators' evidence, and never issue a verification receipt.
 Failed comparisons and unavailable tools exit 2. Existing comparison directories are refused
 so a failed rerun cannot reuse an earlier success.
+
+## Require verification before consuming shared-pass output
+
+The Python lowering API has an explicit mode that stops compilation unless preprocessing has
+a replayed, defined Lean chain. Select the same authoritative MLIR interpreter as the compiler
+and supply the semantic index width explicitly:
+
+```python
+from pathlib import Path
+from merlin.llvmlower.lower import lower_model
+from merlin.verify.lean.handoff import Options
+
+result = lower_model(
+    source_mlir,
+    workdir,
+    index_bits=64,
+    shared_pass_verification=Options("forward", 64, Path(compiler_python)),
+)
+```
+
+`lower_model_file` accepts the same option. For another consumer, including an OOT driver,
+`merlin.verify.lean.handoff.run(source, output_path, options, preprocess)` runs an explicitly
+supplied preprocessing function and returns its verified text, statistics and evidence path.
+Consume that returned text. The recorder uses a fresh context-local capture; each recorded
+boundary, including unchanged ones, is checked. Source support, source definedness, chain replay,
+input/output byte identity and capture completeness are all required. A failed check raises
+`VerificationError` before downstream lowering starts. Reports are retained beside the handoff
+under `lean-shared-passes/<attempt>/`.
+
+This mode currently wraps `lower_model`'s shared preprocessing. It does not include earlier
+model capture or preparation, native upstream passes, OOT implementation, LLVM or runtime.
+The report states the typed, initialized-input domain and ledger assumptions. Other drivers
+must explicitly call the gate at their own tensor handoff; ordinary ungated compilation remains
+available. Missing tools, unsupported rewrites and undefined source results stop a gated build.
 
 ## What is exercised
 

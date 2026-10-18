@@ -11,7 +11,7 @@ from __future__ import annotations
 import os as _os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from merlin.common import compile_trace
 from merlin.common.ir_audit import IrAudit, audit_mode
@@ -35,6 +35,9 @@ from .prov_cse import ensure_registered as _register_cse_through_provenance
 from .source_expression_interval import IntervalEffectContract
 from .source_scalar_carrier_binding import host_admitted
 from .transpose_maps import ensure_registered as _register_fold_weight_transpose
+
+if TYPE_CHECKING:
+    from merlin.verify.lean.handoff import Options as SharedPassVerification
 
 _register_epilogue_fusion()
 _register_fold_weight_transpose()
@@ -85,9 +88,9 @@ def lower_model(
     transform_schedule: str | None = None,
     hoist_static_allocs: bool = True,
     parallel: bool = False,
-    features: "frozenset[str] | None" = None,
+    features: frozenset[str] | None = None,
     parallel_harts: int | None = None,
-    parallel_chunks: "list | None" = None,
+    parallel_chunks: list | None = None,
     static_arena: bool | None = None,
     ir_audit: bool | str = False,
     audit_sidecars: tuple[str | Path, ...] = (),
@@ -96,6 +99,7 @@ def lower_model(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
+    shared_pass_verification: SharedPassVerification | None = None,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -117,6 +121,11 @@ def lower_model(
     ``textual=True`` uses compatibility pure-text preprocessing without an xDSL
     round-trip. The default route emits generic MLIR at the upstream seam to
     preserve attributes and avoid custom-printer grammar skew.
+
+    ``shared_pass_verification`` requires a fresh, replayed Lean chain through preprocessing,
+    including source support and definedness, before upstream lowering starts. It covers only
+    the recorded tensor handoff under its stated assumptions. Unsupported or unavailable checks
+    stop compilation. The semantic index width must match the explicit lowering width.
 
     ``vectorize=True`` bakes native RVV (fixed-width vector ops) into the IR instead of
     relying on clang auto-vectorization — for the rv64gcv vector-tile target.
@@ -140,15 +149,28 @@ def lower_model(
         work.mkdir(parents=True, exist_ok=True)
 
         audit.stage("input", mlir_text)
-        if textual:
-            from .passes_xdsl import preprocess_text_textual
 
-            upstream_text, stats = preprocess_text_textual(mlir_text)
-        else:
+        def preprocess(source):
+            if textual:
+                from .passes_xdsl import preprocess_text_textual
+
+                return preprocess_text_textual(source)
             observed = audit.directory is not None or compile_trace.active() is not None
-            upstream_text, stats = preprocess_text(mlir_text, audit=audit) if observed else preprocess_text(mlir_text)
-        (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
-        _lean_stages.record_handoff(work / "model.upstream.mlir")
+            return preprocess_text(source, audit=audit) if observed else preprocess_text(source)
+
+        handoff = work / "model.upstream.mlir"
+        if shared_pass_verification is not None:
+            from merlin.verify.lean.handoff import run as verify_shared_passes
+
+            if index_bits != shared_pass_verification.index_bits:
+                raise ValueError("shared-pass verification and explicit lowering index widths must match")
+            verified = verify_shared_passes(mlir_text, handoff, shared_pass_verification, preprocess)
+            upstream_text, stats = verified.text, verified.stats
+            stats["shared_pass_verification"] = str(verified.report)
+        else:
+            upstream_text, stats = preprocess(mlir_text)
+            handoff.write_text(upstream_text, encoding="utf-8")
+            _lean_stages.record_handoff(handoff)
 
         audit.stage("upstream", upstream_text)
         lowering_selection: dict[str, Any] = {}
@@ -245,9 +267,9 @@ def lower_model_file(
     transform_schedule: str | None = None,
     hoist_static_allocs: bool = True,
     parallel: bool = False,
-    features: "frozenset[str] | None" = None,
+    features: frozenset[str] | None = None,
     parallel_harts: int | None = None,
-    parallel_chunks: "list | None" = None,
+    parallel_chunks: list | None = None,
     static_arena: bool | None = None,
     ir_audit: bool | str = False,
     audit_sidecars: tuple[str | Path, ...] = (),
@@ -256,6 +278,7 @@ def lower_model_file(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
+    shared_pass_verification: SharedPassVerification | None = None,
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
@@ -278,4 +301,5 @@ def lower_model_file(
         masked_contraction_effects=masked_contraction_effects,
         source_observation_effects=source_observation_effects,
         source_scalar_carrier=source_scalar_carrier,
+        shared_pass_verification=shared_pass_verification,
     )
