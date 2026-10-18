@@ -106,7 +106,7 @@ def machine_bounds(
         rows = cols = None
     read_width = write_width = None
     if elaboration is None:
-        unresolved["movement"] = "no elaborated circuit was named, so the memory path is not derivable"
+        read_width, write_width = _facts_movement(facts, basis, unresolved)
     else:
         from merlin.targetgen.rtl import introspect  # noqa: PLC0415
 
@@ -119,8 +119,10 @@ def machine_bounds(
             write_width = _positive_int(found.get("write_bytes_per_cycle"))
             basis["movement"] = str(found.get("evidence") or "elaborated memory path")
         if read_width is None or write_width is None:
-            read_width = write_width = None
-            unresolved["movement"] = str(found.get("reason") or "the memory path widths are not positive")
+            circuit = str(found.get("reason") or "the memory path widths are not positive")
+            read_width, write_width = _facts_movement(facts, basis, unresolved)
+            if read_width is None:
+                unresolved["movement"] = f"{circuit}; {unresolved.get('movement', '')}"
     return {
         "array_rows": None if rows is None else int(rows),
         "array_cols": None if cols is None else int(cols),
@@ -130,6 +132,26 @@ def machine_bounds(
         "basis": basis,
         "unresolved": unresolved,
     }
+
+
+def _facts_movement(
+    facts: Mapping[str, Any], basis: dict[str, str], unresolved: dict[str, str]
+) -> tuple[int | None, int | None]:
+    """Read/write beat peaks from the facts' own timing structure, when no circuit was walked."""
+    from merlin.perf.movement_peak import movement_peak  # noqa: PLC0415
+
+    ports = movement_peak(facts)
+    read, write = ports.get("read_bytes_per_cycle"), ports.get("write_bytes_per_cycle")
+    if ports["status"] != "derived" or read is None or write is None:
+        unresolved["movement"] = "no elaborated circuit was walked and " + "; ".join(
+            f"{key}: {value}" for key, value in sorted(ports["unresolved"].items())
+        )
+        return None, None
+    basis["movement"] = (
+        f"facts.timing_structure.memory_clients beat peaks (read {read:g}, write {write:g} byte(s)/cycle); "
+        "the in-flight window is not applied without a fitted round trip"
+    )
+    return int(read), int(write)
 
 
 def roofline(

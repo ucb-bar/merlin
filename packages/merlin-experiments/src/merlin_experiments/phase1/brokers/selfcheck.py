@@ -9,11 +9,15 @@ redacted verdict + the agent's OWN artifacts back into the workspace. The agent 
 shim staged at <ws>/agent_selfcheck.py.
 
 Channel (under <ws>/.qa_channel/, RW from both sides via the bind mount):
-  req_<id>.json   agent -> broker : {capsules, workers, timeout, shape_coverage,
+  req_<id>.json   agent -> broker : {submission, capsules, workers, timeout, shape_coverage,
                                      offload_census, model_layers, optional sim/tiers}
   resp_<id>.json  broker -> agent : the redacted self-check JSON (golden expected values withheld)
   done_<id>       broker -> agent : marker that resp is complete
+  detached_<id>   agent -> broker : the waiting client returned on purpose; keep the request until
+                                    its deadline instead of judging it by the client's process
   STOP            driver -> broker: sentinel to exit (written after the agent round)
+
+``submission`` is ``submission`` (the default) or ``variants/<name>``: see ``selfcheck_sources``.
 
 Usage: selfcheck_broker.py --ws <workspace> [--poll 0.5]
 """
@@ -34,7 +38,9 @@ import tempfile
 import time
 from pathlib import Path
 
+from merlin_experiments.phase1.brokers import selfcheck_sources as sources
 from merlin_experiments.phase1.context import add_context_arguments, context_argv, resolve_context
+from merlin_experiments.phase1.feedback.dispatch import REQUIRED_SIM, grade_selection_for
 from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worker_command
 
 
@@ -43,8 +49,10 @@ def _freeze_passed_source(ws: Path, expected_digest: str, *, source_ws: Path | N
     from merlin_experiments.phase1.feedback import snapshots
 
     token, error = snapshots.create_promotion_snapshot(
-        ws, source_ws or ws, expected_digest,
-        submission_digest=lambda root: _submission_digest(Path(root) / "submission")
+        ws,
+        source_ws or ws,
+        expected_digest,
+        submission_digest=lambda root: _submission_digest(Path(root) / "submission"),
     )
     if error:
         raise RuntimeError(error)
@@ -54,23 +62,29 @@ def _freeze_passed_source(ws: Path, expected_digest: str, *, source_ws: Path | N
     return source
 
 
-def _working_snapshot(ws: Path, expected_digest: str) -> Path:
-    """Copy one request's source under the task temp root before launching the grader."""
-    source = ws / "submission"
-    if source.is_symlink() or any(path.is_symlink() for path in source.rglob("*")):
-        raise ValueError("self-check source contains a symlink")
+def _working_snapshot(ws: Path, expected_digest: str, *, label: str = sources.SUBMISSION) -> Path:
+    """Copy one request's source under the task temp root before launching the grader.
+
+    The selected tree (``submission/`` or ``variants/<name>/``) is read through a directory opened
+    without following symlinks and always lands at ``<snapshot>/submission``, so the grader sees the
+    same package layout whichever tree was asked for.
+    """
     tmpdir = os.environ.get("TMPDIR")
-    if not tmpdir or not Path(tmpdir).is_absolute():
-        raise ValueError("self-check requires a task-owned TMPDIR")
-    root = Path(tempfile.mkdtemp(prefix="merlin_selfcheck_", dir=tmpdir))
-    try:
-        shutil.copytree(source, root / "submission", ignore=shutil.ignore_patterns(*_DIGEST_IGNORES))
-        if _submission_digest(root / "submission") != expected_digest:
-            raise ValueError("submission changed while taking self-check snapshot")
-        return root
-    except Exception:
-        shutil.rmtree(root)
-        raise
+    with sources.pinned_source(ws, label) as source:
+        if any(path.is_symlink() for path in source.rglob("*")):
+            raise ValueError("self-check source contains a symlink")
+        if not tmpdir or not Path(tmpdir).is_absolute():
+            raise ValueError("self-check requires a task-owned TMPDIR")
+        root = Path(tempfile.mkdtemp(prefix="merlin_selfcheck_", dir=tmpdir))
+        try:
+            shutil.copytree(source, root / "submission", ignore=shutil.ignore_patterns(*_DIGEST_IGNORES))
+            if _submission_digest(root / "submission") != expected_digest:
+                raise ValueError(f"{label} changed while taking self-check snapshot")
+            return root
+        except Exception:
+            shutil.rmtree(root)
+            raise
+
 
 #: request key -> the real self-check's flag, for every probe that replaces the capsule suite. The
 #: shim writes the keys, this broker turns them back into flags; a probe missing here is one a
@@ -127,6 +141,10 @@ def _decorate_response(
             "raw_tail": raw[-1000:],
         }
     requested = request.get("submission_sha256")
+    requested_sim = request.get("sim")
+    if isinstance(requested_sim, str) and requested_sim and requested_sim != body.get("sim", requested_sim):
+        # Said, not hidden: the pinned engine's name is served by the grade's own selection.
+        body["requested_sim"] = requested_sim
     body.update(
         {
             "selfcheck_protocol": PROTOCOL_VERSION,
@@ -138,15 +156,16 @@ def _decorate_response(
             "graded_at_unix_ns": completed_ns,
         }
     )
-    if requested and requested != submission_sha256:
+    if requested and submission_sha256 and requested != submission_sha256:
         # SAID, NOT HIDDEN. The verdict describes bytes NEWER than the ones asked about, which is more
         # useful than the ones asked about -- but only while it is stated, or the agent would read a
         # verdict as being about code it has since replaced.
         body["graded_newer_bytes"] = True
-        body["graded_newer_note"] = (
-            "you edited the submission while this check was queued, so it graded your CURRENT bytes "
-            "rather than the ones present when you asked. The verdict is about the newer code."
+        body["graded_newer_note"] = sources.newer_bytes_note(
+            request.get("submission", sources.SUBMISSION) if isinstance(request, dict) else sources.SUBMISSION
         )
+    # Which tree this verdict is about, on every response; a variant's also says it is not official.
+    body.update(sources.response_fields(request, submission_sha256))
     return body
 
 
@@ -164,16 +183,23 @@ def _required_rtl_engine() -> str | None:
 
 
 def _allowed_sims() -> tuple[str, ...]:
-    """Spike plus either the one pinned RTL engine or the closed registered RTL set."""
+    """Spike plus either the one pinned RTL engine or the closed registered RTL set, and the grade's
+    own selection (``REQUIRED_SIM``), which honours the pin itself."""
     required = _required_rtl_engine()
     if required is not None:
-        return ("spike", required) if required in _rtl_engines() else ("spike",)
-    return ("spike",) + _rtl_engines()
+        return ("spike", required, REQUIRED_SIM) if required in _rtl_engines() else ("spike", REQUIRED_SIM)
+    return ("spike",) + _rtl_engines() + (REQUIRED_SIM,)
 
 
-def _default_sim() -> str | None:
-    required = _required_rtl_engine()
-    return required if required in _rtl_engines() else None
+def _default_sim() -> str:
+    """An unnamed engine means every tier the official grade selects, never one engine.
+
+    This returned the pinned RTL engine, so an unflagged request ran ``--sim gsim``: Spike plus a gSIM
+    adapter built WITHOUT the grade's selection record. Its verdict could differ from the grade's and
+    its exact-byte simulator certificates were keyed to a different instrument, so neither side could
+    carry the other's gSIM result. The grade's own selection honours the pin, so nothing is lost.
+    """
+    return REQUIRED_SIM
 
 
 def _sim_policy_error(sim: str) -> str | None:
@@ -279,6 +305,18 @@ def _requester_alive(request: dict) -> bool | None:
     return state != "Z" and actual_start == expected_start
 
 
+def _detached(request: Path) -> bool:
+    """Whether the request's client returned on purpose and left it to its deadline lease.
+
+    A client that submits with a short wait budget and collects later with ``--attach`` exits while
+    its request is still queued or running. Judged by that process alone, a same-namespace request
+    would be dropped or aborted as abandoned the moment the client returned. The marker is written
+    before the client exits, so its absence still means a client that died mid-wait.
+    """
+    rid = request.name[len("req_") : -len(".json")]
+    return bool(rid) and (request.parent / f"detached_{rid}").exists()
+
+
 def _pending_requests(ch: Path, seen: set[str], *, now: float | None = None) -> list[Path]:
     """Outstanding, live requests in arrival order.
 
@@ -296,7 +334,7 @@ def _pending_requests(ch: Path, seen: set[str], *, now: float | None = None) -> 
             continue
         try:
             body = json.loads(req.read_text(encoding="utf-8"))
-            if _requester_alive(body) is False:
+            if _requester_alive(body) is False and not _detached(req):
                 continue
             if now > _request_deadline(req):
                 continue
@@ -307,8 +345,9 @@ def _pending_requests(ch: Path, seen: set[str], *, now: float | None = None) -> 
     return [request for _, request in sorted(pending, key=lambda row: row[0])]
 
 
-def _abort_reason(ch: Path, orig_ppid: int, request: Path, deadline: float,
-                  *, request_stop: Path | None = None) -> str | None:
+def _abort_reason(
+    ch: Path, orig_ppid: int, request: Path, deadline: float, *, request_stop: Path | None = None
+) -> str | None:
     """Why the self-check in flight must stop now, or ``None`` to let it run.
 
     A CANCEL CANCELS. A client cancels by renaming its request away; the broker had already claimed
@@ -324,7 +363,7 @@ def _abort_reason(ch: Path, orig_ppid: int, request: Path, deadline: float,
     if not request.exists():
         return "the requester cancelled it"
     try:
-        if _requester_alive(json.loads(request.read_bytes())) is False:
+        if _requester_alive(json.loads(request.read_bytes())) is False and not _detached(request):
             return "requester exited"
     except (OSError, ValueError, AttributeError):
         return "request changed or became unreadable"
@@ -350,10 +389,88 @@ def _should_stop(ch: Path, orig_ppid: int) -> str | None:
 
 
 def _dispatch_capacity() -> int:
-    value = os.environ.get("MERLIN_SELFCHECK_BROKER_JOBS", "1")
+    from merlin.common.cpu_pool import compute_capacity
+
+    # A shared compute pool arbitrates the handlers' CPU, so it selects the dispatcher by default.
+    value = os.environ.get("MERLIN_SELFCHECK_BROKER_JOBS", "2" if compute_capacity() else "1")
     if value not in {"1", "2"}:
         raise ValueError("MERLIN_SELFCHECK_BROKER_JOBS must be 1 or 2")
     return int(value)
+
+
+#: Named capsules one ordinary request may carry per leased compute CPU under
+#: ``MERLIN_SELFCHECK_MAX_CAPSULES=auto``. Each build or simulator step of a capsule leases one CPU
+#: from the shared pool, so a request this size keeps the pool busy for several waves without the
+#: author splitting one affected operator family across requests (eight CPUs -> 64 capsules).
+CAPSULES_PER_COMPUTE_CPU = 8
+
+
+def _public_corpus_size(capsules_root) -> int | None:
+    """Capsules in the public corpus this broker grades, or ``None`` when it cannot be counted."""
+    if capsules_root is None:
+        return None
+    roots = [capsules_root] if isinstance(capsules_root, (str, Path)) else list(capsules_root)
+    try:
+        return len({path.parent for root in roots for path in Path(root).rglob("capsule.yaml")}) or None
+    except OSError:
+        return None
+
+
+def _ordinary_capsule_limit(corpus_size: int | None = None) -> int | None:
+    """The operator's per-request capsule bound, or ``None`` when none is selected.
+
+    ``auto`` sizes it from the shared compute pool the request's tiers will lease from
+    (``MERLIN_COMPUTE_CPUS``), falling back to this process's CPU affinity when no pool is selected.
+    An incomplete pool selection refuses, as it does for every other shared-compute consumer.
+    ``auto`` is never below the public corpus (``corpus_size``): sized from the pool alone it was
+    8 x 18 = 144 against a 146-capsule suite, which refused the full check the author is told to run.
+    An explicit number is the operator's own bound and is used exactly.
+    """
+    raw = os.environ.get("MERLIN_SELFCHECK_MAX_CAPSULES", "").strip()
+    if not raw:
+        return None
+    if raw == "auto":
+        from merlin.common.cpu_pool import grading_cpus
+
+        cpus = len(grading_cpus()) or len(os.sched_getaffinity(0))
+        return max(CAPSULES_PER_COMPUTE_CPU * max(1, cpus), corpus_size or 0)
+    if not raw.isdecimal() or int(raw) < 1:
+        raise ValueError("MERLIN_SELFCHECK_MAX_CAPSULES must be a positive integer or 'auto'")
+    return int(raw)
+
+
+def _feedback_scope_error(request, *, corpus_size: int | None = None):
+    """Operator-selected iteration bound; formal qualification uses its own path.
+
+    Under ``auto`` a full-suite request is admitted once the corpus is counted, because the bound
+    covers it; an explicit number keeps full-suite feedback disabled, as that operator chose.
+    """
+    limit = _ordinary_capsule_limit(corpus_size)
+    if limit is None:
+        return None
+    if request.get("action") or request.get("caller_layout") or any(request.get(key) for key in FORWARDED_PROBES):
+        return None
+    selected = str(request.get("capsules", "all"))
+    names = {name.strip() for name in selected.split(",") if name.strip()}
+    full_suite_fits = bool(corpus_size) and os.environ.get("MERLIN_SELFCHECK_MAX_CAPSULES", "").strip() == "auto"
+    if (selected.strip() == "all" and not full_suite_fits) or len(names) > limit:
+        return (
+            f"iteration feedback accepts at most {limit} named capsules per request; select affected capsules. "
+            "Full-suite feedback during authoring is disabled by the operator. "
+            "The separate final frozen qualification still covers the complete corpus."
+        )
+    return None
+
+
+def _ordinary_capacity():
+    from merlin.common.cpu_pool import compute_capacity
+
+    # Concurrent numerical handlers; each one's steps lease the shared pool, which is the only limiter.
+    pool = compute_capacity()
+    raw = os.environ.get("MERLIN_SELFCHECK_ORDINARY_JOBS", str(pool or 1))
+    if not raw.isascii() or not raw.isdecimal() or not 1 <= int(raw) <= max(2, pool):
+        raise ValueError("MERLIN_SELFCHECK_ORDINARY_JOBS must be 1 or 2, or at most the shared compute pool size")
+    return int(raw)
 
 
 def _process_record(pid):
@@ -393,10 +510,12 @@ def _stop_owned_worker(process):
                     pass
         end = time.monotonic() + 3
         while time.monotonic() < end:
-            if not any((row := _process_record(pid)) is not None and row[1] == birth and row[2] != "Z"
-                       for pid, birth in owned.items()):
+            if not any(
+                (row := _process_record(pid)) is not None and row[1] == birth and row[2] != "Z"
+                for pid, birth in owned.items()
+            ):
                 break
-            time.sleep(.02)
+            time.sleep(0.02)
     process.wait(timeout=5)
 
 
@@ -408,18 +527,46 @@ def _diagnostic_request(request: Path, *, request_bytes=None) -> bool:
         return False  # The unchanged handler reports the malformed request.
 
 
-def _handler_command(a, context, capsules_root, contract, promotion_root, request, stop,
-                     *, request_bytes=None):
+def _lane_admits(active, *, diagnostic: bool, variant: bool, ordinary_capacity: int, variant_capacity: int) -> bool:
+    """Whether one more handler of this kind may start beside the ``active`` ones.
+
+    Up to ``ordinary_capacity`` numerical requests run at once plus one diagnostic probe. Variant
+    requests share the numerical lane, at most ``variant_capacity`` of them, so a queue of variants
+    never holds every slot a ``submission/`` check could use. A request skipped here stays queued in
+    arrival order without blocking a later request of another kind.
+    """
+    active = tuple(active)
+    if len(active) >= ordinary_capacity + 1:
+        return False
+    if sum(job["diagnostic"] == diagnostic for job in active) >= (1 if diagnostic else ordinary_capacity):
+        return False
+    variants = sum(job["variant"] and not job["diagnostic"] for job in active)
+    return not (variant and not diagnostic and variants >= variant_capacity)
+
+
+def _handler_command(a, context, capsules_root, contract, promotion_root, request, stop, *, request_bytes=None):
     """Original command and input paths; request data cannot choose a handler."""
     command = [sys.executable, "-m", "merlin_experiments.phase1.brokers.selfcheck"]
-    command += context_argv(context) + ["--ws", str(Path(a.ws).resolve()),
-        "--poll", str(a.poll), "--capsules-root", str(capsules_root),
-        "--one-request", request.name, "--request-stop", str(stop),
-        "--request-sha256", hashlib.sha256(
-            request.read_bytes() if request_bytes is None else request_bytes).hexdigest()]
-    for flag, value in (("--contract", contract), ("--policy-capsules-root", promotion_root),
-                        ("--rtl-facts", a.rtl_facts),
-                        ("--compiler-bundle-manifest", a.compiler_bundle_manifest)):
+    command += context_argv(context) + [
+        "--ws",
+        str(Path(a.ws).resolve()),
+        "--poll",
+        str(a.poll),
+        "--capsules-root",
+        str(capsules_root),
+        "--one-request",
+        request.name,
+        "--request-stop",
+        str(stop),
+        "--request-sha256",
+        hashlib.sha256(request.read_bytes() if request_bytes is None else request_bytes).hexdigest(),
+    ]
+    for flag, value in (
+        ("--contract", contract),
+        ("--policy-capsules-root", promotion_root),
+        ("--rtl-facts", a.rtl_facts),
+        ("--compiler-bundle-manifest", a.compiler_bundle_manifest),
+    ):
         if value is not None:
             command += [flag, str(value)]
     return command
@@ -443,22 +590,39 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
         health = json.loads(health_path.read_bytes())
     except (OSError, ValueError):
         health = {}
-    health.update(protocol=PROTOCOL_VERSION, dispatch_capacity=2,
-                  broker_starts=int(health.get("broker_starts", 0)) + 1,
-                  processed=int(health.get("processed", 0)),
-                  max_queue_depth=int(health.get("max_queue_depth", 0)),
-                  last_started_at_unix_ns=time.time_ns())
+    ordinary_capacity = _ordinary_capacity()
+    # Variants share the ordinary lane; their own bound keeps the rest of it for submission/ checks.
+    variant_capacity = sources.variant_capacity(ordinary_capacity)
+    health.update(
+        protocol=PROTOCOL_VERSION,
+        dispatch_capacity=ordinary_capacity + 1,
+        ordinary_capacity=ordinary_capacity,
+        variant_capacity=variant_capacity,
+        broker_starts=int(health.get("broker_starts", 0)) + 1,
+        processed=int(health.get("processed", 0)),
+        max_queue_depth=int(health.get("max_queue_depth", 0)),
+        last_started_at_unix_ns=time.time_ns(),
+    )
     try:
         while not _should_stop(ch, orig_ppid):
             for name, job in tuple(active.items()):
                 if job["process"].poll() is None:
                     continue
-                request, rid = job["request"], name[len("req_"):-len(".json")]
+                request, rid = job["request"], name[len("req_") : -len(".json")]
                 if not ((ch / f"done_{rid}").exists() and (ch / f"resp_{rid}.json").exists()):
-                    _atomic_write(ch / f"resp_{rid}.json", json.dumps({"all_pass": False,
-                        "error": "broker: request handler ended without durable completion",
-                        "selfcheck_protocol": PROTOCOL_VERSION, "selfcheck_request_id": rid,
-                        "submission_sha256": None}))
+                    _atomic_write(
+                        ch / f"resp_{rid}.json",
+                        json.dumps(
+                            {
+                                "all_pass": False,
+                                "error": "broker: request handler ended without durable completion",
+                                "selfcheck_protocol": PROTOCOL_VERSION,
+                                "selfcheck_request_id": rid,
+                                "submission_sha256": None,
+                                **job["source_fields"],
+                            }
+                        ),
+                    )
                     _atomic_write(ch / f"done_{rid}", "err")
                 job["stop"].unlink(missing_ok=True)
                 del active[name]
@@ -472,25 +636,52 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                 except FileNotFoundError:
                     continue
                 diagnostic = _diagnostic_request(request, request_bytes=request_bytes)
-                if len(active) >= 2 or any(j["diagnostic"] == diagnostic for j in active.values()):
+                variant = sources.is_variant_request(request_bytes)
+                if not _lane_admits(
+                    active.values(),
+                    diagnostic=diagnostic,
+                    variant=variant,
+                    ordinary_capacity=ordinary_capacity,
+                    variant_capacity=variant_capacity,
+                ):
                     continue
                 stop = ch / f".handler-stop_{secrets.token_hex(12)}"
                 try:
-                    command = _handler_command(a, context, capsules_root, contract, promotion_root, request, stop,
-                                               request_bytes=request_bytes)
+                    command = _handler_command(
+                        a, context, capsules_root, contract, promotion_root, request, stop, request_bytes=request_bytes
+                    )
                 except FileNotFoundError:
                     continue  # Ordinary cancellation must not stop another lane.
-                process = subprocess.Popen(worker_pool_command(inherited_python_command(command), os.environ),
-                    cwd=ws, env=dict(os.environ))
+                process = subprocess.Popen(
+                    worker_pool_command(inherited_python_command(command), os.environ), cwd=ws, env=dict(os.environ)
+                )
                 stat = _process_record(process.pid)
                 seen.add(request.name)
-                active[request.name] = {"process": process, "request": request,
-                                        "stop": stop, "diagnostic": diagnostic,
-                                        "start_ticks": stat[1] if stat else None}
+                try:
+                    body = json.loads(request_bytes)
+                except ValueError:
+                    body = {}
+                active[request.name] = {
+                    "process": process,
+                    "request": request,
+                    "stop": stop,
+                    "diagnostic": diagnostic,
+                    "variant": variant,
+                    "source_fields": sources.response_fields(body if isinstance(body, dict) else {}, None),
+                    "start_ticks": stat[1] if stat else None,
+                }
             health["active_handlers"] = len(active)
-            health["handlers"] = [{"request_id": name[len("req_"):-len(".json")],
-                "pid": job["process"].pid, "start_ticks": job["start_ticks"],
-                "diagnostic": job["diagnostic"]} for name, job in active.items()]
+            health["handlers"] = [
+                {
+                    "request_id": name[len("req_") : -len(".json")],
+                    "pid": job["process"].pid,
+                    "start_ticks": job["start_ticks"],
+                    "diagnostic": job["diagnostic"],
+                    "submission": job["source_fields"]["selfcheck_submission"],
+                }
+                for name, job in active.items()
+            ]
+            health["active_variants"] = sum(job["variant"] for job in active.values())
             health["queued_requests"] = len(_pending_requests(ch, seen))
             _atomic_write(health_path, json.dumps(health, sort_keys=True))
             time.sleep(a.poll)
@@ -544,9 +735,10 @@ def main(
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True, exist_ok=True)
     if a.one_request is not None and (
-        Path(a.one_request).name != a.one_request or not a.one_request.startswith("req_")
+        Path(a.one_request).name != a.one_request
+        or not a.one_request.startswith("req_")
         or not a.one_request.endswith(".json")
-        or a.one_request[len("req_"):-len(".json")] in {"", ".", ".."}
+        or a.one_request[len("req_") : -len(".json")] in {"", ".", ".."}
     ):
         ap.error("single request must name one channel request")
     if a.request_stop is not None and a.request_stop.parent.resolve() != ch.resolve():
@@ -558,12 +750,17 @@ def main(
         from .common_transforms import CommonTransformService
 
         common_service = CommonTransformService(
-            workspace=ws, bundle_manifest=a.compiler_bundle_manifest, repo=context.repo,
+            workspace=ws,
+            bundle_manifest=a.compiler_bundle_manifest,
+            repo=context.repo,
         )
     orig_ppid = os.getppid()
     seen: set[str] = set()
-    health_path = (ch / "broker_health.json" if a.one_request is None
-                   else ch / f"health_{a.one_request[len('req_'):-len('.json')]}.json")
+    health_path = (
+        ch / "broker_health.json"
+        if a.one_request is None
+        else ch / f"health_{a.one_request[len('req_') : -len('.json')]}.json"
+    )
     try:
         health = json.loads(health_path.read_text(encoding="utf-8"))
     except Exception:
@@ -632,7 +829,41 @@ def main(
             _atomic_write(ch / f"done_{rid}", "err")
             continue
         started_ns = time.time_ns()
-        graded_digest = _submission_digest(ws / "submission")
+        scope_error = _feedback_scope_error(r, corpus_size=_public_corpus_size(capsules_root))
+        if scope_error is not None:
+            doc = _decorate_response(
+                json.dumps(
+                    {"status": "not_scheduled", "all_pass": None, "error": scope_error, "numeric_assessment": "not_run"}
+                ),
+                r,
+                rid,
+                r.get("submission_sha256"),
+                started_ns=started_ns,
+                completed_ns=time.time_ns(),
+            )
+            _atomic_write(resp, json.dumps(doc))
+            _atomic_write(ch / f"done_{rid}", "not_scheduled")
+            continue
+        try:
+            # WHICH TREE: submission/ or an author-side variants/<name>/, refused before any work when
+            # the request names anything else or the tree is not a real directory in the workspace.
+            label = sources.request_label(r)
+            graded_digest = sources.source_digest(ws, label, _submission_digest)
+        except (OSError, ValueError) as error:
+            from merlin.common.path_scrub import scrub_host_paths
+
+            doc = _decorate_response(
+                json.dumps({"error": f"broker: {scrub_host_paths(str(error))}", "all_pass": False}),
+                r,
+                rid,
+                None,
+                started_ns=started_ns,
+                completed_ns=time.time_ns(),
+            )
+            _atomic_write(resp, json.dumps(doc))
+            _atomic_write(ch / f"done_{rid}", "err")
+            continue
+        variant = label != sources.SUBMISSION
         if int(r.get("protocol", 1)) >= PROTOCOL_VERSION:
             # A REQUEST WHOSE BYTES MOVED IS SERVED, NOT REFUSED. Rejecting it was a livelock: the
             # agent asks for a check and keeps working -- which is the behaviour the tool is for -- so
@@ -678,8 +909,11 @@ def main(
             except Exception as error:
                 from merlin.common.path_scrub import scrub_host_paths
 
-                body = {"status": "unavailable" if isinstance(error, FileNotFoundError) else "unknown",
-                        "reason": scrub_host_paths(str(error)), "all_pass": False}
+                body = {
+                    "status": "unavailable" if isinstance(error, FileNotFoundError) else "unknown",
+                    "reason": scrub_host_paths(str(error)),
+                    "all_pass": False,
+                }
             if r["action"] == "common-check":
                 # Error summaries remain bound to the actual request too. These
                 # hashes describe bytes; they do not turn a refusal into proof.
@@ -689,7 +923,12 @@ def main(
                         if isinstance(payload.get(field), str):
                             body.setdefault(key, hashlib.sha256(payload[field].encode()).hexdigest())
             doc = _decorate_response(
-                json.dumps(body), r, rid, graded_digest, started_ns=started_ns, completed_ns=time.time_ns(),
+                json.dumps(body),
+                r,
+                rid,
+                graded_digest,
+                started_ns=started_ns,
+                completed_ns=time.time_ns(),
             )
             _atomic_write(resp, json.dumps(doc))
             _atomic_write(ch / f"done_{rid}", "ok")
@@ -719,6 +958,7 @@ def main(
             _atomic_write(resp, json.dumps(doc))
             _atomic_write(ch / f"done_{rid}", "err")
             continue
+        sim = grade_selection_for(sim)
         to = int(r.get("timeout", 1800))
         worker_kwargs = {"rtl_facts": a.rtl_facts} if a.rtl_facts is not None else {}
         if a.compiler_bundle_manifest is not None:
@@ -773,10 +1013,11 @@ def main(
             aborted = False
             # Every check grades a private request snapshot. The author can keep
             # editing, and the response stays bound to the selected digest.
-            snapshot_root = _working_snapshot(ws, graded_digest)
+            snapshot_root = _working_snapshot(ws, graded_digest, label=label)
             argv2[argv2.index("--submission") + 1] = str(snapshot_root / "submission")
-            worker_env = dict(os.environ)
-            if not r.get("caller_layout") and not any(r.get(key) for key in FORWARDED_PROBES):
+            worker_env = dict(os.environ, **{sources.LABEL_ENV: label})
+            # Only submission/ may feed promotion: a variant's verdict never reaches the cert ledger.
+            if not variant and not r.get("caller_layout") and not any(r.get(key) for key in FORWARDED_PROBES):
                 worker_env.update(
                     MERLIN_SELFCHECK_PROMOTION_WS=str(ws),
                     MERLIN_SELFCHECK_PROMOTION_ROOT=str(promotion_capsules_root or capsules_root),
@@ -788,14 +1029,30 @@ def main(
 
                 proc = subprocess.Popen(
                     worker_pool_command(inherited_python_command(argv2), worker_env),
-                    cwd=str(ws), stdout=fo, stderr=fe, text=True, env=worker_env
+                    cwd=str(ws),
+                    stdout=fo,
+                    stderr=fe,
+                    text=True,
+                    env=worker_env,
                 )
                 from ..feedback.background_admission import active_full_selfcheck
 
-                priority.enter_context(active_full_selfcheck(ws=ws, process=proc, request=r,
-                    source_sha256=graded_digest, public=capsules_root, context=context,
-                    contract=contract, bundle_manifest=a.compiler_bundle_manifest, sim=sim,
-                    dispatcher_pid=orig_ppid if a.one_request is not None else None))
+                # The foreground marker describes submission/ work; a variant publishes none.
+                foreground = contextlib.nullcontext()
+                if not variant:
+                    foreground = active_full_selfcheck(
+                        ws=ws,
+                        process=proc,
+                        request=r,
+                        source_sha256=graded_digest,
+                        public=capsules_root,
+                        context=context,
+                        contract=contract,
+                        bundle_manifest=a.compiler_bundle_manifest,
+                        sim=sim,
+                        dispatcher_pid=orig_ppid if a.one_request is not None else None,
+                    )
+                priority.enter_context(foreground)
                 while proc.poll() is None:
                     why = _abort_reason(ch, orig_ppid, req, deadline, request_stop=a.request_stop)
                     if why:
@@ -848,7 +1105,7 @@ def main(
                 json.dumps({"error": f"broker: {type(e).__name__}: {str(e)[:200]}", "all_pass": False}),
                 r,
                 rid,
-                _submission_digest(ws / "submission"),
+                graded_digest if variant else _submission_digest(ws / "submission"),
                 started_ns=started_ns,
                 completed_ns=time.time_ns(),
             )
@@ -857,7 +1114,7 @@ def main(
         # The optional queueing below must never hash the newly edited live workspace.
         promotion_source = None
         try:
-            if resp.exists():
+            if resp.exists() and not variant:
                 passed = json.loads(resp.read_text())
                 if not passed.get("error") and any(row.get("pass") is True for row in passed.get("per_capsule", [])):
                     promotion_source = _freeze_passed_source(ws, graded_digest, source_ws=snapshot_root)
@@ -878,9 +1135,10 @@ def main(
         # optional promotion: promotion is not part of the request and must not delay broker shutdown.
         if _should_stop(ch, orig_ppid):
             continue
-        if inspection:
+        if inspection or variant:
             # Static observations cannot trigger a numerical/RTL promotion or
             # pay for a simulator after a deliberately no-execution request.
+            # A variant is never submission/: its verdict promotes nothing.
             continue
 
         # PROMOTE off the SYNCHRONOUS path too. Promotion was first hooked into the async oracle alone,
@@ -890,13 +1148,20 @@ def main(
         try:
             import json as _j
 
+            from merlin_experiments.phase1.feedback.promotion import cert_already_executed
             from merlin_experiments.phase1.feedback.promotion import promote as _promote
             from merlin_experiments.phase1.feedback.promotion import resolve_tiers as _resolve
 
             _loop, _cert, _cover = _resolve(ws, context=context, capsules_root=promotion_capsules_root)
             if _loop and _cert and resp.exists():
                 _v = _j.loads(resp.read_text())
-                if isinstance(_v, dict) and not _v.get("error") and promotion_source is not None:
+                if cert_already_executed(_v, _cert):
+                    print(
+                        f"[promote] not enqueued: this check already ran {_cert} on its own selection",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                elif isinstance(_v, dict) and not _v.get("error") and promotion_source is not None:
                     _promote(
                         ws,
                         ch,
@@ -914,4 +1179,7 @@ def main(
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from merlin.common.cpu_pool import AUTHOR, cpu_priority
+
+    with cpu_priority(AUTHOR, export=True):  # Author-requested self-checks lease first.
+        raise SystemExit(main())

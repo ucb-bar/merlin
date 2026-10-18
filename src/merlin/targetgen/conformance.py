@@ -1427,6 +1427,17 @@ def _epilogue_axis(target: str) -> dict:
     taxonomy_status = IT.status_of(taxonomy)
     unread = readouts is None and taxonomy_status != IT.STATUS_DERIVED
 
+    # The derived output path (when the selected contract declares one) evidences each stage it
+    # performs: its readout stages, and a bias wherever it preloads the accumulator. It never
+    # overrides a declared readout that refuses a stage: that capsule would not be writable.
+    from merlin.runtime.commandbuffer import BIAS_STAGES
+
+    output_path = _declared_output_path(target)
+    path_stages = set(_path_stages(output_path)) if output_path is not None else set()
+    if output_path is not None and any(
+        stage.get("kind") == "preload" for stage in output_path.get("accumulator_stages") or ()
+    ):
+        path_stages |= set(BIAS_STAGES)
     required, rejected, unresolved = [], [], []
     for stage in _builder_epilogue_stages():
         family = sf.from_op(stage)
@@ -1446,6 +1457,7 @@ def _epilogue_axis(target: str) -> dict:
             for r in routes
         )
         no_readout_applies = bool(readouts) and not applying
+        by_path = stage in path_stages
         if no_readout_applies:
             rejected.append(
                 {
@@ -1461,7 +1473,7 @@ def _epilogue_axis(target: str) -> dict:
                     ),
                 }
             )
-        elif by_manifest or classes or applying:
+        elif by_manifest or classes or applying or by_path:
             required.append(
                 {
                     "stage": stage,
@@ -1469,7 +1481,8 @@ def _epilogue_axis(target: str) -> dict:
                     "evidenced_by": (["manifest_composed_with"] if by_manifest else [])
                     + (["isa_instruction_class"] if classes else [])
                     + (["readout_applies"] if on_readout else [])
-                    + (["contraction_stage_route"] if routed else []),
+                    + (["contraction_stage_route"] if routed else [])
+                    + (["derived_output_path"] if by_path else []),
                     "isa_classes": classes,
                 }
             )
@@ -2332,6 +2345,94 @@ def _group_signature(op: str, epilogue, dtype: str | None) -> str:
     )
 
 
+def _derived_epilogue_groups(target: str, oracle) -> list[dict]:
+    """Fused-epilogue group demands from the target's DERIVED output path, not from a capture.
+
+    A capture forms a group only where its numbers let the readout hold them: a model quantized per
+    output channel on a unit holding one scale per command forms none, and a corpus derived from such
+    captures alone would never ask a backend for the epilogue the hardware performs on every
+    contraction. So each contraction format the target declares gets the requantizing chain its
+    output path is DERIVED to apply on move-out -- a contraction-scoped bias route, then the scale,
+    then the rectifier -- and the same chain closed by the derived pool. Only stages the epilogue axis
+    requires are chained, so every demand is one a capsule builder writes and a readout declaration
+    does not contradict. Extents and values are the capsule builder's own: nothing here is a
+    workload's shape.
+    """
+    readout = getattr(oracle, "readout", None)
+    from merlin.runtime.commandbuffer import BIAS_STAGES
+
+    path = _declared_output_path(target)
+    preloads = False
+    if path is not None:
+        # The ordered output path: each declared stage kind in the command-buffer stage vocabulary.
+        derived = set(_path_stages(path))
+        preloads = any(stage.get("kind") == "preload" for stage in path.get("accumulator_stages") or ())
+    else:
+        derived = {stage for facet in getattr(readout, "facets", ()) or () for stage in facet.derived_stages}
+    if not derived:
+        return []
+    writable = {str(row.get("stage")) for row in (_epilogue_axis(target) or {}).get("required") or ()}
+    routes = getattr(oracle, "routes", ()) or ()
+    bias = [
+        stage
+        for stage in BIAS_STAGES
+        if stage in writable
+        and (preloads or any(r.stage == stage and r.composed_with == "contraction" for r in routes))
+    ][:1]
+    core = [*bias, *(stage for stage in ("acc_scale", "relu") if stage in derived and stage in writable)]
+    chains = [core] + ([[*core, "maxpool"]] if "maxpool" in derived and "maxpool" in writable else [])
+    contraction = (getattr(oracle, "cap_map", {}) or {}).get("contraction")
+    granularities = [g for g in getattr(readout, "scale_granularities", ()) if g == "tensor"]
+    rows = []
+    for chain in chains:
+        if len(chain) < 2 or "acc_scale" not in chain:
+            continue  # a single stage is the epilogue axis's member; an unscaled chain is not a readout
+        for dtype in getattr(contraction, "dtypes", ()) or ():
+            rows.append(
+                {
+                    "signature": _group_signature("matmul", chain, dtype),
+                    "op": "matmul",
+                    "epilogue": list(chain),
+                    "dtype": dtype,
+                    "scale_granularities": granularities,
+                    "groups": 0,
+                    "observed_in": [],
+                    "evidenced_by": ["derived_output_epilogue"],
+                }
+            )
+    return rows
+
+
+def _declared_output_path(target: str):
+    try:
+        from merlin.xdsl_dialects.lowering import output_fusion as OF
+
+        return OF.declared_path(target)
+    except (KeyError, ValueError):  # an unreadable declaration evidences nothing
+        return None
+
+
+def _path_stages(path) -> list[str]:
+    """The command-buffer stages an output path's readout performs, in its order."""
+    out = []
+    for stage in path.get("readout") or ():
+        kind = stage.get("kind")
+        if kind == "scale":
+            out.append("acc_scale")
+        elif kind == "activation" and stage.get("function") == "relu":
+            out.append("relu")
+        elif kind == "pool" and "max" in (stage.get("reductions") or ()):
+            out.append("maxpool")
+    return out
+
+
+def _unstatable_path_stages(path) -> dict[str, str]:
+    """Declared output-path capabilities no capsule stage can demand yet, each with why."""
+    from .column_readout_capsules import unstated
+
+    return unstated(path)
+
+
 def _group_axis(captures: dict[str, str | Path], target: str) -> dict:
     """The compute groups the target's captured models form, as capsule demands.
 
@@ -2390,13 +2491,23 @@ def _group_axis(captures: dict[str, str | Path], target: str) -> dict:
             granularity = entry.get("scale_granularity")
             if granularity and granularity not in row["scale_granularities"]:
                 row["scale_granularities"].append(granularity)
+    for row in _derived_epilogue_groups(target, oracle):
+        required.setdefault(row["signature"], row)
+    from .column_readout_capsules import requirements_for_oracle
+
+    for row in requirements_for_oracle(_declared_output_path(target), oracle, required.values()):
+        required.setdefault(row["signature"], row)
+    for name, why in _unstatable_path_stages(_declared_output_path(target)).items():
+        unstated[f"derived output path {name}: {why}"] += 1
     return {
         "status": "ok",
         "required": sorted(required.values(), key=lambda r: (-r["groups"], r["signature"])),
         "unstated": dict(unstated),
         "captures_unreadable": unreadable,
         "axis_basis": (
-            "the compute groups this target's captured models form: a contraction with the stages "
+            "the compute groups this target's captured models form, and the fused epilogue its "
+            "DERIVED output path performs on every contraction family it declares (whether or not a "
+            "capture happens to form it): a contraction with the stages "
             "its unit absorbs, by op, epilogue COMBINATION and operand format. A corpus that "
             "demands each stage once demands no combination, so a backend that fuses any one stage "
             "and no two passes it; and the model route is only as good as the patterns some capsule "
@@ -2481,6 +2592,8 @@ def _group_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
     """Which required group signatures no capsule in the corpus demands."""
     import yaml
 
+    from .column_readout_capsules import matches
+
     labels = set(labels or {"public"})
     exclude = set(exclude or ())
     roots = [corpus_roots] if isinstance(corpus_roots, (str, Path)) else list(corpus_roots)
@@ -2502,6 +2615,9 @@ def _group_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
             signature = _group_signature(str(op.get("op") or ""), attrs.get("epilogue") or (), dtype)
             if signature in want:
                 demanded.setdefault(signature, []).append(name)
+            for key, requirement in want.items():
+                if requirement.get("column_readout") and matches(cap, requirement):
+                    demanded.setdefault(key, []).append(name)
     missing = sorted(set(want) - set(demanded))
     return {
         "status": "ok",

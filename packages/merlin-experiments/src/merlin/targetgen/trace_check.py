@@ -436,7 +436,8 @@ def check(
         if modes.get("resident_reuse"):
             loads = [row for row in ins if row["class"] in _MVIN]
             if not loads or any(
-                any(row.get("decoded", {}).get(field) is None for field in ("spad_addr", "dram", "rows", "cols"))
+                any(row.get("decoded", {}).get(field) is None for field in ("spad_addr", "rows", "cols"))
+                or _operand_identity(row.get("decoded", {}).get("dram")) is None
                 for row in loads
             ):
                 unresolved_fields.append("resident_reuse")
@@ -476,7 +477,6 @@ def check(
         if n_mvout < 2:
             violations.append("mode resident_reuse declared but <2 output commits (no reuse visible)")
         violations += _residency_findings(ins)
-        violations += _stale_mode_config_findings(ins)
     if modes.get("load_state_resident"):
         # A load configuration re-establishing state the load path already holds is provably inert
         # work, decidable from the emitted stream alone -- the stale-mode argument above, on the load
@@ -532,6 +532,13 @@ def check(
         violations += dram_address_findings(trace, address_model)
 
     out = {"status": "pass" if not violations else "fail", "violations": violations}
+    if modes.get("resident_reuse"):
+        out["execution_config_advisory"] = {
+            "required": False,
+            "findings": _stale_mode_config_findings(ins),
+            "scope": "identical execution configuration is redundant command work; actual resident "
+            "reloads, unresolved operands and numerical/tier failures remain qualification gates",
+        }
     if tile_advisory is not None:
         out["tile_schedule_advisory"] = tile_advisory
     if binding is not None:
@@ -563,16 +570,27 @@ def residency_findings(trace: dict) -> list[str]:
     return _residency_findings(instructions)
 
 
-def _operand_identity(value) -> tuple:
+def _operand_identity(value) -> tuple | None:
     """A hashable identity for one decoded operand reference, compared structurally.
 
     The decoder resolves a memory operand to either a constant or an argument-relative reference; both
     forms compare exactly. No field layout is read here -- the decoder already did that from the target's
     own RTL facts, which is the only place it may be done.
+
+    Unknown references do not identify one source: two unresolved SSA values may
+    denote different allocations even when their diagnostic dictionaries match.
     """
     if isinstance(value, dict):
-        return ("ref", value.get("kind"), value.get("raw"), value.get("arg_index"), value.get("offset"))
-    return ("lit", value)
+        if value.get("kind") == "const" and type(value.get("raw")) is int:
+            return ("lit", value["raw"])
+        if (value.get("kind") == "argbase" and type(value.get("arg_index")) is int
+                and value["arg_index"] >= 0 and type(value.get("offset")) is int):
+            return ("argbase", value["arg_index"], value["offset"])
+        if (value.get("kind") == "global" and type(value.get("symbol")) is str
+                and value["symbol"] and type(value.get("offset")) is int):
+            return ("global", value["symbol"], value["offset"])
+        return None
+    return ("lit", value) if type(value) in (int, str) else None
 
 
 def _residency_findings(ins: list[dict]) -> list[str]:
@@ -605,8 +623,13 @@ def _residency_findings(ins: list[dict]) -> list[str]:
         decoded = instruction.get("decoded") or {}
         destination = decoded.get("spad_addr")
         if destination is None:
-            continue  # this decoder cannot see the destination: say nothing
-        content = (_operand_identity(decoded.get("dram")), decoded.get("rows"), decoded.get("cols"))
+            live.clear()  # an unlocated write may overwrite any tracked slot
+            continue
+        source = _operand_identity(decoded.get("dram"))
+        if source is None or any(decoded.get(field) is None for field in ("rows", "cols")):
+            live.pop(destination, None)
+            continue
+        content = (source, decoded.get("rows"), decoded.get("cols"))
         if live.get(destination) == content:
             reloads.append((index, destination))
         live[destination] = content
@@ -621,16 +644,12 @@ def _residency_findings(ins: list[dict]) -> list[str]:
 
 
 def _stale_mode_config_findings(ins: list[dict]) -> list[str]:
-    """A weight-stationary program configures the execution mode once; re-issuing it changes nothing.
+    """Report identical execution-mode commands as performance findings, not failed residency.
 
-    Narrowly scoped ON PURPOSE. This is the surviving half of the original check's intent -- the
-    execution-mode config is part of what "weight-stationary" means, so re-issuing it belongs to this
-    mode's verdict. Redundant LOAD/STORE configs do NOT: they are ordinary config hoisting, no capsule
-    declares them, and folding them in here would fail a residency capsule for an unrelated property.
-
-    A mode config carries no address, so identical operand payloads mean an identical configuration and
-    the repeat is provably inert -- no scratchpad state can make it matter, which is exactly why this
-    can be decided on the payload while a transfer cannot.
+    Reissuing identical configuration does not itself reload the resident operand. The resident
+    mode checks actual transfers; refusing it solely for redundant setup confused an optimization
+    opportunity with failed accelerator functionality. Explicit instruction prohibitions and the
+    other selected mode/ordering requirements are checked independently.
     """
     active: tuple | None = None
     repeats: list[int] = []
@@ -638,15 +657,18 @@ def _stale_mode_config_findings(ins: list[dict]) -> list[str]:
         if instruction.get("class") != "CONFIG_EX":
             continue
         payload = (_operand_identity(instruction.get("rs1")), _operand_identity(instruction.get("rs2")))
+        if None in payload:
+            active = None
+            continue
         if active == payload:
             repeats.append(index)
         active = payload
     if not repeats:
         return []
     return [
-        f"mode resident_reuse: {len(repeats)} execution-mode config(s) re-issue the configuration "
-        f"already active (at {', '.join('#' + str(i) for i in repeats[:4])}); a weight-stationary "
-        f"program configures the mode once and reuses it"
+        f"{len(repeats)} execution-mode config(s) re-issue the configuration "
+        f"already active (at {', '.join('#' + str(i) for i in repeats[:4])}); redundant setup is "
+        f"a performance optimization opportunity"
     ]
 
 

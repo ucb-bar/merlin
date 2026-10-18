@@ -249,6 +249,38 @@ and review bundles instead of relying on those links as sandbox grants. Generate
 capsules, workspaces, compiler payloads and certification records remain artifacts,
 not files in this example. The remaining harness resources still require a checkout.
 
+### Checked-in launch configuration
+
+The fresh empty-origin EL4 launch on the fire-aligned release is one file:
+[`launch/el4-fire-aligned.yaml`](launch/el4-fire-aligned.yaml). It holds the
+controller argv values (Codex `gpt-6.1-sol`, effort `high`, at most 16 subagents,
+an 18000 s authoring cap with a 120 s grade interval), the complete process
+environment and CPU policy (manager CPU 0, author CPUs 4–5, one shared 18-CPU
+priority pool on CPUs 6–23 with no per-engine caps), the pinned Spike, libgemmini,
+gSIM emulator and timing-profile bytes, the selected target contract and RTL facts,
+the numerics lineage to the approved `launch-v8` bundle, the approved instruction
+selection and the served [errata](launch/errata/fresh-empty.md). It consumes the
+release named by [`../phase0/release/fire-aligned-v10.yaml`](../phase0/release/fire-aligned-v10.yaml).
+Machine roots are variables (`${TASK_ROOT}`, `${PREP}`, `${RUN_ID}`, `${HOME}`);
+release and numerics versions are overridable defaults. Neither file is granted to
+the author sandbox or copied into a release payload.
+
+```sh
+python -m merlin_experiments.phase1.launch_config render \
+  --config examples/gemmini/phase1/launch/el4-fire-aligned.yaml \
+  --task-root "${TASK_ROOT:?}" --prep "${PREP:?}" --plan-template "${PLAN_TEMPLATE:?}"
+python -m merlin_experiments.phase1.launch_config verify \
+  --config examples/gemmini/phase1/launch/el4-fire-aligned.yaml \
+  --task-root "${TASK_ROOT:?}" --prep "${PREP:?}" [--run-id "${RUN_ID}" --controller-pid PID]
+```
+
+`render` writes `environment.sh`, `launch-argv.json`, `release-prepare.json`, the
+errata copy and the launch plan into `--out` (default `--prep`) and refuses to
+replace different bytes. `verify` exits 1 and lists every drift between the config
+and the prepared environment file, plan, pinned files, numerics and release records,
+exclusions and, with `--controller-pid`, the live controller's command line,
+environment and affinity. Neither starts a run.
+
 ## Independent runtime support
 
 The copied kernel headers and legacy harness aliases have been removed. Runtime

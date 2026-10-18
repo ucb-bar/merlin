@@ -6,16 +6,16 @@ harness's internally-computed golden, and prints a REDACTED verdict — pass/fai
 failing tier/plane, **never the golden values**. The agent may call this as many times as it wants, on
 any subset, in parallel.
 
-Iterate on spike (fast, same integer numerics), then clear the BARRIER on verilator/VCS (cycle-accurate
-RTL). A dialect is "done" when every public capsule passes on verilator/VCS. Cycles are NOT a criterion
-here — only functional/numerical correctness.
+By default (no ``--sim``) one request runs every tier the official grade selects -- the same
+adapters, cheapest first with fail-fast -- so each capsule comes back certified
+(every tier it declares mandatory passed) or not, exactly as the grade would score those bytes. A
+single engine name is a legacy narrower selection: ``--sim spike`` is a fast functional screen that
+can refute but never certify. Cycles are NOT a criterion here — only functional/numerical correctness.
 
-  # fast functional iteration (seconds/capsule):
-  python agent_selfcheck.py --sim spike --capsules all
-  # the real barrier (cycle-accurate RTL; minutes/capsule; runs in parallel):
-  python agent_selfcheck.py --sim verilator --capsules all --workers 2
-  # focus on the ones still failing:
-  python agent_selfcheck.py --sim verilator --capsules B3_conv2d_i8,A1_mvin_mvout
+  # certify the capsules an edit touched (every mandatory tier, as the grade runs them):
+  python agent_selfcheck.py --capsules B3_conv2d_i8,A1_mvin_mvout
+  # an uncertified functional screen (seconds/capsule):
+  python agent_selfcheck.py --sim spike --capsules B3_conv2d_i8
 
 What it does NOT reveal: golden output tensors, private model weights, hidden capsules, or the reference
 oracle. It tells you
@@ -44,6 +44,7 @@ from merlin_experiments.phase1.context import (
 )
 from merlin_experiments.phase1.feedback import qa as _qc
 from merlin_experiments.phase1.feedback.candidate_observations import _shape_coverage, diagnostics_cli
+from merlin_experiments.phase1.feedback.dispatch import REQUIRED_SIM
 from merlin_experiments.phase1.feedback.selfcheck_results import (
     _candidate_selfcheck_row as _candidate_selfcheck_row,
 )
@@ -71,6 +72,16 @@ from merlin_experiments.phase1.feedback.selfcheck_results import (
 from merlin_experiments.phase1.feedback.selfcheck_results import (
     _successful_expected_refusal as _successful_expected_refusal,
 )
+from merlin_experiments.phase1.feedback.selfcheck_selection import (
+    capsule_barrier,
+    grade_l3_selection,
+    selection_note,
+    tier_engines,
+)
+from merlin_experiments.phase1.feedback.selfcheck_selectors import (
+    _previously_failing as _previously_failing,
+)
+from merlin_experiments.phase1.feedback.selfcheck_selectors import select_capsules
 from merlin_experiments.phase1.timing import barrier_measurements
 
 
@@ -216,7 +227,8 @@ def _progress_snapshot(cb_root: Path, *, expected: int, started_ns: int) -> dict
             tiers = {
                 tier: record["status"]
                 for tier, record in recorded.items()
-                if tier in {"L0", "L1", "L2", "L3"} and isinstance(record, dict)
+                if tier in {"L0", "L1", "L2", "L3"}
+                and isinstance(record, dict)
                 and isinstance(record.get("status"), str)
                 and record.get("status") in {"pass", "fail", "unverified", "unavailable", "incomplete", "skipped"}
             }
@@ -274,50 +286,6 @@ def _suite_size(capsules_root: Path) -> int:
         return 0
 
 
-def _previously_failing() -> tuple:
-    """``(set of capsule names that did not pass last time, why not)`` for ``--capsules failing``.
-
-    THE CHEAP LOOP SHOULD BE THE EASY ONE. Re-checking only what is still broken was always possible
-    -- the docstring above spells the comma-separated form -- but it required the agent to read a
-    verdict, extract the names and paste them, so the reflex was `--capsules all`. Measured on one
-    6.1 h run: 25 full sweeps, ~6 min each, while a typical edit leaves 82% of emitted programs
-    byte-identical.
-
-    Read from the LAST SELF-CHECK's own output, not from the harness verdict: this is the agent's own
-    loop, the file is one it already owns, and taking the harness's grade would make a self-check
-    depend on a grade that may be many minutes stale.
-
-    Never guesses. If no previous self-check is on disk, the answer is empty with a reason -- returning
-    "nothing is failing" would silently grade zero capsules and report success.
-    """
-    out = Path("selfcheck_out")
-    latest, newest = None, -1.0
-    try:
-        completed = [Path(".qa_channel") / f"resp_{done.name[len('done_'):]}.json"
-                     for done in Path(".qa_channel").glob("done_*")]
-        for cand in list(out.glob("*.json")) + [Path("selfcheck.json")] + completed:
-            if cand.is_file() and cand.stat().st_mtime > newest:
-                latest, newest = cand, cand.stat().st_mtime
-    except OSError:
-        pass
-    if latest is None:
-        return set(), "no previous self-check output was found on disk"
-    try:
-        doc = json.loads(latest.read_text())
-    except (OSError, ValueError) as exc:
-        return set(), f"the previous self-check output could not be read ({type(exc).__name__})"
-    rows = doc.get("per_capsule")
-    if not isinstance(rows, list) or not rows:
-        return set(), f"{latest} records no per-capsule rows"
-    names = {r.get("capsule") for r in rows if isinstance(r, dict) and not r.get("pass") and r.get("capsule")}
-    if not names:
-        return set(), (
-            f"every capsule in {latest} passed, so there is nothing to re-check; "
-            "use --capsules all to confirm the whole suite"
-        )
-    return names, ""
-
-
 def _target_sim_via(context: InvocationContext) -> tuple[str, str | None]:
     """The (target, sim_via) being self-checked, from the descriptor (so CG.grade builds ITS RunnerConfig
     — e.g. an external_backend target — not a hardcoded default, and the oracle tiers resolve from the
@@ -348,30 +316,8 @@ def _required_rtl_engine() -> str | None:
     return os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
 
 
-FALLBACK_RTL_SIM = "verilator"
-
-
-def _default_sim(context: InvocationContext | None = None) -> str:
-    """Use the experiment pin, then the grader's discovered engine, with an announced fallback."""
-    required = _required_rtl_engine()
-    if required in SIM_TIER and required != "spike":
-        return required
-    if context is not None:
-        try:
-            target, sim_via = _target_sim_via(context)
-            selected = CR.describe_l3_engine(target, sim_via)
-            engine = str(selected.get("engine") or "") if selected.get("available") else ""
-            if engine in SIM_TIER and engine != "spike":
-                return engine
-            reason = str(selected.get("reason") or "") or f"selected engine {engine!r} is unavailable"
-        except Exception as exc:  # noqa: BLE001 - discovery failure is reported, not an implicit engine choice
-            reason = f"{type(exc).__name__}: {exc}"
-        print(
-            f"[selfcheck] no RTL engine pinned and none discovered ({reason}); "
-            f"defaulting to {FALLBACK_RTL_SIM!r} — pass --sim explicitly to choose another",
-            file=sys.stderr,
-        )
-    return FALLBACK_RTL_SIM
+#: Every ``--sim`` value the self-check accepts. ``REQUIRED_SIM`` is the default and is not an engine.
+SIM_CHOICES = (REQUIRED_SIM, *SIM_TIER)
 
 
 def _sim_policy_error(sim: str, sim_via: str | None) -> str | None:
@@ -401,9 +347,14 @@ def _streaming_completion(*, context, capsules_root, contract, source, runs, ada
     from ..brokers.selfcheck import _submission_digest
     from . import loop_grading, promotion
 
-    ws, root, digest = (os.environ.get(key) for key in (
-        "MERLIN_SELFCHECK_PROMOTION_WS", "MERLIN_SELFCHECK_PROMOTION_ROOT", "MERLIN_SELFCHECK_PROMOTION_SHA256"
-    ))
+    ws, root, digest = (
+        os.environ.get(key)
+        for key in (
+            "MERLIN_SELFCHECK_PROMOTION_WS",
+            "MERLIN_SELFCHECK_PROMOTION_ROOT",
+            "MERLIN_SELFCHECK_PROMOTION_SHA256",
+        )
+    )
     if not any((ws, root, digest)):
         return None
     if not all((ws, root, digest)):
@@ -414,8 +365,12 @@ def _streaming_completion(*, context, capsules_root, contract, source, runs, ada
     if not loop or not cert or loop not in adapters or cert in adapters:
         return None
     inputs = loop_grading.GradingInputs(
-        context=context, arm="selfcheck", public_root=Path(capsules_root), policy_roots=(Path(root),),
-        contract=contract, promotion_root=Path(root),
+        context=context,
+        arm="selfcheck",
+        public_root=Path(capsules_root),
+        policy_roots=(Path(root),),
+        contract=contract,
+        promotion_root=Path(root),
     )
     completed = loop_grading._completed_loop_promoter(
         Path(ws), Path(source).parent, Path(runs), loop, cert, cover, inputs=inputs
@@ -434,11 +389,22 @@ def _adapters(sim: str, target: str, sim_via: str | None, *, readback_policy=Non
     grade). A chipyard target exposes the spike/verilator/vcs ladder selectable via --sim; any
     other target grades on its OWN contract-derived RTL tier (external_backend -> the program oracle;
     an arc target -> the RTL-derived arc cosim), where --sim is not applicable. Routing a self-hosted
-    ISA here through the hardcoded spike/verilator adapters ran the RoCC/RVV lowering and crashed (AW4)."""
+    ISA here through the hardcoded spike/verilator adapters ran the RoCC/RVV lowering and crashed (AW4).
+
+    ``REQUIRED_SIM`` returns the official grade's own adapter set (``qa.run`` grades with
+    ``qa_checkpoint_adapters``): the same tiers, engine selection record and readback policy. One request
+    then runs each capsule's whole mandatory ladder -- the functional tier, the elaborated-RTL tier and a
+    provided-host tier alike -- so it reaches the grade's verdict on the same bytes instead of a screen
+    that reports the other tiers ``unavailable``. Sharing the adapters also shares the exact-byte
+    simulator certificate instrument, which binds the adapter's selection record."""
+    kwargs = {} if readback_policy is None else {"readback_policy": readback_policy}
+    if sim == REQUIRED_SIM:
+        # The selection honours MERLIN_REQUIRED_RTL_ENGINE itself (`chipyard_l3_selection`), so there
+        # is no named engine here for the pin to refuse.
+        return dict(CR.qa_checkpoint_adapters(target, sim_via, **kwargs)), sim
     policy_error = _sim_policy_error(sim, sim_via)
     if policy_error:
         raise ValueError(policy_error)
-    kwargs = {} if readback_policy is None else {"readback_policy": readback_policy}
     if sim == "vcs" and readback_policy is not None:
         raise ValueError("VCS self-check does not support the selected invocation readback policy")
     if sim_via == "chipyard":
@@ -448,7 +414,8 @@ def _adapters(sim: str, target: str, sim_via: str | None, *, readback_policy=Non
             # --sim gsim silently certify on verilator -- a result attributed to the wrong engine. The
             # adapter factory is engine-generic (it forwards simulator=sim and gates on
             # backend.available(sim)), so an absent engine fails closed here rather than substituting.
-            ad["L3"] = CR.simulator_adapter(sim, target, **kwargs)
+            selection = grade_l3_selection(target, sim)
+            ad["L3"] = CR.simulator_adapter(sim, target, **kwargs, **({"selection": selection} if selection else {}))
         if sim == "vcs":
             # In the unpinned legacy ladder VCS is an L4 addition above Verilator L3.  An experiment-wide
             # VCS pin, however, means *no other RTL engine may run*, so do not build that Verilator rung.
@@ -660,7 +627,7 @@ def _request_artifact_root(value: str, *, progress: str, output: str) -> Path:
         record.name.startswith("progress_") and record.name.endswith(".json")
     ):
         raise ValueError("artifact root requires the original request progress record")
-    rid = record.name[len("progress_"):-len(".json")]
+    rid = record.name[len("progress_") : -len(".json")]
     if not rid or rid in {".", ".."}:
         raise ValueError("artifact root requires a valid request identity")
     staged = Path(output)
@@ -669,9 +636,9 @@ def _request_artifact_root(value: str, *, progress: str, output: str) -> Path:
     ):
         raise ValueError("artifact root differs from the original response identity")
     expected = workspace / "selfcheck_out" / "requests" / rid
-    if Path(value).absolute() != expected or any(path.is_symlink() for path in (
-        workspace / "selfcheck_out", workspace / "selfcheck_out" / "requests", expected
-    )):
+    if Path(value).absolute() != expected or any(
+        path.is_symlink() for path in (workspace / "selfcheck_out", workspace / "selfcheck_out" / "requests", expected)
+    ):
         raise ValueError("artifact root must be the original per-request output directory")
     return expected
 
@@ -683,17 +650,26 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     ap.add_argument("--contract", type=Path, help="explicit grading contract root")
     ap.add_argument("--rtl-facts", type=Path, help="Selected facts in the verified frozen input snapshot")
     ap.add_argument("--submission", default="submission", help="path to your package (with manifest.yaml)")
-    # DEFAULTS TO THE CERTIFYING SIM, not the screen. The capsules declare a cycle-accurate cert
-    # tier as mandatory, and this ladder runs cheapest-measured-first with fail-fast, so the
-    # screen still refutes a broken submission at screen cost -- what changes is that a capsule
-    # which PASSES the screen goes on to certify instead of stopping there. Choosing "spike"
-    # explicitly is a legitimate fast screen, but it CANNOT certify: the mandatory cert tier
-    # reports unavailable and the capsule is not a pass.
-    ap.add_argument("--sim", choices=["spike", "verilator", "gsim", "vcs"], default=None)
+    # DEFAULTS TO THE GRADE'S OWN SELECTION, not to one engine. The capsules declare their mandatory
+    # tiers (a functional screen, an elaborated-RTL cert tier, a provided-host tier), and the ladder
+    # runs cheapest-measured-first with fail-fast, so the screen still refutes a broken submission at
+    # screen cost -- what changes is that a capsule which PASSES the screen goes on to certify in the
+    # same request. A single engine name ("spike") is a legitimate fast screen, but it CANNOT certify:
+    # each mandatory tier it does not run reports unavailable and the capsule is not a pass.
+    # Measured on one run: 166 of 217 self-check capsule results were incomplete because each request
+    # ran a single engine, and pass/fail was learned only from the background grade.
+    ap.add_argument(
+        "--sim",
+        choices=list(SIM_CHOICES),
+        default=None,
+        help=f"default {REQUIRED_SIM!r}: every tier the official grade runs; one engine name is a narrower screen",
+    )
     ap.add_argument(
         "--capsules",
         default="all",
-        help="'all', 'failing' (only what did not pass last time — fast iteration), or comma-separated capsule names",
+        help="'all', 'failing' (only what did not pass last time — fast iteration), 'changed' (build and "
+        "screen every public capsule, reuse exact-byte RTL certificates, simulate only those whose bytes are "
+        "neither certified nor known to fail), or comma-separated capsule names",
     )
     # 0 = derive from this host (see capsule_grade.default_grade_workers): the per-capsule builds and
     # sims are independent, and a literal 8 left most of a 48-core machine idle through every sweep.
@@ -747,20 +723,29 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         "extents. Not part of your score. A backend that passes the suite and fails these runs "
         "toy shapes only. Honors --capsules: name one layer to check one layer.",
     )
-    ap.add_argument("--candidate-diagnostics", action="store_true",
-                    help="INSTEAD of grading, inspect own public source/emission/host work; no simulator or baseline")
-    ap.add_argument("--compile-only", action="store_true",
-                    help="compile original public scale/frontier tensor sources and link a no-data probe; no execution")
-    ap.add_argument("--scale-probe", action="store_true",
-                    help="with --compile-only, inspect public scale/tail LLVM emission before object compilation")
+    ap.add_argument(
+        "--candidate-diagnostics",
+        action="store_true",
+        help="INSTEAD of grading, inspect own public source/emission/host work; no simulator or baseline",
+    )
+    ap.add_argument(
+        "--compile-only",
+        action="store_true",
+        help="compile original public scale/frontier tensor sources and link a no-data probe; no execution",
+    )
+    ap.add_argument(
+        "--scale-probe",
+        action="store_true",
+        help="with --compile-only, inspect public scale/tail LLVM emission before object compilation",
+    )
     ap.add_argument("--compiler-bundle-manifest", type=Path, help=argparse.SUPPRESS)
-    ap.add_argument("--dynamic-census", action="store_true",
-                    help="append bounded own-ELF activity after functional screen")
+    ap.add_argument(
+        "--dynamic-census", action="store_true", help="append bounded own-ELF activity after functional screen"
+    )
     a = ap.parse_args(argv)
     if a.artifact_root:
         try:
-            a.artifact_root = _request_artifact_root(
-                a.artifact_root, progress=a.progress_out, output=a.out)
+            a.artifact_root = _request_artifact_root(a.artifact_root, progress=a.progress_out, output=a.out)
         except ValueError as error:
             ap.error(str(error))
     if a.scale_probe and not a.compile_only:
@@ -794,7 +779,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             Path(a.out).write_text(txt)
         return 0 if result.get("status") == "layout_only" else 2
     if a.sim is None and not a.candidate_diagnostics:
-        a.sim = _default_sim(context)
+        a.sim = REQUIRED_SIM
     contract = a.contract if a.contract is not None else contract
     capsules_root = a.capsules_root if a.capsules_root is not None else capsules_root
     if capsules_root is None:
@@ -823,8 +808,13 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 )
             if a.offload_census:
                 return _offload_census(
-                    Path(a.submission), a.out, context=context, capsules_root=capsules_root, contract=contract,
-                    timeout=a.timeout, workers=a.workers,
+                    Path(a.submission),
+                    a.out,
+                    context=context,
+                    capsules_root=capsules_root,
+                    contract=contract,
+                    timeout=a.timeout,
+                    workers=a.workers,
                 )
 
     sub = Path(a.submission)
@@ -860,6 +850,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             Path(a.out).write_text(txt)
         _log_telemetry(out, a.capsules)
         return 2
+    grade_tiers = set(adapters) if sim == REQUIRED_SIM else None
     if a.tiers:
         # Validate the REQUEST against everything the endpoint can reach, not against the cheap loop
         # ladder -- that conflation is exactly what select_tiers documents, and it is why a cert tier
@@ -877,25 +868,18 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 Path(a.out).write_text(txt)
             _log_telemetry(out, a.capsules)
             return 2
-    # barrier = the deepest resolved RTL tier: chipyard maps from --sim; any other target uses its
-    # single contract-derived tier (e.g. L3 program oracle), so read it from the adapters.
-    barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" else max(adapters) if adapters else "L3"
+    # The grade's whole selection, unnarrowed by --tiers, judges each capsule exactly as the grade does:
+    # per-capsule mandatory barrier, and a tier that could not run is never a pass. A narrowed request
+    # (a promotion's `--tiers L3`) keeps the screen accounting its consumers read.
+    combined = grade_tiers is not None and set(adapters) == grade_tiers
+    # barrier = the deepest resolved RTL tier: chipyard maps a named engine from --sim; the grade's own
+    # selection and any other target's contract-derived tiers are read from the adapters.
+    barrier_tier = SIM_TIER[sim] if _sim_via == "chipyard" and sim in SIM_TIER else max(adapters) if adapters else "L3"
     # subset selection (operator-side capsule dirs)
-    if a.capsules.strip().lower() == "failing":
-        want, _why_failing = _previously_failing()
-        if not want:
-            print(
-                json.dumps(
-                    {
-                        "error": "--capsules failing: " + _why_failing,
-                        "hint": "run once with --capsules all to establish what is failing",
-                    },
-                    indent=2,
-                )
-            )
-            return 2
-    else:
-        want = None if a.capsules == "all" else set(s.strip() for s in a.capsules.split(",") if s.strip())
+    selection = select_capsules(a, sub, context, capsules_root, contract, adapters, combined, _tgt, barrier_tier)
+    if selection.answered is not None:
+        return selection.answered
+    want = selection.want
     import tempfile
 
     from .raw_selfcheck_evidence import create_runs_root
@@ -936,8 +920,12 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         _progress_thread.start()
     try:
         completion = _streaming_completion(
-            context=context, capsules_root=caps_root, contract=contract,
-            source=sub, runs=runs_root, adapters=adapters,
+            context=context,
+            capsules_root=caps_root,
+            contract=contract,
+            source=sub,
+            runs=runs_root,
+            adapters=adapters,
         )
         model_continuations = []
         if a.model_gate_voucher:
@@ -946,14 +934,22 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
 
             if not want or set(adapters) != {"L2", "L3"}:
                 raise ValueError("model continuation requires an explicit L2/L3 model selection")
-            model_continuations = [verify(
-                path, source_digest=promotion_digest(sub.parent), capsules=want,
-                context=context, cert_tier="L3", contract=contract,
-            ) for path in a.model_gate_voucher]
+            model_continuations = [
+                verify(
+                    path,
+                    source_digest=promotion_digest(sub.parent),
+                    capsules=want,
+                    context=context,
+                    cert_tier="L3",
+                    contract=contract,
+                )
+                for path in a.model_gate_voucher
+            ]
         from .compiler_profile_runtime import selfcheck_execution
 
-        with selfcheck_execution(a.compiler_bundle_manifest, context=context, submission=sub,
-                work_root=_isodir / "profile-package-work"):
+        with selfcheck_execution(
+            a.compiler_bundle_manifest, context=context, submission=sub, work_root=_isodir / "profile-package-work"
+        ):
             _score = CG.grade(
                 str(sub),
                 capsules_root=str(caps_root),
@@ -1020,7 +1016,8 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     closed_rows = _qc._per_capsule_from_results(runs_root)
     try:
         selected = CR.discover_capsules(
-            caps_root, labels={"public", "dev"},
+            caps_root,
+            labels={"public", "dev"},
             contract=contract if contract is not None else context.repo / "merlin/contract",
         )
         original_capsules = {cap["name"]: cap for cap in selected}
@@ -1073,8 +1070,8 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             continue
         _tier_results = d.get("tiers") or {}
         tiers = {t: (v or {}).get("status") for t, v in _tier_results.items()}
-        bar = tiers.get(barrier_tier)
-        bar_used = barrier_tier
+        bar_used = capsule_barrier(_tier_results, adapters, barrier_tier) if combined else barrier_tier
+        bar = tiers.get(bar_used)
         if bar is None:
             # A mixed suite can legitimately have different tier shapes. Whole-model capsules, for
             # example, do not produce the per-op command-buffer screen tier, but can produce a DEEPER
@@ -1122,9 +1119,16 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         # including its capsule-local source identity and inherited declarations.
         _original = original_capsules.get(name)
         certified, screened, refused_as_required, _structural = _operator_feedback_state(
-            d, _original, target=_tgt, barrier_status=bar,
+            # Under the grade's selection the barrier is the capsule's own deepest mandatory tier; one
+            # that could not run has no verdict, so it is accounted as absent (never as a pass).
+            d,
+            _original,
+            target=_tgt,
+            barrier_status=None if combined and bar == "unavailable" else bar,
         )
-        passed = certified or screened
+        # Under the grade's own selection a tier that could not run is not a property of the engine
+        # the caller picked, so a screened row is NOT a pass: only certification passes.
+        passed = certified if combined else certified or screened
         npass += int(passed)
         ncert += int(certified)
         nscreened += int(screened)
@@ -1163,6 +1167,12 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             "barrier_declared": barrier_tier,
             "barrier_status": bar,
         }
+        if combined:
+            # The evidence behind a certified verdict is small and is the point of this selection.
+            row["certified"] = certified
+            row["tiers"] = tiers
+            if screened:
+                row["screened_only"] = True
         if refused_as_required:
             row["expected_refusal"] = dict(d["expected_refusal"])
             row["qualification"] = "expected_refusal"
@@ -1191,11 +1201,13 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         if d.get("declined"):
             row["declined"] = d["declined"]
             row["declined_note"] = (
-                "declined as required by this capsule; no native execution is claimed"
-            ) if refused_as_required else (
-                "your backend DECLINED this capsule -- it never emitted a program. "
-                "This is a coverage gap (a shape/op you do not lower), not a "
-                "numeric bug; do not debug the arithmetic."
+                ("declined as required by this capsule; no native execution is claimed")
+                if refused_as_required
+                else (
+                    "your backend DECLINED this capsule -- it never emitted a program. "
+                    "This is a coverage gap (a shape/op you do not lower), not a "
+                    "numeric bug; do not debug the arithmetic."
+                )
             )
         if not passed:
             # Only the selected barrier tier can supply this diagnostic. A lower-tier DONE log
@@ -1239,8 +1251,14 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         if a.dynamic_census:
             from .candidate_census import attach_candidate_census
 
-            attach_candidate_census(row, gen, result=d, context=context, compiler=sub,
-                                    remaining_s=max(0, census_deadline - time.monotonic()))
+            attach_candidate_census(
+                row,
+                gen,
+                result=d,
+                context=context,
+                compiler=sub,
+                remaining_s=max(0, census_deadline - time.monotonic()),
+            )
         rows.append(row)
     n_result = len(rows)
     try:
@@ -1357,6 +1375,8 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     out = {
         "sim": sim,
         "barrier_tier": barrier_tier,
+        "oracle_tiers": sorted(adapters),
+        "tier_engines": tier_engines(adapters),
         **counts,
         "scope": scope,
         "suite_size": suite_size,
@@ -1386,7 +1406,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 if gated
                 else ""
             )
-            + f"Self-check on {sim} ({barrier_tier}). "
+            + selection_note(
+                combined=combined, required=sim == REQUIRED_SIM, sim=sim, adapters=adapters, barrier_tier=barrier_tier
+            )
             + (
                 "Candidate whole-program rows show only submitted-artifact numeric status, "
                 "required-tier status and closed verification codes; the separate runner-owned "
@@ -1408,7 +1430,13 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 else ""
             )
             + (
-                f" ⚠ {len(_unreached)} mandatory cert tier(s) {_unreached} were NOT REACHABLE with "
+                f" ⚠ {len(_unreached)} mandatory tier(s) {_unreached} could NOT RUN although the grade's "
+                f"own selection was requested. {nscreened} capsule(s) passed every tier that did run; "
+                f"they are NOT passes and NOT certified. A selected tier that cannot run is an "
+                f"operator/environment condition (see each row's failure detail), not a defect in your "
+                f"backend; report it."
+                if _unreached and combined
+                else f" ⚠ {len(_unreached)} mandatory cert tier(s) {_unreached} were NOT REACHABLE with "
                 f"--sim {sim}. {nscreened} capsule(s) passed EVERY tier this sim can run and are "
                 f"reported as screened, not certified: they are counted in n_passed and NOT in "
                 f"n_certified, and they are not failures — the tier could not run here, which is a "
@@ -1429,7 +1457,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
 
         try:
             out["offload_census"] = OC.census_from_graded_artifacts(
-                target=_tgt, capsules=selected, suite_runs=cb_root,
+                target=_tgt,
+                capsules=selected,
+                suite_runs=cb_root,
             )
         except Exception as exc:  # noqa: BLE001 -- the grade remains authoritative
             out["offload_census"] = {
@@ -1439,6 +1469,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 "status": "unavailable",
                 "reason": f"graded-artifact census failed: {type(exc).__name__}: {str(exc)[:200]}",
             }
+    out = selection.report(out)
     txt = json.dumps(out, indent=2)
     print(txt)
     if a.out:

@@ -519,14 +519,19 @@ def contents(workdir: str | Path) -> list:
     a fresh executable. Storing everything cannot be wrong in that direction, and the extra bytes are
     the few files the emit step put there, whose content the key already pins.
     """
+    from .elf_lanes import EXECUTED_PROGRAMS_DIR
+
     root = Path(workdir)
     out: list = []
     if not root.is_dir():
         return out
     for p in root.rglob("*"):
         try:
-            if p.is_file() and p.name != KEY_MARKER:
-                out.append(str(p.relative_to(root)))
+            # A tier's retained executed program is evidence of an earlier run in this directory; a
+            # restore into another grade must never carry it there.
+            relative = p.relative_to(root)
+            if p.is_file() and p.name != KEY_MARKER and relative.parts[0] != EXECUTED_PROGRAMS_DIR:
+                out.append(str(relative))
         except OSError:
             continue
     return out

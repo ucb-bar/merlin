@@ -21,8 +21,13 @@ def test_gemmini_full_model_task_is_short_and_allows_edits_during_checks(tmp_pat
     ws, run = conf.context.repo / "workspace", conf.context.repo / "run"
     ws.mkdir()
     run.mkdir()
-    TS.build_task("merlin_assisted", ws, run, config=conf,
-                  task_scope={"required_public_dev_capsules": 120, "held_out_capsules": 20})
+    TS.build_task(
+        "merlin_assisted",
+        ws,
+        run,
+        config=conf,
+        task_scope={"required_public_dev_capsules": 120, "held_out_capsules": 20},
+    )
     resource_prompt.append_resource_guidance(ws, run, object())
     task = (ws / "TASK.md").read_text()
     assert len(task.encode()) <= 12 * 1024
@@ -32,6 +37,19 @@ def test_gemmini_full_model_task_is_short_and_allows_edits_during_checks(tmp_pat
     assert "per-kernel model gSIM replay is not requested" in task
     assert "--engine spike" in task and "--engine gsim" not in task
     assert "You may continue editing while a self-check or grade runs" in task
+    # The advertised focused check is the certifying one; a single-engine screen is named as such.
+    assert "`python agent_selfcheck.py --submission submission --capsules A,B`" in task
+    assert "certified pass/fail per capsule" in task and "cannot certify" in task
+    # Checks do not block the author: submit, keep working, collect; batch; try variants beside it.
+    assert "`--wait-budget 5`" in task and "`--attach ID`" in task and "`--list`" in task
+    assert "Several requests may be in flight" in task and "per-request overhead dominates" in task
+    assert "`--capsules changed`" in task and "`--capsules failing`" in task
+    assert "`--submission variants/NAME`" in task and "never graded officially" in task
+    assert "copy the winner there" in task
+    assert (
+        len(TS.full_model_task(conf, "bwrap", {"required_public_dev_capsules": 120, "held_out_capsules": 20}).encode())
+        <= 10_000
+    )
     assert task == (run / "TASK.md").read_text()
 
 
@@ -118,7 +136,8 @@ def test_tools_are_observed_after_callback_creation_and_again_after_changes(tmp_
 
 
 @pytest.mark.parametrize(
-    "level", [level for level in LEVELS if level["id"] not in {"EL5", "EL6"}],
+    "level",
+    [level for level in LEVELS if level["id"] not in {"EL5", "EL6"}],
     ids=[level["id"] for level in LEVELS if level["id"] not in {"EL5", "EL6"}],
 )
 def test_actual_tool_inventory_follows_selected_level_and_explicit_ablation(tmp_path, level):

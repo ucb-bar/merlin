@@ -42,6 +42,9 @@ _NO_COST = ("reshape", "transpose", "_int_mm", "view", "select", "stack", "t")
 _RECORDS: dict[int, dict] = {}
 #: The plane selector of a static operand (``quant_recipe.OPERAND``): k int8 digits of one static grid.
 OPERAND = "operand"
+#: The plane selector of the operand a softmax output multiplies (``quant_recipe.SOFTMAX_PARTNER``): its digits.
+SOFTMAX_PARTNER = "softmax_partner"
+RESIDUAL_OPERAND = "residual_operand"
 
 
 def _record(run: int, key: str, value: Any, smooth: bool) -> None:
@@ -76,7 +79,17 @@ def plan(node: Any, block: dict) -> dict:
     smooth = not context and block.get("smooth") == DC.SOFTMAX_AXIS and DC.feeds_row_softmax(node)
     selected = block.get("planes") or {}
     planes = int(selected.get(DC.SOFTMAX_OUTPUT, 1)) if context else 1
-    return {"context": context, "smooth": smooth, "planes": planes, "digits": int(selected.get(OPERAND, 1))}
+    # The operand beside a softmax output: ``P V`` is a convex combination of V's rows, so it can be far
+    # smaller than V's range (most of P on one small row) and needs a finer grid than other operands.
+    operand = RESIDUAL_OPERAND if RESIDUAL_OPERAND in selected else OPERAND
+    digits = int(selected.get(SOFTMAX_PARTNER if context else operand, selected.get(operand, 1)))
+    return {
+        "context": context,
+        "smooth": smooth,
+        "planes": planes,
+        "digits": digits,
+        "residual_digits": RESIDUAL_OPERAND in selected or context and SOFTMAX_PARTNER in selected,
+    }
 
 
 def calibrate(graph_module: Any, plans: dict, samples: list) -> dict:
@@ -236,6 +249,26 @@ def _digit_planes(emit: Any, value: Any, scale: Any, *, low: int, high: int, dig
     return out
 
 
+def _residual_planes(emit: Any, value: Any, scale: Any, *, low: int, high: int, digits: int) -> list:
+    """Static progressively finer grids, each carried by a signed int8 round-and-clamp.
+
+    Explicit residual selectors use these bounded residuals. Each conversion keeps the
+    existing rounded int8-grid producer proof; no wide clamp or floor-to-int conversion is needed.
+    Historical operand digit recipes retain their original radix decomposition.
+    """
+    aten = DC._aten()
+    qmax, base = min(-low, high), high + 1
+    out, residual = [], value
+    for index in range(digits):
+        weight = float(base**-index)
+        step = scale if index == 0 else emit(aten.mul.Tensor, scale, weight)
+        grid = emit(aten.clamp.default, emit(aten.round.default, emit(aten.div.Tensor, residual, step)), -qmax, qmax)
+        out.append((emit(aten._to_copy.default, grid, dtype=emit.torch.int8), weight))
+        if index + 1 < digits:
+            residual = emit(aten.sub.Tensor, residual, emit(aten.mul.Tensor, grid, step))
+    return out
+
+
 def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, high: int, eps: float) -> dict:
     """Replace one activation contraction by its static per-head integer form; return its row.
 
@@ -249,7 +282,8 @@ def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, 
     qmax = min(-low, high)
     digits = int(site.get("digits", 1))
     grid_min, grid_max, _ = _grid(low, high, digits)
-    span = (low, high) if digits == 1 else (grid_min, grid_max)
+    residual_digits = bool(site.get("residual_digits"))
+    span = (low, high) if digits == 1 or residual_digits else (grid_min, grid_max)
     lhs, rhs = node.args[:2]
     record_rhs = stats[f"{node.name}:rhs"]
     folded = False
@@ -271,7 +305,8 @@ def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, 
     floor = eps * (high - low) / (span[1] - span[0])
     rhs_scale = _scale(record_rhs["absmax"], *span, floor)
     b_scale = emit.constant(f"_static_scale_{node.name}_rhs", _shaped(rhs_scale, rank_b, 2))
-    rhs_planes = _digit_planes(emit, b, b_scale, low=low, high=high, digits=digits)
+    splitter = _residual_planes if residual_digits else _digit_planes
+    rhs_planes = splitter(emit, b, b_scale, low=low, high=high, digits=digits)
     if not site["context"]:
         a = DC._f32(emit, lhs)
         lhs_scale = _scale(stats[f"{node.name}:lhs"]["absmax"], *span, floor)
@@ -279,7 +314,7 @@ def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, 
         a_scale = emit.constant(f"_static_scale_{node.name}_lhs", _shaped(lhs_scale, rank_a, 2))
         lhs_planes = [
             (plane, lhs_scale * weight)
-            for plane, weight in _digit_planes(emit, a, a_scale, low=low, high=high, digits=digits)
+            for plane, weight in splitter(emit, a, a_scale, low=low, high=high, digits=digits)
         ]
         rank = max(rank_a, rank_b)
         total = None
@@ -323,7 +358,16 @@ def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, 
     census["host_elements"] = _cost(emit.created)
     planes = (site["planes"] if site["context"] else digits, digits)
     row = DC._finish(emit, node, result, census, smooth=bool(site["smooth"]), planes=planes)
-    return {**row, "scales": "static_heads", "shift_folded": folded}
+    # The site check compares with the contraction the site computes: a folded shift already moved the
+    # second operand itself; an unfolded one is subtracted from it, as the rewrite does.
+    unfolded = _shaped(shift, rank_b, 1) if shift is not None and not folded else None
+    row[DC.VERIFY_KEY] = DC.verification_spec(emit, (lhs, rhs), shift=unfolded)
+    return {
+        **row,
+        "scales": "static_heads",
+        "shift_folded": folded,
+        **({"operand_encoding": "bounded_residual"} if residual_digits else {}),
+    }
 
 
 def rewrite_sites(

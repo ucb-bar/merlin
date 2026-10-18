@@ -196,6 +196,37 @@ def load(path: Path, *, expected_sha256: str) -> dict:
 
 def issue(path: Path, *, expected_sha256: str) -> Path:
     """Execute only a fresh run selected by the owner-controlled artifact."""
+    return _issue(path, expected_sha256=expected_sha256)[0]
+
+
+def issue_and_attest(
+    path: Path, *, expected_sha256: str, output: Path, cpus: tuple[frozenset[int], frozenset[int]]
+) -> dict:
+    """Issue a selected capture with its attestation replay beside it, then write the attestation.
+
+    The same as :func:`issue` followed by :func:`attest`, except that the replay execution runs
+    concurrently with issuance on the second of two disjoint CPU sets
+    (:func:`sealed_m2m.issue_and_replay`). Every check :func:`attest` makes runs unchanged; only
+    the replay's start moves earlier.
+    """
+    _attestation_destination(path, expected_sha256=expected_sha256, output=output, run_exists=False)
+    receipt, replay = _issue(path, expected_sha256=expected_sha256, cpus=cpus)
+    result = attest(path, expected_sha256=expected_sha256, output=output, _replay=replay)
+    issue_cpus, replay_cpus = cpus
+    return {
+        "sealed_receipt": str(receipt),
+        **result,
+        "replay_execution": {
+            "mode": "concurrent_disjoint_cpus",
+            "issue_cpus": sorted(issue_cpus),
+            "replay_cpus": sorted(replay_cpus),
+        },
+    }
+
+
+def _issue(
+    path: Path, *, expected_sha256: str, cpus: tuple[frozenset[int], frozenset[int]] | None = None
+) -> tuple[Path, dict | None]:
     selected = load(path, expected_sha256=expected_sha256)
     run = _canonical_path(Path(selected["run_dir"]), exists=False)
     if run.exists():
@@ -237,25 +268,29 @@ def issue(path: Path, *, expected_sha256: str) -> Path:
         raise ValueError("selected capture source, runtime, checkpoint absence, tool or sandbox policy changed")
     if _digest(Path(path).read_bytes()) != expected_sha256:
         raise ValueError("capture selection changed before execution")
-    receipt = sealed_m2m.issue(
-        plan,
-        run,
-        bwrap_binary=bwrap,
-        capture_selection_sha256=expected_sha256,
-        selected_system_libraries=selected["system_libraries"],
-        selected_bwrap_sha256=selected["bwrap"]["sha256"],
-    )
+    selected_execution = {
+        "bwrap_binary": bwrap,
+        "capture_selection_sha256": expected_sha256,
+        "selected_system_libraries": selected["system_libraries"],
+        "selected_bwrap_sha256": selected["bwrap"]["sha256"],
+    }
+    if cpus is None:
+        receipt, replay = sealed_m2m.issue(plan, run, **selected_execution), None
+    else:
+        receipt, replay = sealed_m2m.issue_and_replay(plan, run, cpus=cpus, **selected_execution)
     if _digest(Path(path).read_bytes()) != expected_sha256:
         raise ValueError("capture selection changed during execution")
-    return receipt
+    return receipt, replay
 
 
-def verify(path: Path, *, expected_sha256: str, model_path: Path) -> dict:
+def verify(path: Path, *, expected_sha256: str, model_path: Path, _replay: dict | None = None) -> dict:
     """Read-only independent binding of selected bytes to a fresh replay.
 
     The returned record intentionally remains nonadmissible. The separately
     issued sealed-M2M attestation checks these bytes again before granting
-    source-closure admission under its explicit operator policy.
+    source-closure admission under its explicit operator policy. ``_replay`` is
+    only :func:`issue_and_attest`'s concurrent replay result, from
+    :func:`sealed_m2m.issue_and_replay`; every other caller replays now.
     """
     selected = load(path, expected_sha256=expected_sha256)
     run = _canonical_path(Path(selected["run_dir"]), exists=True)
@@ -295,7 +330,7 @@ def verify(path: Path, *, expected_sha256: str, model_path: Path) -> dict:
             or _file_digest(copied) != library["sha256"]
         ):
             raise ValueError("sealed runtime differs from preselected system library bytes")
-    replay = sealed_m2m.replay_verify(run, bwrap_binary=Path(selected["bwrap"]["path"]))
+    replay = sealed_m2m.replay_verify(run, bwrap_binary=Path(selected["bwrap"]["path"])) if _replay is None else _replay
     if (
         replay.get("status") != "verified_sandbox_replay"
         or replay.get("sealed_source_closure_replayed") is not True
@@ -337,19 +372,12 @@ def verify(path: Path, *, expected_sha256: str, model_path: Path) -> dict:
     return result
 
 
-def attest(path: Path, *, expected_sha256: str, output: Path) -> dict:
-    """Replay one issued selected capture and write its sealed execution attestation.
-
-    A v1 selection (checkpoint-free loader) yields the ``merlin.sealed_m2m_cpu`` attestation of its
-    ``model.mlir``; a v2 selection (explicit checkpoint, extra inputs and loader environment) yields
-    the v3 attestation of the complete capture root, single program or saved session. Either is
-    issued only from a fresh :func:`verify` replay of these exact selected bytes, and is written to a
-    fresh owner-only file outside the selected run, so the attestation never alters what it attests.
-    """
-    from .capture_execution_attestation import attest_sealed_m2m, attest_sealed_m2m_v3
-
+def _attestation_destination(
+    path: Path, *, expected_sha256: str, output: Path, run_exists: bool = True
+) -> tuple[dict, Path, Path, Path]:
+    """The selection, its run, a fresh attestation destination and the selection path, checked."""
     selected = load(path, expected_sha256=expected_sha256)
-    run = _canonical_path(Path(selected["run_dir"]), exists=True)
+    run = _canonical_path(Path(selected["run_dir"]), exists=run_exists)
     destination = _canonical_path(Path(output), exists=False)
     if destination.exists() or destination.is_symlink():
         raise ValueError("capture attestation output must be fresh")
@@ -360,13 +388,30 @@ def attest(path: Path, *, expected_sha256: str, output: Path) -> dict:
         raise ValueError("capture attestation output may not enter the attested capture or its snapshots")
     if destination.parent == selection_path.parent:
         raise ValueError("capture attestation output may not enter the owner-only selection directory")
+    return selected, run, destination, selection_path
+
+
+def attest(path: Path, *, expected_sha256: str, output: Path, _replay: dict | None = None) -> dict:
+    """Replay one issued selected capture and write its sealed execution attestation.
+
+    A v1 selection (checkpoint-free loader) yields the ``merlin.sealed_m2m_cpu`` attestation of its
+    ``model.mlir``; a v2 selection (explicit checkpoint, extra inputs and loader environment) yields
+    the v3 attestation of the complete capture root, single program or saved session. Either is
+    issued only from a fresh :func:`verify` replay of these exact selected bytes, and is written to a
+    fresh owner-only file outside the selected run, so the attestation never alters what it attests.
+    """
+    from .capture_execution_attestation import attest_sealed_m2m, attest_sealed_m2m_v3
+
+    selected, run, destination, selection_path = _attestation_destination(
+        path, expected_sha256=expected_sha256, output=output
+    )
     if selected["schema"] == SCHEMA_V2:
         capture = run / "capture"
-        replay = verify(path, expected_sha256=expected_sha256, model_path=capture)
+        replay = verify(path, expected_sha256=expected_sha256, model_path=capture, _replay=_replay)
         document = attest_sealed_m2m_v3(replay, selection_path=selection_path, capture_path=capture)
     else:
         model = run / "capture/model.mlir"
-        replay = verify(path, expected_sha256=expected_sha256, model_path=model)
+        replay = verify(path, expected_sha256=expected_sha256, model_path=model, _replay=_replay)
         document = attest_sealed_m2m(replay, selection_path=selection_path, model_path=model)
     raw = _json(document) + b"\n"
     with destination.open("xb") as stream:

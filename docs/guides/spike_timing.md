@@ -3,9 +3,9 @@ title: Calibrating and validating annotated timing
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-15
+last_verified: 2026-10-17
 related: [architecture, performance_budget_unit]
-code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py]
+code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/capacities.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py, src/merlin/targetgen/rtl/timing_structure.py, src/merlin/targetgen/rtl/unit_correspondence.py]
 ---
 
 # Calibrating and validating annotated timing
@@ -185,10 +185,20 @@ payloads or simulation environments.
 
 ## Original Phase 1 capsule archives
 
-The archive intake accepts `merlin.phase1.capsule_timing_archive.v2` from
-`merlin_experiments.phase1.capsule_timing_archive`. Supply the archive SHA256
-from the immutable producer handoff, rather than substituting a locally invented
-source or simulator identity:
+The archive intake accepts `merlin.phase1.capsule_timing_archive.v2` and `.v3`
+from `merlin_experiments.phase1.capsule_timing_archive`. A v2 archive prepares
+observations only when it is `timing_ready` (every passing gSIM record belongs
+to a passing capsule). A v3 archive, normally the run's
+`capsule_timing_training_<digest>.tar`, is judged per record: intake recomputes
+each row's `training_eligible` verdict (a fresh, console-verified, kernel-window
+gSIM measurement whose gSIM tier passed numerics with every identity present,
+whatever the capsule's overall verdict) and refuses an archive whose declared
+verdicts, visibility or training counts disagree. Only public eligible rows can
+be bound; a hidden row refuses. A binding must cover every eligible public row
+and every executed public repeat of a bound ELF; a result whose gSIM tier never
+ran is not a repeat. Carried (copied) verdicts never count as measurements.
+Supply the archive SHA256 from the immutable producer handoff, rather than
+substituting a locally invented source or simulator identity:
 
 ```sh
 spike-timing archive-inspect --archive capsule_timing.tar \
@@ -258,6 +268,98 @@ With `--spike-profile`, the same command also checks the selected Spike
 profile's mesh, element widths, scratchpad/accumulator rows, memory base/size,
 target name and original DTS hash. A structural match does not qualify timing.
 
+### Loading structural facts into the device profile
+
+Structural facts reach the observer's device profile through one closed,
+target-neutral document, `merlin.timing_capacity_facts.v1`, and one command:
+
+```sh
+spike-timing apply-capacities --profile SELECTED_SPIKE_PROFILE.json \
+  --facts capacity_facts.json --output profile-with-facts.json
+```
+
+The document names the exact profile it was derived against
+(`device_profile_sha256`, the SHA256 of the profile file), the elaborated
+design (`elaboration`: artifact name to SHA256, e.g. FIRRTL and DTS) and a list
+of `facts`. Each fact has a unique `id`, a semantic `role`, the profile name it
+`applies_to`, an integer `value` in the role's `unit`, 1..16 pinned `sources`
+(`path`, `sha256`, `selector` naming the RTL element or field read) and a
+`derivation`. The **role**, never a field name, decides where a value may go:
+
+| Role | Unit | Placed at | Meaning |
+| --- | --- | --- | --- |
+| `occupancy_lanes` | commands | `resources.<name>.capacity` | Simultaneous occupancy lanes of an engine resource |
+| `start_queue_entries` | commands | `resources.<name>.queue_capacity` | Reservations that may wait to start on that resource |
+| `live_command_credits` | commands | `target.structure.live_command_credits.<name>` | Entries held from allocation through completion (a reservation station) |
+| `command_queue_entries` | commands | `target.structure.command_queue_entries.<name>` | Buffer after issue, distinct from live-command credits |
+| `outstanding_requests` | requests | `target.structure.outstanding_requests.<name>` | In-flight memory request limit |
+| `max_transfer_bytes` | bytes | `target.structure.max_transfer_bytes.<name>` | Largest single transfer request |
+| `datapath_bytes_per_beat` | bytes | `target.structure.datapath_bytes_per_beat.<name>` | Transfer datapath width |
+| `minimum_latency_cycles` | cycles | `target.constraints.<class>.minimum_latency_cycles` | Fixed pipeline delay; a lower bound when fitting that price class |
+| `declared_hardware_fact` | its own | `target.hardware.<name>` | Fills a hardware fact the profile already declares (e.g. a reset state left null) |
+
+A fact can fill only a slot the profile declares (a resource, hardware fact or
+price class), an already known value must agree, a role is stated once per
+target, and nothing supplies or fits a price. The output carries a
+`capacity_facts` receipt (document digest, profile digest, elaboration and every
+placement). For the selected target, the extractor's reservation-station entries
+are `live_command_credits`, its controller queue lengths `command_queue_entries`,
+its in-flight memory request limit `outstanding_requests`, its DMA maximum
+`max_transfer_bytes`, and its DMA bus width (in bits, divided by eight)
+`datapath_bytes_per_beat`. `occupancy_lanes` and `start_queue_entries` assert a
+reviewed mapping onto the generic engine's lane and wait-queue semantics; do not
+derive them from reservation entries. The observer evidence pass reads the loaded
+profile as its device profile: resources whose lanes and start queue are both
+known become engine resources, the rest stay unbound and are reported
+unresolved, and `structure`/`constraints` ride in the model for providers and
+fitting.
+
+### Timing structure derived from the elaborated RTL
+
+The facts extractor's `timing_structure` section reads the timing-relevant
+structure from the selected elaborated HW instead of Chisel sources
+(`merlin.targetgen.rtl.timing_structure`). The target contract names anchors
+only (`rtl_extraction.timing_structure`): the dispatch module and per-class
+issue-port prefixes, the bus field vocabulary, memory-client port families,
+the dataflow cell select, and port pairs for stage counts. The section then
+records:
+
+- dispatch entries per class (slots readable at the issue port) and the
+  command buffers the intact issued command crosses;
+- per memory client: beat width, request ID space, the request-size values
+  the size field can carry, and in-flight transactions (state slots selected
+  by the response ID);
+- register stages between declared ports, classified `fixed`,
+  `fixed_when_enabled` (enable-gated stages), `variable` (storage occupancy
+  or feedback) or `unknown`;
+- the dataflow modes the cell select chooses, classified structurally as
+  weight- or output-stationary, and whether the select is runtime-driven.
+
+Values the readers cannot reach are UNKNOWN with a reason. Memory round
+trips, sustained DMA bandwidth, issue/completion overheads, translation
+misses, contention and per-command occupancy are not RTL facts. They are
+listed under `fit_from_measurement` and remain gSIM fits.
+
+`simulation_correspondence` records whether the accelerator unit is the same
+hardware under the simulation configuration and the chosen target
+configuration. It compares FIRRTL module bodies, canonical HW per module and
+SoC-level anchors (`merlin-target-tools unit-correspondence`). Measurements
+on the simulation configuration stand for the target's unit-internal timing
+only when the result is `identical` or `structurally_equivalent`.
+
+The engine-resource mapping is a reviewed, target-owned declaration
+(`profile_resources`): each `capacity`/`queue_capacity` names a structural
+quantity, or `null` to leave it to fitting. Apply it to a profile copy:
+
+```sh
+merlin-target-tools timing-profile-structure --target TARGET \
+  --facts facts.json --profile profile.json --out profile-structure.json
+```
+
+The copy records the mapping, its stated basis and every field that is still
+to be fitted under `structural_mapping`. No price is derived, and the profile
+stays unqualified until native validation passes.
+
 ### Fitting for Phase 2 ranking
 
 Use Phase 1 gSIM cycle labels for the exact original ELF, embedded input,
@@ -299,6 +401,10 @@ The closed `merlin.phase1.spike_archive_binding.v1` object contains:
   `sim_provenance_sha256`, normalized `counter` and optional `cache_protocol`;
 - `cases`, each with an existing dataset `case`, all original `results` paths,
   `candidate_sha256`, `shape_sha256` and a reviewed `counter_scope`.
+  Different compiler versions can emit byte-identical programs; such an execution
+  stays one case, and `candidate_sha256` is then the sorted list of every
+  candidate that emitted those bytes. Each observation keeps its own result's
+  candidate.
 
 `review.counter` requires `unit: cycles`, integer `width_bits: 64`,
 `wrap: modulo`, the declared `clock`, integer `max_delta_cycles` strictly between

@@ -16,6 +16,16 @@ from pathlib import Path
 from merlin.compile.materialized_model_inputs import MaterializedModelInputs
 from merlin.compile.model_execution_inputs import file_sha256
 from merlin.compile.owned_host_model import OwnedHostModelCompiler
+from merlin.llvmlower.source_compute_groups import form_exact_groups
+
+
+class CandidateDispatchRefusal(ValueError):
+    """The candidate's own emitted program fails a source-attribution requirement of its dispatch.
+
+    Raised only from checks of the candidate's emitted device code, never for a harness, input or
+    tool fault, so the grade can report the compiler's failure as a failure rather than leaving it
+    behind the absent receipt it causes (which reads as unmeasured tooling).
+    """
 
 
 def _selected_file(selection, role):
@@ -67,8 +77,12 @@ def execute_owned_host_model(
     from merlin.common.artifacts import new_product
 
     product = new_product(
-        "owned-host-model", version=1, target=target, update_latest=False,
-        sources=[str(output)], notes="Owned-host model build and source-bound native evidence custody",
+        "owned-host-model",
+        version=1,
+        target=target,
+        update_latest=False,
+        sources=[str(output)],
+        notes="Owned-host model build and source-bound native evidence custody",
     )
     output = product.path
     from merlin.targetgen.contract.readback_policy import FULL_VALUES_BIN, selected
@@ -98,6 +112,17 @@ def execute_owned_host_model(
         validator_identity=provenance["tool"],
         source_identity=provenance["source"],
     )
+    # Validate each required source operation before invoking the candidate, including its actual
+    # group assignment. Supporting fusion is selected by Merlin's ordinary capability checks.
+    from merlin.common import mlir_query as mq
+    from merlin.xdsl_dialects.lowering import compute_groups as groups_api
+
+    source_path = Path(bundle) / "model.mlir"
+    module = mq.parse(source_path.read_text())
+    groups, _ = form_exact_groups(module, target, bundle, groups_api.form_groups)
+    frozen_split = _source_placement(
+        capsule, source_certificate, module, groups, target=target, source_path=source_path
+    )["frozen_placement"]
     receipt = service.compile(
         capture=bundle,
         candidate_package=candidate_package,
@@ -125,16 +150,23 @@ def execute_owned_host_model(
         "host_provider": identity,
         "build": receipt,
         "source_device_join": audit,
+        "frozen_placement": frozen_split,
         "instruction_selection": prepared.record(),
         "materialization": materialized.record(),
         "selection_record": selection_record,
         "runtime_inputs": str(retained.absolute()),
         "readback_policy": readback_policy.record() if readback_policy is not None else None,
     }
-    record.update(_execute_required_tiers(
-        capsule, record, target=target, facts=facts, timeout=timeout,
-        reachable_oracle_tiers=reachable_oracle_tiers,
-    ))
+    record.update(
+        _execute_required_tiers(
+            capsule,
+            record,
+            target=target,
+            facts=facts,
+            timeout=timeout,
+            reachable_oracle_tiers=reachable_oracle_tiers,
+        )
+    )
     verify()
     materialized.verify(bundle)
     prepared.verify()
@@ -144,6 +176,39 @@ def execute_owned_host_model(
         product.add_artifact(artifact)
     product.write_manifest()
     return record
+
+
+def _frozen_declaration(capsule):
+    """The pinned capsule's own declaration, never an in-memory copy a caller could have edited."""
+    import yaml
+
+    root = Path(capsule["__dir__"])
+    declaration = yaml.safe_load((root / "capsule.yaml").read_text())
+    if not isinstance(declaration, dict):
+        raise ValueError("frozen model capsule declaration is malformed")
+    return declaration, root
+
+
+def _frozen_split(capsule, source_path, *, target, groups=None, eligible=None, module=None):
+    """Bind Merlin's device groups (and, when given, fresh eligibility) to the frozen placement."""
+    from merlin.common import mlir_query as mq
+    from merlin.xdsl_dialects.lowering import compute_groups as groups_api
+
+    from . import frozen_placement
+
+    declaration, root = _frozen_declaration(capsule)
+    frozen = frozen_placement.read(declaration, root)
+    if module is None:
+        module = mq.parse(Path(source_path).read_text())
+    if groups is None:
+        groups, _ = form_exact_groups(module, target, source_path, groups_api.form_groups)
+    return frozen_placement.require_split(
+        frozen,
+        source_sha256=file_sha256(source_path),
+        device=frozen_placement.device_operations(groups, groups_api.HOST),
+        eligible=eligible,
+        source_operations=Counter(frozen_placement.operation_name(op) for op in mq.walk(module)),
+    )
 
 
 def _independently_eligible_group_ids(placement, groups):
@@ -168,9 +233,11 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
     from merlin_experiments.phase1.feedback.private_device_audit import audit_built_device_host_compute
     from merlin_experiments.phase1.feedback.private_full_models import _linked_symbols
     from merlin_experiments.phase1.feedback.private_group_provenance import (
-        eligible_source_identity,
+        convolution_input_preparations,
         join_routed_source_groups,
+        require_intended_host_selection,
         routed_kernel_symbols,
+        source_group_roster,
     )
 
     from merlin.common import mlir_query as mq
@@ -179,78 +246,40 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
     # Match the exact source passed to OwnedHostModelCompiler.plan_before_build.
     text = (Path(bundle) / "model.mlir").read_text()
     module = mq.parse(text)
-    groups = groups_api.form_groups(module, target)
+    groups, _ = form_exact_groups(module, target, bundle, groups_api.form_groups)
     groups_api.require_explained(groups_api.plan(module, target, groups=groups))
     placement = _source_placement(
         capsule, certificate, module, groups, target=target, source_path=Path(bundle) / "model.mlir"
     )
     eligible_groups = _independently_eligible_group_ids(placement, groups)
-    source = {"eligible_groups": [], "eligible_group_provenance": [], "eligible_group_metrics": {}}
-    for group in groups:
-        if group.index not in eligible_groups:
-            continue
-        region, nodes = eligible_source_identity(group.root)
-        source["eligible_groups"].append(group.index)
-        source["eligible_group_provenance"].append(
-            {"source_group": group.index, "source_region_id": region, "source_node_ids": list(nodes)}
-        )
-        values = (value for member in reversed(group.members) for value in member.results)
-        for value in values:
-            shape, _ = mq.type_shape_dtype(value.type)
-            elements = 1
-            for extent in shape:
-                elements *= extent
-            size = mq.value_bytes(value.type)
-            if shape and elements > 0 and size > 0 and size % elements == 0:
-                source["eligible_group_metrics"][group.index] = {
-                    "elements": elements,
-                    "element_bytes": size // elements,
-                }
-                break
-        if group.index not in source["eligible_group_metrics"]:
-            raise ValueError("source-bound device group has no static output extent")
+    source = source_group_roster(groups, eligible_groups, host_placement=groups_api.HOST, module=module)
     output = receipt["output"]
     sidecar = output["device_sidecar"]
     path = Path(sidecar["path"])
     if file_sha256(path) != sidecar["sha256"]:
         raise ValueError("owned host device sidecar changed")
     emitted = json.loads(path.read_text())
-    if emitted.get("skipped") or emitted.get("device") != target:
+    if emitted.get("device") != target:
         raise ValueError("owned host model omitted eligible device groups")
     assigned = emitted.get("routed")
     joined = join_routed_source_groups(assigned, source)
-    from merlin.kernels.shapes import observe_contractions
-
-    original_shapes = {id(op): shape for op, shape in observe_contractions(module)}
-    original_groups = {group.index: group for group in groups}
-    for row in assigned:
-        entry = emitted.get("entries", {}).get(row["symbol"], {})
-        if entry.get("op") != "conv2d":
-            continue
-        shape = original_shapes.get(id(original_groups[joined[row["group"]]].root))
-        if shape is None or (
-            row.get("parallel") != list(shape.parallel)
-            or row.get("reduction") != list(shape.reduction)
-            or row.get("dtypes") != list(shape.dtypes)
-        ):
-            raise ValueError("convolution entry differs from original source contraction")
+    require_intended_host_selection(emitted.get("skipped", []))
     elf = Path(output["elf"])
     if file_sha256(elf) != output["elf_sha256"]:
         raise ValueError("owned host linked ELF changed")
     _linked_symbols(elf, routed_kernel_symbols(emitted))
-    source["conv_input_preparation"] = {
-        row["symbol"]: {"entry": emitted["entries"][row["symbol"]],
-                        "call_buffers": emitted["call_buffers"][row["symbol"]]}
-        for row in assigned if emitted.get("entries", {}).get(row["symbol"], {}).get("op") == "conv2d"
-        and emitted["signatures"].get(row["symbol"]) == []
-    }
-    audits = audit_built_device_host_compute(elf.parent, assigned, source, target)
+    source["conv_input_preparation"] = convolution_input_preparations(emitted, source)
+    audits = audit_built_device_host_compute(
+        elf.parent, assigned, source, target, diagnostics=elf.parent / "audit-diagnostics",
+        host_artifacts=output.get("host_artifacts"),
+    )
     return {
         "source": source,
         "placement": placement,
         "joined_groups": joined,
         "static_device_host_compute": audits,
         "assigned": assigned,
+        "optional_source_groups_routed": sorted(set(joined.values()) & set(source["optional_groups"])),
         "scope": "source identities joined to actual linked device objects; "
         "dynamic execution and required tiers remain separate",
     }
@@ -335,8 +364,13 @@ def _source_placement(capsule, certificate, module, groups, *, target, source_pa
         )
     if not eligible:
         raise ValueError("accelerated model has no independently eligible source operation")
+    eligible_operations = Counter(name(ops[row["source_op_index"]]) for row in eligible)
+    frozen = _frozen_split(
+        capsule, source_path, target=target, groups=groups, eligible=dict(eligible_operations), module=module
+    )
     return {
         "status": "clean",
+        "frozen_placement": frozen,
         "source_sha256": fresh["source_mlir_sha256"],
         "n_source_operations": len(ops),
         "eligible_source_regions": eligible,
@@ -384,7 +418,8 @@ def _mandatory_source_commands(function, commands, obligations):
                 )
             }
         if not _mandatory_command_blocks(function, matched):
-            raise ValueError(
+            # The candidate's emitted device code, not the harness, is what lacks the work.
+            raise CandidateDispatchRefusal(
                 f"eligible source operation {obligation['source_op_index']} lacks unavoidable "
                 f"attributed {family} work; fused transforms need independent evidence"
             )
@@ -427,7 +462,9 @@ def _host_call_proof(host_ir, *, assigned, output):
     generic = Path(output) / "owned_host_cfg.generic.mlir"
     printed = subprocess.run(
         [str(printer), str(translated), "--mlir-print-op-generic", "-o", str(generic)],
-        capture_output=True, text=True, timeout=60,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     if printed.returncode != 0 or _digest(printer) != printer_before:
         raise ValueError("actual host CFG cannot be printed generically with selected MLIR")
@@ -578,7 +615,28 @@ def _dispatch_proof(record, *, target, facts):
             or Counter(object_words) != Counter(elf_words)
             or Counter(object_functs) != Counter(elf_functs)
         ):
-            raise ValueError("complete custom-command inventory changed across device LLVM/object/ELF")
+            inventory = {"schema": "merlin.device_command_inventory_refusal.v1", "group": row["group"],
+                         "symbol": symbol, "kernel_symbol": kernel_symbol,
+                         "llvm_funct_counts": dict(Counter(all_functs)),
+                         "object_funct_counts": dict(Counter(object_functs)),
+                         "elf_funct_counts": dict(Counter(elf_functs)),
+                         "object_and_elf_words_equal": Counter(object_words) == Counter(elf_words),
+                         "scope": "static inventories; optimizer transformations are not a dispatch proof"}
+            raw = (json.dumps(inventory, sort_keys=True, indent=2) + "\n").encode()
+            from hashlib import sha256
+
+            diagnostic = elf.parent / f"{symbol}.command-inventory-refusal-{sha256(raw).hexdigest()}.json"
+            try:
+                with diagnostic.open("xb") as stream:
+                    stream.write(raw)
+            except FileExistsError:
+                if diagnostic.is_symlink() or diagnostic.read_bytes() != raw:
+                    raise ValueError("device command inventory diagnostic changed")
+            stage = ("device LLVM to object" if Counter(all_functs) != Counter(object_functs)
+                     else "device object to linked ELF")
+            raise ValueError("complete custom-command inventory changed across device LLVM/object/ELF; "
+                             f"group {row['group']} ({symbol}), first mismatch: {stage}; "
+                             "static counts cannot yet certify this compiler transformation")
         artifact_pins[symbol] = {
             "kernel_symbol": kernel_symbol,
             **{role: _digest(_pinned(pins, role)) for role in pins},
@@ -704,8 +762,11 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
     output = record["build"]["output"]
     inputs = record["build"]["inputs"]
     board = load_boards(Path(inputs["board_catalog"])).get(inputs["board"])
-    if board is None or board.target != target or board.rtl_sim_config != facts["config"]:
+    if board is None or board.target != target:
         raise ValueError("owned model selected board and RTL facts identify different configurations")
+    from merlin.compile.model_execution_inputs import selected_firrtl
+
+    selected_firrtl(facts["path"], target=target, config=board.rtl_sim_config)
     elf = Path(output["elf"])
     recipe = output["compilation_recipe"]
     compilation = verify_completed_recipe(Path(recipe["path"]), executable=elf, expected_recipe_sha256=recipe["sha256"])
@@ -790,13 +851,9 @@ def _static_tiers(capsule, record, *, target, facts, dispatch, policy):
 
 
 def _selected_facts(path, *, target):
-    from merlin.compile.model_execution_inputs import selected_firrtl
+    from merlin.compile.model_execution_inputs import selected_execution_firrtl
 
-    document = json.loads(Path(path).read_text())
-    config = ((document.get("facts") or {}).get("source") or {}).get("config")
-    if not isinstance(config, str) or not config:
-        raise ValueError("owned model lacks selected RTL configuration")
-    return selected_firrtl(path, target=target, config=config)
+    return selected_execution_firrtl(path, target=target)
 
 
 def _native_engine_for_facts(target, engine, facts):
@@ -840,8 +897,8 @@ def _run_selected_rtl(elf, *, target, engine, facts, timeout, elf_sha256):
     import time
     from contextlib import nullcontext
 
-    from merlin.compile.model_execution_inputs import selected_firrtl
     from merlin.common.execution_deadline import ExecutionDeadline
+    from merlin.compile.model_execution_inputs import selected_firrtl
     from merlin.targetgen.contract.compile import _selected_run_timeout
     from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
 
@@ -858,9 +915,7 @@ def _run_selected_rtl(elf, *, target, engine, facts, timeout, elf_sha256):
     bounded = _selected_run_timeout(backend, engine, timeout, ExecutionDeadline.start(timeout))
     deadline = ExecutionDeadline.start(bounded)
     with gsim_runtime_slot(wait_timeout_s=bounded) if engine == "gsim" else nullcontext():
-        console = backend.run_elf(
-            elf, simulator=engine, timeout=deadline.remaining(), capture_bytes=True
-        )
+        console = backend.run_elf(elf, simulator=engine, timeout=deadline.remaining(), capture_bytes=True)
     if command is not None:
         command.revalidate()
     revalidate()
@@ -889,7 +944,8 @@ def _execute_required_tiers(capsule, record, *, target, facts, timeout, reachabl
             continue
         if reachable_oracle_tiers is not None and tier not in reachable_oracle_tiers:
             tiers[tier] = {
-                "status": "unavailable", "elf": identity,
+                "status": "unavailable",
+                "elf": identity,
                 "detail": "required owned-model tier is not selected in this grading request",
             }
             continue
@@ -986,12 +1042,60 @@ def _same_owned_frozen_policy(recorded, fresh) -> bool:
         original = _read_pinned_payload(recorded, role)
         selected = _read_pinned_payload(fresh, role)
         old_pin, new_pin = recorded[role], fresh[role]
-        if (set(old_pin) != {"path", "sha256", "size_bytes"}
-                or set(new_pin) != {"path", "sha256", "size_bytes"}
-                or old_pin["sha256"] != new_pin["sha256"]
-                or old_pin["size_bytes"] != new_pin["size_bytes"] or original != selected):
+        if (
+            set(old_pin) != {"path", "sha256", "size_bytes"}
+            or set(new_pin) != {"path", "sha256", "size_bytes"}
+            or old_pin["sha256"] != new_pin["sha256"]
+            or old_pin["size_bytes"] != new_pin["size_bytes"]
+            or original != selected
+        ):
             return False
     return True
+
+
+def _stopped_before_receipt(stopped):
+    """The audit verdict for a run that stopped before producing its receipt: its root cause first.
+
+    The absent receipt is only a consequence. Reporting it ("receipt ... is absent") hid the actual
+    reason, and when that reason is the candidate's own dispatch refusal, it turned a compiler failure
+    into what reads as unmeasured tooling. A proven emitted-device host-compute veto is also a
+    candidate failure. Any other stop stays incomplete (NOT_RUN_IS_NOT_PASS) and
+    names its stage and exception; host paths are scrubbed from the quoted message.
+    """
+    from merlin.common.path_scrub import scrub_host_paths
+
+    stage, kind = str(stopped.get("stage") or "unknown stage"), str(stopped.get("type") or "error")
+    message = scrub_host_paths(str(stopped.get("detail") or ""))[:2000]
+    if kind == "HostComputeVeto" and stage == "owned_host_execution":
+        return {
+            "status": "fail",
+            "kind": "owned_host_model_execution",
+            "violations": ["candidate_host_tensor_compute_violation"],
+            "detail": message,
+            "failure": {"plane": "host_compute", "category": "host_compute_in_accelerator_group",
+                        "detail": message, "stage": stage},
+        }
+    if kind == CandidateDispatchRefusal.__name__ and stage == "owned_host_execution":
+        return {
+            "status": "fail",
+            "kind": "owned_host_model_execution",
+            "violations": ["candidate_dispatch_attribution_refused"],
+            "detail": message,
+            "failure": {
+                "plane": "candidate_compilation",
+                "category": "CANDIDATE_EMISSION_FAILED",
+                "detail": message,
+                "stage": stage,
+            },
+        }
+    detail = f"the model run stopped at {stage} with {kind} before producing its receipt: {message}"
+    return {
+        "status": "incomplete",
+        "kind": "owned_host_model_execution",
+        "violations": ["candidate_completed_dispatch_unverified", "candidate_required_tiers_unverified"],
+        "detail": detail,
+        "failure": {"plane": "candidate_model_execution", "category": "NOT_RUN_IS_NOT_PASS", "detail": detail},
+    }
 
 
 def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
@@ -1009,6 +1113,9 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
 
     try:
         record = result.get("owned_host_native_execution")
+        stopped = result.get("candidate_emission_failure")
+        if not isinstance(record, dict) and isinstance(stopped, dict):
+            return _stopped_before_receipt(stopped)
         if not isinstance(record, dict) or not isinstance(capsule, dict):
             raise ValueError("owned host model receipt or original frozen capsule is absent")
         root = Path(capsule["__dir__"])
@@ -1067,6 +1174,8 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
             capsule=capsule,
             certificate=result.get("candidate_source_eligibility"),
         )
+        if record.get("frozen_placement") != _frozen_split(capsule, root / "model.mlir", target=target):
+            raise ValueError("owned model split differs from the sealed capsule's frozen placement")
         fresh_record = {**record, "source_device_join": source}
         facts = _selected_facts(paths["rtl_facts"], target=target)
         if record.get("rtl_facts") != facts:
@@ -1081,10 +1190,8 @@ def audit_owned_host_model(result, capsule, *, target, readback_policy=None):
                 continue
             evidence = (record.get("tiers") or {}).get(tier)
             if tier == "L3" and (
-                evidence is None or (
-                    isinstance(evidence, dict)
-                    and evidence.get("status") in {"unavailable", "unverified", "not_run"}
-                )
+                evidence is None
+                or (isinstance(evidence, dict) and evidence.get("status") in {"unavailable", "unverified", "not_run"})
             ):
                 tiers[tier] = {"status": "unverified", "detail": "selected native tier has not completed"}
                 continue

@@ -98,6 +98,10 @@ def test_every_required_cell_becomes_an_entry(target):
         # What the stores held before the operation, and outputs larger than one accumulator buffer.
         "residual-state axis",
         "multi-block axis",
+        # One ragged extent at a time under otherwise tile-aligned extents.
+        "tail-isolation axis",
+        # Two runtime activations contracted, the product consumed by data movement.
+        "activation-contraction axis",
     )
     unattributed = [e["name"] for e in other if not any(a in (e.get("source_reference") or "") for a in axes)]
     assert not unattributed, f"entries no declared axis asked for: {unattributed}"
@@ -248,6 +252,9 @@ def test_extents_are_tile_relative_not_baked_integers():
             # the unit can be asked for a batched region at all, and WHICH extent is the alignment
             # axis's question. What this test forbids is a baked INTEGER, so an absent key is skipped.
             if axis not in entry:
+                continue
+            # A single row is the same on every edge: a matrix-vector product, not a baked geometry.
+            if entry[axis] == 1:
                 continue
             assert isinstance(entry[axis], str) and "tile" in entry[axis], (
                 f"{entry['name']}.{axis} = {entry[axis]!r} is not tile-relative"
@@ -586,22 +593,84 @@ _HOST_SPEC = {
 }
 
 
-def test_a_host_only_family_becomes_a_forbidding_capsule():
+def _withheld(out: dict) -> dict:
+    return {row["name"]: row for row in out["provenance"]["host_placement_not_published"]}
+
+
+def test_a_host_only_family_is_reported_not_published():
+    """Host placement is Merlin's generic host codegen, so a capsule with no accelerator placement grades
+    none of the author's work. The family stays visible in provenance with the probe it would use."""
+    out = CS.synthesize(_HOST_SPEC)
+    made = {e["name"] for e in out["capsules"]}
+    withheld = _withheld(out)
+    for family in ("normalization", "reduction"):
+        name = f"{CS.SYNTH_PREFIX}_host_only_{family}"
+        assert name not in made
+        assert withheld[name]["operand_dtype"] == "bf16"
+        assert "Merlin-supplied" in withheld[name]["reason"]
+
+
+def test_every_published_entry_declares_accelerator_placement():
+    out = CS.synthesize(_HOST_SPEC)
+    assert out["capsules"]
+    assert all(CS.declares_accelerator_placement(entry) for entry in out["capsules"])
+
+
+def test_declared_placement_decides_publication_not_the_name():
+    accelerated = {"name": "SY_host_only_anything", "generalization": {"generalization_axis": "host_lane"}}
+    forbidden = {"name": "SY_contraction_i8_aligned", "lanes": {"forbid": ["on_mesh"]}}
+    ineligible = {"name": "X", "generalization": {"must_accelerate": False, "eligible": False}}
+    kept, withheld = CS.withhold_host_placed([accelerated, forbidden, ineligible])
+    assert kept == [accelerated]
+    assert [row["name"] for row in withheld] == ["SY_contraction_i8_aligned", "X"]
+
+
+def test_tail_isolation_rags_one_extent_on_tile_relative_tokens():
     out = CS.synthesize(_HOST_SPEC)
     made = {e["name"]: e for e in out["capsules"]}
-    for family in ("normalization", "reduction"):
-        e = made[f"{CS.SYNTH_PREFIX}_host_only_{family}"]
-        assert e["lanes"] == {"forbid": ["on_mesh"]}
-        assert e["generalization"]["must_accelerate"] is False
-        assert e["operand_dtype"] == "bf16"
+    k_tail = made[f"{CS.SYNTH_PREFIX}_contraction_i8_k_tail"]
+    gemv = made[f"{CS.SYNTH_PREFIX}_contraction_i8_gemv_n_tail"]
+    # Spelled against the binding's tile edge, never as a resolved mesh dimension.
+    assert (k_tail["M"], k_tail["K"], k_tail["N"]) == ("tile", "2*tile-1", "tile")
+    assert (gemv["M"], gemv["K"], gemv["N"]) == (1, "2*tile", "2*tile-1")
+    for entry in (k_tail, gemv):
+        assert entry["op"] == made[f"{CS.SYNTH_PREFIX}_contraction_i8_aligned"]["op"]
+        assert entry["label"] == "public" and CS.declares_accelerator_placement(entry)
 
 
-def test_a_host_only_capsule_requires_no_lane_it_cannot_be_graded_on():
-    """Requiring the host lane too would add a demand no op-path grade can measure, turning the capsule
-    into a permanent `incomplete` instead of a test. The forbid alone IS enforceable."""
+def test_activation_contraction_members_are_aligned_decode_and_ragged_on_tile_tokens():
     out = CS.synthesize(_HOST_SPEC)
-    e = next(x for x in out["capsules"] if x["name"].endswith("_host_only_normalization"))
-    assert "require" not in e["lanes"]
+    made = {e["name"]: e for e in out["capsules"]}
+    members = {label: made[f"{CS.SYNTH_PREFIX}_act_act_i8_{label}"] for label in ("aligned", "decode", "k_tail")}
+    # Spelled against the binding's tile edge, never as a resolved mesh dimension.
+    assert {label: (e["M"], e["K"], e["N"]) for label, e in members.items()} == {
+        "aligned": ("tile", "2*tile", "2*tile"),
+        "decode": (1, "2*tile", "2*tile"),
+        "k_tail": ("tile", "2*tile-1", "2*tile"),
+    }
+    for entry in members.values():
+        # Two runtime activations, no stored weight and no scale stream.
+        assert entry["op"] == "activation_matmul" and "weight" not in entry
+        assert not any("scale" in key for key in entry)
+        assert entry["label"] == "public" and CS.declares_accelerator_placement(entry)
+        assert entry["generalization"]["generalization_axis"] == "activation_contraction"
+        assert entry["stimulus_range"][0] < 0
+
+
+def test_activation_contraction_needs_its_certified_integer_sibling():
+    sibling = {f"{CS.SYNTH_PREFIX}_contraction_i8_aligned"}
+    assert CS._activation_contraction_entries("i8", _HOST_SPEC, emitted=set()) == []
+    assert CS._activation_contraction_entries(None, _HOST_SPEC, emitted=sibling) == []
+    # An exact integer comparison is the member's contract; a float operand regime has none.
+    assert (
+        CS._activation_contraction_entries("bf16", _HOST_SPEC, emitted={f"{CS.SYNTH_PREFIX}_contraction_bf16_aligned"})
+        == []
+    )
+
+
+def test_tail_isolation_needs_its_certified_sibling():
+    assert CS._tail_isolation_entries("matmul", "i8", _HOST_SPEC, emitted=set()) == []
+    assert CS._tail_isolation_entries(None, "i8", _HOST_SPEC, emitted={"SY_contraction_i8_aligned"}) == []
 
 
 def test_a_host_family_with_no_observed_dtype_is_reported_not_defaulted():
@@ -626,7 +695,8 @@ def test_float_movement_host_lane_has_a_pytorch_representative():
         "host_lane": {"required": [{"family": "movement", "dtype": "f32", "n_regions": 19}]},
     }
     result = CS.synthesize(spec, capability_contract={"name": "t", "compute_units": []})
-    entry = next(item for item in result["capsules"] if item["name"] == "SY_host_lane_movement_f32")
+    assert all(item["name"] != "SY_host_lane_movement_f32" for item in result["capsules"])
+    entry = _withheld(result)["SY_host_lane_movement_f32"]
     # A historical requirement (no observed host operations) keeps a family-level choice: any movement
     # op the PyTorch writer expresses, which ties by name among equally cheap candidates.
     assert CS._op_family_map()[entry["op"]] == "movement"
@@ -638,13 +708,12 @@ def test_host_only_dedup_preserves_other_dtypes_of_the_same_family():
     spec = {
         **_HOST_SPEC,
         "host_only": {"families": ["movement"], "dtypes": {"movement": "bf16"}},
-        "host_lane": {"required": [
-            {"family": "movement", "dtype": dtype, "n_regions": 1}
-            for dtype in ("bf16", "f32")
-        ]},
+        "host_lane": {
+            "required": [{"family": "movement", "dtype": dtype, "n_regions": 1} for dtype in ("bf16", "f32")]
+        },
     }
     result = CS.synthesize(spec, capability_contract={"name": "t", "compute_units": []})
-    members = {entry["name"]: entry for entry in result["capsules"]}
+    members = _withheld(result)
     assert members["SY_host_only_movement"]["operand_dtype"] == "bf16"
     assert members["SY_host_lane_movement_f32"]["operand_dtype"] == "f32"
     assert "SY_host_lane_movement_bf16" not in members

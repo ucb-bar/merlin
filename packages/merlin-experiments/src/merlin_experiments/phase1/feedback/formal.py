@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Grade a frozen agent run through capsule_bench_v0 (post-agent, full-access phase).
 
-Public/dev phase (repairable in a real run) -> freeze -> hidden phase (after freeze only). Writes
+Public/dev phase (repairable in a real run) -> freeze -> hidden/private qualification. Writes
 score_capsule.json per phase, an iteration_000 snapshot, run_manifest.yaml, and final_report.md.
 Runs OUTSIDE the agent sandbox (needs spike/verilator + the hidden goldens).
 """
@@ -11,6 +11,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
+import threading
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -38,6 +40,22 @@ from merlin_experiments.phase1.feedback.private_facts import selected_input_fact
 # useful iteration feedback, but is not a completed formal run.  Keep the requirement next to the
 # post-freeze grader: this is the only process allowed to read the hidden capsules.
 FORMAL_REQUIRED_TIER = "L3"
+
+
+def _formal_overlap_shares_compute(environment: Mapping[str, str]) -> bool:
+    """Overlap hidden and private grading only through the one shared compute pool.
+
+    Both graders inherit the exact CPU roster, slot directory, worker caps and
+    preparation affinity. Every build/simulator step leases its CPU from the same
+    shared slots, so the pool divides capacity between the graders as steps finish
+    and a finished private gate leaves every slot to hidden grading. No CPU is
+    partitioned, removed from the roster or reserved for either grader. Separate
+    legacy per-engine rosters could oversubscribe two concurrent graders, so they
+    keep serial grading; an incomplete shared selection refuses as the pool does.
+    """
+    from merlin.common.cpu_pool import grading_cpus, shared_compute_enabled
+
+    return shared_compute_enabled(environment) and len(grading_cpus(environment)) >= 2
 
 
 def _private_source_freeze_for_formal(
@@ -569,7 +587,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     # Only answer-free, pinned launch inputs enter public owned-host compilation.
     from . import public_owned_host_selection
     os.environ.pop(public_owned_host_selection.ENV, None)
-    if a.private_full_model_spec is not None and a.instruction_selection is not None:
+    if a.private_full_model_spec is not None:
         from merlin.compile.model_execution_inputs import file_sha256
 
         public_host_selection = public_owned_host_selection.prepare(
@@ -613,7 +631,22 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
 
     # --- freeze, then hidden phase (immutability enforced) ---
     frozen = freeze_run.freeze(run_dir, repo=context.repo)
+    required_full_models = PFM.requirements_for(context.descriptor)
+    required_full_programs = PFM.program_requirements_for(context.descriptor)
+    required_loader_env = PFM.loader_env_requirements_for(context.descriptor)
+    overlap = False
+    if (os.environ.get("MERLIN_FORMAL_OVERLAP_PRIVATE", "1") == "1"
+            and "MERLIN_COMPUTE_CPUS" in os.environ and not a.skip_hidden
+            and required_full_models and a.private_full_model_spec is not None):
+        from merlin.common.cpu_pool import current_thread_owns_cpu_lease
+
+        overlap = _formal_overlap_shares_compute(os.environ)
+        if overlap and (threading.active_count() != 1 or current_thread_owns_cpu_lease()):
+            overlap = False  # Never fork a live grader thread or held CPU lease.
+        if not overlap:
+            print("formal private overlap unavailable; grading serially", file=sys.stderr, flush=True)
     hid = {"available": False}
+    hidden_pid = None
     if not a.skip_hidden:
         # re-hash the submission right before hidden grading; refuse if it changed since freeze
         recheck = hash_tree(pkg)["sha256"]
@@ -633,23 +666,46 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                 f"({frozen['submission_sha256'][:12]} -> {recheck[:12]}); refusing hidden grade"
             )
         (run_dir / "grading_hidden").mkdir(parents=True, exist_ok=True)
-        hid = _score(
-            str(pkg),
-            (a.hidden_capsules or a.capsules),
-            str(run_dir / "grading_hidden"),
-            {"hidden"},
-            a.no_oracle,
-            context=context,
-            contract=a.contract,
-            step_timeout_s=a.qa_timeout,
-            **({'hidden_capsule_mode': hidden_policy['mode']} if functional_hidden else {}),
-        )
-        (run_dir / "grading_hidden" / "score_capsule.json").write_text(json.dumps(hid, indent=2))
+        if overlap:
+            # No hidden source is read before the freeze/recheck. The fork gets its own
+            # process-wide facts binding and compiler profile state; neither side changes
+            # the CPU environment or affinity, so both lease from the one shared pool.
+            # A stale score can never stand in for this child; both join before publication.
+            hidden_score_path = run_dir / "grading_hidden" / "score_capsule.json"
+            hidden_score_path.unlink(missing_ok=True)
+            sys.stdout.flush()
+            sys.stderr.flush()
+            hidden_pid = os.fork()
+            if hidden_pid == 0:
+                status = 1
+                try:
+                    hidden_score = _score(
+                        str(pkg), (a.hidden_capsules or a.capsules), str(run_dir / "grading_hidden"),
+                        {"hidden"}, a.no_oracle, context=context, contract=a.contract,
+                        step_timeout_s=a.qa_timeout,
+                        **({'hidden_capsule_mode': hidden_policy['mode']} if functional_hidden else {}),
+                    )
+                    hidden_score_path.write_text(json.dumps(hidden_score, indent=2))
+                    status = 0
+                except BaseException as exc:  # noqa: BLE001 -- child cannot certify on any failure
+                    print(f"hidden formal child failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+                finally:
+                    for stream in (sys.stdout, sys.stderr):
+                        try:
+                            stream.flush()
+                        except (OSError, ValueError):
+                            pass  # The exit status alone carries the child's verdict.
+                    os._exit(status)
+        else:
+            hid = _score(
+                str(pkg), (a.hidden_capsules or a.capsules), str(run_dir / "grading_hidden"),
+                {"hidden"}, a.no_oracle, context=context, contract=a.contract,
+                step_timeout_s=a.qa_timeout,
+                **({'hidden_capsule_mode': hidden_policy['mode']} if functional_hidden else {}),
+            )
+            (run_dir / "grading_hidden" / "score_capsule.json").write_text(json.dumps(hid, indent=2))
 
     public_phase = _phase_manifest(pub, required_tier=FORMAL_REQUIRED_TIER)
-    hidden_phase = _phase_manifest(
-        hid, required_tier=hidden_policy['required_tier'], functional_hidden=functional_hidden,
-    )
     public_phase.update(
         {
             "numeric_all_exact": pub.get("numeric_all_exact"),
@@ -660,101 +716,115 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
             "first_failure_planes": pub.get("first_failure_planes"),
         }
     )
+    hidden_status = None
+    try:
+        private_models: dict = {
+            "schema": PFM.RESULT_SCHEMA,
+            "passed": False,
+            "required_models": list(required_full_models),
+            "models": [],
+            "reason": "operator-private full-model validation input was not supplied",
+        }
+        # The numerical half of the private gate: the static gate's linked programs, executed on the
+        # engines the descriptor declares, after the freeze. A malformed declaration is a grading error.
+        execution_gate = PFX.gate_for(context.descriptor, required_programs=required_full_programs)
+        private_execution: dict | None = (
+            None
+            if execution_gate is None
+            else PFX.not_run(execution_gate, "the static private full-model gate did not pass")
+        )
+        if required_full_models and a.private_full_model_spec is not None:
+            try:
+                source_freeze = _private_source_freeze_for_formal(
+                    run_dir, a.private_full_model_spec, context.target, workspace=a.workspace, repo=context.repo,
+                    descriptor=context.descriptor,
+                )
+                if source_freeze is None:
+                    raise ValueError(
+                        "private full-model certification requires a fresh run-owned authored-source freeze"
+                    )
+                instruction_selection = (
+                    instruction_coordinator.prepare(
+                        instruction_inputs,
+                        target=context.target,
+                        output=run_dir.absolute() / "grading_private_instruction_selection",
+                    )
+                    if instruction_inputs is not None
+                    else None
+                )
+                with selected_input_facts(
+                    a.private_full_model_spec, target=context.target, required_models=required_full_models
+                ) as facts_binding:
+                    from .private_result_format_selection import from_run as result_format_for_run
+
+                    result_format_selection = result_format_for_run(run_dir, target=context.target)
+                    if instruction_selection is not None:
+                        instruction_selection.require_facts(facts_binding)
+                    private_models = PFM.run(
+                        pkg,
+                        a.private_full_model_spec,
+                        target=context.target,
+                        required_models=required_full_models,
+                        required_programs=required_full_programs,
+                        loader_env_requirements=required_loader_env,
+                        out=run_dir / "grading_private_full_models",
+                        source_freeze=source_freeze,
+                        source_freeze_root=(run_dir / "private_full_model_input" / "sources")
+                        if source_freeze else None,
+                        build_options=PFX.build_options(execution_gate) if execution_gate is not None else None,
+                        **({"native_result_format_selection": result_format_selection}
+                           if result_format_selection is not None else {}),
+                        **(
+                            {"linked_elf_admission": instruction_selection.service}
+                            if instruction_selection is not None
+                            else {}
+                        ),
+                    )
+                    if instruction_selection is not None:
+                        instruction_selection.require_facts(facts_binding)
+                        private_models["instruction_selection"] = instruction_selection.record()
+                    if result_format_selection is not None:
+                        result_format_selection.verify()
+                    if execution_gate is not None and private_models.get("passed") is True:
+                        # Inside the facts binding: an RTL engine is cited against the facts the build used.
+                        try:
+                            private_execution = PFX.run(
+                                private_models,
+                                execution_gate,
+                                target=context.target,
+                                static_out=run_dir / "grading_private_full_models",
+                                max_workers=int(os.environ.get("MERLIN_PRIVATE_EXECUTION_WORKERS", "1")),
+                            )
+                        except Exception as exc:  # noqa: BLE001 -- an execution refusal is an incomplete gate
+                            private_execution = PFX.not_run(execution_gate, f"{type(exc).__name__}: {exc}")
+                private_models["fact_reader_binding"] = facts_binding
+                if (
+                    _private_source_freeze_for_formal(
+                        run_dir, a.private_full_model_spec, context.target, workspace=a.workspace, repo=context.repo,
+                        descriptor=context.descriptor,
+                    )
+                    != source_freeze
+                ):
+                    raise ValueError("run-owned private source snapshot changed during linked builds")
+            except Exception as exc:  # noqa: BLE001 -- missing private evidence is an incomplete run
+                private_models["passed"] = False
+                private_models["reason"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if hidden_pid is not None:
+            _pid, hidden_status = os.waitpid(hidden_pid, 0)
+    if hidden_pid is not None:
+        if not os.WIFEXITED(hidden_status) or os.WEXITSTATUS(hidden_status) != 0:
+            raise SystemExit("hidden formal child failed; refusing phase 1 qualification")
+        hid = json.loads(hidden_score_path.read_text())
+    if hash_tree(pkg)["sha256"] != frozen["submission_sha256"]:
+        raise SystemExit("FREEZE VIOLATION: submission changed during formal grading")
+    hidden_phase = _phase_manifest(
+        hid, required_tier=hidden_policy['required_tier'], functional_hidden=functional_hidden,
+    )
     if a.skip_hidden:
         hidden_phase["passed"] = "not_run"
         hidden_phase["completion_failures"] = ["hidden_grade_skipped"]
         hidden_phase["formal_complete"] = False
-    required_full_models = PFM.requirements_for(context.descriptor)
-    required_full_programs = PFM.program_requirements_for(context.descriptor)
-    required_loader_env = PFM.loader_env_requirements_for(context.descriptor)
-    private_models: dict = {
-        "schema": PFM.RESULT_SCHEMA,
-        "passed": False,
-        "required_models": list(required_full_models),
-        "models": [],
-        "reason": "operator-private full-model validation input was not supplied",
-    }
-    # The numerical half of the private gate: the static gate's linked programs, executed on the
-    # engines the descriptor declares, after the freeze. A malformed declaration is a grading error.
-    execution_gate = PFX.gate_for(context.descriptor, required_programs=required_full_programs)
-    private_execution: dict | None = (
-        None
-        if execution_gate is None
-        else PFX.not_run(execution_gate, "the static private full-model gate did not pass")
-    )
-    if required_full_models and a.private_full_model_spec is not None:
-        try:
-            source_freeze = _private_source_freeze_for_formal(
-                run_dir, a.private_full_model_spec, context.target, workspace=a.workspace, repo=context.repo,
-                descriptor=context.descriptor,
-            )
-            if source_freeze is None:
-                raise ValueError("private full-model certification requires a fresh run-owned authored-source freeze")
-            instruction_selection = (
-                instruction_coordinator.prepare(
-                    instruction_inputs,
-                    target=context.target,
-                    output=run_dir.absolute() / "grading_private_instruction_selection",
-                )
-                if instruction_inputs is not None
-                else None
-            )
-            with selected_input_facts(
-                a.private_full_model_spec, target=context.target, required_models=required_full_models
-            ) as facts_binding:
-                from .private_result_format_selection import from_run as result_format_for_run
-
-                result_format_selection = result_format_for_run(run_dir, target=context.target)
-                if instruction_selection is not None:
-                    instruction_selection.require_facts(facts_binding)
-                private_models = PFM.run(
-                    pkg,
-                    a.private_full_model_spec,
-                    target=context.target,
-                    required_models=required_full_models,
-                    required_programs=required_full_programs,
-                    loader_env_requirements=required_loader_env,
-                    out=run_dir / "grading_private_full_models",
-                    source_freeze=source_freeze,
-                    source_freeze_root=(run_dir / "private_full_model_input" / "sources") if source_freeze else None,
-                    build_options=PFX.build_options(execution_gate) if execution_gate is not None else None,
-                    **({"native_result_format_selection": result_format_selection}
-                       if result_format_selection is not None else {}),
-                    **(
-                        {"linked_elf_admission": instruction_selection.service}
-                        if instruction_selection is not None
-                        else {}
-                    ),
-                )
-                if instruction_selection is not None:
-                    instruction_selection.require_facts(facts_binding)
-                    private_models["instruction_selection"] = instruction_selection.record()
-                if result_format_selection is not None:
-                    result_format_selection.verify()
-                if execution_gate is not None and private_models.get("passed") is True:
-                    # Inside the facts binding: an RTL engine is cited against the facts the build used.
-                    try:
-                        private_execution = PFX.run(
-                            private_models,
-                            execution_gate,
-                            target=context.target,
-                            static_out=run_dir / "grading_private_full_models",
-                            max_workers=int(os.environ.get("MERLIN_PRIVATE_EXECUTION_WORKERS", "1")),
-                        )
-                    except Exception as exc:  # noqa: BLE001 -- an execution refusal is an incomplete gate
-                        private_execution = PFX.not_run(execution_gate, f"{type(exc).__name__}: {exc}")
-            private_models["fact_reader_binding"] = facts_binding
-            if (
-                _private_source_freeze_for_formal(
-                    run_dir, a.private_full_model_spec, context.target, workspace=a.workspace, repo=context.repo,
-                    descriptor=context.descriptor,
-                )
-                != source_freeze
-            ):
-                raise ValueError("run-owned private source snapshot changed during linked builds")
-        except Exception as exc:  # noqa: BLE001 -- missing private evidence is an incomplete run
-            private_models["passed"] = False
-            private_models["reason"] = f"{type(exc).__name__}: {exc}"
     # A descriptor with no private full-model declaration cannot silently make a new
     # Phase 1 success claim.  Older diagnostic experiments remain runnable, incomplete.
     private_models_complete = bool(required_full_models) and private_models.get("passed") is True
@@ -764,7 +834,8 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     )
     model_check_official = {"passed": False, "reason": "private model inputs unavailable"}
     if (
-        context.target == "gemmini" and required_full_models and private_models_complete  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        context.target == "gemmini"  # target-ok: Explicit Gemmini full-model Phase 1 gate.
+        and required_full_models and private_models_complete
         and a.private_full_model_spec is not None
     ):
         from . import model_check_official as MCO
@@ -774,7 +845,10 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
                                                mode="fast", model_workers=3)
         except Exception as exc:  # noqa: BLE001 -- an incomplete host gate never certifies a run
             model_check_official = {"passed": False, "reason": f"{type(exc).__name__}: {exc}"}
-    model_check_complete = context.target != "gemmini" or model_check_official.get("passed") is True  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+    model_check_complete = (
+        context.target != "gemmini"  # target-ok: Explicit Gemmini full-model Phase 1 gate.
+        or model_check_official.get("passed") is True
+    )
     public_resources_complete = (
         public_resources.get("required") is False or public_resources.get("resource_complete") is True
     )
@@ -839,7 +913,8 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
         "hidden": hidden_phase,
         **({'hidden_capsule_validation': hidden_policy} if functional_hidden else {}),
         "private_full_models": private_models,
-        **({"model_check_official": model_check_official} if context.target == "gemmini" else {}),  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        **({"model_check_official": model_check_official}
+           if context.target == "gemmini" else {}),  # target-ok: Explicit Gemmini full-model Phase 1 gate.
         "public_codegen_resources": public_resources,
         **({} if private_execution is None else {"private_full_model_execution": private_execution}),
         "completion": {

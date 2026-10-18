@@ -201,6 +201,13 @@ def application_members(target: str, module, binding, *, weight_args=None, oracl
 #: tolerance: a single element has no spread, so a constant answer can always be placed inside it.
 MIN_TOLERANCE_GRADED_ELEMENTS = 2
 SKIPPED_UNFALSIFIABLE = "skipped_unfalsifiable"
+#: A class Phase 0 placed on the host. Merlin's own host package compiles it, so it is never a Phase 2
+#: performance obligation: no capsule is minted for it and it carries no share of accelerator cycles.
+MERLIN_SUPPLIED_HOST = "merlin_supplied_host"
+
+
+def _host_placed(member: Mapping[str, Any]) -> bool:
+    return member.get("placement") == "host"
 
 
 def _output_elements(entry: Mapping[str, Any]) -> int | None:
@@ -241,14 +248,19 @@ def aggregate(applications: Mapping[str, Mapping[str, Any]], *, tolerance_graded
     ``tolerance_graded`` is the target's compare policy (anything but exact integer comparison): it
     restricts the representative to members whose device output has at least two elements, and marks
     a class with none ``skipped_unfalsifiable`` instead of minting a capsule no grade can falsify.
+
+    Host-placed members are Merlin-supplied host compute (``docs/design/merlin_supplied_host_placement.md``).
+    They neither enter an application's accelerator total nor make it unpriced, and a class made of
+    them is ``merlin_supplied_host``: recorded with its host work, never a Phase 2 obligation.
     """
     classes: dict[str, dict[str, Any]] = {}
     shares: dict[str, dict[str, Any]] = {}
     for label in sorted(applications):
         members = applications[label]["members"]
-        priced = all(m["price"].get("predicted_cycles") is not None for m in members)
+        accelerator = [m for m in members if not _host_placed(m)]
+        priced = all(m["price"].get("predicted_cycles") is not None for m in accelerator)
         basis = "predicted_cycles" if priced else "macs"
-        total = sum(float(m["price"]["predicted_cycles"] if priced else m["price"]["macs"]) for m in members)
+        total = sum(float(m["price"]["predicted_cycles"] if priced else m["price"]["macs"]) for m in accelerator)
         shares[label] = {
             "basis": basis,
             "total": total,
@@ -257,13 +269,18 @@ def aggregate(applications: Mapping[str, Mapping[str, Any]], *, tolerance_graded
                 if priced
                 else "unpriced mixed-form work proxy; not a cycle share"
             ),
+            "scope": "accelerator-placed groups only; host-placed groups are Merlin-supplied and excluded",
+            "merlin_supplied_host_groups": len(members) - len(accelerator),
         }
         for member in members:
             cid = class_id(member["key"])
             row = classes.setdefault(
                 cid, {"class_id": cid, "label": class_label(member["key"]), "key": member["key"], "members": []}
             )
-            weight = float(member["price"]["predicted_cycles"] if priced else member["price"]["macs"])
+            if _host_placed(member):
+                weight = 0.0
+            else:
+                weight = float(member["price"]["predicted_cycles"] if priced else member["price"]["macs"])
             row["members"].append(
                 {
                     "application": label,
@@ -278,6 +295,25 @@ def aggregate(applications: Mapping[str, Mapping[str, Any]], *, tolerance_graded
                 }
             )
     for row in classes.values():
+        if all(_host_placed(member) for member in row["members"]):
+            row.update(
+                share_by_application={},
+                share_basis_by_application={},
+                unpriced_applications=[],
+                max_share=0.0,
+                occurrences=len(row["members"]),
+                representative=None,
+                status=MERLIN_SUPPLIED_HOST,
+                reason=(
+                    "every member is host-placed: Merlin's host package compiles it, so it is excluded from "
+                    "the accelerator shares and is not a Phase 2 performance obligation"
+                ),
+                merlin_supplied_host_macs={
+                    label: sum(int(m["price"]["macs"]) for m in row["members"] if m["application"] == label)
+                    for label in sorted({m["application"] for m in row["members"]})
+                },
+            )
+            continue
         per_app: dict[str, float] = {}
         for member in row["members"]:
             total = shares[member["application"]]["total"]
@@ -586,6 +622,16 @@ def form_perf_entries(
 
     index = 0
     for row in classes:
+        members = row.get("members") or []
+        if members and all(_host_placed(member) for member in members) and row.get("status") != MERLIN_SUPPLIED_HOST:
+            # A scope frozen before host classes were excluded still names a representative; the
+            # exclusion is decided by placement, so it holds for that scope too.
+            row = {
+                **row,
+                "representative": None,
+                "status": MERLIN_SUPPLIED_HOST,
+                "reason": "every member is host-placed; Merlin-supplied host compute is not a Phase 2 obligation",
+            }
         if row.get("representative") is None:
             if skipped is not None:
                 skipped.append(
@@ -793,8 +839,28 @@ def form_perf_coverage(
         form = ((capsule.get("performance") or {}).get(FORM_BLOCK) or {}) if isinstance(capsule, Mapping) else {}
         if form.get("class_id"):
             by_class.setdefault(str(form["class_id"]), []).append(capsule)
-    rows, missing, unfalsifiable = [], [], []
+    rows, missing, unfalsifiable, merlin_host = [], [], [], []
     for row in classes:
+        members = row.get("members") or []
+        if row.get("status") == MERLIN_SUPPLIED_HOST or (members and all(_host_placed(m) for m in members)):
+            merlin_host.append(row["class_id"])
+            rows.append(
+                {
+                    "class_id": row["class_id"],
+                    "label": row.get("label"),
+                    "required": False,
+                    "status": MERLIN_SUPPLIED_HOST,
+                    "reason": "host-placed: Merlin-supplied host compute is excluded from Phase 2 scoring",
+                    "max_share": 0.0,
+                    "share_by_application": {},
+                    "unpriced_applications": [],
+                    "capsules": [],
+                    "vendor_bar": False,
+                    "ours_over_vendor": None,
+                    "ratio_status": "not_applicable",
+                }
+            )
+            continue
         unpriced_applications = row.get("unpriced_applications") or []
         required = threshold is not None and (
             bool(unpriced_applications) or float(row.get("max_share") or 0.0) >= float(threshold)
@@ -911,6 +977,7 @@ def form_perf_coverage(
         "source_windows_without_form": sorted(set(source_windows_without_form)),
         "source_windows": source_window_rows,
         "skipped_unfalsifiable": unfalsifiable,
+        "merlin_supplied_host": merlin_host,
         "claim_model_check": {
             "visibility": "owner_only_after_phase1_freeze",
             "mode": "statistics_only",
@@ -966,13 +1033,16 @@ def claim_model_form_statistics(
     )
     public_classes = {str(row["class_id"]): row for row in scope.get("classes") or []}
     covered = set(public_classes)
-    priced = all(m["price"].get("predicted_cycles") is not None for m in found["members"])
+    # Merlin-supplied host compute is not the candidate's work, so the statistic is over accelerator
+    # groups only, exactly as the public shares are.
+    accelerator = [m for m in found["members"] if not _host_placed(m)]
+    priced = all(m["price"].get("predicted_cycles") is not None for m in accelerator)
     basis = "predicted_cycles" if priced else "macs"
-    total = sum(float(m["price"][basis]) for m in found["members"]) or 0.0
-    inside = sum(float(m["price"][basis]) for m in found["members"] if class_id(m["key"]) in covered)
+    total = sum(float(m["price"][basis]) for m in accelerator) or 0.0
+    inside = sum(float(m["price"][basis]) for m in accelerator if class_id(m["key"]) in covered)
     # A form-class match does not imply that the public iteration workloads exercised the scale of
     # this claim model. Keep this owner-only and aggregate: claim extents never become capsule inputs.
-    within_extents, outside_extents = _iteration_extent_shares(found["members"], public_classes, basis)
+    within_extents, outside_extents = _iteration_extent_shares(accelerator, public_classes, basis)
     return {
         "schema": STATISTICS_SCHEMA,
         "visibility": "owner_only_after_phase1_freeze",

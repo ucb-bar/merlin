@@ -802,3 +802,33 @@ def test_a_large_output_on_a_serial_console_engine_selects_the_fastest_exact_rea
     assert RB.large_output_readback(capped, "gsim", abi=abi, memory_transport=True)[1] is None
     monkeypatch.setenv(RB.LARGE_OUTPUT_ENV, "0")
     assert RB.large_output_readback(big, "gsim", abi=abi, memory_transport=True)[1] is None
+
+
+def test_preexecution_observer_sees_fresh_build_and_can_abort_without_simulation(monkeypatch, tmp_path):
+    built = []
+    dispatched = []
+    backend = SimpleNamespace(run_elf=lambda *args, **kwargs: dispatched.append(args))
+    from merlin.runtime.backends import base as backends
+
+    monkeypatch.setattr(backends, 'get_backend', lambda target: backend)
+
+    def build(cb, lowered, work, **kwargs):
+        elf = Path(work) / 'package_kernel.elf'
+        elf.write_bytes(b'fresh actual program')
+        built.append(elf)
+        return elf
+
+    monkeypatch.setattr(compiler, 'compile_lowered_to_elf', build)
+
+    class Reused(Exception):
+        pass
+
+    def inspect(elf):
+        assert built == [elf] and elf.read_bytes() == b'fresh actual program'
+        raise Reused()
+
+    with pytest.raises(Reused):
+        compiler.run_on_oracle({}, 'lowered', simulator='fixture', target='fixture', workdir=tmp_path,
+                               before_execution=inspect)
+    assert dispatched == []
+    assert not (tmp_path / 'oracle_console.log').exists()

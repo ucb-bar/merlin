@@ -8,6 +8,7 @@ import sys
 import tarfile
 
 from . import archive as A
+from . import capacities as K
 from . import contracts as C
 from . import design as D
 from . import feedback as B
@@ -62,7 +63,12 @@ def parser() -> argparse.ArgumentParser:
     handoff.add_argument("--spike-configuration", required=True)
     handoff.add_argument("--model-artifact", required=True)
     handoff.add_argument("--training-code", required=True)
-    for command in (fit, validate, compare, native, probe, inspect, prepare, attach, design, handoff):
+    capacities = commands.add_parser(
+        "apply-capacities", help="place RTL-derived structural facts into a device profile by declared role"
+    )
+    capacities.add_argument("--profile", required=True)
+    capacities.add_argument("--facts", required=True, help=f"{K.SCHEMA} document")
+    for command in (fit, validate, compare, native, probe, inspect, prepare, attach, design, handoff, capacities):
         command.add_argument("--output", required=True)
     return root
 
@@ -105,6 +111,8 @@ def main(argv: list[str] | None = None) -> int:
             result = A.attach(C.read(arguments.plan), C.read(arguments.reports))
         elif arguments.command == "archive-design-check":
             result = D.check(C.read(arguments.plan))
+        elif arguments.command == "apply-capacities":
+            result = K.apply_files(arguments.profile, arguments.facts)
         else:
             result = A.handoff(
                 C.read(arguments.plan),
@@ -114,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
                     for key in ("spike_executable", "spike_configuration", "model_artifact", "training_code")
                 },
             )
-        if arguments.command.startswith("archive-"):
+        if arguments.command.startswith("archive-") or arguments.command == "apply-capacities":
             # Preserve immutable intake/handoff outputs; never overwrite one.
             with open(arguments.output, "x", encoding="utf-8") as stream:
                 stream.write(json.dumps(result, sort_keys=True, indent=2, allow_nan=False) + "\n")

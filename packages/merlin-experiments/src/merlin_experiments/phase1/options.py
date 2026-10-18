@@ -84,6 +84,7 @@ class RunOptions:
     codex_home_root: str = ""
     hidden_capsule_mode: str = ""
     native_result_format_selection: str = ""
+    author_max_subagents: int | None = None
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -112,6 +113,7 @@ def build_parser(
     ap.add_argument(
         "--codex-canary", action="store_true", help="stop after an explicit sealed fresh-client canary; no authoring"
     )
+
     def positive_subagent_count(value):
         count = int(value)
         if count < 1:
@@ -119,8 +121,19 @@ def build_parser(
         return count
 
     ap.add_argument(
-        "--codex-max-subagents", type=positive_subagent_count, default=None, metavar="N",
+        "--codex-max-subagents",
+        type=positive_subagent_count,
+        default=None,
+        metavar="N",
         help="opt in to at most N concurrent Codex child agents in the existing bwrap sandbox",
+    )
+    ap.add_argument(
+        "--author-max-subagents",
+        type=positive_subagent_count,
+        default=None,
+        metavar="N",
+        help="recorded Codex helper-thread ceiling for the author session (no prompt change); default "
+        "MERLIN_AUTHOR_MAX_SUBAGENTS, else min(16, compute-pool CPUs)",
     )
     ap.add_argument(
         "--codex-binary", default="", help="explicit canonical Codex executable; requires complete client selection"
@@ -251,7 +264,10 @@ def build_parser(
         "Verilator's own global slot budget is unaffected either way.",
     )
     ap.add_argument(
-        "--sim-per-capsule-timeout", type=sim_per_capsule_timeout, default=0, metavar="SECONDS",
+        "--sim-per-capsule-timeout",
+        type=sim_per_capsule_timeout,
+        default=0,
+        metavar="SECONDS",
         help="explicit async certificate worker budget (1..86400 seconds); 0 retains engine-derived "
         "budget. This does not override the sealed native engine ceiling or whole-model budget.",
     )
@@ -314,8 +330,12 @@ def build_parser(
     )
     ap.add_argument("--no-oracle", action="store_true", help="QA = L0+trace only (fast dev)")
     ap.add_argument("--skip-hidden", action="store_true")
-    ap.add_argument('--hidden-capsule-mode', choices=('rtl', 'functional_spike'), default='',
-                    help='operator hidden validation after freeze; functional_spike is L2 corroboration only')
+    ap.add_argument(
+        "--hidden-capsule-mode",
+        choices=("rtl", "functional_spike"),
+        default="",
+        help="operator hidden validation after freeze; functional_spike is L2 corroboration only",
+    )
     ap.add_argument(
         "--public-object-build-budget-s",
         type=_public_object_build_budget,
@@ -343,7 +363,9 @@ def build_parser(
         help="operator-private source-bound instruction policy for formal full-model grading",
     )
     ap.add_argument(
-        "--native-result-format-selection", default="", metavar="FILE",
+        "--native-result-format-selection",
+        default="",
+        metavar="FILE",
         help="original operator-only negative native output-format proof selection; "
         "frozen privately for formal grading",
     )

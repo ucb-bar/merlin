@@ -161,6 +161,8 @@ def run(
     contract: Path | None = None,
     additional_forbidden: tuple[str, ...] = (),
     defer_pending=None,
+    on_capsule_complete=None,
+    max_workers: int = 0,
 ) -> dict:
     verdict = _base.run(
         submission,
@@ -173,6 +175,8 @@ def run(
         contract=contract,
         additional_forbidden=additional_forbidden,
         **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+        **({"on_capsule_complete": on_capsule_complete} if on_capsule_complete is not None else {}),
+        **({"max_workers": max_workers} if max_workers else {}),
     )
     try:
         verdict["rtl_checks"] = feedback(
@@ -200,8 +204,18 @@ def treatment(context: InvocationContext, *, filecheck_candidates: tuple[Path, .
     """Create source-attributed callbacks bound to one explicit target invocation."""
 
     def qa_runner(
-        submission, capsules_root, runs_root, labels, no_oracle, timeout, *, contract=None, additional_forbidden=(),
+        submission,
+        capsules_root,
+        runs_root,
+        labels,
+        no_oracle,
+        timeout,
+        *,
+        contract=None,
+        additional_forbidden=(),
         defer_pending=None,
+        on_capsule_complete=None,
+        max_workers=0,
     ):
         return run(
             submission,
@@ -214,7 +228,9 @@ def treatment(context: InvocationContext, *, filecheck_candidates: tuple[Path, .
             filecheck_candidates=filecheck_candidates,
             contract=contract,
             additional_forbidden=additional_forbidden,
-            **({"defer_pending": defer_pending} if defer_pending is not None else {}),
+            defer_pending=defer_pending,
+            on_capsule_complete=on_capsule_complete,
+            max_workers=max_workers,
         )
 
     def checkpoint_feedback(runs_root, *, capsule_roots):

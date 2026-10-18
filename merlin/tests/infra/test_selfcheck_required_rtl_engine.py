@@ -61,7 +61,6 @@ def test_direct_selfcheck_refuses_verilator_and_builds_gsim_adapter(monkeypatch)
     adapters, sim = selfcheck._adapters("gsim", "gemmini", "chipyard")
     assert sim == "gsim" and set(adapters) == {"L2", "L3"}
     assert selected == [("spike", "gemmini"), ("gsim", "gemmini")]
-    assert selfcheck._default_sim() == "gsim"
 
 
 def test_required_vcs_never_constructs_the_legacy_verilator_rung(monkeypatch):
@@ -87,12 +86,14 @@ def test_both_brokers_narrow_rtl_requests_to_gsim_but_keep_spike(monkeypatch):
     sync = _module("selfcheck_broker")
     async_broker = _module("simjob_broker")
 
-    assert sync._allowed_sims() == ("spike", "gsim")
-    assert sync._default_sim() == "gsim"
+    # The grade's own selection is always accepted: it honours the pin itself.
+    assert sync._allowed_sims() == ("spike", "gsim", "required")
+    assert sync._default_sim() == "required"
     assert async_broker._allowed_sims(
         feedback_context(merlin_dir() / "experiments/capsule_bench/targets/gemmini", target="gemmini")
-    ) == ("spike", "gsim")
+    ) == ("spike", "gsim", "required")
     assert "conflicts" in sync._sim_policy_error("verilator")
+    assert sync._sim_policy_error("required") is None
 
 
 def test_gsim_pin_remaps_the_historical_l3_promotion_binding(monkeypatch):
@@ -159,6 +160,7 @@ def test_sync_broker_forwards_gsim_to_the_real_selfcheck_boundary(tmp_path, monk
     ws = tmp_path / "ws"
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True)
+    (ws / "submission").mkdir()
     record = tmp_path / "forwarded.json"
     fake = tmp_path / "fake_selfcheck.py"
     fake.write_text(
@@ -192,10 +194,12 @@ def test_sync_broker_forwards_gsim_to_the_real_selfcheck_boundary(tmp_path, monk
         response = json.loads((ch / "resp_good.json").read_text())
         forwarded = json.loads(record.read_text())
         assert response["all_pass"] is True
-        assert response["sim"] == "gsim"
+        # The pinned engine's name is served by the grade's own selection (the same tiers), and the
+        # response says which name was asked for.
+        assert response["sim"] == "required" and response["requested_sim"] == "gsim"
         assert response["selfcheck_protocol"] == broker.PROTOCOL_VERSION
         assert response["selfcheck_request_id"] == "good"
-        assert forwarded[forwarded.index("--sim") + 1] == "gsim"
+        assert forwarded[forwarded.index("--sim") + 1] == "required"
     finally:
         (ch / "STOP").write_text("stop")
         thread.join(timeout=3)
@@ -211,95 +215,80 @@ def test_sandbox_shim_exposes_gsim_and_defaults_to_the_pin(monkeypatch):
     assert "conflicts" in shim._sim_policy_error("verilator")
 
 
-def test_the_unpinned_default_is_the_engine_this_target_has(monkeypatch):
-    """No pin: the self-check must default to the engine the GRADE would select, not to Verilator.
+def test_the_shims_pinned_default_is_served_by_the_grade_selection(monkeypatch):
+    """Under a pin the staged shim names the pinned engine for an unflagged request. That name is the
+    same tiers as the grade's selection, so the broker serves it with the grade's own adapters -- one
+    request then certifies -- while the screen and every other name keep their narrower meaning."""
+    from merlin_experiments.phase1.feedback import dispatch
 
-    THE DEFECT THIS PINS, measured on a live run. ``MERLIN_REQUIRED_RTL_ENGINE`` was unset, so the
-    default fell through to the historical Verilator literal and EVERY self-check ran the slowest
-    engine -- while the grader beside it selected GSIM by the declared ``rtl_engine_policy`` order and
-    the target's engine home contained nothing else. Self-check turnaround across five requests went
-    6 min, 7 min, 75 min, 96 min: a ~15x degradation of the loop the agent iterates in, with no flag,
-    log line or verdict field naming the cause.
-    """
-    from merlin.targetgen.rtl_engine_policy import ENGINE_PRIORITY
-
-    selfcheck = _module("agent_selfcheck")
-    monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
-    # The engine the DECLARED priority ranks above the fallback -- named by the policy, not here.
-    faster = [e for e in ENGINE_PRIORITY if e in selfcheck.SIM_TIER and e != "spike"]
-    assert faster, "the engine policy declares no self-check-drivable elaborated-RTL engine"
-    assert faster[0] != selfcheck.FALLBACK_RTL_SIM, "the policy must rank something above the fallback"
-    monkeypatch.setattr(selfcheck, "_target_sim_via", lambda _context: ("some_target", "chipyard"))
-    monkeypatch.setattr(
-        selfcheck.CR,
-        "describe_l3_engine",
-        lambda target, sim_via: {"available": True, "engine": faster[0], "reason": "probe says so"},
-    )
-    context = feedback_context(HARNESS, target="some_target")
-    assert selfcheck._default_sim(context) == faster[0]
-    assert selfcheck._default_sim(context) != selfcheck.FALLBACK_RTL_SIM
-
-
-def test_a_pin_still_beats_discovery(monkeypatch):
-    """An experiment that declares its engine is stating what its results are attributable to."""
-    from merlin.targetgen.rtl_engine_policy import ENGINE_PRIORITY
-
-    selfcheck = _module("agent_selfcheck")
-    drivable = [e for e in ENGINE_PRIORITY if e in selfcheck.SIM_TIER and e != "spike"]
-    pinned, discovered = drivable[-1], drivable[0]
-    assert pinned != discovered
-    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", pinned)
-    monkeypatch.setattr(
-        selfcheck.CR,
-        "describe_l3_engine",
-        lambda target, sim_via: {"available": True, "engine": discovered, "reason": "probe says so"},
-    )
-    assert selfcheck._default_sim() == pinned
-
-
-def test_discovery_never_makes_spike_the_implicit_default(monkeypatch):
-    """Spike is a correctness-only screen: resolving it here would downgrade an unflagged run."""
-    selfcheck = _module("agent_selfcheck")
-    monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
-    monkeypatch.setattr(selfcheck, "_target_sim_via", lambda _context: ("some_target", "chipyard"))
-    monkeypatch.setattr(
-        selfcheck.CR,
-        "describe_l3_engine",
-        lambda target, sim_via: {"available": True, "engine": "spike", "reason": "the screen is here"},
-    )
-    context = feedback_context(HARNESS, target="some_target")
-    assert selfcheck._default_sim(context) != "spike"
-    assert selfcheck._default_sim(context) == selfcheck.FALLBACK_RTL_SIM
-
-
-def test_failed_discovery_falls_back_visibly(monkeypatch, capsys):
-    """Fail-SAFE, not fail-silent: the fallback still runs, and it says why it fired."""
-    selfcheck = _module("agent_selfcheck")
-    monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
-    monkeypatch.setattr(selfcheck, "_target_sim_via", lambda _context: ("some_target", "chipyard"))
-    monkeypatch.setattr(
-        selfcheck.CR,
-        "describe_l3_engine",
-        lambda target, sim_via: {"available": False, "reason": "no elaborated-RTL engine available"},
-    )
-    assert selfcheck._default_sim(feedback_context(HARNESS, target="some_target")) == selfcheck.FALLBACK_RTL_SIM
-    err = capsys.readouterr().err
-    assert "no elaborated-RTL engine available" in err and selfcheck.FALLBACK_RTL_SIM in err
-
-
-def test_an_unpinned_shim_asks_for_no_engine_at_all(monkeypatch):
-    """The in-sandbox shim cannot see the target's engines, so it must not answer for them.
-
-    Its ``verilator`` literal travelled in the request payload, and an explicit ``sim`` is a choice
-    the broker must honour -- which is how the sandboxed path (i.e. every real run) overrode the
-    driver-side discovery the default above installs.
-    """
-    monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
     shim = _module("selfcheck_shim")
-    broker = _module("selfcheck_broker")
-    assert shim._default_sim() is None
-    assert broker._default_sim() is None
-    assert shim._sim_policy_error(None) is None
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
+    assert dispatch.grade_selection_for(shim._default_sim()) == dispatch.REQUIRED_SIM
+    assert dispatch.grade_selection_for("spike") == "spike"
+    assert dispatch.grade_selection_for(None) is None
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "vcs")
+    assert dispatch.grade_selection_for("vcs") == "vcs", "VCS's historical L4 rung is another ladder shape"
+    monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE")
+    assert dispatch.grade_selection_for("gsim") == "gsim", "with no pin an explicit engine stays explicit"
+
+
+def _selection_main_hands_to_adapters(tmp_path, monkeypatch, *argv):
+    """Run the worker's ``main`` only as far as its adapter selection, and return what it asked for."""
+    from types import SimpleNamespace
+
+    selfcheck = _module("agent_selfcheck")
+    seen = []
+
+    def observe(sim, target, sim_via, **kwargs):
+        seen.append((sim, target, sim_via))
+        raise ValueError("selection observed")
+
+    monkeypatch.setattr(
+        selfcheck, "resolve_context", lambda *args: SimpleNamespace(target="some_target", repo=tmp_path,
+                                                                    readback_policy=None)
+    )
+    monkeypatch.setattr(selfcheck, "_target_sim_via", lambda _context: ("some_target", "chipyard"))
+    monkeypatch.setattr(selfcheck, "_adapters", observe)
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "manifest.yaml").write_text("name: fixture\n")
+    (tmp_path / "public").mkdir()
+    rc = selfcheck.main(["--submission", str(tmp_path / "sub"), "--capsules-root", str(tmp_path / "public"),
+                         "--capsules", "A1", *argv])
+    assert rc == 2
+    return seen, selfcheck
+
+
+@pytest.mark.parametrize("pin", ["", "gsim"])
+def test_the_unflagged_worker_selects_every_tier_the_grade_runs(tmp_path, monkeypatch, pin):
+    """No ``--sim``: the grade's own selection, never one engine -- pinned, discovered or the screen."""
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", pin)
+    seen, selfcheck = _selection_main_hands_to_adapters(tmp_path, monkeypatch)
+    assert seen == [(selfcheck.REQUIRED_SIM, "some_target", "chipyard")]
+    assert selfcheck.REQUIRED_SIM not in selfcheck.SIM_TIER, "the selection must not read as an engine"
+
+
+def test_a_named_engine_remains_a_narrower_legacy_selection(tmp_path, monkeypatch):
+    """Backwards compatibility: an explicit engine still reaches its single-engine adapters."""
+    monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
+    seen, _selfcheck = _selection_main_hands_to_adapters(tmp_path, monkeypatch, "--sim", "spike")
+    assert seen == [("spike", "some_target", "chipyard")]
+
+
+def test_the_grade_selection_delegates_to_the_official_adapter_factory(monkeypatch):
+    """The pin is honoured inside the grade's own selection, so the self-check names no engine."""
+    selfcheck = _module("agent_selfcheck")
+    monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
+    official = {"L2": object(), "L3": object()}
+    monkeypatch.setattr(selfcheck.CR, "qa_checkpoint_adapters", lambda target, sim_via, **kwargs: official)
+    monkeypatch.setattr(
+        selfcheck.CR, "simulator_adapter",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("no engine may be built directly")),
+    )
+    adapters, sim = selfcheck._adapters(selfcheck.REQUIRED_SIM, "gemmini", "chipyard")
+    assert sim == selfcheck.REQUIRED_SIM and adapters == official
+    monkeypatch.setattr(selfcheck.CR, "simulator_adapter", lambda engine, target, **kwargs: engine)
+    spike_only, _ = selfcheck._adapters("spike", "gemmini", "chipyard")
+    assert spike_only == {"L2": "spike"}, "the screen stays a screen"
 
 
 def test_the_shim_and_broker_carry_a_tier_request(tmp_path, monkeypatch):
@@ -311,6 +300,7 @@ def test_the_shim_and_broker_carry_a_tier_request(tmp_path, monkeypatch):
     ws = tmp_path / "ws"
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True)
+    (ws / "submission").mkdir()
     record = tmp_path / "forwarded.json"
     fake = tmp_path / "fake_selfcheck.py"
     fake.write_text(
@@ -334,7 +324,9 @@ def test_the_shim_and_broker_carry_a_tier_request(tmp_path, monkeypatch):
         _wait(ch / "done_tiered")
         forwarded = json.loads(record.read_text())
         assert forwarded[forwarded.index("--tiers") + 1] == "L2"
-        assert "--sim" not in forwarded, "an unnamed engine must be resolved by the self-check, not the broker"
+        assert forwarded[forwarded.index("--sim") + 1] == "required", (
+            "an unnamed engine selects every tier the grade runs, never one engine"
+        )
     finally:
         (ch / "STOP").write_text("stop")
         thread.join(timeout=3)

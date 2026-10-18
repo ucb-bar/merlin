@@ -1,6 +1,7 @@
 """Run replay images on the RTL-equivalent native simulator (gSIM) of the selected FIRRTL, beside Spike.
 
-gSIM models one board: the board catalog's entry for the RTL configuration the selected RTL facts name.
+gSIM models the board selected by its bound runner configuration. Target facts of another configuration
+require a verified unit correspondence to that execution configuration.
 Its DRAM span is far smaller than the span Spike is told to model, so a gSIM replay image is a *board
 image*: code, ``.bss`` and stack at ``dram_base`` within the board's code reserve, then every operand,
 then one poisoned result slot per call, all inside ``[dram_base, dram_base + dram_bytes)``. The image
@@ -18,7 +19,6 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import json
 import os
 import resource
 import signal
@@ -263,13 +263,9 @@ class GsimEngine:
         from merlin.compile import model_execution_inputs as MI
 
         facts_path = Path(rtl_facts)
-        document = json.loads(facts_path.read_text())
-        config = ((document.get("facts") or {}).get("source") or {}).get("config")
-        if not isinstance(config, str) or not config:
-            raise EngineError(f"{facts_path}: the RTL facts name no source config")
         self.target = target
-        self.facts = MI.selected_firrtl(facts_path, target=target, config=config)
-        self.board = board_for(target, config, catalog=board_catalog)
+        self.facts = MI.selected_execution_firrtl(facts_path, target=target)
+        self.board = board_for(target, self.facts["config"], catalog=board_catalog)
         backend, citation, revalidate, _prepare = MI.native_engine(target, "gsim", self.facts)
         self.backend = backend
         self.citation = citation
@@ -303,6 +299,7 @@ class GsimEngine:
             "firrtl_sha256": self.facts["firrtl_sha256"],
             "rtl_facts_sha256": self.facts["sha256"],
             "config": self.facts["config"],
+            "facts_config": self.facts.get("facts_config", self.facts["config"]),
             "command_template": list(self.template),
             "load": "same-ELF DRAM preload (+loadmem); call cycles are in-image mcycle deltas",
             "board": self.board.record(),

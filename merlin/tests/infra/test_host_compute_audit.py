@@ -239,11 +239,12 @@ def test_pointer_only_target_commands_are_orchestration_but_unknown_asm_is_not(m
     from xdsl.context import Context
     from xdsl.dialects import builtin, llvm
     from xdsl.parser import Parser
+
     from merlin.targetgen.rocc import decode
 
     monkeypatch.setattr(decode, "isa_constants", lambda target: {"CUSTOM_OPCODE": 123, "FUNCT_CLASS": {2: "MVIN"}})
 
-    text = '''module {
+    text = """module {
       llvm.func @entry(%input: !llvm.ptr, %output: !llvm.ptr) {
         %base = llvm.ptrtoint %input : !llvm.ptr to i64
         %one = llvm.mlir.constant(1 : i64) : i64
@@ -254,7 +255,7 @@ def test_pointer_only_target_commands_are_orchestration_but_unknown_asm_is_not(m
         "llvm.inline_asm"(%second, %one) <{asm_string = ".insn r 0x7b, 0x3, 0x2, x0, $0, $1", constraints = "r,r,~{memory}", has_side_effects}> : (i64, i64) -> ()
         llvm.return
       }
-    }'''
+    }"""
 
     def judge(source: str):
         ctx = Context()
@@ -335,10 +336,11 @@ def test_a_pass_that_does_the_units_work_on_the_host_fails_the_grade(tmp_path, m
 def test_the_grade_is_where_the_veto_is_applied() -> None:
     # Held by source: promotion and grading paths swallow exceptions by design, so an unwired veto
     # would look exactly like a clean corpus.
-    from merlin.common.paths import merlin_dir, module_source_path
+    from merlin.common.paths import module_source_path
 
     text = module_source_path("merlin.targetgen.capsule_grade").read_text(encoding="utf-8")
-    assert "apply_host_compute_veto(results, rr)" in text and 'score["host_compute_vetoed"]' in text
+    assert "apply_host_compute_veto(results, rr, capsules=caps, target=target)" in text
+    assert 'score["host_compute_vetoed"]' in text
 
 
 def test_a_finding_quotes_an_unrolled_loop_in_a_line_not_a_page() -> None:
@@ -348,3 +350,111 @@ def test_a_finding_quotes_an_unrolled_loop_in_a_line_not_a_page() -> None:
     assert compact_signature(unrolled) == "(ptrtoint) x2 mlir.constant (getelementptr store) x400 br"
     assert compact_signature("load add store") == "load add store" and compact_signature(None) == ""
     assert len(compact_signature(" ".join(f"op{i}" for i in range(200)))) <= 160
+
+
+def _tile_remainder_kernel(rows: int, tile: int, *, store: bool) -> str:
+    """Per-row transfer commands under a ``min(tile, rows - i)`` row loop, as a tiled im2col emits."""
+    write = (
+        """
+        %dst = llvm.getelementptr %output[%row] : (!llvm.ptr, i64) -> !llvm.ptr, i8
+        %byte = llvm.trunc %row : i64 to i8
+        llvm.store %byte, %dst : i8, !llvm.ptr"""
+        if store
+        else ""
+    )
+    return f"""module {{
+      llvm.func @entry(%input: !llvm.ptr, %output: !llvm.ptr) {{
+        %zero = llvm.mlir.constant(0 : i64) : i64
+        %one = llvm.mlir.constant(1 : i64) : i64
+        %rows = llvm.mlir.constant({rows} : i64) : i64
+        %tile = llvm.mlir.constant({tile} : i64) : i64
+        %width = llvm.mlir.constant(112 : i64) : i64
+        llvm.br ^outer(%zero : i64)
+      ^outer(%i: i64):
+        %more = llvm.icmp "ult" %i, %rows : i64
+        llvm.cond_br %more, ^tile, ^done
+      ^tile:
+        %left = llvm.sub %rows, %i : i64
+        %short = llvm.icmp "ult" %left, %tile : i64
+        %count = llvm.select %short, %left, %tile : i1, i64
+        llvm.br ^inner(%zero : i64)
+      ^inner(%j: i64):
+        %again = llvm.icmp "ult" %j, %count : i64
+        llvm.cond_br %again, ^row, ^latch
+      ^row:
+        %row = llvm.add %i, %j : i64
+        %x = llvm.urem %row, %width : i64
+        %y = llvm.udiv %row, %width : i64
+        %offset = llvm.mul %y, %x : i64
+        %src = llvm.getelementptr %input[%offset] : (!llvm.ptr, i64) -> !llvm.ptr, i8
+        %addr = llvm.ptrtoint %src : !llvm.ptr to i64{write}
+        "llvm.inline_asm"(%addr, %j) <{{asm_string = ".insn r 0x7b, 0x3, 0x2, x0, $0, $1", constraints = "r,r,~{{memory}}", has_side_effects}}> : (i64, i64) -> ()
+        %next = llvm.add %j, %one : i64
+        llvm.br ^inner(%next : i64)
+      ^latch:
+        %following = llvm.add %i, %tile : i64
+        llvm.br ^outer(%following : i64)
+      ^done:
+        llvm.return
+      }}
+    }}"""
+
+
+@pytest.mark.parametrize("store", [False, True])
+def test_remainder_row_loops_past_the_stepping_budget_are_counted_and_judged(monkeypatch, store) -> None:
+    """A row loop bounded by ``min(tile, rows - i)`` is decided, not UNKNOWN, at whole-model scale.
+
+    Stepped one block at a time this needs about 13M block visits, past the exact trace's budget,
+    which used to leave a legitimate tiled kernel UNKNOWN. Counting it must decide both ways:
+    pointer-only command issue is clean; the same loop storing on the host is vetoed.
+    """
+    from merlin.targetgen.rocc import decode
+
+    monkeypatch.setattr(decode, "isa_constants", lambda target: {"CUSTOM_OPCODE": 123, "FUNCT_CLASS": {2: "MVIN"}})
+    rows, tile = 64 * 100_000, 100_000
+    ctx = Context()
+    for dialect in (builtin.Builtin, llvm.LLVM):
+        ctx.load_dialect(dialect)
+    module = Parser(ctx, _tile_remainder_kernel(rows, tile, store=store)).parse_module()
+    module.verify()
+    (row,) = HA.audit(module, [_site("entry", elements=rows)], target="fixture")["groups"]
+    assert row["activity_status"] == "derived"
+    if store:
+        assert row["verdict"] == HA.HOST_COMPUTE
+    else:
+        assert row["verdict"] == HA.CLEAN
+        assert row["arithmetic_basis"] == "pointer_only_target_commands_v1"
+        assert row["host_command_orchestration_arithmetic"] > rows
+
+
+@pytest.mark.parametrize("result_type,clean", [("!llvm.void", True), ("i64", False)])
+def test_imported_unused_void_command_result_is_not_a_host_value(monkeypatch, result_type, clean):
+    from merlin.targetgen.rocc import decode
+
+    monkeypatch.setattr(decode, "isa_constants", lambda target: {"CUSTOM_OPCODE": 123, "FUNCT_CLASS": {2: "MVIN"}})
+    text = _tile_remainder_kernel(97, 16, store=False)
+    text = text.replace('"llvm.inline_asm"(%addr', '%observed = "llvm.inline_asm"(%addr')
+    text = text.replace(': (i64, i64) -> ()', f': (i64, i64) -> {result_type}')
+    ctx = Context()
+    for dialect in (builtin.Builtin, llvm.LLVM):
+        ctx.load_dialect(dialect)
+    module = Parser(ctx, text).parse_module()
+    (row,) = HA.audit(module, [_site("entry", elements=97)], target="fixture")["groups"]
+    assert row["verdict"] == (HA.CLEAN if clean else HA.HOST_COMPUTE), row
+
+
+def test_command_orchestration_exemption_refuses_unmodeled_effects(monkeypatch):
+    from merlin.targetgen.rocc import decode
+
+    monkeypatch.setattr(decode, "isa_constants", lambda target: {"CUSTOM_OPCODE": 123, "FUNCT_CLASS": {2: "MVIN"}})
+    text = _tile_remainder_kernel(97, 16, store=False).replace(
+        '%addr = llvm.ptrtoint %src',
+        '"llvm.intr.memcpy"(%input, %output, %one) : (!llvm.ptr, !llvm.ptr, i64) -> ()\n'
+        ' %addr = llvm.ptrtoint %src',
+    )
+    ctx = Context(allow_unregistered=True)
+    for dialect in (builtin.Builtin, llvm.LLVM):
+        ctx.load_dialect(dialect)
+    module = Parser(ctx, text).parse_module()
+    (row,) = HA.audit(module, [_site("entry", elements=97)], target="fixture")["groups"]
+    assert row["verdict"] == HA.HOST_COMPUTE, row

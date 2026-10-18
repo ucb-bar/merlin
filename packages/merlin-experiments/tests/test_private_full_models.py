@@ -15,6 +15,7 @@ import yaml
 from merlin_experiments.phase1.feedback import private_bucketize_support as bucketize
 from merlin_experiments.phase1.feedback import private_compilation_inputs as compilation
 from merlin_experiments.phase1.feedback import private_f32_maximum_support as maximum
+from merlin_experiments.phase1.feedback import private_f32_reduction_support as f32_reductions
 from merlin_experiments.phase1.feedback import private_full_models as gate
 from merlin_experiments.phase1.feedback import private_index_host_support as prepared_index
 from merlin_experiments.phase1.feedback import private_integer_reduction_support as integer_reductions
@@ -58,11 +59,13 @@ def _synthetic_host_groups(module, _target, **_kwargs):
     """Cover the real source while isolating placement from admission checks."""
     from merlin.xdsl_dialects.lowering import compute_groups
 
-    roots = [op for op in module.walk()
-             if op.name.startswith("linalg.") and compute_groups.classify(op) is not None]
+    roots = [op for op in module.walk() if op.name.startswith("linalg.") and compute_groups.classify(op) is not None]
     return [
         compute_groups.Group(
-            index, compute_groups.HOST, None, members=[root],
+            index,
+            compute_groups.HOST,
+            None,
+            members=[root],
             stages=[compute_groups.classify(root).kind],
         )
         for index, root in enumerate(roots)
@@ -76,13 +79,19 @@ def _synthetic_source_demand(raw, normalized, groups, *, linked=None):
     record = {
         "schema": private_source_demand.SCHEMA,
         "status": "source_demand_linked" if linked is not None else "source_demand_derived",
-        "source_sha256": raw, "normalized_source_sha256": normalized,
+        "source_sha256": raw,
+        "normalized_source_sha256": normalized,
         "declarations": {name: "a" * 64 for name in ("capability", "software", "rtl_facts", "numeric_policy")},
-        "n_source_groups": groups, "n_demanded_groups": groups,
-        "n_requested_groups": groups, "n_lowered_groups": groups if linked else 0,
-        "n_covered_groups": groups if linked else 0, "n_host_groups": 0,
-        "n_unknown_host_groups": 0, "n_missing_direct_groups": 0,
-        "n_unresolved_raw_regions": 0, "n_raw_undetermined_regions": 0,
+        "n_source_groups": groups,
+        "n_demanded_groups": groups,
+        "n_requested_groups": groups,
+        "n_lowered_groups": groups if linked else 0,
+        "n_covered_groups": groups if linked else 0,
+        "n_host_groups": 0,
+        "n_unknown_host_groups": 0,
+        "n_missing_direct_groups": 0,
+        "n_unresolved_raw_regions": 0,
+        "n_raw_undetermined_regions": 0,
         "demanded_group_provenance": [],
     }
     if linked is not None:
@@ -257,9 +266,14 @@ def test_complete_requires_current_candidate_all_programs_and_device_work(monkey
                         "eligible_groups": [0],
                         "eligible_group_provenance": [],
                         "accelerator_source_demand": _synthetic_source_demand(
-                            "d" * 64, "e" * 64, 1,
-                            linked={"capture_tree_sha256": "c" * 64, "elf_sha256": "2" * 64,
-                                    "candidate_tree_sha256": "1" * 64},
+                            "d" * 64,
+                            "e" * 64,
+                            1,
+                            linked={
+                                "capture_tree_sha256": "c" * 64,
+                                "elf_sha256": "2" * 64,
+                                "candidate_tree_sha256": "1" * 64,
+                            },
                         ),
                         "selected_index_observation": deepcopy(selected_index),
                         "n_bounded_control_assertions": 0,
@@ -298,6 +312,15 @@ def test_complete_requires_current_candidate_all_programs_and_device_work(monkey
                         integer_reductions.FIELD: {
                             **integer_reductions.begin("d" * 64, "e" * 64, 5, deepcopy(selected_index)),
                             "status": integer_reductions.LINKED,
+                            "linked_build": {
+                                "capture_tree_sha256": "c" * 64,
+                                "elf_sha256": "2" * 64,
+                                "candidate_tree_sha256": "1" * 64,
+                            },
+                        },
+                        f32_reductions.FIELD: {
+                            **f32_reductions.begin("d" * 64, "e" * 64, 5, deepcopy(selected_index)),
+                            "status": f32_reductions.LINKED,
                             "linked_build": {
                                 "capture_tree_sha256": "c" * 64,
                                 "elf_sha256": "2" * 64,
@@ -551,7 +574,7 @@ def test_complete_requires_current_candidate_all_programs_and_device_work(monkey
     ]
     assert not gate.complete(record, **kwargs)
     record["models"][0] = model("a", programs["a"])
-    for field in (integer_reductions.FIELD, bucketize.FIELD, ordered_scan.FIELD, linkage.FIELD):
+    for field in (integer_reductions.FIELD, f32_reductions.FIELD, bucketize.FIELD, ordered_scan.FIELD, linkage.FIELD):
         record["models"][0]["checks"]["source"]["prefix"].pop(field)
         assert not gate.complete(record, **kwargs)
         record["models"][0] = model("a", programs["a"])
@@ -692,7 +715,8 @@ def test_built_group_artifact_vetoes_candidate_host_arithmetic(tmp_path, monkeyp
         )
 
 
-def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkeypatch):
+@pytest.mark.parametrize("second_group_optional", [False, True])
+def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkeypatch, second_group_optional):
     from xdsl.parser import Parser
 
     from merlin.llvmlower import device_shim, toolchain
@@ -719,6 +743,12 @@ def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkey
         ],
         "eligible_group_metrics": {i: {"elements": 64, "element_bytes": 4} for i in (4, 8)},
     }
+    if second_group_optional:
+        source["eligible_groups"] = [4]
+        source["optional_groups"] = [8]
+        source["optional_group_provenance"] = [source["eligible_group_provenance"].pop()]
+        source["optional_group_metrics"] = {8: source["eligible_group_metrics"].pop(8)}
+    second_metrics = source["optional_group_metrics"] if second_group_optional else source["eligible_group_metrics"]
     original = Parser.parse_module
     calls = []
 
@@ -730,14 +760,14 @@ def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkey
     records = gate._audit_built_device_host_compute(tmp_path, assigned, source, "fixture")
     assert [(row["group"], row["source_group"]) for row in records] == [(3, 4), (7, 8)]
     assert len(calls) == 1
-    source["eligible_group_metrics"][8]["elements"] = 32
+    second_metrics[8]["elements"] = 32
     calls.clear()
     gate._audit_built_device_host_compute(tmp_path, assigned, source, "fixture")
     assert len(calls) == 2  # Another element-scale budget requires a separate audit.
 
     from merlin_experiments.phase1.feedback import private_device_audit as built_audit
 
-    source["eligible_group_metrics"][8]["elements"] = 64
+    second_metrics[8]["elements"] = 64
     original_sha = built_audit.file_sha256
     reads = []
 
@@ -763,6 +793,47 @@ def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkey
     monkeypatch.setattr(Parser, "parse_module", changed_during_parse)
     with pytest.raises(ValueError, match="changed during"):
         gate._audit_built_device_host_compute(tmp_path, assigned, source, "fixture")
+
+
+def test_unknown_built_kernel_audit_preserves_actual_diagnostics_and_still_refuses(tmp_path, monkeypatch):
+    from merlin.llvmlower import device_shim
+
+    monkeypatch.setattr(device_shim, "kernel_abi_for", lambda _target: SimpleNamespace(symbol="kernel"))
+    device = tmp_path / "device"
+    device.mkdir()
+    artifact = device / "stem.device.mlir"
+    artifact.write_text(""""builtin.module"() ({
+      "llvm.func"() <{sym_name = "kernel", function_type = !llvm.func<void (i1)>}> ({
+      ^entry(%condition: i1):
+        "llvm.cond_br"(%condition) [^yes, ^no] <{operandSegmentSizes = array<i32: 1, 0, 0>}> : (i1) -> ()
+      ^yes:
+        "llvm.return"() : () -> ()
+      ^no:
+        "llvm.return"() : () -> ()
+      }) : () -> ()
+    }) : () -> ()""")
+    (device / "stem.ll").write_text("linked source\n")
+    (device / "stem.o").write_bytes(b"linked object")
+    with pytest.raises(ValueError, match="audit is unknown, not clean; kernel:.*conditional"):
+        gate._audit_built_device_host_compute(
+            tmp_path,
+            [{"symbol": "stem", "group": 1, "source_region_id": "region-a", "source_node_ids": ["node-a"]}],
+            {
+                "eligible_groups": [4],
+                "eligible_group_provenance": [
+                    {"source_group": 4, "source_region_id": "region-a", "source_node_ids": ["node-a"]}
+                ],
+                "eligible_group_metrics": {4: {"elements": 64, "element_bytes": 4}},
+            },
+            "fixture",
+            diagnostics=tmp_path / "diagnostics",
+        )
+    diagnostics = list((tmp_path / "diagnostics").glob("stem.host-compute-audit-*.json"))
+    assert len(diagnostics) == 1
+    saved = json.loads(diagnostics[0].read_text())
+    assert saved["artifacts"]["llvm_mlir"] == hashlib.sha256(artifact.read_bytes()).hexdigest()
+    assert saved["report"]["proven_clean"] is False
+    assert saved["report"]["groups"][0]["activity_problems"]
 
 
 def test_routed_group_join_uses_complete_source_identity_not_preparation_indices():
@@ -1260,7 +1331,8 @@ def test_source_obligations_prove_copy_before_hardware_eligibility(tmp_path, mon
     signature_row["semantic_family"] = "elementwise_map"
     signature_row["disposition"] = "host_required"
     monkeypatch.setattr(
-        eligibility, "capability_map_from_contract",
+        eligibility,
+        "capability_map_from_contract",
         lambda _contract: {"movement": SemanticCapability("movement", dtypes=("fp32",))},
     )
     with pytest.raises(gate.source_demand.SourceDemandIncomplete):
@@ -1339,8 +1411,13 @@ def test_source_obligations_joins_typed_hardware_exclusion_before_host_check(tmp
     }
     with pytest.raises(gate.SourceAdmissionError) as failure:
         gate._source_obligations(
-            capture, "fixture", {"operations": []}, capability, {},
-            facts_sha256="a" * 64, numeric_policy_sha256="b" * 64,
+            capture,
+            "fixture",
+            {"operations": []},
+            capability,
+            {},
+            facts_sha256="a" * 64,
+            numeric_policy_sha256="b" * 64,
         )
     assert str(failure.value) == "source has 1 unaccounted or unjustified operation signature(s)"
     private = failure.value._private_unresolved
@@ -1379,29 +1456,49 @@ def test_source_obligations_joins_typed_hardware_exclusion_before_host_check(tmp
     # arange source/selected-width join has its own real captured-IR tests.
     monkeypatch.setattr(gate.arange_support, "record", lambda *_args: None)
     proof = gate._source_obligations(
-            capture, "fixture", {"operations": []}, capability, {},
-            facts_sha256="a" * 64, numeric_policy_sha256="b" * 64,
-        )
+        capture,
+        "fixture",
+        {"operations": []},
+        capability,
+        {},
+        facts_sha256="a" * 64,
+        numeric_policy_sha256="b" * 64,
+    )
     assert proof["eligible_groups"] == []
     for hardware_status in ("unknown", "admitted"):
         with pytest.raises(ValueError, match="unknown hardware eligibility"):
             gate._source_obligations(
-            capture, "fixture", {"operations": []}, capability, {},
-            facts_sha256="a" * 64, numeric_policy_sha256="b" * 64,
-        )
+                capture,
+                "fixture",
+                {"operations": []},
+                capability,
+                {},
+                facts_sha256="a" * 64,
+                numeric_policy_sha256="b" * 64,
+            )
     hardware_status = "unsupported"
     missing_precision = True
     with pytest.raises(ValueError, match="unknown hardware eligibility"):
         gate._source_obligations(
-            capture, "fixture", {"operations": []}, capability, {},
-            facts_sha256="a" * 64, numeric_policy_sha256="b" * 64,
+            capture,
+            "fixture",
+            {"operations": []},
+            capability,
+            {},
+            facts_sha256="a" * 64,
+            numeric_policy_sha256="b" * 64,
         )
     missing_precision = False
     unknown_precision = True
     with pytest.raises(ValueError, match="unknown hardware eligibility"):
         gate._source_obligations(
-            capture, "fixture", {"operations": []}, capability, {},
-            facts_sha256="a" * 64, numeric_policy_sha256="b" * 64,
+            capture,
+            "fixture",
+            {"operations": []},
+            capability,
+            {},
+            facts_sha256="a" * 64,
+            numeric_policy_sha256="b" * 64,
         )
 
 
@@ -1732,6 +1829,7 @@ def test_shared_postbuild_verifier_rehashes_prebuilt_elf(tmp_path):
         "linalg_host_support": linalg.begin("3" * 64, "3" * 64, 3, deepcopy(selected)),
         "literal_arange_host_support": arange.begin("3" * 64, "3" * 64, 3, deepcopy(selected)),
         integer_reductions.FIELD: integer_reductions.begin("3" * 64, "3" * 64, 3, deepcopy(selected)),
+        f32_reductions.FIELD: f32_reductions.begin("3" * 64, "3" * 64, 3, deepcopy(selected)),
         maximum.FIELD: maximum.begin(
             "3" * 64,
             "3" * 64,
@@ -1967,13 +2065,20 @@ def test_recipe_derivation_binds_current_sources_and_selected_capture_recipe(tmp
     variant = {**body, "framework_capture_policy": {"calibration_count": 1024}}
     variant["recipe_sha256"] = recipe_digest(variant)
     selected.write_text(json.dumps(variant, sort_keys=True))
-    review = {"schema": variants.SCHEMA, "status": "reviewed", "reviewed_by": "operator",
-              "reason": "Approved calibration policy",
-              "base_file_sha256": index["recipes"][0]["sha256"], "base_recipe_sha256": body["recipe_sha256"],
-              "selected_file_sha256": _sha(selected), "selected_recipe_sha256": variant["recipe_sha256"],
-              "changes": variants.changes(body, variant)}
-    variant_plan = {"recipe": {"path": str(selected), "sha256": _sha(selected),
-                                "recipe_sha256": variant["recipe_sha256"]}}
+    review = {
+        "schema": variants.SCHEMA,
+        "status": "reviewed",
+        "reviewed_by": "operator",
+        "reason": "Approved calibration policy",
+        "base_file_sha256": index["recipes"][0]["sha256"],
+        "base_recipe_sha256": body["recipe_sha256"],
+        "selected_file_sha256": _sha(selected),
+        "selected_recipe_sha256": variant["recipe_sha256"],
+        "changes": variants.changes(body, variant),
+    }
+    variant_plan = {
+        "recipe": {"path": str(selected), "sha256": _sha(selected), "recipe_sha256": variant["recipe_sha256"]}
+    }
     variant_row = {**row, "capture_recipe_variant": review}
     variant_proof, _, _ = gate._recipe_derivation(tmp_path / "operator.yaml", variant_row, variant_plan, **kwargs)
     assert variant_proof["recipe_semantic_sha256"] == variant["recipe_sha256"]
@@ -1981,8 +2086,9 @@ def test_recipe_derivation_binds_current_sources_and_selected_capture_recipe(tmp
     with pytest.raises(ValueError, match="absent from current-spec derivation"):
         gate._recipe_derivation(tmp_path / "operator.yaml", row, variant_plan, **kwargs)
     with pytest.raises(ValueError, match="selected rtl-facts"):
-        gate._recipe_derivation(tmp_path / "operator.yaml", variant_row, variant_plan,
-                                **{**kwargs, "facts_sha256": "5" * 64})
+        gate._recipe_derivation(
+            tmp_path / "operator.yaml", variant_row, variant_plan, **{**kwargs, "facts_sha256": "5" * 64}
+        )
     selected.write_bytes(raw)
     assert gate._selected_admission_views(
         resolved_software,

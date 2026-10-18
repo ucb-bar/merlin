@@ -794,9 +794,10 @@ the grader. Resume it with the command it printed:
 
     python agent_selfcheck.py --attach <request_id> --out <your out path>
 
-Each resume is one turn and returns more progress. Do NOT submit a second request while one is in
-flight (it queues behind the first and doubles your wait), and do NOT background the check and poll
-for its output file.
+Each resume is one turn and returns more progress. To keep working meanwhile, submit with
+`--wait-budget 5`: it returns the request id at once, and `--attach` collects the verdict later.
+Several requests may be in flight; do not resubmit a check that is still running (that only repeats
+it), and do NOT background the check and poll for its output file.
 
 ⚠️ **Your shell tool will, on refusing a bare `sleep`, suggest "use Monitor with an until-loop
 (`until <check>; do sleep 2; done`)". Do not do that here.** That loop is itself a command, so the
@@ -1000,8 +1001,8 @@ def _enforced_workflow(
                 f"   CHEAP tier (`{screen_tier}` -> {screen_sim}; seconds per capsule):",
                 f"   `python3 agent_selfcheck.py --submission submission --tiers {screen_tier}",
                 "   --capsules <changed-capsule-or-subset>`. Run THAT after every edit. The certifying",
-                "   RTL run is the SEPARATE, less frequent step — same command with no `--tiers` (it",
-                "   defaults to the best cycle-accurate engine this target has, MINUTES per capsule):",
+                "   RTL run is the SEPARATE, less frequent step — same command with no `--tiers` (it runs",
+                "   every tier each capsule declares mandatory, as the grade does; MINUTES per capsule):",
                 "   run it once the screen is clean, at convergence milestones, and once with",
                 "   `--capsules all` before declaring done. A screen can only refute, never certify, so",
                 "   a submission that never cleared the RTL run is not done. A submission you did not",

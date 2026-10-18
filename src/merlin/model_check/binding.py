@@ -340,6 +340,50 @@ def receipt(
             declared=declared,
             config=configs,
         )
+    # The target elaboration above remains the source of target/FPGA facts.
+    # A selected simulation may execute different SoC FIRRTL only through the
+    # exact unit correspondence and its independently verified engine receipt.
+    execution_config = block.get("config")
+    if execution_config and execution_config != source.get("config"):
+        with out.guard("simulation_firrtl_identity"):
+            from merlin.compile import model_execution_inputs as MI
+            from merlin.targetgen.rtl.unit_correspondence import execution_binding
+
+            correspondence = execution_binding(facts_doc, config=execution_config)
+            execution = MI.selected_firrtl(facts_path, target=target, config=execution_config)
+            from merlin.targetgen.rtl.source_selection import load_selection
+
+            selection = correspondence["selection"]
+            if (
+                out.file("simulation_source_selection", Path(selection["path"]), pinned=selection["sha256"])
+                != selection["sha256"]
+            ):
+                raise BindingError("simulation source selection bytes changed")
+            selected = load_selection(selection["path"], target=target)
+            expected = {
+                "firrtl": correspondence["firrtl"],
+                "hierarchy": correspondence["hierarchy"],
+                "core_hw": correspondence["core_hw"],
+            }
+            if selected["config"] != execution_config or any(
+                selected["sources"][role] != pin for role, pin in expected.items()
+            ):
+                raise BindingError("simulation bundle differs from the facts correspondence")
+            # Bind with the explicit contract/facts, never a different ambient selection.
+            from merlin.runtime.backends.chipyard_rocc_bound import bind
+
+            backend = bind(target=target, contract=contract, facts=facts_doc)
+            citation = backend.execution_engine_identity("gsim")
+            if citation["receipt"]["firrtl_sha256"] != execution["firrtl_sha256"]:
+                raise BindingError("simulation engine receipt differs from correspondence FIRRTL")
+            out.check(
+                "simulation_firrtl_identity",
+                PASS,
+                "verified target-unit correspondence binds the selected simulation bundle and engine",
+                facts_config=correspondence["facts_config"],
+                execution_config=execution_config,
+                firrtl_sha256=execution["firrtl_sha256"],
+            )
 
     # -- the board: its DTS pin and its memory span
     board_row = None

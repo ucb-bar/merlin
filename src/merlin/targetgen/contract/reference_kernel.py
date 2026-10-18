@@ -98,6 +98,18 @@ class _Emitter:
         bits = struct.unpack("<I", struct.pack("<f", float(scale)))[0]
         return self.map(t, f"merlin_ref_acc_scale(x, {bits}u)")
 
+    def acc_scale_by_column(self, t: _Value, attrs: dict, op: str) -> _Value:
+        import struct
+
+        from merlin.runtime.commandbuffer import declared_acc_scale_by_column
+
+        scales = declared_acc_scale_by_column(attrs, t.shape[-1], op=op)
+        bits = [str(struct.unpack("<I", struct.pack("<f", scale))[0]) + "u" for scale in scales]
+        self.counter += 1
+        name = f"column_scales_{self.counter}"
+        self.decls.append(f"static const uint32_t {name}[{len(bits)}] = {{{', '.join(bits)}}};")
+        return self.map(t, f"merlin_ref_acc_scale(x, {name}[e % {len(bits)}])")
+
     def relu(self, t: _Value) -> _Value:
         return self.map(t, "x > 0 ? x : 0")
 
@@ -144,7 +156,7 @@ class _Emitter:
 
     # -- commands --------------------------------------------------------------------------------
     def epilogue(self, t: _Value, ops: dict, attrs: dict, op: str, stages_allowed) -> _Value:
-        from merlin.runtime.commandbuffer import BIAS_STAGES, bias_tensor_name
+        from merlin.runtime.commandbuffer import BIAS_STAGES, bias_tensor_name, declared_acc_scale
 
         for stage in attrs.get("epilogue") or []:
             if stage not in stages_allowed:
@@ -154,7 +166,8 @@ class _Emitter:
             elif stage == "requant":
                 t = self.requant(t, int(attrs.get("requant_shift", self.default_shift)))
             elif stage == "acc_scale":
-                t = self.acc_scale(t, float(attrs.get("acc_scale", 1.0)))
+                t = (self.acc_scale_by_column(t, attrs, op) if "acc_scale_by_column" in attrs
+                     else self.acc_scale(t, declared_acc_scale(attrs, op=op)))
             elif stage == "relu":
                 t = self.relu(t)
             elif stage == "maxpool":

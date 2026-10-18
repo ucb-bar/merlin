@@ -15,6 +15,7 @@ import pytest
 from merlin.common import mlir_query as mq
 from merlin.runtime import linalg_numpy as LN
 
+_ID1 = "affine_map<(d0) -> (d0)>"
 _ID2 = "affine_map<(d0, d1) -> (d0, d1)>"
 
 
@@ -316,3 +317,103 @@ func.func @forward(%x: tensor<2x3xi64>, %i: index) -> (index, index) {
     assert (int(fixed), int(read)) == (3, 2)
     with pytest.raises(LN.LinalgNumpyError, match="outside rank 2"):
         _evaluate(text, x, np.int64(2))
+
+
+# ------------------------------------------------------------------------------- the constant cache
+
+_CONTRACTION = (
+    "{indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d2, d1)>, "
+    'affine_map<(d0, d1, d2) -> (d0, d1)>], iterator_types = ["parallel", "parallel", "reduction"]}'
+)
+_TRANSPOSED_WEIGHT = """
+module {
+  func.func @forward(%x: tensor<2x4xi8>, %w: tensor<3x4xi8>) -> tensor<2x3xi32> {
+    %t0 = tensor.empty() : tensor<4x3xi8>
+    %wt = linalg.transpose ins(%w : tensor<3x4xi8>) outs(%t0 : tensor<4x3xi8>) permutation = [1, 0]
+    %c0 = arith.constant 0 : i32
+    %s = tensor.splat %c0 : tensor<2x3xi32>
+    %m = linalg.generic CONTRACTION ins(%x, %wt : tensor<2x4xi8>, tensor<4x3xi8>) outs(%s : tensor<2x3xi32>) {
+    ^bb0(%a: i8, %b: i8, %acc: i32):
+      %ae = arith.extsi %a : i8 to i32
+      %be = arith.extsi %b : i8 to i32
+      %p = arith.muli %ae, %be : i32
+      %r = arith.addi %acc, %p : i32
+      linalg.yield %r : i32
+    } -> tensor<2x3xi32>
+    return %m : tensor<2x3xi32>
+  }
+}
+""".replace("CONTRACTION", _CONTRACTION)
+
+
+def _count_ops(monkeypatch, name: str) -> list[int]:
+    seen = [0]
+    real = LN.evaluate_op
+
+    def counted(op, env, **kwargs):
+        seen[0] += op.name == name
+        return real(op, env, **kwargs)
+
+    monkeypatch.setattr(LN, "evaluate_op", counted)
+    return seen
+
+
+def test_work_on_constants_alone_is_done_once_and_gives_the_same_bytes(monkeypatch) -> None:
+    """A weight's transpose reads only a constant: one evaluation serves every later one, and every
+    result is the bytes an uncached evaluation gives. The weight's float64 copy is kept the same way."""
+    module = mq.parse(_TRANSPOSED_WEIGHT)
+    rng = np.random.default_rng(1)
+    w = rng.integers(-128, 128, size=(3, 4), dtype=np.int8)
+    xs = [rng.integers(-128, 128, size=(2, 4), dtype=np.int8) for _ in range(3)]
+    plain = [LN.evaluate(module, [x, w.copy()])[0] for x in xs]
+
+    transposes = _count_ops(monkeypatch, "linalg.transpose")
+    cache = LN.ConstantCache()
+    weight = cache.mark(w.copy())
+    cached = [LN.evaluate(module, [x, weight], constants=cache)[0] for x in xs]
+    assert transposes[0] == 1
+    for a, b in zip(plain, cached, strict=True):
+        assert a.dtype == b.dtype and a.tobytes() == b.tobytes()
+    assert np.array_equal(cached[0], xs[0].astype(np.int64) @ w.astype(np.int64).T)
+    assert not weight.flags.writeable  # a reused value is never written
+    with pytest.raises(ValueError):
+        weight[0, 0] = 1
+
+
+def test_an_op_whose_body_reads_an_outer_value_is_never_hoisted() -> None:
+    """Every operand of the generic is a constant, but its body multiplies by ``%s``, an argument that
+    changes between evaluations: hoisting it would answer the first ``%s`` forever."""
+    text = f"""
+module {{
+  func.func @forward(%w: tensor<4xf32>, %s: f32) -> tensor<4xf32> {{
+    %e = tensor.empty() : tensor<4xf32>
+    %r = linalg.generic {{indexing_maps = [{_ID1}, {_ID1}], iterator_types = ["parallel"]}}
+        ins(%w : tensor<4xf32>) outs(%e : tensor<4xf32>) {{
+    ^bb0(%a: f32, %o: f32):
+      %m = arith.mulf %a, %s : f32
+      linalg.yield %m : f32
+    }} -> tensor<4xf32>
+    return %r : tensor<4xf32>
+  }}
+}}
+"""
+    module = mq.parse(text)
+    cache = LN.ConstantCache()
+    w = cache.mark(np.arange(4, dtype=np.float32))
+    generic = next(op for op in module.walk() if op.name == "linalg.generic")
+    assert not cache.self_contained(generic)
+    two = LN.evaluate(module, [w, np.float32(2)], constants=cache)[0]
+    three = LN.evaluate(module, [w, np.float32(3)], constants=cache)[0]
+    assert two.tolist() == [0, 2, 4, 6] and three.tolist() == [0, 3, 6, 9]
+
+
+def test_an_op_reading_a_value_that_changes_is_evaluated_every_time(monkeypatch) -> None:
+    """Only constants are hoisted: the contraction reads the input, so it runs on every evaluation."""
+    module = mq.parse(_TRANSPOSED_WEIGHT)
+    generics = _count_ops(monkeypatch, "linalg.generic")
+    cache = LN.ConstantCache()
+    w = cache.mark(np.ones((3, 4), np.int8))
+    for k in range(3):
+        (out,) = LN.evaluate(module, [np.full((2, 4), k, np.int8), w], constants=cache)
+        assert out.tolist() == [[4 * k] * 3] * 2
+    assert generics[0] == 3

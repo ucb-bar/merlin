@@ -90,9 +90,14 @@ def _full_capture_inputs(args: argparse.Namespace) -> dict:
         selected["loader_env"] = environment
     if args.execution_timeout_seconds is not None:
         selected["execution_timeout_seconds"] = args.execution_timeout_seconds
+    options = {}
     if args.stage_fp32:
         # A worker option: absent keeps the historical plan bytes.
-        selected["worker_options"] = {"stage_fp32": True}
+        options["stage_fp32"] = True
+    if args.cpu_threads is not None:
+        options["cpu_threads"] = args.cpu_threads
+    if options:
+        selected["worker_options"] = options
     return selected
 
 
@@ -168,6 +173,11 @@ def main(argv: list[str] | None = None) -> int:
         from merlin.perf import census_cli
 
         return census_cli.main(raw[1:])
+    if raw[:1] == ["private-preflight"]:
+        # The private full-model gate's compiler-independent input checks, before a launch.
+        from .phase1.feedback import private_source_preflight
+
+        return private_source_preflight.main(raw[1:])
     if raw[:1] == ["study"]:
         # A comparison study's register beside its run matrices, and the baseline its arms are scored on.
         from merlin.benchharness import study_status
@@ -413,6 +423,13 @@ def main(argv: list[str] | None = None) -> int:
         help="loader environment read selected as deliberately absent (v2 only; repeatable)",
     )
     select_capture.add_argument(
+        "--cpu-threads",
+        type=int,
+        help="intra-op CPU threads for the capture worker; the reference bytes depend on the count, so it "
+        "is selected into the plan, the command and the replay (default: one thread, recorded nowhere so "
+        "old selections keep their bytes)",
+    )
+    select_capture.add_argument(
         "--stage-fp32",
         action="store_true",
         help="stage the exported program to FP32 before capture (and before an int8 recipe quantizes it), "
@@ -433,6 +450,13 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="after issuing, replay the capture and write its sealed execution attestation here "
         "(v3 for a v2 checkpoint selection) as a fresh owner-only file",
+    )
+    issue_capture.add_argument(
+        "--concurrent-replay",
+        action="store_true",
+        help="with --attestation-output: run the attestation replay beside issuance instead of after it, "
+        "the issue on the lower half of this process's CPUs and the replay on the upper half; the "
+        "replay is the same fresh sandboxed execution with the same byte comparison",
     )
     attest_capture = capture_ops.add_parser(
         "attest", help="replay an issued preselected capture and write its sealed execution attestation"
@@ -478,7 +502,10 @@ def main(argv: list[str] | None = None) -> int:
     coverage.add_argument("--spec", type=Path, required=True, help="explicit conformance requirement YAML")
     prepare = operations.add_parser("prepare")
     prepare.add_argument(
-        "--with-level", action="append", choices=("EL5", "EL6"), default=[],
+        "--with-level",
+        action="append",
+        choices=("EL5", "EL6"),
+        default=[],
         help="also prepare an optional ISA-generation or interactive Lean level; never changes existing runs",
     )
     prepare.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
@@ -492,11 +519,14 @@ def main(argv: list[str] | None = None) -> int:
     corpus_mode = prepare.add_mutually_exclusive_group()
     prepare.set_defaults(generated_only=True)
     corpus_mode.add_argument(
-        "--generated-only", action="store_true",
+        "--generated-only",
+        action="store_true",
         help="use only selected Phase-0 public capsules (default); never read the historical corpus",
     )
     corpus_mode.add_argument(
-        "--historical-overlay", dest="generated_only", action="store_false",
+        "--historical-overlay",
+        dest="generated_only",
+        action="store_false",
         help="explicitly retain a historical public corpus; held-out validation sources are refused",
     )
     prepare.add_argument(
@@ -590,16 +620,31 @@ def main(argv: list[str] | None = None) -> int:
                             args.attestation_output.exists() or not args.attestation_output.parent.is_dir()
                         ):
                             raise ValueError("capture attestation output must be fresh, under an existing parent")
-                        receipt = capture_selection.issue(args.selection, expected_sha256=args.expected_sha256)
-                        result = {"sealed_receipt": str(receipt), "phase0_admission": "not_granted"}
-                        if args.attestation_output is not None:
-                            result.update(
-                                capture_selection.attest(
+                        if args.concurrent_replay and args.attestation_output is None:
+                            raise ValueError("--concurrent-replay needs --attestation-output")
+                        if args.concurrent_replay:
+                            from .capture_execution import sealed_m2m
+
+                            result = {
+                                "phase0_admission": "not_granted",
+                                **capture_selection.issue_and_attest(
                                     args.selection,
                                     expected_sha256=args.expected_sha256,
                                     output=args.attestation_output,
+                                    cpus=sealed_m2m.replay_cpu_sets(os.sched_getaffinity(0)),
+                                ),
+                            }
+                        else:
+                            receipt = capture_selection.issue(args.selection, expected_sha256=args.expected_sha256)
+                            result = {"sealed_receipt": str(receipt), "phase0_admission": "not_granted"}
+                            if args.attestation_output is not None:
+                                result.update(
+                                    capture_selection.attest(
+                                        args.selection,
+                                        expected_sha256=args.expected_sha256,
+                                        output=args.attestation_output,
+                                    )
                                 )
-                            )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc
                 print(json.dumps(result, indent=2))

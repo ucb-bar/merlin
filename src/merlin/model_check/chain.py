@@ -11,16 +11,53 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from merlin.model_check import catalog as CAT
 from merlin.model_check.models import Model, Program
 
+if TYPE_CHECKING:
+    from merlin.runtime.dispatch_runtime import ForwardArgsCache
+    from merlin.runtime.linalg_numpy import ConstantCache
+
 
 class ChainError(RuntimeError):
     """A binding names something the chain does not have."""
+
+
+class ChainCache:
+    """What every case of one process shares: each program's parsed module, each stage's constant
+    arguments, and the work :func:`linalg_numpy.evaluate` does on constants alone.
+
+    Every cached value is a deterministic function of the same bytes, so a case run with the cache
+    produces the bytes it produces without it. The cache only grows; use one per process.
+    """
+
+    def __init__(self) -> None:
+        from merlin.runtime.dispatch_runtime import ForwardArgsCache
+        from merlin.runtime.linalg_numpy import ConstantCache
+
+        self.weights: ForwardArgsCache = ForwardArgsCache()
+        self.constants: ConstantCache = ConstantCache()
+        self._modules: dict[str, Any] = {}
+
+    def module(self, path: Path):
+        from merlin.frontends.linalg_mlir import parse_mlir_file
+
+        key = str(Path(path).resolve())
+        if key not in self._modules:
+            self._modules[key] = parse_mlir_file(path)
+        return self._modules[key]
+
+    def arguments(self, catalog: CAT.ProgramCatalog, inputs: Mapping[str, np.ndarray], scratch: Path) -> list:
+        """:func:`catalog.capture_arguments` from the cache, its constant arguments marked constant."""
+        args = CAT.capture_arguments(catalog.stage, inputs, scratch, weights_cache=self.weights)
+        for value in args:
+            if self.weights.is_constant(value) and not self.constants.is_constant(value):
+                self.constants.mark(value)
+        return args
 
 
 @dataclass
@@ -79,25 +116,30 @@ def run_reference(
     scratch: Path,
     *,
     record: Callable[[str, int, CAT.ProgramCatalog, list[np.ndarray]], None] | None = None,
+    cache: ChainCache | None = None,
 ) -> ChainRun:
     """The INT8 reference of every program step on one input; ``record(program, step, catalog, args)``
-    is offered each step's bound arguments (to record its device calls)."""
+    is offered each step's bound arguments (to record its device calls). ``cache`` (one per process,
+    shared by every case) does each program's constant work once; the bytes are the same without it."""
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.runtime import linalg_numpy as LN
 
     run = ChainRun()
     for program in model.programs:
         catalog = catalogs[program.name]
-        module = parse_mlir_file(catalog.ref_prepared)
+        module = cache.module(catalog.ref_prepared) if cache is not None else parse_mlir_file(catalog.ref_prepared)
         elements = result_elements(module)
         arity = CAT._function_arity(module)  # noqa: SLF001
         run.steps[program.name] = []
         for step in range(program.steps):
             inputs = bind(program, model, arrays, step, run)
-            args = CAT.capture_arguments(catalog.stage, inputs, scratch / program.name)
+            if cache is not None:
+                args = cache.arguments(catalog, inputs, scratch / program.name)
+            else:
+                args = CAT.capture_arguments(catalog.stage, inputs, scratch / program.name)
             if record is not None:
                 record(program.name, step, catalog, args)
-            values = LN.evaluate(module, args[:arity])
+            values = LN.evaluate(module, args[:arity], constants=cache.constants if cache is not None else None)
             run.steps[program.name].append(to_compute([np.asarray(v) for v in values], elements))
     return run
 

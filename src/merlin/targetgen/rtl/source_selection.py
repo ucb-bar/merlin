@@ -142,6 +142,94 @@ def derive_hierarchy(firrtl: Path, root: str | None = None) -> dict:
     return visit(root, root, set())
 
 
+def _locator_generator_trees(locator: str) -> list[str]:
+    """Source trees named by a FIRRTL ``@[...]`` locator, as ``generators/<tree>/...`` path segments.
+
+    Read with the locator's own delimiters (brackets, commas, whitespace, path separators); a
+    locator may carry several file sites and an absolute or repo-relative path prefix.
+    """
+    body = locator.strip()
+    if body.startswith("@[") and body.endswith("]"):
+        body = body[2:-1]
+    trees: list[str] = []
+    for token in body.replace(",", " ").split():
+        parts = token.split("/")
+        for index, part in enumerate(parts[:-2]):
+            if part == "generators" and parts[index + 1] and parts[index + 1] not in trees:
+                trees.append(parts[index + 1])
+                break
+    return trees
+
+
+def generator_scope(firrtl: Path, hierarchy: Path | dict, core_root: str) -> dict:
+    """Derive the accelerator generator tree from the declared core root's own FIRRTL declaration.
+
+    The census scopes a unit by the source tree its modules were emitted from. That tree is read
+    off the core root's module locator, never defaulted to the SoC's elaboration entry point (a
+    Scala main class scopes nothing) or to the target name. The derived scope must make the core
+    root the outermost scoped unit of the selected hierarchy; anything else is ambiguous and
+    refuses.
+    """
+    from .introspect import _dominant_unit, _hierarchy_units, _module_head, scan_fir
+
+    sites = []
+    with Path(firrtl).open(encoding="utf-8", errors="ignore") as source:
+        for line in source:
+            if not line.startswith("  ") or line.startswith("   "):
+                continue
+            head = _module_head(line.strip())
+            if head is not None and head[0] == core_root:
+                sites.append(head[1])
+    if len(sites) != 1:
+        raise ValueError(f"core root {core_root!r} needs exactly one FIRRTL module declaration, found {len(sites)}")
+    trees = _locator_generator_trees(sites[0])
+    if len(trees) != 1:
+        raise ValueError(
+            f"core root {core_root!r} locator {sites[0]!r} names {len(trees)} generator source trees; "
+            "the accelerator generator scope is ambiguous"
+        )
+    generator = trees[0]
+    scoped, _mems, _ports = scan_fir(firrtl, generator)
+    tree = hierarchy if isinstance(hierarchy, dict) else json.loads(Path(hierarchy).read_bytes())
+    units = _hierarchy_units(tree, scoped)
+    roots = sorted({root for root, _counts, _widest in units})
+    dominant = _dominant_unit(units)
+    if core_root not in roots or dominant is None or dominant[0] != core_root:
+        raise ValueError(
+            f"generator tree {generator!r} does not make {core_root!r} the outermost dominant unit "
+            f"(unit roots {roots}); the accelerator generator scope is ambiguous"
+        )
+    return {
+        "status": "verified",
+        "generator": generator,
+        "basis": "core root FIRRTL module locator; the scoped census unit must be the core root",
+        "core_root": core_root,
+        "core_root_locator": sites[0],
+        "scoped_modules": len(scoped),
+        "unit_roots": roots,
+        "unit_instances": dominant[1],
+    }
+
+
+def require_generator_scope(selected: dict) -> dict:
+    """The derived scope of a loaded selection; refuses one whose declared generator differs.
+
+    A bundle declaring another scope (e.g. the SoC's elaboration entry point) would census nothing
+    and still look like a successful extraction, so readers call this before the census.
+    """
+    scope = generator_scope(
+        Path(selected["sources"]["firrtl"]["path"]),
+        Path(selected["sources"]["hierarchy"]["path"]),
+        (selected.get("production") or {}).get("core_root"),
+    )
+    if scope["generator"] != selected.get("generator"):
+        raise ValueError(
+            f"source bundle declares generator {selected.get('generator')!r}, but its core root "
+            f"{scope['core_root']!r} is declared under generators/{scope['generator']}/"
+        )
+    return scope
+
+
 def firrtl_hierarchy_audit(firrtl: Path, hierarchy: Path) -> dict:
     """Compare every hierarchy instance to exact declarations in selected FIRRTL.
 
@@ -222,6 +310,22 @@ def production_consistency(doc: dict) -> dict:
     audit = firrtl_hierarchy_audit(Path(sources["firrtl"]["path"]), Path(sources["hierarchy"]["path"]))
     if audit["status"] != "verified":
         errors.append("selected hierarchy differs from FIRRTL")
+    scope = {"status": "unverified", "declared_generator": doc.get("generator")}
+    if isinstance(root, str) and root:
+        try:
+            scope = {
+                **generator_scope(Path(sources["firrtl"]["path"]), Path(sources["hierarchy"]["path"]), root),
+                "declared_generator": doc.get("generator"),
+            }
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            errors.append(f"accelerator generator scope underivable: {exc}")
+        else:
+            if scope["generator"] != doc.get("generator"):
+                scope["status"] = "mismatch"
+                errors.append(
+                    f"declared generator {doc.get('generator')!r} does not scope core root {root!r}; "
+                    f"its FIRRTL declaration is under generators/{scope['generator']}/"
+                )
     elaboration = {"status": "not_selected", "qualification": "configuration label has no source-to-FIRRTL receipt"}
     selected_elaboration = production.get("elaboration")
     if selected_elaboration is not None:
@@ -255,6 +359,7 @@ def production_consistency(doc: dict) -> dict:
         "production": production,
         **({"elaboration": elaboration} if selected_elaboration is not None else {}),
         "hierarchy_correspondence": audit,
+        "generator_scope": scope,
         "errors": errors,
         "qualification": "source consistency only; numerics and compiler conformance require separate receipts",
     }
@@ -283,7 +388,7 @@ def produce_selection(
     target: str,
     firrtl: Path,
     hierarchy: Path | None = None,
-    generator: str,
+    generator: str | None = None,
     config: str,
     core_root: str,
     firtool: Path,
@@ -291,7 +396,12 @@ def produce_selection(
     drop_annotation_classes: list[str] | None = None,
     elaboration_receipt: Path | None = None,
 ) -> Path:
-    """Generate inspectable production artifacts; never rewrite an OOT source tree."""
+    """Generate inspectable production artifacts; never rewrite an OOT source tree.
+
+    The accelerator generator scope is derived from ``core_root``'s FIRRTL declaration
+    (:func:`generator_scope`). A supplied ``generator`` is a check, not a choice: one that
+    does not scope the core root refuses before any production artifact is written.
+    """
     from . import extract_module
 
     verified_elaboration = None
@@ -301,11 +411,19 @@ def produce_selection(
         receipt = Path(elaboration_receipt).resolve(strict=True)
         verify(receipt, firrtl=firrtl, config=config)
         verified_elaboration = {"path": str(receipt), "sha256": digest(receipt)}
+    root = json.loads(hierarchy.read_bytes())["module_name"] if hierarchy is not None else circuit_root(firrtl)
+    derived_hierarchy = derive_hierarchy(firrtl, root)
+    scope = generator_scope(firrtl, derived_hierarchy, core_root)
+    if generator is not None and generator != scope["generator"]:
+        raise ValueError(
+            f"declared generator {generator!r} does not scope core root {core_root!r}; "
+            f"its FIRRTL declaration is under generators/{scope['generator']}/"
+        )
+    generator = scope["generator"]
     output.mkdir(parents=True, exist_ok=False)
     historical_audit = firrtl_hierarchy_audit(firrtl, hierarchy) if hierarchy is not None else None
     generated_hierarchy = output / "hierarchy.json"
-    root = json.loads(hierarchy.read_bytes())["module_name"] if hierarchy is not None else circuit_root(firrtl)
-    generated_hierarchy.write_text(json.dumps(derive_hierarchy(firrtl, root), indent=2) + "\n")
+    generated_hierarchy.write_text(json.dumps(derived_hierarchy, indent=2) + "\n")
     sources = {
         role: {"path": str(path.resolve()), "sha256": digest(path)}
         for role, path in (("firrtl", firrtl), ("hierarchy", generated_hierarchy))
@@ -349,6 +467,7 @@ def produce_selection(
             "returncode": result.returncode,
             "tool": {"path": str(firtool.resolve()), "sha256": tool_sha},
             "core_root": core_root,
+            "generator_scope": scope,
             "hierarchy_root": root,
             "hierarchy_derivation": "authored_subtree_root" if hierarchy is not None else "selected_circuit_root",
             "included_modules": included,
@@ -380,8 +499,12 @@ def produce_selection(
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("target", "generator", "config", "core-root", "firrtl", "firtool", "output"):
+    for name in ("target", "config", "core-root", "firrtl", "firtool", "output"):
         parser.add_argument(f"--{name}", required=True)
+    parser.add_argument(
+        "--generator",
+        help="optional check: the generator source tree must equal the one derived from --core-root",
+    )
     parser.add_argument("--hierarchy", help="optional authored subtree root; otherwise derive the selected circuit")
     parser.add_argument("--drop-annotation-class", action="append", default=[])
     parser.add_argument("--elaboration-receipt", help="optional reproduced exact source-to-FIRRTL receipt")

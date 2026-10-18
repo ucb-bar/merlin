@@ -3,6 +3,21 @@
 Host-only grading, redaction, certificate promotion and simulator dispatch live here.
 Inputs are explicit invocation context and corpus/contract paths, never native imports.
 
+`private_full_models._exact_source_groups` delegates to the core capture-bound
+formation helper used by ordinary device emission. Source cuts and emitted cuts
+share the selected output-path proof; a statement refusal grants no fallback,
+numerical, execution or accelerator coverage credit.
+
+`private_group_provenance` binds required and optional device rosters independently to original
+Merlin groups. Require all mandatory roots; allow any source-bound optional subset. Optional work
+has separate metrics and linked counts, never mandatory coverage credit. Actual routed functions
+retain the same body, host-compute, linked-symbol and numerical obligations for every target.
+
+`operator_child` admits complete parent preparation and completed-result custody
+through the snapshot reader gate, including nested metadata checks. Release the
+gate before child launch and waits; retain every original checker call and the
+existing held-CPU bypass. Historical pinned checker bytes remain unchanged.
+
 `compiler_profile_runtime` preserves explicitly caller-selected artifact ABI 0.2
 structural emission through the same original source owner and isolated package
 box. Revalidate the exact typed profile before and after the call, before output
@@ -62,6 +77,11 @@ distinct input roles do not imply equivalent host/SDK facts or compiled semantic
 the ordinary root contract and receipts. It refuses missing, extra, opaque or
 indirect stage inputs, and reports only the attested loader's declared input
 provenance without private paths. It neither selects a validation subset nor certifies code.
+
+`private_source_preflight.py` runs `private_full_models.run(source_only=True)` on an
+operator spec before a launch: the gate's own input and source-obligation checks,
+with no candidate. Add a compiler-independent check to the gate before the
+`source_only` stop so the preflight sees it; a preflight record never passes the gate.
 
 `caller_layout.py` gives an answer-free, layout-only projection from an explicitly
 selected harness provider for a submission-owned command buffer. It never grades or
@@ -240,6 +260,28 @@ GradingInputs keeps invocation roots separate; only the native diagnostic edge m
 defer public-root materialization until after the submission gate. Certification
 policy similarly resolves public roots only after finding additional cert tiers.
 Keep archive-before-shape and publish-after-promotion ordering unchanged.
+Selected background snapshot completion may finish queued work after source edits;
+its exact source stays attached and a superseded snapshot can never converge the
+current compiler. `qa/progress.json` is a separate, noncertifying stream from
+the ordinary QA redactor. It cannot replace `qa/verdict.json` or omit final
+mandatory shape/model/RTL checks. Optional background scalability observations
+may be deferred to the final grade; required shape coverage remains mandatory.
+Bound background fanout independently of foreground requests. Selected grading
+cadence runs from start time, catches up after source changes without overlap,
+and skips a repeated completed current source under the same frozen invocation.
+A grade that is not gradeable and cannot pass skips the shape probes and records
+them as not run. With selected progress, a background grade whose probes must run
+first publishes its capsule rows with `all_pass` unknown and shape coverage
+pending; only the final verdict, still published after promotion, can pass.
+`MERLIN_SHAPE_COVERAGE_CACHE=1` reuses a sweep only under the original profile and
+an exact key over candidate bytes/modes, probe plan, contract, selected facts,
+executor identity, interpreter and grader code; emit errors are never reused.
+`MERLIN_SHAPE_COVERAGE_WORKERS` probes corners concurrently: under the original
+profile in fresh grader processes that re-open the same archived owner (its
+per-entrypoint policy work is interpreter-bound), otherwise on threads. Each
+in-flight corner group holds one shared compute slot; the parent holds none while
+waiting, and a failed child's corners are errors, never coverage.
+Grades hand this run's earlier runs roots to measured capsule ordering.
 
 `codegen_scalability.py` observes public contractions at geometric multiples of
 the selected fact-derived tile. It reads no validation capture or answer; the
@@ -259,7 +301,11 @@ corpora or independently sanitize its trusted redacted inputs. Only its generate
 brief is candidate-visible; the implementation remains in the private feedback tree.
 
 `lifecycle.py` owns client staging, broker child lifetimes, the background-grading
-cadence/single-flight handoff and durable channel-health accounting. BrokerConfig
+cadence/single-flight handoff and durable channel-health accounting. While brokers
+serve, a request inside its deadline is in flight, not stranded; after STOP the
+end-of-run account applies. Repeated identical in-turn grade failures raise an
+operator-only `[grade-alert]` and `grade_health.json` in the run directory, never
+the workspace; the alert observes and never skips, retries or relaxes a grade. BrokerConfig
 supplies invocation context, resolved treatment tools, explicit timing storage and
 distinct public/policy/schema roots; GradeCadence supplies only scheduler settings.
 Grade callbacks are mandatory and contain the caller's existing numerical policy.
@@ -307,6 +353,23 @@ the protected worker. Broker-only context enables the same durable per-capsule
 completion promotion for loop-only requests; public progress files never authorize
 certification. The worker checks that frozen source digest before scheduling,
 and omits this extra handoff when its own selected adapters already execute cert.
+The brokers likewise enqueue no cert promotion for a verdict whose `oracle_tiers`
+already include the cert tier.
+
+An unflagged selfcheck (and an author request naming the pinned L3 engine) runs
+`dispatch.REQUIRED_SIM`: the grade's own `qa_checkpoint_adapters`, so one request
+runs every mandatory tier and shares the grade's simulator certificate instrument.
+Under that whole selection a row passes only when certified; a tier that could not
+run is never a pass. A single named engine, or `--tiers`, keeps screen accounting.
+`selfcheck_selection` describes that selection and never relaxes certification.
+
+`selfcheck_selectors` resolves `--capsules` (all, names, `failing`, `changed`).
+`selfcheck_changed` grades every public capsule once under the certificate probe
+(`simulation_certificate.probe_observer`: RTL engines refused before dispatch, an
+exact-byte certificate still carried), then simulates only the capsules with neither
+a certificate nor a noted failure for their bytes, longest first within the request
+bound. It certifies nothing by inference: a missing or unreadable probe record is
+`changed`, and `all_pass` still means every public capsule certified.
 
 `private_model_inputs` owns exact selected-input, capture-tree and recipe bindings;
 the full-model coordinator supplies its current digest and pinned-file callbacks.

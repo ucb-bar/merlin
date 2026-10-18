@@ -99,6 +99,7 @@ _MODULE_OWNERS = {
     "perf_paired_claim": "merlin_experiments.phase2.claims.paired",
     "merlin.perf.group_arithmetic_claim": "merlin_experiments.phase2.claims.group_arithmetic",
     "perf_vendor_reference_claim": "merlin_experiments.phase2.claims.vendor_reference",
+    "perf_capacity_claim": "merlin_experiments.phase2.claims.capacity",
 }
 
 
@@ -233,6 +234,14 @@ def _registry() -> dict[str, Callable[..., dict]]:
         from . import vendor_reference as VR
 
         table[VR.ANALYZER] = VR.analyze_vendor_reference_claim
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        # The capacity cohort: per-regime scaling fits over facts-derived large shapes, each member
+        # confronted with its staged roofline floor.
+        from . import capacity as CP
+
+        table[CP.ANALYZER] = CP.analyze_capacity_claim
     except Exception:  # noqa: BLE001
         pass
     try:

@@ -399,6 +399,7 @@ def prepare(
     private_baseline: Path | None = None,
     retirements: Path | None = None,
     generated_only: bool = True,
+    capsule_scope: str = "all",
     phase1_policy_descriptor: Path | None = None,
     loader_profile_sources: tuple[Path, ...] | None = None,
     optional_levels: tuple[str, ...] = (),
@@ -418,6 +419,9 @@ def prepare(
     from merlin.targetgen.target_experiment import load_target_experiment
 
     from ..runner import fingerprint
+    from .accelerator_scope import validate_scope
+
+    validate_scope(capsule_scope, generated_only=generated_only)
 
     if not isinstance(optional_levels, tuple) or len(set(optional_levels)) != len(optional_levels) or any(
         level not in {"EL5", "EL6"} for level in optional_levels
@@ -480,6 +484,7 @@ def prepare(
                 private_baseline=private_baseline,
                 retirements=retirements,
                 generated_only=generated_only,
+                **({"capsule_scope": capsule_scope} if capsule_scope != "all" else {}),
                 **({"loader_profile_sources": loader_profile_sources} if loader_profile_sources is not None else {}),
             )
             selected_facts = _selected_rtl_facts(plan, generated)

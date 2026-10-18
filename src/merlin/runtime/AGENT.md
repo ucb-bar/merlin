@@ -106,6 +106,12 @@ the per-backend adapters under `backends/`.
 
 ## Invariants
 
+An `acc_scale` stage selects either one scalar multiplier or an explicit
+`acc_scale_by_column` vector. Column vectors have one finite float32 value per
+final-axis column and retain scalar float32 conversion/multiply and ties-even
+rounding; saturation remains separate. Reference arithmetic grants no target
+admission, command schedule, device lowering or RTL qualification.
+
 - Real implementations only; every result is gated (simulator == reference; dispatch
   runtime == torch golden). `dispatch_runtime` raises on any view op it cannot evaluate —
   no silent skips.

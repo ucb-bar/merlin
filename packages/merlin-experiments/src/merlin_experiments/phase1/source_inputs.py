@@ -151,6 +151,7 @@ def paths(
         ("sandbox_bwrap", "merlin.targetgen.sandbox.bwrap"),
         ("sandbox_host_surfaces", "merlin.targetgen.sandbox.host_surfaces"),
         ("sandbox_toolchain", "merlin.targetgen.sandbox.toolchain"),
+        ("sandbox_claude_home", "merlin.targetgen.sandbox.claude_home"),
         ("source_discovery_helper", "merlin.common.source_membership"),
         ("provider_selection", "merlin.targetgen.target_registry"),
         ("provider_identity", "merlin.targetgen.providers"),
@@ -185,6 +186,7 @@ def paths(
         ("readback_codec", "merlin.runtime.out_b64"),
         ("binary_readback_codec", "merlin.runtime.out_bin"),
         ("simulation_certificate", "merlin.targetgen.simulation_certificate"),
+        ("capsule_source_identity", "merlin.targetgen.capsule_source_identity"),
     ):
         inputs[f"phase1:startup:{key}"] = str(_source(module).resolve())
     try:

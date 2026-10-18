@@ -34,6 +34,7 @@ from merlin.runtime.commandbuffer import (
     bias_tensor_name,
     conv_out_dims,
     declared_acc_scale,
+    declared_acc_scale_by_column,
 )
 from merlin.runtime.tensor import Tensor
 
@@ -82,8 +83,8 @@ def _int_matmul(lhs: np.ndarray, rhs: np.ndarray) -> np.ndarray:
     return a @ b
 
 
-def _acc_scale(x: np.ndarray, scale: float) -> np.ndarray:
-    prod = np.asarray(x, dtype=np.int64).astype(np.float32) * np.float32(scale)
+def _acc_scale(x: np.ndarray, scale: float | list[float]) -> np.ndarray:
+    prod = np.asarray(x, dtype=np.int64).astype(np.float32) * np.asarray(scale, dtype=np.float32)
     return np.rint(prod).astype(np.int64)
 
 
@@ -137,7 +138,11 @@ def _epilogue(x, stages, attrs, env, ops, default_shift, op) -> np.ndarray:
                 raise KernelReferenceError(f"{op}: bias {bias.shape} != ({x.shape[-1]},)")
             x = x + bias[None, :]
         elif stage == "acc_scale":
-            scale = declared_acc_scale(attrs, op=op) if op.startswith("CONV2D") else float(attrs.get("acc_scale", 1.0))
+            scale = (
+                declared_acc_scale_by_column(attrs, x.shape[-1], op=op)
+                if "acc_scale_by_column" in attrs
+                else declared_acc_scale(attrs, op=op)
+            )
             x = _acc_scale(x, scale)
         elif stage == "requant":
             x = _requant(x, int(attrs.get("requant_shift", default_shift)))

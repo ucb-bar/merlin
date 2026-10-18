@@ -22,8 +22,22 @@ import sys
 from pathlib import Path
 
 if __package__:
+    from ._m2m_capture_artifacts import (
+        _framework_catalog,
+        _framework_cpu_dispatch,
+        finalize_session_artifacts,
+        frontend_trace_bytes,
+        write_frontend_trace,
+    )
     from ._m2m_capture_deployment import _mlir_dtype, _numeric_deployment
 else:
+    from merlin.targetgen._m2m_capture_artifacts import (
+        _framework_catalog,
+        _framework_cpu_dispatch,
+        finalize_session_artifacts,
+        frontend_trace_bytes,
+        write_frontend_trace,
+    )
     from merlin.targetgen._m2m_capture_deployment import _mlir_dtype, _numeric_deployment
 
 # canonical dtype token -> (torchAO scheme | None, base-weight dtype cast | None). Mirrors
@@ -116,7 +130,7 @@ def _diagnostic_model_copy(out: Path, loader: Path, *, capture_api: dict[str, li
     (out / "diagnostic-capture.json").write_text(json.dumps(record, sort_keys=True, indent=2) + "\n")
 
 
-def _seed_capture(seed: int, torch) -> dict:
+def _seed_capture(seed: int, torch, threads: int = 1) -> dict:
     """Seed loader imports as well as construction; refuse nondeterministic kernels.
 
     This binds the numerical capture policy, not reproducibility across different
@@ -128,14 +142,18 @@ def _seed_capture(seed: int, torch) -> dict:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    # Parallel CPU reductions can change reference bytes when affinity changes.
-    torch.set_num_threads(1)
+    # Parallel CPU reductions split work by thread count, so reference bytes depend on it: a
+    # capture runs at its selected count (one unless selected), records it, and is replayed at it.
+    torch.set_num_threads(threads)
+    if torch.get_num_threads() != threads:
+        raise RuntimeError(f"the capture selected {threads} CPU threads but runs {torch.get_num_threads()}")
     torch.use_deterministic_algorithms(True)
     return {
         "seed": seed,
         "rngs": ["python", "numpy", "torch"],
         "deterministic_algorithms": "required",
         "cpu_threads": torch.get_num_threads(),
+        "cpu_dispatch": _framework_cpu_dispatch(torch),
         "scope": "selected framework build and inputs",
     }
 
@@ -297,6 +315,86 @@ def _freeze_calibration(samples, *, limit, normalize, torch):
             raise RuntimeError("FP32 staging does not admit complex calibration inputs")
         calibration.append(torch.utils._pytree.tree_map(lambda leaf: leaf.detach().clone(), sample))
     return calibration
+
+
+class _RecordedForwards:
+    """The floating model's own outputs on calibration samples it already ran, for the agreement.
+
+    A causal decode stream is the floating recurrence itself: it calls the stage on each
+    ``(token, kv_cache, position)`` it yields, and the agreement receipt then calls the same stage
+    on the same samples again. While the stream is read, a forward hook keeps the first ``limit``
+    outputs with the exact argument tensors. :meth:`__call__` returns a kept output only for the
+    same argument objects at the same version counters, on the same module whose parameters,
+    buffers and train/eval flags are unchanged; any other call runs the module. The hook is removed
+    before export, so the exported graph never sees it.
+    """
+
+    def __init__(self, module, *, limit: int) -> None:
+        self.module, self.limit, self.kept = module, limit, []
+        self._handle = None
+        self._state = None
+
+    @staticmethod
+    def _tensors(values):
+        import torch
+
+        return [leaf for leaf in torch.utils._pytree.tree_flatten(values)[0] if isinstance(leaf, torch.Tensor)]
+
+    def _fingerprint(self):
+        import random
+
+        import numpy as np
+        import torch
+
+        tensors = [*self.module.named_parameters(), *self.module.named_buffers()]
+        numpy_state = np.random.get_state()
+        return (
+            tuple((name, id(tensor), tensor._version) for name, tensor in tensors),
+            tuple(sub.training for sub in self.module.modules()),
+            torch.random.get_rng_state().numpy().tobytes(),
+            random.getstate(),
+            (numpy_state[0], numpy_state[1].tobytes(), *numpy_state[2:]),
+        )
+
+    def _record(self, _module, args, kwargs, output) -> None:
+        import torch
+
+        # Nested mutable controls and non-tensor inputs lack version counters.
+        if len(self.kept) < self.limit and not kwargs and all(isinstance(arg, torch.Tensor) for arg in args):
+            leaves, specification = torch.utils._pytree.tree_flatten(output)
+            if all(isinstance(leaf, torch.Tensor) for leaf in leaves):
+                self.kept.append(
+                    (args, [leaf._version for leaf in args], output, [leaf._version for leaf in leaves], specification)
+                )
+
+    def __enter__(self) -> _RecordedForwards:
+        self._state = self._fingerprint()
+        self._handle = self.module.register_forward_hook(self._record, with_kwargs=True)
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self._handle.remove()
+
+    def __call__(self, *args):
+        import torch
+
+        if self._fingerprint() == self._state:
+            leaves = self._tensors(args)
+            for kept_args, versions, output, output_versions, output_spec in self.kept:
+                kept_leaves = self._tensors(kept_args)
+                current_output, specification = torch.utils._pytree.tree_flatten(output)
+                if (
+                    len(kept_args) == len(args)
+                    and len(kept_leaves) == len(leaves)
+                    and all(a is b for a, b in zip(kept_args, args, strict=True))
+                    and all(a is b for a, b in zip(kept_leaves, leaves, strict=True))
+                    and [leaf._version for leaf in leaves] == versions
+                    and specification == output_spec
+                    and all(isinstance(leaf, torch.Tensor) for leaf in current_output)
+                    and [leaf._version for leaf in current_output] == output_versions
+                ):
+                    return output
+        return self.module(*args)
 
 
 def _float_reference(mdl, inputs, torch) -> dict:
@@ -469,24 +567,6 @@ def _exported_integer_mm_count(module) -> int:
     return count
 
 
-def _framework_catalog(torch) -> dict:
-    """Observe the registry in this exact capture interpreter, never another build."""
-    owner = Path(__file__).with_name("_aten_opset_worker.py")
-    try:
-        spec = importlib.util.spec_from_file_location("_capture_opset", owner)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module.core_opset()
-    except Exception as exc:  # noqa: BLE001 -- unavailable is not an empty registry
-        return {
-            "schema": "merlin.pytorch_opset.v1",
-            "status": "not_available",
-            "torch": str(torch.__version__),
-            "n_all_aten": None,
-            "reason": f"capture framework catalog unavailable: {type(exc).__name__}: {exc}",
-        }
-
-
 def _materialize_session(
     model, inputs, args, out: Path, *, loader, determinism: dict, dependencies: list, torch
 ) -> int:
@@ -642,6 +722,7 @@ def _materialize_session(
             opaque=count,
             opaque_detail=opaque,
             precision_realization=precision,
+            frontend_trace=write_frontend_trace(stage / "frontend-trace.json", trace),
             framework_catalog={
                 "path": catalog_path.name,
                 "sha256": hashlib.sha256(catalog_bytes).hexdigest(),
@@ -650,7 +731,7 @@ def _materialize_session(
             },
         )
         meta_path.write_text(json.dumps(meta, sort_keys=True, indent=2) + "\n")
-        # Metadata/catalog additions must be committed by the producer receipt,
+        # Metadata/catalog/trace changes must be committed by the producer receipt,
         # not leave stale hashes from the writer's earlier materialization.
         from m2m.capture.provenance import write_capture_receipt
 
@@ -687,7 +768,7 @@ def _materialize_session(
         "session_contract_sha256": hashlib.sha256((out / "session_contract.yaml").read_bytes()).hexdigest(),
         "qualification": "capture only; no target lowering, execution or application accuracy claim",
     }
-    (out / "session-receipt.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+    finalize_session_artifacts(out, report)
     ok = all(stage["ok"] for stage in stages)
     print(
         "__M2M_CAPTURE__ "
@@ -772,6 +853,12 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     ap.add_argument(
         "--seed", type=int, default=0, help="Python/NumPy/Torch RNG seed applied before loader import and construction"
     )
+    ap.add_argument(
+        "--cpu-threads",
+        type=int,
+        default=1,
+        help="intra-op CPU threads; reference bytes depend on it, so it is recorded and replayed (default 1)",
+    )
     ap.add_argument("--agreement-atol", type=float, default=1e-3)
     ap.add_argument("--agreement-rtol", type=float, default=1e-3)
     ap.add_argument(
@@ -807,6 +894,8 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         ap.error("--materialize-bundle and --diagnostic-model-copy are mutually exclusive")
     if not 0 <= a.seed < 2**32:
         ap.error("--seed must be an unsigned 32-bit integer")
+    if not 1 <= a.cpu_threads <= 256:
+        ap.error("--cpu-threads must be between 1 and 256")
     if not all(math.isfinite(value) and value >= 0 for value in (a.agreement_atol, a.agreement_rtol)):
         ap.error("agreement tolerances must be finite and nonnegative")
     if a.already_quantized and (a.recipe or a.scheme):
@@ -874,7 +963,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     if a.diagnostic_model_copy and out.exists() and any(out.iterdir()):
         raise ValueError("diagnostic model copy requires a fresh output directory")
     out.mkdir(parents=True, exist_ok=True)
-    determinism = _seed_capture(a.seed, torch)
+    determinism = _seed_capture(a.seed, torch, a.cpu_threads)
     modules_before_loader = set(sys.modules)
     if prepared_program is None:
         loader = _load_loader(Path(a.loader))
@@ -1085,6 +1174,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         import _recipe_quantizer as RQ
         from m2m.capture.torchao_pipeline import QuantizationConfig
 
+        recorded = None
         if not a.stage_fp32:
             hook = getattr(loader, "get_calibration_inputs", None)
             if callable(hook):
@@ -1094,13 +1184,16 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
                 if samples is not None:
                     from itertools import islice
 
-                    calibration = list(islice(samples, _calibration_stream_limit(RQ, recipe)))
+                    recorded = _RecordedForwards(mdl, limit=inspect.signature(RQ.agreement).parameters["limit"].default)
+                    with recorded:
+                        calibration = list(islice(samples, _calibration_stream_limit(RQ, recipe)))
             else:
                 stream = getattr(mdl, "session_images", None)
                 if isinstance(stream, torch.Tensor) and stream.shape[0] > 0:
                     calibration = [(stream[i],) for i in range(int(stream.shape[0]))]
         reference = mdl
         static = recipe["activation"]["mode"] == "static"
+        agreement_reference = recorded if static and recorded is not None and recorded.module is mdl else None
         if not static:
             import copy
 
@@ -1120,7 +1213,11 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             )
         # The receipt: the recipe-quantized model against the floating-point one, on the
         # calibration stream and the capture input. Recorded, not judged here.
-        agreement = RQ.agreement(reference, mdl, [tuple(inputs), *(calibration or [])])
+        agreement = RQ.agreement(
+            reference if agreement_reference is None else agreement_reference,
+            mdl,
+            [tuple(inputs), *(calibration or [])],
+        )
         # The capture library is told which lowering family this graph is, and that the
         # quantization is already applied; the numbers are the recipe's.
         formats = {str(recipe[part]["dtype"]) for part in ("activation", "weight")}
@@ -1343,7 +1440,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             "original": original_snapshot,
         }
     trace_path = out / "frontend-trace.json"
-    trace_bytes = (json.dumps(frontend_trace, sort_keys=True, indent=2) + "\n").encode()
+    trace_bytes = frontend_trace_bytes(frontend_trace)
     trace_path.write_bytes(trace_bytes)
     # Ask the existing catalog implementation in this very capture process.
     # A workload-specific environment must not inherit another venv's denominator.

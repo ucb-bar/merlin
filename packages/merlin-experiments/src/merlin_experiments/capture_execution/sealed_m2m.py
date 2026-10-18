@@ -63,6 +63,16 @@ _PRE_INVENTORY_REUSE_ISSUER_SHA256 = "b78a8d7f13785c9d0263e4149e38a4de0d9bfd4305
 # Replay retains its fixed command/policy and every selected snapshot check;
 # this does not authorize new issuance with historical producer bytes.
 _ARCHIVED_SELECTED_V2_ISSUER_SHA256 = "83af01552173c2ddd24d78996838bfb9d72b79abecc61b9a0e79690bf12ef4d5"
+# Exact issuer before the attestation replay could run beside issuance. Its
+# receipts are byte-compatible with the current issuer's; replay still checks
+# every selected policy, source, runtime and output byte.
+_PRE_CONCURRENT_REPLAY_ISSUER_SHA256 = "6c60fb10e4a2b2e05ff67a8b215f86317242346a7cd72b3865a603fc1d2813c4"
+# Moving replay scratch outside protected captures changes no selected guest
+# path, command, policy or byte comparison. Admit exactly the previous issuer.
+_PRE_EXTERNAL_REPLAY_SCRATCH_ISSUER_SHA256 = "fe672aaf62efcf1f2c5cec499af646d59ca0f458107e459a2fbdc59271c4586b"
+# Exact issuer before a plan could select the worker's CPU thread count. Its plans
+# cannot select one, so their command, policy and replay are unchanged.
+_PRE_SELECTED_THREADS_ISSUER_SHA256 = "ba57b6e1bd00734b95b7cb4a64c30f636f715cc313aa048986b3812da04b5fb8"
 _V1_SCOPE = "isolated selected FP32 CPU M2M capture; no Phase 0 admission"
 _V2_SCOPE = "isolated selected CPU M2M capture; no Phase 0 admission"
 _V3_SCOPE = "isolated selected CPU M2M capture with declared model inputs; no Phase 0 admission"
@@ -113,10 +123,12 @@ def _worker_options(options: Any) -> dict[str, Any]:
     """Validate the worker options a plan may select; nothing outside this vocabulary is accepted."""
     if options is None:
         return {}
-    if not isinstance(options, dict) or set(options) - {"agreement_tolerance", "stage_fp32"}:
+    if not isinstance(options, dict) or set(options) - {"agreement_tolerance", "stage_fp32", "cpu_threads"}:
         raise SealedM2MError("sealed capture worker options are unsupported")
     if "stage_fp32" in options and type(options["stage_fp32"]) is not bool:
         raise SealedM2MError("sealed capture stage_fp32 must be a boolean")
+    if "cpu_threads" in options and (type(options["cpu_threads"]) is not int or not 1 <= options["cpu_threads"] <= 256):
+        raise SealedM2MError("sealed capture cpu_threads must be an integer from 1 to 256")
     tolerance = options.get("agreement_tolerance")
     if tolerance is not None and (
         not isinstance(tolerance, list)
@@ -158,6 +170,10 @@ def _command_v2(
         argv += ["--agreement-atol", repr(float(atol)), "--agreement-rtol", repr(float(rtol))]
     if options.get("stage_fp32"):
         argv.append("--stage-fp32")
+    if options.get("cpu_threads") is not None:
+        # Reference bytes depend on the intra-op thread count, so the selected count is part of
+        # the command, its policy digest and the replay; absent, the worker runs one thread.
+        argv += ["--cpu-threads", str(options["cpu_threads"])]
     program = (
         "import runpy,sys;"
         "sys.path[:0]=['/source/m2m-src','/source/merlin-src',"
@@ -245,7 +261,7 @@ def _policy(
     )
 
 
-def _execute(
+def _sandbox_argv(
     bwrap: Path,
     runtime: Path,
     source: Path,
@@ -255,14 +271,13 @@ def _execute(
     *,
     replayable_logs: bool = False,
     loader_env: dict[str, str | None] | None = None,
-    timeout_seconds: int = _TIMEOUT_SECONDS,
-) -> dict[str, Any]:
+) -> list[str]:
     setenv = [
         item
         for name, value in _guest_env(output_mount, replayable_logs=replayable_logs, loader_env=loader_env).items()
         for item in ("--setenv", name, value)
     ]
-    argv = [
+    return [
         str(bwrap),
         *_FLAGS,
         *setenv,
@@ -282,21 +297,128 @@ def _execute(
         "--",
         *command,
     ]
+
+
+def _process_record(returncode: int, stdout: bytes, stderr: bytes) -> dict[str, Any]:
+    if returncode:
+        raise SealedM2MError(f"sandboxed M2M exited {returncode}: {stderr.decode('utf-8', errors='replace')[-8000:]}")
+    return {
+        "returncode": 0,
+        "stdout": {"bytes": len(stdout), "sha256": _digest(stdout)},
+        "stderr": {"bytes": len(stderr), "sha256": _digest(stderr)},
+    }
+
+
+def _execute(
+    bwrap: Path,
+    runtime: Path,
+    source: Path,
+    output: Path,
+    command: tuple[str, ...],
+    output_mount: Path,
+    *,
+    replayable_logs: bool = False,
+    loader_env: dict[str, str | None] | None = None,
+    timeout_seconds: int = _TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    argv = _sandbox_argv(
+        bwrap, runtime, source, output, command, output_mount, replayable_logs=replayable_logs, loader_env=loader_env
+    )
     try:
         result = subprocess.run(
             argv, env={}, cwd="/", stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout_seconds
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise SealedM2MError(f"sandbox execution failed: {type(exc).__name__}") from exc
-    if result.returncode:
-        raise SealedM2MError(
-            f"sandboxed M2M exited {result.returncode}: {result.stderr.decode('utf-8', errors='replace')[-8000:]}"
+    return _process_record(result.returncode, result.stdout, result.stderr)
+
+
+def _execute_beside(
+    bwrap: Path,
+    runtime: Path,
+    source: Path,
+    outputs: tuple[Path, Path],
+    command: tuple[str, ...],
+    output_mount: Path,
+    *,
+    cpus: tuple[frozenset[int], frozenset[int]],
+    replayable_logs: bool = False,
+    loader_env: dict[str, str | None] | None = None,
+    timeout_seconds: int = _TIMEOUT_SECONDS,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Run the identical sandboxed command twice at once, each into its own fresh output.
+
+    Each execution is its own sandbox: its own namespaces, the same read-only source and guest
+    root, its own ``/tmp`` and an empty output directory bound at the same guest path, so neither
+    can read the other's output. Each is pinned to its own CPU set (a thread's affinity, which its
+    sandbox inherits). If either fails, the other is stopped and the issue fails.
+    """
+    import threading
+
+    argvs = [
+        _sandbox_argv(
+            bwrap, runtime, source, out, command, output_mount, replayable_logs=replayable_logs, loader_env=loader_env
         )
-    return {
-        "returncode": 0,
-        "stdout": {"bytes": len(result.stdout), "sha256": _digest(result.stdout)},
-        "stderr": {"bytes": len(result.stderr), "sha256": _digest(result.stderr)},
-    }
+        for out in outputs
+    ]
+    processes: list[subprocess.Popen | None] = [None, None]
+    results: list[Any] = [None, None]
+    failures: list[SealedM2MError] = []
+    failed = threading.Event()
+    lock = threading.Lock()
+
+    def run(index: int) -> None:
+        try:
+            os.sched_setaffinity(0, cpus[index])
+            with lock:
+                if failed.is_set():
+                    return
+                processes[index] = subprocess.Popen(
+                    argvs[index],
+                    env={},
+                    cwd="/",
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+            stdout, stderr = processes[index].communicate(timeout=timeout_seconds)
+            results[index] = _process_record(processes[index].returncode, stdout, stderr)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            results[index] = SealedM2MError(f"sandbox execution failed: {type(exc).__name__}")
+        except SealedM2MError as exc:
+            results[index] = exc
+        if isinstance(results[index], Exception):
+            failed.set()
+            with lock:
+                if not failures:  # the cause, not a sibling this failure stopped
+                    failures.append(results[index])
+                for process in processes:
+                    if process is not None and process.poll() is None:
+                        process.kill()
+
+    threads = [threading.Thread(target=run, args=(index,), daemon=True) for index in (0, 1)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    for process in processes:
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait()
+    if failures:
+        raise failures[0]
+    if any(result is None for result in results):
+        raise SealedM2MError("sandbox execution failed: an execution did not start")
+    return results[0], results[1]
+
+
+def replay_cpu_sets(cpus: Any) -> tuple[frozenset[int], frozenset[int]]:
+    """Split ``cpus`` into two equal disjoint halves: lower for issuance, upper for its replay."""
+    ordered = sorted({int(cpu) for cpu in cpus})
+    if len(ordered) < 2:
+        raise SealedM2MError("a concurrent replay needs at least two CPUs")
+    half = len(ordered) // 2
+    return frozenset(ordered[:half]), frozenset(ordered[half : 2 * half])
 
 
 def _probe_sandbox(bwrap: Path) -> None:
@@ -998,11 +1120,39 @@ def _materialized_v2(output: Path, source: Path, output_mount: Path, plan: dict[
     return result
 
 
+def _dynamic_integer_census(meta: dict, stats: dict, stage: Path, emitted: int, exported: int) -> int:
+    """Use the same byte-bound recipe/trace census as the application inventory."""
+    from merlin.capture.integerization import dynamic_integerization_count, dynamic_integerization_projection
+
+    if stats.get("dynamic_contractions") is None:
+        return 0  # The caller keeps the historical emitted == exported requirement.
+    trace_path, model = stage / "frontend-trace.json", stage / "model.mlir"
+    if any(path.is_symlink() or not path.is_file() for path in (trace_path, model)):
+        raise SealedM2MError("dynamic contraction census lacks the stage's frontend trace or program")
+    try:
+        raw = trace_path.read_bytes()
+        import hashlib
+
+        model_sha256 = _file_digest(model)
+        evidence = dynamic_integerization_projection(
+            meta,
+            stats,
+            trace=strict_json.loads(raw),
+            trace_identity={"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)},
+            program_sha256=model_sha256,
+            emitted=emitted,
+            exported=exported,
+        )
+        return dynamic_integerization_count(evidence, emitted=emitted, exported=exported, program_sha256=model_sha256)
+    except ValueError as exc:
+        raise SealedM2MError(str(exc)) from exc
+
+
 def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[str, Any]) -> dict[str, Any]:
     """Verify the complete saved ABI, including every declared session program."""
     from merlin.capture.integerization import contraction_partition
 
-    def integer_partition(meta: dict) -> tuple[int, dict[str, int]]:
+    def integer_partition(meta: dict, stage: Path) -> tuple[int, dict[str, int]]:
         if not isinstance(meta, dict):
             raise SealedM2MError("capture lacks verified integer contractions: invalid metadata")
         receipt = meta.get("integerization_receipt") or {}
@@ -1055,7 +1205,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
             or count <= 0
             or type(emitted) is not int
             or emitted < partition["integerized"]
-            or emitted != count
+            or emitted + _dynamic_integer_census(meta, stats, stage, emitted, count) != count
             or receipt.get("accumulator_bound_checked") is not True
             or type(max_k) is not int
             or max_k < 1
@@ -1129,7 +1279,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
         integer_work = 0
         if plan["dtype"] == "int8":
             meta = strict_json.loads((output / "meta.json").read_bytes())
-            exported, partition = integer_partition(meta)
+            exported, partition = integer_partition(meta, output)
             # Preserve the exact historical sealed-v3 materialized summary:
             # this legacy field counts exported integer operations. The new
             # ledger distinguishes source contractions only for mixed captures,
@@ -1232,7 +1382,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
             raise SealedM2MError(stage_reason)
         mode = row.get("precision_selection")
         if quantized and mode == "recipe":
-            count, partition = integer_partition(meta)
+            count, partition = integer_partition(meta, stage)
             if (
                 meta.get("dtype") != "int8"
                 or meta.get("scheme") != "int8_static_act_int8_weight"
@@ -1336,6 +1486,59 @@ def issue(
     selected_bwrap_sha256: str | None = None,
 ) -> Path:
     """Make one private snapshot and capture; receipt remains pending replay."""
+    return _issue(
+        plan,
+        run_dir,
+        bwrap_binary=bwrap_binary,
+        capture_selection_sha256=capture_selection_sha256,
+        selected_system_libraries=selected_system_libraries,
+        selected_bwrap_sha256=selected_bwrap_sha256,
+    )[0]
+
+
+def issue_and_replay(
+    plan: dict[str, Any],
+    run_dir: Path,
+    *,
+    cpus: tuple[frozenset[int], frozenset[int]],
+    bwrap_binary: Path | None = None,
+    capture_selection_sha256: str | None = None,
+    selected_system_libraries: list[dict[str, Any]] | None = None,
+    selected_bwrap_sha256: str | None = None,
+) -> tuple[Path, dict[str, Any]]:
+    """Issue one capture and its independent replay at once, on two disjoint CPU sets.
+
+    The replay is the same fresh execution :func:`replay_verify` performs after issuance: the
+    identical sandboxed command on the same sealed snapshot, into its own empty output directory
+    bound at the same guest path. It only starts with, not after, the issued execution. Once the
+    pending receipt is written, :func:`replay_verify` checks it exactly as a later replay would and
+    compares this replay's process record, materialized receipt and output tree with it.
+    """
+    issue_cpus, replay_cpus = (frozenset(int(cpu) for cpu in part) for part in cpus)
+    if not issue_cpus or not replay_cpus or issue_cpus & replay_cpus:
+        raise SealedM2MError("a concurrent replay needs two nonempty disjoint CPU sets")
+    receipt, replay = _issue(
+        plan,
+        run_dir,
+        bwrap_binary=bwrap_binary,
+        capture_selection_sha256=capture_selection_sha256,
+        selected_system_libraries=selected_system_libraries,
+        selected_bwrap_sha256=selected_bwrap_sha256,
+        replay_cpus=(issue_cpus, replay_cpus),
+    )
+    return receipt, replay
+
+
+def _issue(
+    plan: dict[str, Any],
+    run_dir: Path,
+    *,
+    bwrap_binary: Path | None = None,
+    capture_selection_sha256: str | None = None,
+    selected_system_libraries: list[dict[str, Any]] | None = None,
+    selected_bwrap_sha256: str | None = None,
+    replay_cpus: tuple[frozenset[int], frozenset[int]] | None = None,
+) -> tuple[Path, dict[str, Any] | None]:
     if plan.get("schema") not in {SCHEMA, SCHEMA_V3} or plan.get("status") != "plan_only":
         raise SealedM2MError("unsupported M2M plan")
     if capture_selection_sha256 is not None and (
@@ -1458,17 +1661,93 @@ def issue(
         raise SealedM2MError("bubblewrap bytes changed before sandbox execution")
     replayable_logs = capture_selection_sha256 is not None
     loader_env = plan.get("loader_env") if plan["schema"] == SCHEMA_V3 else None
-    process = _execute(
-        bwrap,
-        runtime,
-        source,
-        output,
-        command,
-        output,
-        replayable_logs=replayable_logs,
-        loader_env=loader_env,
-        timeout_seconds=plan.get("execution_timeout_seconds", _TIMEOUT_SECONDS),
-    )
+    if replay_cpus is None:
+        process = _execute(
+            bwrap,
+            runtime,
+            source,
+            output,
+            command,
+            output,
+            replayable_logs=replayable_logs,
+            loader_env=loader_env,
+            timeout_seconds=plan.get("execution_timeout_seconds", _TIMEOUT_SECONDS),
+        )
+        return _write_pending(
+            plan=plan,
+            run_dir=run_dir,
+            source=source,
+            runtime=runtime,
+            output=output,
+            command=command,
+            process=process,
+            bwrap=bwrap,
+            source_digest=source_digest,
+            runtime_digest=runtime_digest,
+            selected_schemas=selected_schemas,
+            replayable_logs=replayable_logs,
+            loader_env=loader_env,
+            capture_selection_sha256=capture_selection_sha256,
+            selected_bwrap_sha256=selected_bwrap_sha256,
+        ), None
+    # The replay's own empty output, made as replay_verify makes it: inside the run, with the
+    # issued output's mode, bound at the same guest path.
+    replay_output = Path(tempfile.mkdtemp(prefix="m2m-replay-", dir=run_dir))
+    try:
+        replay_output.chmod(output.stat().st_mode & 0o777)
+        process, replay_process = _execute_beside(
+            bwrap,
+            runtime,
+            source,
+            (output, replay_output),
+            command,
+            output,
+            cpus=replay_cpus,
+            replayable_logs=replayable_logs,
+            loader_env=loader_env,
+            timeout_seconds=plan.get("execution_timeout_seconds", _TIMEOUT_SECONDS),
+        )
+        receipt = _write_pending(
+            plan=plan,
+            run_dir=run_dir,
+            source=source,
+            runtime=runtime,
+            output=output,
+            command=command,
+            process=process,
+            bwrap=bwrap,
+            source_digest=source_digest,
+            runtime_digest=runtime_digest,
+            selected_schemas=selected_schemas,
+            replayable_logs=replayable_logs,
+            loader_env=loader_env,
+            capture_selection_sha256=capture_selection_sha256,
+            selected_bwrap_sha256=selected_bwrap_sha256,
+        )
+        return receipt, replay_verify(run_dir, bwrap_binary=bwrap, _executed=(replay_process, replay_output))
+    finally:
+        shutil.rmtree(replay_output, ignore_errors=True)
+
+
+def _write_pending(
+    *,
+    plan: dict[str, Any],
+    run_dir: Path,
+    source: Path,
+    runtime: Path,
+    output: Path,
+    command: tuple[str, ...],
+    process: dict[str, Any],
+    bwrap: Path,
+    source_digest: dict[str, Any],
+    runtime_digest: dict[str, Any],
+    selected_schemas: Any,
+    replayable_logs: bool,
+    loader_env: dict[str, str | None] | None,
+    capture_selection_sha256: str | None,
+    selected_bwrap_sha256: str | None,
+) -> Path:
+    """Check the executed capture and write its pending receipt (shared by both issue modes)."""
     materialized = (
         _materialized_v3(output, source, output, plan)
         if plan["schema"] == SCHEMA_V3
@@ -1512,8 +1791,17 @@ def issue(
     return receipt
 
 
-def replay_verify(run_dir: Path, *, bwrap_binary: Path | None = None) -> dict[str, Any]:
-    """Independent replay from exact private bytes; no Phase 0 status is granted."""
+def replay_verify(
+    run_dir: Path,
+    *,
+    bwrap_binary: Path | None = None,
+    _executed: tuple[dict[str, Any], Path] | None = None,
+) -> dict[str, Any]:
+    """Independent replay from exact private bytes; no Phase 0 status is granted.
+
+    ``_executed`` is only for :func:`issue_and_replay`: the process record and fresh output of a
+    replay that ran beside issuance, compared here exactly as a replay run now would be.
+    """
     run_dir = _canonical_path(run_dir, exists=True)
     receipt = run_dir / "sealed_m2m_pending.json"
     if receipt.is_symlink() or not receipt.is_file():
@@ -1575,6 +1863,9 @@ def replay_verify(run_dir: Path, *, bwrap_binary: Path | None = None) -> dict[st
         supported_issuer.add(_ARCHIVED_SELECTED_V2_ISSUER_SHA256)
     if schema in {SCHEMA, SCHEMA_V3}:
         supported_issuer.add(_PRE_INVENTORY_REUSE_ISSUER_SHA256)
+        supported_issuer.add(_PRE_CONCURRENT_REPLAY_ISSUER_SHA256)
+        supported_issuer.add(_PRE_EXTERNAL_REPLAY_SCRATCH_ISSUER_SHA256)
+        supported_issuer.add(_PRE_SELECTED_THREADS_ISSUER_SHA256)
     if schema in {SCHEMA, SCHEMA_V3} and "frozen_origin" not in plan:
         supported_issuer.add(_PRE_FROZEN_ORIGIN_ISSUER_SHA256)
     if (
@@ -1689,20 +1980,9 @@ def replay_verify(run_dir: Path, *, bwrap_binary: Path | None = None) -> dict[st
     del source_rows, runtime_rows
     if _file_digest(bwrap) != doc.get("bwrap_sha256"):
         raise SealedM2MError("bubblewrap bytes differ from M2M receipt")
-    with tempfile.TemporaryDirectory(prefix="m2m-replay-", dir=run_dir) as temporary:
-        replay = Path(temporary)
-        replay.chmod(output.stat().st_mode & 0o777)
-        if _execute(
-            bwrap,
-            runtime,
-            source,
-            replay,
-            expected_command,
-            output,
-            replayable_logs=replayable_logs,
-            loader_env=loader_env,
-            timeout_seconds=plan.get("execution_timeout_seconds", _TIMEOUT_SECONDS),
-        ) != doc.get("process"):
+
+    def compare(process: dict[str, Any], replay: Path) -> None:
+        if process != doc.get("process"):
             raise SealedM2MError("fresh M2M process output differs")
         replay_materialized = (
             _materialized(replay, source, output)
@@ -1715,6 +1995,32 @@ def replay_verify(run_dir: Path, *, bwrap_binary: Path | None = None) -> dict[st
         )
         if replay_materialized != doc.get("materialized") or _snapshot_tree(replay) != doc["output"]:
             raise SealedM2MError("fresh M2M materialized bytes differ")
+
+    if _executed is not None:
+        process, replay = _executed
+        if replay.parent != run_dir or not replay.name.startswith("m2m-replay-") or replay.is_symlink():
+            raise SealedM2MError("concurrent M2M replay output is not this run's fresh replay directory")
+        compare(process, replay)
+    else:
+        # The host scratch directory is mounted at the original output path.
+        # Keep it outside chattr-protected captures when the operator selects TMPDIR.
+        with tempfile.TemporaryDirectory(prefix="m2m-replay-", dir=os.environ.get("TMPDIR") or run_dir) as temporary:
+            replay = Path(temporary)
+            replay.chmod(output.stat().st_mode & 0o777)
+            compare(
+                _execute(
+                    bwrap,
+                    runtime,
+                    source,
+                    replay,
+                    expected_command,
+                    output,
+                    replayable_logs=replayable_logs,
+                    loader_env=loader_env,
+                    timeout_seconds=plan.get("execution_timeout_seconds", _TIMEOUT_SECONDS),
+                ),
+                replay,
+            )
     if (_snapshot_tree(source), _snapshot_tree(runtime), _snapshot_tree(output)) != (
         doc["source"],
         doc["guest_root"],

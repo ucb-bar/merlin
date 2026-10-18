@@ -4,6 +4,26 @@ Explicit `component_program` v2 adds signed integer casts and true kept-axis
 sum reductions to closed rank-two DAGs. Legacy source bytes retain their original
 meaning. Logical copies, fanout, aliases and state epochs are source semantics;
 physical placement, allocation, effects and timing need separate witnesses.
+`column_readout_capsules` derives gain-block and partial-block demands from the
+selected numeric output path and public contraction carriers. Synthetic gains
+and small extents carry no private model values or shapes. Group coverage must
+observe a nonuniform, block-legal vector and required accelerator placement;
+scalar, uniform, malformed and host-only members do not cover that demand.
+Convolution entries state stride, padding and dilation explicitly so requirement
+and certification-cost readers see the same geometry as the capsule builder.
+Independent-column cases add gains varying within a physical scale vector;
+existing block-uniform cases remain mandatory. `output_scale_partition` binds
+the source gain vector and physical width as an arithmetic-only obligation.
+It grants no physical packing, command count, target implementation or execution.
+Per-channel methodology and reviewed model-variant selection preserve existing
+defaults and retain the physical scale width in capture recipes.
+Reviewed methodology variants may select the existing static activation digit
+planes and host-float bias policy. Check the final effective family and bias
+placement after all matching rows: planes combine int8-to-i32 products before
+host fp32 bias addition, so an accumulator-preload claim refuses. Unselected
+models and historical direct recipe APIs retain their existing behavior.
+Model-specific recovery rows state the complete closed boolean policy and select
+only the existing generic recovery; shared and unselected recipes stay unchanged.
 `op_form_regimes.boundary_witnesses` supplies adjacent scalar comparisons from a
 selected `Bound`, retaining impossible positive lower witnesses as missing. It
 grants no tensor-axis, physical-capacity or tiling interpretation.
@@ -68,7 +88,12 @@ launching, capsule grading, golden generation, sandboxing and certification. The
 - `rtl_engine_policy.simulation_runtime_slot` uses the explicitly selected shared
   compute lease for every simulator. GSim retains its separate conservative
   native census/cap, acquiring compute first and reusing synchronous ownership.
+  A busy native cap releases the admission attempt's compute lease before
+  retrying, so waiting simulators cannot occupy all compilation CPUs.
   Shared mode does not assign CPUs by native slot index or change oracle tiers.
+  Unset GSim and Spike caps default to the shared pool size; explicit
+  `MERLIN_GSIM_MAX_SLOTS`/`MERLIN_SPIKE_MAX_SLOTS` still win. Native retries
+  keep their place in the pool's priority queue.
   Contract and FIRRTL build steps use that same compute namespace; absent shared
   configuration retains legacy build and GSim CPU selection.
 - `build_cache.build_identity` includes the independently selected original
@@ -184,6 +209,12 @@ launching, capsule grading, golden generation, sandboxing and certification. The
   zero-payload assumptions are not hardware legality; keep them out of the
   shared grader. Provenance reads existing decoder facts without role-probe
   execution or schedule claims.
+- Strict v3 gSIM receipt checks read each distinct pinned path once per call. With
+  `MERLIN_SNAPSHOT_LEASE_CACHE=1` every pin is admitted to the shared read-lease cache at any
+  size, and later checks in the process reuse those digests only through
+  `read_lease_digest.reuse`; writes, truncation, inode or symlink replacement and custodian loss
+  refuse exactly as for frozen snapshot inputs. Pins outside the cache keep full reads, and
+  reused pins are rechecked after any slower reads in the same call.
 - `rtl_engine_policy.gsim_runtime_slot` admits synchronous native runs under one per-user
   mutex from the union of kernel slot reservations and an upper bound on same-user native
   plusarg processes. It discounts a duplicate only when a unique kernel FLOCK owner has a
@@ -284,6 +315,11 @@ the owning experiment must independently qualify its minimal runtime boundary.
 - Consumes `merlin.common` (paths/io/yaml/artifacts/schemas) and `merlin.validation`.
 
 ## Invariants
+
+Recipe calibration agreement compares the complete tensor result tree and
+records individual outputs for multi-result programs. A matching mask cannot
+stand in for a cache. Shape, topology and finite-value checks bind the comparison;
+these receipts remain measurements, not model admission or hardware verdicts.
 
 The opt-in literal bucketize host source-body contract admits only an exact
 typed prepared count form with a selected index-width premise. The private
@@ -445,3 +481,25 @@ profile, payload and marker, selected source inventory, software/facts and forma
 toolchain; candidate requests cannot replace any of these authorities. Core
 import admission is independent of optional experiment packages; sandbox views
 and grading remain separately selected by the original experiment owner.
+
+`lowering_coverage.sweep_plan` resolves every target-derived probe input (tile,
+dtypes, extents) and `plan_identity` hashes it with each staged interface. Sweeps
+may run corners on threads (one shared compute slot per in-flight corner, caller
+context copied) or through a trusted `runner`; either way the summary is assembled
+in plan order and a missing or malformed outcome is an `error`, never coverage.
+
+Capture determinism records the framework's observed CPU dispatch and explicit
+`ATEN_CPU_CAPABILITY` override without selecting arithmetic or changing gates.
+An unavailable observation remains unknown. Multi-output recipe diagnostics
+retain the historical f32 value projection and accumulate metrics in f64;
+single-output numeric receipts remain unchanged. Capture cache identity binds
+the complete-output agreement helper as a direct implementation owner.
+
+`_capture_integer_mm` accelerates only bounded eager CPU int8-to-i32
+matrix evaluation. A dtype-derived absolute partial-sum bound must fit i32,
+which also proves every product and partial sum exactly representable in f64.
+Regular row/column views retain logical values; unsupported, wrapped, tracing,
+overflow and unavailable-API cases keep native evaluation. The context surrounds
+real calibration/site-check/candidate forwards only; source graphs, floating
+operations, independent goldens, selected recipes and acceptance bars stay
+unchanged. Its implementation is bound in capture-cache identity.

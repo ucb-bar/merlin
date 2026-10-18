@@ -174,6 +174,7 @@
             "host_island_seam",
             "scope_chain",
             "component_program",
+            "activation_matmul",
             "model"
           ],
           "description": "The workload the capsule asks the backend to compile. Unlike dtype this IS a closed set, because an op is only expressible if the tooling can build its interface MLIR and produce its golden -- the vocabulary is code, not data. Its sources are merlin.targetgen.corpus_spec.BUILDERS (capsule + interface MLIR) and capsule_golden._recompute_golden (integer goldens; float ops carry an independent golden.yaml instead). Adding a builder without adding it here rejects the whole corpus at load, which is why merlin/tests/targetgen/test_capsule_vocabulary.py pins this list against BUILDERS."
@@ -380,6 +381,8 @@
             "seen",
             "shape",
             "shape_geometry",
+            "tail_isolation",
+            "activation_contraction",
             "layout",
             "rank",
             "dtype",
@@ -387,6 +390,7 @@
             "composition",
             "fusion",
             "epilogue",
+            "column_readout",
             "accumulation_depth",
             "accumulator_output_capacity",
             "conv_window",

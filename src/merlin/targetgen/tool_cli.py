@@ -93,6 +93,22 @@ def _spike_extension(args: argparse.Namespace) -> int:
     return 0
 
 
+def _unit_correspondence(args: argparse.Namespace) -> int:
+    """Compare one accelerator unit's elaborated structure across two configurations' facts."""
+    from .rtl import unit_correspondence
+
+    argv = ["--target-facts", args.target_facts, "--simulation-facts", args.simulation_facts, "--out", args.out]
+    return unit_correspondence.main(argv + (["--facts-out", args.facts_out] if args.facts_out else []))
+
+
+def _timing_profile_structure(args: argparse.Namespace) -> int:
+    """Copy a timing profile with the target's declared structural resource mapping applied."""
+    from .rtl import timing_structure
+
+    argv = ["--target", args.target, "--facts", args.facts, "--profile", args.profile, "--out", args.out]
+    return timing_structure.profile_main(argv)
+
+
 def _rtl_source_audit(args: argparse.Namespace) -> int:
     """Compare selected source ports with extracted facts and authored audit questions."""
     from .rtl import source_audit
@@ -619,6 +635,20 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--hardware-spec", required=True)
     audit.add_argument("--output", required=True)
     audit.set_defaults(func=_rtl_source_audit)
+
+    unit = sub.add_parser("unit-correspondence", help="compare an accelerator unit across two configurations")
+    unit.add_argument("--target-facts", required=True, help="facts extracted from the chosen target bundle")
+    unit.add_argument("--simulation-facts", required=True, help="facts extracted from the simulation bundle")
+    unit.add_argument("--out", required=True, help="fresh correspondence record path")
+    unit.add_argument("--facts-out", help="optional fresh copy of --target-facts with the record attached")
+    unit.set_defaults(func=_unit_correspondence)
+
+    profile = sub.add_parser("timing-profile-structure", help="map RTL timing structure onto profile resources")
+    profile.add_argument("--target", required=True, help="target whose contract declares profile_resources")
+    profile.add_argument("--facts", required=True, help="facts artifact carrying timing_structure")
+    profile.add_argument("--profile", required=True, help="timing profile JSON to copy")
+    profile.add_argument("--out", required=True, help="fresh output path")
+    profile.set_defaults(func=_timing_profile_structure)
 
     counter = sub.add_parser("counter-source-observation", help="check complete source-local counter/state rows")
     counter.add_argument("--source", required=True, help="exact selected HW MLIR source")

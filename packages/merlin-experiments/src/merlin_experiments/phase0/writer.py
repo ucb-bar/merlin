@@ -430,9 +430,7 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
     # declaration. Its complete captured ABI and values are checked by the
     # source writer; ordinary written-program placement checks still apply.
     native_storage = (
-        native_storage_source_spec(entry)
-        if entry.get("source") == "pytorch" or entry.get("pytorch_ref")
-        else None
+        native_storage_source_spec(entry) if entry.get("source") == "pytorch" or entry.get("pytorch_ref") else None
     )
     if regime == "int" and _is_source_backed(entry) and (model_capsule or native_storage is None):
         if model_capsule:
@@ -845,7 +843,7 @@ def _emit_micro_model_loader(entry: dict, target: str, out_root, *, capture_dtyp
 
 def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, capture=None):
     regime, eb = CS.entry_binding(entry, binding)
-    if entry.get("op") == "component_program":
+    if CS.entry_component_program(entry, eb) is not None:
         from .component_integer_bounds import preflight_entry
 
         preflight_entry(entry, binding=binding)
@@ -889,9 +887,13 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
         # eager then computes the same quantized math, so the golden is right by construction.
         # For operation-derived slices, the source's exact digest-bound integer arithmetic is checked
         # independently. Static and dynamic whole-model quantization remain distinct source schemes.
-        if native_storage_source_spec(entry) is not None or entry.get("quant_scheme") or (
-            entry.get("capture_op") == "int_matmul"
-            and int_mm_source_is_qualified(entry.get("application_signature_match") or {})
+        if (
+            native_storage_source_spec(entry) is not None
+            or entry.get("quant_scheme")
+            or (
+                entry.get("capture_op") == "int_matmul"
+                and int_mm_source_is_qualified(entry.get("application_signature_match") or {})
+            )
         ):
             pass
         elif regime != "simt":

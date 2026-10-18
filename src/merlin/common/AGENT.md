@@ -14,6 +14,11 @@ An explicit shared compute roster and slot directory provide one namespace for
 build, simulation and bounded preparation steps. Same-process/thread nested steps
 reuse one active lease; incompatible nested selections refuse. Preparation worker
 affinity never holds a capsule-wide slot across child or RPC waits.
+The pool is divided only by lease priority (`cpu_priority`: AUTHOR 1, GRADE 2,
+PREPARATION 3, AUXILIARY 4; `MERLIN_CPU_PRIORITY` carries it to children). A
+cross-process `waiters/` queue in the slot directory serves more urgent classes
+first and FIFO within a class; no CPU is reserved for a class, and dead or
+stopped waiters never block. Unset engine caps default to `compute_capacity()`.
 The common access registry contains only target-neutral identities; the experiments
 sandbox extends it with mandatory packaged historical target denials before launch.
 `frozen_imports` provides stdlib-only, process-local source import isolation for
@@ -132,3 +137,23 @@ marker bytes. It has no experiment dependency and does not decide candidate
 visibility. The experiment freezer delegates payload hashing; its independent
 mount/answer checks remain mandatory. A verified input is not an execution or
 semantic receipt, and host-only inputs do not become public grants.
+
+Inside one `verified_snapshot_scope`, Linux watches of every file and directory
+may reuse the names/types/sizes roster. Watches include individual inodes so an
+external hard-link resize invalidates the shortcut. Mount-table changes, events
+(including overflow), unavailable watches or closed custody restore complete
+scanning. Payload hashing and selected read-lease checks remain independent at
+both operation boundaries; this shortcut never authenticates payload bytes.
+Explicit bounded `MERLIN_SNAPSHOT_LEASE_MIN_BYTES` and
+`MERLIN_SNAPSHOT_LEASE_MAX_FILES` select cache admission, never replace a live
+kernel read lease. Cached path checks pin an O_PATH lookup and compare its
+kernel-resolved ordinary name and inode; replaced, indirect or deleted names
+refuse. Descriptor headroom is reserved at cache admission without a quadratic
+per-member descriptor enumeration.
+`read_lease_digest.reuse` batches hits for a closed pin set that one process
+reverifies repeatedly. It returns only members admitted earlier by `digest`,
+after rechecking every member's O_PATH name, identity and lease, then every lease
+again with one custodian check. A failed member declines so the caller's ordinary
+per-file hit reaches the existing refusal; `required=True` refuses directly. It
+never admits, hashes or trusts timestamps. An explicit `minimum_bytes` admission
+threshold changes only which files may be leased, never capacity or custody.

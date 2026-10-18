@@ -3,9 +3,9 @@ title: Set up Phase 0 and Phase 1
 kind: guide
 status: current
 owner: experiments
-last_verified: 2026-10-15
+last_verified: 2026-10-17
 related: [gsim_worker_setup, neutral_runtime_tooling, phase0_specification, target_resolution]
-code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/targetgen/generalization_prompt.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_demand.py]
+code_refs: [src/merlin/runtime/backends/rocc_selection.py, src/merlin/runtime/backends/chipyard_rocc.py, src/merlin/targetgen/generalization_prompt.py, packages/merlin-experiments/src/merlin_experiments/cli.py, packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py, packages/merlin-experiments/src/merlin_experiments/phase1/timing.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_demand.py, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_source_preflight.py]
 ---
 
 # Set up Phase 0 and Phase 1
@@ -308,6 +308,21 @@ The gate still verifies the original derivation, software, RTL facts and host
 profile before checking the review. The review records a numerical choice;
 it grants no new hardware capability or numerical pass. Keep this review private.
 
+Before a launch, run the private gate's compiler-independent checks on the final
+specification, with the launch's descriptor and, when the launch passes one, its
+`--native-result-format-selection` file:
+
+```sh
+merlin-experiment private-preflight --spec "$PRIVATE_MODEL_SPEC" \
+  --descriptor "$DESCRIPTOR" --target gemmini --out "$FRESH_PRIVATE_DIR"
+```
+
+Require every model to report `source_inputs_verified`. Each refusal here (a
+capture that is not its preselected sealed run output, a sealed run that no
+longer re-verifies, missing source ancestry, an undecided source operation)
+fails the full-model gate for every compiler. The output directory holds
+operator-only diagnostics; a passing preflight is not a gate result.
+
 To retain kernel cycle measurements when preparing a new release from an
 existing Phase 0 corpus, pass `kernel_timing_selection=(contract_path, sha256)`
 to `merlin_experiments.corpus.release.prepare`. The selected contract may add
@@ -465,8 +480,22 @@ synthetic receipts do not substitute for an executed compiler qualification.
 
 ## Reserve CPU pools before the fresh launch
 
-On a 32-CPU worker, an operator may reserve CPUs 8–30 for the experiment and
-leave 0–7 and 31 for other workloads. Within that reservation, pin the manager
+The preferred selection is one shared compute pool: set only
+`MERLIN_COMPUTE_CPUS` (the CPU roster) and an absolute task-local
+`MERLIN_COMPUTE_CPU_SLOTS` directory. Every build, simulator, grading and
+bounded preparation step then leases one CPU slot from it, and every unset
+concurrency cap (`MERLIN_GSIM_MAX_SLOTS`, `MERLIN_SPIKE_MAX_SLOTS`,
+`MERLIN_GRADE_WORKERS`, `MERLIN_SELFCHECK_BROKER_JOBS`,
+`MERLIN_SELFCHECK_ORDINARY_JOBS`, the simulation broker's job count) defaults
+to the pool size. No CPU is reserved per engine; waiting steps are served by
+priority — author-requested self-checks, simulation jobs and model checks
+first, then grade capsules, then run preparation, then advisory probes and
+telemetry — and FIFO within a priority. `MERLIN_PREPARATION_CPUS` is optional
+and may overlap the pool. Explicit caps still override the defaults.
+
+The fixed-reservation layout below remains supported. On a 32-CPU worker, an
+operator may reserve CPUs 8–30 for the experiment and leave 0–7 and 31 for other
+workloads. Within that reservation, pin the manager
 to 8–9, select `MERLIN_CODEX_CPUS=10,11,12,13`, and select
 `MERLIN_BUILD_CPUS=14,15` with an absolute task-local `MERLIN_BUILD_SLOT_ROOT`.
 Native builds acquire an exclusive CPU slot across processes and threads;

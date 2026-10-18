@@ -309,6 +309,12 @@
               "acc_scale": {
                 "type": "number"
               },
+              "acc_scale_by_column": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "number"},
+                "description": "One finite float32 readout multiplier per output column; mutually exclusive with acc_scale. Hardware admission and scale-change scheduling are separate."
+              },
               "requant_shift": {
                 "type": "integer"
               },

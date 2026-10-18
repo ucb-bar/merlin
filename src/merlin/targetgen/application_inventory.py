@@ -216,6 +216,35 @@ def verify_capture_receipt(path: str | Path) -> dict:
             or source.get("sha256") != tool_sources.get("m2m/capture/pt2e_integer_reference.py")
         ):
             errors.append("independent integer reference or its source is not bound by the capture receipt")
+    dynamic_evidence = None
+    stats = metadata.get("quantization_stats") if isinstance(metadata, dict) else None
+    if not errors and isinstance(stats, dict) and stats.get("dynamic_contractions") is not None:
+        try:
+            from merlin.capture.integerization import dynamic_integerization_projection
+            from merlin.common import strict_json
+
+            trace_record = artifacts.get("frontend-trace.json")
+            trace_path = capture.parent / "frontend-trace.json"
+            if not isinstance(trace_record, dict) or trace_path.is_symlink():
+                raise ValueError("dynamic contraction census lacks the receipt-bound frontend trace")
+            raw_trace = trace_path.read_bytes()
+            if (
+                len(raw_trace) != trace_record["bytes"]
+                or hashlib.sha256(raw_trace).hexdigest() != trace_record["sha256"]
+            ):
+                raise ValueError("frontend trace changed during observation")
+            integer = metadata.get("integerization_receipt") or {}
+            dynamic_evidence = dynamic_integerization_projection(
+                metadata,
+                stats,
+                trace=strict_json.loads(raw_trace),
+                trace_identity=trace_record,
+                program_sha256=artifacts["model.mlir"]["sha256"],
+                emitted=integer.get("integer_mm_emitted"),
+                exported=integer.get("exported_integer_mm_count"),
+            )
+        except (ValueError, TypeError, KeyError, OSError) as exc:
+            errors.append(f"dynamic integerization evidence is invalid: {exc}")
     result = {
         "status": "verified_materialized" if not errors else "unverified",
         "receipt_sha256": digest,
@@ -245,6 +274,8 @@ def verify_capture_receipt(path: str | Path) -> dict:
             "reference_artifact": artifacts.get("integer-reference.json"),
             "integerization_receipt": metadata.get("integerization_receipt"),
         }
+        if dynamic_evidence is not None:
+            result["capture_integerization"]["dynamic_integerization"] = dynamic_evidence
     return result
 
 
@@ -294,9 +325,25 @@ def verified_static_integerization(projection: dict | None, *, receipt_sha256: s
         or type(receipt.get("exported_integer_mm_count")) is not int
         or receipt["exported_integer_mm_count"] <= 0
         or type(receipt.get("integer_mm_emitted")) is not int
-        or receipt.get("integer_mm_emitted") != receipt["exported_integer_mm_count"]
+        or receipt["integer_mm_emitted"] <= 0
     ):
         return False
+    dynamic = projection.get("dynamic_integerization")
+    if dynamic is None:
+        if receipt["integer_mm_emitted"] != receipt["exported_integer_mm_count"]:
+            return False
+    else:
+        from merlin.capture.integerization import dynamic_integerization_count
+
+        try:
+            dynamic_integerization_count(
+                dynamic,
+                emitted=receipt["integer_mm_emitted"],
+                exported=receipt["exported_integer_mm_count"],
+                program_sha256=capture["sha256"],
+            )
+        except (ValueError, TypeError, KeyError):
+            return False
     agreement = receipt.get("golden_agreement") or {}
     if not isinstance(agreement, dict):
         return False

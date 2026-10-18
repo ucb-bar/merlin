@@ -86,6 +86,29 @@ def _decision(entry: dict, *, host_only: bool) -> dict:
     }
 
 
+def accelerator_placement_refusal(screen: dict | None) -> str | None:
+    """Why a capsule with this written-program screen may not be published, or ``None`` when it may.
+
+    A capsule grades the author's accelerator compiler; host placement is compiled by Merlin's own
+    generic host codegen. A program with no operation placed on the accelerator therefore grades none
+    of the author's work. Fail closed: a screen without a per-lane placement count is refused too,
+    because an absent count is not evidence of accelerator work.
+    """
+    placements = screen.get("placements") if isinstance(screen, dict) else None
+    if not isinstance(placements, dict):
+        return "the capsule carries no frozen per-operation placement record"
+    count = placements.get("accelerator", 0)
+    if type(count) is not int or count < 0:
+        return "the capsule's frozen accelerator placement count is malformed"
+    if count == 0:
+        lanes = ", ".join(f"{lane}={placements[lane]}" for lane in sorted(placements)) or "no placed operation"
+        return (
+            f"no operation of the written program is placed on the accelerator ({lanes}); host placement "
+            "is Merlin-supplied and grades none of the author's work"
+        )
+    return None
+
+
 def entry_refusal_is_final(entry: dict, decision: dict) -> bool:
     """Whether a screen of an ENTRY (before its capsule is written) may refuse it outright.
 
@@ -369,9 +392,13 @@ def derive_inventory(inventory: dict, *, target: str, evidence, captures: dict[s
         capability_contract=evidence.contract,
         host_capabilities=getattr(evidence, "host_capabilities", None),
     )
-    if captures is None and inventory.get("applications") and all(
-        isinstance(row.get("capture_source_path"), str) and row["capture_source_path"]
-        for row in inventory["applications"].values()
+    if (
+        captures is None
+        and inventory.get("applications")
+        and all(
+            isinstance(row.get("capture_source_path"), str) and row["capture_source_path"]
+            for row in inventory["applications"].values()
+        )
     ):
         captures = {name: Path(row["capture_source_path"]) for name, row in inventory["applications"].items()}
     if captures is not None:

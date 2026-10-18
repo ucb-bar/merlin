@@ -127,3 +127,57 @@ def test_original_metadata_is_not_mutated(tmp_path):
     before = copy.deepcopy((layouts, selection, isa))
     derive_load_state_mapping(layouts, selection, isa)
     assert (layouts, selection, isa) == before
+
+
+def transfer_fixture(tmp_path, expression=None):
+    expression = expression or (
+        "shr(mux(is_second, mul(mul(extent.cols, selected_rows), UInt<6>(32)), "
+        "mul(mul(extent.cols, selected_rows), UInt<4>(8))), 3)"
+    )
+    source = SOURCE + """    wire extent : { rows : UInt<2>, cols : UInt<2> }
+    connect extent.rows, bits(cmd.rs2, 5, 4)
+    connect extent.cols, bits(cmd.rs2, 3, 2)
+    node selected_rows = mux(is_second, UInt<1>(1), extent.rows)
+    node byte_count = """ + expression + "\n"
+    path, _layouts, selection, isa = fixture(tmp_path, source)
+    fields = [{"bundle": "LoadCfg", "name": "state", "module": "Selector",
+               "field": "cfg.state", "input": "cmd.rs1"}]
+    fields += [{"bundle": "Extent", "name": axis, "module": "Selector",
+                "field": f"extent.{axis}", "input": "cmd.rs2"} for axis in ("rows", "cols")]
+    layouts = derive_operand_layouts(path, expected_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                                     selections=fields)
+    for klass in ("MVIN", "MVIN2"):
+        isa["OPERAND_FIELDS"][klass]["fields"] += [
+            {"name": axis, "operand": "rs2", "width": 2, "offset": offset}
+            for axis, offset in [("rows", 4), ("cols", 2)]
+        ]
+    selection["transfer_bound"] = {"byte_count": "byte_count",
+                                   **{axis: {"bundle": "Extent", "name": axis} for axis in ("rows", "cols")}}
+    return layouts, selection, isa
+
+
+def test_transfer_bound_covers_both_element_widths_and_repeated_rows(tmp_path):
+    layouts, selection, isa = transfer_fixture(tmp_path)
+    assert derive_load_state_mapping(layouts, selection, isa).max_element_bytes == 4
+
+
+def test_transfer_bound_comes_from_source_constants(tmp_path):
+    layouts, selection, isa = transfer_fixture(tmp_path, "shr(mul(mul(extent.rows, extent.cols), UInt<7>(64)), 3)")
+    assert derive_load_state_mapping(layouts, selection, isa).max_element_bytes == 8
+
+
+@pytest.mark.parametrize("expression", [
+    "mul(extent.rows, extent.rows)", "mul(extent.cols, cmd.rs1)",
+    "UInt<1>(0)", "missing", "div(extent.rows, extent.cols)",
+])
+def test_unbound_or_non_linear_transfer_counts_refuse(tmp_path, expression):
+    layouts, selection, isa = transfer_fixture(tmp_path, expression)
+    with pytest.raises(ValueError):
+        derive_load_state_mapping(layouts, selection, isa)
+
+
+def test_transfer_extents_must_match_the_actual_decoder(tmp_path):
+    layouts, selection, isa = transfer_fixture(tmp_path)
+    isa["OPERAND_FIELDS"]["MVIN"]["fields"][1]["offset"] = 3
+    with pytest.raises(ValueError, match="original operand decoder"):
+        derive_load_state_mapping(layouts, selection, isa)

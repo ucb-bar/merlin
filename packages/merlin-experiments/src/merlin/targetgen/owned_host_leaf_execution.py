@@ -47,16 +47,21 @@ def _host_scope_record(capsule, record):
     structure = record["structure"]
     elf_sha = structure["elf_sha256"]
     if not set(required) & {"L2", "L3"} or any(
-        tier not in native or native[tier].get("numeric", {}).get("status") != "pass"
+        tier not in native
+        or native[tier].get("numeric", {}).get("status") != "pass"
         or native[tier].get("elf_sha256") != elf_sha
-        for tier in required if tier not in {"L0", "L1"}
+        for tier in required
+        if tier not in {"L0", "L1"}
     ):
         raise ValueError("provided host scope lacks every original required native execution")
     if record["build"]["output"]["elf_sha256"] != elf_sha:
         raise ValueError("provided host scope differs from its original build")
     return {
-        "schema": "merlin.provided_host_structural_scope.v1", "status": "pass",
-        "capsule": capsule["name"], "required_tiers": required, "elf_sha256": elf_sha,
+        "schema": "merlin.provided_host_structural_scope.v1",
+        "status": "pass",
+        "capsule": capsule["name"],
+        "required_tiers": required,
+        "elf_sha256": elf_sha,
         "source_identity_sha256": hashlib.sha256(
             json.dumps(record["source_identity"], sort_keys=True, allow_nan=False).encode()
         ).hexdigest(),
@@ -69,8 +74,12 @@ def qualified_host_result(capsule, result, *, target):
     try:
         root = Path(capsule["__dir__"])
         original = yaml.safe_load((root / "capsule.yaml").read_bytes())
-        if (not selected_host_leaf(original) or (original.get("semantic") or {}).get("must_accelerate")
-                or original.get("name") != result.get("capsule") or result.get("status") != "pass"):
+        if (
+            not selected_host_leaf(original)
+            or (original.get("semantic") or {}).get("must_accelerate")
+            or original.get("name") != result.get("capsule")
+            or result.get("status") != "pass"
+        ):
             return False
         record = result["provided_host_qualification"]
         if not {"capsule", "source", "golden"} <= set(record["source_identity"]["artifacts"]):
@@ -273,7 +282,15 @@ def _host_leaf_structure(receipt, *, target, facts):
 
 
 def grade_owned_host_leaf(
-    capsule, *, target, paths, cfg, run_id, timeout, no_oracle, readback_policy=None,
+    capsule,
+    *,
+    target,
+    paths,
+    cfg,
+    run_id,
+    timeout,
+    no_oracle,
+    readback_policy=None,
     reachable_oracle_tiers=None,
 ):
     """Execute one provided-host image at every required tier without candidate compilation."""
@@ -318,8 +335,12 @@ def grade_owned_host_leaf(
         from merlin.common.artifacts import new_product
 
         product = new_product(
-            "owned-host-selfcheck", version=1, target=target, update_latest=False,
-            sources=[str(paths.run_path)], notes="Provided-host leaf build and native evidence custody",
+            "owned-host-selfcheck",
+            version=1,
+            target=target,
+            update_latest=False,
+            sources=[str(paths.run_path)],
+            notes="Provided-host leaf build and native evidence custody",
         )
         output = product.path
         materialized, source, source_identity = materialize_host_leaf(capsule, target=target, output=output / "inputs")
@@ -366,17 +387,24 @@ def grade_owned_host_leaf(
         from merlin.runtime.boards import load_boards
 
         board = load_boards(catalog).get(selection["board"])
-        if board is None or board.target != target or board.rtl_sim_config != protected_facts["config"]:
+        if board is None or board.target != target:
             raise ValueError("provided host leaf board and RTL facts identify different configurations")
+        from merlin.compile.model_execution_inputs import selected_firrtl
+
+        selected_firrtl(protected_facts["path"], target=target, config=board.rtl_sim_config)
         for tier in sorted(required - {"L0", "L1"}):
             if no_oracle or (reachable_oracle_tiers is not None and tier not in reachable_oracle_tiers):
                 tiers[tier] = TierResult(
-                    tier=tier, status="unavailable", mandatory=True,
+                    tier=tier,
+                    status="unavailable",
+                    mandatory=True,
                     reason="required provided-host tier is not selected in this grading request",
                 )
                 failure = {
-                    "plane": "oracle_unavailable", "category": "NOT_RUN_IS_NOT_PASS",
-                    "tier": tier, "tier_status": "unavailable",
+                    "plane": "oracle_unavailable",
+                    "category": "NOT_RUN_IS_NOT_PASS",
+                    "tier": tier,
+                    "tier_status": "unavailable",
                     "detail": "required provided-host tier is not selected in this grading request",
                 }
                 continue
@@ -447,8 +475,10 @@ def grade_owned_host_leaf(
         product.add_artifact("inputs")
         product.write_manifest()
         status = (
-            "fail" if any(row.status == "fail" for row in tiers.values())
-            else "incomplete" if any(row.status == "unavailable" for row in tiers.values())
+            "fail"
+            if any(row.status == "fail" for row in tiers.values())
+            else "incomplete"
+            if any(row.status == "unavailable" for row in tiers.values())
             else "pass"
         )
         record["lane_report"] = elf_lanes.lane_report_from_elf(capsule, elf, target=target)

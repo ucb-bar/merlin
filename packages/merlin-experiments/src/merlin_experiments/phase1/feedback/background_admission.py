@@ -1,7 +1,10 @@
 """Host-owned scheduling admission for advisory background grades.
 
-An active marker grants priority, never numerical authority. It is issued by
-the real broker in private storage and expires with its actual process owners.
+An active marker identifies an authorized foreground full self-check, never
+numerical authority. It is issued by the real broker in private storage and
+expires with its actual process owners. Background grades no longer pause for
+it: CPU ordering between author and grade work is the shared pool's lease
+priority (``merlin.common.cpu_pool``); only a superseded source defers work.
 """
 
 from __future__ import annotations
@@ -183,23 +186,20 @@ class BackgroundGuard:
     def __init__(self, ws, public, inputs, source_sha256):
         self.ws, self.public, self.inputs, self.source = ws, public, inputs, source_sha256
         self.deferred = None
+        selected = os.environ.get('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '0')
+        if selected not in {'0', '1'}:
+            raise ValueError('MERLIN_BACKGROUND_FINISH_SNAPSHOT must be 0 or 1')
+        self.finish_snapshot = selected == '1'
 
     def reason(self):
+        # Only obsolescence defers pending work. A concurrent same-source author
+        # self-check no longer pauses this grade: its leases outrank the grade's
+        # in the shared CPU pool (cpu_pool.AUTHOR before cpu_pool.GRADE).
         current = source_digest(self.ws)
-        if self.source is not None and current is not None and current != self.source:
+        if (not self.finish_snapshot and self.source is not None
+                and current is not None and current != self.source):
             self.deferred = "background source superseded"
-        elif foreground_covers(self.ws, self.source, self.public, self.inputs):
-            self.deferred = "same-source full selfcheck has foreground priority"
         return self.deferred
 
     def current(self):
         return self.source is not None and source_digest(self.ws) == self.source
-
-
-def foreground_active(ws, inputs):
-    try:
-        public = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
-        source = source_digest(ws)
-        return source is not None and foreground_covers(ws, source, public, inputs)
-    except Exception:  # noqa: BLE001 -- uncertain scheduling identity does not pause feedback
-        return False

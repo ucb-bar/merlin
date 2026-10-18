@@ -1,0 +1,160 @@
+# How the annotated-Spike Gemmini timing provider decodes a RoCC stream into its price classes, as
+# data for merlin_experiments.timing_probes. Operator-private calibration input: never granted to an
+# author, never staged into a release, never graded.
+#
+# Nothing here states a bit position, funct code or capacity. Instructions are named by the RTL
+# decoder's own funct names (facts interfaces.funct_decode_table), fields by the RTL Bundle layouts
+# (facts interfaces.register_bundle_layouts), sizes by facts arrays/datapaths. The values below are
+# the protocol codes the RTL source declares for the selector and mode fields; each is pinned to the
+# source file it comes from (the same selected Gemmini checkout the facts were extracted from).
+schema: merlin.timing_probe_space.v1
+target: gemmini
+backend: backend.py
+
+profile:
+  prices: [target, prices]
+  # The quantity each per-class profile parameter multiplies in a whole-call linear model.
+  parameter_quantities:
+    latency_cycles: count
+    occupancy_cycles: count
+    latency_per_byte_cycles: bytes
+    occupancy_per_byte_cycles: bytes
+    latency_per_mac_cycles: macs
+    occupancy_per_mac_cycles: macs
+  rate_groups:
+    dma: {read_bytes_per_cycle: read_bytes, write_bytes_per_cycle: write_bytes}
+  resources: [resources]
+
+decode:
+  # The static trace carries the fence as a class with no funct.
+  pseudo_classes: [FENCE]
+  config:
+    instruction: CONFIG_CMD
+    # The low rs1 field every config bundle shares; StoreController/ExecuteController decode it.
+    selector: {operand: rs1, bundle: ConfigMvoutRs1, field: cmd_type}
+    states:
+      EX: {code: 0, rs1: ConfigExRs1, rs2: ConfigExRs2}
+      LD: {code: 1, rs1: ConfigMvinRs1}
+      ST: {code: 2, rs1: ConfigMvoutRs1, rs2: ConfigMvoutRs2}
+      NORM: {code: 3, rs1: ConfigNormRs1, rs2: ConfigNormRs2}
+    # StoreController holds the activation MSB at reset until a normalization config writes it.
+    reset: {NORM.act_msb: 0}
+  operands:
+    LOAD_CMD: {rs2: MvinRs2}
+    LOAD2_CMD: {rs2: MvinRs2}
+    LOAD3_CMD: {rs2: MvinRs2}
+    STORE_CMD: {rs2: MvoutRs2}
+    PRELOAD_CMD: {rs1: PreloadRs}
+    COMPUTE_AND_FLIP_CMD: {rs1: ComputeRs}
+    COMPUTE_AND_STAY_CMD: {rs1: ComputeRs}
+
+# Protocol codes, by source declaration:
+#   selector codes   GemminiISA.scala `CONFIG_EX = 0.U`, `CONFIG_LOAD = 1.U`, `CONFIG_STORE = 2.U`,
+#                    `CONFIG_NORM = 3.U`
+#   dataflow         Dataflow.scala `val OS, WS, BOTH = Value` (OS = 0, WS = 1)
+#   activation       Activation.scala NONE 0, RELU 1, LAYERNORM 2, IGELU 3, SOFTMAX 4 (3 bits; the
+#                    store path takes the two low bits from CONFIG_ST and the MSB from CONFIG_NORM)
+#   pooling          StoreController.scala `pooling_is_enabled = has_max_pool.B && pool_stride =/= 0.U`
+#   load states      LoadController.scala `load_state_id`: LOAD2_CMD -> 1, LOAD3_CMD -> 2, else 0
+evidence:
+  - {path: generators/gemmini/src/main/scala/gemmini/GemminiISA.scala, sha256: 812cba090cf85b2b66f6e820dbce8e67454376832fdd459af63cc571e788297b}
+  - {path: generators/gemmini/src/main/scala/gemmini/Dataflow.scala, sha256: e87024cf9357868ddeb013d0599e5f48fc709c224dbad3d1a64b56bbe2e7815f}
+  - {path: generators/gemmini/src/main/scala/gemmini/Activation.scala, sha256: 9aec0433b8be1861a0e474f7fc13f9276c5344e60951da3b18eb8fbc41cc7c2b}
+  - {path: generators/gemmini/src/main/scala/gemmini/StoreController.scala, sha256: a0b556d109196c3c9d9ac5ed4dffc1bcad334c0f1f87780d948b84bde7402c6d}
+  - {path: generators/gemmini/src/main/scala/gemmini/LoadController.scala, sha256: 780ee0a292d8653fa8a822aee28e2fb2cffbc25301431b4332182008d34fcf6a}
+
+# Protocol values only the probe backend reads (backend.py). Bit positions still come from the facts;
+# the local-address flags and the retain sentinel come from the reviewed support contract.
+probe_protocol:
+  load_state_ids: {LOAD_CMD: 0, LOAD2_CMD: 1, LOAD3_CMD: 2}
+  local_address_contract: ../../support/contracts/target_contract.yaml
+  # IEEE-754 binary32 1.0: the identity scale every scale field below is written with.
+  unit_scale_fields: [ConfigExRs1.acc_scale, ConfigMvinRs1.scale, ConfigMvoutRs2.acc_scale]
+  defaults: {EX.dataflow: 1, EX.activation: 0, ST.activation: 0, ST.pool_stride: 0}
+
+# First matching class wins. Quantities are products of decoded operand fields and facts.
+classes:
+  - name: config
+    instructions: [CONFIG_CMD]
+  - name: load
+    instructions: [LOAD_CMD, LOAD2_CMD, LOAD3_CMD]
+    quantities: {bytes: [rs2.num_rows, rs2.num_cols, fact.datapaths.input.bytes]}
+    rates: {read_bytes: bytes}
+  - name: store
+    instructions: [STORE_CMD]
+    state: {ST.activation: 0, ST.pool_stride: 0, NORM.act_msb: 0}
+    quantities: {bytes: [rs2.num_rows, rs2.num_cols, fact.datapaths.input.bytes]}
+    rates: {write_bytes: bytes}
+  - name: store_act1
+    instructions: [STORE_CMD]
+    state: {ST.activation: 1, ST.pool_stride: 0, NORM.act_msb: 0}
+    quantities: {bytes: [rs2.num_rows, rs2.num_cols, fact.datapaths.input.bytes]}
+    rates: {write_bytes: bytes}
+  - name: store_act2
+    instructions: [STORE_CMD]
+    state: {ST.activation: 2, ST.pool_stride: 0, NORM.act_msb: 0}
+    requires_features: [normalizations]
+    quantities: {bytes: [rs2.num_rows, rs2.num_cols, fact.datapaths.input.bytes]}
+    rates: {write_bytes: bytes}
+  - name: store_act3
+    instructions: [STORE_CMD]
+    state: {ST.activation: 3, ST.pool_stride: 0, NORM.act_msb: 0}
+    requires_features: [normalizations]
+    quantities: {bytes: [rs2.num_rows, rs2.num_cols, fact.datapaths.input.bytes]}
+    rates: {write_bytes: bytes}
+  - name: store_act4
+    instructions: [STORE_CMD]
+    state: {ST.activation: 0, ST.pool_stride: 0, NORM.act_msb: 1}
+    requires_features: [normalizations]
+    quantities: {bytes: [rs2.num_rows, rs2.num_cols, fact.datapaths.input.bytes]}
+    rates: {write_bytes: bytes}
+  # A pooled store writes the CONFIG_ST pooled-output window (porows x pocols positions), not the
+  # command's row count (StoreController `bytes_to_read := Mux(!pooling_is_enabled, ..., pool_total_rows)`).
+  - name: pool_store
+    instructions: [STORE_CMD]
+    state: {ST.activation: 0, ST.pool_stride: {not: 0}, NORM.act_msb: 0}
+    requires_features: [max_pool]
+    quantities: {bytes: [state.ST.porows, state.ST.pocols, rs2.num_cols, fact.datapaths.input.bytes]}
+    rates: {write_bytes: bytes}
+  - name: pool_store_act1
+    instructions: [STORE_CMD]
+    state: {ST.activation: 1, ST.pool_stride: {not: 0}, NORM.act_msb: 0}
+    requires_features: [max_pool]
+    quantities: {bytes: [state.ST.porows, state.ST.pocols, rs2.num_cols, fact.datapaths.input.bytes]}
+    rates: {write_bytes: bytes}
+  - name: preload
+    instructions: [PRELOAD_CMD]
+    quantities: {bytes: [rs1.num_rows, rs1.num_cols, fact.datapaths.input.bytes]}
+  - name: compute_ws
+    instructions: [COMPUTE_AND_FLIP_CMD, COMPUTE_AND_STAY_CMD]
+    state: {EX.dataflow: 1, EX.activation: 0}
+    quantities: {macs: [rs1.num_rows, rs1.num_cols, fact.arrays.mesh.cols]}
+  - name: compute_ws_relu
+    instructions: [COMPUTE_AND_FLIP_CMD, COMPUTE_AND_STAY_CMD]
+    state: {EX.dataflow: 1, EX.activation: 1}
+    quantities: {macs: [rs1.num_rows, rs1.num_cols, fact.arrays.mesh.cols]}
+  - name: compute_os
+    instructions: [COMPUTE_AND_FLIP_CMD, COMPUTE_AND_STAY_CMD]
+    state: {EX.dataflow: 0, EX.activation: 0}
+    quantities: {macs: [rs1.num_rows, rs1.num_cols, fact.arrays.mesh.cols]}
+  - name: compute_os_relu
+    instructions: [COMPUTE_AND_FLIP_CMD, COMPUTE_AND_STAY_CMD]
+    state: {EX.dataflow: 0, EX.activation: 1}
+    quantities: {macs: [rs1.num_rows, rs1.num_cols, fact.arrays.mesh.cols]}
+  - name: flush
+    instructions: [FLUSH_CMD]
+  - name: fence
+    instructions: [FENCE]
+  - name: counter
+    instructions: [COUNTER_OP]
+    role: instrumentation
+  # The provider's normalize<k> classes follow LocalAddr.norm_cmd, a field of the local-address
+  # operand. The selected facts carry no LocalAddr bundle layout, so these classes cannot be decoded
+  # from any label or emitted by any probe until the register-layout extractor reads LocalAddr.scala.
+  - {name: normalize1, undecodable: "facts carry no LocalAddr bundle layout (norm_cmd)"}
+  - {name: normalize2, undecodable: "facts carry no LocalAddr bundle layout (norm_cmd)"}
+  - {name: normalize3, undecodable: "facts carry no LocalAddr bundle layout (norm_cmd)"}
+  - {name: normalize4, undecodable: "facts carry no LocalAddr bundle layout (norm_cmd)"}
+  - {name: normalize5, undecodable: "facts carry no LocalAddr bundle layout (norm_cmd)"}
+  - {name: normalize6, undecodable: "facts carry no LocalAddr bundle layout (norm_cmd)"}
+  - {name: normalize7, undecodable: "facts carry no LocalAddr bundle layout (norm_cmd)"}

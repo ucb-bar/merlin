@@ -92,3 +92,94 @@ def percentile_observer() -> Any:
 
     _CLASS.append(PercentileObserver)
     return PercentileObserver
+
+
+_GROUPED: list[Any] = []
+
+
+def grouped_channel_observer() -> Any:
+    """Per-output-channel weight scales shared by each run of ``channels_per_scale`` channels.
+
+    A readout that applies one scale to a group of output columns can hold a per-channel scale only
+    when it is uniform within each group. This observer takes each channel's symmetric range as the
+    largest range in its group (channels ``[g*n, (g+1)*n)``; the last group may be shorter), so every
+    channel of a group gets the same scale and none is clipped. ``.with_args(channels_per_scale=n)``.
+    """
+    if _GROUPED:
+        return _GROUPED[0]
+    import torch
+    from torchao.quantization.pt2e import PerChannelMinMaxObserver
+
+    class GroupedChannelObserver(PerChannelMinMaxObserver):
+        def __init__(self, channels_per_scale: int = 1, **kwargs: Any) -> None:
+            if type(channels_per_scale) is not int or channels_per_scale < 1:
+                raise ValueError("channels_per_scale must be a positive integer")
+            super().__init__(**kwargs)
+            if self.qscheme not in (torch.per_channel_symmetric,):
+                raise ValueError("grouped channel scales are symmetric per-channel scales")
+            self.channels_per_scale = channels_per_scale
+
+        @torch.jit.export
+        def calculate_qparams(self) -> Any:
+            low, high = self.min_val, self.max_val
+            magnitude = torch.maximum(low.abs(), high.abs())
+            n = self.channels_per_scale
+            shared = magnitude.clone()
+            for start in range(0, magnitude.numel(), n):
+                shared[start : start + n] = magnitude[start : start + n].max()
+            return self._calculate_qparams(-shared, shared)
+
+        def extra_repr(self) -> str:
+            return f"channels_per_scale={self.channels_per_scale}"
+
+    _GROUPED.append(GroupedChannelObserver)
+    return GroupedChannelObserver
+
+
+class RepeatedObservationSkip:
+    """Skip a min/max observer's call when its input is the exact tensor it observed last.
+
+    A stored weight reaches its observer as the same parameter on every calibration sample, and
+    TorchAO's ``MinMaxObserver`` and ``PerChannelMinMaxObserver`` keep only a running min and max:
+    a second observation of the same values leaves both buffers bit-identical. Those two exact
+    classes and the known grouped observer with its inherited min/max forward are covered; arbitrary
+    subclasses, moving averages and histograms are not. The skip requires the
+    same tensor object, still alive, with the same version counter, storage, shape, strides and
+    dtype, so an in-place update or a fresh activation is always observed. The instance-level
+    ``forward`` is removed again when calibration ends.
+    """
+
+    def __init__(self, prepared: Any) -> None:
+        from torchao.quantization.pt2e import MinMaxObserver, PerChannelMinMaxObserver
+
+        grouped = grouped_channel_observer()
+        known = (MinMaxObserver, PerChannelMinMaxObserver)
+        if grouped.forward is PerChannelMinMaxObserver.forward:
+            known += (grouped,)  # only qparam grouping differs; the observed min/max update is identical
+        self._modules = [module for module in prepared.modules() if type(module) in known]
+
+    @staticmethod
+    def _key(x: Any) -> tuple:
+        return (x._version, x.data_ptr(), tuple(x.shape), x.stride(), x.dtype, x.device)
+
+    def __enter__(self) -> RepeatedObservationSkip:
+        import weakref
+
+        for module in self._modules:
+            observe = type(module).forward.__get__(module)
+            last: list[Any] = [None]
+
+            def forward(x: Any, _observe: Any = observe, _last: list[Any] = last) -> Any:
+                seen = _last[0]
+                if seen is not None and seen[0]() is x and seen[1] == self._key(x):
+                    return x
+                result = _observe(x)
+                _last[0] = (weakref.ref(x), self._key(x))
+                return result
+
+            module.forward = forward
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        for module in self._modules:
+            module.__dict__.pop("forward", None)

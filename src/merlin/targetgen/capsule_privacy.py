@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
+from merlin.common.yaml import fast_safe_load
 
 REFERENCE_SCHEMA = "merlin.capsule_reference_closure.v1"
 _CAPTURE_SCHEMA = "merlin.materialized_public_capture.v2"
@@ -41,11 +41,14 @@ def capsule_answer_members(directory: Path, *, capsule: dict | None = None) -> d
     Read only capsule metadata and file names, so callers can inspect a frozen
     copy independently of missing or changed original sources. Declared byte pins
     describe identity; this privacy classification does not verify those bytes.
+    Every sandbox policy classifies each capsule of its live and frozen corpora,
+    so metadata is scanned by libyaml under PyYAML's own safe constructor: the
+    same documents, built several times faster (:func:`fast_safe_load`).
     """
     directory = Path(directory)
     if capsule is None:
         source = directory / "capsule.yaml"
-        capsule = yaml.safe_load(source.read_bytes()) if source.is_file() else {}
+        capsule = fast_safe_load(source.read_bytes()) if source.is_file() else {}
     if not isinstance(capsule, dict):
         raise ValueError("capsule privacy requires a mapping")
     members = {path.name: "golden" for path in directory.glob("golden.*") if path.is_file()}

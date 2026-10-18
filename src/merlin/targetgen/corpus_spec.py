@@ -1049,6 +1049,8 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     ``fused_matmul_bias`` is the same weight-stationary contraction with its bias epilogue forced on --
     a distinct op name rather than a flag because the L5 fusion claim compares it against the two
     capsules it replaces, and a group whose members differ only by an attribute cannot be named."""
+    from merlin.targetgen.contract import matmul_interface as MSE
+
     D = binding.tile_dim
     M = entry.get("M_tiles", 1) * D if "M" not in entry else entry["M"]
     K = entry.get("K_tiles", 1) * D if "K" not in entry else entry["K"]
@@ -1059,7 +1061,8 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     if op == "fused_matmul_bias" and not any(s in _BIAS_STAGES for s in epilogue):
         # Ahead of _resolve_output_dtype, which reads the epilogue to decide the committed dtype.
         epilogue.insert(0, "bias_add")
-    acc_scale = entry.get("acc_scale")
+    readout = MSE.acc_scale_parameters(entry, epilogue, N, op=entry.get("name", op))
+    acc_scale = readout.get("acc_scale")
     output_dtype = _resolve_output_dtype(
         binding,
         epilogue,
@@ -1084,8 +1087,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     requant_shift = requant_shift_for(entry, binding, epilogue, op=op)
     if requant_shift is not None:
         attrs["requant_shift"] = requant_shift
-    if acc_scale is not None:
-        attrs["acc_scale"] = acc_scale
+    attrs.update(readout)
     if entry.get("semantic"):
         attrs["semantic"] = entry["semantic"]
     expected = {
@@ -1112,8 +1114,6 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "vcs": "optional",
         "firesim": "optional",
     }
-    from merlin.targetgen.contract import matmul_interface as MSE
-
     mlir = MSE.emit_interface_mlir(
         lhs=lhs,
         weight=weight,
@@ -1124,6 +1124,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         epilogue=epilogue,
         output_dtype=odt,
         acc_scale=acc_scale,
+        acc_scale_by_column=readout.get("acc_scale_by_column"),
         comment=entry.get("comment", ""),
         pool_attrs=pool_attrs or None,
         commit_rows=commit_rows,
@@ -2017,19 +2018,10 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     bias, bias_dt = _bias_operand(entry, epilogue, cout, binding, "conv2d")
     if bias:
         attrs["bias"] = bias
-    acc_scale = entry.get("acc_scale")
-    if "acc_scale" in epilogue:
-        if acc_scale is None:
-            raise ValueError(
-                f"{entry.get('name', 'conv2d')}: an 'acc_scale' epilogue stage needs its `acc_scale` "
-                f"multiplier; a stage declared without one would be applied at an assumed 1.0"
-            )
-        attrs["acc_scale"] = acc_scale
-    elif acc_scale is not None:
-        raise ValueError(
-            f"{entry.get('name', 'conv2d')}: declares acc_scale = {acc_scale!r} but no 'acc_scale' "
-            f"epilogue stage; the multiplier would be carried into the capsule and read by nothing"
-        )
+    from merlin.targetgen.contract import matmul_interface as MSE
+
+    readout = MSE.acc_scale_parameters(entry, epilogue, cout, op=entry.get("name", "conv2d"))
+    attrs.update(readout)
     cap = {
         "name": entry["name"],
         "kind": entry["kind"],
@@ -2074,7 +2066,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         f'dilation = [{dilation[0]}, {dilation[1]}], name = "{out}", epilogue = [{epi}], '
         f'output_dtype = "{odt}"'
         + (f", requant_shift = {requant_shift} : i64" if requant_shift is not None else "")
-        + (f", acc_scale = {acc_scale} : f32" if "acc_scale" in epilogue else "")
+        + MSE.acc_scale_mlir_attrs(readout)
         + (f', bias = "{bias}"' if bias else "")
         + f', layout = "nhwc"{_pool_mlir_attrs(pool_attrs)}}} '
         f": (tensor<1x{H}x{W}x{ci}x{midt}>, !merlin_iface.resident) -> tensor<{out_rows}x{cout}x{modt}>",
@@ -2419,6 +2411,63 @@ def build_component_program(entry: dict, binding: CorpusBinding) -> tuple[dict, 
 
 
 BUILDERS["component_program"] = build_component_program
+
+
+def activation_matmul_program(entry: dict, binding: CorpusBinding) -> dict:
+    """The typed DAG of an activation x activation contraction whose result feeds a reshape.
+
+    Both operands are runtime ``input`` tensors in the operand dtype: no stored weight, so nothing can
+    be packed or made resident ahead of the call, and no scale stream, because a host epilogue applies
+    the scales. The product accumulates in the accumulator dtype and is published through a row-major
+    reshape to ``[N, M]``, so the contraction's consumer is data movement rather than a readout stage.
+    """
+    D = binding.tile_dim
+    M = entry.get("M", entry.get("M_tiles", 1) * D)
+    K = entry.get("K", entry.get("K_tiles", 1) * D)
+    N = entry.get("N", entry.get("N_tiles", 1) * D)
+    if any(type(extent) is not int or extent < 1 for extent in (M, K, N)):
+        raise ValueError(f"{entry.get('name')}: activation matmul needs resolved positive M, K and N")
+    from .component_program import SCHEMA_V2
+
+    lhs, rhs, out = entry.get("lhs", "A0"), entry.get("rhs", "B0"), entry.get("out", "Y0")
+    return {
+        "schema": SCHEMA_V2,
+        "inputs": [
+            {"name": lhs, "role": "input", "shape": [M, K], "dtype": "operand"},
+            {"name": rhs, "role": "input", "shape": [K, N], "dtype": "operand"},
+        ],
+        "nodes": [
+            {"name": "product", "op": "matmul", "inputs": [lhs, rhs]},
+            {"name": "moved", "op": "reshape", "inputs": ["product"], "shape": [N, M]},
+        ],
+        "outputs": [{"name": out, "value": "moved"}],
+    }
+
+
+def build_activation_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """An activation x activation contraction followed by a reshape (op == activation_matmul).
+
+    Written as the generic component program so the reference is the independent exact integer
+    evaluator and the written program is screened operation by operation like any captured source.
+    """
+    return build_component_program({**entry, "program": activation_matmul_program(entry, binding)}, binding)
+
+
+BUILDERS["activation_matmul"] = build_activation_matmul
+
+#: Builders whose capsule is a generic component program derived from the entry's own extents.
+COMPONENT_PROGRAM_SOURCES: dict[str, Callable[[dict, CorpusBinding], dict]] = {
+    "activation_matmul": activation_matmul_program,
+}
+
+
+def entry_component_program(entry: dict, binding: CorpusBinding) -> dict | None:
+    """The typed component program an entry will be written as, or ``None`` when it is not one."""
+    op = entry.get("op")
+    if op == "component_program":
+        return entry.get("program")
+    source = COMPONENT_PROGRAM_SOURCES.get(str(op))
+    return source(entry, binding) if source is not None else None
 
 
 #: Capsule kind -> the generalization axis it probes. A fact about what the capsule tests, not an

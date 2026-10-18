@@ -157,7 +157,8 @@ def validate_command_buffer(cb: Any, *, contract: str | Path | None = None) -> N
     validate(cb, "command_buffer", contract=contract)
     from merlin.runtime.commandbuffer import validate_command_buffer as _structural
 
-    problems = [p for p in _structural(cb) if "declares no 'tensors'" in p or "whole-program kernel_abi" in p]
+    problems = [p for p in _structural(cb) if "declares no 'tensors'" in p or "whole-program kernel_abi" in p
+                or "acc_scale_by_column" in p]
     if problems:
         raise ContractViolation("command_buffer contract violation: " + "; ".join(problems))
 

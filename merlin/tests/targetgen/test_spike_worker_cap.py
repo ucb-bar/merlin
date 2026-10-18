@@ -45,15 +45,35 @@ def probe(tmp_path, value=None, compute_count=None):
 
 @pytest.mark.parametrize(
     "value,compute_count,expected",
-    [(None, None, 8), ("", 15, 8), ("15", 15, 15), ("32", None, 32), ("32", 15, 15), ("15", 3, 3), ("1", 15, 1)],
+    [(None, None, 8), ("", 15, 15), (None, 3, 3), ("15", 15, 15), ("32", None, 32), ("32", 15, 15), ("15", 3, 3),
+     ("1", 15, 1)],
 )
 def test_fresh_worker_cap_and_actual_grading_bound(tmp_path, value, compute_count, expected):
+    # An unset cap is the shared compute pool's size when one is selected, else the legacy 8.
     result = probe(tmp_path, value, compute_count)
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == {"initial": expected, "bounded": min(15, expected), "unset_after_reload": 8}
+    assert json.loads(result.stdout) == {"initial": expected, "bounded": min(15, expected),
+                                         "unset_after_reload": compute_count or 8}
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "33", "1.5", "false"])
 def test_invalid_operator_cap_refuses_in_fresh_worker(tmp_path, value):
     result = probe(tmp_path, value, 15)
     assert result.returncode != 0 and "MERLIN_SPIKE_MAX_SLOTS" in result.stderr
+
+
+def test_process_preparation_uses_shared_pool_without_raising_native_cap(monkeypatch):
+    from types import SimpleNamespace
+
+    from merlin.targetgen import capsule_grade as grade
+    from merlin.targetgen import rtl_engine_policy as policy
+
+    monkeypatch.setenv("MERLIN_OPERATOR_GRADE_PROCESSES", "1")
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", "6,7,8,9,10,11,12,13")
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", "/unused-policy-test-slots")
+    monkeypatch.setitem(policy.CAPSULE_WORKER_CAP, "gsim", 4)
+    adapters = {"L3": SimpleNamespace(_merlin_simulator_engine="gsim")}
+    assert grade._bounded_grade_workers(16, adapters) == 8
+    assert policy.capsule_worker_cap("gsim") == 4
+    monkeypatch.setenv("MERLIN_OPERATOR_GRADE_PROCESSES", "0")
+    assert grade._bounded_grade_workers(16, adapters) == 4

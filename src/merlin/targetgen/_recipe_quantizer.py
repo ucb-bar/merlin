@@ -26,6 +26,7 @@ dispatch table.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 import math
@@ -120,6 +121,13 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float):
     elif granularity == "channel" and is_weight:
         qscheme = torch.per_channel_symmetric if symmetric else torch.per_channel_affine
         observer, axis = PerChannelMinMaxObserver, 0
+        group = tensor.get("channels_per_scale")
+        if group is not None:
+            if type(group) is not int or group < 1 or not symmetric:
+                raise RecipeError("channels_per_scale needs a positive integer and symmetric channel scales")
+            import _recipe_observers as RO  # noqa: PLC0415 -- a sibling, by bare name
+
+            observer, arguments["channels_per_scale"] = RO.grouped_channel_observer(), group
     else:
         raise RecipeError(
             f"a static {'weight' if is_weight else 'activation'} scale per "
@@ -134,6 +142,73 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float):
         qscheme=qscheme,
         ch_axis=axis,
     )
+
+
+def _bias_onto_accumulator_grid(graph_module: Any) -> dict[str, Any]:
+    """Round the quantized graph's float biases onto its accumulator grid without mutating source tensors.
+
+    For ``y = conv(dq(x; s_x), dq(W; s_w)) + b`` the accumulator step of output channel ``c`` is
+    ``S_c = s_x * s_w[c]`` (f32). The bias becomes ``k_c * S_c`` with ``k_c = round(b_c / S_c)``
+    (half to even), an i32 the output path can preload. A bias whose ``k`` leaves i32 is refused.
+    Returns the census: sites, channels and the largest change in units of ``S``.
+    """
+    import torch
+
+    def attr(node: Any) -> Any:
+        value = graph_module
+        for part in str(node.target).split("."):
+            value = getattr(value, part)
+        return value
+
+    def named(node: Any, name: str) -> bool:
+        return getattr(node, "op", None) == "call_function" and name in str(node.target)
+
+    sites = channels = 0
+    worst = 0.0
+    contractions = (torch.ops.aten.conv2d.default, torch.ops.aten.linear.default)
+    for node in list(graph_module.graph.nodes):
+        if node.op != "call_function" or node.target not in contractions or len(node.args) < 3:
+            continue
+        x, w, bias = node.args[:3]
+        if getattr(bias, "op", None) != "get_attr" or not named(x, "dequantize_per_tensor"):
+            continue
+        if not named(w, "dequantize_per_channel") and not named(w, "dequantize_per_tensor"):
+            continue
+        s_x = x.args[1]
+        if isinstance(s_x, torch.fx.Node):
+            s_x = attr(s_x)
+        s_x = torch.as_tensor(s_x, dtype=torch.float32).reshape(())
+        s_w = w.args[1]
+        s_w = torch.as_tensor(attr(s_w) if isinstance(s_w, torch.fx.Node) else s_w, dtype=torch.float32).reshape(-1)
+        stored = attr(bias)
+        step = (s_x * s_w).expand(stored.shape[0]) if s_w.numel() == 1 else s_x * s_w
+        if step.shape != stored.shape or not bool(torch.all(step > 0)):
+            raise RecipeError(f"bias of {node.name} has no positive per-channel accumulator step")
+        codes = torch.round(stored.to(torch.float64) / step.to(torch.float64))
+        if bool(torch.any(codes.abs() > 2**31 - 1)):
+            raise RecipeError(f"bias of {node.name} leaves the i32 accumulator")
+        # The bias is the rescale of the integer code itself, in the integer rewrite's own order
+        # (f32(k) * s_x, then * s_w), so it is exactly the value a preloaded k would contribute.
+        per_channel = s_w.expand(stored.shape[0]) if s_w.numel() == 1 else s_w
+        snapped = (codes.to(torch.float32) * s_x) * per_channel
+        worst = max(worst, float(((snapped.double() - stored.double()) / step.double()).abs().max()))
+        owned = snapped.to(dtype=stored.dtype, device=stored.device).detach()
+        owned.requires_grad_(stored.requires_grad)
+        if isinstance(stored, torch.nn.Parameter):
+            owned = torch.nn.Parameter(owned, requires_grad=stored.requires_grad)
+        parent = graph_module
+        *owners, leaf = str(bias.target).split(".")
+        for name in owners:
+            parent = getattr(parent, name)
+        setattr(parent, leaf, owned)
+        sites += 1
+        channels += int(stored.numel())
+    return {
+        "sites": sites,
+        "channels": channels,
+        "max_change_in_steps": worst,
+        "rule": "k = round_half_even(b / (s_x * s_w)); b := (f32(k) * s_x) * s_w, the integer rewrite's rescale order",
+    }
 
 
 def _recipe_operators(torch: Any) -> dict[str, tuple[Any, ...]]:
@@ -279,6 +354,21 @@ def spell_attention(graph_module: Any) -> list[dict[str, Any]]:
     return rows
 
 
+#: Samples :func:`agreement` reads; each rewritten dynamic site is checked on exactly the same ones.
+AGREEMENT_SAMPLE_LIMIT = 64
+
+
+def _verify_dynamic_sites(graph_module: Any, rows: list, example_inputs: tuple, calibration: Any) -> None:
+    """Check every rewritten site on the agreement samples: the capture input, then the calibration stream."""
+    try:
+        import _dynamic_contractions as DC  # noqa: PLC0415 -- a sibling, by bare name, inside the capture venv
+    except ImportError:
+        from merlin.targetgen import _dynamic_contractions as DC
+
+    samples = [tuple(example_inputs), *(calibration or ())][:AGREEMENT_SAMPLE_LIMIT]
+    DC.verify_sites(graph_module, rows, samples)
+
+
 def _dynamic_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Totals and sites of a dynamic rewrite, for the capture's stats."""
     done = [r for r in rows if r.get("status") == "rewritten"]
@@ -365,6 +455,17 @@ def _rewrite_planes(quantized: Any, recipe: Mapping[str, Any], annotated: int) -
     if len(rows) != annotated:
         raise RecipeError(f"static_planes: {annotated} Linear(s) annotated on the planes grid, {len(rows)} rewritten")
     return [{**row, "status": "rewritten"} for row in rows]
+
+
+def _epilogue_of(recipe: Mapping[str, Any], activation_spec: Any) -> Any:
+    if not recipe.get("epilogue"):
+        return None
+    import _integer_epilogue as IE  # noqa: PLC0415 -- a sibling, by bare name
+
+    try:
+        return IE.Epilogue(recipe["epilogue"], activation_spec=activation_spec, recovery=recipe.get("recovery"))
+    except IE.EpilogueError as error:
+        raise RecipeError(f"epilogue: {error}") from error
 
 
 def build_quantizer(
@@ -596,6 +697,13 @@ def build_quantizer(
                 return candidates
             candidates -= dropped
 
+    def quantized_reader(reader: Any, source: Any) -> bool:
+        """Whether ``reader`` quantizes ``source`` on the activation grid at its input (an epilogue's exit)."""
+        family = family_of(reader) if reader.op == "call_function" else None
+        if family == "contraction" and family not in dynamic_families and reader.args and reader.args[0] is source:
+            return eligible(reader, family) and not (planes_block and _planes_site(planes_block, reader, owner(reader)))
+        return family == ACTIVATION_CONTRACTION and family not in dynamic_families and source in reader.args[:2]
+
     class CapabilityQuantizer(Quantizer):
         def __init__(self) -> None:
             self.activation = _spec(activation, is_weight=False, eps=eps)
@@ -612,6 +720,8 @@ def build_quantizer(
             self.dynamic_rows: list[dict[str, Any]] = []
             self.planes = _planes_spec(recipe, eps=eps) if planes_block else None
             self.annotated_planes = 0
+            # The recipe's output-path epilogue (_integer_epilogue): contraction + absorbed stages as one pattern.
+            self.epilogue = _epilogue_of(recipe, self.activation)
 
         def rewrite_dynamic(
             self, graph_module: Any, samples: Any = None, limit: int | None = None
@@ -701,6 +811,10 @@ def build_quantizer(
                 from m2m.capture.trace import attach_pt2e_conv_bn_folds
 
                 attach_pt2e_conv_bn_folds(graph_module, self.fold_candidates)
+            if self.epilogue is not None:  # after Conv+BN folding, before any observer sees a weight
+                self.epilogue.equalize(
+                    graph_module, lambda n: family_of(n) == "contraction" and eligible(n, "contraction")
+                )
             return graph_module
 
         def annotate(self, graph_module: Any) -> Any:
@@ -770,6 +884,10 @@ def build_quantizer(
                     torch.ops.aten.conv2d.default,
                 ):
                     stored = dataclasses.replace(self.weight, ch_axis=kernel.meta["val"].dim() - 1)
+                if self.epilogue is not None and not planes and node.target in self.epilogue.contractions:
+                    self.epilogue.annotate(node, stored, quantized_reader, owner(node))
+                    self.annotated += 1
+                    continue
                 node.meta["quantization_annotation"] = QuantizationAnnotation(
                     input_qspec_map={operand: self.planes if planes else self.activation, kernel: stored},
                     _annotated=True,
@@ -985,6 +1103,13 @@ def calibration_limit(recipe: Mapping[str, Any], default: int) -> int:
     return value
 
 
+def _RepeatedObservationSkip(prepared: Any):
+    """The observer owner supplies guarded, exact min/max observation reuse."""
+    import _recipe_observers as RO  # noqa: PLC0415 -- capture interpreter sibling
+
+    return RO.RepeatedObservationSkip(prepared)
+
+
 def _no_batch_norm_fold_needed(original_snapshot: Any, exported: Any) -> bool:
     """Prove the selected original and PT2E-input graphs contain no BN to fold.
 
@@ -1194,8 +1319,12 @@ def apply_recipe(
         eps=epsilon,
         fold_candidates=fold_candidates,
     )
+    if recipe.get("dynamic") and calibration_inputs is not None and iter(calibration_inputs) is calibration_inputs:
+        calibration_inputs = list(calibration_inputs)  # the site check reads the same stream again
     calibration = calibration_inputs if calibration_inputs is not None else (tuple(example_inputs),)
     dynamic = quantizer.rewrite_dynamic(exported, calibration, calibration_limit(recipe, calibration_samples))
+    if dynamic:
+        _verify_dynamic_sites(exported, dynamic, example_inputs, calibration_inputs)
     prepared = prepare_pt2e(exported, quantizer)
     samples = calibration_inputs if calibration_inputs is not None else (tuple(example_inputs),)
     sample_limit = calibration_limit(recipe, calibration_samples)
@@ -1205,7 +1334,14 @@ def apply_recipe(
     if weight_rounding is not None:
         samples = weight_rounding.track(samples)
     calibrated = 0
-    with torch.no_grad():
+    epilogue = quantizer.epilogue
+    tracking = epilogue.track(prepared) if epilogue is not None else contextlib.nullcontext()
+    try:
+        from _capture_integer_mm import exact_integer_mm
+    except ImportError:
+        from merlin.targetgen._capture_integer_mm import exact_integer_mm
+
+    with torch.no_grad(), _RepeatedObservationSkip(prepared), tracking, exact_integer_mm(torch):
         for sample in samples:
             if calibrated >= sample_limit:
                 break
@@ -1214,7 +1350,12 @@ def apply_recipe(
     if calibrated == 0:
         raise RecipeError("static calibration saw no input sample")
     weight_rounding_report = weight_rounding.apply() if weight_rounding is not None else None
+    if epilogue is not None and weight_rounding is None:
+        epilogue.correct_biases(prepared)  # GPTQ chose the codes itself; its bias is left as calibrated
     quantized = convert_pt2e(prepared, use_reference_representation=False, fold_quantize=True)
+    island = epilogue.finish(quantized, recipe.get("float_island")) if epilogue is not None else None
+    snap = recipe.get("bias_domain") == "accumulator" and epilogue is None
+    bias_grid = _bias_onto_accumulator_grid(quantized) if snap else None
     if original_frontend_snapshot is not None:
         from m2m.capture.trace import attach_quantization_boundaries
 
@@ -1244,6 +1385,7 @@ def apply_recipe(
         # Every annotated contraction, whatever its operands: the capture's census compares this with
         # the contractions the integer rewrite saw. The activation x activation share is broken out.
         "annotated_contractions": quantizer.annotated + quantizer.annotated_pairs,
+        **({"bias_on_accumulator_grid": bias_grid} if bias_grid is not None else {}),
         **(
             {
                 "annotated_activation_contractions": quantizer.annotated_pairs,
@@ -1260,6 +1402,7 @@ def apply_recipe(
         # Linears whose activation the static_planes block split into int8 digit planes (not counted
         # in annotated_contractions: integerization never sees them), with the same cost columns.
         **({"static_planes": _dynamic_summary(planes)} if recipe.get("static_planes") else {}),
+        **({"integer_epilogue": epilogue.census(), "float_island": island} if epilogue is not None else {}),
         "annotated_sums": quantizer.annotated_sums,
         "annotated_means": quantizer.annotated_means,
         # Sums and means the recipe's families cover and the graph does not requantize: left alone.
@@ -1284,35 +1427,21 @@ def apply_recipe(
     return quantized
 
 
-def agreement(reference: Any, candidate: Any, samples: Iterable[Any], *, limit: int = 64) -> dict[str, Any]:
-    """How a quantized model's outputs compare with the floating-point model's, on real samples.
+def agreement(
+    reference: Any, candidate: Any, samples: Iterable[Any], *, limit: int = AGREEMENT_SAMPLE_LIMIT
+) -> dict[str, Any]:
+    """How all quantized tensor outputs compare with the floating-point model on real samples.
 
     A contract change is never an optimisation: moving a weight scale from per-channel to
     per-tensor changes the numbers, and this is the receipt that says by how much. Reported per
     stream, not judged here; the consumer holds it to the workload's own bar.
     """
-    import torch
+    if __package__:
+        from . import _recipe_agreement as RA
+    else:
+        import _recipe_agreement as RA  # noqa: PLC0415 -- capture-interpreter sibling
 
-    count = agree = 0
-    cosines: list[float] = []
-    worst = 0.0
-    with torch.no_grad():
-        for sample in samples:
-            if count >= limit:
-                break
-            inputs = _as_tuple(sample)
-            expected = torch.utils._pytree.tree_flatten(reference(*inputs))[0][0].float().flatten()
-            actual = torch.utils._pytree.tree_flatten(candidate(*inputs))[0][0].float().flatten()
-            cosines.append(float(torch.nn.functional.cosine_similarity(expected, actual, dim=0)))
-            worst = max(worst, float((expected - actual).abs().max()))
-            agree += int(int(expected.argmax()) == int(actual.argmax()))
-            count += 1
-    if not count:
-        return {"samples": 0}
-    return {
-        "samples": count,
-        "argmax_agreement": agree / count,
-        "cosine_min": min(cosines),
-        "cosine_mean": sum(cosines) / count,
-        "max_abs_error": worst,
-    }
+    try:
+        return RA.compare(reference, candidate, samples, limit=limit, as_tuple=_as_tuple)
+    except RA.AgreementError as error:
+        raise RecipeError(str(error)) from error

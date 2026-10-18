@@ -3,14 +3,23 @@
 A kernel object is a function of the submission package's bytes, the interface module the package is
 asked to lower, and the compile flags (with Merlin's own build code and the tools it runs). Each built
 object is stored under ``build_dir()/model_check/cache/kernels/<key>/`` with its kernel symbol renamed
-to one derived from the key, so objects built in different checks link side by side. A package refusal
-is stored too (a timed-out lowering is not: it says nothing about the package).
+to one derived from the compiled CODE (:func:`code_identity`: the built object's bytes, its symbol and
+the interface it implements), so objects built in different checks link side by side. A package
+refusal is stored too (a timed-out lowering is not: it says nothing about the package).
 
 A replay image is a function of its generated sources, its operand bytes, the objects it links, the
 link toolchain and the simulator it runs on, so its console is stored under ``runs/<key>.json`` and
-an image whose key is already there is neither linked nor run again. Any byte of the package, of an
-operand or of a linked object changes the key; a package that changes while it is being built is not
-stored. ``--no-cache`` bypasses both stores.
+an image whose key is already there is neither linked nor run again. Any byte of an operand or of a
+linked object changes the key; a package that changes while it is being built is not stored.
+``--no-cache`` bypasses both stores.
+
+Any package byte still invalidates a stored OBJECT, because which bytes a lowering reads cannot be
+known without running it. The rename is what lets the expensive half survive an edit: an edit that
+leaves a kernel's compiled code unchanged rebuilds it into a byte-identical object under the same
+name, so ``main.c`` and every replay image built from it are unchanged and answered from the store.
+Objects link in content order for the same reason. Named by the key, every edit renamed every
+kernel: measured over one 5 h authoring run, 1,200 kernel builds produced only 164 distinct code
+bodies, yet every rebuilt program re-ran its replay images (one 300 s replay per edit for one model).
 """
 
 from __future__ import annotations
@@ -165,8 +174,25 @@ def kernel_material(catalog, symbol: str, *, package_sha256: str, toolchain, too
     }
 
 
-def _linked_symbol(key: str) -> str:
-    return f"mc_kernel_{key[:24]}"
+def code_identity(raw: Path, built_symbol: str, material: Mapping[str, Any]) -> str:
+    """What a stored kernel is named by: its built object's bytes, its symbol and the interface it implements.
+
+    Not the package: two packages that compile one interface to the same bytes yield the same object
+    under the same name, so the images that link it are the same images. The interface keeps two
+    kernels of one program from ever sharing a name, whatever their code.
+    """
+    return _sha_json(
+        {
+            "schema": CACHE_SCHEMA,
+            "object_sha256": _sha_file(raw),
+            "built_symbol": built_symbol,
+            "interface_sha256": material["interface_sha256"],
+        }
+    )
+
+
+def _linked_symbol(code: str) -> str:
+    return f"mc_kernel_{code[:24]}"
 
 
 def _read_entry(directory: Path) -> dict[str, Any] | None:
@@ -196,7 +222,10 @@ def _publish(directory: Path, write: Callable[[Path], None]) -> None:
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def _store_object(directory: Path, raw: Path, built_symbol: str, linked: str, objcopy: str, material) -> None:
+def _store_object(directory: Path, raw: Path, built_symbol: str, objcopy: str, material) -> None:
+    code = code_identity(raw, built_symbol, material)
+    linked = _linked_symbol(code)
+
     def write(staging: Path) -> None:
         done = subprocess.run(
             [objcopy, f"--redefine-sym={built_symbol}={linked}", str(raw), str(staging / "kernel.o")],
@@ -210,6 +239,7 @@ def _store_object(directory: Path, raw: Path, built_symbol: str, linked: str, ob
             "schema": CACHE_SCHEMA,
             "status": "built",
             "kernel_symbol": linked,
+            "code_sha256": code,
             "object_sha256": _sha_file(staging / "kernel.o"),
             "key": material,
         }
@@ -297,7 +327,7 @@ def build_kernels(
         storable = objcopy is not None and package_digest(Path(package_dir)) == package_sha256
         skipped = {str(sym): str(why) for sym, why in built.skipped}
         for symbol in missing:
-            key, directory = keys[symbol], store / keys[symbol]
+            directory = store / keys[symbol]
             if symbol not in built.kernels:
                 why = skipped.get(symbol) or skipped.get("all") or "the device build produced no kernel for this symbol"
                 result.refused[symbol] = why
@@ -309,7 +339,7 @@ def build_kernels(
             lowered = Path(workdir) / f"{symbol}.iface.mlir"
             same = lowered.is_file() and lowered.read_text(encoding="utf-8") == catalog.interfaces[symbol]
             if storable and same and raw.is_file():
-                _store_object(directory, raw, built.kernels[symbol], _linked_symbol(key), objcopy, materials[symbol])
+                _store_object(directory, raw, built.kernels[symbol], objcopy, materials[symbol])
             entry = _read_entry(directory) if storable and same else None
             if entry is not None and entry.get("status") == "built":
                 result.stats["stored"] += 1
@@ -318,8 +348,10 @@ def build_kernels(
             else:
                 result.kernels[symbol] = built.kernels[symbol]
                 result.objects.append(raw)
-    # One object per distinct key, in key order: the same kernels link in the same order on every check.
-    result.objects = sorted(set(result.objects))
+    # One object per distinct entry, in CONTENT order: the same code links in the same order on every
+    # check, whichever package (and so whichever store directory) built it. Path order followed the
+    # package-keyed directory names, so an unchanged kernel set could still link a different image.
+    result.objects = sorted(set(result.objects), key=lambda path: (content_digest(path), str(path)))
     return result
 
 

@@ -105,7 +105,29 @@
           "properties": {"tile_dim": {"type": "object"}}
         },
         "census": {"type": "object"},
-        "datapaths_undeterminable": {"type": "array"}
+        "datapaths_undeterminable": {"type": "array"},
+        "timing_structure": {
+          "type": "object",
+          "description": "RTL-derived timing STRUCTURE (merlin.targetgen.rtl.timing_structure): capacities, in-flight limits, beat widths, register stages and dataflow modes read from the selected elaborated HW under the target's rtl_extraction.timing_structure anchors. Never prices. `command_classes.classes.<class>` = {entries: {status, value} (dispatch-table slots readable at the class issue port), command_queue: {entries_total, chain: [{instance, module, entries}]} (buffers the intact issue payload crosses), downstream_buffers}. `memory_clients.clients.<client>` = {request_data_bits, response_data_bits, beat_bytes, id_bits, id_space, request_sizes_log2, max_request_bytes, max_request_beats, request_channels, in_flight: {status, value, tracked_slots}}. `fixed_latencies.<name>` = {status: fixed | fixed_when_enabled | variable | unknown, min_stages, max_stages (null: feedback), module, from, to}. `array_paths.<name>` = {stages_by_sink_then_source, affine, min_stages, max_stages}. `dataflow` = {modes: {select value: weight_stationary | output_stationary | unclassified}, support: both | fixed_select | unknown}. `buffers` is the multi-location buffer census by module, `unknown` lists every UNKNOWN with its reason, `fit_from_measurement` lists quantities that are never RTL facts, and `provenance` records config, generator, FIRRTL / core HW / generic HW sha256, firtool path, sha256 and version, the source bundle, the declarations sha256 and the reader digests. A value the method cannot reach is an UNKNOWN record, never a default.",
+          "required": ["schema", "status"],
+          "properties": {
+            "schema": {"const": "merlin.rtl_timing_structure.v1"},
+            "status": {"enum": ["derived", "partial", "unknown"]},
+            "unknown": {"type": "array", "items": {"type": "string"}},
+            "fit_from_measurement": {"type": "array", "items": {"type": "string"}},
+            "provenance": {"type": "object"}
+          }
+        },
+        "simulation_correspondence": {
+          "type": "object",
+          "description": "Whether the accelerator unit elaborated under a simulation configuration is the same hardware as under the chosen target configuration (merlin.targetgen.rtl.unit_correspondence): exact FIRRTL module bodies, canonical HW per module (printed locations ignored), structural HW (sv.namehint ignored) and SoC-level file operations. Only an identical or structurally equivalent unit lets measurements on the simulation configuration stand for unit-internal timing of the target; SoC-level timing is not compared.",
+          "required": ["schema", "status", "configs"],
+          "properties": {
+            "schema": {"const": "merlin.rtl_unit_correspondence.v1"},
+            "status": {"enum": ["identical", "structurally_equivalent", "different"]},
+            "configs": {"type": "object", "required": ["target", "simulation"]}
+          }
+        }
       }
     }
   },

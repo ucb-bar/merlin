@@ -22,14 +22,20 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from merlin.model_check import kernel_reference as KR
+
+if TYPE_CHECKING:
+    from merlin.runtime.dispatch_runtime import ForwardArgsCache
+    from merlin.runtime.linalg_numpy import ConstantCache
 
 CATALOG_SCHEMA = "merlin.model_check.catalog.v1"
 CALLS_SCHEMA = "merlin.model_check.calls.v1"
@@ -57,7 +63,8 @@ class BlobStore:
         key = _sha(header + array.tobytes())
         path = self.root / f"{key}.npy"
         if not path.exists():
-            tmp = path.with_suffix(".tmp.npy")
+            # A writer's own temporary name: several processes may store the same operand at once.
+            tmp = path.with_name(f"{key}.{os.getpid()}.{uuid.uuid4().hex}.tmp.npy")
             np.save(tmp, array, allow_pickle=False)
             tmp.replace(path)
         return key
@@ -270,17 +277,24 @@ def evaluate(
     return Evaluation([np.asarray(v) for v in reference], [np.asarray(v) for v in rewritten], calls)
 
 
-def capture_arguments(stage: Path, inputs: Mapping[str, np.ndarray] | None, scratch: Path) -> list[np.ndarray]:
+def capture_arguments(
+    stage: Path,
+    inputs: Mapping[str, np.ndarray] | None,
+    scratch: Path,
+    *,
+    weights_cache: ForwardArgsCache | None = None,
+) -> list[np.ndarray]:
     """Every ``@forward`` argument of ``stage``, with its model inputs replaced by ``inputs`` (``in0``...).
 
     Weights, buffers and lifted constants still come from the capture: the call binds a shadow of the
-    capture directory whose files are links to the capture's, except ``inputs.npz``.
+    capture directory whose files are links to the capture's, except ``inputs.npz``. With
+    ``weights_cache`` they are read once per cache, and every call returns the same read-only arrays.
     """
     from merlin.runtime.dispatch_runtime import resolve_forward_args
 
     stage = Path(stage)
     if inputs is None:
-        return resolve_forward_args(stage)
+        return resolve_forward_args(stage, cache=weights_cache)
     shadow = Path(scratch)
     shadow.mkdir(parents=True, exist_ok=True)
     for item in stage.iterdir():
@@ -296,7 +310,7 @@ def capture_arguments(stage: Path, inputs: Mapping[str, np.ndarray] | None, scra
         if tuple(np.asarray(inputs[key]).shape) != tuple(expected[key].shape):
             raise CatalogError(f"input {key}: shape {np.asarray(inputs[key]).shape} != capture {expected[key].shape}")
     np.savez(shadow / "inputs.npz", **{k: np.asarray(inputs[k]) for k in expected.files})
-    return resolve_forward_args(shadow)
+    return resolve_forward_args(shadow, cache=weights_cache)
 
 
 def record_calls(
@@ -305,15 +319,23 @@ def record_calls(
     *,
     blobs: BlobStore,
     keep_call: Callable[[str, int], bool] | None = None,
+    module: Any = None,
+    constants: ConstantCache | None = None,
 ) -> list[dict[str, Any]]:
-    """The device calls of the rewritten program on ``arguments`` (operands and expected results)."""
+    """The device calls of the rewritten program on ``arguments`` (operands and expected results).
+
+    ``module`` is the parsed ``dev_prepared`` when the caller keeps it; ``constants`` is passed to
+    :func:`linalg_numpy.evaluate` (a device call is never hoisted, so every call is still recorded)."""
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.runtime import linalg_numpy as LN
 
-    dev = parse_mlir_file(catalog.dev_prepared)
+    dev = module if module is not None else parse_mlir_file(catalog.dev_prepared)
     calls: list[dict[str, Any]] = []
     LN.evaluate(
-        dev, list(arguments)[: _function_arity(dev)], calls=_answers(catalog, calls, blobs=blobs, keep_call=keep_call)
+        dev,
+        list(arguments)[: _function_arity(dev)],
+        calls=_answers(catalog, calls, blobs=blobs, keep_call=keep_call),
+        constants=constants,
     )
     return calls
 

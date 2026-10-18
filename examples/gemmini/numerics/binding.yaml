@@ -23,9 +23,9 @@ spike:
 elaboration:
   # The generated-src directory of the elaboration behind the selected FIRRTL. Bound by content at run
   # time: its FIRRTL must equal the selected FIRRTL byte for byte, its DTS the board's pinned sha256.
-  directory: sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig
-  firrtl: chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig.fir
-  dts: chipyard.harness.TestHarness.GemminiGsimFireSimAlignedConfig.dts
+  directory: {repo: out/artifacts/probes/gemmini/fire-aligned-30mhz/firesim-target/elaboration}
+  firrtl: firechip.chip.FireSim.FireSimGemminiRocketConfig.fir
+  dts: firechip.chip.FireSim.FireSimGemminiRocketConfig.dts
   # The header the generator writes while elaborating (citations: Controller.scala:29,
   # GemminiConfigs.scala:103 and :512).
   params_header: generators/gemmini/software/gemmini-rocc-tests/include/gemmini_params.h

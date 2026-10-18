@@ -1,4 +1,5 @@
 """Select exactly one verified software-scoped capture recipe from frozen evidence."""
+
 from __future__ import annotations
 
 import hashlib
@@ -51,3 +52,45 @@ def _selected_capture_recipe(evidence_root: Path, *, target: str, operand_dtype:
             f"{wanted_operand}/{wanted_accumulator}; refusing a hardware-only default"
         )
     return matches[0]
+
+
+def recipe_outputs(candidates, *, target: str, software_review, encode) -> dict[str, bytes]:
+    """Frozen-evidence members for derived capture recipes: one file per recipe and their index.
+
+    A reviewed model variant of a methodology recipe (``candidate["model_variants"]``) gets its own
+    file, indexed under ``model_variants`` apart from ``recipes`` so that the model-independent
+    selection (:func:`_selected_capture_recipe`) stays unambiguous.
+    """
+    outputs: dict[str, bytes] = {}
+    recipes, variants = [], []
+
+    def member(recipe) -> tuple[str, str]:
+        payload = encode(recipe)
+        digest = hashlib.sha256(payload).hexdigest()
+        path = f"software/quantization-recipes/{digest}.json"
+        outputs[path] = payload
+        return path, digest
+
+    for candidate in candidates:
+        path, digest = member(candidate["recipe"])
+        recipes.append(
+            {key: value for key, value in candidate.items() if key not in ("recipe", "model_variants")}
+            | {"path": path, "sha256": digest, "recipe_sha256": candidate["recipe"]["recipe_sha256"]}
+        )
+        for variant in candidate.get("model_variants") or ():
+            path, digest = member(variant["recipe"])
+            variants.append(
+                {"format_id": candidate["format_id"], "model": variant["model"], "name": variant["name"]}
+                | {"path": path, "sha256": digest, "recipe_sha256": variant["recipe"]["recipe_sha256"]}
+            )
+    outputs["software/quantization-recipes.json"] = encode(
+        {
+            "schema": "merlin.phase0.capture_recipes.v1",
+            "target": target,
+            "software_review": software_review,
+            "recipes": recipes,
+            **({"model_variants": variants} if variants else {}),
+            "qualification": "diagnostic transformation inputs; calibrate and verify actual precision before admission",
+        }
+    )
+    return outputs

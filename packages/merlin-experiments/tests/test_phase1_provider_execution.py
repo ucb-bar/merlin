@@ -112,8 +112,9 @@ def test_actual_dispatch_configuration_order_and_primary_cleanup(tmp_path, monke
     from merlin.targetgen import target_experiment
 
     events = []
-    config = replace(_config(tmp_path, driver, lambda: events.append("tools") or ("cca_tools",)),
-                     sim_per_capsule_timeout=3600)
+    config = replace(
+        _config(tmp_path, driver, lambda: events.append("tools") or ("cca_tools",)), sim_per_capsule_timeout=3600
+    )
     ws = tmp_path / "workspace"
     ws.mkdir()
     public, policy, contract = (tmp_path / p for p in ("public", "policy", "contract"))
@@ -266,7 +267,8 @@ def test_sandbox_composition_preserves_original_order_and_payload(tmp_path, monk
         "environment",
         "compose",
     ]
-    assert events[0][1:] == ((workspace, bundle), {"repo": tmp_path})
+    # The operator's Claude state is never part of the base; a claude launch stages its own home.
+    assert events[0][1:] == ((workspace, bundle), {"repo": tmp_path, "include_claude_home": False})
     expected = [
         "bwrap",
         "base",
