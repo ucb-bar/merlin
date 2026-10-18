@@ -1,5 +1,5 @@
 /- Rank-one scalar selection joins actual constructor and closed-index binding facts. Every
-alias validates its complete continuation; zero, negative and out-of-bounds indices cannot fold. -/
+alias validates its complete continuation; empty-tensor, negative and out-of-bounds reads refuse. -/
 import MerlinVerify.Check.FromElementsFacts
 import MerlinVerify.Check.ConstantFacts
 import MerlinVerify.Check.TypedAlias
@@ -158,8 +158,8 @@ def normalize (ib : Nat) (Γ : TEnv) (facts : Facts) : List Op → Option (List 
       let tail ← normalize ib ((s.results.map (·.id)).zip rs ++ Γ) (advance ib facts s) ss
       pure (if drop? ib Γ s tail then tail else (eliminate Γ facts s tail).getD (s :: tail))
 
-/-- Source progress establishes actual intermediate types, pointwise values and index facts. Alias checks
-then preserve the entire normalized continuation, including every poison and failure outcome. -/
+/-- Source progress establishes actual intermediate types, pointwise values and index facts.
+Alias checks preserve the entire normalized continuation, including every poison and failure outcome. -/
 theorem normalize_sound {ib : Nat} (R : Rulebook opSem ib) (d : Nat) :
     ∀ Γ facts ss ns yields ctx call env,
       checkOps R d Γ ss yields = true → normalize ib Γ facts ss = some ns →
