@@ -11,12 +11,14 @@ namespace MerlinVerify.Check.ReshapeNested
 open MerlinVerify MerlinVerify.Sem.Ops
 
 mutual
-  /-- Collect modeled headers once. Every selected source candidate is checked independently. -/
-  def hintOps : List Op → List Op
-    | [] => []
+  /-- Separate the current block's headers from descendants in one structural traversal. -/
+  def hintParts : List Op → List Op × List Op
+    | [] => ([], [])
     | (.mk name results operands attrs props regions successors) :: rest =>
       let op := Op.mk name results operands attrs props regions successors
-      (if Rules.ReshapeCompose.Names op then [op] else []) ++ hintRegions regions ++ hintOps rest
+      let (localHeaders, nestedHeaders) := hintParts rest
+      (if Rules.ReshapeCompose.Names op then op :: localHeaders else localHeaders,
+        hintRegions regions ++ nestedHeaders)
 
   def hintRegions : List Region → List Op
     | [] => []
@@ -24,8 +26,16 @@ mutual
 
   def hintBlocks : List Block → List Op
     | [] => []
-    | .mk _ ops :: rest => hintOps ops ++ hintBlocks rest
+    | .mk _ ops :: rest =>
+      let (localHeaders, nestedHeaders) := hintParts ops
+      localHeaders ++ nestedHeaders ++ hintBlocks rest
 end
+
+/-- Current-block candidates retain priority over descendants, including earlier enclosing ops.
+The ordering affects conservative alignment choices only; every candidate remains rechecked. -/
+def hintOps (ops : List Op) : List Op :=
+  let (localHeaders, nestedHeaders) := hintParts ops
+  localHeaders ++ nestedHeaders
 
 /-- Shape facts start empty at each block. The generic lifter supplies the actual typed scope,
 including captures and shadowing block arguments, while uniform facts belong to other families. -/

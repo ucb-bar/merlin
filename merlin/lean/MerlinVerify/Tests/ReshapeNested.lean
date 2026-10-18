@@ -47,4 +47,20 @@ def count (r : Option Region) : Option Nat := r.bind fun r => match r with
 #guard count (run (v 0 (tensorTy [3, 2, 4] i32)) (.tensor [3, 2, 4] i32)) == some 3
 #guard count (run (v 0 (tensorTy [2, 3, 4] i32)) (.tensor [2, 3, 4] i32)) == some 2
 
+-- Both unit reassociations are semantically valid. A nested candidate in an earlier operation
+-- must not displace the actual top-level candidate when the local source chain is normalized.
+def nestedUnit : Op := mkOp "tensor.expand_shape" [v 18 (tensorTy [2, 1, 2, 4] i32)] [10]
+  [("reassociation", groups [[0], [1, 2], [3]]), ("static_output_shape", .denseArray (.int 64) [2, 1, 2, 4])]
+def localUnit : Op := mkOp "tensor.expand_shape" [v 19 (tensorTy [2, 1, 2, 4] i32)] [10]
+  [("reassociation", groups [[0, 1], [2], [3]]), ("static_output_shape", .denseArray (.int 64) [2, 1, 2, 4])]
+def unitHints := ReshapeNested.hintOps [mkOp "unknown.container" [] [] [] [] [.mk [.mk [] [nestedUnit]]], localUnit]
+#guard unitHints.map Sem.Ops.Tensor.reassociation? == [some [[0, 1], [2], [3]], some [[0], [1, 2], [3]]]
+def unitFirst := mkOp "tensor.collapse_shape" [v 3 (tensorTy [4, 4] i32)] [0]
+  [("reassociation", groups [[0, 1], [2]])]
+def unitSecond := mkOp "tensor.expand_shape" [v 4 (tensorTy [2, 1, 2, 4] i32)] [3]
+  [("reassociation", groups [[0, 1, 2], [3]]), ("static_output_shape", .denseArray (.int 64) [2, 1, 2, 4])]
+#guard Sem.Ops.Tensor.reassociation? (ReshapeNormalize.rewrite
+  (ReshapeFacts.advance [(0, .tensor [2, 2, 4] i32)] [] unitFirst) unitHints unitSecond) ==
+    some [[0, 1], [2], [3]]
+
 end MerlinVerify.Tests.ReshapeNested
