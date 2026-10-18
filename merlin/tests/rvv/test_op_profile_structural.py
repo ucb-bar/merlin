@@ -140,6 +140,14 @@ def test_actual_compiled_outputs_and_effect_interval_marker_order(tmp_path):
     if not all(tool.is_file() for tool in (translate, opt, clang)):
         pytest.skip("selected native MLIR toolchain unavailable")
     selected, table = op_profile.instrument(SOURCE, structural=True)
+    from xdsl.dialects.builtin import UnitAttr
+
+    broken = parse(selected)
+    marker = next(op for op in broken.body.block.ops
+        if isinstance(op, func.FuncOp) and op.sym_name.data == op_profile.MARK_SYM)
+    marker.attributes["llvm.emit_c_interface"] = UnitAttr()
+    stream = StringIO()
+    Printer(stream=stream, print_generic_format=True).print_op(broken)
     support = tmp_path / "support.c"
     support.write_text("""#include <stdint.h>
 int32_t marker_ids[64];
@@ -153,7 +161,7 @@ void invoke(int32_t *values) {
   _mlir_ciface_forward(&d);
 }
 """)
-    for name, source in [("original", SOURCE), ("selected", selected)]:
+    for name, source in [("original", SOURCE), ("selected", selected), ("broken_abi", stream.getvalue())]:
         input_path = tmp_path / (name + ".mlir")
         lowered = tmp_path / (name + ".llvm.mlir")
         llvm = tmp_path / (name + ".ll")
@@ -178,11 +186,14 @@ void invoke(int32_t *values) {
         subprocess.run(
             [str(translate), "--mlir-to-llvmir", str(lowered), "-o", str(llvm)], check=True, capture_output=True
         )
-        subprocess.run(
-            [str(clang), "-O2", "-shared", "-fPIC", str(llvm), str(support), "-o", str(so)],
-            check=True,
+        linked = subprocess.run(
+            [str(clang), "-O2", "-shared", "-fPIC", "-Wl,-z,defs", str(llvm), str(support), "-o", str(so)],
             capture_output=True,
         )
+        if name == "broken_abi":
+            assert linked.returncode != 0 and b"_mlir_ciface_merlin_prof_mark" in linked.stderr
+            continue
+        assert linked.returncode == 0, linked.stderr
         library = ctypes.CDLL(str(so))
         values = (ctypes.c_int32 * 4)(1, 22, 33, 44)
         library.invoke.argtypes = [ctypes.POINTER(ctypes.c_int32)]
@@ -193,7 +204,8 @@ void invoke(int32_t *values) {
         assert list(ids)[:count] == (list(range(len(table) + 1)) if name == "selected" else [])
 
 
-def test_ordinary_generic_model_build_profiles_and_executes_on_rv64gc(tmp_path):
+@pytest.mark.parametrize("backend", ["rvv", "scalar"])
+def test_ordinary_generic_model_build_profiles_and_executes_on_rv64gc(tmp_path, backend):
     import numpy as np
 
     from merlin.runtime.backends import spike, spike_model
@@ -217,23 +229,55 @@ def test_ordinary_generic_model_build_profiles_and_executes_on_rv64gc(tmp_path):
         return %out : tensor<5xf32>
       }
     }"""
+    # The second complete result models carried state. Profiling must preserve
+    # both results, not merely the printed prefix of the first tensor.
+    source = source.replace("%x: tensor<5xf32>) -> tensor<5xf32>",
+        "%x: tensor<5xf32>, %state: tensor<5xf32>) -> (tensor<5xf32>, tensor<5xf32>)")
+    source = source.replace("return %out : tensor<5xf32>", """
+        %next = linalg.generic {
+          indexing_maps = [affine_map<(i)->(i)>, affine_map<(i)->(i)>, affine_map<(i)->(i)>],
+          iterator_types = ["parallel"]
+        } ins(%state, %out: tensor<5xf32>, tensor<5xf32>) outs(%empty: tensor<5xf32>) {
+        ^bb0(%old: f32, %value: f32, %unused: f32):
+          %sum = arith.addf %old, %value : f32
+          linalg.yield %sum : f32
+        } -> tensor<5xf32>
+        return %out, %next : tensor<5xf32>, tensor<5xf32>""")
     (bundle / "model.mlir").write_text(generic(source))
-    (bundle / "weights.safetensors.manifest.json").write_text('{"0":{"kind":"input","name":"values"}}')
+    (bundle / "weights.safetensors.manifest.json").write_text(
+        '{"0":{"kind":"input","name":"values"},"1":{"kind":"input","name":"state"}}')
     values = np.array([-5, -0.75, 0, 1.25, 7], dtype=np.float32)
-    np.savez(bundle / "inputs.npz", in0=values)
-    built = spike_model.build(
-        bundle,
-        work,
-        arena_mb=1,
-        op_profile=True,
-        cflags_override=["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"],
-    )
-    ran = spike_model.run(built["elf"], mem_bytes=built["mem_bytes"], isa="rv64gc", timeout=60)
-    np.testing.assert_array_equal(ran["outputs"], values + np.float32(2))
-    table = json.loads((work / "op_profile_table.json").read_text())
-    assert [row["mlir_op"] for row in table] == ["tensor.empty", "linalg.generic"]
+    state = np.array([3, 4, 5, 6, 7], dtype=np.float32)
+    np.savez(bundle / "inputs.npz", in0=values, in1=state)
+    from merlin.compile.baremetal_model import read_full_outputs
+    from merlin.runtime.operation_profile import summarize
+    from merlin.runtime.out_bin import binary_console_diagnostics
+
+    results = []
+    for selected in (False, True):
+        built = spike_model.build(
+            bundle, work / str(selected), arena_mb=1, op_profile=selected, full_readback=True, backend=backend,
+            cflags_override=[
+                "-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin",
+            ],
+        )
+        raw = spike_model.run_raw(built["elf"], mem_bytes=built["mem_bytes"], isa="rv64gc", timeout=60)
+        outputs, _metrics = read_full_outputs(raw, bundle, built["build_hash"])
+        np.testing.assert_array_equal(outputs[0], values + np.float32(2))
+        np.testing.assert_array_equal(outputs[1], state + values + np.float32(2))
+        text = binary_console_diagnostics(raw).decode()
+        results.append(outputs)
+        (work / str(selected) / "console.bin").write_bytes(raw)
+        if not selected:
+            assert not op_profile.parse_prof_lines(text)
+            continue
+        table = json.loads((work / str(selected) / "op_profile_table.json").read_text())
+        report = summarize(table, text)
+        (work / str(selected) / "operation_profile.json").write_text(json.dumps(report))
+        assert report["executions"] == 1 and report["marks"] == len(table) + 1
+        assert report["inter_invocation_counter_ticks"] == 0
+        assert all(row["hits"] == 1 for row in report["operations"])
+    for plain, profiled in zip(*results, strict=True):
+        np.testing.assert_array_equal(plain, profiled)
+    assert [row["mlir_op"] for row in table] == ["tensor.empty", "linalg.generic", "linalg.generic"]
     assert table[1]["body_ops"] == ["arith.addf", "arith.constant"]
-    measurements = op_profile.parse_prof_lines(ran["console"])
-    assert set(measurements) == {0, 1}
-    assert all(hits == 1 for ticks, hits in measurements.values())
-    assert ran["metrics"]["prof_marks"] == 3

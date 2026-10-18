@@ -300,6 +300,7 @@ def compile_saved_model(
     math_archive_symbols: Sequence[str] | None = None,
     readback: str = "prefix",
     group_profile: bool = False,
+    op_profile: bool = False,
     tolerance: dict[str, float] | None = None,
     materialized_inputs=None,
     respect_captured_quantization_scope: bool = False,
@@ -322,6 +323,11 @@ def compile_saved_model(
     with cycle counts and records them. A ``spike`` run goes through the target backend with its
     accelerator extension when the backend declares one.
 
+    ``op_profile`` selects existing typed top-level operation markers and retains
+    their table. Execution records a complete raw-counter trace; categories do
+    not establish placement or hardware latency. Pair an uninstrumented control
+    because markers can alter optimization and allocation.
+
     ``reference_file`` is required for execution because a weight-only capture's
     ``golden.npy`` is not necessarily the reference for a W8A8 execution.  This
     initial executor supports one complete float32 OUT (at most 4096 values).
@@ -341,6 +347,8 @@ def compile_saved_model(
         raise BaremetalModelError("captured quantization scope must be an explicit Boolean")
     if type(host_llvm_bitcode) is not bool:
         raise BaremetalModelError("host LLVM bitcode transport must be an explicit Boolean")
+    if type(op_profile) is not bool:
+        raise BaremetalModelError("operation profiling must be an explicit Boolean")
     if type(blob_weights) is not bool:
         raise BaremetalModelError("blob weights must be an explicit Boolean")
     if type(arena_mb) is not int or arena_mb < 1 or type(timeout_s) is not int or timeout_s < 1:
@@ -477,6 +485,9 @@ def compile_saved_model(
             receipt["inputs"]["respect_captured_quantization_scope"] = True
         if host_llvm_bitcode:
             receipt["inputs"]["host_llvm_bitcode"] = True
+        if op_profile:
+            receipt["inputs"]["op_profile"] = True
+            build_options["op_profile"] = True
         if respect_captured_quantization_scope:
             from merlin.llvmlower.quant_scope import FEATURE as captured_quantization_scope
 
@@ -546,6 +557,13 @@ def compile_saved_model(
         if device is not None:
             receipt["output"]["device_dispatch_evidence"] = "static_sidecar_only; execution not established"
         receipt["output"]["readback"] = readback
+        profile_table = output_path / "build" / "op_profile_table.json"
+        profile_table_sha = None
+        if op_profile:
+            if not profile_table.is_file() or profile_table.is_symlink():
+                raise BaremetalModelError("operation profiling selected but no safe operation table was emitted")
+            profile_table_sha = _sha(profile_table)
+            receipt["output"]["op_profile_table"] = {"path": str(profile_table), "sha256": profile_table_sha}
         if run != "none":
             extension = _spike_extension_backend(target) if run == "spike" else None
             if backend is None and extension is not None:
@@ -627,6 +645,17 @@ def compile_saved_model(
                 )
             else:
                 _judge_prefix(console, built, golden, output_path, receipt)
+            if op_profile:
+                from merlin.runtime.operation_profile import summarize
+                from merlin.runtime.out_bin import binary_console_diagnostics
+
+                text = binary_console_diagnostics(console).decode("utf-8", errors="replace") if full else (
+                    console.decode("utf-8", errors="replace") if isinstance(console, bytes) else console
+                )
+                profile = summarize(json.loads(profile_table.read_text()), text)
+                profile_path = output_path / "operation_profile.json"
+                profile_path.write_text(json.dumps(profile, indent=2) + "\n")
+                receipt["output"]["operation_profile"] = {"path": str(profile_path), "sha256": _sha(profile_path)}
             if group_profile:
                 from merlin.runtime.whole_model_readback import parse_group_profile
 
@@ -658,6 +687,8 @@ def compile_saved_model(
             raise BaremetalModelError("selected device package changed during compilation/execution")
         if sidecar.is_file() and _sha(sidecar) != receipt["output"]["device_sidecar"]["sha256"]:
             raise BaremetalModelError("device dispatch sidecar changed during compilation/execution")
+        if op_profile and (profile_table.is_symlink() or _sha(profile_table) != profile_table_sha):
+            raise BaremetalModelError("operation profile table changed during compilation/execution")
         if selection is not None and _native_engine(target, run, facts)[1] != selection:
             raise BaremetalModelError("selected native RTL engine changed during execution")
         if native and MI.selected_firrtl(rtl_facts, target=target, config=selected.rtl_sim_config) != facts:

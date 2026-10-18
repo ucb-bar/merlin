@@ -204,7 +204,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Source-derived small execution admission](design/component_execution_budget.md) — `current`, verified 2026-10-08 · owner: merlin-experiments
 - [Target publishing — preserved payloads and scoped evidence](design/target_publishing.md) — `current`, verified 2026-09-29 · owner: core — see also: [repo_structure](reference/repo_structure.md), [integrations](guides/integrations.md), [architecture](reference/architecture.md)
 - [The cross-target dialect test bar](design/dialect_test_bar.md) — `current`, verified 2026-07-25 · owner: core — see also: [compiler_plane](design/compiler_plane.md), [target_publishing](design/target_publishing.md)
-- [Whole-program operation profiling](design/whole_model_op_profile.md) — `current`, verified 2026-10-12 · owner: core — see also: [normal_search_feedback](design/normal_search_feedback.md), [runtime_escape_audit](design/runtime_escape_audit.md), [compile_debugging](guides/compile_debugging.md)
+- [Whole-program operation profiling](design/whole_model_op_profile.md) — `current`, verified 2026-10-18 · owner: core — see also: [normal_search_feedback](design/normal_search_feedback.md), [runtime_escape_audit](design/runtime_escape_audit.md), [compile_debugging](guides/compile_debugging.md)
 - [Zephyr model memory and image sizing](design/zephyr_model_memory.md) — `current`, verified 2026-10-16 · owner: core — see also: [runtime](reference/runtime.md)
 
 ## By area
