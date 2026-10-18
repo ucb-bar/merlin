@@ -95,27 +95,28 @@ theorem facts_eq_clean (fs : List Fact) (h : ∀ f ∈ fs, f.initialized = true)
     change _ = ⟨ty, true⟩ :: clean (fs.map (·.ty))
     rw [← hfs]
 
-def genericDefinedRule (ib : Nat) (Γ : FEnv) (op : Op) (fs : List Fact) : Option (List Fact) :=
+def genericDefinedRuleWith (ib : Nat) (bodyBook : Book opSem ib)
+    (Γ : FEnv) (op : Op) (fs : List Fact) : Option (List Fact) :=
   if unmodelledAttr? op.blind = none ∧ dialectOf op.name = "linalg" ∧ op.name = "linalg.generic" then
     match splitInsOuts op fs, attrAffineMaps? op "indexing_maps", iterKinds? op, op.regions with
     | some (ins, outs), some maps, some iters, [body] =>
       if (∀ f ∈ outs, f.initialized = true) ∧ (∀ f ∈ outs, f.ty.isTensor = true) ∧
           op.results.length = outs.length ∧
           (structuredRanges? maps iters.length ((ins ++ outs).map (·.ty))).isSome ∧
-          checkRegion (leafBook ib) Γ body ((ins ++ outs).map elementFact)
+          checkRegion bodyBook Γ body ((ins ++ outs).map elementFact)
             (outs.map fun f => f.ty.eltScalar) then
         some (clean (outs.map (·.ty)))
       else none
     | _, _, _, _ => none
   else none
 
-theorem genericDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
-    genericDefinedRule ib Γ op fs = some rs → ∀ ctx call env args,
+theorem genericDefinedRuleWith_sound (ib : Nat) (bodyBook : Book opSem ib) : ∀ Γ op fs rs,
+    genericDefinedRuleWith ib bodyBook Γ op fs = some rs → ∀ ctx call env args,
     ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
     ∃ vs, opSem ctx call op args (evalRegions opSem call env op.regions) = .ok vs ∧
       FactsHold ib vs rs := by
   intro Γ op fs rs h ctx call env args hib hΓ ha
-  unfold genericDefinedRule at h
+  unfold genericDefinedRuleWith at h
   split at h
   · next hc =>
     obtain ⟨hm, hd, hn⟩ := hc
@@ -135,7 +136,7 @@ theorem genericDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
           intro ctx hib args ha
           rw [← hclean] at ha
           simpa only [List.map_map, Function.comp_def] using
-            checkRegion_sound (leafBook ib) hbody hib hΓ ha
+            checkRegion_sound bodyBook hbody hib hΓ ha
         have hs : StructuredOk maps iters.length (ins.map (·.ty) ++ outs.map (·.ty)) ranges := by
           simpa only [List.map_append] using structuredRanges?_spec hranges
         have hout : ∀ t ∈ outs.map (·.ty), t.isTensor = true := by
@@ -155,28 +156,37 @@ theorem genericDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
     · cases h
   · cases h
 
+def genericDefinedRule (ib : Nat) := genericDefinedRuleWith ib (leafBook ib)
+
+theorem genericDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
+    genericDefinedRule ib Γ op fs = some rs → ∀ ctx call env args,
+    ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
+    ∃ vs, opSem ctx call op args (evalRegions opSem call env op.regions) = .ok vs ∧
+      FactsHold ib vs rs := genericDefinedRuleWith_sound ib (leafBook ib)
+
 /-- Single-output generics may start from an uninitialized destination when their output map is
 identity and the iteration box is exactly the output shape. The body must be total even on a dirty
 output element. This is a coverage proof, not an assumption that parallel iterators imply coverage. -/
-def overwriteDefinedRule (ib : Nat) (Γ : FEnv) (op : Op) (fs : List Fact) : Option (List Fact) :=
+def overwriteDefinedRuleWith (ib : Nat) (bodyBook : Book opSem ib)
+    (Γ : FEnv) (op : Op) (fs : List Fact) : Option (List Fact) :=
   if unmodelledAttr? op.blind = none ∧ dialectOf op.name = "linalg" ∧ op.name = "linalg.generic" then
     match splitInsOuts op fs, attrAffineMaps? op "indexing_maps", iterKinds? op, op.regions with
     | some (ins, [⟨.tensor sh e, _⟩]), some maps, some iters, [body] =>
       if op.results.length = 1 ∧ maps.drop ins.length = [identityMap sh.length] ∧
           structuredRanges? maps iters.length (ins.map (·.ty) ++ [.tensor sh e]) = some sh ∧
-          checkRegion (leafBook ib) Γ body ((ins ++ [(⟨.tensor sh e, false⟩ : Fact)]).map elementFact) [.scalar e] then
+          checkRegion bodyBook Γ body ((ins ++ [(⟨.tensor sh e, false⟩ : Fact)]).map elementFact) [.scalar e] then
         some (clean [.tensor sh e])
       else none
     | _, _, _, _ => none
   else none
 
-theorem overwriteDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
-    overwriteDefinedRule ib Γ op fs = some rs → ∀ ctx call env args,
+theorem overwriteDefinedRuleWith_sound (ib : Nat) (bodyBook : Book opSem ib) : ∀ Γ op fs rs,
+    overwriteDefinedRuleWith ib bodyBook Γ op fs = some rs → ∀ ctx call env args,
     ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
     ∃ vs, opSem ctx call op args (evalRegions opSem call env op.regions) = .ok vs ∧
       FactsHold ib vs rs := by
   intro Γ op fs rs h ctx call env args hib hΓ ha
-  unfold overwriteDefinedRule at h
+  unfold overwriteDefinedRuleWith at h
   split at h
   · next hc =>
     obtain ⟨hm, hd, hn⟩ := hc
@@ -196,7 +206,7 @@ theorem overwriteDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
           have hb : BodyTotal ib (fun ctx => evalRegion opSem ctx call env body)
               ((ins ++ [(⟨.tensor sh e, false⟩ : Fact)]).map elementFact) [.scalar e] := by
             intro ctx hib args ha
-            exact checkRegion_sound (leafBook ib) hbody hib hΓ ha
+            exact checkRegion_sound bodyBook hbody hib hΓ ha
           obtain ⟨rs, hsem, hrf⟩ := overwriteSem_total hib (structuredRanges?_spec hranges) hout hxs ht.1 hb
           refine ⟨rs, ?_, hrf⟩
           have hlen : rs.length = op.blind.results.length := by
@@ -209,6 +219,14 @@ theorem overwriteDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
       · cases h
     · cases h
   · cases h
+
+def overwriteDefinedRule (ib : Nat) := overwriteDefinedRuleWith ib (leafBook ib)
+
+theorem overwriteDefinedRule_sound (ib : Nat) : ∀ Γ op fs rs,
+    overwriteDefinedRule ib Γ op fs = some rs → ∀ ctx call env args,
+    ctx.indexBits = ib → EnvHolds ib Γ env → FactsHold ib args fs →
+    ∃ vs, opSem ctx call op args (evalRegions opSem call env op.regions) = .ok vs ∧
+      FactsHold ib vs rs := overwriteDefinedRuleWith_sound ib (leafBook ib)
 
 /-- Check a named contraction through its proved generic expansion, then transfer successful
 execution back to the actual source. The input arity and actual body closure are checked as well. -/
@@ -442,7 +460,55 @@ def structuredBook (ib : Nat) : Book opSem ib where
 
 /-- Independent families compose through their totality proofs. The structured family retains
 its existing behavior; dequantization adds source-definedness on its explicitly checked domain. -/
-def book (ib : Nat) : Book opSem ib := (structuredBook ib).orElse (dequantBook ib)
+def baseBook (ib : Nat) : Book opSem ib := (structuredBook ib).orElse (dequantBook ib)
+
+/-- Body checking is an explicit, independently sound interface. Both initialized destinations
+and complete overwrites retain the same layout and initialization obligations. -/
+def genericBodyBook (ib : Nat) (bodyBook : Book opSem ib) : Book opSem ib where
+  rule Γ op fs := match splitInsOuts op fs with
+    | some (_, outs) => if outs.all (·.initialized) then genericDefinedRuleWith ib bodyBook Γ op fs
+        else overwriteDefinedRuleWith ib bodyBook Γ op fs
+    | none => none
+  sound Γ op fs rs h ctx call env args hib hΓ ha := by
+    split at h
+    · split at h
+      · exact genericDefinedRuleWith_sound ib bodyBook Γ op fs rs h ctx call env args hib hΓ ha
+      · exact overwriteDefinedRuleWith_sound ib bodyBook Γ op fs rs h ctx call env args hib hΓ ha
+    · cases h
+
+/-- Each enclosing generic consumes a budget unit. Recursive books are built inside the rule
+closure, so unused levels cost nothing; the legacy families remain the fallback at every level. -/
+def nestedBook (ib : Nat) : Nat → Book opSem ib
+  | 0 => baseBook ib
+  | depth + 1 => {
+      rule Γ op fs := ((genericBodyBook ib (nestedBook ib depth)).orElse (baseBook ib)).rule Γ op fs
+      sound Γ op fs rs h ctx call env args hib hΓ ha :=
+        ((genericBodyBook ib (nestedBook ib depth)).orElse (baseBook ib)).sound
+          Γ op fs rs h ctx call env args hib hΓ ha }
+
+mutual
+  def opDepth : Op → Nat
+    | .mk _ _ _ _ _ regions _ => 1 + regionsDepth regions
+
+  def regionsDepth : List Region → Nat
+    | [] => 0
+    | .mk blocks :: rest => max (blocksDepth blocks) (regionsDepth rest)
+
+  def blocksDepth : List Block → Nat
+    | [] => 0
+    | .mk _ ops :: rest => max (opsDepth ops) (blocksDepth rest)
+
+  def opsDepth : List Op → Nat
+    | [] => 0
+    | op :: rest => max (opDepth op) (opsDepth rest)
+end
+
+/-- The actual operation supplies a finite structural budget; certificates cannot assert missing
+body proofs. Soundness holds for every budget, including exhaustion and conservative refusal. -/
+def book (ib : Nat) : Book opSem ib where
+  rule Γ op fs := (nestedBook ib (opDepth op)).rule Γ op fs
+  sound Γ op fs rs h ctx call env args hib hΓ ha :=
+    (nestedBook ib (opDepth op)).sound Γ op fs rs h ctx call env args hib hΓ ha
 
 /-- Acceptance proves successful, nonpoison results for every typed, nonpoison input. -/
 theorem definedCheck_sound {ib : Nat} {m : Module} {f : String} {argTys resTys : List VTy}

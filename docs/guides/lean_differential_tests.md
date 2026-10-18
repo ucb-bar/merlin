@@ -34,6 +34,7 @@ code_refs:
   - merlin/lean/MerlinVerify/Check/SplatC1.lean
   - merlin/lean/MerlinVerify/Check/DefinedRules.lean
   - merlin/tests/ir/test_lean_float_definedness.py
+  - merlin/tests/ir/test_lean_nested_definedness.py
 ---
 
 # Run Lean semantics differential tests
@@ -190,6 +191,14 @@ Fast-math promises, float-to-integer range checks and arithmetic on poisoned inp
 The f32/f64 native reduction cases require source and target definedness and compare with the
 independent order-preserving reference. Binding-only checks also cover f16/bf16; those formats have
 no new native arithmetic qualification.
+
+Generic source-definedness also composes through nested generic bodies. The body checker is a
+proved rulebook parameter; initialized destinations select the accumulator rule, while dirty
+destinations select complete-overwrite checking. A budget derived from actual region nesting
+ensures finite checking without repeatedly exploring both strategies on a rejected subtree.
+Rank-zero `tensor.extract` is total on initialized tensors because it has no index operands.
+Positive-rank extraction still needs a separate value-dependent bounds proof and remains refused.
+These are model-relative totality proofs, separately from native lowering qualification.
 
 `test_lean_layout_generalize.py` checks both index widths, actual pass output, receipt replay,
 stale source rejection, valid MLIR mutations, poisoned inputs, captured values and composition

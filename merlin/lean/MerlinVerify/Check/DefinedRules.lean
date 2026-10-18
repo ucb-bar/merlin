@@ -422,15 +422,48 @@ theorem intCastRule_sound (ib : Nat) : RuleSound ib intCastRule := by
     · cases h
   · cases h
 
+/-- Rank-zero extraction has no index operands and its sole element is always in bounds.
+Positive-rank extraction needs a separate value-dependent bounds proof. -/
+def scalarExtractRule : Rule := fun op fs =>
+  match fs, op.results with
+  | [⟨.tensor [] e, true⟩], [r] =>
+    if dialectOf op.name = "tensor" ∧ op.name = "tensor.extract" ∧ r.ty = e then
+      some [⟨.scalar e, true⟩]
+    else none
+  | _, _ => none
+
+theorem scalarExtractRule_sound (ib : Nat) : RuleSound ib scalarExtractRule := by
+  intro op fs rs hm h ctx call args _ ha
+  unfold scalarExtractRule at h
+  split at h
+  · split at h
+    · next hc =>
+      obtain ⟨hd, hn, _⟩ := hc
+      cases h
+      obtain _ | ⟨ht, hnil⟩ := ha
+      cases hnil
+      rename_i t
+      cases t with
+      | scalar _ => cases ht.1
+      | tensor t =>
+        have hi : Idx.InBounds t.shape [] := by simp [ht.1.1, Idx.InBounds]
+        refine ⟨[.scalar (t.get [])], ?_, List.Forall₂.cons ⟨ht.1.2.2 [] (by simp [Idx.InBounds]), ?_⟩ .nil⟩
+        · rw [tensor_sem_of hm hd]
+          simp [Sem.Ops.Tensor.sem, Op.blind_name, hn, ht.1.1]
+        · intro _
+          exact ht.2 rfl [] hi
+    · cases h
+  · cases h
+
 def rules (ib : Nat) : Rule := fun op fs =>
   [constantRule ib, emptyRule, splatRule, intBinaryRule, floatBinaryRule, reshapeRule,
-    denseConstantRule, intCastRule].findSome? fun r => r op fs
+    denseConstantRule, intCastRule, scalarExtractRule].findSome? fun r => r op fs
 
 theorem rules_sound (ib : Nat) : RuleSound ib (rules ib) := by
   intro op fs rs hm hr
   obtain ⟨r, hmem, h⟩ := List.exists_of_findSome?_eq_some hr
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
-  rcases hmem with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hmem with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact constantRule_sound ib op fs rs hm h
   · exact emptyRule_sound ib op fs rs hm h
   · exact splatRule_sound ib op fs rs hm h
@@ -439,6 +472,7 @@ theorem rules_sound (ib : Nat) : RuleSound ib (rules ib) := by
   · exact reshapeRule_sound ib op fs rs hm h
   · exact denseConstantRule_sound ib op fs rs hm h
   · exact intCastRule_sound ib op fs rs hm h
+  · exact scalarExtractRule_sound ib op fs rs hm h
 
 def leafBook (ib : Nat) : Book opSem ib where
   rule _ op fs := if unmodelledAttr? op.blind = none ∧ op.regions = [] then rules ib op fs else none
