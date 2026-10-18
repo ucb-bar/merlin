@@ -323,6 +323,10 @@ def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, 
     census["host_elements"] = _cost(emit.created)
     planes = (site["planes"] if site["context"] else digits, digits)
     row = DC._finish(emit, node, result, census, smooth=bool(site["smooth"]), planes=planes)
+    # The site check compares with the contraction the site computes: a folded shift already moved the
+    # second operand itself; an unfolded one is subtracted from it, as the rewrite does.
+    unfolded = _shaped(shift, rank_b, 1) if shift is not None and not folded else None
+    row[DC.VERIFY_KEY] = DC.verification_spec(emit, (lhs, rhs), shift=unfolded)
     return {**row, "scales": "static_heads", "shift_folded": folded}
 
 

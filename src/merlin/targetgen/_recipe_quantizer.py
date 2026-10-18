@@ -279,6 +279,21 @@ def spell_attention(graph_module: Any) -> list[dict[str, Any]]:
     return rows
 
 
+#: Samples :func:`agreement` reads; each rewritten dynamic site is checked on exactly the same ones.
+AGREEMENT_SAMPLE_LIMIT = 64
+
+
+def _verify_dynamic_sites(graph_module: Any, rows: list, example_inputs: tuple, calibration: Any) -> None:
+    """Check every rewritten site on the agreement samples: the capture input, then the calibration stream."""
+    try:
+        import _dynamic_contractions as DC  # noqa: PLC0415 -- a sibling, by bare name, inside the capture venv
+    except ImportError:
+        from merlin.targetgen import _dynamic_contractions as DC
+
+    samples = [tuple(example_inputs), *(calibration or ())][:AGREEMENT_SAMPLE_LIMIT]
+    DC.verify_sites(graph_module, rows, samples)
+
+
 def _dynamic_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Totals and sites of a dynamic rewrite, for the capture's stats."""
     done = [r for r in rows if r.get("status") == "rewritten"]
@@ -1240,8 +1255,12 @@ def apply_recipe(
         eps=epsilon,
         fold_candidates=fold_candidates,
     )
+    if recipe.get("dynamic") and calibration_inputs is not None and iter(calibration_inputs) is calibration_inputs:
+        calibration_inputs = list(calibration_inputs)  # the site check reads the same stream again
     calibration = calibration_inputs if calibration_inputs is not None else (tuple(example_inputs),)
     dynamic = quantizer.rewrite_dynamic(exported, calibration, calibration_limit(recipe, calibration_samples))
+    if dynamic:
+        _verify_dynamic_sites(exported, dynamic, example_inputs, calibration_inputs)
     prepared = prepare_pt2e(exported, quantizer)
     samples = calibration_inputs if calibration_inputs is not None else (tuple(example_inputs),)
     sample_limit = calibration_limit(recipe, calibration_samples)
@@ -1330,7 +1349,9 @@ def apply_recipe(
     return quantized
 
 
-def agreement(reference: Any, candidate: Any, samples: Iterable[Any], *, limit: int = 64) -> dict[str, Any]:
+def agreement(
+    reference: Any, candidate: Any, samples: Iterable[Any], *, limit: int = AGREEMENT_SAMPLE_LIMIT
+) -> dict[str, Any]:
     """How a quantized model's outputs compare with the floating-point model's, on real samples.
 
     A contract change is never an optimisation: moving a weight scale from per-channel to

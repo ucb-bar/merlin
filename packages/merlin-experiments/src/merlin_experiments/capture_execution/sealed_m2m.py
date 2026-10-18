@@ -1120,11 +1120,178 @@ def _materialized_v2(output: Path, source: Path, output_mount: Path, plan: dict[
     return result
 
 
+_DYNAMIC_TRANSFORMS = frozenset({"static_attention", "dynamic_contraction"})
+
+
+def _i8_i8_i32(row: dict) -> bool:
+    """A traced MLIR op whose first two operands are i8 tensors and whose one result is an i32 tensor."""
+
+    def element(text: object) -> str | None:
+        if not isinstance(text, str) or not text.startswith("tensor<") or not text.endswith(">"):
+            return None
+        return text[len("tensor<") : -1].rsplit("x", 1)[-1]
+
+    operands, results = row.get("operand_types"), row.get("result_types")
+    return (
+        isinstance(operands, list)
+        and len(operands) >= 2
+        and [element(t) for t in operands[:2]] == ["i8", "i8"]
+        and isinstance(results, list)
+        and [element(t) for t in results] == ["i32"]
+    )
+
+
+def _traced_int_mm_owners(stage: Path) -> tuple[int, dict[tuple[str, ...], int]]:
+    """Owners of every emitted i8 x i8 -> i32 contraction, from the stage's byte-bound frontend trace.
+
+    Each such ``linalg.generic`` must come from exactly one prepared-graph ``aten._int_mm`` node, every
+    such node must be emitted exactly once, and the node's transformation names its owner: the PT2E
+    integerization (a weight contraction) or a recipe rewrite (a dynamic site, keyed by the original
+    nodes of its lineage). Returns (weight contractions, dynamic contractions per lineage).
+    """
+    from collections import Counter
+
+    trace_path, model = stage / "frontend-trace.json", stage / "model.mlir"
+    if any(path.is_symlink() or not path.is_file() for path in (trace_path, model)):
+        raise SealedM2MError("dynamic contraction census lacks the stage's frontend trace or program")
+    trace = strict_json.loads(trace_path.read_bytes())
+    mlir = trace.get("mlir") if isinstance(trace, dict) else None
+    graphs = trace.get("graphs") if isinstance(trace, dict) else None
+    prepared = (graphs or {}).get("prepared") if isinstance(graphs, dict) else None
+    if (
+        not isinstance(mlir, dict)
+        or mlir.get("sha256") != _file_digest(model)
+        or not isinstance(mlir.get("operations"), list)
+        or not isinstance(prepared, dict)
+        or not isinstance(prepared.get("nodes"), list)
+    ):
+        raise SealedM2MError("dynamic contraction census trace is not bound to the stage program")
+    int_mm = {
+        node["id"]: node
+        for node in prepared["nodes"]
+        if isinstance(node, dict) and node.get("target") == "aten._int_mm.default" and isinstance(node.get("id"), str)
+    }
+    seen: Counter = Counter()
+    weight, dynamic = 0, Counter()
+    for row in mlir["operations"]:
+        if not isinstance(row, dict) or row.get("operation") != "linalg.generic" or not _i8_i8_i32(row):
+            continue
+        sources = [value for value in row.get("source_node_ids") or () if value in int_mm]
+        if not sources:
+            continue
+        if len(sources) != 1 or len(row["source_node_ids"]) != 1:
+            raise SealedM2MError("an emitted integer contraction has no unique traced owner")
+        node = int_mm[sources[0]]
+        seen[sources[0]] += 1
+        transform = node.get("transformation")
+        if transform == "pt2e_integerization":
+            weight += 1
+        elif transform in _DYNAMIC_TRANSFORMS:
+            key = tuple(sorted(v for v in node.get("origin_node_ids") or () if str(v).startswith("g:original:")))
+            if not key:
+                raise SealedM2MError("a dynamic integer contraction has no original lineage")
+            dynamic[key] += 1
+        else:
+            raise SealedM2MError("an emitted integer contraction has an unknown traced transformation")
+    if set(seen) != set(int_mm) or any(count != 1 for count in seen.values()):
+        raise SealedM2MError("traced integer contractions are not each emitted exactly once")
+    return weight, dict(dynamic)
+
+
+def _dynamic_integer_census(meta: dict, stats: dict, stage: Path, emitted: int, exported: int) -> int:
+    """The integer contractions a recipe's dynamic block added, each independently verified; else 0.
+
+    A capture without ``dynamic_contractions`` keeps the historical rule (emitted == exported). With
+    one, every site must be rewritten (none kept in float), carry its own verification on exactly the
+    recipe agreement's samples within the recipe's declared per-site bar, keep a bounded reduction, and
+    own exactly the traced device contractions of its lineage: exported == emitted + device calls.
+    """
+    import math
+    from collections import Counter
+
+    from merlin.targetgen.quant_recipe import DYNAMIC, digest, site_agreement_of
+
+    block = stats.get("dynamic_contractions")
+    if block is None:
+        return 0
+
+    def need(condition: bool, why: str) -> None:
+        if not condition:
+            raise SealedM2MError(f"capture dynamic contraction census refused: {why}")
+
+    recipe = meta.get("recipe")
+    need(
+        isinstance(recipe, dict) and recipe.get("recipe_sha256") == meta.get("recipe_sha256") == digest(recipe),
+        "the recipe snapshot does not match its digest",
+    )
+    try:
+        bar = site_agreement_of(recipe)
+    except ValueError as exc:
+        raise SealedM2MError(f"capture dynamic contraction census refused: {exc}") from exc
+    need(bar is not None, "the recipe declares no per-site agreement bar for its dynamic sites")
+    families = (recipe.get(DYNAMIC) or {}).get("families") or ()
+    sites, calls = block.get("sites") if isinstance(block, dict) else None, (block or {}).get("device_calls")
+    need(
+        isinstance(sites, list)
+        and bool(sites)
+        and block.get("rewritten") == len(sites)
+        and block.get("kept_in_float") == []
+        and type(calls) is int
+        and calls > 0,
+        "every dynamic site must be rewritten and none kept in floating point",
+    )
+    samples = (meta.get("recipe_agreement") or {}).get("samples")
+    need(type(samples) is int and samples >= 1, "the recipe agreement records no samples")
+    owned: Counter = Counter()
+    for site in sites:
+        check = site.get("verification") if isinstance(site, dict) else None
+        shapes, lineage = (site or {}).get("shapes"), (site or {}).get("lineage")
+        need(
+            isinstance(site, dict)
+            and site.get("status") == "rewritten"
+            and site.get("family") in families
+            and type(site.get("device_calls")) is int
+            and site["device_calls"] > 0,
+            "a dynamic site is not a rewritten contraction of a selected family",
+        )
+        need(
+            isinstance(shapes, list)
+            and bool(shapes)
+            and isinstance(shapes[0], list)
+            and bool(shapes[0])
+            and type(shapes[0][-1]) is int
+            and 0 < shapes[0][-1]
+            and shapes[0][-1] * 128 * 128 <= (1 << 31) - 1,
+            "a dynamic site's reduction bound is not proved",
+        )
+        metrics = ("cosine_min", "cosine_mean", "max_abs_error", "rel_rmse_max")
+        need(
+            isinstance(check, dict)
+            and check.get("schema") == "m2m.dynamic_site_verification.v1"
+            and check.get("samples") == samples
+            and check.get("finite") is True
+            and all(type(check.get(key)) is float and math.isfinite(check[key]) for key in metrics),
+            "a dynamic site lacks a finite verification on the recipe agreement samples",
+        )
+        need(
+            check["cosine_min"] >= bar["cosine_min"] and check["rel_rmse_max"] <= bar["rel_rmse_max"],
+            "a dynamic site is outside the recipe's declared agreement bar",
+        )
+        key = tuple(sorted(v for v in lineage or () if isinstance(v, str) and v.startswith("g:original:")))
+        need(isinstance(lineage, list) and bool(key), "a dynamic site has no original lineage")
+        owned[key] += site["device_calls"]
+    need(sum(owned.values()) == calls, "dynamic device calls do not sum to the census total")
+    need(emitted + calls == exported, "exported integer contractions are not the emitted plus dynamic ones")
+    weight, traced = _traced_int_mm_owners(stage)
+    need(weight == emitted and traced == dict(owned), "traced integer contractions differ from their owners")
+    return calls
+
+
 def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[str, Any]) -> dict[str, Any]:
     """Verify the complete saved ABI, including every declared session program."""
     from merlin.capture.integerization import contraction_partition
 
-    def integer_partition(meta: dict) -> tuple[int, dict[str, int]]:
+    def integer_partition(meta: dict, stage: Path) -> tuple[int, dict[str, int]]:
         if not isinstance(meta, dict):
             raise SealedM2MError("capture lacks verified integer contractions: invalid metadata")
         receipt = meta.get("integerization_receipt") or {}
@@ -1177,7 +1344,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
             or count <= 0
             or type(emitted) is not int
             or emitted < partition["integerized"]
-            or emitted != count
+            or emitted + _dynamic_integer_census(meta, stats, stage, emitted, count) != count
             or receipt.get("accumulator_bound_checked") is not True
             or type(max_k) is not int
             or max_k < 1
@@ -1251,7 +1418,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
         integer_work = 0
         if plan["dtype"] == "int8":
             meta = strict_json.loads((output / "meta.json").read_bytes())
-            exported, partition = integer_partition(meta)
+            exported, partition = integer_partition(meta, output)
             # Preserve the exact historical sealed-v3 materialized summary:
             # this legacy field counts exported integer operations. The new
             # ledger distinguishes source contractions only for mixed captures,
@@ -1354,7 +1521,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
             raise SealedM2MError(stage_reason)
         mode = row.get("precision_selection")
         if quantized and mode == "recipe":
-            count, partition = integer_partition(meta)
+            count, partition = integer_partition(meta, stage)
             if (
                 meta.get("dtype") != "int8"
                 or meta.get("scheme") != "int8_static_act_int8_weight"
