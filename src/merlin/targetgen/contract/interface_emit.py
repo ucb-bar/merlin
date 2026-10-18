@@ -143,7 +143,11 @@ def _fmt_attrs(attrs: dict[str, Any]) -> str:
             # (``pool_size = [2, 2]``) into ``["2", "2"]``, which the parser reads back as STRINGS --
             # so a round-tripped pooling command lost its window to a typing mismatch reported far from
             # the spelling that caused it. String stages (``epilogue = ["relu"]``) are unchanged.
-            inner = ", ".join(f'"{x}"' if isinstance(x, str) else str(x) for x in v)
+            inner = ", ".join(
+                f"{float(x)!r} : f32" if k == "acc_scale_by_column"
+                else f'"{x}"' if isinstance(x, str) else str(x)
+                for x in v
+            )
             parts.append(f"{k} = [{inner}]")
         else:  # pragma: no cover - defensive
             raise TypeError(f"unsupported attribute type for {k!r}: {type(v)}")

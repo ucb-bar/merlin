@@ -4,6 +4,12 @@
 
 Experiment-ABI contract layer.
 
+The optional `acc_scale_by_column` attribute describes one float32 readout
+multiplier per output column. It is mutually exclusive with scalar `acc_scale`;
+typed interface round-trips, numerical engines and the test-only native
+reference instrument retain its full vector. Target support/scheduling and
+candidate-generated kernel/RTL evidence remain separate requirements.
+
 ## Modules
 
 - `compile.py` — Runner-owned compile + execute of a *package-produced* lowered LLVM/RoCC MLIR.

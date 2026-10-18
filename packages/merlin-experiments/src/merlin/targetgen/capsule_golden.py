@@ -138,7 +138,9 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor], operands: di
                     f"reproduces 'half_even'; grade this datapath against an independent golden.yaml "
                     f"instead of silently rounding half-even"
                 )
-            t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
+            from merlin.runtime.commandbuffer import apply_declared_acc_scale
+
+            t = apply_declared_acc_scale(t, attrs, op="acc_scale")
         elif stage == "relu":
             t = t.relu()
         elif stage == "maxpool":
@@ -657,13 +659,8 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             layout=attrs.get("layout", "nhwc"),
         )
         t = cols.matmul(w)
-        if "acc_scale" in (attrs.get("epilogue") or []):
-            # Validated here and not in the shared stage loop: a convolution is the one op whose
-            # builder used to drop the multiplier, and a stage applied at an assumed 1.0 agrees with
-            # every other engine that assumed it too.
-            from merlin.runtime.commandbuffer import declared_acc_scale
-
-            declared_acc_scale(attrs, op=f"conv2d {out_name!r}")
+        # The shared epilogue validates either explicit readout representation;
+        # neither receives an implicit multiplier.
         t = _apply_epilogue(t, attrs, env)
         return {out_name: t.to_list()}
 
@@ -690,8 +687,10 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             sub = {
                 "epilogue": spec.get("epilogue", []),
                 "output_dtype": spec.get("output_dtype", "i32"),
-                "acc_scale": spec.get("acc_scale", attrs.get("acc_scale", 1.0)),
             }
+            readout_keys = ("acc_scale", "acc_scale_by_column")
+            selected = spec if any(key in spec for key in readout_keys) else attrs
+            sub.update({key: selected[key] for key in readout_keys if key in selected})
             t = _apply_epilogue(t, sub, env)
             outs[spec["out"]] = t.to_list()
         return outs
