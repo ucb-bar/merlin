@@ -139,7 +139,7 @@ def _command_only_integer_orchestration(function: Any, target: str | None) -> bo
     if target is None:
         return False
     from xdsl.dialects.builtin import UnitAttr
-    from xdsl.dialects.llvm import LLVMPointerType
+    from xdsl.dialects.llvm import LLVMPointerType, LLVMVoidType
 
     from merlin.targetgen.rocc.decode import _asm_template, _parse_insn, isa_constants
 
@@ -163,8 +163,10 @@ def _command_only_integer_orchestration(function: Any, target: str | None) -> bo
             return False
         if name != "llvm.inline_asm":
             continue
+        void_result = (len(op.results) == 1 and isinstance(op.results[0].type, LLVMVoidType)
+                       and not op.results[0].uses)
         if (
-            op.results or not isinstance(op.has_side_effects, UnitAttr)
+            (op.results and not void_result) or not isinstance(op.has_side_effects, UnitAttr)
             or "~{memory}" not in op.constraints.data.split(",")
         ):
             return False

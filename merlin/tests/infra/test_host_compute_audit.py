@@ -425,3 +425,19 @@ def test_remainder_row_loops_past_the_stepping_budget_are_counted_and_judged(mon
         assert row["verdict"] == HA.CLEAN
         assert row["arithmetic_basis"] == "pointer_only_target_commands_v1"
         assert row["host_command_orchestration_arithmetic"] > rows
+
+
+@pytest.mark.parametrize("result_type,clean", [("!llvm.void", True), ("i64", False)])
+def test_imported_unused_void_command_result_is_not_a_host_value(monkeypatch, result_type, clean):
+    from merlin.targetgen.rocc import decode
+
+    monkeypatch.setattr(decode, "isa_constants", lambda target: {"CUSTOM_OPCODE": 123, "FUNCT_CLASS": {2: "MVIN"}})
+    text = _tile_remainder_kernel(97, 16, store=False)
+    text = text.replace('"llvm.inline_asm"(%addr', '%observed = "llvm.inline_asm"(%addr')
+    text = text.replace(': (i64, i64) -> ()', f': (i64, i64) -> {result_type}')
+    ctx = Context()
+    for dialect in (builtin.Builtin, llvm.LLVM):
+        ctx.load_dialect(dialect)
+    module = Parser(ctx, text).parse_module()
+    (row,) = HA.audit(module, [_site("entry", elements=97)], target="fixture")["groups"]
+    assert row["verdict"] == (HA.CLEAN if clean else HA.HOST_COMPUTE), row
