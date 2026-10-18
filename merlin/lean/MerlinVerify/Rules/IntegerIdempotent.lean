@@ -1,7 +1,7 @@
 /- Exact scalar integer idempotence with checked SSA-use substitution. Structured-region
 traversal is supplied by BodyNormalize; this module only normalizes one checked block. -/
 import MerlinVerify.Check.BodyNormalize
-import MerlinVerify.Rules.Cse
+import MerlinVerify.Check.TypedAlias
 import MerlinVerify.Check.RulesArith
 
 namespace MerlinVerify.Rules.IntegerIdempotent
@@ -41,23 +41,11 @@ def Legal (Γ : TEnv) (s : Op) (x : ValueId) (r : Value) (w : Nat) : Prop :=
 instance (Γ : TEnv) (s : Op) (x : ValueId) (r : Value) (w : Nat) :
     Decidable (Legal Γ s x r w) := by unfold Legal; infer_instance
 
-/- Substitution is an untrusted syntax proposal. The alpha checker below validates all uses,
-including captures, block arguments, rebinding and escaping values before the rewrite is used. -/
-mutual
-  def substituteOps (oldId newId : ValueId) : List Op → List Op
-    | [] => []
-    | s :: ss => substituteOp oldId newId s :: substituteOps oldId newId ss
-  def substituteOp (oldId newId : ValueId) : Op → Op
-    | .mk name results operands attrs props regions successors =>
-      .mk name results (operands.map fun x => if x == oldId then newId else x) attrs props
-        (substituteRegions oldId newId regions) successors
-  def substituteRegions (oldId newId : ValueId) : List Region → List Region
-    | [] => []
-    | .mk blocks :: rest => .mk (substituteBlocks oldId newId blocks) :: substituteRegions oldId newId rest
-  def substituteBlocks (oldId newId : ValueId) : List Block → List Block
-    | [] => []
-    | .mk args ops :: rest => .mk args (substituteOps oldId newId ops) :: substituteBlocks oldId newId rest
-end
+/-- Compatibility names for the shared checked SSA-use substitution machinery. -/
+abbrev substituteOps := TypedAlias.substituteOps
+abbrev substituteOp := TypedAlias.substituteOp
+abbrev substituteRegions := TypedAlias.substituteRegions
+abbrev substituteBlocks := TypedAlias.substituteBlocks
 
 def candidate (s : Op) : Option (ValueId × Value × Nat) :=
   match s.operands, s.results with
@@ -110,8 +98,7 @@ theorem eliminate_sound {ib : Nat} {Γ : TEnv} {s : Op} {tail renamed : List Op}
           rw [meaning hd hn hm hr ht hf hwidth ctx call]
           simp [Env.bindAll, hr]
         refine ⟨hterm, _, hs, ?_⟩
-        exact (alphaOps_sound call call _ tail (substituteOps r.id x tail) ctx _ _ ha
-          (Cse.Corr.bindAlias (SplatNormalize.diagonal_refl Γ env) hv) (fun _ _ => rfl)).symm
+        exact TypedAlias.continuation ha hv
     · cases h
 
 def normalize (ib : Nat) (Γ : TEnv) : List Op → Option (List Op)
