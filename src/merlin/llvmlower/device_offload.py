@@ -910,6 +910,17 @@ def _rewrite_groups_to_device(
     # the decision is `select`'s; these shapes exist only to key the decision, which
     # `system.place.device_selector` does on extents.
     shape_of = {id(op): shape for op, shape in observe_contractions(module)}
+    from merlin.targetgen import model_coverage
+
+    # Statements use this same original module. Replacements preserve SSA
+    # types and the relative order of surviving original operations; neither
+    # observation needs a full module/block walk for every routed group.
+    extents = model_coverage._contraction_extents(module)
+    orders = {
+        block: {id(op): index for index, op in enumerate(block.ops)}
+        for block in dict.fromkeys(g.root.parent for g in groups if g.root is not None)
+        if block is not None
+    }
 
     stem = symbol_stem(device)
     # UNDER THE LOGICAL KERNEL ABI THE CALL CARRIES EVERY POINTER OF THE GROUP'S INTERFACE: its
@@ -952,7 +963,7 @@ def _rewrite_groups_to_device(
         if group.placement == CG.HOST or group.root is None:
             continue  # the planner's own decision; `group_offload.census` is where it is counted
         try:
-            stated = GC.program(group, weight_args=weight_args, name=name)
+            stated = GC.program(group, weight_args=weight_args, name=name, extents=extents)
         except CG.NoCapsuleForm as error:
             skipped.append((name, f"no device form: {error}"))
             continue
@@ -966,8 +977,9 @@ def _rewrite_groups_to_device(
             skipped.append((name, "the placement did not select this group's root"))
             continue
 
-        order = {id(op): index for index, op in enumerate(group.root.parent.ops)}
-        if any(id(member) not in order for member in group.members):
+        block = group.root.parent
+        order = orders.get(block, {})
+        if any(member.parent is not block or id(member) not in order for member in group.members):
             skipped.append((name, "the group names an op outside its root's block; it cannot be replaced by one call"))
             continue
         members = sorted(group.members, key=lambda m: order[id(m)])

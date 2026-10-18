@@ -55,6 +55,12 @@ consistent per-symbol precision, including repeated calls to a shared kernel.
 The ordinary linker caller passes its explicitly selected routing granularity;
 sidecar metadata cannot downgrade that selection to contraction-only work.
 
+The group rewrite observes contraction extents and original block positions once
+per invocation. Replacements preserve SSA types and the relative order of surviving
+original operations; each group's actual block membership is still checked after
+earlier replacements. These tables never cross invocations or change selection,
+program statements, source coverage or numerical requirements.
+
 Every active ordinary device route requires an explicitly selected
 `LinkedElfAdmissionService`. The build freezes its original target, callback and
 source pins before work, then evaluates and reopens the exact final-link bytes
