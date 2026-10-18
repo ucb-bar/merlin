@@ -208,7 +208,7 @@ def _reservation_problem(reservations: tuple[Reservation, ...], bank_map: dict[s
         bank = bank_map.get(reservation.storage)
         if bank is None:
             return "reservation names an unknown storage bank"
-        if reservation.start + reservation.extent > bank.capacity:
+        if reservation.start < bank.start or reservation.start + reservation.extent > bank.capacity:
             return "reservation exceeds its physical storage bank"
         for earlier in reservations[:index]:
             other = bank_map[earlier.storage]
@@ -234,7 +234,8 @@ def _boundary_problem(
             return "fixed input ABI has an invalid address"
         value = inputs[name]
         bank = banks.get(value.storage)
-        if bank is not None and (address + value.extent > bank.capacity or address % bank.alignment):
+        if bank is not None and (address < bank.start or address + value.extent > bank.capacity
+                                 or address % bank.alignment):
             return "fixed input ABI exceeds physical storage"
     if fixed_outputs is None:
         return ""
@@ -247,7 +248,8 @@ def _boundary_problem(
             return "fixed output ABI has an invalid address"
         value = graph.value(value_id)
         bank = banks.get(value.storage)
-        if bank is not None and (address + value.extent > bank.capacity or address % bank.alignment):
+        if bank is not None and (address < bank.start or address + value.extent > bank.capacity
+                                 or address % bank.alignment):
             return "fixed output ABI exceeds physical storage"
     return ""
 
@@ -292,7 +294,8 @@ def check_assignment(
         address = addresses[value.id]
         if not isinstance(address, int) or isinstance(address, bool):
             return False, "non-integer address"
-        if address < 0 or address + value.extent > bank.capacity or address % bank.alignment:
+        minimum = bank.start if value.extent else 0
+        if address < minimum or address + value.extent > bank.capacity or address % bank.alignment:
             return False, "out-of-range or misaligned address"
         for reservation in reservations:
             if bank.backing != bank_map[reservation.storage].backing:
@@ -396,7 +399,8 @@ def allocate(
         if bank is None:
             return AllocationResult("unqualified_target", order, {}, "unknown storage bank")
         addr = variables[value.id]
-        solver.add(addr >= 0, addr + value.extent <= bank.capacity, addr % bank.alignment == 0)
+        solver.add(addr >= (bank.start if value.extent else 0),
+                   addr + value.extent <= bank.capacity, addr % bank.alignment == 0)
         for reservation in reservations:
             if value.extent and bank.backing == bank_map[reservation.storage].backing:
                 solver.add(

@@ -20,6 +20,7 @@ from merlin.targetgen.isa_spec import ResolvedISA, resolve_isa
 
 from .configuration import ConfigurationAdapter, ConfigurationEffects
 from .dense_contracts import DenseSchedulingContract, resolve_dense_contract
+from .storage_contracts import TemporaryStorageContract, resolve_storage_contract
 
 SCHEMA = "merlin.schedule_effects.v1"
 
@@ -54,6 +55,7 @@ class SelectedSchedulingContracts:
     numerical_policy: str = field(init=False)
     instruction_byteorder: str = field(init=False)
     dense: DenseSchedulingContract | None = field(init=False)
+    storage: TemporaryStorageContract | None = field(init=False)
 
     def __post_init__(self):
         if (
@@ -63,12 +65,13 @@ class SelectedSchedulingContracts:
             raise ValueError("selected scheduling inputs require immutable bytes and explicit paths")
         if len(self.facts_bytes) > 64 << 20 or len(self.software_bytes) > 1 << 20:
             raise ValueError("selected scheduling input exceeds its byte budget")
-        isa, effects, policy, byteorder, dense = _parse(self.facts_bytes, self.software_bytes, self.target)
+        isa, effects, policy, byteorder, dense, storage = _parse(self.facts_bytes, self.software_bytes, self.target)
         object.__setattr__(self, "isa", isa)
         object.__setattr__(self, "effects_json", effects)
         object.__setattr__(self, "numerical_policy", policy)
         object.__setattr__(self, "instruction_byteorder", byteorder)
         object.__setattr__(self, "dense", dense)
+        object.__setattr__(self, "storage", storage)
 
     @property
     def hardware_identity(self):
@@ -178,8 +181,9 @@ def _parse(facts_bytes, software_bytes, target):
     isa = resolve_isa(software.get("isa"), facts, target=target, facts_sha256=_hash(facts_bytes))
     extension = software.get("scheduling")
     required = {"schema", "numerical_policy", "instruction_byteorder", "configuration"}
-    if type(extension) is not dict or set(extension) not in (required, required | {"dense"}):
-        raise ValueError("scheduling: expected versioned effects with an optional dense contract")
+    if (type(extension) is not dict or not required <= set(extension)
+            or set(extension) - required - {"dense", "storage"}):
+        raise ValueError("scheduling: expected versioned effects with optional dense/storage contracts")
     if (
         extension["schema"] != SCHEMA
         or type(extension["numerical_policy"]) is not str or not extension["numerical_policy"]
@@ -238,4 +242,5 @@ def _parse(facts_bytes, software_bytes, target):
         isa, json.dumps(rows, sort_keys=True, separators=(",", ":"), allow_nan=False),
         extension["numerical_policy"], extension["instruction_byteorder"],
         resolve_dense_contract(extension["dense"], facts, isa) if "dense" in extension else None,
+        resolve_storage_contract(extension["storage"], facts, isa) if "storage" in extension else None,
     )

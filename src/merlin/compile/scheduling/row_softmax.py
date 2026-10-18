@@ -325,7 +325,7 @@ def verify_row_softmax_storage(problem, numerics, storage, banks, role_banks, re
             or view.capacity < counts[role]
         ):
             raise ValueError("row state view has wrong backing, element width or capacity")
-        if (view.base + view.capacity) * width > bank.capacity:
+        if view.base * width < bank.start or (view.base + view.capacity) * width > bank.capacity:
             raise ValueError("row state view extends beyond its selected bank")
         addresses[ids[role]] = view.base * width
     valid, reason = check_assignment(graph, order, addresses, banks, reservations=reservations)

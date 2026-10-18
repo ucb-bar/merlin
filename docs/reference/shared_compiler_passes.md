@@ -31,6 +31,10 @@ code_refs:
   - src/merlin/sched/ir/integer_domain.py
   - src/merlin/compile/scheduling/selected_contracts.py
   - src/merlin/compile/scheduling/dense_contracts.py
+  - src/merlin/compile/scheduling/storage_contracts.py
+  - src/merlin/semantic_compiler/allocation_types.py
+  - src/merlin/semantic_compiler/allocate.py
+  - src/merlin/verify/lean_resource_geometry.py
 ---
 
 # Shared compiler pass contracts
@@ -629,6 +633,159 @@ Existing targets need the public effect/address-rewrite adapter and
 independent execution qualification before this pass can enter their ordinary
 lowering. That integration remains incomplete.
 
+### Selected resource windows and actual storage effects
+
+The same selected RTL/software pair can now drive temporary allocation through
+ordinary `compile_schedule`. Add a `storage` section to
+`merlin.schedule_effects.v1`, using schema
+`merlin.temporary_storage_contract.v1`:
+
+| Section | Required contents | Source of the information |
+| --- | --- | --- |
+| `banks` | ISA resource name to `backing`, fact-backed `start`, `size`, `alignment`, and `ownership` | RTL geometry plus qualified software physical mapping/ownership |
+| `external` | ISA resource name to `backing`, fact-backed `start`, `size`, and `ownership` | Declared runtime address windows and persistence |
+| `reservations` | List of `resource`, fact-backed `start`, `size`, and nonempty `purpose` | Packing, DMA staging, persistent or other unavailable intervals |
+| `instructions` | ISA instruction name to complete byte accesses, completion, token/waits and exact-copy declaration | Qualified software/ISA effects |
+
+Every memory resource must exist in the selected ISA with unit `bytes`.
+Capacities use that ISA's RTL references. Every window must fit the resource's
+known capacity. Unknown local capacities diagnose. Coordinates are canonical
+backing bytes: `start` is an inclusive lower bound and `start + size` an exclusive
+upper bound. This initial family does not translate differently based physical
+address spaces or infer units from instruction names.
+
+The existing `StorageBank` now supports an optional `start`, defaulting to zero;
+`capacity` remains the exclusive upper address bound. Zero-origin serialized
+records retain their previous form. The solver, independent assignment checker,
+fixed input/output checks, reservations, temporary alias reconstruction and
+spill/copy conformance honor both bounds. A typed alias can have its own lower
+bound without excluding those bytes from a wider view. The existing Lean
+geometry projection expresses nonzero lower bounds through its existing
+translated interval obligations, retaining alignment checks in the original
+coordinates. This adds no physical mapping theorem or execution qualification.
+
+Private banks must declare `invocation_private`, and the runtime/lowering owner
+must separately supply `private_ownership=True`. A software label cannot
+establish actual ownership. External resources must declare `runtime_managed`
+or `persistent`, remain fixed and use backings disjoint from private storage.
+Distinct external aliases require a qualified canonical projection first;
+this family refuses them rather than treating aliased state as independent.
+Within one external resource, overlapping fixed accesses retain their original
+order. Weights, positions and cache/state updates are not hoisted or relocated.
+
+An instruction declaration has this shape, with names selected as data:
+
+```yaml
+accesses:
+  - space: {resource: declared_input}
+    start: {argument: source_byte_address}
+    size: {argument: byte_count}
+    writes: false
+  - space: {resource: declared_local_view}
+    start: {argument: destination_byte_address}
+    size: {argument: byte_count}
+    writes: true
+completion: synchronous
+token: null
+waits: []
+exact_copy: true
+```
+
+Access starts/sizes bind an encoded integer argument or `{constant: integer}`.
+A typed ISA address argument is admitted for a byte start when its address space
+matches the declared resource. Its declared argument alignment and encoding
+range are checked by the existing ISA codec. Local starts must be relocatable
+arguments. Element-count scaling, strided transfers and opaque pointer framing
+need an explicit compatible projection; no multiplier or address conversion is
+invented. A memory selector can instead use
+`{argument: selector_name, choices: [{value: {fact: [path]}, resource: resource_name}]}`.
+Unlisted selector values diagnose. Reads/writes must cover exactly the ISA's
+memory effects, with explicit ISA operation semantics. Hidden persistent-state
+effects are unsupported in this family.
+
+Asynchronous declarations use `completion: asynchronous`, one numeric `token`
+binding and empty `waits`; pure completion instructions use `completion: wait`,
+`token: null`, no accesses and numeric `waits` bindings. Those tokens must be
+reconstructed from actual instruction operands. Unknown instructions/completion
+are barriers. A selected provider's projected accesses, completion, token/waits
+and exact-copy claim must agree with the declaration. Actual encoded argument
+ranges are checked. A semantic fingerprint retains the ISA operation semantics,
+all nonaddress arguments and the provider's nonaddress interpretation. An exact
+copy cannot carry additional ISA execution/state effects, and an instruction
+with extra execution effects cannot be treated as pure elementwise arithmetic.
+Arbitrary
+opaque implementation effects are not inferred from that fingerprint.
+
+Use the allocation owner's current objects and runtime premises:
+
+```python
+result = compile_schedule(
+    kernel, private_objects, None, qualified_storage_adapter,
+    qualified_encoding, program_limits,
+    selected_contracts=selection,
+    private_ownership=runtime_established_private_ownership,
+    reservations=packing_and_staging_reservations,
+    external_windows=runtime_windows,
+)
+```
+
+With `banks=None`, geometry is derived automatically. Explicit banks may only
+narrow selected windows and strengthen alignment, preserving physical aliases.
+Omitting `external_windows` derives the selected fixed windows; supplied runtime
+windows must be contained in them. Declared reservations and current runtime
+reservations are unioned across canonical aliases, preventing duplicate charges
+while preserving each interval's view bounds. Runtime owners still establish
+actual invocation ownership and allocation validity; RTL facts alone do not.
+Program-size/branch limits remain independently selected inputs at this stage.
+
+`ScheduleBudgets(optimize_storage=False)` retains and independently checks the
+original addresses, without relocation, private-copy elimination or spills.
+It is a legal baseline only when those original assignments fit the selected
+windows and reservations. Otherwise it diagnoses; virtual out-of-capacity
+addresses are not a runnable unoptimized route. The enabled arm uses the
+existing allocator, completion checks and bounded repairs. Shared implementation
+hashes and selected file bytes are revalidated around every schedule pass.
+
+The ordinary final-byte pipeline currently requires synchronous instructions.
+Selected asynchronous effects can enter the standalone allocator and its native
+completion tests; ordinary encoded compilation rejects them until final-byte
+and launch completion support is qualified. No metadata annotation substitutes
+for the actual wait. This remains an explicit integration gap.
+
+`test_selected_storage_contracts.py` exercises actual final bytes on independent
+neutral native machines with 32-bit big-endian and 64-bit little-endian integer
+operands, different alignments, shared aliases, separate memories, nonzero
+windows, tails, packing/DMA reservations and deferred completion. Complete
+transfer/arithmetic graphs preserve all output bytes, input guards and carried
+state over three invocations. A false physical-alias declaration passes projected
+checks but fails independent execution, demonstrating the qualification boundary.
+Mutations also cover capacities, selectors, ownership, missing initialization,
+waits, lying projections, rewritten addresses, final words and stale inputs.
+
+Reproduce the paired records:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_selected_storage_contracts.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/selected-storage" \
+  -o junit_family=xunit1 --junitxml "$TMPDIR/selected-storage-results.xml"
+```
+
+JUnit records both compilation times, exact encoded sizes, actual commands,
+requested read/write bytes, observed temporary address high-water marks and
+complete carried-state hashes. Host packing payload is reported separately and
+unchanged. Native banks retain their fixed physical capacity; a lower used
+address high-water mark is not lower RSS or smaller hardware SRAM. Traffic and
+command counts remain unchanged when this experiment only relocates storage.
+Compilation peak memory and accelerator timing remain unmeasured; native-call
+wall samples include interpreter/ABI overhead and establish no speedup.
+
+These are shared-mechanism and neutral graph tests. Real full-model target
+routing still needs public selected documents, qualified canonical byte-effects
+and address rewriting, runtime ownership/windows and final byte decoding.
+Ordinary target lowering retains its existing route. No target repository is
+modified, and historical model measurements keep their original source pins
+and unchanged numerical admission failures.
+
 ## Private copy elimination
 
 The ordinary `allocate_temporary_storage` entry defaults to
@@ -990,7 +1147,7 @@ ownership, real target support or absolute accuracy for an external model.
 
 | Concern | Existing mechanism | Requirement beyond the scope above |
 | --- | --- | --- |
-| Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line storage relocation | Target effect/rewrite adapters and ordinary lowering integration; general loop and persistent-storage allocation |
+| Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line relocation; selected RTL/software windows, aliases, reservations and actual operand/effect checks | Qualified target effect/rewrite adapters and ordinary model integration; general loop and persistent-storage allocation |
 | Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks and independent actual byte provenance | Qualified device register/transfer adapters and ordinary target integration; CPU allocation stays with the native toolchain |
 | Fusion and transfers | Readout composition admission and connected dispatch; exact private-copy forwarding; consumed total-integer elementwise physical composition with layout/numerical checks, allocation fallback and reconstructed final traffic | Floating/contraction epilogues, noncontiguous and asynchronous handoffs, and qualified full-model target integration |
 | Reductions and attention | Complete-domain counted row softmax; automatic narrow CPU source row scheduling and native QK–softmax–PV graphs with carried state; ordered source loops and complete CPU reductions | Qualified source-to-device connection, target hooks/final decoding, device QK–softmax–PV/KV composition and broader source algorithms |

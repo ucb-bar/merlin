@@ -92,6 +92,7 @@ class ScheduleBudgets:
     max_scalar_operations: int = 128
     max_scalar_ir_bytes: int = 65536
     eliminate_configuration: bool = True
+    optimize_storage: bool = True
 
     def __post_init__(self):
         if (
@@ -110,6 +111,7 @@ class ScheduleBudgets:
             )
             or type(self.eliminate_copies) is not bool
             or type(self.eliminate_configuration) is not bool
+            or type(self.optimize_storage) is not bool
         ):
             raise ValueError("schedule compilation requires explicit finite work, repair and solver budgets")
 
@@ -155,6 +157,7 @@ def shared_library_sources():
         "merlin.sched.ir.integer_domain",
         "merlin.compile.scheduling.selected_contracts",
         "merlin.compile.scheduling.dense_contracts",
+        "merlin.compile.scheduling.storage_contracts",
         "merlin.targetgen.isa_spec",
         "merlin.targetgen.isa_dialect_gen",
     )
@@ -219,7 +222,7 @@ def compile_schedule(
     *,
     budgets=ScheduleBudgets(),
     reservations=(),
-    external_windows=(),
+    external_windows=None,
     private_ownership=False,
     spill_classes=(),
     continuation=None,
@@ -249,13 +252,22 @@ def compile_schedule(
             raise ValueError("schedule adapters disagree with the selected RTL/software contracts")
         if configuration_qualification_identity is not None:
             configuration_adapter = selected_contracts.configuration_adapter(configuration_qualification_identity)
-        binding = selected_contracts.record()
+        scopes = ["instruction_encoding", "configuration_fields"]
+        if selected_contracts.storage is not None:
+            banks, reservations, external_windows, adapter = selected_contracts.storage.bind(
+                selected_contracts.isa, adapter, banks=banks, reservations=reservations,
+                external_windows=external_windows, private_ownership=private_ownership,
+            )
+            scopes.extend(("temporary_memory_windows", "physical_aliases", "storage_effects_and_completion"))
+        binding = selected_contracts.record(scopes=tuple(scopes))
         binding["configuration_pass"] = (
             "selected_qualified_declaration" if configuration_adapter is not None
             else "unavailable_missing_qualification"
         )
     elif configuration_qualification_identity is not None:
         raise ValueError("configuration qualification requires selected RTL/software contracts")
+    if external_windows is None:
+        external_windows = ()
     if (
         type(adapter) is not StorageAdapter
         or type(encoding) is not ScheduleEncoding
@@ -342,6 +354,7 @@ def compile_schedule(
         specs = tuple(names[name] for name in pass_order)
     validate_pass_order(specs)
     _verify_kernel(kernel)
+    source_sha256 = kernel.digest()
     if (
         type(objects) is not tuple
         or any(type(obj) is not TemporaryObject for obj in objects)
@@ -455,6 +468,7 @@ def compile_schedule(
                 spill_classes=spill_classes,
                 max_spills=budgets.max_spills,
                 eliminate_copies=budgets.eliminate_copies,
+                optimize=budgets.optimize_storage,
                 on_repair=lambda reason: session.repair(stage=3, reason=reason),
                 **model,
             )
@@ -574,9 +588,17 @@ def compile_schedule(
         "final_program": final,
     }
     for spec in specs:
+        if kernel.digest() != source_sha256:
+            raise ValueError("source schedule changed during compilation; recompile")
         if selected_contracts is not None:
             selected_contracts.revalidate()
+        if sources != shared_library_sources():
+            raise ValueError("shared scheduling library changed during compilation; recompile")
         session.run(spec, actions[spec.name])
+        if kernel.digest() != source_sha256:
+            raise ValueError("source schedule changed during compilation; recompile")
+        if sources != shared_library_sources():
+            raise ValueError("shared scheduling library changed during compilation; recompile")
         if selected_contracts is not None:
             selected_contracts.revalidate()
     return ScheduleCompilation(
@@ -584,7 +606,7 @@ def compile_schedule(
         session.analysis("final_program"),
         {
             "schema": "merlin.schedule_compilation.v1",
-            "source_sha256": kernel.digest(),
+            "source_sha256": source_sha256,
             "schedule_sha256": session.module.digest(),
             "context": asdict(context),
             "library_sources_sha256": sources,
