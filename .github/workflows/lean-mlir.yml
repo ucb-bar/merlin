@@ -99,6 +99,7 @@ jobs:
               */test_lean_cast_cancel_native.py|*/test_lean_native_gate_differential.py|\
               */test_lean_integer_neutral_bodies_native.py|\
               */test_lean_wide_integer_differential.py|\
+              */test_lean_motion_captures_differential.py|\
               */test_lean_shared_composition_differential.py) continue ;;
             esac
             if (( binding_index % 3 == ${{ matrix.shard }} )); then
