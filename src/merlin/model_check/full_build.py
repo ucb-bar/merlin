@@ -21,14 +21,16 @@ import json
 import os
 import shutil
 import struct
-import subprocess
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from merlin.common import invocation_record as I
+from merlin.common import proc
 from merlin.model_check.compute_execution import compute_step
 
 BUILD_SCHEMA = "merlin.model_check.full_build.v1"
@@ -153,8 +155,9 @@ def _lowering_sources() -> dict[str, Path]:
         for path in sorted(root.rglob("*.py")):
             sources[namespace + "/" + path.relative_to(root).as_posix()] = path
     for name in (
-        __name__, "merlin.model_check.full", "merlin.compile.baremetal_model",
+        __name__, "merlin.model_check.full", "merlin.model_check.compute_execution", "merlin.compile.baremetal_model",
         "merlin.compile.model_execution_inputs", "merlin.targetgen.rtl.facts",
+        "merlin.common.invocation_record", "merlin.common.proc", "merlin.common.cpu_pool",
         "merlin.targetgen.target_registry",
         "merlin.runtime.backends.zephyr_model", "merlin.runtime.backends.spike_model",
         "merlin.runtime.operation_profile",
@@ -163,6 +166,7 @@ def _lowering_sources() -> dict[str, Path]:
     return sources
 
 
+@I.timed_event("phase", "compiler source identity")
 def _lowering_identity() -> dict:
     from merlin.common.paths import runtime_dir
     from merlin.llvmlower.codegen_env import cache_digest
@@ -177,6 +181,7 @@ def _lowering_identity() -> dict:
     }
 
 
+@I.timed_event("phase", "build input identity")
 def _build_inputs(stage, submission, settings, directory, offload, weights_source, target) -> dict:
     """Stream current explicit inputs; paths and stat metadata cannot authorize reuse.
 
@@ -270,6 +275,7 @@ def _cached_admission(record, admission, target, directory):
     return admission, result
 
 
+@I.timed_event("phase", "relink artifact verification")
 def _relink_artifacts(build_dir: Path, elf: Path, recipe_sha256: str) -> tuple[dict, dict]:
     """Reopen the existing complete recipe and the driver's shared preparation inputs."""
     from merlin.llvmlower import blob_weights, quant_hoist, weight_panel
@@ -333,6 +339,7 @@ def _verify_relink(record: dict, stage: Path, *, inputs_current: bool = True) ->
         raise FullBuildError(f"relink origin or recipe changed; rebuild the image: {error}") from error
 
 
+@I.timed_event("phase", "device routing")
 def _routing(target: str, stage: Path, submission: Path, model: str, settings: BuildSettings, admission):
     """The submission's device routing over every source-admitted group, or ``None`` (host only)."""
     from merlin.compile.route_before_build import plan_before_build
@@ -384,10 +391,26 @@ def build(
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / ".lock").open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        return _build(
-            stage, target, label, submission, submission_sha256, settings, directory, admission, offload, weights_source
-        )
+        with I.observe_timings() as events:
+            with I.timed_event("phase", "model image build lock acquisition"):
+                fcntl.flock(lock, fcntl.LOCK_EX)
+            with I.timed_event("phase", "model image build or lookup"):
+                result = _build(
+                    stage, target, label, submission, submission_sha256, settings, directory, admission,
+                    offload, weights_source,
+                )
+        result["timing"] = _write_timings(directory, events)
+        return result
+
+
+def _write_timings(directory, events):
+    root = Path(directory) / "timings"
+    if root.is_symlink():
+        raise FullBuildError("timing output must not be a symlink")
+    root.mkdir(exist_ok=True)
+    path = root / (uuid.uuid4().hex + ".json")
+    path.write_text(json.dumps(I.timing_document(events), indent=1) + "\n")
+    return {"path": str(path), "sha256": sha256(path)}
 
 
 def _build(
@@ -522,9 +545,7 @@ def _recipe_command(recipe: dict, output: Path) -> dict:
 
 def _run(argv: list[str], cwd: str):
     with compute_step():
-        done = subprocess.run([str(a) for a in argv], cwd=cwd, capture_output=True, text=True, check=False)
-    if done.returncode != 0:
-        raise FullBuildError(f"{Path(argv[0]).name} failed ({done.returncode}): {done.stderr[-2000:]}")
+        done = proc.run_checked(argv, cwd=cwd, error=FullBuildError)
     return done
 
 
@@ -562,8 +583,13 @@ def relink(
     if any(path.is_symlink() for path in (lock, *lock.parents)) or not lock.is_file():
         raise FullBuildError("relink build lock is absent or indirect; rebuild the image")
     with lock.open("r") as stream:
-        fcntl.flock(stream, fcntl.LOCK_EX)
-        return _relink(record, stage, inputs, directory, admission=admission)
+        with I.observe_timings() as events:
+            with I.timed_event("phase", "model image relink lock acquisition"):
+                fcntl.flock(stream, fcntl.LOCK_EX)
+            with I.timed_event("phase", "model image relink"):
+                result = _relink(record, stage, inputs, directory, admission=admission)
+        _write_timings(directory, events)
+        return result
 
 
 def _relink(record, stage, inputs, directory, *, admission):
@@ -595,9 +621,10 @@ def _relink(record, stage, inputs, directory, *, admission):
     for item in (build_dir / "cgen").iterdir():  # what the driver includes beside the generated files
         if item.suffix == ".h" and item.name not in ("model_io.h", "model_gen.h"):
             shutil.copy2(item, cgen / item.name)
-    info = c_runtime.generate(
-        shadow, cgen, shadow / "inputs.npz", prepared_dir=build_dir, max_session_steps=1, materialize_weights=False
-    )
+    with I.timed_event("phase", "relink driver and weight generation"):
+        info = c_runtime.generate(
+            shadow, cgen, shadow / "inputs.npz", prepared_dir=build_dir, max_session_steps=1, materialize_weights=False
+        )
     weights = cgen / "weights.bin"
     if (
         weights.exists()

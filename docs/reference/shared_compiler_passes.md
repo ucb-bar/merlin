@@ -41,6 +41,10 @@ code_refs:
   - src/merlin/llvmlower/weight_payload.py
   - src/merlin/llvmlower/blob_weights.py
   - src/merlin/llvmlower/entry_weight_projection.py
+  - src/merlin/llvmlower/compilation_recipe.py
+  - src/merlin/common/invocation_record.py
+  - src/merlin/common/proc.py
+  - src/merlin/common/cpu_pool.py
   - src/merlin/sched/ir/integer_domain.py
   - src/merlin/compile/scheduling/selected_contracts.py
   - src/merlin/compile/scheduling/dense_contracts.py
@@ -244,6 +248,48 @@ The real execution test skips when the selected native/cross toolchain and
 functional simulator are unavailable. It checks every output and carried state
 for three calls under each of two changed source programs, plus normal hardware
 pin refusal; this small test is not qualification of a complete model corpus.
+
+### Host compilation timing
+
+Ordinary compilation recipes retain optional, versioned host wall intervals for
+successful commands as well as failures. Each command records its inclusive
+boundary and runner boundary. The existing `proc.run_checked` owner observes
+its actual subprocess wall interval. The shared compute-pool owner separately
+observes lease acquisition, including setup, affinity and slot waiting. Nested
+borrowed leases and disabled pools remain explicitly labeled. Acquisition time
+is not a measurement of contention alone, and subprocess wall is not CPU time
+or accelerator latency.
+
+`CompilationRecipe.phase` records named caller-owned preparation regions. The
+ordinary bare-metal builder observes host preparation/lowering including the IR
+lock, and driver/weight generation. Full-model build and relink retain additional
+same-context intervals for the image lock, current input/library hashing,
+artifact verification and generation. Their per-call timing files live below
+`timings/` in the selected output; build results return that file's path and hash.
+Relink tool recipes still bind actual command inputs and emitted outputs.
+
+Intervals use same-process `monotonic_ns`. Parent phases include their child
+intervals: sum disjoint intervals or take an interval union, never add inclusive
+parent and child durations. Observation covers only these original owners in
+the active Python context. Unobserved runners, child-interpreter work, provider
+queues and other processes are unknown; a missing observation is not zero cost.
+The residual between a command boundary and its runner includes identity reads
+and record work, not a separately measured pure hashing cost.
+
+Writers use `merlin.compilation_recipe.v2`; legacy v1 recipes without timing
+remain verifiable, and timing fields require v2. New interval records
+reject invalid types, negative ranges, changed clock/schema and child intervals
+outside their original process/phase. These diagnostic records cannot authorize
+changed file bytes, waive numerical checks or qualify a hardware cost model.
+No target callback timing fields or opaque output are interpreted as cycle costs.
+The same shared clock/verification rules apply to all selected targets.
+
+```bash
+python -B -m pytest merlin/tests/infra/test_compile_wall_timing.py \
+  merlin/tests/runtime/test_compilation_recipe.py \
+  merlin/tests/infra/test_model_check_compute.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/compile-wall-timing"
+```
 
 ### Generated weight storage
 

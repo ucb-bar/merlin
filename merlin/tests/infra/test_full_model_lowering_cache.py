@@ -597,10 +597,18 @@ func.func @forward(%w: tensor<2xf32>, %x: tensor<2xf32>, %s: tensor<2xf32>)
         for op, arithmetic in (("addf", np.add), ("mulf", np.multiply)):
             select(op)
             fresh = build()
+            from merlin.common.invocation_record import verify_timing_document
             from merlin.llvmlower.compilation_recipe import verify_completed_recipe
 
             recipe = Path(fresh["build_dir"]) / "compilation_recipe.json"
-            verify_completed_recipe(recipe, executable=Path(fresh["elf"]), expected_recipe_sha256=FB.sha256(recipe))
+            built_recipe = verify_completed_recipe(
+                recipe, executable=Path(fresh["elf"]), expected_recipe_sha256=FB.sha256(recipe))
+            assert {x["name"] for x in built_recipe["phases"]} == {
+                "host preparation and lowering including IR lock", "driver and weight generation"}
+            build_timing = json.loads(Path(fresh["timing"]["path"]).read_text())
+            verify_timing_document(build_timing)
+            assert {x["label"] for x in build_timing["events"]} >= {
+                "build input identity", "compiler source identity", "model image build lock acquisition"}
             reused = build()
             assert not fresh["reused"] and reused["reused"]
             (root / f"{op}.build.json").write_text(json.dumps(reused, indent=2))
@@ -615,6 +623,11 @@ func.func @forward(%w: tensor<2xf32>, %x: tensor<2xf32>, %s: tensor<2xf32>)
                 actual = verify_completed_recipe(
                     relink_recipe, executable=elf, expected_recipe_sha256=FB.sha256(relink_recipe))
                 assert len(actual["commands"]) == 2
+                timings = list((elf.parent / "timings").glob("*.json"))
+                assert len(timings) == 1
+                events = verify_timing_document(json.loads(timings[0].read_text()))["events"]
+                assert sum(x["kind"] == "process" for x in events) == 2
+                assert sum(x["label"] == "build input identity" for x in events) == 2
                 assert any(Path(item["path"]) == elf.parent / "cgen/model_io.h"
                            for item in actual["commands"][0]["inputs"])
                 console, wall = FB.run_host(elf, timeout_s=30)
