@@ -487,3 +487,12 @@ An unavailable observation remains unknown. Multi-output recipe diagnostics
 retain the historical f32 value projection and accumulate metrics in f64;
 single-output numeric receipts remain unchanged. Capture cache identity binds
 the complete-output agreement helper as a direct implementation owner.
+
+`_capture_integer_mm` accelerates only bounded eager CPU int8-to-i32
+matrix evaluation. A dtype-derived absolute partial-sum bound must fit i32,
+which also proves every product and partial sum exactly representable in f64.
+Regular row/column views retain logical values; unsupported, wrapped, tracing,
+overflow and unavailable-API cases keep native evaluation. The context surrounds
+real calibration/site-check/candidate forwards only; source graphs, floating
+operations, independent goldens, selected recipes and acceptance bars stay
+unchanged. Its implementation is bound in capture-cache identity.

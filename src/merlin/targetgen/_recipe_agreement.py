@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from itertools import islice
 
 
@@ -44,6 +45,11 @@ def compare(reference, candidate, samples, *, limit, as_tuple):
     """
     import torch
 
+    try:
+        from _capture_integer_mm import exact_integer_mm
+    except ImportError:
+        from merlin.targetgen._capture_integer_mm import exact_integer_mm
+
     if type(limit) is not int or limit < 0:
         raise AgreementError("agreement sample limit must be a nonnegative integer")
     summary, outputs = _Metrics(), []
@@ -52,7 +58,14 @@ def compare(reference, candidate, samples, *, limit, as_tuple):
         for sample in islice(samples, limit):
             inputs = as_tuple(sample)
             expected, expected_tree = torch.utils._pytree.tree_flatten(reference(*inputs))
-            actual, actual_tree = torch.utils._pytree.tree_flatten(candidate(*inputs))
+            eager_graph = (
+                isinstance(candidate, torch.fx.GraphModule)
+                and hasattr(candidate, "_compiled_call_impl")
+                and candidate._compiled_call_impl is None
+            )
+            evaluation = exact_integer_mm(torch) if eager_graph else nullcontext()
+            with evaluation:
+                actual, actual_tree = torch.utils._pytree.tree_flatten(candidate(*inputs))
             if not expected or expected_tree != actual_tree or len(expected) != len(actual):
                 raise AgreementError("agreement requires matching nonempty result trees")
             if topology is None:

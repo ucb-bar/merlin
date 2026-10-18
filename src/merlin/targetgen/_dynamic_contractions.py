@@ -461,6 +461,11 @@ def verify_sites(graph_module: Any, rows: list, samples: list) -> None:
     """
     import torch
 
+    try:
+        from _capture_integer_mm import exact_integer_mm
+    except ImportError:
+        from merlin.targetgen._capture_integer_mm import exact_integer_mm
+
     specs = {index: row.pop(VERIFY_KEY) for index, row in enumerate(rows) if VERIFY_KEY in row}
     if not specs:
         return
@@ -474,7 +479,7 @@ def verify_sites(graph_module: Any, rows: list, samples: list) -> None:
             hooks.append(graph.call_function(_check, (run, key, spec["out"], *spec["operands"])))
     graph_module.recompile()
     try:
-        with torch.no_grad():
+        with torch.no_grad(), exact_integer_mm(torch):
             for sample in samples:
                 graph_module(*(sample if isinstance(sample, (tuple, list)) else (sample,)))
     finally:

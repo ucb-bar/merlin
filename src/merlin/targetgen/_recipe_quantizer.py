@@ -1336,7 +1336,12 @@ def apply_recipe(
     calibrated = 0
     epilogue = quantizer.epilogue
     tracking = epilogue.track(prepared) if epilogue is not None else contextlib.nullcontext()
-    with torch.no_grad(), _RepeatedObservationSkip(prepared), tracking:
+    try:
+        from _capture_integer_mm import exact_integer_mm
+    except ImportError:
+        from merlin.targetgen._capture_integer_mm import exact_integer_mm
+
+    with torch.no_grad(), _RepeatedObservationSkip(prepared), tracking, exact_integer_mm(torch):
         for sample in samples:
             if calibrated >= sample_limit:
                 break
