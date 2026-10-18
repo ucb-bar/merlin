@@ -7,6 +7,9 @@ The shape of a target's schedule instruction set: `Operand`, `InstrDef`, `Instru
 
 ## Invariants
 
+- `types.py` owns the pure declaration objects. The installed namespace
+  reexports those exact objects and retains its backend lookup bridge. Shared
+  source releases omit backend discovery rather than exporting runtime access.
 - **Derived by the target, defined here.** This package holds no instruction. A target builds its
   instruction set from its own sources (header macros, RTL facts) and records their digests in
   `provenance`.

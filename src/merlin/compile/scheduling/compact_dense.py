@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from merlin.transforms.pipeline import AnalysisStamp
+    from merlin.transforms.pipeline_state import AnalysisStamp
 
 from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, TensorArg, Var, select
 from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
@@ -411,7 +411,7 @@ def schedule_compact_dense(
     if type(max_repairs) is not int or max_repairs not in (0, 1):
         raise ValueError("compact dense supports a bounded zero or one repair")
 
-    from merlin.transforms.pipeline import (
+    from merlin.transforms.pipeline_state import (
         AnalysisStamp,
         PassSpec,
         PipelineContext,

@@ -17,7 +17,7 @@ from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets, Schedul
 from merlin.compile.scheduling.spill_conformance import SpillClass
 from merlin.compile.scheduling.temporary_storage import StorageEffects, StorageOptimizationUnavailable, TemporaryObject
 from merlin.sched.ir import Call, Loop, TensorArg, evaluate
-from merlin.transforms.pipeline import PassSpec, PipelineSession, validate_pass_order
+from merlin.transforms.pipeline_state import PassSpec, PipelineSession, validate_pass_order
 
 
 def encoding(word_format="<BBBQQQ"):

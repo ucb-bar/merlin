@@ -7,6 +7,7 @@ their frozen run snapshot supplies the bytes, not a mutable installed package.
 
 from __future__ import annotations
 
+import ast
 import copy
 import hashlib
 import json
@@ -84,6 +85,7 @@ COMMON_PUBLIC_MODULES = (
     "merlin.transforms.client",
     "merlin.verify.lean_contract",
 )
+_COMMON_IMPLEMENTATION_MODULES = ("merlin.transforms.pipeline_state",)
 COMMON_NAMESPACE_MODULES = (
     "merlin.__init__",
     "merlin.transforms.__init__",
@@ -203,6 +205,29 @@ def _source(root: Path, module: str) -> Path:
     return selected
 
 
+def _implementation_members(profile: dict) -> tuple[str, ...]:
+    """Exact private dependency extension; older frozen profiles omit it."""
+    modules = profile.get("common_implementation_modules", [])
+    if type(modules) is not list or modules not in ([], list(_COMMON_IMPLEMENTATION_MODULES)):
+        raise ValueError("common compiler implementation dependency changed")
+    return tuple(modules)
+
+
+def _selected_implementation_members(root: Path) -> tuple[str, ...]:
+    # Legacy source releases define their state in pipeline.py itself. New
+    # releases reexport it; transport that same code without adding a public
+    # import permission or reinterpreting an older frozen source inventory.
+    tree = ast.parse(_source(root, "merlin.transforms.pipeline").read_bytes())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (
+            (node.level == 1 and node.module == "pipeline_state")
+            or (node.level == 0 and node.module == "merlin.transforms.pipeline_state")
+            or (node.module == "merlin.transforms" and any(a.name == "pipeline_state" for a in node.names))
+        ):
+            return _COMMON_IMPLEMENTATION_MODULES
+    return ()
+
+
 def common_tool_profile(
     arm: str, tools: tuple[str, ...], *, python_source_root: Path, version: str = COMMON_SUBSTRATE_V1
 ) -> dict:
@@ -213,7 +238,8 @@ def common_tool_profile(
     if not root.is_absolute() or root.resolve() != root or not root.is_dir():
         raise ValueError("common substrate requires the explicit canonical selected Python source root")
     namespaces, public, automatic = substrate_inventory(version)
-    modules = (*namespaces, *public)
+    implementation = _selected_implementation_members(root)
+    modules = (*namespaces, *public, *implementation)
     sources = [
         {
             "module": module,
@@ -256,6 +282,8 @@ def common_tool_profile(
         "automatic_checker_sources": automatic_sources,
         "proof_policy": copy.deepcopy(policy),
     }
+    if implementation:
+        record["common_implementation_modules"] = list(implementation)
     return {**record, "sha256": _digest(record)}
 
 
@@ -288,7 +316,7 @@ def verify_tool_profile(bundle: dict, *, tools: tuple[str, ...] | None = None) -
     if profile.get("automatic_checker_modules") != list(automatic):
         raise ValueError("automatic verification inventory changed")
     sources = profile.get("common_sources")
-    expected_modules = (*namespaces, *public)
+    expected_modules = (*namespaces, *public, *_implementation_members(profile))
     if not isinstance(sources, list) or [row.get("module") for row in sources if isinstance(row, dict)] != list(
         expected_modules
     ):
@@ -380,7 +408,7 @@ def attach_common_substrate(
         for source in sorted((python_source_root / "merlin/verify").glob("*.py")):
             if not source.name.startswith("lean_") and "merlin.verify." + source.stem not in automatic:
                 bundle["allowed"].append({**row, "path": _PY + "verify/" + source.name})
-    for module in (*namespaces, *public):
+    for module in (*namespaces, *public, *_implementation_members(profile)):
         bundle["allowed"].append({"path": _logical(module), "mode": "ro", "note": "common compiler infrastructure"})
     # Automatic verification is host-owned. These dependencies are sealed as
     # host inputs, never exposed by adding a general proof API to lower levels.

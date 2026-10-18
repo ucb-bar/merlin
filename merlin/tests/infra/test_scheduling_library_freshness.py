@@ -140,7 +140,7 @@ def test_schedule_rejects_changed_block_helper_during_rewrite(tmp_path, monkeypa
 
 
 def test_finalizer_rejects_changed_pipeline_inside_decoder(tmp_path, monkeypatch):
-    path = private_source(tmp_path, monkeypatch, "merlin.transforms.pipeline")
+    path = private_source(tmp_path, monkeypatch, "merlin.transforms.pipeline_state")
 
     def decode(image):
         change(path)

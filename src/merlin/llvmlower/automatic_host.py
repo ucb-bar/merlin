@@ -57,7 +57,7 @@ def optimize_host_quantization(module, *, numerical_policy: str, max_added_opera
         raise ValueError("host legalization requires its numerical policy and nonnegative code budget")
     original = module
     current = module.clone()
-    from merlin.transforms import pipeline
+    from merlin.transforms import pipeline, pipeline_state
 
     library_sources = {
         path.name: hashlib.sha256(path.read_bytes()).hexdigest()
@@ -66,6 +66,7 @@ def optimize_host_quantization(module, *, numerical_policy: str, max_added_opera
             Path(__file__).with_name("quant_round.py"),
             Path(__file__).with_name("quant_round_check.py"),
             Path(pipeline.__file__),
+            Path(pipeline_state.__file__),
         )
     }
     library = hashlib.sha256(json.dumps(library_sources, sort_keys=True).encode()).hexdigest()

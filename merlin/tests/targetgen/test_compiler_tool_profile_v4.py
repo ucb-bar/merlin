@@ -36,9 +36,11 @@ def test_v4_publishes_only_the_shared_planner_and_preserves_v3_policy():
 
 
 def test_planner_runs_with_only_the_published_source_closure(tmp_path):
+    from merlin.targetgen.tool_profile import _selected_implementation_members
+
     root = repo_root() / "src"
     namespaces, modules, _ = substrate_inventory(COMMON_SUBSTRATE_V4)
-    for name in (*namespaces, *modules):
+    for name in (*namespaces, *modules, *_selected_implementation_members(root)):
         source = root / (name.replace(".", "/") + ".py")
         destination = tmp_path / source.relative_to(root)
         destination.parent.mkdir(parents=True, exist_ok=True)

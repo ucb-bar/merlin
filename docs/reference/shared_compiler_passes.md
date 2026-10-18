@@ -3,10 +3,13 @@ title: Shared compiler pass contracts
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-17
+last_verified: 2026-10-18
 related: [../design/shared_phase1_scheduling.md]
 code_refs:
   - src/merlin/transforms/pipeline.py
+  - src/merlin/transforms/pipeline_state.py
+  - src/merlin/compile/scheduling/export.py
+  - src/merlin/compile/scheduling/library_sources.py
   - src/merlin/compile/scheduling/compact_dense.py
   - src/merlin/compile/scheduling/compact_verification.py
   - src/merlin/compile/scheduling/program_limits.py
@@ -158,15 +161,78 @@ Legacy records without these bindings rebuild. These are direct-input checks,
 not complete toolchain, capture, provider-resource or transitive dependency
 closure. They confer no numerical or execution qualification.
 
+Shared pass-state types now live in `merlin.transforms.pipeline_state`.
+`transforms.pipeline` reexports the identical objects and retains its existing
+host verification broker and structured-transform gate. Newly generated
+authoring profiles pin the moved state file as a private implementation
+dependency without adding it to their public imports. Self-contained frozen
+historical profiles retain their original inventories. Instruction declaration
+types similarly live in `merlin.sched.isa.types`; installed `sched.isa` retains
+its existing backend lookup bridge. Neither move duplicates an algorithm or
+changes pass ordering, arithmetic or qualification requirements.
+
 Counted-schedule signed-index interval checking lives in
 `merlin.sched.ir.integer_domain`. Both row verification and C emission consume
 the same algorithm, bounding intermediate sums and products without expanding
 iterations. The emitter preserves its existing exception interface. The shared
 checker requires no emitter, ISA loader, backend or numerical framework. An
 isolated source-only test verifies one explicit import-closed library leaf with
-the existing compiler-library contract; this does not release the complete
-scheduling library or expand historical authoring grants. The full release
-still requires review of broader namespace and host-verification dependencies.
+the existing compiler-library contract.
+
+### Reviewable shared scheduling library
+
+Export all seven shared scheduling families with:
+
+```sh
+python -m merlin.compile.scheduling.export --shared-library --output-dir "$TMPDIR/shared-sdk"
+```
+
+The destination must be empty and unlinked. The bundle contains 57 declared
+Python source owners plus `LICENSE` and `NOTICE`. All algorithm, checker and
+numerical implementation files are byte-identical to the ordinary compiler.
+Three explicitly recorded namespace initializers omit installed host
+orchestration and backend discovery. The manifest records exact membership,
+public leaf APIs, namespace replacements, observed external package versions
+and a deterministic library digest. Source/resource changes during export
+prevent completed manifest publication. Existing standalone dense exports keep
+their original format.
+
+From an installed source package, also pass `--license-directory` naming the
+explicitly selected directory containing its `LICENSE` and `NOTICE`. Checkout
+exports use their own project files. The writer does not search another
+checkout or substitute an interpreter/environment license. Ordinary installed
+Python source layout is required; zipped/source-free packages are unsupported.
+
+Exporting does not grant authoring access. The host reviews the exact bundle and
+selects its existing `CompilerLibraryContract` with an independent review ID,
+explicit `public_modules`, the manifest's `(path, module)` member pairs, and
+its `review_resources` as additional non-executable members. This pins
+`shared-library.json` itself, including its version/dependency observations.
+That contract rechecks bytes and direct Python import closure. Every treatment
+must receive the same reviewed root, contract, dependency environment and
+verification rules. Candidate manifests cannot grant themselves access; no
+historical authoring/evaluation grants are widened by this exporter.
+
+The exported entry points are the existing `schedule_compact_dense`,
+`compile_schedule`, `compile_row_softmax` and `read_scheduling_contracts` APIs.
+They consume current typed computation, selected RTL/software contracts,
+numerical policy, resource/code budgets and independently qualified target
+adapters. The bundle includes no target implementation, golden outputs,
+protected reference compiler, workload schedule or calibration answers.
+Unsupported effects, mappings and numerical algorithms retain the existing
+fallback/refusal behavior. Backend discovery, whole-model host orchestration,
+formal-verifier authority and optional native e-graph build resources are not
+public SDK services. External version observations do not qualify dependency
+implementations or hardware, and the bundle is not a Python sandbox.
+
+The export regression runs ten cases covering all seven families in an isolated
+`python -I -S` process. Only the bundle, selected third-party roots and neutral
+test fixtures are available; every imported Merlin module and package path is
+checked to originate in the bundle. Existing ordinary entry points emit actual
+C/encoded programs, execute independent native primitives, and check complete
+outputs/state, rectangular tiling, widths, separate/aliased storage, actual
+completion, unsupported async emission and missing drains. These are portable
+mechanism tests, not qualification of a real accelerator or complete model.
 
 `repair(stage=..., reason=...)` clears analyses and restarts an already selected
 legal fallback within an explicit repair budget. It cannot revive a failed

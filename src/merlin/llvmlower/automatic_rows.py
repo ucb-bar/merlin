@@ -17,7 +17,7 @@ from xdsl.utils.exceptions import ParseError
 def prepare_automatic_rows(source, *, serial, index_bits=64, data_layout=None):
     from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.transforms import pipeline as source_pipeline
-    from merlin.transforms import row_normalization, row_normalization_check
+    from merlin.transforms import pipeline_state, row_normalization, row_normalization_check
     from merlin.xdsl_dialects._common import text
 
     from . import pipeline
@@ -38,6 +38,7 @@ def prepare_automatic_rows(source, *, serial, index_bits=64, data_layout=None):
             (row_normalization_check.__name__, Path(row_normalization_check.__file__)),
             (pipeline.__name__, Path(pipeline.__file__)),
             (source_pipeline.__name__, Path(source_pipeline.__file__)),
+            (pipeline_state.__name__, Path(pipeline_state.__file__)),
             ("merlin.llvmlower.optional_passes", Path(__file__).with_name("optional_passes.py")),
             ("merlin.llvmlower.lower", Path(__file__).with_name("lower.py")),
         )

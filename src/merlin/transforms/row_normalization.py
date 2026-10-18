@@ -583,13 +583,13 @@ def fuse_row_normalizations(
         raise ValueError("row scheduling needs an explicit conservative storage selection")
     if type(index_bits) is not int or index_bits != 64:
         raise ValueError("source row scheduling currently requires selected 64-bit index lowering")
-    from . import pipeline
+    from . import pipeline, pipeline_state
     from . import row_normalization_check as checker
 
     current = module.clone()
     sources = {
         p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-        for p in (Path(__file__), Path(checker.__file__), Path(pipeline.__file__))
+        for p in (Path(__file__), Path(checker.__file__), Path(pipeline.__file__), Path(pipeline_state.__file__))
     }
     context = PipelineContext(
         hardware=hardware_identity,

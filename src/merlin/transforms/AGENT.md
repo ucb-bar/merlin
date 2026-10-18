@@ -1,6 +1,9 @@
 # AGENT.md — src/merlin/transforms
 
 This package owns target-independent, structural xDSL transformations and analyses.
+`pipeline_state.py` owns shared state/order/invalidation types. `pipeline.py`
+reexports the identical objects and retains the host verification broker.
+Keep the state owner independent of host proof/execution orchestration.
 Hardware policies, instruction selection and device resource assignments stay in OOT
 repositories. Derive facts from the current IR; unknown effects and unsupported layouts
 must remain conservative. A structural witness is not a formal proof receipt.

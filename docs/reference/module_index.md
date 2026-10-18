@@ -58,7 +58,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.sched.codegen` | Emit a kernel as one C function: counted loops around the target's own instruction statements. |
 | `merlin.sched.contract` | Numerics contracts (see :mod:`merlin.sched.contract.registry`). |
 | `merlin.sched.ir` | Kernel IR ``mk``: loop nests over a target's schedule instructions (see ``kernel`` and ``expr``). |
-| `merlin.sched.isa` | A target's schedule instruction set: the calls a kernel schedule may make, and how each is checked. |
+| `merlin.sched.isa` | Instruction declarations and the legacy explicit backend lookup bridge. |
 | `merlin.sched.mach` | The machine a schedule is written against. |
 | `merlin.sched.primitives` | The scheduling language: semantics-preserving rewrites of a kernel, each with a proof obligation. |
 | `merlin.semantic_compiler` | Typed, target-independent native semantic compiler components. |
