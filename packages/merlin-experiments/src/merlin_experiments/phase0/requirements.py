@@ -148,9 +148,7 @@ def _materialized_iteration_capsules(
                 if hashlib.sha256(profile_raw).hexdigest() != declared_profile:
                     raise ValueError("materialized loader profile differs from its actual capture")
                 outputs[f"{prefix}/{label}/profile.json"] = profile_raw
-                loader_binding.update(
-                    profile_path=f"{prefix}/{label}/profile.json", profile_sha256=declared_profile
-                )
+                loader_binding.update(profile_path=f"{prefix}/{label}/profile.json", profile_sha256=declared_profile)
         entries.append(
             {
                 "name": f"SY_source_{label}",
@@ -598,6 +596,11 @@ def derive(
         },
     )
     selected_recipes = capture_recipe_candidates(selected.software_spec, quantization)
+    # A model may be captured under its reviewed methodology variant as well as the shared recipe.
+    selected_recipes = [
+        *selected_recipes,
+        *(variant for row in selected_recipes for variant in row.get("model_variants") or ()),
+    ]
     if performance_captures:
         # A performance-scale capture is held to the same provider-derived recipe as an iteration
         # capture; external quantization policies are an iteration-roster selection only.

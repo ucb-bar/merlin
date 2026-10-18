@@ -83,6 +83,100 @@ quantization:
     accumulator_dtype: i32
     scale_encoding: fp32
     eligible_operations: from_facts
+  # How every model is quantized for this target (merlin.targetgen.quant_methodology). Each hardware
+  # value is the word from_output_path: it is read from the selected contract's derived output path,
+  # never written here. Per-model changes exist only as reviewed model_variants rows.
+  methodology:
+    schema: merlin.quantization_methodology.v1
+    scale_granularity: from_output_path
+    bias: accumulator_preload_int32
+    epilogue: integer_domain
+    rounding: from_output_path
+    clamp: from_output_path
+    calibration:
+      activation: mse
+      weight: minmax
+    recovery:
+      cross_layer_equalization: true
+      bias_correction: true
+    float_island:
+      host: merlin
+      dtype: fp32
+      ops:
+      - softmax
+      - layer_norm
+      - rms_norm
+      - group_norm
+      - gelu
+      - silu
+      - rotary
+    model_variants:
+    - model: resnet50
+      name: contractions-only-calibration-1024
+      status: reviewed
+      reviewed_by: user-approved G5 launch recipe handoff, 2026-10-16
+      reason: ResNet50 selects contractions only (residual sums and the average pool stay
+        host float) and calibrates on the disjoint 1024-sample policy.
+      measured_accuracy:
+        basis: recipe_agreement vs the fp32 model, 64 samples, reviewed per-channel recipe 8c0182c0
+        top1_agreement: 0.984
+        cosine_mean: 0.991
+      changes:
+        families:
+        - contraction
+        calibration_count: 1024
+    - model: tiny_llama
+      name: static-heads-softmax2
+      status: reviewed
+      reviewed_by: user-chosen attention variant, 2026-10-17
+      reason: Attention contractions in int8 with one calibrated scale per head and the softmax
+        probabilities as two fixed-scale planes; fully static, no run-time abs/max.
+      measured_accuracy:
+        basis: recipe_agreement vs the fp32 model, 2-layer diagnostic, 64 samples
+        prefill_top1_agreement: 0.828
+        prefill_cosine_mean: 0.99671
+        decode_top1_agreement: 0.844
+        decode_cosine_mean: 0.9984
+      changes:
+        families:
+        - contraction
+        - operand_sum
+        - window_mean
+        - activation_contraction
+        dynamic:
+          schema: dynamic_contractions_v1
+          families:
+          - activation_contraction
+          scales: static_heads
+          planes:
+            softmax_output: 2
+          smooth: null
+        calibration_count: 1024
+    - model: smolvla
+      name: static-heads-softmax2
+      status: reviewed
+      reviewed_by: user-chosen attention variant, 2026-10-17
+      reason: Attention contractions in int8 with one calibrated scale per head and the softmax
+        probabilities as two fixed-scale planes; fully static, no run-time abs/max.
+      measured_accuracy:
+        basis: flow_denoise session vs the capture's fp32 reference, 10 x 50 x 32 actions
+        final_rel_rmse: 0.0578
+        all_steps_rel_rmse: 0.0135
+        cosine: 0.99991
+      changes:
+        families:
+        - contraction
+        - operand_sum
+        - window_mean
+        - activation_contraction
+        dynamic:
+          schema: dynamic_contractions_v1
+          families:
+          - activation_contraction
+          scales: static_heads
+          planes:
+            softmax_output: 2
+          smooth: null
 transfer_contracts:
   status: reviewed
   operand_load:
