@@ -74,6 +74,16 @@ _INTEGER_DATAPATH = "on in the integer (int8 compute) datapath"
 
 REGISTRY: tuple[OptionalPass, ...] = (
     OptionalPass(
+        name="automatic-host-rounding",
+        summary="compact closed bounded integer rounding through the standard LLVM intrinsic",
+        changes="replace residual rounding arithmetic after destination selection, preserving exact integer values",
+        exactness=EXACT,
+        default="on in ordinary serial source lowering for independently checked bounded observations",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_ROUNDING",
+        on_by_default=True,
+    ),
+    OptionalPass(
         name="automatic-host-destinations",
         summary="forward closed pointwise writes into fresh padded tensor destinations",
         changes="initialize only the exact exterior and retain original interior arithmetic and tensor ownership",

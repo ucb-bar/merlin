@@ -28,6 +28,7 @@ code_refs:
   - src/merlin/llvmlower/cpu_softmax.py
   - src/merlin/llvmlower/automatic_host.py
   - src/merlin/llvmlower/automatic_destinations.py
+  - src/merlin/llvmlower/automatic_rounding.py
   - src/merlin/llvmlower/destination_check.py
   - src/merlin/llvmlower/quant_round_check.py
   - src/merlin/compile/scheduling/configuration.py
@@ -58,6 +59,11 @@ Ordinary serial host lowering also schedules eligible closed source row
 normalization islands. This source-to-source route is separate from the explicit
 hardware counted-row entry: it preserves the source's own scalar operations and
 continues through the existing CPU toolchain. See the scope below.
+
+After destination selection, eligible bounded integer rounding uses a compact
+standard LLVM representation with independent arithmetic reconstruction. See
+[host integer rounding](host_integer_rounding.md) for source contracts, budgets,
+fallback and qualification scope.
 
 ## Abstractions and the research question
 

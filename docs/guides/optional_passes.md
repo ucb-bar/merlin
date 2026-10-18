@@ -70,6 +70,15 @@ source. The actual emitted region partition and scalar body are checked before
 ordinary bufferization. Use `--no-pass automatic-host-destinations` for a paired
 control. See [inputs, guarantees and fallback](../reference/host_tensor_destinations.md).
 
+## Automatic host integer rounding
+
+`automatic-host-rounding` selects a compact exact LLVM rounding intrinsic for
+closed bounded integer observations after source destination selection. It
+retains source scaling, numerical order and other observations, and leaves
+unsupported execution/effect contracts on their original route. Use
+`--no-pass automatic-host-rounding` for a paired control. See the
+[inputs, checks and supported scope](../reference/host_integer_rounding.md).
+
 ## int-softmax-table
 
 A capture made with integer nonlinears spells softmax per element: a fixed exponent grid index, an

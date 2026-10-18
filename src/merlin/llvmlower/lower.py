@@ -59,6 +59,7 @@ STAGES = compile_trace.declare(
         "host-graph-optimized",
         "host-row-scheduled",
         "host-destination-reused",
+        "host-rounding-selected",
         "operation-profiled",
         *PREPROCESS_STAGES,
         "upstream",
@@ -211,6 +212,13 @@ def lower_model(
             features = normalize(set(features or ()) | {"reuse_tensor_destination"})
             audit.stage("host-destination-reused", mlir_text)
         write_pretty_json(work / "automatic-host-destinations.json", destination_report)
+        from .automatic_rounding import prepare_automatic_rounding
+
+        mlir_text, rounding_report = prepare_automatic_rounding(
+            mlir_text, serial=serial_rows, index_bits=64 if index_bits is None else index_bits, data_layout=data_layout)
+        if rounding_report["rewrites"]:
+            audit.stage("host-rounding-selected", mlir_text)
+        write_pretty_json(work / "automatic-host-rounding.json", rounding_report)
         profile_report = None
         if op_profile:
             from . import op_profile as profiler
@@ -242,6 +250,7 @@ def lower_model(
             stats["graph_optimizations"] = graph_report
         stats["automatic_host_rows"] = row_report
         stats["automatic_host_destinations"] = destination_report
+        stats["automatic_host_rounding"] = rounding_report
         if profile_report is not None:
             stats["operation_profile"] = profile_report
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
