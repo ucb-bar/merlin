@@ -169,11 +169,21 @@ input/output byte identity and capture completeness are all required. A failed c
 `VerificationError` before downstream lowering starts. Reports are retained beside the handoff
 under `lean-shared-passes/<attempt>/`.
 
-This mode currently wraps `lower_model`'s shared preprocessing. It does not include earlier
-model capture or preparation, native upstream passes, OOT implementation, LLVM or runtime.
-The report states the typed, initialized-input domain and ledger assumptions. Other drivers
-must explicitly call the gate at their own tensor handoff; ordinary ungated compilation remains
-available. Missing tools, unsupported rewrites and undefined source results stop a gated build.
+This option wraps `lower_model`'s shared preprocessing. Add `verify_native_prefix=True` to hold
+the actual ordinary native MLIR module before bufferization and require one strict chain through
+the four authored tensor phases: canonicalization, CSE, guarded elementwise fusion and named-op
+generalization. The consumer resumes on the same Module and Context after acknowledgment;
+the proof response cannot replace its IR. The optional `shared_pass_preparation` prefix described
+below extends that chain to its original captured source. Model capture, the OOT implementation,
+bufferization, LLVM and runtime remain outside these proofs.
+
+The native gate initially admits ordinary serial lowering without effective optional features,
+custom pipelines or provider callbacks. Its 32-bit domain refuses index-typed SSA and function
+ABIs because of retained discrepancy S6; 64-bit index uses still need strict semantic replay.
+Reports state the typed, initialized-input domain, exact boundaries and ledger assumptions.
+Other drivers must explicitly call the gate at their own tensor handoff; ordinary ungated
+compilation remains available. Missing tools, unsupported rewrites and undefined source results
+stop a gated build. The Python orchestration and process supervision remain trusted components.
 
 ## What is exercised
 
@@ -581,14 +591,32 @@ all ten integer predicates over actual local index values and requires the S6 in
 `test_lean_from_elements_index.py` proves selection through closed computed indices even when
 canonicalization removes every intermediate index constant from the target.
 
-Mixed-family tests distinguish supported cast composition from two remaining coverage gaps:
-widening then truncating back, and independent constant hoisting across an operand-using cast.
-Both gaps retain defined sources, checker abstention and native matching controls; they are not
-counted as proved rewrite boundaries.
-It does not automatically enclose earlier model preparation or the D1 native tensor passes inside
-`lower_to_llvm_ir`. Tested theorem routes for those passes must be distinguished from automatic
-coverage of a production compilation. Full shared-pass coverage still needs recorded enabled-pass
-and model/build denominators plus a gate spanning their actual tensor boundaries.
+Mixed-family rules now include widening followed by truncation back to the original width and
+adjacent independent constant motion across operand-using scalar instructions. Cancellation
+preserves escaping widenings, while a final ordering-only traversal follows all aliases, including
+parent capture renames. Local neutral integer identities preserve poison and use literal values
+derived from actual successful source steps; captured numeric facts and poison-erasing absorbing
+identities remain outside this family. Motion across region-bearing operations and operation
+reordering inside generic bodies retain explicit conservative abstentions. Empirical native
+agreement does not upgrade these gaps to proved rewrites.
+
+`test_lean_native_gate_differential.py` checks the actual held ordinary prefix at both widths,
+preparation composition, emitted LLVM-byte parity, independent native references and refusal of
+a valid wrong boundary before acknowledgment. `test_lean_native_binding_api.py` separately probes
+the installed binding's type/attribute API. Process controls cover atomic bounded worker results,
+partial messages and bounded cancellation, including an unreapable-child model; pending kernel
+cleanup is retained explicitly. Ordinary filesystem/process-creation calls still depend on the host.
+Whole-model builders and OOT consumers are not automatically gated. Full shared-pass coverage
+still needs the selected model/build denominator and evidence from each actual consumer route.
+
+The differential adapter permits arbitrary positive-width internal integer bitvectors while
+keeping its observable input/output ABI at 1–64 bits. Integer-to-float host conversion separately
+checks the actual scalar or tensor element width, including region captures, and refuses widths
+above 64 before native execution. `test_lean_wide_integer_differential.py` exercises 65/128/136-bit
+products and shifts with independent references, including the highest internal bits. The unchanged
+136-bit cast-chain regressions also run. Its narrow tensor conversion controls exercise Lean only;
+they do not qualify native legalization of direct tensor arithmetic. No semantics or float law is
+changed by this test adapter extension.
 
 ## Limits
 

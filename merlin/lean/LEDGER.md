@@ -83,9 +83,15 @@ outside its local theorem. Legal float-to-float bitcasts are another conservativ
 gap: the current float-result branch accepts integer bits only. Native support-gap observations
 are kept separate from matching raw-bit integer/float reinterpretation evidence.
 
-The opt-in runtime handoff gate encloses preprocessing only. Earlier model preparation and the D1
-native tensor passes are not automatically included. Available proved/tested routes for those
-passes do not establish complete production-path coverage or a full-compiler correctness claim.
+The opt-in runtime handoff gate encloses preprocessing. An explicit preparation capture can
+extend the chain to its original source, and `verify_native_prefix=True` additionally holds the
+actual ordinary native Module/Context through D1 until strict replay accepts. Bufferization and
+the remaining native suffix stay in T4. The initial route excludes optional features, custom
+pipelines and callbacks, and refuses index-typed 32-bit programs because of S6. Whole-model and
+OOT consumers require their own integration. These bounded routes do not establish complete
+production-path coverage or a full-compiler correctness claim. Python roster selection, source
+binding and finite process supervision remain in T2; OS filesystem/process-creation behavior and
+pending kernel cleanup are host assumptions.
 
 Rank-zero `linalg.transpose` cannot currently be qualified: the installed MLIR binding crashes
 in verification, and assertion-enabled upstream `mlir-opt` reproduces an empty-permutation-map
@@ -133,8 +139,8 @@ The preprocessing gate resolves an immutable authored boundary roster before exe
 checks its ordered occurrences, pass identities and unchanged boundaries before and after strict
 semantic replay. Independent roster replay takes the caller's expected plan; recorded metadata
 cannot define its own coverage denominator. Generic captures without an expected plan explicitly
-claim recorded-boundary coverage only. This does not extend the automatic gate to preparation,
-D1 or the OOT consumer.
+claim recorded-boundary coverage only. Explicit preparation/native composition is a separate
+selection; an OOT consumer is not covered by this host gate.
 
 An explicit `preparation.capture` prefix can now extend the chain to the original source for
 ordinary preparation with no selected optional mutations, integer quantization, routing or
@@ -142,8 +148,8 @@ provider callbacks. Capture alone is unverified. Consumption independently recon
 authored preparation roster, validates the retained prefix and exact actual preprocessing input,
 then checks original-source support/definedness and one concatenated strict chain. Mandatory
 frontend-intent and numerical repairs must actually prove or fail; capture does not grant them a
-new specification. Existing whole-model builders remain ungated by default, and D1/OOT remain
-outside this automatic route.
+new specification. Existing whole-model builders remain ungated by default; D1 requires the
+additional explicit native-prefix option, and OOT integration remains separate.
 
 Exact scalar constant aliases compare decoded runtime values, including raw floating bits,
 at the claimed index width; full-continuation renaming preserves captures and shadowing. This
@@ -151,8 +157,13 @@ closes the previously recorded duplicate-value alignment gap in closed index fol
 comparisons separately replay the actual predicate over proved local index values; the matching
 S6 index64 boundary verifies while the index32 mismatch refuses. Constructor selection can learn
 computed closed index values from successful original source steps without target intermediates.
-Independent constant motion across operand-using instructions and widening/truncation cancellation
-remain explicit mixed-family coverage gaps in this batch; native agreement alone is not a proof.
+Independent adjacent constant motion across region-free operand-using instructions and exact
+widening/truncation cancellation now have registered proofs. A final operand-order traversal
+follows all aliases, including captured-parent renames. Local neutral integer identities preserve
+poison and validate current scalar literals. Region-bearing motion, inner-body operation motion,
+captured numeric facts and poison-erasing absorbing identities remain separate coverage gaps;
+native agreement alone is not a proof. The differential adapter's wider integer intermediates
+leave the locked semantics unchanged and retain explicit input/output and host float limits.
 
 ## Proposed dequantization source contract
 
