@@ -175,6 +175,7 @@ def _lowering_sources() -> dict[str, Path]:
         "merlin.common.cpu_pool",
         "merlin.common.digest",
         "merlin.common.jsonio",
+        "merlin.common.mlir_query",
         "merlin.targetgen.target_registry",
         "merlin.runtime.backends.zephyr_model",
         "merlin.runtime.backends.spike_model",

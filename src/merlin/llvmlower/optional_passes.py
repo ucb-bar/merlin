@@ -74,6 +74,16 @@ _INTEGER_DATAPATH = "on in the integer (int8 compute) datapath"
 
 REGISTRY: tuple[OptionalPass, ...] = (
     OptionalPass(
+        name="automatic-host-permutations",
+        summary="forward sole-use pointwise writes directly into a permuted tensor result",
+        changes="retain scalar body, input maps and loop order while removing an intermediate materialization",
+        exactness=EXACT,
+        default="on in ordinary serial host lowering for checked static pointwise outputs within IR budgets",
+        stage="lowering",
+        switch="MERLIN_AUTOMATIC_HOST_PERMUTATIONS",
+        on_by_default=True,
+    ),
+    OptionalPass(
         name="automatic-host-rounding",
         summary="compact closed bounded integer rounding through the standard LLVM intrinsic",
         changes="replace residual rounding arithmetic after destination selection, preserving exact integer values",

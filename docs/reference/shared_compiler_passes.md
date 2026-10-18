@@ -28,6 +28,7 @@ code_refs:
   - src/merlin/llvmlower/cpu_softmax.py
   - src/merlin/llvmlower/automatic_host.py
   - src/merlin/llvmlower/automatic_destinations.py
+  - src/merlin/llvmlower/insert_slice_destination.py
   - src/merlin/llvmlower/automatic_rounding.py
   - src/merlin/llvmlower/destination_check.py
   - src/merlin/llvmlower/quant_round_check.py
@@ -473,6 +474,74 @@ ordinary captured-policy route.
 `MERLIN_AUTOMATIC_HOST_NUMERICS=0` also disables it. An explicit optional-pass
 selection takes precedence over that environment fallback. Receipts include
 the transformation, checker, matcher and pipeline source identities.
+
+## Direct permuted pointwise destinations
+
+Ordinary serial host lowering runs `automatic-host-permutations` after checked
+rounding selection and before operation profiling and preprocessing. It extends
+the existing destination-forwarding mechanism. A single-use pointwise producer
+followed by `linalg.transpose` writes directly into a fresh tensor with the final
+shape. Its input maps, scalar operations and loop order remain unchanged; only
+the output map and type change. The producer stays at its original position.
+The intermediate tensor and separate permutation operation disappear from the
+selected source. This differs from reading through a transpose: input strides
+are preserved, and output stores may become strided.
+Each original producer/transpose pair is considered once; the pass does not
+reapply itself to generated writers within that traversal.
+
+The accepted domain is a static, unencoded, all-parallel `linalg.generic` with
+one result, an unread `tensor.empty` initializer and exactly one use by the
+transpose. Both operations must belong to the same single-block function, with
+only admitted constants/storage constructors between them. Input maps must be
+complete projections or unit-extent broadcasts. Source formats are integers of
+8/16/32/64 bits or f32/f64, with logical element-byte extents fitting the selected signed
+index width. Unknown scalar operations, effects, semantic attributes, layouts,
+dynamic domains, live observers, initialized outputs and reductions retain the
+original route. Scalar captures may only refer to unchanged scalar integer or
+floating constants in the enclosing block. The existing closed scalar reader
+also admits the already supported standard roundeven intrinsic, preserving its
+exact source operands and metadata; no new numerical lowering is introduced.
+
+The host compiler supplies its selected index width and LLVM data layout. This
+pass uses no accelerator-local memory or instruction capability and infers none
+from RTL. Device resource facts, physical ownership and completion contracts
+remain separate requirements for device scheduling. Tensor bufferization owns
+the eventual native allocation and alias decisions.
+
+Use `lower_model` normally, or deselect with
+`MERLIN_PASSES=-automatic-host-permutations` /
+`MERLIN_AUTOMATIC_HOST_PERMUTATIONS=0` for a same-version baseline. The shared
+source entry is
+`prepare_automatic_destinations(source, serial=True, permuted_outputs=True, ...)`;
+its existing operation/metadata budgets bound construction. Ordinary vector,
+parallel, explicit graph/observation and unsupported compiler-driver selections
+retain their original route until separately qualified.
+
+`automatic-host-permutations.json` records current source/output digests,
+selected layout/index/budgets, direct helper identities and three ordered
+pipeline checks: source legality, forwarding and actual-source conformance.
+The conformance reader reconstructs the complete actual replacement and checks
+every other operation, effect, value binding and function interface unchanged.
+It verifies the original scalar body and input maps independently of the
+emitter's report, including external constant identities and signed-zero words.
+Wrong output permutations, hidden operations, changed arithmetic, shifted
+placement, stale libraries and accounting discrepancies refuse publication.
+
+Selection uses an explicit conservative policy of reducing materialized tensor
+bytes. These bytes describe source storage removed, not measured physical
+traffic or a latency forecast. Native regression tests observe requested memory
+accesses by compiling the actual emitted LLVM through the selected toolchain's
+load/store coverage instrumentation; complete results, caller aliases,
+canaries and carried state are checked independently. These instrumented host
+observations do not measure cache/DRAM traffic, device transfers, machine spill
+traffic or accelerator timing. Final native/model execution remains necessary.
+
+```bash
+python -B -m pytest merlin/tests/ir/test_permuted_destinations.py \
+  merlin/tests/ir/test_automatic_destinations.py \
+  merlin/tests/ir/test_automatic_rounding.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/permuted-destinations"
+```
 
 ## Compact dense loops and operand retention
 

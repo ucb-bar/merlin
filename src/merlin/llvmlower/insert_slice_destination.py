@@ -1,4 +1,7 @@
-"""Exact destination passing for a pointwise producer inserted into a splat.
+"""Exact pointwise destination passing into padded or permuted tensors.
+
+Permuted outputs retain input maps and scalar/loop order. Each original
+producer/transpose pair is visited once; generated writers are not candidates.
 
 The scalar body is cloned unchanged. Static unit-stride slices, an unused output
 block argument, a sole tensor-result use, and pure arithmetic are required.
@@ -54,7 +57,7 @@ def _border_destination(empty, value, shape, offsets, sizes):
     return operations, current
 
 
-def _safe_source(producer, insert):
+def _safe_source(producer, insert, *, destination=None, allow_constant_captures=False, bounded_intrinsics=False):
     """Moving scalar arithmetic may cross constants/storage constructors only."""
     from xdsl.dialects import arith, builtin, func
 
@@ -66,26 +69,38 @@ def _safe_source(producer, insert):
         return False
     ancestor = parent
     while ancestor is not None:
-        allowed = {"llvm.emit_c_interface"} if isinstance(ancestor, func.FuncOp) else (
-            {"llvm.data_layout", "llvm.target_triple"} if isinstance(ancestor, builtin.ModuleOp) else set()
+        allowed = (
+            {"llvm.emit_c_interface"}
+            if isinstance(ancestor, func.FuncOp)
+            else ({"llvm.data_layout", "llvm.target_triple"} if isinstance(ancestor, builtin.ModuleOp) else set())
         )
         if any(k not in allowed and not k.startswith("prov.") for k in ancestor.attributes):
             return False
         ancestor = ancestor.parent_op()
-    if any(not k.startswith("prov.") for op in (insert, insert.dest.owner, producer.outputs[0].owner)
-           for k in op.attributes):
+    destination = insert.dest if destination is None else destination
+    if any(
+        not k.startswith("prov.")
+        for op in (insert, destination.owner, producer.outputs[0].owner)
+        for k in op.attributes
+    ):
         return False
-    if (not pure_scalar_body(producer.body.block)
-            or any(not k.startswith("prov.") for k in producer.attributes)):
+    if not pure_scalar_body(producer.body.block, bounded_intrinsics=bounded_intrinsics) or any(
+        not k.startswith("prov.") for k in producer.attributes
+    ):
         return False
     if set(producer.properties) - {"indexing_maps", "iterator_types", "operandSegmentSizes"}:
         return False
     domain = producer.results[0].type.get_shape()
     for value, attr in zip(producer.inputs, producer.indexing_maps, strict=False):
         typ, mapping = value.type, attr.data
-        if (not isinstance(typ, TensorType) or not isinstance(typ.encoding, NoneAttr)
-                or any(n <= 0 for n in typ.get_shape()) or mapping.num_symbols
-                or mapping.num_dims != len(domain) or len(mapping.results) != len(typ.get_shape())):
+        if (
+            not isinstance(typ, TensorType)
+            or not isinstance(typ.encoding, NoneAttr)
+            or any(n <= 0 for n in typ.get_shape())
+            or mapping.num_symbols
+            or mapping.num_dims != len(domain)
+            or len(mapping.results) != len(typ.get_shape())
+        ):
             return False
         dimensions = []
         for extent, expression in zip(typ.get_shape(), mapping.results, strict=True):
@@ -103,7 +118,15 @@ def _safe_source(producer, insert):
             if owner is not producer.body.block and (
                 not isinstance(owner, Operation) or owner.parent_block() is not producer.body.block
             ):
-                return False
+                if (
+                    not allow_constant_captures
+                    or not isinstance(owner, arith.ConstantOp)
+                    or owner.parent_block() is not block
+                    or not isinstance(owner.value, (builtin.IntegerAttr, builtin.FloatAttr))
+                    or set(owner.properties) != {"value"}
+                    or any(not k.startswith("prov.") for k in owner.attributes)
+                ):
+                    return False
     cursor = producer.next_op
     while cursor is not insert:
         if cursor is None or not isinstance(cursor, (arith.ConstantOp, tensor.EmptyOp, tensor.SplatOp)):
@@ -114,8 +137,111 @@ def _safe_source(producer, insert):
     return True
 
 
+def rewrite_permuted_outputs(module, *, index_bits, max_added_operations, max_metadata_items):
+    """Forward sole-use pointwise results into their permuted destinations.
+
+    Input maps, scalar instruction order and loop order stay unchanged. Only
+    the output map and tensor type change. This removes a materialization;
+    strided output stores do not imply a latency improvement.
+    """
+    from math import prod
+
+    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, Float32Type, Float64Type, IntegerType
+    from xdsl.dialects.linalg.ops import GenericOp, TransposeOp
+
+    if type(index_bits) is not int or not 2 <= index_bits <= 128:
+        raise ValueError("permuted destinations require an explicit index width")
+    if any(type(n) is not int or n < 0 for n in (max_added_operations, max_metadata_items)):
+        raise ValueError("permuted destination budgets must be nonnegative integers")
+    accepted, added, metadata = [], 0, 0
+    candidates = [(op, op.operands[0].owner) for op in module.walk() if isinstance(op, TransposeOp)]
+    for transpose, original_producer in candidates:
+        producer = transpose.operands[0].owner
+        if (
+            producer is not original_producer
+            or not isinstance(producer, GenericOp)
+            or producer.parent is not transpose.parent
+            or len(producer.results) != 1
+            or len(producer.outputs) != 1
+            or len(tuple(producer.results[0].uses)) != 1
+            or not isinstance(producer.outputs[0].owner, tensor.EmptyOp)
+            or not isinstance(transpose.operands[1].owner, tensor.EmptyOp)
+        ):
+            continue
+        if set(transpose.properties) - {"permutation", "operandSegmentSizes"} or any(
+            set(value.owner.properties) - {"operandSegmentSizes"}
+            for value in (producer.outputs[0], transpose.operands[1])
+        ):
+            continue
+        shapes = [value.type for value in (*producer.operands, *producer.results, *transpose.results)]
+        if any(
+            not isinstance(t, TensorType) or not isinstance(t.encoding, NoneAttr) or any(d <= 0 for d in t.get_shape())
+            for t in shapes
+        ):
+            continue
+        rank = len(producer.results[0].type.get_shape())
+        permutation = tuple(transpose.permutation.get_values())
+        if (
+            not rank
+            or sorted(permutation) != list(range(rank))
+            or len(producer.iterator_types) != rank
+            or any(it.data.value != "parallel" for it in producer.iterator_types)
+            or producer.indexing_maps.data[-1].data != AffineMap.identity(rank)
+            or producer.body.block.args[-1].uses
+            or not _safe_source(
+                producer,
+                transpose,
+                destination=transpose.operands[1],
+                allow_constant_captures=True,
+                bounded_intrinsics=True,
+            )
+        ):
+            continue
+        sizes = []
+        for typ in shapes:
+            element = typ.get_element_type()
+            width = element.width.data if isinstance(element, IntegerType) else getattr(element, "bitwidth", None)
+            if not isinstance(element, (IntegerType, Float32Type, Float64Type)) or width not in (8, 16, 32, 64):
+                break
+            sizes.append(prod(typ.get_shape()) * (width // 8))
+        if len(sizes) != len(shapes) or any(size > (1 << (index_bits - 1)) - 1 for size in sizes):
+            continue
+        fields = rank * (len(producer.operands) + 2)
+        if added + 2 > max_added_operations or metadata + fields > max_metadata_items:
+            continue
+        empty = tensor.EmptyOp([], transpose.results[0].type)
+        maps = [
+            *producer.indexing_maps.data[:-1],
+            AffineMapAttr(AffineMap(rank, 0, tuple(AffineDimExpr(i) for i in permutation))),
+        ]
+        properties = dict(producer.properties)
+        properties["indexing_maps"] = ArrayAttr(maps)
+        replacement = GenericOp.create(
+            operands=[*producer.inputs, empty.tensor],
+            result_types=[empty.tensor.type],
+            properties=properties,
+            attributes=dict(producer.attributes),
+            regions=[producer.body.clone()],
+        )
+        block = producer.parent
+        block.insert_ops_before([empty, replacement], producer)
+        transpose.results[0].replace_all_uses_with(replacement.results[0])
+        block.erase_op(transpose)
+        block.erase_op(producer)
+        accepted.append({"permutation": permutation})
+        added += 2
+        metadata += fields
+    module.verify()
+    return accepted
+
+
 def rewrite_module(
-    module, *, initialize_border_only=False, max_added_operations=None, max_metadata_items=None, index_bits=None,
+    module,
+    *,
+    initialize_border_only=False,
+    max_added_operations=None,
+    max_metadata_items=None,
+    index_bits=None,
 ):
     """Rewrite proved static regions, optionally bounded before constructing IR.
 
@@ -168,8 +294,12 @@ def rewrite_module(
 
             element = dest_type.get_element_type()
             width = element.width.data if isinstance(element, IntegerType) else getattr(element, "bitwidth", None)
-            if (type(width) is not int or width <= 0 or width % 8
-                    or prod(dest_type.get_shape()) * (width // 8) >= 2 ** (index_bits - 1)):
+            if (
+                type(width) is not int
+                or width <= 0
+                or width % 8
+                or prod(dest_type.get_shape()) * (width // 8) >= 2 ** (index_bits - 1)
+            ):
                 continue
         if len(dest_type.get_shape()) != rank or source_type.get_element_type() != dest_type.get_element_type():
             continue
@@ -206,8 +336,12 @@ def rewrite_module(
         growth = 2 + (3 * slabs if initialize_border_only else 1)
         # Each emitted slice/insert carries rank-sized type and geometry data.
         metadata = (12 * slabs + 12) * rank
-        if (max_added_operations is not None and added_operations + growth > max_added_operations
-                or max_metadata_items is not None and metadata_items + metadata > max_metadata_items):
+        if (
+            max_added_operations is not None
+            and added_operations + growth > max_added_operations
+            or max_metadata_items is not None
+            and metadata_items + metadata > max_metadata_items
+        ):
             continue
         empty = tensor.EmptyOp([], dest_type)
         if initialize_border_only:
