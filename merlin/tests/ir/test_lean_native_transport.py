@@ -65,6 +65,7 @@ def _child(tmp_path, plan, *, extra="", timeout=5):
         "_PG_BINDING": binding,
         "_PG_MAX_BYTES": 1_000_000,
         "_PG_TIMEOUT": timeout,
+        "_PG_DEADLINE": None,
         "_PG_RECORDS": [],
     }
     runner = tmp_path / "child.py"
@@ -180,15 +181,27 @@ def test_actual_ordinary_runner_binding_compiles_without_string_inference(tmp_pa
     assert "pipeline.split" not in transport.NATIVE
 
 
-@pytest.mark.parametrize("change", ["duplicate-call", "replace-parse", "rename-owner"])
+@pytest.mark.parametrize(
+    "change", ["duplicate-call", "replace-parse", "rename-owner", "replace-context", "replace-module"]
+)
 def test_unrecognized_runner_shape_refuses_before_execution(tmp_path, plan, change):
     source = pipeline._select_runner(plan.pipeline(), frozenset(), emit=pipeline.EMIT_TRANSLATE)
     if change == "duplicate-call":
         source += "\n_run_stages(ctx, module, pipeline, 0)\n"
     elif change == "replace-parse":
         source = source.replace("ir.Module.parse(f.read(), ctx)", "ir.Module.parse(replacement, ctx)")
-    else:
+    elif change == "rename-owner":
         source = source.replace("module = ir.Module.parse", "other = ir.Module.parse")
+    elif change == "replace-context":
+        source = source.replace(
+            "_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES,\n",
+            "_run_stages(other_ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES,\n",
+        )
+    else:
+        source = source.replace(
+            "_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES,\n",
+            "_run_stages(ctx, other_module, pipeline, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES,\n",
+        )
     with pytest.raises(ValueError, match="native proof transport"):
         transport.bind_runner(
             source, directory=tmp_path, run="fresh-run", plan=plan, binding={}, max_bytes=1_000_000, timeout=5
@@ -213,3 +226,23 @@ def test_child_rejects_corrupted_acknowledgment_before_suffix(tmp_path, plan, mo
     assert "stale or mismatched native proof acknowledgment" in result.stderr
     assert len((owner / "executed.jsonl").read_text().splitlines()) == 4
     assert transport.TOKEN not in result.stdout
+
+
+def test_compiler_identity_measurement_has_a_real_subprocess_deadline(tmp_path):
+    compiler = tmp_path / "hung-compiler"
+    marker = tmp_path / "identity.pid"
+    compiler.write_text(
+        f"#!{sys.executable}\nimport os,time\nfrom pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text(str(os.getpid()))\ntime.sleep(30)\n"
+    )
+    compiler.chmod(0o755)
+    import subprocess
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        transport.identity(compiler, timeout=0.5)
+    assert marker.is_file()
+
+
+def test_expired_identity_budget_does_not_start_a_compiler(tmp_path):
+    with pytest.raises(TimeoutError, match="identity deadline expired"):
+        transport.identity(tmp_path / "absent", timeout=0)

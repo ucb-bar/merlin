@@ -24,12 +24,17 @@ def canonical(value) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
 
 
+def _file_sha(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
 def fingerprint(path: Path) -> dict:
     path = Path(path).absolute()
     return {
         "invocation_path": str(path),
         "resolved_path": str(path.resolve(strict=True)),
-        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "sha256": _file_sha(path),
     }
 
 
@@ -42,21 +47,26 @@ def _pg_identity():
     from torch_mlir._mlir_libs import _mlir
     def file(path):
         path = Path(path).absolute()
+        with path.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
         return {"invocation_path": str(path), "resolved_path": str(path.resolve(strict=True)),
-                "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+                "sha256": digest}
     return {"compiler_python": file(sys.executable), "mlir_binding": file(_mlir.__file__),
             "mlir_capi": file(Path(_mlir.__file__).with_name("libTorchMLIRAggregateCAPI.so")),
             "torch_mlir_version": importlib.metadata.version("torch-mlir")}
 """
 
 
-def identity(compiler_python: Path) -> dict:
+def identity(compiler_python: Path, *, timeout: float) -> dict:
     """Measure the interpreter and loaded native bindings actually selected for execution."""
+    if timeout <= 0:
+        raise TimeoutError("native compiler identity deadline expired")
     result = subprocess.run(
         [str(compiler_python), "-c", IDENTITY_SOURCE + "\nimport json; print(json.dumps(_pg_identity()))"],
         check=True,
         capture_output=True,
         text=True,
+        timeout=timeout,
     )
     return json.loads(result.stdout)
 
@@ -165,7 +175,10 @@ def _pg_record(name, entry, before, after):
 
 
 def _pg_parse(path, ctx):
+    global _PG_PARSED_MODULE, _PG_PARSED_CONTEXT
     from pathlib import Path
+    if _PG_RECORDS:
+        raise ValueError("native gate requires one original parsed module")
     if _pg_identity() != _PG_BINDING['consumer']:
         raise ValueError('native compiler identity differs before parsing')
     payload = Path(path).read_bytes()
@@ -174,14 +187,17 @@ def _pg_parse(path, ctx):
     module = ir.Module.parse(payload.decode('utf-8'), ctx)
     _pg_domain(module)
     _pg_record('native-parse', 'torch_mlir.ir.Module.parse', payload, _pg_text(module))
+    _PG_PARSED_MODULE, _PG_PARSED_CONTEXT = module, ctx
     return module
 
 
 def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(), pre_generalize=()):
-    import json, time
+    import json, time, sys
     from pathlib import Path
     if pipeline != _PG_PIPELINE or erase or mid or late or post_openmp or pre_generalize:
         raise ValueError('native gate consumer differs from the authored ordinary plan')
+    if module is not _PG_PARSED_MODULE or ctx is not _PG_PARSED_CONTEXT:
+        raise ValueError('native gate requires the original parsed Module and Context')
     if _PG_RECORDS != ['native-parse']:
         raise ValueError('native gate requires one actual parsed module and one barrier')
     for name, entry in _PG_PHASES:
@@ -199,12 +215,13 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(), p
     request = {'schema': 'merlin.lean.native_hold.request.v1', 'run': _PG_RUN,
                'plan_sha256': _PG_PLAN_SHA, 'held_sha256': _pg_sha(held), 'bytes': len(held),
                'binding_sha256': _pg_sha(_pg_canonical(_PG_BINDING)),
-               'boundary_count': len(_PG_RECORDS), 'consumer': _pg_identity()}
+               'boundary_count': len(_PG_RECORDS), 'consumer': _pg_identity(),
+               'consumer_argv': list(sys.argv)}
     encoded = _pg_canonical(request)
     pending = owner / 'request.pending'
     pending.write_bytes(encoded)
     pending.replace(owner / 'request.json')
-    deadline = time.monotonic() + _PG_TIMEOUT
+    deadline = _PG_DEADLINE if _PG_DEADLINE is not None else time.monotonic() + _PG_TIMEOUT
     while not (owner / 'ack.json').is_file():
         if time.monotonic() >= deadline:
             raise TimeoutError('native tensor proof acknowledgment timed out')
@@ -235,7 +252,17 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(), p
 """
 
 
-def bind_runner(source: str, *, directory: Path, run: str, plan, binding: dict, max_bytes: int, timeout: int) -> str:
+def bind_runner(
+    source: str,
+    *,
+    directory: Path,
+    run: str,
+    plan,
+    binding: dict,
+    max_bytes: int,
+    timeout: int,
+    deadline: float | None = None,
+) -> str:
     """Instrument only the exact ordinary parse/staged call; refuse other runner shapes."""
     tree = ast.parse(source)
     parses = [
@@ -261,6 +288,13 @@ def bind_runner(source: str, *, directory: Path, run: str, plan, binding: dict, 
     ]
     if len(parses) != 1 or len(calls) != 1:
         raise ValueError("native proof transport requires one ordinary parse and staged call")
+    expected_call = ast.parse(
+        "_run_stages(ctx, module, pipeline, _ERASE_SELF_COPY, _MID_STAGES, _LATE_STAGES, "
+        "_POST_OPENMP_STAGES, _PRE_GENERALIZE_STAGES)",
+        mode="eval",
+    ).body
+    if ast.dump(calls[0].value) != ast.dump(expected_call):
+        raise ValueError("native proof transport refuses changed ordinary staged-call arguments")
     parsed = parses[0]
     if ast.dump(parsed) != ast.dump(ast.parse("ir.Module.parse(f.read(), ctx)", mode="eval").body):
         raise ValueError("native proof transport refuses an unrecognized parse consumer")
@@ -284,6 +318,7 @@ def bind_runner(source: str, *, directory: Path, run: str, plan, binding: dict, 
         "_PG_BINDING": binding,
         "_PG_MAX_BYTES": max_bytes,
         "_PG_TIMEOUT": timeout,
+        "_PG_DEADLINE": deadline,
         "_PG_RECORDS": [],
     }
     header = "\n".join(f"{name} = {value!r}" for name, value in config.items())
@@ -333,6 +368,7 @@ def run_command(command, *, directory: Path, callback, run: str, plan, binding: 
                         "binding_sha256": hashlib.sha256(canonical(binding)).hexdigest(),
                         "boundary_count": len(plan.boundaries.boundaries),
                         "consumer": binding["consumer"],
+                        "consumer_argv": [str(x) for x in command[1:]],
                     }
                     if len(current) > max_bytes or descriptor != expected:
                         raise ValueError("native hold request differs from actual source, plan or consumer")
@@ -349,6 +385,8 @@ def run_command(command, *, directory: Path, callback, run: str, plan, binding: 
                     temporary.write_bytes(encoded)
                     temporary.replace(ack)
                     served = True
+        (directory / "stdout.log").write_text(stdout)
+        (directory / "stderr.log").write_text(stderr)
         if process.returncode == 0:
             if not served:
                 raise ValueError("native consumer succeeded without requesting its tensor proof barrier")
@@ -358,12 +396,19 @@ def run_command(command, *, directory: Path, callback, run: str, plan, binding: 
             if [x for x in stdout.splitlines() if x.startswith(TOKEN)] != [expected_token]:
                 raise ValueError("native proof barrier completion is absent or inconsistent")
         return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
-    except BaseException:
+    except BaseException as exc:
         if process.poll() is None:
             process.terminate()
             try:
-                process.communicate(timeout=5)
+                stdout, stderr = process.communicate(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
-                process.communicate()
+                stdout, stderr = process.communicate()
+        else:
+            stdout, stderr = process.communicate()
+        try:
+            (directory / "stdout.log").write_text(stdout)
+            (directory / "stderr.log").write_text(stderr)
+        except OSError as evidence_error:
+            exc.add_note(f"native child output could not be retained: {evidence_error}")
         raise
