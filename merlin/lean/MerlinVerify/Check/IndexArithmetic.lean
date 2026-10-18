@@ -10,20 +10,25 @@ open MerlinVerify MerlinVerify.Check MerlinVerify.Sem.Ops
 open IndexRanges
 
 inductive Kind where
-  | add | sub | mul
+  | add | sub | mul | band | bor | bxor
   deriving DecidableEq
 
 def Kind.name : Kind → String
   | .add => "arith.addi" | .sub => "arith.subi" | .mul => "arith.muli"
+  | .band => "arith.andi" | .bor => "arith.ori" | .bxor => "arith.xori"
 
 def Kind.bits (kind : Kind) {ib : Nat} (x y : BitVec ib) : BitVec ib :=
   match kind with
   | .add => x + y | .sub => x - y | .mul => x * y
+  | .band => x &&& y | .bor => x ||| y | .bxor => x ^^^ y
 
 def kind? (name : String) : Option Kind :=
   if name = "arith.addi" then some .add else
   if name = "arith.subi" then some .sub else
-  if name = "arith.muli" then some .mul else none
+  if name = "arith.muli" then some .mul else
+  if name = "arith.andi" then some .band else
+  if name = "arith.ori" then some .bor else
+  if name = "arith.xori" then some .bxor else none
 
 def singletonEvidence (ib : Nat) (kind : Kind) (left right : IndexRanges.Fact) : Option Interval :=
   match left.info, right.info with
@@ -98,7 +103,13 @@ theorem kind?_name {name : String} {kind : Kind} (h : kind? name = some kind) : 
     · cases h; assumption
     · split at h
       · cases h; assumption
-      · cases h
+      · split at h
+        · cases h; assumption
+        · split at h
+          · cases h; assumption
+          · split at h
+            · cases h; assumption
+            · cases h
 
 /-- A runtime index remains initialized even when its bounds are unknown or wrap negative.
 Proved singletons or a no-wrap addition range can contribute new interval evidence. -/
@@ -108,7 +119,7 @@ def rule (ib : Nat) (_ : IndexRanges.FEnv) (op : Op) (fs : List IndexRanges.Fact
   | [left, right], [r], some kind =>
     if unmodelledAttr? op.blind = none ∧ dialectOf op.name = "arith" ∧
         left.base = ⟨.scalar .index, true⟩ ∧ right.base = ⟨.scalar .index, true⟩ ∧
-        r.ty = .index ∧ op.regions = [] ∧ overflowFlags op = [] then
+        r.ty = .index ∧ op.regions = [] ∧ overflowFlags op = [] ∧ Arith.fastmathKey op = "0" then
       some [⟨⟨.scalar .index, true⟩, evidence ib kind left right⟩]
     else none
   | _, _, _ => none
@@ -124,7 +135,7 @@ theorem rule_sound (ib : Nat) : ∀ Γ op fs rs,
   · next _ _ _ left right r kind hr hk =>
     split at h
     · next hc =>
-      obtain ⟨hm, hd, hl, hright, hty, hregs, hflags⟩ := hc
+      obtain ⟨hm, hd, hl, hright, hty, hregs, hflags, _⟩ := hc
       cases h
       obtain _ | ⟨hx, hrest⟩ := ha
       obtain _ | ⟨hy, hnil⟩ := hrest
