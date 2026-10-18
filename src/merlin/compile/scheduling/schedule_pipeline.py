@@ -154,6 +154,7 @@ def shared_library_sources():
         "merlin.sched.ir.expr",
         "merlin.sched.ir.integer_domain",
         "merlin.compile.scheduling.selected_contracts",
+        "merlin.compile.scheduling.dense_contracts",
         "merlin.targetgen.isa_spec",
         "merlin.targetgen.isa_dialect_gen",
     )

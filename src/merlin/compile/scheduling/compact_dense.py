@@ -9,7 +9,7 @@ No target lookup, opaque output inference, or latency model is used here.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 
 from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, TensorArg, Var, select
 from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
@@ -61,6 +61,7 @@ class DenseLoopAdapter:
     synchronous_completion: bool
     exact_accumulator_continuation: bool
     index_bits: int
+    qualification_identity: str | None = None
 
     def __post_init__(self):
         if not callable(self.encode) or not callable(self.project):
@@ -72,6 +73,10 @@ class DenseLoopAdapter:
             raise ValueError("dense lowering requires selected configuration and numerical policy")
         if any(type(x) is not bool for x in (self.synchronous_completion, self.exact_accumulator_continuation)):
             raise ValueError("dense completion and continuation declarations must be Boolean")
+        if self.qualification_identity is not None and (
+            type(self.qualification_identity) is not str or not self.qualification_identity.strip()
+        ):
+            raise ValueError("dense qualification identity must be nonempty or unknown")
         if type(self.index_bits) is not int or self.index_bits not in (32, 64):
             raise ValueError("dense C index arithmetic requires a selected signed 32 or 64-bit representation")
 
@@ -135,6 +140,7 @@ class CompactDenseResult:
     choice: DenseChoice
     realization: dict
     index_bits: int
+    selected_contracts: object = None
 
     def emit_c(self, instruction_set, *, symbol):
         """Use the existing emitter with the selected, checked loop index width.
@@ -144,7 +150,20 @@ class CompactDenseResult:
         """
         from merlin.sched.codegen import emit_c_function
 
-        return emit_c_function(self.kernel, instruction_set, symbol=symbol, index_bits=self.index_bits)
+        def fresh():
+            if self.selected_contracts is not None:
+                self.selected_contracts.revalidate()
+            receipt = self.realization.get("pipeline")
+            if receipt is not None and (
+                self.kernel.digest() != receipt["kernel_sha256"]
+                or _dense_library_sources() != receipt["library_sources_sha256"]
+            ):
+                raise ValueError("dense checked kernel or shared library changed; replan before emission")
+
+        fresh()
+        source = emit_c_function(self.kernel, instruction_set, symbol=symbol, index_bits=self.index_bits)
+        fresh()
+        return source
 
 
 @dataclass(frozen=True)
@@ -352,7 +371,7 @@ def emit_compact_dense(
 
 def schedule_compact_dense(
     problem: DenseProblem,
-    resources: DenseResources,
+    resources: DenseResources | None,
     storage: DenseLoopStorage,
     adapter: DenseLoopAdapter,
     *,
@@ -363,6 +382,9 @@ def schedule_compact_dense(
     outer_order: tuple[str, str] = ("m", "n"),
     verification_timeout_ms: int = 2000,
     max_repairs: int = 1,
+    selected_contracts=None,
+    reservations=(),
+    pass_order=(),
 ):
     """Ordinary scheduling entry: choose, emit and independently verify output.
 
@@ -371,47 +393,162 @@ def schedule_compact_dense(
     rechecked. A concrete invariant failure never triggers fallback. The explicit
     disjointness premise belongs to the original source/runtime boundary, not
     to an optimization candidate. Missing decoder/completion facts diagnose.
+    With selected contracts, geometry, formats and assigned windows are checked
+    against both pinned documents; resources=None derives available budgets.
+    Reservations name canonical backing bytes after upstream allocation.
     """
     if type(external_buffers_disjoint) is not bool or not external_buffers_disjoint:
         raise ValueError("dense scheduling cannot reorder possibly aliased external buffers")
     if type(max_repairs) is not int or max_repairs not in (0, 1):
         raise ValueError("compact dense supports a bounded zero or one repair")
 
-    def emit(block):
-        return emit_compact_dense(problem, block, storage, adapter, name=name, dtypes=dtypes, outer_order=outer_order)
+    from merlin.transforms.pipeline import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
     from .compact_verification import DenseVerificationUnavailable, verify_compact_dense
+    from .selected_contracts import SelectedSchedulingContracts
+
+    if selected_contracts is not None:
+        if type(selected_contracts) is not SelectedSchedulingContracts or selected_contracts.dense is None:
+            raise ValueError("compact dense requires a selected dense scheduling contract")
+        selected_contracts.revalidate()
+        resources, adapter = selected_contracts.dense.bind(
+            problem, storage, adapter, dtypes=dtypes, hardware=selected_contracts.hardware_identity,
+            policy=selected_contracts.numerical_policy, resources=resources, reservations=reservations,
+        )
+    elif resources is None or reservations:
+        raise ValueError("dense resource derivation and reservations require selected RTL/software contracts")
+    sources = _dense_library_sources()
+    binding = None if selected_contracts is None else selected_contracts.record(scopes=(
+        "dense_geometry", "dense_storage_windows", "dense_numerics_and_execution", "dense_instruction_bindings"
+    ))
+    context = PipelineContext(
+        hardware=adapter.configuration_identity, numerical_policy=adapter.numerical_policy_identity,
+        resources=_digest((asdict(resources), asdict(storage), tuple(asdict(r) for r in reservations))),
+        execution=_digest((binding, adapter.qualification_identity, adapter.synchronous_completion,
+                           adapter.exact_accumulator_continuation, adapter.index_bits)), library=_digest(sources),
+    )
+    state = {"problem": asdict(problem), "resources": asdict(resources), "storage": asdict(storage),
+             "dtypes": dtypes, "outer_order": outer_order, "name": name, "static_budget": static_budget,
+             "external_buffers_disjoint": external_buffers_disjoint, "kernel": None}
+
+    def fingerprint(current):
+        return _digest({**current, "kernel": None if current["kernel"] is None else current["kernel"].digest()})
+
+    def structure(current):
+        if current["kernel"] is not None and check_structure(current["kernel"]):
+            raise ValueError("dense pipeline requires structurally valid kernel IR")
+
+    session = PipelineSession(state, context=context, ir_level="compact_dense", max_repairs=max_repairs,
+                              fingerprint=fingerprint, verify_ir=structure)
+    specs = (
+        PassSpec("admission", 0, produces=("legality",), mutates_ir=False, ir_level="compact_dense"),
+        PassSpec("blocking", 2, requires=("legality",), produces=("choice",), mutates_ir=False,
+                 ir_level="compact_dense"),
+        PassSpec("emission", 5, requires=("choice",), produces=("emitted",), invalidates=("*",),
+                 ir_level="compact_dense"),
+        PassSpec("realization", 5, requires=("emitted",), produces=("realization",), mutates_ir=False,
+                 ir_level="compact_dense"),
+    )
+    names = tuple(spec.name for spec in specs)
+    if type(pass_order) is not tuple or (
+        pass_order and (len(pass_order) != len(names) or set(pass_order) != set(names))
+    ):
+        raise ValueError("explicit dense pass order must name each pass exactly once")
+    ordered = tuple({spec.name: spec for spec in specs}[name] for name in (pass_order or names))
+    validate_pass_order(ordered)
+
+    def fresh():
+        if selected_contracts is not None:
+            selected_contracts.revalidate()
+        if sources != _dense_library_sources():
+            raise ValueError("dense shared library changed during compilation; replan")
+
+    def emit(block):
+        return emit_compact_dense(problem, block, storage, adapter, name=name, dtypes=dtypes, outer_order=outer_order)
 
     repairs = []
     search = resources
     for attempt in range(max_repairs + 1):
-        choice = choose_dense_block(
-            problem,
-            search,
-            static_budget=static_budget,
-            price=lambda block: sum(1 for _ in _static_calls(emit(block).body)),
-            admits=lambda block: storage.admits(problem, block, resources),
-            require_reuse=False,
-            k_limit=lambda m, n: storage.k_limit(problem, resources, m, n),
-        )
-        if choice is None:
-            return None
-        kernel = emit(choice.block)
-        try:
-            realization = verify_compact_dense(
-                kernel,
-                problem,
-                resources,
-                storage,
-                adapter,
-                static_budget=static_budget,
-                timeout_ms=verification_timeout_ms,
+        choice = None
+        unavailable = None
+
+        def admission():
+            if not adapter.synchronous_completion or not adapter.exact_accumulator_continuation:
+                raise ValueError("compact dense family needs synchronous completion and exact accumulator continuation")
+            return {"legality": {"selected_contracts": binding}}
+
+        def blocking():
+            nonlocal choice
+            choice = choose_dense_block(
+                problem, search, static_budget=static_budget,
+                price=lambda block: sum(1 for _ in _static_calls(emit(block).body)),
+                admits=lambda block: storage.admits(problem, block, resources), require_reuse=False,
+                k_limit=lambda m, n: storage.k_limit(problem, resources, m, n),
             )
-        except DenseVerificationUnavailable as exc:
-            if attempt == max_repairs or isinstance(exc.__cause__, ImportError):
-                raise
-            repairs.append({"discarded_kernel_sha256": kernel.digest(), "reason": str(exc)})
+            return {"choice": choice}
+
+        def emission():
+            state["kernel"] = emit(session.analysis("choice").block)
+            return {"emitted": state["kernel"].digest()}
+
+        def realization():
+            nonlocal unavailable
+            try:
+                report = verify_compact_dense(
+                    state["kernel"], problem, resources, storage, adapter,
+                    static_budget=static_budget, timeout_ms=verification_timeout_ms,
+                )
+            except DenseVerificationUnavailable as exc:
+                unavailable = exc
+                report = None
+            return {"realization": report}
+
+        actions = dict(admission=admission, blocking=blocking, emission=emission, realization=realization)
+        for spec in ordered:
+            fresh()
+            session.run(spec, actions[spec.name])
+            fresh()
+            if spec.name == "blocking" and choice is None:
+                return None
+        if unavailable is not None:
+            if attempt == max_repairs or isinstance(unavailable.__cause__, ImportError):
+                raise unavailable
+            repairs.append({"discarded_kernel_sha256": state["kernel"].digest(), "reason": str(unavailable)})
+            session.repair(stage=0, reason=str(unavailable))
+            state["kernel"] = None
             search = replace(resources, max_m_blocks=1, max_n_blocks=1, max_k_blocks=1)
         else:
-            realization["repairs"] = repairs
-            return CompactDenseResult(kernel, choice, realization, adapter.index_bits)
+            report = session.analysis("realization")
+            report["repairs"] = repairs
+            report["pipeline"] = {
+                "schema": "merlin.compact_dense_pipeline.v1", "context": asdict(context),
+                "kernel_sha256": state["kernel"].digest(), "library_sources_sha256": sources,
+                "selected_contracts": binding, "passes": [asdict(record) for record in session.records],
+                "repair_rounds": session.repair_round,
+            }
+            return CompactDenseResult(state["kernel"], choice, report, adapter.index_bits, selected_contracts)
+
+
+def _digest(value):
+    import hashlib
+    import json
+
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _dense_library_sources():
+    import hashlib
+    import importlib
+    from pathlib import Path
+
+    names = (
+        "merlin.compile.scheduling.compact_dense", "merlin.compile.scheduling.compact_verification",
+        "merlin.compile.scheduling.dense_contracts", "merlin.compile.scheduling.selected_contracts",
+        "merlin.compile.scheduling.block_schedule", "merlin.transforms.dense_planning",
+        "merlin.transforms.pipeline", "merlin.sched.ir.kernel", "merlin.sched.ir.expr",
+        "merlin.sched.ir.integer_domain", "merlin.sched.codegen", "merlin.sched.isa",
+        "merlin.targetgen.isa_spec",
+    )
+    return {
+        name: hashlib.sha256(Path(importlib.import_module(name).__file__).read_bytes()).hexdigest() for name in names
+    }

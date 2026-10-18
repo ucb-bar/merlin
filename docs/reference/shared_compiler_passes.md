@@ -30,6 +30,7 @@ code_refs:
   - src/merlin/llvmlower/codegen_env.py
   - src/merlin/sched/ir/integer_domain.py
   - src/merlin/compile/scheduling/selected_contracts.py
+  - src/merlin/compile/scheduling/dense_contracts.py
 ---
 
 # Shared compiler pass contracts
@@ -251,6 +252,128 @@ encoder/decoder contract. They keep their existing legal lowering. Integration
 requires that public semantic boundary, actual addressing and tail legality,
 completion/continuation qualification, and final emitted-effect checks. It does
 not require changing a target's instruction implementation to fit Merlin.
+
+### Selected RTL and software inputs for dense scheduling
+
+The ordinary shared entry now accepts `selected_contracts=selection`, using the
+same two pinned documents as configuration cleanup. The optional `dense` section
+of `merlin.schedule_effects.v1` has schema `merlin.dense_schedule.v1`:
+
+| Section | Required contents | Owner of the information |
+| --- | --- | --- |
+| `primitive` | `m`, `k`, `n`, each `{fact: [structural, path]}` | RTL geometry |
+| `formats` | `lhs`, `rhs`, `accumulator`, each with `dtype` and fact-backed `bits` | Software format interpretation, RTL widths |
+| `storage` | Those three roles, each with `resource`, canonical `backing`, fact-backed `row_bytes`, `origin_bytes`, `alignment_rows` | ISA physical mapping and RTL bounds |
+| `external` | `lhs`, `rhs`, `output` ISA byte-memory resource names | Software memory interface |
+| `instructions` | `lhs_load`, `rhs_load`, `preload`, `compute`, `store`, each naming its declared ISA instruction | Qualified software operation mapping |
+| `semantics` | `layout`, `arithmetic`, `reduction`, `initialization`, `continuation`, `completion`, `accumulator`, `ownership` | Qualified software/runtime behavior |
+| `support` | Positive `max_m_blocks`, `max_k_blocks`, `max_n_blocks`; Boolean `partial_output_tiles`, `partial_output_blocks`, `partial_reduction_tiles` | Supported software instruction domain |
+
+For this family, semantics must explicitly select `row_major`,
+`signed_integer_mac_modular`, `source_order`, `zero`, `exact`, `synchronous`,
+`addressable`, and `invocation_private`, respectively. Each MAC updates the
+signed accumulator modulo its declared bit width; no saturation, rounding,
+reassociation or intermediate precision change is admitted. The family supports
+signed i8/i16/i32 formats whose widths agree with RTL. Unsupported semantics,
+including unknown/asynchronous completion, diagnose rather than silently using
+a synchronous schedule. This declaration does not validate the original
+operation's numerical admission or qualify a target implementation.
+
+Capacities come from the selected ISA's memory resources and their RTL fact
+references; units must be bytes. Coordinates in each assigned view use the
+existing absolute `base * unit_bytes` mapping into its canonical backing.
+`origin_bytes` bounds the resource's interval in that same coordinate system;
+it is not an additional offset added by emission. Fact-backed row widths include
+physical padding. Different views of one ISA resource cannot disguise its
+backing or origin. Distinct resources may explicitly alias one backing.
+Unknown capacities, unresolved references, contradictory widths and misaligned
+or out-of-window assignments diagnose. Canonical alias mappings still require
+independent target/runtime qualification.
+
+The allocation owner supplies already assigned `DenseLoopStorage` windows,
+excluding other live state. Optional `reservations` are existing `AddressWindow`
+objects in canonical backing bytes; overlapping packing, DMA or other live
+reservations refuse. The scheduler derives operand/accumulator byte budgets
+from those windows and narrows optional `DenseResources` search controls to the
+selected limits. It never allocates an entire local memory merely because its
+RTL capacity is known. Simultaneously live views must remain disjoint, even in
+one SRAM. The runtime owner must establish external-buffer disjointness and
+invocation-private ownership; document labels and identities alone provide no
+such evidence.
+
+For example, a lowering integration with checked assignments calls:
+
+```python
+selection = read_scheduling_contracts(facts_path, software_path, target=target)
+problem = selection.dense.problem(m, k, n)  # Computation extents, RTL primitive.
+result = schedule_compact_dense(
+    problem, None, assigned_storage, qualified_adapter,
+    name=operation_name, dtypes=selection.dense.dtypes,
+    static_budget=code_growth_budget, external_buffers_disjoint=True,
+    selected_contracts=selection, reservations=live_reservations,
+)
+if result is not None:
+    source = result.emit_c(instruction_set, symbol=operation_name)
+```
+
+The adapter must match the selected hardware/numerical identities and carry an
+independently selected `qualification_identity`. The contract maps actual
+instruction names to projected dense operations. Known ISA memory effects must
+exactly match their operation roles, allowing explicitly declared execution
+resources. Extra persistent-state effects refuse. This initial logical-coordinate
+binding requires integer ISA arguments with one full-width encoded field each,
+unit alignment and widths at least the checked C index width. Actual argument
+names must match. It conservatively declines narrower encodings even if a
+particular shape might fit them. Public target mapping extensions can later
+establish those narrower ranges without weakening the check.
+
+Dense compilation now uses the existing `PipelineSession`: admission precedes
+blocking, emission invalidates earlier analyses, and realization checks the
+emitted loop IR. Invalid explicit `pass_order` is rejected before execution.
+A bounded checking-budget repair invalidates analyses and repeats all stages
+with the simpler block. The receipt binds current computation, storage,
+resources, numerical policy, execution qualification identity, shared source
+hashes and both selected input byte hashes. Files and shared implementation
+hashes are checked around every stage. `emit_c` rechecks the selected files,
+verified kernel digest and implementation hashes before and after rendering.
+These checks do not decode arbitrary native machine code or qualify provider
+C instruction renderers; those remain explicit integration obligations.
+
+`test_selected_dense_contracts.py` runs paired baseline/optimized emitted C for
+three synthetic configurations: 2x3x4 and 3x2x5 primitives, 8/16-bit inputs,
+32-bit accumulators, padded separate memories and unequal-width views in one
+shared backing. A signed 16-bit case forces accumulator wraparound and compares
+against independent exact Python arithmetic with explicit modular reduction.
+The same programs also run inside a complete neutral host graph: transpose
+packing, dense dispatch, host bias/state arithmetic and position/state updates
+over two invocations. Every output, carried state, position, input and guard is
+checked. A falsely qualified native implementation that resets each reduction
+tile fails the independent reference, even though its projected loop is valid.
+Actual command/load counters match reconstructed loop effects. Host
+packing and postprocessing counts are reported separately and remain unchanged.
+This is a neutral graph experiment, not a real full-model or hardware result.
+
+Reproduce the paired records without downloads:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_selected_dense_contracts.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/selected-dense" \
+  -o junit_family=xunit1 --junitxml "$TMPDIR/selected-dense-results.xml"
+```
+
+JUnit properties record scheduling times, per-arm C source bytes, joint native
+library size, actual commands, requested load bytes, host packing traffic,
+host arithmetic and dispatch counts, and whole neutral graph host-call wall
+samples. Native build time is joint; peak compilation memory and accelerator
+timing remain unmeasured. Samples include ABI overhead and are insufficient for
+a speedup claim. Smaller requested traffic does not establish latency savings.
+
+Existing target providers still need the fact-pinned dense declaration, checked
+allocation windows/reservations, qualified logical-operation projection and
+source-to-final-program conformance. Ordinary `lower_model` target routing has
+not been connected to this selected dense family: it retains its existing
+backend route. The integration must be supplied through public target hooks;
+no target source or protected reference compiler is imported by this mechanism.
 
 ## Executable schedule pipeline
 
