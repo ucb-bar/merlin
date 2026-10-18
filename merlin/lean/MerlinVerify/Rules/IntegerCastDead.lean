@@ -18,11 +18,12 @@ theorem total_exec {ib : Nat} {Γ : TEnv} {s : Op} (h : total Γ s = true)
   | none => simp [hr] at h
   | some f =>
     have hl := IntegerCast.read_legal hr
-    obtain ⟨value, hv, ht⟩ := he _ _ hl.2.2.2.2.2.2.1
+    obtain ⟨_, _, _, _, hresults, _, hinput, _, _, _, _, _⟩ := IntegerCast.read_legal hr
+    obtain ⟨value, hv, ht⟩ := he _ _ hinput
     cases value with
     | tensor _ => cases ht
     | scalar value =>
-      refine ⟨f.result, .scalar (f.kind.apply f.outputWidth value), hl.2.2.2.2.1, ?_⟩
+      refine ⟨f.result, .scalar (f.kind.apply f.outputWidth value), hresults, ?_⟩
       exact IntegerCast.cast_exec hl ctx call env hv (IntegerCast.int_type_change ht)
 
 def drop? (Γ : TEnv) (s : Op) (tail : List Op) : Bool :=
