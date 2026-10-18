@@ -26,6 +26,7 @@ dispatch table.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 import math
@@ -449,6 +450,17 @@ def _rewrite_planes(quantized: Any, recipe: Mapping[str, Any], annotated: int) -
     return [{**row, "status": "rewritten"} for row in rows]
 
 
+def _epilogue_of(recipe: Mapping[str, Any], activation_spec: Any) -> Any:
+    if not recipe.get("epilogue"):
+        return None
+    import _integer_epilogue as IE  # noqa: PLC0415 -- a sibling, by bare name
+
+    try:
+        return IE.Epilogue(recipe["epilogue"], activation_spec=activation_spec, recovery=recipe.get("recovery"))
+    except IE.EpilogueError as error:
+        raise RecipeError(f"epilogue: {error}") from error
+
+
 def build_quantizer(
     recipe: Mapping[str, Any],
     *,
@@ -678,6 +690,13 @@ def build_quantizer(
                 return candidates
             candidates -= dropped
 
+    def quantized_reader(reader: Any, source: Any) -> bool:
+        """Whether ``reader`` quantizes ``source`` on the activation grid at its input (an epilogue's exit)."""
+        family = family_of(reader) if reader.op == "call_function" else None
+        if family == "contraction" and family not in dynamic_families and reader.args and reader.args[0] is source:
+            return eligible(reader, family) and not (planes_block and _planes_site(planes_block, reader, owner(reader)))
+        return family == ACTIVATION_CONTRACTION and family not in dynamic_families and source in reader.args[:2]
+
     class CapabilityQuantizer(Quantizer):
         def __init__(self) -> None:
             self.activation = _spec(activation, is_weight=False, eps=eps)
@@ -694,6 +713,8 @@ def build_quantizer(
             self.dynamic_rows: list[dict[str, Any]] = []
             self.planes = _planes_spec(recipe, eps=eps) if planes_block else None
             self.annotated_planes = 0
+            # The recipe's output-path epilogue (_integer_epilogue): contraction + absorbed stages as one pattern.
+            self.epilogue = _epilogue_of(recipe, self.activation)
 
         def rewrite_dynamic(
             self, graph_module: Any, samples: Any = None, limit: int | None = None
@@ -783,6 +804,10 @@ def build_quantizer(
                 from m2m.capture.trace import attach_pt2e_conv_bn_folds
 
                 attach_pt2e_conv_bn_folds(graph_module, self.fold_candidates)
+            if self.epilogue is not None:  # after Conv+BN folding, before any observer sees a weight
+                self.epilogue.equalize(
+                    graph_module, lambda n: family_of(n) == "contraction" and eligible(n, "contraction")
+                )
             return graph_module
 
         def annotate(self, graph_module: Any) -> Any:
@@ -852,6 +877,10 @@ def build_quantizer(
                     torch.ops.aten.conv2d.default,
                 ):
                     stored = dataclasses.replace(self.weight, ch_axis=kernel.meta["val"].dim() - 1)
+                if self.epilogue is not None and not planes and node.target in self.epilogue.contractions:
+                    self.epilogue.annotate(node, stored, quantized_reader, owner(node))
+                    self.annotated += 1
+                    continue
                 node.meta["quantization_annotation"] = QuantizationAnnotation(
                     input_qspec_map={operand: self.planes if planes else self.activation, kernel: stored},
                     _annotated=True,
@@ -1337,7 +1366,9 @@ def apply_recipe(
     if weight_rounding is not None:
         samples = weight_rounding.track(samples)
     calibrated = 0
-    with torch.no_grad(), _RepeatedObservationSkip(prepared):
+    epilogue = quantizer.epilogue
+    tracking = epilogue.track(prepared) if epilogue is not None else contextlib.nullcontext()
+    with torch.no_grad(), _RepeatedObservationSkip(prepared), tracking:
         for sample in samples:
             if calibrated >= sample_limit:
                 break
@@ -1346,8 +1377,12 @@ def apply_recipe(
     if calibrated == 0:
         raise RecipeError("static calibration saw no input sample")
     weight_rounding_report = weight_rounding.apply() if weight_rounding is not None else None
+    if epilogue is not None and weight_rounding is None:
+        epilogue.correct_biases(prepared)  # GPTQ chose the codes itself; its bias is left as calibrated
     quantized = convert_pt2e(prepared, use_reference_representation=False, fold_quantize=True)
-    bias_grid = _bias_onto_accumulator_grid(quantized) if recipe.get("bias_domain") == "accumulator" else None
+    island = epilogue.finish(quantized, recipe.get("float_island")) if epilogue is not None else None
+    snap = recipe.get("bias_domain") == "accumulator" and epilogue is None
+    bias_grid = _bias_onto_accumulator_grid(quantized) if snap else None
     if original_frontend_snapshot is not None:
         from m2m.capture.trace import attach_quantization_boundaries
 
@@ -1394,6 +1429,7 @@ def apply_recipe(
         # Linears whose activation the static_planes block split into int8 digit planes (not counted
         # in annotated_contractions: integerization never sees them), with the same cost columns.
         **({"static_planes": _dynamic_summary(planes)} if recipe.get("static_planes") else {}),
+        **({"integer_epilogue": epilogue.census(), "float_island": island} if epilogue is not None else {}),
         "annotated_sums": quantizer.annotated_sums,
         "annotated_means": quantizer.annotated_means,
         # Sums and means the recipe's families cover and the graph does not requantize: left alone.
