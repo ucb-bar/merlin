@@ -517,6 +517,37 @@ with integer-only, single-rounding IEEE references, including integer64-to-float
 intermediate binary64 rounding would give a wrong answer. NaNs compare by class; f16/bf16 retain
 binding evidence only. Float-to-integer totality and explicit rounding/promises remain outside.
 
+`test_lean_index_cast_bounds.py` derives the entire unsigned range `[0, 2^w)` from actual
+initialized `iw` input bits when `w` is smaller than the claimed index width. It requires no
+input range annotation. Signed, equal-width and narrowing casts establish initialization but do
+not invent nonnegative bounds. The native companion checks high-bit inputs and captured reads;
+signed/OOB reads are never executed as fidelity evidence. `test_lean_index_range_add.py` carries
+these intervals through addition only when their entire result range fits the signed index domain.
+It tests exclusive upper bounds and the signed limit at both widths. Independent native offset
+references and a safe wrong-offset mutation distinguish definedness from rewrite correctness.
+
+`test_lean_dense_extract.py` qualifies rank-zero dense constant extraction by decoding the actual
+source constant at the claimed index width and checking the proposed scalar constant's exact bits.
+Escaping dense producers remain present; deletion requires an actual successful constant step and
+checked absence of all continuation uses. A shared recursive walker composes this stage before
+scalar carriers and integer rewrites. The native companion preserves exact integer/f32/f64 bits,
+including index32 wrapping and NaN payloads. Manually scope-preserved local materialization is
+labelled separately: actual constant hoisting across a generic region still abstains.
+
+`test_lean_scalar_bitcast.py` adds scalar support and source-definedness for same-width integer
+and integer/float raw-bit reinterpretations already modelled by the semantics. Supported native
+cases check exact bits with independent input-bit references, including NaN payloads and valid
+wrong-operand targets. Integer identity canonicalization remains an explicit rewrite abstention.
+Four separate native observations record a conservative model gap: legal float-to-float bitcasts,
+including f16/bf16, execute natively but are refused by the current Lean semantics. They are known-gap
+regressions and do not count as matching model/native qualification.
+
+The opt-in runtime gate currently wraps `lower_model` preprocessing through `model.upstream.mlir`.
+It does not automatically enclose earlier model preparation or the D1 native tensor passes inside
+`lower_to_llvm_ir`. Tested theorem routes for those passes must be distinguished from automatic
+coverage of a production compilation. Full shared-pass coverage still needs recorded enabled-pass
+and model/build denominators plus a gate spanning their actual tensor boundaries.
+
 ## Limits
 
 The corpus chooses defined inputs independently: divisors are nonzero, signed division overflow

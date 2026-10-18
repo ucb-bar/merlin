@@ -65,6 +65,18 @@ exact schema identity checks and bounds-only typed/untyped regressions correct t
 mismatch. The old theorem statements and the semantics remain unchanged; old affected chain
 receipts must be regenerated.
 
+Unsigned widening integer-to-index casts derive bounds from actual typed runtime bits, and
+nonwrapping interval addition retains them only below the signed limit at the claimed width.
+Unknown direct index inputs remain unbounded. Rank-zero dense extraction compares actual decoded
+values against checked scalar materialization candidates; cross-region constant hoisting remains
+outside its local theorem. Legal float-to-float bitcasts are another conservative model support
+gap: the current float-result branch accepts integer bits only. Native support-gap observations
+are kept separate from matching raw-bit integer/float reinterpretation evidence.
+
+The opt-in runtime handoff gate encloses preprocessing only. Earlier model preparation and the D1
+native tensor passes are not automatically included. Available proved/tested routes for those
+passes do not establish complete production-path coverage or a full-compiler correctness claim.
+
 Rank-zero `linalg.transpose` cannot currently be qualified: the installed MLIR binding crashes
 in verification, and assertion-enabled upstream `mlir-opt` reproduces an empty-permutation-map
 assertion in `TransposeOp::getIndexingMaps`. Passing Lean proofs do not establish native behavior

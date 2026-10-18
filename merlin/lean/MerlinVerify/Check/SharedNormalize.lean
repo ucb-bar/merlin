@@ -4,21 +4,26 @@ import MerlinVerify.Check.TypedNormalizeC1
 import MerlinVerify.Check.ReshapeNested
 import MerlinVerify.Check.IntegerBody
 import MerlinVerify.Check.ScalarCarrier
+import MerlinVerify.Check.DenseExtract
 
 namespace MerlinVerify.Check.SharedNormalize
 
 open MerlinVerify MerlinVerify.Sem.Ops
+
+/-- Local families share one recursive body traversal. The order lets materialization and
+carrier aliases expose scalar rewrite opportunities before the integer stage. -/
+def base (ib : Nat) (hints : List Op) : SplatNormalizer.Normalizer ib :=
+  BodyNormalize.sequential (DenseExtract.base ib (DenseExtract.hintOps hints))
+    (BodyNormalize.sequential (ScalarCarrier.base ib) (IntegerBody.base ib))
 
 /-- Adapt the exact body normalizers without assuming any producer facts at function entry.
 The source and target syntax supply only a finite traversal budget. -/
 def bodies : TypedNormalizer where
   run ib d Γ ss hints yields :=
     let depth := max (RegionDepth.ops ss) (RegionDepth.ops hints)
-    (BodyNormalize.recursive
-      (BodyNormalize.sequential (ScalarCarrier.base ib) (IntegerBody.base ib)) depth).run d Γ [] ss yields
+    (BodyNormalize.recursive (base ib hints) depth).run d Γ [] ss yields
   sound ib d Γ ss hints ns yields ctx call env hc hn he hi hd :=
-    (BodyNormalize.recursive
-      (BodyNormalize.sequential (ScalarCarrier.base ib) (IntegerBody.base ib))
+    (BodyNormalize.recursive (base ib hints)
       (max (RegionDepth.ops ss) (RegionDepth.ops hints))).sound
       d Γ [] ss ns yields ctx call env hc hn he (by intro f hf; cases hf) hi hd
 
