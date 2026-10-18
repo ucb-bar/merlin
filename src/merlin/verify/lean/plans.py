@@ -124,3 +124,33 @@ def preprocessing() -> Plan:
                 )
             )
     return Plan("lower_model structural preprocessing only", tuple(boundaries), "individual-preprocessing-boundaries")
+
+
+def preparation() -> Plan:
+    """Authored ordinary shared-preparation hook roster (no selected optional mutations).
+
+    Configuration admission is performed before entry by ``preparation.capture``. The final slot
+    records the whole remaining preparation tail against the actual returned file; it grants no
+    semantic permission to an ABI or numerical repair.
+    """
+    lower = "merlin.llvmlower"
+    slots = (
+        ("prepare-parse", "merlin.frontends.linalg_mlir.parse_mlir_file"),
+        ("prepare-torchao-affine", f"{lower}.torchao_affine.lower_torchao_affine_quant"),
+        ("prepare-scalar-squares", f"{lower}.scalar_square.canonicalize_scalar_squares"),
+        ("prepare-collapse-overrank-matmul", f"{lower}.passes_xdsl.collapse_overrank_matmul"),
+        ("prepare-propagate-quant-inner", "merlin.runtime.dispatch_runtime._propagate_quant_inner"),
+        ("prepare-qinner-lift", f"{lower}.qinner.lift"),
+        ("prepare-lower-quant-ext", f"{lower}.passes_xdsl.lower_quant_ext"),
+        ("prepare-bf16-matmul-f32acc", f"{lower}.passes_xdsl.lower_bf16_matmul_f32acc"),
+        ("prepare-fix-bool-sitofp", f"{lower}.passes_xdsl.fix_bool_sitofp"),
+        ("prepare-fix-bool-fptosi", f"{lower}.passes_xdsl.fix_bool_fptosi"),
+        ("prepare-scalarize-splat-inputs", f"{lower}.splat_inputs.scalarize_splat_inputs"),
+        ("prepare-print", "merlin.xdsl_dialects._common.text"),
+        ("prepare-finish", "merlin.runtime.backends.zephyr_model.prepare_for_lowering"),
+    )
+    return Plan(
+        "ordinary shared preparation only; no optional mutations or provider routing",
+        tuple(Boundary(*slot) for slot in slots),
+        "recorded-preparation-hooks-and-composite-tail",
+    )

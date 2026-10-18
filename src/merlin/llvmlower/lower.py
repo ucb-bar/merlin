@@ -38,6 +38,7 @@ from .transpose_maps import ensure_registered as _register_fold_weight_transpose
 
 if TYPE_CHECKING:
     from merlin.verify.lean.handoff import Options as SharedPassVerification
+    from merlin.verify.lean.preparation import CapturedPreparation
 
 _register_epilogue_fusion()
 _register_fold_weight_transpose()
@@ -100,6 +101,7 @@ def lower_model(
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
     shared_pass_verification: SharedPassVerification | None = None,
+    shared_pass_preparation: CapturedPreparation | None = None,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -158,6 +160,8 @@ def lower_model(
             observed = audit.directory is not None or compile_trace.active() is not None
             return preprocess_text(source, audit=audit) if observed else preprocess_text(source)
 
+        if shared_pass_preparation is not None and shared_pass_verification is None:
+            raise ValueError("captured preparation requires explicit shared-pass verification")
         handoff = work / "model.upstream.mlir"
         if shared_pass_verification is not None:
             from merlin.verify.lean import plans as verification_plans
@@ -170,7 +174,12 @@ def lower_model(
                 raise VerificationError("shared-pass verification requires planned structural preprocessing")
             expected_plan = verification_plans.preprocessing()
             verified = verify_shared_passes(
-                mlir_text, handoff, shared_pass_verification, preprocess, plan=expected_plan
+                mlir_text,
+                handoff,
+                shared_pass_verification,
+                preprocess,
+                plan=expected_plan,
+                **({"prefix": shared_pass_preparation} if shared_pass_preparation is not None else {}),
             )
             upstream_text, stats = verified.text, verified.stats
             stats["shared_pass_verification"] = str(verified.report)
@@ -286,6 +295,7 @@ def lower_model_file(
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
     shared_pass_verification: SharedPassVerification | None = None,
+    shared_pass_preparation: CapturedPreparation | None = None,
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
@@ -309,4 +319,5 @@ def lower_model_file(
         source_observation_effects=source_observation_effects,
         source_scalar_carrier=source_scalar_carrier,
         shared_pass_verification=shared_pass_verification,
+        shared_pass_preparation=shared_pass_preparation,
     )

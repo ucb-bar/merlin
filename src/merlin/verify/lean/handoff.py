@@ -14,9 +14,12 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from . import check, plans, stages
+
+if TYPE_CHECKING:
+    from .preparation import CapturedPreparation
 
 
 @dataclass(frozen=True)
@@ -84,6 +87,7 @@ def run(
     preprocess: Callable[[str], tuple[str, dict[str, Any]]],
     *,
     plan: plans.Plan | None = None,
+    prefix: CapturedPreparation | None = None,
 ) -> VerifiedPreprocessing:
     """Run and verify shared passes, or raise before a caller can consume their output.
 
@@ -114,6 +118,20 @@ def run(
         result.update(plan=str(manifest), plan_sha256=plan.sha256, expected_boundary_count=len(plan.boundaries))
         check._atomic_json(report, result)
     try:
+        prefix_records, prefix_frozen = [], {}
+        if prefix is not None:
+            from . import preparation
+
+            if plan is None:
+                raise VerificationError("preparation composition requires a planned preprocessing roster")
+            prefix_records, prefix_frozen = preparation.validate(prefix, options, source.encode("utf-8"))
+            result.update(
+                scope="captured source tensor IR through ordinary preparation and shared preprocessing",
+                coverage_granularity="planned-preparation-hooks-and-composite-tail-plus-preprocessing",
+                preparation_capture=str(prefix.root.parent / "capture.json"),
+                preparation_plan_sha256=prefix.plan.sha256,
+                expected_preparation_boundary_count=len(prefix.plan.boundaries),
+            )
         with stages.capture(evidence / "stages") as recording:
             target, stats = preprocess(source)
             output.write_text(target, encoding="utf-8")
@@ -125,6 +143,8 @@ def run(
             raise VerificationError("capture does not begin at the supplied source bytes")
         if (published[-1] / "after.mlir").read_bytes() != target.encode("utf-8"):
             raise VerificationError("capture does not end at the returned handoff bytes")
+        local_records = published
+        published = prefix_records + local_records
         result["boundaries"] = [p.name for p in published]
         for stage in published:
             receipt = check.check_typed_stage(stage, m2m_python=options.compiler_python, index_bits=options.index_bits)
@@ -153,19 +173,27 @@ def run(
         )
         if chain["verdict"] != "verified":
             raise VerificationError(chain.get("reason", "shared-pass chain did not verify"))
-        if _inventory(recording) != (published, frozen) or output.read_bytes() != target.encode("utf-8"):
+        if _inventory(recording) != (local_records, frozen) or output.read_bytes() != target.encode("utf-8"):
             raise VerificationError("shared-pass capture or handoff changed during validation")
         if plan is not None:
             plans.replay(plan, manifest, recording.root)
+        if prefix is not None and preparation.validate(prefix, options, source.encode("utf-8")) != (
+            prefix_records,
+            prefix_frozen,
+        ):
+            raise VerificationError("preparation capture changed during validation")
         result.update(
             verdict="verified",
             reason=(
-                "every planned preprocessing boundary and source definedness replayed"
+                "every planned preparation and preprocessing boundary and original-source definedness replayed"
+                if prefix is not None
+                else "every planned preprocessing boundary and source definedness replayed"
                 if plan is not None
                 else "every captured boundary and source definedness replayed; roster completeness not established"
             ),
             chain=str(chain_path),
-            source_sha256=_digest(source.encode("utf-8")),
+            source_sha256=_digest(prefix.source if prefix is not None else source.encode("utf-8")),
+            preprocessing_input_sha256=_digest(source.encode("utf-8")),
             handoff_sha256=_digest(target.encode("utf-8")),
             assumptions=chain["assumptions"],
             domain=chain["domain"],
