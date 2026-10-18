@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-10-18
 related: [output_epilogue_capabilities, accumulator_load_order]
-code_refs: [src/merlin/targetgen/quant_methodology.py, src/merlin/targetgen/_integer_epilogue.py, src/merlin/targetgen/_recipe_quantizer.py, src/merlin/targetgen/quantization_spec.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, packages/merlin-experiments/src/merlin_experiments/phase0/capture_recipe.py, packages/merlin-experiments/src/merlin_experiments/phase0/requirements.py, examples/gemmini/target/software-spec.yaml]
+code_refs: [src/merlin/targetgen/quant_methodology.py, src/merlin/targetgen/_integer_epilogue.py, src/merlin/targetgen/_recipe_quantizer.py, src/merlin/targetgen/_recipe_observers.py, src/merlin/targetgen/_m2m_capture_artifacts.py, src/merlin/targetgen/quantization_spec.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, packages/merlin-experiments/src/merlin_experiments/phase0/capture_recipe.py, packages/merlin-experiments/src/merlin_experiments/phase0/requirements.py, examples/gemmini/target/software-spec.yaml]
 ---
 
 # A target's quantization methodology, applied to every model
@@ -172,6 +172,9 @@ the original single-operand grid. This additional precision also requires measur
 - A capture: `meta.json` `quantization_stats.integer_epilogue`, with patterns, exits, absorbed
   stages, equalized pairs, bias corrections and kept sites with reasons; `float_island` holds the
   operations checked fp32.
+- Complete frontend traces use compact JSON. For sessions, the producer refreshes each trace's
+  metadata pointer and capture receipt, then inventories the final session bundle after all
+  sidecars exist. Every trace member and byte binding remains in the record.
 - A model-specific candidate is made with
   `python -m merlin.targetgen.quant_methodology --spec S --contract C --base B --model M --out NEW`.
   It writes a NEW file and never overwrites one. Reviewed recipes stay readable and unchanged.
