@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
 STAGING_PREFIX = ".staging-"
+_PUBLICATION_LOCK = threading.Lock()
 
 
 def _corpus_members(root: Path) -> list[Path]:
@@ -73,12 +75,14 @@ def write_staged(
     out_root.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=STAGING_PREFIX, dir=out_root))
     try:
-        _link_existing(stage, out_root, member)
+        with _PUBLICATION_LOCK:
+            _link_existing(stage, out_root, member)
         written = write(stage)
         if operator_exclusion is not None:
             for created in _corpus_members(stage):
                 operator_exclusion.check_member(created)
-        moved = promote(stage, out_root)
+        with _PUBLICATION_LOCK:
+            moved = promote(stage, out_root)
         if isinstance(written, (str, Path)) and written and Path(written).is_relative_to(stage):
             return moved.get(Path(written), out_root / Path(written).relative_to(stage))
         return written

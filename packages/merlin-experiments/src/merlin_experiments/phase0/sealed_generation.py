@@ -19,6 +19,7 @@ import json
 import os
 import shutil
 import tempfile
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -84,7 +85,10 @@ class SealedCaptureSource(PytorchRefSource):
         venv = Path(config["venv"])
         super().__init__(m2m_dir=Path(config["m2m_root"]), python=venv / "bin/python")
         self.config = dict(config)
-        self.attestations: list[dict] = []
+        self._local = threading.local()
+        self._staging_lock = threading.Lock()
+        self._slot_lock = threading.Lock()
+        self.parallel_safe = True
         if config.get("tmp_root"):
             # Capture work directories (and every other temporary file of this generation process)
             # live on the run's own filesystem rather than whatever host /tmp happens to have room.
@@ -101,21 +105,29 @@ class SealedCaptureSource(PytorchRefSource):
         """
         staged = Path(self.config["runs_root"]) / "_merlin"
         package_copy, schemas_copy = staged / "src/merlin", staged / "merlin/schemas"
-        if not getattr(self, "_staged", False):
-            for source, destination in ((package, package_copy), (schemas, schemas_copy)):
-                if destination.exists():
-                    shutil.rmtree(destination)
-                shutil.copytree(source, destination, symlinks=False)
-                for path in [destination, *destination.rglob("*")]:
-                    path.chmod(path.stat().st_mode | 0o200)
-                originals = sorted(p.relative_to(source) for p in source.rglob("*") if p.is_file())
-                copies = sorted(p.relative_to(destination) for p in destination.rglob("*") if p.is_file())
-                if originals != copies or any(
-                    (source / name).read_bytes() != (destination / name).read_bytes() for name in originals
-                ):
-                    raise M2MUnavailable("the staged Merlin package differs from the running one")
-            self._staged = True
+        with self._staging_lock:
+            if not getattr(self, "_staged", False):
+                for source, destination in ((package, package_copy), (schemas, schemas_copy)):
+                    if destination.exists():
+                        shutil.rmtree(destination)
+                    shutil.copytree(source, destination, symlinks=False)
+                    for path in [destination, *destination.rglob("*")]:
+                        path.chmod(path.stat().st_mode | 0o200)
+                    originals = sorted(p.relative_to(source) for p in source.rglob("*") if p.is_file())
+                    copies = sorted(p.relative_to(destination) for p in destination.rglob("*") if p.is_file())
+                    if originals != copies or any(
+                        (source / name).read_bytes() != (destination / name).read_bytes() for name in originals
+                    ):
+                        raise M2MUnavailable("the staged Merlin package differs from the running one")
+                self._staged = True
         return package_copy, schemas_copy
+
+    @property
+    def attestations(self) -> list[dict]:
+        """Only captures made by this writer thread can attest its current capsule."""
+        if not hasattr(self._local, "attestations"):
+            self._local.attestations = []
+        return self._local.attestations
 
     def _cache_slot(self, *args, **kwargs):  # noqa: ANN002, ANN003 -- every sealed capture is fresh
         return None
@@ -143,8 +155,9 @@ class SealedCaptureSource(PytorchRefSource):
             raise M2MUnavailable("FP32 staging requires a float capture or selected int8 recipe")
         root = Path(self.config["runs_root"])
         root.mkdir(parents=True, exist_ok=True)
-        slot = root / f"{len(list(root.iterdir())):04d}-{request['op']}-{request['dtype']}"
-        slot.mkdir()
+        with self._slot_lock:
+            slot = root / f"{len(list(root.iterdir())):04d}-{request['op']}-{request['dtype']}"
+            slot.mkdir()
         workload = slot / "workload"
         workload.mkdir()
         shutil.copyfile(request["loader_py"], workload / "loader.py")
