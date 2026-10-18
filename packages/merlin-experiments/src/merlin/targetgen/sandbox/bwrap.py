@@ -387,6 +387,7 @@ def _snapshot_records(
         raise RuntimeError("bundle input snapshot grant records are incomplete")
     out: list[tuple[str, Path, Path]] = []
     root = bundle_snapshot_root(ws)
+    resolved_root = None
     for expected, record in zip(expected_allowed, records, strict=True):
         if not isinstance(record, dict) or record.get("path") != expected:
             raise RuntimeError("bundle input snapshot grant ordering does not match this run")
@@ -415,16 +416,17 @@ def _snapshot_records(
             raise RuntimeError("bundle input snapshot record does not match its declared destination")
         source = root / snapshot_rel
         try:
-            resolved_root = root.resolve(strict=True)
+            if resolved_root is None:
+                resolved_root = root.resolve(strict=True)
             resolved_source = source.resolve(strict=True)
         except OSError as exc:
             raise RuntimeError(f"bundle input snapshot grant is incomplete for {expected!r}") from exc
         if resolved_source != resolved_root and resolved_root not in resolved_source.parents:
             raise RuntimeError(f"bundle input snapshot path escapes its root for {expected!r}")
-        relative_source = source.relative_to(root)
-        if any(
-            (root / Path(*relative_source.parts[:i])).is_symlink() for i in range(1, len(relative_source.parts) + 1)
-        ):
+        # A fresh full resolution must retain the exact lexical relative path.
+        # This detects every internal symlink without separately statting every
+        # shared ancestor again for each sibling in a flat toolchain roster.
+        if resolved_source != resolved_root / snapshot_rel:
             raise RuntimeError(f"bundle input snapshot contains a symlink for {expected!r}")
         if path_kind(source) == "missing":
             raise RuntimeError(f"bundle input snapshot grant is incomplete for {expected!r}")

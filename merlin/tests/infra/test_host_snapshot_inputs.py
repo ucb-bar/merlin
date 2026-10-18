@@ -752,3 +752,45 @@ def test_host_mask_compaction_counts_platform_prefix_and_preserves_standalone(pr
     assert required == ["--tmpfs", str(hidden)]
     assert not BW.is_exposed(platform_prefix + required, hidden / "secret.bin")
     assert BW._bundle_mount_args(workspace, bundle, repo) == required
+
+
+@pytest.mark.parametrize("when", ["before reading", "between records"])
+def test_record_validation_refuses_an_internal_same_bytes_parent_alias(private_bundle, monkeypatch, when):
+    repo, workspace, bundle, hidden = private_bundle
+    second = hidden / "second.bin"
+    second.write_bytes(b"second private input")
+    bundle["allowed"] = [{"path": "inputs/public.txt"}]
+    bundle["host_inputs"] = [{"path": str(hidden / "secret.bin")}, {"path": str(second)}]
+    manifest = BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    root = BW.bundle_snapshot_root(workspace)
+    first = root / manifest["host_records"][0]["snapshot"]
+    parent = first.parent
+    parent.parent.chmod(0o700)
+    alternate = parent.with_name(parent.name + "-same-bytes")
+
+    def alias():
+        parent.rename(alternate)
+        parent.symlink_to(alternate, target_is_directory=True)
+
+    if when == "before reading":
+        alias()
+    else:
+        resolve = Path.resolve
+        changed = False
+
+        def observed(path, *args, **kwargs):
+            nonlocal changed
+            result = resolve(path, *args, **kwargs)
+            if path == first and not changed:
+                changed = True
+                alias()
+            return result
+
+        monkeypatch.setattr(Path, "resolve", observed)
+    try:
+        with pytest.raises(RuntimeError, match="symlink|escapes"):
+            BW._snapshot_records(workspace, repo, manifest["host_inputs"], manifest["host_records"], canonical=True)
+    finally:
+        if parent.is_symlink():
+            parent.unlink()
+            alternate.rename(parent)
