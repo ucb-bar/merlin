@@ -426,3 +426,12 @@ def test_selected_prepack_uses_proved_offsets_without_rederiving_float_bias(tmp_
     )
     assert row["acc_scale_by_column"] == device.fusion["proof"]["device_scale"]
     assert row["bias"]["fold_rule"] == "source_bound_output_fusion_offsets"
+
+
+def test_accumulator_bound_includes_the_minimum_signed_weight_code():
+    lines = _module(bias=(0,) * 8).splitlines()
+    lines = ["    %w = arith.constant dense<-128> : tensor<8x8xi8>" if line.startswith("    %w =") else line
+             for line in lines]
+    device, _host = _fused("\n".join(lines), _path())
+    assert device.fusion["cut"] == "requant"
+    assert device.fusion["proof"]["accumulator_bound"] == [-8 * 128 * 128, 8 * 128 * 128]

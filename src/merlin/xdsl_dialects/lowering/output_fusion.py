@@ -582,8 +582,6 @@ def _positive(chain: Chain) -> None:
 
 def _bound(chain: Chain, values: Values, extents: Mapping[int, Any]) -> tuple[int, int]:
     """Every accumulator value the contraction can produce: ``K * max|w| * max|x|`` from formats and weights."""
-    import numpy as np
-
     root = chain.root
     extent = extents.get(id(root))
     if not extent or extent[1] is None:
@@ -595,7 +593,12 @@ def _bound(chain: Chain, values: Values, extents: Mapping[int, Any]) -> tuple[in
         if span is None:
             raise _Refused(UNREAD, f"a contraction operand of {dtype!r} has no integer range")
         stored = values.array(operand)
-        magnitudes.append(int(np.abs(stored).max()) if stored is not None and stored.size else max(-span[0], span[1]))
+        # abs(minimum signed code) overflows in that tensor's integer dtype.
+        # Read extrema as Python integers before taking their magnitudes.
+        magnitudes.append(
+            max(abs(int(stored.min())), abs(int(stored.max())))
+            if stored is not None and stored.size else max(-span[0], span[1])
+        )
     bound = int(extent[1]) * magnitudes[0] * magnitudes[1]
     return -bound, bound
 
