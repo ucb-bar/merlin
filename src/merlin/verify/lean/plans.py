@@ -100,22 +100,44 @@ def replay(expected: Plan, manifest: Path, root: Path) -> None:
     expected.validate(published)
 
 
+# Independently authored expectations, including the parse occurrence. Production
+# edits must not silently change the denominator of a verified shared prefix.
+# Statistic identities also matter: they select the optional quantization anchor.
+_ORDINARY_PREPROCESSING = (
+    (None, Boundary("xdsl-parse", "merlin.llvmlower.passes_xdsl.parse_mlir_text")),
+    (
+        "dead_tensor_ops_pruned",
+        Boundary("xdsl-pruned", "merlin.llvmlower.passes_xdsl.prune_dead_pure_tensor_ops"),
+    ),
+    ("quant_ext_lowered", Boundary("xdsl-quant-lowered", "merlin.llvmlower.passes_xdsl.lower_quant_ext")),
+    ("c_interface_funcs", Boundary("xdsl-c-interface", "merlin.llvmlower.passes_xdsl.add_c_interface")),
+)
+
+
 def preprocessing() -> Plan:
     """Resolve the structural preprocessing roster before running its parser or transformations.
 
-    The authored rewrite table supplies one occurrence per slot, even when it changes no bytes.
+    The independent roster supplies one occurrence per slot, even when it changes no bytes.
+    The actual production table must match it before any parser or pass can run.
     The optional reassociation occurrence is included exactly where preprocessing selects it. A
     changed selection during execution causes a roster mismatch rather than silently widening scope.
     """
     from merlin.llvmlower import passes_xdsl
 
     selected = passes_xdsl._layer_norm_chunked_sums_selected()
-    if selected and sum(statistic == "quant_ext_lowered" for statistic, _, _ in passes_xdsl._PREPROCESS) != 1:
+    actual = tuple(passes_xdsl._PREPROCESS)
+    if selected and sum(statistic == "quant_ext_lowered" for statistic, _, _ in actual) != 1:
         raise ValueError("selected chunked sums requires exactly one quantization preprocessing slot")
     prefix = passes_xdsl.__name__
-    boundaries = [Boundary("xdsl-parse", f"{prefix}.parse_mlir_text")]
-    for statistic, stage, name in passes_xdsl._PREPROCESS:
-        boundaries.append(Boundary(stage, f"{prefix}.{name}"))
+    observed = (
+        (None, Boundary("xdsl-parse", f"{prefix}.parse_mlir_text")),
+        *((statistic, Boundary(stage, f"{prefix}.{name}")) for statistic, stage, name in actual),
+    )
+    if observed != _ORDINARY_PREPROCESSING:
+        raise PlanMismatch("production preprocessing differs from the independently authored ordinary roster")
+    boundaries = []
+    for statistic, boundary in _ORDINARY_PREPROCESSING:
+        boundaries.append(boundary)
         if statistic == "quant_ext_lowered" and selected:
             boundaries.append(
                 Boundary(

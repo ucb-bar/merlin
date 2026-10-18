@@ -231,3 +231,72 @@ def test_selected_optional_occurrence_requires_one_authored_anchor(monkeypatch, 
     monkeypatch.setattr(passes_xdsl, "_PREPROCESS", (*slots, anchor, anchor) if duplicate else slots)
     with pytest.raises(ValueError, match="exactly one quantization"):
         plans.preprocessing()
+
+
+@pytest.mark.parametrize("selected", [False, True])
+@pytest.mark.parametrize("fault", ["delete", "swap", "duplicate", "statistic", "stage", "transform"])
+def test_production_table_drift_cannot_author_its_own_coherent_denominator(tmp_path, monkeypatch, selected, fault):
+    from merlin.llvmlower import lower
+
+    expected = _selection(monkeypatch, selected)
+    rows = list(passes_xdsl._PREPROCESS)
+    statistic, stage, transform = rows[0]
+    if fault == "delete":
+        rows = rows[1:]
+    elif fault == "swap":
+        rows[:2] = reversed(rows[:2])
+    elif fault == "duplicate":
+        rows.insert(1, rows[0])
+    elif fault == "statistic":
+        rows[0] = ("different_statistic", stage, transform)
+    elif fault == "stage":
+        rows[0] = (statistic, "xdsl-renamed", transform)
+    else:
+        # A real, callable, harmless-on-this-input pass makes the records fully
+        # coherent; replacing it with a nonexistent function would test a crash.
+        rows[0] = (statistic, stage, "add_c_interface")
+    monkeypatch.setattr(passes_xdsl, "_PREPROCESS", tuple(rows))
+
+    root, output = tmp_path / "stages", tmp_path / "upstream.mlir"
+    with stages.capture(root):
+        text, _ = passes_xdsl.preprocess_text(SOURCE)
+        output.write_text(text)
+        stages.record_handoff(output)
+    published = stages.completed(root)
+    # Simulate coherently regenerated records AND expected manifest, the former
+    # self-derived denominator. They agree perfectly but cannot authorize entry.
+    recorded = [json.loads((path / "meta.json").read_text()) for path in published]
+    coherent = plans.Plan(
+        expected.scope,
+        tuple(plans.Boundary(row["boundary"], row["pass"]) for row in recorded),
+        expected.granularity,
+    )
+    manifest = tmp_path / "coherent-plan.json"
+    manifest.write_bytes(coherent.canonical_bytes())
+    plans.replay(coherent, manifest, root)
+    with pytest.raises(plans.PlanMismatch, match="independently authored ordinary roster"):
+        plans.preprocessing()
+
+    monkeypatch.setattr(lower, "preprocess_text", lambda *a, **k: pytest.fail("changed roster reached passes"))
+    monkeypatch.setattr(lower, "lower_to_llvm_ir", lambda *a, **k: pytest.fail("changed roster reached native"))
+    monkeypatch.setattr(check, "check_typed_stage", lambda *a, **k: pytest.fail("changed roster reached checker"))
+    with pytest.raises(plans.PlanMismatch, match="independently authored ordinary roster"):
+        lower.lower_model(SOURCE, tmp_path / "lower", targets=(), index_bits=64, shared_pass_verification=_options())
+
+
+@pytest.mark.parametrize("selected", [False, True])
+def test_authored_roster_retains_existing_plan_bytes(monkeypatch, selected):
+    expected = _selection(monkeypatch, selected)
+    legacy = [plans.Boundary("xdsl-parse", "merlin.llvmlower.passes_xdsl.parse_mlir_text")]
+    for statistic, stage, transform in passes_xdsl._PREPROCESS:
+        legacy.append(plans.Boundary(stage, f"merlin.llvmlower.passes_xdsl.{transform}"))
+        if selected and statistic == "quant_ext_lowered":
+            legacy.append(
+                plans.Boundary(
+                    "xdsl-layer-norm-chunked-sums",
+                    "merlin.llvmlower.normalization_reassociation.chunk_layer_norm_sums",
+                )
+            )
+    assert (
+        expected.canonical_bytes() == plans.Plan(expected.scope, tuple(legacy), expected.granularity).canonical_bytes()
+    )
