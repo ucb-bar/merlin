@@ -1,11 +1,10 @@
 """The host/accelerator split of a whole-program capsule, read from its frozen Phase 0 placement.
 
-Phase 1 grades the author's accelerator compiler only. Every operation Phase 0 placed on the host is
-compiled by Merlin's own generic host codegen, so the split between the two must not come from the
-candidate, and must not drift from what Phase 0 admitted. This module reads the ``software_screen``
-Phase 0 froze into the sealed ``capsule.yaml``, binds it to the capsule's program bytes, and checks
-that Merlin's own device groups and the independent eligibility census hold exactly the operations
-the frozen placement puts on the accelerator. It grants no execution, numerical or tier evidence.
+Phase 0 fixes the required accelerator work; Merlin supplies the remaining host computation.
+Merlin's capability-checked groups may also offload optional operations, including a contraction's
+readout or layout plumbing and standalone supported groups. They do not change the required accelerator census
+or authorize scalar tensor computation in a device kernel. This module grants no execution,
+numerical or tier evidence.
 """
 
 from __future__ import annotations
@@ -114,22 +113,31 @@ def require_split(
     source_sha256: str,
     device: Mapping[str, int],
     eligible: Mapping[str, int] | None = None,
+    source_operations: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
-    """Refuse a build whose device groups or eligibility differ from the frozen accelerator split.
+    """Require frozen accelerator work while permitting source-bound optional offload and fusion.
 
-    ``device`` counts the members of Merlin's own device groups of the routed source; ``eligible``,
-    when given, counts the independently eligible source operations. Either disagreeing with the
-    frozen accelerator operations means work would cross lanes: accelerator work onto Merlin's host,
-    or host work into a group the author's compiler is handed.
+    ``device`` comes from Merlin's capability-checked groups, never candidate placement claims.
+    Their members must include the mandatory work and belong to the original source inventory.
+    Fresh independent eligibility must still equal the frozen accelerator census exactly; the
+    caller separately checks the group assignment of each eligible source operation. The ordinary
+    device/host-compute and complete-output gates also remain mandatory.
     """
     if source_sha256 != frozen.get("program_sha256"):
         raise FrozenPlacementRefusal("routed source differs from the program the frozen placement is bound to")
     expected = dict(frozen.get("accelerator_operations") or {})
-    if dict(device) != expected:
+    if any(type(count) is not int or count <= 0 for count in device.values()):
+        raise FrozenPlacementRefusal("device groups contain an invalid operation count")
+    if Counter(expected) - Counter(device):
         raise FrozenPlacementRefusal(
             f"device groups hold {dict(device)} but the frozen Phase 0 placement puts {expected} on the "
-            "accelerator; host placement is Merlin-supplied and may not cross lanes"
+            "accelerator; required accelerator work may not move to the host"
         )
+    supporting = dict(sorted((Counter(device) - Counter(expected)).items()))
+    if supporting and source_operations is None:
+        raise FrozenPlacementRefusal("supporting device operations lack their original source inventory")
+    if source_operations is not None and Counter(device) - Counter(source_operations):
+        raise FrozenPlacementRefusal("device groups contain operations outside the original source inventory")
     if eligible is not None and dict(eligible) != expected:
         raise FrozenPlacementRefusal(
             f"independent eligibility finds {dict(eligible)} but the frozen Phase 0 placement puts "
@@ -141,6 +149,8 @@ def require_split(
         "program_sha256": frozen["program_sha256"],
         "accelerator_operations": expected,
         "host_operations": dict(frozen.get("host_operations") or {}),
-        "scope": "host-placed operations are compiled by Merlin's host package; the candidate builds "
-        "only the device groups",
+        "device_operations": dict(sorted(device.items())),
+        "supporting_device_operations": supporting,
+        "scope": "frozen accelerator operations remain mandatory; Merlin supplies host computation "
+        "outside its capability-checked device groups, which may fuse source-bound supporting operations",
     }

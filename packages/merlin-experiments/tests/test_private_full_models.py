@@ -715,7 +715,8 @@ def test_built_group_artifact_vetoes_candidate_host_arithmetic(tmp_path, monkeyp
         )
 
 
-def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkeypatch):
+@pytest.mark.parametrize("second_group_optional", [False, True])
+def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkeypatch, second_group_optional):
     from xdsl.parser import Parser
 
     from merlin.llvmlower import device_shim, toolchain
@@ -742,6 +743,12 @@ def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkey
         ],
         "eligible_group_metrics": {i: {"elements": 64, "element_bytes": 4} for i in (4, 8)},
     }
+    if second_group_optional:
+        source["eligible_groups"] = [4]
+        source["optional_groups"] = [8]
+        source["optional_group_provenance"] = [source["eligible_group_provenance"].pop()]
+        source["optional_group_metrics"] = {8: source["eligible_group_metrics"].pop(8)}
+    second_metrics = source["optional_group_metrics"] if second_group_optional else source["eligible_group_metrics"]
     original = Parser.parse_module
     calls = []
 
@@ -753,14 +760,14 @@ def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkey
     records = gate._audit_built_device_host_compute(tmp_path, assigned, source, "fixture")
     assert [(row["group"], row["source_group"]) for row in records] == [(3, 4), (7, 8)]
     assert len(calls) == 1
-    source["eligible_group_metrics"][8]["elements"] = 32
+    second_metrics[8]["elements"] = 32
     calls.clear()
     gate._audit_built_device_host_compute(tmp_path, assigned, source, "fixture")
     assert len(calls) == 2  # Another element-scale budget requires a separate audit.
 
     from merlin_experiments.phase1.feedback import private_device_audit as built_audit
 
-    source["eligible_group_metrics"][8]["elements"] = 64
+    second_metrics[8]["elements"] = 64
     original_sha = built_audit.file_sha256
     reads = []
 

@@ -111,10 +111,17 @@ def execute_owned_host_model(
         validator_identity=provenance["tool"],
         source_identity=provenance["source"],
     )
-    # Before the candidate is invoked: Merlin's own device groups must hold exactly what the frozen
-    # Phase 0 placement puts on the accelerator, so no host work reaches the author and no accelerator
-    # work stays on Merlin's host. Re-checked against fresh eligibility after the build.
-    frozen_split = _frozen_split(capsule, Path(bundle) / "model.mlir", target=target)
+    # Validate each required source operation before invoking the candidate, including its actual
+    # group assignment. Supporting fusion is selected by Merlin's ordinary capability checks.
+    from merlin.common import mlir_query as mq
+    from merlin.xdsl_dialects.lowering import compute_groups as groups_api
+
+    source_path = Path(bundle) / "model.mlir"
+    module = mq.parse(source_path.read_text())
+    groups = groups_api.form_groups(module, target)
+    frozen_split = _source_placement(
+        capsule, source_certificate, module, groups, target=target, source_path=source_path
+    )["frozen_placement"]
     receipt = service.compile(
         capture=bundle,
         candidate_package=candidate_package,
@@ -181,7 +188,7 @@ def _frozen_declaration(capsule):
     return declaration, root
 
 
-def _frozen_split(capsule, source_path, *, target, groups=None, eligible=None):
+def _frozen_split(capsule, source_path, *, target, groups=None, eligible=None, module=None):
     """Bind Merlin's device groups (and, when given, fresh eligibility) to the frozen placement."""
     from merlin.common import mlir_query as mq
     from merlin.xdsl_dialects.lowering import compute_groups as groups_api
@@ -190,13 +197,16 @@ def _frozen_split(capsule, source_path, *, target, groups=None, eligible=None):
 
     declaration, root = _frozen_declaration(capsule)
     frozen = frozen_placement.read(declaration, root)
+    if module is None:
+        module = mq.parse(Path(source_path).read_text())
     if groups is None:
-        groups = groups_api.form_groups(mq.parse(Path(source_path).read_text()), target)
+        groups = groups_api.form_groups(module, target)
     return frozen_placement.require_split(
         frozen,
         source_sha256=file_sha256(source_path),
         device=frozen_placement.device_operations(groups, groups_api.HOST),
         eligible=eligible,
+        source_operations=Counter(frozen_placement.operation_name(op) for op in mq.walk(module)),
     )
 
 
@@ -222,9 +232,10 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
     from merlin_experiments.phase1.feedback.private_device_audit import audit_built_device_host_compute
     from merlin_experiments.phase1.feedback.private_full_models import _linked_symbols
     from merlin_experiments.phase1.feedback.private_group_provenance import (
-        eligible_source_identity,
         join_routed_source_groups,
+        require_intended_host_selection,
         routed_kernel_symbols,
+        source_group_roster,
     )
 
     from merlin.common import mlir_query as mq
@@ -239,40 +250,18 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
         capsule, certificate, module, groups, target=target, source_path=Path(bundle) / "model.mlir"
     )
     eligible_groups = _independently_eligible_group_ids(placement, groups)
-    source = {"eligible_groups": [], "eligible_group_provenance": [], "eligible_group_metrics": {}}
-    for group in groups:
-        if group.index not in eligible_groups:
-            continue
-        region, nodes = eligible_source_identity(group.root)
-        source["eligible_groups"].append(group.index)
-        source["eligible_group_provenance"].append(
-            {"source_group": group.index, "source_region_id": region, "source_node_ids": list(nodes)}
-        )
-        values = (value for member in reversed(group.members) for value in member.results)
-        for value in values:
-            shape, _ = mq.type_shape_dtype(value.type)
-            elements = 1
-            for extent in shape:
-                elements *= extent
-            size = mq.value_bytes(value.type)
-            if shape and elements > 0 and size > 0 and size % elements == 0:
-                source["eligible_group_metrics"][group.index] = {
-                    "elements": elements,
-                    "element_bytes": size // elements,
-                }
-                break
-        if group.index not in source["eligible_group_metrics"]:
-            raise ValueError("source-bound device group has no static output extent")
+    source = source_group_roster(groups, eligible_groups, host_placement=CG.HOST)
     output = receipt["output"]
     sidecar = output["device_sidecar"]
     path = Path(sidecar["path"])
     if file_sha256(path) != sidecar["sha256"]:
         raise ValueError("owned host device sidecar changed")
     emitted = json.loads(path.read_text())
-    if emitted.get("skipped") or emitted.get("device") != target:
+    if emitted.get("device") != target:
         raise ValueError("owned host model omitted eligible device groups")
     assigned = emitted.get("routed")
     joined = join_routed_source_groups(assigned, source)
+    require_intended_host_selection(emitted.get("skipped", []))
     from merlin.kernels.shapes import observe_contractions
 
     original_shapes = {id(op): shape for op, shape in observe_contractions(module)}
@@ -310,6 +299,7 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
         "joined_groups": joined,
         "static_device_host_compute": audits,
         "assigned": assigned,
+        "optional_source_groups_routed": sorted(set(joined.values()) & set(source["optional_groups"])),
         "scope": "source identities joined to actual linked device objects; "
         "dynamic execution and required tiers remain separate",
     }
@@ -395,7 +385,9 @@ def _source_placement(capsule, certificate, module, groups, *, target, source_pa
     if not eligible:
         raise ValueError("accelerated model has no independently eligible source operation")
     eligible_operations = Counter(name(ops[row["source_op_index"]]) for row in eligible)
-    frozen = _frozen_split(capsule, source_path, target=target, groups=groups, eligible=dict(eligible_operations))
+    frozen = _frozen_split(
+        capsule, source_path, target=target, groups=groups, eligible=dict(eligible_operations), module=module
+    )
     return {
         "status": "clean",
         "frozen_placement": frozen,

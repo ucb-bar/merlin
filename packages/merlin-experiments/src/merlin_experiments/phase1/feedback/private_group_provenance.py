@@ -28,19 +28,86 @@ def eligible_source_identity(root: Any) -> tuple[str, tuple[str, ...]]:
     return region.data, identities
 
 
+def source_group_roster(groups, required, *, host_placement) -> dict[str, Any]:
+    """Bind required and optional device groups to original source, before emission.
+
+    Optional groups remain outside the mandatory coverage denominator. An optional
+    root without a complete source identity/extent cannot gain admission by being
+    emitted; record its refusal without preventing the ordinary host route.
+    """
+    from merlin.common import mlir_query as mq
+
+    source: dict[str, Any] = {
+        "eligible_groups": [], "eligible_group_provenance": [], "eligible_group_metrics": {},
+        "optional_groups": [], "optional_group_provenance": [], "optional_group_metrics": {},
+        "optional_group_refusals": [],
+    }
+    required = set(required)
+    for group in groups:
+        mandatory = group.index in required
+        if group.placement == host_placement:
+            if mandatory:
+                raise ValueError("eligible source group was assigned to host")
+            continue
+        try:
+            region, nodes = eligible_source_identity(group.root)
+            metric = None
+            for member in reversed(group.members):
+                for value in member.results:
+                    shape, _ = mq.type_shape_dtype(value.type)
+                    elements = 1
+                    for extent in shape:
+                        elements *= extent
+                    size = mq.value_bytes(value.type)
+                    if shape and elements > 0 and size > 0 and size % elements == 0:
+                        metric = {"elements": elements, "element_bytes": size // elements}
+                        break
+                if metric is not None:
+                    break
+            if metric is None:
+                raise ValueError("source-bound device group has no static output extent")
+        except ValueError as error:
+            if mandatory:
+                raise
+            source["optional_group_refusals"].append({"source_group": group.index, "reason": str(error)})
+            continue
+        prefix = "eligible" if mandatory else "optional"
+        source[f"{prefix}_groups"].append(group.index)
+        source[f"{prefix}_group_provenance"].append(
+            {"source_group": group.index, "source_region_id": region, "source_node_ids": list(nodes)}
+        )
+        source[f"{prefix}_group_metrics"][group.index] = metric
+    if set(source["eligible_groups"]) != required:
+        raise ValueError("source roster omits independently eligible source computation")
+    for prefix in ("eligible", "optional"):
+        source[f"{prefix}_groups"].sort()
+    # Validate even unused optional identities: ambiguity is never resolved by
+    # whether this particular compilation happened to select the group.
+    join_routed_source_groups([
+        {"group": row["source_group"], **row} for row in source["eligible_group_provenance"]
+    ], source)
+    return source
+
+
 def join_routed_source_groups(assigned: Any, source: Mapping[str, Any]) -> dict[int, int]:
-    """Join emitted calls to eligible roots by producer-declared region identity.
+    """Join every emitted call to a required or optional original source root.
 
     A region ID must be unique within one captured program; a repeated ID has no
     unambiguous source owner, regardless of whether this model happened to route it.
     Preparation may renumber groups, so those integers are never join keys.
+    Every required root must be emitted; any subset of the optional roster may be.
     """
     expected = source.get("eligible_group_provenance")
     eligible = source.get("eligible_groups")
-    if not isinstance(expected, list) or not isinstance(eligible, list) or not isinstance(assigned, list):
+    optional = source.get("optional_groups", [])
+    optional_expected = source.get("optional_group_provenance", [])
+    if any(not isinstance(value, list) for value in (expected, eligible, optional, optional_expected, assigned)):
         raise ValueError("routed group source roster is incomplete")
-    if any(type(group) is not int or group < 0 for group in eligible) or eligible != sorted(set(eligible)):
-        raise ValueError("eligible source group indices are ambiguous")
+    for indices in (eligible, optional):
+        if any(type(group) is not int or group < 0 for group in indices) or indices != sorted(set(indices)):
+            raise ValueError("eligible or optional source group indices are ambiguous")
+    if set(eligible) & set(optional):
+        raise ValueError("required and optional source group indices are ambiguous")
 
     def identity(row: Any) -> tuple[str, tuple[str, ...]]:
         if not isinstance(row, Mapping):
@@ -59,15 +126,18 @@ def join_routed_source_groups(assigned: Any, source: Mapping[str, Any]) -> dict[
 
     source_by_region: dict[str, tuple[tuple[str, ...], int]] = {}
     source_groups = set()
-    for row in expected:
-        region, nodes = identity(row)
-        group = row.get("source_group")
-        if type(group) is not int or group < 0 or group in source_groups or region in source_by_region:
-            raise ValueError("eligible source group provenance is ambiguous")
-        source_groups.add(group)
-        source_by_region[region] = nodes, group
-    if len(expected) != len(eligible) or sorted(source_groups) != eligible:
-        raise ValueError("eligible source group provenance differs from source eligibility")
+    for roster, indices in ((expected, eligible), (optional_expected, optional)):
+        roster_groups = set()
+        for row in roster:
+            region, nodes = identity(row)
+            group = row.get("source_group")
+            if type(group) is not int or group < 0 or group in source_groups or region in source_by_region:
+                raise ValueError("eligible or optional source group provenance is ambiguous")
+            source_groups.add(group)
+            roster_groups.add(group)
+            source_by_region[region] = nodes, group
+        if len(roster) != len(indices) or sorted(roster_groups) != indices:
+            raise ValueError("source group provenance differs from source eligibility")
 
     joined: dict[int, int] = {}
     emitted_regions = set()
@@ -79,11 +149,22 @@ def join_routed_source_groups(assigned: Any, source: Mapping[str, Any]) -> dict[
         emitted_regions.add(region)
         original = source_by_region.get(region)
         if original is None or original[0] != nodes:
-            raise ValueError("routed group provenance differs from independently eligible source")
+            raise ValueError("routed group provenance differs from independently bound source")
         joined[group] = original[1]
-    if len(joined) != len(source_by_region):
+    if not set(eligible) <= set(joined.values()):
         raise ValueError("routed groups omit independently eligible source computation")
     return joined
+
+
+def require_intended_host_selection(skipped: Any) -> None:
+    """Accept ordinary host selection only after required-source coverage is checked."""
+    if not isinstance(skipped, (list, tuple)) or any(
+        not isinstance(row, (list, tuple)) or len(row) != 2
+        or not isinstance(row[0], str) or not row[0]
+        or row[1] != "the placement did not select this group's root"
+        for row in skipped
+    ):
+        raise ValueError("linked build retained a device refusal outside intended host selection")
 
 
 def verify_routed_source_coverage(emitted: Mapping[str, Any], source: Mapping[str, Any]) -> dict[int, int]:
@@ -105,14 +186,7 @@ def verify_routed_source_coverage(emitted: Mapping[str, Any], source: Mapping[st
         or demand.get("n_demanded_groups") != len(source.get("eligible_groups", []))):
         raise ValueError("linked source coverage lacks complete independent accelerator demand")
     joined = join_routed_source_groups(assigned, source)
-    skipped = emitted.get("skipped", [])
-    if not isinstance(skipped, (list, tuple)) or any(
-        not isinstance(row, (list, tuple)) or len(row) != 2
-        or not isinstance(row[0], str) or not row[0]
-        or row[1] != "the placement did not select this group's root"
-        for row in skipped
-    ):
-        raise ValueError("linked build retained a device refusal outside intended host selection")
+    require_intended_host_selection(emitted.get("skipped", []))
     return joined
 
 

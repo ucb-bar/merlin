@@ -49,7 +49,7 @@ def _capsule(tmp_path, *, decisions=None, program=_PROGRAM, **screen):
             "status": "admitted",
             "decisions": decisions,
             "placements": rows,
-            "program_sha256": hashlib.sha256(_PROGRAM.encode()).hexdigest(),
+            "program_sha256": hashlib.sha256(program.encode()).hexdigest(),
             **screen,
         },
     }
@@ -104,12 +104,23 @@ def test_the_split_must_match_the_frozen_accelerator_operations(tmp_path):
     assert record["status"] == "matched" and record["authority"] == "frozen Phase 0 software_screen"
     # Accelerator work left on Merlin's host: one frozen accelerator operation sits in a host group.
     on_host = [_group("mesh", "linalg.generic"), _group(_HOST, "linalg.generic", "linalg.generic")]
-    with pytest.raises(FP.FrozenPlacementRefusal, match="may not cross lanes"):
+    with pytest.raises(FP.FrozenPlacementRefusal, match="may not move to the host"):
         FP.require_split(frozen, source_sha256=digest, device=FP.device_operations(on_host, _HOST))
-    # Host work handed to the author: a host-placed operation fused into a device group.
+    # Merlin may absorb supporting work, provided it comes from the original source.
     fused = [_group("mesh", "linalg.generic", "linalg.generic"), _group("mesh", "linalg.generic")]
-    with pytest.raises(FP.FrozenPlacementRefusal, match="may not cross lanes"):
+    with pytest.raises(FP.FrozenPlacementRefusal, match="original source inventory"):
         FP.require_split(frozen, source_sha256=digest, device=FP.device_operations(fused, _HOST))
+    record = FP.require_split(
+        frozen, source_sha256=digest, device=FP.device_operations(fused, _HOST),
+        eligible={"linalg.generic": 2}, source_operations={"linalg.generic": 5},
+    )
+    assert record["accelerator_operations"] == {"linalg.generic": 2}
+    assert record["supporting_device_operations"] == {"linalg.generic": 1}
+    with pytest.raises(FP.FrozenPlacementRefusal, match="outside the original source"):
+        FP.require_split(
+            frozen, source_sha256=digest, device={"linalg.generic": 6},
+            source_operations={"linalg.generic": 5},
+        )
     with pytest.raises(FP.FrozenPlacementRefusal, match="independent eligibility"):
         FP.require_split(
             frozen, source_sha256=digest, device=FP.device_operations(matched, _HOST), eligible={"linalg.generic": 1}
@@ -119,7 +130,9 @@ def test_the_split_must_match_the_frozen_accelerator_operations(tmp_path):
 
 
 def test_the_owned_route_reads_the_pinned_declaration_not_the_callers_copy(tmp_path):
-    declaration, directory = _capsule(tmp_path)
+    program = 'module { func.func @forward() { "linalg.generic"() : () -> ()\n' \
+        '"linalg.generic"() : () -> ()\n return } }\n'
+    declaration, directory = _capsule(tmp_path, program=program)
     source = directory / "capsule.interface.mlir"
     groups = [_group("mesh", "linalg.generic"), _group("mesh", "linalg.generic")]
     edited = copy.deepcopy(declaration)

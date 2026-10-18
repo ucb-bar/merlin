@@ -3,6 +3,11 @@
 Host-only grading, redaction, certificate promotion and simulator dispatch live here.
 Inputs are explicit invocation context and corpus/contract paths, never native imports.
 
+`private_group_provenance` binds required and optional device rosters independently to original
+Merlin groups. Require all mandatory roots; allow any source-bound optional subset. Optional work
+has separate metrics and linked counts, never mandatory coverage credit. Actual routed functions
+retain the same body, host-compute, linked-symbol and numerical obligations for every target.
+
 `operator_child` admits complete parent preparation and completed-result custody
 through the snapshot reader gate, including nested metadata checks. Release the
 gate before child launch and waits; retain every original checker call and the

@@ -51,7 +51,7 @@ from merlin_experiments.phase1.feedback.private_device_audit import (
     require_static_build_inputs as _require_static_build_inputs,
 )
 from merlin_experiments.phase1.feedback.private_group_provenance import (
-    eligible_source_identity as _eligible_source_identity,
+    eligible_source_identity as _eligible_source_identity,  # noqa: F401 -- preserve compatibility alias
 )
 from merlin_experiments.phase1.feedback.private_group_provenance import (
     join_routed_source_groups as _join_routed_source_groups,  # noqa: F401 -- preserve source-join compatibility alias
@@ -59,7 +59,10 @@ from merlin_experiments.phase1.feedback.private_group_provenance import (
 from merlin_experiments.phase1.feedback.private_group_provenance import (
     routed_kernel_symbols as _routed_kernel_symbols,
 )
-from merlin_experiments.phase1.feedback.private_group_provenance import verify_routed_source_coverage
+from merlin_experiments.phase1.feedback.private_group_provenance import (
+    source_group_roster,
+    verify_routed_source_coverage,
+)
 from merlin_experiments.phase1.feedback.private_prebuilt_receipt import load_diagnostic_receipt
 from merlin_experiments.phase1.feedback.private_source_support_join import (
     linked_source_support_complete as _linked_source_support_complete,
@@ -672,31 +675,7 @@ def _source_obligations(
     f32_sum_support.verify_source(f32_reductions, source)
     maximum_support.verify_source(maximum, source)
     index_support.verify_source(index_host, capture)
-    group_metrics = {}
-    group_provenance = []
-    seen_regions = set()
-    for group in groups:
-        if group.index not in eligible:
-            continue
-        region, nodes = _eligible_source_identity(group.root)
-        if region in seen_regions:
-            raise ValueError("eligible source groups repeat a provenance region")
-        seen_regions.add(region)
-        group_provenance.append(
-            {"source_group": group.index, "source_region_id": region, "source_node_ids": list(nodes)}
-        )
-        values = (value for member in reversed(group.members) for value in member.results)
-        for value in values:
-            shape, _dtype = mq.type_shape_dtype(value.type)
-            elements = 1
-            for extent in shape:
-                elements *= extent
-            n_bytes = mq.value_bytes(value.type)
-            if shape and elements > 0 and n_bytes > 0 and n_bytes % elements == 0:
-                group_metrics[group.index] = {"elements": elements, "element_bytes": n_bytes // elements}
-                break
-        if group.index not in group_metrics:
-            raise ValueError(f"eligible source group {group.index} has no exact static output extent")
+    group_roster = source_group_roster(groups, eligible, host_placement=CG.HOST)
     result = {
         "source_sha256": source_sha,
         "normalized_source_sha256": normalized_sha,
@@ -718,9 +697,7 @@ def _source_obligations(
         index_support.FIELD: index_host,
         ordered_scan_support.FIELD: ordered_scan,
         bucketize_support.FIELD: bucketize,
-        "eligible_groups": sorted(set(eligible)),
-        "eligible_group_provenance": group_provenance,
-        "eligible_group_metrics": group_metrics,
+        **group_roster,
         "host_groups": [group.index for group in groups if group.placement == CG.HOST],
         "host_justification": "source group reasons and exact reviewed host/software admissions",
         "accelerator_source_demand": demand,
@@ -768,6 +745,7 @@ def _verify_compiled_program(
     compilation_binding = compilation_support.verify(output, elf, required=require_compilation_recipe)
     sidecar_sha = None
     linked = 0
+    optional_linked = 0
     host_compute_audit = []
     if device_selected:
         sidecar_record = output.get("device_sidecar") or {}
@@ -778,11 +756,13 @@ def _verify_compiled_program(
         if emitted.get("granularity") != BY_GROUP or emitted.get("device") != target:
             raise ValueError(f"{program} emitted another device or a partial route")
         assigned = emitted.get("routed")
-        verify_routed_source_coverage(emitted, source)
+        joined = verify_routed_source_coverage(emitted, source)
         symbols = _routed_kernel_symbols(emitted)
         _linked_symbols(elf, symbols)
         host_compute_audit = _audit_built_device_host_compute(elf.parent, assigned, source, target)
-        sidecar_sha, linked = sidecar_record["sha256"], len(assigned)
+        sidecar_sha = sidecar_record["sha256"]
+        linked = len(set(joined.values()) & set(source["eligible_groups"]))
+        optional_linked = len(set(joined.values()) & set(source.get("optional_groups", [])))
     linked_build = {
         "capture_tree_sha256": stage_tree["sha256"],
         "elf_sha256": output["elf_sha256"],
@@ -825,6 +805,8 @@ def _verify_compiled_program(
         "elf_sha256": output["elf_sha256"],
         "sidecar_sha256": sidecar_sha,
         "linked_device_groups": linked,
+        "linked_optional_device_groups": optional_linked,
+        "linked_total_device_groups": linked + optional_linked,
         "static_host_compute_audit": host_compute_audit,
         "candidate_tree_sha256": package_digest["sha256"],
         "index_lowering": index_lowering,

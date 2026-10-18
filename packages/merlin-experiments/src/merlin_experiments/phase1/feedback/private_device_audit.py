@@ -71,7 +71,7 @@ def audit_built_device_host_compute(
     device_dir = build / "device"
     if device_dir.is_symlink() or not device_dir.is_dir():
         raise ValueError("linked build has no ordinary device-artifact directory")
-    metrics = source["eligible_group_metrics"]
+    metrics = {**source.get("optional_group_metrics", {}), **source["eligible_group_metrics"]}
     source_groups = _join_routed_source_groups(assigned, source)
     records = []
     completed = {}
