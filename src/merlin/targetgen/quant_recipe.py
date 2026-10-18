@@ -606,6 +606,56 @@ def with_static_planes(
     return body
 
 
+#: The per-site bar of a ``dynamic`` block (``recipe["dynamic"]["site_agreement"]``): every rewritten
+#: contraction's int8 result, held to the float contraction of its own operands on the recipe's
+#: agreement samples, must reach ``cosine_min`` and stay within ``rel_rmse_max`` (a ratio of RMS values).
+SITE_AGREEMENT = "site_agreement"
+SITE_AGREEMENT_SCHEMA = "dynamic_site_agreement_v1"
+
+
+def site_agreement_of(recipe: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The validated per-site bar of ``recipe``'s dynamic block, or None when it declares none."""
+    import math
+
+    block = recipe.get(DYNAMIC) if isinstance(recipe, Mapping) else None
+    bar = block.get(SITE_AGREEMENT) if isinstance(block, Mapping) else None
+    if bar is None:
+        return None
+    if (
+        not isinstance(bar, Mapping)
+        or set(bar) != {"schema", "cosine_min", "rel_rmse_max"}
+        or bar.get("schema") != SITE_AGREEMENT_SCHEMA
+        or any(type(bar.get(key)) is not float or not math.isfinite(bar[key]) for key in ("cosine_min", "rel_rmse_max"))
+        or not 0.0 < bar["cosine_min"] <= 1.0
+        or not bar["rel_rmse_max"] > 0.0
+    ):
+        raise ValueError(f"the dynamic block's {SITE_AGREEMENT} is not an exact {SITE_AGREEMENT_SCHEMA} bar")
+    return dict(bar)
+
+
+def with_site_agreement(recipe: Mapping[str, Any], *, cosine_min: float, rel_rmse_max: float, basis: str) -> dict:
+    """``recipe`` whose dynamic contraction sites are each held to a declared agreement bar.
+
+    The bar is the recipe's own: a capture records each site's measured agreement with the float
+    contraction of its operands, and the sealed issuer refuses a site below it. ``basis`` says where the
+    numbers came from (e.g. a measured per-site distribution and its margin); it is recorded, not judged.
+    """
+    if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED or not isinstance(recipe.get(DYNAMIC), dict):
+        raise ValueError("a site agreement bar extends a derived recipe that has a dynamic block")
+    if not isinstance(basis, str) or not basis.strip():
+        raise ValueError("a site agreement bar records its basis")
+    body = json.loads(json.dumps(dict(recipe)))
+    body[DYNAMIC][SITE_AGREEMENT] = {
+        "schema": SITE_AGREEMENT_SCHEMA,
+        "cosine_min": float(cosine_min),
+        "rel_rmse_max": float(rel_rmse_max),
+    }
+    site_agreement_of(body)
+    body.setdefault("why", {})[f"{DYNAMIC}.{SITE_AGREEMENT}"] = basis.strip()
+    body["recipe_sha256"] = digest(body)
+    return body
+
+
 def with_activation_observer(recipe: Mapping[str, Any], observer: str) -> dict[str, Any]:
     """``recipe`` whose static activation scales are calibrated by ``observer`` (``p99.999``: a percentile)."""
     _static_int8(recipe, "an activation observer")
@@ -620,7 +670,7 @@ def with_activation_observer(recipe: Mapping[str, Any], observer: str) -> dict[s
 
 def _main(argv: Sequence[str] | None = None) -> int:
     """``python -m merlin.targetgen.quant_recipe {activation-contractions|dynamic-contractions|static-planes|
-    activation-observer|gptq-weights} IN OUT``."""
+    site-agreement|activation-observer|gptq-weights} IN OUT``."""
     import argparse
     from pathlib import Path
 
@@ -647,6 +697,12 @@ def _main(argv: Sequence[str] | None = None) -> int:
     observe.add_argument("recipe", type=Path)
     observe.add_argument("out", type=Path)
     observe.add_argument("observer")
+    bar = sub.add_parser("site-agreement", help=with_site_agreement.__doc__.splitlines()[0])
+    bar.add_argument("recipe", type=Path)
+    bar.add_argument("out", type=Path)
+    bar.add_argument("--cosine-min", type=float, required=True, dest="cosine_min")
+    bar.add_argument("--rel-rmse-max", type=float, required=True, dest="rel_rmse_max")
+    bar.add_argument("--basis", required=True, help="where the bar came from (recorded in the recipe's why)")
     gptq = sub.add_parser("gptq-weights", help=with_gptq_weights.__doc__.splitlines()[0])
     gptq.add_argument("recipe", type=Path)
     gptq.add_argument("out", type=Path)
@@ -664,6 +720,8 @@ def _main(argv: Sequence[str] | None = None) -> int:
     elif args.command == "gptq-weights":
         chosen = {name: getattr(args, name) for name in ("calibration_samples", "act_order", "damp", "block")}
         body = with_gptq_weights(source, **{name: value for name, value in chosen.items() if value is not None})
+    elif args.command == "site-agreement":
+        body = with_site_agreement(source, cosine_min=args.cosine_min, rel_rmse_max=args.rel_rmse_max, basis=args.basis)
     elif args.command == "activation-observer":
         body = with_activation_observer(source, args.observer)
     else:
