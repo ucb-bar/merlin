@@ -656,12 +656,18 @@ def assemble(
     private_baseline: Path | None = None,
     retirements: Path | None = None,
     generated_only: bool = True,
+    capsule_scope: str = "all",
     loader_profile_sources: tuple[Path, ...] | None = None,
 ) -> dict:
     """Assemble generated public members, with an explicit safe historical overlay."""
     from merlin.targetgen.sandbox.bwrap import _validate_host_sources
 
     from ..runner import fingerprint
+    from .accelerator_scope import select_members, validate_scope
+
+    validate_scope(capsule_scope, generated_only=generated_only)
+    if capsule_scope != "all" and private_baseline is not None:
+        raise SpecError("accelerator selection cannot mix a historical private baseline")
 
     source_parent = te.capsule_corpus.parent
     if generated_only and retirements is not None:
@@ -725,6 +731,10 @@ def assemble(
             )
         except ValueError as exc:
             raise SpecError(f"phase-0 corpus selections do not match emitted capsules: {exc}") from exc
+    scope_record = None
+    if capsule_scope == "accelerator":
+        emitted, scope_record = select_members(emitted, fingerprint=fingerprint)
+        declared = {key for key in emitted if not key.startswith("hidden/")}
     original = (
         {
             "generated": [],
@@ -795,13 +805,30 @@ def assemble(
     # baseline sidecar cannot fill an absent source trace in the selected run.
     from ..phase0.coverage_commitment import INPUT_PATH, read_inputs
 
-    if read_inputs(generated, provenance) is not None:
+    coverage_inputs = read_inputs(generated, provenance)
+    if coverage_inputs is not None and scope_record is None:
         copy_input(generated / INPUT_PATH, destination / INPUT_PATH, private=True)
     retain_deferred_performance(generated, destination, provenance, target=te.target)
     # The promoted descriptor points at this release, so Phase 2 must see the
     # same generated provenance as Phase 0, not a live checkout's MANIFEST.
     # Functional grading still discovers only non-underscore categories.
     merged = copy.deepcopy(provenance)
+    if scope_record is not None:
+        from ..phase0.coverage_commitment import write_inputs
+        from .phase_selection import generate_phase_selections
+
+        if coverage_inputs is None:
+            raise SpecError("accelerator selection requires original manifest-bound coverage inputs")
+        # Source application obligations stay unchanged; only standalone test scope is selected.
+        public_scope = {key: value for key, value in scope_record.items() if key != "members"}
+        public_scope["source_coverage_inputs_sha256"] = provenance["coverage_inputs"]["sha256"]
+        merged["coverage_inputs"] = write_inputs(destination, {**coverage_inputs, "capsule_scope": public_scope})
+        merged["capsule_scope"] = public_scope
+        merged["generated"] = sorted(declared)
+        if phase_corpora is not None:
+            merged["phase_corpora"][te.target] = generate_phase_selections(
+                sorted(declared), performance_category=category
+            )
     if retired_receipts:
         # The public manifest needs an audit commitment, not a list of removed
         # claim-model identities or reviewer prose. Detailed decisions stay in
@@ -831,6 +858,7 @@ def assemble(
         },
         "generated_manifest_sha256": fingerprint(generated / "MANIFEST.yaml"),
         "replacements": replacements,
+        **({"capsule_scope": scope_record} if scope_record is not None else {}),
         **({"loader_profile_dependencies": profile_dependencies} if loader_profile_sources is not None else {}),
     }
 
@@ -1318,6 +1346,7 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
     )
 
     coverage_inputs = read_inputs(te.capsule_corpus.parent)
+    from .accelerator_scope import has_accelerator_work, selected_scope
     completeness = observe_cohort(
         coverage_inputs,
         admitted_source_roots(te.graded_roots(), materialized),
@@ -1332,6 +1361,10 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
         if source_hidden is not None
         else capsule_runner.discover_capsules(te.hidden_roots(), labels={"hidden"})
     )
+    if selected_scope(coverage_inputs) is not None:
+        for capsule in [*source_public, *hidden]:
+            if not has_accelerator_work(capsule):
+                raise SpecError("accelerator-only release contains a host-only capsule")
     _, withheld = capsule_runner._split_ineligible([cap for cap in hidden if cap.get("kind") != "model"], te.target)
     excluded = {row["capsule"] for row in withheld}
     count = len(hidden)
