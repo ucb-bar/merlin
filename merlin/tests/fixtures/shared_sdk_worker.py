@@ -14,6 +14,7 @@ assert not any(name == "merlin" or name.startswith("merlin.") for name in sys.mo
 sys.path[:0] = [str(bundle), config["fixtures"], *config["dependencies"]]
 
 import test_async_schedule_pipeline as asynchronous  # noqa: E402
+import test_pointwise_source as pointwise  # noqa: E402
 import test_selected_dense_contracts as dense  # noqa: E402
 import test_selected_fusion_contracts as fusion  # noqa: E402
 import test_selected_program_contracts as program  # noqa: E402
@@ -98,6 +99,15 @@ def source_dense_from_export(path):
 
 
 run("source_dense", source_dense_from_export)
+
+def source_pointwise_from_export(path):
+    from types import SimpleNamespace
+
+    pointwise.test_source_arithmetic_survives_fusion_and_allocation(
+        path, execute=pointwise.execute.__wrapped__(path, SimpleNamespace()), m=2, n=11, separate=True)
+
+
+run("source_pointwise", source_pointwise_from_export)
 
 origins = {}
 for name, module in tuple(sys.modules.items()):
