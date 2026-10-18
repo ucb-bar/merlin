@@ -4,7 +4,7 @@ import random
 from types import SimpleNamespace
 
 import pytest
-from test_lean_cast_cancel import captured_source, local_source, long_source, mutate, source
+from test_lean_cast_cancel import captured_source, local_source, long_source, mutate, source, two_capture_source
 from test_lean_constant_alias_native import compare
 from test_lean_integer_cast_nested import certify
 from test_lean_integer_fold import canonicalize
@@ -80,6 +80,15 @@ def test_captured_roundtrip_native_preserves_escaped_widening(tmp_path, fidelity
     expected = [["131", "134", "128", "17", str(widened(kind, 8, 32, 128))]]
     for side, program in [("before", before), ("after", after)]:
         compare(program.read_text(), inputs, expected, tmp_path / side, fidelity_tools)
+
+
+@pytest.mark.parametrize("kind", ["extui", "extsi"])
+def test_parent_alias_two_capture_order_matches_native_bits(tmp_path, fidelity_tools, kind):
+    _, before, after = stage_for(tmp_path, fidelity_tools, two_capture_source(kind))
+    samples = [[[128], [17], [0, 1, 255], [3, 7, 255]]]
+    expected = [["146", "149", "111"]]
+    for side, program in [("before", before), ("after", after)]:
+        compare(program.read_text(), samples, expected, tmp_path / side, fidelity_tools)
 
 
 @pytest.mark.parametrize("kind", ["extui", "extsi"])

@@ -43,6 +43,23 @@ def captured_source(kind="extsi"):
     }}"""
 
 
+def two_capture_source(kind="extsi"):
+    return f"""func.func @forward(%x: i8, %other: i8, %data: tensor<3xi8>, %init: tensor<3xi8>)
+        -> tensor<3xi8> {{
+      %mid = arith.{kind} %x : i8 to i32
+      %roundtrip = arith.trunci %mid : i32 to i8
+      %r = linalg.generic {{indexing_maps = [affine_map<(d0)->(d0)>, affine_map<(d0)->(d0)>],
+          iterator_types = ["parallel"]}} ins(%data : tensor<3xi8>) outs(%init : tensor<3xi8>) {{
+        ^bb0(%value: i8, %old: i8):
+          %captured = arith.addi %roundtrip, %other : i8
+          %sum = arith.addi %value, %captured : i8
+          %mixed = arith.xori %sum, %old : i8
+          linalg.yield %mixed : i8
+      }} -> tensor<3xi8>
+      return %r : tensor<3xi8>
+    }}"""
+
+
 def long_source(kind="extsi", *, escape=False):
     casts = []
     for width in range(9, 137):
@@ -93,6 +110,14 @@ def test_actual_alias_updates_captured_result_preserves_escaped_widening(tmp_pat
     stage, before, after = canonicalize(tmp_path, lean_tools, captured_source(kind))
     assert "linalg.generic" in after.read_text() and "arith.trunci" not in after.read_text()
     assert after.read_text().count(f"arith.{kind}") == 1
+    certify(stage, before, lean_tools, tmp_path, index_bits=index_bits)
+
+
+@pytest.mark.parametrize("kind", ["extui", "extsi"])
+@pytest.mark.parametrize("index_bits", [32, 64])
+def test_parent_alias_reorders_two_captures_after_nested_normalization(tmp_path, lean_tools, kind, index_bits):
+    stage, before, after = canonicalize(tmp_path, lean_tools, two_capture_source(kind))
+    assert "linalg.generic" in after.read_text() and "arith.trunci" not in after.read_text()
     certify(stage, before, lean_tools, tmp_path, index_bits=index_bits)
 
 
