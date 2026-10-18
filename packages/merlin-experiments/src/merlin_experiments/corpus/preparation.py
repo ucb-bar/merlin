@@ -1028,7 +1028,9 @@ def _stage_capability_contract(
         if gsim_readback_transport is not None:
             selected = rocc_selection.select_gsim_readback(selected, gsim_readback_transport)
         if operand_selection is not None:
-            selected = rocc_selection.select_operand_protocol(selected, operand_selection)
+            select = (rocc_selection.relocate_operand_protocol if "rocc_operand_selection" in selected
+                      else rocc_selection.select_operand_protocol)
+            selected = select(selected, operand_selection)
     except (runtime.RoCCExecutionError, ValueError) as error:
         raise SpecError(str(error)) from error
     native_engines = set(selected["runner"]["chipyard_rocc"]["engines"]) & {"gsim", "verilator"}
@@ -1136,11 +1138,20 @@ def scaffold(
     document.pop("contracts_root", None)
     document["capsule_corpus"] = str(corpus / te.capsule_corpus.name)
     hardware = document.get("hardware_spec") or {}
+    from .operand_relocation import existing_selection
+
+    existing_observer = existing_selection(selected_contract, selected_facts)
+    facts_source = selected_facts
+    if existing_observer is not None:
+        facts_source = existing_observer["facts"]
+        inputs["rtl_facts_phase0_export"] = existing_observer["phase0_export"]
+        if operand_protocol_selection is None:
+            operand_protocol_selection = existing_observer["sidecar"]
     facts_root = None
     if selected_facts is not None:
         facts_root = experiment / "rtl_facts"
-        digest = copy_input(selected_facts, facts_root / "facts.json")
-        inputs["rtl_facts"] = {"path": str(selected_facts), "sha256": digest}
+        digest = copy_input(facts_source, facts_root / "facts.json")
+        inputs["rtl_facts"] = {"path": str(facts_source), "sha256": digest}
     operand_selection = None
     checker_inputs = ()
     if operand_protocol_selection is not None:
