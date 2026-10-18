@@ -3,7 +3,7 @@
 Targets supply the original instruction sequence and qualified implementations.
 Merlin reads current typed source, checks that sequence, runs the existing
 scheduler, then independently reconstructs the final bytes' scalar dataflow.
-This bounded family admits complete contiguous integer vectors, not opaque
+This bounded family admits contiguous integer vector fragments, not opaque
 backend output, floating reassociation, broadcasts or asynchronous arithmetic.
 """
 
@@ -23,13 +23,14 @@ from merlin.transforms.dense_ir import checked_static_linalg_shell
 from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
 from .configuration import verify_configuration_state
+from .fusion import _elementwise
 from .fusion_semantics import ScalarBudgetExceeded, ScalarGraph, UnsupportedElementwise, scalar_graph, term
 from .library_sources import shared_library_sources
 from .program_limits import AddressWindow
 from .schedule_pipeline import ScheduleBudgets, ScheduleCompilation, compile_schedule
 from .selected_contracts import SelectedSchedulingContracts
 from .spill_conformance import _Memory, _Piece
-from .temporary_storage import _project
+from .temporary_storage import _overlap, _project
 
 
 @dataclass(frozen=True)
@@ -110,7 +111,12 @@ class PointwiseBindings:
 
 
 def _verify_vectors(source, kernel, bindings, banks, external, adapter, budgets, configuration_adapter=None):
-    """Reconstruct whole-vector expressions using the existing interval memory."""
+    """Check every output fragment against its original logical source interval.
+
+    Copies preserve byte provenance. Original inputs can be sliced on element
+    boundaries; computed fragments must be read completely. No expression
+    slicing or per-element expansion is needed to verify tiled arithmetic.
+    """
     if not bindings.external_buffers_disjoint:
         raise UnsupportedElementwise("pointwise runtime has not established distinct external backing ownership")
     count = prod(source.shape)
@@ -144,24 +150,23 @@ def _verify_vectors(source, kernel, bindings, banks, external, adapter, budgets,
 
     memory, arguments = _Memory(), []
     for window, bits, order in zip(bindings.inputs, graph.input_bits, bindings.byte_orders):
-        expression = term(("source-vector", key(window), window.start, window.size, bits, order))
-        identity = ("scalar-vector", expression, bits, order)
+        identity = ("source-vector", key(window), window.start, window.size, bits, order)
         memory.write(key(window), window.start, window.size, (_Piece(identity, 0, window.size),))
-        arguments.append(expression)
+        arguments.append(identity)
 
-    def read(access, bits=None, order=None):
-        parts = memory.read(key(access), access.start, access.size)
-        if (
-            len(parts) != 1
-            or parts[0].offset != 0
-            or parts[0].size != access.size
-            or parts[0].identity[0] != "scalar-vector"
-        ):
+    def expression(part, bits, order):
+        identity = part.identity
+        if identity[0] == "source-vector":
+            if identity[-2:] != (bits, order) or part.offset % (bits // 8) or part.size % (bits // 8):
+                raise ValueError("pointwise instruction changes a source vector's width or byte layout/alignment")
+            return term((*identity, part.offset // (bits // 8), part.size // (bits // 8)))
+        if identity[0] != "scalar-vector":
             raise ValueError("pointwise instruction reads undefined, partial or overwritten vector data")
-        part = parts[0]
-        if bits is not None and (part.identity[2:] != (bits, order) or access.size != count * bits // 8):
-            raise ValueError("pointwise instruction changes a source vector's width, extent or byte layout")
-        return part
+        if identity[2:4] != (bits, order):
+            raise ValueError("pointwise instruction changes a computed vector's width or byte layout")
+        if part.offset != 0 or part.size != identity[4]:
+            raise UnsupportedElementwise("pointwise arithmetic requires complete computed fragments")
+        return identity[1]
 
     effects = _project(kernel, adapter, budgets.max_calls)
     state = None
@@ -185,44 +190,61 @@ def _verify_vectors(source, kernel, bindings, banks, external, adapter, budgets,
                     for w in bindings.inputs
                 )
                 or access.writes
-                and (access.space, access.start, access.size)
-                != (bindings.output.space, bindings.output.start, bindings.output.size)
+                and not (
+                    access.space == bindings.output.space
+                    and bindings.output.start <= access.start
+                    and access.start + access.size <= bindings.output.start + bindings.output.size
+                )
             ):
                 raise ValueError("pointwise program has an undeclared external read or state write")
         if not accesses or not accesses[-1].writes or any(a.writes for a in accesses[:-1]):
             raise UnsupportedElementwise("pointwise instructions need ordered inputs and one complete result")
         if effect.exact_copy:
-            part = read(accesses[0])
+            read, write = accesses
+            if _overlap(read, write, bank_map) and (read.start, read.size) != (write.start, write.size):
+                raise UnsupportedElementwise("shifted exact copies require an explicit overlap execution contract")
+            parts = memory.read(key(read), read.start, read.size)
+            if any(part.identity[0] not in ("source-vector", "scalar-vector") for part in parts):
+                raise ValueError("pointwise copy reads undefined or overwritten vector data")
         elif effect.elementwise is not None:
             semantic = effect.elementwise
-            actual = scalar_graph(semantic.function_ir, budgets.max_scalar_operations, budgets.max_scalar_ir_bytes)
-            if semantic.elements != count or len(accesses) != len(actual.input_bits) + 1:
-                raise ValueError("pointwise instruction does not cover the complete source domain")
-            inputs = [
-                read(a, bits, order).identity[1]
-                for a, bits, order in zip(accesses[:-1], actual.input_bits, semantic.byte_orders[:-1], strict=True)
-            ]
-            if accesses[-1].size != count * actual.output_bits // 8:
-                raise ValueError("pointwise instruction result has an incorrect complete extent")
-            part = _Piece(
-                ("scalar-vector", actual.expression(inputs), actual.output_bits, semantic.byte_orders[-1]),
-                0,
-                accesses[-1].size,
+            actual, reads, output = _elementwise(
+                effect, bank_map, budgets.max_scalar_operations, budgets.max_scalar_ir_bytes
             )
+            if semantic.elements > count:
+                raise ValueError("pointwise instruction exceeds the complete source domain")
+            inputs = []
+            for access, bits, order in zip(reads, actual.input_bits, semantic.byte_orders[:-1], strict=True):
+                pieces = memory.read(key(access), access.start, access.size)
+                if len(pieces) != 1:
+                    raise UnsupportedElementwise("pointwise arithmetic requires one complete contiguous fragment")
+                inputs.append(expression(pieces[0], bits, order))
+            parts = (_Piece(
+                ("scalar-vector", actual.expression(inputs), actual.output_bits, semantic.byte_orders[-1], output.size),
+                0, output.size,
+            ),)
         else:
             raise UnsupportedElementwise("pointwise program contains unmodeled arithmetic or execution effects")
         output = accesses[-1]
-        memory.write(key(output), output.start, output.size, (part,))
-    returned = read(bindings.output, graph.output_bits, bindings.byte_orders[-1])
-    if returned.identity[1] != graph.expression(arguments):
-        raise ValueError("realized pointwise arithmetic differs from the complete typed source")
+        memory.write(key(output), output.start, output.size, parts)
+    returned = memory.read(key(bindings.output), bindings.output.start, bindings.output.size)
+    cursor, output_width = 0, graph.output_bits // 8
+    for part in returned:
+        if part.size % output_width:
+            raise ValueError("pointwise output fragment is not element aligned")
+        start, elements = cursor // output_width, part.size // output_width
+        expected = graph.expression([term((*arg, start, elements)) for arg in arguments])
+        if expression(part, graph.output_bits, bindings.byte_orders[-1]) != expected:
+            raise ValueError("realized pointwise arithmetic differs from the complete typed source")
+        cursor += part.size
     return {
         "actual_commands": len(effects),
         "elements": count,
         "requested_read_bytes": sum(a.size for e in effects for a in e.accesses if not a.writes),
         "requested_write_bytes": sum(a.size for e in effects for a in e.accesses if a.writes),
         "source_scalar_sha256": sha256(source.scalar_ir).hexdigest(),
-        "result_expression": returned.identity[1],
+        "result_expression": graph.expression([term((*arg, 0, count)) for arg in arguments]),
+        "verified_fragments": len(returned),
         "configuration": state,
     }
 
@@ -276,6 +298,8 @@ def compile_source_pointwise(
     fusion_emitters=None,
     fusion_qualification_identity=None,
     configuration_qualification_identity=None,
+    spill_emitters=None,
+    spill_qualification_identity=None,
     max_source_elements=64 << 20,
     pass_order=(),
 ):
@@ -315,6 +339,7 @@ def compile_source_pointwise(
                 private_ownership,
                 fusion_qualification_identity,
                 configuration_qualification_identity,
+                spill_qualification_identity,
             )
         ),
     )
@@ -384,6 +409,8 @@ def compile_source_pointwise(
                 fusion_emitters=fusion_emitters,
                 fusion_qualification_identity=fusion_qualification_identity,
                 configuration_qualification_identity=configuration_qualification_identity,
+                spill_emitters=spill_emitters,
+                spill_qualification_identity=spill_qualification_identity,
             )
         }
 

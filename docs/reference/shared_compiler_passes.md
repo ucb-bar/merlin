@@ -1385,8 +1385,25 @@ same-window input aliases are supported. Shifted or reinterpreted input aliases
 and input/output overlap refuse. Private bank views use the selected canonical
 physical backing, so writes through one view invalidate overlapping reads through
 another. The checker reuses the existing interval provenance memory and stores
-one scalar expression per whole vector; it never expands by tensor elements.
+one scalar expression per computed fragment; it never expands by tensor elements.
+Original inputs admit element-aligned slices, including tails. Arithmetic reads
+must cover one complete computed fragment; slicing or merging computed expressions
+remains unsupported. Exact copies may split and reassemble byte provenance.
+Every final output fragment must match the source expression over the same logical
+input interval, with gap-free coverage of the complete result. Per-instruction
+shifted arithmetic aliases and overlapping shifted copies remain unsupported.
 Only qualified synchronous arithmetic and exact copies are admitted here.
+
+For selected device spills, pass `spill_emitters` and
+`spill_qualification_identity` through this source entry. The nested scheduler
+binds the existing declared register classes and exact save/reload semantics,
+then replans allocation, liveness, completion, emission and size within its repair
+budget. The source checker independently reopens the repaired final bytes.
+A short tail does not authorize spilling uninitialized full-register padding.
+Missing qualification preserves a feasible allocation; unresolved pressure
+produces the existing precise diagnostic for the caller's fallback route.
+These are device storage capabilities; host register allocation stays with the
+selected native toolchain.
 
 Selected persistent settings may also parameterize those scalar instructions.
 The software specification must describe each instruction's complete state
@@ -1462,6 +1479,7 @@ Reproduce source mutations, native execution and ordinary paired model builds:
 ```sh
 python -B -m pytest -p no:cacheprovider \
   merlin/tests/infra/test_pointwise_source.py \
+  merlin/tests/infra/test_spilled_pointwise_source.py \
   merlin/tests/infra/test_pointwise_source_whole_model.py \
   merlin/tests/infra/test_configured_pointwise.py \
   merlin/tests/infra/test_configured_pointwise_model.py \
@@ -1490,6 +1508,16 @@ executes on the CPU; its functional Spike counter and process wall time are not
 accelerator latency. Packing bytes remain a separate unchanged cost. This
 experiment does not demonstrate real target support, Phase 2 pass synthesis or
 generalization learned by an agent.
+
+The separate source-spill tests compare a manually repaired legal baseline with
+automatic repair on identical one-slot hardware. Both produce the same actual
+11-command program, including an exact save/reload of a live full-width value.
+Independent native execution checks complete outputs, carried state and guards
+for three-byte and 16-byte register classes with distinct spill memory and two
+instruction formats. Mutations corrupt fragment offsets, tail coverage, arithmetic,
+spill/reload bytes and current source/contract/library identities. This establishes
+checked repair of that selected schedule, not optimal scheduling or a speedup;
+storing the first result earlier could avoid the spill.
 
 ## Physical elementwise fusion
 
