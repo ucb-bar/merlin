@@ -94,7 +94,13 @@ class BuildSettings:
 
     @classmethod
     def of(
-        cls, models, model, host_package: Path, *, dedup_weights: bool = True, op_profile: bool = False,
+        cls,
+        models,
+        model,
+        host_package: Path,
+        *,
+        dedup_weights: bool = True,
+        op_profile: bool = False,
     ) -> BuildSettings:
         from merlin.common.paths import repo_root
 
@@ -129,8 +135,11 @@ class BuildSettings:
 def _profile_table_matches(record: dict) -> bool:
     """A profiled image can be reused only with its original adjacent table."""
     table = record.get("op_profile_table")
-    if (not isinstance(table, dict) or not isinstance(table.get("path"), str)
-            or not isinstance(record.get("build_dir"), str)):
+    if (
+        not isinstance(table, dict)
+        or not isinstance(table.get("path"), str)
+        or not isinstance(record.get("build_dir"), str)
+    ):
         return False
     path = Path(table["path"])
     return (
@@ -155,11 +164,20 @@ def _lowering_sources() -> dict[str, Path]:
         for path in sorted(root.rglob("*.py")):
             sources[namespace + "/" + path.relative_to(root).as_posix()] = path
     for name in (
-        __name__, "merlin.model_check.full", "merlin.model_check.compute_execution", "merlin.compile.baremetal_model",
-        "merlin.compile.model_execution_inputs", "merlin.targetgen.rtl.facts",
-        "merlin.common.invocation_record", "merlin.common.proc", "merlin.common.cpu_pool",
+        __name__,
+        "merlin.model_check.full",
+        "merlin.model_check.compute_execution",
+        "merlin.compile.baremetal_model",
+        "merlin.compile.model_execution_inputs",
+        "merlin.targetgen.rtl.facts",
+        "merlin.common.invocation_record",
+        "merlin.common.proc",
+        "merlin.common.cpu_pool",
+        "merlin.common.digest",
+        "merlin.common.jsonio",
         "merlin.targetgen.target_registry",
-        "merlin.runtime.backends.zephyr_model", "merlin.runtime.backends.spike_model",
+        "merlin.runtime.backends.zephyr_model",
+        "merlin.runtime.backends.spike_model",
         "merlin.runtime.operation_profile",
     ):
         sources[name] = module_source_path(name)
@@ -209,14 +227,14 @@ def _build_inputs(stage, submission, settings, directory, offload, weights_sourc
         trees = {"capture": stage, "host_package": settings.host_package}
         if offload:
             trees["device_package"] = submission
-        inputs = {name: {"path": str(root := path(value)), **strict_tree_sha256(root)}
-                  for name, value in trees.items()}
+        inputs = {name: {"path": str(root := path(value)), **strict_tree_sha256(root)} for name, value in trees.items()}
         files = {"board_catalog": settings.board_catalog, "host_dts": settings.host_dts}
         files.update({name: value for name in TARGET_INPUTS if (value := os.environ.get(name))})
         if weights_source is not None:
             files["weights_source"] = weights_source
-        inputs.update({name: {"path": str(root := path(value)), "sha256": sha256(root)}
-                       for name, value in files.items()})
+        inputs.update(
+            {name: {"path": str(root := path(value)), "sha256": sha256(root)} for name, value in files.items()}
+        )
         try:
             facts = load_facts(target, regenerate=False)
         except FileNotFoundError:
@@ -225,7 +243,8 @@ def _build_inputs(stage, submission, settings, directory, offload, weights_sourc
             facts = None  # Unavailable remains unknown; cache lookup never extracts RTL.
         inputs["selected_facts_sha256"] = (
             hashlib.sha256(json.dumps(facts, sort_keys=True, allow_nan=False).encode()).hexdigest()
-            if facts is not None else None
+            if facts is not None
+            else None
         )
         artifact = find_facts(target) if facts is not None else None
         inputs["selected_facts_file"] = (
@@ -240,16 +259,21 @@ def _build_inputs(stage, submission, settings, directory, offload, weights_sourc
             software = None
         inputs["selected_capability_sha256"] = (
             hashlib.sha256(json.dumps(software, sort_keys=True, allow_nan=False).encode()).hexdigest()
-            if software is not None else None
+            if software is not None
+            else None
         )
         capability = selected.capability_contract_path
         inputs["selected_capability_file"] = (
             {"path": str(root := path(capability)), "sha256": sha256(root)}
-            if capability != selected.contract_path else None
+            if capability != selected.contract_path
+            else None
         )
         inputs["provider_metadata"] = {
-            name: ({"path": str(root := path(value)), "sha256": sha256(root)}
-                   if value.exists() or value.is_symlink() else None)
+            name: (
+                {"path": str(root := path(value)), "sha256": sha256(root)}
+                if value.exists() or value.is_symlink()
+                else None
+            )
             for name, value in (("contract", selected.contract_path), ("dialect_plan", selected.dialect_plan_path))
         }
         return {"schema": "merlin.full_model_build_inputs.v1", **inputs}
@@ -282,9 +306,19 @@ def _relink_artifacts(build_dir: Path, elf: Path, recipe_sha256: str) -> tuple[d
     from merlin.llvmlower.compilation_recipe import FILENAME, verify_completed_recipe
 
     recipe = verify_completed_recipe(build_dir / FILENAME, executable=elf, expected_recipe_sha256=recipe_sha256)
-    files = [*sorted((build_dir / "cgen").glob("*.h")),
-             *(build_dir / name for name in (blob_weights.PLAN_FILE, blob_weights.VALUES_FILE,
-                                            quant_hoist.PLAN_FILE, quant_hoist.VALUES_FILE, weight_panel.PLAN_FILE))]
+    files = [
+        *sorted((build_dir / "cgen").glob("*.h")),
+        *(
+            build_dir / name
+            for name in (
+                blob_weights.PLAN_FILE,
+                blob_weights.VALUES_FILE,
+                quant_hoist.PLAN_FILE,
+                quant_hoist.VALUES_FILE,
+                weight_panel.PLAN_FILE,
+            )
+        ),
+    ]
     metadata = {}
     for path in files:
         if any(member.is_symlink() for member in (path, *path.parents)):
@@ -315,8 +349,18 @@ def _verify_relink(record: dict, stage: Path, *, inputs_current: bool = True) ->
             raise FullBuildError("build has no checked relink recipe; rebuild through the ordinary compiler")
         cache = Path(record["cache_directory"])
         stored = json.loads((cache / "build.json").read_text())
-        for name in ("key", "cache_directory", "build_dir", "elf", "elf_sha256", "build_hash", "relink_binding",
-                     "weights_bin_bytes", "weights_bin_sha256", "device_routed"):
+        for name in (
+            "key",
+            "cache_directory",
+            "build_dir",
+            "elf",
+            "elf_sha256",
+            "build_hash",
+            "relink_binding",
+            "weights_bin_bytes",
+            "weights_bin_sha256",
+            "device_routed",
+        ):
             if record[name] != stored[name]:
                 raise FullBuildError("relink record differs from its stored build origin: " + name)
         if Path(stage).resolve() != Path(key["stage"]):
@@ -325,9 +369,10 @@ def _verify_relink(record: dict, stage: Path, *, inputs_current: bool = True) ->
         inputs = key["inputs"]
         submission = inputs.get("device_package", {}).get("path")
         weights = inputs.get("weights_source", {}).get("path")
-        if inputs_current and _build_inputs(
-            stage, submission, settings, cache, key["offload"], weights, key["target"]
-        ) != inputs:
+        if (
+            inputs_current
+            and _build_inputs(stage, submission, settings, cache, key["offload"], weights, key["target"]) != inputs
+        ):
             raise FullBuildError("relink build inputs changed; rebuild the image")
         current, recipe = _relink_artifacts(Path(record["build_dir"]), Path(record["elf"]), binding["recipe_sha256"])
         if current != binding or _lowering_identity() != key["lowering"]:
@@ -396,8 +441,16 @@ def build(
                 fcntl.flock(lock, fcntl.LOCK_EX)
             with I.timed_event("phase", "model image build or lookup"):
                 result = _build(
-                    stage, target, label, submission, submission_sha256, settings, directory, admission,
-                    offload, weights_source,
+                    stage,
+                    target,
+                    label,
+                    submission,
+                    submission_sha256,
+                    settings,
+                    directory,
+                    admission,
+                    offload,
+                    weights_source,
                 )
         result["timing"] = _write_timings(directory, events)
         return result
@@ -462,8 +515,12 @@ def _build(
                 raise FullBuildError("operation profile table changed during cache lookup")
             if current_admission is not None:
                 current_admission.revalidate(elf=elf, result=admission_result, target=target)
-            return {**record, "reused": True, "cache_admission": admission_result,
-                    "cache_lookup_seconds": time.monotonic() - lookup_started}
+            return {
+                **record,
+                "reused": True,
+                "cache_admission": admission_result,
+                "cache_lookup_seconds": time.monotonic() - lookup_started,
+            }
     image = directory / "image"
     if image.exists():
         shutil.rmtree(image)
@@ -571,7 +628,12 @@ def _shadow(stage: Path, inputs: dict[str, np.ndarray], directory: Path) -> Path
 
 
 def relink(
-    record: dict[str, Any], stage: Path, inputs: dict[str, np.ndarray], directory: Path, *, admission=None,
+    record: dict[str, Any],
+    stage: Path,
+    inputs: dict[str, np.ndarray],
+    directory: Path,
+    *,
+    admission=None,
 ) -> Path:
     """The build's image with ``inputs`` (``{"in0": ...}``) embedded instead of the capture's; its ELF path."""
     import fcntl
@@ -639,18 +701,30 @@ def _relink(record, stage, inputs, directory, *, admission):
     argv = [directory / "model_main.o" if a == str(build_dir / "model_main.o") else a for a in main["argv"]]
     argv = [str(cgen) if a == str(build_dir / "cgen") else a for a in argv]
     observed = CompilationRecipe(directory, producer=module_source_path(__name__))
-    main_inputs = [cgen / Path(item["path"]).name
-                   if Path(item["path"]).parent == build_dir / "cgen" and Path(item["path"]).suffix == ".h"
-                   else Path(item["path"]) for item in main["inputs"]]
-    observed.run(argv, runner=_run, inputs=list(dict.fromkeys([*main_inputs, *sorted(cgen.glob("*.h"))])),
-                 output=directory / "model_main.o", cwd=Path(main["cwd"]))
+    main_inputs = [
+        cgen / Path(item["path"]).name
+        if Path(item["path"]).parent == build_dir / "cgen" and Path(item["path"]).suffix == ".h"
+        else Path(item["path"])
+        for item in main["inputs"]
+    ]
+    observed.run(
+        argv,
+        runner=_run,
+        inputs=list(dict.fromkeys([*main_inputs, *sorted(cgen.glob("*.h"))])),
+        output=directory / "model_main.o",
+        cwd=Path(main["cwd"]),
+    )
     _verify_relink(record, Path(stage), inputs_current=False)
     link = _recipe_command(recipe, Path(record["elf"]))
     elf = directory / "model.elf"
     swap = {str(build_dir / "model_main.o"): str(directory / "model_main.o"), record["elf"]: str(elf)}
-    observed.run([swap.get(a, a) for a in link["argv"]], runner=_run,
-                 inputs=[Path(swap.get(item["path"], item["path"])) for item in link["inputs"]],
-                 output=elf, cwd=Path(link["cwd"]))
+    observed.run(
+        [swap.get(a, a) for a in link["argv"]],
+        runner=_run,
+        inputs=[Path(swap.get(item["path"], item["path"])) for item in link["inputs"]],
+        output=elf,
+        cwd=Path(link["cwd"]),
+    )
     if not elf.is_file() or elf.is_symlink():
         raise FullBuildError("relink command produced no ordinary executable")
     _verify_relink(record, Path(stage), inputs_current=not record["device_routed"])

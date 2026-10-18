@@ -244,6 +244,27 @@ python -B -m pytest merlin/tests/infra/test_full_model_lowering_cache.py \
   -p no:cacheprovider --basetemp "$TMPDIR/full-model-input-cache"
 ```
 
+`verify_completed_recipe(..., terminal_read_policy="once")` is the ordinary
+default. The terminal command's output metadata is checked first; its content
+hash is deferred until the existing later final-executable check. Complete,
+type-exact equality with the final identity and the caller-selected executable
+is required before that read. This removes one duplicate executable read;
+producers, preparation, tools, direct inputs, intermediate outputs, supplier
+evidence and recipe freshness keep their existing checks. Each invocation
+freshly hashes the final executable. No timestamp or persistent content cache
+substitutes for a read. This is a readonly structural-validation interval, with
+no native command or provider callback between the two output checks.
+
+For paired verification-cost experiments, select
+`terminal_read_policy="repeated"` on the same helper and library version. That
+retains the additional earlier output hash and the mandatory later hash. Unknown
+policies refuse before file access. Neither mode locks arbitrary recorded
+files against concurrent writers or closes implicit toolchain dependencies;
+the caller retains its existing ownership and synchronization obligations.
+Bytes returned by file reads, host verification time and physical disk or DMA
+traffic are separate quantities. This change supplies no model execution or
+accelerator timing qualification.
+
 The real execution test skips when the selected native/cross toolchain and
 functional simulator are unavailable. It checks every output and carried state
 for three calls under each of two changed source programs, plus normal hardware

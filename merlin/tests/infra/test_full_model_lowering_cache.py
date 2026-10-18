@@ -69,14 +69,20 @@ def builds(tmp_path, monkeypatch):
     (tmp_path / "boards").write_text("board1")
     (tmp_path / "cpu.dts").write_text("host01")
     settings = FB.BuildSettings(
-        "selected-board", tmp_path / "boards", tmp_path / "cpu.dts", "typed", 1, tmp_path / "host")
+        "selected-board", tmp_path / "boards", tmp_path / "cpu.dts", "typed", 1, tmp_path / "host"
+    )
 
     def build(*, target="neutral", offload=True, op_profile=False, admission=None, weights_source=None):
         return FB.build(
-            tmp_path / "capture", target=target, label="program", submission=tmp_path / "device",
-            submission_sha256="source", settings=replace(settings, op_profile=op_profile),
+            tmp_path / "capture",
+            target=target,
+            label="program",
+            submission=tmp_path / "device",
+            submission_sha256="source",
+            settings=replace(settings, op_profile=op_profile),
             directory=tmp_path / "image-cache",
-            admission=admission or _service(target), offload=offload,
+            admission=admission or _service(target),
+            offload=offload,
             weights_source=weights_source,
         )
 
@@ -165,10 +171,18 @@ def test_input_cache_overlap_is_refused_before_compiling(builds):
     _, calls, source, _ = builds
     stage = source.parent / "capture"
     with pytest.raises(FB.FullBuildError, match="contains the image cache"):
-        FB.build(stage, target="neutral", label="program", submission=source.parent / "device",
-                 submission_sha256="source", settings=FB.BuildSettings(
-                     "board", source.parent / "boards", source.parent / "cpu.dts", "typed", 1, source.parent / "host"),
-                 directory=stage / "cache", offload=False)
+        FB.build(
+            stage,
+            target="neutral",
+            label="program",
+            submission=source.parent / "device",
+            submission_sha256="source",
+            settings=FB.BuildSettings(
+                "board", source.parent / "boards", source.parent / "cpu.dts", "typed", 1, source.parent / "host"
+            ),
+            directory=stage / "cache",
+            offload=False,
+        )
     assert not calls
 
 
@@ -217,8 +231,10 @@ def test_scoped_software_semantics_bind_current_selection_even_without_source_pa
         with observed_contract("neutral", {"name": "neutral", "rounding": "toward-zero"}):
             second = build()
             assert not second["reused"] and build()["reused"]
-            assert first["key"]["inputs"]["selected_capability_sha256"] != second[
-                "key"]["inputs"]["selected_capability_sha256"]
+            assert (
+                first["key"]["inputs"]["selected_capability_sha256"]
+                != second["key"]["inputs"]["selected_capability_sha256"]
+            )
         assert not build()["reused"]
     assert len(calls) == 3
 
@@ -533,30 +549,60 @@ def test_actual_whole_model_image_reuse_and_changed_source_execute_complete_stat
     capture, host = tmp_path / "capture", tmp_path / "host"
     capture.mkdir()
     host.mkdir()
-    (host / "manifest.yaml").write_text(yaml.safe_dump({
-        "target": "host", "run_id": "cache-test", "family": "scalar_linalg",
-        "authoring": {"mode": "deterministic_generated_from_spec", "generated_by_agent": False},
-        "outputs": {"knobs": "knobs.yaml"},
-    }))
-    (host / "knobs.yaml").write_text(yaml.safe_dump({
-        "backend": "scalar", "dtype_strategy": "fp32",
-        "cflags": ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"],
-    }))
+    (host / "manifest.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "target": "host",
+                "run_id": "cache-test",
+                "family": "scalar_linalg",
+                "authoring": {"mode": "deterministic_generated_from_spec", "generated_by_agent": False},
+                "outputs": {"knobs": "knobs.yaml"},
+            }
+        )
+    )
+    (host / "knobs.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "backend": "scalar",
+                "dtype_strategy": "fp32",
+                "cflags": ["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"],
+            }
+        )
+    )
     dts, catalog = tmp_path / "cpu.dts", tmp_path / "boards.yaml"
     dts.write_text('cpu@0 { device_type = "cpu"; riscv,isa = "rv64imafdc_zicsr_zifencei"; };\n')
-    catalog.write_text(yaml.safe_dump({"schema_version": 1, "boards": {"selected": {
-        "target": "neutral", "dram_bytes": 64 << 20, "dram_base": spike_model.DRAM_BASE,
-        "harts": 1, "console": "htif", "flow": "baremetal", "code_reserve": 16 << 20,
-        "host_dts_sha256": FB.sha256(dts),
-    }}}))
+    catalog.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "boards": {
+                    "selected": {
+                        "target": "neutral",
+                        "dram_bytes": 64 << 20,
+                        "dram_base": spike_model.DRAM_BASE,
+                        "harts": 1,
+                        "console": "htif",
+                        "flow": "baremetal",
+                        "code_reserve": 16 << 20,
+                        "host_dts_sha256": FB.sha256(dts),
+                    }
+                },
+            }
+        )
+    )
     settings = FB.BuildSettings("selected", catalog, dts, "fp32", 1, host)
     weight = np.array([2, -3], np.float32)
     header = json.dumps({"w": {"dtype": "F32", "shape": [2], "data_offsets": [0, 8]}}).encode()
     (capture / "weights.safetensors").write_bytes(struct.pack("<Q", len(header)) + header + weight.tobytes())
-    (capture / "weights.safetensors.manifest.json").write_text(json.dumps({
-        "0": {"kind": "param", "weight": "w"}, "1": {"kind": "input", "name": "x"},
-        "2": {"kind": "input", "name": "state"},
-    }))
+    (capture / "weights.safetensors.manifest.json").write_text(
+        json.dumps(
+            {
+                "0": {"kind": "param", "weight": "w"},
+                "1": {"kind": "input", "name": "x"},
+                "2": {"kind": "input", "name": "state"},
+            }
+        )
+    )
     initial = np.array([1, 4], np.float32)
     np.savez(capture / "inputs.npz", in0=initial, in1=np.zeros(2, np.float32))
     np.save(capture / "golden.npy", initial + weight)
@@ -564,7 +610,8 @@ def test_actual_whole_model_image_reuse_and_changed_source_execute_complete_stat
 
     def select(operation):
         np.save(capture / "golden.npy", (weight + initial) if operation == "addf" else (weight * initial))
-        (capture / "model.mlir").write_text('''module {
+        (capture / "model.mlir").write_text(
+            """module {
 func.func @forward(%w: tensor<2xf32>, %x: tensor<2xf32>, %s: tensor<2xf32>)
     -> (tensor<2xf32>, tensor<2xf32>) {
   %e = tensor.empty() : tensor<2xf32>
@@ -581,16 +628,34 @@ func.func @forward(%w: tensor<2xf32>, %x: tensor<2xf32>, %s: tensor<2xf32>)
     linalg.yield %v : f32
   } -> tensor<2xf32>
   return %r, %n : tensor<2xf32>, tensor<2xf32>
-}}'''.replace("arith.OP", "arith." + operation))
-        artifacts = {p.name: {"bytes": p.stat().st_size, "sha256": FB.sha256(p)}
-                     for p in capture.iterdir() if p.name != "capture_receipt.json"}
-        (capture / "capture_receipt.json").write_text(json.dumps({
-            "schema": "m2m.capture-receipt.v1", "materialized_abi": {"complete": True}, "artifacts": artifacts,
-        }))
+}}""".replace("arith.OP", "arith." + operation)
+        )
+        artifacts = {
+            p.name: {"bytes": p.stat().st_size, "sha256": FB.sha256(p)}
+            for p in capture.iterdir()
+            if p.name != "capture_receipt.json"
+        }
+        (capture / "capture_receipt.json").write_text(
+            json.dumps(
+                {
+                    "schema": "m2m.capture-receipt.v1",
+                    "materialized_abi": {"complete": True},
+                    "artifacts": artifacts,
+                }
+            )
+        )
 
     def build():
-        return FB.build(capture, target="neutral", label="stateful", submission=tmp_path / "unused",
-                        submission_sha256="unused", settings=settings, directory=root / "image-cache", offload=False)
+        return FB.build(
+            capture,
+            target="neutral",
+            label="stateful",
+            submission=tmp_path / "unused",
+            submission_sha256="unused",
+            settings=settings,
+            directory=root / "image-cache",
+            offload=False,
+        )
 
     evidence = []
     with observed_facts("neutral", {"facts": {}}):
@@ -602,34 +667,49 @@ func.func @forward(%w: tensor<2xf32>, %x: tensor<2xf32>, %s: tensor<2xf32>)
 
             recipe = Path(fresh["build_dir"]) / "compilation_recipe.json"
             built_recipe = verify_completed_recipe(
-                recipe, executable=Path(fresh["elf"]), expected_recipe_sha256=FB.sha256(recipe))
+                recipe, executable=Path(fresh["elf"]), expected_recipe_sha256=FB.sha256(recipe)
+            )
             assert {x["name"] for x in built_recipe["phases"]} == {
-                "host preparation and lowering including IR lock", "driver and weight generation"}
+                "host preparation and lowering including IR lock",
+                "driver and weight generation",
+            }
             build_timing = json.loads(Path(fresh["timing"]["path"]).read_text())
             verify_timing_document(build_timing)
             assert {x["label"] for x in build_timing["events"]} >= {
-                "build input identity", "compiler source identity", "model image build lock acquisition"}
+                "build input identity",
+                "compiler source identity",
+                "model image build lock acquisition",
+            }
             reused = build()
             assert not fresh["reused"] and reused["reused"]
             (root / f"{op}.build.json").write_text(json.dumps(reused, indent=2))
             (root / f"{op}.mlir").write_bytes((capture / "model.mlir").read_bytes())
             (root / f"{op}.recipe.json").write_bytes(
-                (Path(reused["build_dir"]) / "compilation_recipe.json").read_bytes())
+                (Path(reused["build_dir"]) / "compilation_recipe.json").read_bytes()
+            )
             state = np.zeros(2, np.float32)
             for step in range(3):
                 bound = {"in0": initial + step, "in1": state}
                 elf = FB.relink(reused, capture, bound, root / f"{op}-{step}")
                 relink_recipe = elf.parent / "compilation_recipe.json"
                 actual = verify_completed_recipe(
-                    relink_recipe, executable=elf, expected_recipe_sha256=FB.sha256(relink_recipe))
+                    relink_recipe, executable=elf, expected_recipe_sha256=FB.sha256(relink_recipe)
+                )
+                assert actual == verify_completed_recipe(
+                    relink_recipe,
+                    executable=elf,
+                    expected_recipe_sha256=FB.sha256(relink_recipe),
+                    terminal_read_policy="repeated",
+                )
                 assert len(actual["commands"]) == 2
                 timings = list((elf.parent / "timings").glob("*.json"))
                 assert len(timings) == 1
                 events = verify_timing_document(json.loads(timings[0].read_text()))["events"]
                 assert sum(x["kind"] == "process" for x in events) == 2
                 assert sum(x["label"] == "build input identity" for x in events) == 2
-                assert any(Path(item["path"]) == elf.parent / "cgen/model_io.h"
-                           for item in actual["commands"][0]["inputs"])
+                assert any(
+                    Path(item["path"]) == elf.parent / "cgen/model_io.h" for item in actual["commands"][0]["inputs"]
+                )
                 console, wall = FB.run_host(elf, timeout_s=30)
                 (root / f"{op}-{step}.console.bin").write_bytes(console)
                 outputs, _ = FB.read(console, capture, reused["build_hash"])
@@ -637,9 +717,17 @@ func.func @forward(%w: tensor<2xf32>, %x: tensor<2xf32>, %s: tensor<2xf32>)
                 np.testing.assert_array_equal(outputs[0], expected)
                 np.testing.assert_array_equal(outputs[1], state + expected)
                 state = outputs[1].copy()
-                evidence.append({"operation": op, "step": step, "outputs": [a.tolist() for a in outputs],
-                                 "elf_sha256": FB.sha256(elf), "sections": FB.elf_sections(elf),
-                                 "functional_simulator_wall_seconds": wall, "key": reused["key"]})
+                evidence.append(
+                    {
+                        "operation": op,
+                        "step": step,
+                        "outputs": [a.tolist() for a in outputs],
+                        "elf_sha256": FB.sha256(elf),
+                        "sections": FB.elf_sections(elf),
+                        "functional_simulator_wall_seconds": wall,
+                        "key": reused["key"],
+                    }
+                )
             original_source = (capture / "model.mlir").read_bytes()
             (capture / "model.mlir").write_bytes(original_source.replace(b"arith.addf", b"arith.subf", 1))
             with pytest.raises(FB.FullBuildError, match="relink build inputs changed"):
