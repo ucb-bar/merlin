@@ -71,10 +71,7 @@ theorem operations_equal (ctx : Ctx) (call : CallSem) :
         · next x y ho =>
           split
           · next he =>
-            have hfalse : op.isTerminator = false := by
-              have hn := he.1.2.1
-              simp only [Commutative.names, List.mem_cons, List.not_mem_nil, or_false] at hn
-              rcases hn with hn | hn | hn | hn | hn <;> simp [Op.isTerminator, terminatorNames, hn]
+            have hfalse : op.isTerminator = false := Commutative.not_terminator he.1.2.1
             rw [hfalse] at hterm; cases hterm
           · rfl
         · rfl

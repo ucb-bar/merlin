@@ -56,7 +56,40 @@ theorem binOp_comm (op : Op) (f : Val → Val → Outcome Val) (hf : ∀ x y, f 
     change (liftEager e _ [a, b]).bind _ = (liftEager e _ [b, a]).bind _
     exact congrArg (fun r : Outcome RVal => r.bind fun v => .ok [v]) (lift_binary_comm e f hf a b)
 
-def names : List String := ["arith.addi", "arith.muli", "arith.andi", "arith.ori", "arith.xori"]
+/-- Ties select the same actual bitvector, including width zero and signed extrema. -/
+theorem unsigned_min_comm {w : Nat} (x y : BitVec w) :
+    (if x.ult y then x else y) = (if y.ult x then y else x) := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.ult_eq_decide, decide_eq_true_eq]
+  split_ifs <;> omega
+
+theorem unsigned_max_comm {w : Nat} (x y : BitVec w) :
+    (if x.ult y then y else x) = (if y.ult x then x else y) := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.ult_eq_decide, decide_eq_true_eq]
+  split_ifs <;> omega
+
+theorem signed_min_comm {w : Nat} (x y : BitVec w) :
+    (if x.slt y then x else y) = (if y.slt x then y else x) := by
+  apply BitVec.eq_of_toInt_eq
+  simp only [BitVec.slt_eq_decide, decide_eq_true_eq]
+  split_ifs <;> omega
+
+theorem signed_max_comm {w : Nat} (x y : BitVec w) :
+    (if x.slt y then y else x) = (if y.slt x then x else y) := by
+  apply BitVec.eq_of_toInt_eq
+  simp only [BitVec.slt_eq_decide, decide_eq_true_eq]
+  split_ifs <;> omega
+
+def names : List String :=
+  ["arith.addi", "arith.muli", "arith.andi", "arith.ori", "arith.xori",
+   "arith.minui", "arith.maxui", "arith.minsi", "arith.maxsi"]
+
+
+theorem not_terminator {op : Op} (hn : op.name ∈ names) : op.isTerminator = false := by
+  simp only [names, List.mem_cons, List.not_mem_nil, or_false] at hn
+  rcases hn with hn | hn | hn | hn | hn | hn | hn | hn | hn <;>
+    simp [Op.isTerminator, terminatorNames, hn]
 
 theorem meaning {op : Op} (hd : dialectOf op.name = "arith") (hn : op.name ∈ names)
     (hm : unmodelledAttr? op.blind = none) (hflags : overflowFlags op = [])
@@ -66,14 +99,15 @@ theorem meaning {op : Op} (hd : dialectOf op.name = "arith") (hn : op.name ∈ n
   simp only [dispatch, Op.blind_name, hd]
   have hf : overflowFlags op.blind = [] := by simpa only [overflowFlags, attrEnum?, Op.blind_attr?] using hflags
   simp only [names, List.mem_cons, List.not_mem_nil, or_false] at hn
-  rcases hn with hn | hn | hn | hn | hn
+  rcases hn with hn | hn | hn | hn | hn | hn | hn | hn | hn
   all_goals
     simp only [Arith.sem, Op.blind_name, hn, hf]
     apply binOp_comm
     apply intBin_comm
     intro w x y
     simp [Arith.arithWithFlags, Arith.bv, BitVec.add_comm, BitVec.mul_comm,
-      BitVec.and_comm, BitVec.or_comm, BitVec.xor_comm]
+      BitVec.and_comm, BitVec.or_comm, BitVec.xor_comm,
+      unsigned_min_comm, unsigned_max_comm, signed_min_comm, signed_max_comm]
 
 def swap (op : Op) : Op :=
   .mk op.name op.results op.operands.reverse op.attrs op.props op.regions op.successors
@@ -126,9 +160,7 @@ theorem check_sound : ∀ ρ ss ts ρ', check ρ ss ts = some ρ' →
     split at h
     · next hc =>
       obtain ⟨hd, hn, hlen, _, hm, hf, hcallee⟩ := hc
-      have hst : s.isTerminator = false := by
-        simp only [names, List.mem_cons, List.not_mem_nil, or_false] at hn
-        rcases hn with hn | hn | hn | hn | hn <;> simp [Op.isTerminator, terminatorNames, hn]
+      have hst : s.isTerminator = false := not_terminator hn
       have hvt : (swap s).isTerminator = false := hst
       have htt : t.isTerminator = false := (isTerminator_of_opHeadEq (alphaOp_spec h).1) ▸ hvt
       refine ⟨by simpa using hst, by simpa using htt, fun ctx callS callT envS envT hc hcall => ?_⟩
