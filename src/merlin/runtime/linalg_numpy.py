@@ -2,6 +2,7 @@
 
     values = evaluate(module, arguments)                     # every result of @forward
     values = evaluate(module, arguments, observe=hook)       # hook(op, index, results) per op
+    values = evaluate(module, arguments, constants=cache)    # constant work done once per cache
 
 The whole-model program of an OPEN model (one whose host regions compute between its accelerator
 groups) needs an oracle that is independent of every arm, host code included. The dispatch runtime
@@ -34,6 +35,7 @@ from typing import Any
 import numpy as np
 
 __all__ = [
+    "ConstantCache",
     "LinalgNumpyError",
     "bf16_round",
     "evaluate",
@@ -563,7 +565,7 @@ def _einsum_letters(n: int) -> str:
     return "abcdefghijklmnopqrstuvwxyz"[:n]
 
 
-def _generic(op, env: dict[int, Any]) -> list[np.ndarray]:
+def _generic(op, env: dict[int, Any], constants: ConstantCache | None = None) -> list[np.ndarray]:
     from xdsl.ir.affine import AffineDimExpr
 
     maps = [m.data for m in op.indexing_maps.data]
@@ -609,10 +611,18 @@ def _generic(op, env: dict[int, Any]) -> list[np.ndarray]:
             if np.issubdtype(np.asarray(a).dtype, np.integer):
                 # EXACT: products of int8-range operands and their sums stay far below 2**53, so float64
                 # BLAS adds them without rounding. Wider operands take the exact integer path.
-                small = max(np.abs(np.asarray(a)).max(initial=0), np.abs(np.asarray(b)).max(initial=0)) <= 1 << 15
+                def absmax(x, index):
+                    return _derived(
+                        constants, op, ("absmax", index), raw[index], lambda: np.abs(np.asarray(x)).max(initial=0)
+                    )
+
+                def wide(x, index):
+                    return _derived(constants, op, ("f64", index), raw[index], lambda: np.asarray(x, np.float64))
+
+                small = max(absmax(a, li), absmax(b, ri)) <= 1 << 15
                 depth = int(np.prod([extents[d] for d in reduced]))
                 if small and depth < (1 << 20):
-                    summed = np.einsum(spec, np.asarray(a, np.float64), np.asarray(b, np.float64), optimize=True)
+                    summed = np.einsum(spec, wide(a, li), wide(b, ri), optimize=True)
                     summed = np.rint(summed).astype(np.int64)
                 else:
                     summed = np.einsum(spec, np.asarray(a, np.int64), np.asarray(b, np.int64))
@@ -791,13 +801,16 @@ def _region(block, env) -> list[Any]:
     return []
 
 
-def evaluate_op(op, env: Mapping[int, Any]) -> list[Any]:
-    """Every result of one top-level (or region) operation, from the values in ``env`` by ``id``."""
+def evaluate_op(op, env: Mapping[int, Any], *, constants: ConstantCache | None = None) -> list[Any]:
+    """Every result of one top-level (or region) operation, from the values in ``env`` by ``id``.
+
+    ``constants`` lets a contraction reuse the float64 copy and magnitude of an operand that is a
+    constant of that cache (the same bytes on every evaluation)."""
     from merlin.runtime import dispatch_runtime as DR
 
     name = op.name
     if name == "linalg.generic":
-        return _generic(op, env)
+        return _generic(op, env, constants)
     if name == "linalg.reduce":
         return _reduce(op, env)
     if name == "linalg.transpose":
@@ -884,6 +897,94 @@ def evaluate_op(op, env: Mapping[int, Any]) -> list[Any]:
     raise LinalgNumpyError(f"no numpy evaluation for {name}")
 
 
+# ------------------------------------------------------------------------------------- constants
+
+
+class ConstantCache:
+    """Values that are the same on every evaluation, and the work done on them, kept across evaluations.
+
+    A caller marks the arguments that are constant (a model's weights, buffers and lifted tensors, loaded
+    once). :func:`evaluate` then computes an op that reads only constants once, and reuses its results on
+    every later evaluation; those results are constants in turn. A contraction keeps the float64 copy and
+    the magnitude of a constant operand. A constant is identified by the object itself: the cache holds a
+    reference to every value and op it keys by ``id``, so no other object can take that ``id``, and it
+    marks every constant array read-only, so a value that is reused is never written.
+
+    An op is hoisted only when every value it reads is a constant: its operands, and nothing that its
+    regions read from outside the op (a body reading an enclosing value is not covered by its operands,
+    and that value may change between evaluations). ``func.call`` is never hoisted.
+    """
+
+    #: Ops with no operands whose results depend only on the op itself.
+    NULLARY = frozenset({"tensor.empty", "arith.constant"})
+
+    def __init__(self) -> None:
+        self._values: dict[int, Any] = {}
+        self._results: dict[tuple[int, tuple[int, ...]], tuple[Any, list[Any]]] = {}
+        self._contained: dict[int, tuple[Any, bool]] = {}
+        self._derived: dict[tuple[Any, ...], tuple[Any, Any, Any]] = {}
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    def mark(self, value: Any) -> Any:
+        """``value`` is a constant from now on (an array is made read-only); returns it."""
+        if isinstance(value, np.ndarray):
+            value.flags.writeable = False
+        self._values[id(value)] = value
+        return value
+
+    def is_constant(self, value: Any) -> bool:
+        return id(value) in self._values
+
+    def self_contained(self, op) -> bool:
+        """No value read inside ``op``'s regions is defined outside ``op``."""
+        key = id(op)
+        if key not in self._contained:
+            inner = [o for o in op.walk() if o is not op]
+            inside: set[int] = set()
+            for o in [op, *inner]:
+                for region in o.regions:
+                    for block in region.blocks:
+                        inside.update(id(arg) for arg in block.args)
+            for o in inner:
+                inside.update(id(result) for result in o.results)
+            contained = all(id(operand) in inside for o in inner for operand in o.operands)
+            self._contained[key] = (op, contained)
+        return self._contained[key][1]
+
+    def hoistable(self, op, env: Mapping[int, Any]) -> bool:
+        """``op`` reads only constants (and is not a call), so its results are the same every time."""
+        if op.name == "func.call":
+            return False
+        if op.operands:
+            if not all(id(o) in env and self.is_constant(env[id(o)]) for o in op.operands):
+                return False
+        elif op.name not in self.NULLARY:
+            return False
+        return self.self_contained(op)
+
+    def results(self, op, env: Mapping[int, Any]) -> list[Any]:
+        """The results of a :meth:`hoistable` op: evaluated the first time, reused after."""
+        key = (id(op), tuple(id(env[id(o)]) for o in op.operands))
+        if key not in self._results:
+            self._results[key] = (op, [self.mark(v) for v in evaluate_op(op, env, constants=self)])
+        return self._results[key][1]
+
+    def derived(self, op, what: Any, source: Any, compute: Callable[[], Any]) -> Any:
+        """``compute()`` -- a function of ``source`` alone -- once per (op, what) while ``source`` is constant."""
+        if not self.is_constant(source):
+            return compute()
+        key = (id(op), what, id(source))
+        if key not in self._derived:
+            self._derived[key] = (op, source, self.mark(compute()))
+        return self._derived[key][2]
+
+
+def _derived(constants: ConstantCache | None, op, what: Any, source: Any, compute: Callable[[], Any]) -> Any:
+    return compute() if constants is None else constants.derived(op, what, source, compute)
+
+
 def last_uses(block) -> dict[int, int]:
     """``{id(value): index of the last top-level op that reads it}`` (a region read counts at its op)."""
     last: dict[int, int] = {}
@@ -902,6 +1003,7 @@ def evaluate(
     observe: Callable[[Any, int, list[Any], list[Any]], None] | None = None,
     keep: Callable[[Any], bool] | None = None,
     calls: Mapping[str, Callable[[list[Any]], list[Any]]] | None = None,
+    constants: ConstantCache | None = None,
 ) -> list[np.ndarray]:
     """Every result of the module's function (``function`` or the one with a body) on ``arguments``.
 
@@ -912,6 +1014,10 @@ def evaluate(
     model larger than memory in intermediates still evaluates. ``calls`` answers a ``func.call`` by
     callee name (a function of the argument values returning the results); a call to a function the
     module DEFINES is evaluated in place, and any other call is refused.
+
+    ``constants`` (a :class:`ConstantCache` kept across evaluations) evaluates an op that reads only
+    constants once and reuses its results: the arguments the caller marked constant, and what such ops
+    compute from them. The results are the same bytes either way.
     """
     defined = {op.sym_name.data: op for op in module.walk() if op.name == "func.func" and op.body.blocks}
 
@@ -921,7 +1027,7 @@ def evaluate(
         if calls is not None and callee in calls:
             return list(calls[callee](values))
         if callee in defined:
-            return evaluate(module, values, function=callee, calls=calls)
+            return evaluate(module, values, function=callee, calls=calls, constants=constants)
         raise LinalgNumpyError(f"func.call @{callee}: the module does not define it and no answer was given")
 
     functions = [op for op in module.walk() if op.name == "func.func" and op.body.blocks]
@@ -946,7 +1052,12 @@ def evaluate(
             results = [np.asarray(env[id(o)]) for o in op.operands]
             break
         try:
-            values = call(op, env) if op.name == "func.call" else evaluate_op(op, env)
+            if op.name == "func.call":
+                values = call(op, env)
+            elif constants is not None and constants.hoistable(op, env):
+                values = constants.results(op, env)
+            else:
+                values = evaluate_op(op, env, constants=constants)
         except LinalgNumpyError as error:
             region = op.attributes.get("prov.region_id")
             raise LinalgNumpyError(f"op {index} ({op.name}, {region}): {error}") from error

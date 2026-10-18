@@ -3,9 +3,9 @@ title: "Full-model check contract (model_check v1)"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-16
+last_verified: 2026-10-18
 related: [contracts, lowering_pipeline]
-code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src/merlin/runtime/linalg_numpy.py, merlin/schemas/model_check_report.schema.yaml, examples/gemmini/numerics/models.yaml]
+code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src/merlin/model_check/references.py, src/merlin/runtime/linalg_numpy.py, merlin/schemas/model_check_report.schema.yaml, examples/gemmini/numerics/models.yaml]
 ---
 
 # Full-model check contract (model_check v1)
@@ -335,6 +335,15 @@ binding.json                         # the binding receipt (§7)
 ```
 Replays of sealed variants build in `<bundle>.sealed_variants-work/`, beside the private bundle, never
 in the shared build directory.
+
+The references (`merlin.model_check.references.build`) are built with one `chain.ChainCache` per
+process: each program is parsed once, each stage's weights and lifted constants are read once (read-only
+arrays), and `linalg_numpy.evaluate` does work that reads only constants once (an op is hoisted only when
+no value its regions read is defined outside it). `workers=k` runs the INT8 cases in k single-threaded
+processes (`merlin.model_check.chain_worker`), each claiming the next unclaimed case and binding inputs
+in its own scratch (`<model>/.chain_work/workers/<k>/`), and splits the FP reference over k processes;
+rows, logs and `calls.json` are written in case order, and the count is bounded by the host's available
+memory. None of this changes a byte of the bundle.
 
 **Sealed data is never granted to an agent sandbox.** `/work/merlin/private/**` must appear in no
 grant; the harness tests its bwrap arguments for it.
