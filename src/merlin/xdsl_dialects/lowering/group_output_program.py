@@ -127,6 +127,7 @@ def program(group, *, weight_args=None, name=None, extents=None):
             entry.update(GC._pool(group))
             epilogue.append("maxpool")
     entry["epilogue"] = epilogue
+    entry["output_dtype"] = "i32" if cut == "accumulator" else "i8"
     return replace(root, entry=entry, notes=(*root.notes, "output arithmetic uses the source-bound exact fusion proof"))
 
 

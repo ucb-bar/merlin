@@ -376,6 +376,7 @@ def test_device_statement_keeps_the_proved_readout_and_reproduces_source_outputs
     stated = GC.program(device, weight_args=())
     entry = stated.entry
     assert entry["epilogue"] == ["bias_add", "acc_scale", "relu"]
+    assert entry["output_dtype"] == "i8"
     gains = entry.get("acc_scale_by_column", [entry.get("acc_scale")] * 8)
     assert gains == device.fusion["proof"]["device_scale"]
     assert ("acc_scale_by_column" in entry) == (len(set(scales)) > 1)
@@ -448,6 +449,7 @@ def test_accumulator_bias_cut_keeps_the_host_readout_without_an_escaping_value_r
     assert result.moved == 1 and result.skipped == ()
     (entry,) = result.entries.values()
     assert entry["epilogue"] == ["bias_add"]
+    assert entry["output_dtype"] == "i32"
     names = [mq.op_name(op) for op in module.walk()]
     assert names.count("quant_ext.quantize_per_tensor") == 1
     assert "arith.addf" not in names and "arith.mulf" in names and "arith.maximumf" in names
