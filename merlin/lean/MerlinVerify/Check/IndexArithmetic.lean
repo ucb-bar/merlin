@@ -1,6 +1,7 @@
-/- Unflagged index arithmetic is total on initialized values. Singleton interval propagation
-computes the actual BitVec operation at the claim's width; negative or unknown results lose bounds. -/
+/- Unflagged index arithmetic is total on initialized values. Singleton propagation computes
+actual modular bits; addition also propagates intervals only when their entire range cannot wrap. -/
 import MerlinVerify.Check.IndexRanges
+import MerlinVerify.Check.IndexRangeAdd
 import MerlinVerify.Check.DefinedControl
 
 namespace MerlinVerify.Check.Definedness.IndexArithmetic
@@ -24,7 +25,7 @@ def kind? (name : String) : Option Kind :=
   if name = "arith.subi" then some .sub else
   if name = "arith.muli" then some .mul else none
 
-def evidence (ib : Nat) (kind : Kind) (left right : IndexRanges.Fact) : Option Interval :=
+def singletonEvidence (ib : Nat) (kind : Kind) (left right : IndexRanges.Fact) : Option Interval :=
   match left.info, right.info with
   | some a, some b =>
     if a.upper = a.lower + 1 ∧ b.upper = b.lower + 1 then
@@ -43,11 +44,11 @@ theorem singleton_bits {ib : Nat} {f : IndexRanges.Fact} {r : Interval} {x : Bit
   have hx : x.toInt = (r.lower : Int) := by omega
   rw [← hx, BitVec.ofInt_toInt]
 
-theorem evidence_sound {ib : Nat} (kind : Kind) (left right : IndexRanges.Fact) (x y : BitVec ib)
+theorem singletonEvidence_sound {ib : Nat} (kind : Kind) (left right : IndexRanges.Fact) (x y : BitVec ib)
     (hx : Refined.Fact.Holds model ib (.scalar (.some (.bits ib x))) left)
     (hy : Refined.Fact.Holds model ib (.scalar (.some (.bits ib y))) right) :
-    model.holds (evidence ib kind left right) (.scalar (.some (.bits ib (kind.bits x y)))) := by
-  unfold evidence
+    model.holds (singletonEvidence ib kind left right) (.scalar (.some (.bits ib (kind.bits x y)))) := by
+  unfold singletonEvidence
   split
   · next a b ha hb =>
     split
@@ -67,6 +68,28 @@ theorem evidence_sound {ib : Nat} (kind : Kind) (left right : IndexRanges.Fact) 
     · trivial
   · trivial
 
+/-- Exact singleton computation retains modular-wrap precision; a non-singleton addition
+uses the independently proved no-wrap range transfer. Other uncertain ranges become unknown. -/
+def evidence (ib : Nat) (kind : Kind) (left right : IndexRanges.Fact) : Option Interval :=
+  (singletonEvidence ib kind left right).orElse fun _ =>
+    if kind = .add then IndexRangeAdd.evidence ib left.info right.info else none
+
+theorem evidence_sound {ib : Nat} (kind : Kind) (left right : IndexRanges.Fact) (x y : BitVec ib)
+    (hx : Refined.Fact.Holds model ib (.scalar (.some (.bits ib x))) left)
+    (hy : Refined.Fact.Holds model ib (.scalar (.some (.bits ib y))) right) :
+    model.holds (evidence ib kind left right) (.scalar (.some (.bits ib (kind.bits x y)))) := by
+  unfold evidence
+  cases h : singletonEvidence ib kind left right with
+  | some r =>
+    simpa [h] using singletonEvidence_sound kind left right x y hx hy
+  | none =>
+    simp only [Option.orElse_none]
+    split
+    · next hk =>
+      subst kind
+      exact IndexRangeAdd.evidence_sound left.info right.info x y hx.2 hy.2
+    · trivial
+
 theorem kind?_name {name : String} {kind : Kind} (h : kind? name = some kind) : name = kind.name := by
   unfold kind? at h
   split at h
@@ -78,7 +101,7 @@ theorem kind?_name {name : String} {kind : Kind} (h : kind? name = some kind) : 
       · cases h
 
 /-- A runtime index remains initialized even when its bounds are unknown or wrap negative.
-Only two proved singleton inputs can contribute a new nonnegative singleton interval. -/
+Proved singletons or a no-wrap addition range can contribute new interval evidence. -/
 def rule (ib : Nat) (_ : IndexRanges.FEnv) (op : Op) (fs : List IndexRanges.Fact) :
     Option (List IndexRanges.Fact) :=
   match fs, op.results, kind? op.name with
