@@ -73,6 +73,11 @@ _PRE_EXTERNAL_REPLAY_SCRATCH_ISSUER_SHA256 = "fe672aaf62efcf1f2c5cec499af646d59c
 # Exact issuer before a plan could select the worker's CPU thread count. Its plans
 # cannot select one, so their command, policy and replay are unchanged.
 _PRE_SELECTED_THREADS_ISSUER_SHA256 = "ba57b6e1bd00734b95b7cb4a64c30f636f715cc313aa048986b3812da04b5fb8"
+# Exact issuer at 4acf64171c21, before failure-only process diagnostics were
+# retained outside the capture. Successful commands, policies and process
+# records are unchanged. Replay still checks every selected byte and executes
+# the original snapshot afresh; historical bytes cannot issue a new capture.
+_PRE_FAILURE_DIAGNOSTICS_ISSUER_SHA256 = "7eb45b2169dac5b2984ab444c183155855b1ecd9de81c6c25890d12e0ce39889"
 _V1_SCOPE = "isolated selected FP32 CPU M2M capture; no Phase 0 admission"
 _V2_SCOPE = "isolated selected CPU M2M capture; no Phase 0 admission"
 _V3_SCOPE = "isolated selected CPU M2M capture with declared model inputs; no Phase 0 admission"
@@ -1887,6 +1892,7 @@ def replay_verify(
         supported_issuer.add(_PRE_CONCURRENT_REPLAY_ISSUER_SHA256)
         supported_issuer.add(_PRE_EXTERNAL_REPLAY_SCRATCH_ISSUER_SHA256)
         supported_issuer.add(_PRE_SELECTED_THREADS_ISSUER_SHA256)
+        supported_issuer.add(_PRE_FAILURE_DIAGNOSTICS_ISSUER_SHA256)
     if schema in {SCHEMA, SCHEMA_V3} and "frozen_origin" not in plan:
         supported_issuer.add(_PRE_FROZEN_ORIGIN_ISSUER_SHA256)
     if (
