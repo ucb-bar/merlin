@@ -63,6 +63,7 @@ def test_common_helpers_work_only_under_the_original_profile_scope(original):
         "merlin.runtime.reference",
         "merlin.targetgen.isa_spec",
         "merlin.transforms.unreviewed",
+        "merlin.transforms.pipeline_state",
         "merlin_experiments.phase2.authoring",
     ],
 )

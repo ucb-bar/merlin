@@ -23,10 +23,12 @@ import threading
 import time
 import weakref
 from collections.abc import Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
+
+from merlin.common.invocation_record import timed_event
 
 _ACTIVE_LEASE = ContextVar("selected_cpu_lease", default=None)
 _ISSUED_LEASES = weakref.WeakKeyDictionary()
@@ -802,11 +804,14 @@ def shared_compute_pool(*, timeout_s: float | None = None, queued_since_ns: int 
     Waiters are served in :func:`lease_priority` order, FIFO within a class.
     """
     selected = _shared_compute_selection(os.environ)
-    if selected is None:
-        yield
-        return
-    cpus, root = selected
-    with selected_pool(cpus, slot_root=root, timeout_s=timeout_s, queued_since_ns=queued_since_ns):
+    with ExitStack() as stack:
+        label = "shared compute lease" if selected is not None else "no shared compute lease"
+        with timed_event("compute_acquire", label):
+            if selected is not None:
+                cpus, root = selected
+                stack.enter_context(
+                    selected_pool(cpus, slot_root=root, timeout_s=timeout_s, queued_since_ns=queued_since_ns)
+                )
         yield
 
 

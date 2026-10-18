@@ -12,6 +12,34 @@ from __future__ import annotations
 CPU_SOFTMAX_F32_AVX2_POLICY = "torch_2_10_cpu_softmax_f32_avx2"
 
 
+def cpu_softmax_sum_order(backend_policy):
+    """The pinned source lane count and ordered binary denominator tree."""
+    if backend_policy != CPU_SOFTMAX_F32_AVX2_POLICY:
+        raise ValueError("explicit pinned f32 softmax policy required")
+    return 8, (((0, 4), (2, 6)), ((1, 5), (3, 7)))
+
+
+def cpu_softmax_row_numerics(*, backend_policy, assume_finite_inputs=False):
+    """Expose the existing source algorithm to shared counted-row scheduling.
+
+    This is source numerical data, not target support or qualification. The
+    selected exp implementation must realize build_cpu_softmax_exp_nonpositive.
+    """
+    from merlin.compile.scheduling.row_softmax import RowSoftmaxNumerics
+
+    lanes, tree = cpu_softmax_sum_order(backend_policy)
+    return RowSoftmaxNumerics(
+        backend_policy,
+        "sleef_xexpf_5a1d179_nonpositive_f32",
+        "f32",
+        lanes,
+        tree,
+        "reciprocal_multiply",
+        assume_finite_inputs,
+        True,
+    )
+
+
 def build_cpu_softmax_exp_nonpositive(value, *, backend_policy: str, domain: str):
     """Scalar SLEEF exp_u10 for nonpositive f32, including negative infinity.
 
@@ -149,11 +177,12 @@ def build_cpu_softmax_lastdim(value, *, backend_policy: str, assume_finite_input
         maps(AffineMap.identity(rank), projection, AffineMap.identity(rank)),
     )
     ops.extend([empty, exps])
-    lane_type = TensorType(f32, [*prefix, 8])
+    lane_count, sum_tree = cpu_softmax_sum_order(backend_policy)
+    lane_type = TensorType(f32, [*prefix, lane_count])
     empty = tensor.EmptyOp((), lane_type)
     bb = Block(arg_types=[f32])
     indices = [L.IndexOp(i) for i in range(rank)]
-    eight = arith.ConstantOp.from_int_and_width(8, IndexType())
+    eight = arith.ConstantOp.from_int_and_width(lane_count, IndexType())
     end = arith.ConstantOp.from_int_and_width(n, IndexType())
     start = arith.AddiOp(indices[-1].result, eight.result)
     first = tensor.ExtractOp(exps.results[0], [*[x.result for x in indices[:-1]], indices[-1].result], f32)
@@ -170,7 +199,7 @@ def build_cpu_softmax_lastdim(value, *, backend_policy: str, assume_finite_input
     indices = [L.IndexOp(i) for i in range(rank - 1)]
     bb.add_ops(indices)
     xs = []
-    for j in range(8):
+    for j in range(lane_count):
         index = arith.ConstantOp.from_int_and_width(j, IndexType())
         item = tensor.ExtractOp(lanes.results[0], [*[x.result for x in indices], index.result], f32)
         bb.add_ops([index, item])
@@ -181,7 +210,10 @@ def build_cpu_softmax_lastdim(value, *, backend_policy: str, assume_finite_input
         bb.add_op(op)
         return op.result
 
-    total = plus(plus(plus(xs[0], xs[4]), plus(xs[2], xs[6])), plus(plus(xs[1], xs[5]), plus(xs[3], xs[7])))
+    def combine(tree):
+        return xs[tree] if type(tree) is int else plus(combine(tree[0]), combine(tree[1]))
+
+    total = combine(sum_tree)
     one = arith.ConstantOp(FloatAttr(1.0, f32))
     reciprocal = arith.DivfOp(one.result, total)
     bb.add_ops([one, reciprocal, L.YieldOp(reciprocal.result)])

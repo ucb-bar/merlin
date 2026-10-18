@@ -142,9 +142,11 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
     head, tail = passes[:at], passes[at + 1:]
     if not any('optimize-allocation-liveness' in p for p in head):
         raise RuntimeError('output-slice rewrite requires checked deallocation sinking')
-    if any('buffer-loop-hoisting' in p or 'convert-scf-to-openmp' in p for p in head):
-        raise RuntimeError('output-slice rewrite moved past a stage anchor')
-    _SLICE_ORIG_RUN_STAGES(ctx, module, ','.join(head), 0, (), (), (), pre_generalize)
+    if any('convert-scf-to-openmp' in p for p in head):
+        raise RuntimeError('output-slice rewrite must precede parallel control-flow lowering')
+    hoist_head = any('buffer-loop-hoisting' in p for p in head)
+    _SLICE_ORIG_RUN_STAGES(ctx, module, ','.join(head),
+                           erase if hoist_head else 0, mid if hoist_head else (), (), (), pre_generalize)
     _slice_unused_elementwise_outputs(ctx, module)
     bad, n_alloc, n_sunk = _dealloc_placement_violations(module)
     print('OK sliced_dealloc_placement', n_alloc, 'allocations', n_sunk, 'sunk', len(bad), 'violations')
@@ -152,6 +154,7 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
         raise RuntimeError('output-slice rewrite invalidated deallocation placement: '
                            + '; '.join(bad[:20]))
     if tail:
-        _SLICE_ORIG_RUN_STAGES(ctx, module, ','.join(tail), erase, mid, late,
+        _SLICE_ORIG_RUN_STAGES(ctx, module, ','.join(tail),
+                               0 if hoist_head else erase, () if hoist_head else mid, late,
                                post_openmp, ())
 """

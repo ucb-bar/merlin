@@ -16,6 +16,8 @@ import subprocess
 from collections.abc import Sequence
 from typing import Any
 
+from merlin.common.invocation_record import timed_event
+
 _SHOWN_CMD_CHARS = 1000
 
 
@@ -31,7 +33,8 @@ def run_checked(cmd: Sequence[Any], *, error: type[Exception] = RuntimeError, ti
     argv = [str(c) for c in cmd]
     shown = " ".join(argv)[:_SHOWN_CMD_CHARS]
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, **kw)
+        with timed_event("process", "subprocess.run"):
+            proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, **kw)
     except subprocess.TimeoutExpired as expired:
         if not wrap_timeout:
             raise

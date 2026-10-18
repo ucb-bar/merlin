@@ -14,17 +14,28 @@ class StorageBank:
     capacity: int
     unit: str
     alignment: int = 1
+    # Canonical backing coordinates; capacity is the exclusive upper bound.
+    # A typed alias may expose only a suffix of another view's address window.
+    start: int = 0
 
     def __post_init__(self) -> None:
-        if not self.name or not self.backing or not self.unit or self.capacity <= 0 or self.alignment <= 0:
+        if (
+            not self.name or not self.backing or not self.unit
+            or any(type(x) is not int for x in (self.capacity, self.alignment, self.start))
+            or self.capacity <= 0 or self.alignment <= 0 or not 0 <= self.start <= self.capacity
+        ):
             raise ValueError("storage bank needs positive geometry and explicit units")
 
     def record(self) -> dict[str, str | int]:
-        return vars(self).copy()
+        row = vars(self).copy()
+        if not self.start:
+            row.pop("start")  # Preserve existing zero-origin serialized inputs.
+        return row
 
     @classmethod
     def from_record(cls, row: dict[str, str | int]) -> StorageBank:
-        if set(row) != {"name", "backing", "capacity", "unit", "alignment"}:
+        required = {"name", "backing", "capacity", "unit", "alignment"}
+        if set(row) not in (required, required | {"start"}):
             raise ValueError("storage bank has missing or unknown fields")
         return cls(**row)
 

@@ -21,8 +21,119 @@ from xdsl.ir import Block, Region
 from merlin.transforms import PipelineOptions, apply_common_pipeline, iter_segments, plan_dependencies, plan_storage
 from merlin.transforms.certificates import TransformationChange, ir_digest, ir_text, parse_ir
 from merlin.transforms.normalization import signed_wrap
+from merlin.transforms.pipeline import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 from merlin.transforms.planning import apply_order, reuse_storage, validate_order
 from merlin.transforms.validation import validate_change
+
+
+def test_pipeline_returns_current_storage_after_reuse_and_loop_rewrites():
+    for tiles in ((), (3, 2, 4)):
+        result = apply_common_pipeline(_chain(2, 3, 7), PipelineOptions(64, tiles), plan_only=True)
+        assert result.storage_plan == plan_storage(result.module)
+        assert result.dependency_plan == plan_dependencies(result.module)
+        assert result.analyses_stamp.source_sha256 == ir_digest(result.module)
+        assert result.passes[-1].name == "final_verification"
+        assert all(row.after.context == result.analyses_stamp.context for row in result.passes)
+
+
+def test_explicit_pipeline_order_refuses_before_running_or_calling_verifier():
+    source = _chain(2, 3, 7)
+    default = apply_common_pipeline(source, PipelineOptions(64), plan_only=True)
+    order = [row.name for row in default.passes]
+    a, b = order.index("storage_analysis"), order.index("buffer_reuse")
+    order[a], order[b] = order[b], order[a]
+    seen = []
+    with pytest.raises(ValueError, match="prerequisites"):
+        apply_common_pipeline(source, PipelineOptions(64, pass_order=tuple(order)), verifier=seen.append)
+    assert not seen
+    with pytest.raises(ValueError, match="every selected pass"):
+        apply_common_pipeline(source, PipelineOptions(64, pass_order=("unknown",)), plan_only=True)
+
+
+@pytest.mark.parametrize("changed", ["ir", "hardware", "numerical_policy", "resources", "execution", "library"])
+def test_analysis_freshness_binds_ir_and_every_selected_contract(changed):
+    source = _chain(2, 3, 7)
+    session = PipelineSession(source, context=PipelineContext(hardware="configuration-a"))
+    session.run(
+        PassSpec("storage", 0, produces=("storage",), mutates_ir=False), lambda: {"storage": plan_storage(source)}
+    )
+    assert session.analysis("storage") == plan_storage(source)
+    if changed == "ir":
+        source.attributes["changed"] = builtin.StringAttr("mutation")
+    else:
+        session.context = replace(session.context, **{changed: "different-contract"})
+    with pytest.raises(ValueError, match="stale"):
+        session.analysis("storage")
+
+
+def test_mutation_invalidates_facts_even_with_an_incomplete_pass_declaration():
+    module = _chain(2, 3, 7)
+    session = PipelineSession(module)
+    session.run(
+        PassSpec("storage", 0, produces=("storage",), mutates_ir=False), lambda: {"storage": plan_storage(module)}
+    )
+
+    def mutation():
+        module.attributes["changed"] = builtin.StringAttr("mutation")
+        return {}
+
+    session.run(PassSpec("mutator", 1), mutation)
+    assert session.records[-1].invalidated == ("storage",)
+    with pytest.raises(ValueError, match="stale"):
+        session.analysis("storage")
+
+
+def test_explicit_order_rejects_analysis_carrying_across_a_potential_mutation_before_execution():
+    specs = (
+        PassSpec("analyze", 0, produces=("live",), mutates_ir=False),
+        PassSpec("rewrite", 1),
+        PassSpec("consume", 2, requires=("live",), mutates_ir=False),
+    )
+    with pytest.raises(ValueError, match="lacks prerequisites: live"):
+        validate_pass_order(specs)
+    repaired = (*specs[:1], replace(specs[1], produces=("live",)), specs[2])
+    validate_pass_order(repaired)
+
+
+def test_analysis_mutation_poisoned_session_cannot_issue_a_successful_result():
+    module = _chain(2, 3, 7)
+    session = PipelineSession(module)
+
+    def bad_analysis():
+        module.attributes["changed"] = builtin.StringAttr("mutation")
+        return {}
+
+    with pytest.raises(ValueError, match="analysis pass"):
+        session.run(PassSpec("bad", 0, mutates_ir=False), bad_analysis)
+    with pytest.raises(ValueError, match="session failed"):
+        session.stamp()
+
+
+def test_bounded_repair_requires_recomputation_and_terminates():
+    module = _chain(2, 3, 7)
+    session = PipelineSession(module, max_repairs=2)
+    producer = PassSpec("allocation", 3, produces=("allocation",), mutates_ir=False)
+    consumer = PassSpec("scheduled", 4, requires=("allocation",))
+    for ordinal in range(3):
+        session.run(producer, lambda: {"allocation": ordinal})
+        session.run(consumer, lambda: {})
+        if ordinal == 2:
+            with pytest.raises(ValueError, match="repair budget exhausted"):
+                session.repair(stage=3, reason="fusion does not fit")
+        else:
+            session.repair(stage=3, reason="exact spill inserted")
+            with pytest.raises(ValueError, match="stale"):
+                session.run(consumer, lambda: {})
+    assert [row.repair_round for row in session.records] == [0, 0, 1, 1, 2, 2]
+
+
+def test_pass_order_checks_ir_level_stage_and_duplicate_producers():
+    with pytest.raises(ValueError, match="different IR level"):
+        validate_pass_order((PassSpec("a", 0), PassSpec("b", 1, ir_level="machine")))
+    with pytest.raises(ValueError, match="duplicate"):
+        validate_pass_order((PassSpec("a", 0), PassSpec("a", 0)))
+    with pytest.raises(ValueError, match="ordering"):
+        validate_pass_order((PassSpec("machine", 5), PassSpec("allocation", 3)))
 
 
 @register_impls

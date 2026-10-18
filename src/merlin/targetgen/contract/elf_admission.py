@@ -23,12 +23,22 @@ class LinkedElfAdmissionService:
     target: str
     evaluator: Callable
     source_pins: tuple[tuple[str, str], ...]
+    prerequisite: LinkedElfAdmissionService | None = None
     _evaluator_selection: tuple | None = field(init=False, repr=False, compare=False)
+    _prerequisite_selection: object = field(init=False, repr=False, compare=False)
 
     def __post_init__(self):
         object.__setattr__(self, "_evaluator_selection", _callback_selection(self.evaluator))
+        object.__setattr__(self, "_prerequisite_selection", self.prerequisite)
 
     def verify(self, target):
+        return self._verify(target, ())
+
+    def _verify(self, target, ancestors):
+        if id(self) in ancestors or len(ancestors) >= 32:
+            raise ValueError("linked ELF admission prerequisite chain is cyclic or exceeds 32 services")
+        if self.prerequisite is not self._prerequisite_selection:
+            raise ValueError("linked ELF admission selected prerequisite changed")
         if (
             type(self) is not LinkedElfAdmissionService
             or target != self.target
@@ -54,17 +64,36 @@ class LinkedElfAdmissionService:
         owner = inspect.getsourcefile(current[1])
         if owner is None or (str(Path(owner).resolve()), file_digest(Path(owner))) not in self.source_pins:
             raise ValueError("linked ELF admission evaluator has no pinned inspected source owner")
-        return {"target": target, "source_pins": self.source_pins}
+        selection = {"target": target, "source_pins": self.source_pins}
+        if self.prerequisite is not None:
+            if type(self.prerequisite) is not LinkedElfAdmissionService:
+                raise ValueError("linked ELF admission prerequisite must be an exact selected service")
+            selection["prerequisite"] = self.prerequisite._verify(target, (*ancestors, id(self)))
+        return selection
 
     def evaluate(self, *, elf, target, evidence_root):
         before = self.verify(target)
         artifact = Path(elf)
-        digest = file_digest(artifact)
-        result = self.evaluator(elf=artifact, evidence_root=Path(evidence_root))
+        kwargs = {}
+        if self.prerequisite is not None:
+            Path(evidence_root).mkdir(parents=True, exist_ok=True)
+            parent = self.prerequisite.evaluate(
+                elf=artifact,
+                target=target,
+                evidence_root=Path(evidence_root) / "prerequisite",
+            )
+            kwargs["prerequisite_result"] = _receipt(parent)
+            digest = parent["elf_sha256"]
+        else:
+            digest = file_digest(artifact)
+        prerequisite_receipt = _receipt(kwargs["prerequisite_result"]) if kwargs else None
+        result = self.evaluator(elf=artifact, evidence_root=Path(evidence_root), **kwargs)
         if type(result) is not dict or result.get("status") not in ("accepted", "refused"):
             raise ValueError("linked ELF admission returned no actual accepted/refused observation")
         if self.verify(target) != before:
             raise ValueError("linked ELF admission selection changed during evaluation")
+        if kwargs and result.get("prerequisite") != prerequisite_receipt:
+            raise ValueError("linked ELF admission omitted or replaced its actual prerequisite receipt")
         self.revalidate(elf=artifact, result=result, target=target)
         if result["elf_sha256"] != digest:
             raise ValueError("linked ELF changed during admission evaluation")
@@ -72,6 +101,16 @@ class LinkedElfAdmissionService:
 
     def revalidate(self, *, elf, result, target):
         self.verify(target)
+        self._revalidate_report(result, target)
+        # One final streamed ELF read for the whole chain. Reports and source
+        # pins are reopened on every call; no verdict or digest is cached.
+        if file_digest(Path(elf)) != result.get("elf_sha256"):
+            raise ValueError("linked ELF changed after admission")
+        return result["status"]
+
+    def _revalidate_report(self, result, target):
+        if type(result) is not dict or result.get("status") not in ("accepted", "refused"):
+            raise ValueError("linked ELF admission result has no accepted/refused status")
         report = Path(result.get("report_path", ""))
         if (
             not report.is_absolute()
@@ -83,6 +122,22 @@ class LinkedElfAdmissionService:
         stored = loads(report.read_text())
         if type(stored) is not dict or any(stored.get(key) != result.get(key) for key in ("status", "elf_sha256")):
             raise ValueError("linked ELF admission report disagrees with its evaluated result")
-        if file_digest(Path(elf)) != result.get("elf_sha256"):
-            raise ValueError("linked ELF changed after admission")
-        return result["status"]
+        if self.prerequisite is not None:
+            parent = result.get("prerequisite")
+            if type(parent) is not dict or stored.get("prerequisite") != parent:
+                raise ValueError("linked ELF admission report lost its prerequisite receipt")
+            self.prerequisite._revalidate_report(parent, target)
+            if parent["elf_sha256"] != result["elf_sha256"]:
+                raise ValueError("linked ELF admission prerequisite checked different ELF bytes")
+            if parent["status"] == "refused" and result["status"] != "refused":
+                raise ValueError("linked ELF admission cannot override a refused prerequisite")
+
+
+def _receipt(result, depth=0):
+    """Retain custody references, never copy a prerequisite's protected findings."""
+    if depth >= 32:
+        raise ValueError("linked ELF admission receipt exceeds 32 services")
+    receipt = {key: result[key] for key in ("status", "elf_sha256", "report_path", "report_sha256")}
+    if "prerequisite" in result:
+        receipt["prerequisite"] = _receipt(result["prerequisite"], depth + 1)
+    return receipt

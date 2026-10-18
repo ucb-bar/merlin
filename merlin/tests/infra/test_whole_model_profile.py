@@ -18,6 +18,7 @@ from merlin.runtime.whole_model_readback import parse_group_profile
 MACHINE = {
     "array_rows": 16,
     "array_cols": 16,
+    "peak_macs_per_cycle": 256,  # Synthetic explicit capacity; dimensions alone establish no arithmetic rate.
     "read_bytes_per_cycle": 16,
     "write_bytes_per_cycle": 16,
     "basis": {},
@@ -80,6 +81,14 @@ def test_a_group_faster_than_its_bound_refutes_the_bound():
     doc = WMP.boundary_document(parse_group_profile(fast), ROUTED, MACHINE)
     assert doc["groups"][0]["roofline"]["status"] == "refuted"
     assert doc["groups"][0]["roofline"]["over_roofline"] is None
+
+
+def test_geometry_without_an_explicit_arithmetic_capacity_leaves_compute_unknown():
+    geometry_only = {key: value for key, value in MACHINE.items() if key != "peak_macs_per_cycle"}
+    doc = WMP.boundary_document(parse_group_profile(CONSOLE), ROUTED, geometry_only)
+    for group in doc["groups"]:
+        assert group["roofline"]["compute_floor_cycles"] is None
+        assert group["roofline"]["limiter"] == "movement"
 
 
 def _inputs(tmp_path):

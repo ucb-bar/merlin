@@ -15,9 +15,10 @@ These run before the upstream pipeline:
 from __future__ import annotations
 
 import string
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any, Callable
+from typing import Any
 
 from ..frontends.linalg_mlir import make_context, parse_mlir_text  # noqa: F401
 
@@ -591,12 +592,26 @@ def fix_bool_fptosi(module) -> int:
 
 
 def add_c_interface(module) -> int:
-    """Mark public funcs with llvm.emit_c_interface; returns count marked."""
-    from xdsl.dialects.builtin import UnitAttr
+    """Keep the host descriptor route, preserving private scalar callback ABIs.
+
+    Existing shaped functions retain their descriptor-interface selection.
+    Private scalar functions need no descriptor adaptation; adding an implicit
+    interface to their declarations would request a different runtime symbol.
+    Explicit interfaces remain untouched, including on private callbacks.
+    """
+    from xdsl.dialects.builtin import AnyFloat, IndexType, IntegerType, UnitAttr
+    from xdsl.dialects.func import FuncOp
 
     n = 0
     for op in module.walk():
-        if op.name == "func.func":
+        if isinstance(op, FuncOp):
+            private_scalar = (
+                op.sym_visibility is not None and op.sym_visibility.data == "private"
+                and all(isinstance(t, IntegerType | IndexType | AnyFloat)
+                    for t in (*op.function_type.inputs, *op.function_type.outputs))
+            )
+            if private_scalar:
+                continue
             op.attributes["llvm.emit_c_interface"] = UnitAttr()
             n += 1
     return n
@@ -867,7 +882,7 @@ class _Dequant:
     result_type: str
 
 
-def _parse_dequant(line: str) -> "_Dequant | None":
+def _parse_dequant(line: str) -> _Dequant | None:
     """Split a dequantize line into :class:`_Dequant`, or ``None`` if it is not one."""
     body = line.lstrip()
     indent = line[: len(line) - len(body)]
@@ -908,7 +923,7 @@ def _parse_dequant(line: str) -> "_Dequant | None":
             return _Dequant(indent, result, operands, int(body[digits_at:digits_end]), *parsed)
 
 
-def _dequant_to_generic(op: "_Dequant") -> str:
+def _dequant_to_generic(op: _Dequant) -> str:
     ind, res = op.indent, op.result
     init = f"%dq_init_{res[1:]}"  # %123 -> %dq_init_123 (suffixing %123 is invalid)
     wty, sty, zty, outty = (t.strip() for t in (op.weight_type, op.scale_type, op.zero_type, op.result_type))

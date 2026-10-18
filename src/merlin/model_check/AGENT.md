@@ -7,6 +7,7 @@ Build, run and judge complete quantized models for a device submission.
 ## Modules
 
 - `admission.py` — model_check's own linked-image admission for whole-model builds (``check --mode full``).
+- `program_admission.py` — Host-only bridge from declared final ELF program sections to the existing RTL/software-bound finalizer, preserving the original admission policy.
 - `approximations.py` — A submission's declared approximate kernels (``manifest.yaml`` key ``numerics.approximations``).
 - `binding.py` — The Spike / RTL / FPGA binding receipt (contract §7): is the functional model the machine the FPGA runs?
 - `binding_sources.py` — Structural readers behind the binding receipt: C parameter headers, device trees, ELF load segments and config sources.
@@ -45,3 +46,11 @@ Build, run and judge complete quantized models for a device submission.
 - This package never writes or edits device-kernel code and never modifies a submission.
 - Sealed inputs and every frozen bundle live under `/work/merlin/private/`; nothing here copies them into
   a path an agent sandbox can be granted.
+
+`program_admission.service` requires an original prerequisite admission, current
+selected RTL/software contracts, a declared loaded section and independently
+qualified decoder source selection. It never discovers a target implementation,
+exports protected findings or approves segmentation without rewriting the image
+and launcher. Host build/cache/relink honors explicit admission; a saved verdict
+never replaces current evaluation. Source pins establish attribution, not
+runtime/physical/numerical/timing qualification or complete program coverage.

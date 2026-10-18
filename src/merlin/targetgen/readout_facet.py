@@ -955,6 +955,36 @@ class TargetReadout:
 
     facets: tuple[ReadoutFacet, ...]
 
+    def applies_composition(
+        self, stages: Sequence[str], *, unit: str | None = None,
+        selector: str | None = None, routes=(),
+    ) -> bool | None:
+        """Whether one selected unit/readout carries the complete stage set.
+
+        This establishes physical composition only. Stage ordering and numeric
+        equivalence remain separate checks. Stages offered by different units
+        or different readouts cannot be combined into an invented pipeline.
+        """
+        from merlin.verify.epilogue_applicability import selectors_applying
+
+        answers = []
+        for facet in self.facets:
+            if unit is not None and facet.unit != unit:
+                continue
+            readouts = facet.capabilities()
+            if not readouts:
+                answers.append(None)
+                continue
+            if selector is not None:
+                readouts = tuple(row for row in readouts if row.selector == selector)
+                if not readouts:
+                    answers.append(False)
+                    continue
+            answers.append(bool(selectors_applying(readouts, stages, routes=routes, composition="contraction")))
+        if any(answer is True for answer in answers):
+            return True
+        return False if answers and all(answer is False for answer in answers) else None
+
     @property
     def scale_granularities(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(g for f in self.facets for g in f.scale_granularities or ()))

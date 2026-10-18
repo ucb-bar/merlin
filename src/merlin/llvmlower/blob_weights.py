@@ -193,10 +193,16 @@ class Plan:
             return
         with np.load(Path(self.directory) / VALUES_FILE) as values:
             for arg in self.args:
-                data = np.ascontiguousarray(values[arg["key"]])
-                if list(data.shape) != list(arg["shape"]) or data.dtype != np.dtype(_NUMPY[arg["dtype"]]):
-                    raise ValueError(f"blob weight {arg['key']} bytes disagree with its plan")
-                yield arg, data.tobytes()
+                yield arg, self.array(arg, values).tobytes()
+
+    def array(self, arg, values):
+        """Read one declared trailing argument without collecting the other weights."""
+        if arg not in self.args:
+            raise ValueError("blob array is not a selected prepared argument")
+        data = np.ascontiguousarray(values[arg["key"]])
+        if list(data.shape) != list(arg["shape"]) or data.dtype != np.dtype(_NUMPY[arg["dtype"]]):
+            raise ValueError(f"blob weight {arg['key']} bytes disagree with its plan")
+        return data
 
 
 def read(directory: str | Path) -> Plan:
@@ -235,7 +241,10 @@ def compact(
         size(n) for n in dropped
     )
     dropped = {name for name in dropped if size(name) <= remaining + appended}
-    out, blob = {}, bytearray()
+    from .weight_payload import WeightPayload
+
+    streamed = isinstance(payload, WeightPayload)
+    out, blob = {}, WeightPayload() if streamed else bytearray()
     for name, meta in sorted(
         ((n, m) for n, m in header.items() if isinstance(m, dict) and "data_offsets" in m),
         key=lambda item: item[1]["data_offsets"][0],
@@ -244,9 +253,10 @@ def compact(
             out[name] = {**meta, "data_offsets": [0, 0]}
             continue
         begin, end = meta["data_offsets"]
-        blob.extend(b"\0" * ((-len(blob)) % ALIGNMENT))
+        padding = (-len(blob)) % ALIGNMENT
+        blob.extend(WeightPayload.zeros(padding) if streamed else bytes(padding))
         out[name] = {**meta, "data_offsets": [len(blob), len(blob) + end - begin]}
         blob.extend(payload[begin:end])
     for name, meta in header.items():
         out.setdefault(name, meta)
-    return out, bytes(blob)
+    return out, blob if streamed else bytes(blob)

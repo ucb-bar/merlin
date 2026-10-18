@@ -1032,8 +1032,15 @@ def prepare_for_lowering(
     _applicability_source = _op_counts
 
     def _finish_preparation(path: Path) -> tuple[Path, frozenset[str]]:
+        from ...llvmlower.automatic_host import prepare_automatic_host
         from ...llvmlower.prepared_model_transform import apply_prepared_model_transform
 
+        # Placement, target ABI transforms and tagging have completed. Only
+        # canonical pure host tensor bodies are eligible, under the original
+        # captured policy. Explicit alternative lowerings retain their choice.
+        if not _closed & {"lower_roundeven_to_intrinsic", "lower_exact_math_inline", _FUSE_QUANT_ROUND}:
+            path = prepare_automatic_host(Path(path), Path(work) / "automatic_host",
+                                          policy_path=Path(work) / "quantization-policy.json")
         stripped = _strip_provenance(path, work, features)
         return (
             apply_prepared_model_transform(stripped, Path(work) / "prepared_model_transform", prepared_model_transform),

@@ -306,3 +306,20 @@ def test_real_lean_rejects_wrong_geometry_after_a_valid_structural_projection(re
     errors = [row for row in messages if row.get("severity") == "error"]
     assert len(errors) == len(faults)
     assert all("decide" in row["data"] for row in errors)
+
+
+def test_nonzero_view_windows_produce_translated_existing_interval_obligations():
+    module, model = _case(state=True)
+    model = dict(model, banks=tuple(replace(b, start=8, capacity=b.capacity + 8) for b in model["banks"]),
+                 reservations=tuple(replace(r, start=r.start + 8) for r in model["reservations"]),
+                 fixed_inputs={name: address + 8 for name, address in model["fixed_inputs"].items()},
+                 fixed_outputs=tuple(address + 8 for address in model["fixed_outputs"]))
+    emitted = _emit(module, model)
+    projection = project_resource_geometry(module, emitted, **model)
+    translated = [r for r in projection.obligations if r.kind == "fits" and r.subjects[-1] == "window"]
+    assert translated and any(r.numbers == (0, 2, 12, 1) for r in translated)
+    assert all(r.numbers[0] >= 0 and r.numbers[0] + r.numbers[1] <= r.numbers[2] for r in translated)
+    assert lean_resource_query(projection).endswith("#print axioms merlin_transform\n")
+    _change_address(emitted, 0, 0)
+    with pytest.raises(ValueError, match="range|fixed external|ABI"):
+        project_resource_geometry(module, emitted, **model)

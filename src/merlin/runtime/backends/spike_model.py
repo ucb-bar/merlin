@@ -17,6 +17,7 @@ llvmlower `toolchain`.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -185,7 +186,7 @@ def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
 
     with shared_compute_pool(timeout_s=timeout):
         return _proc.run_checked(
-            cmd, error=SpikeModelError, timeout=timeout, timeout_hint=" (pathological compile)", **kw,
+            cmd, error=SpikeModelError, timeout=timeout, timeout_hint=" (pathological compile)", **kw
         )
 
 
@@ -462,6 +463,7 @@ def build(
     output_sha256: bool = False,
     full_readback: bool = False,
     group_profile: bool = False,
+    weights_source: str | Path | None = None,
     execution_memory_map: MemoryMapBinding | None = None,
     execution_memory_reservations: tuple[MemoryReservation, ...] = (),
 ) -> dict:
@@ -682,7 +684,7 @@ def build(
     #    thread-safe and a delivery builds several images in one process (see common.ir_lock).
     from ...common.ir_lock import IR_LOCK
 
-    with IR_LOCK:
+    with compilation.phase("host preparation and lowering including IR lock"), IR_LOCK:
         # Preparation is what LIFTS a quantized subclass's inner tensors to `@forward` arguments,
         # and `c_runtime.generate` (step 2) appends the matching table rows unconditionally. Lowering
         # the raw module while the table describes two extra arguments is an ABI skew nothing would
@@ -732,6 +734,12 @@ def build(
             vectorize = selected_vectorize
         if int8_compute:
             compilation.bind_preparation("quantization_policy", work / "quantization-policy.json")
+        if getattr(device, "post_offload_transform", None) is not None:
+            receipt = work / "device_host_abi" / "post_offload_transform.json"
+            compilation.bind_preparation("post_offload_transform", receipt)
+            compilation.bind_preparation(
+                "post_offload_source", Path(json.loads(receipt.read_text())["source_snapshot"]))
+            compilation.bind_preparation("post_offload_selected", prepared_path)
         if prepared_model_transform is not None:
             from ...llvmlower.prepared_model_transform import RECEIPT
 
@@ -746,16 +754,6 @@ def build(
                 entry_projection_source, work, model_dir, entry_weight_projection
             )
             compilation.bind_preparation("entry_weight_projection", work / "entry_weight_projection" / RECEIPT)
-        if op_profile:
-            # Instrumented AFTER preparation, so the ids name the ops that actually run -- instrumenting
-            # the raw module would number ops the rewrites go on to split, fuse or route away, and the
-            # table would then resolve PROF lines to the wrong names.
-            from ...llvmlower import op_profile as _op_profile
-
-            text, prof_table = _op_profile.instrument(Path(prepared_path).read_text(), structural=True)
-            prepared_path = work / "model_prof.mlir"
-            Path(prepared_path).write_text(text)
-            _op_profile.write_table(prof_table, work / "op_profile_table.json")
         compiler_plan = selected_model_compiler_plan(
             backend=backend, cflags_override=cflags_override, vlen=vlen, features=features
         )
@@ -783,7 +781,17 @@ def build(
             masked_contraction_effects=masked_contraction_effects,
             source_observation_effects=source_observation_effects,
             source_scalar_carrier=source_scalar_carrier,
+            **({"op_profile": True} if op_profile else {}),
         )  # produce only the .ll
+        if op_profile:
+            # Instrument after checked source transforms; earlier markers are conservative effect barriers.
+            profile = res.stats["operation_profile"]
+            for name, product in (("op_profile_table.json", profile["table"]),
+                                  ("model_prof.mlir", profile["instrumented_source"])):
+                payload = Path(product["path"]).read_bytes()
+                if hashlib.sha256(payload).hexdigest() != product["sha256"]:
+                    raise SpikeModelError("operation profile product changed before model build publication")
+                (work / name).write_bytes(payload)
     # BACKEND-level feature flags, on the MODEL OBJECT ONLY (the GCC-built harness units keep
     # `gcc_cflags`): a feature like the register-group width is an LLVM backend query no tile size
     # reaches. Empty features -> the flag list is unchanged, so model.o stays byte-identical.
@@ -822,7 +830,7 @@ def build(
         from ...llvmlower.host_bitcode_transport import assemble_host_bitcode
 
         compiler_input, bitcode_receipt = assemble_host_bitcode(
-            model_ir, work / "host_bitcode", compiler=clang, compilation=compilation, runner=_run,
+            model_ir, work / "host_bitcode", compiler=clang, compilation=compilation, runner=_run
         )
     compilation.run(
         [clang, CLANG_TARGET, *model_cflags, "-c", compiler_input, "-o", work / "model.o"],
@@ -845,9 +853,16 @@ def build(
     # only that step of a captured session: later stream inputs and trajectory
     # references cannot be observed by this ELF, and rendering them as C
     # literals makes large captures costly to compile (hundreds of MB of C).
-    info = c_runtime.generate(
-        model_dir, cgen, inputs_npz, prepared_dir=work, max_session_steps=1, **projection_options
-    )
+    with compilation.phase("driver and weight generation"):
+        info = c_runtime.generate(
+            model_dir,
+            cgen,
+            inputs_npz,
+            prepared_dir=work,
+            max_session_steps=1,
+            **({"weights_source": weights_source} if weights_source is not None else {}),
+            **projection_options,
+        )
     if full_readback:
         from ..whole_model_readback import render_outputs_header
 
@@ -1217,23 +1232,15 @@ def build(
         units["op_prof.o"] = (rt / "merlin_op_prof.c", prof_defs)
     profile_link_flags: list[str] = []
     if group_profile:
-        from ..whole_model_readback import callees as _group_callees
-        from ..whole_model_readback import group_names as _group_names
-        from ..whole_model_readback import render_group_profile, wrap_flags
+        from ...llvmlower.group_profile_bindings import prepare_profile
 
-        # The model object's undefined symbols are what a wrapper can intercept: a routed group is
-        # bracketed under the name the model actually calls it by, or the build refuses.
         listing = _run([str(toolchain.nm()), "-u", str(work / "model.o")]).stdout
         undefined = {line.split()[-1] for line in listing.splitlines() if line.split()}
-        routed_rows = list(_dev_side.get("routed") or [])
-        group_callees = _group_callees(
-            routed_rows, _dev_args.get("signatures") or {}, undefined, _dev_args.get("call_buffers")
+        source, profile_link_flags = prepare_profile(
+            work, prepared_path, cgen, _dev_side, _dev_args, undefined,
+            transformed=getattr(device, "post_offload_transform", None) is not None,
         )
-        (cgen / "merlin_group_profile.c").write_text(
-            render_group_profile(group_callees, _group_names(routed_rows)), encoding="utf-8"
-        )
-        units["group_profile.o"] = (cgen / "merlin_group_profile.c", [])
-        profile_link_flags = wrap_flags(group_callees)
+        units["group_profile.o"] = (source, [])
     objs = []
     for obj, (src, extra) in units.items():
         if work / obj != runtime_object:

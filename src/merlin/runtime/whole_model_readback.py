@@ -112,6 +112,8 @@ class GroupCallee:
     #: Number of descriptor arguments, including the destination. Expanded
     #: calls have the fixed three-buffer ABI; C interfaces may also pass bias.
     buffers: int = 3
+    #: Original source route, when a checked writer rewrite changed its ABI.
+    routed_symbol: str | None = None
 
 
 def callees(
@@ -119,6 +121,7 @@ def callees(
     signatures: Mapping[str, Sequence[int]],
     undefined: set[str],
     call_buffers: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+    writer_bindings: Mapping[str, Mapping[str, Any]] | None = None,
 ):
     """The group callees the model object actually references, in a stable order.
 
@@ -126,6 +129,8 @@ def callees(
     A routed symbol referenced under neither name is refused: its calls would go unbracketed."""
     out: list[GroupCallee] = []
     for symbol in sorted({str(row.get("symbol")) for row in routed if row.get("symbol")}):
+        if symbol in (writer_bindings or {}) and (symbol in undefined or f"_mlir_ciface_{symbol}" in undefined):
+            raise ReadbackError("profile writer and original ABI both remain referenced")
         key = signatures.get(symbol)
         if key is None:
             raise ReadbackError(f"routed symbol {symbol} has no device signature")
@@ -159,7 +164,19 @@ def callees(
                 raise ReadbackError(f"routed symbol {symbol} has no complete call-buffer ABI")
             out.append(GroupCallee(f"_mlir_ciface_{symbol}", "c_interface", rank, arity))
         else:
-            raise ReadbackError(f"the model object references routed symbol {symbol} under no known name")
+            binding = (writer_bindings or {}).get(symbol)
+            borrowed = None if binding is None else binding.get("borrowed_symbol")
+            buffers = None if binding is None else binding.get("buffers")
+            ranks = None if binding is None else binding.get("argument_ranks")
+            actual = f"_mlir_ciface_{borrowed}"
+            if (not isinstance(borrowed, str) or not borrowed.isascii() or not borrowed.isidentifier()
+                    or type(buffers) is not int or not 0 < buffers <= 64
+                    or not isinstance(ranks, list) or len(ranks) != buffers
+                    or any(type(rank) is not int or rank < 0 for rank in ranks) or actual not in undefined):
+                raise ReadbackError(f"the model object references routed symbol {symbol} under no known name")
+            if any(c.symbol == actual for c in out):
+                raise ReadbackError("the profiled borrowed entry has ambiguous source routes")
+            out.append(GroupCallee(actual, "borrowed_c_interface", None, buffers, symbol))
     return out
 
 
@@ -193,8 +210,8 @@ def render_group_profile(callees_: Sequence[GroupCallee], names: Sequence[tuple[
 
     A call is named after the routed group in the same program-order position only when that group
     calls the same symbol; otherwise (a loop, a branch) it is named by its callee, never mislabelled."""
-    symbols = [c.symbol for c in callees_]
-    base = {c.symbol.removeprefix("_mlir_ciface_"): i for i, c in enumerate(callees_)}
+    symbols = [c.routed_symbol or c.symbol for c in callees_]
+    base = {c.routed_symbol or c.symbol.removeprefix("_mlir_ciface_"): i for i, c in enumerate(callees_)}
     name_callee = [base.get(symbol, -1) for _name, symbol in names]
     names = [name for name, _symbol in names]
     lines = [
@@ -246,7 +263,18 @@ def render_group_profile(callees_: Sequence[GroupCallee], names: Sequence[tuple[
                 "  return result;",
                 "}",
             ]
-        else:
+        elif callee.abi == "borrowed_c_interface":
+            args = [f"arg_{i}" for i in range(callee.buffers)]
+            proto = ", ".join(f"void *{arg}" for arg in args)
+            lines += [
+                f"void __real_{callee.symbol}({proto});",
+                f"void __wrap_{callee.symbol}({proto}) {{",
+                "  uint64_t start = merlin_rdcycle();",
+                f"  __real_{callee.symbol}({', '.join(args)});",
+                f"  merlin_group_record({index}u, start, merlin_rdcycle());",
+                "}",
+            ]
+        elif callee.abi == "c_interface":
             pointer = f"const {memref} *" if memref is not None else "const void *"
             args = [chr(ord('a') + i) for i in range(callee.buffers)]
             proto = f"{memref} *result" if memref is not None else "void *result"
@@ -259,6 +287,8 @@ def render_group_profile(callees_: Sequence[GroupCallee], names: Sequence[tuple[
                 f"  merlin_group_record({index}u, start, merlin_rdcycle());",
                 "}",
             ]
+        else:
+            raise ReadbackError("unknown group profiling ABI")
     callee_names = ", ".join(f'"{s}"' for s in symbols) or '""'
     group_list = ", ".join(f'"{n}"' for n in names) or '""'
     lines += [

@@ -138,6 +138,7 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
                     expected_contract = rocc_selection.select_operand_protocol(expected_contract, operand_selection)
                 if (released.get("logical_harness") or {}).get("kernel_call_timing") is not None:
                     from merlin.common.digest import sha256_file
+
                     from ..corpus.kernel_timing_selection import select
 
                     expected_contract, _ = select(expected_contract, (path, sha256_file(path)))
@@ -158,13 +159,20 @@ def _reconcile_public_software_denial(te, bundle, paths, *, spec, source_freeze,
     """Keep a reviewed common-tool semantics declaration public, never model data."""
     from merlin.compile.model_execution_inputs import file_sha256
     from merlin.targetgen.software_spec import software_spec_path_for_recipe, validate_software_spec
-    from merlin.targetgen.tool_profile import COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3, verify_tool_profile
+    from merlin.targetgen.tool_profile import (
+        COMMON_SUBSTRATE_V2,
+        COMMON_SUBSTRATE_V3,
+        COMMON_SUBSTRATE_V6,
+        verify_tool_profile,
+    )
 
     from ..corpus.numeric_policy import numeric_profile_path
     from .feedback import private_source_freeze
 
     profile = verify_tool_profile(bundle)
-    if profile is None or profile.get("common_substrate") not in {COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3}:
+    if profile is None or profile.get("common_substrate") not in {
+        COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V6
+    }:
         return paths
     root = te._source_root().absolute()
     recipe = numeric_profile_path(te.numeric_profile, repo=root)
