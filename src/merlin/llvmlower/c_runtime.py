@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import tempfile
+from math import prod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -51,6 +52,58 @@ C_OF = {
 # Existing portable build-time append policy. This describes generated blob
 # placement; it supplies no target DMA, tensor alignment or no-alias fact.
 GENERATED_WEIGHT_ALIGNMENT = 64
+
+
+def _align_weight_rows(rows, blob, appended, append):
+    """Repair native element alignment without changing any weight alias relation.
+
+    Captured byte offsets need not satisfy the native typed-load ABI. Relocate
+    each affected overlapping component together; never split views or infer
+    device DMA alignment. Already aligned components retain their exact bytes
+    and offsets. Lazy span copies keep build memory bounded by the I/O chunk.
+    """
+    payload = WeightPayload()
+    payload.extend(blob)
+    payload.extend(appended)
+    windows = []
+    for index, (kind, start, _rank, shape, elem, _dtype) in enumerate(rows):
+        if kind == "MERLIN_WEIGHT":
+            if any(type(dim) is not int or dim < 0 for dim in shape):
+                raise ValueError("runtime weight descriptor requires static nonnegative dimensions")
+            size = prod(shape) * elem
+            if start < 0 or start > len(payload) or start + size > len(payload):
+                raise ValueError("runtime weight descriptor exceeds actual packed bytes")
+            if size:
+                windows.append((start, start + size, index))
+    groups = []
+    for start, end, index in sorted(windows):
+        if groups and start < groups[-1][1]:
+            groups[-1][1] = max(groups[-1][1], end)
+            groups[-1][2].append((start, index))
+        else:
+            groups.append([start, end, [(start, index)]])
+    repairs = []
+    for low, high, members in groups:
+        if all(start % rows[index][4] == 0 for start, index in members):
+            continue
+        reference, reference_index = max(members, key=lambda item: rows[item[1]][4])
+        alignment = rows[reference_index][4]
+        shift = (-reference) % alignment
+        if GENERATED_WEIGHT_ALIGNMENT % alignment or any(
+            (start + shift) % rows[index][4] for start, index in members
+        ):
+            raise ValueError("overlapping weight views have incompatible native element alignment")
+        prefix = (low - reference) % alignment
+        copied = WeightPayload.zeros(prefix)
+        copied.extend(payload[low:high])
+        begin = append(copied) + prefix
+        for start, index in members:
+            kind, _offset, *rest = rows[index]
+            rows[index] = (kind, begin + start - low, *rest)
+        repairs.append(dict(descriptor_stage="before_entry_projection",
+                            source_start=low, size=high - low, destination_start=begin,
+                            arguments=[index for _, index in members]))
+    return repairs
 
 
 def manifest_requires_weight_blob(manifest: dict) -> bool:
@@ -251,7 +304,7 @@ def generate(
 
     def _append_blob(data: WeightPayload) -> int:
         """Place ``data`` after the weights payload (64-byte aligned) and return its blob offset."""
-        pad = (-len(appended)) % GENERATED_WEIGHT_ALIGNMENT
+        pad = (-(len(blob) + len(appended))) % GENERATED_WEIGHT_ALIGNMENT
         appended.extend(WeightPayload.zeros(pad))
         begin = len(blob) + len(appended)
         appended.extend(data)
@@ -516,6 +569,8 @@ def generate(
             if quality_values is not None:
                 quality_values = quality_values[:session_steps]
 
+    weight_alignment = _align_weight_rows(rows, blob, appended, _append_blob)
+
     # Project all ABI consumers together after their original source derivation.
     # Embedded array names remain keyed by original capture indices; descriptor
     # indices, state maps and stream pointer updates follow the same projection.
@@ -761,6 +816,7 @@ def generate(
         "n_quant_hoist": len(quant_hoist_args),
         "weights_bytes": len(blob) + len(appended),
         "weights_sha256": weight_digest.hexdigest(),
+        "weight_alignment_repairs": weight_alignment,
         "static_io_bytes": static_io_bytes + output_bytes,
     }
     if entry_projection is not None:

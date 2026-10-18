@@ -141,14 +141,14 @@ def capture(directory, shape):
 
 @pytest.mark.parametrize("shape,separate", [((3, 7, 5), False), ((2, 5, 11), True)])
 def test_ordinary_recurrent_model_runs_source_bound_fusion(
-    tmp_path, record_property, shape, separate, provider_class=Provider, optimization="fusion"
+    tmp_path, record_property, shape, separate, provider_class=Provider, optimization="fusion", capture_builder=capture
 ):
     from merlin.llvmlower import toolchain
 
     if not toolchain.available() or not spike.available():
         pytest.skip("ordinary native lowering and functional simulator unavailable")
     bundle = tmp_path / "capture"
-    expected, trace = capture(bundle, shape)
+    expected, trace = capture_builder(bundle, shape)
     observations, outputs = [], []
     for name, enabled in (("baseline", False), ("optimized", True)):
         provider = provider_class(tmp_path / (name + "_provider"), enabled=enabled, separate=separate)
@@ -197,8 +197,8 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
             for key in ("actual_commands", "requested_read_bytes", "requested_write_bytes")
         ]
         assert native["counters"][:3] == expected_commands_and_traffic
-        # Two four-byte inputs and one one-byte output, copied both ways.
-        host_pack_bytes = 3 * 9 * shape[0] * (shape[1] + shape[2])
+        # Descriptor packing is measured separately from instruction transfers.
+        host_pack_bytes = provider.packed_bytes(shape)
         assert native["counters"][3:6] == [host_pack_bytes, host_pack_bytes, 6]
         if provider.observation_count > 6:
             state = provider.results[-1].conformance["configuration"]["known_final_state"]
@@ -206,8 +206,9 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
         recipe = json.loads((work / "compilation_recipe.json").read_text())
         linked_programs = []
         for record, result in zip(provider.records, provider.results, strict=True):
+            word_bytes = result.selected_contracts.isa.word_bits // 8
             image, section = read_program_section(
-                built["elf"], record["program_section"], max_bytes=len(provider.expected_instructions()) * 41
+                built["elf"], record["program_section"], max_bytes=len(provider.expected_instructions()) * word_bytes
             )
             assert not section["writable"]
             assert image == b"".join(result.images())
@@ -215,8 +216,10 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
             from merlin.targetgen.isa_dialect_gen import decode_instruction
 
             decoded = [
-                decode_instruction(selected.isa, int.from_bytes(image[i : i + 41], "little"))[0]
-                for i in range(0, len(image), 41)
+                decode_instruction(
+                    selected.isa, int.from_bytes(image[i : i + word_bytes], selected.instruction_byteorder)
+                )[0]
+                for i in range(0, len(image), word_bytes)
             ]
             assert decoded == provider.expected_instructions()
             linked_programs.append(dict(**section, sha256=record["program_sha256"], instructions=decoded))
@@ -246,7 +249,11 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(
         np.testing.assert_array_equal(before, after)
     before, after = observations
     assert before["host_object_sha256"] == after["host_object_sha256"]
-    assert before["native_qualification"]["counters"][0] > after["native_qualification"]["counters"][0]
+    before_commands, after_commands = (row["native_qualification"]["counters"][0] for row in observations)
+    if provider.expect_command_reduction:
+        assert before_commands > after_commands
+    else:
+        assert before_commands == after_commands
     eliminated = 12 * shape[0] * (shape[1] + shape[2]) if optimization == "fusion" else 0
     for counter in (1, 2):
         assert (

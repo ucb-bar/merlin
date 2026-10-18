@@ -1385,8 +1385,53 @@ same-window input aliases are supported. Shifted or reinterpreted input aliases
 and input/output overlap refuse. Private bank views use the selected canonical
 physical backing, so writes through one view invalidate overlapping reads through
 another. The checker reuses the existing interval provenance memory and stores
-one scalar expression per whole vector; it never expands by tensor elements.
+one scalar expression per computed fragment; it never expands by tensor elements.
+Original inputs admit element-aligned slices, including tails. Arithmetic reads
+must cover one complete computed fragment; slicing or merging computed expressions
+remains unsupported. Exact copies may split and reassemble byte provenance.
+Every final output fragment must match the source expression over the same logical
+input interval, with gap-free coverage of the complete result. Per-instruction
+shifted arithmetic aliases and overlapping shifted copies remain unsupported.
 Only qualified synchronous arithmetic and exact copies are admitted here.
+
+For selected device spills, pass `spill_emitters` and
+`spill_qualification_identity` through this source entry. The nested scheduler
+binds the existing declared register classes and exact save/reload semantics,
+then replans allocation, liveness, completion, emission and size within its repair
+budget. The source checker independently reopens the repaired final bytes.
+A short tail does not authorize spilling uninitialized full-register padding.
+Missing qualification preserves a feasible allocation; unresolved pressure
+produces the existing precise diagnostic for the caller's fallback route.
+These are device storage capabilities; host register allocation stays with the
+selected native toolchain.
+
+Selected persistent settings may also parameterize those scalar instructions.
+The software specification must describe each instruction's complete state
+reads alongside its memory accesses. Those reads name encoded fields and exact
+required values through the existing `scheduling.configuration` contract; the
+ISA state resource's field capacity comes from the selected RTL facts. Scalar
+instructions may read established settings but cannot write or clobber them.
+Exact-copy declarations retain their stricter memory-only requirement.
+
+Pass `configuration_qualification_identity` to bind the selected state decoder
+as well as the independently qualified memory/scalar implementation. Missing
+qualification, unknown field capacity, an absent state frame or mismatched ISA
+coverage cannot authorize lowering. Source checking starts with unknown state,
+requires a matching setter before each configuration-dependent use, and checks
+again after decoding the actual final images. A setter is admitted without
+scalar arithmetic only when it is ordered, synchronous, memory-free and
+independently qualified as an idempotent persistent write. A reset or unordered
+operation that leaves a required value unknown raises a configuration diagnostic.
+Other unmodeled arithmetic or effects raise `UnsupportedElementwise`, allowing
+the caller to keep the original source route. This bounded source entry does not
+inherit every barrier operation supported by generic schedule cleanup.
+
+Configuration cleanup runs before fusion and allocation in the nested scheduler.
+Disabling it with `ScheduleBudgets(eliminate_configuration=False)` retains the
+setup instructions while preserving all admission and conformance checks.
+Read-only settings allow cleanup and physical fusion to compose: cleanup removes
+repeated setters, while fusion separately removes a supported intermediate
+store/reload. Cleanup alone does not reduce arithmetic or payload traffic.
 
 The enforced source ordering is `source-admission`, `schedule-lowering`, then
 `source-conformance`. These reuse `PassSpec` and `PipelineSession`; the nested
@@ -1411,6 +1456,12 @@ checked = compile_source_pointwise(
 images = checked.images()
 ```
 
+For configuration-dependent instructions, add
+`configuration_qualification_identity=state_qualification_identity`. This label
+records the selected independent evidence; it does not create that evidence.
+The emitted program's complete state is reported under
+`checked.conformance["configuration"]["known_final_state"]`.
+
 An explicitly selected provider can call this entry from ordinary model
 preparation and link its implementation through the existing
 `prepared_model_transform` and `host_provider_builder` hooks. The neutral
@@ -1428,7 +1479,11 @@ Reproduce source mutations, native execution and ordinary paired model builds:
 ```sh
 python -B -m pytest -p no:cacheprovider \
   merlin/tests/infra/test_pointwise_source.py \
+  merlin/tests/infra/test_spilled_pointwise_source.py \
+  merlin/tests/infra/test_spilled_pointwise_model.py \
   merlin/tests/infra/test_pointwise_source_whole_model.py \
+  merlin/tests/infra/test_configured_pointwise.py \
+  merlin/tests/infra/test_configured_pointwise_model.py \
   merlin/tests/infra/test_shared_scheduling_export.py \
   --basetemp "$TMPDIR/source-pointwise" \
   -o junit_family=xunit1 --junitxml "$TMPDIR/source-pointwise.xml"
@@ -1441,11 +1496,53 @@ fusion control. Retained `pair.json` records compilation wall time and sampled
 process-tree RSS, final ELF sections, encoded size, command counts, complete
 results and native requested instruction/packing bytes. Final ELF sections retain
 the exact program images; the test reopens loaded, readonly sections and decodes
-their actual instructions after linking. The neutral interpreter
+their actual instructions after linking. A separate configuration pair disables
+fusion in both arms and changes only setup elimination. It checks settings used
+by the arithmetic, complete outputs and carried state, unchanged packing and
+payload traffic, and the actual setup instructions in the linked ELF. Native
+mutation controls change, omit, reorder or reinsert setters during emission;
+independent execution also rejects a falsely declared setter with a hidden pulse.
+The isolated shared-library test exercises the combined configuration and
+source-fusion path without importing the checkout's compiler implementations.
+The neutral interpreter
 executes on the CPU; its functional Spike counter and process wall time are not
 accelerator latency. Packing bytes remain a separate unchanged cost. This
 experiment does not demonstrate real target support, Phase 2 pass synthesis or
 generalization learned by an agent.
+
+The separate source-spill tests compare a manually repaired legal baseline with
+automatic repair on identical one-slot hardware. Both produce the same actual
+11-command program, including an exact save/reload of a live full-width value.
+Independent native execution checks complete outputs, carried state and guards
+for three-byte and 16-byte register classes with distinct spill memory and two
+instruction formats. Mutations corrupt fragment offsets, tail coverage, arithmetic,
+spill/reload bytes and current source/contract/library identities. This establishes
+checked repair of that selected schedule, not optimal scheduling or a speedup;
+storing the first result earlier could avoid the spill.
+
+Ordinary recurrent-model spill pairs add the same typed increment before each
+of two host contractions, retaining host epilogues, descriptor packing, output
+copies and three iterations of carried state. Both the manually repaired
+baseline and automatically repaired arm use one 16-byte register slot and a
+distinct 48-byte spill bank. Each of six invocations executes 11 actual commands;
+the two linked programs occupy 594 bytes in total. The test reopens readonly ELF
+sections, checks their bytes and decodes instructions using the selected ISA's
+word width and byte order. All five outputs are compared against independent
+whole-model arithmetic. A native spill implementation that corrupts saved data
+fails numerical qualification before publication of the optimized ELF.
+
+| Model dimensions `(M, K, N)` | Commands, either arm | Requested reads / writes | Host packing reads / writes |
+| --- | --- | --- | --- |
+| `(1, 47, 47)` | 66 | 1,038 / 1,038 bytes | 564 / 564 bytes |
+| `(2, 23, 17)` | 66 | 912 / 912 bytes | 480 / 480 bytes |
+
+The paired reports separately retain compilation time, sampled process-tree RSS,
+ELF sections and size, requested instruction traffic, host packing and functional
+instruction counts. These are neutral host-executed device models; neither equal
+programs nor differing compilation observations establish an accelerator speedup.
+The odd dimensions also exposed and now regress native weight alignment after
+an odd-sized int8 payload; see [runtime packing](runtime.md). This repair does
+not loosen numerical admission or establish a real target's storage capability.
 
 ## Physical elementwise fusion
 
@@ -2347,10 +2444,10 @@ ownership, real target support or absolute accuracy for an external model.
 | Concern | Existing mechanism | Requirement beyond the scope above |
 | --- | --- | --- |
 | Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line relocation; selected RTL/software windows, aliases, reservations and actual operand/effect checks | Qualified target effect/rewrite adapters and ordinary model integration; general loop and persistent-storage allocation |
-| Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks and independent actual byte provenance | Qualified device register/transfer adapters and ordinary target integration; CPU allocation stays with the native toolchain |
+| Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks, typed source fragments, actual byte provenance and ordinary neutral recurrent model builds | Qualified real-device register/transfer adapters and target model integration; computed expression slicing remains unsupported; CPU allocation stays with the native toolchain |
 | Fusion and transfers | Readout composition admission and connected dispatch; exact private-copy forwarding; consumed total-integer elementwise physical composition with layout/numerical checks, allocation fallback and reconstructed final traffic | Floating/contraction epilogues, noncontiguous and asynchronous handoffs, and qualified full-model target integration |
 | Reductions and attention | Complete-domain counted row softmax; automatic narrow CPU source row scheduling and native QK–softmax–PV graphs with carried state; ordered source loops and complete CPU reductions | Qualified source-to-device connection, target hooks/final decoding, device QK–softmax–PV/KV composition and broader source algorithms |
-| Configuration | Checked persistent-state cleanup through ordinary shared schedule compilation and actual final bytes; existing configuration checker/hoist primitive | Independently qualified target state decoder and ordinary model integration |
+| Configuration | Checked persistent-state cleanup through ordinary shared schedules, source pointwise lowering and neutral recurrent model builds; actual final bytes, complete outputs and settings, and isolated shared-library execution | Independently qualified real-target state decoder and model integration; general source loops and reset/pulse semantics |
 | Final program limits | Actual decoded instruction size, branch/address checks and closed-region segmentation through declared interfaces | Independently qualified target decoder and runtime continuation integration; ordinary targets retain their existing linked-image admission |
 | Persistent state | Runtime state binding, immutable weight hashing/reuse and recurrent relinking | Qualified address windows, ownership and persistence for each device runtime |
 | Whole-model coverage | Source routing/census and compiled CPU fallback machinery | Complete realized coverage and unchanged numerical gates for each selected full model |

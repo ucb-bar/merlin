@@ -32,6 +32,10 @@ from merlin.transforms.certificates import ir_text
 class Provider:
     case_builder = staticmethod(case)
     executor_source = _EXECUTOR
+    expected_scalar_source = EPILOGUE
+    input_dtypes = ("<i4", "<i4")
+    output_dtype = "i1"
+    expect_command_reduction = True
     observation_count = 6
 
     def __init__(self, work, *, enabled, separate):
@@ -46,10 +50,22 @@ class Provider:
     def expected_instructions(self):
         return ["fused"] if self.enabled else ["readout", "finish"]
 
+    def case_options(self, directory, m, n):
+        return self.case_builder(directory, m=m, n=n, separate=self.separate)
+
+    @staticmethod
+    def packed_bytes(shape):
+        return 3 * 9 * shape[0] * (shape[1] + shape[2])
+
+    @staticmethod
+    def qualification_reference(left, bias):
+        wide = left.astype(np.int64) + bias.astype(np.int64)
+        return np.clip((wide + (1 << 31)) % (1 << 32) - (1 << 31), -128, 127).astype("i1")
+
     def prepare(self, source_path, output):
         original = mq.parse(source_path.read_text())
         replacement = original.clone()
-        expected = scalar_graph(EPILOGUE, 128, 65536)
+        expected = scalar_graph(self.expected_scalar_source, 128, 65536)
         candidates = []
         for ordinal, operation in enumerate(original.walk()):
             if operation.name != "linalg.generic":
@@ -67,7 +83,7 @@ class Provider:
             directory = self.work / str(ordinal)
             directory.mkdir()
             m, n = source.shape
-            options = self.case_builder(directory, m=m, n=n, separate=self.separate)
+            options = self.case_options(directory, m, n)
             compiled = compile_source_pointwise(original, operation, budgets=self.schedule_budgets(), **options)
             symbol = f"source_writer_{ordinal}"
             bridge = f"_mlir_ciface_borrowed_{symbol}"
@@ -101,12 +117,13 @@ class Provider:
             declaration.properties["arg_attrs"] = builtin.ArrayAttr(
                 [
                     builtin.DictionaryAttr({"bufferization.access": builtin.StringAttr(access)})
-                    for access in ("read", "read", "write")
+                    for access in (*("read",) * len(target.inputs), "write")
                 ]
             )
             replacement.body.block.add_op(declaration)
             Rewriter.replace_op(target, func.CallOp(symbol, operands, [target.results[0].type]))
-            contracts.append(FreshTensorWriterContract(symbol, 2, (2,), "borrowed_" + symbol, 32))
+            result_index = len(target.inputs)
+            contracts.append(FreshTensorWriterContract(symbol, result_index, (result_index,), "borrowed_" + symbol, 32))
         if not candidates:
             raise ValueError("neutral provider found no current qualified source arithmetic")
         rewrite_fresh_tensor_writers(replacement, contracts)
@@ -209,19 +226,27 @@ def qualify(provider, arithmetic_inputs):
     compiler = shutil.which("cc")
     if compiler is None:
         pytest.skip("native source/ABI qualifier unavailable")
-    library = provider.work / "provider.so"
-    argv = [compiler, "-O2", "-fno-builtin", "-shared", "-fPIC", str(provider.c_source), "-o", str(library)]
+    built_library = provider.work / "provider.so"
+    argv = [compiler, "-O2", "-fno-builtin", "-shared", "-fPIC", str(provider.c_source), "-o", str(built_library)]
     subprocess.run(argv, check=True, capture_output=True)
+    # dlopen can retain a prior CDLL after pytest has removed a passed test's
+    # files and reused its directory name. Select by actual compiled bytes so
+    # qualification cannot execute an earlier model under a new source hash.
+    library = provider.work / f"provider-{sha256_file(built_library)}.so"
+    built_library.replace(library)
     native = ctypes.CDLL(str(library))
     native.pointwise_count.argtypes, native.pointwise_count.restype = [ctypes.c_int], ctypes.c_uint64
     native.pointwise_reset()
     outputs = []
-    for index, left, bias in arithmetic_inputs:
+    for index, *inputs in arithmetic_inputs:
         record = provider.records[index]
         m, n = record["shape"]
         # Strided, offset descriptors exercise real ABI packing as well.
         buffers, descriptors, originals = [], [], []
-        for array, dtype in ((left, "<i4"), (bias, "<i4"), (np.zeros((m, n), "i1"), "i1")):
+        assert len(inputs) == len(provider.input_dtypes)
+        arrays = (*inputs, np.zeros((m, n), provider.output_dtype))
+        dtypes = (*provider.input_dtypes, provider.output_dtype)
+        for array, dtype in zip(arrays, dtypes, strict=True):
             memory = np.full((m + 2, n + 3), 71, dtype=dtype)
             memory[1 : m + 1, 1 : n + 1] = array
             buffers.append(memory)
@@ -236,12 +261,11 @@ def qualify(provider, arithmetic_inputs):
                 )
             )
         fn = getattr(native, record["symbol"])
-        fn.argtypes = [ctypes.POINTER(Descriptor)] * 3
+        fn.argtypes = [ctypes.POINTER(Descriptor)] * len(descriptors)
         fn(*(ctypes.byref(d) for d in descriptors))
-        for array, original in zip(buffers[:2], originals[:2], strict=True):
+        for array, original in zip(buffers[:-1], originals[:-1], strict=True):
             np.testing.assert_array_equal(array, original)
-        wide = left.astype(np.int64) + bias.astype(np.int64)
-        expected = np.clip((wide + (1 << 31)) % (1 << 32) - (1 << 31), -128, 127).astype("i1")
+        expected = provider.qualification_reference(*inputs)
         actual = buffers[-1][1 : m + 1, 1 : n + 1].copy()
         np.testing.assert_array_equal(actual, expected)
         originals[-1][1 : m + 1, 1 : n + 1] = expected
@@ -249,6 +273,7 @@ def qualify(provider, arithmetic_inputs):
         outputs.append(actual)
     record = dict(
         source_sha256=sha256_file(provider.c_source),
+        library_path=library.name,
         library_sha256=sha256_file(library),
         compiler=str(compiler),
         commands=[argv],
