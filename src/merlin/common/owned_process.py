@@ -7,6 +7,7 @@ child, and cleanup never waits indefinitely for it.
 
 from __future__ import annotations
 
+import math
 import os
 import signal
 import subprocess
@@ -19,12 +20,12 @@ def start_owned(command, **kwargs: Any) -> subprocess.Popen:
         raise NotImplementedError("owned subprocess groups require a POSIX host")
     if kwargs.pop("start_new_session", True) is not True or kwargs.get("process_group") not in (None, -1):
         raise ValueError("owned subprocess execution requires its own new session")
-    return subprocess.Popen(command, start_new_session=True, **kwargs)
+    if kwargs.pop("bufsize", 0) != 0:
+        raise ValueError("owned subprocess pipes require unbuffered single-owner IO")
+    return subprocess.Popen(command, start_new_session=True, bufsize=0, **kwargs)
 
 
-def stop_owned(
-    process: subprocess.Popen, *, terminate_grace: float = 0.2, kill_grace: float = 1.0
-) -> dict:
+def stop_owned(process: subprocess.Popen, *, terminate_grace: float = 0.2, kill_grace: float = 1.0) -> dict:
     """Request TERM then KILL of a start_owned group, using only bounded waits.
 
     Reaping the leader does not establish that all descendants exited. Always
@@ -32,12 +33,17 @@ def stop_owned(
     or signal the application's session. The returned record preserves PID and
     PGID even if the direct child remains unreaped after the kill grace period.
     """
-    if terminate_grace < 0 or kill_grace < 0:
+    if not all(math.isfinite(value) and value >= 0 for value in (terminate_grace, kill_grace)):
         raise ValueError("owned subprocess cleanup grace periods must be nonnegative")
     errors = []
-    for sig, grace in ((signal.SIGTERM, terminate_grace), (signal.SIGKILL, kill_grace)):
+    kill_sent = False
+
+    def request(sig, grace):
+        nonlocal kill_sent
         try:
             os.killpg(process.pid, sig)
+            if sig == signal.SIGKILL:
+                kill_sent = True
         except ProcessLookupError:
             pass
         except OSError as exc:
@@ -48,24 +54,33 @@ def stop_owned(
             pass
         except OSError as exc:
             errors.append(f"bounded wait: {exc}")
+
+    try:
+        request(signal.SIGTERM, terminate_grace)
+    finally:
+        # A second cancellation during TERM grace must still request KILL.
+        request(signal.SIGKILL, kill_grace)
     return {
         "pid": process.pid,
         "group": process.pid,
         "direct_child_reaped": process.returncode is not None,
-        "group_kill_requested": True,
+        "group_kill_attempted": True,
+        "group_kill_sent": kill_sent,
         "descendant_exit_confirmed": False,
         "errors": errors,
     }
 
 
 def close_owned_pipes(process: subprocess.Popen) -> None:
-    """Close our pipe descriptors without flushing buffered input or waiting."""
+    """Close each unbuffered start_owned pipe once, with no wait or input flush.
+
+    The caller owns these streams on one thread. POSIX communicate uses selectors,
+    not background readers; start_owned enforces raw pipes and write-through text
+    input. Never raw-close an FD and then close its wrapper: another thread could
+    reuse that FD between the two closes.
+    """
     for stream in (process.stdin, process.stdout, process.stderr):
         if stream is not None and not stream.closed:
-            try:
-                os.close(stream.fileno())
-            except OSError:
-                pass
             try:
                 stream.close()
             except OSError:
@@ -89,7 +104,7 @@ def run_owned(
     Cleanup grace periods are separate from the command's evaluation timeout;
     interrupted invocations retain the original exception and cleanup identity.
     """
-    if terminate_grace < 0 or kill_grace < 0:
+    if not all(math.isfinite(value) and value >= 0 for value in (terminate_grace, kill_grace)):
         raise ValueError("owned subprocess cleanup grace periods must be nonnegative")
     if input is not None:
         if kwargs.get("stdin") is not None:
@@ -105,8 +120,11 @@ def run_owned(
         try:
             stdout, stderr = process.communicate(input=input, timeout=timeout)
         except BaseException as exc:
-            cleanup = stop_owned(process, terminate_grace=terminate_grace, kill_grace=kill_grace)
-            exc.add_note(f"owned subprocess cleanup: {cleanup}")
+            try:
+                cleanup = stop_owned(process, terminate_grace=terminate_grace, kill_grace=kill_grace)
+                exc.add_note(f"owned subprocess cleanup: {cleanup}")
+            except BaseException as cleanup_error:
+                exc.add_note(f"owned subprocess PID/group {process.pid} cleanup failed: {cleanup_error}")
             raise
         result = subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
         if check:

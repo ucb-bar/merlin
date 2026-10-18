@@ -1,5 +1,6 @@
 """Owned subprocess cleanup preserves capture contracts and unrelated jobs."""
 
+import io
 import json
 import os
 import signal
@@ -159,6 +160,9 @@ def test_startup_failure_propagates_without_signalling_any_group(tmp_path, monke
         {"process_group": 0},
         {"terminate_grace": -1},
         {"kill_grace": -1},
+        {"kill_grace": float("nan")},
+        {"bufsize": 4096},
+        {"terminate_grace": float("inf")},
     ],
 )
 def test_conflicting_or_invalid_ownership_options_refuse_before_execution(conflict):
@@ -219,3 +223,44 @@ def test_unreapable_child_never_causes_an_unbounded_cleanup_wait(monkeypatch):
     note = "\n".join(interruption.__notes__)
     assert "123456789" in note and "'direct_child_reaped': False" in note
     assert "'descendant_exit_confirmed': False" in note
+
+
+def test_owned_pipes_are_unbuffered_and_text_input_is_write_through():
+    process = owned_process.start_owned(
+        [sys.executable, "-c", "import sys; print(sys.stdin.read())"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert isinstance(process.stdin.buffer, io.FileIO)
+        assert process.stdin.write_through
+        assert isinstance(process.stdout.buffer, io.FileIO)
+        assert isinstance(process.stderr.buffer, io.FileIO)
+        assert process.communicate(input="same input", timeout=5) == ("same input\n", "")
+    finally:
+        owned_process.stop_owned(process)
+        owned_process.close_owned_pipes(process)
+
+
+def test_interruption_during_term_grace_still_requests_owned_kill(monkeypatch):
+    signals, waits = [], []
+    interruption = KeyboardInterrupt("second cancellation during cleanup")
+
+    class Interrupted:
+        pid = 123456789
+        returncode = None
+
+        def wait(self, *, timeout):
+            waits.append(timeout)
+            if len(waits) == 1:
+                raise interruption
+            self.returncode = -9
+
+    monkeypatch.setattr(owned_process.os, "killpg", lambda *args: signals.append(args))
+    with pytest.raises(KeyboardInterrupt) as error:
+        owned_process.stop_owned(Interrupted())
+    assert error.value is interruption
+    assert waits == [0.2, 1.0]
+    assert signals == [(123456789, signal.SIGTERM), (123456789, signal.SIGKILL)]
