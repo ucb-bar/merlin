@@ -12,7 +12,7 @@ assumed, why, and what evidence stands behind it. A claim that relies on an entr
 | A3 | A poison dividend with divisor `-1` in a signed division is UB; a poison divisor is UB. | `Sem/Ops/Arith.lean` | Poison may take the triggering value (`INT_MIN`, `0`); matches LLVM/Alive2 practice. |
 | A4 | `tensor.extract`/`tensor.insert` out of bounds, or with a poison index, is UB. | `Sem/Ops/Tensor.lean` | MLIR leaves out-of-bounds access undefined. |
 | A5 | A structured op's reductions run in lexicographic order of its iteration space. | `Sem/Ops/Linalg.lean` | The order `convert-linalg-to-loops` materializes; integer results are order-independent. The host differential corpus now exercises order-sensitive f32/f64 matmul without fusion or reassociation; other reductions and lowering configurations remain assumptions. See `docs/guides/lean_differential_tests.md`. |
-| A6 | Named linalg ops mean their structured generic form. Map bodies receive inputs followed by the destination element. | `Sem/Ops/LinalgNamed.lean` | Reviewed correction from the legacy inputs-only convention to LLVM [f5e175f](https://github.com/llvm/llvm-project/commit/f5e175f06dacf6751f27f7a4bd9e9a3489e95a5e); executable compiler probes and host comparisons qualify explicit cases. Map progress/definedness and map-to-generic rewriting on typed inputs are now proved. Runtime ranks are established through checked SSA execution; typed receipts/chains preserve that domain. Adjacent closed-expression motion has a separate universal proof, including captured-constant hoisting across static tensor.empty. Operand-taking motion, non-adjacent hoisting and nested rewrites remain unsupported. These transformation proofs do not prove general fidelity to MLIR; see `docs/guides/lean_differential_tests.md`. |
+| A6 | Named linalg ops mean their structured generic form. Map bodies receive inputs followed by the destination element. | `Sem/Ops/LinalgNamed.lean` | Reviewed correction from the legacy inputs-only convention to LLVM [f5e175f](https://github.com/llvm/llvm-project/commit/f5e175f06dacf6751f27f7a4bd9e9a3489e95a5e); executable compiler probes and host comparisons qualify explicit cases. Map progress/definedness and map-to-generic rewriting on typed inputs are now proved. Runtime ranks are established through checked SSA execution; typed receipts/chains preserve that domain. Adjacent closed-expression motion has a separate universal proof, including captured-constant hoisting across static tensor.empty. Operand-taking motion, non-adjacent hoisting and nested motion remain unsupported. These transformation proofs do not prove general fidelity to MLIR; see `docs/guides/lean_differential_tests.md`. |
 | A7 | `tensor.empty` is a tensor of poison. | `Sem/Ops/Tensor.lean` | MLIR leaves its contents unspecified. As a source, poison is the reading every value refines, so a target may read anything there; as a target, a read of it refines only a source that is also poison there. Treating it as poison is therefore never more permissive than "unspecified" towards the target. |
 | A8 | Integer division overflow (`INT_MIN / -1`) is UB at every width, i1 included. | `Sem/Ops/Arith.lean` | The Arith spec makes signed division overflow UB; for i1, `(-1) / (-1) = 1` is not representable. |
 
@@ -28,6 +28,14 @@ assumed, why, and what evidence stands behind it. A claim that relies on an entr
 | T6 | Floating-point accuracy (measured, never proved; floats are parametric in every theorem). |
 
 ## Known model and native qualification limits
+
+The input-dependent cast, typed mixed-reshape, nested integer-body, comparison/select and
+combined-pass suites extend T3's bounded evidence. Cast widths, SSA provenance, capture scopes,
+and transformation soundness are proved against the locked tensor model; native comparisons
+exercise selected initialized integer and bit-preserving tensor cases with independent references.
+These extensions introduce no new float laws or assumptions and do not prove general model,
+capture-producer or downstream-lowering fidelity. Unsupported cast directions, bare-input reshape
+cancellation, arbitrary shape chains and changed casts inside regions remain outside coverage.
 
 The current `tensor.reassocValid` predicate rejects all-unit nonzero-rank to rank-zero reshape
 transitions, and their inverse, with empty reassociation. Upstream MLIR accepts and executes

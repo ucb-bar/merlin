@@ -688,7 +688,7 @@ result ids and uses alpha simulation in target order to preserve both bindings a
 uses. The synthesizer proposes a two-operation site; C1 independently checks it. This covers
 upstream hoisting a captured constant across a static `tensor.empty`, including composition
 with typed map expansion. Operand-taking or region-bearing motion, non-adjacent hoisting and
-nested rewrites remain `abstracted` without additional proofs or synthesis.
+nested motion remains `abstracted` without additional proofs or synthesis.
 The untrusted script synthesizer cannot bypass these checks.
 
 **Rule families for Tier A** (exact list fixed by WP-0):
@@ -717,9 +717,9 @@ model/tensor layer is outside this sequence.
 | Order | Family | Proof obligation and completion criterion |
 |---|---|---|
 | 1 | Named operation generalization | Matmul/batch-matmul use universal expansion; map/fill/copy/transpose/broadcast/reduce use checked typed SSA facts. Implemented for supported top-level forms, including variadic reduction. Source-definedness, actual pass output and defined chains are checked separately. Identity folds and other named families remain outstanding. |
-| 2 | Exact integer arithmetic | Operand commutation, typed one-operation normalization and closed fixed-width integer arithmetic/comparison/select/cast folding are implemented. Closed fragments replay actual semantics and preserve SSA freshness; arbitrary input-dependent cast fusion remains outstanding. |
-| 3 | Valid static shape rewrites | Two-to-one collapse/collapse and expand/expand composition is implemented with recomputed reassociation algebra, zero extents and exact intermediate canonicalization. Escaping intermediate uses, bare-input cancellation and rank-zero unit transitions remain unsupported. |
-| 4 | Rewrites inside operation bodies | Lift proved local rules into actual linalg region closures with captures and block-argument shadowing; preserve reduction order and unchanged computation. |
+| 2 | Exact integer arithmetic | Operand commutation, scalar neutral elements, closed fixed-width folding and four typed scalar cast-composition families are implemented. Cast origins come from successful checked SSA execution; index/tensor casts, flags, extension/truncation alias roundtrips and unsupported signedness pairs remain refused. |
+| 3 | Valid static shape rewrites | Same-direction and expand-first composition have universal rules. Typed reshape provenance additionally permits collapse-first two-step composition when a single legal endpoint reshape exists, retaining escaping or captured intermediates. Bare-input cancellation, arbitrary transitive chains, nested shape normalization and rank-zero unit transitions remain unsupported. |
+| 4 | Rewrites inside operation bodies | Exact nested splat normalization and unflagged integer add/multiply/AND/OR/XOR operand ordering are lifted through supported generic bodies, including captures and reductions. Iteration/reduction order stays unchanged; nested casts, floating-point algebra and general body canonicalization remain unsupported. |
 | 5 | Exact quantization expansion | Check dequantization and already-declared quantization operations against independent software semantics. Preserve broadcast/granularity maps, zero points, widths, rounding, clamps, and floating operation order. |
 | 6 | Numerical policies and frontend repairs | Add policy-specific claims for dynamic W8A8/approximations and frontend-intent claims for capture repairs. Compose only after independent policy review and qualification on complete upstream runs. |
 
@@ -729,6 +729,30 @@ Its soundness theorem lifts this contract through the existing SSA/region corres
 interface. A constructor is not proof evidence: semantic checks decode its proposed operation again.
 Named generalization has a separate success-transfer theorem so source-definedness cannot be inferred
 from a target that merely repairs an undefined or unsupported source.
+
+`Check/TypedNormalizer.lean` provides an exact block-normalization contract under the actual
+checked runtime typing environment. Its sequential composition rechecks every intermediate
+program. `TypedNormalizeC1` independently checks and exactly normalizes both actual programs,
+then applies the universal C1 script checker to their normal forms. Exact target equality prevents
+normalization from hiding a target's poison, UB or stuck result. Neither exported program is
+replaced. `SharedNormalize` composes typed scalar casts, typed reshape provenance, and the nested
+integer/splat body families in one boundary checker.
+
+`Rules/IntegerCast.lean` covers `extui` followed by `extui` or `extsi`, repeated `extsi`, and repeated
+`trunci`, with strict legal widths and no poison-producing promises. It retains original SSA
+bindings and learns normalized origins to flatten longer compatible scalar chains. `ReshapeFacts`
+records actual runtime root tensors and invalidates both root/result dependencies on SSA writes;
+`ReshapeNormalize` uses target headers only as candidates whose semantics and endpoint shapes are
+rechecked. Target reshape headers are filtered once and candidates searched lazily. This avoids
+Cartesian candidate allocation but makes no linear or model-scale performance claim.
+
+`BodyNormalize` reuses the existing generic-region equality, capture masking and structural-depth
+proofs. New local exact normalizers compose through that interface. Integer operand ordering is
+sound on all runtime values, but its numeric SSA ordering is only a completeness heuristic and
+may refuse independently renamed equivalent programs. It supplies no floating-point laws.
+Qualification includes actual combined splat compaction and upstream canonicalization with casts,
+mixed reshapes, initialized comparison/select bodies, escaping values, strict defined chains,
+independently corrupted valid MLIR outputs, and native integer/row-major references.
 
 **Typed local obligations.** The current C1 site interface quantifies over every runtime environment.
 Type annotations alone do not establish runtime operand widths or canonical tensor representation.
@@ -790,9 +814,10 @@ the current semantics rejects these, so separate support checks and coverage cha
 when a conditional boundary theorem accepts. These transitions are not qualified.
 `Rules/ReshapeMixed.lean` handles expansion followed by collapse against one expansion or collapse.
 Actual expansion success fixes the original runtime shape through reassociation products; the
-checker recomputes target legality for that shape. Collapse-first pairs need additional typed
-runtime facts. Bare-input cancellation and escaping intermediates remain outside coverage.
-Nested shape rewriting and numerical policies remain outstanding.
+checker recomputes target legality for that shape. These universal sites still refuse escaping
+intermediates. The typed provenance normalizer described above supplies collapse-first composition
+and retains escaping intermediate bindings for C1 checking. Bare-input cancellation, nested shape
+rewriting and numerical policies remain outstanding.
 
 **Uniform input compaction.** `Rules/StructuredInputs.lean` proves that two independently checked
 structured layouts execute identically when their loop ranges, output maps and body input values

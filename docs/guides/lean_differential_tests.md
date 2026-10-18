@@ -45,6 +45,19 @@ code_refs:
   - merlin/tests/ir/test_lean_reshape_mixed_differential.py
   - merlin/tests/ir/test_lean_splat_nested.py
   - merlin/tests/ir/test_lean_splat_nested_differential.py
+  - merlin/lean/MerlinVerify/Check/TypedNormalizeC1.lean
+  - merlin/lean/MerlinVerify/Check/SharedNormalize.lean
+  - merlin/lean/MerlinVerify/Check/DefinedControl.lean
+  - merlin/tests/ir/test_lean_control_definedness.py
+  - merlin/tests/ir/test_lean_control_differential.py
+  - merlin/tests/ir/test_lean_integer_cast.py
+  - merlin/tests/ir/test_lean_integer_cast_native.py
+  - merlin/tests/ir/test_lean_reshape_typed.py
+  - merlin/tests/ir/test_lean_reshape_typed_differential.py
+  - merlin/tests/ir/test_lean_integer_body.py
+  - merlin/tests/ir/test_lean_integer_body_differential.py
+  - merlin/tests/ir/test_lean_shared_normalize.py
+  - merlin/tests/ir/test_lean_shared_normalize_differential.py
 ---
 
 # Run Lean semantics differential tests
@@ -181,16 +194,17 @@ native inputs are exhaustive at i1/i8 and include edges and seeded samples at i1
 `test_lean_reshape_compose.py` checks two collapses or two expansions against upstream's composed
 reshape, including group algebra, exact output shapes/types, escaping inputs, verified mutations
 and defined receipt replay. The native module compares both sides with the unchanged row-major
-input bits, including floating NaN payloads. Escaping intermediate reshapes and bare-input
-cancellation remain explicit refusals. All-unit rank-zero collapse/expand with empty reassociation
+input bits, including floating NaN payloads. These universal sites refuse escaping intermediate
+reshapes and bare-input cancellation; the typed provenance route below extends composition coverage. All-unit rank-zero collapse/expand with empty reassociation
 is legal upstream but currently stuck in Lean: two dedicated native tests retain that discrepancy,
 while binding tests require source support and coverage-chain abstention. A passing conditional
 boundary check alone must never be reported as coverage for these unsupported inputs.
 
 `Rules/ReshapeMixed.lean` additionally certifies expansion followed by collapse against one
 expansion or collapse. Successful expansion determines the original runtime shape from actual
-reassociation products; target legality is recomputed from that shape. Collapse-first pairs still
-need typed runtime facts, and bare-input cancellation and escaping intermediates remain refused.
+reassociation products; target legality is recomputed from that shape. This universal mixed rule
+refuses collapse-first pairs and escaping intermediates; the typed provenance route below supplies
+their runtime premises while retaining original bindings. Bare-input cancellation remains refused.
 The mixed suites require strict source-defined chains and compare row-major bits independently,
 including empty integer tensors and exact f32/f64 payloads. BF16 has binding coverage only.
 
@@ -335,8 +349,8 @@ independent definedness proof; rewrite certification alone permits poison and UB
 
 Qualification is in `test_lean_typed.py`: actual generalization, rank-zero/empty tensors, captures,
 intermediate reshape/splat results, escaping outputs, both index widths, mixed chains, corrupted
-rewrites, stale bytes, and tampered domains/theorem labels. The normalizer handles top-level
-one-operation expansions that preserve bindings and region closures. Adjacent closed-expression
+rewrites, stale bytes, and tampered domains/theorem labels. The original typed expansion route handles
+top-level one-operation expansions that preserve bindings and region closures. Adjacent closed-expression
 motion has its own proof in `Rules/Motion.lean`: both expressions must be pure, operand-free,
 region-free, single-result operations with distinct source bindings and fresh target bindings.
 This permits upstream hoisting a captured constant across static `tensor.empty`. Qualification
@@ -364,6 +378,33 @@ The native corpus exhausts i1/i4 comparison pairs, samples wider widths determin
 checks bit-preserving f32/f64 selection including NaN payloads. A swapped-branch target is both
 rejected by the checker and observably wrong in native execution. These tests qualify this bounded
 corpus; they do not prove a general IEEE instance or source capture fidelity.
+
+The input-dependent cast suite (`test_lean_integer_cast.py` and its `_native` companion) checks
+four unflagged scalar integer composition families, including computed SSA operands, retained
+intermediates and longer compatible chains. Poison and malformed runtime widths are checked in
+Lean; native cases use initialized inputs and an independent modulo/sign-extension reference.
+Index/tensor casts, extension/truncation alias roundtrips and signed-then-unsigned flattening
+remain outside this family. Native widths are at most 64 bits; binding acceptance additionally
+exercises wider integer types.
+
+`test_lean_reshape_typed.py` and its `_differential` companion exercise source-provenance mixed
+reshape composition, escaping and captured intermediates, zero/unit extents, alternative legal
+unit reassociations, and invalid target headers/operands. Native f32/f64 cases preserve input bits,
+including signed zero and NaN payloads. Bare-input cancellation, S3 transitions and arbitrary
+transitive chains remain outside coverage. The rank-two extraction capture has typed refinement,
+support and native evidence, while its separate source-definedness obligation still abstains.
+
+`test_lean_integer_body.py` and its `_differential` companion qualify exact unflagged integer
+commutation through generic bodies and nested reductions with fresh destinations. Wrong captured
+constants and wrong yields have observable native controls. Numeric SSA ordering is conservative
+under independent renaming; floating-point algebra and iteration reordering remain refused.
+
+`test_lean_shared_normalize.py` and its `_differential` companion combine these families in actual
+pass output, including Merlin splat compaction followed by upstream canonicalization. Both actual
+programs are independently type checked and exactly normalized before the C1 comparison. The
+suite checks strict source-defined chains at both index widths, zero extents, escaping tensors,
+stale bytes, and valid MLIR corruptions in each family. Native execution is compared with independent
+bit arithmetic and flattened tensor references, including the intermediate compacted program.
 
 ## Limits
 
