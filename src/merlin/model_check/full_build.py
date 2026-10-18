@@ -116,6 +116,39 @@ class BuildSettings:
 # ---------------------------------------------------------------------------------------------- build
 
 
+def _lowering_sources() -> dict[str, Path]:
+    """Direct host pass owners, without importing their implementations.
+
+    Bind both source families so adding or editing a pass cannot reuse a prior
+    default. This is not a transitive dependency or toolchain closure.
+    """
+    from merlin.common.paths import module_source_path
+
+    sources = {}
+    for namespace, leaf in (("merlin.llvmlower", "lower"), ("merlin.transforms", "pipeline")):
+        root = module_source_path(namespace + "." + leaf).parent
+        for path in sorted(root.rglob("*.py")):
+            sources[namespace + "/" + path.relative_to(root).as_posix()] = path
+    for name in (
+        __name__, "merlin.compile.baremetal_model",
+        "merlin.runtime.backends.zephyr_model", "merlin.runtime.backends.spike_model",
+    ):
+        sources[name] = module_source_path(name)
+    return sources
+
+
+def _lowering_identity() -> dict:
+    from merlin.llvmlower.codegen_env import cache_digest
+    from merlin.model_check.cache import target_inputs
+
+    return {
+        "schema": "merlin.full_model_lowering_selection.v1",
+        "project_controls_sha256": cache_digest(),
+        "direct_sources_sha256": {name: sha256(path) for name, path in _lowering_sources().items()},
+        "selected_target_files": target_inputs(),
+    }
+
+
 def _routing(target: str, stage: Path, submission: Path, model: str, settings: BuildSettings, admission):
     """The submission's device routing over every source-admitted group, or ``None`` (host only)."""
     from merlin.compile.route_before_build import plan_before_build
@@ -189,10 +222,12 @@ def _build(
 
     key = {
         "stage": str(Path(stage).resolve()),
+        "target": target,
         # The host twin depends on no submission byte.
         "submission_sha256": submission_sha256 if offload else None,
         "settings": settings.record(),
         "offload": offload,
+        "lowering": _lowering_identity(),
     }
     if weights_source is not None:
         key["weights_source"] = {
@@ -203,7 +238,14 @@ def _build(
     if record_path.is_file():
         record = json.loads(record_path.read_text())
         elf = Path(record.get("elf") or "")
-        if record.get("key") == key and elf.is_file() and elf.stat().st_size == record.get("elf_bytes"):
+        if (
+            record.get("key") == key
+            and elf.is_file()
+            and elf.stat().st_size == record.get("elf_bytes")
+            and sha256(elf) == record.get("elf_sha256")
+        ):
+            if _lowering_identity() != key["lowering"]:
+                raise FullBuildError("selected lowering controls or direct sources changed during cache lookup")
             return {**record, "reused": True}
     image = directory / "image"
     if image.exists():
@@ -252,6 +294,8 @@ def _build(
         "seconds": round(seconds, 1),
         "reused": False,
     }
+    if _lowering_identity() != key["lowering"]:
+        raise FullBuildError("selected lowering controls or direct sources changed during compilation")
     pending = record_path.with_suffix(".pending")
     pending.write_text(json.dumps(record, indent=1) + "\n")
     pending.replace(record_path)
