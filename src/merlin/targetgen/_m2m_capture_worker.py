@@ -1589,6 +1589,11 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             dict(module=mdl, inputs=tuple(inputs), session=session, quant=q, conversion_result=res, metadata=meta)
         )
     # a machine-readable tail line the parent greps for, even if warnings precede it
+    if not integerization_ok:
+        print("__M2M_INTEGERIZATION_FAILURE__ " + json.dumps({
+            key: integerization_receipt.get(key)
+            for key in ("partition_error", "refusals", "golden_agreement")
+        }))
     print("__M2M_CAPTURE__ " + json.dumps({"ok": meta["ok"], "opaque": meta["opaque"]}))
     return 0 if (res.ok and n_opaque == 0 and integerization_ok and precision_exact) else 3
 

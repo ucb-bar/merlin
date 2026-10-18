@@ -299,9 +299,23 @@ def _sandbox_argv(
     ]
 
 
-def _process_record(returncode: int, stdout: bytes, stderr: bytes) -> dict[str, Any]:
+def _process_record(
+    returncode: int, stdout: bytes, stderr: bytes, *, failure_dir: Path | None = None
+) -> dict[str, Any]:
     if returncode:
-        raise SealedM2MError(f"sandboxed M2M exited {returncode}: {stderr.decode('utf-8', errors='replace')[-8000:]}")
+        diagnostic = ""
+        if failure_dir is not None:
+            # Beside, never inside, the capture whose complete bytes are sealed.
+            failure_dir.mkdir(parents=True, exist_ok=True)
+            (failure_dir / "stdout.bin").write_bytes(stdout)
+            (failure_dir / "stderr.bin").write_bytes(stderr)
+            (failure_dir / "process.json").write_text(
+                json.dumps({"returncode": returncode, "stdout_bytes": len(stdout), "stderr_bytes": len(stderr)}) + "\n"
+            )
+            diagnostic = f"; full process diagnostics: {failure_dir}"
+        detail = stderr.decode("utf-8", errors="replace")[-4000:]
+        tail = stdout.decode("utf-8", errors="replace")[-4000:]
+        raise SealedM2MError(f"sandboxed M2M exited {returncode}{diagnostic}: stderr={detail}; stdout={tail}")
     return {
         "returncode": 0,
         "stdout": {"bytes": len(stdout), "sha256": _digest(stdout)},
@@ -330,7 +344,9 @@ def _execute(
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise SealedM2MError(f"sandbox execution failed: {type(exc).__name__}") from exc
-    return _process_record(result.returncode, result.stdout, result.stderr)
+    return _process_record(
+        result.returncode, result.stdout, result.stderr, failure_dir=output.parent / (output.name + "-failure")
+    )
 
 
 def _execute_beside(
@@ -382,7 +398,12 @@ def _execute_beside(
                     stderr=subprocess.PIPE,
                 )
             stdout, stderr = processes[index].communicate(timeout=timeout_seconds)
-            results[index] = _process_record(processes[index].returncode, stdout, stderr)
+            results[index] = _process_record(
+                processes[index].returncode,
+                stdout,
+                stderr,
+                failure_dir=outputs[index].parent / (outputs[index].name + "-failure"),
+            )
         except (OSError, subprocess.TimeoutExpired) as exc:
             results[index] = SealedM2MError(f"sandbox execution failed: {type(exc).__name__}")
         except SealedM2MError as exc:
