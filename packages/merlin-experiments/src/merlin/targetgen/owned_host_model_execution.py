@@ -16,6 +16,7 @@ from pathlib import Path
 from merlin.compile.materialized_model_inputs import MaterializedModelInputs
 from merlin.compile.model_execution_inputs import file_sha256
 from merlin.compile.owned_host_model import OwnedHostModelCompiler
+from merlin.llvmlower.source_compute_groups import form_exact_groups
 
 
 class CandidateDispatchRefusal(ValueError):
@@ -118,7 +119,7 @@ def execute_owned_host_model(
 
     source_path = Path(bundle) / "model.mlir"
     module = mq.parse(source_path.read_text())
-    groups = groups_api.form_groups(module, target)
+    groups, _ = form_exact_groups(module, target, bundle, groups_api.form_groups)
     frozen_split = _source_placement(
         capsule, source_certificate, module, groups, target=target, source_path=source_path
     )["frozen_placement"]
@@ -200,7 +201,7 @@ def _frozen_split(capsule, source_path, *, target, groups=None, eligible=None, m
     if module is None:
         module = mq.parse(Path(source_path).read_text())
     if groups is None:
-        groups = groups_api.form_groups(module, target)
+        groups, _ = form_exact_groups(module, target, source_path, groups_api.form_groups)
     return frozen_placement.require_split(
         frozen,
         source_sha256=file_sha256(source_path),
@@ -245,7 +246,7 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
     # Match the exact source passed to OwnedHostModelCompiler.plan_before_build.
     text = (Path(bundle) / "model.mlir").read_text()
     module = mq.parse(text)
-    groups = groups_api.form_groups(module, target)
+    groups, _ = form_exact_groups(module, target, bundle, groups_api.form_groups)
     groups_api.require_explained(groups_api.plan(module, target, groups=groups))
     placement = _source_placement(
         capsule, certificate, module, groups, target=target, source_path=Path(bundle) / "model.mlir"

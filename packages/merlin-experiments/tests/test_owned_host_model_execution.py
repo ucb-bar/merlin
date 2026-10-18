@@ -50,7 +50,8 @@ def test_owned_build_audit_binds_logical_input_copy_to_original_source(tmp_path,
         root = next(op for op in module.walk() if op.name == "linalg.matmul")
         root.attributes.update({"prov.region_id": StringAttr("original"),
                                 "prov.source_node_ids": ArrayAttr([StringAttr("node")])})
-        return [SimpleNamespace(index=4, placement=target, root=root, members=[root])]
+        return [SimpleNamespace(index=4, placement=target, root=root, members=[root],
+                                stages=[groups_api.CONTRACTION])]
 
     monkeypatch.setattr(groups_api, "form_groups", groups)
     monkeypatch.setattr(groups_api, "plan", lambda *a, **k: {})

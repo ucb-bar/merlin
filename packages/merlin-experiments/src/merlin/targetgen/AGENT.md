@@ -1,5 +1,10 @@
 # Trusted experiment evaluation
 
+Owned-host model preparation, frozen placement and linked-device audit use the
+core capture-bound exact grouping helper. They must inspect the same selected
+output-fusion cuts as ordinary emission, with unchanged source, complete-output,
+host-compute and mandatory-tier obligations.
+
 Explicit ordinary public-program execution retains the source-owned runtime
 bundle and binds the actual complete-call caller, same ELF and raw outputs.
 Public sources with no accelerator obligations may have empty required device
