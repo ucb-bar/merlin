@@ -158,17 +158,23 @@ def parse_mlir_file(path: str | Path, ctx=None):
     except ParseError as first:
         # Imported here, not at module scope: `generic_form` reaches back into this module, and the
         # re-print runs in the m2m venv, which a caller that never hits this path need not have.
+        from tempfile import TemporaryDirectory
+
         from ..llvmlower.generic_form import GenericFormError, to_generic_form
 
         try:
-            generic = to_generic_form(path)
+            # Reading a capture must not add generated files beside it. Keep
+            # printer scratch separate, including when the capture is read-only.
+            with TemporaryDirectory(prefix="merlin-mlir-parse-") as work:
+                generic = to_generic_form(path, work=work)
+                generic_text = generic.read_text(encoding="utf-8")
         except GenericFormError as exc:
             raise GenericFormError(
                 f"{path} is printed in MLIR custom form that xDSL cannot read "
                 f"({str(first).splitlines()[0] if str(first) else first}) and it could not be "
                 f"re-printed in generic form: {exc}"
             ) from first
-        return parse_mlir_text(generic.read_text(encoding="utf-8"), ctx=ctx)
+        return parse_mlir_text(generic_text, ctx=ctx)
 
 
 def load_manifest(path: str | Path) -> dict[int, dict[str, Any]]:

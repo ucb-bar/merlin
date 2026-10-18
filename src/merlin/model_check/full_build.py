@@ -169,6 +169,7 @@ def _lowering_sources() -> dict[str, Path]:
         "merlin.model_check.compute_execution",
         "merlin.compile.baremetal_model",
         "merlin.compile.model_execution_inputs",
+        "merlin.frontends.linalg_mlir",
         "merlin.targetgen.rtl.facts",
         "merlin.common.invocation_record",
         "merlin.common.proc",
