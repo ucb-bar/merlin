@@ -1,5 +1,5 @@
 import pytest
-from xdsl.dialects.builtin import IntegerAttr
+from xdsl.dialects.builtin import IntegerAttr, UnitAttr
 
 from merlin.perf.constant_control_cfg import constant_control_counts
 from merlin.targetgen.rocc.decode import _parse_module
@@ -56,7 +56,7 @@ def test_constant_control_refuses_data_dependent_control_poison_and_budget():
     with pytest.raises(ValueError, match="tensor data"):
         constant_control_counts(data)
     simple = function("""
-      %a = llvm.mlir.constant(1) : i8
+      %a = llvm.mlir.constant(127) : i8
       %b = llvm.add %a, %a : i8
       llvm.return
     """)
@@ -184,11 +184,84 @@ def test_unsummarizable_loops_are_still_stepped_exactly(change, reason):
 
 
 def test_summarized_induction_update_keeps_the_poison_refusal():
-    f = function(_tiled(37, 16))
+    # The last update from 126 to 128 violates nsw at i8 width. A loop summary
+    # must not hide the poison, even though its body contains no branches.
+    f = function(_tiled(127, 127, step="2", width="i8"))
     update = next(op for op in f.walk() if op.name == "llvm.add" and op.results[0].name_hint == "next")
     update.properties["overflowFlags"] = IntegerAttr(1, 32)
     with pytest.raises(ValueError, match="poison flags"):
         constant_control_counts(f)
+
+
+@pytest.mark.parametrize(
+    ("name", "a", "b", "flags", "clean"),
+    [
+        ("add", 120, 7, 3, True),
+        ("add", 127, 1, 1, False),
+        ("add", 127, 1, 2, True),
+        ("add", -1, 1, 1, True),
+        ("add", -1, 1, 2, False),
+        ("sub", 3, 2, 3, True),
+        ("sub", 0, 1, 1, True),
+        ("sub", 0, 1, 2, False),
+        ("sub", -128, 1, 1, False),
+        ("mul", 12, 10, 3, True),
+        ("mul", 16, 8, 1, False),
+        ("mul", 16, 16, 2, False),
+        ("mul", -3, 2, 1, True),
+        ("shl", 7, 4, 3, True),
+        ("shl", 8, 4, 1, False),
+        ("shl", 16, 4, 2, False),
+        ("shl", -2, 2, 1, True),
+        ("shl", 1, 8, 3, False),
+        ("add", 1, 1, 4, False),
+        ("and", 1, 1, 1, False),
+    ],
+)
+def test_concrete_no_wrap_flags_are_proven_before_width_reduction(name, a, b, flags, clean):
+    f = function(f"""
+      %a = llvm.mlir.constant({a}) : i8
+      %b = llvm.mlir.constant({b}) : i8
+      %result = llvm.{name} %a, %b : i8
+      llvm.return
+    """)
+    op = next(op for op in f.walk() if op.name == f"llvm.{name}")
+    op.properties["overflowFlags"] = IntegerAttr(flags, 32)
+    if clean:
+        assert list(constant_control_counts(f).values()) == [1]
+    else:
+        with pytest.raises(ValueError, match="poison"):
+            constant_control_counts(f)
+
+
+@pytest.mark.parametrize(("name", "key"), [("udiv", "isExact"), ("or", "isDisjoint")])
+def test_unmodeled_poison_assertions_still_refuse(name, key):
+    f = function(f"""
+      %a = llvm.mlir.constant(4) : i8
+      %b = llvm.mlir.constant(2) : i8
+      %result = llvm.{name} %a, %b : i8
+      llvm.return
+    """)
+    op = next(op for op in f.walk() if op.name == f"llvm.{name}")
+    op.properties[key] = UnitAttr()
+    with pytest.raises(ValueError, match="unproved poison flags"):
+        constant_control_counts(f)
+
+
+def test_flagged_posttested_exit_on_equality_is_counted_exactly():
+    f = function("""
+      %zero = llvm.mlir.constant(0) : i8
+      %one = llvm.mlir.constant(1) : i8
+      %bound = llvm.mlir.constant(7) : i8
+      llvm.br ^loop(%zero : i8)
+    ^loop(%i: i8):
+      %next = llvm.add %i, %one overflow<nsw, nuw> : i8
+      %done = llvm.icmp "eq" %next, %bound : i8
+      llvm.cond_br %done, ^exit, ^loop(%next : i8)
+    ^exit:
+      llvm.return
+    """)
+    assert list(constant_control_counts(f).values()) == [1, 7, 1]
 
 
 def test_inner_loop_bound_from_tensor_data_stays_unknown():

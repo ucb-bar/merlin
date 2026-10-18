@@ -7,7 +7,7 @@ signed comparisons, casts and integer wrap are preserved; possible poison refuse
 
 from collections import Counter
 
-from xdsl.dialects.builtin import IntegerType
+from xdsl.dialects.builtin import IntegerAttr, IntegerType
 from xdsl.dialects.llvm import ICmpPredicateFlag
 from xdsl.ir import Operation
 
@@ -30,6 +30,41 @@ def _width(value):
 def _signed(value, width):
     value %= 1 << width
     return value - (1 << width) if value >= 1 << (width - 1) else value
+
+
+def _prove_poison_flags(op, unsigned, signed, width, result):
+    """Check LLVM no-wrap assertions using the exact operands, before wrapping.
+
+    Only the scalar add/sub/mul/shift flags understood here are admitted. This
+    is a proof for one visited instruction, not permission to summarize a flagged
+    induction update or to assume that a flag holds on another iteration.
+    """
+    for key in ("overflowFlags", "overflow_flags", "isExact", "isDisjoint"):
+        attribute = op.properties.get(key)
+        if attribute is None:
+            continue
+        if not isinstance(attribute, IntegerAttr):
+            raise ValueError("constant control arithmetic has unproved poison flags")
+        flags = attribute.value.data
+        if flags == 0:
+            continue
+        if key != "overflowFlags" or flags not in (1, 2, 3):
+            raise ValueError("constant control arithmetic has unproved poison flags")
+        a, b = signed
+        if op.name == "llvm.add":
+            signed_result = a + b
+        elif op.name == "llvm.sub":
+            signed_result = a - b
+        elif op.name == "llvm.mul":
+            signed_result = a * b
+        elif op.name == "llvm.shl":
+            signed_result = a << unsigned[1]
+        else:
+            raise ValueError("constant control arithmetic has unproved poison flags")
+        if flags & 1 and not -(1 << (width - 1)) <= signed_result < 1 << (width - 1):
+            raise ValueError("constant control arithmetic violates signed no-wrap poison flags")
+        if flags & 2 and not 0 <= result < 1 << width:
+            raise ValueError("constant control arithmetic violates unsigned no-wrap poison flags")
 
 
 def integer_operation(op, args):
@@ -96,12 +131,7 @@ def integer_operation(op, args):
             result = a << b if name == "llvm.shl" else a >> b if name == "llvm.lshr" else signed[0] >> b
         else:
             return None
-        # No-wrap/exact assertions need a separate poison proof, never ignored.
-        for key in ("overflowFlags", "overflow_flags", "isExact", "isDisjoint"):
-            flags = op.properties.get(key)
-            flag_value = getattr(getattr(flags, "value", None), "data", getattr(flags, "data", None))
-            if flags is not None and flag_value not in ((), 0, False):
-                raise ValueError("constant control arithmetic has unproved poison flags")
+        _prove_poison_flags(op, unsigned, signed, width, result)
     return _signed(result, _width(op.results[0]))
 
 
