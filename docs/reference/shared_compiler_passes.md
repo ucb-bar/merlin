@@ -426,13 +426,14 @@ formal-verifier authority and optional native e-graph build resources are not
 public SDK services. External version observations do not qualify dependency
 implementations or hardware, and the bundle is not a Python sandbox.
 
-The export regression runs ten cases covering all seven families in an isolated
+The export regression runs twelve cases covering all seven families in an isolated
 `python -I -S` process. Only the bundle, selected third-party roots and neutral
 test fixtures are available; every imported Merlin module and package path is
 checked to originate in the bundle. Existing ordinary entry points emit actual
 C/encoded programs, execute independent native primitives, and check complete
 outputs/state, rectangular tiling, widths, separate/aliased storage, actual
-completion, unsupported async emission and missing drains. These are portable
+completion, asynchronous allocation through final bytes, source admission and
+missing drains. These are portable
 mechanism tests, not qualification of a real accelerator or complete model.
 
 `repair(stage=..., reason=...)` clears analyses and restarts an already selected
@@ -922,10 +923,10 @@ checked_segments = result.program.segments
 
 These declarations come from selected capabilities and the compiler's ownership
 analysis, rather than inferred target names. Unsupported effects, counted loops,
-asynchronous instructions, missing ownership and infeasible allocation produce
+partial completion waits, missing ownership and infeasible allocation produce
 a diagnostic for the caller's existing legal lowering route. Counted dense
-loops and asynchronous storage allocation retain their separately checked
-interfaces; this finite encoded family does not silently claim their semantics.
+loops retain their separately checked interface; this finite encoded family
+does not expand those loops to pretend it understands final branch semantics.
 Native C and byte-interpreter tests qualify shared mechanisms only. Existing
 full-model target providers still need this public encoder/semantic-decoder
 boundary before the schedule pipeline can enter their ordinary model lowering.
@@ -1213,11 +1214,50 @@ addresses are not a runnable unoptimized route. The enabled arm uses the
 existing allocator, completion checks and bounded repairs. Shared implementation
 hashes and selected file bytes are revalidated around every schedule pass.
 
-The ordinary final-byte pipeline currently requires synchronous instructions.
-Selected asynchronous effects can enter the standalone allocator and its native
-completion tests; ordinary encoded compilation rejects them until final-byte
-and launch completion support is qualified. No metadata annotation substitutes
-for the actual wait. This remains an explicit integration gap.
+The ordinary final-byte pipeline also accepts explicitly qualified asynchronous
+operations followed by actual waits for all pending tokens. The existing
+storage checker extends every affected lifetime to its wait and rejects reads,
+overwrites or returns before completion. Before encoding, the pipeline checks
+that each wait covers the complete pending set. It maps that wait to the final
+decoder's existing `drain` assertion, which means all prior work is complete and
+visible. It independently checks actual decoded accesses, asynchronous issues,
+drains and numerical effects against the realized schedule. A synchronous
+instruction cannot replace an asynchronous issue or drain in that projection.
+
+Partial waits still work in the standalone allocator, but cannot enter this
+encoded family: the finalizer's global pending-state model cannot express them.
+They diagnose before invoking the encoder. Unknown completion remains a barrier.
+Segmentation uses the existing final-byte checks and may not cross an outstanding
+transfer. Each resulting segment is decoded and checked again with an empty
+initial pending set. A selected launch-continuation contract must preserve every
+required backing and establish completion/visibility between launches; no
+queue-depth assumption, source metadata or launch annotation supplies a wait.
+
+`test_async_schedule_pipeline.py` executes complete transfer/arithmetic graphs
+over three carried-state invocations using actual final bytes. Cases cover both
+shared aliases and separate memories, tail lengths, 32-bit big-endian and 64-bit
+little-endian operands, and single/segmented programs. The native byte machine
+delays the copy until the encoded wait. It observes actual requested bytes and
+high-water storage independently of the plan. Missing/early/wrong waits, pending
+overwrites, falsely synchronous final decoding and removal of the encoded wait
+must fail. A runtime that acknowledges a wait without completing its copy has
+matching command/byte counters but fails the complete numerical reference.
+These tests qualify neither a real accelerator nor its whole-model integration.
+Run them with the selected native C compiler and task-local temporary storage:
+
+```sh
+PYTHONPATH="$PWD/src" python -B -m pytest -p no:cacheprovider \
+  merlin/tests/infra/test_async_schedule_pipeline.py \
+  --basetemp "$TMPDIR/async-schedule-reproduction" \
+  -o tmp_path_retention_policy=all
+```
+
+Each paired case retains source/realized schedules, selected RTL/software files,
+actual encoded segments, native machine source/library, complete invocation
+inputs/outputs, compilation/conformance reports and `pair.json`. Reported process
+memory is explicitly cumulative high-water RSS, excludes children and earlier
+work cannot be subtracted; it is not an isolated per-arm compilation peak.
+Neither native call timings nor requested bytes establish accelerator latency.
 
 `test_selected_storage_contracts.py` exercises actual final bytes on independent
 neutral native machines with 32-bit big-endian and 64-bit little-endian integer
@@ -1789,8 +1829,8 @@ compiled = compile_schedule(
 ```
 
 The same binding works at the existing final-byte entry, including actual
-relative branches and asynchronous programs that the finite straight-line
-schedule compiler deliberately does not admit:
+relative branches that the finite straight-line schedule compiler deliberately
+does not admit, and independently qualified asynchronous programs:
 
 ```python
 final = finalize_program(

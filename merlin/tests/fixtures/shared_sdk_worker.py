@@ -13,6 +13,7 @@ work = Path(config["work"])
 assert not any(name == "merlin" or name.startswith("merlin.") for name in sys.modules)
 sys.path[:0] = [str(bundle), config["fixtures"], *config["dependencies"]]
 
+import test_async_schedule_pipeline as asynchronous  # noqa: E402
 import test_selected_dense_contracts as dense  # noqa: E402
 import test_selected_fusion_contracts as fusion  # noqa: E402
 import test_selected_program_contracts as program  # noqa: E402
@@ -48,8 +49,11 @@ run("dense_aliased", dense.test_selected_facts_and_semantics_drive_native_paired
     record_property=record, tile=(3, 2, 5), widths=(2, 1, 4), shared=True, shape=(7, 9, 16))
 run("storage", storage.test_selected_allocation_realizes_reuse_and_preserves_complete_native_state,
     native_fixture=storage.native, record_property=record, width=13, separate=True, word_format=">BBBIII")
-run("completion", storage.test_async_lifetimes_use_actual_waits_and_ordinary_emission_remains_disabled,
+run("completion", storage.test_async_lifetimes_use_actual_waits_through_ordinary_final_emission,
     native_fixture=storage.native)
+run("async_allocation", asynchronous.test_async_ordinary_allocation_executes_complete_graph_and_carried_state,
+    native_fixture=storage.native, record_property=record, width=13, separate=True,
+    word_format=">BBBIII", segmented=True)
 run("fusion", fusion.test_selected_fusion_executes_complete_graph_and_checks_realized_transfers,
     native_fixture=fusion.native, record_property=record, shape=(2, 5, 11, 3), width=2, separate=True)
 run("fusion_state", fusion.test_recurrent_graph_invocations_preserve_complete_state_and_mutable_weights,

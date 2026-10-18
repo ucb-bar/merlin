@@ -133,6 +133,33 @@ def _verify_kernel(kernel):
         raise ValueError("schedule pipeline requires structurally valid typed kernel IR")
 
 
+def _program_completions(effects):
+    """Project exact waits onto the finalizer's qualified global-drain model.
+
+    The storage checker remains responsible for token validity and hazards.
+    A final decoder's drain cannot stand in for a wait for only some pending
+    operations: that would permit an unsafe cut and storage reuse after launch.
+    """
+    pending, completions = set(), []
+    for effect in effects:
+        if effect.completion == "asynchronous":
+            pending.add(effect.token)
+            completions.append("asynchronous")
+        elif effect.completion == "wait":
+            if set(effect.waits) != pending:
+                raise StorageOptimizationUnavailable(
+                    "encoded schedule requires a wait for all pending tokens; "
+                    "partial waits need a qualified final model"
+                )
+            pending.clear()
+            completions.append("drain")
+        else:
+            completions.append(effect.completion)
+    if pending:
+        raise ValueError("encoded schedule returns before actual completion")
+    return tuple(completions)
+
+
 def _emission_effects(
     images, kernel, adapter, encoding, limits, max_calls, configuration_adapter=None, selected_contracts=None
 ):
@@ -149,16 +176,15 @@ def _emission_effects(
         effects = _project(replace(kernel, body=calls), adapter, max_calls)
         if len(effects) != len(instructions):
             raise ValueError("actual semantic decoding and final instruction decoding disagree on coverage")
-        for effect, instruction in zip(effects, instructions, strict=True):
+        for effect, instruction, completion in zip(effects, instructions, _program_completions(effects), strict=True):
             if (
-                effect.completion != "synchronous"
-                or instruction.completion != "synchronous"
+                instruction.completion != completion
                 or instruction.branches
                 or not instruction.fallthrough
                 or effect.accesses != instruction.accesses
             ):
                 raise ValueError(
-                    "actual emitted effects require matching synchronous straight-line instruction semantics"
+                    "actual emitted effects require matching straight-line access and completion semantics"
                 )
         actual.extend(effects)
         if configuration_adapter is not None:
@@ -444,8 +470,7 @@ def compile_schedule(
         _bank_map, effects, *_ = _problem(
             kernel, objects, banks, adapter, external_windows, private_ownership, budgets.max_calls, budgets.max_objects
         )
-        if any(effect.completion != "synchronous" for effect in effects):
-            raise StorageOptimizationUnavailable("encoded schedule pipeline requires qualified synchronous completion")
+        _program_completions(effects)
         if configuration_adapter is not None:
             verify_configuration_state(kernel, configuration_adapter, max_calls=budgets.max_calls)
         return {"source_effects": effects}
@@ -591,6 +616,8 @@ def compile_schedule(
                 "actual_commands": len(effects),
                 "requested_read_bytes": sum(a.size for effect in effects for a in effect.accesses if not a.writes),
                 "requested_write_bytes": sum(a.size for effect in effects for a in effect.accesses if a.writes),
+                "completion_model": ("explicit_global_drains" if any(
+                    effect.completion == "asynchronous" for effect in effects) else "declared_synchronous"),
                 "encoding_qualification_identity": encoding.qualification_identity,
                 "machine_effects": "checked_under_selected_decoders",
                 "execution_qualification": "not_established",
