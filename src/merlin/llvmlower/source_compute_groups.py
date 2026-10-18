@@ -4,16 +4,18 @@ from merlin.common import mlir_query as mq
 from merlin.xdsl_dialects.lowering import compute_groups as CG
 
 
-def form_source_groups(module, target, *, oracle=None, numeric_refusals=None):
-    functions = [operation for operation in module.walk()
-                 if operation.name == "func.func" and operation.body.blocks]
+def form_source_groups(module, target, *, oracle=None, numeric_refusals=None, fusion=None):
+    functions = [operation for operation in module.walk() if operation.name == "func.func" and operation.body.blocks]
     names = [function.sym_name.data for function in functions]
     if len(names) != len(set(names)):
         raise ValueError("source function identity is ambiguous")
     groups = []
     for name in names:
-        groups.extend(CG.form_groups(module, target, oracle=oracle, function=name,
-                                     numeric_refusals=numeric_refusals))
+        groups.extend(
+            CG.form_groups(
+                module, target, oracle=oracle, function=name, numeric_refusals=numeric_refusals, fusion=fusion
+            )
+        )
     for index, group in enumerate(groups):
         group.index = index
     members = [id(member) for group in groups for member in group.members]

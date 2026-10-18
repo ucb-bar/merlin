@@ -69,7 +69,15 @@ validation_notes: >-
   `accumulate` (the `accumulate_on_load` fact) and `pool` (`reductions`, `carriers`). `stages` maps
   each command-buffer stage an output path can apply (`acc_scale`, `relu`, `maxpool`) to whether it
   is derived, and `unknown` gives the reason for every capability no rung established. A stage that
-  is not derived licenses nothing; it is never a refusal by the hardware either.
+  is not derived licenses nothing; it is never a refusal by the hardware either. Optional
+  `bias_preload` (`dtype`, `bits`, `range`, `rounding: none`: a full-width value loaded unchanged into
+  the accumulator a contraction then adds onto) and `full_width_readout` (the raw accumulator leaves
+  the readout unmodified) are read the same way, and `scale.columns_per_scale` is the number of
+  accumulator elements one scale operand covers. `output_path` (schema `output_path_v1`,
+  `merlin.targetgen.output_path`) restates all of it as one ordered, target-neutral sequence:
+  `accumulator_stages` (`preload`, `accumulate`), `readout` (`activation` with its domain,
+  `convert`, `scale` with granularity and `columns_per_scale`, `requant` with rounding and clamp,
+  `pool`) and `exits` (`accumulator`, `requant`). The fusion pass reads only this sequence.
 
   OPTIONAL `operation_capabilities`: the common operation registry shared by generated target
   dialects, RVV or other instruction sets, and target-specific machine dialects. Shape:

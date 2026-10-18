@@ -250,6 +250,9 @@ class Group:
     #: constant one: the rows kept, the window summed, and the one readout multiplier that carries
     #: both scales and the reciprocal of the count. ``root`` is then the reduction.
     window_mean: dict[str, Any] | None = None
+    #: The output-fusion pass's decision for this root (:mod:`.output_fusion`): the cut taken, the
+    #: stages absorbed, the proof and every longer cut's refusal. ``None`` when the pass did not run.
+    fusion: dict[str, Any] | None = None
 
     def key(self) -> dict[str, Any]:
         """What makes two groups the same program: stages, numerics, extents. Not position."""
@@ -264,6 +267,7 @@ class Group:
             "root_result_shape": shape,
             **({"operand_sum": dict(self.operand_sum)} if self.operand_sum else {}),
             **({"window_mean": dict(self.window_mean)} if self.window_mean else {}),
+            **({"fusion_cut": self.fusion["cut"]} if self.fusion else {}),
         }
 
 
@@ -774,8 +778,13 @@ def form_groups(
     oracle: TargetOracle | None = None,
     function: str | None = None,
     numeric_refusals: Mapping[int, str] | None = None,
+    fusion: Mapping[int, Any] | None = None,
 ) -> list[Group]:
-    """Partition ``function``'s computation-carrying operations into compute groups."""
+    """Partition ``function``'s computation-carrying operations into compute groups.
+
+    ``fusion`` maps a contraction root's identity to the output-fusion pass's decision
+    (:mod:`.output_fusion`): when one is given it alone decides what the root's group absorbs.
+    """
     oracle = oracle or TargetOracle(target)
     functions = [op for op in module.walk() if op.name == "func.func" and op.body.blocks]
     if function is not None:
@@ -793,7 +802,7 @@ def form_groups(
         stage = stage_of[id(root)]
         if stage is None or stage.kind != CONTRACTION or id(root) in taken:
             continue
-        group = _grow(root, oracle, stage_of, taken, numeric_refusals or {})
+        group = _grow(root, oracle, stage_of, taken, numeric_refusals or {}, (fusion or {}).get(id(root)))
         group.macs = extents.get(id(root))
         for member in group.members:
             taken[id(member)] = group
@@ -1208,6 +1217,7 @@ def _grow(
     stage_of: Mapping[int, Stage | None],
     taken: Mapping[int, Group],
     numeric_refusals: Mapping[int, str],
+    fusion: Any | None = None,
 ) -> Group:
     group = Group(index=0, placement=HOST, root=root, members=[root])
 
@@ -1249,6 +1259,8 @@ def _grow(
                 members += chain
             scales.append(_dequantize_granularity(dequantize, adapters, root, index))
         group.scale_granularity = _join(scales)
+    if fusion is not None:
+        return _fused(group, members, fusion, taken)
 
     axes = _root_axes(root)
     value = root.results[0] if root.results else None
@@ -1405,6 +1417,18 @@ def _grow(
     return group
 
 
+def _fused(group: Group, members: list[Any], decision: Any, taken: Mapping[int, Group]) -> Group:
+    """The group the output-fusion pass decided: its absorbed stages, its cut and every refusal."""
+    absorbed = [op for op in decision.members if id(op) not in taken]
+    group.members = [*members, *absorbed]
+    group.fusion = decision.record()
+    refusal = decision.first_refusal
+    if refusal is not None:
+        group.refusal, group.reason = f"fusion_{refusal['code']}", f"{refusal['cut']}: {refusal['reason']}"
+        group.stopped_by = "fusion"
+    return group
+
+
 # --- the record ------------------------------------------------------------------------------------
 def gap_class(refusal: str | None) -> str | None:
     from merlin.perf.placement_census import GAP_CLASS_OF_REFUSAL, UNCLASSIFIED
@@ -1420,6 +1444,10 @@ def gap_class(refusal: str | None) -> str | None:
         return None
     if refusal == FLOAT_EPILOGUE_REASSOCIATION:
         return "OG0"
+    if refusal and refusal.startswith("fusion_"):
+        from .output_fusion import GAP_CLASS
+
+        return GAP_CLASS.get(refusal.removeprefix("fusion_"), "UNCLASSIFIED")
     if refusal == ACCUMULATE_UNPROVED:
         # The hardware evidence exists and the missing piece is this compiler's exactness proof: the
         # region is unplaced by us, like a region no device form states.
@@ -1470,6 +1498,7 @@ def plan(
                 "stopped_by": group.stopped_by,
                 "stop_gap_class": (gap_class(group.refusal) if group.placement != HOST and group.refusal else None),
                 "region_ids": [rid for rid in (mq.attr_str(m, "prov.region_id") for m in group.members) if rid],
+                "fusion": group.fusion,
             }
         )
     device = [row for row in rows if row["placement"] != HOST]

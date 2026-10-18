@@ -157,6 +157,84 @@ def test_accumulate_follows_the_derived_behavioural_fact(tmp_path):
     )
 
 
+_STORE_AND_LOAD = """  module Store :
+    input clock : Clock
+    output io : { flip write : { acc : UInt<1>, data : SInt<32>[2]}, flip sum : SInt<32>[2], wdata : SInt<32>[2]}
+    node _T = mux(io.write.acc, io.sum, io.write.{arm})
+    connect io.wdata, _T
+  module Lanes :
+    input clock : Clock
+    output io : {{ flip in : SInt<{bits}>[2], out : SInt<{bits}>[2]}}
+    reg hold : SInt<{bits}>[2], clock
+    connect hold, io.in
+{lanes}
+  module Load :
+    input clock : Clock
+    inst lane of Lanes
+"""
+_COPY = "    connect io.out[0], hold[0]\n    connect io.out[1], hold[1]"
+_SCALED = "    connect io.out[0], mul(hold[0], hold[1])\n    connect io.out[1], hold[1]"
+_FULL_WIDTH = (
+    "    wire keep : SInt<32>[2] @[Readout.scala 30:1]\n    connect keep, io.in.data @[Readout.scala 30:2]\n"
+    "    connect io.full, keep @[Readout.scala 30:3]"
+)
+
+
+def _preload_fir(tmp_path, *, arm="data", bits=32, lanes=_COPY, full_width=True):
+    text = _READOUT.replace("{extra}", _FULL_WIDTH if full_width else "").replace("{frac}", "23")
+    text = text.replace("{exp_hi}", "30").replace("{frac_hi}", "22")
+    if full_width:
+        text = text.replace("out : SInt<8>[2]}", "out : SInt<8>[2], full : SInt<32>[2]}")
+    store = _STORE_AND_LOAD.replace("{arm}", arm).replace("{{", "{").replace("}}", "}")
+    store = store.replace("{bits}", str(bits)).replace("{lanes}", lanes)
+    path = tmp_path / "design.fir"
+    path.write_text(text + store, encoding="utf-8")
+    return path
+
+
+def _accumulates():
+    value = {
+        "store": {"select": "io.write.acc", "sum": "io.sum", "cite": {"module": "Store"}},
+        "load_path": {"cite": {"module": "Load"}, "carried_by": ["lane.io.out"]},
+    }
+    return {"facts": {"accumulate_on_load": {"status": "derived", "value": value}}}
+
+
+def test_a_bias_preload_is_an_exact_full_width_load_into_the_accumulator(tmp_path):
+    record = OE.derive(_facts(_preload_fir(tmp_path)), contract=_contract(), semantic_facts=_accumulates())
+    preload = record["bias_preload"]
+    assert preload["status"] == OE.DERIVED
+    assert (preload["dtype"], preload["bits"], preload["rounding"]) == ("i32", 32, "none")
+    assert preload["range"] == [-(1 << 31), (1 << 31) - 1]
+    assert preload["lanes"]["store_writes"] == "io.write.data" and preload["lanes"]["lanes"] == 2
+    assert record["full_width_readout"]["status"] == OE.DERIVED
+    assert record["scale"]["columns_per_scale"] == 2
+    path = record["output_path"]
+    assert [s["kind"] for s in path["accumulator_stages"]] == ["preload", "accumulate"]
+    assert [s["kind"] for s in path["readout"]] == ["activation", "convert", "scale", "requant", "pool"]
+    assert path["readout"][0]["domain"] == "accumulator" and path["exits"] == {"accumulator": True, "requant": True}
+
+
+@pytest.mark.parametrize(
+    ("change", "why"),
+    [
+        ({"arm": "acc"}, "writes its own data"),  # the clear arm is not the arriving data
+        ({"lanes": _SCALED}, "copies 32-bit accumulator lanes unchanged"),  # arithmetic on the lanes
+        ({"bits": 8}, "copies 32-bit accumulator lanes unchanged"),  # a narrower load path
+    ],
+)
+def test_a_load_that_changes_the_value_is_not_a_preload(tmp_path, change, why):
+    record = OE.derive(_facts(_preload_fir(tmp_path, **change)), contract=_contract(), semantic_facts=_accumulates())
+    assert record["bias_preload"]["status"] == OE.UNKNOWN and why in record["unknown"]["bias_preload"]
+    assert [s["kind"] for s in record["output_path"]["accumulator_stages"]] == []
+
+
+def test_a_readout_with_no_raw_exit_has_no_full_width_path(tmp_path):
+    record = OE.derive(_facts(_preload_fir(tmp_path, full_width=False)), contract=_contract())
+    assert record["full_width_readout"]["status"] == OE.UNKNOWN
+    assert record["output_path"]["exits"]["accumulator"] is False
+
+
 def test_a_record_whose_stages_disagree_with_its_capabilities_is_refused(tmp_path):
     record = OE.derive(_facts(_fir(tmp_path)), contract=_contract())
     broken = {**record, "stages": {**record["stages"], "relu": False}}
