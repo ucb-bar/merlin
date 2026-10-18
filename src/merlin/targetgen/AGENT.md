@@ -9,6 +9,8 @@ selected numeric output path and public contraction carriers. Synthetic gains
 and small extents carry no private model values or shapes. Group coverage must
 observe a nonuniform, block-legal vector and required accelerator placement;
 scalar, uniform, malformed and host-only members do not cover that demand.
+Convolution entries state stride, padding and dilation explicitly so requirement
+and certification-cost readers see the same geometry as the capsule builder.
 `op_form_regimes.boundary_witnesses` supplies adjacent scalar comparisons from a
 selected `Bound`, retaining impossible positive lower witnesses as missing. It
 grants no tensor-axis, physical-capacity or tiling interpretation.

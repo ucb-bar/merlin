@@ -61,7 +61,10 @@ def test_selected_width_derives_matrix_and_convolution_gain_blocks_and_tails(wid
         assert entry["generalization"]["must_accelerate"] is True
 
 
-def test_group_derivation_and_synthesis_include_column_work_without_private_capture_shapes(monkeypatch):
+@pytest.mark.parametrize("include_convolution", [False, True])
+def test_group_derivation_and_synthesis_include_column_work_without_private_capture_shapes(
+    monkeypatch, include_convolution,
+):
     from test_derived_epilogue_groups import _oracle, _writable
 
     _writable(monkeypatch)
@@ -72,8 +75,10 @@ def test_group_derivation_and_synthesis_include_column_work_without_private_capt
     monkeypatch.setattr(CG, "TargetOracle", lambda _target: oracle)
     monkeypatch.setattr(CF, "_declared_output_path", lambda _target: _path(5))
     groups = CF._group_axis({}, "synthetic")
+    if include_convolution:
+        groups["required"].extend(CR.requirements(_path(5), ["int8"], ["conv2d"]))
     column = [r for r in groups["required"] if r.get("column_readout")]
-    assert len(column) == 2 and all(r["observed_in"] == [] for r in column)
+    assert len(column) == (4 if include_convolution else 2) and all(r["observed_in"] == [] for r in column)
     root = merlin_dir() / "contract/capsules/conformance"
     spec = yaml.safe_load(next(iter(sorted(root.glob("*.yaml")))).read_text())
     spec["groups"] = groups
@@ -82,8 +87,14 @@ def test_group_derivation_and_synthesis_include_column_work_without_private_capt
         row["dtype"] = dtype
     members = [e for e in corpus_synth.synthesize(spec)["capsules"]
                if (e.get("generalization") or {}).get("generalization_axis") == "column_readout"]
-    assert len(members) == 2
+    assert len(members) == len(column)
     assert all("acc_scale_by_column" in e and "acc_scale" not in e for e in members)
+    for member in members:
+        # These consumers run before the capsule builder can supply defaults.
+        assert corpus_synth.pass_requirements_for(member, spec)
+        assert corpus_synth.cap_to_affordable(member, {
+            "boundaries": {"tile_edge": 5}, "cert_affordability": {"max_elements": 1000},
+        }) is None
 
 
 @pytest.mark.parametrize("mutation", ["scalar", "uniform", "inside_block", "host_only"])

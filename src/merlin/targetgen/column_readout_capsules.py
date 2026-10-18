@@ -104,6 +104,8 @@ def entry(requirement):
         "output_dtype": "i8",
         "M_tiles": 1, "K_tiles": 1, "N": columns,
         "ci": width, "Himg": 2, "Wimg": 3, "kh": 1, "kw": 1,
+        **({"stride": [1, 1], "padding": [0, 0, 0, 0], "dilation": [1, 1]}
+           if requirement["op"] == "conv2d" else {}),
         "acc_scale_by_column": [gains[(i // width) % len(gains)] for i in range(columns)],
         "source_role": "derived_sweep",
         "source_reference": f"selected output path permits one f32 gain per {width} columns; synthetic gain changes",
