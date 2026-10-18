@@ -112,7 +112,7 @@ def test_hold_preserves_module_context_and_authored_order(tmp_path, plan):
     assert result.returncode == 0, result.stderr
     executed = [json.loads(x) for x in (owner / "executed.jsonl").read_text().splitlines()]
     assert executed == [b.pass_entry for b in plan.prefix] + [",".join(plan.suffix)]
-    assert [p.name for p in (owner / "stages").iterdir() if p.is_dir() and not p.name.startswith(".")] == [
+    assert sorted(p.name for p in (owner / "stages").iterdir() if p.is_dir() and not p.name.startswith(".")) == [
         f"{n:04d}_{b.name}" for n, b in enumerate(plan.boundaries.boundaries)
     ]
     assert transport.TOKEN in result.stdout
