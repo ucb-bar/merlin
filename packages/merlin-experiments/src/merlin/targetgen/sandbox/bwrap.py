@@ -316,15 +316,13 @@ def _validate_host_sources(
 
 
 def _validate_host_locations(ws: Path, hosts: list[tuple[str, Path]]) -> None:
+    # These bounds are invariant during this validation call, even for a
+    # toolchain declared as thousands of individual host-only files.
+    bounds = {ws.absolute(), ws.resolve(), bundle_snapshot_root(ws).absolute(), bundle_snapshot_root(ws).resolve()}
     for _, source in hosts:
         for private in {source.absolute(), source.resolve()}:
-            for bound in {
-                ws.absolute(),
-                ws.resolve(),
-                bundle_snapshot_root(ws).absolute(),
-                bundle_snapshot_root(ws).resolve(),
-            }:
-                if private == bound or private in bound.parents or bound in private.parents:
+            for bound in bounds:
+                if private.is_relative_to(bound) or bound.is_relative_to(private):
                     raise RuntimeError("host-only input overlaps the writable workspace or snapshot storage")
 
 

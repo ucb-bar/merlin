@@ -58,6 +58,27 @@ def test_private_only_bundle_has_no_candidate_input_binds(private_bundle):
     assert BW.snapshot_input_paths(workspace, bundle, [hidden], repo=repo)[0].is_dir()
 
 
+def test_flat_host_file_roster_keeps_all_inputs_private_and_detects_missing_siblings(private_bundle):
+    repo, workspace, bundle, hidden = private_bundle
+    paths = [hidden / "secret.bin"]
+    for index in range(32):
+        path = hidden / "libraries" / str(index // 8) / f"module{index}"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(str(index).encode())
+        paths.append(path)
+    bundle["allowed"] = [{"path": "inputs/public.txt"}]
+    bundle["host_inputs"] = [{"path": str(path)} for path in paths]
+    manifest = BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    assert BW.verify_bundle_snapshot(workspace, bundle, repo=repo) == manifest
+    bindings = BW.base_argv(workspace, bundle, repo=repo)
+    assert all(not BW.is_exposed(bindings, path) for path in paths)
+    frozen = BW.snapshot_input_paths(workspace, bundle, [paths[-1]], repo=repo)[0]
+    frozen.parent.chmod(0o700)
+    frozen.unlink()
+    with pytest.raises(RuntimeError, match="missing|differs|incomplete"):
+        BW.verify_bundle_snapshot(workspace, bundle, repo=repo)
+
+
 @pytest.mark.parametrize("use_store", [False, True])
 @pytest.mark.parametrize("broad_grant", [False, True])
 def test_private_snapshot_keeps_owner_only_modes_and_independent_inodes(
@@ -227,7 +248,7 @@ def test_frozen_corpus_answers_stay_masked_after_source_removal_and_runtime_rebi
     weight.write_bytes(b"private weights")
     hidden = corpus / "hidden/holdout"
     hidden.mkdir(parents=True)
-    (hidden / "capsule.yaml").write_text("private holdout\n")
+    (hidden / "capsule.yaml").write_text("name: holdout\nlabel: hidden\n")
     workspace = tmp_path / "run/workspace"
     workspace.mkdir(parents=True)
     bundle = {"allowed": [{"path": "merlin/contract/capsules"}]}

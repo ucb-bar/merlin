@@ -432,8 +432,44 @@ def _snapshot_content_in_cpu_scope(root: Path) -> tuple[str, int, int]:
     return aggregate.hexdigest(), len(rows), sum(row[3] for row in rows)
 
 
+def _require_direct_snapshot_member(root: Path, frozen: Path, checked: set[Path]) -> None:
+    """Check every distinct path component once within this verification call.
+
+    A flat toolchain roster can name thousands of siblings. Resolving every
+    sibling from the filesystem root repeats all ancestor checks. The caller
+    has already checked the canonical snapshot root and lexical mapping; here
+    every newly encountered component receives a fresh no-follow stat. Nothing
+    is retained across verification calls, and the complete payload/roster
+    verification still follows these checks.
+    """
+    pending = []
+    member = frozen
+    while member not in checked:
+        if not member.is_relative_to(root) or member == root:
+            raise RuntimeError("original snapshot input source is outside its canonical root")
+        pending.append(member)
+        member = member.parent
+    try:
+        for member in reversed(pending):
+            mode = member.lstat().st_mode
+            if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+                raise RuntimeError("original snapshot input source is missing or indirect")
+            checked.add(member)
+    except OSError as exc:
+        raise RuntimeError("original snapshot input source is missing or indirect") from exc
+
+
 def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict:
     """Verify V4 original input ownership; never determine candidate visibility."""
+    # Canonical-path checks perform many short filesystem calls. Letting every
+    # capsule thread enter them together causes interpreter/namespace contention
+    # before the existing payload admission gate. Keep the complete synchronous
+    # verification behind that gate, without holding a CPU while waiting.
+    with _snapshot_read_admission():
+        return _verify_bundle_snapshot(workspace, bundle, repo=repo)
+
+
+def _verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict:
     from .cpu_pool import shared_compute_pool
 
     workspace, repo = Path(workspace), Path(repo)
@@ -459,6 +495,7 @@ def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict
     document = json.loads(marker.read_bytes())
     if document.get("version") != 4 or document.get("repo") != str(repo):
         raise RuntimeError("original snapshot ownership differs from its selected repository")
+    checked_paths = {root}
     for policy_key, record_key in (("allowed", "grants"), ("host_inputs", "host_records")):
         declared = [row["path"] for row in bundle.get(policy_key, [])]
         label = "allowed" if policy_key == "allowed" else "host_inputs"
@@ -482,8 +519,7 @@ def verify_bundle_snapshot(workspace: Path, bundle: dict, *, repo: Path) -> dict
             if policy_key == "host_inputs" and destination != (repo / Path(name)).absolute():
                 raise RuntimeError("original host input changed its canonical declared destination")
             frozen = root / relative
-            if not frozen.exists() or frozen.resolve() != frozen:
-                raise RuntimeError("original snapshot input source is missing or indirect")
+            _require_direct_snapshot_member(root, frozen, checked_paths)
     # This synchronous metadata/hash stage owns one shared compute CPU, then
     # releases it before returning to any compiler invocation or child wait.
     with _snapshot_read_admission(), shared_compute_pool():

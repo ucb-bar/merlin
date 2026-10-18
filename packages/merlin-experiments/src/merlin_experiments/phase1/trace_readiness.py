@@ -100,15 +100,24 @@ def inspect(capsules: list[dict], *, semantics, contract: dict) -> dict:
     return record
 
 
-def require_ready(roots, *, target: str, contract: Path, output: Path, hidden_roots=None) -> dict:
+def require_ready(
+    roots, *, target: str, contract: Path, output: Path, hidden_roots=None, expected_hidden_capsules: int | None = None
+) -> dict:
     """Use the same selected backend and capsule discovery as grading, once per admission."""
     from merlin.runtime.backends import base
     from merlin.targetgen.capsule_runner import discover_capsules
 
     backend = base.get_backend(target)
     capsules = discover_capsules(roots, labels={"public", "dev", "hidden"}, contract=contract)
+    hidden = []
     if hidden_roots is not None:
-        capsules += discover_capsules(hidden_roots, labels={"hidden"}, contract=contract)
+        hidden = discover_capsules(hidden_roots, labels={"hidden"}, contract=contract)
+        capsules += hidden
+    if expected_hidden_capsules is not None and (
+        type(expected_hidden_capsules) is not int or expected_hidden_capsules < 0
+        or len(hidden) != expected_hidden_capsules
+    ):
+        raise ValueError("trace readiness hidden cohort differs from the verified hidden snapshot")
     names = [capsule["name"] for capsule in capsules]
     if len(names) != len(set(names)):
         raise ValueError("trace readiness cohort has duplicate capsule ownership")

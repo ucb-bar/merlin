@@ -2,6 +2,7 @@
 
 import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -92,6 +93,21 @@ def test_a_change_after_the_entry_ends_reuse_and_is_refused(frozen, monkeypatch)
     assert entry.guard.fd is None
 
 
+def test_identical_bytes_behind_a_replaced_parent_alias_are_still_refused(frozen, tmp_path):
+    ws, bundle, repo, payload = frozen
+    entry = _entry(ws, bundle, repo)
+    original_parent = payload.parent
+    moved = tmp_path / "moved-identical-inputs"
+    original_parent.rename(moved)
+    original_parent.symlink_to(moved, target_is_directory=True)
+    try:
+        with pytest.raises(RuntimeError, match="indirect|changed|differs"):
+            with S.verified_snapshot_scope(ws, bundle, repo=repo, entry=entry):
+                pass
+    finally:
+        entry.close()
+
+
 def test_concurrent_scope_entries_lease_one_cpu_at_a_time(frozen, monkeypatch, tmp_path):
     ws, bundle, repo, _ = frozen
     cpus = sorted(os.sched_getaffinity(0))
@@ -119,3 +135,31 @@ def test_concurrent_scope_entries_lease_one_cpu_at_a_time(frozen, monkeypatch, t
         list(pool.map(scope, range(4)))
     # Every leased stage (payload digest, roster scan, guard setup) waits at the admission gate.
     assert held and max(held) == 1
+
+
+def test_canonical_metadata_is_admitted_before_capsules_fan_out(frozen, monkeypatch, tmp_path):
+    ws, bundle, repo, _ = frozen
+    cpus = sorted(os.sched_getaffinity(0))
+    if len(cpus) < 2:
+        pytest.skip("requires two available CPUs")
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", f"{cpus[0]},{cpus[-1]}")
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "metadata-slots"))
+    direct = S._require_direct_snapshot_member
+    lock, active, observed = threading.Lock(), 0, []
+
+    def measured(*args):
+        nonlocal active
+        with lock:
+            active += 1
+            observed.append(active)
+        try:
+            time.sleep(0.005)  # Concurrent callers would overlap this filesystem wait.
+            return direct(*args)
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(S, "_require_direct_snapshot_member", measured)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(lambda _: S.verify_bundle_snapshot(ws, bundle, repo=repo), range(4)))
+    assert observed and max(observed) == 1

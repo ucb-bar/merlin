@@ -120,3 +120,31 @@ def test_admission_checks_hidden_requirements_and_writes_blockers_before_authori
     assert data["blockers"] == [
         {"mode": "relu", "reason": "missing_selected_operand_protocol", "capsules": ["held_out"]}
     ]
+
+
+def test_verified_hidden_count_refuses_a_policy_view_that_omits_the_hidden_cohort(tmp_path, monkeypatch):
+    from merlin.runtime.backends import base
+    from merlin.targetgen import capsule_runner
+
+    public, policy, hidden = (tmp_path / name for name in ("public", "policy", "frozen-hidden"))
+    monkeypatch.setattr(base, "get_backend", lambda _target: SimpleNamespace(rocc_semantics=None))
+
+    def discover(roots, *, labels, contract):
+        if roots == public:
+            return [cap("visible")]
+        return [cap("held_out")] if roots == hidden and labels == {"hidden"} else []
+
+    monkeypatch.setattr(capsule_runner, "discover_capsules", discover)
+    output = tmp_path / "readiness.json"
+    with pytest.raises(ValueError, match="hidden cohort differs"):
+        R.require_ready(
+            public, target="array", contract=tmp_path, output=output,
+            hidden_roots=policy, expected_hidden_capsules=1,
+        )
+    assert not output.exists()
+    report = R.require_ready(
+        public, target="array", contract=tmp_path, output=output,
+        hidden_roots=hidden, expected_hidden_capsules=1,
+    )
+    assert report["n_capsules"] == 2
+    assert report["status"] == "ready"

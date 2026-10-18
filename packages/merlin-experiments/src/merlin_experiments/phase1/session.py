@@ -689,16 +689,6 @@ def _prepare(
         _verify_phase0_handoff(_corpus_review, _corpus_view.workload_coverage)
         _public_root, _policy_root = _corpus_view.public, _corpus_view.policy
         _contract_root = _corpus_view.contract
-        if _corpus_seal and not _resuming:
-            from ..phase0.coverage_commitment import admitted_source_roots
-            from .trace_readiness import require_ready as require_trace_ready
-
-            require_trace_ready(
-                admitted_source_roots(_policy_root, _public_root, contract=_contract_root),
-                target=context.target, contract=_contract_root,
-                output=run_dir / "trace_readiness.json",
-                hidden_roots=_policy_root,
-            )
         if _corpus_seal:
             from . import semantic_diagnostics as _SD
 
@@ -754,6 +744,17 @@ def _prepare(
         _hidden_snapshot_record = RI.subtree_snapshot_record(_hidden_dir)
         if _hidden_snapshot_record["n_capsules"] <= 0:
             raise RuntimeError(f"hidden capsule snapshot contains no capsules: {_hidden_snapshot_record['path']}")
+        if _corpus_seal and not _resuming:
+            from ..phase0.coverage_commitment import admitted_source_roots
+            from .trace_readiness import require_ready as require_trace_ready
+
+            require_trace_ready(
+                admitted_source_roots(_policy_root, _public_root, contract=_contract_root),
+                target=context.target, contract=_contract_root,
+                output=run_dir / "trace_readiness.json",
+                hidden_roots=_hidden_dir,
+                expected_hidden_capsules=_hidden_snapshot_record["n_capsules"],
+            )
         if _te_setup.host_lane is not None:
             _, _model_host_lane_snapshot = _te_setup.resolve_host_lane(root=_snapshot_root / "repo")
             _model_host_lane_snapshot["run_snapshot"] = _bundle_snapshot_record
@@ -1094,18 +1095,27 @@ def _prepare(
     # The receipt is host-private, and a failed probe refuses before authoring.
     from . import tooling_readiness as _TRpf
 
-    _tooling = _TRpf.run(
-        context,
-        _te_pf,
-        ws,
-        bundle,
-        tuple(_resolved_tool_ids),
-        _public_root,
-        run_dir,
-        _bundle_snapshot_record,
-        _bundle_manifest_sha256,
-        without_tools=tuple(a.without_tool),
-    )
+    if a.qualify_submission:
+        _tooling = {
+            "status": "not_required",
+            "checks": [],
+            "scope": "unpaid frozen-submission qualification starts no author or authoring-tool clients; "
+            "formal compiler, oracle, isolation and input-integrity gates remain required",
+        }
+        (run_dir / "tooling_readiness.yaml").write_text(yaml.safe_dump(_tooling, sort_keys=False))
+    else:
+        _tooling = _TRpf.run(
+            context,
+            _te_pf,
+            ws,
+            bundle,
+            tuple(_resolved_tool_ids),
+            _public_root,
+            run_dir,
+            _bundle_snapshot_record,
+            _bundle_manifest_sha256,
+            without_tools=tuple(a.without_tool),
+        )
     if _tooling["status"] == "no_go":
         failed = [f"{check['name']}: {check['detail']}" for check in _tooling["checks"] if not check["ok"]]
         print(
