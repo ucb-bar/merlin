@@ -70,7 +70,8 @@ class OptionalPass:
         return f"capture variant key {self.capture_key}"
 
 
-_INTEGER_DATAPATH = "on in the integer (int8 compute) datapath"
+# The low-level apply_quant(None) historical all-six policy is distinct from compute_passes(None).
+_INTEGER_NONLINEAR_DEFAULT = "off in the compute datapath (select explicitly)"
 
 REGISTRY: tuple[OptionalPass, ...] = (
     OptionalPass(
@@ -156,40 +157,36 @@ REGISTRY: tuple[OptionalPass, ...] = (
         summary="softmax exp as the integer I-BERT exp",
         changes="math.exp in a softmax becomes a fixed-point polynomial and power-of-two shift",
         exactness=NUMERICS_CHANGING,
-        default=_INTEGER_DATAPATH,
+        default=_INTEGER_NONLINEAR_DEFAULT,
         stage="quantization",
         quant_pass="softmax_int",
-        on_by_default=True,
     ),
     OptionalPass(
         name="int-gelu",
         summary="GELU erf as the integer I-BERT i-GELU",
         changes="math.erf in a GELU becomes a fixed-point polynomial on a per-row int grid",
         exactness=NUMERICS_CHANGING,
-        default=_INTEGER_DATAPATH,
+        default=_INTEGER_NONLINEAR_DEFAULT,
         stage="quantization",
         quant_pass="gelu_int",
-        on_by_default=True,
     ),
     OptionalPass(
         name="int-silu",
         summary="SiLU sigmoid as the integer i-sigmoid",
         changes="the logistic in a SiLU becomes the integer exp and a division",
         exactness=NUMERICS_CHANGING,
-        default=_INTEGER_DATAPATH,
+        default=_INTEGER_NONLINEAR_DEFAULT,
         stage="quantization",
         quant_pass="silu_int",
-        on_by_default=True,
     ),
     OptionalPass(
         name="int-rsqrt",
         summary="rsqrt as the integer fast reciprocal square root",
         changes="math.rsqrt becomes an integer estimate refined in fixed point",
         exactness=NUMERICS_CHANGING,
-        default=_INTEGER_DATAPATH,
+        default=_INTEGER_NONLINEAR_DEFAULT,
         stage="quantization",
         quant_pass="rsqrt_int",
-        on_by_default=True,
     ),
     OptionalPass(
         name="integer-nonlinear",
