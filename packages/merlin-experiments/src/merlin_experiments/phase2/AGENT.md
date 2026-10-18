@@ -5,6 +5,14 @@
 deletion cannot disclose frozen expected values; public inputs remain usable.
 Projection grants no numerical, runtime or isolation qualification.
 
+`worker_resources` narrows worker affinity and all inherited compute/preparation/
+grading rosters to assigned CPUs while preserving the shared lock namespace.
+Parent workers hold no CPU lease across nested work. Shared lock metadata is an
+explicit writable resource owner; environment/thread limits do not issue hard
+aggregate resource authority. The retained revision store consumes the core
+versioned edit contract, including explicitly owned new Python pass components;
+restore must remove later modules without widening frozen authority.
+
 `evaluation_costs` observes original parent jobs from assigned CPUs before setup
 through verified cleanup, durable release and artifact publication. Keep admission
 and queue wait separate. Reopen original job identity, source/resource context and

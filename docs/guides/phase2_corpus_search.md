@@ -148,6 +148,21 @@ mounts, output handles and tool scratch must satisfy the same boundary. Storage
 limits cover allocated backing capacity; sparse logical byte quotas are unknown.
 Unbound external native services and container supervisors are unsupported.
 
+Each evaluation worker narrows its inherited shared compute roster to its
+assigned CPUs, preserving the existing CPU-slot directory. Preparation, grading,
+ordinary subprocesses and nested pool launchers inherit that same selection and
+CPU affinity. CMake receives the assigned job width; implicit numerical-library
+thread pools are limited to one thread. The parent holds no CPU lease while
+children acquire their existing bounded build/simulator leases. Compiler-only
+jobs retain their existing zero simulator-slot cost.
+
+The shared lock directory is an explicit writable resource owner. A hard
+external boundary must cover it or refuse launch. Environment variables and
+affinity provide cooperative selection, not aggregate memory/disk enforcement
+or protection against a process deliberately widening its own affinity.
+Never infer extra assigned CPUs from the host's visible affinity or existing
+lock filenames.
+
 Use the original normal authoring CLI/controller selections, adding
 `--search-configuration` and `--compiler-edit-contract`. Select one round and stage
 and round timeouts covering exploration and final reserve. Use the same Codex
