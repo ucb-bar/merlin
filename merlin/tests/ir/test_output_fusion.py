@@ -428,6 +428,32 @@ def test_selected_prepack_uses_proved_offsets_without_rederiving_float_bias(tmp_
     assert row["bias"]["fold_rule"] == "source_bound_output_fusion_offsets"
 
 
+def test_accumulator_bias_cut_keeps_the_host_readout_without_an_escaping_value_refusal(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from merlin.llvmlower import device_shim
+    from merlin.llvmlower.device_offload import rewrite_groups_to_device
+
+    path = _path(_drop("activation"))
+    monkeypatch.setattr(OF, "declared_path", lambda _target: path)
+    monkeypatch.setattr(device_shim, "kernel_abi_for", lambda _target: SimpleNamespace(version=2))
+    (tmp_path / "weights.manifest.json").write_text("{}")
+    (tmp_path / "weights.safetensors").write_bytes(b"")
+    module = mq.parse(_module())
+    result = rewrite_groups_to_device(
+        module, "synthetic", select=lambda _: True, oracle=_Oracle(), capture=tmp_path,
+        weight_args=(), require_complete_groups=True,
+    )
+    module.verify()
+    assert result.moved == 1 and result.skipped == ()
+    (entry,) = result.entries.values()
+    assert entry["epilogue"] == ["bias_add"]
+    names = [mq.op_name(op) for op in module.walk()]
+    assert names.count("quant_ext.quantize_per_tensor") == 1
+    assert "arith.addf" not in names and "arith.mulf" in names and "arith.maximumf" in names
+    assert not any("matmul" in name for name in names)
+
+
 def test_accumulator_bound_includes_the_minimum_signed_weight_code():
     lines = _module(bias=(0,) * 8).splitlines()
     lines = ["    %w = arith.constant dense<-128> : tensor<8x8xi8>" if line.startswith("    %w =") else line

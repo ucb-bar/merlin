@@ -60,6 +60,12 @@ per invocation. Replacements preserve SSA types and the relative order of surviv
 original operations; each group's actual block membership is still checked after
 earlier replacements. These tables never cross invocations or change selection,
 program statements, source coverage or numerical requirements.
+Preparation records are read before source groups are erased and restricted to
+the calls actually emitted. Do not repeat numeric folding on detached roots.
+An exact accumulator cut may retain its single-use host readout through the
+original quantize frontier: the device returns the proved adjusted integer root,
+and only the proved bias additions are bypassed. Any extra observation, changed
+stage membership or tensor type refuses that split.
 
 Every active ordinary device route requires an explicitly selected
 `LinkedElfAdmissionService`. The build freezes its original target, callback and

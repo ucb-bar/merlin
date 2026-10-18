@@ -14,29 +14,44 @@ from pathlib import Path
 from typing import Any
 
 
-def _prepack_arrays(groups, capture) -> tuple[dict[int, dict[str, Any]], dict[str, Any], str]:
-    """``(rows by group, arrays, "")`` of the groups' prepack -- the folded biases and the weights laid
-    out as each device program holds them -- or ``({}, {}, reason)``.
+def _prepack_arrays(groups, capture) -> tuple[dict | None, dict[int, dict[str, Any]], dict[str, Any], str]:
+    """``(record, rows by group, arrays, "")`` of the prepack, or ``(None, {}, {}, reason)``.
 
     The host sources a logical-ABI call passes for a group's constant interface values. One
     definition: the same :func:`merlin.xdsl_dialects.lowering.group_prepack.prepack` the sidecar
     records."""
     if capture is None:
-        return {}, {}, "no capture was given, so no weights manifest could be read and no bias folded"
+        return None, {}, {}, "no capture was given, so no weights manifest could be read and no bias folded"
     beside = Path(capture)
     beside = beside if beside.is_dir() else beside.parent
     manifest = next(iter(sorted(beside.glob("*.manifest.json"))), None)
     weights = next(iter(sorted(beside.glob("*.safetensors"))), None)
     if manifest is None or weights is None:
-        return {}, {}, f"no weights manifest and safetensors pair beside {beside}"
+        return None, {}, {}, f"no weights manifest and safetensors pair beside {beside}"
     from merlin.xdsl_dialects.lowering import group_prepack as GP
 
     try:
         result = GP.prepack(groups, manifest, weights, device_layout=True)
     except Exception as error:  # noqa: BLE001 -- named, never a silently absent prepack
-        return {}, {}, f"prepack: {type(error).__name__}: {error}"
+        return None, {}, {}, f"prepack: {type(error).__name__}: {error}"
     rows = {int(row["group"]): row for row in result["record"]["groups"]}
-    return rows, result["arrays"], ""
+    return result["record"], rows, result["arrays"], ""
+
+
+def _routed_prepack(record, groups):
+    """Select the actual calls from the immutable pre-mutation preparation record."""
+    if record is None or not groups:
+        return None
+    selected = {group.index for group in groups}
+    rows = [row for row in record["groups"] if row["group"] in selected]
+    skipped = [row for row in record["skipped"] if row["group"] in selected]
+    return {
+        **record,
+        "groups": rows,
+        "skipped": skipped,
+        "folded_bias_elements": sum(row.get("bias", {}).get("elements", 0) for row in rows),
+        "device_weights": sum("array" in (row.get("weight") or {}) for row in rows),
+    }
 
 
 def _constant_tensor(array, element_type):

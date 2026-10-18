@@ -849,6 +849,7 @@ def _rewrite_groups_to_device(
         _nhwc_matrix,
         _owner,
         _prepack_arrays,
+        _routed_prepack,
         _shape,
         cancel_relayouts,
     )
@@ -925,10 +926,12 @@ def _rewrite_groups_to_device(
     prepack_rows: dict[int, dict[str, Any]] = {}
     prepack_arrays: dict[str, Any] = {}
     why_no_arrays = ""
+    prepack_source = None
+    candidates = [g for g in groups if g.placement != CG.HOST and g.root is not None]
     if logical:
-        prepack_rows, prepack_arrays, why_no_arrays = _prepack_arrays(
-            [g for g in groups if g.placement != CG.HOST and g.root is not None], capture
-        )
+        prepack_source, prepack_rows, prepack_arrays, why_no_arrays = _prepack_arrays(candidates, capture)
+    else:
+        prepack_source, why_no_arrays = _prepack_for(candidates, capture)
     weight_binder = None
     if blob_weights and logical:
         from .blob_weights import WeightArgs
@@ -976,6 +979,15 @@ def _rewrite_groups_to_device(
             skipped.append((name, "the group names an op outside its root's block; it cannot be replaced by one call"))
             continue
         members = sorted(group.members, key=lambda m: order[id(m)])
+        from .group_accumulator_cut import prepare as prepare_accumulator_cut
+
+        try:
+            accumulator_cut = prepare_accumulator_cut(group, capture)
+        except ValueError as error:
+            skipped.append((name, f"no exact accumulator/host split: {error}"))
+            continue
+        if accumulator_cut is not None:
+            members = list(accumulator_cut.prefix)
         last = members[-1]
         if not last.results:
             skipped.append((name, "the group's last member produces no value, so a call cannot stand for it"))
@@ -1147,6 +1159,8 @@ def _rewrite_groups_to_device(
             produced = op.results[0]
         last.results[0].replace_all_uses_with(produced)
         feeding = [_owner(value) for member in members for value in member.operands]
+        if accumulator_cut is not None:
+            feeding.extend(accumulator_cut.apply())
         for member in reversed(members):
             member.detach()
             member.erase()
@@ -1195,8 +1209,16 @@ def _rewrite_groups_to_device(
         )
 
     if require_complete_groups and (skipped or len(placed) != sum(g.placement != CG.HOST for g in groups)):
-        raise ValueError("complete source group rewrite has omitted or refused accelerator computation")
-    prepack, why_no_prepack = _prepack_for(placed, capture)
+        details = "; ".join(f"{name}: {reason}" for name, reason in skipped)
+        raise ValueError(
+            "complete source group rewrite has omitted or refused accelerator computation"
+            + (f": {details}" if details else f" ({len(placed)} groups placed)")
+        )
+    # Roots have now been erased. Re-reading them can lose operands/extents and
+    # independently re-fold a different bias. Keep the actual preparation used
+    # by the calls and select only the groups that were routed.
+    prepack = _routed_prepack(prepack_source, placed)
+    why_no_prepack = why_no_arrays if placed else ""
     if why_no_prepack:
         skipped.append(("prepack", why_no_prepack))
     if require_complete_groups and skipped:

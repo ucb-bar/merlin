@@ -1,5 +1,12 @@
 """A multi-group rewrite shares shape observations without changing its statements."""
 
+import json
+import struct
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
 from merlin.common import mlir_query as mq
 from merlin.llvmlower.device_offload import rewrite_groups_to_device
 from merlin.targetgen import model_coverage
@@ -34,7 +41,9 @@ def module():
         body.append(f"""%zero{i} = arith.constant 0 : i32
           %empty{i} = tensor.empty() : {output}
           %init{i} = linalg.fill ins(%zero{i} : i32) outs(%empty{i} : {output}) -> {output}
-          %result{i} = linalg.generic {{indexing_maps=[affine_map<(d0,d1,d2)->(d0,d2)>,affine_map<(d0,d1,d2)->(d2,d1)>,affine_map<(d0,d1,d2)->(d0,d1)>],iterator_types=["parallel","parallel","reduction"]}}
+          %result{i} = linalg.generic {{indexing_maps=[
+          affine_map<(d0,d1,d2)->(d0,d2)>,affine_map<(d0,d1,d2)->(d2,d1)>,affine_map<(d0,d1,d2)->(d0,d1)>],
+          iterator_types=["parallel","parallel","reduction"]}}
           ins(%a{i},%b{i}:tensor<{m}x{k}xi8>,tensor<{k}x{n}xi8>) outs(%init{i}:{output}) {{
           ^bb0(%lhs:i8,%rhs:i8,%acc:i32):
             %wide_a=arith.extsi %lhs:i8 to i32
@@ -96,3 +105,48 @@ def test_indexed_rewrite_is_identical_to_fresh_statement_observation(monkeypatch
     )
     assert result.to_sidecar() == reference.to_sidecar()
     assert str(indexed) == str(fresh)
+
+
+@pytest.mark.parametrize("logical", [True, False])
+def test_preparation_is_read_once_while_source_operands_are_still_attached(tmp_path, monkeypatch, logical):
+    from merlin.llvmlower import device_shim
+    from merlin.xdsl_dialects.lowering import group_prepack as GP
+
+    manifest, header, chunks, offset = {}, {}, [], 0
+    for arg, k, n in ((1, 7, 5), (3, 13, 17), (5, 19, 23)):
+        name = f"weight{arg}"
+        raw = np.ones((k, n), dtype=np.int8).tobytes()
+        header[name] = {"dtype": "I8", "shape": [k, n], "data_offsets": [offset, offset + len(raw)]}
+        manifest[str(arg)] = {"kind": "param", "weight": name}
+        chunks.append(raw)
+        offset += len(raw)
+    encoded = json.dumps(header).encode()
+    (tmp_path / "weights.safetensors").write_bytes(struct.pack("<Q", len(encoded)) + encoded + b"".join(chunks))
+    (tmp_path / "weights.manifest.json").write_text(json.dumps(manifest))
+    original, observations = GP.prepack, []
+
+    def observe(groups, *args, **kwargs):
+        observations.append([group.root.parent is not None for group in groups])
+        return original(groups, *args, **kwargs)
+
+    monkeypatch.setattr(GP, "prepack", observe)
+    monkeypatch.setattr(device_shim, "kernel_abi_for", lambda _target: SimpleNamespace(version=2) if logical else None)
+    source = module()
+    result = rewrite_groups_to_device(
+        source, "neutral", select=lambda _: True, oracle=Oracle(), weight_args={1, 3, 5}, capture=tmp_path
+    )
+    source.verify()
+    assert result.moved == 3
+    assert observations == [[True, True, True]]
+    assert result.prepack["device_weights"] == 3
+    assert result.prepack["skipped"] == []
+    assert {row["group"] for row in result.prepack["groups"]} == {0, 1, 2}
+
+
+def test_column_gains_are_part_of_the_actual_kernel_identity():
+    from merlin.llvmlower.device_offload import _kernel_identity
+
+    entry = {"op": "matmul", "M": 3, "K": 7, "N": 5, "epilogue": ["acc_scale"],
+             "acc_scale_by_column": [0.5] * 4 + [0.25]}
+    assert _kernel_identity(entry) != _kernel_identity({**entry, "acc_scale_by_column": [0.5] * 5})
+    assert _kernel_identity(entry) == _kernel_identity({**entry, "name": "another_source_group"})
