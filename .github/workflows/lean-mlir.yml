@@ -69,7 +69,7 @@ jobs:
               */test_lean_differential.py|*/test_lean_splat_inputs.py|\
               */test_lean_integer_fold_native.py|*/test_lean_reshape_differential.py|\
               */test_lean_integer_identity_native.py|*/test_lean_reshape_mixed_differential.py|\
-              */test_lean_splat_nested_differential.py) continue ;;
+              */test_lean_splat_nested_differential.py|*/test_lean_control_differential.py) continue ;;
             esac
             lean_suites+=("$suite")
           done

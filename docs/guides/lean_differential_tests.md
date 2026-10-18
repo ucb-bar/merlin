@@ -354,6 +354,17 @@ The lower-level driver also exposes `merlin-lean check-module-typed before.json 
 Differential agreement remains empirical evidence about the semantics; the typed rewrite and
 chain theorems supply the formal transformation claims.
 
+`test_lean_control_definedness.py` qualifies integer comparison and selection source domains,
+including all ten integer predicates, both index widths, scalar and static tensor branches,
+initialized tensor conditions, generic bodies, and refusal of poison or unknown semantic
+attributes. Its actual canonicalization chain removes a neutral integer addition while retaining
+input-dependent comparison and selection. `test_lean_control_differential.py` compares these
+operations with native MLIR and independent signed/unsigned integer and input-bit references.
+The native corpus exhausts i1/i4 comparison pairs, samples wider widths deterministically, and
+checks bit-preserving f32/f64 selection including NaN payloads. A swapped-branch target is both
+rejected by the checker and observably wrong in native execution. These tests qualify this bounded
+corpus; they do not prove a general IEEE instance or source capture fidelity.
+
 ## Limits
 
 The corpus chooses defined inputs independently: divisors are nonzero, signed division overflow

@@ -549,15 +549,20 @@ initialized from `tensor.empty` for exactly this reason. We handle it two ways:
     `Check/DefinedRules.lean` proves rules for scalar and dense tensor constants, ten unflagged
     scalar integer binary operations, legal unflagged `extsi`/`extui`/`trunci` casts,
     `tensor.empty`, `tensor.splat`, and static collapse/expand reshapes.
+    `Check/DefinedControl.lean` adds all ten integer comparison predicates, including index
+    operands at the checked width, scalar-condition selection of initialized scalars or tensors,
+    and elementwise tensor selection with initialized i1 conditions and equal static shapes.
+    These totality proofs preserve selected floating-point bits without assuming arithmetic laws.
   - `Check/DefinedLoops.lean` proves total structured-loop execution. Initialized destinations stay
     initialized across reduction steps, including empty iteration spaces. A separate complete-overwrite
     proof allows a dirty destination only when the output map is identity, the loop box equals the
     entire output shape, and the body yields initialized values even with a dirty output argument.
     `Check/DefinedLinalg.lean` checks these conditions against actual `linalg.fill` and `linalg.generic`
     IR. It accepts initialized integer matmul with widening casts, multiple-output reductions,
-    captured values, and single-output full overwrites. Structured bodies currently use the leaf
-    rulebook; nested structured operations, direct tensor arithmetic,
-    division, shifts, and overflow-flagged arithmetic still lack definedness rules.
+    captured values, and single-output full overwrites. Nested generic bodies compose the sound
+    definedness books using a budget derived from actual region structure. Integer comparisons
+    and selection are available inside these bodies as well. Direct tensor arithmetic other than
+    selection, division, shifts, and overflow-flagged arithmetic still lack definedness rules.
   - The theorem requires typed, nonpoison inputs. The initialized-matmul fixture passes real xDSL
     preprocessing and obtains a `verified` chain after independent source support/definedness checks.
     This proves that recorded chain, not every model or every matmul lowering. Named matmul and
