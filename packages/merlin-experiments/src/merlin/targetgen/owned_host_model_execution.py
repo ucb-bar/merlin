@@ -232,6 +232,7 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
     from merlin_experiments.phase1.feedback.private_device_audit import audit_built_device_host_compute
     from merlin_experiments.phase1.feedback.private_full_models import _linked_symbols
     from merlin_experiments.phase1.feedback.private_group_provenance import (
+        convolution_input_preparations,
         join_routed_source_groups,
         require_intended_host_selection,
         routed_kernel_symbols,
@@ -250,7 +251,7 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
         capsule, certificate, module, groups, target=target, source_path=Path(bundle) / "model.mlir"
     )
     eligible_groups = _independently_eligible_group_ids(placement, groups)
-    source = source_group_roster(groups, eligible_groups, host_placement=CG.HOST)
+    source = source_group_roster(groups, eligible_groups, host_placement=groups_api.HOST, module=module)
     output = receipt["output"]
     sidecar = output["device_sidecar"]
     path = Path(sidecar["path"])
@@ -262,36 +263,14 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
     assigned = emitted.get("routed")
     joined = join_routed_source_groups(assigned, source)
     require_intended_host_selection(emitted.get("skipped", []))
-    from merlin.kernels.shapes import observe_contractions
-
-    original_shapes = {id(op): shape for op, shape in observe_contractions(module)}
-    original_groups = {group.index: group for group in groups}
-    for row in assigned:
-        entry = emitted.get("entries", {}).get(row["symbol"], {})
-        if entry.get("op") != "conv2d":
-            continue
-        shape = original_shapes.get(id(original_groups[joined[row["group"]]].root))
-        if shape is None or (
-            row.get("parallel") != list(shape.parallel)
-            or row.get("reduction") != list(shape.reduction)
-            or row.get("dtypes") != list(shape.dtypes)
-        ):
-            raise ValueError("convolution entry differs from original source contraction")
     elf = Path(output["elf"])
     if file_sha256(elf) != output["elf_sha256"]:
         raise ValueError("owned host linked ELF changed")
     _linked_symbols(elf, routed_kernel_symbols(emitted))
-    source["conv_input_preparation"] = {
-        row["symbol"]: {
-            "entry": emitted["entries"][row["symbol"]],
-            "call_buffers": emitted["call_buffers"][row["symbol"]],
-        }
-        for row in assigned
-        if emitted.get("entries", {}).get(row["symbol"], {}).get("op") == "conv2d"
-        and emitted["signatures"].get(row["symbol"]) == []
-    }
+    source["conv_input_preparation"] = convolution_input_preparations(emitted, source)
     audits = audit_built_device_host_compute(
-        elf.parent, assigned, source, target, diagnostics=elf.parent / "audit-diagnostics"
+        elf.parent, assigned, source, target, diagnostics=elf.parent / "audit-diagnostics",
+        host_artifacts=output.get("host_artifacts"),
     )
     return {
         "source": source,

@@ -51,6 +51,11 @@ from merlin_experiments.phase1.feedback.private_device_audit import (
     require_static_build_inputs as _require_static_build_inputs,
 )
 from merlin_experiments.phase1.feedback.private_group_provenance import (
+    convolution_input_preparations,
+    source_group_roster,
+    verify_routed_source_coverage,
+)
+from merlin_experiments.phase1.feedback.private_group_provenance import (
     eligible_source_identity as _eligible_source_identity,  # noqa: F401 -- preserve compatibility alias
 )
 from merlin_experiments.phase1.feedback.private_group_provenance import (
@@ -58,10 +63,6 @@ from merlin_experiments.phase1.feedback.private_group_provenance import (
 )
 from merlin_experiments.phase1.feedback.private_group_provenance import (
     routed_kernel_symbols as _routed_kernel_symbols,
-)
-from merlin_experiments.phase1.feedback.private_group_provenance import (
-    source_group_roster,
-    verify_routed_source_coverage,
 )
 from merlin_experiments.phase1.feedback.private_prebuilt_receipt import load_diagnostic_receipt
 from merlin_experiments.phase1.feedback.private_source_support_join import (
@@ -675,7 +676,7 @@ def _source_obligations(
     f32_sum_support.verify_source(f32_reductions, source)
     maximum_support.verify_source(maximum, source)
     index_support.verify_source(index_host, capture)
-    group_roster = source_group_roster(groups, eligible, host_placement=CG.HOST)
+    group_roster = source_group_roster(groups, eligible, host_placement=CG.HOST, module=module)
     result = {
         "source_sha256": source_sha,
         "normalized_source_sha256": normalized_sha,
@@ -759,7 +760,10 @@ def _verify_compiled_program(
         joined = verify_routed_source_coverage(emitted, source)
         symbols = _routed_kernel_symbols(emitted)
         _linked_symbols(elf, symbols)
-        host_compute_audit = _audit_built_device_host_compute(elf.parent, assigned, source, target)
+        source["conv_input_preparation"] = convolution_input_preparations(emitted, source)
+        host_compute_audit = _audit_built_device_host_compute(
+            elf.parent, assigned, source, target, host_artifacts=output.get("host_artifacts")
+        )
         sidecar_sha = sidecar_record["sha256"]
         linked = len(set(joined.values()) & set(source["eligible_groups"]))
         optional_linked = len(set(joined.values()) & set(source.get("optional_groups", [])))

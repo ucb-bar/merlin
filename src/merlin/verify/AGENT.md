@@ -8,6 +8,24 @@ and working log: `docs/design/compiler_verification.md`.
 
 ## Modules
 
+- `input_copy_loops`, `input_copy_integer` and `input_copy_batch` derive bounded
+  original CFG domains and execute their constant control/address instructions in
+  batches. Sibling loops reuse depth axes. Count-only observation leaves tensor
+  and opaque results unknown; it supplies no memory/effect admission. The input
+  transport proof additionally requires disjoint reads/writes, original byte
+  origins and initialized scratch. Forwarding tracks actual source write epochs;
+  every copy chain must end in a decoded input transfer or unchanged publication
+  of decoded result bytes. CPU result reads require the intervening command fence.
+  Scalar copy limits remain in force; command/control traversal shares the existing
+  constant-control bounds. Batching bounds lanes per invocation, expanded work per
+  region, actual vector instructions, processed payload bytes and aggregate storage.
+  No numerical comparison or device-work gate is waived.
+- `host_call_alignment` reopens actual host LLVM/object inputs and selected stock
+  LLVM tools. It observes original descriptor call sites and proves low address
+  bits structurally. Kernel assumptions and allocator names are not authority;
+  unknown origins retain one-byte alignment. This proves no bounds, nonaliasing,
+  mandatory execution, numerical or final-image property.
+
 - `tools.py` — locate FileCheck / llvm-lit / mlir-opt / mlir-translate; `None` is a first-class answer.
 - `smt_ops.py` — the one `smt` op xDSL does not ship: the solver scope the SMT-LIB exporter requires.
 - `smt_export.py` — xDSL `smt` module -> upstream `mlir-translate --export-smtlib` -> z3.

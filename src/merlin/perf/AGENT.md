@@ -118,6 +118,11 @@ before use as compulsory movement, especially across fused/resident groups.
 
 ## Invariants
 
+- `constant_control_cfg` may batch original constant loop domains through the shared
+  byte-copy interpreter in count-only mode. Every branch still needs constant-derived
+  operands; loads and opaque results remain unknown. This supplies execution counts,
+  never permission for host tensor arithmetic or proof of device effects.
+
 - **Never default a composition operator.** Textbook roofline takes `max` of compute and memory time,
   which assumes perfect overlap; a target that does not overlap sums them instead. Deriving `max` where
   the truth is `sum` understates runtime badly, and in the flattering direction.

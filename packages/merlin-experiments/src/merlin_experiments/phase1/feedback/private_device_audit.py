@@ -46,7 +46,7 @@ def require_static_build_inputs(
 
 def audit_built_device_host_compute(
     build: Path, assigned: Sequence[Mapping[str, Any]], source: Mapping[str, Any], target: str,
-    *, diagnostics: Path | None = None,
+    *, diagnostics: Path | None = None, host_artifacts=None,
 ) -> list[dict[str, Any]]:
     """Audit the package's actual per-group build inputs, not a fresh diagnostic emission.
 
@@ -73,6 +73,14 @@ def audit_built_device_host_compute(
         raise ValueError("linked build has no ordinary device-artifact directory")
     metrics = {**source.get("optional_group_metrics", {}), **source["eligible_group_metrics"]}
     source_groups = _join_routed_source_groups(assigned, source)
+    preparations = source.get("conv_input_preparation", {})
+    host_alignments, alignment_record = {}, None
+    if preparations and host_artifacts is not None:
+        from merlin.verify.host_call_alignment import inspect
+
+        host_alignments, alignment_record = inspect(
+            host_artifacts, assigned, preparations, diagnostics=diagnostics
+        )
     records = []
     completed = {}
     for entry in assigned:
@@ -113,7 +121,9 @@ def audit_built_device_host_compute(
             )
             for name in functions
         ]
-        preparation = source.get("conv_input_preparation", {}).get(symbol)
+        preparation = preparations.get(symbol)
+        if preparation is not None and symbol in host_alignments:
+            preparation = {**preparation, "argument_alignments": host_alignments[symbol]}
         report = HA.audit(
             module,
             sites,
@@ -171,7 +181,8 @@ def audit_built_device_host_compute(
                 "verdict": "clean_static_host_compute_audit",
                 "audit": {
                     "scope": (
-                        "all defined LLVM functions of the exact built device artifact; command-scale static budget"
+                        "all defined LLVM functions of the exact built device artifact; "
+                        "command-scale budget with independently proven byte transport"
                     ),
                     "budget": report["budget"],
                     "groups": [
@@ -184,6 +195,9 @@ def audit_built_device_host_compute(
                                 "host_arithmetic",
                                 "host_value_arithmetic",
                                 "host_payload_bytes",
+                                "host_total_arithmetic",
+                                "host_raw_payload_bytes",
+                                "input_preparation",
                                 "arithmetic_per_element",
                                 "value_arithmetic_per_element",
                                 "payload_ratio",
@@ -196,5 +210,14 @@ def audit_built_device_host_compute(
         )
         if tuple(file_sha256(path) for path in (artifact, llvm_ir, obj)) != digests:
             raise ValueError("built device artifacts changed during host-compute audit")
+        if alignment_record is not None:
+            records[-1]["host_argument_alignment"] = {
+                "alignment_bytes": host_alignments[symbol], "observation": alignment_record,
+            } if symbol in host_alignments else None
         completed[key] = records[-1]
+    if alignment_record is not None and any(
+        file_sha256(Path(host_artifacts[role]["path"])) != digest
+        for role, digest in alignment_record["host_artifacts"].items()
+    ):
+        raise ValueError("compiled host alignment inputs changed during device audit")
     return records
