@@ -2,6 +2,7 @@
 alias validates its complete continuation; empty-tensor, negative and out-of-bounds reads refuse. -/
 import MerlinVerify.Check.FromElementsFacts
 import MerlinVerify.Check.ConstantFacts
+import MerlinVerify.Rules.IndexFold
 import MerlinVerify.Check.TypedAlias
 import MerlinVerify.Check.TypedDead
 import MerlinVerify.Check.BodyNormalize
@@ -25,19 +26,15 @@ def indexProducer (s : Op) : Bool :=
   | [r] => r.ty == .index
   | _ => false
 
+/-- Reuse exact successful-source index replay. Intermediate values need no materialization
+hints, and arbitrary writes invalidate the same current-binding facts. -/
 def advance (ib : Nat) (facts : Facts) (s : Op) : Facts :=
-  ⟨FromElementsFacts.advance facts.elements s,
-    if indexProducer s then ConstantFacts.advance ib facts.constants s
-    else BindingFacts.forget ConstantFacts.model (s.results.map (·.id)) facts.constants⟩
+  ⟨FromElementsFacts.advance facts.elements s, Rules.IndexFold.advance ib facts.constants s⟩
 
 theorem advance_sound {ib : Nat} {facts : Facts} {s : Op} {ctx : Ctx} {call : CallSem}
     {env env' : Env} (hf : Valid facts env) (hi : ctx.indexBits = ib)
     (hs : stepOp opSem ctx call env s = .ok env') : Valid (advance ib facts s) env' := by
-  refine ⟨FromElementsFacts.advance_sound hf.1 hs, ?_⟩
-  change BindingFacts.Valid ConstantFacts.model (if indexProducer s then _ else _) env'
-  split
-  · exact ConstantFacts.advance_sound hf.2 hi hs
-  · exact BindingFacts.forget_step ConstantFacts.model hf.2 hs
+  exact ⟨FromElementsFacts.advance_sound hf.1 hs, Rules.IndexFold.advance_sound hf.2 hi hs⟩
 
 private def valueDecEq (a b : Value) : Decidable (a = b) :=
   decidable_of_iff (a.id = b.id ∧ a.ty = b.ty) (by cases a; cases b; simp)
