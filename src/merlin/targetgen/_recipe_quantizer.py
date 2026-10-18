@@ -1425,34 +1425,18 @@ def apply_recipe(
 def agreement(
     reference: Any, candidate: Any, samples: Iterable[Any], *, limit: int = AGREEMENT_SAMPLE_LIMIT
 ) -> dict[str, Any]:
-    """How a quantized model's outputs compare with the floating-point model's, on real samples.
+    """How all quantized tensor outputs compare with the floating-point model on real samples.
 
     A contract change is never an optimisation: moving a weight scale from per-channel to
     per-tensor changes the numbers, and this is the receipt that says by how much. Reported per
     stream, not judged here; the consumer holds it to the workload's own bar.
     """
-    import torch
+    if __package__:
+        from . import _recipe_agreement as RA
+    else:
+        import _recipe_agreement as RA  # noqa: PLC0415 -- capture-interpreter sibling
 
-    count = agree = 0
-    cosines: list[float] = []
-    worst = 0.0
-    with torch.no_grad():
-        for sample in samples:
-            if count >= limit:
-                break
-            inputs = _as_tuple(sample)
-            expected = torch.utils._pytree.tree_flatten(reference(*inputs))[0][0].float().flatten()
-            actual = torch.utils._pytree.tree_flatten(candidate(*inputs))[0][0].float().flatten()
-            cosines.append(float(torch.nn.functional.cosine_similarity(expected, actual, dim=0)))
-            worst = max(worst, float((expected - actual).abs().max()))
-            agree += int(int(expected.argmax()) == int(actual.argmax()))
-            count += 1
-    if not count:
-        return {"samples": 0}
-    return {
-        "samples": count,
-        "argmax_agreement": agree / count,
-        "cosine_min": min(cosines),
-        "cosine_mean": sum(cosines) / count,
-        "max_abs_error": worst,
-    }
+    try:
+        return RA.compare(reference, candidate, samples, limit=limit, as_tuple=_as_tuple)
+    except RA.AgreementError as error:
+        raise RecipeError(str(error)) from error

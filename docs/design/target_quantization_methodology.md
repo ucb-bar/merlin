@@ -117,6 +117,14 @@ The known grouped observer is covered only while it inherits the framework's exa
 grouping changes its qparams calculation, not the observation. Tensor identity, version, storage,
 geometry and dtype must all match. Histograms and arbitrary observer subclasses keep every call.
 
+**Agreement receipts.** Calibration comparison covers every tensor result, with
+matching tree structure and per-sample shapes. Multi-result programs record both
+a concatenated summary and each output's metrics: a correct mask cannot stand
+in for a cache, and a large result cannot hide a smaller result's error. Empty,
+non-finite or complex results refuse the comparison. Single-result receipts keep
+their existing numeric behavior. These observations do not grant model numerical
+admission, dataset accuracy or target execution qualification.
+
 **Recovery.** Cross-layer equalization (Nagel et al., 2019) runs in `transform_for_annotation`, after
 Conv+BN folding and before any observer. It covers contraction pairs joined only by positively
 homogeneous steps: a relu, a max pool, or a product with a tensor not computed from the first

@@ -309,6 +309,11 @@ the owning experiment must independently qualify its minimal runtime boundary.
 
 ## Invariants
 
+Recipe calibration agreement compares the complete tensor result tree and
+records individual outputs for multi-result programs. A matching mask cannot
+stand in for a cache. Shape, topology and finite-value checks bind the comparison;
+these receipts remain measurements, not model admission or hardware verdicts.
+
 The opt-in literal bucketize host source-body contract admits only an exact
 typed prepared count form with a selected index-width premise. The private
 capture trace and linked-build witness must independently agree with it;
