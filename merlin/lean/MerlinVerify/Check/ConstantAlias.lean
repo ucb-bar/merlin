@@ -154,11 +154,7 @@ theorem normalize_sound {ib : Nat} (R : Rulebook opSem ib) (d : Nat) :
 
 /-- Each block learns only actual local constants; captured values never become constant
 facts from their annotations. The checked alias walk still updates captured uses of local results. -/
-def base (ib : Nat) : SplatNormalizer.Normalizer ib where
-  run _ Γ _ ops _ := normalize ib Γ [] ops
-  sound d Γ _ ops normalized yields ctx call env hc hn he _ hi hd :=
-    normalize_sound (merlinBook ib) d Γ [] ops normalized yields ctx call env hc hn he
-      (by intro f hf; cases hf) hi hd
+def base (ib : Nat) : SplatNormalizer.Normalizer ib := TailNormalize.base family ib []
 
 def normalizer : TypedNormalizer where
   run ib d Γ ops hints yields :=

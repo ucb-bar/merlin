@@ -6,6 +6,7 @@ import MerlinVerify.Rules.IndexFold
 import MerlinVerify.Check.TypedAlias
 import MerlinVerify.Check.TypedDead
 import MerlinVerify.Check.BodyNormalize
+import MerlinVerify.Check.StateNormalize
 import MerlinVerify.Check.RegionDepth
 import MerlinVerify.Check.TypedNormalizeC1
 
@@ -146,14 +147,39 @@ theorem drop_sound {ib : Nat} {Γ : TEnv} {s : Op} {tail : List Op}
     obtain ⟨r, hr, hs⟩ := ConstantFacts.value_exec hv hi call env
     exact ⟨r, value, hr, hs⟩
 
-def normalize (ib : Nat) (Γ : TEnv) (facts : Facts) : List Op → Option (List Op)
-  | [] => some []
-  | s :: ss =>
-    if s.isTerminator then some (s :: ss) else do
-      let _ ← s.operands.mapM (Γ.lookup ·)
-      let rs ← s.results.mapM (fun r => vtyOf ib r.ty)
-      let tail ← normalize ib ((s.results.map (·.id)).zip rs ++ Γ) (advance ib facts s) ss
-      pure (if drop? ib Γ s tail then tail else (eliminate Γ facts s tail).getD (s :: tail))
+def finish (ib : Nat) (Γ : TEnv) (facts : Facts) (s : Op) (tail : List Op) : List Op :=
+  if drop? ib Γ s tail then tail else (eliminate Γ facts s tail).getD (s :: tail)
+
+theorem finish_sound {ib : Nat} {Γ : TEnv} {facts : Facts} {s : Op} {tail : List Op}
+    {ctx : Ctx} {call : CallSem} {env : Env} (ht : s.isTerminator = false)
+    (he : EnvTyped ib Γ env) (hf : Valid facts env) (hi : ctx.indexBits = ib) :
+    evalOps opSem ctx call env (finish ib Γ facts s tail) = evalOps opSem ctx call env (s :: tail) := by
+  unfold finish
+  split
+  · next hdrop =>
+    obtain ⟨env', hs, heq⟩ := drop_sound hdrop hi call he
+    rw [evalOps_cons_step _ _ _ _ _ _ ht, hs, Outcome.bind_ok]
+    exact heq.symm
+  · cases helim : eliminate Γ facts s tail with
+    | none => rfl
+    | some renamed =>
+      simp only [Option.getD_some]
+      obtain ⟨_, env', hs, heq⟩ := eliminate_sound helim hf (ctx := ctx) (call := call)
+      rw [evalOps_cons_step _ _ _ _ _ _ ht, hs, Outcome.bind_ok]
+      exact heq
+
+/-- The existing product fact state enters the common traversal directly. Neither component
+contains entry facts, and successful original execution justifies both components after each step. -/
+def family : StateNormalize.Family Facts Valid where
+  initial := ⟨[], []⟩
+  initial_valid _ := by constructor <;> intro f hf <;> cases hf
+  advance ib _ facts s := advance ib facts s
+  advance_sound _ _ _ _ _ _ _ _ _ hf hi hs := advance_sound hf hi hs
+  finish ib Γ facts _ s tail := finish ib Γ facts s tail
+  finish_sound _ _ _ _ _ _ _ _ _ ht he hf hi := finish_sound ht he hf hi
+
+def normalize (ib : Nat) (Γ : TEnv) (facts : Facts) : List Op → Option (List Op) :=
+  StateNormalize.normalize family ib Γ facts []
 
 /-- Source progress establishes actual intermediate types, pointwise values and index facts.
 Alias checks preserve the entire normalized continuation, including every poison and failure outcome. -/
@@ -162,71 +188,13 @@ theorem normalize_sound {ib : Nat} (R : Rulebook opSem ib) (d : Nat) :
       checkOps R d Γ ss yields = true → normalize ib Γ facts ss = some ns →
       EnvTyped ib Γ env → Valid facts env →
       ctx.indexBits = ib → d ≤ ctx.loopIndex.length →
-      evalOps opSem ctx call env ns = evalOps opSem ctx call env ss
-  | _, _, [], _, _, _, _, _, h, _, _, _, _, _ => by simp [checkOps] at h
-  | Γ, facts, s :: ss, ns, yields, ctx, call, env, h, hn, he, hf, hib, hd => by
-    by_cases hterm : s.isTerminator = true
-    · simp only [normalize, hterm, ↓reduceIte, Option.some.injEq] at hn
-      subst ns; rfl
-    · have ht : s.isTerminator = false := by simpa using hterm
-      cases s with
-      | mk name results operands attrs props regions successors =>
-        simp only [checkOps] at h
-        split at h
-        · cases h
-        · next tys hl =>
-          rw [ite_eq_right hterm] at h
-          split at h
-          · cases h
-          · next rs hr =>
-            split at h
-            · cases h
-            · next sigs hR =>
-              simp only [Bool.and_eq_true] at h
-              obtain ⟨hregs, hrest⟩ := h
-              simp only [normalize, ht, Bool.false_eq_true, ↓reduceIte, hl, hr,
-                Op.operands, Op.results, bind, Option.bind] at hn
-              cases htail : normalize ib ((results.map (·.id)).zip rs ++ Γ)
-                  (advance ib facts (.mk name results operands attrs props regions successors)) ss with
-              | none => simp [htail] at hn
-              | some tail =>
-                simp only [htail, Option.pure_def, Option.some.injEq] at hn
-                subst ns
-                have ih : ∀ env', stepOp opSem ctx call env
-                    (.mk name results operands attrs props regions successors) = .ok env' →
-                    evalOps opSem ctx call env' tail = evalOps opSem ctx call env' ss := by
-                  intro env' hs
-                  exact normalize_sound R d _ _ ss tail yields ctx call env' hrest htail
-                    (step_envTyped R (op := .mk name results operands attrs props regions successors)
-                      hl hr hR hregs hib hd he hs)
-                    (advance_sound hf hib hs) hib hd
-                split
-                · next hdrop =>
-                  obtain ⟨env', hs, heq⟩ := drop_sound hdrop hib call he
-                  rw [evalOps_cons_step _ _ _ _ _ _ ht, hs, Outcome.bind_ok]
-                  exact heq.symm.trans (ih env' hs)
-                · cases helim : eliminate Γ facts (.mk name results operands attrs props regions successors) tail with
-                  | some renamed =>
-                    simp only [Option.getD_some]
-                    obtain ⟨_, env', hs, heq⟩ := eliminate_sound helim hf (ctx := ctx) (call := call)
-                    rw [evalOps_cons_step _ _ _ _ _ _ ht, hs, Outcome.bind_ok]
-                    exact heq.trans (ih env' hs)
-                  | none =>
-                    simp only [Option.getD_none]
-                    rw [evalOps_cons_step _ _ _ _ _ _ ht, evalOps_cons_step _ _ _ _ _ _ ht]
-                    cases hs : stepOp opSem ctx call env
-                        (.mk name results operands attrs props regions successors) with
-                    | ub => rfl
-                    | stuck _ => rfl
-                    | ok env' => exact ih env' hs
+      evalOps opSem ctx call env ns = evalOps opSem ctx call env ss := by
+  intro Γ facts ss ns yields ctx call env hc hn he hf hi hd
+  exact StateNormalize.normalize_sound family R d Γ facts [] ss ns yields ctx call env hc hn he hf hi hd
 
 /-- Local provenance starts empty at each block. Structured lifting supplies the actual typed
 scope, while every scalar alias and deleted producer carries its independent equality proof. -/
-def base (ib : Nat) : SplatNormalizer.Normalizer ib where
-  run _ Γ _ ops _ := normalize ib Γ ⟨[], []⟩ ops
-  sound d Γ _ ops normalized yields ctx call env hc hn he _ hi hd :=
-    normalize_sound (merlinBook ib) d Γ ⟨[], []⟩ ops normalized yields ctx call env hc hn he
-      (by constructor <;> intro f hf <;> cases hf) hi hd
+def base (ib : Nat) : SplatNormalizer.Normalizer ib := StateNormalize.base family ib []
 
 def normalizer : TypedNormalizer where
   run ib d Γ ops hints yields :=
