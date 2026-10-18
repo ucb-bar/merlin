@@ -512,7 +512,8 @@ def test_profile_selection_and_table_mutation_prevent_image_cache_reuse(builds, 
     assert not build()["reused"]
 
 
-def test_actual_whole_model_image_reuse_and_changed_source_execute_complete_state(tmp_path, monkeypatch):
+@pytest.mark.parametrize("storage", ["materialized", "streamed"])
+def test_actual_whole_model_image_reuse_and_changed_source_execute_complete_state(tmp_path, monkeypatch, storage):
     """Real ordinary build/relink/Spike path; no backend or compiler stubs."""
     import struct
 
@@ -528,6 +529,7 @@ def test_actual_whole_model_image_reuse_and_changed_source_execute_complete_stat
     root = tmp_path / "out"
     root.mkdir()
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(root))
+    monkeypatch.setenv("MERLIN_WEIGHT_PAYLOAD_STORAGE", storage)
     capture, host = tmp_path / "capture", tmp_path / "host"
     capture.mkdir()
     host.mkdir()

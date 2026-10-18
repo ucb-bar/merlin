@@ -37,6 +37,10 @@ code_refs:
   - src/merlin/llvmlower/automatic_rows.py
   - src/merlin/model_check/full_build.py
   - src/merlin/llvmlower/codegen_env.py
+  - src/merlin/llvmlower/c_runtime.py
+  - src/merlin/llvmlower/weight_payload.py
+  - src/merlin/llvmlower/blob_weights.py
+  - src/merlin/llvmlower/entry_weight_projection.py
   - src/merlin/sched/ir/integer_domain.py
   - src/merlin/compile/scheduling/selected_contracts.py
   - src/merlin/compile/scheduling/dense_contracts.py
@@ -240,6 +244,53 @@ The real execution test skips when the selected native/cross toolchain and
 functional simulator are unavailable. It checks every output and carried state
 for three calls under each of two changed source programs, plus normal hardware
 pin refusal; this small test is not qualification of a complete model corpus.
+
+### Generated weight storage
+
+Ordinary `c_runtime.generate` defaults to streamed weight assembly. It retains
+the existing manifest/signature, dead-weight compaction, alias, descriptor and
+entry-projection rules; their byte storage uses lazy file/array/zero spans.
+Prepared layouts, lifted quantization operands and generated zero stubs occupy
+the same offsets and padding as before. Complete shapes and dtypes are checked
+when prepared arrays are consumed. Projection and compaction use their existing
+algorithms with either byte storage representation, rather than a second packing
+policy. State, input streams, numerical operations and runtime dispatch remain
+under their existing contracts.
+
+This is host compilation storage, independent of accelerator geometry. The
+existing software ABI and weight declarations determine the bytes; the normal
+board/window checks still determine whether the final program fits. The 1 MiB
+I/O block is a compiler work-buffer budget, not an extracted device transfer
+width. Prepared arrays are loaded individually, so peak array storage still
+depends on the largest selected array. File-span source identity uses bounded
+block hashes, checked when read and reopened after consumption; timestamps alone
+never establish content identity. These checks add I/O. They do not establish a
+filesystem snapshot or replace the ordinary capture/library freshness checks.
+
+Hash-only generation does not assemble a complete blob in Python memory or
+write a temporary weights file. Materializing generation writes bounded chunks,
+then independently reopens the actual pending file to check its complete size
+and hash before atomic publication. A failed array, source or actual-write check
+preserves the previous blob. Explicit immutable `weights_source` reuse keeps
+its existing full-content and hardlink checks. No mutable invocation state is
+shared, and no cross-invocation hash or weight cache is introduced.
+
+For reproducible comparisons through the same library and verification rules,
+`MERLIN_WEIGHT_PAYLOAD_STORAGE=materialized` selects explicit full-payload
+materialization; `streamed` is the default. Unknown values refuse before output.
+This project control participates in the existing image/cache/recipe identities.
+Both choices retain all byte checks, packing algorithms and numerical policy.
+The control is an optional compiler-storage choice, not a target capability or
+calibrated cost model. Lower compiler heap use alone establishes no model
+execution or accelerator latency improvement.
+
+```bash
+python -B -m pytest merlin/tests/runtime/test_weight_payload.py \
+  merlin/tests/runtime/test_entry_weight_projection.py \
+  merlin/tests/runtime/test_blob_weights.py \
+  merlin/tests/infra/test_full_model_lowering_cache.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/streamed-weights"
+```
 
 Shared pass-state types now live in `merlin.transforms.pipeline_state`.
 `transforms.pipeline` reexports the identical objects and retains its existing
