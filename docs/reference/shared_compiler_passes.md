@@ -10,6 +10,7 @@ code_refs:
   - src/merlin/compile/scheduling/compact_dense.py
   - src/merlin/compile/scheduling/compact_verification.py
   - src/merlin/compile/scheduling/program_limits.py
+  - src/merlin/compile/scheduling/program_contracts.py
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/device_spills.py
   - src/merlin/compile/scheduling/spill_conformance.py
@@ -1222,6 +1223,12 @@ reads conservatively rather than inferring path-specific liveness.
 
 An asynchronous instruction prevents a boundary until an actual decoded drain.
 Unknown completion and position-dependent instructions prevent segmentation.
+May-pending work is now propagated through the actual decoded branch graph.
+Conditional branches include both successors; an explicitly unconditional
+relative branch can omit fallthrough. A path that skips its drain and exits
+with pending work rejects, even if the entire image fits. The finite boolean
+analysis visits instruction states without expanding loop trip counts.
+This is a conservative completion check, not a proof of termination or timing.
 Every resulting segment is decoded again: its actual normalized effects must
 equal the original instruction effects and meet the final budgets. The receipt
 records actual counts, sizes and hashes; it does not establish execution timing
@@ -1233,6 +1240,139 @@ and cover a distinct fixed-word representation. Existing target integrations do
 not supply this final decoder/continuation boundary automatically. Final machine
 program checks therefore remain an explicit integration requirement for those
 targets.
+
+### Final limits selected from RTL and software documents
+
+An optional `program` section of `merlin.schedule_effects.v1`, using schema
+`merlin.final_program_contract.v1`, binds the existing finalizer to the selected
+RTL/software pair. `compile_schedule` consumes it automatically before emission
+checks and finalization. Passing `None` for its `limits` argument derives the
+available constraints. A target/runtime provides the existing qualified
+decoder; a separate runtime qualification enables declared continuation:
+
+```python
+compiled = compile_schedule(
+    kernel, private_objects, None, storage_adapter, encoding, None,
+    selected_contracts=selected, private_ownership=True,
+    continuation_qualification_identity=qualified_runtime_evidence,
+)
+```
+
+The same binding works at the existing final-byte entry, including actual
+relative branches and asynchronous programs that the finite straight-line
+schedule compiler deliberately does not admit:
+
+```python
+final = finalize_program(
+    actual_image, None, qualified_decoder,
+    selected_contracts=selected,
+    continuation_qualification_identity=qualified_runtime_evidence,
+)
+```
+
+The selected `program` section has these exact fields:
+
+| Field | Contents and source |
+| --- | --- |
+| `schema` | `merlin.final_program_contract.v1` |
+| `limits` | RTL references or `null` for `max_bytes`, `max_instructions`, `instruction_alignment` |
+| `windows` | ISA byte-memory resource to fact-backed `start`, `size`, software `backing` and `visibility` |
+| `branches` | Rule name to actual `instruction`, integer `displacement` argument, fact-backed byte `scale` and software relative `origin` |
+| `instructions` | Actual ISA instruction name to `completion`, `relocatable`, `control_flow` |
+| `continuation` | `null`, or explicit launch completion, entry, persistence and bounded launch count |
+
+Window coordinates are canonical backing bytes. `visibility` is `private`,
+`external` or `unknown`; unknown storage remains observable. A window must fit
+known RTL capacity, and must not contradict or widen the existing selected
+storage window or its backing/ownership. Aliases must agree on visibility.
+The finalizer publishes all external/unknown windows conservatively in addition
+to caller outputs. Omitting an output cannot authorize loss of carried state.
+
+Branch displacement bounds come from the selected ISA field's actual width and
+the typed integer domain, including signedness. Software declares
+`origin: instruction` or `next_instruction`, and RTL supplies byte scale.
+`origin: unknown` remains unsupported when that branch occurs. The pass invents
+no PC rule, branch relaxation or instruction width. Current selected decoding
+supports complete, fixed-width, byte-aligned words from `ResolvedISA`; the
+existing explicitly qualified finalizer still supports other decoder framings.
+
+Instruction `completion` is `synchronous`, `asynchronous`, `drain` or `unknown`.
+`drain` is a qualified assertion that **all pending work is complete and visible**,
+not something inferred from an RTL queue depth or a wait spelling. Storage
+completion declarations must agree. Control flow is `fallthrough`,
+`conditional_relative`, `relative` (unconditional), or `unknown`. An unknown
+control/effect description is a barrier. A return/exit without a represented
+branch target cannot be segmented. A fitting unmodified image may retain
+unknown completion, reported explicitly; it acquires no completion certificate.
+
+Before each final check, the wrapper independently decodes actual ISA words,
+reconstructs declared byte accesses from the existing selected storage operand
+bindings, reconstructs relative branches, and checks completion, framing,
+fallthrough and relocation against the provider decoder. It consumes no retained
+instruction request list. Unknown memory projections diagnose. Segments are
+decoded again through the same checks; a decoder that changes its interpretation
+for shorter images cannot inherit the whole-image receipt.
+
+Continuation declares `sequential_completion`, `starts_at_zero`, a positive
+software `max_segments` budget, `preserved_backings`, and
+`preserved_configuration`. The latter maps ISA state resources to RTL field-index
+references. Preserving memory does not imply preserving configuration. Actual
+encoded state operations must have complete ordered configuration projections,
+and every affected field must survive launches. Other nonmemory execution state
+needs a separate continuation contract and currently blocks segmentation.
+False launch/entry declarations or missing independent runtime qualification
+disable segmentation; a fitting unmodified image remains available.
+
+Physical preservation applies to every alias of a backing. The finalizer
+canonicalizes spaces for its cut/liveness analysis while retaining each view's
+address checks and original bytes. This can remove unnecessary launches that
+an analysis over view names alone retained. Partial overwrites never kill an
+entire future read. A supplied `Continuation` can restrict the selected memory,
+configuration and launch budget, but cannot expand them or assign contradictory
+survival to two aliases. The generic explicit finalizer also accepts a complete
+`physical_spaces` mapping when no selected contract is used; partial or
+unselected alias overrides reject.
+
+Caller `ProgramLimits` may tighten byte/count budgets and branch reach, and
+restrict windows. They cannot widen hardware windows or change branch origin
+or scale. A missing hardware byte capacity can be paired with an explicit
+code-growth budget, but the receipt still says hardware byte capacity is
+unknown. Without either bound the pass diagnoses. Missing instruction count
+stays unknown, and actual instructions are still counted. Missing instruction
+alignment diagnoses; no default alignment is guessed.
+
+Selected raw documents, resolver/finalizer implementations, source controls and
+decoder/continuation identities must remain current across decoding and before
+return. Edits or callback mutations invalidate the check. These are binding
+checks, not independent qualification of a decoder or runtime implementation.
+Native negative controls demonstrate wrong outputs or final configuration when
+an implementation violates a declared alias or persistence rule.
+
+The tests execute actual little-endian 64-bit-field and big-endian 32-bit-field
+programs with different memory models, complete outputs and three invocations.
+They cover capacity boundaries, source copy elimination before final counting,
+closed forward/backward branches, branch paths that skip drains, completed
+asynchronous copies, aliased overwrites, launch/configuration persistence and
+stale or inconsistent final decoding. The paired explicit/selected entries use
+the same library version, source program, hardware limits and inputs. Observed
+launch counts, commands and requested bytes are separate results; fewer launches
+do not establish latency improvement.
+
+```sh
+python -B -m pytest merlin/tests/infra/test_selected_program_contracts.py \
+  merlin/tests/infra/test_selected_program_control.py \
+  merlin/tests/infra/test_program_limits.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/selected-program-check"
+```
+
+No target repository supplies this boundary through this change. Real-target
+decoder/launch qualification and complete model integration remain unresolved.
+These word-stream checks do not count instructions in arbitrary target C or a
+linked native ELF. In particular, a counted-row C program's static call count
+does not establish its final native instruction size; ordinary linked-image
+admission remains the applicable boundary until a qualified integration is
+provided. Compilation peak memory and accelerator timing for these selected
+checks are not established by the neutral executions.
 
 ## Complete-domain counted row softmax
 

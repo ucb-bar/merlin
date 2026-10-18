@@ -279,6 +279,23 @@ def test_closed_forward_and_backward_edges_keep_instruction_boundaries_together(
         finalize_program(image, replace(LIMITS, max_bytes=4), DECODER, continuation=CONTINUATION, outputs=())
 
 
+def test_explicit_unconditional_branch_can_skip_an_unreachable_async_launch():
+    region = bytes([0x30, 2, 0x31, 0, 1])
+    image = region * 2
+    def unconditional(data):
+        return tuple(replace(i, fallthrough=False) if i.branches else i for i in decode(data))
+    decoder = replace(DECODER, decode=unconditional)
+    result = finalize_program(image, replace(LIMITS, max_bytes=5), decoder,
+                              continuation=CONTINUATION, outputs=())
+    assert result.segments == (region, region)
+    assert execute(result.segments) == execute((image,))
+    assert execute(result.segments)[0] == bytes(16)
+    # Without the explicit unconditional fact, both paths remain possible.
+    with pytest.raises(ValueError, match="control-flow path ending"):
+        finalize_program(image, replace(LIMITS, max_bytes=5), DECODER,
+                         continuation=CONTINUATION, outputs=())
+
+
 @pytest.mark.parametrize("field,value", [("branches", (object(),)), ("windows", (object(),)), ("branches", [])])
 def test_untyped_hardware_facts_have_a_precise_diagnostic(field, value):
     with pytest.raises(ValueError, match="explicit immutable declarations"):

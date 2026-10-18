@@ -161,6 +161,7 @@ def shared_library_sources():
         "merlin.compile.scheduling.fusion_contracts",
         "merlin.compile.scheduling.spill_contracts",
         "merlin.compile.scheduling.row_contracts",
+        "merlin.compile.scheduling.program_contracts",
         "merlin.sched.codegen",
         "merlin.sched.isa",
         "merlin.targetgen.isa_spec",
@@ -197,6 +198,7 @@ def _emission_effects(
                 effect.completion != "synchronous"
                 or instruction.completion != "synchronous"
                 or instruction.branches
+                or not instruction.fallthrough
                 or effect.accesses != instruction.accesses
             ):
                 raise ValueError(
@@ -240,6 +242,7 @@ def compile_schedule(
     fusion_qualification_identity=None,
     spill_emitters=None,
     spill_qualification_identity=None,
+    continuation_qualification_identity=None,
 ) -> ScheduleCompilation:
     """Allocate, check, encode and finalize through the existing pass session.
 
@@ -291,11 +294,26 @@ def compile_schedule(
             scopes.extend(("device_register_resources", "exact_spill_reload_routes"))
         elif spill_emitters is not None or spill_qualification_identity is not None:
             raise ValueError("device spill emitters and qualification require a selected spill contract")
+        program_binding = None
+        if selected_contracts.program is not None:
+            if type(encoding) is not ScheduleEncoding:
+                raise ValueError("selected final program requires typed schedule encoding")
+            limits, decoder, continuation, program_binding = selected_contracts.program.bind(
+                selected_contracts, limits, encoding.program_decoder, continuation,
+                continuation_qualification_identity,
+            )
+            encoding = replace(encoding, program_decoder=decoder)
+            scopes.extend(("final_program_limits", "physical_address_windows", "branch_encodings",
+                           "launch_state_continuation"))
+        elif continuation_qualification_identity is not None:
+            raise ValueError("continuation qualification requires a selected program contract")
         binding = selected_contracts.record(scopes=tuple(scopes))
         if fusion_binding is not None:
             binding["fusion"] = fusion_binding
         if spill_binding is not None:
             binding["spills"] = spill_binding
+        if program_binding is not None:
+            binding["program"] = program_binding
         binding["configuration_pass"] = (
             "selected_qualified_declaration" if configuration_adapter is not None
             else "unavailable_missing_qualification"
@@ -306,6 +324,8 @@ def compile_schedule(
         raise ValueError("fusion emitters and qualification require selected RTL/software contracts")
     elif spill_emitters is not None or spill_qualification_identity is not None:
         raise ValueError("device spill emitters and qualification require selected RTL/software contracts")
+    elif continuation_qualification_identity is not None:
+        raise ValueError("continuation qualification requires selected RTL/software program contracts")
     if external_windows is None:
         external_windows = ()
     if (
@@ -588,7 +608,9 @@ def compile_schedule(
         # an otherwise illegal segmentation boundary.
         outputs = tuple(EncodedAccess(window.space, window.start, window.size) for window in external_windows)
         program = finalize_program(
-            session.analysis("encoded"), limits, encoding.program_decoder, continuation=continuation, outputs=outputs
+            session.analysis("encoded"), limits, encoding.program_decoder, continuation=continuation, outputs=outputs,
+            selected_contracts=(selected_contracts if selected_contracts is not None
+                                and selected_contracts.program is not None else None),
         )
         effects = _emission_effects(
             program.segments, session.module, adapter, encoding, limits, budgets.max_calls,

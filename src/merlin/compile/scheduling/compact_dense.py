@@ -548,6 +548,7 @@ def _dense_library_sources():
         "merlin.compile.scheduling.fusion_contracts", "merlin.compile.scheduling.fusion_semantics",
         "merlin.compile.scheduling.spill_contracts",
         "merlin.compile.scheduling.row_contracts", "merlin.compile.scheduling.row_softmax",
+        "merlin.compile.scheduling.program_contracts", "merlin.compile.scheduling.program_limits",
         "merlin.compile.scheduling.fusion",
         "merlin.semantic_compiler.allocation_types", "merlin.semantic_compiler.allocate",
         "merlin.compile.scheduling.block_schedule", "merlin.transforms.dense_planning",
