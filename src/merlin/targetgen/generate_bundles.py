@@ -483,9 +483,11 @@ def generate_bundles(
 
             if python_source_root is None:
                 raise ValueError("common substrate requires the selected Python source root")
-            from .tool_profile import COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5
+            from .tool_profile import COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6
 
-            if common_substrate not in {COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5}:
+            if common_substrate not in {
+                COMMON_SUBSTRATE_V3, COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6
+            }:
                 attach_common_substrate(
                     out[bid],
                     version=common_substrate,
@@ -504,7 +506,7 @@ def generate_bundles(
             _select_rtl_facts_grant(out[bid], te, selected_facts[0])
         if common_substrate in {
             "merlin.common_compiler_substrate.v3", "merlin.common_compiler_substrate.v4",
-            "merlin.common_compiler_substrate.v5",
+            "merlin.common_compiler_substrate.v5", "merlin.common_compiler_substrate.v6",
         }:
             # The common generated task is the sole authoring instruction owner.
             # Legacy target task directories remain operator inputs, not grants.
@@ -908,12 +910,13 @@ def _main(argv: list[str] | None = None) -> int:
         COMMON_SUBSTRATE_V3,
         COMMON_SUBSTRATE_V4,
         COMMON_SUBSTRATE_V5,
+        COMMON_SUBSTRATE_V6,
     )
 
     ap.add_argument(
         "--common-substrate",
         choices=(COMMON_SUBSTRATE_V1, COMMON_SUBSTRATE_V2, COMMON_SUBSTRATE_V3,
-                 COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5),
+                 COMMON_SUBSTRATE_V4, COMMON_SUBSTRATE_V5, COMMON_SUBSTRATE_V6),
         help="select versioned common transforms and strict covered-domain verification for a fresh release",
     )
     ap.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")

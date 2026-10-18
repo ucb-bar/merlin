@@ -27,13 +27,13 @@ from merlin.targetgen.target_experiment import TargetExperiment
 
 
 @pytest.fixture
-def ordinary_inputs(tmp_path, monkeypatch):
+def ordinary_inputs(tmp_path, monkeypatch, request):
     """Stub only external admission/execution evidence, retain actual normal routing."""
     monkeypatch.setenv(DF.SWEEP_WORKERS_ENV, "1")
     monkeypatch.delenv(DF.AUTHORING_GSIM_FLOOR_BUDGET_ENV, raising=False)
     candidate = tmp_path / "candidate"
     candidate.mkdir()
-    (candidate / "compiler.py").write_text("def schedule():\n    return 1\n")
+    (candidate / "compiler.py").write_text(getattr(request, "param", "def schedule():\n    return 1\n"))
     (candidate / "manifest.yaml").write_text(
         json.dumps({"entrypoints": {"tool": "compiler.py"}, "commands": {"compile": {"argv": ["python", "{tool}"]}}})
     )
