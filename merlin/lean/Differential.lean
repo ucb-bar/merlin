@@ -24,20 +24,22 @@ def usesFloatModel (n : String) : Bool :=
   (n.startsWith "math." && n != "math.absi") || floatOps.contains n ||
     ["arith.remf", "arith.maximumf", "arith.minimumf", "arith.maxnumf", "arith.minnumf"].contains n
 
-def scalarType : Ty → Bool
-  | .int w => 0 < w && w <= 64
+-- The native observation ABI is limited to 64 bits, but the proved integer
+-- denotation supports wider intermediates without a host integer conversion.
+def internalScalarType : Ty → Bool
+  | .int w => 0 < w
   | .index | .float .f32 | .float .f64 => true
   | _ => false
 
-def valueType : Ty → Bool
-  | .tensor sh elt none => sh.all Option.isSome && scalarType elt
-  | ty => scalarType ty
+def internalValueType : Ty → Bool
+  | .tensor sh elt none => sh.all Option.isSome && internalScalarType elt
+  | ty => internalScalarType ty
 
 mutual
-  def validateOps : List Op → Except String Unit
+  def validateOps (types : List (ValueId × Ty)) : List Op → Except String Unit
     | [] => pure ()
     | op@(.mk _ results _ _ _ regions _) :: rest => do
-      unless results.all (fun r => valueType r.ty) do throw "unsupported result type in fidelity adapter"
+      unless results.all (fun r => internalValueType r.ty) do throw "unsupported result type in fidelity adapter"
       if usesFloatModel op.name then
         unless floatOps.contains op.name do throw s!"test float model does not implement {op.name}"
         let arity := if op.name == "math.fma" then 3
@@ -56,19 +58,28 @@ mutual
         if op.name == "arith.fptosi" || op.name == "arith.fptoui" then
           unless results.all (fun r => (r.ty.bitWidth? 64).getD 65 <= 32) do
             throw "test float-to-int model supports results up to 32 bits"
-      validateRegions regions
-      validateOps rest
-  def validateRegions : List Region → Except String Unit
+        if op.name == "arith.sitofp" || op.name == "arith.uitofp" then
+          -- hostModel.ofInt uses UInt64. Check the actual operand's SSA type,
+          -- including captures, before permitting that host conversion.
+          let supported := match op.operands with
+            | [id] => match types.lookup id with
+              | some (.int w) | some (.tensor _ (.int w) none) => 0 < w && w <= 64
+              | _ => false
+            | _ => false
+          unless supported do throw "test int-to-float model requires a 1..64-bit integer input"
+      validateRegions types regions
+      validateOps (results.map (fun r => (r.id, r.ty)) ++ types) rest
+  def validateRegions (types : List (ValueId × Ty)) : List Region → Except String Unit
     | [] => pure ()
     | .mk bs :: rs => do
-      validateBlocks bs
-      validateRegions rs
-  def validateBlocks : List Block → Except String Unit
+      validateBlocks types bs
+      validateRegions types rs
+  def validateBlocks (types : List (ValueId × Ty)) : List Block → Except String Unit
     | [] => pure ()
     | .mk args ops :: bs => do
-      unless args.all (fun a => valueType a.ty) do throw "unsupported block argument type in fidelity adapter"
-      validateOps ops
-      validateBlocks bs
+      unless args.all (fun a => internalValueType a.ty) do throw "unsupported block argument type in fidelity adapter"
+      validateOps (args.map (fun a => (a.id, a.ty)) ++ types) ops
+      validateBlocks types bs
 end
 
 def roundEven (x : Float) : Float := Id.run do
@@ -218,7 +229,7 @@ def outcome : Outcome (List RVal) → Json
 
 def run (j : Json) : Except String Json := do
   let m <- Decode.module (← Decode.str (← Decode.field j "export"))
-  validateOps m.ops
+  validateOps [] m.ops
   let fn <- Decode.str (← Decode.field j "function")
   let ib <- Decode.nat (← Decode.field j "index_bits")
   unless ib == 32 || ib == 64 do throw "fidelity adapter supports 32- or 64-bit index"
