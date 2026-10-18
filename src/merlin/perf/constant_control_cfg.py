@@ -139,6 +139,8 @@ def _poison_flags(op):
     for key in ("overflowFlags", "overflow_flags", "isExact", "isDisjoint"):
         flags = op.properties.get(key)
         flag_value = getattr(getattr(flags, "value", None), "data", getattr(flags, "data", None))
+        if isinstance(flag_value, frozenset) and not flag_value:
+            continue  # xDSL's canonical #llvm.overflow<none> carries an empty flag set.
         if flags is not None and flag_value not in ((), 0, False):
             return True
     return False

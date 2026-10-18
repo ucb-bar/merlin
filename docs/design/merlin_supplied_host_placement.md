@@ -3,16 +3,18 @@ title: "Design note: Merlin supplies the host part of a whole-program capsule"
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-17
+last_verified: 2026-10-18
 related: [capsule_phase_split, agentic_experiment_integrity, derived_capsule_axes]
 code_refs: [packages/merlin-experiments/src/merlin/targetgen/frozen_placement.py, packages/merlin-experiments/src/merlin/targetgen/owned_host_model_selection.py, packages/merlin-experiments/src/merlin/targetgen/owned_host_model_execution.py, packages/merlin-experiments/src/merlin_experiments/phase0/program_admission.py, packages/merlin-experiments/src/merlin_experiments/corpus/publication.py, src/merlin/compile/owned_host_model.py]
 ---
 
 # Merlin supplies the host part of a whole-program capsule
 
-Phase 1 grades the author's accelerator compiler. Any operation Phase 0 places on the host is
-Merlin's responsibility. Merlin's own generic host codegen compiles it, and it is never graded as
-the author's work. Two consequences follow.
+Phase 1 grades the author's accelerator compiler. Merlin supplies its generic host codegen for
+operations outside the accelerator groups. Phase 0 fixes the mandatory accelerator work, while
+Merlin's capability-checked group formation may also attach supporting readout and layout operations
+or select standalone optional device groups. The agent can implement those groups without recreating a host
+compiler. Two consequences follow.
 
 1. **No public capsule is host-only.** Synthesis withholds entries whose declared placement has no
    accelerator work. Generation removes a written member whose admitted screen places nothing on the
@@ -35,8 +37,9 @@ the author's work. Two consequences follow.
 - `_numeric_full_output` compares every output to `golden.npz`.
 
 After the build, `_audit_owned_host_device_build` re-forms the groups from the exact routed source.
-It requires every independently eligible operation to sit in a device group, refuses a skipped
-sidecar, proves each call reaches its kernel in the linked ELF, and runs
+It requires every independently eligible operation to sit in a device group, accepts intended host
+selection only after proving complete mandatory coverage, proves each routed call reaches its kernel
+in the linked ELF, and runs
 `audit_built_device_host_compute`. That audit refuses host arithmetic or host payload inside any
 function that implements an accelerator group, and refuses undefined external symbols.
 
@@ -45,8 +48,10 @@ the candidate emits the whole program, host code included.
 
 ## What changes
 
-The owned-host route already has the split this design needs. What it lacks is a binding to Phase 0:
-it re-derives eligibility from the frozen source, but it never reads the frozen placement.
+The owned-host route binds its independently derived eligibility to Phase 0's frozen accelerator
+obligations. Host placements supply the default implementation for remaining work; they do not
+prohibit supported fusion or standalone optional accelerator groups. This is a shared policy for
+all accelerators; the selected capability data determines which work the device can implement.
 
 **Authority.** The split comes from the `software_screen` that Phase 0 froze into the sealed
 `capsule.yaml`:
@@ -62,18 +67,25 @@ malformed, or has no accelerator operation.
 contains accelerator work. Such a capsule can no longer fall back to the legacy runner graph on an
 eligibility exception. A mismatch now fails the owned route instead.
 
-**Split check.** `frozen_placement.require_split` runs twice:
+**Split check.** `frozen_placement.require_split` runs before candidate invocation, after the build,
+and again during re-audit. Before invocation and after the build, `_source_placement` also checks
+each independently eligible source operation's actual group assignment.
 
-- before the candidate is invoked, against Merlin's groups of the routed source;
-- again inside `_source_placement` after the build, against fresh eligibility.
+The fresh independent eligibility must equal the frozen accelerator census. Device groups must
+include that work and contain only operations from the exact original source. Additional members
+selected by Merlin's ordinary capability checks are recorded as `supporting_device_operations`.
+An omitted required operation, an operation assigned to the host despite its accelerator obligation,
+an invented source member or changed eligibility still refuses qualification. Numerical, emitted
+device work and host-compute checks apply to the resulting fused program.
 
-Both runs compare, operation by operation name, the accelerator operations Phase 0 froze, the
-members of Merlin's device groups, and the independently eligible operations. Any difference
-refuses the grade:
-
-- an accelerator operation Merlin would place on the host;
-- a host operation fused into a device group;
-- a fresh eligibility that disagrees with Phase 0.
+**Optional groups.** Source admission derives a separate optional roster from Merlin's non-host
+groups outside the mandatory set. Each record retains the original root's region/node identity and
+static output extent; emission cannot invent an optional source group. The source join requires all
+mandatory identities and permits any subset of those optional identities. Both rosters reject
+duplicate or changed provenance. Every emitted group receives the same linked-body, host-compute and
+complete-output checks. Optional linked groups are counted separately and cannot increase mandatory
+coverage. A group lacking complete source evidence retains an explicit refusal if selected; ordinary
+host placement remains available for work outside the mandatory set.
 
 ## Integrity
 
@@ -81,14 +93,34 @@ refuses the grade:
   declines a group, the existing sidecar check refuses the grade. If an eligible operation lands in
   a host group, `_source_placement` refuses it. A device group count below the frozen accelerator
   count now refuses as well.
-- **Host work cannot move to the author.** The candidate receives only the device-group interface
-  programs, and the device groups must hold exactly the frozen accelerator operations. Host
-  operations reach only Merlin's host package, whose tree digest is checked before and after the
-  build.
+- **Merlin supplies the host implementation.** The candidate receives closed device-group interface
+  programs, including supported attached stages and optional groups. Operations outside those groups reach Merlin's host
+  package, whose tree digest is checked before and after the build. Supporting fusion grants no
+  additional accelerator coverage credit.
 - **The host-compute audit is unchanged.** It still runs on every linked device function, and
   unknown remains not clean. The frozen-placement check comes in addition to it, never in its place.
 - **Nothing is weakened.** NOT_RUN_IS_NOT_PASS, tier requirements, sandbox masking, and
   golden/hidden/sealed checks are untouched. The end-to-end comparison still covers every output.
+
+## Input preparation and protocol findings
+
+`input_preparation.source_convolution` binds a simple integer convolution's pointer order and
+buffer extents to its admitted original source and the selected logical harness ABI. The host-compute
+veto can use `verify.conv_input_preparation` to exclude only independently proven bounded copies,
+padding and their address/control work. Private scratch globals require actual initialization and
+consumption by decoded accelerator loads. CPU arithmetic on tensor values, CPU output stores,
+unknown pointers and unproved effects retain the ordinary audit outcome.
+The load-state recipe can select an original FIRRTL byte-count sink and its typed row/column fields.
+A shared structural derivation bounds the transfer's element width from every source expression
+alternative, checks the decoder's field offsets/widths, and retains unknown for unsupported forms.
+The target supplies the source selectors as data, never an assumed element width in library code.
+
+Resident-reuse qualification checks actual transfers, available operand identities and the required
+execution tiers. Reissuing identical execution configuration is reported in
+`execution_config_advisory` as a performance opportunity; it does not itself demonstrate a weight
+reload. Actual redundant resident loads still refuse the declared residency requirement. Decoder
+support for constant byte GEPs and closed read-only globals retains original address identities.
+These rules apply to new qualifications and never rewrite historical frozen results.
 
 ## Out of scope
 

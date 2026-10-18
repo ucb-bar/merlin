@@ -237,8 +237,10 @@ def audit_group(
             # All exclusions are actual closed address/copy execution counts;
             # ordinary budgets still judge every operation outside that proof.
             arithmetic -= preparation["arithmetic"] - address_arithmetic
+            arithmetic -= preparation.get("conversions", 0)
+            value_arithmetic -= preparation.get("conversions", 0)
             payload -= preparation["payload_bytes"]
-            if arithmetic < 0 or payload < 0:
+            if arithmetic < 0 or value_arithmetic < 0 or payload < 0:
                 row.update(verdict=UNKNOWN, why="input preparation counts exceed original raw accounting")
                 return row
     command_only = (

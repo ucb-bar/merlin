@@ -227,6 +227,8 @@ rocc_operand_roles:
   classes:
     MVIN: &rocc_mvin
       fields:
+        - {name: is_acc_addr, operand: rs2, bundle: MvinRs2, field: local_addr,
+           as: flag, flag: accumulator_select}
         - {name: dram, operand: rs1, as: operand}
         - {name: rows, operand: rs2, bundle: MvinRs2, field: num_rows}
         - {name: cols, operand: rs2, bundle: MvinRs2, field: num_cols}

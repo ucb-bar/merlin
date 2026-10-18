@@ -62,15 +62,74 @@ def test_closed_input_copy_proves_actual_transfer_and_keeps_counts(monkeypatch):
     assert proof["scratch_input_transfers"] == 1
 
 
+def test_private_scratch_global_needs_actual_initialized_copy_and_dma(monkeypatch):
+    def global_scratch(text):
+        return text.replace("builtin.module {", """builtin.module {
+          llvm.mlir.global private @scratch(dense<0> : tensor<1xi8>)
+           {addr_space = 0 : i32, alignment = 8 : i64} : !llvm.array<1 x i8>
+        """).replace("%scratch = llvm.alloca %one x i8 : (i64) -> !llvm.ptr",
+                     "%scratch = llvm.mlir.addressof @scratch : !llvm.ptr")
+
+    copy = "llvm.store %value, %scratch : i8, !llvm.ptr"
+    assert _proof(monkeypatch, copy, global_scratch)["status"] == "proven"
+    # A zero initializer on mutable scratch is not evidence that the current call initialized it.
+    assert _proof(monkeypatch, "", global_scratch)["status"] == "unproven"
+    arithmetic = "%changed = llvm.add %value, %value : i8\n llvm.store %changed, %scratch : i8, !llvm.ptr"
+    assert _proof(monkeypatch, arithmetic, global_scratch)["status"] == "unproven"
+
+
 def test_loaded_value_arithmetic_output_store_and_unknown_pointer_refuse(monkeypatch):
     bad = [
         "%changed = llvm.add %value, %value : i8\n llvm.store %changed, %scratch : i8, !llvm.ptr",
+        "%changed = llvm.trunc %value : i8 to i1\n %wide = llvm.zext %changed : i1 to i8\n"
+        "llvm.store %wide, %scratch : i8, !llvm.ptr",
         "llvm.store %value, %output : i8, !llvm.ptr",
         "%unknown = llvm.inttoptr %one : i64 to !llvm.ptr\n llvm.store %value, %unknown : i8, !llvm.ptr",
         "",
     ]
     for replacement in bad:
         assert _proof(monkeypatch, replacement)["status"] == "unproven"
+
+
+def test_integer_address_casts_are_counted_without_touching_input_values(monkeypatch):
+    def casts(text):
+        return text.replace("%address = llvm.ptrtoint %scratch", """
+          %narrow = llvm.trunc %one : i64 to i32
+          %wide = llvm.zext %narrow : i32 to i64
+          %offset = llvm.sub %wide, %one : i64
+          %same = llvm.getelementptr %scratch[%offset] : (!llvm.ptr, i64) -> !llvm.ptr, i8
+          %address = llvm.ptrtoint %same""")
+
+    proof = _proof(monkeypatch, "llvm.store %value, %scratch : i8, !llvm.ptr", casts)
+    assert proof["status"] == "proven" and proof["conversions"] == 2, proof
+
+
+@pytest.mark.parametrize("condition,alignment,expected", [("true", 1, "proven"), ("false", 1, "unproven"),
+                                                          ("true", 16, "unproven")])
+def test_alignment_assumptions_need_original_storage_evidence(monkeypatch, condition, alignment, expected):
+    def assume(text):
+        text = text.replace("builtin.module {", """builtin.module {
+          llvm.mlir.global private @scratch(dense<0> : tensor<1xi8>)
+           {addr_space = 0 : i32, alignment = 8 : i64} : !llvm.array<1 x i8>
+        """).replace("%scratch = llvm.alloca %one x i8 : (i64) -> !llvm.ptr",
+                     "%scratch = llvm.mlir.addressof @scratch : !llvm.ptr")
+        return text.replace("%value =", f"""
+          %condition = llvm.mlir.constant({condition}) : i1
+          %alignment = llvm.mlir.constant({alignment}) : i64
+          "llvm.intr.assume"(%condition, %scratch, %alignment)
+           <{{op_bundle_sizes = array<i32: 2>, op_bundle_tags = ["align"]}}> : (i1, !llvm.ptr, i64) -> ()
+          %value =""")
+
+    assert _proof(monkeypatch, "llvm.store %value, %scratch : i8, !llvm.ptr", assume)["status"] == expected
+
+
+def test_void_asm_result_spelling_preserves_closed_command_effects(monkeypatch):
+    def void_results(text):
+        lines = [f" %unused{index} = " + line.strip() if line.strip().startswith('"llvm.inline_asm"')
+                 else line for index, line in enumerate(text.splitlines())]
+        return "\n".join(lines).replace("(i64, i64) -> ()", "(i64, i64) -> !llvm.void")
+
+    assert _proof(monkeypatch, "llvm.store %value, %scratch : i8, !llvm.ptr", void_results)["status"] == "proven"
 
 
 def test_unbound_dma_secondary_port_and_nonzero_load_state_refuse(monkeypatch):

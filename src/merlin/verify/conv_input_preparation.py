@@ -10,9 +10,9 @@ from dataclasses import dataclass
 from math import prod
 
 from xdsl.dialects.builtin import DenseIntOrFPElementsAttr, IntegerType, ModuleOp, UnitAttr
-from xdsl.dialects.llvm import AddressOfOp, GlobalOp, LLVMArrayType, LLVMPointerType
+from xdsl.dialects.llvm import AddressOfOp, GlobalOp, LLVMArrayType, LLVMPointerType, LLVMVoidType
 
-from merlin.perf.constant_control_cfg import integer_operation
+from merlin.perf.constant_control_cfg import _poison_flags, integer_operation
 from merlin.perf.host_cfg_activity import _INTEGER, _payload_bytes
 from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
 
@@ -28,13 +28,17 @@ class _Copy:
     origins: tuple
 
 
-def _constant_zero_storage(address, function):
-    """Resolve only an actual, closed read-only byte initializer in this module."""
+def _input_storage(address, function):
+    """Resolve closed zero padding or scratch; scratch never inherits initialized-byte evidence."""
     module = function.parent_op()
     if not isinstance(module, ModuleOp) or function.parent_block() is not module.body.block:
         raise ValueError("zero padding has no enclosing original module storage")
-    if any(op.name not in {"llvm.mlir.global", "llvm.func"} for op in module.body.block.ops):
-        raise ValueError("zero padding module has unproved aliases or storage effects")
+    for op in module.body.block.ops:
+        name = op.op_name.data if op.name == "builtin.unregistered" else op.name
+        if name not in {"llvm.mlir.global", "llvm.func", "llvm.module_flags"} or (
+            name == "llvm.module_flags" and (op.operands or op.results or op.regions)
+        ):
+            raise ValueError("zero padding module has unproved aliases or storage effects")
     reference = address.global_name
     if reference.nested_references.data:
         raise ValueError("zero padding has nested or unknown symbol provenance")
@@ -44,8 +48,7 @@ def _constant_zero_storage(address, function):
         raise ValueError("zero padding global is missing or ambiguous")
     typ, initializer = storage.global_type, storage.value
     if (
-        not isinstance(storage.constant, UnitAttr)
-        or storage.linkage.linkage.data not in {"private", "internal"}
+        storage.linkage.linkage.data not in {"private", "internal"}
         or storage.body.blocks
         or storage.thread_local_ is not None
         or storage.section is not None
@@ -54,22 +57,22 @@ def _constant_zero_storage(address, function):
         or not isinstance(address.result.type, LLVMPointerType)
         or getattr(address.result.type.addr_space, "data", 0) != 0
         or not isinstance(typ, LLVMArrayType)
-        or typ.type != IntegerType(8)
-        or not 0 < typ.size.data <= 1 << 20
+        or typ.type not in {IntegerType(8), IntegerType(32)}
+        or not 0 < typ.size.data * _payload_bytes(typ.type) <= 1 << 20
         or not isinstance(initializer, DenseIntOrFPElementsAttr)
-        or initializer.get_element_type() != IntegerType(8)
+        or initializer.get_element_type() != typ.type
         or initializer.get_shape() != (typ.size.data,)
-        or len(initializer.data.data) != typ.size.data
+        or len(initializer.data.data) != typ.size.data * _payload_bytes(typ.type)
         or any(initializer.data.data)
     ):
-        raise ValueError("zero padding global lacks bounded read-only all-zero byte storage")
+        raise ValueError("input storage global lacks bounded private all-zero storage")
     # A second function could mutate or export an address. This finite proof
     # covers only the actual kernel's interpreted pointer uses, not other code.
     for op in module.walk():
         if isinstance(op, AddressOfOp) and op.global_name.root_reference.data == name:
             if op.global_name.nested_references.data or op.parent_op() is not function:
                 raise ValueError("zero padding global address escapes the proven kernel")
-    return storage, typ.size.data
+    return storage, typ.size.data * _payload_bytes(typ.type), isinstance(storage.constant, UnitAttr)
 
 
 def _unpoisoned_pointer_add(op):
@@ -124,7 +127,7 @@ def _prove(function, activity, context, *, target):
     memory, consumed, initialized = {}, set(), set()
     readonly = set()
     visited = Counter()
-    arithmetic = payload = transfers = scratch_transfers = 0
+    arithmetic = conversions = payload = transfers = scratch_transfers = 0
     load_strides = {}
     store_stride = None
     block = blocks[0]
@@ -149,7 +152,7 @@ def _prove(function, activity, context, *, target):
             values.update(zip(block.args, incoming, strict=True))
         next_block = None
         for op in block.ops:
-            name = op.name
+            name = op.op_name.data if op.name == "builtin.unregistered" else op.name
             args = [values[v] for v in op.operands]
             result = None
             if name == "llvm.mlir.constant":
@@ -157,9 +160,10 @@ def _prove(function, activity, context, *, target):
                 if result is None:
                     raise ValueError("input preparation contains noninteger constant")
             elif isinstance(op, AddressOfOp):
-                storage, size = _constant_zero_storage(op, function)
+                storage, size, constant = _input_storage(op, function)
                 capacity[storage] = size
-                readonly.add(storage)
+                if constant:
+                    readonly.add(storage)
                 result = _Pointer(storage)
             elif name == "llvm.alloca":
                 size = integer(args[0]) * _payload_bytes(op.properties["elem_type"])
@@ -196,6 +200,27 @@ def _prove(function, activity, context, *, target):
                 for value in args:
                     integer(value)
                 result = integer_operation(op, args)
+            elif name in {"llvm.trunc", "llvm.sext", "llvm.zext"}:
+                integer(args[0])
+                if _poison_flags(op):
+                    raise ValueError("input address conversion has unproved poison flags")
+                result = integer_operation(op, args)
+                conversions += 1
+            elif name == "llvm.intr.assume":
+                tags = op.properties.get("op_bundle_tags")
+                sizes = op.properties.get("op_bundle_sizes")
+                if (len(args) != 3 or op.operands[0].type != IntegerType(1) or integer(args[0]) == 0
+                        or tags is None or sizes is None
+                        or [tag.data for tag in tags] != ["align"] or list(sizes.get_values()) != [2]
+                        or not isinstance(args[1], _Pointer)):
+                    raise ValueError("input preparation has an unproved assumption")
+                pointer, alignment = args[1], integer(args[2])
+                declared = context.get("argument_alignment") if pointer.root in {0, 1, 2} else None
+                if isinstance(pointer.root, GlobalOp):
+                    declared = getattr(getattr(pointer.root.alignment, "value", None), "data", None)
+                if (type(declared) is not int or alignment <= 0 or alignment & (alignment - 1)
+                        or declared % alignment or pointer.offset % alignment):
+                    raise ValueError("input pointer alignment assumption lacks original ABI evidence")
             elif name == "llvm.select":
                 result = args[1] if integer(args[0]) else args[2]
             elif name == "llvm.load":
@@ -228,8 +253,10 @@ def _prove(function, activity, context, *, target):
                     initialized.add(key)
                 payload += width
             elif name == "llvm.inline_asm":
+                void_result = (len(op.results) == 1 and isinstance(op.results[0].type, LLVMVoidType)
+                               and not op.results[0].uses)
                 if (
-                    op.results
+                    (op.results and not void_result)
                     or not isinstance(op.has_side_effects, UnitAttr)
                     or "~{memory}" not in op.constraints.data.split(",")
                 ):
@@ -264,8 +291,12 @@ def _prove(function, activity, context, *, target):
                         ):
                             raise ValueError("pointer command lacks decoded DRAM operand role")
                         if klass in {"MVIN", "MVIN2", "MVIN3"}:
+                            element_bytes = 1
                             if load_states is not None and decoded.get("is_acc_addr") is not False:
-                                raise ValueError("input transfer byte width has no selected scratchpad address proof")
+                                if (decoded.get("is_acc_addr") is not True
+                                        or type(load_states.max_element_bytes) is not int):
+                                    raise ValueError("input transfer byte width has no selected source bound")
+                                element_bytes = load_states.max_element_bytes
                             port = load_states.port(klass) if load_states is not None else 0
                             if port is None:
                                 raise ValueError("input transfer has no source-selected load port")
@@ -277,11 +308,11 @@ def _prove(function, activity, context, *, target):
                                 raise ValueError("input transfer extent is unknown")
                             if type(load_stride) is not int or load_stride < 0:
                                 raise ValueError("input transfer stride is unknown")
-                            bound(pointer, (rows - 1) * load_stride + cols)
+                            bound(pointer, (rows - 1) * load_stride + cols * element_bytes)
                             if pointer.root not in {0, 1}:
                                 scratch_transfers += 1
                                 for row_index in range(rows):
-                                    for column in range(cols):
+                                    for column in range(cols * element_bytes):
                                         key = pointer.root, pointer.offset + row_index * load_stride + column
                                         if pointer.root not in readonly and key not in memory:
                                             raise ValueError("accelerator consumes uninitialized input scratch")
@@ -328,6 +359,8 @@ def _prove(function, activity, context, *, target):
             else:
                 raise ValueError(f"input preparation contains unsupported operation {name}")
             if op.results:
+                if name == "llvm.inline_asm" and void_result:
+                    continue
                 if len(op.results) != 1 or result is None:
                     raise ValueError("input preparation result has unknown provenance")
                 values[op.results[0]] = result
@@ -341,6 +374,7 @@ def _prove(function, activity, context, *, target):
     return {
         "status": "proven",
         "arithmetic": arithmetic,
+        "conversions": conversions,
         "payload_bytes": payload,
         "input_transfers": transfers,
         "scratch_input_transfers": scratch_transfers,

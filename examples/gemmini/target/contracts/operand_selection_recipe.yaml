@@ -84,3 +84,7 @@ load_state_selection:
   row_index: row_counter
   stride_sink: io.dma.req.bits.vaddr
   load_classes: [MVIN, MVIN2, MVIN3]
+  transfer_bound:
+    byte_count: cmd_tracker.io.alloc.bits.bytes_to_read
+    rows: {bundle: MvinRs2, name: num_rows}
+    cols: {bundle: MvinRs2, name: num_cols}

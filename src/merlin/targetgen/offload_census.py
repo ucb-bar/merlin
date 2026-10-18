@@ -100,7 +100,10 @@ def _payload_elements(buffer: Mapping[str, Any]) -> tuple[int, int]:
     return elements, width
 
 
-def host_compute_row(name: str, buffer: Mapping[str, Any], artifact_text: str, outcome: str) -> dict[str, Any]:
+def host_compute_row(
+    name: str, buffer: Mapping[str, Any], artifact_text: str, outcome: str,
+    *, input_preparation=None, target=None,
+) -> dict[str, Any]:
     """The host-compute audit of one emitted program (:mod:`merlin.verify.host_compute_audit`).
 
     A program that reached a unit is judged: its host code may issue commands, and may not do the
@@ -132,7 +135,10 @@ def host_compute_row(name: str, buffer: Mapping[str, Any], artifact_text: str, o
     placement = HA.HOST if outcome in ("host_only", "declined", "silent") else "accelerator"
     rows = [
         HA.audit_group(
-            HA.GroupSite(group=0, placement=placement, symbol=symbol, elements=elements, element_bytes=width), function
+            HA.GroupSite(group=0, placement=placement, symbol=symbol, elements=elements, element_bytes=width), function,
+            input_preparation=(input_preparation if input_preparation is not None
+                               and input_preparation["entry_symbol"] == symbol else None),
+            target=target,
         )
         for symbol, function in functions.items()
     ]
@@ -156,9 +162,25 @@ def host_compute_row(name: str, buffer: Mapping[str, Any], artifact_text: str, o
                 "value_arithmetic_per_element",
                 "payload_ratio",
                 "dominant_block",
+                "input_preparation",
             )
         },
     }
+
+
+def _source_host_compute(name, capsule, buffer, artifact, outcome, *, target):
+    """Use the same original-source preparation proof in grading and diagnostic reports."""
+    from .input_preparation import source_convolution
+
+    try:
+        preparation = source_convolution(capsule, target=target) if target is not None else None
+    except (ValueError, KeyError, OSError):
+        # An unavailable source binding grants no exemption from the original audit.
+        preparation = None
+    return host_compute_row(
+        name, buffer, artifact, outcome,
+        **({"input_preparation": preparation, "target": target} if preparation is not None else {}),
+    )
 
 
 def instruction_use(artifacts: Iterable[str], *, target: str) -> dict[str, Any]:
@@ -293,7 +315,7 @@ def census_from_graded_artifacts(*, target: str, capsules: Iterable[Mapping[str,
             if not artifact_path.is_file():
                 raise FileNotFoundError("graded lowered host artifact is absent")
             artifact = artifact_path.read_text(encoding="utf-8")
-            audit = host_compute_row(name, buffer, artifact, row["outcome"])
+            audit = _source_host_compute(name, capsule, buffer, artifact, row["outcome"], target=target)
         except Exception as failure:  # noqa: BLE001 -- an unreadable artifact cannot establish offload
             rows.append({
                 "program": name, "outcome": "error",
@@ -396,7 +418,7 @@ def census(
                 )
                 with cpu_pool.shared_compute_pool():
                     row = program_row(name, buffer)
-                    audit = host_compute_row(name, buffer, _artifact or "", row["outcome"])
+                    audit = _source_host_compute(name, capsule, buffer, _artifact or "", row["outcome"], target=target)
                 return row, _artifact or "", audit
             except Exception as failure:  # noqa: BLE001 -- a harness fault is not an offload verdict
                 return error_row(name, failure), None, None
@@ -451,7 +473,9 @@ VETO_ENV = "MERLIN_HOST_COMPUTE_VETO"
 VETO_CATEGORY = "host_compute_in_accelerator_group"
 
 
-def apply_host_compute_veto(results: list[dict[str, Any]], suite_runs: Path) -> list[dict[str, Any]]:
+def apply_host_compute_veto(
+    results: list[dict[str, Any]], suite_runs: Path, *, capsules=None, target=None,
+) -> list[dict[str, Any]]:
     """Fail every PASSING capsule whose program does the unit's arithmetic on the host.
 
     A program can pass numerics and the instruction-trace check while a host loop loads, computes
@@ -474,6 +498,7 @@ def apply_host_compute_veto(results: list[dict[str, Any]], suite_runs: Path) -> 
     from merlin.verify import host_compute_audit as HA
 
     vetoed: list[dict[str, Any]] = []
+    originals = {capsule["name"]: capsule for capsule in capsules or ()}
     for result in results:
         if result.get("status") != "pass" or result.get("kind") == "model":
             continue
@@ -484,12 +509,15 @@ def apply_host_compute_veto(results: list[dict[str, Any]], suite_runs: Path) -> 
         try:
             buffer = json.loads(buffer_path.read_text(encoding="utf-8"))
             row = program_row(str(result.get("capsule")), buffer)
-            audit = host_compute_row(
-                str(result.get("capsule")), buffer, artifact_path.read_text(encoding="utf-8"), row["outcome"]
+            audit = _source_host_compute(
+                str(result.get("capsule")), originals.get(result.get("capsule"), {}),
+                buffer, artifact_path.read_text(encoding="utf-8"), row["outcome"], target=target,
             )
         except Exception:  # noqa: BLE001 -- an unreadable artifact is not evidence of host compute
             continue
-        result["host_compute"] = {key: audit.get(key) for key in ("verdict", "why", "symbol", "dominant_block")}
+        result["host_compute"] = {
+            key: audit.get(key) for key in ("verdict", "why", "symbol", "dominant_block", "input_preparation")
+        }
         if audit.get("verdict") != HA.HOST_COMPUTE:
             continue
         vetoed.append(audit)

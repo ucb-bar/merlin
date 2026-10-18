@@ -1559,7 +1559,8 @@ def grade(
     from merlin.targetgen import offload_census as _offload_census
 
     score["host_compute_vetoed"] = sorted(
-        str(row.get("program")) for row in _offload_census.apply_host_compute_veto(results, rr)
+        str(row.get("program"))
+        for row in _offload_census.apply_host_compute_veto(results, rr, capsules=caps, target=target)
     )
 
     # A NUMERICALLY PERFECT PASS THAT ASKED THE UNIT FOR ONLY THE CONTRACTION. The veto above catches

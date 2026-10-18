@@ -4,6 +4,11 @@
 
 merlin-rtl-introspect: extract structure-only facts from elaborated RTL (CIRCT/FIRRTL).
 
+`firrtl_transfer_bound` bounds an explicitly selected byte-count cone by the same unsigned
+row/column fields the original load decoder reads. Every mux alternative is covered; missing,
+conditional, invalidated or nonlinear data cones refuse. Its bound extends the selected load-state
+record and supplies neither command acceptance nor scheduling or arithmetic-format authority.
+
 ## Modules
 
 - `circt_introspect.py` — merlin-rtl circt-introspect (v2) — deterministic RTL fact extraction via the CIRCT HW dialect.

@@ -336,10 +336,11 @@ def test_a_pass_that_does_the_units_work_on_the_host_fails_the_grade(tmp_path, m
 def test_the_grade_is_where_the_veto_is_applied() -> None:
     # Held by source: promotion and grading paths swallow exceptions by design, so an unwired veto
     # would look exactly like a clean corpus.
-    from merlin.common.paths import merlin_dir, module_source_path
+    from merlin.common.paths import module_source_path
 
     text = module_source_path("merlin.targetgen.capsule_grade").read_text(encoding="utf-8")
-    assert "apply_host_compute_veto(results, rr)" in text and 'score["host_compute_vetoed"]' in text
+    assert "apply_host_compute_veto(results, rr, capsules=caps, target=target)" in text
+    assert 'score["host_compute_vetoed"]' in text
 
 
 def test_a_finding_quotes_an_unrolled_loop_in_a_line_not_a_page() -> None:
