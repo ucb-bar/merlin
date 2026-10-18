@@ -2,6 +2,7 @@
 import MerlinVerify.Check.TypedC1
 import MerlinVerify.Check.SplatC1
 import MerlinVerify.Check.SplatNestedC1
+import MerlinVerify.Check.SharedNormalize
 import MerlinVerify.Check.Module
 import MerlinVerify.Rules.TypedGeneralize
 
@@ -27,7 +28,8 @@ def check (ib : Nat) (src tgt : Module) : Bool :=
     match signature? ib src fn with
     | some (a, r) => c1Check (synthC1 src tgt fn) ||
         TypedC1.check Rules.TypedGeneralize.expansion ib src tgt fn a r ||
-        SplatC1.check ib src tgt fn a r || SplatNestedC1.check ib src tgt fn a r
+        SplatC1.check ib src tgt fn a r || SplatNestedC1.check ib src tgt fn a r ||
+        SharedNormalize.check ib src tgt fn a r
     | none => false
 
 theorem check_sound {ib : Nat} {src tgt : Module} (h : check ib src tgt = true)
@@ -37,11 +39,12 @@ theorem check_sound {ib : Nat} {src tgt : Module} (h : check ib src tgt = true)
       tgt fn src fn := by
   have hc := List.all_eq_true.1 h fn hf
   simp only [hs, Bool.or_eq_true] at hc
-  rcases hc with ((hu | ht) | hsp) | hn
+  rcases hc with (((hu | ht) | hsp) | hn) | hshared
   · have h := c1Check_sound (synthC1 src tgt fn) hu
     exact fun ctx _ args _ => h ctx trivial args trivial
   · exact TypedC1.check_sound Rules.TypedGeneralize.expansion ht
   · exact SplatC1.check_sound hsp
   · exact SplatNestedC1.check_sound hn
+  · exact SharedNormalize.check_sound hshared
 
 end MerlinVerify.Check.TypedModule
