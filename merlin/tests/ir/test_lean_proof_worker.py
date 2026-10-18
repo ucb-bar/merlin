@@ -86,3 +86,34 @@ def test_expired_deadline_does_not_start_a_worker(tmp_path):
     with pytest.raises(TimeoutError, match="before worker entry"):
         proof_worker.run(_success, None, timeout=0, logs=tmp_path)
     assert not list(tmp_path.iterdir())
+
+
+def _mark_then_hang(root):
+    (root / "callback-started").touch()
+    time.sleep(3600)
+
+
+def test_callback_cannot_start_without_parent_ownership_ack(tmp_path):
+    import multiprocessing
+
+    context = multiprocessing.get_context("spawn")
+    receiver, sender = context.Pipe(duplex=True)
+    worker = context.Process(target=proof_worker._serve, args=(_mark_then_hang, (tmp_path,), sender, tmp_path))
+    worker.start()
+    sender.close()
+    owned = False
+    try:
+        assert receiver.poll(5)
+        assert receiver.recv() == {"kind": "ready", "pid": worker.pid, "group": worker.pid}
+        owned = True
+        # Refuse ownership transfer instead of sending go. The callback must
+        # never run, even though the child has already announced readiness.
+        receiver.send({"kind": "not-go"})
+        worker.join(5)
+        assert not worker.is_alive()
+        assert not (tmp_path / "callback-started").exists()
+    finally:
+        proof_worker._stop(worker, owned)
+        worker.close()
+        receiver.close()
+        sender.close()

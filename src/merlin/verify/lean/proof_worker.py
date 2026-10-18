@@ -22,6 +22,8 @@ class WorkerFailure(RuntimeError):
 def _serve(callback, args, sender, logs: Path) -> None:
     os.setsid()
     sender.send({"kind": "ready", "pid": os.getpid(), "group": os.getpgrp()})
+    if sender.recv() != {"kind": "go"}:
+        raise WorkerFailure("native proof worker did not receive ownership acknowledgment")
     with (logs / "proof.stdout.log").open("w") as stdout, (logs / "proof.stderr.log").open("w") as stderr:
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             try:
@@ -61,7 +63,7 @@ def run(callback, *args, timeout: float, logs: Path):
     if timeout <= 0:
         raise TimeoutError("native tensor proof deadline expired before worker entry")
     context = multiprocessing.get_context("spawn")
-    receiver, sender = context.Pipe(duplex=False)
+    receiver, sender = context.Pipe(duplex=True)
     worker = context.Process(target=_serve, args=(callback, args, sender, logs))
     deadline = time.monotonic() + timeout
     owned_group = False
@@ -84,6 +86,7 @@ def run(callback, *args, timeout: float, logs: Path):
                     if message != {"kind": "ready", "pid": worker.pid, "group": worker.pid}:
                         raise WorkerFailure("native proof worker did not establish its private process group")
                     owned_group = True
+                    receiver.send({"kind": "go"})
                 elif message.get("kind") == "error":
                     raise WorkerFailure(f"{message['type']}: {message['reason']}\n{message['traceback']}")
                 elif message.get("kind") == "result" and set(message) == {"kind", "value"}:
