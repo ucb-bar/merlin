@@ -1,6 +1,6 @@
 /- Lift exact uniform-input normalization through checked generic bodies. Captured facts survive
 only when neither region block arguments nor actual source operations rebind their dependencies. -/
-import MerlinVerify.Check.SplatNormalize
+import MerlinVerify.Check.SplatNormalizer
 import MerlinVerify.Rules.StructuredBody
 
 namespace MerlinVerify.Check.SplatNested
@@ -9,21 +9,9 @@ open MerlinVerify MerlinVerify.Sem.Ops MerlinVerify.Sem.Ops.Linalg
 
 variable {ib : Nat}
 
-/-- A reusable exact block normalizer with explicitly checked types, loop depth and SSA facts. -/
-structure Normalizer (ib : Nat) where
-  run : Nat → TEnv → List UniformFacts.Fact → List Op → List VTy → Option (List Op)
-  sound : ∀ d Γ facts ops normalized yields ctx call env,
-    checkOps (merlinBook ib) d Γ ops yields = true →
-    run d Γ facts ops yields = some normalized →
-    EnvTyped ib Γ env → BindingFacts.Valid UniformFacts.model facts env →
-    ctx.indexBits = ib → d ≤ ctx.loopIndex.length →
-    evalOps opSem ctx call env normalized = evalOps opSem ctx call env ops
+abbrev Normalizer (ib : Nat) := SplatNormalizer.Normalizer ib
 
-def base (ib : Nat) : Normalizer ib where
-  run _ Γ facts ops _ := SplatNormalize.normalize ib Γ facts ops
-  sound d Γ facts ops normalized yields ctx call env hc hn he hf hi hd :=
-    SplatNormalize.normalize_sound (merlinBook ib) d Γ facts ops normalized yields ctx call env
-      hc hn he hf hi hd
+def base (ib : Nat) : Normalizer ib := SplatNormalizer.base ib
 
 def region (N : Normalizer ib) (Γ : TEnv) (facts : List UniformFacts.Fact)
     (r : Region) (sig : RegionSig) : Option Region :=

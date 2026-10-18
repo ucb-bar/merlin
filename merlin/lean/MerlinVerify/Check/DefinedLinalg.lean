@@ -1,5 +1,6 @@
 /- Proved definedness rules for structured tensor programs and the assembled checker. -/
 import MerlinVerify.Check.DefinedLoops
+import MerlinVerify.Check.RegionDepth
 import MerlinVerify.Check.DefinedComposition
 import MerlinVerify.Check.DefinedDequant
 import MerlinVerify.Rules.Generalize
@@ -486,29 +487,13 @@ def nestedBook (ib : Nat) : Nat → Book opSem ib
         ((genericBodyBook ib (nestedBook ib depth)).orElse (baseBook ib)).sound
           Γ op fs rs h ctx call env args hib hΓ ha }
 
-mutual
-  def opDepth : Op → Nat
-    | .mk _ _ _ _ _ regions _ => 1 + regionsDepth regions
-
-  def regionsDepth : List Region → Nat
-    | [] => 0
-    | .mk blocks :: rest => max (blocksDepth blocks) (regionsDepth rest)
-
-  def blocksDepth : List Block → Nat
-    | [] => 0
-    | .mk _ ops :: rest => max (opsDepth ops) (blocksDepth rest)
-
-  def opsDepth : List Op → Nat
-    | [] => 0
-    | op :: rest => max (opDepth op) (opsDepth rest)
-end
 
 /-- The actual operation supplies a finite structural budget; certificates cannot assert missing
 body proofs. Soundness holds for every budget, including exhaustion and conservative refusal. -/
 def book (ib : Nat) : Book opSem ib where
-  rule Γ op fs := (nestedBook ib (opDepth op)).rule Γ op fs
+  rule Γ op fs := (nestedBook ib (RegionDepth.op op)).rule Γ op fs
   sound Γ op fs rs h ctx call env args hib hΓ ha :=
-    (nestedBook ib (opDepth op)).sound Γ op fs rs h ctx call env args hib hΓ ha
+    (nestedBook ib (RegionDepth.op op)).sound Γ op fs rs h ctx call env args hib hΓ ha
 
 /-- Acceptance proves successful, nonpoison results for every typed, nonpoison input. -/
 theorem definedCheck_sound {ib : Nat} {m : Module} {f : String} {argTys resTys : List VTy}

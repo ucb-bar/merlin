@@ -1,7 +1,8 @@
 /- Input-dependent neutral-element identities. A checked scalar constant supplies actual runtime
 type evidence: successful arithmetic with it cannot silently alias an arbitrary tensor. -/
-import MerlinVerify.Rules.IntegerFold
-import MerlinVerify.Rules.ReshapeCompose
+import MerlinVerify.Check.CorrLemmas
+import MerlinVerify.Check.RulesArith
+import MerlinVerify.Rules.Motion
 
 namespace MerlinVerify.Rules.IntegerIdentity
 
@@ -167,7 +168,7 @@ theorem prefix_sound {ρ ρ' : Rho} {c : Op} {rc : Value} {ts : List Op} {value 
   | nil =>
     simp only [targetPrefix, Option.some.injEq] at hprefix
     subst ρ'
-    exact ⟨by simp, envT, rfl, ReshapeCompose.hidden_source hc hf value⟩
+    exact ⟨by simp, envT, rfl, Corr.bindUnmapped hc hf value⟩
   | cons t rest =>
     cases rest with
     | cons _ _ => simp [targetPrefix] at hprefix

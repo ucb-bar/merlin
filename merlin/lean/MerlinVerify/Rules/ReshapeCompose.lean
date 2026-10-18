@@ -2,6 +2,7 @@
 The intermediate source result is deliberately not mapped: any escaping use then fails C1. -/
 import MerlinVerify.Rules.ReshapeGroups
 import MerlinVerify.Rules.Motion
+import MerlinVerify.Check.CorrLemmas
 
 namespace MerlinVerify.Rules.ReshapeCompose
 
@@ -128,10 +129,7 @@ theorem step_success {op : Op} {r : Value} {x : ValueId} {shape : List Nat} {elt
 
 theorem hidden_source {ρ : Rho} {envS envT : Env} {id : ValueId}
     (hc : Corr ρ envS envT) (hf : ρ.find id = none) (v : RVal) :
-    Corr ρ ((id, v) :: envS) envT := by
-  intro x y hm
-  have hne : x ≠ id := by rintro rfl; rw [hf] at hm; cases hm
-  simpa [Env.get?, List.lookup, show (x == id) = false by simpa using hne] using hc x y hm
+    Corr ρ ((id, v) :: envS) envT := Corr.bindUnmapped hc hf v
 
 theorem site_sound {ρ : Rho} {a b t : Op} {ra rb rt : Value} {x y : ValueId}
     {mid dst : List Nat} {elt : Ty} {ga gb gt : List (List Nat)}
