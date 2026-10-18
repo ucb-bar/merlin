@@ -1314,7 +1314,6 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
     )
 
     from ..phase0.certification_floor import require_direct_tier, selected_floor
-
     from .publication import require_accelerator_placement
 
     # Re-checked here, not only at assembly: sealing re-runs this admission over the reviewed payload.
