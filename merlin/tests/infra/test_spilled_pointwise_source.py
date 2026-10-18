@@ -3,11 +3,15 @@
 from dataclasses import replace
 
 import pytest
-from test_pointwise_source import source_program
+from test_pointwise_source import (
+    execute,  # noqa: F401
+    source_program,
+)
 from test_private_copy_elimination import SPACES, command
 from test_selected_spill_contracts import emit_copy, inputs
 from test_selected_storage_contracts import native  # noqa: F401
 
+from merlin.compile.scheduling.fusion_semantics import UnsupportedElementwise
 from merlin.compile.scheduling.pointwise_source import PointwiseBindings, compile_source_pointwise
 from merlin.compile.scheduling.program_limits import AddressWindow
 from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
@@ -183,6 +187,15 @@ def test_unavailable_spills_leave_feasible_fragmented_program_legal(tmp_path):
                 compile_source_pointwise(module, operation, **kwargs)
 
 
+def test_issue_only_transfer_is_not_synchronous_source_initialization(tmp_path):
+    module, operation = source_program(source_text())
+    kwargs = case(tmp_path, register_slots=2)
+    body = kwargs["kernel"].body
+    kwargs["kernel"] = replace(kwargs["kernel"], body=(replace(body[0], instr="async_copy"), *body[1:]))
+    with pytest.raises(UnsupportedElementwise, match="synchronous completion"):
+        compile_source_pointwise(module, operation, **kwargs)
+
+
 @pytest.mark.parametrize("count", [33, 48])
 def test_one_element_tail_and_exact_capacity_boundary(tmp_path, count):
     module, operation = source_program(source_text(1, count))
@@ -190,6 +203,31 @@ def test_one_element_tail_and_exact_capacity_boundary(tmp_path, count):
     assert result.conformance["elements"] == count
     assert result.conformance["actual_commands"] == 11
     assert result.compiled.report["repair_rounds"] == 1
+
+
+def test_exact_byte_copies_can_reassemble_one_computed_fragment(tmp_path):
+    module, operation = source_program(source_text())
+    kwargs = case(tmp_path, register_slots=2)
+    body = kwargs["kernel"].body
+    kwargs["kernel"] = replace(kwargs["kernel"], body=(
+        *body[:4], command("copy", 96, 16, 7, 0, 3), command("copy", 103, 23, 9, 0, 3), *body[5:],
+    ))
+    result = compile_source_pointwise(
+        module, operation, budgets=ScheduleBudgets(max_fusions=0, eliminate_copies=False), **kwargs
+    )
+    assert result.conformance["actual_commands"] == 10
+    assert result.conformance["verified_fragments"] == 3
+
+
+@pytest.mark.parametrize("start,size", [(96, 15), (97, 15)])
+def test_arithmetic_cannot_interpret_prefix_or_suffix_of_computed_fragment(tmp_path, start, size):
+    module, operation = source_program(source_text())
+    kwargs = case(tmp_path, register_slots=2)
+    body = list(kwargs["kernel"].body)
+    body.insert(4, command("increment", start, start, size))
+    kwargs["kernel"] = replace(kwargs["kernel"], body=tuple(body))
+    with pytest.raises(ValueError, match="complete computed fragments"):
+        compile_source_pointwise(module, operation, **kwargs)
 
 
 @pytest.mark.parametrize("fault", ["drop_store", "short_store", "wrong_reload", "tail_arithmetic"])
@@ -236,3 +274,44 @@ def test_fragmented_result_rejects_stale_inputs(tmp_path, monkeypatch, changed):
         monkeypatch.setattr(pointwise_source, "shared_library_sources", lambda: {"modified": "0" * 64})
     with pytest.raises(ValueError, match="changed|replan|reselect"):
         result.images()
+
+
+@pytest.mark.parametrize("misaligned", [False, True])
+def test_wide_source_fragments_preserve_element_coordinates(tmp_path, execute, misaligned):  # noqa: F811
+    from test_pointwise_source import case as wide_case
+    from test_readout_model_fusion import command as vector_command
+
+    # Reuse the independently executed i32 identity primitive, with an i32
+    # destination rather than the usual narrowing epilogue. This exercises
+    # byte-to-element coordinates, not just byte-sized source fragments.
+    text = source_text(1, 15).replace("i8", "i32")
+    text = text.replace("%one=arith.constant 1:i32", "").replace("%result=arith.addi %a,%one:i32", "")
+    text = text.replace('"linalg.yield"(%result)', '"linalg.yield"(%a)')
+    module, operation = source_program(text)
+    kwargs = wide_case(tmp_path, m=1, n=15, separate=True)
+    kwargs["bindings"] = PointwiseBindings((AddressWindow("x", 0, 60),), AddressWindow("y", 0, 60),
+                                           ("little", "little"), True)
+    body, objects = [], []
+    for index, (offset, elements) in enumerate(((0, 8), (32, 7))):
+        private = 3072 + 64 * index
+        objects.append(TemporaryObject(f"stage_{index}", "stage", private, 4 * elements, 4))
+        body += [vector_command("readout", m=1, n=elements, src=3, dst=1,
+                                source=offset, destination=private),
+                 vector_command("readout", m=1, n=elements, src=1, dst=9,
+                                source=private, destination=offset)]
+    if misaligned:
+        body[0] = vector_command("readout", m=1, n=8, src=3, dst=1, source=1, destination=3072)
+    kwargs["kernel"] = Kernel("wide_fragments", (TensorArg("x", (1, 15), "i32", "read"),
+                                               TensorArg("y", (1, 15), "i32", "write")), tuple(body))
+    kwargs["objects"] = tuple(objects)
+    if misaligned:
+        with pytest.raises(ValueError, match="alignment"):
+            compile_source_pointwise(module, operation, **kwargs)
+    else:
+        result = compile_source_pointwise(module, operation, **kwargs)
+        values = [-(1 << 31), (1 << 31) - 1, -1, 0, *range(11)]
+        raw = b"".join(value.to_bytes(4, "little", signed=True) for value in values)
+        output, counts = execute(result.images(), {"x": raw}, separate=True)
+        assert output[:60] == raw and output[60:] == bytes([193] * (1032 - 60))
+        assert counts == (4, 120, 120)
+        assert result.conformance["verified_fragments"] == 2

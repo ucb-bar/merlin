@@ -1480,6 +1480,7 @@ Reproduce source mutations, native execution and ordinary paired model builds:
 python -B -m pytest -p no:cacheprovider \
   merlin/tests/infra/test_pointwise_source.py \
   merlin/tests/infra/test_spilled_pointwise_source.py \
+  merlin/tests/infra/test_spilled_pointwise_model.py \
   merlin/tests/infra/test_pointwise_source_whole_model.py \
   merlin/tests/infra/test_configured_pointwise.py \
   merlin/tests/infra/test_configured_pointwise_model.py \
@@ -1518,6 +1519,30 @@ instruction formats. Mutations corrupt fragment offsets, tail coverage, arithmet
 spill/reload bytes and current source/contract/library identities. This establishes
 checked repair of that selected schedule, not optimal scheduling or a speedup;
 storing the first result earlier could avoid the spill.
+
+Ordinary recurrent-model spill pairs add the same typed increment before each
+of two host contractions, retaining host epilogues, descriptor packing, output
+copies and three iterations of carried state. Both the manually repaired
+baseline and automatically repaired arm use one 16-byte register slot and a
+distinct 48-byte spill bank. Each of six invocations executes 11 actual commands;
+the two linked programs occupy 594 bytes in total. The test reopens readonly ELF
+sections, checks their bytes and decodes instructions using the selected ISA's
+word width and byte order. All five outputs are compared against independent
+whole-model arithmetic. A native spill implementation that corrupts saved data
+fails numerical qualification before publication of the optimized ELF.
+
+| Model dimensions `(M, K, N)` | Commands, either arm | Requested reads / writes | Host packing reads / writes |
+| --- | --- | --- | --- |
+| `(1, 47, 47)` | 66 | 1,038 / 1,038 bytes | 564 / 564 bytes |
+| `(2, 23, 17)` | 66 | 912 / 912 bytes | 480 / 480 bytes |
+
+The paired reports separately retain compilation time, sampled process-tree RSS,
+ELF sections and size, requested instruction traffic, host packing and functional
+instruction counts. These are neutral host-executed device models; neither equal
+programs nor differing compilation observations establish an accelerator speedup.
+The odd dimensions also exposed and now regress native weight alignment after
+an odd-sized int8 payload; see [runtime packing](runtime.md). This repair does
+not loosen numerical admission or establish a real target's storage capability.
 
 ## Physical elementwise fusion
 
@@ -2419,7 +2444,7 @@ ownership, real target support or absolute accuracy for an external model.
 | Concern | Existing mechanism | Requirement beyond the scope above |
 | --- | --- | --- |
 | Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line relocation; selected RTL/software windows, aliases, reservations and actual operand/effect checks | Qualified target effect/rewrite adapters and ordinary model integration; general loop and persistent-storage allocation |
-| Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks and independent actual byte provenance | Qualified device register/transfer adapters and ordinary target integration; CPU allocation stays with the native toolchain |
+| Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks, typed source fragments, actual byte provenance and ordinary neutral recurrent model builds | Qualified real-device register/transfer adapters and target model integration; computed expression slicing remains unsupported; CPU allocation stays with the native toolchain |
 | Fusion and transfers | Readout composition admission and connected dispatch; exact private-copy forwarding; consumed total-integer elementwise physical composition with layout/numerical checks, allocation fallback and reconstructed final traffic | Floating/contraction epilogues, noncontiguous and asynchronous handoffs, and qualified full-model target integration |
 | Reductions and attention | Complete-domain counted row softmax; automatic narrow CPU source row scheduling and native QK–softmax–PV graphs with carried state; ordered source loops and complete CPU reductions | Qualified source-to-device connection, target hooks/final decoding, device QK–softmax–PV/KV composition and broader source algorithms |
 | Configuration | Checked persistent-state cleanup through ordinary shared schedules, source pointwise lowering and neutral recurrent model builds; actual final bytes, complete outputs and settings, and isolated shared-library execution | Independently qualified real-target state decoder and model integration; general source loops and reset/pulse semantics |

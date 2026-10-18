@@ -23,6 +23,7 @@ import test_selected_row_contracts as rows  # noqa: E402
 import test_selected_schedule_contracts as configuration  # noqa: E402
 import test_selected_spill_contracts as spills  # noqa: E402
 import test_selected_storage_contracts as storage  # noqa: E402
+import test_spilled_pointwise_source as source_spills  # noqa: E402
 
 from merlin.compile.scheduling.library_sources import shared_library_sources  # noqa: E402
 
@@ -123,6 +124,22 @@ def configured_pointwise_from_export(path):
 
 
 run("configured_source_pointwise", configured_pointwise_from_export)
+for name, m, n, width, word_format in (
+    ("source_spills_narrow", 1, 8, 3, "<BBBQQQ"),
+    ("source_spills_wide", 1, 47, 16, ">BBBIII"),
+):
+    run(name, source_spills.test_source_spill_repair_matches_legal_baseline_and_complete_native_state,
+        native_fixture=storage.native, m=m, n=n, width=width, word_format=word_format)
+
+
+def wide_source_fragments_from_export(path):
+    from types import SimpleNamespace
+
+    source_spills.test_wide_source_fragments_preserve_element_coordinates(
+        path, execute=pointwise.execute.__wrapped__(path, SimpleNamespace()), misaligned=False)
+
+
+run("source_fragments_i32", wide_source_fragments_from_export)
 
 origins = {}
 for name, module in tuple(sys.modules.items()):
