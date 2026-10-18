@@ -91,3 +91,18 @@ def test_wrong_identity_alias_changes_native_results(tmp_path, fidelity_tools):
     original = json.loads((tmp_path / "original/native-results.json").read_text())["results"]
     mutated = json.loads((tmp_path / "mutated/native-results.json").read_text())["results"]
     assert original == [["7", "13"]] and mutated == [["13", "13"]]
+
+
+def test_integer_identity_and_mixed_reshape_compose_in_native_execution(tmp_path, fidelity_tools):
+    from test_lean_shared_rule_chain import combined_source
+
+    _, before, after = _certify(tmp_path, fidelity_tools, combined_source(escape_constant=True))
+    samples = [
+        [[integer], [(i * 137 + integer) % (1 << 32) for i in range(24)], [keep]]
+        for integer, keep in [(0, 73), (8191, 0xFFFFFFFF), (4096, 0)]
+    ]
+    expected = [[str(s[0][0]), *map(str, s[1] * 2), str(s[2][0]), "0"] for s in samples]
+    for name, program in [("before", before), ("after", after)]:
+        work = tmp_path / name
+        diff.compare(program.read_text(), samples, work, fidelity_tools, function="forward")
+        assert json.loads((work / "native-results.json").read_text())["results"] == expected
