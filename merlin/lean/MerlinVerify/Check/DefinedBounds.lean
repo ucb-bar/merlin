@@ -223,10 +223,19 @@ theorem overwriteRule_sound (ib : Nat) (bodyBook : Refined.Book model opSem ib) 
     · cases h
   · cases h
 
-def genericBook (ib : Nat) (bodyBook : Refined.Book model opSem ib) : Refined.Book model opSem ib :=
-  ({ rule := initializedRule ib bodyBook, sound := initializedRule_sound ib bodyBook } :
-    Refined.Book model opSem ib).orElse
-      { rule := overwriteRule ib bodyBook, sound := overwriteRule_sound ib bodyBook }
+/-- Select one recursive body check from the actual destination facts. Retrying a failed
+initialized body as an overwrite duplicates nested failures without supplying new evidence. -/
+def genericBook (ib : Nat) (bodyBook : Refined.Book model opSem ib) : Refined.Book model opSem ib where
+  rule Γ op fs := match splitInsOuts (α := Definedness.Fact) op (fs.map (·.base)) with
+    | some (_, outs) => if outs.all (·.initialized) then initializedRule ib bodyBook Γ op fs
+        else overwriteRule ib bodyBook Γ op fs
+    | none => none
+  sound Γ op fs rs h ctx call env args hib hΓ ha := by
+    split at h
+    · split at h
+      · exact initializedRule_sound ib bodyBook Γ op fs rs h ctx call env args hib hΓ ha
+      · exact overwriteRule_sound ib bodyBook Γ op fs rs h ctx call env args hib hΓ ha
+    · cases h
 
 def nestedBook (ib : Nat) : Nat → Refined.Book model opSem ib
   | 0 => leafBook ib
