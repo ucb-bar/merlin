@@ -104,6 +104,11 @@ the exact fp32 integer range. Checking the bias code alone is insufficient: roun
 above that range before adding its bias can differ from adding the bias in int32 first. A site
 without this proof remains in PT2E form and carries an explicit refusal.
 
+**Calibration reuse.** Repeated reads of an unchanged stored weight reuse its min/max observation.
+The known grouped observer is covered only while it inherits the framework's exact min/max forward;
+grouping changes its qparams calculation, not the observation. Tensor identity, version, storage,
+geometry and dtype must all match. Histograms and arbitrary observer subclasses keep every call.
+
 **Recovery.** Cross-layer equalization (Nagel et al., 2019) runs in `transform_for_annotation`, after
 Conv+BN folding and before any observer. It covers contraction pairs joined only by positively
 homogeneous steps: a relu, a max pool, or a product with a tensor not computed from the first

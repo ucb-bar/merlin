@@ -1101,19 +1101,23 @@ class _RepeatedObservationSkip:
 
     A stored weight reaches its observer as the same parameter on every calibration sample, and
     TorchAO's ``MinMaxObserver`` and ``PerChannelMinMaxObserver`` keep only a running min and max:
-    a second observation of the same values leaves both buffers bit-identical. Only those two exact
-    classes are covered (a moving average or a histogram is not idempotent). The skip requires the
+    a second observation of the same values leaves both buffers bit-identical. Those two exact
+    classes and the known grouped observer with its inherited min/max forward are covered; arbitrary
+    subclasses, moving averages and histograms are not. The skip requires the
     same tensor object, still alive, with the same version counter, storage, shape, strides and
     dtype, so an in-place update or a fresh activation is always observed. The instance-level
     ``forward`` is removed again when calibration ends.
     """
 
     def __init__(self, prepared: Any) -> None:
+        import _recipe_observers as RO  # noqa: PLC0415 -- capture interpreter sibling
         from torchao.quantization.pt2e import MinMaxObserver, PerChannelMinMaxObserver
 
-        self._modules = [
-            module for module in prepared.modules() if type(module) in (MinMaxObserver, PerChannelMinMaxObserver)
-        ]
+        grouped = RO.grouped_channel_observer()
+        known = (MinMaxObserver, PerChannelMinMaxObserver)
+        if grouped.forward is PerChannelMinMaxObserver.forward:
+            known += (grouped,)  # only qparam grouping differs; the observed min/max update is identical
+        self._modules = [module for module in prepared.modules() if type(module) in known]
 
     @staticmethod
     def _key(x: Any) -> tuple:
