@@ -42,6 +42,8 @@ _NO_COST = ("reshape", "transpose", "_int_mm", "view", "select", "stack", "t")
 _RECORDS: dict[int, dict] = {}
 #: The plane selector of a static operand (``quant_recipe.OPERAND``): k int8 digits of one static grid.
 OPERAND = "operand"
+#: The plane selector of the operand a softmax output multiplies (``quant_recipe.SOFTMAX_PARTNER``): its digits.
+SOFTMAX_PARTNER = "softmax_partner"
 
 
 def _record(run: int, key: str, value: Any, smooth: bool) -> None:
@@ -76,7 +78,10 @@ def plan(node: Any, block: dict) -> dict:
     smooth = not context and block.get("smooth") == DC.SOFTMAX_AXIS and DC.feeds_row_softmax(node)
     selected = block.get("planes") or {}
     planes = int(selected.get(DC.SOFTMAX_OUTPUT, 1)) if context else 1
-    return {"context": context, "smooth": smooth, "planes": planes, "digits": int(selected.get(OPERAND, 1))}
+    # The operand beside a softmax output: ``P V`` is a convex combination of V's rows, so it can be far
+    # smaller than V's range (most of P on one small row) and needs a finer grid than other operands.
+    digits = int(selected.get(SOFTMAX_PARTNER if context else OPERAND, selected.get(OPERAND, 1)))
+    return {"context": context, "smooth": smooth, "planes": planes, "digits": digits}
 
 
 def calibrate(graph_module: Any, plans: dict, samples: list) -> dict:
