@@ -382,3 +382,56 @@ def test_the_example_target_declares_derived_values_only():
         assert method[key] == QM.FROM_OUTPUT_PATH
     assert method["float_island"]["dtype"] == "fp32"
     assert all(row["status"] == "reviewed" and row["measured_accuracy"] for row in method["model_variants"])
+
+
+def test_reviewed_recovery_changes_only_the_selected_model_and_keeps_unselected_recipe_digests():
+    disabled = {name: False for name in QM.RECOVERY}
+    original = {**METHODOLOGY, "recovery": disabled}
+    row = {
+        **_plane_variant(),
+        "name": "bias-recovery",
+        "changes": {
+            "recovery": {**disabled, "bias_correction": True},
+            "scale_granularity": "per_channel",
+        },
+    }
+    method = {**original, "model_variants": [*original["model_variants"], row]}
+    for model in (None, "decoder", "other"):
+        assert QM.derive(_base(), method, _path(), model=model) == QM.derive(_base(), original, _path(), model=model)
+    recipe = QM.derive(_base(), method, _path(), model="classifier")
+    assert recipe["status"] == QR.DERIVED
+    assert recipe["recovery"] == {"cross_layer_equalization": False, "bias_correction": True}
+    assert recipe["bias_domain"] == "accumulator" and recipe["epilogue"]["bias"]["mode"] == "accumulator_preload"
+    assert "channels_per_scale" not in recipe["weight"]
+    assert recipe["epilogue"]["scale"]["columns_per_scale"] == 16
+    assert recipe["methodology"]["variants"][0]["changes"] == ["recovery", "scale_granularity"]
+    assert original["recovery"] == disabled and method["recovery"] == disabled
+
+
+def test_multiple_recovery_variants_apply_in_declared_order():
+    enabled = {name: True for name in QM.RECOVERY}
+    disabled = {name: False for name in QM.RECOVERY}
+    first = {**_plane_variant(), "name": "enable-recovery", "changes": {"recovery": enabled}}
+    last = {**first, "name": "disable-recovery", "changes": {"recovery": disabled}}
+    for rows, expected in [([first, last], disabled), ([last, first], enabled)]:
+        recipe = QM.derive(_base(), {**METHODOLOGY, "model_variants": rows}, _path(), model="classifier")
+        assert recipe["status"] == QR.DERIVED and recipe["recovery"] == expected
+        assert recipe["recipe_sha256"] == QR.digest(recipe)
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        None,
+        [],
+        {},
+        {"bias_correction": True},
+        {"cross_layer_equalization": False, "bias_correction": 1},
+        {"cross_layer_equalization": "false", "bias_correction": True},
+        {"cross_layer_equalization": False, "bias_correction": True, "unknown": False},
+    ],
+)
+def test_recovery_variant_requires_the_complete_closed_boolean_policy(block):
+    row = {**_plane_variant(), "changes": {"recovery": block}}
+    with pytest.raises(ValueError, match="changes.recovery"):
+        QM.validate({**METHODOLOGY, "model_variants": [row]})

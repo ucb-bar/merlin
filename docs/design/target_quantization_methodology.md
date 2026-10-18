@@ -166,6 +166,13 @@ numerical review, capture/replay and the original model admission gates.
 The private gate's own `capture_recipe_variant` review (base vs selected digests) still applies to
 whatever recipe a sealed capture selects.
 
+A reviewed row may override `recovery` for its selected model by stating both
+`cross_layer_equalization` and `bias_correction` as booleans. This selects the
+existing generic recovery mechanisms without changing the shared policy or
+another model's recipe. Later matching recovery rows replace the complete block;
+partial blocks and unknown fields refuse. Unchanged recipe bytes alone do not
+grant capture reuse: the ordinary source, input and issuer checks still apply.
+
 A reviewed row may also change `bias` to either declared bias policy and add a
 `static_planes` block. The latter states exactly `schema: static_planes_v1`,
 `families: [contraction]`, `planes: 2` (or `3`), an `observer` (`minmax`,

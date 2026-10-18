@@ -51,7 +51,7 @@ ISLAND_OPS = ("softmax", "layer_norm", "rms_norm", "group_norm", "gelu", "silu",
 #: The only island format: Merlin's host computes these in IEEE single precision, never bf16/f16.
 ISLAND_DTYPE = "fp32"
 #: What a reviewed model variant may change in a derived recipe, and nothing else.
-VARIANT_CHANGES = ("families", "dynamic", "calibration_count", "scale_granularity", "bias", "static_planes")
+VARIANT_CHANGES = ("families", "dynamic", "calibration_count", "scale_granularity", "bias", "static_planes", "recovery")
 _FIELDS = {
     "schema",
     "scale_granularity",
@@ -172,6 +172,14 @@ def validate(block: Any) -> dict[str, Any]:
             )
         if "bias" in changes:
             _require(changes["bias"] in BIASES, f"{where}.changes.bias is one of {list(BIASES)}")
+        if "recovery" in changes:
+            recovery = changes["recovery"]
+            _require(
+                isinstance(recovery, Mapping)
+                and set(recovery) == set(RECOVERY)
+                and all(type(value) is bool for value in recovery.values()),
+                f"{where}.changes.recovery states each of {list(RECOVERY)} as true or false",
+            )
         if "static_planes" in changes:
             planes = changes["static_planes"]
             template = QR.static_planes_block()
@@ -471,6 +479,8 @@ def _finish(body, method, path, underivable, model) -> dict[str, Any]:
             body["dynamic"] = json.loads(json.dumps(changes["dynamic"]))
         if "calibration_count" in changes:
             body.setdefault("framework_capture_policy", {})["calibration_count"] = changes["calibration_count"]
+        if "recovery" in changes:
+            body["recovery"] = dict(changes["recovery"])
         if "static_planes" in changes:
             selected_planes = changes["static_planes"]
         body["methodology"].setdefault("variants", []).append(

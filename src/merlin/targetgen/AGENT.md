@@ -22,6 +22,8 @@ planes and host-float bias policy. Check the final effective family and bias
 placement after all matching rows: planes combine int8-to-i32 products before
 host fp32 bias addition, so an accumulator-preload claim refuses. Unselected
 models and historical direct recipe APIs retain their existing behavior.
+Model-specific recovery rows state the complete closed boolean policy and select
+only the existing generic recovery; shared and unselected recipes stay unchanged.
 `op_form_regimes.boundary_witnesses` supplies adjacent scalar comparisons from a
 selected `Bound`, retaining impossible positive lower witnesses as missing. It
 grants no tensor-axis, physical-capacity or tiling interpretation.
