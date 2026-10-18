@@ -138,7 +138,10 @@ def _capture(tmp_path):
 def test_ordinary_cgen_storage_choices_emit_identical_bytes_and_headers(tmp_path, monkeypatch, materialize):
     model, prepared = _capture(tmp_path)
     original = (model / "weights.safetensors").read_bytes()
-    expected = bytes(range(15)) + np.arange(14, dtype=np.int16).reshape(2, 7, order="F").tobytes(order="C")
+    # The generated append begins at an absolute blob boundary. Padding only
+    # the appended suffix left this i16 payload at the odd byte offset 15.
+    expected = (bytes(range(15)) + bytes(c_runtime.GENERATED_WEIGHT_ALIGNMENT - 15)
+                + np.arange(14, dtype=np.int16).reshape(2, 7, order="F").tobytes(order="C"))
     reports = []
     for choice in ("materialized", "streamed"):
         monkeypatch.setenv("MERLIN_WEIGHT_PAYLOAD_STORAGE", choice)
@@ -169,7 +172,8 @@ def test_bad_streamed_chunk_is_visible_in_real_output_instead_of_hidden_by_plan(
     monkeypatch.setattr(WeightPayload, "chunks", wrong)
     info = c_runtime.generate(model, out, model / "inputs.npz", prepared_dir=prepared)
     actual = (out / "weights.bin").read_bytes()
-    expected = bytes(range(15)) + np.arange(14, dtype=np.int16).reshape(2, 7, order="F").tobytes(order="C")
+    expected = (bytes(range(15)) + bytes(c_runtime.GENERATED_WEIGHT_ALIGNMENT - 15)
+                + np.arange(14, dtype=np.int16).reshape(2, 7, order="F").tobytes(order="C"))
     assert info["weights_sha256"] == hashlib.sha256(actual).hexdigest()
     assert actual != expected  # Independent full-byte reference detects the faulty implementation.
 
