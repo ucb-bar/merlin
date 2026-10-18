@@ -12,6 +12,7 @@ import MerlinVerify.Rules.DequantSite
 import MerlinVerify.Rules.Dce
 import MerlinVerify.Rules.Cse
 import MerlinVerify.Rules.Motion
+import MerlinVerify.Rules.MotionIndependent
 import MerlinVerify.Rules.Generalize
 import MerlinVerify.Rules.Commutative
 import MerlinVerify.Rules.IntegerFold
@@ -56,7 +57,7 @@ structure SiteCandidate where
 def multiRewrite? (ρ : Rho) (ss ts : List Op) : Option (SiteCandidate × Rho) :=
   -- Preserve intermediate correspondences before trying a fold that maps only the last result.
   let candidates : List SiteCandidate :=
-    [⟨Rules.Cse.rule, 1, 1⟩, ⟨Rules.Motion.rule, 1, 2⟩, ⟨Rules.DequantSite.rule, 0, 2⟩,
+    [⟨Rules.Cse.rule, 1, 1⟩, ⟨Rules.Motion.rule, 1, 2⟩, ⟨Rules.MotionIndependent.rule, 1, 2⟩, ⟨Rules.DequantSite.rule, 0, 2⟩,
       ⟨Rules.ReshapeCompose.rule, 1, 1⟩, ⟨Rules.ReshapeMixed.rule, 1, 1⟩,
       ⟨Rules.IntegerIdentity.rule, 1, 1⟩, ⟨Rules.IntegerIdentity.rule, 1, 0⟩] ++
     (Rules.IntegerFold.candidateTails ss ts).map (fun n => ⟨Rules.IntegerFold.rule, n, 1⟩)

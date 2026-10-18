@@ -84,7 +84,7 @@ def test_swapped_constants_reject_changed_computation(tmp_path, lean_tools, faul
     assert receipt["verdict"] == "abstracted", receipt.get("reason")
 
 
-def test_independent_operand_taking_motion_remains_unsupported(tmp_path, lean_tools):
+def test_independent_operand_taking_motion_verifies(tmp_path, lean_tools):
     before = """func.func @forward(%x: i32) -> (i32, i32) {
       %a = arith.constant 7 : i32
       %b = arith.addi %x, %x : i32
@@ -97,7 +97,7 @@ def test_independent_operand_taking_motion_remains_unsupported(tmp_path, lean_to
     }"""
     stage = _stage(tmp_path, before, after)
     receipt = check_stage(stage, m2m_python=lean_tools.m2m_python)
-    assert receipt["verdict"] == "abstracted", receipt.get("reason")
+    assert receipt["verdict"] == "verified", receipt.get("reason")
 
 
 def test_motion_across_external_call_remains_unsupported(tmp_path, lean_tools):

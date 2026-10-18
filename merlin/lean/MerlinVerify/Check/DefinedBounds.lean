@@ -3,6 +3,8 @@ facts are proved at their producers and travel with the current SSA binding, inc
 import MerlinVerify.Check.IndexRanges
 import MerlinVerify.Check.IndexArithmetic
 import MerlinVerify.Check.IndexCastBounds
+import MerlinVerify.Check.IndexClampBounds
+import MerlinVerify.Check.IndexRemainderBounds
 import MerlinVerify.Check.DefinedLinalg
 
 namespace MerlinVerify.Check.Definedness.Bounds
@@ -102,8 +104,8 @@ def extractBook (ib : Nat) : Refined.Book model opSem ib where
 
 /-- Existing rules retain their original proof obligations and do not invent index evidence. -/
 def leafBook (ib : Nat) : Refined.Book model opSem ib :=
-  ((((constantBook ib).orElse (IndexArithmetic.book ib)).orElse (IndexCastBounds.book ib)).orElse
-    (extractBook ib)).orElse
+  (((((constantBook ib).orElse (IndexArithmetic.book ib)).orElse (IndexCastBounds.book ib)).orElse
+    ((IndexClampBounds.book ib).orElse (IndexRemainderBounds.book ib))).orElse (extractBook ib)).orElse
     (Refined.Book.lift model (Definedness.book ib))
 
 /-- Structured body arguments receive their proved element type/initialization facts; captured

@@ -103,7 +103,7 @@ with ir.Context():
 
 
 @pytest.mark.parametrize("index_bits", [32, 64])
-def test_mixed_widen_truncate_roundtrip_records_cancellation_gap(tmp_path, lean_tools, index_bits):
+def test_mixed_widen_truncate_roundtrip_has_strict_chain(tmp_path, lean_tools, index_bits):
     from test_lean_integer_fold import canonicalize
 
     stage, before, after = canonicalize(tmp_path, lean_tools, _constructor_cast_index_source(cancel=True))
@@ -111,12 +111,12 @@ def test_mixed_widen_truncate_roundtrip_records_cancellation_gap(tmp_path, lean_
     for checker, name in [(check.check_support, "support"), (check.check_definedness, "defined")]:
         result = checker(before, "forward", tmp_path / name, m2m_python=lean_tools.m2m_python, index_bits=index_bits)
         assert result["verdict"] == "verified", result.get("reason")
-    refused = check.check_typed_stage(stage, m2m_python=lean_tools.m2m_python, index_bits=index_bits)
-    assert refused["verdict"] == "abstracted", refused.get("reason")
+    accepted = check.check_typed_stage(stage, m2m_python=lean_tools.m2m_python, index_bits=index_bits)
+    assert accepted["verdict"] == "verified", accepted.get("reason")
 
 
 @pytest.mark.parametrize("index_bits", [32, 64])
-def test_mixed_independent_constant_hoisting_records_motion_gap(tmp_path, lean_tools, index_bits):
+def test_mixed_independent_constant_hoisting_has_strict_chain(tmp_path, lean_tools, index_bits):
     from test_lean_integer_fold import canonicalize
 
     stage, before, after = canonicalize(tmp_path, lean_tools, _constructor_cast_index_source(index_first=False))
@@ -124,5 +124,5 @@ def test_mixed_independent_constant_hoisting_records_motion_gap(tmp_path, lean_t
     for checker, name in [(check.check_support, "support"), (check.check_definedness, "defined")]:
         result = checker(before, "forward", tmp_path / name, m2m_python=lean_tools.m2m_python, index_bits=index_bits)
         assert result["verdict"] == "verified", result.get("reason")
-    refused = check.check_typed_stage(stage, m2m_python=lean_tools.m2m_python, index_bits=index_bits)
-    assert refused["verdict"] == "abstracted", refused.get("reason")
+    accepted = check.check_typed_stage(stage, m2m_python=lean_tools.m2m_python, index_bits=index_bits)
+    assert accepted["verdict"] == "verified", accepted.get("reason")

@@ -12,7 +12,7 @@ assumed, why, and what evidence stands behind it. A claim that relies on an entr
 | A3 | A poison dividend with divisor `-1` in a signed division is UB; a poison divisor is UB. | `Sem/Ops/Arith.lean` | Poison may take the triggering value (`INT_MIN`, `0`); matches LLVM/Alive2 practice. |
 | A4 | `tensor.extract`/`tensor.insert` out of bounds, or with a poison index, is UB. | `Sem/Ops/Tensor.lean` | MLIR leaves out-of-bounds access undefined. |
 | A5 | A structured op's reductions run in lexicographic order of its iteration space. | `Sem/Ops/Linalg.lean` | The order `convert-linalg-to-loops` materializes; integer results are order-independent. The host differential corpus now exercises order-sensitive f32/f64 matmul without fusion or reassociation; other reductions and lowering configurations remain assumptions. See `docs/guides/lean_differential_tests.md`. |
-| A6 | Named linalg ops mean their structured generic form. Map bodies receive inputs followed by the destination element. | `Sem/Ops/LinalgNamed.lean` | Reviewed correction from the legacy inputs-only convention to LLVM [f5e175f](https://github.com/llvm/llvm-project/commit/f5e175f06dacf6751f27f7a4bd9e9a3489e95a5e); executable compiler probes and host comparisons qualify explicit cases. Map progress/definedness and map-to-generic rewriting on typed inputs are now proved. Runtime ranks are established through checked SSA execution; typed receipts/chains preserve that domain. Adjacent closed-expression motion has a separate universal proof, including captured-constant hoisting across static tensor.empty. Operand-taking motion, non-adjacent hoisting and nested motion remain unsupported. These transformation proofs do not prove general fidelity to MLIR; see `docs/guides/lean_differential_tests.md`. |
+| A6 | Named linalg ops mean their structured generic form. Map bodies receive inputs followed by the destination element. | `Sem/Ops/LinalgNamed.lean` | Reviewed correction from the legacy inputs-only convention to LLVM [f5e175f](https://github.com/llvm/llvm-project/commit/f5e175f06dacf6751f27f7a4bd9e9a3489e95a5e); executable compiler probes and host comparisons qualify explicit cases. Map progress/definedness and map-to-generic rewriting on typed inputs are now proved. Runtime ranks are established through checked SSA execution; typed receipts/chains preserve that domain. Adjacent closed-expression motion has a separate universal proof, including captured-constant hoisting across static tensor.empty. Adjacent region-free independent operand-taking motion now has a separate source-success proof, with symmetric SSA dependency checks. General non-adjacent and nested motion remain outside this rule. These transformation proofs do not prove general fidelity to MLIR; see `docs/guides/lean_differential_tests.md`. |
 | A7 | `tensor.empty` is a tensor of poison. | `Sem/Ops/Tensor.lean` | MLIR leaves its contents unspecified. As a source, poison is the reading every value refines, so a target may read anything there; as a target, a read of it refines only a source that is also poison there. Treating it as poison is therefore never more permissive than "unspecified" towards the target. |
 | A8 | Integer division overflow (`INT_MIN / -1`) is UB at every width, i1 included. | `Sem/Ops/Arith.lean` | The Arith spec makes signed division overflow UB; for i1, `(-1) / (-1) = 1` is not representable. |
 
@@ -21,7 +21,7 @@ assumed, why, and what evidence stands behind it. A claim that relies on an entr
 | Id | Component |
 |---|---|
 | T1 | Lean kernel; Lean compiler and runtime for the compiled checker (including the compiler-generated `_unsafe_rec` twins of recursive definitions); `Lean.Json`. |
-| T2 | The MLIR parser/printer bundled with `torch_mlir` (the pipeline's own), used for export and round trip. |
+| T2 | The pipeline’s `torch_mlir` parser/printer and Python bridge: export/round trip, receipt byte binding/replay, authored roster selection and gate orchestration. These glue components are regression tested, not formally proved. |
 | T3 | Fidelity of the MerlinSem op semantics to MLIR and the captured source producer. Not proved. In addition to hand-built `#guard` cases, `merlin/tests/ir/test_lean_differential.py` compares the actual Lean denotation with native upstream MLIR on a deterministic integer/tensor/f32/f64 corpus and checks named-op generalization. The map signature mismatch is corrected and its corpus must pass. Probes bind the installed contract to compiler fingerprints; package versions do not establish LLVM revisions. Coverage limits and required-tool instructions are in `docs/guides/lean_differential_tests.md`; untested forms and targets remain trusted. New bounded integer-folder/named-op and dequantization tests use hash-pinned MLIR. A separate hash-pinned PyTorch 2.10.0+cpu oracle checks both dequantization source operations against NumPy and selected actual MLIR-folded compiler bodies. NaN payloads, complete IEEE-instance qualification, human specification review, and capture-producer binding remain outstanding. |
 | T4 | Upstream MLIR lowering below the verified tensor stage, LLVM, the linker, the C runtime. The qualified scalar/parallel defaults and native oracle generalize maps before bufferization. A regression checks the required initializer copy survives; [LLVM issue 213241](https://github.com/llvm/llvm-project/issues/213241) documents the separate direct-map bufferization bug. This is not a proof of downstream lowering. |
 | T5 | Accelerator kernels meeting their stated contracts (the OOT hole, design D8). |
@@ -48,8 +48,18 @@ covers the finite unary vocabulary and FMA without adding float laws. Only the e
 negate/abs/sqrt/rounding/FMA interpretation gains native evidence here; other unary functions retain
 the parametric model-fidelity assumption. No complete IEEE instance is proved. Scalar format conversion and fixed-width integer-to-float
 totality likewise add no numerical laws; selected f32/f64 native cases use exact single-rounding
-references. Rank-zero from-elements/extract alias proofs preserve all scalar bits and poison;
-positive-rank aliases still require a separate bounds bridge.
+references. Rank-zero from-elements/extract alias proofs preserve all scalar bits and poison.
+Rank-one constructor selection additionally has a checked bounds bridge, including actual
+constant-index arithmetic. Higher-rank construction remains outside this alias family.
+
+The shared checker additionally proves exact scalar widening/truncation round trips, signed and
+unsigned integer min/max commutation, total unused scalar-constant deletion, and adjacent pure
+instruction motion under symmetric SSA independence checks. Index literals are normalized by
+replaying actual decoded values at the claimed width on both sides; opposite-side hints cannot
+supply facts. Initialized unsigned minimum clamps and positive-divisor unsigned remainders can
+establish safe tensor-read bounds. These are bounded checker families, not blanket proofs of
+canonicalization or downstream lowering. Their regression and native qualification artifacts
+identify the exact source and frozen checker; drafted or interrupted tests establish no coverage.
 
 The current `tensor.reassocValid` predicate rejects all-unit nonzero-rank to rank-zero reshape
 transitions, and their inverse, with empty reassociation. Upstream MLIR accepts and executes

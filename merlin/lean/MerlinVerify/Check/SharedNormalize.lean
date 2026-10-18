@@ -8,6 +8,8 @@ import MerlinVerify.Check.DenseExtract
 import MerlinVerify.Check.FromElementsSelect
 import MerlinVerify.Rules.IndexCompare
 import MerlinVerify.Check.ConstantAlias
+import MerlinVerify.Rules.IndexConstant
+import MerlinVerify.Rules.CastCancel
 
 namespace MerlinVerify.Check.SharedNormalize
 
@@ -19,10 +21,12 @@ def base (ib : Nat) (hints : List Op) : SplatNormalizer.Normalizer ib :=
   BodyNormalize.sequential (FromElementsSelect.base ib)
     (BodyNormalize.sequential (DenseExtract.base ib (DenseExtract.hintOps hints))
       (BodyNormalize.sequential (ScalarCarrier.base ib)
-        (BodyNormalize.sequential (IntegerBody.base ib)
+        (BodyNormalize.sequential (BodyNormalize.sequential (IntegerBody.base ib) (Rules.CastCancel.base ib))
           (BodyNormalize.sequential
             (FactNormalize.base Rules.IndexCompare.family ib (DenseExtract.hintOps hints))
-            (ConstantAlias.base ib)))))
+            (BodyNormalize.sequential
+              (FactNormalize.base Rules.IndexConstant.family ib [])
+              (ConstantAlias.base ib))))))
 
 /-- Adapt the exact body normalizers without assuming any producer facts at function entry.
 The source and target syntax supply only a finite traversal budget. -/

@@ -88,6 +88,10 @@ jobs:
               */test_lean_index_bitwise_bounds_differential.py|*/test_lean_index_fold_native.py|\
               */test_lean_from_elements_select_differential.py|*/test_lean_index_compare_native.py|\
               */test_lean_constant_alias_native.py|*/test_lean_from_elements_index_native.py|\
+              */test_lean_index_clamp_native.py|*/test_lean_minmax_commutative_native.py|\
+              */test_lean_constant_dead_native.py|*/test_lean_motion_independent_differential.py|\
+              */test_lean_index_constant_native.py|*/test_lean_index_remainder_native.py|\
+              */test_lean_cast_cancel_native.py|\
               */test_lean_shared_composition_differential.py) continue ;;
             esac
             if (( binding_index % 3 == ${{ matrix.shard }} )); then
