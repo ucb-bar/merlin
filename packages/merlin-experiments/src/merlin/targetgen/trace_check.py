@@ -436,7 +436,8 @@ def check(
         if modes.get("resident_reuse"):
             loads = [row for row in ins if row["class"] in _MVIN]
             if not loads or any(
-                any(row.get("decoded", {}).get(field) is None for field in ("spad_addr", "dram", "rows", "cols"))
+                any(row.get("decoded", {}).get(field) is None for field in ("spad_addr", "rows", "cols"))
+                or _operand_identity(row.get("decoded", {}).get("dram")) is None
                 for row in loads
             ):
                 unresolved_fields.append("resident_reuse")
@@ -563,16 +564,24 @@ def residency_findings(trace: dict) -> list[str]:
     return _residency_findings(instructions)
 
 
-def _operand_identity(value) -> tuple:
+def _operand_identity(value) -> tuple | None:
     """A hashable identity for one decoded operand reference, compared structurally.
 
     The decoder resolves a memory operand to either a constant or an argument-relative reference; both
     forms compare exactly. No field layout is read here -- the decoder already did that from the target's
     own RTL facts, which is the only place it may be done.
+
+    Unknown references do not identify one source: two unresolved SSA values may
+    denote different allocations even when their diagnostic dictionaries match.
     """
     if isinstance(value, dict):
-        return ("ref", value.get("kind"), value.get("raw"), value.get("arg_index"), value.get("offset"))
-    return ("lit", value)
+        if value.get("kind") == "const" and type(value.get("raw")) is int:
+            return ("lit", value["raw"])
+        if (value.get("kind") == "argbase" and type(value.get("arg_index")) is int
+                and value["arg_index"] >= 0 and type(value.get("offset")) is int):
+            return ("argbase", value["arg_index"], value["offset"])
+        return None
+    return ("lit", value) if type(value) in (int, str) else None
 
 
 def _residency_findings(ins: list[dict]) -> list[str]:
@@ -605,8 +614,13 @@ def _residency_findings(ins: list[dict]) -> list[str]:
         decoded = instruction.get("decoded") or {}
         destination = decoded.get("spad_addr")
         if destination is None:
-            continue  # this decoder cannot see the destination: say nothing
-        content = (_operand_identity(decoded.get("dram")), decoded.get("rows"), decoded.get("cols"))
+            live.clear()  # an unlocated write may overwrite any tracked slot
+            continue
+        source = _operand_identity(decoded.get("dram"))
+        if source is None or any(decoded.get(field) is None for field in ("rows", "cols")):
+            live.pop(destination, None)
+            continue
+        content = (source, decoded.get("rows"), decoded.get("cols"))
         if live.get(destination) == content:
             reloads.append((index, destination))
         live[destination] = content
@@ -638,6 +652,9 @@ def _stale_mode_config_findings(ins: list[dict]) -> list[str]:
         if instruction.get("class") != "CONFIG_EX":
             continue
         payload = (_operand_identity(instruction.get("rs1")), _operand_identity(instruction.get("rs2")))
+        if None in payload:
+            active = None
+            continue
         if active == payload:
             repeats.append(index)
         active = payload
