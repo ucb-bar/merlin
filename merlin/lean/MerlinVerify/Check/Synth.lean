@@ -16,6 +16,8 @@ import MerlinVerify.Rules.Generalize
 import MerlinVerify.Rules.Commutative
 import MerlinVerify.Rules.IntegerFold
 import MerlinVerify.Rules.ReshapeCompose
+import MerlinVerify.Rules.IntegerIdentity
+import MerlinVerify.Rules.ReshapeMixed
 
 namespace MerlinVerify.Check
 
@@ -35,6 +37,15 @@ def localRewrite? (ρ : Rho) (s t : Op) : Option (Rule × Rho) :=
   [Rules.Generalize.rule, Rules.Commutative.rule].findSome? fun r =>
     (r.check ρ [s] [t]).map fun ρ' => (r, ρ')
 
+/-- Keep an unchanged first operation when the second pair already has a checked local rewrite.
+This preserves its SSA mapping before considering larger sites that erase intermediate values. -/
+def rewritePrefix? (ρ : Rho) : List Op → List Op → Option Rho
+  | s :: s' :: _, t :: t' :: _ => do
+    let ρ' ← alphaOp ρ s t
+    let _ ← localRewrite? ρ' s' t'
+    return ρ'
+  | _, _ => none
+
 /-- A candidate always consumes a nonempty source fragment; targets may contain zero or more
 operations. Rules recheck every proposed fragment independently of this synthesizer. -/
 structure SiteCandidate where
@@ -46,7 +57,8 @@ def multiRewrite? (ρ : Rho) (ss ts : List Op) : Option (SiteCandidate × Rho) :
   -- Preserve intermediate correspondences before trying a fold that maps only the last result.
   let candidates : List SiteCandidate :=
     [⟨Rules.Cse.rule, 1, 1⟩, ⟨Rules.Motion.rule, 1, 2⟩, ⟨Rules.DequantSite.rule, 0, 2⟩,
-      ⟨Rules.ReshapeCompose.rule, 1, 1⟩] ++
+      ⟨Rules.ReshapeCompose.rule, 1, 1⟩, ⟨Rules.ReshapeMixed.rule, 1, 1⟩,
+      ⟨Rules.IntegerIdentity.rule, 1, 1⟩, ⟨Rules.IntegerIdentity.rule, 1, 0⟩] ++
     (Rules.IntegerFold.candidateTails ss ts).map (fun n => ⟨Rules.IntegerFold.rule, n, 1⟩)
   candidates.findSome? fun c =>
     if c.sourceTail + 1 ≤ ss.length ∧ c.targetCount ≤ ts.length then
@@ -62,7 +74,8 @@ def synthLocal (ρ : Rho) : List Op → List Op → List Step
     | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss []
   | [], _ :: _ => [.same]
   | s :: ss, t :: ts =>
-    match samePrefix? ρ (s :: ss) (t :: ts) with
+    match (samePrefix? ρ (s :: ss) (t :: ts)).orElse
+        (fun _ => rewritePrefix? ρ (s :: ss) (t :: ts)) with
     | some ρ' => .same :: synthLocal ρ' ss ts
     | none =>
       match multiRewrite? ρ (s :: ss) (t :: ts) with
