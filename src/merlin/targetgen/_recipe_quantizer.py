@@ -1103,54 +1103,11 @@ def calibration_limit(recipe: Mapping[str, Any], default: int) -> int:
     return value
 
 
-class _RepeatedObservationSkip:
-    """Skip a min/max observer's call when its input is the exact tensor it observed last.
+def _RepeatedObservationSkip(prepared: Any):
+    """The observer owner supplies guarded, exact min/max observation reuse."""
+    import _recipe_observers as RO  # noqa: PLC0415 -- capture interpreter sibling
 
-    A stored weight reaches its observer as the same parameter on every calibration sample, and
-    TorchAO's ``MinMaxObserver`` and ``PerChannelMinMaxObserver`` keep only a running min and max:
-    a second observation of the same values leaves both buffers bit-identical. Those two exact
-    classes and the known grouped observer with its inherited min/max forward are covered; arbitrary
-    subclasses, moving averages and histograms are not. The skip requires the
-    same tensor object, still alive, with the same version counter, storage, shape, strides and
-    dtype, so an in-place update or a fresh activation is always observed. The instance-level
-    ``forward`` is removed again when calibration ends.
-    """
-
-    def __init__(self, prepared: Any) -> None:
-        import _recipe_observers as RO  # noqa: PLC0415 -- capture interpreter sibling
-        from torchao.quantization.pt2e import MinMaxObserver, PerChannelMinMaxObserver
-
-        grouped = RO.grouped_channel_observer()
-        known = (MinMaxObserver, PerChannelMinMaxObserver)
-        if grouped.forward is PerChannelMinMaxObserver.forward:
-            known += (grouped,)  # only qparam grouping differs; the observed min/max update is identical
-        self._modules = [module for module in prepared.modules() if type(module) in known]
-
-    @staticmethod
-    def _key(x: Any) -> tuple:
-        return (x._version, x.data_ptr(), tuple(x.shape), x.stride(), x.dtype, x.device)
-
-    def __enter__(self) -> _RepeatedObservationSkip:
-        import weakref
-
-        for module in self._modules:
-            observe = type(module).forward.__get__(module)
-            last: list[Any] = [None]
-
-            def forward(x: Any, _observe: Any = observe, _last: list[Any] = last) -> Any:
-                seen = _last[0]
-                if seen is not None and seen[0]() is x and seen[1] == self._key(x):
-                    return x
-                result = _observe(x)
-                _last[0] = (weakref.ref(x), self._key(x))
-                return result
-
-            module.forward = forward
-        return self
-
-    def __exit__(self, *exc: Any) -> None:
-        for module in self._modules:
-            module.__dict__.pop("forward", None)
+    return RO.RepeatedObservationSkip(prepared)
 
 
 def _no_batch_norm_fold_needed(original_snapshot: Any, exported: Any) -> bool:
