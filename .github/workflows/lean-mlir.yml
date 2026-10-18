@@ -5,12 +5,14 @@ on:
     paths:
       - 'merlin/lean/**'
       - 'src/merlin/verify/lean/**'
+      - 'src/merlin/common/owned_process.py'
       - 'src/merlin/llvmlower/**'
       - 'src/merlin/runtime/backends/zephyr_model.py'
       - 'src/merlin/runtime/dispatch_runtime.py'
       - 'merlin/contract/schemas/lean_*.json'
       - 'merlin/tests/ir/*lean*'
       - 'merlin/tests/ir/conftest.py'
+      - 'merlin/tests/infra/test_owned_process.py'
       - 'merlin/tests/ir/test_lower_quant_ext_granularities.py'
       - 'merlin/tests/ir/test_normalization_reassociation.py'
       - 'merlin/tests/fixtures/lean*'
@@ -61,6 +63,9 @@ jobs:
         run: lake exe cache get
       - name: build and audit all Lean declarations and pinned statements
         run: uv run --no-sync python build_tools/scripts/check_lean_guard.py
+      - name: owned subprocess cancellation controls
+        if: matrix.shard == 0
+        run: uv run --no-sync pytest -q merlin/tests/infra/test_owned_process.py
       - name: authoritative round trips, receipts, races and semantic differential tests
         # Collect every binding-only Lean suite, including new rewrite/definedness families.
         # Three disjoint file shards retain the entire selection within the job time budget.
@@ -93,6 +98,7 @@ jobs:
               */test_lean_index_constant_native.py|*/test_lean_index_remainder_native.py|\
               */test_lean_cast_cancel_native.py|*/test_lean_native_gate_differential.py|\
               */test_lean_integer_neutral_bodies_native.py|\
+              */test_lean_wide_integer_differential.py|\
               */test_lean_shared_composition_differential.py) continue ;;
             esac
             if (( binding_index % 3 == ${{ matrix.shard }} )); then
