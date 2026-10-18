@@ -142,7 +142,11 @@ def _insert(kernel, objects, banks, adapter, selected, ordinal):
             body.append(store)
     return (
         replace(kernel, body=tuple(body)),
-        (*objects, saved, restored),
+        # The save reads the original register too. Its transfer alignment
+        # can be stricter than the original arithmetic/bank requirements.
+        # Replan that object's location along with the new save/reload slots.
+        (*(replace(item, alignment=alignment) if item.name == obj.name else item for item in objects),
+         saved, restored),
         {
             "object": obj.name,
             "gap_calls": [left, right],

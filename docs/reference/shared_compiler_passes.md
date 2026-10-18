@@ -13,6 +13,7 @@ code_refs:
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/device_spills.py
   - src/merlin/compile/scheduling/spill_conformance.py
+  - src/merlin/compile/scheduling/spill_contracts.py
   - src/merlin/compile/scheduling/copy_elimination.py
   - src/merlin/compile/scheduling/schedule_pipeline.py
   - src/merlin/compile/scheduling/fusion.py
@@ -1086,6 +1087,118 @@ independent numerical comparison rejects despite its declared copy effects.
 Existing backends need independently qualified register-class and transfer
 adapters before this mechanism can enter their ordinary target lowering. A
 synthetic execution qualifies the shared mechanism's stated scope only.
+
+### Device spills selected from RTL and software documents
+
+Ordinary `compile_schedule` can derive those existing `SpillClass` capabilities
+from the same selected RTL/software pair used for storage and fusion. This
+binds the spill planner to the selected device interface; it does not introduce
+another register allocator. Add an optional `spills` section under
+`merlin.schedule_effects.v1`, alongside the required selected `storage` section:
+
+```yaml
+spills:
+  schema: merlin.device_spill_contract.v1
+  classes:
+    vector_values:
+      register_bank: register_bytes
+      spill_bank: saved_bytes
+      width_bits: {fact: [facts, vector_register_bits]}
+      alignment: {fact: [facts, transfer_alignment_bytes]}
+      store: save_vector
+      reload: restore_vector
+      execution: synchronous_bit_preserving_bytes
+```
+
+Names are identifiers from the selected software/ISA document, not recognized
+target instructions. Each class explicitly identifies addressable device
+register bytes and a separate invocation-private spill memory. Both banks must
+already have selected byte windows, physical backing identities, ownership and
+RTL capacities. Aliased register/spill backings and multiple classes for one
+register bank reject. This family cannot express nonaddressable accumulator
+state or host CPU registers.
+
+`width_bits` and byte `alignment` must reference structural RTL facts, never
+literal tuning constants. Widths must contain whole bytes. Either may be `null`
+when unknown; that class is then disabled. Software declares `store` and
+`reload` separately, so a target can use different instructions in each
+direction. Both instructions must have complete, memory-only, exact-copy
+effects in the selected ISA/storage declarations, covering their respective
+directions. Inexact copies and hidden execution/state effects reject.
+Asynchronous transfers or an unknown/unsupported `execution` string disable
+the class; they do not acquire synchronous completion from RTL queue facts.
+
+The caller supplies only the target's physical transfer callbacks and an
+independently selected qualification identity:
+
+```python
+result = compile_schedule(
+    source_kernel, private_objects, None, storage_adapter, encoding, limits,
+    selected_contracts=selected,
+    private_ownership=True,
+    spill_emitters={"vector_values": emit_device_transfer},
+    spill_qualification_identity=qualified_transfer_evidence,
+    budgets=ScheduleBudgets(max_spills=2, max_repairs=2),
+)
+```
+
+The callback receives actual source/read and destination/write `EncodedAccess`
+objects and returns a typed instruction `Call`. Its result must use the selected
+store or reload instruction for that direction. Actual decoded accesses,
+complete width, bit-preserving effects and synchronous completion must match.
+The existing relocation checker subsequently preserves all nonaddress
+semantics. Actual final words are independently decoded against the selected
+ISA and checked against the realized schedule. No emitter name or private
+backend type is inspected.
+
+Missing emitters or independent qualification leave the class disabled.
+Feasible programs still compile without spilling; a pressure failure reports
+the unavailable class and reason. Supplying arbitrary `spill_classes` together
+with selected documents rejects, as do unselected callback keys. The legacy
+explicit-capability entry remains available without selected documents. Merely
+setting `status: reviewed` or attaching a qualification string does not prove
+that a machine implements exact transfers.
+
+Spills still consume the existing global repair budget, recompute liveness,
+allocation and completion, and invalidate emission/size results. Selected raw
+documents, numerical policy, resource parameters and shared resolver/planner
+source identities bind the pipeline analyses. Changes during selection or
+compilation reject; prior selected analyses cannot silently survive a changed
+resolver. With unknown timing costs, selection remains deterministic
+longest-unused-gap. No cycle estimate or calibrated tuning result is implied.
+When the transfer requires stronger alignment than the original arithmetic,
+replanning strengthens the saved register's alignment as well as the new spill
+and reload objects. A nonzero bank window does not waive that constraint.
+
+`test_selected_spill_contracts.py` runs the ordinary path over complete neutral
+stateful programs with 24-bit and 128-bit device register values, byte alignment
+one and eight, 64-bit little-endian and 32-bit big-endian operands, separate
+memories, tails and distinct reload instructions. Three invocations compare all
+output bytes, carried inputs and guards against independent byte arithmetic.
+A paired existing-explicit-capability arm uses identical inputs, hardware,
+shared source versions and transfer implementation; the selected binding
+preserves its actual commands and bytes, with no claimed speedup. Disabling
+spills under pressure diagnoses; undersized capacity, reservations, aliases,
+wrong transfer operands/instructions, changed software, repair limits and
+final code growth are exercised. A faulty native spill changes results despite
+identical declarations and command/traffic counters, disproving qualification
+based solely on those declarations.
+
+Reproduce with the project's Python environment:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_selected_spill_contracts.py \
+  merlin/tests/infra/test_device_spills.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/selected-spill-check"
+```
+
+These neutral executions do not qualify a real hardware implementation. Existing
+targets still need public selected device-register windows, exact software
+transfer/completion semantics, a qualified physical callback, actual-byte
+decoding and complete model integration. No target repository was modified to
+supply them. Compilation peak memory and accelerator timing remain unmeasured
+for this selected binding; broader asynchronous spills and model-level timing
+remain unresolved.
 
 ## Final encoded programs
 

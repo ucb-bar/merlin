@@ -159,6 +159,7 @@ def shared_library_sources():
         "merlin.compile.scheduling.dense_contracts",
         "merlin.compile.scheduling.storage_contracts",
         "merlin.compile.scheduling.fusion_contracts",
+        "merlin.compile.scheduling.spill_contracts",
         "merlin.targetgen.isa_spec",
         "merlin.targetgen.isa_dialect_gen",
     )
@@ -234,6 +235,8 @@ def compile_schedule(
     configuration_qualification_identity=None,
     fusion_emitters=None,
     fusion_qualification_identity=None,
+    spill_emitters=None,
+    spill_qualification_identity=None,
 ) -> ScheduleCompilation:
     """Allocate, check, encode and finalize through the existing pass session.
 
@@ -275,9 +278,21 @@ def compile_schedule(
             scopes.extend(("scalar_computation_and_layouts", "physical_fusion_routes", "fusion_resource_bounds"))
         elif fusion_emitters is not None or fusion_qualification_identity is not None:
             raise ValueError("fusion emitters and qualification require a selected fusion contract")
+        spill_binding = None
+        if spill_classes:
+            raise ValueError("selected device spill declarations cannot be overridden by arbitrary capabilities")
+        if selected_contracts.spills is not None:
+            spill_classes, spill_binding = selected_contracts.spills.bind(
+                adapter, banks, emitters=spill_emitters, qualification_identity=spill_qualification_identity,
+            )
+            scopes.extend(("device_register_resources", "exact_spill_reload_routes"))
+        elif spill_emitters is not None or spill_qualification_identity is not None:
+            raise ValueError("device spill emitters and qualification require a selected spill contract")
         binding = selected_contracts.record(scopes=tuple(scopes))
         if fusion_binding is not None:
             binding["fusion"] = fusion_binding
+        if spill_binding is not None:
+            binding["spills"] = spill_binding
         binding["configuration_pass"] = (
             "selected_qualified_declaration" if configuration_adapter is not None
             else "unavailable_missing_qualification"
@@ -286,6 +301,8 @@ def compile_schedule(
         raise ValueError("configuration qualification requires selected RTL/software contracts")
     elif fusion_emitters is not None or fusion_qualification_identity is not None:
         raise ValueError("fusion emitters and qualification require selected RTL/software contracts")
+    elif spill_emitters is not None or spill_qualification_identity is not None:
+        raise ValueError("device spill emitters and qualification require selected RTL/software contracts")
     if external_windows is None:
         external_windows = ()
     if (
@@ -502,8 +519,10 @@ def compile_schedule(
         if result is None:
             result = allocate(configured, objects)
         if result is None:
+            unavailable = binding.get("spills", {}).get("unavailable_classes", {}) if binding else {}
             raise StorageOptimizationUnavailable(
                 "no legal temporary allocation within the selected schedule repair family"
+                + ("; unavailable device spills: " + json.dumps(unavailable, sort_keys=True) if unavailable else "")
             )
         session.module = result.kernel
         report = dict(result.report)

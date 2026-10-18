@@ -167,7 +167,7 @@ def native(tmp_path):
 static uint64_t number(const unsigned char *p,int width,int big) {
  uint64_t x=0; for(int i=0;i<width;i++) x|=(uint64_t)p[i] << (8*(big?width-1-i:i)); return x;
 }
-int run(const unsigned char *code,int bytes,int width,int big,int separate,
+int run(const unsigned char *code,int bytes,int width,int big,int separate,int faulty_spill,
         unsigned char *first,unsigned char *second,unsigned char *input,unsigned char *output,
         int capacity,int external,uint64_t *counts) {
  unsigned char *memory[4]={first,separate?second:first,input,output};
@@ -190,7 +190,10 @@ int run(const unsigned char *code,int bytes,int width,int big,int separate,
   if(r<2 && s+n>counts[3+(r&&separate)]) counts[3+(r&&separate)]=s+n;
   if(w<2 && d+n>counts[3+(w&&separate)]) counts[3+(w&&separate)]=d+n;
   if(op==2) { if(pending) return 4; pending=1; pr=r; pw=w; ps=s; pd=d; pn=n; }
-  else if(op==0) memmove(memory[w]+d,memory[r]+s,n);
+  else if(op==0 || op==4) {
+   memmove(memory[w]+d,memory[r]+s,n);
+   if(faulty_spill && r==0 && w==1) memory[w][d]++;
+  }
   else if(op==1) { for(uint64_t i=0;i<n;i++) memory[w][d+i]=(unsigned char)(memory[r][s+i]+1); }
   else return 5;
  }
@@ -202,16 +205,16 @@ int run(const unsigned char *code,int bytes,int width,int big,int separate,
                    check=True, capture_output=True)
     machine = ctypes.CDLL(str(library))
     bytep = ctypes.POINTER(ctypes.c_ubyte)
-    machine.run.argtypes = [bytep, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+    machine.run.argtypes = [bytep, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
                            bytep, bytep, bytep, bytep, ctypes.c_int, ctypes.c_int,
                            ctypes.POINTER(ctypes.c_uint64)]
 
-    def execute(image, first, second, data, output, width=8, big=False, separate=False):
+    def execute(image, first, second, data, output, width=8, big=False, separate=False, faulty_spill=False):
         def buffer(array):
             return (ctypes.c_ubyte * len(array)).from_buffer(array)
         counts = (ctypes.c_uint64 * 5)()
         code = bytearray(image)
-        status = machine.run(buffer(code), len(code), width, big, separate, buffer(first), buffer(second),
+        status = machine.run(buffer(code), len(code), width, big, separate, faulty_spill, buffer(first), buffer(second),
                              buffer(data), buffer(output), len(first), len(data), counts)
         assert status == 0, status
         return tuple(counts)
