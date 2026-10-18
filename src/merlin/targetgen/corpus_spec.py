@@ -2421,6 +2421,63 @@ def build_component_program(entry: dict, binding: CorpusBinding) -> tuple[dict, 
 BUILDERS["component_program"] = build_component_program
 
 
+def activation_matmul_program(entry: dict, binding: CorpusBinding) -> dict:
+    """The typed DAG of an activation x activation contraction whose result feeds a reshape.
+
+    Both operands are runtime ``input`` tensors in the operand dtype: no stored weight, so nothing can
+    be packed or made resident ahead of the call, and no scale stream, because a host epilogue applies
+    the scales. The product accumulates in the accumulator dtype and is published through a row-major
+    reshape to ``[N, M]``, so the contraction's consumer is data movement rather than a readout stage.
+    """
+    D = binding.tile_dim
+    M = entry.get("M", entry.get("M_tiles", 1) * D)
+    K = entry.get("K", entry.get("K_tiles", 1) * D)
+    N = entry.get("N", entry.get("N_tiles", 1) * D)
+    if any(type(extent) is not int or extent < 1 for extent in (M, K, N)):
+        raise ValueError(f"{entry.get('name')}: activation matmul needs resolved positive M, K and N")
+    from .component_program import SCHEMA_V2
+
+    lhs, rhs, out = entry.get("lhs", "A0"), entry.get("rhs", "B0"), entry.get("out", "Y0")
+    return {
+        "schema": SCHEMA_V2,
+        "inputs": [
+            {"name": lhs, "role": "input", "shape": [M, K], "dtype": "operand"},
+            {"name": rhs, "role": "input", "shape": [K, N], "dtype": "operand"},
+        ],
+        "nodes": [
+            {"name": "product", "op": "matmul", "inputs": [lhs, rhs]},
+            {"name": "moved", "op": "reshape", "inputs": ["product"], "shape": [N, M]},
+        ],
+        "outputs": [{"name": out, "value": "moved"}],
+    }
+
+
+def build_activation_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
+    """An activation x activation contraction followed by a reshape (op == activation_matmul).
+
+    Written as the generic component program so the reference is the independent exact integer
+    evaluator and the written program is screened operation by operation like any captured source.
+    """
+    return build_component_program({**entry, "program": activation_matmul_program(entry, binding)}, binding)
+
+
+BUILDERS["activation_matmul"] = build_activation_matmul
+
+#: Builders whose capsule is a generic component program derived from the entry's own extents.
+COMPONENT_PROGRAM_SOURCES: dict[str, Callable[[dict, CorpusBinding], dict]] = {
+    "activation_matmul": activation_matmul_program,
+}
+
+
+def entry_component_program(entry: dict, binding: CorpusBinding) -> dict | None:
+    """The typed component program an entry will be written as, or ``None`` when it is not one."""
+    op = entry.get("op")
+    if op == "component_program":
+        return entry.get("program")
+    source = COMPONENT_PROGRAM_SOURCES.get(str(op))
+    return source(entry, binding) if source is not None else None
+
+
 #: Capsule kind -> the generalization axis it probes. A fact about what the capsule tests, not an
 #: opinion about it, so it is derived rather than re-typed on every entry.
 _AXIS_BY_KIND: dict[str, str] = {"isa": "seen", "layer": "composition", "model_slice": "composition", "model": "model"}

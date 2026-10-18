@@ -667,7 +667,7 @@ def generate_target(
     from .component_integer_bounds import preflight_entry
 
     for entry in entries:
-        if entry.get("op") == "component_program" and entry["name"] not in preallocation_denials:
+        if CS.entry_component_program(entry, binding) is not None and entry["name"] not in preallocation_denials:
             try:
                 preflight_entry(entry, binding=binding)
             except ValueError as exc:

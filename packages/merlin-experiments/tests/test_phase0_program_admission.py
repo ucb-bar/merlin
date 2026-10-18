@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -457,6 +458,88 @@ def test_generation_removes_and_records_a_written_member_without_accelerator_pla
     # A refused screen leaves through the diagnostic path, not this one.
     assert withhold_unaccelerated("mixed", {"status": "unsupported", "placements": {}}, mixed) is None
     assert mixed.is_dir()
+
+
+_ACT_ACT = ("aligned", "decode", "k_tail")
+
+
+@pytest.mark.parametrize("mesh_rows", [8, 16, 32])
+def test_activation_contraction_members_are_generated_exact_and_released(tmp_path, mesh_rows):
+    """Two runtime int8 activations contracted to i32 and reshaped, sized from RTL facts and released."""
+    from merlin_experiments.corpus.publication import require_accelerator_placement
+    from merlin_experiments.phase0.sweeps import _resolve_flat_extents
+    from merlin_experiments.phase0.writer import _write_capsule
+
+    from merlin.targetgen import corpus_spec, corpus_synth, golden_store
+    from merlin.targetgen.capsule_inputs import materialize_capsule_leaves
+
+    facts = {"facts": {"arrays": [{"name": "mesh", "rows": mesh_rows, "cols": mesh_rows}]}}
+    tile = corpus_spec._tile_dim("fixture", _CONTRACT, operand="int8", facts=facts)
+    assert tile == mesh_rows
+    requirement = {
+        "target": "fixture",
+        "cells": [
+            {
+                "cell": "contraction/i8/aligned",
+                "family": "contraction",
+                "dtype": "i8",
+                "alignment": "aligned",
+                "basis": "observed",
+            }
+        ],
+        "boundaries": {"extent_probes": [{"boundary": "tile_edge", "edge": tile, "points": [tile - 1, tile]}]},
+    }
+    members = {entry["name"]: entry for entry in corpus_synth.synthesize(requirement)["capsules"]}
+    binding = corpus_spec.CorpusBinding(
+        target="fixture",
+        tile_dim=tile,
+        operand_dtype="int8",
+        accum_dtype="i32",
+        integer=True,
+        tiers=["L0"],
+        compare="exact_int",
+    )
+    semantics = {
+        **_SPEC["numerical_semantics"],
+        "internal_arithmetic": {
+            "signed_operand_bits": 8,
+            "mac_result_bits": 32,
+            "full_operation_overflow_policy": "bounded_exact_requires_each_partial_sum",
+        },
+    }
+    root = tmp_path / "generated"
+    extents = {}
+    for label in _ACT_ACT:
+        name = f"SY_act_act_i8_{label}"
+        entry = _resolve_flat_extents({**members[name], "numerical_semantics": semantics}, binding)
+        extents[label] = (entry["M"], entry["K"], entry["N"])
+        directory = Path(_write_capsule(entry, binding, root))
+        capsule = yaml.safe_load((directory / "capsule.yaml").read_text())
+        # Both operands are runtime activations: no weight role, no scale stream.
+        assert [row["role"] for row in capsule["inputs"]] == ["input", "input"]
+        assert {row["dtype"] for row in capsule["inputs"]} == {"i8"}
+        screen = program_admission.screen_written(capsule, directory, target="fixture", evidence=_evidence())
+        assert screen["status"] == "admitted", screen["reason"]
+        assert screen["placements"] == {"accelerator": 1}
+        assert program_admission.accelerator_placement_refusal(screen) is None
+        # Exact integer reference, recomputed here from the declared leaves.
+        M, K, N = extents[label]
+        leaves = materialize_capsule_leaves(capsule)
+        a, b = leaves["A0"].data, leaves["B0"].data
+        product = [sum(int(a[i * K + k]) * int(b[k * N + j]) for k in range(K)) for i in range(M) for j in range(N)]
+        golden = golden_store.load_golden(directory)["outputs"]["Y0"]
+        assert [value for row in golden for value in row] == product
+        assert (len(golden), len(golden[0])) == (N, M)
+        capsule["software_screen"] = screen
+        (directory / "capsule.yaml").write_text(yaml.safe_dump(capsule, sort_keys=False))
+    # The release gate refuses zero-accelerator public capsules; these three pass it.
+    assert require_accelerator_placement([root]) == len(_ACT_ACT)
+    assert extents == {
+        "aligned": (tile, 2 * tile, 2 * tile),
+        "decode": (1, 2 * tile, 2 * tile),
+        "k_tail": (tile, 2 * tile - 1, 2 * tile),
+    }
+    assert extents["k_tail"][1] % tile != 0
 
 
 @pytest.mark.parametrize("mesh_rows", [8, 16, 32])
