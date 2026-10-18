@@ -42,10 +42,11 @@ def capture (args : List Value) (uses : List ValueId) : Op :=
   (List.map Op.operands) == some [[], [], [2, 1]]
 #guard (Check.ConstantAlias.advance 64 facts (mkOp "unknown.write" [v 1 i32] [])).isEmpty
 #guard (Check.ConstantAlias.advance 64 facts (mkOp "unknown.write" [v 3 i32] [])).length == 1
+-- The old value is genuinely dead before a later write; stale facts still cannot alias b.
 #guard (normalized 64 [a, mkOp "unknown.write" [v 1 i32] [], b, ret [2, 1]]).map
-  (List.map Op.name) == some ["arith.constant", "unknown.write", "arith.constant", "func.return"]
+  (List.map Op.name) == some ["unknown.write", "arith.constant", "func.return"]
 #guard (normalized 64 [a, integer 1 8, b, ret [2, 1]]).map
-  (List.map Op.operands) == some [[], [], [], [2, 1]]
+  (List.map Op.operands) == some [[], [], [2, 1]]
 #guard (Check.ConstantAlias.advance 64 [] (mkOp "arith.constant" [v 1 i32] []
   [("value", .int 7 i32), ("unknown.meaning", .unit)])).isEmpty
 #guard (Check.ConstantAlias.advance 64 [] (mkOp "arith.constant" [v 1 i32] [] [])).isEmpty
