@@ -59,13 +59,16 @@ def test_certified_minmax_native_preserves_captured_generic_inputs(tmp_path, fid
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_actual_i1_extreme_folding_matches_native_but_is_not_commutation(tmp_path, fidelity_tools, name):
+def test_actual_i1_extreme_folding_native_tracks_exact_neutral_support(tmp_path, fidelity_tools, name):
     tools = SimpleNamespace(m2m_python=fidelity_tools.compiler_python)
     stage, before, after = stage_for(tmp_path, tools, source(name, 1, escape=True))
     result = check_definedness(before, "forward", tmp_path / "defined", m2m_python=tools.m2m_python)
     assert result["verdict"] == "verified", result.get("reason")
     result = check_typed_stage(stage, m2m_python=tools.m2m_python)
-    assert result["verdict"] == "abstracted", result.get("reason")
+    expected_verdict = "verified" if name in {"minui", "maxsi"} else "abstracted"
+    assert result["verdict"] == expected_verdict, result.get("reason")
+    if expected_verdict == "verified":
+        certify(stage, before, tools, tmp_path)
     samples = [[[0], [0]], [[1], [37]]]
     expected = [[reference(name, 1, s[0][0], 1), s[0][0], s[1][0]] for s in samples]
     compare_expected(tmp_path, fidelity_tools, [("before", before), ("after", after)], samples, expected, 64)

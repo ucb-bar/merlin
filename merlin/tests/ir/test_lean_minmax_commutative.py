@@ -7,7 +7,7 @@ import pytest
 from test_lean_defined_conversions import certify, verify
 from test_lean_integer_fold import canonicalize
 
-from merlin.verify.lean.check import check_definedness, check_support, check_typed_stage
+from merlin.verify.lean.check import check_definedness, check_support, check_typed_stage, compose_chain
 
 NAMES = ["minui", "maxui", "minsi", "maxsi"]
 
@@ -82,7 +82,7 @@ def test_i1_manual_commutation_is_independently_accepted(tmp_path, lean_tools, n
 
 @pytest.mark.parametrize("name", NAMES)
 @pytest.mark.parametrize("index_bits", [32, 64])
-def test_i1_actual_extreme_fold_remains_a_separate_coverage_gap(tmp_path, lean_tools, name, index_bits):
+def test_i1_actual_extreme_fold_distinguishes_neutral_and_absorbing_rules(tmp_path, lean_tools, name, index_bits):
     stage, before, after = stage_for(tmp_path, lean_tools, source(name, 1, escape=True))
     assert f"arith.{name}" not in after.read_text()
     for checker, directory in [(check_support, "support"), (check_definedness, "defined")]:
@@ -90,8 +90,20 @@ def test_i1_actual_extreme_fold_remains_a_separate_coverage_gap(tmp_path, lean_t
             before, "forward", tmp_path / directory, index_bits=index_bits, m2m_python=lean_tools.m2m_python
         )
         assert result["verdict"] == "verified", result.get("reason")
+    expected = "verified" if name in {"minui", "maxsi"} else "abstracted"
     result = check_typed_stage(stage, m2m_python=lean_tools.m2m_python, index_bits=index_bits)
-    assert result["verdict"] == "abstracted", result.get("reason")
+    assert result["verdict"] == expected, result.get("reason")
+    # Only neutral extrema preserve poison. The absorbing folds still fail the actual
+    # boundary obligation, even though their initialized source execution is defined.
+    result = compose_chain(
+        [stage],
+        tmp_path / "support/receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        definedness=tmp_path / "defined/receipt.json",
+        m2m_python=lean_tools.m2m_python,
+    )
+    assert result["verdict"] == expected, result.get("reason")
 
 
 MUTATE = """
