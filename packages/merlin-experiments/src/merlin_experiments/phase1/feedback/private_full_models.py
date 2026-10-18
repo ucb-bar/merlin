@@ -24,6 +24,7 @@ from merlin_experiments.phase1.feedback import private_compilation_inputs as com
 from merlin_experiments.phase1.feedback import private_control_support as control_support
 from merlin_experiments.phase1.feedback import private_data_movement as data_movement
 from merlin_experiments.phase1.feedback import private_f32_maximum_support as maximum_support
+from merlin_experiments.phase1.feedback import private_f32_reduction_support as f32_sum_support
 from merlin_experiments.phase1.feedback import private_host_source_dispatch as host_source_dispatch
 from merlin_experiments.phase1.feedback import private_index_host_support as index_support
 from merlin_experiments.phase1.feedback import private_integer_reduction_support as integer_support
@@ -517,6 +518,7 @@ def _source_obligations(
     linkage = linkage_support.begin(source_sha, normalized_sha, len(parsed))
     arange = arange_support.begin(source_sha, normalized_sha, len(parsed), selected_index_observation)
     integer_reductions = integer_support.begin(source_sha, normalized_sha, len(parsed), selected_index_observation)
+    f32_reductions = f32_sum_support.begin(source_sha, normalized_sha, len(parsed), selected_index_observation)
     maximum = maximum_support.begin(
         source_sha, normalized_sha, checked["receipt_sha256"], parsed, selected_index_observation
     )
@@ -650,6 +652,7 @@ def _source_obligations(
                 source_rows,
                 bounded_control,
                 maximum=maximum,
+                f32_reductions=f32_reductions,
             )
             linkage_support.record(linkage, row, host_decision, source_rows, linalg)
             arange_support.record(arange, capture, row, host_decision, parsed, source_rows)
@@ -657,6 +660,7 @@ def _source_obligations(
     if unresolved:
         raise SourceAdmissionError(unresolved)
     integer_support.verify_source(integer_reductions, source)
+    f32_sum_support.verify_source(f32_reductions, source)
     maximum_support.verify_source(maximum, source)
     index_support.verify_source(index_host, capture)
     group_metrics = {}
@@ -700,6 +704,7 @@ def _source_obligations(
         linkage_support.FIELD: linkage,
         "literal_arange_host_support": arange,
         integer_support.FIELD: integer_reductions,
+        f32_sum_support.FIELD: f32_reductions,
         maximum_support.FIELD: maximum,
         index_support.FIELD: index_host,
         ordered_scan_support.FIELD: ordered_scan,
@@ -797,6 +802,7 @@ def _verify_compiled_program(
     linalg_support.link(source, index_lowering, linked_build, capture_path=capture_path)
     arange_support.link(source, index_lowering, linked_build)
     integer_support.link(source, index_lowering, linked_build)
+    f32_sum_support.link(source, index_lowering, linked_build)
     maximum_support.link(source, index_lowering, linked_build, capture_path=capture_path)
     index_support.link(source, index_lowering, linked_build, capture_path=capture_path)
     ordered_scan_support.link(source, index_lowering, linked_build)
