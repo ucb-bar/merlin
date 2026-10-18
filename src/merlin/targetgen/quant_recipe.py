@@ -453,7 +453,8 @@ def with_dynamic_contractions(
     selected = dict(planes or {})
     if any(
         k not in (SOFTMAX_OUTPUT, WEIGHT, OPERAND, SOFTMAX_PARTNER, RESIDUAL_OPERAND)
-        or type(v) is not int or not 1 <= v <= _MAX_PLANES
+        or type(v) is not int
+        or not 1 <= v <= _MAX_PLANES
         for k, v in selected.items()
     ):
         raise ValueError(
@@ -576,6 +577,25 @@ def _static_int8(recipe: Mapping[str, Any], what: str) -> Mapping[str, Any]:
     return activation
 
 
+def static_planes_block(
+    *, planes: int = 2, observer: str = "minmax", owners: Sequence[str] | None = None
+) -> dict[str, Any]:
+    """The validated, canonical framework policy for static activation digit planes."""
+    if type(planes) is not int or not 2 <= planes <= 3:
+        raise ValueError(f"static planes take 2 or 3 digits, not {planes!r}")
+    if not _observer_valid(observer):
+        raise ValueError(f"observer {observer!r} is not minmax, histogram or p<percent>")
+    if owners is not None and (not owners or any(not isinstance(o, str) or not o for o in owners)):
+        raise ValueError("owners are non-empty module-path prefixes")
+    return {
+        "schema": STATIC_PLANES_SCHEMA,
+        "families": [CONTRACTION],
+        "planes": planes,
+        "observer": observer,
+        "owners": None if owners is None else sorted(set(owners)),
+    }
+
+
 def with_static_planes(
     recipe: Mapping[str, Any],
     *,
@@ -597,23 +617,12 @@ def with_static_planes(
     activation = _static_int8(recipe, "static planes")
     if CONTRACTION not in (recipe.get("families") or ()):
         raise ValueError("static planes need a recipe that quantizes contractions")
-    if type(planes) is not int or not 2 <= planes <= 3:
-        raise ValueError(f"static planes take 2 or 3 digits, not {planes!r}")
-    if not _observer_valid(observer):
-        raise ValueError(f"observer {observer!r} is not minmax, histogram or p<percent>")
-    if owners is not None and (not owners or any(not isinstance(o, str) or not o for o in owners)):
-        raise ValueError("owners are non-empty module-path prefixes")
+    block = static_planes_block(planes=planes, observer=observer, owners=owners)
     low, high = activation.get("quant_min"), activation.get("quant_max")
     if not (isinstance(low, int) and isinstance(high, int) and low < 0 < high):
         raise ValueError("static planes need the recipe's signed activation range")
     body = json.loads(json.dumps(dict(recipe)))
-    body[STATIC_PLANES] = {
-        "schema": STATIC_PLANES_SCHEMA,
-        "families": [CONTRACTION],
-        "planes": planes,
-        "observer": observer,
-        "owners": None if owners is None else sorted(set(owners)),
-    }
+    body[STATIC_PLANES] = block
     body.setdefault("why", {})[STATIC_PLANES] = (
         "opted in: a Linear's activation on a static per-tensor grid of int8 digits, each digit plane "
         "multiplied by the same int8 weight on the unit; the host sums base-weighted accumulators in the "

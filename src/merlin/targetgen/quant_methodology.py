@@ -51,7 +51,7 @@ ISLAND_OPS = ("softmax", "layer_norm", "rms_norm", "group_norm", "gelu", "silu",
 #: The only island format: Merlin's host computes these in IEEE single precision, never bf16/f16.
 ISLAND_DTYPE = "fp32"
 #: What a reviewed model variant may change in a derived recipe, and nothing else.
-VARIANT_CHANGES = ("families", "dynamic", "calibration_count", "scale_granularity")
+VARIANT_CHANGES = ("families", "dynamic", "calibration_count", "scale_granularity", "bias", "static_planes")
 _FIELDS = {
     "schema",
     "scale_granularity",
@@ -166,8 +166,31 @@ def validate(block: Any) -> dict[str, Any]:
             count = changes["calibration_count"]
             _require(type(count) is int and count > 0, f"{where}.changes.calibration_count is a positive integer")
         if "scale_granularity" in changes:
-            _require(changes["scale_granularity"] in SCALE_GRANULARITIES,
-                     f"{where}.changes.scale_granularity is one of {list(SCALE_GRANULARITIES)}")
+            _require(
+                changes["scale_granularity"] in SCALE_GRANULARITIES,
+                f"{where}.changes.scale_granularity is one of {list(SCALE_GRANULARITIES)}",
+            )
+        if "bias" in changes:
+            _require(changes["bias"] in BIASES, f"{where}.changes.bias is one of {list(BIASES)}")
+        if "static_planes" in changes:
+            planes = changes["static_planes"]
+            template = QR.static_planes_block()
+            _require(
+                isinstance(planes, Mapping) and set(planes) == set(template),
+                f"{where}.changes.static_planes states exactly {sorted(template)}",
+            )
+            _require(
+                planes["schema"] == template["schema"] and planes["families"] == template["families"],
+                f"{where}.changes.static_planes has the static contraction-plane schema",
+            )
+            _require(
+                planes["owners"] is None or isinstance(planes["owners"], list),
+                f"{where}.changes.static_planes.owners is a list or null",
+            )
+            try:
+                QR.static_planes_block(planes=planes["planes"], observer=planes["observer"], owners=planes["owners"])
+            except ValueError as error:
+                _require(False, f"{where}.changes.static_planes: {error}")
         key = (row["model"], row["name"])
         _require(key not in seen, f"{where} repeats model variant {key}")
         seen.add(key)
@@ -225,8 +248,10 @@ def derive(
     """
     method = validate(methodology)
     selected_granularity = method["scale_granularity"]
+    selected_bias = method["bias"]
     for variant in variants_for(method, model):
         selected_granularity = variant["changes"].get("scale_granularity", selected_granularity)
+        selected_bias = variant["changes"].get("bias", selected_bias)
     if base.get("schema") != QR.SCHEMA or base.get("status") != QR.DERIVED:
         raise ValueError("a methodology derives from a derived quant_recipe_v1")
     body = json.loads(json.dumps(dict(base)))
@@ -350,7 +375,7 @@ def derive(
     # Bias: preloaded into the accumulator as an i32 code, where the path loads one.
     preload = _preload(path)
     if (
-        method["bias"] == "accumulator_preload_int32"
+        selected_bias == "accumulator_preload_int32"
         and preload is not None
         and _format(preload.get("dtype")) == "int32"
     ):
@@ -371,7 +396,7 @@ def derive(
     else:
         reason = (
             "the methodology keeps biases as host float adds"
-            if method["bias"] == "host_float"
+            if selected_bias == "host_float"
             else "the output path preloads no i32 value, so a bias cannot ride in the accumulator"
         )
         bias = {"mode": "host_float", "why": reason}
@@ -431,6 +456,7 @@ def _finish(body, method, path, underivable, model) -> dict[str, Any]:
         "output_path_sha256": digest(path) if path is not None else None,
         "model": model,
     }
+    selected_planes = None
     for row in variants_for(method, model):
         changes = row["changes"]
         if "families" in changes:
@@ -445,6 +471,8 @@ def _finish(body, method, path, underivable, model) -> dict[str, Any]:
             body["dynamic"] = json.loads(json.dumps(changes["dynamic"]))
         if "calibration_count" in changes:
             body.setdefault("framework_capture_policy", {})["calibration_count"] = changes["calibration_count"]
+        if "static_planes" in changes:
+            selected_planes = changes["static_planes"]
         body["methodology"].setdefault("variants", []).append(
             {
                 "name": row["name"],
@@ -454,6 +482,21 @@ def _finish(body, method, path, underivable, model) -> dict[str, Any]:
             }
         )
         body["why"][f"variant.{row['name']}"] = f"reviewed model variant: {row['reason']}"
+    if selected_planes is not None:
+        # Validate the final effective policy: later rows can change families or
+        # bias placement. Digit planes combine accumulators before a host bias add.
+        try:
+            if (body.get("epilogue") or {}).get("bias", {}).get("mode") != "host_float":
+                raise ValueError("static planes require host_float bias placement after combining accumulators")
+            body = QR.with_static_planes(
+                body,
+                planes=selected_planes["planes"],
+                observer=selected_planes["observer"],
+                owners=selected_planes["owners"],
+            )
+        except ValueError as error:
+            body[QR.STATIC_PLANES] = json.loads(json.dumps(selected_planes))
+            underivable[QR.STATIC_PLANES] = str(error)
     if underivable:
         body["status"] = QR.UNDERIVABLE
         body["underivable"] = dict(sorted({**(body.get("underivable") or {}), **underivable}.items()))

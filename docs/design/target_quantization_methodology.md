@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-10-18
 related: [output_epilogue_capabilities, accumulator_load_order]
-code_refs: [src/merlin/targetgen/quant_methodology.py, src/merlin/targetgen/_integer_epilogue.py, src/merlin/targetgen/_recipe_quantizer.py, src/merlin/targetgen/_recipe_observers.py, src/merlin/targetgen/_m2m_capture_artifacts.py, src/merlin/targetgen/quantization_spec.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, packages/merlin-experiments/src/merlin_experiments/phase0/capture_recipe.py, packages/merlin-experiments/src/merlin_experiments/phase0/requirements.py, examples/gemmini/target/software-spec.yaml]
+code_refs: [src/merlin/targetgen/quant_methodology.py, src/merlin/targetgen/quant_recipe.py, src/merlin/targetgen/_integer_epilogue.py, src/merlin/targetgen/_recipe_quantizer.py, src/merlin/targetgen/_recipe_observers.py, src/merlin/targetgen/_m2m_capture_artifacts.py, src/merlin/targetgen/quantization_spec.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, packages/merlin-experiments/src/merlin_experiments/phase0/capture_recipe.py, packages/merlin-experiments/src/merlin_experiments/phase0/requirements.py, examples/gemmini/target/software-spec.yaml]
 ---
 
 # A target's quantization methodology, applied to every model
@@ -160,11 +160,27 @@ A model's recipe differs from the shared one only through a `model_variants` row
 ```
 
 A row without a review, a reason or a measurement is refused, and so is a change outside `changes`.
-An unselected scale-granularity variant leaves the complete shared and other
+An unselected variant leaves the complete shared and other
 models' recipes unchanged. A new per-channel candidate still needs measured
 numerical review, capture/replay and the original model admission gates.
 The private gate's own `capture_recipe_variant` review (base vs selected digests) still applies to
 whatever recipe a sealed capture selects.
+
+A reviewed row may also change `bias` to either declared bias policy and add a
+`static_planes` block. The latter states exactly `schema: static_planes_v1`,
+`families: [contraction]`, `planes: 2` (or `3`), an `observer` (`minmax`,
+`histogram` or `p<percent>`), and `owners` (null for all supported contractions,
+or nonempty module-path prefixes). This selects the existing generic activation
+digit decomposition: every device product remains signed int8 by int8 into int32;
+the host combines the base-weighted accumulators in fp32 and then adds any bias.
+The wider software activation grid does not widen the hardware operand format.
+Consequently the final effective recipe must use `host_float` bias placement;
+an accumulator-preload claim makes the selection underivable. All matching rows
+are applied before checking compatibility, including the final contraction family.
+Unsupported requests remain recorded as underivable rather than disappearing.
+This choice changes device-call count and host arithmetic, so original numerical,
+capture/source, host-compute and target-execution gates remain required. A review
+row records a choice and its measurements; it grants none of those verdicts.
 
 `dynamic.planes.softmax_partner` gives the operand beside a softmax output extra static residual
 planes. Each plane uses the same signed-int8 round-and-clamp producer domain; successive steps are

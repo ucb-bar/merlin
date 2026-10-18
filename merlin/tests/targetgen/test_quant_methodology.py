@@ -131,19 +131,27 @@ def test_explicit_per_channel_policy_preserves_the_physical_readout_width():
     assert recipe["status"] == QR.DERIVED
     assert recipe["weight"]["granularity"] == "channel" and "channels_per_scale" not in recipe["weight"]
     assert recipe["epilogue"]["scale"] == {
-        "dtype": "fp32", "rounding": "half_even", "granularity": "per_command", "columns_per_scale": 16,
+        "dtype": "fp32",
+        "rounding": "half_even",
+        "granularity": "per_command",
+        "columns_per_scale": 16,
         "logical_granularity": "per_channel",
     }
 
 
 def test_reviewed_channel_scale_variant_changes_only_its_selected_model():
     changed = copy.deepcopy(METHODOLOGY)
-    changed["model_variants"].append({
-        "model": "classifier", "name": "independent-column-scales", "status": "reviewed",
-        "reviewed_by": "test reviewer", "reason": "synthetic source policy selection",
-        "measured_accuracy": {"basis": "synthetic test; no production admission"},
-        "changes": {"scale_granularity": "per_channel"},
-    })
+    changed["model_variants"].append(
+        {
+            "model": "classifier",
+            "name": "independent-column-scales",
+            "status": "reviewed",
+            "reviewed_by": "test reviewer",
+            "reason": "synthetic source policy selection",
+            "measured_accuracy": {"basis": "synthetic test; no production admission"},
+            "changes": {"scale_granularity": "per_channel"},
+        }
+    )
     for model in (None, "decoder", "other"):
         assert QM.derive(_base(), changed, _path(), model=model) == _derive(_path(), model=model)
     selected = QM.derive(_base(), changed, _path(), model="classifier")
@@ -152,9 +160,115 @@ def test_reviewed_channel_scale_variant_changes_only_its_selected_model():
     assert selected["methodology"]["variants"][0]["changes"] == ["scale_granularity"]
 
 
-@pytest.mark.parametrize("scale", [
-    {"granularity": "per_tensor"}, {"columns_per_scale": None}, {"columns_per_scale": False},
-])
+def _plane_variant(**changes):
+    return {
+        "model": "classifier",
+        "name": "static-activation-planes",
+        "status": "reviewed",
+        "reviewed_by": "test reviewer",
+        "reason": "synthetic precision and host-bias policy selection",
+        "measured_accuracy": {"basis": "synthetic test; no production admission"},
+        "changes": {"static_planes": QR.static_planes_block(), "bias": "host_float", **changes},
+    }
+
+
+def test_reviewed_planes_and_host_bias_change_only_the_selected_model():
+    method = copy.deepcopy(METHODOLOGY)
+    method["model_variants"].append(_plane_variant(scale_granularity="per_channel"))
+    for model in (None, "decoder", "other"):
+        assert QM.derive(_base(), method, _path(), model=model) == _derive(_path(), model=model)
+    recipe = QM.derive(_base(), method, _path(), model="classifier")
+    assert recipe["status"] == QR.DERIVED and recipe["recipe_sha256"] == QR.digest(recipe)
+    assert recipe[QR.STATIC_PLANES] == QR.static_planes_block()
+    assert recipe["bias_domain"] is None and recipe["epilogue"]["bias"]["mode"] == "host_float"
+    assert recipe["epilogue"]["scale"]["columns_per_scale"] == 16
+    assert recipe["epilogue"]["scale"]["logical_granularity"] == "per_channel"
+    assert "channels_per_scale" not in recipe["weight"]
+    assert recipe["methodology"]["variants"][0]["changes"] == ["bias", "scale_granularity", "static_planes"]
+
+
+def test_planes_cannot_claim_accumulator_bias_or_survive_a_later_family_change():
+    row = _plane_variant(bias="accumulator_preload_int32")
+    method = {**METHODOLOGY, "model_variants": [row]}
+    recipe = QM.derive(_base(), method, _path(), model="classifier")
+    assert recipe["status"] == QR.UNDERIVABLE
+    assert "host_float bias" in recipe["underivable"][QR.STATIC_PLANES]
+    assert recipe[QR.STATIC_PLANES] == row["changes"][QR.STATIC_PLANES]
+    row = _plane_variant()
+    drop = {**row, "name": "drop-contractions", "changes": {"families": [QR.WINDOW_MEAN]}}
+    for rows in ([row, drop], [drop, row]):
+        recipe = QM.derive(_base(), {**METHODOLOGY, "model_variants": rows}, _path(), model="classifier")
+        assert recipe["status"] == QR.UNDERIVABLE
+        assert "quantizes contractions" in recipe["underivable"][QR.STATIC_PLANES]
+
+
+def test_planes_check_the_final_bias_selection_across_multiple_rows():
+    row = _plane_variant()
+    override = {**row, "name": "bias-placement", "changes": {"bias": "accumulator_preload_int32"}}
+    method = {**METHODOLOGY, "model_variants": [row, override]}
+    assert QM.derive(_base(), method, _path(), model="classifier")["status"] == QR.UNDERIVABLE
+    method["model_variants"].reverse()
+    assert QM.derive(_base(), method, _path(), model="classifier")["status"] == QR.DERIVED
+
+
+def test_unreviewed_carried_planes_are_dropped_and_unsupported_selected_planes_are_retained_as_refusal():
+    base = QR.with_static_planes(_base())
+    assert QR.STATIC_PLANES not in QM.derive(base, METHODOLOGY, _path())
+    base["activation"]["dtype"] = "fp32"
+    method = {**METHODOLOGY, "model_variants": [_plane_variant()]}
+    recipe = QM.derive(base, method, _path(), model="classifier")
+    assert recipe["status"] == QR.UNDERIVABLE and QR.STATIC_PLANES in recipe["underivable"]
+    assert recipe[QR.STATIC_PLANES] == QR.static_planes_block()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"schema": "unknown"},
+        {"families": [QR.ACTIVATION_CONTRACTION]},
+        {"planes": True},
+        {"planes": 1},
+        {"planes": 4},
+        {"observer": "mse"},
+        {"observer": "p0"},
+        {"owners": []},
+        {"owners": [""]},
+        {"owners": [1]},
+        {"owners": "front"},
+        {"extra": True},
+    ],
+)
+def test_static_plane_variant_validates_its_closed_policy(change):
+    row = _plane_variant(static_planes=QR.static_planes_block() | change)
+    with pytest.raises(ValueError, match="changes.static_planes"):
+        QM.validate({**METHODOLOGY, "model_variants": [row]})
+
+
+def test_static_plane_variant_requires_all_fields_and_a_review():
+    for block in (None, {}, {k: v for k, v in QR.static_planes_block().items() if k != "owners"}):
+        with pytest.raises(ValueError, match="changes.static_planes"):
+            QM.validate({**METHODOLOGY, "model_variants": [_plane_variant(static_planes=block)]})
+    with pytest.raises(ValueError, match="only as a reviewed row"):
+        QM.validate({**METHODOLOGY, "model_variants": [_plane_variant() | {"status": "unreviewed"}]})
+    with pytest.raises(ValueError, match="changes.bias"):
+        QM.validate({**METHODOLOGY, "model_variants": [_plane_variant(bias="unknown")]})
+
+
+def test_reviewed_plane_observer_digits_and_owner_scope_reach_the_derived_recipe():
+    block = QR.static_planes_block(planes=3, observer="p99.9", owners=["front", "back", "front"])
+    method = {**METHODOLOGY, "model_variants": [_plane_variant(static_planes=block)]}
+    recipe = QM.derive(_base(), method, _path(), model="classifier")
+    assert recipe["status"] == QR.DERIVED and recipe[QR.STATIC_PLANES] == block
+
+
+@pytest.mark.parametrize(
+    "scale",
+    [
+        {"granularity": "per_tensor"},
+        {"columns_per_scale": None},
+        {"columns_per_scale": False},
+    ],
+)
 def test_per_channel_policy_does_not_invent_configurability_or_physical_width(scale):
     recipe = QM.derive(_base(), {**METHODOLOGY, "scale_granularity": "per_channel"}, _path(scale=scale))
     assert recipe["status"] == QR.UNDERIVABLE
