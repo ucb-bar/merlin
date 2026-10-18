@@ -84,10 +84,66 @@ theorem learn_sound {ib : Nat} {Γ : TEnv} {op : Op} {fact : Fact}
     · cases hl
   · cases hl
 
+/-- Composition checks actual provenance endpoints. Sizes and element types are rechecked;
+no reassociation annotation is used to assert an original runtime shape. -/
+def Composable (first last : Fact) : Prop :=
+  first.result = last.root ∧ first.element = last.element ∧ first.shape = last.original ∧
+  shapeSize last.shape = shapeSize first.shape
+
+instance (first last : Fact) : Decidable (Composable first last) := by
+  unfold Composable; infer_instance
+
+def compose (first last : Fact) : Fact :=
+  ⟨last.result, first.root, first.original, last.shape, last.element⟩
+
+/-- Once the relation is proved, its only dependencies are the ultimate root and current result.
+Rebinding a former intermediate cannot change the tensor value already produced. -/
+theorem compose_sound {first last : Fact} (hc : Composable first last) {env : Env}
+    (hf : Holds first env) (hl : Holds last env) : Holds (compose first last) env := by
+  obtain ⟨hid, he, _, hsize⟩ := hc
+  obtain ⟨t, hr, hs, ht, hv⟩ := hf
+  obtain ⟨u, hur, _, _, huv⟩ := hl
+  have hu : u = Rules.ReshapeIndex.reshape t first.shape first.element := by
+    rw [← hid, hv] at hur
+    exact RVal.tensor.inj (Option.some.inj hur).symm
+  refine ⟨t, hr, hs, ht.trans he, ?_⟩
+  simpa only [compose, hu, he, Rules.ReshapeIndex.compose t first.shape last.shape last.element hsize]
+    using huv
+
+/-- Retain immediate provenance as well as a distinct ultimate root. The first matching
+predecessor is already the ultimate fact, so storage stays bounded by two facts per result. -/
+def enrich (facts : List Fact) (last : Fact) : List Fact :=
+  match facts.find? (fun first => decide (Composable first last)) with
+  | some first => if first.root ≠ last.root then [compose first last, last] else [last]
+  | none => [last]
+
+theorem enrich_sound {facts : List Fact} {last : Fact} {env : Env}
+    (hf : BindingFacts.Valid model facts env) (hl : Holds last env) :
+    BindingFacts.Valid model (enrich facts last) env := by
+  unfold enrich
+  cases hm : facts.find? (fun first => decide (Composable first last)) with
+  | none =>
+    intro f h
+    obtain rfl := List.mem_singleton.1 h
+    exact hl
+  | some first =>
+    have hc : Composable first last := by simpa using List.find?_some hm
+    have hf' := hf first (List.mem_of_find?_eq_some hm)
+    dsimp only
+    split
+    · intro f h
+      rcases List.mem_cons.1 h with rfl | h
+      · exact compose_sound hc hf' hl
+      · obtain rfl := List.mem_singleton.1 h
+        exact hl
+    · intro f h
+      obtain rfl := List.mem_singleton.1 h
+      exact hl
+
 def advance (Γ : TEnv) (facts : List Fact) (op : Op) : List Fact :=
   let retained := BindingFacts.forget model (op.results.map (·.id)) facts
   match learn Γ op with
-  | some f => f :: retained
+  | some f => enrich retained f ++ retained
   | none => retained
 
 theorem advance_sound {ib : Nat} {Γ : TEnv} {facts : List Fact} {op : Op}
@@ -100,9 +156,10 @@ theorem advance_sound {ib : Nat} {Γ : TEnv} {facts : List Fact} {op : Op}
   cases hl : learn Γ op with
   | none => exact hr
   | some f =>
+    have hnew := enrich_sound hr (learn_sound hl he hs)
     intro g hg
-    rcases List.mem_cons.1 hg with rfl | hg
-    · exact learn_sound hl he hs
+    rcases List.mem_append.1 hg with hg | hg
+    · exact hnew g hg
     · exact hr g hg
 
 end MerlinVerify.Check.ReshapeFacts
