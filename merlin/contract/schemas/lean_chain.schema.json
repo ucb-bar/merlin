@@ -210,10 +210,16 @@
           ]
         },
         "checker": {
-          "const": "MerlinVerify.Check.Definedness.check"
+          "enum": [
+            "MerlinVerify.Check.Definedness.check",
+            "MerlinVerify.Check.DefinedExtended.check"
+          ]
         },
         "theorem": {
-          "const": "MerlinVerify.Check.Definedness.definedCheck_sound"
+          "enum": [
+            "MerlinVerify.Check.Definedness.definedCheck_sound",
+            "MerlinVerify.Check.DefinedExtended.check_sound"
+          ]
         },
         "domain": {
           "type": "string"
@@ -224,7 +230,35 @@
         "reason": {
           "type": "string"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "checker": {
+                "const": "MerlinVerify.Check.DefinedExtended.check"
+              }
+            },
+            "required": [
+              "checker"
+            ]
+          },
+          "then": {
+            "properties": {
+              "theorem": {
+                "const": "MerlinVerify.Check.DefinedExtended.check_sound"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "theorem": {
+                "const": "MerlinVerify.Check.Definedness.definedCheck_sound"
+              }
+            }
+          }
+        }
+      ]
     },
     "verdict": {
       "enum": [

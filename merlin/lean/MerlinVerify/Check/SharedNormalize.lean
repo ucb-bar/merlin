@@ -1,9 +1,8 @@
 /- Compose independently proved exact normalizations of both actual programs before comparison.
 Every intermediate program is checked, and execution remains exactly equal throughout. -/
 import MerlinVerify.Check.TypedNormalizeC1
-import MerlinVerify.Check.ReshapeNormalize
+import MerlinVerify.Check.ReshapeNested
 import MerlinVerify.Check.IntegerBody
-import MerlinVerify.Rules.IntegerCast
 
 namespace MerlinVerify.Check.SharedNormalize
 
@@ -20,10 +19,10 @@ def bodies : TypedNormalizer where
       (max (RegionDepth.ops ss) (RegionDepth.ops hints))).sound
       d Γ [] ss ns yields ctx call env hc hn he (by intro f hf; cases hf) hi hd
 
-/-- Retained intermediate bindings let universal C1 check their eventual deletion or uses.
-Adding a local family requires its exact normalization proof, not a new whole-program walker. -/
+/-- Local families preserve escaping bindings and prove exact deletion of total dead producers.
+Adding a family requires its normalization proof, not a new whole-program walker. -/
 def normalizer : TypedNormalizer :=
-  Rules.IntegerCast.normalizer.sequential (ReshapeNormalize.normalizer.sequential bodies)
+  bodies.sequential ReshapeNested.normalizer
 
 def check (ib : Nat) (src tgt : Module) (fn : String) (argTys resTys : List VTy) : Bool :=
   TypedNormalizeC1.check normalizer ib src tgt fn argTys resTys

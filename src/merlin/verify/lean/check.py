@@ -54,6 +54,8 @@ LEDGER = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "T1", "T2", "T3", "T4"
 
 DEFINED_THEOREM = "MerlinVerify.Check.Definedness.definedCheck_sound"
 DEFINED_CHECKER = "MerlinVerify.Check.Definedness.check"
+EXTENDED_DEFINED_THEOREM = "MerlinVerify.Check.DefinedExtended.check_sound"
+EXTENDED_DEFINED_CHECKER = "MerlinVerify.Check.DefinedExtended.check"
 
 
 @dataclass(frozen=True)
@@ -81,6 +83,14 @@ _DEFINED = _Obligation(
     DEFINED_THEOREM,
     "defined",
     "MerlinVerify.Check.DefinedLinalg",
+    defined_inputs=True,
+)
+_EXTENDED_DEFINED = _Obligation(
+    "check-definedness-extended",
+    EXTENDED_DEFINED_CHECKER,
+    EXTENDED_DEFINED_THEOREM,
+    "defined",
+    "MerlinVerify.Check.DefinedExtended",
     defined_inputs=True,
 )
 
@@ -300,7 +310,9 @@ def check_definedness(
     return _function_attempt(
         work,
         index_bits,
-        lambda: _check_function(_DEFINED, program, function, work, m2m_python=m2m_python, index_bits=index_bits),
+        lambda: _check_function(
+            _EXTENDED_DEFINED, program, function, work, m2m_python=m2m_python, index_bits=index_bits
+        ),
     )
 
 
@@ -429,7 +441,7 @@ def _validate_receipt(
         jsonschema.validate(receipt, json.loads(schema.read_text()))
     except jsonschema.ValidationError as exc:
         return [f"receipt does not match the replay schema; regenerate it: {exc.message}"]
-    single = obligation in (_SUPPORT, _DEFINED)
+    single = obligation in (_SUPPORT, _DEFINED, _EXTENDED_DEFINED)
     expected = (obligation.checker, obligation.theorem, obligation.claim_type)
     if tuple(receipt[k] for k in ("checker", "theorem", "claim_type")) != expected:
         return ["receipt does not establish the required proof obligation"]
@@ -661,8 +673,15 @@ def _compose_chain(
     }
     if definedness is not None:
         defined_receipt, digest = _read_receipt(definedness)
+        defined_obligation = (
+            _EXTENDED_DEFINED if defined_receipt.get("checker") == EXTENDED_DEFINED_CHECKER else _DEFINED
+        )
         failures = _validate_receipt(
-            defined_receipt, obligation=_DEFINED, function=function, m2m_python=m2m_python, work=work / "definedness"
+            defined_receipt,
+            obligation=defined_obligation,
+            function=function,
+            m2m_python=m2m_python,
+            work=work / "definedness",
         )
         if (
             defined_receipt.get("subject", {}).get("sha256") != sup["subject"]["sha256"]
@@ -671,7 +690,11 @@ def _compose_chain(
             failures.append("definedness receipt has another source or index width")
         failures += _receipt_freshness(definedness, digest, defined_receipt)
         defined_info.update(
-            verdict="abstracted" if failures else "verified", receipt_sha256=digest, reason="; ".join(failures)
+            verdict="abstracted" if failures else "verified",
+            receipt_sha256=digest,
+            reason="; ".join(failures),
+            checker=defined_obligation.checker,
+            theorem=defined_obligation.theorem,
         )
         assumptions += [a for a in defined_receipt.get("assumptions", []) if a not in assumptions]
     if defined_info["verdict"] != "verified":

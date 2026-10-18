@@ -6,6 +6,7 @@ import MerlinVerify.Check.Synth
 import MerlinVerify.Check.Module
 import MerlinVerify.Check.Rulebook
 import MerlinVerify.Check.DefinedLinalg
+import MerlinVerify.Check.DefinedExtended
 import MerlinVerify.Check.TypedModule
 
 open MerlinVerify
@@ -41,6 +42,8 @@ def emit (fields : List (String × Json)) (ok : Bool) : IO UInt32 := do
   (`Check.supportCheck_sound`).
 * `check-definedness <in.json> <fn> [index_bits]` — successful, nonpoison results on typed,
   nonpoison inputs (`Check.Definedness.definedCheck_sound`).
+* `check-definedness-extended <in.json> <fn> [index_bits]` — the same domain with independently
+  proved value-dependent bounds (`Check.DefinedExtended.check_sound`).
 The first two checks prove conditional refinement only; their output names the open obligation. -/
 def main (args : List String) : IO UInt32 := do
   match args with
@@ -101,10 +104,12 @@ def main (args : List String) : IO UInt32 := do
         (if verified then [] else [("reason", toJson ("; ".intercalate reasons))])) verified
     | .error e, _ | _, .error e => IO.eprintln s!"decode error: {e}"; return 2
   | command :: inp :: fn :: rest =>
-    if command != "check-support" && command != "check-definedness" then
+    if command != "check-support" && command != "check-definedness" &&
+        command != "check-definedness-extended" then
       IO.eprintln s!"unknown command: {command}"
       return 2
-    let definedness := command == "check-definedness"
+    let extended := command == "check-definedness-extended"
+    let definedness := command == "check-definedness" || extended
     let width := match rest with
       | [] => some 64
       | [s] => s.toNat?.filter (· > 0)
@@ -118,14 +123,18 @@ def main (args : List String) : IO UInt32 := do
         | none => (false, s!"@{fn}: no function with a modelled signature")
         | some (argTys, resTys) =>
           if definedness then
-            if Check.Definedness.check (Check.Definedness.book ib) m fn argTys resTys then (true, "")
+            let accepted := if extended then Check.DefinedExtended.check ib m fn argTys resTys
+              else Check.Definedness.check (Check.Definedness.book ib) m fn argTys resTys
+            if accepted then (true, "")
             else (false, "outside the proved definedness fragment or an output may be uninitialized")
           else
             let R := Check.merlinBook ib
             if Check.supportCheck R m fn argTys resTys then (true, "")
             else (false, (Check.diagnoseFunc R m fn argTys resTys).getD "refused")
-      emit [("checker", toJson (if definedness then "definedness" else "support")),
-        ("theorem", toJson (if definedness then "MerlinVerify.Check.Definedness.definedCheck_sound"
+      emit [("checker", toJson (if extended then "definedness-extended"
+          else if definedness then "definedness" else "support")),
+        ("theorem", toJson (if extended then "MerlinVerify.Check.DefinedExtended.check_sound"
+          else if definedness then "MerlinVerify.Check.Definedness.definedCheck_sound"
           else "MerlinVerify.Check.supportCheck_sound")),
         ("claim_type", toJson (if definedness then "defined" else "not_stuck")),
         ("function", toJson fn), ("index_bits", toJson ib),
@@ -133,5 +142,5 @@ def main (args : List String) : IO UInt32 := do
         ("first_refusal", if ok then Json.null else toJson why)] ok
     | .error e => IO.eprintln s!"decode error: {e}"; return 2
   | _ =>
-    IO.eprintln "usage: merlin-lean decode <in.json> | print <in.json> <out.mlir> | check-c1 <before.json> <after.json> <fn> | check-module <before.json> <after.json> | check-module-typed <before.json> <after.json> <index_bits> | check-support <in.json> <fn> [index_bits] | check-definedness <in.json> <fn> [index_bits]"
+    IO.eprintln "usage: merlin-lean decode <in.json> | print <in.json> <out.mlir> | check-c1 <before.json> <after.json> <fn> | check-module <before.json> <after.json> | check-module-typed <before.json> <after.json> <index_bits> | check-support <in.json> <fn> [index_bits] | check-definedness <in.json> <fn> [index_bits] | check-definedness-extended <in.json> <fn> [index_bits]"
     return 2

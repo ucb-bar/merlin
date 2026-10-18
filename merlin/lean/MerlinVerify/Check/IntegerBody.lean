@@ -3,6 +3,8 @@ uniform-input normalization. Actual source and target programs retain all their 
 import MerlinVerify.Check.BodyNormalize
 import MerlinVerify.Check.RegionDepth
 import MerlinVerify.Rules.IntegerOrder
+import MerlinVerify.Rules.IntegerIdempotent
+import MerlinVerify.Rules.IntegerCastNested
 
 namespace MerlinVerify.Check.IntegerBody
 
@@ -17,7 +19,9 @@ def integerOrder (ib : Nat) : SplatNormalizer.Normalizer ib where
     exact Rules.IntegerOrder.operations_equal ctx call ops env
 
 def base (ib : Nat) : SplatNormalizer.Normalizer ib :=
-  BodyNormalize.sequential (integerOrder ib) (SplatNormalizer.base ib)
+  BodyNormalize.sequential (Rules.IntegerIdempotent.normalizer ib)
+    (BodyNormalize.sequential (Rules.IntegerCastNested.normalizer ib)
+      (BodyNormalize.sequential (integerOrder ib) (SplatNormalizer.base ib)))
 
 def checkAt (depth ib : Nat) (src tgt : Module) (fn : String) (argTys resTys : List VTy) : Bool :=
   SplatNormalizer.check ib (BodyNormalize.recursive (base ib) depth) src tgt fn argTys resTys
