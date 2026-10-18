@@ -124,8 +124,9 @@ def test_s6_index_wrap_comparison_disagreement_is_retained(tmp_path, fidelity_to
         assert result["verdict"] == "verified", result.get("reason")
         checks[name] = result["verdict"]
     boundary = check_typed_stage(stage, m2m_python=tools.m2m_python, index_bits=index_bits)
-    # The initial arithmetic family excludes comparison even on the matching 64-bit control.
-    assert boundary["verdict"] == "abstracted", boundary.get("reason")
+    assert boundary["verdict"] == ("verified" if index_bits == 64 else "abstracted"), boundary.get("reason")
+    if index_bits == 64:
+        certify(stage, before, tools, tmp_path, index_bits=index_bits)
     samples = [[[0]], [[(1 << 32) - 1]]]
     if index_bits == 32:
         with pytest.raises(AssertionError, match="Lean bits=1, native MLIR bits=0"):
@@ -151,7 +152,7 @@ def test_s6_index_wrap_comparison_disagreement_is_retained(tmp_path, fidelity_to
         "index_bits": index_bits,
         "source_checks": checks,
         "typed_boundary": boundary["verdict"],
-        "excluded_family": "cmpi is outside the six-op IndexFold family",
+        "comparison_validation": "actual checked-width bits must agree with the target bool constant",
         "torch_mlir_package_version": evidence["before"]["native"]["mlir_revision"],
         "legacy_mlir_revision_field": "package version, not a proven LLVM source revision",
         "tool_identity": tool_identity(fidelity_tools),

@@ -188,7 +188,7 @@ def wrapped_compare(*, explicit_layout=False):
 
 
 @pytest.mark.parametrize("explicit_layout,index_bits", [(False, 32), (False, 64), (True, 32)])
-def test_s6_wrapped_signed_compare_keeps_boundary_refusal(tmp_path, lean_tools, explicit_layout, index_bits):
+def test_s6_wrapped_signed_compare_checks_actual_width(tmp_path, lean_tools, explicit_layout, index_bits):
     stage, before, after = stage_for(tmp_path, lean_tools, wrapped_compare(explicit_layout=explicit_layout))
     verify(before, lean_tools)
     assert "arith.constant false" in after.read_text()
@@ -198,8 +198,9 @@ def test_s6_wrapped_signed_compare_keeps_boundary_refusal(tmp_path, lean_tools, 
         )
         assert result["verdict"] == "verified", result.get("reason")
     result = check_typed_stage(stage, m2m_python=lean_tools.m2m_python, index_bits=index_bits)
-    # Comparisons are excluded even on the matching 64-bit control; 32-bit additionally has known S6 disagreement.
-    assert result["verdict"] == "abstracted", result.get("reason")
+    assert result["verdict"] == ("verified" if index_bits == 64 else "abstracted"), result.get("reason")
+    if index_bits == 64:
+        certify(stage, before, lean_tools, tmp_path, index_bits=index_bits)
 
 
 @pytest.mark.parametrize("index_bits", [32, 64])
