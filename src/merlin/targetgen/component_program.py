@@ -65,9 +65,17 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
         if not isinstance(node, dict) or not _name(node.get("name")) or node["name"] in types:
             raise ValueError("component node needs a fresh safe name")
         name, op, args = node["name"], node.get("op"), node.get("inputs")
-        extra = {"dtype"} if op == "cast" else {"axis", "dtype"} if op == "reduce_sum" else set()
+        extra = (
+            {"dtype"}
+            if op == "cast"
+            else {"axis", "dtype"}
+            if op == "reduce_sum"
+            else {"shape"}
+            if op == "reshape"
+            else set()
+        )
         supported = {"matmul", "add", "copy", "transpose", "alias", "update"} | (
-            {"cast", "reduce_sum"} if v2 else set()
+            {"cast", "reduce_sum", "reshape"} if v2 else set()
         )
         if set(node) != {"name", "op", "inputs"} | extra or op not in supported:
             raise ValueError("unsupported component node; use explicit supported generic tensor operations")
@@ -92,6 +100,15 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
             result = lhs
         elif op == "transpose":
             result = ValueType((lhs.shape[1], lhs.shape[0]), lhs.dtype)
+        elif op == "reshape":
+            # A row-major reinterpretation: the same elements in the same order under a new
+            # rank-two extent. Moves data, computes nothing, and preserves the element count.
+            shape = node["shape"]
+            if not isinstance(shape, list) or len(shape) != 2 or any(type(dim) is not int or dim < 1 for dim in shape):
+                raise ValueError("component reshape requires an explicit positive rank-two result shape")
+            if shape[0] * shape[1] != lhs.shape[0] * lhs.shape[1]:
+                raise ValueError("component reshape must preserve the element count")
+            result = ValueType(tuple(shape), lhs.dtype)
         elif op in {"cast", "reduce_sum"}:
             dtype = _integer_dtype(node["dtype"], operand_dtype=operand_dtype, accumulator_dtype=accumulator_dtype)
             shape = list(lhs.shape)
@@ -202,6 +219,18 @@ def render(program, *, operand_dtype, accumulator_dtype):
             values[name] = values[actual[0]]
             continue
         values[name] = "%" + name
+        if op == "reshape":
+            source = types[actual[0]]
+            flat = ValueType((source.shape[0] * source.shape[1],), source.dtype)
+            lines.append(
+                f"    {temporary('flat')} = tensor.collapse_shape {values[actual[0]]} [[0, 1]] "
+                f": {source.mlir} into {flat.mlir}"
+            )
+            lines.append(
+                f"    %{name} = tensor.expand_shape {temporary('flat')} [[0, 1]] "
+                f"output_shape [{result.shape[0]}, {result.shape[1]}] : {flat.mlir} into {result.mlir}"
+            )
+            continue
         lines.append(f"    {temporary('empty')} = tensor.empty() : {result.mlir}")
         if op in {"copy", "transpose"}:
             source = types[actual[0]]

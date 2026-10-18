@@ -73,7 +73,15 @@ def _metadata(program, operand_dtype, accumulator_dtype, limits):
         extents.extend(value.bit_length() for value in row["shape"])
     for row in program["nodes"]:
         op = row.get("op") if type(row) is dict else None
-        extra = {"dtype"} if v2 and op == "cast" else {"axis", "dtype"} if v2 and op == "reduce_sum" else set()
+        extra = (
+            {"dtype"}
+            if v2 and op == "cast"
+            else {"axis", "dtype"}
+            if v2 and op == "reduce_sum"
+            else {"shape"}
+            if v2 and op == "reshape"
+            else set()
+        )
         if (
             type(row) is not dict
             or set(row) != {"name", "op", "inputs"} | extra
@@ -83,11 +91,13 @@ def _metadata(program, operand_dtype, accumulator_dtype, limits):
             or len(row["inputs"]) > 2
         ):
             raise ValueError("source demand node layout or fields are unsupported")
-        if extra:
+        if "dtype" in extra:
             dtype = {"operand": operand_dtype, "accumulator": accumulator_dtype}.get(row["dtype"], row["dtype"])
             widths.append(_width(dtype, limits))
         if "axis" in extra and (type(row["axis"]) is not int or row["axis"] not in {0, 1}):
             raise ValueError("source demand requires the original explicit reduction axis")
+        if "shape" in extra:
+            _shape(row["shape"], limits)
     for row in program["outputs"]:
         if type(row) is not dict or set(row) != {"name", "value"}:
             raise ValueError("source demand needs the complete original output roster")
