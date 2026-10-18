@@ -151,7 +151,7 @@ def shared_library_sources():
         "merlin.semantic_compiler.rules",
         "merlin.sched.ir.kernel",
         "merlin.sched.ir.expr",
-        "merlin.sched.codegen",
+        "merlin.sched.ir.integer_domain",
     )
     return {
         name: hashlib.sha256(Path(importlib.import_module(name).__file__).read_bytes()).hexdigest() for name in names

@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from merlin.sched.ir.expr import Const, Expr, Scaled, Select, Sum, Var, render
+from merlin.sched.ir.expr import Expr, render
 from merlin.sched.ir.kernel import NULL, Call, Kernel, Loop, Ptr
 from merlin.sched.isa import InstructionSet, IsaError
 
@@ -98,57 +98,13 @@ def _spelled(call: Call, field: str, hook: str, description: str, spell, target:
 
 
 def _check_integer_domain(kernel, bits):
-    """Conservative bounds for every emitted integer intermediate, without expansion."""
-    limit = (1 << (bits - 1)) - 1
+    """Compatibility entry: shared IR validation retains the emitter diagnostic."""
+    from merlin.sched.ir.integer_domain import IntegerDomainError, check_integer_domain
 
-    def bounds(expression, domains):
-        if isinstance(expression, Const):
-            result = expression.value, expression.value
-        elif isinstance(expression, Var):
-            result = domains[expression.name]
-        elif isinstance(expression, Sum):
-            lo = hi = 0
-            for term in expression.terms:
-                term_lo, term_hi = bounds(term, domains)
-                lo, hi = lo + term_lo, hi + term_hi
-                if lo < -limit - 1 or hi > limit:
-                    raise IsaError(
-                        f"integer sum intermediate may overflow the selected signed {bits}-bit C index domain"
-                    )
-            result = lo, hi
-        elif isinstance(expression, Scaled):
-            lo, hi = bounds(expression.expr, domains)
-            result = tuple(sorted((lo * expression.factor, hi * expression.factor)))
-        elif isinstance(expression, Select):
-            lo, hi = domains[expression.var]
-            parts = []
-            if lo <= expression.equals <= hi:
-                parts.append(
-                    bounds(expression.then, {**domains, expression.var: (expression.equals, expression.equals)})
-                )
-            if lo != hi or lo != expression.equals:
-                parts.append(bounds(expression.other, domains))
-            result = min(a for a, _b in parts), max(b for _a, b in parts)
-        else:
-            raise IsaError("unknown integer expression in selected C index domain")
-        if result[0] < -limit - 1 or result[1] > limit:
-            raise IsaError(f"integer expression may overflow the selected signed {bits}-bit C index domain")
-        return result
-
-    def walk(body, domains):
-        for statement in body:
-            if isinstance(statement, Loop):
-                if not 0 < statement.extent <= limit:
-                    raise IsaError(f"loop extent exceeds the selected signed {bits}-bit C index domain")
-                walk(statement.body, {**domains, statement.var: (0, statement.extent - 1)})
-            else:
-                for _name, value in statement.args:
-                    if isinstance(value, Expr):
-                        bounds(value, domains)
-                    elif isinstance(value, Ptr):
-                        bounds(value.offset, domains)
-
-    walk(kernel.body, {})
+    try:
+        check_integer_domain(kernel, bits)
+    except IntegerDomainError as error:
+        raise IsaError(str(error)) from error
 
 
 def emit_c_function(

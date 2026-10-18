@@ -26,6 +26,9 @@ code_refs:
   - src/merlin/transforms/row_normalization.py
   - src/merlin/transforms/row_normalization_check.py
   - src/merlin/llvmlower/automatic_rows.py
+  - src/merlin/model_check/full_build.py
+  - src/merlin/llvmlower/codegen_env.py
+  - src/merlin/sched/ir/integer_domain.py
 ---
 
 # Shared compiler pass contracts
@@ -116,6 +119,27 @@ Any actual IR mutation invalidates old analyses, including a mutation whose
 pass omitted an invalidation declaration. Changing a selected identity likewise
 makes an old analysis unusable. A failed action poisons its private session.
 An analysis pass that mutates IR is an error.
+
+Ordinary whole-model image reuse also binds the raw `MERLIN_*` control values,
+the Python sources in the host lowering and transform families, direct build
+owners and selected target-input files. Only a digest of raw controls is stored;
+the display snapshot's redaction and long-value summaries cannot establish cache
+identity. Changing pass selection, a pass implementation or the selected target
+invalidates an older image. A hit reopens the ELF and verifies its recorded hash,
+and controls/source identities are rechecked before returning or publishing.
+Legacy records without these bindings rebuild. These are direct-input checks,
+not complete toolchain, capture, provider-resource or transitive dependency
+closure. They confer no numerical or execution qualification.
+
+Counted-schedule signed-index interval checking lives in
+`merlin.sched.ir.integer_domain`. Both row verification and C emission consume
+the same algorithm, bounding intermediate sums and products without expanding
+iterations. The emitter preserves its existing exception interface. The shared
+checker requires no emitter, ISA loader, backend or numerical framework. An
+isolated source-only test verifies one explicit import-closed library leaf with
+the existing compiler-library contract; this does not release the complete
+scheduling library or expand historical authoring grants. The full release
+still requires review of broader namespace and host-verification dependencies.
 
 `repair(stage=..., reason=...)` clears analyses and restarts an already selected
 legal fallback within an explicit repair budget. It cannot revive a failed
@@ -681,6 +705,12 @@ Ordinary `lower_model`/`lower_model_file` serial CPU lowering selects
 `automatic-host-rows` by default. Disable it with the existing optional-pass
 selector or `MERLIN_AUTOMATIC_HOST_ROWS=0`. The selection report records both arms'
 identical shared source hashes, source/output byte identities and refusals.
+Ordinary lowering writes `automatic-host-rows.json` next to
+`model.upstream.mlir`, including the upstream file's actual byte hash. It also
+returns the report in `LowerResult.stats["automatic_host_rows"]`. The upstream
+hash records product custody after preprocessing; the row inverse check applies
+at its original source stage and does not prove the intervening passes or machine
+code. Disabled and unsupported selections persist their diagnostic as well.
 This pass requires no separately captured quantization policy: the original typed
 source is the numerical algorithm and the pass changes no scalar arithmetic.
 
