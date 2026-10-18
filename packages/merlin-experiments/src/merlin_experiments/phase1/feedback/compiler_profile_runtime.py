@@ -290,7 +290,8 @@ def public_package_policy(policy, *, target, owner, scope=None):
     """Reapply exact original public grants without the original workspace mount.
 
     ``scope`` (a ``PackagePolicyScope``) shares capsule metadata parsed from
-    byte-identical files across one execution scope; the argv is unchanged.
+    byte-identical files across one execution scope. Reopen the actual mount
+    prefix before omitting a host mask whose input is already hidden.
     """
     from dataclasses import replace
 
@@ -303,7 +304,10 @@ def public_package_policy(policy, *, target, owner, scope=None):
     # a scope shares only capsule metadata parsed from byte-identical files.
     with shared_compute_pool():
         roots = _public_python_roots(owner)
-        prefix = [*policy.argv, *BW._bundle_mount_args(owner.workspace, owner.bundle, owner.repo)]
+        prefix = [
+            *policy.argv,
+            *BW._bundle_mount_args(owner.workspace, owner.bundle, owner.repo, visibility_prefix=list(policy.argv)),
+        ]
         prefix = BW.apply_final_answer_masks(
             prefix,
             target,
