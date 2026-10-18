@@ -886,22 +886,15 @@ def _rewrite_groups_to_device(
 
         weight_args = _stream_plan.weight_args_beside(capture)
 
-    if require_complete_groups:
-        from .source_compute_groups import form_source_groups
+    from functools import partial
 
-        groups = form_source_groups(module, device, oracle=oracle)
+    from .source_compute_groups import form_exact_groups, form_source_groups
+
+    form = partial(form_source_groups if require_complete_groups else CG.form_groups, oracle=oracle)
+    if capture is None:
+        groups = form(module, device)
     else:
-        groups = CG.form_groups(module, device, oracle=oracle)
-    if capture is not None:
-        from merlin.xdsl_dialects.lowering import group_exact_float as GEF
-
-        refused = GEF.refusals(groups, capture, weight_args=weight_args)
-        if refused:
-            groups = (
-                form_source_groups(module, device, oracle=oracle, numeric_refusals=refused)
-                if require_complete_groups
-                else CG.form_groups(module, device, oracle=oracle, numeric_refusals=refused)
-            )
+        groups, _ = form_exact_groups(module, device, capture, form, weight_args=weight_args)
     # THE SHAPES ARE OBSERVED, NOT FILTERED FOR LEGALITY. `system.offload.offloadable_contractions`
     # answers "could this device take this contraction as it stands" -- and a captured layer does not
     # stand as an integer contraction at all: it arrives as a dequantize into an f32 matmul, which

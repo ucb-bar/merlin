@@ -172,6 +172,45 @@ def _codes(device):
     return [(r["cut"], r["code"]) for r in device.fusion["refusals"]]
 
 
+@pytest.mark.parametrize("path", [_path(), _path(_drop("activation")), _path(_drop("preload"))])
+def test_capture_bound_source_formation_uses_the_same_exact_cut(path, monkeypatch, tmp_path):
+    from functools import partial
+
+    from merlin.llvmlower.source_compute_groups import form_exact_groups, form_source_groups
+
+    expected, _ = _fused(_module(), path)
+    module = mq.parse(_module())
+    monkeypatch.setattr(OF, "declared_path", lambda target: path)
+    groups, _ = form_exact_groups(
+        module, "synthetic", tmp_path, partial(form_source_groups, oracle=_Oracle())
+    )
+    (actual,) = [group for group in groups if group.placement != CG.HOST]
+    assert actual.fusion == expected.fusion
+    assert actual.stages == expected.stages
+
+
+def test_exact_fusion_statement_refusal_never_falls_back_to_bare_contraction(monkeypatch, tmp_path):
+    from merlin.llvmlower.device_offload import rewrite_groups_to_device
+    from merlin.xdsl_dialects.lowering import group_command as GC
+
+    monkeypatch.setattr(OF, "declared_path", lambda target: _path())
+    original = GC.program
+
+    def no_requant_form(group, **kwargs):
+        if CG.QUANTIZE in group.stages:
+            raise CG.NoCapsuleForm("selected requant form is unavailable")
+        return original(group, **kwargs)
+
+    monkeypatch.setattr(GC, "program", no_requant_form)
+    module = mq.parse(_module())
+    result = rewrite_groups_to_device(
+        module, "synthetic", select=lambda _: True, oracle=_Oracle(), capture=tmp_path
+    )
+    assert result.moved == 0
+    assert result.skipped == (("group0", "no device form: selected requant form is unavailable"),)
+    assert any(mq.op_name(op) == "quant_ext.quantize_per_tensor" for op in module.walk())
+
+
 def test_the_full_path_takes_the_whole_chain_with_the_bias_preloaded():
     device, host = _fused(_module(), _path())
     assert device.fusion["cut"] == "requant"

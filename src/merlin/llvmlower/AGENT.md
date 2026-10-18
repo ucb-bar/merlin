@@ -590,6 +590,12 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 
 ## Invariants
 
+`source_compute_groups.form_exact_groups` is the shared capture-bound grouping
+decision for ordinary emission and private source admission. A selected output
+path uses its exact fusion cuts; other contracts retain the legacy transition
+proof. A cut the statement writer cannot express must refuse by name, without
+substituting the bare contraction or claiming its epilogue was accelerated.
+
 - `source_scalar_carrier_binding.py` and `source_stage_transport.py` insert
   explicitly selected current scalar families at the normal tensor boundary.
   Keep all member proofs, namespace and SSA identities checked before edits;

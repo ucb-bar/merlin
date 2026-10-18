@@ -41,3 +41,30 @@ def form_source_groups(module, target, *, oracle=None, numeric_refusals=None, fu
         if not nested and id(operation) not in owned:
             raise ValueError("source computation outside the complete group membership remains unresolved")
     return groups
+
+
+def form_exact_groups(module, target, capture, form, *, weight_args=None):
+    """Form groups using the selected output path and capture-bound exactness proof.
+
+    Both emission and source admission use this decision. A declared path owns
+    its cuts; contracts without one retain the legacy float-transition proof.
+    ``form`` supplies the caller's original function scope and target oracle.
+    """
+    from merlin.xdsl_dialects.lowering import group_exact_float as GEF
+    from merlin.xdsl_dialects.lowering import output_fusion as OF
+
+    groups = form(module, target)
+    path = OF.declared_path(target)
+    if path is not None:
+        decided = OF.decisions(groups, module, path, OF.Values(capture))
+        if decided:
+            groups = form(module, target, fusion=decided)
+        return groups, sum(1 for decision in decided.values() if decision.refusals and decision.cut != "pool")
+    refused = (
+        GEF.refusals(groups, capture)
+        if weight_args is None
+        else GEF.refusals(groups, capture, weight_args=weight_args)
+    )
+    if refused:
+        groups = form(module, target, numeric_refusals=refused)
+    return groups, len(refused)

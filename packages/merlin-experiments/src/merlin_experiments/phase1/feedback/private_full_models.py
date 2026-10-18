@@ -419,22 +419,9 @@ def _exact_source_groups(module, target: str, capture: Path, form) -> tuple[list
     its float chain left on the host, so the gate never demands an accelerator epilogue that would
     compute something other than the reference. Returns the groups and how many were refused.
     """
-    from merlin.xdsl_dialects.lowering import group_exact_float as GEF
-    from merlin.xdsl_dialects.lowering import output_fusion as OF
+    from merlin.llvmlower.source_compute_groups import form_exact_groups
 
-    groups = form(module, target)
-    path = OF.declared_path(target)
-    if path is not None:
-        # The selected contract declares its output path: the one fusion pass decides every
-        # contraction's epilogue from it, with an exactness proof per cut.
-        decided = OF.decisions(groups, module, path, OF.Values(capture))
-        if decided:
-            groups = form(module, target, fusion=decided)
-        return groups, sum(1 for decision in decided.values() if decision.refusals and decision.cut != "pool")
-    refused = GEF.refusals(groups, capture)
-    if refused:
-        groups = form(module, target, numeric_refusals=refused)
-    return groups, len(refused)
+    return form_exact_groups(module, target, capture, form)
 
 
 def _source_obligations(

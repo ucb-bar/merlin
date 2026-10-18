@@ -3,6 +3,11 @@
 Host-only grading, redaction, certificate promotion and simulator dispatch live here.
 Inputs are explicit invocation context and corpus/contract paths, never native imports.
 
+`private_full_models._exact_source_groups` delegates to the core capture-bound
+formation helper used by ordinary device emission. Source cuts and emitted cuts
+share the selected output-path proof; a statement refusal grants no fallback,
+numerical, execution or accelerator coverage credit.
+
 `private_group_provenance` binds required and optional device rosters independently to original
 Merlin groups. Require all mandatory roots; allow any source-bound optional subset. Optional work
 has separate metrics and linked counts, never mandatory coverage credit. Actual routed functions
