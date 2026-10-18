@@ -288,6 +288,11 @@ def inputs_and_reference(m, k, n, p, width):
     data["b0"].flat[1::3] = -(1 << 31) + 2
     data["b1"].flat[::3] = (1 << 31) - 2
 
+    return data, reference_outputs(data)
+
+
+def reference_outputs(data):
+    """Independent wide arithmetic for the complete two-layer source graph."""
     def finish(left, right, bias):
         # Wide independent arithmetic explicitly reconstructs source wrapping
         # before signed saturation; it does not call the device implementation.
@@ -297,7 +302,7 @@ def inputs_and_reference(m, k, n, p, width):
 
     hidden = finish(data["x"], data["w0"], data["b0"])
     y = finish(hidden, data["w1"], data["b1"])
-    return data, {"hidden": hidden.tobytes(), "y": y.tobytes()}
+    return {"hidden": hidden.tobytes(), "y": y.tobytes()}
 
 
 @pytest.mark.parametrize("shape,width,separate", [((3, 7, 5, 4), 1, False), ((2, 5, 11, 3), 2, True)])

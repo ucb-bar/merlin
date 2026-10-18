@@ -158,6 +158,7 @@ def shared_library_sources():
         "merlin.compile.scheduling.selected_contracts",
         "merlin.compile.scheduling.dense_contracts",
         "merlin.compile.scheduling.storage_contracts",
+        "merlin.compile.scheduling.fusion_contracts",
         "merlin.targetgen.isa_spec",
         "merlin.targetgen.isa_dialect_gen",
     )
@@ -231,6 +232,8 @@ def compile_schedule(
     configuration_adapter=None,
     selected_contracts=None,
     configuration_qualification_identity=None,
+    fusion_emitters=None,
+    fusion_qualification_identity=None,
 ) -> ScheduleCompilation:
     """Allocate, check, encode and finalize through the existing pass session.
 
@@ -238,6 +241,8 @@ def compile_schedule(
     existing legal route. Never emit a partially verified candidate. Target
     execution qualification is separate from shared transformation correctness.
     """
+    if type(budgets) is not ScheduleBudgets:
+        raise ValueError("schedule compilation requires typed work and repair budgets")
     binding = None
     if selected_contracts is not None:
         if type(selected_contracts) is not SelectedSchedulingContracts:
@@ -259,13 +264,28 @@ def compile_schedule(
                 external_windows=external_windows, private_ownership=private_ownership,
             )
             scopes.extend(("temporary_memory_windows", "physical_aliases", "storage_effects_and_completion"))
+        fusion_binding = None
+        if selected_contracts.fusion is not None:
+            if fusion_capabilities:
+                raise ValueError("selected fusion declarations cannot be overridden by arbitrary capabilities")
+            adapter, fusion_capabilities, fusion_binding = selected_contracts.fusion.bind(
+                adapter, emitters=fusion_emitters, qualification_identity=fusion_qualification_identity,
+                max_operations=budgets.max_scalar_operations, max_ir_bytes=budgets.max_scalar_ir_bytes,
+            )
+            scopes.extend(("scalar_computation_and_layouts", "physical_fusion_routes", "fusion_resource_bounds"))
+        elif fusion_emitters is not None or fusion_qualification_identity is not None:
+            raise ValueError("fusion emitters and qualification require a selected fusion contract")
         binding = selected_contracts.record(scopes=tuple(scopes))
+        if fusion_binding is not None:
+            binding["fusion"] = fusion_binding
         binding["configuration_pass"] = (
             "selected_qualified_declaration" if configuration_adapter is not None
             else "unavailable_missing_qualification"
         )
     elif configuration_qualification_identity is not None:
         raise ValueError("configuration qualification requires selected RTL/software contracts")
+    elif fusion_emitters is not None or fusion_qualification_identity is not None:
+        raise ValueError("fusion emitters and qualification require selected RTL/software contracts")
     if external_windows is None:
         external_windows = ()
     if (

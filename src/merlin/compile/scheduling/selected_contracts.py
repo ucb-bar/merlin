@@ -8,6 +8,7 @@ and ordering. Neither a declaration nor a review label qualifies execution.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +21,7 @@ from merlin.targetgen.isa_spec import ResolvedISA, resolve_isa
 
 from .configuration import ConfigurationAdapter, ConfigurationEffects
 from .dense_contracts import DenseSchedulingContract, resolve_dense_contract
+from .fusion_contracts import SelectedFusionContract, resolve_fusion_contract
 from .storage_contracts import TemporaryStorageContract, resolve_storage_contract
 
 SCHEMA = "merlin.schedule_effects.v1"
@@ -43,6 +45,16 @@ def _read(path, budget):
     return payload
 
 
+def _resolver_sources():
+    """Resolved declarations are analyses of these specific implementations."""
+    names = (
+        "merlin.compile.scheduling.selected_contracts", "merlin.compile.scheduling.dense_contracts",
+        "merlin.compile.scheduling.storage_contracts", "merlin.compile.scheduling.fusion_contracts",
+        "merlin.semantic_compiler.allocation_types", "merlin.targetgen.isa_spec",
+    )
+    return tuple((name, _hash(Path(importlib.import_module(name).__file__).read_bytes())) for name in names)
+
+
 @dataclass(frozen=True)
 class SelectedSchedulingContracts:
     facts_path: Path
@@ -56,6 +68,8 @@ class SelectedSchedulingContracts:
     instruction_byteorder: str = field(init=False)
     dense: DenseSchedulingContract | None = field(init=False)
     storage: TemporaryStorageContract | None = field(init=False)
+    fusion: SelectedFusionContract | None = field(init=False)
+    resolution_sources: tuple[tuple[str, str], ...] = field(init=False)
 
     def __post_init__(self):
         if (
@@ -65,13 +79,20 @@ class SelectedSchedulingContracts:
             raise ValueError("selected scheduling inputs require immutable bytes and explicit paths")
         if len(self.facts_bytes) > 64 << 20 or len(self.software_bytes) > 1 << 20:
             raise ValueError("selected scheduling input exceeds its byte budget")
-        isa, effects, policy, byteorder, dense, storage = _parse(self.facts_bytes, self.software_bytes, self.target)
+        sources = _resolver_sources()
+        isa, effects, policy, byteorder, dense, storage, fusion = _parse(
+            self.facts_bytes, self.software_bytes, self.target
+        )
+        if _resolver_sources() != sources:
+            raise ValueError("contract resolver changed during selection; reselect and replan")
+        object.__setattr__(self, "resolution_sources", sources)
         object.__setattr__(self, "isa", isa)
         object.__setattr__(self, "effects_json", effects)
         object.__setattr__(self, "numerical_policy", policy)
         object.__setattr__(self, "instruction_byteorder", byteorder)
         object.__setattr__(self, "dense", dense)
         object.__setattr__(self, "storage", storage)
+        object.__setattr__(self, "fusion", fusion)
 
     @property
     def hardware_identity(self):
@@ -87,9 +108,12 @@ class SelectedSchedulingContracts:
             "numerical_policy": self.numerical_policy,
             "instruction_byteorder": self.instruction_byteorder,
             "execution_qualification": "independent_evidence_required",
+            "resolution_library_sources": dict(self.resolution_sources),
         }
 
     def revalidate(self):
+        if _resolver_sources() != self.resolution_sources:
+            raise ValueError("selected contract resolver changed; reselect and replan")
         for path, payload, budget in (
             (self.facts_path, self.facts_bytes, 64 << 20),
             (self.software_path, self.software_bytes, 1 << 20),
@@ -182,8 +206,8 @@ def _parse(facts_bytes, software_bytes, target):
     extension = software.get("scheduling")
     required = {"schema", "numerical_policy", "instruction_byteorder", "configuration"}
     if (type(extension) is not dict or not required <= set(extension)
-            or set(extension) - required - {"dense", "storage"}):
-        raise ValueError("scheduling: expected versioned effects with optional dense/storage contracts")
+            or set(extension) - required - {"dense", "storage", "fusion"}):
+        raise ValueError("scheduling: expected versioned effects with optional dense/storage/fusion contracts")
     if (
         extension["schema"] != SCHEMA
         or type(extension["numerical_policy"]) is not str or not extension["numerical_policy"]
@@ -238,9 +262,11 @@ def _parse(facts_bytes, software_bytes, target):
             or (set(effects["reads"]) | set(effects["writes"])) - state
         ):
             raise ValueError("pure configuration write contradicts declared state or memory effects")
+    storage = resolve_storage_contract(extension["storage"], facts, isa) if "storage" in extension else None
     return (
         isa, json.dumps(rows, sort_keys=True, separators=(",", ":"), allow_nan=False),
         extension["numerical_policy"], extension["instruction_byteorder"],
         resolve_dense_contract(extension["dense"], facts, isa) if "dense" in extension else None,
-        resolve_storage_contract(extension["storage"], facts, isa) if "storage" in extension else None,
+        storage,
+        resolve_fusion_contract(extension["fusion"], facts, isa, storage) if "fusion" in extension else None,
     )

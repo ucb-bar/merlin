@@ -545,6 +545,8 @@ def _dense_library_sources():
         "merlin.compile.scheduling.compact_dense", "merlin.compile.scheduling.compact_verification",
         "merlin.compile.scheduling.dense_contracts", "merlin.compile.scheduling.selected_contracts",
         "merlin.compile.scheduling.storage_contracts", "merlin.compile.scheduling.temporary_storage",
+        "merlin.compile.scheduling.fusion_contracts", "merlin.compile.scheduling.fusion_semantics",
+        "merlin.compile.scheduling.fusion",
         "merlin.semantic_compiler.allocation_types", "merlin.semantic_compiler.allocate",
         "merlin.compile.scheduling.block_schedule", "merlin.transforms.dense_planning",
         "merlin.transforms.pipeline", "merlin.sched.ir.kernel", "merlin.sched.ir.expr",

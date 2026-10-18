@@ -32,6 +32,7 @@ code_refs:
   - src/merlin/compile/scheduling/selected_contracts.py
   - src/merlin/compile/scheduling/dense_contracts.py
   - src/merlin/compile/scheduling/storage_contracts.py
+  - src/merlin/compile/scheduling/fusion_contracts.py
   - src/merlin/semantic_compiler/allocation_types.py
   - src/merlin/semantic_compiler/allocate.py
   - src/merlin/verify/lean_resource_geometry.py
@@ -903,6 +904,150 @@ The initial read-only target integrations do not provide these hooks. Physical
 floating readouts, direct contraction-body fusion, noncontiguous layouts,
 cross-memory handoffs and asynchronous fusion remain incomplete. Traffic
 reductions in these tests are not full-model latency results.
+
+### Fusion selected from RTL and software documents
+
+Ordinary `compile_schedule` can now build its fusion capabilities from an
+optional `fusion` section in the same selected scheduling document. Its schema
+is `merlin.physical_fusion_contract.v1`, and it requires the selected storage
+contract. This reuses `fusion.py`, `fusion_semantics.py`, the allocation pipeline
+and final independent ISA-word checks. It introduces no new arithmetic IR or
+pass manager.
+
+`elementwise` maps ISA instruction names to these required fields:
+
+| Field | Meaning and owner |
+| --- | --- |
+| `scalar_ir` | Complete scalar MLIR function defining the software arithmetic, including conversions and numeric boundaries |
+| `elements` | One to sixteen encoded integer argument/constant factors defining the logical element count |
+| `element_bits` | One RTL fact reference for each memory input/result width, checked against actual scalar MLIR types |
+| `stages` | Complete ordered software stage names, with repetitions preserved |
+| `byte_orders` | Explicit software byte order of each input/result, independently of instruction word byte order |
+| `readout` | Physical readout identity for a composed result; otherwise null |
+| `execution` | `contiguous_read_then_write` for this execution family, or an explicit unsupported/unknown declaration |
+
+The execution family means contiguous elementwise memory, no hidden effects,
+state, volatility, traps or cross-element dependence, and all inputs of an
+element read before writing it. Independent qualification must establish those
+properties. Floating arithmetic, unsupported integer operations/metadata and
+unknown execution retain the original materializations. Scalar-operation and
+source-byte budgets bound parsing and correspondence checks; no tensor elements
+are enumerated. Contradictory admitted widths/layouts or a provider projection
+that disagrees with the selected semantics diagnose.
+
+The storage contract now supports a byte extent of this form in addition to
+its existing argument/constant binding:
+
+```yaml
+size:
+  elements: [{argument: m}, {argument: n}]
+  element_bits: {fact: [facts, accumulator_bits]}
+```
+
+This is a bounded product of positive logical dimensions multiplied by the
+fact-backed byte width. It is not an arbitrary expression evaluator. Every
+factor binds an encoded integer ISA argument or a positive integer constant;
+nonpositive dimensions, missing bindings, excessive factors and subbyte widths
+refuse. This lets the same memory/effect contract describe shape-dependent
+matrix results and packing sizes without capturing benchmark constants. Sizes
+are reconstructed from actual operands and compared with the provider's effect
+projection before allocation and again through final bytes.
+
+`readouts` maps physical selector names to `applies`, `evidence`,
+`max_elements`, and `routes`. `applies` lists stages that this individual
+readout can realize. `max_elements` is an RTL fact reference, or null when the
+structural bound is unknown. A route explicitly names `producer`, `consumer`
+and `result` ISA instructions. Its result must carry that readout and exactly
+the concatenated ordered source stages. No union of different physical readouts
+can implement one composition. A bound does not qualify arithmetic or completion.
+
+For an integration that has independently qualified its semantics and physical
+emitter, the ordinary call is:
+
+```python
+result = compile_schedule(
+    kernel, objects, None, storage_adapter, encoding, limits,
+    selected_contracts=selection,
+    fusion_emitters={selector: physical_composition_emitter},
+    fusion_qualification_identity=selected_execution_evidence_identity,
+    private_ownership=runtime_established_private_ownership,
+    external_windows=runtime_windows,
+)
+```
+
+The target callback retains ownership of physical instruction construction. It
+may decline a pair. A returned instruction must match one declared route and
+pass the existing actual scalar/memory correspondence, allocation, completion,
+final-byte and size checks. Bounds are tested against actual producer extents.
+Missing qualification, emitter, structural bound or supported scalar semantics
+disables the affected capability and records why. The original route remains
+available where legal. Arbitrary parallel `fusion_capabilities` cannot override
+a selected fusion declaration. Without the extension, the existing explicit
+legacy interface remains separate and makes no selected-fusion claim.
+
+Typed semantics are constructed from the selected document and actual operands.
+A provider need not duplicate the scalar function in its projection. If it does
+supply a scalar function, its typed DAG, count, layouts, stages and readout must
+agree. A reviewed label or qualification string is not independent execution
+evidence. The selected instruction/operand codec checks actual emitted words;
+it does not infer the behavior of an opaque native instruction implementation.
+
+Selection is deterministic: readouts are visited by sorted selector name, and
+routes retain their declared order. The first compatible legal composition is
+used within the fusion budget. This is a conservative policy without latency
+estimates or calibration claims. Failed physical allocation restores the
+original composition, invalidates analyses and replans within the existing
+global repair budget. A numerical mismatch is an error, not a reason to emit an
+unchecked alternative. `ScheduleBudgets(max_fusions=0)` supplies the paired
+baseline through the same selected interfaces and verification rules.
+
+Resolved contracts now also bind the source hashes of their resolution owners.
+Changing a resolver after selection requires reselecting both inputs; unchanged
+file bytes cannot preserve analyses computed by an older resolver. Changes
+during selection or a pass diagnose. Numerical policy, actual IR and storage
+budgets remain bound by the existing pipeline stamps. These checks do not
+establish transitive third-party dependency closure or broaden authoring grants.
+
+`test_selected_fusion_contracts.py` executes complete neutral two-layer integer
+graphs, including rectangular contractions, 8/16-bit input elements, separate
+accumulators, shared/separate scratch memories and both complete output tensors.
+The selected interface removes both i32 readout stores/reloads: actual command
+counts change from seven to five. The fused operation still wraps its i32 sum
+before clamping and narrowing. Independent wide arithmetic checks every output,
+input preservation and guards. Three recurrent invocations feed the observed
+hidden output back as input and change weights/biases between calls; neither
+carried state nor mutable weights are hoisted. A false native implementation
+that skips wrapping fails the complete-output reference.
+
+Mutation tests cover unsupported execution/arithmetic, capacity boundaries,
+scalar widths, stage/conversion order, layouts, undeclared physical routes,
+extra ISA effects, final words, stale inputs/resolvers and allocation fallback.
+A deliberately restrictive physical view forces fallback and confirms that no
+planned transfer elimination is reported as realized. Existing mechanism tests
+also cover observers, overwrites, shifted aliases and unsupported completion.
+
+Reproduce the selected-interface pair without downloads:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_selected_fusion_contracts.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/selected-fusion" \
+  -o junit_family=xunit1 --junitxml "$TMPDIR/selected-fusion-results.xml"
+```
+
+JUnit records compiler time, exact encoded size, executed commands, actual
+requested read/write bytes, selected inputs and shared source hashes. Native
+host-call samples include marshalling/interpreter costs and establish no device
+latency or speedup. Compiler peak memory, calibrated timing and separate physical
+host/accelerator contributions remain unmeasured. These neutral graphs are not
+real-model or hardware qualification. Existing full-model records retain their
+original source identities, numerical thresholds and admission failures.
+
+Real target lowering still needs the selected two-document binding, qualified
+contiguous scalar execution, an actual composition emitter and complete final
+byte decoding. Direct contraction-body fusion, broadcast/noncontiguous bias,
+floating epilogues, cross-memory handoffs and asynchronous composition remain
+unsupported until those explicit contracts and execution evidence exist. No
+target implementation is changed to fit the shared pass.
 
 ## Exact device register spills
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, replace
+from math import prod
 
 from merlin.sched.ir import Call, evaluate
 from merlin.semantic_compiler.allocation_types import Reservation, StorageBank
@@ -30,8 +31,42 @@ def _json(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
-def _value(binding, values):
+def binding_value(binding, values):
+    """Evaluate an already resolved byte/count binding over actual operands."""
+    if "product" in binding:
+        factors = [binding_value(factor, values) for factor in binding["product"]]
+        if any(value <= 0 for value in factors):
+            raise ValueError("logical element count dimensions must be positive")
+        return binding["scale"] * prod(factors)
     return values[binding["argument"]] if "argument" in binding else binding["constant"]
+
+
+def resolve_operand_binding(value, instruction, *, address_spaces=None):
+    """Select an encoded typed operand; never infer a pointer unit."""
+    if type(value) is not dict or len(value) != 1:
+        raise ValueError("storage operand binding needs one encoded argument or integer constant")
+    if "constant" in value and type(value["constant"]) is int:
+        return value
+    args = {a.name: a for a in instruction.arguments()}
+    encoded = {f.argument for f in instruction.fields if f.argument is not None}
+    if "argument" in value and type(value["argument"]) is str and value["argument"] in encoded:
+        argument = args[value["argument"]]
+        if argument.type.kind == "integer":
+            return value
+        if (argument.type.kind == "address" and address_spaces == {argument.type.space}
+                and argument.unit == "bytes"):
+            return value
+    raise ValueError("storage operand binding must name an encoded integer or compatible byte address argument")
+
+
+def resolve_element_count(factors, instruction):
+    """A bounded product of explicit logical dimensions, not a scalar language."""
+    if type(factors) is not list or not factors or len(factors) > 16:
+        raise ValueError("element count requires one to sixteen explicit integer factors")
+    resolved = [resolve_operand_binding(factor, instruction) for factor in factors]
+    if any("constant" in factor and factor["constant"] <= 0 for factor in resolved):
+        raise ValueError("logical element count dimensions must be positive")
+    return resolved
 
 
 def _space(binding, values):
@@ -112,14 +147,14 @@ class TemporaryStorageContract:
                 raise ValueError("selected storage operands contain duplicate bindings")
             encode_instruction(isa, call.instr, values)
             declaration = declarations[call.instr]
-            accesses = tuple(EncodedAccess(_space(a["space"], values), _value(a["start"], values),
-                                           _value(a["size"], values), a["writes"])
+            accesses = tuple(EncodedAccess(_space(a["space"], values), binding_value(a["start"], values),
+                                           binding_value(a["size"], values), a["writes"])
                              for a in declaration["accesses"])
             completion = declaration["completion"]
             if completion == "unknown":
                 return None
-            token = None if declaration["token"] is None else str(_value(declaration["token"], values))
-            waits = tuple(str(_value(binding, values)) for binding in declaration["waits"])
+            token = None if declaration["token"] is None else str(binding_value(declaration["token"], values))
+            waits = tuple(str(binding_value(binding, values)) for binding in declaration["waits"])
             effect = adapter.project(call)
             if type(effect) is not StorageEffects:
                 return None
@@ -220,22 +255,9 @@ def resolve_storage_contract(declaration, facts, isa):
         if (type(item["accesses"]) is not list or len(item["accesses"]) > 256
                 or type(item["waits"]) is not list or len(item["waits"]) > 256):
             raise ValueError("storage accesses and completion waits must be bounded lists")
-        args = {a.name: a for a in instruction.arguments()}
-        encoded = {f.argument for f in instruction.fields if f.argument is not None}
 
         def binding(value, *, address_spaces=None):
-            if type(value) is not dict or len(value) != 1:
-                raise ValueError("storage operand binding needs one encoded argument or integer constant")
-            if "constant" in value and type(value["constant"]) is int:
-                return value
-            if "argument" in value and type(value["argument"]) is str and value["argument"] in encoded:
-                argument = args[value["argument"]]
-                if argument.type.kind == "integer":
-                    return value
-                if (argument.type.kind == "address" and address_spaces == {argument.type.space}
-                        and argument.unit == "bytes"):
-                    return value
-            raise ValueError("storage operand binding must name an encoded integer or compatible byte address argument")
+            return resolve_operand_binding(value, instruction, address_spaces=address_spaces)
 
         def space(value):
             if type(value) is dict and set(value) == {"resource"} and type(value["resource"]) is str:
@@ -265,7 +287,15 @@ def resolve_storage_contract(declaration, facts, isa):
             if type(access["writes"]) is not bool:
                 raise ValueError("storage access direction must be Boolean")
             resolved, names = space(access["space"])
-            start_binding, size_binding = binding(access["start"], address_spaces=names), binding(access["size"])
+            start_binding = binding(access["start"], address_spaces=names)
+            size = access["size"]
+            if type(size) is dict and set(size) == {"elements", "element_bits"}:
+                bits = resolve_fact_integer(size["element_bits"], facts, label="storage element bits", minimum=1)
+                if bits % 8:
+                    raise ValueError("storage element widths must have a complete byte representation")
+                size_binding = {"product": resolve_element_count(size["elements"], instruction), "scale": bits // 8}
+            else:
+                size_binding = binding(size)
             if "constant" in start_binding and names & {w.resource for w in banks}:
                 raise ValueError("private storage addresses must be explicit relocatable ISA arguments")
             accesses.append({**access, "space": resolved, "start": start_binding, "size": size_binding})
