@@ -390,6 +390,7 @@
             "composition",
             "fusion",
             "epilogue",
+            "column_readout",
             "accumulation_depth",
             "accumulator_output_capacity",
             "conv_window",

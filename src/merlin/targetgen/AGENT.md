@@ -4,6 +4,11 @@ Explicit `component_program` v2 adds signed integer casts and true kept-axis
 sum reductions to closed rank-two DAGs. Legacy source bytes retain their original
 meaning. Logical copies, fanout, aliases and state epochs are source semantics;
 physical placement, allocation, effects and timing need separate witnesses.
+`column_readout_capsules` derives gain-block and partial-block demands from the
+selected numeric output path and public contraction carriers. Synthetic gains
+and small extents carry no private model values or shapes. Group coverage must
+observe a nonuniform, block-legal vector and required accelerator placement;
+scalar, uniform, malformed and host-only members do not cover that demand.
 `op_form_regimes.boundary_witnesses` supplies adjacent scalar comparisons from a
 selected `Bound`, retaining impossible positive lower witnesses as missing. It
 grants no tensor-axis, physical-capacity or tiling interpretation.

@@ -2428,18 +2428,9 @@ def _path_stages(path) -> list[str]:
 
 def _unstatable_path_stages(path) -> dict[str, str]:
     """Declared output-path capabilities no capsule stage can demand yet, each with why."""
-    if path is None:
-        return {}
-    out = {}
-    if any(stage.get("kind") == "accumulate" for stage in path.get("accumulator_stages") or ()):
-        out["accumulate"] = "the command-buffer stage vocabulary has no accumulated residual operand"
-    for stage in path.get("readout") or ():
-        if stage.get("kind") == "scale" and stage.get("granularity") == "per_command":
-            out["column_group_scale"] = (
-                "a capsule carries one readout scale, so a scale folded per group of "
-                f"{stage.get('columns_per_scale')} columns cannot be demanded"
-            )
-    return out
+    from .column_readout_capsules import unstated
+
+    return unstated(path)
 
 
 def _group_axis(captures: dict[str, str | Path], target: str) -> dict:
@@ -2501,6 +2492,10 @@ def _group_axis(captures: dict[str, str | Path], target: str) -> dict:
             if granularity and granularity not in row["scale_granularities"]:
                 row["scale_granularities"].append(granularity)
     for row in _derived_epilogue_groups(target, oracle):
+        required.setdefault(row["signature"], row)
+    from .column_readout_capsules import requirements_for_oracle
+
+    for row in requirements_for_oracle(_declared_output_path(target), oracle, required.values()):
         required.setdefault(row["signature"], row)
     for name, why in _unstatable_path_stages(_declared_output_path(target)).items():
         unstated[f"derived output path {name}: {why}"] += 1
@@ -2597,6 +2592,8 @@ def _group_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
     """Which required group signatures no capsule in the corpus demands."""
     import yaml
 
+    from .column_readout_capsules import matches
+
     labels = set(labels or {"public"})
     exclude = set(exclude or ())
     roots = [corpus_roots] if isinstance(corpus_roots, (str, Path)) else list(corpus_roots)
@@ -2618,6 +2615,9 @@ def _group_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
             signature = _group_signature(str(op.get("op") or ""), attrs.get("epilogue") or (), dtype)
             if signature in want:
                 demanded.setdefault(signature, []).append(name)
+            for key, requirement in want.items():
+                if requirement.get("column_readout") and matches(cap, requirement):
+                    demanded.setdefault(key, []).append(name)
     missing = sorted(set(want) - set(demanded))
     return {
         "status": "ok",

@@ -126,9 +126,11 @@ def test_the_declared_output_path_alone_decides_the_demanded_chains(monkeypatch)
 
 def test_a_capability_no_capsule_can_state_is_reported_unstated_not_dropped():
     unstated = CF._unstatable_path_stages(_output_path())
-    assert set(unstated) == {"accumulate", "column_group_scale"}
-    assert "4 columns" in unstated["column_group_scale"]
-    assert CF._unstatable_path_stages(_output_path(accumulate=False)).keys() == {"column_group_scale"}
+    assert set(unstated) == {"accumulate"}
+    assert CF._unstatable_path_stages(_output_path(accumulate=False)) == {}
+    unsupported = _output_path()
+    unsupported["readout"][2]["dtype"] = "f16"
+    assert "column_group_scale" in CF._unstatable_path_stages(unsupported)
     assert CF._unstatable_path_stages(None) == {}
 
 

@@ -1950,15 +1950,8 @@ def synthesize(
         entries.append(entry)
 
     # ---- the GROUP axis -----------------------------------------------------------------------------
-    # The stage COMBINATIONS real models form on this target. The epilogue axis above writes one
-    # contraction per stage, so a backend that fuses any single stage and no two passes it, while a
-    # model needs bias, activation and requantization on the SAME contraction. Each required
-    # signature gets one member carrying the whole combination; the signature is the compiler's own
-    # statement of a group it will try to put on a unit, so a member here and a group in a model are
-    # asked for in the same words.
-    #
-    # Written on the matmul carrier even for a convolution's signature: what this axis tests is that
-    # the STAGES compose on one readout, and the window axis below already owns convolution geometry.
+    # Complete readouts and column-dependent gains need hardware-width and tail cases on each
+    # publicly observed carrier: scalar-only tests cannot distinguish an ignored gain vector.
     from merlin.targetgen.corpus_spec import BUILDER_EPILOGUE_STAGES as _builder_stages
 
     _stage_names = set(_builder_stages)
@@ -1967,6 +1960,13 @@ def synthesize(
     # member: two entries with the same name and the same program would be the same capsule twice.
     _group_members: dict[str, dict] = {}
     for _group in (spec_doc.get("groups") or {}).get("required") or ():
+        if _group.get("column_readout"):
+            from .column_readout_capsules import entry as column_entry
+
+            member = column_entry(_group)
+            member["pass_requirements"] = pass_requirements_for(member, spec_doc)
+            entries.append(member)
+            continue
         stages = [str(x) for x in (_group.get("epilogue") or ())]
         if len(stages) < 2:
             continue  # a single stage is the epilogue axis's member already
@@ -2722,7 +2722,7 @@ def synthesize(
             continue
         entry.setdefault("stimulus_range", list(_signed_stimulus_range()))
         staged = [entry, *(m for m in entry.get("matmuls") or () if isinstance(m, dict))]
-        if any("acc_scale" in (item.get("epilogue") or ()) for item in staged):
+        if "acc_scale_by_column" not in entry and any("acc_scale" in (item.get("epilogue") or ()) for item in staged):
             entry.setdefault("acc_scale", SYNTH_ACC_SCALE)
 
     # Placement decides publication: an entry with no accelerator placement is reported, not emitted.
