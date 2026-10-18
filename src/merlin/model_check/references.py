@@ -144,6 +144,8 @@ def build(
     summary: dict[str, Any] = {"model": model.name, "fp_numerics_env": FP_NUMERICS_ENV, "fp_runs": runs, "inputs": {}}
     rows: list[dict[str, Any]] = []
     baseline_rows: list[dict[str, Any]] = []
+    # One cache for every case: parsed programs, constant arguments, and the work done on them alone.
+    cache = CH.ChainCache()
     for case in cases:
         split, ident, here = case["split"], case["ident"], case["out"]
         t0 = time.monotonic()
@@ -156,9 +158,18 @@ def build(
         ) -> None:
             if step != 0 or draw != 0 or not catalog.interfaces:
                 return
-            calls_by_program[program] = CAT.record_calls(catalog, args, blobs=blobs, keep_call=keep_call)
+            calls_by_program[program] = CAT.record_calls(
+                catalog,
+                args,
+                blobs=blobs,
+                keep_call=keep_call,
+                module=cache.module(catalog.dev_prepared),
+                constants=cache.constants,
+            )
 
-        run = CH.run_reference(model, catalogs, arrays, bundle.root / model.name / ".chain_work", record=record)
+        run = CH.run_reference(
+            model, catalogs, arrays, bundle.root / model.name / ".chain_work", record=record, cache=cache
+        )
         judged = CH.judged_outputs(model, run)
         with np.load(here / "fp.npz") as data:
             fp = [np.asarray(data[k]) for k in data.files]
