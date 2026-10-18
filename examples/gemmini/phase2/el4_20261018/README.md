@@ -6,6 +6,14 @@ the earlier manual exploration and its audit; it is **not** a launched Phase 2
 campaign. The measurement/model entrypoints refuse further manual jobs while
 the recorded stop exists. No candidate is promoted.
 
+The task now includes `shared-scheduling` at `608976eaa`. Its source release and
+isolated retained-policy integration are preparation infrastructure; no automatic
+accelerator campaign has been launched. The original compiler remains unchanged.
+Starting Phase 2 from an older compiler does not require another Phase 1 authoring
+run. Adding a newer library requires an explicit Phase 2 release and baseline
+revalidation; the ordinary inherited-profile route still needs that connection.
+See [the integration guide](../../../../docs/guides/shared_pass_phase2.md).
+
 The operator-only automatic selection is in this task's
 `inputs/phase2/experiment.yaml`, using the existing `measured_claims` adapter.
 It remains `kind: template`, with unavailable owner inputs explicitly pending.
@@ -100,6 +108,38 @@ Unknown host/issue/overlap terms remain unknown; partial floors cannot establish
 roofline convergence. Only correct comparable measured results support retention.
 
 ## Calibration and final model regression
+
+The current offline path is `calibrate_offline.py`. It calls the existing
+archive inspect/prepare/attach, design-check, fit and validation APIs and launches
+no simulator. Version 2 bindings preserve each repeat's original counter-review
+receipt, retain all declared cases and keep missing reviews unavailable. The
+selected archive yields 483 labels, 313 execution cases in 87 source groups,
+473 incomplete native reports and ten missing reports. The measured held design
+has 41 separated pairs across three families; native prediction coverage remains
+zero. No empirical fit or native timing qualification has been earned.
+
+`timing_config.py` connects the existing resource-mapping implementation to the
+selected facts and verifies cache geometry against the selected DTS/L2 JSON.
+It writes a separate partial device profile and native-model configuration.
+It derives load resources `(capacity=2, queue=6)`, store resources `(2, 2)`,
+32 KiB eight-way L1I/L1D and 512 KiB eight-way L2, all with 64-byte lines.
+Other resource fields and unpriced costs remain unknown. Spike's existing LRU
+and coherence policy are stated approximations, not RTL protocol equivalence.
+The receipt pins the gSIM memory adapter: `mm_magic_t`, not a FireSim DRAM bridge.
+The original observations still bind the original count-only model. They cannot
+be relabeled as predictions from this new configuration.
+
+Both commands retain existing outputs and require a fresh directory on replay:
+
+```sh
+$P2PY $P2DRIVER/calibrate_offline.py --output-dir "$TMPDIR/offline-intake-review"
+$P2PY $P2DRIVER/timing_config.py --output-dir "$TMPDIR/spike-config-review"
+```
+
+Completing the native model needs reviewed CPU/execute/config resource mapping,
+remaining provider/observer semantics, price fitting, saved-ELF Spike replay and
+the original held-out gates. This does not require recapturing the models or
+rerunning Phase 1 compiler authoring. No new gSIM run is part of these commands.
 
 `calibrate.py` verifies the original public archive and attempts the documented
 v3 intake route without inventing missing evidence or dropping repeats. Its
