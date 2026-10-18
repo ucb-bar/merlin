@@ -186,26 +186,53 @@ These inputs are read again before publishing a build or returning a hit.
 Same-size changes with restored timestamps cannot reuse an older image. Missing
 inputs, symlinks and input/cache containment produce a diagnostic before
 compilation or reuse. Input-only relinking remains a separate path: it generates
-the requested driver inputs and checks regenerated weights and argument calls;
-these cache checks do not establish complete freshness of relink recipes and
-their transitive objects.
+the requested driver inputs and checks regenerated weights and argument calls.
+The build retains a relink binding to its existing completed compilation recipe,
+generated headers and shared blob/quantization/panel preparation files. Before
+reusing those products, relinking reopens the stored build origin, current input
+and compiler selections, actual recipe, recorded tools, sources, intermediate
+objects, linker script and directly named archive bytes. Newly added preparation
+files and headers also invalidate that binding. The ordinary build repairs stale
+recorded products by rebuilding. A compiler without a completed recipe can still
+produce an executable, but relinking it requires a precise missing-contract
+diagnostic rather than executing unverified commands.
+
+Relinking holds the existing build lock so a simultaneous ordinary rebuild
+cannot remove its inputs. Its output must be disjoint from the original build,
+cache and capture; symlink outputs refuse before deletion. The bound input
+dictionary may change each invocation, including carried state, while the
+original capture and build remain unchanged. Source and artifact checks bracket
+generation, compilation and linking. Each relink emits its own existing-format
+`compilation_recipe.json`, recording the actual driver and linker invocations,
+generated input-header bytes, direct objects and final executable. Completed
+recipes are independently reopened before returning. Failures return no admitted
+executable; these receipts alone confer no numerical or hardware authority.
 
 A cached device image is evaluated by the currently selected
 `LinkedElfAdmissionService`; a prior acceptance never substitutes for today's
 policy. Refusal stops reuse. Source pins, actual ELF bytes and the evaluator's
 actual report are revalidated. A host twin issues no accelerator instructions
-and does not require device admission. Fresh build `seconds` include input and
+and does not require device admission. A device relink requires an explicitly
+selected service, applies it to the newly linked image, and preserves its source
+selection throughout the operation. The full-model checker forwards the caller's
+service to every relink; it selects its existing structural service when none
+was supplied. Fresh build `seconds` include input and
 source validation; a hit reports its current `cache_lookup_seconds` separately
 from the retained original build cost. Both exclude the outer file-lock wait.
 
 Legacy records without these bindings rebuild. These checks do not establish
 complete toolchain/header, provider-resource or transitive dependency closure,
-nor validate a capture's numerical policy by hashing it. They confer no new
+nor validate a capture's numerical policy by hashing it. Recorded direct archives
+are checked, but imported native/system headers and implicit linker/library
+resolution still need independent closure. Rechecking complete mutable input
+trees and direct tools/objects costs I/O; no stat-only shortcut or performance
+gain is claimed. They confer no new
 numerical or hardware execution qualification. The focused transaction tests
 and real ordinary build/relink/functional-simulator state test run with:
 
 ```bash
 python -B -m pytest merlin/tests/infra/test_full_model_lowering_cache.py \
+  merlin/tests/infra/test_model_check_relink.py merlin/tests/infra/test_model_check_full.py \
   -p no:cacheprovider --basetemp "$TMPDIR/full-model-input-cache"
 ```
 

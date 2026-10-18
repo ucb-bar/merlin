@@ -153,7 +153,7 @@ def _lowering_sources() -> dict[str, Path]:
         for path in sorted(root.rglob("*.py")):
             sources[namespace + "/" + path.relative_to(root).as_posix()] = path
     for name in (
-        __name__, "merlin.compile.baremetal_model",
+        __name__, "merlin.model_check.full", "merlin.compile.baremetal_model",
         "merlin.compile.model_execution_inputs", "merlin.targetgen.rtl.facts",
         "merlin.targetgen.target_registry",
         "merlin.runtime.backends.zephyr_model", "merlin.runtime.backends.spike_model",
@@ -270,6 +270,69 @@ def _cached_admission(record, admission, target, directory):
     return admission, result
 
 
+def _relink_artifacts(build_dir: Path, elf: Path, recipe_sha256: str) -> tuple[dict, dict]:
+    """Reopen the existing complete recipe and the driver's shared preparation inputs."""
+    from merlin.llvmlower import blob_weights, quant_hoist, weight_panel
+    from merlin.llvmlower.compilation_recipe import FILENAME, verify_completed_recipe
+
+    recipe = verify_completed_recipe(build_dir / FILENAME, executable=elf, expected_recipe_sha256=recipe_sha256)
+    files = [*sorted((build_dir / "cgen").glob("*.h")),
+             *(build_dir / name for name in (blob_weights.PLAN_FILE, blob_weights.VALUES_FILE,
+                                            quant_hoist.PLAN_FILE, quant_hoist.VALUES_FILE, weight_panel.PLAN_FILE))]
+    metadata = {}
+    for path in files:
+        if any(member.is_symlink() for member in (path, *path.parents)):
+            raise FullBuildError(f"relink metadata contains a symlink: {path}")
+        metadata[str(path)] = sha256(path) if path.exists() else None
+    return {"schema": "merlin.full_model_relink.v1", "recipe_sha256": recipe_sha256, "metadata": metadata}, recipe
+
+
+def _relink_artifacts_match(record) -> bool:
+    if "relink_binding" not in record:
+        return False
+    binding = record.get("relink_binding")
+    if binding is None:
+        recipe = Path(record["build_dir"]) / "compilation_recipe.json"
+        return not recipe.exists() and not recipe.is_symlink()  # Executable-only builds cannot relink.
+    try:
+        current, _ = _relink_artifacts(Path(record["build_dir"]), Path(record["elf"]), binding["recipe_sha256"])
+        return current == binding
+    except (KeyError, TypeError, OSError, ValueError, FullBuildError):
+        return False
+
+
+def _verify_relink(record: dict, stage: Path, *, inputs_current: bool = True) -> dict:
+    """Require current origin inputs and actual reusable products before launching a tool."""
+    try:
+        binding, key = record["relink_binding"], record["key"]
+        if not binding:
+            raise FullBuildError("build has no checked relink recipe; rebuild through the ordinary compiler")
+        cache = Path(record["cache_directory"])
+        stored = json.loads((cache / "build.json").read_text())
+        for name in ("key", "cache_directory", "build_dir", "elf", "elf_sha256", "build_hash", "relink_binding",
+                     "weights_bin_bytes", "weights_bin_sha256", "device_routed"):
+            if record[name] != stored[name]:
+                raise FullBuildError("relink record differs from its stored build origin: " + name)
+        if Path(stage).resolve() != Path(key["stage"]):
+            raise FullBuildError("relink capture differs from the selected build")
+        settings = BuildSettings(**key["settings"])
+        inputs = key["inputs"]
+        submission = inputs.get("device_package", {}).get("path")
+        weights = inputs.get("weights_source", {}).get("path")
+        if inputs_current and _build_inputs(
+            stage, submission, settings, cache, key["offload"], weights, key["target"]
+        ) != inputs:
+            raise FullBuildError("relink build inputs changed; rebuild the image")
+        current, recipe = _relink_artifacts(Path(record["build_dir"]), Path(record["elf"]), binding["recipe_sha256"])
+        if current != binding or _lowering_identity() != key["lowering"]:
+            raise FullBuildError("relink preparation or compiler selection changed; rebuild the image")
+        if settings.op_profile and not _profile_table_matches(record):
+            raise FullBuildError("relink operation profile table changed; rebuild the image")
+        return recipe
+    except (KeyError, TypeError, OSError, ValueError) as error:
+        raise FullBuildError(f"relink origin or recipe changed; rebuild the image: {error}") from error
+
+
 def _routing(target: str, stage: Path, submission: Path, model: str, settings: BuildSettings, admission):
     """The submission's device routing over every source-admitted group, or ``None`` (host only)."""
     from merlin.compile.route_before_build import plan_before_build
@@ -363,6 +426,7 @@ def _build(
             and elf.stat().st_size == record.get("elf_bytes")
             and sha256(elf) == record.get("elf_sha256")
             and (not settings.op_profile or _profile_table_matches(record))
+            and _relink_artifacts_match(record)
         ):
             current_admission, admission_result = _cached_admission(record, admission, target, directory)
             if _build_inputs(stage, submission, settings, directory, offload, weights_source, target) != key["inputs"]:
@@ -416,12 +480,19 @@ def _build(
         "sections": elf_sections(elf),
         "build_hash": receipt["output"]["build_hash"],
         "build_dir": str(build_dir),
+        "cache_directory": str(directory.resolve()),
         "weights_bin_sha256": sha256(build_dir / "cgen" / "weights.bin"),
         "weights_bin_bytes": (build_dir / "cgen" / "weights.bin").stat().st_size,
         "device_routed": device is not None,
         "dedup_weights": bool(device is not None and settings.dedup_weights),
         "reused": False,
     }
+    recipe = receipt["output"].get("compilation_recipe")
+    record["relink_binding"] = None
+    if recipe is not None:
+        if Path(recipe["path"]) != build_dir / "compilation_recipe.json":
+            raise FullBuildError("build returned a foreign relink recipe")
+        record["relink_binding"], _ = _relink_artifacts(build_dir, elf, recipe["sha256"])
     if _build_inputs(stage, submission, settings, directory, offload, weights_source, target) != key["inputs"]:
         raise FullBuildError("full-model build inputs changed during compilation")
     if _lowering_identity() != key["lowering"]:
@@ -449,11 +520,12 @@ def _recipe_command(recipe: dict, output: Path) -> dict:
     return rows[0]
 
 
-def _run(argv: list[str], cwd: str) -> None:
+def _run(argv: list[str], cwd: str):
     with compute_step():
         done = subprocess.run([str(a) for a in argv], cwd=cwd, capture_output=True, text=True, check=False)
     if done.returncode != 0:
         raise FullBuildError(f"{Path(argv[0]).name} failed ({done.returncode}): {done.stderr[-2000:]}")
+    return done
 
 
 def _shadow(stage: Path, inputs: dict[str, np.ndarray], directory: Path) -> Path:
@@ -477,12 +549,43 @@ def _shadow(stage: Path, inputs: dict[str, np.ndarray], directory: Path) -> Path
     return shadow
 
 
-def relink(record: dict[str, Any], stage: Path, inputs: dict[str, np.ndarray], directory: Path) -> Path:
+def relink(
+    record: dict[str, Any], stage: Path, inputs: dict[str, np.ndarray], directory: Path, *, admission=None,
+) -> Path:
     """The build's image with ``inputs`` (``{"in0": ...}``) embedded instead of the capture's; its ELF path."""
+    import fcntl
+
+    cache = record.get("cache_directory")
+    if not isinstance(cache, str):
+        raise FullBuildError("build has no checked relink origin; rebuild through the ordinary compiler")
+    lock = Path(cache) / ".lock"
+    if any(path.is_symlink() for path in (lock, *lock.parents)) or not lock.is_file():
+        raise FullBuildError("relink build lock is absent or indirect; rebuild the image")
+    with lock.open("r") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        return _relink(record, stage, inputs, directory, admission=admission)
+
+
+def _relink(record, stage, inputs, directory, *, admission):
+    from merlin.common.paths import module_source_path
     from merlin.llvmlower import c_runtime
+    from merlin.llvmlower.compilation_recipe import CompilationRecipe, verify_completed_recipe
 
     build_dir = Path(record["build_dir"])
-    directory = Path(directory)
+    directory = Path(directory).absolute()
+    if any(path.is_symlink() for path in (directory, *directory.parents)):
+        raise FullBuildError("relink output contains a symlink")
+    for root in (Path(stage).resolve(), build_dir.resolve(), Path(record.get("cache_directory", build_dir)).resolve()):
+        if directory.resolve().is_relative_to(root) or root.is_relative_to(directory.resolve()):
+            raise FullBuildError("relink output overlaps a capture or original build")
+    recipe = _verify_relink(record, Path(stage))
+    admission_selection = None
+    if record["device_routed"]:
+        from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+
+        if type(admission) is not LinkedElfAdmissionService:
+            raise FullBuildError("device relinking requires the currently selected linked ELF admission service")
+        admission_selection = admission.verify(record["key"]["target"])
     if directory.exists():
         shutil.rmtree(directory)
     directory.mkdir(parents=True)
@@ -504,15 +607,34 @@ def relink(record: dict[str, Any], stage: Path, inputs: dict[str, np.ndarray], d
         raise FullBuildError("the regenerated weights blob differs from the build's; refusing to relink")
     if (cgen / "model_call.c").read_bytes() != (build_dir / "cgen" / "model_call.c").read_bytes():
         raise FullBuildError("the regenerated argument-table call differs from the build's")
-    recipe = json.loads((build_dir / "compilation_recipe.json").read_text())
+    _verify_relink(record, Path(stage), inputs_current=False)
     main = _recipe_command(recipe, build_dir / "model_main.o")
     argv = [directory / "model_main.o" if a == str(build_dir / "model_main.o") else a for a in main["argv"]]
     argv = [str(cgen) if a == str(build_dir / "cgen") else a for a in argv]
-    _run(argv, main["cwd"])
+    observed = CompilationRecipe(directory, producer=module_source_path(__name__))
+    main_inputs = [cgen / Path(item["path"]).name
+                   if Path(item["path"]).parent == build_dir / "cgen" and Path(item["path"]).suffix == ".h"
+                   else Path(item["path"]) for item in main["inputs"]]
+    observed.run(argv, runner=_run, inputs=list(dict.fromkeys([*main_inputs, *sorted(cgen.glob("*.h"))])),
+                 output=directory / "model_main.o", cwd=Path(main["cwd"]))
+    _verify_relink(record, Path(stage), inputs_current=False)
     link = _recipe_command(recipe, Path(record["elf"]))
     elf = directory / "model.elf"
     swap = {str(build_dir / "model_main.o"): str(directory / "model_main.o"), record["elf"]: str(elf)}
-    _run([swap.get(a, a) for a in link["argv"]], link["cwd"])
+    observed.run([swap.get(a, a) for a in link["argv"]], runner=_run,
+                 inputs=[Path(swap.get(item["path"], item["path"])) for item in link["inputs"]],
+                 output=elf, cwd=Path(link["cwd"]))
+    if not elf.is_file() or elf.is_symlink():
+        raise FullBuildError("relink command produced no ordinary executable")
+    _verify_relink(record, Path(stage), inputs_current=not record["device_routed"])
+    if record["device_routed"]:
+        if admission.verify(record["key"]["target"]) != admission_selection:
+            raise FullBuildError("linked ELF admission selection changed during relinking")
+        selected, result = _cached_admission({**record, "elf": str(elf)}, admission, record["key"]["target"], directory)
+        _verify_relink(record, Path(stage))
+        selected.revalidate(elf=elf, result=result, target=record["key"]["target"])
+    observed.completed(elf)
+    verify_completed_recipe(observed.path, executable=elf, expected_recipe_sha256=sha256(observed.path))
     return elf
 
 

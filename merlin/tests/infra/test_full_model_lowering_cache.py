@@ -595,6 +595,10 @@ func.func @forward(%w: tensor<2xf32>, %x: tensor<2xf32>, %s: tensor<2xf32>)
         for op, arithmetic in (("addf", np.add), ("mulf", np.multiply)):
             select(op)
             fresh = build()
+            from merlin.llvmlower.compilation_recipe import verify_completed_recipe
+
+            recipe = Path(fresh["build_dir"]) / "compilation_recipe.json"
+            verify_completed_recipe(recipe, executable=Path(fresh["elf"]), expected_recipe_sha256=FB.sha256(recipe))
             reused = build()
             assert not fresh["reused"] and reused["reused"]
             (root / f"{op}.build.json").write_text(json.dumps(reused, indent=2))
@@ -605,6 +609,12 @@ func.func @forward(%w: tensor<2xf32>, %x: tensor<2xf32>, %s: tensor<2xf32>)
             for step in range(3):
                 bound = {"in0": initial + step, "in1": state}
                 elf = FB.relink(reused, capture, bound, root / f"{op}-{step}")
+                relink_recipe = elf.parent / "compilation_recipe.json"
+                actual = verify_completed_recipe(
+                    relink_recipe, executable=elf, expected_recipe_sha256=FB.sha256(relink_recipe))
+                assert len(actual["commands"]) == 2
+                assert any(Path(item["path"]) == elf.parent / "cgen/model_io.h"
+                           for item in actual["commands"][0]["inputs"])
                 console, wall = FB.run_host(elf, timeout_s=30)
                 (root / f"{op}-{step}.console.bin").write_bytes(console)
                 outputs, _ = FB.read(console, capture, reused["build_hash"])
@@ -615,6 +625,17 @@ func.func @forward(%w: tensor<2xf32>, %x: tensor<2xf32>, %s: tensor<2xf32>)
                 evidence.append({"operation": op, "step": step, "outputs": [a.tolist() for a in outputs],
                                  "elf_sha256": FB.sha256(elf), "sections": FB.elf_sections(elf),
                                  "functional_simulator_wall_seconds": wall, "key": reused["key"]})
+            original_source = (capture / "model.mlir").read_bytes()
+            (capture / "model.mlir").write_bytes(original_source.replace(b"arith.addf", b"arith.subf", 1))
+            with pytest.raises(FB.FullBuildError, match="relink build inputs changed"):
+                FB.relink(reused, capture, bound, root / f"{op}-stale-source")
+            (capture / "model.mlir").write_bytes(original_source)
+            object_path = Path(reused["build_dir"]) / "model.o"
+            original_object = object_path.read_bytes()
+            object_path.write_bytes(original_object[:-1] + bytes([original_object[-1] ^ 1]))
+            with pytest.raises(FB.FullBuildError, match="changed|rebuild"):
+                FB.relink(reused, capture, bound, root / f"{op}-stale-object")
+            object_path.write_bytes(original_object)
         # Hardware drift must re-enter normal admission, which rejects a broken DTS pin.
         dts.write_text(dts.read_text() + "\n")
         with pytest.raises(ValueError, match="DTS bytes differ"):
