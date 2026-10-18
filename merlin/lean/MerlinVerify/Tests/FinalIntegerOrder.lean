@@ -22,9 +22,9 @@ def final (ib : Nat) : SplatNormalizer.Normalizer ib :=
   BodyNormalize.sequential
     (BodyNormalize.sequential (IntegerBody.unorderedBase ib) (CastCancel.base ib))
     (IntegerBody.integerOrder ib)
-def normalized (base : SplatNormalizer.Normalizer ib) (ops : List Op) :=
+def normalized {ib : Nat} (base : SplatNormalizer.Normalizer ib) (ops : List Op) :=
   base.run 0 Γ [] ops [.scalar (.int 8)]
-def aligned (base : SplatNormalizer.Normalizer ib) (kind : IntegerCast.Kind) : Bool :=
+def aligned {ib : Nat} (base : SplatNormalizer.Normalizer ib) (kind : IntegerCast.Kind) : Bool :=
   match normalized base (source kind), normalized base target with
   | some src, some tgt => alphaOps (SplatNormalize.diagonal Γ) src tgt
   | _, _ => false
