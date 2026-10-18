@@ -420,7 +420,11 @@ def _composite_source_matches(
         if len(parsed) != witness.get("n_source_operations"):
             return False
         for item in witness["occurrences"]:
-            if item.get("schema") not in {STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA, MIXED_SCHEMA, EMBEDDING_GATHER_SCHEMA}:
+            if item.get("schema") not in {
+                STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA,
+                MIXED_SCHEMA,
+                EMBEDDING_GATHER_SCHEMA,
+            }:
                 continue
             ordinal = item.get("ordinal")
             if type(ordinal) is not int or not 0 <= ordinal < len(parsed):
@@ -457,7 +461,7 @@ def _all_shapes_fit(occurrences: object, index_bits: int) -> bool:
     if not isinstance(occurrences, list) or type(index_bits) is not int or not 2 <= index_bits <= 128:
         return False
     maximum = (1 << (index_bits - 1)) - 1
-    element_bytes = {"i1": 1, "bf16": 2, "f32": 4, "f64": 8, "i64": 8}
+    element_bytes = {"i1": 1, "i8": 1, "bf16": 2, "f32": 4, "f64": 8, "i64": 8}
 
     def fits(shape: object, dtype: object, *, scalar: bool = False) -> bool:
         if (
@@ -497,8 +501,10 @@ def _all_shapes_fit(occurrences: object, index_bits: int) -> bool:
             return False
         if item.get("schema") == EMBEDDING_GATHER_SCHEMA:
             if (
-                not isinstance(inputs, (list, tuple)) or len(inputs) != 1
-                or not fits(inputs[0], "i64") or not fits(item.get("table_shape"), "bf16")
+                not isinstance(inputs, (list, tuple))
+                or len(inputs) != 1
+                or not fits(inputs[0], "i64")
+                or not fits(item.get("table_shape"), "bf16")
             ):
                 return False
         elif item.get("schema") in {
@@ -644,8 +650,11 @@ def linked_complete(source: Mapping[str, Any], entry: Mapping[str, Any], candida
     ordinals = []
     for item in occurrences:
         if not isinstance(item, Mapping) or set(item) != (
-            _DYNAMIC_OCCURRENCE if item.get("schema") == DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA
-            else _GATHER_OCCURRENCE if item.get("schema") == EMBEDDING_GATHER_SCHEMA else _OCCURRENCE
+            _DYNAMIC_OCCURRENCE
+            if item.get("schema") == DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA
+            else _GATHER_OCCURRENCE
+            if item.get("schema") == EMBEDDING_GATHER_SCHEMA
+            else _OCCURRENCE
         ):
             return False
         ordinal, shape, types, maps = item["ordinal"], item["shape"], item["ordered_types"], item["input_maps"]
@@ -704,12 +713,20 @@ def linked_complete(source: Mapping[str, Any], entry: Mapping[str, Any], candida
             return False
         if item["schema"] == EMBEDDING_GATHER_SCHEMA:
             try:
-                validate_embedding_gather_pattern({
-                    key: item[key] for key in (
-                        "operation", "shape", "ordered_types", "input_shapes", "input_maps",
-                        "table_shape", "table_argument"
-                    )
-                })
+                validate_embedding_gather_pattern(
+                    {
+                        key: item[key]
+                        for key in (
+                            "operation",
+                            "shape",
+                            "ordered_types",
+                            "input_shapes",
+                            "input_maps",
+                            "table_shape",
+                            "table_argument",
+                        )
+                    }
+                )
             except (InvalidLinalgPattern, KeyError):
                 return False
         if item["schema"] == STATIC_BOOLEAN_SOURCE_BODY_SCHEMA:

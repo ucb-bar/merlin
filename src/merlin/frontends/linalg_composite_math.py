@@ -29,6 +29,7 @@ _FORMS = {
     "clamp_lower_literal": (("f32", "f32", "f32"), 1, ()),
     "clamp_lower_f32_min_normal_compare_select": (("f32", "f32", "f32"), 1, ()),
     "clamp_symmetric_int8_grid_compare_select": (("f32", "f32", "f32"), 2, ()),
+    "fptosi_i8_of_rounded_int8_grid_clamp": (("f32", "i8", "i8"), 2, ()),
     "reciprocal_f32": (("f32", "f32", "f32"), 1, ()),
     "reciprocal_signed_i64_to_f32": (("i64", "f32", "f32"), 1, ()),
     "literal_base_pow_f32": (("f32", "f32", "f32"), 1, ("math.powf",)),
@@ -43,6 +44,7 @@ _INT8_GRID_BITS = ("0xc2fe0000", "0x42fe0000")
 _EXACT_LITERALS = {
     "clamp_lower_f32_min_normal_compare_select": (_F32_MIN_NORMAL,),
     "clamp_symmetric_int8_grid_compare_select": _INT8_GRID_BITS,
+    "fptosi_i8_of_rounded_int8_grid_clamp": _INT8_GRID_BITS,
 }
 _CMPF_OLT, _CMPF_OGT = 4, 2
 # Public mathematical coefficients, in the exact f32 source operation order.
@@ -206,6 +208,56 @@ def _recognize_symmetric_int8_grid_clamp(body, source):
     return "clamp_symmetric_int8_grid_compare_select", _INT8_GRID_BITS
 
 
+def _sole_result_of(value, shape: tuple[int, ...]):
+    from xdsl.dialects.linalg.ops import GenericOp
+
+    owner = value.owner
+    if type(owner) is not GenericOp or len(owner.results) != 1 or value is not owner.results[0]:
+        raise InvalidLinalgPattern("int8 cast producer is not the sole result of a linalg.generic")
+    if tuple(value.type.get_shape()) != shape:
+        raise InvalidLinalgPattern("int8 cast producer has a different static shape")
+    return owner
+
+
+def _checked_roundeven(op, shape: tuple[int, ...]) -> None:
+    from xdsl.dialects.math import RoundEvenOp
+
+    shell = _checked_static_linalg_shell(op)
+    if len(op.inputs) != 1 or shell.ordered_types != ("f32", "f32", "f32") or shell.shape != shape:
+        raise InvalidLinalgPattern("int8 cast producer chain does not start at an f32 roundeven")
+    body = shell.body
+    if len(body) != 2:
+        raise InvalidLinalgPattern("int8 cast producer roundeven has extra or missing operations")
+    result = _scalar(body[0], RoundEvenOp, (shell.args[0],), "f32", frozenset({"fastmath"}))
+    _yield(body[1], result)
+    try:
+        op.verify()
+    except Exception as exc:  # noqa: BLE001 - xDSL is the source grammar and type verifier
+        raise InvalidLinalgPattern(f"int8 cast roundeven producer failed xDSL verification: {exc}") from exc
+
+
+def _recognize_int8_grid_cast(op, body, source, shape: tuple[int, ...]):
+    """fptosi f32 -> i8 whose operand is proved integral and within [-127, 127].
+
+    The operand must be the sole result of the exact int8-grid clamp, whose operand is in
+    turn the sole result of an f32 roundeven over the same static shape. For every non-NaN
+    input that chain yields an integral f32 in [-127, 127], so the conversion is exact and
+    in range. A NaN propagates through both and is outside this proof (non-finite native
+    behaviour stays unqualified, as for the other host forms).
+    """
+    from xdsl.dialects.arith import FPToSIOp
+
+    if len(body) != 2:
+        raise InvalidLinalgPattern("int8 cast is not one fptosi and yield")
+    result = _scalar(body[0], FPToSIOp, (source,), "i8")
+    _yield(body[1], result)
+    clamp = _sole_result_of(op.inputs[0], shape)
+    if recognize_static_composite_math_body(clamp).operation != "clamp_symmetric_int8_grid_compare_select":
+        raise InvalidLinalgPattern("int8 cast operand is not the exact int8-grid clamp")
+    _checked_roundeven(_sole_result_of(clamp.inputs[0], shape), shape)
+    return "fptosi_i8_of_rounded_int8_grid_clamp", _INT8_GRID_BITS
+
+
 def _recognize_compare_select_clamp(body, source):
     from xdsl.dialects.arith import CmpfOp, SelectOp
 
@@ -314,6 +366,10 @@ def recognize_static_composite_math_body(op) -> StaticCompositeMathPattern:
         if types != ("f32", "f32", "f32"):
             raise InvalidLinalgPattern("int8-grid compare/select clamp requires f32 input/init/result")
         operation, literals = _recognize_symmetric_int8_grid_clamp(body, shell.args[0])
+    elif names == ("arith.fptosi", "linalg.yield"):
+        if types != ("f32", "i8", "i8"):
+            raise InvalidLinalgPattern("int8 cast requires f32 input and i8 init/result")
+        operation, literals = _recognize_int8_grid_cast(op, body, shell.args[0], tuple(shell.shape))
     elif names[:2] == ("arith.constant", "arith.divf"):
         if types != ("f32", "f32", "f32"):
             raise InvalidLinalgPattern("f32 reciprocal requires f32 input/init/result")

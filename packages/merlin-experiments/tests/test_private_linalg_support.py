@@ -1,5 +1,7 @@
 """Versioned source-body evidence is exact before and after linking."""
 
+# ruff: noqa: E501 - emitted MLIR lines retain the producer's operation form.
+
 from __future__ import annotations
 
 import json
@@ -630,3 +632,113 @@ def test_boolean_input_bytes_and_scalar_projection_are_bounded():
     )
     assert scalar["linalg_host_support"]["occurrences"][0]["input_shapes"][0] == ()
     assert support.linked_complete(scalar, scalar_entry, "d" * 64)
+
+
+_IDENTITY = (
+    "indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], "
+    "iterator_types = [#linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>], "
+    "operandSegmentSizes = array<i32: 1, 1>"
+)
+
+
+def _int8_quantize_source(low: int = -127) -> str:
+    fm = "<{fastmath = #arith.fastmath<none>}>"
+    return f"""builtin.module {{
+  func.func @forward(%x: tensor<2x3xf32>) -> tensor<2x3xi8> {{
+    %e0 = "tensor.empty"() : () -> tensor<2x3xf32>
+    %rounded = "linalg.generic"(%x, %e0) <{{{_IDENTITY}}}> ({{
+      ^bb0(%a: f32, %b: f32):
+        %r = "math.roundeven"(%a) {fm} : (f32) -> f32
+        "linalg.yield"(%r) : (f32) -> ()
+    }}) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+    %e1 = "tensor.empty"() : () -> tensor<2x3xf32>
+    %clamped = "linalg.generic"(%rounded, %e1) <{{{_IDENTITY}}}> ({{
+      ^bb0(%input: f32, %acc: f32):
+        %low = "arith.constant"() <{{value = {low} : i64}}> : () -> i64
+        %lowf = "arith.sitofp"(%low) : (i64) -> f32
+        %below = "arith.cmpf"(%input, %lowf) <{{predicate = 4 : i64, fastmath = #arith.fastmath<none>}}> : (f32, f32) -> i1
+        %raised = "arith.select"(%below, %lowf, %input) : (i1, f32, f32) -> f32
+        %high = "arith.constant"() <{{value = 127 : i64}}> : () -> i64
+        %highf = "arith.sitofp"(%high) : (i64) -> f32
+        %above = "arith.cmpf"(%raised, %highf) <{{predicate = 2 : i64, fastmath = #arith.fastmath<none>}}> : (f32, f32) -> i1
+        %value = "arith.select"(%above, %highf, %raised) : (i1, f32, f32) -> f32
+        "linalg.yield"(%value) : (f32) -> ()
+    }}) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+    %e2 = "tensor.empty"() : () -> tensor<2x3xi8>
+    %q = "linalg.generic"(%clamped, %e2) <{{{_IDENTITY}}}> ({{
+      ^bb0(%v: f32, %w: i8):
+        %c = "arith.fptosi"(%v) : (f32) -> i8
+        "linalg.yield"(%c) : (i8) -> ()
+    }}) : (tensor<2x3xf32>, tensor<2x3xi8>) -> tensor<2x3xi8>
+    func.return %q : tensor<2x3xi8>
+  }}
+}}"""
+
+
+def test_int8_cast_producer_domain_is_reproved_on_reparse_and_linked(tmp_path):
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    model = capture / "model.mlir"
+    model.write_text(_int8_quantize_source())
+    receipt = capture / "capture_receipt.json"
+    receipt.write_text('{"scope":"neutral fixture"}')
+    raw = sha256(model.read_bytes()).hexdigest()
+    normalized, _ = normalize_capture_mlir(model.read_text())
+    normalized_digest = sha256(normalized.encode()).hexdigest()
+    all_ops = tuple(mq.walk(mq.parse(normalized)))
+    ordinal = [i for i, op in enumerate(all_ops) if op.name == "linalg.generic"][-1]
+    row = {"mlir_operation": "linalg.generic", "count": 1, "ordinals": [ordinal]}
+    selected_host = {
+        "host": {
+            "package_sha256": "a" * 64,
+            "capability_spec_sha256": "b" * 64,
+            "dtype_strategy": "int8_w8a8",
+            "capability_spec": {
+                "schema": "merlin.host_capabilities.v1",
+                "status": "reviewed",
+                "compiler": {"package_sha256": "a" * 64, "dtype_strategy": "int8_w8a8"},
+                "operations": [
+                    {
+                        "id": "neutral_int8_cast",
+                        "ops": ["linalg.generic"],
+                        "placement": "host",
+                        "signature": {"ordered_operand_dtypes": ["f32", "i8"], "ordered_result_dtypes": ["i8"]},
+                        "source_body": {
+                            "schema": "merlin.static_composite_math_body.v1",
+                            "operation": "fptosi_i8_of_rounded_int8_grid_clamp",
+                        },
+                    }
+                ],
+                "evidence": {"scope": "neutral placement declaration only"},
+            },
+        }
+    }
+    signature = {
+        "family": "elementwise_map",
+        "ordered_operand_dtypes": ["f32", "i8"],
+        "ordered_result_dtypes": ["i8"],
+        "rank": 2,
+    }
+    admission = admit_host_operation(selected_host, row, signature, source_operations=(all_ops[ordinal],))
+    assert admission["status"] == "admitted"
+    selected, actual = _index_lowering(32)
+    proof = support.begin(raw, normalized_digest, len(all_ops), selected)
+    support.record(proof, row, admission, all_ops, {ordinal: row})
+    tree = strict_tree_sha256(capture)["sha256"]
+    source = {
+        "source_sha256": raw,
+        "normalized_source_sha256": normalized_digest,
+        "capture_receipt_sha256": sha256(receipt.read_bytes()).hexdigest(),
+        "n_source_operations": len(all_ops),
+        "selected_index_observation": selected,
+        "linalg_host_support": proof,
+    }
+    entry = {"source_sha256": raw, "capture_tree_sha256": tree, "elf_sha256": "e" * 64, "index_lowering": actual}
+    linked_build = {"candidate_tree_sha256": "d" * 64, "capture_tree_sha256": tree, "elf_sha256": "e" * 64}
+    support.link(source, actual, linked_build, capture_path=capture)
+    occurrence = source["linalg_host_support"]["occurrences"][0]
+    assert occurrence["operation"] == "fptosi_i8_of_rounded_int8_grid_clamp"
+    assert support.linked_complete(json.loads(json.dumps(source)), entry, "d" * 64)
+    # A producer outside the int8 grid no longer proves the cast on the post-link reparse.
+    model.write_text(_int8_quantize_source(low=-129))
+    assert not support.linked_complete(source, entry, "d" * 64)
