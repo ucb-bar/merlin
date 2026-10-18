@@ -723,9 +723,7 @@ def select_evidence(
             owner = Path(hardware_spec).parent if not isinstance(hardware_spec, Mapping) else Path.cwd()
             observe(owner / value, f"hardware-reference:{field}")
     try:
-        selected_path = (
-            None if data_only and facts_path is None else rtl_facts.find_facts(target, explicit=facts_path)
-        )
+        selected_path = None if data_only and facts_path is None else rtl_facts.find_facts(target, explicit=facts_path)
     except FileNotFoundError as exc:
         selected_path = None
         diagnostics.append({"component": "facts", "status": "unknown", "reason": str(exc)})
@@ -1232,7 +1230,8 @@ def evidence_artifacts(selection: EvidenceSelection) -> dict[str, bytes]:
             source.role.removeprefix("application-capture:"): source.content
             for source in selection.source_snapshots
             if source.role.startswith("application-capture:")
-        } or None,
+        }
+        or None,
     )
     accounting["selected_inventory"] = getattr(
         selection,
@@ -1285,23 +1284,15 @@ def evidence_artifacts(selection: EvidenceSelection) -> dict[str, bytes]:
         )
     )
     outputs["software/quantization-contract.json"] = _json(quantization)
-    recipes = []
-    for candidate in capture_recipe_candidates(selection.software_spec, quantization):
-        payload = _json(candidate["recipe"])
-        path = f"software/quantization-recipes/{_digest(payload)}.json"
-        outputs[path] = payload
-        recipes.append(
-            {key: value for key, value in candidate.items() if key != "recipe"}
-            | {"path": path, "sha256": _digest(payload), "recipe_sha256": candidate["recipe"]["recipe_sha256"]}
+    from .capture_recipe import recipe_outputs
+
+    outputs.update(
+        recipe_outputs(
+            capture_recipe_candidates(selection.software_spec, quantization),
+            target=selection.target,
+            software_review=selection.software_spec.get("status"),
+            encode=_json,
         )
-    outputs["software/quantization-recipes.json"] = _json(
-        {
-            "schema": "merlin.phase0.capture_recipes.v1",
-            "target": selection.target,
-            "software_review": selection.software_spec.get("status"),
-            "recipes": recipes,
-            "qualification": "diagnostic transformation inputs; calibrate and verify actual precision before admission",
-        }
     )
     outputs["software/host-capabilities.json"] = _json(getattr(selection, "host_capabilities", {}))
     outputs["software/native-baseline-observations.json"] = _json(native_baselines)
@@ -1444,8 +1435,6 @@ def export_evidence(selection: EvidenceSelection, artifact_root: str | Path) -> 
     outputs = evidence_artifacts(selection)
     _materialize_evidence(Path(artifact_root), outputs)
     return json.loads(outputs["evidence-manifest.json"])
-
-
 
 
 def load_exported_evidence(artifact_root: str | Path) -> EvidenceSelection:
