@@ -64,6 +64,24 @@ def run (ops : List Op) (payload : Val) :=
   let payload := Val.some (.bits 13 (BitVec.ofNat 13 n))
   run (source false) payload == run ((normalized 64 (source false)).getD []) payload
 
+-- Late aliases expose dead splats; poison payloads remain exact, while escapes and captures retain them.
+def fresh : Op := .mk "tensor.splat" [⟨5, tensorTy []⟩] [0] [] [] [] []
+def localWrite : Op := .mk "tensor.insert" [⟨3, tensorTy []⟩] [0, 5] [] [] [] []
+#guard (InsertExtract.normalize 64 (Γ []) ⟨[], []⟩ [fresh, localWrite, read [], ret [4]]).map
+  (fun ops => ops.map (·.name)) == some ["func.return"]
+#guard (InsertExtract.normalize 64 (Γ []) ⟨[], []⟩ [fresh, localWrite, read [], ret [4, 5]]).map
+  (fun ops => ops.map (·.name)) == some ["tensor.splat", "func.return"]
+def captured : Op := .mk "test.region" [] [] [] [] [.mk [.mk [] [ret [5]]]] []
+#guard !(drop? (Γ []) ⟨[], []⟩ fresh [captured, ret [0]])
+#guard !(drop? [] ⟨[], []⟩ fresh [ret [0]])
+def unknownFresh : Op := .mk "tensor.splat" [⟨5, tensorTy []⟩] [0] [("unreviewed.meaning", .unit)] [] [] []
+#guard !(drop? (Γ []) ⟨[], []⟩ unknownFresh [ret [0]])
+def splatRun (ops : List Op) (payload : Val) :=
+  Semantics.readInts (evalOps Sem.Ops.opSem Semantics.ctx (fun _ _ => .stuck "no calls")
+    [(0, .scalar payload), (1, .tensor (Tensor.full [] (.int 13) .poison))] ops)
+#guard splatRun [fresh, localWrite, read [], ret [4]] .poison ==
+  splatRun ((InsertExtract.normalize 64 (Γ []) ⟨[], []⟩ [fresh, localWrite, read [], ret [4]]).getD []) .poison
+
 open MerlinVerify.Check.Definedness
 open MerlinVerify.Check.Definedness.IndexRanges
 

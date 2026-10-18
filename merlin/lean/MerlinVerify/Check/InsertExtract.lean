@@ -89,19 +89,26 @@ theorem eliminate_sound {Γ : TEnv} {facts : Facts} {s : Op} {tail renamed : Lis
     · cases h
   · cases h
 
+/-- Alias deletion can make a preceding splat unused. Reuse its already proved totality
+and full continuation guard in this same tail walk, without rerunning all families. -/
 def drop? (Γ : TEnv) (facts : Facts) (s : Op) (tail : List Op) : Bool :=
-  (InsertExtractFacts.checked Γ facts.constants s).isSome && TypedDead.unused Γ s tail
+  ((InsertExtractFacts.checked Γ facts.constants s).isSome && TypedDead.unused Γ s tail) ||
+    SplatNormalize.drop? Γ s tail
 
 theorem drop_sound {ib : Nat} {Γ : TEnv} {facts : Facts} {s : Op} {tail : List Op}
     (h : drop? Γ facts s tail = true) {ctx : Ctx} {call : CallSem} {env : Env}
     (he : EnvTyped ib Γ env) (hf : Valid facts env) :
     ∃ env', stepOp opSem ctx call env s = .ok env' ∧
       evalOps opSem ctx call env' tail = evalOps opSem ctx call env tail := by
-  simp only [drop?, Bool.and_eq_true] at h
-  obtain ⟨p, hp⟩ := Option.isSome_iff_exists.1 h.1
-  have hc := InsertExtractFacts.checked_spec hp
-  obtain ⟨t, value, _, _, _, hs⟩ := InsertExtractFacts.write_exec hc he hf.2 ctx call
-  exact TypedDead.drop_sound h.2 ⟨p.result, _, hc.2.2.2.2.2.1, hs⟩
+  simp only [drop?, Bool.or_eq_true] at h
+  rcases h with hinsert | hsplat
+  · simp only [Bool.and_eq_true] at hinsert
+    obtain ⟨p, hp⟩ := Option.isSome_iff_exists.1 hinsert.1
+    have hc := InsertExtractFacts.checked_spec hp
+    obtain ⟨t, value, _, _, _, hs⟩ := InsertExtractFacts.write_exec hc he hf.2 ctx call
+    obtain ⟨_, _, _, _, _, hresults, _⟩ := hc
+    exact TypedDead.drop_sound hinsert.2 ⟨p.result, _, hresults, hs⟩
+  · exact SplatNormalize.drop_sound hsplat he ctx call
 
 def finish (ib : Nat) (Γ : TEnv) (facts : Facts) (s : Op) (tail : List Op) : List Op :=
   if drop? Γ facts s tail then tail else
