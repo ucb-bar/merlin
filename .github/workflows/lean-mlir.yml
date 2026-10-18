@@ -26,6 +26,10 @@ jobs:
   lean-mlir:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     env:
       MERLIN_LEAN_REQUIRED: '1'
       MERLIN_M2M_PYTHON: ${{ github.workspace }}/out/build/lean/mlir-venv/bin/python
@@ -59,11 +63,13 @@ jobs:
         run: uv run --no-sync python build_tools/scripts/check_lean_guard.py
       - name: authoritative round trips, receipts, races and semantic differential tests
         # Collect every binding-only Lean suite, including new rewrite/definedness families.
+        # Three disjoint file shards retain the entire selection within the job time budget.
         # Native execution and standalone parser comparisons require separately installed LLVM
         # tools and run out of band. Keep that exclusion explicit; no backend substitution.
         run: |
           set -euo pipefail
           lean_suites=()
+          binding_index=0
           for suite in merlin/tests/ir/test_lean_*.py; do
             case "$suite" in
               */test_lean_differential.py|*/test_lean_splat_inputs.py|\
@@ -78,16 +84,21 @@ jobs:
               */test_lean_scalar_carrier_differential.py|*/test_lean_index_bounds_differential.py|\
               */test_lean_defined_conversions_native.py) continue ;;
             esac
-            lean_suites+=("$suite")
+            if (( binding_index % 3 == ${{ matrix.shard }} )); then
+              lean_suites+=("$suite")
+            fi
+            binding_index=$((binding_index + 1))
           done
+          if (( ${{ matrix.shard }} == 0 )); then
+            lean_suites+=(merlin/tests/ir/test_lower_quant_ext_granularities.py)
+            lean_suites+=(merlin/tests/ir/test_normalization_reassociation.py)
+          fi
           uv run --no-sync pytest -q -n 2 --dist loadfile "${lean_suites[@]}" \
-            merlin/tests/ir/test_lower_quant_ext_granularities.py \
-            merlin/tests/ir/test_normalization_reassociation.py \
             -k 'not standalone and not test_round_trip_identical' \
             -o junit_family=xunit1 \
             --junitxml=out/artifacts/verification/lean-mlir.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: lean-mlir-test-results
+          name: lean-mlir-test-results-${{ matrix.shard }}
           path: out/artifacts/verification/lean-mlir.xml
