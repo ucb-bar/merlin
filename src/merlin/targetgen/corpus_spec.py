@@ -1049,6 +1049,8 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     ``fused_matmul_bias`` is the same weight-stationary contraction with its bias epilogue forced on --
     a distinct op name rather than a flag because the L5 fusion claim compares it against the two
     capsules it replaces, and a group whose members differ only by an attribute cannot be named."""
+    from merlin.targetgen.contract import matmul_interface as MSE
+
     D = binding.tile_dim
     M = entry.get("M_tiles", 1) * D if "M" not in entry else entry["M"]
     K = entry.get("K_tiles", 1) * D if "K" not in entry else entry["K"]
@@ -1059,7 +1061,8 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     if op == "fused_matmul_bias" and not any(s in _BIAS_STAGES for s in epilogue):
         # Ahead of _resolve_output_dtype, which reads the epilogue to decide the committed dtype.
         epilogue.insert(0, "bias_add")
-    acc_scale = entry.get("acc_scale")
+    readout = MSE.acc_scale_parameters(entry, epilogue, N, op=entry.get("name", op))
+    acc_scale = readout.get("acc_scale")
     output_dtype = _resolve_output_dtype(
         binding,
         epilogue,
@@ -1084,8 +1087,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     requant_shift = requant_shift_for(entry, binding, epilogue, op=op)
     if requant_shift is not None:
         attrs["requant_shift"] = requant_shift
-    if acc_scale is not None:
-        attrs["acc_scale"] = acc_scale
+    attrs.update(readout)
     if entry.get("semantic"):
         attrs["semantic"] = entry["semantic"]
     expected = {
@@ -1112,8 +1114,6 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         "vcs": "optional",
         "firesim": "optional",
     }
-    from merlin.targetgen.contract import matmul_interface as MSE
-
     mlir = MSE.emit_interface_mlir(
         lhs=lhs,
         weight=weight,
@@ -1124,6 +1124,7 @@ def build_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         epilogue=epilogue,
         output_dtype=odt,
         acc_scale=acc_scale,
+        acc_scale_by_column=readout.get("acc_scale_by_column"),
         comment=entry.get("comment", ""),
         pool_attrs=pool_attrs or None,
         commit_rows=commit_rows,
@@ -2017,19 +2018,10 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     bias, bias_dt = _bias_operand(entry, epilogue, cout, binding, "conv2d")
     if bias:
         attrs["bias"] = bias
-    acc_scale = entry.get("acc_scale")
-    if "acc_scale" in epilogue:
-        if acc_scale is None:
-            raise ValueError(
-                f"{entry.get('name', 'conv2d')}: an 'acc_scale' epilogue stage needs its `acc_scale` "
-                f"multiplier; a stage declared without one would be applied at an assumed 1.0"
-            )
-        attrs["acc_scale"] = acc_scale
-    elif acc_scale is not None:
-        raise ValueError(
-            f"{entry.get('name', 'conv2d')}: declares acc_scale = {acc_scale!r} but no 'acc_scale' "
-            f"epilogue stage; the multiplier would be carried into the capsule and read by nothing"
-        )
+    from merlin.targetgen.contract import matmul_interface as MSE
+
+    readout = MSE.acc_scale_parameters(entry, epilogue, cout, op=entry.get("name", "conv2d"))
+    attrs.update(readout)
     cap = {
         "name": entry["name"],
         "kind": entry["kind"],
@@ -2074,7 +2066,7 @@ def build_conv2d(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
         f'dilation = [{dilation[0]}, {dilation[1]}], name = "{out}", epilogue = [{epi}], '
         f'output_dtype = "{odt}"'
         + (f", requant_shift = {requant_shift} : i64" if requant_shift is not None else "")
-        + (f", acc_scale = {acc_scale} : f32" if "acc_scale" in epilogue else "")
+        + MSE.acc_scale_mlir_attrs(readout)
         + (f', bias = "{bias}"' if bias else "")
         + f', layout = "nhwc"{_pool_mlir_attrs(pool_attrs)}}} '
         f": (tensor<1x{H}x{W}x{ci}x{midt}>, !merlin_iface.resident) -> tensor<{out_rows}x{cout}x{modt}>",

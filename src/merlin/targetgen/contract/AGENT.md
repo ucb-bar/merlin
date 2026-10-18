@@ -9,6 +9,10 @@ multiplier per output column. It is mutually exclusive with scalar `acc_scale`;
 typed interface round-trips, numerical engines and the test-only native
 reference instrument retain its full vector. Target support/scheduling and
 candidate-generated kernel/RTL evidence remain separate requirements.
+Matrix and convolution capsule builders preserve the same scalar/vector choice
+in operation metadata and typed interface attributes. Missing parameters,
+ambiguous choices, vector-width mismatches and unused parameters refuse before
+emission; capsule generation does not admit a target scale-change schedule.
 
 ## Modules
 
