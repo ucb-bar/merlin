@@ -37,4 +37,24 @@ def rebound (n : Int) : Module :=
 #guard Bounds.check 64 (rebound 1) "f" [.tensor [2] i32] [.scalar i32]
 #guard !Bounds.check 64 (rebound 2) "f" [.tensor [2] i32] [.scalar i32]
 
+def captured (shadow : Bool := false) (dirty : Bool := false) : Module :=
+  let tensor := tensorTy [2] .index
+  let generic := mkOp "linalg.generic" [v 4 tensor] [3]
+    [("indexing_maps", .array [amap 1 [0]]), ("iterator_types", .array [iter "parallel"]),
+     ("operandSegmentSizes", .denseArray (.int 32) [0, 1])] []
+    [.mk [.mk [v (if shadow then 1 else 5) .index]
+      [mkOp "tensor.extract" [v 6 .index] [0, 1], mkOp "linalg.yield" [] [6]]]]
+  { ops := [func "f" ([v 0 tensor] ++ if dirty then [] else [v 3 tensor])
+    ([mkOp "arith.constant" [v 1 .index] [] [("value", .int 0 .index)]] ++
+      (if dirty then [mkOp "tensor.empty" [v 3 tensor] []] else []) ++ [generic, ret [4]])] }
+
+#guard Bounds.check 64 captured "f" [.tensor [2] .index, .tensor [2] .index] [.tensor [2] .index]
+#guard Bounds.check 32 (captured false true) "f" [.tensor [2] .index] [.tensor [2] .index]
+#guard !Bounds.check 64 (captured true) "f" [.tensor [2] .index, .tensor [2] .index] [.tensor [2] .index]
+
+-- Exhaustive small shapes include zero/unit extents and both sides of each bounds interval.
+#guard ([32, 64].all fun ib => (List.range 5).all fun size => (List.range 9).all fun raw =>
+  let n : Int := (raw : Int) - 2
+  accepts ib [size] [n] == (decide (0 ≤ n ∧ n < (size : Int))))
+
 end MerlinVerify.Tests.DefinedBounds
