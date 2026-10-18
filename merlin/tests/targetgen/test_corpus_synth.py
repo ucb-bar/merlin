@@ -100,6 +100,8 @@ def test_every_required_cell_becomes_an_entry(target):
         "multi-block axis",
         # One ragged extent at a time under otherwise tile-aligned extents.
         "tail-isolation axis",
+        # Two runtime activations contracted, the product consumed by data movement.
+        "activation-contraction axis",
     )
     unattributed = [e["name"] for e in other if not any(a in (e.get("source_reference") or "") for a in axes)]
     assert not unattributed, f"entries no declared axis asked for: {unattributed}"
@@ -634,6 +636,36 @@ def test_tail_isolation_rags_one_extent_on_tile_relative_tokens():
     for entry in (k_tail, gemv):
         assert entry["op"] == made[f"{CS.SYNTH_PREFIX}_contraction_i8_aligned"]["op"]
         assert entry["label"] == "public" and CS.declares_accelerator_placement(entry)
+
+
+def test_activation_contraction_members_are_aligned_decode_and_ragged_on_tile_tokens():
+    out = CS.synthesize(_HOST_SPEC)
+    made = {e["name"]: e for e in out["capsules"]}
+    members = {label: made[f"{CS.SYNTH_PREFIX}_act_act_i8_{label}"] for label in ("aligned", "decode", "k_tail")}
+    # Spelled against the binding's tile edge, never as a resolved mesh dimension.
+    assert {label: (e["M"], e["K"], e["N"]) for label, e in members.items()} == {
+        "aligned": ("tile", "2*tile", "2*tile"),
+        "decode": (1, "2*tile", "2*tile"),
+        "k_tail": ("tile", "2*tile-1", "2*tile"),
+    }
+    for entry in members.values():
+        # Two runtime activations, no stored weight and no scale stream.
+        assert entry["op"] == "activation_matmul" and "weight" not in entry
+        assert not any("scale" in key for key in entry)
+        assert entry["label"] == "public" and CS.declares_accelerator_placement(entry)
+        assert entry["generalization"]["generalization_axis"] == "activation_contraction"
+        assert entry["stimulus_range"][0] < 0
+
+
+def test_activation_contraction_needs_its_certified_integer_sibling():
+    sibling = {f"{CS.SYNTH_PREFIX}_contraction_i8_aligned"}
+    assert CS._activation_contraction_entries("i8", _HOST_SPEC, emitted=set()) == []
+    assert CS._activation_contraction_entries(None, _HOST_SPEC, emitted=sibling) == []
+    # An exact integer comparison is the member's contract; a float operand regime has none.
+    assert (
+        CS._activation_contraction_entries("bf16", _HOST_SPEC, emitted={f"{CS.SYNTH_PREFIX}_contraction_bf16_aligned"})
+        == []
+    )
 
 
 def test_tail_isolation_needs_its_certified_sibling():

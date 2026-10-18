@@ -115,7 +115,7 @@ def derive(source, semantics):
                 prefix = min(0, interval[0]), max(0, interval[1])
                 _require(prefix, bits, owner=node["name"], stage="partial sum")
                 proof.update(partial_sum_interval=list(prefix), reduction_axis=node["axis"], reduction_extent=reduction)
-            elif op in {"copy", "transpose", "alias", "cast"}:
+            elif op in {"copy", "transpose", "reshape", "alias", "cast"}:
                 interval = args[0]
             else:
                 raise ValueError("component integer interval proof has no semantics for the source node")

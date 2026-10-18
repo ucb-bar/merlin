@@ -122,8 +122,9 @@ def source_for_entry(entry, *, binding):
         selected.mlir_dtype(selected.operand_dtype),
         selected.mlir_dtype(selected.accum_dtype),
     )
-    if entry.get("op") == "component_program":
-        program = component_program.analyze(entry.get("program"), operand_dtype=operand, accumulator_dtype=accumulator)
+    typed = corpus_spec.entry_component_program(entry, selected)
+    if typed is not None:
+        program = component_program.analyze(typed, operand_dtype=operand, accumulator_dtype=accumulator)
     elif entry.get("op") == "movement":
         shape = [entry.get(axis, entry.get(axis + "_tiles", 1) * selected.tile_dim) for axis in ("M", "N")]
         _extent(shape)
@@ -135,7 +136,7 @@ def source_for_entry(entry, *, binding):
     else:
         raise ValueError("execution budget has no source-derived cost for this operation")
     return {
-        "kind": entry["op"],
+        "kind": "component_program" if typed is not None else entry["op"],
         "program": program,
         "input_palette": copy.deepcopy(entry.get("input_palette")),
         "stimulus_range": copy.deepcopy(entry.get("stimulus_range")),

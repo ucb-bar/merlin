@@ -1168,6 +1168,76 @@ def _tail_isolation_entries(op: str | None, dtype: str | None, spec_doc: dict, *
     return members
 
 
+#: Activation x activation contractions: both operands arrive at run time, so no weight can be stored,
+#: packed or made resident, and the group carries no scale stream because host epilogues apply scales.
+#: The result is consumed by data movement (a reshape), not by a readout stage. Extents are tile
+#: tokens resolved against the binding's edge, which the target's RTL facts derive.
+ACTIVATION_CONTRACTION_SHAPES = (
+    (
+        "aligned",
+        {"M": "tile", "K": "2*tile", "N": "2*tile"},
+        "every extent sits on the tile edge, so the only difference from the weight-stationary sibling "
+        "is that neither operand is stored ahead of the call",
+    ),
+    (
+        "decode",
+        {"M": 1, "K": "2*tile", "N": "2*tile"},
+        "a single-row product of two activations, the decode step's shape, so one output row is all the mesh is given",
+    ),
+    (
+        "k_tail",
+        {"M": "tile", "K": "2*tile-1", "N": "2*tile"},
+        "the reduction extent both activations share stops one short of two tiles, and neither operand "
+        "can be padded offline because neither is stored",
+    ),
+)
+
+
+def _activation_contraction_entries(dtype: str | None, spec_doc: dict, *, emitted: set[str]) -> list[dict]:
+    """Activation x activation contraction members whose product feeds a reshape.
+
+    Written on the dtype the geometry axis certifies, as an exact integer program: operand-dtype
+    inputs, an accumulator-dtype product compared exactly, no scale metadata. They rest on the
+    certified aligned contraction sibling; without one, or on a dtype that is not an integer
+    regime, they are not emitted.
+    """
+    from merlin.targetgen.corpus_spec import regime_for_dtype
+
+    sibling = f"{SYNTH_PREFIX}_contraction_{dtype}_aligned"
+    if not dtype or sibling not in emitted:
+        return []
+    try:
+        if regime_for_dtype(str(dtype)) != "int":
+            return []
+    except Exception:  # noqa: BLE001 -- an unknown regime is not an exact integer one
+        return []
+    members = []
+    for label, extents, why in ACTIVATION_CONTRACTION_SHAPES:
+        entry = {
+            "cat": "isa",
+            "kind": "layer",
+            "name": f"{SYNTH_PREFIX}_act_act_{dtype}_{label}".replace("-", "_"),
+            "op": "activation_matmul",
+            "operand_dtype": dtype,
+            "out": "Y0",
+            "lhs": "A0",
+            "rhs": "B0",
+            "source_role": SOURCE_ROLE,
+            "source_reference": f"synthesized for the activation-contraction axis: {why}",
+            "label": "public",
+            "generalization": {"generalization_axis": "activation_contraction"},
+            **extents,
+        }
+        if _writer_for(entry) != "builder":
+            continue
+        reason = cap_to_affordable(entry, spec_doc, extends=sibling)
+        if reason:
+            entry["source_reference"] += f". {reason}"
+        entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
+        members.append(entry)
+    return members
+
+
 def _multi_block_members(output_bound: dict, op: str, dtype: str, sibling: str, spec_doc: dict) -> list[dict]:
     """Members whose output spans several blocks on BOTH parallel axes, with tails, derived from facts.
 
@@ -2340,6 +2410,7 @@ def synthesize(
     entries.extend(
         _tail_isolation_entries(geom_op, geom_dtype, spec_doc, emitted={str(e.get("name")) for e in entries})
     )
+    entries.extend(_activation_contraction_entries(geom_dtype, spec_doc, emitted={str(e.get("name")) for e in entries}))
 
     # ---- the ACCUMULATION-DEPTH axis ----------------------------------------------------------------
     # How deep a reduction the accumulator survives. The memory-regime axis proves the operand store is
