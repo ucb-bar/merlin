@@ -1388,6 +1388,34 @@ another. The checker reuses the existing interval provenance memory and stores
 one scalar expression per whole vector; it never expands by tensor elements.
 Only qualified synchronous arithmetic and exact copies are admitted here.
 
+Selected persistent settings may also parameterize those scalar instructions.
+The software specification must describe each instruction's complete state
+reads alongside its memory accesses. Those reads name encoded fields and exact
+required values through the existing `scheduling.configuration` contract; the
+ISA state resource's field capacity comes from the selected RTL facts. Scalar
+instructions may read established settings but cannot write or clobber them.
+Exact-copy declarations retain their stricter memory-only requirement.
+
+Pass `configuration_qualification_identity` to bind the selected state decoder
+as well as the independently qualified memory/scalar implementation. Missing
+qualification, unknown field capacity, an absent state frame or mismatched ISA
+coverage cannot authorize lowering. Source checking starts with unknown state,
+requires a matching setter before each configuration-dependent use, and checks
+again after decoding the actual final images. A setter is admitted without
+scalar arithmetic only when it is ordered, synchronous, memory-free and
+independently qualified as an idempotent persistent write. A reset or unordered
+operation that leaves a required value unknown raises a configuration diagnostic.
+Other unmodeled arithmetic or effects raise `UnsupportedElementwise`, allowing
+the caller to keep the original source route. This bounded source entry does not
+inherit every barrier operation supported by generic schedule cleanup.
+
+Configuration cleanup runs before fusion and allocation in the nested scheduler.
+Disabling it with `ScheduleBudgets(eliminate_configuration=False)` retains the
+setup instructions while preserving all admission and conformance checks.
+Read-only settings allow cleanup and physical fusion to compose: cleanup removes
+repeated setters, while fusion separately removes a supported intermediate
+store/reload. Cleanup alone does not reduce arithmetic or payload traffic.
+
 The enforced source ordering is `source-admission`, `schedule-lowering`, then
 `source-conformance`. These reuse `PassSpec` and `PipelineSession`; the nested
 scheduler retains its existing bounded allocation/fusion repair. Source, selected
@@ -1411,6 +1439,12 @@ checked = compile_source_pointwise(
 images = checked.images()
 ```
 
+For configuration-dependent instructions, add
+`configuration_qualification_identity=state_qualification_identity`. This label
+records the selected independent evidence; it does not create that evidence.
+The emitted program's complete state is reported under
+`checked.conformance["configuration"]["known_final_state"]`.
+
 An explicitly selected provider can call this entry from ordinary model
 preparation and link its implementation through the existing
 `prepared_model_transform` and `host_provider_builder` hooks. The neutral
@@ -1429,6 +1463,8 @@ Reproduce source mutations, native execution and ordinary paired model builds:
 python -B -m pytest -p no:cacheprovider \
   merlin/tests/infra/test_pointwise_source.py \
   merlin/tests/infra/test_pointwise_source_whole_model.py \
+  merlin/tests/infra/test_configured_pointwise.py \
+  merlin/tests/infra/test_configured_pointwise_model.py \
   merlin/tests/infra/test_shared_scheduling_export.py \
   --basetemp "$TMPDIR/source-pointwise" \
   -o junit_family=xunit1 --junitxml "$TMPDIR/source-pointwise.xml"
@@ -1441,7 +1477,15 @@ fusion control. Retained `pair.json` records compilation wall time and sampled
 process-tree RSS, final ELF sections, encoded size, command counts, complete
 results and native requested instruction/packing bytes. Final ELF sections retain
 the exact program images; the test reopens loaded, readonly sections and decodes
-their actual instructions after linking. The neutral interpreter
+their actual instructions after linking. A separate configuration pair disables
+fusion in both arms and changes only setup elimination. It checks settings used
+by the arithmetic, complete outputs and carried state, unchanged packing and
+payload traffic, and the actual setup instructions in the linked ELF. Native
+mutation controls change, omit, reorder or reinsert setters during emission;
+independent execution also rejects a falsely declared setter with a hidden pulse.
+The isolated shared-library test exercises the combined configuration and
+source-fusion path without importing the checkout's compiler implementations.
+The neutral interpreter
 executes on the CPU; its functional Spike counter and process wall time are not
 accelerator latency. Packing bytes remain a separate unchanged cost. This
 experiment does not demonstrate real target support, Phase 2 pass synthesis or
@@ -2350,7 +2394,7 @@ ownership, real target support or absolute accuracy for an external model.
 | Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks and independent actual byte provenance | Qualified device register/transfer adapters and ordinary target integration; CPU allocation stays with the native toolchain |
 | Fusion and transfers | Readout composition admission and connected dispatch; exact private-copy forwarding; consumed total-integer elementwise physical composition with layout/numerical checks, allocation fallback and reconstructed final traffic | Floating/contraction epilogues, noncontiguous and asynchronous handoffs, and qualified full-model target integration |
 | Reductions and attention | Complete-domain counted row softmax; automatic narrow CPU source row scheduling and native QK–softmax–PV graphs with carried state; ordered source loops and complete CPU reductions | Qualified source-to-device connection, target hooks/final decoding, device QK–softmax–PV/KV composition and broader source algorithms |
-| Configuration | Checked persistent-state cleanup through ordinary shared schedule compilation and actual final bytes; existing configuration checker/hoist primitive | Independently qualified target state decoder and ordinary model integration |
+| Configuration | Checked persistent-state cleanup through ordinary shared schedules, source pointwise lowering and neutral recurrent model builds; actual final bytes, complete outputs and settings, and isolated shared-library execution | Independently qualified real-target state decoder and model integration; general source loops and reset/pulse semantics |
 | Final program limits | Actual decoded instruction size, branch/address checks and closed-region segmentation through declared interfaces | Independently qualified target decoder and runtime continuation integration; ordinary targets retain their existing linked-image admission |
 | Persistent state | Runtime state binding, immutable weight hashing/reuse and recurrent relinking | Qualified address windows, ownership and persistence for each device runtime |
 | Whole-model coverage | Source routing/census and compiled CPU fallback machinery | Complete realized coverage and unchanged numerical gates for each selected full model |

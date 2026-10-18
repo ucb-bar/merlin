@@ -209,9 +209,14 @@ def qualify(provider, arithmetic_inputs):
     compiler = shutil.which("cc")
     if compiler is None:
         pytest.skip("native source/ABI qualifier unavailable")
-    library = provider.work / "provider.so"
-    argv = [compiler, "-O2", "-fno-builtin", "-shared", "-fPIC", str(provider.c_source), "-o", str(library)]
+    built_library = provider.work / "provider.so"
+    argv = [compiler, "-O2", "-fno-builtin", "-shared", "-fPIC", str(provider.c_source), "-o", str(built_library)]
     subprocess.run(argv, check=True, capture_output=True)
+    # dlopen can retain a prior CDLL after pytest has removed a passed test's
+    # files and reused its directory name. Select by actual compiled bytes so
+    # qualification cannot execute an earlier model under a new source hash.
+    library = provider.work / f"provider-{sha256_file(built_library)}.so"
+    built_library.replace(library)
     native = ctypes.CDLL(str(library))
     native.pointwise_count.argtypes, native.pointwise_count.restype = [ctypes.c_int], ctypes.c_uint64
     native.pointwise_reset()
@@ -249,6 +254,7 @@ def qualify(provider, arithmetic_inputs):
         outputs.append(actual)
     record = dict(
         source_sha256=sha256_file(provider.c_source),
+        library_path=library.name,
         library_sha256=sha256_file(library),
         compiler=str(compiler),
         commands=[argv],

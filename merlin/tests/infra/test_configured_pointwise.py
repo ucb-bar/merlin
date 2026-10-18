@@ -223,3 +223,86 @@ def test_scalar_state_contracts_fail_closed(tmp_path, fault):
 
     with pytest.raises(ValueError):
         case(tmp_path, mutate=change)
+
+
+@pytest.mark.parametrize("execute", [dict(source=EXECUTOR, counters=5)], indirect=True, ids=["stateful-machine"])
+@pytest.mark.parametrize("separate", [False, True])
+def test_configuration_cleanup_and_fusion_preserve_actual_values_and_state(tmp_path, execute, separate):
+    m, n = 2, 11
+    module, operation = source_program(m=m, n=n)
+    options = case(tmp_path, m=m, n=n, separate=separate)
+    x = (np.arange(m * n, dtype=np.int32) * 37 - 350).reshape(m, n)
+    bias = np.full((m, n), 17, "<i4")
+    expected = np.clip(x.astype(np.int64) + bias, -128, 127).astype("i1").tobytes()
+    observations = []
+    for cleanup, fusion in ((False, False), (True, False), (True, True)):
+        result = compile_source_pointwise(
+            module,
+            operation,
+            budgets=ScheduleBudgets(max_fusions=8 if fusion else 0, eliminate_configuration=cleanup),
+            **options,
+        )
+        actual, counters = execute(result.images(), {"x": x.tobytes(), "b0": bias.tobytes()}, separate=separate)
+        assert actual[: m * n] == expected
+        assert actual[m * n :] == bytes([193] * (1032 - m * n))
+        assert counters[3:] == (LOW, HIGH)
+        assert counters[:3] == tuple(
+            result.conformance[key] for key in ("actual_commands", "requested_read_bytes", "requested_write_bytes")
+        )
+        observations.append(counters)
+    assert [counts[0] for counts in observations] == [18, 4, 3]
+    assert observations[0][1:] == observations[1][1:]
+    assert observations[1][1] - observations[2][1] == 4 * m * n
+    assert observations[1][2] - observations[2][2] == 4 * m * n
+
+
+@pytest.mark.parametrize("fusion", [False, True])
+@pytest.mark.parametrize("fault", ["missing_initial", "wrong_value", "reset", "extra_setup", "late_setup"])
+def test_emitter_cannot_change_settings_after_source_admission(tmp_path, fusion, fault):
+    module, operation = source_program()
+    before = str(module)
+    options = case(tmp_path)
+    codec = options["encoding"]
+    emitted = []
+
+    def corrupt(kernel):
+        calls = list(kernel.body)
+        assert [call.instr for call in calls[:2]] == ["setup", "setup"]
+        if fault == "missing_initial":
+            del calls[0]
+        elif fault == "wrong_value":
+            calls[0] = command("setup", src=0, source=LOW + 1)
+        elif fault == "reset":
+            calls.insert(-1, command("reset", src=0))
+        elif fault == "extra_setup":
+            calls.insert(1, calls[0])
+        else:
+            calls.append(calls.pop(0))
+        image = codec.encode(replace(kernel, body=tuple(calls)))
+        emitted.append(image)
+        return image
+
+    options["encoding"] = replace(codec, encode=corrupt)
+    with pytest.raises(ValueError, match="actual emitted .*effects differ"):
+        compile_source_pointwise(
+            module, operation, budgets=ScheduleBudgets(max_fusions=8 if fusion else 0), **options
+        )
+    assert emitted, "the mutation must reach the real encoder"
+    assert str(module) == before
+
+
+def test_configuration_source_conformance_reopens_actual_settings(tmp_path, monkeypatch):
+    from merlin.compile.scheduling import pointwise_source
+
+    module, operation = source_program()
+    options = case(tmp_path)
+    valid = compile_source_pointwise(module, operation, **options)
+    # Simulate a later packaging layer changing only the actual encoded value,
+    # leaving the selected schedule, scalar graph and reports untouched.
+    calls = list(options["encoding"].decode_calls(valid.images()[0]))
+    calls[0] = command("setup", src=0, source=LOW + 1)
+    image = options["encoding"].encode(replace(valid.compiled.kernel, body=tuple(calls)))
+    changed = replace(valid.compiled, program=replace(valid.compiled.program, segments=(image,)))
+    monkeypatch.setattr(pointwise_source, "compile_schedule", lambda *args, **kwargs: changed)
+    with pytest.raises(ValueError, match="lacks an established"):
+        compile_source_pointwise(module, operation, **options)
