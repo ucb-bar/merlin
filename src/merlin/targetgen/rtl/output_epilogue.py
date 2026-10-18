@@ -49,6 +49,9 @@ FIELD = "output_epilogue"
 DERIVED = "derived"
 UNKNOWN = "UNKNOWN"
 CAPABILITIES = ("scale", "activation", "accumulate", "pool")
+#: Capabilities a record states when its deriver knows them; a record written before one existed
+#: omits it, which reads as UNKNOWN.
+OPTIONAL_CAPABILITIES = ("bias_preload", "full_width_readout")
 #: Command-buffer ABI stage -> the capability that performs it on move-out. ``bias`` is absent on
 #: purpose: an output path with no bias operand applies none, and a bias seeded into the accumulator
 #: before the contraction is a separately declared stage route, not an output-path fact.
@@ -276,6 +279,220 @@ def _feeds(module, node: str, inst: str) -> bool:
     )
 
 
+def _declared_type(module, root: str):
+    from . import firrtl_struct as F
+
+    decl = module.decls.get(root)
+    if decl is None or decl[0] not in ("input", "output", "reg", "regreset", "wire"):
+        return None
+    try:
+        return F.parse_type(decl[1])
+    except F.FirrtlParseError:
+        return None
+
+
+def _path(ref_text: str) -> tuple[str, list[str]]:
+    root, _, rest = ref_text.partition(".")
+    return root, [segment for segment in rest.split(".") if segment]
+
+
+def _columns_per_scale(module, probe: Mapping[str, Any]) -> dict[str, Any]:
+    """How many accumulator elements ONE scale operand covers in the readout, read from its port types.
+
+    The readout carries the scale beside a vector of accumulator elements; every element of that
+    vector is scaled by the one value, so the vector's element count is the column group a single
+    scale can serve.
+    """
+    from . import firrtl_struct as F
+
+    root, path = _path(str(probe["value"]))
+    value_type = F.field_type(_declared_type(module, root), path)
+    scale_root, scale_path = _path(str(probe["scale"]))
+    scale_type = F.field_type(_declared_type(module, scale_root), scale_path)
+    count, leaf = 1, value_type
+    while isinstance(leaf, tuple) and leaf[0] == "vec" and isinstance(leaf[2], int):
+        count, leaf = count * leaf[2], leaf[1]
+    if not (isinstance(leaf, tuple) and leaf[0] in ("sint", "uint")) or scale_type is None:
+        raise _Unreadable(f"the types of {probe['value']} and {probe['scale']} are not readable in {module.name}")
+    if scale_type[0] not in ("uint", "sint", "bundle") or (scale_type[0] == "bundle" and len(scale_type[1]) != 1):
+        raise _Unreadable(f"{probe['scale']} is not one value beside the vector it scales")
+    return {"columns_per_scale": count, "element_bits": leaf[1]}
+
+
+def _passthrough_lanes(module, bits: int) -> dict[str, Any] | None:
+    """A vector of ``bits``-wide integer lanes the module copies out lane for lane, with no arithmetic."""
+    from . import firrtl_struct as F
+
+    cone = F.Cone(module)
+    impure: set[str] = set()
+    for expr, _line, _loc in module.nodes.values():
+        if isinstance(expr, F.Prim):
+            impure |= {ref.text() for ref in F._refs_in(expr)}  # noqa: SLF001 -- the module's own walker
+    copies: dict[str, dict[int, int]] = {}
+    for connect in module.connects:
+        if isinstance(connect.rhs, F.Prim):
+            impure |= {ref.text() for ref in F._refs_in(connect.rhs)}  # noqa: SLF001
+            continue
+        leaves, prims, _lines = cone.walk(connect.rhs)
+        if prims or len(leaves) != 1:
+            continue
+        (leaf,) = leaves
+        base, _, index = leaf.rpartition("[")
+        if base and index.rstrip("]").isdigit():
+            copies.setdefault(base, {})[int(index.rstrip("]"))] = connect.line
+    for base, lanes in sorted(copies.items()):
+        root, path = _path(base)
+        typ = F.field_type(_declared_type(module, root), path)
+        if not (isinstance(typ, tuple) and typ[0] == "vec" and isinstance(typ[1], tuple)):
+            continue
+        element, count = typ[1], typ[2]
+        if element[0] not in ("sint", "uint") or element[1] != bits or set(lanes) != set(range(count or 0)):
+            continue
+        if any(f"{base}[{i}]" in impure for i in lanes):
+            continue
+        return {"module": module.name, "vector": base, "lanes": count, "bits": bits, "firrtl_line": min(lanes.values())}
+    return None
+
+
+def _output_fields(typ: Any, prefix: str, flipped: bool = False):
+    """``(path text, type)`` of every field of a port type that leaves the module."""
+    if isinstance(typ, tuple) and typ[0] == "bundle":
+        for name, flip, sub in typ[1]:
+            yield from _output_fields(sub, f"{prefix}.{name}", flipped != flip)
+    elif not flipped:
+        yield prefix, typ
+
+
+def _full_width_exit(module, probe: Mapping[str, Any]) -> dict[str, Any]:
+    """Whether the readout ALSO hands the accumulator out unmodified, at its own width.
+
+    Two structural readings: the accumulator value is copied whole, with no operation, into a field
+    of its own type; and an output field of that same type is driven with no arithmetic anywhere in
+    its fan-in. Together they say the raw accumulator leaves the readout as it entered.
+    """
+    from . import firrtl_struct as F
+
+    value = str(probe["value"])
+    root, path = _path(value)
+    value_type = F.field_type(_declared_type(module, root), path)
+    if value_type is None:
+        raise _Unreadable(f"the type of {value} is not readable in {module.name}")
+    copied = [
+        c.lhs.text()
+        for c in module.connects
+        if isinstance(c.rhs, F.Ref)
+        and c.rhs.text() == value
+        and F.field_type(_declared_type(module, c.lhs.root), _path(c.lhs.text())[1]) == value_type
+    ]
+    if not copied:
+        raise _Unreadable(f"{module.name} copies {value} into no field of its own type")
+    cone = F.Cone(module)
+    for name, (keyword, _type_text, _line) in sorted(module.decls.items()):
+        if keyword != "output":
+            continue
+        for field, typ in _output_fields(_declared_type(module, name), name):
+            if typ != value_type or field == value:
+                continue
+            drivers = [c for c in module.connects if c.lhs.text() == field]
+            if drivers and all(not cone.walk(c.rhs)[1] for c in drivers):
+                return {"copied_into": copied[0], "leaves_as": field, "lanes": _lane_count(value_type)}
+    raise _Unreadable(f"no output of {module.name} carries a {value_type} field without arithmetic")
+
+
+def _lane_count(typ: Any) -> int:
+    count = 1
+    while isinstance(typ, tuple) and typ[0] == "vec" and isinstance(typ[2], int):
+        count, typ = count * typ[2], typ[1]
+    return count
+
+
+def _store_writes_data(module, select: str, summed: str) -> str:
+    """The arm the accumulator store writes when its accumulate bit is CLEAR: the write's own data.
+
+    ``accumulate_on_load`` establishes ``mux(select, sum, other)``; a preload needs ``other`` to be a
+    field of the same write record as the select (its arriving data), not a constant or the sum.
+    """
+    from . import firrtl_struct as F
+
+    for expr, _line, _loc in module.nodes.values():
+        for prim in F._prims_in(expr):  # noqa: SLF001 -- the module's own walker
+            if prim.op != "mux" or len(prim.args) != 3 or not isinstance(prim.args[0], F.Ref):
+                continue
+            chooser, when_set, when_clear = prim.args
+            if not (F.ref_matches(chooser.text(), select) and isinstance(when_set, F.Ref)):
+                continue
+            if not F.ref_matches(when_set.text(), summed) or not isinstance(when_clear, F.Ref):
+                continue
+            same_write = when_clear.root == chooser.root and when_clear.segments[:-1] == chooser.segments[:-1]
+            # The arriving data has the sum's own type: a flag of the same record does not.
+            types = [
+                F.field_type(_declared_type(module, ref.root), [seg for seg in ref.segments if seg is not None])
+                for ref in (when_set, when_clear)
+            ]
+            if same_write and when_clear != chooser and types[0] is not None and types[0] == types[1]:
+                return when_clear.text()
+    raise _Unreadable(f"no store in {module.name} writes its own data when {select} is clear")
+
+
+def _bias_preload(body: Mapping[str, Any], accumulate: Mapping[str, Any], accumulator: str | None) -> dict[str, Any]:
+    """Whether a value can be LOADED into the accumulator unchanged, so a contraction adds onto it.
+
+    Read from three structural facts. The accumulator store writes the arriving data when a write's
+    accumulate bit is clear (``accumulate_on_load``'s store reading: the arm beside the adder's sum);
+    a load selects that bit itself (the same fact's load path); and some instance on that load path
+    copies accumulator-width lanes out with no arithmetic, so a full-width value arrives as it was.
+    """
+    from merlin.common import quant_formats as qf
+
+    value = accumulate.get("value") or {}
+    load = value.get("load_path") or {}
+    owner = (load.get("cite") or {}).get("module")
+    roots = sorted({str(item).split(".", 1)[0] for item in load.get("carried_by") or ()})
+    if not owner or not roots:
+        raise _Unreadable("the accumulate fact names no load-path module and instances")
+    integer = bool(accumulator) and qf.has(str(accumulator)) and qf.get(str(accumulator)).exp_bits is None
+    bits = qf.machine_bits(str(accumulator)) if integer else None
+    if not bits:
+        raise _Unreadable(f"the accumulator format {accumulator!r} has no integer width")
+    store = value.get("store") or {}
+    store_module = (store.get("cite") or {}).get("module")
+    if not store_module or not store.get("select") or not store.get("sum"):
+        raise _Unreadable("the accumulate fact names no store select and sum")
+    modules, _provenance, why = _load(body, sorted({owner, store_module}))
+    if why:
+        raise _Unreadable(why)
+    written = _store_writes_data(modules[store_module], str(store["select"]), str(store["sum"]))
+    instances = {root: modules[owner].decls[root][1] for root in roots if root in modules[owner].decls}
+    loaded, _provenance, why = _load(body, sorted(set(instances.values())))
+    if why:
+        raise _Unreadable(why)
+    for root, kind in sorted(instances.items()):
+        if kind in loaded:
+            lanes = _passthrough_lanes(loaded[kind], int(bits))
+            if lanes is not None:
+                return {"through": root, "store_writes": written, **lanes}
+    raise _Unreadable(
+        f"no instance on the load path ({sorted(instances)}) copies {bits}-bit accumulator lanes unchanged"
+    )
+
+
+def _load(body: Mapping[str, Any], names: list[str]) -> tuple[dict[str, Any], dict[str, Any], str | None]:
+    """Named modules of the FIRRTL the facts pin, the provenance of the bytes, and why they are absent."""
+    from . import firrtl_struct as F
+
+    source = body.get("source") or {}
+    path = Path(str(source.get("fir_path") or ""))
+    if not source.get("fir_path") or not path.is_file():
+        return {}, {}, "the facts name no elaborated FIRRTL that is present on this machine"
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    provenance = {"fir_path": str(path), "fir_sha256": digest}
+    if source.get("fir_sha256") and source["fir_sha256"] != digest:
+        return {}, provenance, f"the FIRRTL at {path} is not the one the facts pin"
+    modules = F.load_modules(path, names)
+    missing = sorted(set(names) - set(modules))
+    return modules, provenance, (f"the elaboration defines no module {missing}" if missing else None)
+
+
 class _Unreadable(Exception):
     """A rung could not read its fact; the message is the reason."""
 
@@ -333,7 +550,10 @@ def derive(
     caller that has the bytes in hand). Pure apart from reading the FIRRTL the facts pin.
     """
     body = _body(facts)
-    record: dict[str, Any] = {"schema": SCHEMA, **{name: {"status": UNKNOWN} for name in CAPABILITIES}}
+    record: dict[str, Any] = {
+        "schema": SCHEMA,
+        **{name: {"status": UNKNOWN} for name in (*CAPABILITIES, *OPTIONAL_CAPABILITIES)},
+    }
     unknown: dict[str, str] = {}
     accumulator, element = _datapath(body, "accumulator"), _datapath(body, "input")
     record["accumulator_dtype"] = accumulator
@@ -375,6 +595,7 @@ def derive(
                 f"(sign|exponent|fraction at {scale['format']['fields']})",
             )
             scale["combined_by"] = _combined(readout, probe)
+            scale.update(_columns_per_scale(readout, probe))
             _note(
                 record,
                 "scale",
@@ -386,6 +607,21 @@ def derive(
             unknown["scale.format"] = str(exc)
     else:
         unknown["scale.format"] = firrtl_why or "no readout module was read"
+    full_width = record["full_width_readout"]
+    if readout is not None:
+        try:
+            full_width.update({"status": DERIVED, "dtype": accumulator, **_full_width_exit(readout, probe)})
+            _note(
+                record,
+                "full_width_readout",
+                "firrtl_structural",
+                f"{probe['value']} is copied unmodified into {full_width['copied_into']} and "
+                f"{full_width['leaves_as']} leaves the readout with no arithmetic in its fan-in",
+            )
+        except _Unreadable as exc:
+            unknown["full_width_readout"] = str(exc)
+    else:
+        unknown["full_width_readout"] = firrtl_why or "no readout module was read"
     abi = _scalar_abi(contract)
     if abi is not None and abi.get("schema") == "scalar_narrow_readout_contract_v1":
         scale["rounding"] = "half_even"
@@ -450,6 +686,35 @@ def derive(
             else f"accumulate_on_load is {fact.get('status')!r}"
         )
 
+    # --- bias preload ---------------------------------------------------------------------------
+    bias = record["bias_preload"]
+    if accumulate["status"] == DERIVED:
+        try:
+            lanes = _bias_preload(body, accumulate, accumulator)
+            span = 1 << (int(lanes["bits"]) - 1)
+            bias.update(
+                {
+                    "status": DERIVED,
+                    "dtype": accumulator,
+                    "bits": lanes["bits"],
+                    "rounding": "none",
+                    "range": [-span, span - 1],
+                    "lanes": lanes,
+                }
+            )
+            _note(
+                record,
+                "bias_preload",
+                "firrtl_structural",
+                f"a load writes the accumulator when its accumulate bit is clear, and {lanes['through']} "
+                f"({lanes['module']}) copies {lanes['lanes']} {lanes['bits']}-bit lanes of {lanes['vector']} "
+                "with no arithmetic: a full-width value is preloaded exactly",
+            )
+        except _Unreadable as exc:
+            unknown["bias_preload"] = str(exc)
+    else:
+        unknown["bias_preload"] = "the accumulator is not derived to take a load, so nothing can be preloaded"
+
     # --- pool ------------------------------------------------------------------------------------
     pool = record["pool"]
     features = _interface(body, "elaborated_rtl_features")
@@ -480,6 +745,9 @@ def derive(
         stage: record[capability]["status"] == DERIVED for stage, capability in STAGE_CAPABILITY.items()
     }
     record["unknown"] = dict(sorted(unknown.items()))
+    from merlin.targetgen import output_path as OP
+
+    record["output_path"] = OP.from_record(record)
     return validate(record)
 
 
@@ -487,7 +755,7 @@ def validate(record: Any) -> dict[str, Any]:
     """Raise unless ``record`` is a well-formed ``output_epilogue_v1`` declaration; return it."""
     if not isinstance(record, Mapping) or record.get("schema") != SCHEMA:
         raise ValueError(f"{FIELD} must be a {SCHEMA} mapping")
-    for name in CAPABILITIES:
+    for name in (*CAPABILITIES, *(name for name in OPTIONAL_CAPABILITIES if name in record)):
         row = record.get(name)
         if not isinstance(row, Mapping) or row.get("status") not in (DERIVED, UNKNOWN):
             raise ValueError(f"{FIELD}.{name} needs a status of {DERIVED!r} or {UNKNOWN!r}")
@@ -504,12 +772,19 @@ def validate(record: Any) -> dict[str, Any]:
     for stage, capability in STAGE_CAPABILITY.items():
         if stages[stage] is not (record[capability]["status"] == DERIVED):
             raise ValueError(f"{FIELD}.stages.{stage} disagrees with {capability}.status")
+    if "output_path" in record:
+        from merlin.targetgen import output_path as OP
+
+        OP.validate(record["output_path"])
     return dict(record)
 
 
 def underived(reason: str) -> dict[str, Any]:
     """A well-formed record in which nothing is derived, carrying why: the fail-closed declaration."""
-    record: dict[str, Any] = {"schema": SCHEMA, **{name: {"status": UNKNOWN} for name in CAPABILITIES}}
+    record: dict[str, Any] = {
+        "schema": SCHEMA,
+        **{name: {"status": UNKNOWN} for name in (*CAPABILITIES, *OPTIONAL_CAPABILITIES)},
+    }
     record["stages"] = dict.fromkeys(STAGE_CAPABILITY, False)
     record["unknown"] = {"derivation": str(reason)}
     return validate(record)
