@@ -43,38 +43,14 @@ def stage_for(tmp_path, tools, text):
     return stage, before, after
 
 
-def certify_clamp(stage, before, tools, work, *, index_bits, commuted_constant=False):
-    if not commuted_constant:
-        certify(stage, before, tools, work, index_bits=index_bits)
-        return
-    for checker, directory in [(check_support, "support"), (check_definedness, "defined")]:
-        result = checker(before, "forward", work / directory, index_bits=index_bits, m2m_python=tools.m2m_python)
-        assert result["verdict"] == "verified", result.get("reason")
-    result = check_typed_stage(stage, m2m_python=tools.m2m_python, index_bits=index_bits)
-    assert result["verdict"] == "abstracted", result.get("reason")
-    (work / "coverage-gap.json").write_text(
-        json.dumps(
-            {
-                "gap": "constant-left unsigned minimum canonicalization",
-                "source_definedness": "verified",
-                "boundary": "abstracted",
-                "reason": "minui commutation is outside the existing Commutative family",
-            },
-            indent=2,
-        )
-    )
-
-
 @pytest.mark.parametrize("mode,cap", [("constant", 3), ("constant", 7), ("widened", 7)])
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("index_bits", [32, 64])
-def test_actual_clamped_tensor_read_checks_source_and_boundary(tmp_path, lean_tools, mode, cap, reverse, index_bits):
+def test_actual_clamped_tensor_read_has_a_defined_chain(tmp_path, lean_tools, mode, cap, reverse, index_bits):
     stage, before, after = stage_for(tmp_path, lean_tools, source(mode, cap, reverse=reverse))
     assert "arith.minui" in after.read_text()
     assert "arith.addi" in before.read_text() and "arith.addi" not in after.read_text()
-    certify_clamp(
-        stage, before, lean_tools, tmp_path, index_bits=index_bits, commuted_constant=mode == "constant" and reverse
-    )
+    certify(stage, before, lean_tools, tmp_path, index_bits=index_bits)
 
 
 @pytest.mark.parametrize("reverse", [False, True])

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from test_lean_defined_conversions import certify
-from test_lean_index_clamp import captured_source, certify_clamp, mutate, source, stage_for
+from test_lean_index_clamp import captured_source, mutate, source, stage_for
 
 from merlin.verify.lean import differential as diff
 from merlin.verify.lean.check import check_definedness, check_typed_stage
@@ -29,9 +29,7 @@ def data_for(n):
 def test_clamp_reads_match_unsigned_native_reference(tmp_path, fidelity_tools, mode, reverse, index_bits):
     tools = SimpleNamespace(m2m_python=fidelity_tools.compiler_python)
     stage, before, after = stage_for(tmp_path, tools, source(mode, reverse=reverse))
-    certify_clamp(
-        stage, before, tools, tmp_path, index_bits=index_bits, commuted_constant=mode == "constant" and reverse
-    )
+    certify(stage, before, tools, tmp_path, index_bits=index_bits)
     indices = [0, 1, 3, 7, 8, 1 << (index_bits - 1), (1 << index_bits) - 1]
     samples = [[data_for(n), [idx], [n % 8], [(131 * n) % (1 << 32)]] for n, idx in enumerate(indices)]
     expected = [[s[0][min(s[1][0], s[2][0] if mode == "widened" else 7)], s[3][0]] for s in samples]
