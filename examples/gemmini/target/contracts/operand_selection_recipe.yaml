@@ -1,0 +1,86 @@
+# Source wire selections and reviewed semantic aliases; no parameter widths.
+# Regenerate against the exact selected target FIRRTL before sealing a release.
+schema: merlin.operand_selection_recipe.v1
+semantic_declaration: target_contract.yaml
+aliases:
+  CONFIG_CMD: CONFIG
+  LOAD_CMD: MVIN
+  LOAD2_CMD: MVIN2
+  LOAD3_CMD: MVIN3
+  STORE_CMD: MVOUT
+  COMPUTE_AND_FLIP_CMD: COMPUTE_PRELOADED
+  # The legacy vocabulary calls this ACCUMULATE. Trace qualification proves
+  # actual accumulation from PRELOAD's selected destination flag, not this name.
+  COMPUTE_AND_STAY_CMD: COMPUTE_ACCUMULATE
+  PRELOAD_CMD: PRELOAD
+  FLUSH_CMD: FLUSH
+  LOOP_CONV_WS: LOOP_CONV
+config_subtype_sources:
+  CONFIG_EX: CONFIG_EX
+  CONFIG_LOAD: CONFIG_LD
+  CONFIG_STORE: CONFIG_ST
+isa_sibling_sources: [LoadController.scala, StoreController.scala, ExecuteController.scala, LocalAddr.scala]
+bundles:
+  MvinRs2: {module: LoadController, field: mvin_rs2, input: cmd_q.io.deq.bits.cmd.rs2}
+  ConfigMvinRs1: {module: LoadController, field: config_mvin_rs1, input: cmd_q.io.deq.bits.cmd.rs1}
+  MvoutRs2: {module: StoreController, field: mvout_rs2, input: cmd_q.io.deq.bits.cmd.rs2}
+  ConfigMvoutRs1: {module: StoreController, field: config_mvout_rs1, input: cmd_q.io.deq.bits.cmd.rs1}
+  ConfigMvoutRs2: {module: StoreController, field: config_mvout_rs2, input: cmd_q.io.deq.bits.cmd.rs2}
+fields:
+  - bundle: PreloadRs
+    name: local_addr
+    module: ExecuteController
+    field: c_address_rs2
+    input: rs2s[preload_cmd_place]
+    packing_context: {dynamic_input: true, truncate_aliases: true}
+  - bundle: PreloadRs
+    name: num_cols
+    module: ExecuteController
+    field: c_cols
+    input: rs2s[preload_cmd_place]
+    packing_context: {dynamic_input: true, node_field: true}
+  - bundle: PreloadRs
+    name: num_rows
+    module: ExecuteController
+    field: c_rows
+    input: rs2s[preload_cmd_place]
+    packing_context: {dynamic_input: true, node_field: true}
+  - bundle: ComputeRs
+    name: local_addr
+    module: ExecuteController
+    field: a_address_rs1
+    input: rs1s[a_address_place]
+    packing_context: {dynamic_input: true, truncate_aliases: true}
+  - bundle: ComputeRs
+    name: num_cols
+    module: ExecuteController
+    field: a_cols_default
+    input: rs1s[a_address_place]
+    packing_context: {dynamic_input: true, node_field: true}
+  - bundle: ComputeRs
+    name: num_rows
+    module: ExecuteController
+    field: a_rows_default
+    input: rs1s[a_address_place]
+    packing_context: {dynamic_input: true, node_field: true}
+address:
+  bundle: MvoutRs2
+  name: local_addr
+  flags: {accumulator_select: is_acc_addr, accumulate: accumulate, full_width_readout: read_full_acc_row}
+  agree:
+    - {bundle: MvinRs2, name: local_addr}
+    - {bundle: PreloadRs, name: local_addr}
+    - {bundle: ComputeRs, name: local_addr}
+load_state_selection:
+  module: LoadController
+  command: cmd_q.io.deq.bits.cmd.inst.funct
+  state: state_id
+  config_state: config_mvin_rs1.state_id
+  config_field: {bundle: ConfigMvinRs1, name: state_id}
+  config_class: CONFIG_LD
+  stride_register: strides
+  stride_input: cmd_q.io.deq.bits.cmd.rs2
+  dram_address: cmd_q.io.deq.bits.cmd.rs1
+  row_index: row_counter
+  stride_sink: io.dma.req.bits.vaddr
+  load_classes: [MVIN, MVIN2, MVIN3]

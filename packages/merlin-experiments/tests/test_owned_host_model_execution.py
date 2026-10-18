@@ -5,6 +5,27 @@ import pytest
 from merlin.targetgen.owned_host_model_execution import _host_call_proof, _mandatory_source_commands
 
 
+def test_proven_host_compute_veto_is_a_candidate_failure_without_native_tier_credit():
+    from merlin_experiments.phase1.feedback.qa import _candidate_native_feedback
+
+    from merlin.targetgen.owned_host_model_execution import _stopped_before_receipt
+
+    check = _stopped_before_receipt({"stage": "owned_host_execution", "type": "HostComputeVeto",
+                                     "detail": "scalar host work exceeds the source-derived budget"})
+    assert check["status"] == "fail"
+    assert check["failure"]["category"] == "host_compute_in_accelerator_group"
+    feedback = _candidate_native_feedback({"model_execution_check": check})
+    assert feedback["status"] == "fail"
+    assert feedback["components"]["emitted_host_compute"] == "violation"
+    assert "candidate_host_tensor_compute_violation" in feedback["violations"]
+    assert all(status != "pass" for status in feedback.get("tiers", {}).values())
+    unknown = _stopped_before_receipt({"stage": "owned_host_execution", "type": "ValueError",
+                                       "detail": "unknown control-flow proof"})
+    assert unknown["status"] == "incomplete"
+    wrong_stage = _stopped_before_receipt({"stage": "prepare_runtime_bundle", "type": "HostComputeVeto"})
+    assert wrong_stage["status"] == "incomplete"
+
+
 def test_actual_host_cfg_preserves_each_reused_source_call(tmp_path):
     from merlin.llvmlower import toolchain
 
@@ -256,9 +277,8 @@ def test_historical_model_flag_cannot_bypass_owned_receipt_audit(monkeypatch):
 
 
 def test_declared_eligible_mesh_model_without_actual_receipt_refuses_legacy_numeric_credit(monkeypatch):
-    from merlin.targetgen.capsule_grade import enforce_model_execution_check
-
     from merlin.targetgen import native_model_execution
+    from merlin.targetgen.capsule_grade import enforce_model_execution_check
     monkeypatch.setattr(native_model_execution, 'independent_frozen_source_eligibility',
                         lambda *a, **k: {'n_eligible': 1})
     capsule = {'semantic': {'must_accelerate': False}, 'lanes': {'require': ['on_mesh']}}

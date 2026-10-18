@@ -301,7 +301,9 @@ def _audit_owned_host_device_build(bundle, receipt, *, target, capsule=None, cer
         if emitted.get("entries", {}).get(row["symbol"], {}).get("op") == "conv2d"
         and emitted["signatures"].get(row["symbol"]) == []
     }
-    audits = audit_built_device_host_compute(elf.parent, assigned, source, target)
+    audits = audit_built_device_host_compute(
+        elf.parent, assigned, source, target, diagnostics=elf.parent / "audit-diagnostics"
+    )
     return {
         "source": source,
         "placement": placement,
@@ -641,7 +643,28 @@ def _dispatch_proof(record, *, target, facts):
             or Counter(object_words) != Counter(elf_words)
             or Counter(object_functs) != Counter(elf_functs)
         ):
-            raise ValueError("complete custom-command inventory changed across device LLVM/object/ELF")
+            inventory = {"schema": "merlin.device_command_inventory_refusal.v1", "group": row["group"],
+                         "symbol": symbol, "kernel_symbol": kernel_symbol,
+                         "llvm_funct_counts": dict(Counter(all_functs)),
+                         "object_funct_counts": dict(Counter(object_functs)),
+                         "elf_funct_counts": dict(Counter(elf_functs)),
+                         "object_and_elf_words_equal": Counter(object_words) == Counter(elf_words),
+                         "scope": "static inventories; optimizer transformations are not a dispatch proof"}
+            raw = (json.dumps(inventory, sort_keys=True, indent=2) + "\n").encode()
+            from hashlib import sha256
+
+            diagnostic = elf.parent / f"{symbol}.command-inventory-refusal-{sha256(raw).hexdigest()}.json"
+            try:
+                with diagnostic.open("xb") as stream:
+                    stream.write(raw)
+            except FileExistsError:
+                if diagnostic.is_symlink() or diagnostic.read_bytes() != raw:
+                    raise ValueError("device command inventory diagnostic changed")
+            stage = ("device LLVM to object" if Counter(all_functs) != Counter(object_functs)
+                     else "device object to linked ELF")
+            raise ValueError("complete custom-command inventory changed across device LLVM/object/ELF; "
+                             f"group {row['group']} ({symbol}), first mismatch: {stage}; "
+                             "static counts cannot yet certify this compiler transformation")
         artifact_pins[symbol] = {
             "kernel_symbol": kernel_symbol,
             **{role: _digest(_pinned(pins, role)) for role in pins},
@@ -1063,13 +1086,23 @@ def _stopped_before_receipt(stopped):
 
     The absent receipt is only a consequence. Reporting it ("receipt ... is absent") hid the actual
     reason, and when that reason is the candidate's own dispatch refusal, it turned a compiler failure
-    into what reads as unmeasured tooling. Any other stop stays incomplete (NOT_RUN_IS_NOT_PASS) and
+    into what reads as unmeasured tooling. A proven emitted-device host-compute veto is also a
+    candidate failure. Any other stop stays incomplete (NOT_RUN_IS_NOT_PASS) and
     names its stage and exception; host paths are scrubbed from the quoted message.
     """
     from merlin.common.path_scrub import scrub_host_paths
 
     stage, kind = str(stopped.get("stage") or "unknown stage"), str(stopped.get("type") or "error")
     message = scrub_host_paths(str(stopped.get("detail") or ""))[:2000]
+    if kind == "HostComputeVeto" and stage == "owned_host_execution":
+        return {
+            "status": "fail",
+            "kind": "owned_host_model_execution",
+            "violations": ["candidate_host_tensor_compute_violation"],
+            "detail": message,
+            "failure": {"plane": "host_compute", "category": "host_compute_in_accelerator_group",
+                        "detail": message, "stage": stage},
+        }
     if kind == CandidateDispatchRefusal.__name__ and stage == "owned_host_execution":
         return {
             "status": "fail",

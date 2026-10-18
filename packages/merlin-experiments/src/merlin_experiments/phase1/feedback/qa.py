@@ -36,6 +36,8 @@ from merlin.targetgen import capsule_runner as CR  # noqa: E402
 from merlin.targetgen import tier_integrity as _TI  # noqa: E402
 from merlin_experiments.phase1.context import InvocationContext, add_context_arguments, readback_kwargs, resolve_context
 
+from .qualification_summary import summarize as qualification_summary
+
 # Allowed (answer-free) numeric fields. Everything else in the numeric block is dropped.
 _SAFE_NUMERIC = {"status", "policy", "mismatch_count"}
 
@@ -343,6 +345,13 @@ def _per_capsule_from_results(runs_root: Path, *, only_capsule: str | None = Non
             )
         out[r.get("capsule", cr.parent.name)] = {
             "status": r.get("status"),
+            "expected_refusal": (
+                {"status": "met"}
+                if r.get("status") == "pass" and r.get("failure") is None
+                and (r.get("expected_refusal") or {}).get("status") == "met"
+                and isinstance(r.get("declined"), dict) and bool(r["declined"])
+                else None
+            ),
             # Opaque content address of the exact executable plus target/RTL identity. It reveals no
             # answer-bearing value; promotion uses it solely to retain a still-applicable certificate.
             "execution_digest": _execution_digest_from_result(cr) if candidate_feedback is None else None,
@@ -469,7 +478,10 @@ def _candidate_native_feedback(result: dict) -> dict | None:
             "status": owned.get("status"),
             "violations": owned.get("violations"),
             "emitted_host_compute": (
-                {"status": "clean"} if isinstance(source, dict) and source.get("status") == "clean" else {}
+                {"status": "violation"}
+                if owned.get("status") == "fail"
+                and "candidate_host_tensor_compute_violation" in (owned.get("violations") or [])
+                else {"status": "clean"} if isinstance(source, dict) and source.get("status") == "clean" else {}
             ),
             "source_placement": source,
             "completed_dispatch": dispatch,
@@ -902,10 +914,10 @@ def run(
         name = result.get('capsule')
         projected = _per_capsule_from_results(runs_root, only_capsule=name).get(name)
         if projected is not None:
-            fields = ('status', 'numeric_status', 'mismatch_count', 'tiers',
+            fields = ('status', 'numeric_status', 'mismatch_count', 'tiers', 'trace_status',
                       'trace_requirement_status', 'trace_violations', 'failure_plane',
                       'failure_category', 'failure_detail', 'execution_digest', 'tier_cycles',
-                      'tier_engines', 'tier_reuse')
+                      'tier_engines', 'tier_reuse', 'expected_refusal', 'candidate_native_verification')
             on_capsule_complete({'capsule': name, **{k: projected.get(k) for k in fields}})
 
     score = CG.grade(
@@ -987,6 +999,8 @@ def run(
             }
         if rich.get("declined"):
             per_capsule[-1]["declined"] = rich["declined"]
+        if rich.get("expected_refusal"):
+            per_capsule[-1]["expected_refusal"] = rich["expected_refusal"]
 
     n_caps = score.get("n_capsules", 0)
     n_pass = score.get("n_passed", 0)
@@ -1034,6 +1048,8 @@ def run(
             "structural_evidence_scope": score.get("structural_evidence_scope"),
             "trace_requirement_summary": score.get("trace_requirement_summary"),
             "n_passed": n_pass,
+            "n_execution_passed": qualification_summary(per_capsule)["execution_passed"],
+            "qualification_summary": qualification_summary(per_capsule),
             "n_capsules": n_caps,
             "integrity_status": score.get("integrity_status"),
             "highest_tier": score.get("highest_tier"),

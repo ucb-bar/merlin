@@ -154,13 +154,19 @@ def _command_only_integer_orchestration(function: Any, target: str | None) -> bo
     commands = 0
     for op in function.walk():
         name = op.name
-        if name in {"llvm.load", "llvm.store", "llvm.alloca", "llvm.call", "llvm.call_intrinsic", "llvm.atomicrmw", "llvm.cmpxchg"}:
+        if name in {
+            "llvm.load", "llvm.store", "llvm.alloca", "llvm.call", "llvm.call_intrinsic",
+            "llvm.atomicrmw", "llvm.cmpxchg",
+        }:
             return False
         if name == "llvm.return" and op.operands:
             return False
         if name != "llvm.inline_asm":
             continue
-        if op.results or not isinstance(op.has_side_effects, UnitAttr) or "~{memory}" not in op.constraints.data.split(","):
+        if (
+            op.results or not isinstance(op.has_side_effects, UnitAttr)
+            or "~{memory}" not in op.constraints.data.split(",")
+        ):
             return False
         template = _asm_template(op)
         if template == "fence":
@@ -196,6 +202,7 @@ def audit_group(
     if dynamic is None or activity.get("status") != "derived":
         row.update(
             verdict=UNKNOWN,
+            activity_problems=list(activity.get("problems") or [])[:32],
             why="dynamic host work or scalar memory payload could not be counted: "
             + "; ".join(activity.get("problems") or ["unknown scalar memory payload"])[:300],
         )

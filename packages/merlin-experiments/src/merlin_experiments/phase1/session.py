@@ -689,6 +689,16 @@ def _prepare(
         _verify_phase0_handoff(_corpus_review, _corpus_view.workload_coverage)
         _public_root, _policy_root = _corpus_view.public, _corpus_view.policy
         _contract_root = _corpus_view.contract
+        if _corpus_seal and not _resuming:
+            from ..phase0.coverage_commitment import admitted_source_roots
+            from .trace_readiness import require_ready as require_trace_ready
+
+            require_trace_ready(
+                admitted_source_roots(_policy_root, _public_root, contract=_contract_root),
+                target=context.target, contract=_contract_root,
+                output=run_dir / "trace_readiness.json",
+                hidden_roots=_policy_root,
+            )
         if _corpus_seal:
             from . import semantic_diagnostics as _SD
 
