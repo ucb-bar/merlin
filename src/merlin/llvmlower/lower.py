@@ -102,6 +102,7 @@ def lower_model(
     source_scalar_carrier=None,
     shared_pass_verification: SharedPassVerification | None = None,
     shared_pass_preparation: CapturedPreparation | None = None,
+    verify_native_prefix: bool = False,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -128,6 +129,10 @@ def lower_model(
     including source support and definedness, before upstream lowering starts. It covers only
     the recorded tensor handoff under its stated assumptions. Unsupported or unavailable checks
     stop compilation. The semantic index width must match the explicit lowering width.
+
+    ``verify_native_prefix`` additionally holds the ordinary serial native module before
+    bufferization until the complete tensor prefix is replayed. It requires shared-pass
+    verification; bufferization and the native suffix remain trusted lowering.
 
     ``vectorize=True`` bakes native RVV (fixed-width vector ops) into the IR instead of
     relying on clang auto-vectorization — for the rv64gcv vector-tile target.
@@ -160,6 +165,9 @@ def lower_model(
             observed = audit.directory is not None or compile_trace.active() is not None
             return preprocess_text(source, audit=audit) if observed else preprocess_text(source)
 
+        if verify_native_prefix and shared_pass_verification is None:
+            raise ValueError("native tensor-prefix verification requires shared-pass verification")
+        native_session = None
         if shared_pass_preparation is not None and shared_pass_verification is None:
             raise ValueError("captured preparation requires explicit shared-pass verification")
         handoff = work / "model.upstream.mlir"
@@ -183,6 +191,12 @@ def lower_model(
             )
             upstream_text, stats = verified.text, verified.stats
             stats["shared_pass_verification"] = str(verified.report)
+            if verify_native_prefix:
+                from merlin.verify.lean.native_gate import Session
+
+                native_session = Session(
+                    shared_pass_verification, mlir_text, verified, expected_plan, shared_pass_preparation
+                )
         else:
             upstream_text, stats = preprocess(mlir_text)
             handoff.write_text(upstream_text, encoding="utf-8")
@@ -208,6 +222,7 @@ def lower_model(
                 masked_contraction_effects=masked_contraction_effects,
                 source_observation_effects=source_observation_effects,
                 source_scalar_carrier=source_scalar_carrier,
+                **({"shared_pass_native": native_session} if native_session is not None else {}),
             )
         except Exception as exc:
             # A module MLIR refuses to PARSE fails before any pass, and the reader's dump names a line
@@ -296,6 +311,7 @@ def lower_model_file(
     source_scalar_carrier=None,
     shared_pass_verification: SharedPassVerification | None = None,
     shared_pass_preparation: CapturedPreparation | None = None,
+    verify_native_prefix: bool = False,
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
@@ -320,4 +336,5 @@ def lower_model_file(
         source_scalar_carrier=source_scalar_carrier,
         shared_pass_verification=shared_pass_verification,
         shared_pass_preparation=shared_pass_preparation,
+        verify_native_prefix=verify_native_prefix,
     )

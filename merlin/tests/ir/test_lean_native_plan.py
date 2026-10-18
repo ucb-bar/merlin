@@ -125,3 +125,9 @@ def test_converter_entry_changes_refuse(ordinary, monkeypatch):
     )
     with pytest.raises(ValueError, match="unique bare convert-arith-to-llvm"):
         ordinary()
+
+
+def test_converter_roster_cannot_silently_drop_width_binding(ordinary, monkeypatch):
+    monkeypatch.setattr(pipeline, "_INDEX_CONVERSION_PASSES", pipeline._INDEX_CONVERSION_PASSES[:-1])
+    with pytest.raises(ValueError, match="converter roster"):
+        ordinary()

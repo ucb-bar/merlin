@@ -1504,6 +1504,7 @@ def lower_to_llvm_ir(
     masked_contraction_effects=None,
     source_observation_effects=None,
     source_scalar_carrier=None,
+    shared_pass_native=None,
 ) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
@@ -1601,6 +1602,24 @@ def lower_to_llvm_ir(
     from .optional_passes import selected_features
 
     feats = normalize(selected_features(features))
+    if shared_pass_native is not None:
+        shared_pass_native.prepare(
+            work,
+            mlir_text,
+            timeout=timeout,
+            features=feats,
+            index_bits=index_bits,
+            data_layout=data_layout,
+            custom_pipeline=pipeline,
+            vectorize=vectorize,
+            parallel=parallel,
+            parallel_harts=parallel_harts,
+            parallel_chunks=parallel_chunks,
+            transform_schedule=transform_schedule,
+            source_scalar_carrier=source_scalar_carrier,
+            source_observation_effects=source_observation_effects,
+            masked_contraction_effects=masked_contraction_effects,
+        )
     from .masked_contraction import FEATURE as _MASKED_FEATURE
     from .masked_contraction import MaskEffectContract
 
@@ -1762,6 +1781,8 @@ def lower_to_llvm_ir(
             max_response_bytes=source_scalar_carrier.max_response_bytes,
             timeout=timeout,
         )
+    if shared_pass_native is not None:
+        runner_src = shared_pass_native.bind_runner(runner_src, timeout=timeout)
     runner.write_text(runner_src, encoding="utf-8")
     # argv[4] gates the self-copy erase, so the frozen hand_v0 control keeps its byte-identical
     # lowering unless the feature is explicitly enabled.
@@ -1883,6 +1904,8 @@ def lower_to_llvm_ir(
     # mlir-translate produces the .ll out-of-process (the in-process torch-mlir bridge
     # segfaults on omp IR). Otherwise the runner writes the .ll directly.
     stage_out = (work / "model.llvmdialect.mlir") if omp else out
+    if shared_pass_native is not None:
+        stage_out.unlink(missing_ok=True)
     command = [
         str(m2m_python()),
         str(runner),
@@ -1921,12 +1944,16 @@ def lower_to_llvm_ir(
     recipe_sources.update(prepared_mlir=src, runner=runner)
     recipe = LoweringRecipe(work, features=feats, sources=recipe_sources)
     recipe.command(command)
+    if shared_pass_native is not None:
+        shared_pass_native.freeze_command(command)
     if audit is not None and audit.directory is not None:
         from ..targetgen.provenance import toolchain_provenance
 
         audit.command(command, sources=(__file__, runner), provenance=toolchain_provenance())
     try:
-        if scalar_stage is None:
+        if shared_pass_native is not None:
+            proc = shared_pass_native.run_command(command, timeout=timeout)
+        elif scalar_stage is None:
             proc = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
         else:
             from .source_stage_transport import run_command as _run_scalar_command
@@ -1946,7 +1973,11 @@ def lower_to_llvm_ir(
             except (OSError, ValueError) as audit_error:
                 exc.add_note(f"IR inspection prefix could not be recorded: {type(audit_error).__name__}")
         raise
-    if proc.returncode != 0 or not stage_out.is_file():
+    if (
+        proc.returncode != 0
+        or not stage_out.is_file()
+        or (shared_pass_native is not None and not stage_out.stat().st_size)
+    ):
         error = PipelineError(
             f"upstream lowering failed (returncode={proc.returncode}, "
             f"output_exists={stage_out.is_file()}):\n{proc.stdout}\n{proc.stderr}"
@@ -1958,6 +1989,18 @@ def lower_to_llvm_ir(
                 error.add_note(f"IR inspection prefix could not be recorded: {type(audit_error).__name__}")
         _harvest_native(traced, stage_out, failure=error)
         raise error
+    if shared_pass_native is not None:
+        for name in (
+            "verification.json",
+            "chain.json",
+            "status.json",
+            "expected-native-plan.json",
+            "sources.json",
+            "command.json",
+        ):
+            recipe.bind_source("lean_native_" + name.replace(".", "_"), shared_pass_native.root / name)
+        if lowering_selection is not None:
+            lowering_selection["shared_pass_native_verification"] = str(shared_pass_native.root / "verification.json")
     if audit is not None:
         audit.collect_views()
     _harvest_native(traced, stage_out)

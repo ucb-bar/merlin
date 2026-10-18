@@ -21,6 +21,13 @@ _TENSOR_PHASES = (
     Boundary("native-guarded-fusion", "func.func(linalg-fuse-elementwise-ops)"),
     Boundary("native-generalize", "func.func(linalg-generalize-named-ops)"),
 )
+_CONVERTERS = (
+    "convert-index-to-llvm",
+    "convert-arith-to-llvm",
+    "finalize-memref-to-llvm",
+    "convert-func-to-llvm",
+    "convert-cf-to-llvm",
+)
 _PARSE = Boundary("native-parse", "torch_mlir.ir.Module.parse")
 _BUFFERIZE = "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}"
 
@@ -133,7 +140,9 @@ def ordinary(
     for entry in actual[len(expected) :]:
         suffix.extend(pipeline._dealloc_passes(sink=False) if entry == "__DEALLOC__" else [entry])
     # Bind the actual conversion entries structurally before rendering them.
-    for name in pipeline._INDEX_CONVERSION_PASSES:
+    if tuple(pipeline._INDEX_CONVERSION_PASSES) != _CONVERTERS:
+        raise ValueError("production index converter roster differs from the authored native domain binding")
+    for name in _CONVERTERS:
         if suffix.count(name) != 1:
             raise ValueError(f"native suffix has no unique bare {name} entry")
         suffix[suffix.index(name)] = f"{name}{{index-bitwidth={index_bits}}}"
