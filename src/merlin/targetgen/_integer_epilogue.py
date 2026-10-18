@@ -161,19 +161,19 @@ class Epilogue:
             and nxt is not None
             and nxt.target in self.pools
         ):
-            # A padded window needs the path's padding value; an undeclared one keeps the pool on the host,
-            # where it reads the requantized integers unchanged (a shared spec), never a new grid.
+            # A padded window needs the path's padding value; an undeclared one keeps the pool on the host.
+            # The available full-width exit preserves the host chain before the reader quantizes it.
             if not (self._pool_padded(nxt) and pool.get("padding") in (None, "unknown")):
                 absorbed.append(nxt)
         return absorbed
 
     def _terminal_readers(self, node: Any) -> list[tuple[Any, Any]]:
-        """``(reader, edge_source)`` past shape-only views and host max pools."""
+        """``(reader, edge_source)`` past shape-only views, stopping at every unabsorbed compute step."""
         found, pending = [], [node]
         while pending:
             value = pending.pop()
             for user in value.users:
-                if user.op == "call_function" and (user.target in self.views or user.target in self.pools):
+                if user.op == "call_function" and user.target in self.views:
                     pending.append(user)
                 else:
                     found.append((user, value))
@@ -202,7 +202,6 @@ class Epilogue:
         from torchao.quantization.pt2e.quantizer import (
             DerivedQuantizationSpec,
             QuantizationAnnotation,
-            SharedQuantizationSpec,
         )
 
         operand, kernel = node.args[:2]
@@ -241,17 +240,6 @@ class Epilogue:
             member.meta["quantization_annotation"] = QuantizationAnnotation(
                 output_qspec=output if member is last else None, _annotated=True
             )
-        if exit_ == REQUANT:
-            # A host max pool between this pattern and its readers reads the requantized integers on the
-            # same grid: its output shares the pattern's scale, so it never moves a value.
-            for reader, source in self._terminal_readers(last):
-                del reader
-                if source is not last and source.target in self.pools and source.args[0] is last:
-                    source.meta["quantization_annotation"] = QuantizationAnnotation(
-                        input_qspec_map={last: output},
-                        output_qspec=SharedQuantizationSpec((last, source)),
-                        _annotated=True,
-                    )
         self.sites.append(
             {
                 "node": node.name,

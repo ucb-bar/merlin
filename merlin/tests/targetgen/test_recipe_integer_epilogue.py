@@ -70,6 +70,7 @@ PATHS = {
     "per_column": _path(scale={"granularity": "per_channel", "columns_per_scale": None}),
     "clamp_127": _path(clamp=(-127, 127)),
     "no_preload": _path(preload=False),
+    "padded_pool": _path(),
 }
 
 
@@ -101,14 +102,15 @@ import torchao  # noqa: F401  (registers the quantized_decomposed ops)
 import _recipe_quantizer as RQ
 
 class Net(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, padded_pool=False):
         super().__init__()
+        self.pool_padding = 1 if padded_pool else 0
         self.c1 = torch.nn.Conv2d(3, 32, 3, padding=1)
         self.c2 = torch.nn.Conv2d(32, 32, 3, padding=1)
         self.c3 = torch.nn.Conv2d(32, 16, 1)
-        self.fc = torch.nn.Linear(16 * 4 * 4, 10)
+        self.fc = torch.nn.Linear(16 * (5 if padded_pool else 4) ** 2, 10)
     def forward(self, x):
-        y = torch.nn.functional.max_pool2d(torch.relu(self.c1(x)), 2)
+        y = torch.nn.functional.max_pool2d(torch.relu(self.c1(x)), 2, padding=self.pool_padding)
         y = torch.relu(self.c2(y))
         return self.fc(self.c3(y).flatten(1))
 
@@ -117,7 +119,7 @@ out = {}
 for name, path in json.loads(sys.argv[2]).items():
     recipe = json.load(open(path))
     torch.manual_seed(0)
-    model = Net().eval()
+    model = Net(padded_pool=name == "padded_pool").eval()
     x = torch.randn(1, 3, 8, 8)
     calibration = [(torch.randn(1, 3, 8, 8),) for _ in range(6)]
     q = RQ.apply_recipe(model, recipe, example_inputs=(x,), calibration_inputs=calibration)
@@ -133,7 +135,12 @@ for name, path in json.loads(sys.argv[2]).items():
     bias_codes = [n for n in graph.nodes if n.op == "get_attr" and str(n.target).endswith("_bias") and not str(n.target).endswith("_host_bias")]
     float_biases = [n for n in graph.nodes if n.op == "get_attr" and str(n.target).endswith("_host_bias")]
     unit_operands = all(c.args[0].target == qd.dequantize_per_tensor.default and c.args[0].args[1] == 1.0 for c in convs)
+    pools = [n for n in graph.nodes if n.op == "call_function" and n.target == torch.ops.aten.max_pool2d.default]
+    before_pool = pools[0].args[0] if pools else None
+    if before_pool is not None and before_pool.target == torch.ops.aten.relu.default:
+        before_pool = before_pool.args[0]
     result = {
+        "host_pool_input_requantized": bool(before_pool is not None and before_pool.target == qd.dequantize_per_tensor.default),
         "by_exit": census["by_exit"], "absorbing": census["absorbing"], "kept": len(census["kept"]),
         "first_reads": [str(t) for t in users],
         "first_distinct_multipliers": int(torch.unique(scales[0]).numel()) if scales else 0,
@@ -191,6 +198,12 @@ def test_each_output_path_yields_its_own_integer_epilogue(tmp_path) -> None:
     assert (
         host["bias_codes"] == 0 and host["float_biases"] == 4 and host["by_exit"]["requant"] == 0 and host["kept"] == 0
     )
+    # Undeclared pool padding leaves through the available full-width exit. Quantizing before
+    # that host operation would split an integer-to-float shell away from its device producer.
+    padded = got["padded_pool"]
+    assert padded["by_exit"] == {"requant": 2, "accumulator": 2}
+    assert padded["absorbing"] == {"relu": 1, "pool": 0, "bias": 4}
+    assert padded["first_reads"] == ["aten.mul.Tensor"] and not padded["host_pool_input_requantized"]
     for name, row in got.items():
         assert row["bit_exact"] and row["integerized"] == 4, name
 

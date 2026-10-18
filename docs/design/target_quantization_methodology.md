@@ -75,10 +75,11 @@ builds a TorchAO PT2E `Quantizer`; when the recipe has an `epilogue` block, its 
 that the path performs (a `relu`, then an unpadded max pool when the path pools) are annotated as ONE
 pattern. The bias is a `DerivedQuantizationSpec`: int32, scale `s_x * s_w`, per channel when the
 weight is. The output is quantized only at the requantizing exit. A pattern takes that exit when every
-reader requantizes the value anyway (another quantized contraction, possibly through shape-only views
-or a host max pool that shares the grid). Otherwise it leaves through the full-width accumulator exit
+reader requantizes the value anyway (another quantized contraction, possibly through shape-only
+views). Otherwise it leaves through the full-width accumulator exit
 when the path has one, and the host applies the rest as written. A padded pool, whose padding value
-the path does not state, stays on the host and reads the requantized integers unchanged.
+the path does not state, stays on the host. When the full-width exit is available, its input is
+preserved at that width and the next quantized reader supplies the grid after the host pool.
 
 **Rewrite (after `convert_pt2e`).** Each pattern is restated as the unit computes it:
 
