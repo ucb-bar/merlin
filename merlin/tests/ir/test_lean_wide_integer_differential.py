@@ -34,6 +34,26 @@ def test_wide_product_high_bits_match_independent_native_reference(tmp_path, fid
     assert json.loads((tmp_path / "native-results.json").read_bytes())["results"] == expected
 
 
+@pytest.mark.parametrize("width", [65, 128, 136])
+def test_shifted_input_observes_the_highest_internal_bits(tmp_path, fidelity_tools, width):
+    source = f"""func.func @subject(%a: i64) -> (i64, i8) {{
+      %x = arith.extui %a : i64 to i{width}
+      %shift = arith.constant {width - 64} : i{width}
+      %shifted = arith.shli %x, %shift : i{width}
+      %back = arith.shrui %shifted, %shift : i{width}
+      %byte_shift = arith.constant {width - 8} : i{width}
+      %top = arith.shrui %shifted, %byte_shift : i{width}
+      %word = arith.trunci %back : i{width} to i64
+      %byte = arith.trunci %top : i{width} to i8
+      return %word, %byte : i64, i8
+    }}"""
+    values = [0, 1, (1 << 64) - 1, 1 << 63, 0x123456789ABCDEF0, 0xFE00000000000001]
+    samples = [[[x]] for x in values]
+    expected = [[str(x), str(x >> 56)] for x in values]
+    diff.compare(source, samples, tmp_path, fidelity_tools)
+    assert json.loads((tmp_path / "native-results.json").read_bytes())["results"] == expected
+
+
 @pytest.mark.parametrize("name", ["sitofp", "uitofp"])
 @pytest.mark.parametrize("captured", [False, True])
 def test_wide_int_to_float_refuses_before_native_execution(tmp_path, fidelity_tools, name, captured):
