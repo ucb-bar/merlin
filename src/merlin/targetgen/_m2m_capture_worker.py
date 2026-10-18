@@ -22,8 +22,20 @@ import sys
 from pathlib import Path
 
 if __package__:
+    from ._m2m_capture_artifacts import (
+        _framework_catalog,
+        finalize_session_artifacts,
+        frontend_trace_bytes,
+        write_frontend_trace,
+    )
     from ._m2m_capture_deployment import _mlir_dtype, _numeric_deployment
 else:
+    from merlin.targetgen._m2m_capture_artifacts import (
+        _framework_catalog,
+        finalize_session_artifacts,
+        frontend_trace_bytes,
+        write_frontend_trace,
+    )
     from merlin.targetgen._m2m_capture_deployment import _mlir_dtype, _numeric_deployment
 
 # canonical dtype token -> (torchAO scheme | None, base-weight dtype cast | None). Mirrors
@@ -552,24 +564,6 @@ def _exported_integer_mm_count(module) -> int:
     return count
 
 
-def _framework_catalog(torch) -> dict:
-    """Observe the registry in this exact capture interpreter, never another build."""
-    owner = Path(__file__).with_name("_aten_opset_worker.py")
-    try:
-        spec = importlib.util.spec_from_file_location("_capture_opset", owner)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module.core_opset()
-    except Exception as exc:  # noqa: BLE001 -- unavailable is not an empty registry
-        return {
-            "schema": "merlin.pytorch_opset.v1",
-            "status": "not_available",
-            "torch": str(torch.__version__),
-            "n_all_aten": None,
-            "reason": f"capture framework catalog unavailable: {type(exc).__name__}: {exc}",
-        }
-
-
 def _materialize_session(
     model, inputs, args, out: Path, *, loader, determinism: dict, dependencies: list, torch
 ) -> int:
@@ -725,6 +719,7 @@ def _materialize_session(
             opaque=count,
             opaque_detail=opaque,
             precision_realization=precision,
+            frontend_trace=write_frontend_trace(stage / "frontend-trace.json", trace),
             framework_catalog={
                 "path": catalog_path.name,
                 "sha256": hashlib.sha256(catalog_bytes).hexdigest(),
@@ -733,7 +728,7 @@ def _materialize_session(
             },
         )
         meta_path.write_text(json.dumps(meta, sort_keys=True, indent=2) + "\n")
-        # Metadata/catalog additions must be committed by the producer receipt,
+        # Metadata/catalog/trace changes must be committed by the producer receipt,
         # not leave stale hashes from the writer's earlier materialization.
         from m2m.capture.provenance import write_capture_receipt
 
@@ -770,7 +765,7 @@ def _materialize_session(
         "session_contract_sha256": hashlib.sha256((out / "session_contract.yaml").read_bytes()).hexdigest(),
         "qualification": "capture only; no target lowering, execution or application accuracy claim",
     }
-    (out / "session-receipt.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+    finalize_session_artifacts(out, report)
     ok = all(stage["ok"] for stage in stages)
     print(
         "__M2M_CAPTURE__ "
@@ -1442,7 +1437,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             "original": original_snapshot,
         }
     trace_path = out / "frontend-trace.json"
-    trace_bytes = (json.dumps(frontend_trace, sort_keys=True, indent=2) + "\n").encode()
+    trace_bytes = frontend_trace_bytes(frontend_trace)
     trace_path.write_bytes(trace_bytes)
     # Ask the existing catalog implementation in this very capture process.
     # A workload-specific environment must not inherit another venv's denominator.

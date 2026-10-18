@@ -44,6 +44,7 @@ _RECORDS: dict[int, dict] = {}
 OPERAND = "operand"
 #: The plane selector of the operand a softmax output multiplies (``quant_recipe.SOFTMAX_PARTNER``): its digits.
 SOFTMAX_PARTNER = "softmax_partner"
+RESIDUAL_OPERAND = "residual_operand"
 
 
 def _record(run: int, key: str, value: Any, smooth: bool) -> None:
@@ -80,13 +81,14 @@ def plan(node: Any, block: dict) -> dict:
     planes = int(selected.get(DC.SOFTMAX_OUTPUT, 1)) if context else 1
     # The operand beside a softmax output: ``P V`` is a convex combination of V's rows, so it can be far
     # smaller than V's range (most of P on one small row) and needs a finer grid than other operands.
-    digits = int(selected.get(SOFTMAX_PARTNER if context else OPERAND, selected.get(OPERAND, 1)))
+    operand = RESIDUAL_OPERAND if RESIDUAL_OPERAND in selected else OPERAND
+    digits = int(selected.get(SOFTMAX_PARTNER if context else operand, selected.get(operand, 1)))
     return {
         "context": context,
         "smooth": smooth,
         "planes": planes,
         "digits": digits,
-        "residual_digits": context and SOFTMAX_PARTNER in selected,
+        "residual_digits": RESIDUAL_OPERAND in selected or context and SOFTMAX_PARTNER in selected,
     }
 
 
@@ -250,7 +252,7 @@ def _digit_planes(emit: Any, value: Any, scale: Any, *, low: int, high: int, dig
 def _residual_planes(emit: Any, value: Any, scale: Any, *, low: int, high: int, digits: int) -> list:
     """Static progressively finer grids, each carried by a signed int8 round-and-clamp.
 
-    The new softmax-partner selector uses these bounded residuals. Each conversion keeps the
+    Explicit residual selectors use these bounded residuals. Each conversion keeps the
     existing rounded int8-grid producer proof; no wide clamp or floor-to-int conversion is needed.
     Historical operand digit recipes retain their original radix decomposition.
     """
@@ -312,7 +314,7 @@ def rewrite(graph_module: Any, node: Any, site: dict, stats: dict, *, low: int, 
         a_scale = emit.constant(f"_static_scale_{node.name}_lhs", _shaped(lhs_scale, rank_a, 2))
         lhs_planes = [
             (plane, lhs_scale * weight)
-            for plane, weight in _digit_planes(emit, a, a_scale, low=low, high=high, digits=digits)
+            for plane, weight in splitter(emit, a, a_scale, low=low, high=high, digits=digits)
         ]
         rank = max(rank_a, rank_b)
         total = None

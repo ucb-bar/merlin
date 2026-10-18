@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-10-18
 related: [output_epilogue_capabilities, accumulator_load_order]
-code_refs: [src/merlin/targetgen/quant_methodology.py, src/merlin/targetgen/_integer_epilogue.py, src/merlin/targetgen/_recipe_quantizer.py, src/merlin/targetgen/quantization_spec.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, packages/merlin-experiments/src/merlin_experiments/phase0/capture_recipe.py, packages/merlin-experiments/src/merlin_experiments/phase0/requirements.py, examples/gemmini/target/software-spec.yaml]
+code_refs: [src/merlin/targetgen/quant_methodology.py, src/merlin/targetgen/_integer_epilogue.py, src/merlin/targetgen/_recipe_quantizer.py, src/merlin/targetgen/_recipe_observers.py, src/merlin/targetgen/_m2m_capture_artifacts.py, src/merlin/targetgen/quantization_spec.py, src/merlin/targetgen/output_path.py, src/merlin/xdsl_dialects/lowering/output_fusion.py, packages/merlin-experiments/src/merlin_experiments/phase0/capture_recipe.py, packages/merlin-experiments/src/merlin_experiments/phase0/requirements.py, examples/gemmini/target/software-spec.yaml]
 ---
 
 # A target's quantization methodology, applied to every model
@@ -75,10 +75,11 @@ builds a TorchAO PT2E `Quantizer`; when the recipe has an `epilogue` block, its 
 that the path performs (a `relu`, then an unpadded max pool when the path pools) are annotated as ONE
 pattern. The bias is a `DerivedQuantizationSpec`: int32, scale `s_x * s_w`, per channel when the
 weight is. The output is quantized only at the requantizing exit. A pattern takes that exit when every
-reader requantizes the value anyway (another quantized contraction, possibly through shape-only views
-or a host max pool that shares the grid). Otherwise it leaves through the full-width accumulator exit
+reader requantizes the value anyway (another quantized contraction, possibly through shape-only
+views). Otherwise it leaves through the full-width accumulator exit
 when the path has one, and the host applies the rest as written. A padded pool, whose padding value
-the path does not state, stays on the host and reads the requantized integers unchanged.
+the path does not state, stays on the host. When the full-width exit is available, its input is
+preserved at that width and the next quantized reader supplies the grid after the host pool.
 
 **Rewrite (after `convert_pt2e`).** Each pattern is restated as the unit computes it:
 
@@ -102,6 +103,11 @@ absolute frozen weight codes, and the absolute bias code. It requires that compl
 the exact fp32 integer range. Checking the bias code alone is insufficient: rounding an accumulator
 above that range before adding its bias can differ from adding the bias in int32 first. A site
 without this proof remains in PT2E form and carries an explicit refusal.
+
+**Calibration reuse.** Repeated reads of an unchanged stored weight reuse its min/max observation.
+The known grouped observer is covered only while it inherits the framework's exact min/max forward;
+grouping changes its qparams calculation, not the observation. Tensor identity, version, storage,
+geometry and dtype must all match. Histograms and arbitrary observer subclasses keep every call.
 
 **Recovery.** Cross-layer equalization (Nagel et al., 2019) runs in `transform_for_annotation`, after
 Conv+BN folding and before any observer. It covers contraction pairs joined only by positively
@@ -149,6 +155,12 @@ the score contraction keeps its original planes. Captures record `operand_encodi
 Historical `planes.operand` recipes retain their original radix arithmetic. Selecting extra partner
 planes remains a numerical recipe choice requiring measurement and review.
 
+`dynamic.planes.residual_operand` applies the same bounded residual encoding to every ordinary
+operand, including both operands of the score contraction. It is mutually exclusive with the
+historical `planes.operand` radix selector. With two residual planes and two softmax planes,
+both score and context contractions take four device calls per head, versus one and two with
+the original single-operand grid. This additional precision also requires measurement and review.
+
 ## Where each model's derived recipe is recorded
 
 - Phase 0 evidence: `software/quantization-contract.json` records the methodology and the selected
@@ -160,6 +172,9 @@ planes remains a numerical recipe choice requiring measurement and review.
 - A capture: `meta.json` `quantization_stats.integer_epilogue`, with patterns, exits, absorbed
   stages, equalized pairs, bias corrections and kept sites with reasons; `float_island` holds the
   operations checked fp32.
+- Complete frontend traces use compact JSON. For sessions, the producer refreshes each trace's
+  metadata pointer and capture receipt, then inventories the final session bundle after all
+  sidecars exist. Every trace member and byte binding remains in the record.
 - A model-specific candidate is made with
   `python -m merlin.targetgen.quant_methodology --spec S --contract C --base B --model M --out NEW`.
   It writes a NEW file and never overwrites one. Reviewed recipes stay readable and unchanged.

@@ -395,6 +395,8 @@ OPERAND = "operand"
 #: ``P V`` is a convex combination of ``V``'s rows: when most of ``P`` sits on a row much smaller than the
 #: head's largest (an attention sink), the result is small against ``V``'s grid step and needs more digits.
 SOFTMAX_PARTNER = "softmax_partner"
+#: All ordinary activation operands, on successively finer bounded residual grids.
+RESIDUAL_OPERAND = "residual_operand"
 #: The smooth shift: when a contraction reaches a softmax over its column axis only through scalar
 #: factors and masks, the other operand's mean over that axis is subtracted first. That shifts each
 #: score row by a constant, which the softmax ignores.
@@ -436,7 +438,9 @@ def with_dynamic_contractions(
     puts every other operand on a static per-head grid of k int8 digits (two digits: 15 bits), each
     pair of digit planes one device call with one scale; ``planes[SOFTMAX_PARTNER] = k`` selects bounded
     round-and-clamp residual planes for the operand a softmax output multiplies, each successive grid
-    ``quant_max + 1`` times finer. Activation contractions of a static recipe only.
+    ``quant_max + 1`` times finer. ``planes[RESIDUAL_OPERAND] = k`` uses those bounded residuals for
+    every ordinary operand, including both score operands; it replaces the historical ``OPERAND``
+    selector, whose radix arithmetic stays unchanged. Activation contractions of a static recipe only.
     """
     if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
         raise ValueError("only a derived quant_recipe_v1 can be extended")
@@ -448,11 +452,17 @@ def with_dynamic_contractions(
         raise ValueError(f"dynamic scales apply to contraction families only, not {wanted}")
     selected = dict(planes or {})
     if any(
-        k not in (SOFTMAX_OUTPUT, WEIGHT, OPERAND, SOFTMAX_PARTNER) or type(v) is not int or not 1 <= v <= _MAX_PLANES
+        k not in (SOFTMAX_OUTPUT, WEIGHT, OPERAND, SOFTMAX_PARTNER, RESIDUAL_OPERAND)
+        or type(v) is not int or not 1 <= v <= _MAX_PLANES
         for k, v in selected.items()
     ):
-        raise ValueError(f"planes take {SOFTMAX_OUTPUT!r}/{WEIGHT!r}/{OPERAND!r} -> 1..{_MAX_PLANES}, not {selected}")
-    for digits in (OPERAND, SOFTMAX_PARTNER):
+        raise ValueError(
+            f"planes take {SOFTMAX_OUTPUT!r}/{WEIGHT!r}/{OPERAND!r}/{SOFTMAX_PARTNER!r}/{RESIDUAL_OPERAND!r} "
+            f"-> 1..{_MAX_PLANES}, not {selected}"
+        )
+    if OPERAND in selected and RESIDUAL_OPERAND in selected:
+        raise ValueError("operand and residual_operand selectors are mutually exclusive")
+    for digits in (OPERAND, SOFTMAX_PARTNER, RESIDUAL_OPERAND):
         if digits in selected and (scales != STATIC_HEADS or selected[digits] > 3):
             raise ValueError(f"{digits!r} digit planes (at most 3) belong to static per-head scales")
     if scales not in (NON_REDUCTION, STATIC_HEADS):

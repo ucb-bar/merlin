@@ -145,7 +145,7 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float):
 
 
 def _bias_onto_accumulator_grid(graph_module: Any) -> dict[str, Any]:
-    """Round every quantized contraction's stored float bias onto its accumulator grid, in place.
+    """Round the quantized graph's float biases onto its accumulator grid without mutating source tensors.
 
     For ``y = conv(dq(x; s_x), dq(W; s_w)) + b`` the accumulator step of output channel ``c`` is
     ``S_c = s_x * s_w[c]`` (f32). The bias becomes ``k_c * S_c`` with ``k_c = round(b_c / S_c)``
@@ -192,8 +192,15 @@ def _bias_onto_accumulator_grid(graph_module: Any) -> dict[str, Any]:
         per_channel = s_w.expand(stored.shape[0]) if s_w.numel() == 1 else s_w
         snapped = (codes.to(torch.float32) * s_x) * per_channel
         worst = max(worst, float(((snapped.double() - stored.double()) / step.double()).abs().max()))
-        with torch.no_grad():
-            stored.copy_(snapped)
+        owned = snapped.to(dtype=stored.dtype, device=stored.device).detach()
+        owned.requires_grad_(stored.requires_grad)
+        if isinstance(stored, torch.nn.Parameter):
+            owned = torch.nn.Parameter(owned, requires_grad=stored.requires_grad)
+        parent = graph_module
+        *owners, leaf = str(bias.target).split(".")
+        for name in owners:
+            parent = getattr(parent, name)
+        setattr(parent, leaf, owned)
         sites += 1
         channels += int(stored.numel())
     return {
@@ -1096,50 +1103,11 @@ def calibration_limit(recipe: Mapping[str, Any], default: int) -> int:
     return value
 
 
-class _RepeatedObservationSkip:
-    """Skip a min/max observer's call when its input is the exact tensor it observed last.
+def _RepeatedObservationSkip(prepared: Any):
+    """The observer owner supplies guarded, exact min/max observation reuse."""
+    import _recipe_observers as RO  # noqa: PLC0415 -- capture interpreter sibling
 
-    A stored weight reaches its observer as the same parameter on every calibration sample, and
-    TorchAO's ``MinMaxObserver`` and ``PerChannelMinMaxObserver`` keep only a running min and max:
-    a second observation of the same values leaves both buffers bit-identical. Only those two exact
-    classes are covered (a moving average or a histogram is not idempotent). The skip requires the
-    same tensor object, still alive, with the same version counter, storage, shape, strides and
-    dtype, so an in-place update or a fresh activation is always observed. The instance-level
-    ``forward`` is removed again when calibration ends.
-    """
-
-    def __init__(self, prepared: Any) -> None:
-        from torchao.quantization.pt2e import MinMaxObserver, PerChannelMinMaxObserver
-
-        self._modules = [
-            module for module in prepared.modules() if type(module) in (MinMaxObserver, PerChannelMinMaxObserver)
-        ]
-
-    @staticmethod
-    def _key(x: Any) -> tuple:
-        return (x._version, x.data_ptr(), tuple(x.shape), x.stride(), x.dtype, x.device)
-
-    def __enter__(self) -> _RepeatedObservationSkip:
-        import weakref
-
-        for module in self._modules:
-            observe = type(module).forward.__get__(module)
-            last: list[Any] = [None]
-
-            def forward(x: Any, _observe: Any = observe, _last: list[Any] = last) -> Any:
-                seen = _last[0]
-                if seen is not None and seen[0]() is x and seen[1] == self._key(x):
-                    return x
-                result = _observe(x)
-                _last[0] = (weakref.ref(x), self._key(x))
-                return result
-
-            module.forward = forward
-        return self
-
-    def __exit__(self, *exc: Any) -> None:
-        for module in self._modules:
-            module.__dict__.pop("forward", None)
+    return RO.RepeatedObservationSkip(prepared)
 
 
 def _no_batch_norm_fold_needed(original_snapshot: Any, exported: Any) -> bool:

@@ -21,13 +21,27 @@ _QUANTIZER = Path(worker.__file__).with_name("_recipe_quantizer.py")
 
 SCRIPT = r"""
 import importlib.util, sys
+from pathlib import Path
 import torch
 from torchao.quantization.pt2e import MinMaxObserver, PerChannelMinMaxObserver, HistogramObserver
 
+sys.path.insert(0, str(Path(sys.argv[1]).parent))
+import _recipe_observers as RO
+Grouped = RO.grouped_channel_observer()
 spec = importlib.util.spec_from_file_location("rq", sys.argv[1])
 RQ = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(RQ)
 torch.manual_seed(0)
+
+
+class StatefulChannel(PerChannelMinMaxObserver):
+    def __init__(self):
+        super().__init__(dtype=torch.int8, qscheme=torch.per_channel_symmetric)
+        self.register_buffer('visits', torch.tensor(0))
+
+    def forward(self, x):
+        self.visits += 1
+        return super().forward(x)
 
 
 class Holder(torch.nn.Module):
@@ -35,12 +49,16 @@ class Holder(torch.nn.Module):
         super().__init__()
         self.per_tensor = MinMaxObserver(dtype=torch.int8, qscheme=torch.per_tensor_symmetric)
         self.per_channel = PerChannelMinMaxObserver(dtype=torch.int8, qscheme=torch.per_channel_symmetric)
+        self.grouped = Grouped(dtype=torch.int8, qscheme=torch.per_channel_symmetric, channels_per_scale=3)
+        self.stateful = StatefulChannel()
         self.histogram = HistogramObserver(dtype=torch.int8)
 
     def forward(self, values):
         for value in values:
             self.per_tensor(value)
             self.per_channel(value)
+            self.grouped(value)
+            self.stateful(value)
             self.histogram(value)
 
 
@@ -57,7 +75,12 @@ def calls(weight, other):
 
 
 def state(holder):
-    return {k: v.clone() for k, v in holder.state_dict().items()}
+    result = {k: v.clone() for k, v in holder.state_dict().items()}
+    for name in ('per_tensor', 'per_channel', 'grouped', 'histogram'):
+        scale, zero = getattr(holder, name).calculate_qparams()
+        result[name + '.scale'] = scale.clone()
+        result[name + '.zero'] = zero.clone()
+    return result
 
 
 def run(skip):
@@ -66,11 +89,12 @@ def run(skip):
     other = torch.randn(4, 6) * 10
     holder = Holder()
     counts = []
-    calls_seen = []
+    calls_seen = {'channel': [], 'grouped': [], 'stateful': []}
     original = PerChannelMinMaxObserver._forward
 
     def counting(self, x):
-        calls_seen.append(1)
+        key = {PerChannelMinMaxObserver: 'channel', Grouped: 'grouped', StatefulChannel: 'stateful'}[type(self)]
+        calls_seen[key].append(1)
         return original(self, x)
 
     PerChannelMinMaxObserver._forward = counting
@@ -81,12 +105,13 @@ def run(skip):
         for batch in calls(weight, other):
             torch.manual_seed(2)
             holder(batch)
-            counts.append(len(calls_seen))
+            counts.append({name: len(values) for name, values in calls_seen.items()})
         if context is not None:
             context.__exit__(None, None, None)
     finally:
         PerChannelMinMaxObserver._forward = original
     assert "forward" not in holder.per_tensor.__dict__ and "forward" not in holder.per_channel.__dict__
+    assert "forward" not in holder.grouped.__dict__ and "forward" not in holder.stateful.__dict__
     return state(holder), counts
 
 
@@ -96,9 +121,25 @@ assert reference.keys() == skipped.keys()
 for key in reference:
     assert reference[key].dtype == skipped[key].dtype and torch.equal(reference[key], skipped[key]), key
     assert reference[key].numpy().tobytes() == skipped[key].numpy().tobytes(), key
-assert full == [3, 5, 7, 10, 12], full
+complete = [3, 5, 7, 10, 12]
+for name in ('channel', 'grouped', 'stateful'):
+    assert [row[name] for row in full] == complete, (name, full)
 # 1 of 3, then the update is observed once, then fresh/weight, other/weight/other, view/weight
-assert partial == [1, 2, 4, 7, 9], partial
+for name in ('channel', 'grouped'):
+    assert [row[name] for row in partial] == [1, 2, 4, 7, 9], (name, partial)
+assert [row['stateful'] for row in partial] == complete, partial
+# A future/custom replacement of the known grouped forward must lose the optimization.
+original_grouped = Grouped.forward
+def changed_forward(self, x):
+    return PerChannelMinMaxObserver.forward(self, x)
+Grouped.forward = changed_forward
+try:
+    unchanged, guarded = run(True)
+    assert [row['grouped'] for row in guarded] == complete, guarded
+    for key in reference:
+        assert torch.equal(reference[key], unchanged[key]), key
+finally:
+    Grouped.forward = original_grouped
 print("OK")
 """
 
