@@ -94,26 +94,119 @@ def _mark_then_hang(root):
 
 
 def test_callback_cannot_start_without_parent_ownership_ack(tmp_path):
-    import multiprocessing
-
-    context = multiprocessing.get_context("spawn")
-    receiver, sender = context.Pipe(duplex=True)
-    worker = context.Process(target=proof_worker._serve, args=(_mark_then_hang, (tmp_path,), sender, tmp_path))
-    worker.start()
-    sender.close()
-    owned = False
+    directory, request = proof_worker._prepare(_mark_then_hang, (tmp_path,), tmp_path, time.monotonic() + 5)
+    worker = proof_worker.start_owned(
+        proof_worker._command(directory, request),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
     try:
-        assert receiver.poll(5)
-        assert receiver.recv() == {"kind": "ready", "pid": worker.pid, "group": worker.pid}
-        owned = True
-        # Refuse ownership transfer instead of sending go. The callback must
-        # never run, even though the child has already announced readiness.
-        receiver.send({"kind": "not-go"})
-        worker.join(5)
-        assert not worker.is_alive()
+        deadline = time.monotonic() + 5
+        while not (directory / "ready.json").exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert proof_worker._json(directory / "ready.json") == proof_worker._identity(request, worker.pid)
+        assert not (tmp_path / "callback-started").exists()
+        proof_worker._publish(directory / "go.json", {"kind": "not-go"})
+        assert worker.wait(timeout=5) != 0
         assert not (tmp_path / "callback-started").exists()
     finally:
-        proof_worker._stop(worker, owned)
-        worker.close()
-        receiver.close()
-        sender.close()
+        proof_worker.stop_owned(worker)
+        proof_worker.close_owned_pipes(worker)
+
+
+def _partial_result(root, fault):
+    directory = next(root.glob("proof-worker-*"))
+    target = directory / "result.json"
+    if fault == "pending":
+        target = target.with_suffix(".json.pending")
+        target.write_text('{"incomplete":')
+    elif fault == "truncated":
+        target.write_text('{"incomplete":')
+    elif fault == "fifo":
+        os.mkfifo(target)
+    elif fault == "symlink":
+        target.symlink_to(root / "callback-started")
+        (root / "callback-started").touch()
+    time.sleep(3600)
+
+
+@pytest.mark.parametrize("fault", ["pending", "truncated", "fifo", "symlink"])
+def test_partial_or_nonregular_results_cannot_block_the_supervisor(tmp_path, fault):
+    expected = TimeoutError if fault == "pending" else proof_worker.WorkerFailure
+    with pytest.raises(expected):
+        proof_worker.run(_partial_result, tmp_path, fault, timeout=1, logs=tmp_path)
+    cleanup = proof_worker._json(next(tmp_path.glob("proof-worker-*/cleanup.json")))
+    assert cleanup["direct_child_reaped"]
+
+
+def test_unreapable_child_and_result_wait_have_only_bounded_waits(tmp_path, monkeypatch):
+    waits, signals = [], []
+
+    class Unreapable:
+        pid = 123456789
+        returncode = None
+        stdin = stdout = stderr = None
+
+        def wait(self, *, timeout):
+            waits.append(timeout)
+            raise subprocess.TimeoutExpired("unreapable", timeout)
+
+        def poll(self):
+            return None
+
+    def start(*args, **kwargs):
+        directory = next(tmp_path.glob("proof-worker-*"))
+        request = proof_worker._json(directory / "request.json")
+        identity = proof_worker._identity(request, Unreapable.pid)
+        proof_worker._publish(directory / "ready.json", identity)
+        proof_worker._publish(directory / "result.json", {**identity, "kind": "result", "value": "untrusted"})
+        return Unreapable()
+
+    monkeypatch.setattr(proof_worker, "start_owned", start)
+    monkeypatch.setattr(os, "killpg", lambda *args: signals.append(args))
+    with pytest.raises(TimeoutError, match="did not exit after its result") as error:
+        proof_worker.run(_success, "unused", timeout=5, logs=tmp_path)
+    assert 0 < waits[0] <= 5
+    assert waits[1:] == [0.2, 1.0]
+    assert [pid for pid, _ in signals] == [Unreapable.pid, Unreapable.pid]
+    cleanup = proof_worker._json(next(tmp_path.glob("proof-worker-*/cleanup.json")))
+    assert cleanup["pid"] == cleanup["group"] == Unreapable.pid
+    assert cleanup["direct_child_reaped"] is False
+    assert "123456789" in "\n".join(error.value.__notes__)
+
+
+def _nonjson():
+    return object()
+
+
+def test_returned_data_is_json_and_never_unpickled(tmp_path):
+    with pytest.raises(proof_worker.WorkerFailure, match="not JSON serializable"):
+        proof_worker.run(_nonjson, timeout=5, logs=tmp_path)
+
+
+def test_bootstrap_uses_parent_worker_despite_foreign_pythonpath(tmp_path, monkeypatch):
+    foreign = tmp_path / "foreign"
+    fake = foreign / "merlin" / "verify" / "lean"
+    fake.mkdir(parents=True)
+    for directory in (foreign / "merlin", foreign / "merlin" / "verify", fake):
+        (directory / "__init__.py").write_text("")
+    (fake / "proof_worker.py").write_text("raise RuntimeError('foreign worker must never load')")
+    monkeypatch.setenv("PYTHONPATH", str(foreign))
+    result = proof_worker.run(_success, "parent-worker", timeout=5, logs=tmp_path)
+    assert result["value"] == "parent-worker"
+
+
+def test_bootstrap_source_pin_is_enforced_under_python_optimization(tmp_path, monkeypatch):
+    command = proof_worker._command
+
+    def wrong_pin(*args):
+        argv = command(*args)
+        argv[-2] = "0" * 64
+        return argv
+
+    monkeypatch.setattr(proof_worker, "_command", wrong_pin)
+    monkeypatch.setenv("PYTHONOPTIMIZE", "1")
+    with pytest.raises(proof_worker.WorkerFailure, match="without a result"):
+        proof_worker.run(_mark_then_hang, tmp_path, timeout=5, logs=tmp_path)
+    assert not (tmp_path / "callback-started").exists()
+    assert "bootstrap source changed" in (tmp_path / "proof.stderr.log").read_text()

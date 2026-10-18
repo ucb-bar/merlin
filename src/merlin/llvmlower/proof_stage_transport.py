@@ -15,6 +15,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from merlin.common.owned_process import close_owned_pipes, run_owned, start_owned, stop_owned
+
 REQUEST_SCHEMA = "merlin.lean.native_hold.request.v1"
 ACK_SCHEMA = "merlin.lean.native_hold.ack.v1"
 TOKEN = "OK lean_native_tensor_gate"
@@ -61,7 +63,7 @@ def identity(compiler_python: Path, *, timeout: float) -> dict:
     """Measure the interpreter and loaded native bindings actually selected for execution."""
     if timeout <= 0:
         raise TimeoutError("native compiler identity deadline expired")
-    result = subprocess.run(
+    result = run_owned(
         [str(compiler_python), "-c", IDENTITY_SOURCE + "\nimport json; print(json.dumps(_pg_identity()))"],
         check=True,
         capture_output=True,
@@ -336,14 +338,15 @@ def bind_runner(
 
 
 def run_command(command, *, directory: Path, callback, run: str, plan, binding: dict, max_bytes: int, timeout: int):
-    """Serve exactly one pending proof on the parent thread; terminate only our child on failure."""
+    """Serve one pending proof; bound failure cleanup of the owned native group."""
     directory = Path(directory)
     request, ack = directory / "request.json", directory / "ack.json"
     if any(directory.iterdir()):
         raise ValueError("native proof transport requires a fresh private owner")
     deadline = time.monotonic() + timeout
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    process = start_owned(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     served = False
+    stdout, stderr = b"", b""
     try:
         while True:
             remaining = deadline - time.monotonic()
@@ -352,7 +355,8 @@ def run_command(command, *, directory: Path, callback, run: str, plan, binding: 
             try:
                 stdout, stderr = process.communicate(timeout=min(0.05, remaining))
                 break
-            except subprocess.TimeoutExpired:
+            except subprocess.TimeoutExpired as partial:
+                stdout, stderr = partial.stdout or b"", partial.stderr or b""
                 if request.is_file() and not served:
                     raw = request.read_bytes()
                     if len(raw) > max_bytes:
@@ -397,18 +401,19 @@ def run_command(command, *, directory: Path, callback, run: str, plan, binding: 
                 raise ValueError("native proof barrier completion is absent or inconsistent")
         return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     except BaseException as exc:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                stdout, stderr = process.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                stdout, stderr = process.communicate()
-        else:
-            stdout, stderr = process.communicate()
+        # communicate(timeout) retained cumulative output above. Never drain a
+        # failed child's pipes without a bound: even SIGKILL may remain pending.
         try:
-            (directory / "stdout.log").write_text(stdout)
-            (directory / "stderr.log").write_text(stderr)
+            cleanup = stop_owned(process)
+            (directory / "process-cleanup.json").write_bytes(canonical(cleanup))
+            exc.add_note(f"native child owned cleanup: {cleanup}")
+        except BaseException as cleanup_error:
+            exc.add_note(f"native child PID/group {process.pid} cleanup failed: {cleanup_error}")
+        try:
+            for name, output in (("stdout", stdout), ("stderr", stderr)):
+                (directory / f"{name}.log").write_bytes(output.encode() if isinstance(output, str) else output)
         except OSError as evidence_error:
             exc.add_note(f"native child output could not be retained: {evidence_error}")
         raise
+    finally:
+        close_owned_pipes(process)

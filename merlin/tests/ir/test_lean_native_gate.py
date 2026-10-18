@@ -6,6 +6,7 @@ These unit tests mock proof/tool execution. Actual native qualification is separ
 import hashlib
 import json
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -358,3 +359,47 @@ def test_identity_rechecks_share_the_original_invocation_budget(tmp_path, sessio
     session.proof_deadline = time.monotonic() - 1
     with pytest.raises(TimeoutError, match="explicit deadline"):
         session._recheck_selection()
+
+
+def test_proof_child_keeps_identity_probes_in_parent(tmp_path, session, proof_checks, monkeypatch):
+    _prepare(session, tmp_path)
+    request = _native_records(session)
+    identities = []
+    measured = session.consumer
+
+    def identify(*args, **kwargs):
+        identities.append("parent")
+        return measured
+
+    def worker(callback, *args, **kwargs):
+        before = len(identities)
+        result = callback(*args)
+        assert len(identities) == before
+        return result
+
+    monkeypatch.setattr(transport, "identity", identify)
+    monkeypatch.setattr(native_gate.proof_worker, "run", worker)
+    session._verify_bounded(request, session.owner)
+    assert identities == ["parent", "parent"]
+    from merlin.common import owned_process
+
+    assert str(Path(owned_process.__file__)) in session.sources
+
+
+def test_worker_rechecks_actual_consumer_files_without_spawning_probe(tmp_path, session, monkeypatch):
+    binding = tmp_path / "mock-loaded-binding"
+    binding.write_bytes(b"original-binding")
+    measured = {
+        "compiler_python": transport.fingerprint(session.options.compiler_python),
+        "mlir_binding": transport.fingerprint(binding),
+    }
+    monkeypatch.setattr(transport, "identity", lambda *args, **kwargs: measured)
+    _prepare(session, tmp_path)
+    binding.write_bytes(b"changed-binding")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("proof worker must not spawn an identity probe")
+
+    monkeypatch.setattr(transport, "identity", forbidden)
+    with pytest.raises(VerificationError, match="consumer file changed"):
+        session._recheck_selection(identity_in_parent=True)

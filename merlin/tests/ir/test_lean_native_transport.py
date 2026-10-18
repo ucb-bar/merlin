@@ -246,3 +246,68 @@ def test_compiler_identity_measurement_has_a_real_subprocess_deadline(tmp_path):
 def test_expired_identity_budget_does_not_start_a_compiler(tmp_path):
     with pytest.raises(TimeoutError, match="identity deadline expired"):
         transport.identity(tmp_path / "absent", timeout=0)
+
+
+def test_native_cleanup_does_not_drain_or_wait_forever_for_unreapable_child(tmp_path, plan, monkeypatch):
+    import os
+    import subprocess
+
+    owner = tmp_path / "owner"
+    owner.mkdir()
+    calls, signals = [], []
+
+    class Unreapable:
+        pid = 123456789
+        returncode = None
+        stdin = stdout = stderr = None
+
+        def communicate(self, *, timeout):
+            calls.append(("communicate", timeout))
+            raise subprocess.TimeoutExpired("held-native", timeout, output=b"partial\xff", stderr=b"error\xfe")
+
+        def wait(self, *, timeout):
+            calls.append(("wait", timeout))
+            raise subprocess.TimeoutExpired("unreapable", timeout)
+
+    ticks = iter([0, 0, 2])
+    monkeypatch.setattr(transport.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(transport, "start_owned", lambda *a, **kw: Unreapable())
+    monkeypatch.setattr(os, "killpg", lambda *args: signals.append(args))
+    with pytest.raises(subprocess.TimeoutExpired):
+        transport.run_command(
+            ["held-native"],
+            directory=owner,
+            callback=None,
+            run="run",
+            plan=plan,
+            binding={},
+            max_bytes=1000,
+            timeout=1,
+        )
+    assert calls == [("communicate", 0.05), ("wait", 0.2), ("wait", 1.0)]
+    assert [pid for pid, _ in signals] == [Unreapable.pid, Unreapable.pid]
+    assert (owner / "stdout.log").read_bytes() == b"partial\xff"
+    assert (owner / "stderr.log").read_bytes() == b"error\xfe"
+    cleanup = json.loads((owner / "process-cleanup.json").read_bytes())
+    assert cleanup["pid"] == cleanup["group"] == Unreapable.pid
+    assert cleanup["direct_child_reaped"] is False
+
+
+def test_identity_uses_owned_runner_with_exact_probe_and_budget(monkeypatch, tmp_path):
+    import subprocess
+
+    calls = []
+
+    def owned(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, '{"identity": "exact"}', "")
+
+    monkeypatch.setattr(transport, "run_owned", owned)
+    compiler = tmp_path / "selected-python"
+    assert transport.identity(compiler, timeout=1.25) == {"identity": "exact"}
+    assert calls == [
+        (
+            [str(compiler), "-c", transport.IDENTITY_SOURCE + "\nimport json; print(json.dumps(_pg_identity()))"],
+            {"check": True, "capture_output": True, "text": True, "timeout": 1.25},
+        )
+    ]

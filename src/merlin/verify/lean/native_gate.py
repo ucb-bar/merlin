@@ -13,6 +13,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from merlin.common import owned_process
 from merlin.llvmlower import proof_stage_transport as transport
 from merlin.llvmlower.toolchain import m2m_python
 
@@ -70,6 +71,7 @@ class Session:
         for module in (
             native_plan,
             proof_worker,
+            owned_process,
             transport,
             pipeline,
             fusion_guard,
@@ -159,7 +161,7 @@ class Session:
             raise TimeoutError("native tensor invocation exceeded its explicit deadline")
         return remaining
 
-    def _recheck_selection(self) -> None:
+    def _recheck_selection(self, *, identity_in_parent: bool = False) -> None:
         self._remaining()
         current = native_plan.ordinary(
             features=frozenset(), index_bits=self.plan.index_bits, data_layout=self.plan.data_layout
@@ -187,7 +189,16 @@ class Session:
         for path, expected in self.sources.items():
             if transport.fingerprint(Path(path)) != expected:
                 raise VerificationError("native producer source changed while proof was pending")
-        if transport.identity(self.options.compiler_python, timeout=self._remaining()) != self.consumer:
+        # Parent measures loaded identities around the worker. The worker still
+        # reopens expected consumer files, without detached identity processes.
+        for expected in self.consumer.values():
+            if isinstance(expected, dict) and "invocation_path" in expected:
+                if transport.fingerprint(Path(expected["invocation_path"])) != expected:
+                    raise VerificationError("native consumer file changed while proof was pending")
+        if (
+            not identity_in_parent
+            and transport.identity(self.options.compiler_python, timeout=self._remaining()) != self.consumer
+        ):
             raise VerificationError("native compiler bindings changed while proof was pending")
         if hasattr(self, "command_bytes") and (
             (self.root / "sources.json").read_bytes() != self.sources_bytes
@@ -195,8 +206,8 @@ class Session:
         ):
             raise VerificationError("native source/command manifests changed")
 
-    def _verify(self, request: dict, owner: Path) -> transport.HoldAcknowledgment:
-        self._recheck_selection()
+    def _verify(self, request: dict, owner: Path, *, identity_in_parent: bool = False) -> transport.HoldAcknowledgment:
+        self._recheck_selection(identity_in_parent=identity_in_parent)
         if self._prefix_inventory() != (self.prefix_records, self.prefix_frozen):
             raise VerificationError("source/preparation/preprocessing evidence changed before native proof")
         local, frozen = _inventory(stages.Capture(owner / "stages", self.run, complete=True))
@@ -235,7 +246,7 @@ class Session:
         )
         if chain["verdict"] != "verified":
             raise VerificationError(chain.get("reason", "concatenated native tensor chain did not verify"))
-        self._recheck_selection()
+        self._recheck_selection(identity_in_parent=identity_in_parent)
         if self._prefix_inventory() != (self.prefix_records, self.prefix_frozen):
             raise VerificationError("source/preparation/preprocessing evidence changed during native proof")
         if _inventory(stages.Capture(owner / "stages", self.run, complete=True)) != (local, frozen):
@@ -302,6 +313,7 @@ class Session:
             "proof_deadline",
         ):
             setattr(snapshot, key, getattr(self, key))
+        self._recheck_selection()
         result = proof_worker.run(
             _prove, snapshot, request, owner, timeout=self.proof_deadline - time.monotonic(), logs=owner
         )
@@ -311,7 +323,7 @@ class Session:
         if self._prefix_inventory() != (self.prefix_records, self.prefix_frozen):
             raise VerificationError("original evidence changed while the proof worker was running")
         actual = _inventory(stages.Capture(owner / "stages", self.run, complete=True))
-        if actual != (result["local_records"], result["local_frozen"]):
+        if ([str(p) for p in actual[0]], actual[1]) != (result["local_records"], result["local_frozen"]):
             raise VerificationError("proof worker inventory differs from actual native snapshots")
         plans.replay(self.plan.boundaries, self.root / "expected-boundaries.json", owner / "stages")
         proof_paths = (self.root / "verification.json", self.root / "chain.json")
@@ -364,10 +376,13 @@ class Session:
 
 
 def _prove(session: Session, request: dict, owner: Path) -> dict:
-    proof = session._verify(request, owner)
+    # Parent measures actual native bindings immediately before/after this worker.
+    # Avoid creating an independently owned identity-probe session inside the
+    # worker: cancellation must retain all proof/checker children in its group.
+    proof = session._verify(request, owner, identity_in_parent=True)
     return {
         "request_sha256": proof.request_sha256,
-        "local_records": session.local_records,
+        "local_records": [str(path) for path in session.local_records],
         "local_frozen": session.local_frozen,
         "proof_frozen": session.proof_frozen,
     }
