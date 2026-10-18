@@ -22,7 +22,9 @@ TRAINING_ARCHIVE = "merlin.phase1.capsule_timing_archive.v3"
 ARCHIVES = (ARCHIVE, TRAINING_ARCHIVE)
 VISIBILITIES = ("public", "hidden")
 BINDING = "merlin.phase1.spike_archive_binding.v1"
+BINDING_V2 = "merlin.phase1.spike_archive_binding.v2"
 PLAN = "merlin.phase1.spike_observation_plan.v1"
+PLAN_V2 = "merlin.phase1.spike_observation_plan.v2"
 MAX_ARCHIVE_BYTES = 16 * 1024**3
 MAX_MEMBER_BYTES = 1024**3
 MAX_MEMBERS = 100000
@@ -478,8 +480,9 @@ def inspect_archive(path: str | Path, expected_sha256: str) -> dict:
 def prepare(inventory: dict, binding: dict) -> dict:
     """Join externally reviewed sources/counter scopes; leave absent observations absent."""
     C.closed(binding, {"schema", "archive_sha256", "domain", "feature_names", "review", "cases"}, "archive binding")
-    if binding["schema"] != BINDING or binding["archive_sha256"] != inventory["archive_sha256"]:
+    if binding["schema"] not in (BINDING, BINDING_V2) or binding["archive_sha256"] != inventory["archive_sha256"]:
         raise C.ContractError("archive binding differs from the exact immutable archive")
+    per_observation = binding["schema"] == BINDING_V2
     per_record = inventory.get("archive_schema") == TRAINING_ARCHIVE
     if inventory["timing_ready"] is not True and not (per_record and inventory.get("training_ready") is True):
         raise C.ContractError("incomplete timing archive cannot prepare calibration observations")
@@ -563,7 +566,8 @@ def prepare(inventory: dict, binding: dict) -> dict:
     if not isinstance(binding["cases"], list) or len(binding["cases"]) > C.MAX_CASES:
         raise C.ContractError("archive case binding exceeds its count bound")
     for item in binding["cases"]:
-        C.closed(item, {"case", "results", "candidate_sha256", "shape_sha256", "counter_scope"}, "archive case binding")
+        scope_key = "counter_scopes" if per_observation else "counter_scope"
+        C.closed(item, {"case", "results", "candidate_sha256", "shape_sha256", scope_key}, "archive case binding")
         case = C.closed(item["case"], C.CASE_KEYS, "archive case")
         # Different compiler versions can emit byte-identical programs. The execution (ELF, input,
         # scope) stays one case; its binding may then name every candidate that emitted those bytes.
@@ -574,17 +578,32 @@ def prepare(inventory: dict, binding: dict) -> dict:
         for candidate in candidates:
             C.sha(candidate, "candidate identity")
         C.sha(item["shape_sha256"], "logical shape identity")
-        pcs = C.closed(
-            item["counter_scope"], {"begin_pc", "end_pc", "occurrence", "evidence_sha256"}, "counter-PC review"
-        )
-        C.sha(pcs["evidence_sha256"], "original caller boundary review")
-        if any(type(pcs[key]) is not int or not 0 < pcs[key] < 2**64 or pcs[key] % 2 for key in ("begin_pc", "end_pc")):
-            raise C.ContractError("explicit aligned counter PCs are required")
-        if pcs["begin_pc"] == pcs["end_pc"] or type(pcs["occurrence"]) is not int or not 0 <= pcs["occurrence"] < 65536:
-            raise C.ContractError("distinct counter PCs and a bounded occurrence are required")
         results = item["results"]
-        if not isinstance(results, list) or not results:
+        if not isinstance(results, list) or not results or any(not isinstance(result, str) for result in results):
             raise C.ContractError("case binding must retain its original execution records")
+        scopes = item[scope_key] if per_observation else dict.fromkeys(results, item[scope_key])
+        if not isinstance(scopes, dict) or set(scopes) != set(results):
+            raise C.ContractError("counter reviews must name every original execution record exactly")
+        coordinates = set()
+        for pcs in scopes.values():
+            if pcs is None and per_observation:
+                # Absence preserves the case and every paid label, but cannot authorize an observation.
+                continue
+            C.closed(pcs, {"begin_pc", "end_pc", "occurrence", "evidence_sha256"}, "counter-PC review")
+            C.sha(pcs["evidence_sha256"], "original caller boundary review")
+            if any(
+                type(pcs[key]) is not int or not 0 < pcs[key] < 2**64 or pcs[key] % 2 for key in ("begin_pc", "end_pc")
+            ):
+                raise C.ContractError("explicit aligned counter PCs are required")
+            if (
+                pcs["begin_pc"] == pcs["end_pc"]
+                or type(pcs["occurrence"]) is not int
+                or not 0 <= pcs["occurrence"] < 65536
+            ):
+                raise C.ContractError("distinct counter PCs and a bounded occurrence are required")
+            coordinates.add(tuple(pcs[key] for key in ("begin_pc", "end_pc", "occurrence")))
+        if len(coordinates) > 1:
+            raise C.ContractError("repeat counter reviews disagree on the same execution's window")
         cases.append(case)
         for result in results:
             if not isinstance(result, str) or result not in by_result or result in seen:
@@ -617,13 +636,18 @@ def prepare(inventory: dict, binding: dict) -> dict:
                 raise C.ContractError("label scope, clock selection, simulator or counter bound changed")
             if eligible and row["sim_provenance"]["sha256"] != binding["domain"]["label_engine_sha256"]:
                 raise C.ContractError("domain label engine differs from original simulator binary")
-            scope_binding = {
-                "schema": "merlin.spike_scope_binding.v1",
-                "elf_sha256": case["elf_sha256"],
-                "input_sha256": case["input_sha256"],
-                "scope_sha256": case["scope_sha256"],
-                **pcs,
-            }
+            pcs = scopes[result]
+            scope_binding = (
+                None
+                if pcs is None
+                else {
+                    "schema": "merlin.spike_scope_binding.v1",
+                    "elf_sha256": case["elf_sha256"],
+                    "input_sha256": case["input_sha256"],
+                    "scope_sha256": case["scope_sha256"],
+                    **pcs,
+                }
+            )
             observations.append(
                 {
                     "record_id": original["record_id"],
@@ -672,7 +696,7 @@ def prepare(inventory: dict, binding: dict) -> dict:
     }
     C.dataset(empty)
     return {
-        "schema": PLAN,
+        "schema": PLAN_V2 if per_observation else PLAN,
         "archive_sha256": inventory["archive_sha256"],
         "binding_sha256": C.digest(binding),
         "dataset_template": empty,
@@ -690,7 +714,7 @@ def attach(plan: dict, reports: dict) -> dict:
     """Attach original reports to a verified plan; missing cases retain denominator."""
     C.closed(reports, {"schema", "plan_sha256", "reports"}, "original observation attachment")
     if (
-        plan.get("schema") != PLAN
+        plan.get("schema") not in (PLAN, PLAN_V2)
         or reports["schema"] != "merlin.phase1.spike_observations.v1"
         or reports["plan_sha256"] != C.digest(plan)
     ):
@@ -710,6 +734,8 @@ def attach(plan: dict, reports: dict) -> dict:
     }
     for key, envelope in reports["reports"].items():
         original = by_id[key]
+        if original["scope_binding"] is None:
+            raise C.ContractError("native observation requires an original counter-window review")
         report = envelope.get("report") if isinstance(envelope, dict) else None
         if not isinstance(report, dict) or report.get("scope_binding") != original["scope_binding"]:
             raise C.ContractError("native report does not reproduce its exact reviewed counter-PC binding")

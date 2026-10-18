@@ -1,6 +1,7 @@
 """Synthetic archive integration and adversarial controls; no hardware verdicts."""
 
 import base64
+import copy
 import hashlib
 import io
 import json
@@ -325,6 +326,87 @@ def test_changed_native_scope_refuses(tmp_path):
     row["sha256"] = C.digest(row["report"])
     with pytest.raises(C.ContractError):
         A.attach(plan, reports)
+
+
+def per_record_binding(binding):
+    binding = copy.deepcopy(binding)
+    binding["schema"] = A.BINDING_V2
+    for case in binding["cases"]:
+        scope = case.pop("counter_scope")
+        case["counter_scopes"] = {
+            result: dict(scope, evidence_sha256=C.digest([scope["evidence_sha256"], result]))
+            for result in case["results"]
+        }
+    return binding
+
+
+def test_each_repeat_retains_its_original_counter_review(tmp_path):
+    _, inventory, binding, _ = prepared(tmp_path)
+    binding = per_record_binding(binding)
+    plan = A.prepare(inventory, binding)
+    assert plan["schema"] == A.PLAN_V2
+    first, second = plan["observations"][:2]
+    assert first["case_id"] == second["case_id"]
+    assert first["scope_binding"]["evidence_sha256"] != second["scope_binding"]["evidence_sha256"]
+    reports = reports_for(plan)
+    data = A.attach(plan, reports)
+    assert len(data["cases"]) == 3 and len(data["records"]) == 6
+    assert [row["label"]["cycles"] for row in data["records"]] == [100, 101] * 3
+    # Another repeat's receipt cannot stand in for this report's original review.
+    envelope = reports["reports"][second["record_id"]]
+    envelope["report"]["scope_binding"] = first["scope_binding"]
+    envelope["sha256"] = C.digest(envelope["report"])
+    with pytest.raises(C.ContractError, match="counter-PC binding"):
+        A.attach(plan, reports)
+
+
+def test_missing_review_preserves_labels_and_declared_case_denominator(tmp_path):
+    _, inventory, binding, _ = prepared(tmp_path)
+    binding = per_record_binding(binding)
+    case = binding["cases"][0]
+    case["counter_scopes"][case["results"][1]] = None
+    plan = A.prepare(inventory, binding)
+    assert len(plan["observations"]) == 6
+    reports = reports_for(plan)
+    missing = plan["observations"][1]["record_id"]
+    with pytest.raises(C.ContractError, match="requires an original counter-window review"):
+        A.attach(plan, reports)
+    reports["reports"].pop(missing)
+    data = A.attach(plan, reports)
+    assert len(data["cases"]) == 3 and len(data["records"]) == 4
+    assert case["case"]["case_id"] not in C.grouped_records(data)
+    result = V.validate(data, prediction_kind="event_timing")
+    assert not result["qualified"]
+
+
+@pytest.mark.parametrize("damage", ["missing", "extra", "changed_pc", "odd_pc", "receipt", "omit", "split"])
+def test_per_record_binding_cannot_relax_original_gates(tmp_path, damage):
+    _, inventory, binding, _ = prepared(tmp_path)
+    binding = per_record_binding(binding)
+    case = binding["cases"][0]
+    result = case["results"][1]
+    if damage == "missing":
+        case["counter_scopes"].pop(result)
+    elif damage == "extra":
+        case["counter_scopes"]["not-an-original-result"] = None
+    elif damage in {"changed_pc", "odd_pc"}:
+        case["counter_scopes"][result]["end_pc"] += 2 if damage == "changed_pc" else 1
+    elif damage == "receipt":
+        case["counter_scopes"][result]["evidence_sha256"] = "invalid"
+    elif damage == "omit":
+        case["results"].pop()
+        case["counter_scopes"].pop(result)
+    elif damage == "split":
+        binding["cases"][1]["case"]["source_group_sha256"] = case["case"]["source_group_sha256"]
+    with pytest.raises(C.ContractError):
+        A.prepare(inventory, binding)
+
+
+def test_v1_still_requires_one_nonmissing_counter_review(tmp_path):
+    _, inventory, binding, _ = prepared(tmp_path)
+    binding["cases"][0]["counter_scope"] = None
+    with pytest.raises(C.ContractError):
+        A.prepare(inventory, binding)
 
 
 def test_archive_cli_preserves_existing_output_and_requires_external_digest(tmp_path):

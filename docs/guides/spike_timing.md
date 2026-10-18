@@ -406,6 +406,22 @@ The closed `merlin.phase1.spike_archive_binding.v1` object contains:
   candidate that emitted those bytes. Each observation keeps its own result's
   candidate.
 
+Binding version 2, `merlin.phase1.spike_archive_binding.v2`, replaces each
+case's `counter_scope` with `counter_scopes`: an exact map from every original
+result path to its own reviewed scope. Repeats can retain different original
+review receipt digests while remaining records of one case. Their reviewed
+PCs and occurrence must agree. A missing review is explicitly `null`; its
+label and case remain declared, but no native report can attach to it.
+No boundary is inferred from another execution. Version 1 keeps its original
+nonmissing, single-review contract.
+
+Version 2 emits `merlin.phase1.spike_observation_plan.v2`. The existing attach,
+design-check and handoff commands accept both plan versions. Missing reviews
+prevent design readiness. Missing reports exclude the entire affected case's
+records from fitting while retaining its declared validation denominator, as
+before. Incomplete native timing stays incomplete; per-record receipts do not
+qualify feature counts, timing semantics or fitted coefficients.
+
 `review.counter` requires `unit: cycles`, integer `width_bits: 64`,
 `wrap: modulo`, the declared `clock`, integer `max_delta_cycles` strictly between
 zero and 2^63, and `sources` with accessor/ISA/clock SHA256 values. These must agree
