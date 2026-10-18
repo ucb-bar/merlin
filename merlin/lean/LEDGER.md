@@ -41,6 +41,17 @@ in verification, and assertion-enabled upstream `mlir-opt` reproduces an empty-p
 assertion in `TransposeOp::getIndexingMaps`. Passing Lean proofs do not establish native behavior
 for that form. Reproduction evidence is retained with shared-pass verification artifacts.
 
+S4: the checksum-pinned torch-mlir 20260531.828 native pipeline can mutate a captured initialized
+destination across nested `linalg.generic` iterations. A minimal no-splat pure-tensor source expects
+`[2,3]`; native execution returns `[2,4]`. Standalone one-shot-bufferization introduces the aliasing
+before any oracle wrapper or LLVM lowering. A reduction variant also fails, while an explicit
+`scf.for` control copies the destination each iteration and matches the reference. This conflicts
+with the documented [immutable tensor contract](https://mlir.llvm.org/docs/Bufferization/#destination-passing-style).
+The exact wheel's implementation root cause is not proved. These captured-destination forms are
+outside native-fidelity qualification; known-gap regressions are counted separately from matched
+cases. Tensor-model refinement and definedness proofs do not establish this downstream behavior.
+Fresh per-iteration destinations are qualified separately. No semantics workaround is introduced.
+
 ## Proposed dequantization source contract
 
 `Spec/Dequant.lean` specifies the distinct per-tensor and per-channel arithmetic orders from

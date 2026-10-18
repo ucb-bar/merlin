@@ -35,6 +35,16 @@ code_refs:
   - merlin/lean/MerlinVerify/Check/DefinedRules.lean
   - merlin/tests/ir/test_lean_float_definedness.py
   - merlin/tests/ir/test_lean_nested_definedness.py
+  - merlin/lean/MerlinVerify/Rules/IntegerIdentity.lean
+  - merlin/lean/MerlinVerify/Rules/ReshapeMixed.lean
+  - merlin/lean/MerlinVerify/Check/SplatNormalizer.lean
+  - merlin/lean/MerlinVerify/Check/SplatNestedC1.lean
+  - merlin/tests/ir/test_lean_integer_identity.py
+  - merlin/tests/ir/test_lean_integer_identity_native.py
+  - merlin/tests/ir/test_lean_reshape_mixed.py
+  - merlin/tests/ir/test_lean_reshape_mixed_differential.py
+  - merlin/tests/ir/test_lean_splat_nested.py
+  - merlin/tests/ir/test_lean_splat_nested_differential.py
 ---
 
 # Run Lean semantics differential tests
@@ -161,6 +171,13 @@ and a verified wrong-constant control. Undefined divisions, signed division over
 independently before native execution. This is closed-fragment folding, not general constant-DAG
 or input-dependent cast simplification.
 
+`Rules/IntegerIdentity.lean` separately certifies input-dependent scalar add/subtract-zero,
+multiply-one, bitwise AND-all-ones, and OR/XOR-zero rewrites. The adjacent actual scalar constant
+establishes runtime type evidence; poison is preserved. The checker removes both operations or
+retains an alpha-equivalent constant when it escapes. Reverse subtraction, flags and tensor
+identities remain refused. Actual-pass, mutation, strict-chain and native tests cover these rules;
+native inputs are exhaustive at i1/i8 and include edges and seeded samples at i13/i32/i64.
+
 `test_lean_reshape_compose.py` checks two collapses or two expansions against upstream's composed
 reshape, including group algebra, exact output shapes/types, escaping inputs, verified mutations
 and defined receipt replay. The native module compares both sides with the unchanged row-major
@@ -169,6 +186,13 @@ cancellation remain explicit refusals. All-unit rank-zero collapse/expand with e
 is legal upstream but currently stuck in Lean: two dedicated native tests retain that discrepancy,
 while binding tests require source support and coverage-chain abstention. A passing conditional
 boundary check alone must never be reported as coverage for these unsupported inputs.
+
+`Rules/ReshapeMixed.lean` additionally certifies expansion followed by collapse against one
+expansion or collapse. Successful expansion determines the original runtime shape from actual
+reassociation products; target legality is recomputed from that shape. Collapse-first pairs still
+need typed runtime facts, and bare-input cancellation and escaping intermediates remain refused.
+The mixed suites require strict source-defined chains and compare row-major bits independently,
+including empty integer tensors and exact f32/f64 payloads. BF16 has binding coverage only.
 
 Native-only modules are explicitly excluded from binding-only Lean CI. Missing native tools fail
 required qualification runs; no interpreter substitutes for native execution. Checker builds and
@@ -280,7 +304,27 @@ both checked programs. A removed producer must be dead in the canonical continua
 nested captures. Escaping full tensors remain live. The bare-scalar generic normal form is internal;
 exports and the native oracle still use only actual compiler IR. The binding suite checks both index
 widths, actual pass output, defined chain replay, stale receipts, captures, repeated generic uses and
-MLIR-verified mutations. Nested generic rewrite lifting remains unsupported.
+MLIR-verified mutations. `Check/SplatNested.lean` lifts exact normalization through supported
+single-block generic bodies using checked loop arguments and source safety. Region bindings mask
+captured uniform facts before entering the body. `SplatNormalizer` supplies one shared comparison
+checker for top-level and nested normalizers; both actual programs are checked independently.
+The default nesting budget derives from actual function bodies. Every budget has the same
+soundness proof; exhaustion can only cause refusal. Nested tests cover captures, stale SSA facts,
+three/four-level bodies, mutations and native results with independently initialized destinations.
+Rank-zero extraction permits strict source-defined chains; positive-rank extraction still needs
+its separate bounds obligation. Model-scale performance remains unmeasured.
+
+The nested suite also retains S4, a native bufferization discrepancy in the checksum-pinned
+torch-mlir 20260531.828 toolchain. A minimal no-splat tensor program reuses a captured initialized
+inner destination: Lean and the independent reference return `[2,3]`, but native execution returns
+`[2,4]`. Standalone one-shot-bufferization marks that destination in-place and repeatedly writes
+the same buffer. A reduction variant also fails; an explicit `scf.for` control inserts a copy and
+gets the expected result. This conflicts with the documented
+[immutable tensor and destination-copy contract](https://mlir.llvm.org/docs/Bufferization/#destination-passing-style).
+Captured-destination examples are outside native-fidelity qualification. Dedicated known-gap
+checks retain the mismatch separately from matched cases; identical wrong native results before
+and after compaction are not fidelity evidence. Fresh per-iteration destinations supply the
+matched nested corpus. No compiler pass, oracle or Lean semantics is changed to hide this finding.
 
 Typed receipts name `MerlinVerify.Check.TypedModule.check_sound` and record their domain and
 index width. `compose_chain` replays typed and universal boundaries together, requires every
@@ -299,7 +343,7 @@ This permits upstream hoisting a captured constant across static `tensor.empty`.
 includes the typed defined chain, native execution before and after, an independent integer
 reference, and rejection of a changed moved constant. `test_lean_motion.py` checks escaping values,
 integer widths, floating constants without arithmetic laws, and conservative refusals. Operand-taking
-motion, non-adjacent hoisting and nested rewriting still require additional work.
+motion, non-adjacent hoisting and nested motion still require additional work.
 
 ```sh
 MERLIN_LEAN_REQUIRED=1 .venv/bin/python -m pytest \

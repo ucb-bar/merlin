@@ -36,6 +36,10 @@ code_refs:
   - merlin/lean/MerlinVerify/Rules/ReshapeCompose.lean
   - merlin/lean/MerlinVerify/Check/SplatNormalize.lean
   - merlin/lean/MerlinVerify/Check/SplatC1.lean
+  - merlin/lean/MerlinVerify/Check/SplatNormalizer.lean
+  - merlin/lean/MerlinVerify/Check/SplatNestedC1.lean
+  - merlin/lean/MerlinVerify/Rules/IntegerIdentity.lean
+  - merlin/lean/MerlinVerify/Rules/ReshapeMixed.lean
   - merlin/lean/MerlinVerify/Rules/Motion.lean
 ---
 
@@ -761,6 +765,15 @@ result is mapped to the target constant, so unsupported escaping intermediates a
 `Check/Synth.lean` proposes arbitrary-length closed fragments through a reusable site-candidate
 interface, preserving existing CSE/motion/dequantization priority; every candidate is rechecked.
 
+`Rules/IntegerIdentity.lean` separately handles input-dependent neutral-element scalar rewrites:
+add/subtract-zero, multiply-one, AND-all-ones and OR/XOR-zero. The actual scalar constant forces
+successful source arithmetic to have the matching runtime width, without trusting annotations.
+Poison is preserved. A checked alpha-equivalent constant may remain when it escapes; otherwise
+both operations disappear and the result aliases the actual corresponding input. General casts,
+flagged arithmetic and tensor identities remain outside this rule. The synthesizer retains an
+unchanged prefix when the next operation pair has an existing local rewrite, preserving SSA
+correspondence for commutation alongside the larger identity sites.
+
 `Rules/ReshapeCompose.lean` checks two collapses or two expansions against one target reshape.
 `ReshapeGroups.valid_merge` establishes composed groups for actual runtime extents;
 `ReshapeIndex.compose` handles row-major values, zero extents and poison without positivity
@@ -770,7 +783,11 @@ requires literal tensor equality, including arbitrary out-of-bounds reads. It do
 bare-input cancellation. Upstream permits all-unit rank-zero transitions with empty reassociation;
 the current semantics rejects these, so separate support checks and coverage chains abstain even
 when a conditional boundary theorem accepts. These transitions are not qualified.
-Nested rewrite lifting and numerical policies remain outstanding.
+`Rules/ReshapeMixed.lean` handles expansion followed by collapse against one expansion or collapse.
+Actual expansion success fixes the original runtime shape through reassociation products; the
+checker recomputes target legality for that shape. Collapse-first pairs need additional typed
+runtime facts. Bare-input cancellation and escaping intermediates remain outside coverage.
+Nested shape rewriting and numerical policies remain outstanding.
 
 **Uniform input compaction.** `Rules/StructuredInputs.lean` proves that two independently checked
 structured layouts execute identically when their loop ranges, output maps and body input values
@@ -797,10 +814,23 @@ using conditional target normalization to mask unsupported target behavior. `Typ
 this additional checker. Actual-pass tests cover scalar/tensor captures, repeated producer uses,
 multiple splats, preserved full results, affine indexing, malformed/stale SSA facts, byte-bound
 chains and MLIR-verified wrong outputs. Native tests compare actual programs and independent
-integer references, including exact floating payloads. The supported domain is top-level static,
-unencoded tensor generics with supported bodies; rewriting nested generics remains outstanding.
+integer references, including exact floating payloads. `Check/SplatNested.lean` lifts exact
+normalization through checked generic bodies, preserving actual runtime argument/output types and
+masking facts rebound by region arguments. `SplatNormalizer` supplies the shared whole-function
+checker and soundness proof for both the top-level and nested normalizers. A structural function-body
+budget controls completeness; all budgets share the same soundness theorem. Source-definedness
+composes proved body rulebooks and supports rank-zero extraction, while positive-rank extraction
+still needs separate bounds proofs. The domain remains static, unencoded generics with supported
+single-block bodies. Other changed region families remain refused.
 Fact lookup, repeated continuation checks and candidate replay can have superlinear cost.
 Synthetic qualification does not establish performance on a paper model bundle.
+
+Native qualification retains S4: nested generics using a captured initialized tensor destination
+can be miscompiled by the pinned one-shot-bufferization pipeline. Independent no-splat, reduction
+and explicit-loop controls isolate the discrepancy before LLVM and oracle wrapping. These forms
+are outside native-fidelity qualification, even when both sides of a proved tensor rewrite share
+the wrong native result. Fresh per-iteration destinations are qualified separately. See the
+assumption ledger and differential guide; the tensor semantics is not changed to mimic aliasing.
 
 Over-rank matmul capture repair is **not** an ordinary shape equivalence obligation. Its source is
 explicitly invalid linalg (`collapse_overrank_matmul`), so proving refinement against its unsupported
