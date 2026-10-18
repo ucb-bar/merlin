@@ -150,6 +150,12 @@ the score contraction keeps its original planes. Captures record `operand_encodi
 Historical `planes.operand` recipes retain their original radix arithmetic. Selecting extra partner
 planes remains a numerical recipe choice requiring measurement and review.
 
+`dynamic.planes.residual_operand` applies the same bounded residual encoding to every ordinary
+operand, including both operands of the score contraction. It is mutually exclusive with the
+historical `planes.operand` radix selector. With two residual planes and two softmax planes,
+both score and context contractions take four device calls per head, versus one and two with
+the original single-operand grid. This additional precision also requires measurement and review.
+
 ## Where each model's derived recipe is recorded
 
 - Phase 0 evidence: `software/quantization-contract.json` records the methodology and the selected
