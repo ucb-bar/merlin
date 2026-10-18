@@ -11,6 +11,12 @@ observe a nonuniform, block-legal vector and required accelerator placement;
 scalar, uniform, malformed and host-only members do not cover that demand.
 Convolution entries state stride, padding and dilation explicitly so requirement
 and certification-cost readers see the same geometry as the capsule builder.
+Independent-column cases add gains varying within a physical scale vector;
+existing block-uniform cases remain mandatory. `output_scale_partition` binds
+the source gain vector and physical width as an arithmetic-only obligation.
+It grants no physical packing, command count, target implementation or execution.
+Per-channel methodology and reviewed model-variant selection preserve existing
+defaults and retain the physical scale width in capture recipes.
 `op_form_regimes.boundary_witnesses` supplies adjacent scalar comparisons from a
 selected `Bound`, retaining impossible positive lower witnesses as missing. It
 grants no tensor-axis, physical-capacity or tiling interpretation.

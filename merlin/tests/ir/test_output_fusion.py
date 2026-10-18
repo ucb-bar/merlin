@@ -252,7 +252,7 @@ def test_an_activation_after_the_scale_is_the_same_exact_readout():
     assert device.fusion["cut"] == "requant"
 
 
-def test_a_per_channel_scale_is_taken_only_where_the_readout_holds_one():
+def test_per_channel_source_scales_keep_a_separate_physical_partition_obligation():
     per_channel = (0.5, 0.25, 0.5, 0.125, 0.5, 0.25, 0.5, 0.125)
     text = _module(weight_scale=per_channel, bias=(0,) * 8)
 
@@ -262,23 +262,82 @@ def test_a_per_channel_scale_is_taken_only_where_the_readout_holds_one():
     device, _host = _fused(text, _path(channel))
     assert device.fusion["cut"] == "requant"
     device, _host = _fused(text, _path())
-    assert device.fusion["cut"] == "accumulator" and device.fusion["stages"] == ["bias"]
-    assert ("requant", OF.GRANULARITY) in _codes(device)
+    assert device.fusion["cut"] == "requant"
+    partition = device.fusion["proof"]["output_column_partition"]
+    assert partition["scope"] == "source_arithmetic_only" and partition["physical_columns_per_scale"] == 4
+    assert "commands" not in device.fusion["proof"]
+    from merlin.xdsl_dialects.lowering import group_output_program
+
+    stated = group_output_program.program(device, weight_args=frozenset())
+    assert stated.entry["acc_scale_by_column"] == device.fusion["proof"]["device_scale"]
+    assert stated.entry["output_dtype"] == "i8"
 
 
-@pytest.mark.parametrize(("columns", "cut"), [(4, "requant"), (8, "accumulator")])
-def test_a_different_mesh_size_changes_which_scales_one_command_holds(columns, cut):
+def test_independent_column_statement_refuses_a_changed_gain_or_obligation():
+    from dataclasses import replace
+
+    from merlin.xdsl_dialects.lowering import group_output_program
+
+    scales = (0.5, 0.25, 0.5, 0.125, 0.5, 0.25, 0.5, 0.125)
+    group, _ = _fused(_module(weight_scale=scales, bias=(0,) * 8), _path())
+    for change in ("gain", "width", "scope", "missing"):
+        altered = replace(group, fusion=copy.deepcopy(group.fusion))
+        proof = altered.fusion["proof"]
+        if change == "gain":
+            proof["device_scale"][0] *= 2
+        elif change == "width":
+            proof["output_column_partition"]["physical_columns_per_scale"] *= 2
+        elif change == "scope":
+            proof["output_column_partition"]["scope"] = "hardware_qualified"
+        else:
+            proof.pop("output_column_partition")
+        with pytest.raises(CG.NoCapsuleForm, match="independent-column"):
+            group_output_program.program(altered, weight_args=frozenset())
+
+
+@pytest.mark.parametrize("columns", [4, 8])
+def test_physical_width_changes_the_direct_or_partitioned_readout_obligation(columns):
     blocks = (0.5,) * 4 + (0.25,) * 4  # uniform within each group of four columns
 
     def width(path):
         path["readout"][2]["columns_per_scale"] = columns
 
     device, _host = _fused(_module(weight_scale=blocks), _path(width))
-    assert device.fusion["cut"] == cut
-    if cut == "requant":
+    assert device.fusion["cut"] == "requant"
+    if columns == 4:
         assert device.fusion["proof"]["commands"] == 2 and device.fusion["proof"]["scale_reconfigurations"] == 1
     else:
-        assert ("requant", OF.GRANULARITY) in _codes(device)
+        assert device.fusion["proof"]["output_column_partition"]["physical_columns_per_scale"] == columns
+        assert "commands" not in device.fusion["proof"]
+
+
+def test_a_per_tensor_only_path_keeps_nonuniform_source_gains_on_host():
+    def tensor(path):
+        path["readout"][2]["granularity"] = "per_tensor"
+
+    device, _host = _fused(_module(weight_scale=(0.5,) * 4 + (0.25,) * 4), _path(tensor))
+    assert device.fusion["cut"] == "accumulator"
+    assert ("requant", OF.GRANULARITY) in _codes(device)
+
+
+def test_logical_partition_binding_preserves_already_typed_float64_gains():
+    gains = np.asarray([0.1, 0.1, 0.2, 0.2], dtype=np.float64)
+    stage = {"dtype": "f64", "granularity": "per_command", "columns_per_scale": 2}
+    direct = OF._granularity(gains, stage, 4)
+    assert direct["commands"] == 2 and "output_column_partition" not in direct
+    split = OF._granularity(gains, {**stage, "columns_per_scale": 4}, 4)
+    assert split["output_column_partition"]["columns"] == 4
+    assert split["output_column_partition"]["scope"] == "source_arithmetic_only"
+
+
+@pytest.mark.parametrize("width", [None, 0, False])
+def test_missing_physical_scale_width_cannot_be_replaced_by_a_logical_partition(width):
+    def unknown(path):
+        path["readout"][2]["columns_per_scale"] = width
+
+    device, _ = _fused(_module(), _path(unknown))
+    assert device.fusion["cut"] == "accumulator"
+    assert ("requant", OF.UNDECLARED) in _codes(device)
 
 
 def test_without_a_preload_a_nonzero_bias_cannot_be_absorbed_at_all():
@@ -367,7 +426,7 @@ def test_a_float_bias_off_the_accumulator_grid_is_refused_not_rounded():
     assert device.fusion["cut"] == "bare"
 
 
-@pytest.mark.parametrize("scales", [(0.5,) * 8, (0.5,) * 4 + (0.25,) * 4])
+@pytest.mark.parametrize("scales", [(0.5,) * 8, (0.5,) * 4 + (0.25,) * 4, (0.5, 0.25) * 4])
 def test_device_statement_keeps_the_proved_readout_and_reproduces_source_outputs(scales):
     from merlin.xdsl_dialects.lowering import group_command as GC
 
@@ -406,11 +465,12 @@ def test_another_readout_format_is_not_silently_rounded_to_a_native_f32_statemen
         GC.program(device, weight_args=())
 
 
-def test_selected_prepack_uses_proved_offsets_without_rederiving_float_bias(tmp_path, monkeypatch):
+@pytest.mark.parametrize("scales", [(0.5,) * 4 + (0.25,) * 4, (0.5, 0.25) * 4])
+def test_selected_prepack_uses_proved_offsets_without_rederiving_float_bias(tmp_path, monkeypatch, scales):
     from merlin.xdsl_dialects.lowering import group_numerics as GN
     from merlin.xdsl_dialects.lowering import group_prepack as GP
 
-    device, _host = _fused(_module(weight_scale=(0.5,) * 4 + (0.25,) * 4), _path())
+    device, _host = _fused(_module(weight_scale=scales), _path())
     manifest, weights = tmp_path / "manifest.json", tmp_path / "weights.safetensors"
     manifest.write_text("{}")
     weights.write_bytes(b"")  # no stored parameter: these source operands are dense constants

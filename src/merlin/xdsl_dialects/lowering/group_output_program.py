@@ -89,8 +89,15 @@ def _readout(proof, stages, columns):
         _refuse("the gain granularity is unknown")
     if isinstance(width, bool) or not isinstance(width, int) or width <= 0:
         _refuse("the gain-block width is not a positive integer")
-    if any(len(set(gains[start:start + width])) != 1 for start in range(0, columns, width)):
-        _refuse("proved gains vary inside a declared gain block")
+    partition = proof.get("output_column_partition")
+    if partition is not None:
+        from merlin.targetgen.output_scale_partition import obligation
+
+        expected = obligation(gains, width) if granularity == "per_command" else None
+        if expected is None or partition != expected:
+            _refuse("the independent-column obligation differs from its proved gains or physical width")
+    elif any(len(set(gains[start:start + width])) != 1 for start in range(0, columns, width)):
+        _refuse("proved gains vary inside a declared gain block without an independent-column obligation")
     return {"acc_scale": gains[0]} if len(set(gains)) == 1 else {"acc_scale_by_column": list(gains)}
 
 

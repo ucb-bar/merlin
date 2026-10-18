@@ -7,6 +7,7 @@ compiler, never a target implementation or a successful execution verdict.
 
 from __future__ import annotations
 
+import copy
 import math
 
 from merlin.common import quant_formats as QF
@@ -81,6 +82,14 @@ def requirements(path, dtypes, carriers=("matmul",), *, tails=True):
                     "evidenced_by": ["derived_output_path"],
                     "column_readout": {"columns_per_scale": width, "columns": 2 * width + int(tail), "case": case},
                 })
+    # Preserve the existing block-uniform demands and add independent logical
+    # columns. The candidate owns any physical partitioning implementation.
+    if width > 1:
+        for row in list(rows):
+            per_column = copy.deepcopy(row)
+            per_column["signature"] = row["signature"].replace("|column_group_scale|", "|independent_column_scale|")
+            per_column["column_readout"]["logical_granularity"] = "per_channel"
+            rows.append(per_column)
     return rows
 
 
@@ -95,10 +104,12 @@ def entry(requirement):
     """A generic accelerator workload for this requirement, without captured values."""
     row = requirement["column_readout"]
     width, columns = row["columns_per_scale"], row["columns"]
+    independent = row.get("logical_granularity") == "per_channel"
     # Deliberate workload constants, not hardware facts or model parameters.
     gains = (0.5, 0.125, 0.75)
     return {
-        "name": f"SY_column_readout_{requirement['op']}_{requirement['dtype']}_{row['case']}",
+        "name": f"SY_{'independent_column' if independent else 'column'}_readout_"
+                f"{requirement['op']}_{requirement['dtype']}_{row['case']}",
         "cat": "layers", "kind": "layer", "label": "public", "op": requirement["op"],
         "operand_dtype": requirement["dtype"], "epilogue": list(requirement["epilogue"]),
         "output_dtype": "i8",
@@ -106,9 +117,13 @@ def entry(requirement):
         "ci": width, "Himg": 2, "Wimg": 3, "kh": 1, "kw": 1,
         **({"stride": [1, 1], "padding": [0, 0, 0, 0], "dilation": [1, 1]}
            if requirement["op"] == "conv2d" else {}),
-        "acc_scale_by_column": [gains[(i // width) % len(gains)] for i in range(columns)],
+        "acc_scale_by_column": [gains[(i if independent else i // width) % len(gains)] for i in range(columns)],
         "source_role": "derived_sweep",
-        "source_reference": f"selected output path permits one f32 gain per {width} columns; synthetic gain changes",
+        "source_reference": (
+            f"selected physical readout shares one f32 gain across {width} lanes; "
+            "independent logical-column source gains require a compiler implementation"
+            if independent else f"selected output path permits one f32 gain per {width} columns; synthetic gain changes"
+        ),
         "lanes": {"require": ["on_mesh"]},
         "generalization": {"generalization_axis": "column_readout", "must_accelerate": True, "eligible": True},
     }
@@ -132,5 +147,7 @@ def matches(cap, requirement):
         gains = declared_acc_scale_by_column(attrs, columns, op="column-readout coverage")
     except (ValueError, TypeError, OverflowError):
         return False
-    return (all(math.isfinite(v) and v > 0 for v in gains) and len(set(gains)) > 1
-            and all(len(set(gains[i:i + width])) == 1 for i in range(0, columns, width)))
+    if not (all(math.isfinite(v) and v > 0 for v in gains) and len(set(gains)) > 1):
+        return False
+    uniform = all(len(set(gains[i:i + width])) == 1 for i in range(0, columns, width))
+    return not uniform if requirement["column_readout"].get("logical_granularity") == "per_channel" else uniform

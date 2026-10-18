@@ -65,9 +65,12 @@ output level is first reached at the same accumulator value, channel by channel.
 K, the stored weights and the operand formats. One integer offset (the preload) must align every
 level. With a residual, it must align them for every value the residual can take. Order (relu
 before or after the scale), formats, rounding and clamp are modelled exactly as the path declares
-them. A per-channel scale is foldable only where it is uniform within each group of
-`columns_per_scale` columns. The proof then records how many readout commands and scale
-reconfigurations that costs, and it never issues one command per column.
+them. Block-uniform scales retain the existing direct-readout block and
+reconfiguration accounting. Differing logical column gains under a per-command
+scale carry an `output_column_partition` obligation bound to the exact gain vector
+and physical `columns_per_scale`. This record covers source arithmetic only.
+The compiler must supply and qualify the physical implementation; the record
+assigns no command count, packing, allocation or timing result.
 
 `compute_groups.form_groups(fusion=...)` applies the decisions. It records on each group the cut, the
 absorbed stages, the proof and every longer cut's refusal. The private full-model gate runs the pass
@@ -107,8 +110,12 @@ pool, and other scale formats.
 When a path is declared, the epilogue axis requires each stage it performs (`derived_output_path`
 evidence), unless a declared readout refuses the stage. The group axis demands, for each contraction
 format, the requantizing chain with the preloaded bias, and the same chain closed by the pool.
-Capabilities no capsule stage can state yet, an accumulated residual and a column-group scale, are
-listed as unstated demands with the reason.
+Column readout demands include both block-uniform and independent logical-column
+gains, with aligned and partial-block matrix/convolution cases. Synthetic gains
+and small extents use the selected physical width and independent public carrier
+families. Every case requires accelerator execution. Existing block cases remain
+mandatory. Features the stage vocabulary cannot state, including an accumulated
+residual, remain unstated demands with their reasons.
 
 ## Known limits
 

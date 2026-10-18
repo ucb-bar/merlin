@@ -5,8 +5,9 @@ not enough to quantize a model the way the unit computes it. A contraction unit'
 (:mod:`merlin.targetgen.output_path`) fixes much more: which value is preloaded into the
 accumulator (a bias), which rectifier runs in which domain, how many columns share ONE scale, the
 rounding, the clamp, the window maximum. A model quantized without those facts computes a
-different function: a per-channel scale where the readout holds one scale per sixteen columns, a
-float bias off the accumulator grid, three float roundings where the unit has one. Every one of
+different function: a float bias off the accumulator grid, or three float roundings where the unit
+has one. Explicit per-channel source scales leave independent output partitions to the compiler,
+while retaining the physical readout vector's one shared scale. Every one of
 them makes the compiler's exactness proof fail, and each one was chosen by a default, not by the
 target.
 
@@ -39,7 +40,7 @@ EPILOGUE_SCHEMA = "integer_epilogue_v1"
 FROM_OUTPUT_PATH = "from_output_path"
 
 #: Authored vocabulary. Closed: a new rule adds a word here and the code that realizes it.
-SCALE_GRANULARITIES = (FROM_OUTPUT_PATH, "per_tensor")
+SCALE_GRANULARITIES = (FROM_OUTPUT_PATH, "per_tensor", "per_channel")
 BIASES = ("accumulator_preload_int32", "host_float")
 EPILOGUES = ("integer_domain",)
 CALIBRATIONS = ("mse", "percentile", "minmax")
@@ -50,7 +51,7 @@ ISLAND_OPS = ("softmax", "layer_norm", "rms_norm", "group_norm", "gelu", "silu",
 #: The only island format: Merlin's host computes these in IEEE single precision, never bf16/f16.
 ISLAND_DTYPE = "fp32"
 #: What a reviewed model variant may change in a derived recipe, and nothing else.
-VARIANT_CHANGES = ("families", "dynamic", "calibration_count")
+VARIANT_CHANGES = ("families", "dynamic", "calibration_count", "scale_granularity")
 _FIELDS = {
     "schema",
     "scale_granularity",
@@ -164,6 +165,9 @@ def validate(block: Any) -> dict[str, Any]:
         if "calibration_count" in changes:
             count = changes["calibration_count"]
             _require(type(count) is int and count > 0, f"{where}.changes.calibration_count is a positive integer")
+        if "scale_granularity" in changes:
+            _require(changes["scale_granularity"] in SCALE_GRANULARITIES,
+                     f"{where}.changes.scale_granularity is one of {list(SCALE_GRANULARITIES)}")
         key = (row["model"], row["name"])
         _require(key not in seen, f"{where} repeats model variant {key}")
         seen.add(key)
@@ -220,6 +224,9 @@ def derive(
     same document with ``status: underivable`` and the reasons.
     """
     method = validate(methodology)
+    selected_granularity = method["scale_granularity"]
+    for variant in variants_for(method, model):
+        selected_granularity = variant["changes"].get("scale_granularity", selected_granularity)
     if base.get("schema") != QR.SCHEMA or base.get("status") != QR.DERIVED:
         raise ValueError("a methodology derives from a derived quant_recipe_v1")
     body = json.loads(json.dumps(dict(base)))
@@ -277,10 +284,23 @@ def derive(
             "the capture graph computes the scale in fp32 only"
         )
     # Scale granularity: the columns ONE scale covers.
-    if method["scale_granularity"] == "per_tensor":
+    if selected_granularity == "per_tensor":
         weight.update(granularity="tensor")
         weight.pop("channels_per_scale", None)
         body["why"]["weight.granularity"] = "the methodology asks for one weight scale per tensor"
+    elif selected_granularity == "per_channel":
+        weight.update(granularity="channel")
+        weight.pop("channels_per_scale", None)
+        if scale.get("granularity") not in ("per_channel", "per_command"):
+            underivable["scale.granularity"] = "per-channel source scales require a configurable readout gain"
+        elif scale.get("granularity") == "per_command" and (
+            type(scale.get("columns_per_scale")) is not int or scale["columns_per_scale"] < 1
+        ):
+            underivable["scale.columns_per_scale"] = "the physical readout scale-vector width is not derived"
+        body["why"]["weight.granularity"] = (
+            "explicit per-channel source weight scales; independent output partitions remain a compiler "
+            "obligation under the unchanged physical readout width"
+        )
     elif scale.get("granularity") == "per_channel":
         weight.update(granularity="channel")
         weight.pop("channels_per_scale", None)
@@ -392,6 +412,8 @@ def derive(
     if epilogue["activation"] is not None and epilogue["activation"]["function"] != "relu":
         epilogue["activation"] = None  # only a rectifier is a stage the graph spells; others stay on the host
     body["epilogue"] = epilogue
+    if selected_granularity == "per_channel" and scale.get("granularity") == "per_command":
+        epilogue["scale"]["logical_granularity"] = "per_channel"
     body["why"]["epilogue"] = (
         "integer-domain epilogue in the output path's order: the contraction and the stages the path performs "
         "after it are one pattern, computed as the unit does (integer operands, accumulator plus preloaded bias, "

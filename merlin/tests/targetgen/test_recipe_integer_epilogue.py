@@ -82,7 +82,11 @@ def _recipes() -> dict[str, dict]:
         activation=QR.TensorSpec("int8", "tensor", True, -128, 127),
         families=(QR.CONTRACTION,),
     ).to_dict() | {"accumulator_dtype": "int32"}
-    return {name: QM.derive(base, _METHODOLOGY, path) for name, path in PATHS.items()}
+    recipes = {name: QM.derive(base, _METHODOLOGY, path) for name, path in PATHS.items()}
+    recipes["partitioned_per_column"] = QM.derive(
+        base, {**_METHODOLOGY, "scale_granularity": "per_channel"}, _path(),
+    )
+    return recipes
 
 
 def test_the_quantizer_reads_the_epilogue_block_through_its_sibling() -> None:
@@ -91,6 +95,21 @@ def test_the_quantizer_reads_the_epilogue_block_through_its_sibling() -> None:
     assert 'recipe.get("epilogue")' in quantizer and "import _integer_epilogue as IE" in quantizer
     assert "DerivedQuantizationSpec" in epilogue and "def equalize" in epilogue and "def correct_biases" in epilogue
     assert all(r["status"] == QR.DERIVED for r in _recipes().values())
+
+
+@pytest.mark.parametrize("change", [
+    {"logical_granularity": "per_tensor"}, {"columns_per_scale": False},
+    {"columns_per_scale": 0}, {"granularity": "per_tensor"},
+])
+def test_logical_channel_policy_cannot_replace_physical_readout_facts(change):
+    from copy import deepcopy
+
+    from merlin.targetgen import _integer_epilogue as IE
+
+    block = deepcopy(_recipes()["partitioned_per_column"]["epilogue"])
+    block["scale"].update(change)
+    with pytest.raises(IE.EpilogueError):
+        IE.check(block)
 
 
 _SCRIPT = r"""
@@ -191,6 +210,9 @@ def test_each_output_path_yields_its_own_integer_epilogue(tmp_path) -> None:
     assert plain["first_reads"] == ["aten.mul.Tensor"]
     # A scale per column: one multiplier per channel.
     assert got["per_column"]["first_distinct_multipliers"] > 2
+    assert got["partitioned_per_column"]["first_distinct_multipliers"] > 2
+    assert got["partitioned_per_column"]["kept"] == 0
+    assert got["partitioned_per_column"]["by_exit"] == got["per_column"]["by_exit"]
     # Another clamp: the requantizing exit clamps to it.
     assert got["clamp_127"]["unit_requant_clamps"] == [[-127, 127]]
     # No preload: the bias stays a float add on the host and no pattern requantizes across it.

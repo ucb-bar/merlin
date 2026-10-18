@@ -483,16 +483,31 @@ def _device_scale(chain: Chain, readout, channels: int):
 
 
 def _granularity(total, scale_stage, channels: int) -> dict[str, Any]:
-    """Whether the device can hold ``total`` per channel; how many readout commands that costs."""
+    """Direct gain blocks, or a bound obligation for independent logical columns."""
     import numpy as np
 
     granularity = scale_stage.get("granularity")
     if granularity == "per_channel":
         return {"granularity": "per_channel", "commands": 1}
     width = scale_stage.get("columns_per_scale") if granularity == "per_command" else None
-    width = int(width) if isinstance(width, int) and width > 0 else channels
+    if granularity == "per_command":
+        if type(width) is not int or width < 1:
+            raise _Refused(UNDECLARED, "the physical scale-vector width is not a positive integer")
+    else:
+        width = channels
     blocks = [total[i : i + width] for i in range(0, channels, width)]
     if any(np.unique(block).size != 1 for block in blocks):
+        if granularity == "per_command":
+            from merlin.targetgen.output_scale_partition import obligation
+
+            try:
+                partition = obligation([float(value) for value in total], width)
+            except ValueError as error:
+                raise _Refused(UNMODELED, str(error)) from error
+            # Numeric equivalence is still proved over the complete source bound.
+            # No command count or physical placement follows from this record.
+            return {"granularity": "per_command", "columns_per_scale": width,
+                    "output_column_partition": partition}
         raise _Refused(
             GRANULARITY,
             f"the scale differs within a group of {width} column(s) one readout scale covers",

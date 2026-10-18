@@ -25,6 +25,8 @@ the quantized graph compute exactly that arithmetic:
 
 Nothing here imports merlin, names a target or a model; every number comes from the recipe block.
 A pattern the block cannot express is left in PT2E's portable form and listed with the reason.
+An explicit logical per-channel policy retains independent source gains while
+leaving physical output partitioning to the compiler and its execution gates.
 """
 
 from __future__ import annotations
@@ -54,6 +56,11 @@ def check(block: Mapping[str, Any]) -> dict[str, Any]:
     scale = block.get("scale")
     if not isinstance(scale, Mapping) or scale.get("rounding") not in ROUNDINGS:
         raise EpilogueError("the epilogue scale states a rounding this graph spells exactly (half_even)")
+    if "logical_granularity" in scale:
+        if scale["logical_granularity"] != "per_channel" or scale.get("granularity") != "per_command":
+            raise EpilogueError("logical per-channel scales require a configurable per-command readout")
+        if type(scale.get("columns_per_scale")) is not int or scale["columns_per_scale"] < 1:
+            raise EpilogueError("logical per-channel scales retain the positive physical scale-vector width")
     requant = block.get("requant")
     if requant is not None:
         clamp = requant.get("clamp")
@@ -530,7 +537,7 @@ class Epilogue:
             multiplier = accumulator_step
         multiplier = multiplier.to(torch.float32)
         columns = (self.block.get("scale") or {}).get("columns_per_scale")
-        if isinstance(columns, int) and columns > 0:
+        if self.block["scale"].get("logical_granularity") != "per_channel" and isinstance(columns, int) and columns > 0:
             for start in range(0, channels, columns):
                 if torch.unique(multiplier[start : start + columns]).numel() != 1:
                     raise EpilogueError(f"the device multiplier differs within a group of {columns} columns")

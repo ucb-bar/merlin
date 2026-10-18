@@ -32,7 +32,10 @@ unreachable level above its maximum. Interior thresholds cannot exclude values
 outside a narrower source clamp. Bounded domains that never reach either
 differing clamp remain eligible when their complete threshold proof succeeds.
 Selected fusion statements preserve the proof's accumulator/readout formats,
-gain-block legality and integer offsets. Packing consumes those exact offsets;
+physical gain-vector width and integer offsets. Independent logical column
+scales carry a gain-bound arithmetic-only partition obligation; the target
+compiler still owns physical legality, allocation and execution. A missing or
+altered obligation refuses the statement. Packing consumes those exact offsets;
 it never independently divides and rounds the original floating bias. Unsupported
 statement formats refuse without replacing the selected cut by a bare contraction.
 

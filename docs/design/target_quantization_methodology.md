@@ -18,7 +18,6 @@ the accumulator, a rectifier before or after the scale, one f32 scale per readou
 those facts computes a different function, and the fusion pass's exactness proof then fails on
 numbers rather than on hardware:
 
-- a per-channel weight scale that varies inside a 16-column group: `scale_granularity`;
 - a float bias off the accumulator grid: `inexact`;
 - three float roundings (`* s_x`, `* s_w`, `* 1/s_out`) where the unit rounds once: `inexact`.
 
@@ -33,7 +32,7 @@ In the target's software spec, under `quantization.methodology`
 
 | field | values | meaning |
 | --- | --- | --- |
-| `scale_granularity` | `from_output_path`, `per_tensor` | weight scales per readout command (`channels_per_scale = columns_per_scale`), per column, or per tensor, as the path's scale stage says |
+| `scale_granularity` | `from_output_path`, `per_tensor`, `per_channel` | retain the existing path-derived policy, select tensor scales, or explicitly select independent logical channel scales |
 | `bias` | `accumulator_preload_int32`, `host_float` | a bias is the i32 code `round_half_even(b / (s_x * s_w))`, refused outside i32, where the path preloads; otherwise a host add |
 | `epilogue` | `integer_domain` | the quantized graph computes the readout's own arithmetic, in the path's order |
 | `rounding`, `clamp` | `from_output_path` | the requant rounding and integer range; a rounding the graph cannot spell exactly makes the recipe underivable |
@@ -44,6 +43,15 @@ In the target's software spec, under `quantization.methodology`
 
 Every hardware value is the word `from_output_path`; no number about the hardware is written in the
 spec.
+
+`per_channel` selects source quantization granularity. A configurable per-command
+readout retains its derived `columns_per_scale`, and its recipe records
+`epilogue.scale.logical_granularity: per_channel`. The compiler must implement
+independent output partitions where gains differ within that physical vector.
+The source arithmetic proof binds the full gain vector and physical width;
+packing, commands, resources and actual execution still require qualification.
+An unknown physical width or a per-tensor-only scale refuses this selection.
+Existing `from_output_path` recipes retain their exact bytes.
 
 ## How a recipe is derived
 
@@ -87,7 +95,7 @@ preserved at that width and the next quantized reader supplies the grid after th
 acc  = int8(x) @ int8(w)            dequantize of scale 1: the integerizer emits an exact i32 contraction
 acc += k                            the i32 bias code, carried exactly in f32
 acc  = relu(acc)                    in the accumulator domain when the path says so
-y    = f32(acc) * M                 M = f32(s_x * s_w / s_out), one value per column group
+y    = f32(acc) * M                 M = f32(s_x * s_w / s_out), selected logical channel/group gains
 q    = clamp(rne(y), lo, hi)        quantize of scale 1: round half to even, the path's clamp
 ```
 
@@ -140,10 +148,13 @@ A model's recipe differs from the shared one only through a `model_variants` row
   reviewed_by: <who approved it, when>
   reason: <why this model needs it>
   measured_accuracy: {basis: <how measured>, <metric>: <number>, ...}
-  changes: {families: [...], dynamic: {...}, calibration_count: N}   # nothing else may change
+  changes: {families: [...], dynamic: {...}, calibration_count: N, scale_granularity: per_channel}
 ```
 
 A row without a review, a reason or a measurement is refused, and so is a change outside `changes`.
+An unselected scale-granularity variant leaves the complete shared and other
+models' recipes unchanged. A new per-channel candidate still needs measured
+numerical review, capture/replay and the original model admission gates.
 The private gate's own `capture_recipe_variant` review (base vs selected digests) still applies to
 whatever recipe a sealed capture selects.
 

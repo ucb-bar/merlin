@@ -126,6 +126,40 @@ def test_a_scale_per_column_gives_ungrouped_channel_scales():
     assert recipe["epilogue"]["scale"]["granularity"] == "per_channel"
 
 
+def test_explicit_per_channel_policy_preserves_the_physical_readout_width():
+    recipe = QM.derive(_base(), {**METHODOLOGY, "scale_granularity": "per_channel"}, _path())
+    assert recipe["status"] == QR.DERIVED
+    assert recipe["weight"]["granularity"] == "channel" and "channels_per_scale" not in recipe["weight"]
+    assert recipe["epilogue"]["scale"] == {
+        "dtype": "fp32", "rounding": "half_even", "granularity": "per_command", "columns_per_scale": 16,
+        "logical_granularity": "per_channel",
+    }
+
+
+def test_reviewed_channel_scale_variant_changes_only_its_selected_model():
+    changed = copy.deepcopy(METHODOLOGY)
+    changed["model_variants"].append({
+        "model": "classifier", "name": "independent-column-scales", "status": "reviewed",
+        "reviewed_by": "test reviewer", "reason": "synthetic source policy selection",
+        "measured_accuracy": {"basis": "synthetic test; no production admission"},
+        "changes": {"scale_granularity": "per_channel"},
+    })
+    for model in (None, "decoder", "other"):
+        assert QM.derive(_base(), changed, _path(), model=model) == _derive(_path(), model=model)
+    selected = QM.derive(_base(), changed, _path(), model="classifier")
+    assert "channels_per_scale" not in selected["weight"]
+    assert selected["epilogue"]["scale"]["logical_granularity"] == "per_channel"
+    assert selected["methodology"]["variants"][0]["changes"] == ["scale_granularity"]
+
+
+@pytest.mark.parametrize("scale", [
+    {"granularity": "per_tensor"}, {"columns_per_scale": None}, {"columns_per_scale": False},
+])
+def test_per_channel_policy_does_not_invent_configurability_or_physical_width(scale):
+    recipe = QM.derive(_base(), {**METHODOLOGY, "scale_granularity": "per_channel"}, _path(scale=scale))
+    assert recipe["status"] == QR.UNDERIVABLE
+
+
 def test_another_clamp_is_every_activation_grid_and_the_requant_range():
     recipe = _derive(_path(requant={"clamp": [-127, 127]}))
     assert (recipe["activation"]["quant_min"], recipe["activation"]["quant_max"]) == (-127, 127)
