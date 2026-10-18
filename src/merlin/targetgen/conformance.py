@@ -1427,6 +1427,17 @@ def _epilogue_axis(target: str) -> dict:
     taxonomy_status = IT.status_of(taxonomy)
     unread = readouts is None and taxonomy_status != IT.STATUS_DERIVED
 
+    # The derived output path (when the selected contract declares one) evidences each stage it
+    # performs: its readout stages, and a bias wherever it preloads the accumulator. It never
+    # overrides a declared readout that refuses a stage: that capsule would not be writable.
+    from merlin.runtime.commandbuffer import BIAS_STAGES
+
+    output_path = _declared_output_path(target)
+    path_stages = set(_path_stages(output_path)) if output_path is not None else set()
+    if output_path is not None and any(
+        stage.get("kind") == "preload" for stage in output_path.get("accumulator_stages") or ()
+    ):
+        path_stages |= set(BIAS_STAGES)
     required, rejected, unresolved = [], [], []
     for stage in _builder_epilogue_stages():
         family = sf.from_op(stage)
@@ -1446,6 +1457,7 @@ def _epilogue_axis(target: str) -> dict:
             for r in routes
         )
         no_readout_applies = bool(readouts) and not applying
+        by_path = stage in path_stages
         if no_readout_applies:
             rejected.append(
                 {
@@ -1461,7 +1473,7 @@ def _epilogue_axis(target: str) -> dict:
                     ),
                 }
             )
-        elif by_manifest or classes or applying:
+        elif by_manifest or classes or applying or by_path:
             required.append(
                 {
                     "stage": stage,
@@ -1469,7 +1481,8 @@ def _epilogue_axis(target: str) -> dict:
                     "evidenced_by": (["manifest_composed_with"] if by_manifest else [])
                     + (["isa_instruction_class"] if classes else [])
                     + (["readout_applies"] if on_readout else [])
-                    + (["contraction_stage_route"] if routed else []),
+                    + (["contraction_stage_route"] if routed else [])
+                    + (["derived_output_path"] if by_path else []),
                     "isa_classes": classes,
                 }
             )
@@ -2346,17 +2359,25 @@ def _derived_epilogue_groups(target: str, oracle) -> list[dict]:
     workload's shape.
     """
     readout = getattr(oracle, "readout", None)
-    derived = {stage for facet in getattr(readout, "facets", ()) or () for stage in facet.derived_stages}
-    if not derived:
-        return []
     from merlin.runtime.commandbuffer import BIAS_STAGES
 
+    path = _declared_output_path(target)
+    preloads = False
+    if path is not None:
+        # The ordered output path: each declared stage kind in the command-buffer stage vocabulary.
+        derived = set(_path_stages(path))
+        preloads = any(stage.get("kind") == "preload" for stage in path.get("accumulator_stages") or ())
+    else:
+        derived = {stage for facet in getattr(readout, "facets", ()) or () for stage in facet.derived_stages}
+    if not derived:
+        return []
     writable = {str(row.get("stage")) for row in (_epilogue_axis(target) or {}).get("required") or ()}
     routes = getattr(oracle, "routes", ()) or ()
     bias = [
         stage
         for stage in BIAS_STAGES
-        if stage in writable and any(r.stage == stage and r.composed_with == "contraction" for r in routes)
+        if stage in writable
+        and (preloads or any(r.stage == stage and r.composed_with == "contraction" for r in routes))
     ][:1]
     core = [*bias, *(stage for stage in ("acc_scale", "relu") if stage in derived and stage in writable)]
     chains = [core] + ([[*core, "maxpool"]] if "maxpool" in derived and "maxpool" in writable else [])
@@ -2380,6 +2401,45 @@ def _derived_epilogue_groups(target: str, oracle) -> list[dict]:
                 }
             )
     return rows
+
+
+def _declared_output_path(target: str):
+    try:
+        from merlin.xdsl_dialects.lowering import output_fusion as OF
+
+        return OF.declared_path(target)
+    except (KeyError, ValueError):  # an unreadable declaration evidences nothing
+        return None
+
+
+def _path_stages(path) -> list[str]:
+    """The command-buffer stages an output path's readout performs, in its order."""
+    out = []
+    for stage in path.get("readout") or ():
+        kind = stage.get("kind")
+        if kind == "scale":
+            out.append("acc_scale")
+        elif kind == "activation" and stage.get("function") == "relu":
+            out.append("relu")
+        elif kind == "pool" and "max" in (stage.get("reductions") or ()):
+            out.append("maxpool")
+    return out
+
+
+def _unstatable_path_stages(path) -> dict[str, str]:
+    """Declared output-path capabilities no capsule stage can demand yet, each with why."""
+    if path is None:
+        return {}
+    out = {}
+    if any(stage.get("kind") == "accumulate" for stage in path.get("accumulator_stages") or ()):
+        out["accumulate"] = "the command-buffer stage vocabulary has no accumulated residual operand"
+    for stage in path.get("readout") or ():
+        if stage.get("kind") == "scale" and stage.get("granularity") == "per_command":
+            out["column_group_scale"] = (
+                "a capsule carries one readout scale, so a scale folded per group of "
+                f"{stage.get('columns_per_scale')} columns cannot be demanded"
+            )
+    return out
 
 
 def _group_axis(captures: dict[str, str | Path], target: str) -> dict:
@@ -2442,6 +2502,8 @@ def _group_axis(captures: dict[str, str | Path], target: str) -> dict:
                 row["scale_granularities"].append(granularity)
     for row in _derived_epilogue_groups(target, oracle):
         required.setdefault(row["signature"], row)
+    for name, why in _unstatable_path_stages(_declared_output_path(target)).items():
+        unstated[f"derived output path {name}: {why}"] += 1
     return {
         "status": "ok",
         "required": sorted(required.values(), key=lambda r: (-r["groups"], r["signature"])),
