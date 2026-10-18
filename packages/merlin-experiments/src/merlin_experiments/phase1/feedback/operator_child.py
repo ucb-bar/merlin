@@ -23,7 +23,11 @@ from pathlib import Path
 import yaml
 
 from merlin.common import cpu_pool
-from merlin.common.bundle_snapshot import verified_snapshot_scope
+from merlin.common.bundle_snapshot import (
+    _snapshot_read_admission,
+    shared_entry_verification,
+    verified_snapshot_scope,
+)
 from merlin.targetgen import package_runtime as P
 from merlin.targetgen import tier_policy
 from merlin.targetgen.contract.readback_policy import ReadbackPolicy
@@ -34,6 +38,8 @@ from . import compiler_profile_runtime as R
 
 ENV = "MERLIN_OPERATOR_GRADE_PROCESSES"
 _ADAPTERS = weakref.WeakKeyDictionary()
+#: original executor -> the snapshot entry its grade verified once before fanning out.
+_GRADE_ENTRIES = weakref.WeakKeyDictionary()
 _LOCK = threading.RLock()
 
 
@@ -61,8 +67,11 @@ def adapter_selection(adapters, *, target):
             if original is None or original[1] != target or tier not in {"L2", "L3", "L4"}:
                 raise StageGateError("operator processes require original selected simulator adapters")
             engine, _, selection, policy = original
-            document[tier] = {"engine": engine, "selection": CHILD._data(selection),
-                              "readback_policy": policy.record() if policy is not None else None}
+            document[tier] = {
+                "engine": engine,
+                "selection": CHILD._data(selection),
+                "readback_policy": policy.record() if policy is not None else None,
+            }
     return copy.deepcopy(document)
 
 
@@ -73,7 +82,34 @@ def validate(*, target, adapters, config, perf_extractor):
         raise StageGateError("operator processes require an unlimited shared certify budget")
     if type(P.active_package_executor()) is not R._Executor:
         raise StageGateError("operator processes require the original live profile executor")
-    return adapter_selection(adapters, target=target)
+    selection = adapter_selection(adapters, target=target)
+    _open_grade_entry(P.active_package_executor())
+    return selection
+
+
+def _open_grade_entry(executor):
+    """Verify the original bundle snapshot once, before this grade's capsules fan out.
+
+    Every capsule's parent preparation used to repeat the complete entry read
+    (payload digest, roster scan and guard setup) on its own thread, all of it
+    GIL-bound in one controller process. Capsules now start from this entry
+    while its kernel guard observes no change; each keeps its own fresh final
+    verification before its child is launched and again before its result is
+    accepted. Without a live guard every capsule keeps its full entry read.
+    """
+    owner = executor.owner
+    with _LOCK:
+        previous = _GRADE_ENTRIES.pop(executor, None)
+    if previous is not None:
+        previous.close()
+    if type(owner) is not CHILD.CommonTransformService:
+        return
+    entry = shared_entry_verification(owner.workspace, owner.bundle, repo=owner.repo)
+    if entry is None:
+        return
+    with _LOCK:
+        _GRADE_ENTRIES[executor] = entry
+    weakref.finalize(executor, entry.close)
 
 
 def _publish(path, row):
@@ -112,26 +148,42 @@ def _communicate_or_defer(process, *, timeout_s):
 
 @contextlib.contextmanager
 def _prepared_child(document):
-    """Batch only synchronous original-owner issuance; close custody before child launch."""
+    """Batch only synchronous original-owner issuance; close custody before child launch.
+
+    Holds no CPU lease itself. Snapshot verification leases one shared CPU per
+    stage behind its process admission gate. Take that same gate before the
+    entire setup, including metadata checks in nested original-owner calls.
+    Capsules waiting to verify never reserve pool CPUs queued author requests
+    need; a held
+    slot is never preempted, so a lease held across this GIL-bound preparation
+    used to keep the pool idle and locked for minutes per grade.
+    """
     executor = P.active_package_executor()
     if type(executor) is not R._Executor or type(executor.owner) is not CHILD.CommonTransformService:
         raise StageGateError("operator child requires its original live profile owner")
     owner = executor.owner
+    with _LOCK:
+        entry = _GRADE_ENTRIES.get(executor)
     with contextlib.ExitStack() as lifetime:
-        with cpu_pool.shared_compute_pool(), verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo):
+        with (
+            _snapshot_read_admission(),
+            verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo, entry=entry),
+        ):
             root = CHILD.model_child_temporary_root()  # Retain original import/owner verification.
             if root is None:
                 raise StageGateError("operator child lost its original profile owner")
             private = Path(lifetime.enter_context(tempfile.TemporaryDirectory(prefix="operator-grade-", dir=root)))
             spec, output = private / "spec.json", private / "result.json"
             spec.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
-            environment = dict(os.environ)
+            environment = cpu_pool.child_environment()
             if environment.get("MERLIN_PASS_LOG"):
                 environment["MERLIN_PASS_LOG_CAPSULE"] = str(document["capsule"]["name"])
                 environment["MERLIN_PASS_LOG_REQUIREMENTS"] = json.dumps(
-                    list(document["capsule"].get("pass_requirements") or []))
-            transport = lifetime.enter_context(CHILD.prepare_model_child(
-                spec_path=spec, environment=environment, package_dir=document["package_dir"]))
+                    list(document["capsule"].get("pass_requirements") or [])
+                )
+            transport = lifetime.enter_context(
+                CHILD.prepare_model_child(spec_path=spec, environment=environment, package_dir=document["package_dir"])
+            )
             if transport is None:
                 raise StageGateError("operator child requires its original sealed capability")
         # Final independent custody closes before exposing the transport to Popen. Its FD and
@@ -157,6 +209,24 @@ def _restored_child(*args, **kwargs):
             original.__exit__(None, None, None)
 
 
+def completed_tier_costs(result):
+    """``{tier: adapter wall seconds}`` for each tier this child executed to a compared verdict.
+
+    The parent prices its ladder from these (``tier_policy.record_cost``), exactly as the in-process
+    ladder prices a tier only once its adapter has returned. A tier whose adapter raised -- unavailable,
+    refused before dispatch, timed out -- carries only a ``partial`` wall clock, and pricing it would
+    teach the order that the tier costs what its refusal cost: one ELF build in place of a simulation.
+    """
+    return {
+        tier: record["timing"]["adapter_wall_s"]
+        for tier, record in (result.get("tiers") or {}).items()
+        if isinstance(record, dict)
+        and isinstance(record.get("timing"), dict)
+        and not record["timing"].get("partial")
+        and type(record["timing"].get("adapter_wall_s")) in (int, float)
+    }
+
+
 def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, adapters, timeout, workers, no_oracle):
     from merlin.targetgen import capsule_runner as runner
 
@@ -165,25 +235,51 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
         raise StageGateError("operator child cannot replace the whole-model route")
     costs = {tier: tier_policy.observed_cost(target, tier) for tier in selection}
     document = {
-        "grade_kind": "operator", "capsule": CHILD._data(capsule), "package_dir": str(package_dir),
-        "target": target, "runs_root": str(runs_root), "contract": str(contract) if contract else None,
-        "suite": suite, "dtype": dtype, "adapters": selection, "timeout": timeout,
-        "workers": workers, "no_oracle": no_oracle, "observed_costs_s": costs,
+        "grade_kind": "operator",
+        "capsule": CHILD._data(capsule),
+        "package_dir": str(package_dir),
+        "target": target,
+        "runs_root": str(runs_root),
+        "contract": str(contract) if contract else None,
+        "suite": suite,
+        "dtype": dtype,
+        "adapters": selection,
+        "timeout": timeout,
+        "workers": workers,
+        "no_oracle": no_oracle,
+        "observed_costs_s": costs,
     }
     with _prepared_child(document) as (spec, output, environment, transport):
-        command = [sys.executable, "-c", runner._CHILD_PREAMBLE,
-                   "--operator-grade", str(spec), "--operator-grade-out", str(output), *transport.argv]
-        process = subprocess.Popen(cpu_pool.worker_pool_command(command, environment), env=environment,
-            pass_fds=transport.pass_fds, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-            start_new_session=True)
+        command = [
+            sys.executable,
+            "-c",
+            runner._CHILD_PREAMBLE,
+            "--operator-grade",
+            str(spec),
+            "--operator-grade-out",
+            str(output),
+            *transport.argv,
+        ]
+        process = subprocess.Popen(
+            cpu_pool.worker_pool_command(command, environment),
+            env=environment,
+            pass_fds=transport.pass_fds,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
         try:
             deferred = _communicate_or_defer(process, timeout_s=max(1, timeout) * (len(selection) + 6))
             if deferred:
                 runner._kill_tree(process.pid)
                 process.wait(timeout=10)
                 row = {
-                    "capsule": capsule["name"], "kind": capsule.get("kind"), "label": capsule.get("label"),
-                    "status": "gated", "background_deferred": deferred,
+                    "capsule": capsule["name"],
+                    "kind": capsule.get("kind"),
+                    "label": capsule.get("label"),
+                    "status": "gated",
+                    "background_deferred": deferred,
                     "failure": {"plane": "gate", "category": "BACKGROUND_DEFERRED", "detail": deferred},
                 }
                 cfg = runner._config_for_target(target, suite, dtype)
@@ -197,7 +293,9 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
             raise
         if process.returncode != 0 or not output.is_file():
             raise StageGateError(f"operator grade child exited {process.returncode} without a verified completion")
-        with cpu_pool.shared_compute_pool():
+        # Include original-owner metadata verification in the same admission as
+        # preparation. No gate or CPU lease spans child execution or its wait.
+        with _snapshot_read_admission():
             row = transport.verify_result(json.loads(output.read_bytes()))
         if row.get("capsule") != capsule["name"] or adapter_selection(adapters, target=target) != selection:
             raise StageGateError("operator child result or selected oracle changed")
@@ -231,9 +329,16 @@ def main(argv):
         if job.get("grade_kind") != "operator" or capsule.get("kind") == "model" or selected_host_leaf(capsule):
             raise StageGateError("operator child requires the original accelerator capsule route")
         adapters = {
-            tier: runner.simulator_adapter(record["engine"], target, selection=record["selection"],
-                        readback_policy=(ReadbackPolicy.from_record(record["readback_policy"])
-                                         if record["readback_policy"] is not None else None))
+            tier: runner.simulator_adapter(
+                record["engine"],
+                target,
+                selection=record["selection"],
+                readback_policy=(
+                    ReadbackPolicy.from_record(record["readback_policy"])
+                    if record["readback_policy"] is not None
+                    else None
+                ),
+            )
             for tier, record in job["adapters"].items()
         }
         for tier, value in job["observed_costs_s"].items():
@@ -241,15 +346,23 @@ def main(argv):
         with cpu_pool.shared_compute_pool():
             pkg = P.load_package(job["package_dir"], contract=job["contract"])
             P.integrity_scan(pkg)
-        result = runner.run_capsule(capsule, job["package_dir"], runs_root=job["runs_root"], run_id=capsule["name"],
-            contract=job["contract"], oracle_adapters=adapters, pkg=pkg, timeout=job["timeout"], target=target,
-            suite=job["suite"], dtype=job["dtype"], no_oracle=job["no_oracle"], workers=job["workers"],
-            _defer_result_publication=True)
-        result["operator_child_costs_s"] = {
-            tier: record["timing"]["adapter_wall_s"] for tier, record in result.get("tiers", {}).items()
-            if isinstance(record, dict) and isinstance(record.get("timing"), dict)
-            and type(record["timing"].get("adapter_wall_s")) in (int, float)
-        }
+        result = runner.run_capsule(
+            capsule,
+            job["package_dir"],
+            runs_root=job["runs_root"],
+            run_id=capsule["name"],
+            contract=job["contract"],
+            oracle_adapters=adapters,
+            pkg=pkg,
+            timeout=job["timeout"],
+            target=target,
+            suite=job["suite"],
+            dtype=job["dtype"],
+            no_oracle=job["no_oracle"],
+            workers=job["workers"],
+            _defer_result_publication=True,
+        )
+        result["operator_child_costs_s"] = completed_tier_costs(result)
         result["operator_child_spend_s"] = tier_policy.spent(target)
     result["original_compiler_child"] = receipt
     args.operator_grade_out.write_text(json.dumps(result, indent=2), encoding="utf-8")

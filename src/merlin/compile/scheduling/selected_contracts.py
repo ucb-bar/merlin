@@ -267,7 +267,8 @@ def _parse(facts_bytes, software_bytes, target):
             or (set(effects["reads"]) | set(effects["writes"])) - state
         ):
             raise ValueError("pure configuration write contradicts declared state or memory effects")
-    storage = resolve_storage_contract(extension["storage"], facts, isa) if "storage" in extension else None
+    storage = (resolve_storage_contract(extension["storage"], facts, isa, configuration=rows)
+               if "storage" in extension else None)
     return (
         isa, json.dumps(rows, sort_keys=True, separators=(",", ":"), allow_nan=False),
         extension["numerical_policy"], extension["instruction_byteorder"],

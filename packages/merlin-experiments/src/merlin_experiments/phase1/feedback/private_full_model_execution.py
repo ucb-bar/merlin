@@ -324,8 +324,9 @@ def run_engine(
         ambient = os.environ.get("MERLIN_RTL_FACTS", "").strip()
         if not ambient or not rtl_config:
             raise ExecutionGateError(f"{engine} execution needs the selected RTL facts and the static build's config")
-        facts = MI.selected_firrtl(Path(ambient), target=target, config=rtl_config)
-        if facts["sha256"] != rtl_facts_sha256:
+        built_facts = MI.selected_firrtl(Path(ambient), target=target, config=rtl_config)
+        facts = MI.selected_execution_firrtl(Path(ambient), target=target)
+        if built_facts["sha256"] != rtl_facts_sha256 or facts["sha256"] != rtl_facts_sha256:
             raise ExecutionGateError("ambient RTL facts differ from the facts the static gate built against")
         backend, citation, revalidate, prepare = MI.native_engine(target, engine, facts)
         evidence["engine_citation"] = citation
@@ -347,20 +348,20 @@ def run_engine(
     if private_bound_gsim:
         evidence["max_cycles"] = max_cycles
         evidence["max_cycle_source"] = "frozen_private_execution_declaration"
-    with (nullcontext() if private_bound_gsim else _engine_hang_bound(backend, engine, max_cycles)):
+    with nullcontext() if private_bound_gsim else _engine_hang_bound(backend, engine, max_cycles):
         revalidate()
         started = time.monotonic()
         bounded = _selected_run_timeout(backend, engine, timeout_s, deadline)
-        if engine == "spike" and target == "gemmini":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        if engine == "spike" and target == "gemmini":  # target-ok: Selected whole-model machine.
             run_declared = getattr(backend, "run_declared_model_elf", None)
             if not callable(run_declared):
-                raise ExecutionGateError("selected Gemmini backend cannot run the linked model's declared machine")  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+                raise ExecutionGateError(
+                    "selected backend cannot run the linked model's declared machine"
+                )  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
             console = run_declared(elf, timeout=bounded, capture_bytes=capture_bytes)
         else:
             options = {"private_max_cycles": max_cycles} if private_bound_gsim else {}
-            console = backend.run_elf(
-                elf, simulator=engine, timeout=bounded, capture_bytes=capture_bytes, **options
-            )
+            console = backend.run_elf(elf, simulator=engine, timeout=bounded, capture_bytes=capture_bytes, **options)
         wall = time.monotonic() - started
         if command is not None:
             command.revalidate()
@@ -950,7 +951,9 @@ def run(
     }
     if selected_model is not None:
         result.update(
-            mode="canonical_model_partition", selected_model=selected_model, partition_passed=passed,
+            mode="canonical_model_partition",
+            selected_model=selected_model,
+            partition_passed=passed,
             required_models=list(gate["programs"]),
             required_programs={name: list(stages) for name, stages in gate["programs"].items()},
             numerical_scope="selected complete model programs only; full declared roster gate incomplete",
@@ -982,7 +985,9 @@ def complete(
     Every declared program appears once, in order: a deferral exactly as declared, an executed program
     passed on its declared engine with the ELF digest the static record verified."""
     if (
-        not isinstance(record, Mapping) or record.get("schema") != SCHEMA or record.get("passed") is not True
+        not isinstance(record, Mapping)
+        or record.get("schema") != SCHEMA
+        or record.get("passed") is not True
         or record.get("mode") == "canonical_model_partition"
     ):
         return False

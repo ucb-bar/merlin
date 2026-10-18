@@ -20,12 +20,12 @@ from typing import Any
 
 from .commandbuffer import (
     BIAS_STAGES,
+    apply_declared_acc_scale,
     apply_pool_stage,
     batched_matmul_geometry,
     bias_tensor_name,
     conv_im2col,
     conv_out_dims,
-    declared_acc_scale,
     materialize_inputs,
     pool_params,
     residual_add_params,
@@ -53,6 +53,7 @@ _CONV2D_ATTRS = frozenset(
         "epilogue",
         "output_dtype",
         "acc_scale",
+        "acc_scale_by_column",
         "requant_shift",
         "semantic",
         # Pooling fused onto the conv's store path (the fused conv loop's
@@ -71,7 +72,9 @@ _CONV2D_ATTRS = frozenset(
     }
 )
 
-_ATTENTION_ATTRS = frozenset({"epilogue", "output_dtype", "acc_scale", "requant_shift", "semantic"})
+_ATTENTION_ATTRS = frozenset(
+    {"epilogue", "output_dtype", "acc_scale", "acc_scale_by_column", "requant_shift", "semantic"}
+)
 
 
 def _validate_attention_attrs(attrs: dict[str, Any], op: str) -> None:
@@ -201,7 +204,7 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
                 elif stage == "requant":
                     t = t.requant(shift)
                 elif stage == "acc_scale":
-                    t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
+                    t = apply_declared_acc_scale(t, attrs, op="acc_scale")
                 elif stage == "relu":
                     t = t.relu()
                 elif stage == "maxpool":
@@ -411,7 +414,7 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             t = qt.matmul(k_t)
             for stage in attrs.get("epilogue", []):
                 if stage == "acc_scale":
-                    t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
+                    t = apply_declared_acc_scale(t, attrs, op="acc_scale")
                 elif stage == "requant":
                     t = t.requant(int(attrs.get("requant_shift", default_shift)))
                 elif stage == "relu":
@@ -444,7 +447,7 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
             t = pt.matmul(vt)
             for stage in attrs.get("epilogue", []):
                 if stage == "acc_scale":
-                    t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
+                    t = apply_declared_acc_scale(t, attrs, op="acc_scale")
                 elif stage == "requant":
                     t = t.requant(int(attrs.get("requant_shift", default_shift)))
                 elif stage == "relu":
@@ -522,7 +525,7 @@ def simulate(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[s
                         raise SimulationError(str(e)) from e
                 elif stage == "acc_scale":
                     try:
-                        t = t.requant_acc_scale(declared_acc_scale(attrs, op=f"CONV2D {dst!r}"))
+                        t = apply_declared_acc_scale(t, attrs, op=f"CONV2D {dst!r}")
                     except ValueError as e:
                         raise SimulationError(str(e)) from e
                 elif stage == "requant":

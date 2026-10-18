@@ -270,7 +270,8 @@ def _validate_engine(engine, block, *, timeout_ceiling=600, spike_timeout_ceilin
     _fields(block, required | ({"receipt"} if engine in {"gsim", "verilator"} else set()), {"readback_transport"})
     if "readback_transport" in block:
         _require(
-            engine == "gsim" and block["readback_transport"] in {COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2},
+            engine == "gsim"
+            and block["readback_transport"] in {COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2},
             "selected readback override requires the coherent GSim full-value transport",
         )
     _pin_shape(block["binary"])
@@ -343,6 +344,10 @@ class BoundRoCCBackend:
     def _block(self):
         return self._data()["contract"]["runner"]["chipyard_rocc"]
 
+    def _execution_firrtl_sha256(self):
+        """The FIRRTL an engine of the runner's configuration must be built from (see :func:`bind`)."""
+        return _execution_binding(self._data()["facts"], self._block()["config"])["firrtl"]["sha256"]
+
     @property
     def ORACLE(self):
         return {
@@ -383,15 +388,18 @@ class BoundRoCCBackend:
             if transport == COHERENT_PACKET_V2:
                 required.add("out_packet_v2")
             _require(
-                required
-                <= {row["id"] for row in self._block()["toolchain"]["headers"]},
+                required <= {row["id"] for row in self._block()["toolchain"]["headers"]},
                 "selected packet transport omits its original complete codec header roster",
             )
         return ReadbackPolicy(transport)
 
     def memory_readback_transport(self, simulator, *, policy_transport=None):
         transport = self.engine_readback_policy(simulator).transport
-        if policy_transport not in (None, transport) or transport not in {COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2}:
+        if policy_transport not in (None, transport) or transport not in {
+            COHERENT_DUMP_V1,
+            COHERENT_PACKET_V1,
+            COHERENT_PACKET_V2,
+        }:
             return None
         return "gsim_" + transport if simulator == "gsim" else None
 
@@ -492,7 +500,9 @@ class BoundRoCCBackend:
         block = selection["engines"].get(engine)
         _require(block is not None, "requested execution engine is not selected")
         _validate_engine(
-            engine, block, timeout_ceiling=_execution_timeout_ceiling(selection),
+            engine,
+            block,
+            timeout_ceiling=_execution_timeout_ceiling(selection),
             spike_timeout_ceiling=_model_spike_timeout_ceiling(selection),
         )
         return block
@@ -505,8 +515,10 @@ class BoundRoCCBackend:
         """Original command, optionally preloading this same verified ELF before hart release."""
         argv = list(self._engine(simulator)["argv"])
         if simulator == "gsim" and _gsim_startup_transport() is not None:
-            _require(not any(arg.startswith("+loadmem=") for arg in argv),
-                     "selected gSIM startup preload conflicts with another ELF selection")
+            _require(
+                not any(arg.startswith("+loadmem=") for arg in argv),
+                "selected gSIM startup preload conflicts with another ELF selection",
+            )
             # The original registered native harness writes only declared DRAM
             # during load_program(). Later TSI/coherent reads remain live RTL.
             argv.append("+loadmem={elf}")
@@ -524,7 +536,8 @@ class BoundRoCCBackend:
             identity["readback_transport"] = block["readback_transport"]
         if "execution_resources" in self._block():
             identity["execution_resources"] = {
-                **self._block()["execution_resources"], "selected_engine_timeout_s": block["max_timeout_s"]
+                **self._block()["execution_resources"],
+                "selected_engine_timeout_s": block["max_timeout_s"],
             }
         if engine == "gsim":
             from merlin.targetgen import gsim_emulator as GE
@@ -534,7 +547,7 @@ class BoundRoCCBackend:
             _require(
                 status == "bound"
                 and lineage["schema_version"] == GE.STRICT_RECEIPT_SCHEMA
-                and lineage["firrtl_sha256"] == self._data()["facts"]["inputs"]["fir_sha256"],
+                and lineage["firrtl_sha256"] == self._execution_firrtl_sha256(),
                 "selected engine has no strict receipt for the original FIRRTL",
             )
             # The existing strict checker checks pin bytes, but the actual binary operand
@@ -557,7 +570,7 @@ class BoundRoCCBackend:
                 identity["receipt"] = validate(
                     target=self.target,
                     config=self._block()["config"],
-                    original_fir_sha256=self._data()["facts"]["inputs"]["fir_sha256"],
+                    original_fir_sha256=self._execution_firrtl_sha256(),
                     binary=binary,
                     receipt=receipt,
                     checked_pin=_check_pin,
@@ -683,9 +696,8 @@ class BoundRoCCBackend:
         selected = self.readback_policy() if readback_policy is None else readback_policy
         _require(
             type(selected) is ReadbackPolicy
-            and selected in {
-                self.readback_policy(), *(self.engine_readback_policy(e) for e in self._block()["engines"])
-            },
+            and selected
+            in {self.readback_policy(), *(self.engine_readback_policy(e) for e in self._block()["engines"])},
             "selected output parser has no declared full-value policy",
         )
         if selected.transport == FULL_VALUES_B64:
@@ -703,17 +715,28 @@ class BoundRoCCBackend:
         )
 
     def run_elf(
-        self, elf, *, simulator, timeout, capture_bytes=False, declared_model_machine=False,
-        memory_readback=None, private_max_cycles=None, **kwargs
+        self,
+        elf,
+        *,
+        simulator,
+        timeout,
+        capture_bytes=False,
+        declared_model_machine=False,
+        memory_readback=None,
+        private_max_cycles=None,
+        **kwargs,
     ):
         _require(
             not kwargs and type(capture_bytes) is bool and type(declared_model_machine) is bool,
             "selected execution received unsupported options",
         )
         _require(
-            private_max_cycles is None or (
-                simulator == "gsim" and memory_readback is None
-                and type(private_max_cycles) is int and 0 < private_max_cycles <= (1 << 63) - 1
+            private_max_cycles is None
+            or (
+                simulator == "gsim"
+                and memory_readback is None
+                and type(private_max_cycles) is int
+                and 0 < private_max_cycles <= (1 << 63) - 1
             ),
             "private gSIM cycle budget must be a positive declared integer",
         )
@@ -743,8 +766,11 @@ class BoundRoCCBackend:
                 "select the direct execution mode explicitly or retain the original console transport",
             )
             _require(
-                simulator == "gsim" and not capture_bytes and not declared_model_machine
-                and self.engine_readback_policy(simulator).transport in {COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2},
+                simulator == "gsim"
+                and not capture_bytes
+                and not declared_model_machine
+                and self.engine_readback_policy(simulator).transport
+                in {COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2},
                 "selected engine has no declared coherent full-value transport",
             )
             export = _chipyard_memory_readback.prepare_memory_readback(path, simulator, memory_readback)
@@ -766,10 +792,7 @@ class BoundRoCCBackend:
                 len(cycle_args) == 1 and cycle_args[0].removeprefix("+max-cycles=").isdigit(),
                 "selected gSIM command has no unique source-bound cycle limit",
             )
-            template = tuple(
-                f"+max-cycles={private_max_cycles}" if arg == cycle_args[0] else arg
-                for arg in template
-            )
+            template = tuple(f"+max-cycles={private_max_cycles}" if arg == cycle_args[0] else arg for arg in template)
         _require(
             (_gsim_startup_transport() if simulator == "gsim" else None) == before.get("startup_transport"),
             "selected startup transport changed before execution",
@@ -950,6 +973,17 @@ def _bounded_process(argv, *, cwd, env, timeout, max_bytes, observed):
     return result
 
 
+def _execution_binding(facts, config):
+    from merlin.targetgen.rtl.unit_correspondence import ExecutionBindingError, execution_binding
+
+    try:
+        return execution_binding(facts, config=config)
+    except ExecutionBindingError as exc:
+        raise RoCCExecutionError(
+            "selected contract or original facts identify another target or configuration"
+        ) from exc
+
+
 def bind(*, target, contract, facts):
     """Bind already selected data once; no plugin, discovery, binary check or build."""
     _require(
@@ -987,17 +1021,18 @@ def bind(*, target, contract, facts):
         type(inputs) is dict and type(body) is dict and type(body.get("source")) is dict and type(consistency) is dict,
         "selected original facts omit their source configuration binding",
     )
-    configs = [body["source"].get("config"), consistency.get("config")]
     if "source" in facts:
         _require(type(facts["source"]) is dict, "selected original facts have an ambiguous source configuration")
-        configs.append(facts["source"].get("config"))
     _require(
-        contract.get("name") == target
-        and inputs.get("target") == target
-        and all(type(config) is str and config == block["config"] for config in configs),
+        contract.get("name") == target and inputs.get("target") == target,
         "selected contract or original facts identify another target or configuration",
     )
+    # Facts of the runner's own configuration bind directly. Facts of another configuration bind
+    # only through their verified simulation correspondence to this runner's configuration; the
+    # engine receipt must then carry that simulation's FIRRTL (checked with the engine identity).
+    binding = _execution_binding(facts, block["config"])
     _sha(inputs.get("fir_sha256"))
+    _sha(binding["firrtl"]["sha256"])
     from merlin.runtime.harness_render import validate_contract
     from merlin.targetgen.rocc.semantics import bind as bind_semantics
 

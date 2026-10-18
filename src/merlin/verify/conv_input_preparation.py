@@ -1,40 +1,39 @@
-"""Closed, bounded address/copy proof for a reviewed logical convolution input ABI.
+"""Closed, bounded byte-transport proof for a reviewed logical convolution ABI.
 
-No tensor values are evaluated. Loaded bytes carry only input/zero provenance;
-any arithmetic on them, host output store, opaque pointer escape or uncounted
+No tensor values are evaluated. Loaded bytes carry input/zero/result provenance;
+any arithmetic on them, fabricated output store, opaque pointer escape or uncounted
 control flow refuses the exemption. Original device-work/numerical gates remain.
 """
 
 from collections import Counter
-from dataclasses import dataclass
 from math import prod
 
+import numpy as np
 from xdsl.dialects.builtin import DenseIntOrFPElementsAttr, IntegerType, ModuleOp, UnitAttr
-from xdsl.dialects.llvm import AddressOfOp, GlobalOp, LLVMArrayType, LLVMPointerType
+from xdsl.dialects.llvm import AddressOfOp, GlobalOp, LLVMArrayType, LLVMPointerType, LLVMVoidType
 
-from merlin.perf.constant_control_cfg import integer_operation
+from merlin.perf.constant_control_cfg import MAX_BLOCK_VISITS, MAX_OPERATIONS, integer_operation
 from merlin.perf.host_cfg_activity import _INTEGER, _payload_bytes
 from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
 
-
-@dataclass(frozen=True)
-class _Pointer:
-    root: object
-    offset: int = 0
-
-
-@dataclass(frozen=True)
-class _Copy:
-    origins: tuple
+from .input_copy_batch import execute as execute_copy_batch
+from .input_copy_loops import copy_regions
+from .input_copy_storage import Copy as _Copy
+from .input_copy_storage import CopyStorage, byte_gep_stride, scratch_limit
+from .input_copy_storage import Pointer as _Pointer
 
 
-def _constant_zero_storage(address, function):
-    """Resolve only an actual, closed read-only byte initializer in this module."""
+def _input_storage(address, function, *, maximum_bytes=1 << 20):
+    """Resolve closed zero padding or scratch; scratch never inherits initialized-byte evidence."""
     module = function.parent_op()
     if not isinstance(module, ModuleOp) or function.parent_block() is not module.body.block:
         raise ValueError("zero padding has no enclosing original module storage")
-    if any(op.name not in {"llvm.mlir.global", "llvm.func"} for op in module.body.block.ops):
-        raise ValueError("zero padding module has unproved aliases or storage effects")
+    for op in module.body.block.ops:
+        name = op.op_name.data if op.name == "builtin.unregistered" else op.name
+        if name not in {"llvm.mlir.global", "llvm.func", "llvm.module_flags"} or (
+            name == "llvm.module_flags" and (op.operands or op.results or op.regions)
+        ):
+            raise ValueError("zero padding module has unproved aliases or storage effects")
     reference = address.global_name
     if reference.nested_references.data:
         raise ValueError("zero padding has nested or unknown symbol provenance")
@@ -44,8 +43,7 @@ def _constant_zero_storage(address, function):
         raise ValueError("zero padding global is missing or ambiguous")
     typ, initializer = storage.global_type, storage.value
     if (
-        not isinstance(storage.constant, UnitAttr)
-        or storage.linkage.linkage.data not in {"private", "internal"}
+        storage.linkage.linkage.data not in {"private", "internal"}
         or storage.body.blocks
         or storage.thread_local_ is not None
         or storage.section is not None
@@ -54,22 +52,22 @@ def _constant_zero_storage(address, function):
         or not isinstance(address.result.type, LLVMPointerType)
         or getattr(address.result.type.addr_space, "data", 0) != 0
         or not isinstance(typ, LLVMArrayType)
-        or typ.type != IntegerType(8)
-        or not 0 < typ.size.data <= 1 << 20
+        or typ.type not in {IntegerType(8), IntegerType(32)}
+        or not 0 < typ.size.data * _payload_bytes(typ.type) <= maximum_bytes
         or not isinstance(initializer, DenseIntOrFPElementsAttr)
-        or initializer.get_element_type() != IntegerType(8)
+        or initializer.get_element_type() != typ.type
         or initializer.get_shape() != (typ.size.data,)
-        or len(initializer.data.data) != typ.size.data
+        or len(initializer.data.data) != typ.size.data * _payload_bytes(typ.type)
         or any(initializer.data.data)
     ):
-        raise ValueError("zero padding global lacks bounded read-only all-zero byte storage")
+        raise ValueError("input storage global lacks bounded private all-zero storage")
     # A second function could mutate or export an address. This finite proof
     # covers only the actual kernel's interpreted pointer uses, not other code.
     for op in module.walk():
         if isinstance(op, AddressOfOp) and op.global_name.root_reference.data == name:
             if op.global_name.nested_references.data or op.parent_op() is not function:
                 raise ValueError("zero padding global address escapes the proven kernel")
-    return storage, typ.size.data
+    return storage, typ.size.data * _payload_bytes(typ.type), isinstance(storage.constant, UnitAttr)
 
 
 def _unpoisoned_pointer_add(op):
@@ -82,15 +80,15 @@ def _unpoisoned_pointer_add(op):
             raise ValueError("pointer arithmetic has unproved poison flags")
 
 
-def prove_input_preparation(function, activity, context, *, target):
+def prove_input_preparation(function, activity, context, *, target, batch_copies=True):
     """Return independently counted preparation totals, or a closed refusal."""
     try:
-        return _prove(function, activity, context, target=target)
+        return _prove(function, activity, context, target=target, batch_copies=batch_copies)
     except (ValueError, KeyError, TypeError, AttributeError, ZeroDivisionError) as exc:
         return {"status": "unproven", "detail": str(exc)[:300]}
 
 
-def _prove(function, activity, context, *, target):
+def _prove(function, activity, context, *, target, batch_copies):
     from merlin.targetgen.rocc.decode import _asm_template, _parse_insn, _semantics
 
     if activity.get("status") != "derived":
@@ -104,12 +102,16 @@ def _prove(function, activity, context, *, target):
     if not blocks or len(blocks[0].args) != 3:
         raise ValueError("actual kernel argument count differs from reviewed ABI")
     counts = {blocks[r["block"]]: r["execution_count"] for r in activity["blocks"]}
-    if (
-        any(type(n) is not int or n < 0 for n in counts.values())
-        or sum(counts.values()) > 100000
-        or sum(len(tuple(b.ops)) * n for b, n in counts.items()) > 1000000
+    if any(type(n) is not int or n < 0 for n in counts.values()):
+        raise ValueError("input preparation has unknown independent execution counts")
+    regions = copy_regions(function) if batch_copies else {}
+    maximum_bytes = scratch_limit(buffers)
+    argument_alignments = context.get("argument_alignments")
+    if argument_alignments is not None and (
+        not isinstance(argument_alignments, list) or len(argument_alignments) != len(buffers)
+        or any(type(n) is not int or n <= 0 or n & (n - 1) for n in argument_alignments)
     ):
-        raise ValueError("input preparation exceeds finite proof bound")
+        raise ValueError("input preparation has malformed original argument alignment evidence")
     semantics = getattr(_semantics(target), "operand_observer", None)
     if semantics is None or getattr(semantics, "word_bits", None) != 64:
         raise ValueError("input preparation has no explicitly selected 64-bit operand observer")
@@ -121,14 +123,17 @@ def _prove(function, activity, context, *, target):
         raise ValueError("input preparation load states lack typed original source evidence")
     values = {arg: _Pointer(i) for i, arg in enumerate(blocks[0].args)}
     capacity = {i: prod(b["shape"]) * (4 if b["dtype"] == "i32" else 1) for i, b in enumerate(buffers)}
-    memory, consumed, initialized = {}, set(), set()
+    memory = CopyStorage(capacity)
     readonly = set()
     visited = Counter()
-    arithmetic = payload = transfers = scratch_transfers = 0
+    arithmetic = conversions = payload = transfers = scratch_transfers = 0
     load_strides = {}
     store_stride = None
     block = blocks[0]
     incoming = ()
+    scalar_blocks = scalar_operations = batches = batch_operations = batch_payload = 0
+    scalar_copy_blocks = scalar_copy_operations = 0
+    copy_blocks = {b for b in blocks if any(op.name in {"llvm.load", "llvm.store"} for op in b.ops)}
 
     def bound(pointer, width):
         if not isinstance(pointer, _Pointer) or pointer.offset < 0 or pointer.offset + width > capacity[pointer.root]:
@@ -140,6 +145,34 @@ def _prove(function, activity, context, *, target):
         return value
 
     while block is not None:
+        if block in regions and sum(counts.get(b, 0) for b in regions[block][0].nodes) > 1000:
+            next_block, batch_counts, totals = execute_copy_batch(
+                regions[block], values, incoming, memory, capacity, readonly,
+                argument_alignment=context.get("argument_alignment"), argument_alignments=argument_alignments,
+            )
+            visited.update(batch_counts)
+            # Bound the observer's work in its own units: actual vector
+            # instructions and bytes checked. Expanded original instruction
+            # counts remain exact, but are not scalar interpreter steps.
+            batch_operations += totals["proof_operations"]
+            batch_payload += totals["payload_bytes"]
+            if batch_operations > MAX_OPERATIONS or batch_payload > MAX_OPERATIONS:
+                raise ValueError("input preparation exceeds finite exhaustive copy proof budget")
+            if any(visited[b] > counts.get(b, 0) for b in batch_counts):
+                raise ValueError("batched copy counts differ from independently proven CFG")
+            arithmetic += totals["arithmetic"]
+            conversions += totals["conversions"]
+            payload += totals["payload_bytes"]
+            block, incoming = next_block, ()
+            batches += 1
+            continue
+        scalar_blocks += 1
+        if scalar_blocks > MAX_BLOCK_VISITS:
+            raise ValueError("input preparation exceeds finite scalar block proof bound")
+        if block in copy_blocks:
+            scalar_copy_blocks += 1
+            if scalar_copy_blocks > 100000:
+                raise ValueError("input preparation exceeds finite scalar copy block proof bound")
         visited[block] += 1
         if visited[block] > counts.get(block, 0):
             raise ValueError("input preparation traversal differs from independently proven CFG")
@@ -149,7 +182,14 @@ def _prove(function, activity, context, *, target):
             values.update(zip(block.args, incoming, strict=True))
         next_block = None
         for op in block.ops:
-            name = op.name
+            scalar_operations += 1
+            if scalar_operations > MAX_OPERATIONS:
+                raise ValueError("input preparation exceeds finite scalar operation proof bound")
+            if block in copy_blocks:
+                scalar_copy_operations += 1
+                if scalar_copy_operations > 1000000:
+                    raise ValueError("input preparation exceeds finite scalar copy operation proof bound")
+            name = op.op_name.data if op.name == "builtin.unregistered" else op.name
             args = [values[v] for v in op.operands]
             result = None
             if name == "llvm.mlir.constant":
@@ -157,22 +197,24 @@ def _prove(function, activity, context, *, target):
                 if result is None:
                     raise ValueError("input preparation contains noninteger constant")
             elif isinstance(op, AddressOfOp):
-                storage, size = _constant_zero_storage(op, function)
+                storage, size, constant = _input_storage(op, function, maximum_bytes=maximum_bytes)
                 capacity[storage] = size
-                readonly.add(storage)
+                if constant:
+                    readonly.add(storage)
                 result = _Pointer(storage)
             elif name == "llvm.alloca":
                 size = integer(args[0]) * _payload_bytes(op.properties["elem_type"])
-                if size <= 0 or size > 1 << 20:
+                if size <= 0 or size > maximum_bytes:
                     raise ValueError("input scratch allocation exceeds bounded proof")
                 capacity[op] = size
                 result = _Pointer(op)
             elif name == "llvm.getelementptr":
                 pointer = args[0]
                 indices = list(op.properties["rawConstantIndices"].get_values())
-                if len(indices) != 1 or op.properties["elem_type"] != IntegerType(8):
+                if len(indices) != 1:
                     raise ValueError("input preparation has unsupported pointer layout")
                 offset = integer(args[1]) if indices[0] == -(1 << 31) else indices[0]
+                offset *= byte_gep_stride(op.properties["elem_type"])
                 if not isinstance(pointer, _Pointer):
                     raise ValueError("input preparation has unknown pointer ancestry")
                 result = _Pointer(pointer.root, pointer.offset + offset)
@@ -196,40 +238,76 @@ def _prove(function, activity, context, *, target):
                 for value in args:
                     integer(value)
                 result = integer_operation(op, args)
+            elif name in {"llvm.trunc", "llvm.sext", "llvm.zext"}:
+                integer(args[0])
+                result = integer_operation(op, args)
+                conversions += 1
+            elif name == "llvm.intr.assume":
+                tags = op.properties.get("op_bundle_tags")
+                sizes = op.properties.get("op_bundle_sizes")
+                if (len(args) != 3 or op.operands[0].type != IntegerType(1) or integer(args[0]) == 0
+                        or tags is None or sizes is None
+                        or [tag.data for tag in tags] != ["align"] or list(sizes.get_values()) != [2]
+                        or not isinstance(args[1], _Pointer)):
+                    raise ValueError("input preparation has an unproved assumption")
+                pointer, alignment = args[1], integer(args[2])
+                declared = context.get("argument_alignment") if pointer.root in {0, 1, 2} else None
+                if pointer.root in {0, 1, 2} and argument_alignments is not None:
+                    declared = argument_alignments[pointer.root]
+                if isinstance(pointer.root, GlobalOp):
+                    declared = getattr(getattr(pointer.root.alignment, "value", None), "data", None)
+                if (type(declared) is not int or alignment <= 0 or alignment & (alignment - 1)
+                        or declared % alignment or pointer.offset % alignment):
+                    raise ValueError("input pointer alignment assumption lacks original ABI evidence")
             elif name == "llvm.select":
                 result = args[1] if integer(args[0]) else args[2]
             elif name == "llvm.load":
                 pointer = args[0]
                 width = _payload_bytes(op.results[0].type)
                 bound(pointer, width)
-                if pointer.root == 0:
-                    result = _Copy(tuple((0, pointer.offset + i) for i in range(width)))
-                elif pointer.root in {1, 2}:
-                    raise ValueError("input preparation reads weights or output on CPU")
+                if pointer.root in {0, 1}:
+                    result = _Copy(tuple((pointer.root, pointer.offset + i) for i in range(width)))
+                elif pointer.root == 2:
+                    raise ValueError("input preparation reads output on CPU")
                 elif pointer.root in readonly:
                     result = _Copy(("zero",) * width)
                 else:
-                    result = _Copy(tuple(memory[(pointer.root, pointer.offset + i)] for i in range(width)))
+                    _, reference = memory.read_batch(pointer.root, np.arange(pointer.offset, pointer.offset + width))
+                    result = _Copy(
+                        tuple(memory[(pointer.root, pointer.offset + i)] for i in range(width)), (reference,)
+                    )
                 payload += width
             elif name == "llvm.store":
                 value, pointer = args
                 width = _payload_bytes(op.operands[0].type)
                 bound(pointer, width)
-                if pointer.root in {0, 1, 2}:
-                    raise ValueError("input preparation writes model input, weight or output on CPU")
+                if pointer.root in {0, 1}:
+                    raise ValueError("input preparation writes model input or weight on CPU")
                 if pointer.root in readonly:
                     raise ValueError("input preparation writes read-only zero padding storage")
                 origins = value.origins if isinstance(value, _Copy) else ("zero",) * width if value == 0 else None
                 if origins is None or len(origins) != width:
                     raise ValueError("input scratch store is not an unchanged input copy or zero padding")
-                for i, origin in enumerate(origins):
-                    key = pointer.root, pointer.offset + i
-                    memory[key] = origin
-                    initialized.add(key)
+                if pointer.root == 2:
+                    if not isinstance(value, _Copy) or any(
+                        origin == "zero" or origin[0] != 2 for origin in origins
+                    ):
+                        raise ValueError("CPU output store is not unchanged accelerator result bytes")
+                    memory.publish_output(
+                        np.arange(pointer.offset, pointer.offset + width),
+                        np.array([memory.output_base + origin[1] for origin in origins]),
+                    )
+                else:
+                    for i, origin in enumerate(origins):
+                        memory[pointer.root, pointer.offset + i] = origin
+                for reference in value.references if isinstance(value, _Copy) else ():
+                    memory.forward(reference)
                 payload += width
             elif name == "llvm.inline_asm":
+                void_result = (len(op.results) == 1 and isinstance(op.results[0].type, LLVMVoidType)
+                               and not op.results[0].uses)
                 if (
-                    op.results
+                    (op.results and not void_result)
                     or not isinstance(op.has_side_effects, UnitAttr)
                     or "~{memory}" not in op.constraints.data.split(",")
                 ):
@@ -237,6 +315,8 @@ def _prove(function, activity, context, *, target):
                 template = _asm_template(op)
                 if template == "fence" and args:
                     raise ValueError("input preparation pointer/scalar escapes opaque fence")
+                if template == "fence":
+                    memory.pending_results.clear()
                 if template != "fence":
                     parsed = _parse_insn(template, isa["CUSTOM_OPCODE"])
                     if parsed is None or not parsed[1] or len(args) != 2:
@@ -264,8 +344,12 @@ def _prove(function, activity, context, *, target):
                         ):
                             raise ValueError("pointer command lacks decoded DRAM operand role")
                         if klass in {"MVIN", "MVIN2", "MVIN3"}:
+                            element_bytes = 1
                             if load_states is not None and decoded.get("is_acc_addr") is not False:
-                                raise ValueError("input transfer byte width has no selected scratchpad address proof")
+                                if (decoded.get("is_acc_addr") is not True
+                                        or type(load_states.max_element_bytes) is not int):
+                                    raise ValueError("input transfer byte width has no selected source bound")
+                                element_bytes = load_states.max_element_bytes
                             port = load_states.port(klass) if load_states is not None else 0
                             if port is None:
                                 raise ValueError("input transfer has no source-selected load port")
@@ -277,18 +361,16 @@ def _prove(function, activity, context, *, target):
                                 raise ValueError("input transfer extent is unknown")
                             if type(load_stride) is not int or load_stride < 0:
                                 raise ValueError("input transfer stride is unknown")
-                            bound(pointer, (rows - 1) * load_stride + cols)
+                            bound(pointer, (rows - 1) * load_stride + cols * element_bytes)
                             if pointer.root not in {0, 1}:
                                 scratch_transfers += 1
-                                for row_index in range(rows):
-                                    for column in range(cols):
-                                        key = pointer.root, pointer.offset + row_index * load_stride + column
-                                        if pointer.root not in readonly and key not in memory:
-                                            raise ValueError("accelerator consumes uninitialized input scratch")
-                                        consumed.add(key)
+                                if pointer.root not in readonly:
+                                    memory.consume_rows(
+                                        pointer.root, pointer.offset, rows, cols * element_bytes, load_stride
+                                    )
                             if pointer.root != 1:
                                 transfers += 1
-                        elif klass == "MVOUT" and pointer.root == 2:
+                        elif klass == "MVOUT" and pointer.root not in {0, 1} and pointer.root not in readonly:
                             rows, cols = decoded.get("rows"), decoded.get("cols")
                             if (
                                 type(rows) is not int
@@ -301,6 +383,7 @@ def _prove(function, activity, context, *, target):
                             ):
                                 raise ValueError("output transfer extent/stride/type is unknown")
                             bound(pointer, (rows - 1) * store_stride + cols * 4)
+                            memory.result_rows(pointer.root, pointer.offset, rows, cols * 4, store_stride)
                         else:
                             raise ValueError("input scratch/output pointer escapes decoded transfer role")
                     elif klass == "CONFIG_LD":
@@ -328,6 +411,8 @@ def _prove(function, activity, context, *, target):
             else:
                 raise ValueError(f"input preparation contains unsupported operation {name}")
             if op.results:
+                if name == "llvm.inline_asm" and void_result:
+                    continue
                 if len(op.results) != 1 or result is None:
                     raise ValueError("input preparation result has unknown provenance")
                 values[op.results[0]] = result
@@ -336,14 +421,15 @@ def _prove(function, activity, context, *, target):
         raise ValueError("input preparation execution/transfer roster is incomplete")
     # Padding scratch may feed only copied zero bytes; every nonzero input-copy
     # destination must itself have appeared as actual decoded accelerator input.
-    if any(key not in consumed and memory[key] != "zero" for key in initialized):
-        raise ValueError("input copy scratch never feeds decoded accelerator input")
+    memory.require_consumed()
     return {
         "status": "proven",
         "arithmetic": arithmetic,
+        "conversions": conversions,
         "payload_bytes": payload,
         "input_transfers": transfers,
         "scratch_input_transfers": scratch_transfers,
         "readonly_zero_globals": len(readonly),
-        "scope": "bounded input address/copy only; no tensor values evaluated",
+        "batched_copy_regions": batches,
+        "scope": "bounded unchanged input/result byte transport; no tensor values evaluated",
     }

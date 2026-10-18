@@ -1,8 +1,8 @@
 """Capture specifications projected from typed abstract capsule entries."""
 
+
 def _entry_seed(name: str) -> int:
     return sum((i + 1) * ord(c) for i, c in enumerate(name)) or 1
-
 
 
 def _capture_spec(entry: dict, binding) -> dict:
@@ -24,6 +24,8 @@ def _capture_spec(entry: dict, binding) -> dict:
     }
     if "shape" in entry:
         spec["shape"] = list(entry["shape"])
+    if "permutation" in entry:
+        spec["permutation"] = list(entry["permutation"])
     # WHICH QUANTIZATION the captured PROGRAM should carry, when the entry names one. The dtype default
     # for int8 is weight-only, which emits a float matmul over dequantized weights -- correct for a
     # model ladder, wrong for a capsule meant to exercise an integer datapath, and not fixable by

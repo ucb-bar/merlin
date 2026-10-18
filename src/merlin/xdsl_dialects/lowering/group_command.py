@@ -494,6 +494,10 @@ def program(
     module again (quadratic in the model: 69% of a 1551-group statement's time)."""
     from merlin.runtime.commandbuffer import EPILOGUE_STAGES
 
+    if group.fusion and group.fusion.get("cut") != "bare":
+        from .group_output_program import program as output_program
+
+        return output_program(group, weight_args=weight_args, name=name, extents=extents)
     base = CG.capsule_entry(group, name=name, extents=extents)  # the stage names, and the refusals that go with them
     if group.window_mean is not None:
         return GroupProgram(

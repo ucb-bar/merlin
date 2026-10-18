@@ -285,6 +285,7 @@ MODULE_ACCESS = (
         aliases=("merlin.targetgen.oracle_policy", "merlin.targetgen._capsule_bundle_worker"),
     ),
     _module("merlin.targetgen.capsule_dram", "grader"),
+    _module("merlin.targetgen.capsule_source_identity", "grader"),
     _module(
         "merlin.targetgen.oot_runner",
         "grader",

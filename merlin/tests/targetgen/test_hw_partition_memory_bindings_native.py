@@ -45,7 +45,7 @@ def _firrtl(kind):
         )
     source += "    seen <= cat(m1.r.data, m0.r.data)\n"
     source += (
-        "  module Root :\n    input clock : Clock\n    input index : UInt<2>\n    input consent : UInt<1>\n"
+        "  module Root : @[generators/test_unit/Root.scala 1:1]\n    input clock : Clock\n    input index : UInt<2>\n    input consent : UInt<1>\n"
         "    input choice : UInt<1>\n    input x : UInt<8>\n    input y : UInt<8>\n    output seen : UInt<8>\n"
     )
     if kind == "state":

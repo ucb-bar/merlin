@@ -1,5 +1,6 @@
 """One joined capture/ABI/lineage check over an actual recurrent three-stage model."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -9,6 +10,7 @@ import pytest
 
 from merlin.llvmlower.session_bundle import load
 from merlin.targetgen import _m2m_capture_worker as worker
+from merlin.targetgen._m2m_capture_artifacts import frontend_trace_bytes
 from merlin.targetgen.application_inventory import verify_capture_receipt
 from merlin.targetgen.quant_recipe import digest as recipe_digest
 
@@ -143,6 +145,13 @@ def test_worker_captures_the_entire_declared_session_with_owned_sidecars(tmp_pat
     assert session.program_names == ("prefix", "step", "final")
     assert len(session.bindings) == 2
     receipt = json.loads((out / "session-receipt.json").read_bytes())
+    integrity = subprocess.run(
+        [python, "-c", "import sys;sys.path.insert(0,sys.argv[1]);"
+         "from m2m.capture.bundle_integrity import verify_bundle_integrity;verify_bundle_integrity(sys.argv[2])",
+         root, str(out)],
+        cwd=tmp_path, capture_output=True, text=True, timeout=60,
+    )
+    assert integrity.returncode == 0, integrity.stderr
     assert receipt["agentic"] is False
     assert receipt["determinism"]["seed"] == 7
     if dtype == "int8":
@@ -187,8 +196,11 @@ def test_worker_captures_the_entire_declared_session_with_owned_sidecars(tmp_pat
         stage = program.bundle
         assert verify_capture_receipt(stage / "model.mlir")["status"] == "verified_materialized"
         assert f'prov.weights_file = "{stage / "weights.safetensors"}"' in (stage / "model.mlir").read_text()
-        assert json.loads((stage / "frontend-trace.json").read_bytes())["status"] == "complete"
+        trace_raw = (stage / "frontend-trace.json").read_bytes()
+        trace = json.loads(trace_raw)
+        assert trace["status"] == "complete" and frontend_trace_bytes(trace) == trace_raw
         metadata = json.loads((stage / "meta.json").read_bytes())
+        assert metadata["frontend_trace"]["sha256"] == hashlib.sha256(trace_raw).hexdigest()
         assert metadata["input_abi"]
         assert len(metadata["output_abi"]) == (2 if program.name == "step" else 1)
         assert all(row["dtype"] == "f32" for row in metadata["output_abi"])

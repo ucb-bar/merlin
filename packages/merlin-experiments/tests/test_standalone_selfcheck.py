@@ -71,23 +71,25 @@ def test_native_staging_copies_package_bytes_without_clobbering_bound_source(tmp
     assert bound_source.read_text() == "original bound source\n"
 
 
-def test_unpinned_selfcheck_discovers_grade_engine_and_broker_defers_selection(monkeypatch, capsys):
-    monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
-    monkeypatch.setattr(selfcheck, "_target_sim_via", lambda _context: ("synthetic", "chipyard"))
+def test_unflagged_selfcheck_selects_the_grade_adapters_in_worker_and_broker(monkeypatch):
+    """No engine named: the broker forwards the grade's own selection, which the worker resolves to
+    exactly the adapters the official grade uses -- never one engine, pinned or discovered."""
+    for pin in ("", "gsim"):
+        monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", pin)
+        assert selfcheck_broker._default_sim() == selfcheck.REQUIRED_SIM
+        assert selfcheck.REQUIRED_SIM in selfcheck_broker._allowed_sims()
+    official = {"L2": object(), "L3": object()}
+    calls = []
     monkeypatch.setattr(
-        selfcheck.CR,
-        "describe_l3_engine",
-        lambda target, sim_via: {"available": True, "engine": "gsim"},
+        selfcheck.CR, "qa_checkpoint_adapters",
+        lambda target, sim_via, **kwargs: calls.append((target, sim_via, kwargs)) or official,
     )
-    assert selfcheck._default_sim(object()) == "gsim"
-    assert selfcheck_broker._default_sim() is None
-    monkeypatch.setattr(
-        selfcheck.CR,
-        "describe_l3_engine",
-        lambda target, sim_via: {"available": False, "reason": "no RTL engine available"},
-    )
-    assert selfcheck._default_sim(object()) == selfcheck.FALLBACK_RTL_SIM
-    assert "no RTL engine available" in capsys.readouterr().err
+    monkeypatch.setattr(selfcheck.CR, "simulator_adapter", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("the grade's selection must not construct a narrower engine adapter")))
+    adapters, sim = selfcheck._adapters(selfcheck.REQUIRED_SIM, "synthetic", "chipyard", readback_policy="full")
+    assert sim == selfcheck.REQUIRED_SIM
+    assert adapters == official and all(adapters[t] is official[t] for t in official)
+    assert calls == [("synthetic", "chipyard", {"readback_policy": "full"})]
 
 
 def test_legacy_capsule_fallback_names_itself_and_its_cause(tmp_path, capsys):

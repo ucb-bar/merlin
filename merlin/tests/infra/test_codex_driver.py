@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import merlin_dir
+from merlin.common.paths import merlin_dir, module_source_path
 
 _HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
 if str(_HARNESS) not in sys.path:
@@ -544,13 +544,54 @@ def test_the_default_prompt_requires_narrow_iteration_before_a_full_sweep(tmp_pa
     _rc, tpath, _records = _run(tmp_path, _fake_codex(tmp_path, _stream()))
     prompt = (tpath.parent / "round_00.prompt.txt").read_text()
 
-    assert "smallest affected capsule" in prompt
+    assert "check the capsules an edit affects" in prompt
     assert "only after the focused checks improve" in prompt
-    assert "Do not edit submission/ while a self-check is running" in prompt
+    assert "You may edit submission/ while a self-check runs" in prompt
+    # The recommended focused check is the certifying one: no single-engine screen in the command.
+    assert "`python3 agent_selfcheck.py --submission submission --capsules <names>`" in prompt
+    assert "certified pass/fail per capsule" in prompt
+    assert "--sim spike --capsules" not in prompt
     assert "Build something minimal and write submission/manifest.yaml FIRST" in prompt
     assert "then use await_verdict.py rather than a poll loop" in prompt
     assert "do not launch `--capsules all` merely to refresh it" in prompt
     assert "--capsules all` with your shell after each build" not in prompt
+
+
+def test_the_default_prompt_teaches_checks_that_do_not_block_the_author(tmp_path):
+    """The author keeps working while checks run, batches capsules and may try variants side by side.
+
+    Measured on one 300-minute run: the author blocked on synchronous self-checks for 224 minutes,
+    sent one to three capsules per request, and the 18-CPU pool averaged a load of 2.7. The client
+    already returned a request id on a short wait budget and resumed with ``--attach``; nothing told
+    the author to use it.
+    """
+    _rc, tpath, _records = _run(tmp_path, _fake_codex(tmp_path, _stream()))
+    prompt = (tpath.parent / "round_00.prompt.txt").read_text()
+
+    assert "`--wait-budget 5`" in prompt and "--attach <id>" in prompt and "`--list`" in prompt
+    assert "Several requests may be in flight at once" in prompt
+    assert "into ONE comma-separated request" in prompt and "per-request overhead dominates" in prompt
+    assert "`--capsules changed`" in prompt and "`--capsules failing`" in prompt
+    assert "`--submission variants/<name>`" in prompt and "copy the winner into submission/" in prompt
+    assert "never graded officially" in prompt
+
+
+def test_codex_and_opencode_arms_get_the_same_standing_instruction():
+    """Instruction parity: two arms of one campaign must be asked the same thing in the same words."""
+    import ast
+
+    def default_prompt(module: str) -> str:
+        tree = ast.parse(module_source_path(module).read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "msg" for t in node.targets):
+                if isinstance(node.value, ast.IfExp):
+                    return ast.literal_eval(node.value.orelse)
+        raise AssertionError(f"no default round prompt in {module}")
+
+    codex = default_prompt("merlin_experiments.phase1.providers.codex_agent")
+    opencode = default_prompt("merlin_experiments.phase1.providers.opencode_agent")
+    assert codex == opencode
+    assert "--wait-budget 5" in codex
 
 
 def test_a_missing_codex_binary_fails_the_round_without_raising(tmp_path):

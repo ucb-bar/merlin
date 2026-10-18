@@ -130,7 +130,6 @@ def _logical_values(raw: bytes, *, tensor: str, dtype: str, shape: tuple[int, ..
     return _decode_logical_values(raw, tensor=tensor, dtype=dtype, shape=shape, error_type=NativeModelExecutionError)
 
 
-
 def _bind_inputs(
     command_buffer: Mapping[str, Any],
     capture_bundle: Path,
@@ -185,8 +184,13 @@ def _bind_inputs(
         facts = json.loads(facts_path.read_text(encoding="utf-8"))
         if (facts.get("inputs") or {}).get("target") != target:
             raise NativeModelExecutionError("selected RTL facts name a different target")
-        if board_config and ((facts.get("facts") or {}).get("source") or {}).get("config") != board_config:
-            raise NativeModelExecutionError("selected RTL facts name a different board config")
+        if board_config:
+            from merlin.targetgen.rtl.unit_correspondence import ExecutionBindingError, execution_binding
+
+            try:
+                execution_binding(facts, config=board_config)
+            except ExecutionBindingError as exc:
+                raise NativeModelExecutionError("selected RTL facts name a different board config") from exc
         arrays = [
             row
             for row in ((facts.get("facts") or {}).get("arrays") or ())

@@ -139,8 +139,9 @@ def _command_only_integer_orchestration(function: Any, target: str | None) -> bo
     if target is None:
         return False
     from xdsl.dialects.builtin import UnitAttr
-    from xdsl.dialects.llvm import LLVMPointerType
+    from xdsl.dialects.llvm import LLVMPointerType, LLVMVoidType
 
+    from merlin.perf.host_cfg_activity import _INTEGER, _real_name
     from merlin.targetgen.rocc.decode import _asm_template, _parse_insn, isa_constants
 
     try:
@@ -152,15 +153,25 @@ def _command_only_integer_orchestration(function: Any, target: str | None) -> bo
     if not blocks or not blocks[0].args or not all(isinstance(arg.type, LLVMPointerType) for arg in blocks[0].args):
         return False
     commands = 0
+    scalar_ops = _INTEGER | {
+        "llvm.func", "llvm.mlir.constant", "llvm.mlir.addressof", "llvm.getelementptr",
+        "llvm.ptrtoint", "llvm.inttoptr", "llvm.bitcast", "llvm.icmp", "llvm.select",
+        "llvm.trunc", "llvm.zext", "llvm.sext", "llvm.br", "llvm.cond_br", "llvm.return",
+    }
     for op in function.walk():
-        name = op.name
-        if name in {"llvm.load", "llvm.store", "llvm.alloca", "llvm.call", "llvm.call_intrinsic", "llvm.atomicrmw", "llvm.cmpxchg"}:
+        name = _real_name(op)
+        if name not in scalar_ops and name != "llvm.inline_asm":
             return False
         if name == "llvm.return" and op.operands:
             return False
         if name != "llvm.inline_asm":
             continue
-        if op.results or not isinstance(op.has_side_effects, UnitAttr) or "~{memory}" not in op.constraints.data.split(","):
+        void_result = (len(op.results) == 1 and isinstance(op.results[0].type, LLVMVoidType)
+                       and not op.results[0].uses)
+        if (
+            (op.results and not void_result) or not isinstance(op.has_side_effects, UnitAttr)
+            or "~{memory}" not in op.constraints.data.split(",")
+        ):
             return False
         template = _asm_template(op)
         if template == "fence":
@@ -196,6 +207,7 @@ def audit_group(
     if dynamic is None or activity.get("status") != "derived":
         row.update(
             verdict=UNKNOWN,
+            activity_problems=list(activity.get("problems") or [])[:32],
             why="dynamic host work or scalar memory payload could not be counted: "
             + "; ".join(activity.get("problems") or ["unknown scalar memory payload"])[:300],
         )
@@ -230,8 +242,10 @@ def audit_group(
             # All exclusions are actual closed address/copy execution counts;
             # ordinary budgets still judge every operation outside that proof.
             arithmetic -= preparation["arithmetic"] - address_arithmetic
+            arithmetic -= preparation.get("conversions", 0)
+            value_arithmetic -= preparation.get("conversions", 0)
             payload -= preparation["payload_bytes"]
-            if arithmetic < 0 or payload < 0:
+            if arithmetic < 0 or value_arithmetic < 0 or payload < 0:
                 row.update(verdict=UNKNOWN, why="input preparation counts exceed original raw accounting")
                 return row
     command_only = (

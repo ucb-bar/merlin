@@ -93,6 +93,7 @@ def test_cert_policy_intersects_all_public_roots_after_derivation(tmp_path, monk
 
 def test_interleaved_invocations_keep_snapshot_policy_order_and_publication(tmp_path, monkeypatch):
     from merlin_experiments.phase1.feedback import promotion
+    monkeypatch.setenv('MERLIN_BACKGROUND_CODEGEN_SCALABILITY', '0')
 
     events = []
     monkeypatch.setattr(G, "_write_stage_ledger", lambda *a, **kw: events.append("ledger"))
@@ -190,7 +191,8 @@ def test_interleaved_invocations_keep_snapshot_policy_order_and_publication(tmp_
         events.clear()
 
 
-def test_in_turn_grade_reaches_agent_after_source_changes(tmp_path, monkeypatch):
+@pytest.mark.parametrize('finish_snapshot', [False, True])
+def test_in_turn_grade_reaches_agent_after_source_changes(tmp_path, monkeypatch, finish_snapshot):
     from merlin_experiments.phase1.feedback import promotion
 
     ws, run = tmp_path / "ws", tmp_path / "run"
@@ -198,6 +200,8 @@ def test_in_turn_grade_reaches_agent_after_source_changes(tmp_path, monkeypatch)
     (ws / "submission/manifest.yaml").write_text("language: python\n")
     (ws / "submission/compiler.py").write_text("VALUE = 1\n")
     inputs = G.GradingInputs(context(tmp_path), "raw_baseline", tmp_path / "public", (), None)
+    monkeypatch.setenv('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '1' if finish_snapshot else '0')
+    monkeypatch.setenv('MERLIN_BACKGROUND_PROGRESS', '1')
     monkeypatch.setattr(G, "_write_stage_ledger", lambda *a, **kw: None)
     monkeypatch.setattr(G, "_attach_shape_generalization", lambda *a, **kw: None)
     monkeypatch.setattr(G, "_attach_codegen_scalability", lambda *a, **kw: None)
@@ -208,15 +212,26 @@ def test_in_turn_grade_reaches_agent_after_source_changes(tmp_path, monkeypatch)
     def grade_snapshot(candidate, *args, **kwargs):
         assert (Path(candidate) / "compiler.py").read_text() == "VALUE = 1\n"
         (ws / "submission/compiler.py").write_text("VALUE = 2\n")
-        assert kwargs["defer_pending"]() == "background source superseded"
-        return {"all_pass": False, "n_passed": 0, "n_capsules": 1, "per_capsule": []}
+        kwargs['on_capsule_complete']({'capsule': 'completed', 'status': 'pass', 'tiers': {'L2': 'pass'}})
+        progress = json.loads((ws/'qa/progress.json').read_text())
+        assert progress['n_completed'] == 1 and progress['n_passed'] == 1
+        assert progress['all_pass'] is None and progress['certified_complete'] is False
+        assert progress['snapshot_current'] is False
+        assert not (ws/'qa/verdict.json').exists()
+        assert kwargs["defer_pending"]() == (None if finish_snapshot else "background source superseded")
+        return {"all_pass": True, "n_passed": 1, "n_capsules": 1, "per_capsule": []}
 
     G.grade(ws, run, 900, False, 10, label="inturn", inputs=inputs,
             qa_runner=grade_snapshot, advisory_background=True)
     visible = json.loads((ws / "qa/verdict.json").read_text())
     assert visible["snapshot_current"] is False
-    assert visible["background_grade"]["reason"] == "background source superseded"
+    assert visible['all_pass'] is None
+    assert visible['gradeable'] is False
+    if not finish_snapshot:
+        assert visible["background_grade"]["reason"] == "background source superseded"
     assert len(visible["graded_source_sha256"]) == 64
+    progress = json.loads((ws/'qa/progress.json').read_text())
+    assert progress['state'] == 'complete' and progress['all_pass'] is None
 
 
 def test_selected_object_build_reaches_grade_and_candidate_matched_continuous_brief(tmp_path, monkeypatch):
@@ -384,7 +399,6 @@ def test_native_lazy_selection_binds_descriptor_and_cache_per_invocation(tmp_pat
 
 @pytest.mark.parametrize("shared_compute", [False, True])
 def test_fast_grade_uses_explicit_target_roots_and_withheld_tier(tmp_path, monkeypatch, shared_compute):
-    from merlin.common.cpu_pool import shared_compute_pool
 
     if shared_compute:
         cpu = min(os.sched_getaffinity(0))
@@ -529,6 +543,7 @@ def test_nested_policy_cert_cover_keeps_public_dev_exclusions_and_real_empty(tmp
 
 def test_mandatory_cert_members_respect_selected_cohort_labels_and_exclusions(tmp_path, monkeypatch):
     from merlin_experiments.phase1.feedback import promotion
+
     from merlin.targetgen import capsule_common, target_experiment
 
     caps = [
@@ -555,8 +570,10 @@ def test_mandatory_cert_members_respect_selected_cohort_labels_and_exclusions(tm
 @pytest.mark.parametrize("producer", ["fast_grade", "selfcheck"])
 def test_completed_loop_pass_queues_before_batch_finishes_from_frozen_source(tmp_path, monkeypatch, producer):
     import threading
-    from merlin.targetgen import capsule_common, capsule_scheduling
+
     from merlin_experiments.phase1.feedback import promotion, qa
+
+    from merlin.targetgen import capsule_common, capsule_scheduling
 
     ws, frozen, runs = (tmp_path / name for name in ("ws", "frozen", "runs"))
     for root in (ws, frozen):

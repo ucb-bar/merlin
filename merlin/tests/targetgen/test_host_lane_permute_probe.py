@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from merlin.targetgen.capsule_builtin_source import render_builtin_source
+from merlin.targetgen.capsule_capture_spec import _capture_spec
 from merlin.targetgen.capsule_source import _OP_BODIES, _PREAMBLE
 from merlin.targetgen.corpus_synth import DEFAULT_PERMUTE_LAYOUT, permute_probe_layout
 from merlin.targetgen.host_lane_ops import observed_host_ops
@@ -66,3 +69,18 @@ def test_the_permute_program_is_written_at_the_selected_rank_and_axis_order():
     assert "x.permute(1, 0)" in legacy and "_r(4, 8)" in legacy
     with pytest.raises(ValueError, match="every axis"):
         _render({"shape": [1, 5, 5, 3], "permutation": [0, 3, 1, 1]})
+
+
+def test_the_capture_spec_carries_the_selected_axis_order_to_the_written_program():
+    observed = {"op": "permute", "layouts": [{"shape": [1, 5, 5, 3], "permutation": [0, 3, 1, 2], "n_regions": 1}]}
+    entry = {"name": "host_lane_permute_f32", "op": "permute", "capture_dtype": "fp32"}
+    entry.update(permute_probe_layout(observed))
+
+    spec = _capture_spec(entry, SimpleNamespace(tile_dim=16, operand_dtype="int8"))
+
+    assert spec["shape"] == [1, 5, 5, 3] and spec["permutation"] == [0, 3, 1, 2]
+    # Dropping the axis order would silently write the last-two-axes swap (0, 1, 3, 2) instead.
+    source = _render(spec)
+    assert "x.permute(0, 3, 1, 2)" in source and "_r(1, 5, 5, 3)" in source
+    entry["permutation"].append(9)
+    assert spec["permutation"] == [0, 3, 1, 2]  # the spec owns a copy of the entry's axis order

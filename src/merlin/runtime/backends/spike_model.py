@@ -734,6 +734,12 @@ def build(
             vectorize = selected_vectorize
         if int8_compute:
             compilation.bind_preparation("quantization_policy", work / "quantization-policy.json")
+        if getattr(device, "post_offload_transform", None) is not None:
+            receipt = work / "device_host_abi" / "post_offload_transform.json"
+            compilation.bind_preparation("post_offload_transform", receipt)
+            compilation.bind_preparation(
+                "post_offload_source", Path(json.loads(receipt.read_text())["source_snapshot"]))
+            compilation.bind_preparation("post_offload_selected", prepared_path)
         if prepared_model_transform is not None:
             from ...llvmlower.prepared_model_transform import RECEIPT
 
@@ -1226,23 +1232,15 @@ def build(
         units["op_prof.o"] = (rt / "merlin_op_prof.c", prof_defs)
     profile_link_flags: list[str] = []
     if group_profile:
-        from ..whole_model_readback import callees as _group_callees
-        from ..whole_model_readback import group_names as _group_names
-        from ..whole_model_readback import render_group_profile, wrap_flags
+        from ...llvmlower.group_profile_bindings import prepare_profile
 
-        # The model object's undefined symbols are what a wrapper can intercept: a routed group is
-        # bracketed under the name the model actually calls it by, or the build refuses.
         listing = _run([str(toolchain.nm()), "-u", str(work / "model.o")]).stdout
         undefined = {line.split()[-1] for line in listing.splitlines() if line.split()}
-        routed_rows = list(_dev_side.get("routed") or [])
-        group_callees = _group_callees(
-            routed_rows, _dev_args.get("signatures") or {}, undefined, _dev_args.get("call_buffers")
+        source, profile_link_flags = prepare_profile(
+            work, prepared_path, cgen, _dev_side, _dev_args, undefined,
+            transformed=getattr(device, "post_offload_transform", None) is not None,
         )
-        (cgen / "merlin_group_profile.c").write_text(
-            render_group_profile(group_callees, _group_names(routed_rows)), encoding="utf-8"
-        )
-        units["group_profile.o"] = (cgen / "merlin_group_profile.c", [])
-        profile_link_flags = wrap_flags(group_callees)
+        units["group_profile.o"] = (source, [])
     objs = []
     for obj, (src, extra) in units.items():
         if work / obj != runtime_object:

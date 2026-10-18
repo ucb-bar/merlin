@@ -27,6 +27,7 @@ LIBRARY_MODULES = (
     'merlin.compile.scheduling.fusion_contracts',
     'merlin.compile.scheduling.fusion_semantics',
     'merlin.compile.scheduling.library_sources',
+    'merlin.compile.scheduling.pointwise_source',
     'merlin.compile.scheduling.program_contracts',
     'merlin.compile.scheduling.program_limits',
     'merlin.compile.scheduling.row_contracts',

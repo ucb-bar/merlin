@@ -31,7 +31,7 @@ from merlin.common import content_store
 from merlin.common.access import contract_resource_roots
 from merlin.common.path_relations import LexicalPathIndex, minimal_roots
 from merlin.common.paths import repo_root
-from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, answer_surfaces
+from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, CapsuleMetadata, answer_surfaces
 from merlin.targetgen.target_experiment import TargetExperiment
 
 _EXPOSE_OPS = ("--ro-bind", "--bind", "--dev-bind", "--ro-bind-try", "--bind-try")
@@ -316,15 +316,13 @@ def _validate_host_sources(
 
 
 def _validate_host_locations(ws: Path, hosts: list[tuple[str, Path]]) -> None:
+    # These bounds are invariant during this validation call, even for a
+    # toolchain declared as thousands of individual host-only files.
+    bounds = {ws.absolute(), ws.resolve(), bundle_snapshot_root(ws).absolute(), bundle_snapshot_root(ws).resolve()}
     for _, source in hosts:
         for private in {source.absolute(), source.resolve()}:
-            for bound in {
-                ws.absolute(),
-                ws.resolve(),
-                bundle_snapshot_root(ws).absolute(),
-                bundle_snapshot_root(ws).resolve(),
-            }:
-                if private == bound or private in bound.parents or bound in private.parents:
+            for bound in bounds:
+                if private.is_relative_to(bound) or bound.is_relative_to(private):
                     raise RuntimeError("host-only input overlaps the writable workspace or snapshot storage")
 
 
@@ -389,6 +387,7 @@ def _snapshot_records(
         raise RuntimeError("bundle input snapshot grant records are incomplete")
     out: list[tuple[str, Path, Path]] = []
     root = bundle_snapshot_root(ws)
+    resolved_root = None
     for expected, record in zip(expected_allowed, records, strict=True):
         if not isinstance(record, dict) or record.get("path") != expected:
             raise RuntimeError("bundle input snapshot grant ordering does not match this run")
@@ -417,16 +416,17 @@ def _snapshot_records(
             raise RuntimeError("bundle input snapshot record does not match its declared destination")
         source = root / snapshot_rel
         try:
-            resolved_root = root.resolve(strict=True)
+            if resolved_root is None:
+                resolved_root = root.resolve(strict=True)
             resolved_source = source.resolve(strict=True)
         except OSError as exc:
             raise RuntimeError(f"bundle input snapshot grant is incomplete for {expected!r}") from exc
         if resolved_source != resolved_root and resolved_root not in resolved_source.parents:
             raise RuntimeError(f"bundle input snapshot path escapes its root for {expected!r}")
-        relative_source = source.relative_to(root)
-        if any(
-            (root / Path(*relative_source.parts[:i])).is_symlink() for i in range(1, len(relative_source.parts) + 1)
-        ):
+        # A fresh full resolution must retain the exact lexical relative path.
+        # This detects every internal symlink without separately statting every
+        # shared ancestor again for each sibling in a flat toolchain roster.
+        if resolved_source != resolved_root / snapshot_rel:
             raise RuntimeError(f"bundle input snapshot contains a symlink for {expected!r}")
         if path_kind(source) == "missing":
             raise RuntimeError(f"bundle input snapshot grant is incomplete for {expected!r}")
@@ -753,7 +753,11 @@ def materialize_bundle_inputs(
 
 
 def _bundle_mount_args(
-    ws: Path, bundle: dict, repo: Path, *, _policy_test_live_inputs: bool = False,
+    ws: Path,
+    bundle: dict,
+    repo: Path,
+    *,
+    _policy_test_live_inputs: bool = False,
     visibility_prefix: Sequence[str] | None = None,
 ) -> list[str]:
     """Frozen allow mounts and deny overlays, ordered so the MOST SPECIFIC declaration wins.
@@ -1197,7 +1201,7 @@ class _MountPathIndex:
         start = bisect.bisect_left(self.ordered, prefix)
         for index in range(start, len(self.ordered)):
             parts = self.ordered[index]
-            if parts[:len(prefix)] != prefix:
+            if parts[: len(prefix)] != prefix:
                 break
             found.update(self.exact[parts])
         return found
@@ -1284,7 +1288,12 @@ def _frozen_support_surfaces(ws: Path, bundle: dict, surfaces: list[AnswerSurfac
 
 
 def _frozen_answer_surfaces(
-    ws: Path, bundle: dict, te: TargetExperiment, live: list[AnswerSurface], repo: Path
+    ws: Path,
+    bundle: dict,
+    te: TargetExperiment,
+    live: list[AnswerSurface],
+    repo: Path,
+    capsules: CapsuleMetadata | None = None,
 ) -> list[AnswerSurface]:
     """Classify answer bytes in pinned public grants, independent of mutable live sources.
 
@@ -1337,7 +1346,8 @@ def _frozen_answer_surfaces(
                         if member.name == "capsule.yaml":
                             from merlin.targetgen.capsule_privacy import capsule_answer_members
 
-                            for relative, origin in capsule_answer_members(member.parent).items():
+                            declared = {} if capsules is None else {"capsule": capsules.load(member.parent)}
+                            for relative, origin in capsule_answer_members(member.parent, **declared).items():
                                 add(member.parent / relative, "file", origin)
                         if member.name.startswith("golden.") or member.name == "expected_instruction_coverage.yaml":
                             add(member, "file", "golden")
@@ -1360,6 +1370,7 @@ def apply_final_answer_masks(
     bundle: dict,
     *,
     repo: Path | None = None,
+    capsules: CapsuleMetadata | None = None,
     _policy_test_live_inputs: bool = False,
 ) -> list[str]:
     """Withhold descriptor answers and verified private-input aliases after all binds.
@@ -1368,6 +1379,9 @@ def apply_final_answer_masks(
     frozen bundle. This shared final policy examines that complete mount list:
     canonical-path masks alone cannot withhold a private input mounted under a
     different name. No grants or snapshot authority are created here.
+
+    ``capsules`` lets one execution scope reuse capsule metadata parsed from
+    byte-identical files; every walk, listing and host-input scan stays fresh.
     """
     from merlin.targetgen.sandbox.host_surfaces import host_input_surfaces
 
@@ -1376,7 +1390,7 @@ def apply_final_answer_masks(
     private = host_input_surfaces(
         argv, ws, bundle, repo=repo or repo_root(), _policy_test_live_inputs=_policy_test_live_inputs
     )
-    answers = answer_surfaces(te)
+    answers = answer_surfaces(te) if capsules is None else answer_surfaces(te, capsules=capsules)
     frozen_support = (
         []
         if _policy_test_live_inputs or not bundle
@@ -1385,7 +1399,7 @@ def apply_final_answer_masks(
     frozen_answers = (
         []
         if _policy_test_live_inputs or not bundle
-        else _frozen_answer_surfaces(ws, bundle, te, answers, (repo or repo_root()).absolute())
+        else _frozen_answer_surfaces(ws, bundle, te, answers, (repo or repo_root()).absolute(), capsules)
     )
     support = [surface for surface in [*answers, *frozen_support] if surface.origin == "backend"]
     result = apply_answer_masks(argv, [*answers, *frozen_support, *frozen_answers, *private])
@@ -1399,17 +1413,16 @@ def apply_final_answer_masks(
 def full_argv(
     te: TargetExperiment, ws: Path, bundle: dict | None = None, *, _policy_test_live_inputs: bool = False
 ) -> list[str]:
-    """The complete isolation argv for one target+arm: deny-by-default base + claude runtime + toolchain
-    binds + derived answer masks. ``bundle`` may be ``{}``/None for a descriptor-only (bundle-less)
-    target — the answer masks are then driven purely by the descriptor."""
-    from merlin.targetgen.sandbox import (
-        toolchain as TC,  # local: avoid a heavy import at module load
-    )
+    """The complete isolation argv for one target+arm: deny-by-default base + claude runtime (never the
+    operator's Claude state; no caller runs the CLI) + toolchain binds + derived answer masks. ``bundle``
+    may be ``{}``/None for a descriptor-only target — the masks are then driven purely by the descriptor."""
+    from merlin.targetgen.sandbox import claude_home as CH  # local: avoid a heavy import at module load
+    from merlin.targetgen.sandbox import toolchain as TC
 
     bundle = bundle or {}
     argv = (
-        base_argv(ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs)
-        + claude_runtime_binds()
+        base_argv(ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs, include_claude_home=False)
+        + CH.without_operator_state(claude_runtime_binds())
         + TC.toolchain_binds(te)
     )
     if bundle:

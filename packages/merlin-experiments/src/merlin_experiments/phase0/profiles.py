@@ -836,6 +836,10 @@ def _merge_shared_perf(
             from .form_perf import validate_form_scope_declaration
 
             validate_form_scope_declaration(sweep, owner=f"shared sweep {sweep_id}")
+        elif sweep.get("requires_capacity_scope") is not None:
+            from .capacity_families import validate_capacity_scope_declaration
+
+            validate_capacity_scope_declaration(sweep, owner=f"shared sweep {sweep_id}")
         else:
             _validate_declared_fit_axes(sweep, owner=f"shared sweep {sweep_id}")
         if performance["family"] != sweep_id:

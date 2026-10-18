@@ -22,8 +22,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import pickle
+import resource
+import subprocess
+import sys
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -110,12 +117,27 @@ def build(
     splits: tuple[str, ...] = ("visible", "sealed"),
     keep_call: Callable[[str, int], bool] | None = None,
     log: Callable[[str], None] = print,
+    workers: int = 1,
+    worker_memory: int | None = None,
 ) -> dict[str, Any]:
+    """Every case's references (see the module docstring); returns the ``reference_quality.json`` summary.
+
+    ``workers`` > 1 runs the INT8 cases in that many single-threaded processes and splits the FP
+    reference the same way. Each worker has its own chain scratch and its own cache; files, rows and log
+    lines come out in case order, with the bytes of a serial build. The count is bounded by the cases and
+    by the host's available memory over ``worker_memory`` bytes per worker (default:
+    :func:`estimate_worker_memory`). With workers, ``keep_call`` must be picklable (a module-level
+    function, not a lambda).
+    """
     ids = input_ids(private, model.name, splits)
     if not ids:
         raise INP.InputError(f"no prepared inputs for {model.name} under {private}")
     kind = model.judged["kind"]
     cases = _cases(bundle, model, private, ids)
+    catalogs = {p.name: bundle.catalog(model.name, p.name) for p in model.programs}
+    count = worker_count(workers, len(cases), worker_memory or estimate_worker_memory(catalogs))
+    if count < workers:
+        log(f"[references] {model.name}: {count} of {workers} requested worker(s) (bounded by cases and memory)")
     started = time.monotonic()
     items = [{"id": c["name"], "inputs": str(c["inputs"]), "out": str(c["out"] / "fp.npz")} for c in cases]
     reference = dict(model.judged.get("reference") or {})
@@ -126,7 +148,7 @@ def build(
     if reference.get("baseline"):
         runs["fp_baseline.npz"] = reference["baseline"]
     for name, precision in runs.items():
-        INP.run_worker(
+        _fp_reference(
             fp_python,
             FP_TASK[kind],
             {
@@ -135,43 +157,32 @@ def build(
                 "items": [{**i, "out": str(Path(i["out"]).with_name(name))} for i in items],
             },
             bundle.root / model.name / ".fp_work",
-            worker=REFERENCE_WORKER,
             env={**fp_env, **FP_NUMERICS_ENV},
+            shards=count,
         )
     log(f"[references] {model.name}: FP reference for {len(cases)} cases in {time.monotonic() - started:.0f} s")
-    catalogs = {p.name: bundle.catalog(model.name, p.name) for p in model.programs}
-    blobs = bundle.blobs(model.name)
+    job = CaseJob(
+        model=model,
+        catalogs=catalogs,
+        blobs=bundle.root / model.name / "blobs",
+        baseline="fp_baseline.npz" in runs,
+        keep_call=keep_call,
+    )
+    scratch = bundle.root / model.name / ".chain_work"
+    if count == 1:
+        cache = CH.ChainCache()
+        results = (reference_case(job, case, cache=cache, scratch=scratch) for case in cases)
+    else:
+        results = iter(_pooled_cases(job, cases, count, scratch, log))
     summary: dict[str, Any] = {"model": model.name, "fp_numerics_env": FP_NUMERICS_ENV, "fp_runs": runs, "inputs": {}}
     rows: list[dict[str, Any]] = []
     baseline_rows: list[dict[str, Any]] = []
-    for case in cases:
+    for case, result in zip(cases, results, strict=True):
         split, ident, here = case["split"], case["ident"], case["out"]
-        t0 = time.monotonic()
-        with np.load(case["inputs"]) as data:
-            arrays = {k: np.asarray(data[k]) for k in data.files}
-        calls_by_program: dict[str, list[dict[str, Any]]] = {}
-
-        def record(
-            program: str, step: int, catalog: CAT.ProgramCatalog, args: list[np.ndarray], draw: int = case["draw"]
-        ) -> None:
-            if step != 0 or draw != 0 or not catalog.interfaces:
-                return
-            calls_by_program[program] = CAT.record_calls(catalog, args, blobs=blobs, keep_call=keep_call)
-
-        run = CH.run_reference(model, catalogs, arrays, bundle.root / model.name / ".chain_work", record=record)
-        judged = CH.judged_outputs(model, run)
-        with np.load(here / "fp.npz") as data:
-            fp = [np.asarray(data[k]) for k in data.files]
-        metrics = M.model_metrics(kind, judged, fp, model.judged)
-        _save(here / "int8.npz", judged)
-        (here / "metrics_int8.json").write_text(json.dumps(metrics, indent=1) + "\n")
-        rows.append({"split": split, "draw": case["draw"], **metrics})
-        if "fp_baseline.npz" in runs:
-            with np.load(here / "fp_baseline.npz") as data:
-                base = M.model_metrics(kind, [np.asarray(data[k]) for k in data.files], fp, model.judged)
-            (here / "metrics_baseline.json").write_text(json.dumps(base, indent=1) + "\n")
-            baseline_rows.append({"split": split, "draw": case["draw"], **base})
-        for program, calls in calls_by_program.items():
+        rows.append({"split": split, "draw": case["draw"], **result["metrics"]})
+        if result["baseline"] is not None:
+            baseline_rows.append({"split": split, "draw": case["draw"], **result["baseline"]})
+        for program, calls in result["calls"].items():
             CAT.write_calls(
                 here / program / "calls.json",
                 calls,
@@ -180,16 +191,207 @@ def build(
                 input=f"{split}/{ident}",
                 step=0,
             )
-        headline = {k: v for k, v in metrics.items() if k != "per_channel"}
-        summary["inputs"][case["name"]] = {
-            **headline,
-            "steps": CH.summary(run),
-            "seconds": round(time.monotonic() - t0, 1),
-        }
+        headline = {k: v for k, v in result["metrics"].items() if k != "per_channel"}
+        summary["inputs"][case["name"]] = {**headline, "steps": result["steps"], "seconds": result["seconds"]}
         log(f"[references] {model.name} {case['name']}: {json.dumps(headline)}")
     summary["admission"] = _admission(model, rows, baseline_rows)
     (bundle.root / model.name / "reference_quality.json").write_text(json.dumps(summary, indent=1) + "\n")
     return summary
+
+
+@dataclass
+class CaseJob:
+    """What every INT8 reference case of one model needs, in whichever process it runs."""
+
+    model: Model
+    catalogs: dict[str, CAT.ProgramCatalog]
+    blobs: Path
+    baseline: bool
+    keep_call: Callable[[str, int], bool] | None = None
+
+
+def reference_case(job: CaseJob, case: dict[str, Any], *, cache: CH.ChainCache | None, scratch: Path) -> dict[str, Any]:
+    """One case's INT8 reference chain, its metrics against FP, and (draw 0) its device calls.
+
+    Writes the case's own files (``int8.npz``, ``metrics_int8.json``, ``metrics_baseline.json``) and
+    returns its rows; the caller writes ``calls.json``. ``scratch`` must be this process's own."""
+    model, here = job.model, case["out"]
+    kind = model.judged["kind"]
+    blobs = CAT.BlobStore(job.blobs)
+    t0 = time.monotonic()
+    with np.load(case["inputs"]) as data:
+        arrays = {k: np.asarray(data[k]) for k in data.files}
+    calls_by_program: dict[str, list[dict[str, Any]]] = {}
+
+    def record(program: str, step: int, catalog: CAT.ProgramCatalog, args: list[np.ndarray]) -> None:
+        if step != 0 or case["draw"] != 0 or not catalog.interfaces:
+            return
+        calls_by_program[program] = CAT.record_calls(
+            catalog,
+            args,
+            blobs=blobs,
+            keep_call=job.keep_call,
+            module=cache.module(catalog.dev_prepared) if cache is not None else None,
+            constants=cache.constants if cache is not None else None,
+        )
+
+    run = CH.run_reference(model, job.catalogs, arrays, scratch, record=record, cache=cache)
+    judged = CH.judged_outputs(model, run)
+    with np.load(here / "fp.npz") as data:
+        fp = [np.asarray(data[k]) for k in data.files]
+    metrics = M.model_metrics(kind, judged, fp, model.judged)
+    _save(here / "int8.npz", judged)
+    (here / "metrics_int8.json").write_text(json.dumps(metrics, indent=1) + "\n")
+    base = None
+    if job.baseline:
+        with np.load(here / "fp_baseline.npz") as data:
+            base = M.model_metrics(kind, [np.asarray(data[k]) for k in data.files], fp, model.judged)
+        (here / "metrics_baseline.json").write_text(json.dumps(base, indent=1) + "\n")
+    return {
+        "metrics": metrics,
+        "baseline": base,
+        "calls": calls_by_program,
+        "steps": CH.summary(run),
+        "seconds": round(time.monotonic() - t0, 1),
+    }
+
+
+# ------------------------------------------------------------------------------------------ the pool
+
+#: One worker's peak memory with every cache full is estimated as a base plus a multiple of the bytes
+#: of the files its caches hold (the stages' weights and lifted constants, the reference and device
+#: programs). Measured peaks on 2026-10-18: 31.6 GiB over 8.4 GiB of files, 23.7 GiB over 1.4 GiB;
+#: the estimate is above both by at least 10%.
+WORKER_MEMORY_BASE = 24 << 30
+WORKER_MEMORY_PER_BYTE = 1.5
+#: A pool worker runs on one thread: BLAS threads would only oversubscribe the workers' CPUs.
+WORKER_ENV = {"OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
+
+
+def estimate_worker_memory(catalogs: dict[str, CAT.ProgramCatalog]) -> int:
+    """An upper estimate of one worker's peak memory, from the sizes of the files its caches hold."""
+    sources: set[Path] = set()
+    for catalog in catalogs.values():
+        sources.update(Path(p).resolve() for p in (catalog.ref_prepared, catalog.dev_prepared) if Path(p).is_file())
+        for name in ("weights.safetensors", "extra.npz"):
+            if (Path(catalog.stage) / name).is_file():
+                sources.add((Path(catalog.stage) / name).resolve())
+    return WORKER_MEMORY_BASE + int(WORKER_MEMORY_PER_BYTE * sum(p.stat().st_size for p in sources))
+
+
+def available_memory() -> int | None:
+    """The host's ``MemAvailable`` in bytes, or None where the host does not state it."""
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            key, _, value = line.partition(":")
+            if key == "MemAvailable":
+                return int(value.split()[0]) * 1024
+    except OSError:
+        return None
+    return None
+
+
+def worker_count(requested: int, cases: int, per_worker: int, available: int | None = None) -> int:
+    """``requested`` bounded by the number of cases and by how many workers of ``per_worker`` bytes the
+    host's available memory holds; at least 1."""
+    count = max(1, min(int(requested), int(cases)))
+    available = available_memory() if available is None else available
+    if count > 1 and per_worker > 0 and available is not None:
+        count = max(1, min(count, available // per_worker))
+    return count
+
+
+def _shards(items: list[Any], count: int) -> list[list[Any]]:
+    """Round-robin: item ``i`` goes to shard ``i % count``."""
+    return [items[k::count] for k in range(count) if items[k::count]]
+
+
+def _fp_reference(
+    python: Path, task: str, request: dict[str, Any], scratch: Path, *, env: dict[str, str], shards: int
+) -> None:
+    """The FP worker over ``request["items"]``, split round-robin over ``shards`` concurrent processes
+    (each item's output depends on that item alone)."""
+    if shards <= 1:
+        INP.run_worker(python, task, request, scratch, worker=REFERENCE_WORKER, env=env)
+        return
+    parts = _shards(request["items"], shards)
+    with ThreadPoolExecutor(max_workers=len(parts)) as pool:
+        futures = [
+            pool.submit(
+                INP.run_worker,
+                python,
+                task,
+                {**request, "items": part},
+                scratch / "shards" / str(k),
+                worker=REFERENCE_WORKER,
+                env=env,
+            )
+            for k, part in enumerate(parts)
+        ]
+        for future in futures:
+            future.result()
+
+
+def _pooled_cases(
+    job: CaseJob, cases: list[dict[str, Any]], count: int, scratch: Path, log: Callable[[str], None]
+) -> list[dict[str, Any]]:
+    """Every case's :func:`reference_case` result, in case order, from ``count`` worker processes.
+
+    Each worker walks the cases in order and runs every case it is first to claim (an exclusive
+    create of ``claims/<i>``), so a slow case (a first draw, which records device calls) does not hold
+    the others back. A worker keeps one cache and its own scratch (``<scratch>/workers/<k>/``) and
+    stores each result as its case finishes; the results are read back in case order once every
+    worker is done. Which worker ran a case does not change its bytes."""
+    root = scratch / "workers"
+    try:
+        payload = pickle.dumps({"job": job, "cases": list(enumerate(cases)), "root": root})
+    except (pickle.PicklingError, AttributeError, TypeError) as error:
+        raise INP.InputError(f"reference workers need a picklable job (a lambda keep_call?): {error}") from error
+    for name in ("claims", "results"):
+        (root / name).mkdir(parents=True, exist_ok=True)
+        for stale in (root / name).iterdir():
+            stale.unlink()
+    (root / "request.pkl").write_bytes(payload)
+    procs = []
+    for k in range(count):
+        (root / str(k)).mkdir(parents=True, exist_ok=True)
+        with (root / str(k) / "worker.log").open("w") as out:
+            procs.append(
+                subprocess.Popen(
+                    [sys.executable, "-m", "merlin.model_check.chain_worker", str(root / "request.pkl"), str(k)],
+                    stdout=out,
+                    stderr=subprocess.STDOUT,
+                    env={**os.environ, **WORKER_ENV},
+                )
+            )
+    log(f"[references] {job.model.name}: {len(cases)} INT8 cases over {count} worker processes")
+    failed = [k for k, proc in enumerate(procs) if proc.wait() != 0]
+    if failed:
+        tails = "; ".join(f"worker {k}: {(root / str(k) / 'worker.log').read_text()[-1500:]}" for k in failed)
+        raise INP.InputError(f"reference worker(s) {failed} failed: {tails}")
+    return [pickle.loads((root / "results" / f"{i}.pkl").read_bytes()) for i in range(len(cases))]
+
+
+def run_worker(request_path: Path, worker: int) -> None:
+    """Worker ``worker`` of :func:`_pooled_cases`: every case it claims, in order, with one cache and
+    its own scratch."""
+    request = pickle.loads(Path(request_path).read_bytes())
+    root = Path(request["root"])
+    cache = CH.ChainCache()
+    for index, case in request["cases"]:
+        try:
+            claim = os.open(root / "claims" / str(index), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            continue
+        os.write(claim, str(worker).encode())
+        os.close(claim)
+        result = reference_case(request["job"], case, cache=cache, scratch=root / str(worker) / "chain")
+        out = root / "results" / f"{index}.pkl"
+        tmp = out.with_name(f"{index}.tmp")
+        tmp.write_bytes(pickle.dumps(result))
+        tmp.replace(out)
+        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1 << 20)  # KiB on Linux
+        print(f"[references] {case['name']}: {result['seconds']} s, peak {peak:.1f} GiB", flush=True)
 
 
 def _admission(model: Model, rows: list[dict[str, Any]], baseline_rows: list[dict[str, Any]]) -> dict[str, Any]:

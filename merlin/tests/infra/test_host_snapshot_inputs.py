@@ -58,6 +58,27 @@ def test_private_only_bundle_has_no_candidate_input_binds(private_bundle):
     assert BW.snapshot_input_paths(workspace, bundle, [hidden], repo=repo)[0].is_dir()
 
 
+def test_flat_host_file_roster_keeps_all_inputs_private_and_detects_missing_siblings(private_bundle):
+    repo, workspace, bundle, hidden = private_bundle
+    paths = [hidden / "secret.bin"]
+    for index in range(32):
+        path = hidden / "libraries" / str(index // 8) / f"module{index}"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(str(index).encode())
+        paths.append(path)
+    bundle["allowed"] = [{"path": "inputs/public.txt"}]
+    bundle["host_inputs"] = [{"path": str(path)} for path in paths]
+    manifest = BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    assert BW.verify_bundle_snapshot(workspace, bundle, repo=repo) == manifest
+    bindings = BW.base_argv(workspace, bundle, repo=repo)
+    assert all(not BW.is_exposed(bindings, path) for path in paths)
+    frozen = BW.snapshot_input_paths(workspace, bundle, [paths[-1]], repo=repo)[0]
+    frozen.parent.chmod(0o700)
+    frozen.unlink()
+    with pytest.raises(RuntimeError, match="missing|differs|incomplete"):
+        BW.verify_bundle_snapshot(workspace, bundle, repo=repo)
+
+
 @pytest.mark.parametrize("use_store", [False, True])
 @pytest.mark.parametrize("broad_grant", [False, True])
 def test_private_snapshot_keeps_owner_only_modes_and_independent_inodes(
@@ -227,7 +248,7 @@ def test_frozen_corpus_answers_stay_masked_after_source_removal_and_runtime_rebi
     weight.write_bytes(b"private weights")
     hidden = corpus / "hidden/holdout"
     hidden.mkdir(parents=True)
-    (hidden / "capsule.yaml").write_text("private holdout\n")
+    (hidden / "capsule.yaml").write_text("name: holdout\nlabel: hidden\n")
     workspace = tmp_path / "run/workspace"
     workspace.mkdir(parents=True)
     bundle = {"allowed": [{"path": "merlin/contract/capsules"}]}
@@ -731,3 +752,45 @@ def test_host_mask_compaction_counts_platform_prefix_and_preserves_standalone(pr
     assert required == ["--tmpfs", str(hidden)]
     assert not BW.is_exposed(platform_prefix + required, hidden / "secret.bin")
     assert BW._bundle_mount_args(workspace, bundle, repo) == required
+
+
+@pytest.mark.parametrize("when", ["before reading", "between records"])
+def test_record_validation_refuses_an_internal_same_bytes_parent_alias(private_bundle, monkeypatch, when):
+    repo, workspace, bundle, hidden = private_bundle
+    second = hidden / "second.bin"
+    second.write_bytes(b"second private input")
+    bundle["allowed"] = [{"path": "inputs/public.txt"}]
+    bundle["host_inputs"] = [{"path": str(hidden / "secret.bin")}, {"path": str(second)}]
+    manifest = BW.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    root = BW.bundle_snapshot_root(workspace)
+    first = root / manifest["host_records"][0]["snapshot"]
+    parent = first.parent
+    parent.parent.chmod(0o700)
+    alternate = parent.with_name(parent.name + "-same-bytes")
+
+    def alias():
+        parent.rename(alternate)
+        parent.symlink_to(alternate, target_is_directory=True)
+
+    if when == "before reading":
+        alias()
+    else:
+        resolve = Path.resolve
+        changed = False
+
+        def observed(path, *args, **kwargs):
+            nonlocal changed
+            result = resolve(path, *args, **kwargs)
+            if path == first and not changed:
+                changed = True
+                alias()
+            return result
+
+        monkeypatch.setattr(Path, "resolve", observed)
+    try:
+        with pytest.raises(RuntimeError, match="symlink|escapes"):
+            BW._snapshot_records(workspace, repo, manifest["host_inputs"], manifest["host_records"], canonical=True)
+    finally:
+        if parent.is_symlink():
+            parent.unlink()
+            alternate.rename(parent)

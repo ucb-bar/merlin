@@ -260,6 +260,8 @@ _OP_FAMILY: dict[str, str] = {
     "attention_scaled": "attention",
     "attention_qk": "contraction",
     "attention_pv": "contraction",
+    # both operands are runtime activations (no stored weight); still a single reduce-over-k product
+    "activation_matmul": "contraction",
     # the MX-format piece keeps the composite: it carries the scale-block handling, not just a product
     "attention_mx": "attention",
     # softmax / normalization: reduction + elementwise composites

@@ -97,12 +97,16 @@ def test_original_descriptor_budget_is_validated_and_forwarded_without_candidate
     from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
 
     budget = DeviceIRBudget(mode="enforce", max_inline_asm_sites=128)
-    gate = PFX.gate_for(_descriptor(tmp_path, _programs(net__model=dict(EXECUTED, device_ir_budget=budget.record()))),
-                        required_programs=ROSTER)
+    gate = PFX.gate_for(
+        _descriptor(tmp_path, _programs(net__model=dict(EXECUTED, device_ir_budget=budget.record()))),
+        required_programs=ROSTER,
+    )
     assert PFX.build_options(gate)["net"]["model"]["device_ir_budget"] == budget.record()
     with pytest.raises(PFX.ExecutionGateError, match="device_ir_budget"):
-        PFX.gate_for(_descriptor(tmp_path, _programs(net__model=dict(EXECUTED, device_ir_budget={"mode": "enforce"}))),
-                     required_programs=ROSTER)
+        PFX.gate_for(
+            _descriptor(tmp_path, _programs(net__model=dict(EXECUTED, device_ir_budget={"mode": "enforce"}))),
+            required_programs=ROSTER,
+        )
 
 
 @pytest.mark.parametrize(
@@ -196,12 +200,18 @@ def test_host_reference_uses_the_linked_programs_quantization_policy(tmp_path, m
     monkeypatch.setattr("merlin.compile.model_execution_inputs.strict_tree_sha256", lambda path: {"sha256": "bound"})
     monkeypatch.setattr("merlin.mining.registry.load_rvv_package", lambda path: SimpleNamespace(is_int8=True))
     monkeypatch.setattr("merlin.runtime.dispatch_runtime.run_model", run_model)
-    receipt = {"inputs": {"package": str(package), "package_tree": {"sha256": "bound"},
-                          "respect_captured_quantization_scope": True}}
+    receipt = {
+        "inputs": {
+            "package": str(package),
+            "package_tree": {"sha256": "bound"},
+            "respect_captured_quantization_scope": True,
+        }
+    }
     outputs = PFX.host_execution_outputs(capture, tmp_path / "work", receipt=receipt)
     assert outputs[0].tolist() == [3.0]
-    assert calls == [{"int8_compute": True, "quant_passes": ["contraction_int8"],
-                      "quant_select": captured_quantized_contraction}]
+    assert calls == [
+        {"int8_compute": True, "quant_passes": ["contraction_int8"], "quant_select": captured_quantized_contraction}
+    ]
 
     receipt["inputs"]["package_tree"] = {"sha256": "changed"}
     with pytest.raises(PFX.ExecutionGateError, match="host package changed"):
@@ -594,22 +604,53 @@ def test_complete_refuses_a_record_that_does_not_match_its_declaration(tmp_path)
     assert not PFX.complete(PFX.not_run(gate, "x"), gate, static=fixture.static, candidate_sha256="c" * 64)
 
 
-
-@pytest.mark.parametrize("fault", [
-    "empty", "descriptive_only", "missing_completion", "missing_integer_reference", "missing_host_execution",
-    "missing_fp32_sanity", "missing_per_group_exactness", "completion_passed", "integer_reference_passed",
-    "host_execution_passed", "fp32_sanity_passed", "integer_source", "integer_empty", "integer_index",
-    "integer_row_passed", "integer_mismatch", "completion_count", "completion_elements", "host_empty",
-    "host_index", "host_row_passed", "host_tolerance", "host_coverage", "sanity_source", "sanity_digest",
-    "sanity_empty", "sanity_index", "sanity_row_passed", "sanity_top1", "sanity_margin", "sanity_floor",
-])
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "empty",
+        "descriptive_only",
+        "missing_completion",
+        "missing_integer_reference",
+        "missing_host_execution",
+        "missing_fp32_sanity",
+        "missing_per_group_exactness",
+        "completion_passed",
+        "integer_reference_passed",
+        "host_execution_passed",
+        "fp32_sanity_passed",
+        "integer_source",
+        "integer_empty",
+        "integer_index",
+        "integer_row_passed",
+        "integer_mismatch",
+        "completion_count",
+        "completion_elements",
+        "host_empty",
+        "host_index",
+        "host_row_passed",
+        "host_tolerance",
+        "host_coverage",
+        "sanity_source",
+        "sanity_digest",
+        "sanity_empty",
+        "sanity_index",
+        "sanity_row_passed",
+        "sanity_top1",
+        "sanity_margin",
+        "sanity_floor",
+    ],
+)
 def test_complete_requires_all_declared_checks_and_every_result(tmp_path, fault):
     first, second = np.array([1.0, 2.0], np.float32), np.array([3.0], np.float32)
-    fixture = Fixture(tmp_path, golden=first, integer=first, host=[first, second],
-                      fp32=[first, second], results=[[2], [1]])
+    fixture = Fixture(
+        tmp_path, golden=first, integer=first, host=[first, second], fp32=[first, second], results=[[2], [1]]
+    )
     gate = _gate(tmp_path)
     good = PFX.run(
-        fixture.static, gate, target="t", static_out=fixture.static_out,
+        fixture.static,
+        gate,
+        target="t",
+        static_out=fixture.static_out,
         execute=lambda elf, **kwargs: {"console": _console(first, second), "wall_s": 1.0},
     )
     assert PFX.complete(good, gate, static=fixture.static, candidate_sha256="c" * 64)
@@ -667,14 +708,16 @@ def test_complete_requires_all_declared_checks_and_every_result(tmp_path, fault)
     assert not PFX.complete(good, gate, static=fixture.static, candidate_sha256="c" * 64)
 
 
-@pytest.mark.parametrize("field,value", [("atol", float("inf")), ("rtol", float("nan")),
-                                         ("cosine_margin", float("inf"))])
+@pytest.mark.parametrize(
+    "field,value", [("atol", float("inf")), ("rtol", float("nan")), ("cosine_margin", float("inf"))]
+)
 def test_numerical_declarations_require_finite_bounds(tmp_path, field, value):
     entry = dict(EXECUTED)
     key = "fp32_sanity" if field == "cosine_margin" else "host_execution"
     entry[key] = {**entry[key], field: value}
     with pytest.raises(PFX.ExecutionGateError):
         _gate(tmp_path, net__model=entry)
+
 
 def test_the_official_grade_requires_a_declared_execution_gate_to_be_complete(tmp_path, monkeypatch):
     from merlin_experiments.phase1.feedback import certification
@@ -713,8 +756,12 @@ def test_the_official_grade_requires_a_declared_execution_gate_to_be_complete(tm
 
     assert "private_full_model_execution_incomplete" not in grade(record)
     missing_model_check = certification._official_grade_result(
-        0, run_dir, required_models=tuple(ROSTER), required_programs=ROSTER,
-        execution_gate=gate, require_model_check=True,
+        0,
+        run_dir,
+        required_models=tuple(ROSTER),
+        required_programs=ROSTER,
+        execution_gate=gate,
+        require_model_check=True,
     )["failures"]
     assert "model_check_official_incomplete_or_mismatch" in missing_model_check
     assert "private_full_model_execution_incomplete" in grade(None)
@@ -794,6 +841,7 @@ def selected_engine_budget(tmp_path, monkeypatch):
         return Command()
 
     monkeypatch.setattr(MI, "selected_firrtl", lambda *args, **kwargs: {"sha256": "f" * 64})
+    monkeypatch.setattr(MI, "selected_execution_firrtl", lambda *args, **kwargs: {"sha256": "f" * 64})
     monkeypatch.setattr(MI, "native_engine", lambda *args: (state.backend, citation, revalidate, prepare))
     monkeypatch.setattr(base, "get_backend", lambda target: state.backend)
     state.elf = tmp_path / "selected.elf"
@@ -805,8 +853,15 @@ def selected_engine_budget(tmp_path, monkeypatch):
 def test_private_execution_uses_selected_process_ceiling(selected_engine_budget, engine):
     state = selected_engine_budget
     result = PFX.run_engine(
-        state.elf, engine=engine, target="fixture", timeout_s=172800, max_cycles=None,
-        elf_sha256="f" * 64, rtl_config="Cfg", rtl_facts_sha256="f" * 64, capture_bytes=True,
+        state.elf,
+        engine=engine,
+        target="fixture",
+        timeout_s=172800,
+        max_cycles=None,
+        elf_sha256="f" * 64,
+        rtl_config="Cfg",
+        rtl_facts_sha256="f" * 64,
+        capture_bytes=True,
     )
     assert state.calls == [(state.elf, {"simulator": engine, "timeout": 1800, "capture_bytes": True})]
     assert result["console"] == b"selected console\n"
@@ -822,17 +877,27 @@ def test_private_bound_gsim_applies_declared_cycles_to_selected_command(selected
     state = selected_engine_budget
     monkeypatch.setattr(B, "BoundRoCCBackend", type(state.backend))
     monkeypatch.setattr(
-        MI, "native_engine",
+        MI,
+        "native_engine",
         lambda *args: (state.backend, {"selected": True}, lambda: state.checks.append("engine"), None),
     )
     result = PFX.run_engine(
-        state.elf, engine="gsim", target="fixture", timeout_s=86400, max_cycles=150000000,
-        elf_sha256="f" * 64, rtl_config="Cfg", rtl_facts_sha256="f" * 64, capture_bytes=True,
-    )
-    assert state.calls == [(
         state.elf,
-        {"simulator": "gsim", "timeout": 1800, "capture_bytes": True, "private_max_cycles": 150000000},
-    )]
+        engine="gsim",
+        target="fixture",
+        timeout_s=86400,
+        max_cycles=150000000,
+        elf_sha256="f" * 64,
+        rtl_config="Cfg",
+        rtl_facts_sha256="f" * 64,
+        capture_bytes=True,
+    )
+    assert state.calls == [
+        (
+            state.elf,
+            {"simulator": "gsim", "timeout": 1800, "capture_bytes": True, "private_max_cycles": 150000000},
+        )
+    ]
     assert result["max_cycles"] == 150000000
     assert result["max_cycle_source"] == "frozen_private_execution_declaration"
     assert state.checks == ["engine", "engine"]
@@ -842,8 +907,14 @@ def test_private_preparation_consumes_job_budget(selected_engine_budget):
     state = selected_engine_budget
     state.preparation_s = 3590.0
     PFX.run_engine(
-        state.elf, engine="gsim", target="fixture", timeout_s=3600, max_cycles=None,
-        elf_sha256="f" * 64, rtl_config="Cfg", rtl_facts_sha256="f" * 64,
+        state.elf,
+        engine="gsim",
+        target="fixture",
+        timeout_s=3600,
+        max_cycles=None,
+        elf_sha256="f" * 64,
+        rtl_config="Cfg",
+        rtl_facts_sha256="f" * 64,
     )
     assert state.calls[0][1]["timeout"] == 10
 
@@ -852,8 +923,14 @@ def test_private_legacy_backend_retains_requested_ceiling(selected_engine_budget
     state = selected_engine_budget
     del type(state.backend).execution_timeout_limit
     PFX.run_engine(
-        state.elf, engine="spike", target="fixture", timeout_s=60, max_cycles=None,
-        elf_sha256="f" * 64, rtl_config=None, rtl_facts_sha256=None,
+        state.elf,
+        engine="spike",
+        target="fixture",
+        timeout_s=60,
+        max_cycles=None,
+        elf_sha256="f" * 64,
+        rtl_config=None,
+        rtl_facts_sha256=None,
     )
     assert state.calls[0][1]["timeout"] == 60
 
@@ -867,8 +944,14 @@ def test_gemmini_full_model_spike_uses_declared_machine(selected_engine_budget, 
 
     monkeypatch.setattr(type(state.backend), "run_declared_model_elf", staticmethod(run_declared), raising=False)
     result = PFX.run_engine(
-        state.elf, engine="spike", target="gemmini", timeout_s=60, max_cycles=None,
-        elf_sha256="f" * 64, rtl_config=None, rtl_facts_sha256=None,
+        state.elf,
+        engine="spike",
+        target="gemmini",
+        timeout_s=60,
+        max_cycles=None,
+        elf_sha256="f" * 64,
+        rtl_config=None,
+        rtl_facts_sha256=None,
     )
     assert state.calls == [(state.elf, {"timeout": 60, "capture_bytes": False})]
     assert result["console"] == "declared model console\n"
@@ -878,8 +961,14 @@ def test_gemmini_full_model_spike_refuses_backend_without_declared_machine(selec
     state = selected_engine_budget
     with pytest.raises(PFX.ExecutionGateError, match="declared machine"):
         PFX.run_engine(
-            state.elf, engine="spike", target="gemmini", timeout_s=60, max_cycles=None,
-            elf_sha256="f" * 64, rtl_config=None, rtl_facts_sha256=None,
+            state.elf,
+            engine="spike",
+            target="gemmini",
+            timeout_s=60,
+            max_cycles=None,
+            elf_sha256="f" * 64,
+            rtl_config=None,
+            rtl_facts_sha256=None,
         )
     assert not state.calls
 
@@ -892,7 +981,8 @@ def test_expired_private_preparation_never_runs_or_passes(tmp_path, selected_eng
     golden = np.array([1.0], np.float32)
     fixture = Fixture(tmp_path, golden=golden, integer=golden)
     gate = _gate(
-        tmp_path, net__model=dict(EXECUTED, max_cycles=None),
+        tmp_path,
+        net__model=dict(EXECUTED, max_cycles=None),
         policy__step={"deferred": "explicit fixture deferral"},
     )
     # Keep the prepared command's ELF pin equal to the actual static receipt.
@@ -944,7 +1034,8 @@ def test_parallel_private_programs_overlap_and_keep_declared_order(tmp_path, mon
     monkeypatch.setattr(PFX, "_execute_program", execute)
     result = PFX.run(static, gate, target="fixture", static_out=tmp_path, max_workers=2)
     assert [(row["model"], row["status"]) for row in result["programs"]] == [
-        ("first", PFX.FAIL), ("second", PFX.PASS),
+        ("first", PFX.FAIL),
+        ("second", PFX.PASS),
     ]
     assert result["parallel_workers"] == 2 and result["passed"] is False
     assert "independent program failed" in result["programs"][0]["reason"]

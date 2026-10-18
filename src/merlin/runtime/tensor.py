@@ -183,6 +183,27 @@ class Tensor:
             out.append(int(y))
         return Tensor(self.shape, out, self.dtype)
 
+    def requant_acc_scale_by_column(self, scales: list[float]) -> Tensor:
+        """Apply one declared float32 multiplier per final-axis column.
+
+        Every column retains the scalar operation's conversion, multiply and
+        ties-to-even rounding. Narrowing/saturation is a separate operation.
+        """
+        from math import prod
+
+        if not self.shape or not scales or len(scales) != self.shape[-1]:
+            raise ValueError("acc_scale_by_column must name one multiplier per output column")
+        if prod(self.shape) != len(self.data):
+            raise ValueError("acc_scale_by_column tensor storage disagrees with its shape")
+        width = len(scales)
+        rows = len(self.data) // width
+        columns = [
+            Tensor((rows,), self.data[index::width], self.dtype).requant_acc_scale(scale).data
+            for index, scale in enumerate(scales)
+        ]
+        return Tensor(self.shape, [columns[column][row] for row in range(rows) for column in range(width)],
+                      self.dtype)
+
     def residual_add_scaled(self, other: "Tensor", lhs_scale: float, rhs_scale: float) -> "Tensor":
         """``roundeven(self * lhs_scale + other * rhs_scale)``, elementwise, in float32.
 

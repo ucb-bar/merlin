@@ -22,7 +22,7 @@ def test_unselected_legacy_launch_and_invalid_roster():
         worker_pool_command(command, {'MERLIN_GRADE_CPUS': '9-11'})
 
 
-def test_preparation_affinity_and_compute_lease_are_disjoint(tmp_path):
+def test_preparation_affinity_with_disjoint_or_overlapping_compute_lease(tmp_path):
     available = sorted(os.sched_getaffinity(0))
     if len(available) < 2:
         pytest.skip("two allowed CPUs are needed to test distinct preparation and compute pools")
@@ -43,6 +43,9 @@ def test_preparation_affinity_and_compute_lease_are_disjoint(tmp_path):
     command = worker_pool_command([sys.executable, '-c', script], environment)
     actual = json.loads(subprocess.check_output(command, env=environment, text=True))
     assert actual == [[prep], [compute], [prep]]
+    # Preparation may fold into the pool: an overlapping roster is accepted and
+    # its leased steps still take one exclusive pool slot.
     environment['MERLIN_PREPARATION_CPUS'] = f'{prep},{compute}'
-    with pytest.raises(ValueError, match='overlap'):
-        worker_pool_command(command, environment)
+    command = worker_pool_command([sys.executable, '-c', script], environment)
+    actual = json.loads(subprocess.check_output(command, env=environment, text=True))
+    assert actual == [[prep, compute], [compute], [prep, compute]]

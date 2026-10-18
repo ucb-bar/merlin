@@ -497,6 +497,8 @@ def test_default_source_inventory_contains_actual_row_and_numerical_pass_owners(
     assert sources["merlin.transforms/row_normalization_check.py"].is_file()
     assert sources["merlin.llvmlower/automatic_host.py"].is_file()
     assert sources["merlin.llvmlower/optional_passes.py"].is_file()
+    assert sources["merlin.llvmlower/group_profile_bindings.py"].is_file()
+    assert sources["merlin.runtime.whole_model_readback"].is_file()
     assert all(path.suffix == ".py" for path in sources.values())
 
 

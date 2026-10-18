@@ -1106,7 +1106,7 @@ def _build_facts(
         raise ValueError("build_facts requires an explicit target (no default is assumed)")
     from . import datapaths as datapath_reader
     from . import feature_gates as feature_reader
-    from . import hw_graph, mlc_bridge, source_selection, timing
+    from . import hw_graph, memory_roles, mlc_bridge, source_selection, timing, timing_structure
     from .facts import target_contract_path
 
     readers = [
@@ -1120,6 +1120,8 @@ def _build_facts(
             hw_graph,
             mlc_bridge,
             timing,
+            memory_roles,
+            timing_structure,
         )
     ]
     extractor_digest = _sha256(Path(__file__))
@@ -1147,6 +1149,7 @@ def _build_facts(
     if selected is not None:
         elaborated_fir = Path(selected["sources"]["firrtl"]["path"])
         selected_hierarchy = Path(selected["sources"]["hierarchy"]["path"])
+        source_selection.require_generator_scope(selected)  # a wrong scope would census nothing
         v1 = V1.census_facts(elaborated_fir, selected_hierarchy, generator=selected["generator"])
         # Legacy declared role probes are supplemental readers of the same bytes,
         # never an alternate selected elaboration.
@@ -1155,14 +1158,8 @@ def _build_facts(
             for field in ("arrays", "datapaths", "interfaces"):
                 if probes.get(field):
                     v1[field] = probes[field]
-            # The scoped census may be empty when the selected generator lives above a
-            # target's source subtree. Keep exact, capacity-bearing SRAM role probes in
-            # that case; the HW-port reader below supplies the accumulator capacity.
-            if not v1.get("memories"):
-                v1["memories"] = [
-                    {**row, "source": "selected_firrtl_role_probe", "view_kind": "address_space"}
-                    for row in probes.get("memories", ()) if row.get("bytes") is not None
-                ]
+            # Declared roles name census stores; with no census the role probes are the stores.
+            v1["memories"] = memory_roles.label_roles(v1.get("memories") or [], probes.get("memories") or [])
         v1["source"] = {
             "kind": "explicit_source_bundle",
             "config": selected["config"],
@@ -1185,12 +1182,11 @@ def _build_facts(
                         "accounting_note": "logical address-space view; do not sum with physical census stores",
                     }
                 )
-                v1["memory_address_spaces"] = [
-                    row for row in v1.get("memories", ()) if row.get("view_kind") == "address_space"
-                ] + [address_space]
-                # Preserve the named compatibility view consumed by profiles,
-                # alongside the physical inventory with an explicit view tag.
+                # Preserve the named compatibility view consumed by profiles; census rows that
+                # physically back it move to census.physical_memories (never counted twice).
                 v1.setdefault("memories", []).append(address_space)
+                v1["memories"] = memory_roles.separate_backings(v1["memories"], v1["memories"], v1)
+                v1["memory_address_spaces"] = [row for row in v1["memories"] if row.get("view_kind") == "address_space"]
     elif isa_path.is_file():  # a chipyard target with a Chisel ISA source -> legacy FIRRTL grep + HW-port
         accumulator_layout = _accumulator_layout(target)
         try:
@@ -1218,6 +1214,7 @@ def _build_facts(
     sourced += _datapaths_from_cells(target, v1)
     sourced += _lane_datapaths_from_units(target, v1)
     sourced += _timing_from_discovery(target, v1)
+    sourced += timing_structure.add_to_facts(target, v1)  # capacities, in-flight limits, fixed delays
 
     # Decoder comparison field: preserve RTL-observed values over the weaker
     # header parse, without treating either as an exhaustive legal set. NAMES

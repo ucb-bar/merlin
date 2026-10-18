@@ -23,7 +23,7 @@ from pathlib import Path
 
 import yaml
 
-from merlin.common import invocation_record
+from merlin.common import cpu_pool, invocation_record
 from merlin.common.bundle_snapshot import verified_snapshot_scope
 from merlin.common.digest import sha256_file
 from merlin.targetgen import compiler_profile_admission as API
@@ -98,11 +98,10 @@ def _decode_selection(raw):
     if raw.startswith(_COMPRESSED_SELECTION):
         decoder = zlib.decompressobj()
         try:
-            decoded = decoder.decompress(raw[len(_COMPRESSED_SELECTION):], MAX_SELECTION_BYTES + 1)
+            decoded = decoder.decompress(raw[len(_COMPRESSED_SELECTION) :], MAX_SELECTION_BYTES + 1)
         except zlib.error as error:
             raise StageGateError("model child compressed selection is invalid") from error
-        if (len(decoded) > MAX_SELECTION_BYTES or not decoder.eof
-            or decoder.unused_data or decoder.unconsumed_tail):
+        if len(decoded) > MAX_SELECTION_BYTES or not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:
             raise StageGateError("model child compressed selection exceeds its closed transport bound")
         raw = decoded
     return json.loads(raw)
@@ -210,6 +209,7 @@ def _closure():
             resources.__name__,
             resources.kernel.__name__,
             "merlin.targetgen.capsule_runner",
+            "merlin.targetgen.capsule_source_identity",
             "merlin_experiments.phase1.feedback.operator_child",
             "merlin_experiments.phase1.feedback.scale_probe_child",
             "merlin_experiments.phase1.feedback.scale_probe_batch",
@@ -275,10 +275,13 @@ class ModelChildTransport:
 
     def _verify_checkpoint_fields(self, receipt, *, worker):
         """Validate bound fields only; supplies no source/owner freshness authority."""
-        if (type(receipt) is not dict or set(receipt) != {"schema", "original_compiler_child", "worker"}
-                or receipt["schema"] != CHECKPOINT_SCHEMA
-                or receipt["original_compiler_child"] != _receipt(self.document)
-                or receipt["worker"] != worker):
+        if (
+            type(receipt) is not dict
+            or set(receipt) != {"schema", "original_compiler_child", "worker"}
+            or receipt["schema"] != CHECKPOINT_SCHEMA
+            or receipt["original_compiler_child"] != _receipt(self.document)
+            or receipt["worker"] != worker
+        ):
             raise StageGateError("original case checkpoint lost its sealed worker/owner selection")
         return receipt
 
@@ -314,36 +317,53 @@ class _RestoredChild:
         from merlin.verify import lean_emission_context as emission
 
         document, owner = self.document, self.executor.owner
-        if (self not in _RESTORED_ISSUED or _RESTORED_CHILD.get() is not self
-                or threading.current_thread() is not self.thread or _process(os.getpid()) != self.worker
-                or P.active_package_executor() is not self.executor
-                or API._ACTIVE.get() is not self.admission or self.admission not in API._ISSUED
-                or self.admission.modules != self.modules or emission._ACTIVE.get() is not self.emission
-                or (self.emission is not None and (
-                    self.emission not in emission._ISSUED or not self.emission.live
-                    or self.emission.admission is not self.admission or self.emission.service is not owner))
-                or resources.active_resource_boundary() is not self.boundary):
+        if (
+            self not in _RESTORED_ISSUED
+            or _RESTORED_CHILD.get() is not self
+            or threading.current_thread() is not self.thread
+            or _process(os.getpid()) != self.worker
+            or P.active_package_executor() is not self.executor
+            or API._ACTIVE.get() is not self.admission
+            or self.admission not in API._ISSUED
+            or self.admission.modules != self.modules
+            or emission._ACTIVE.get() is not self.emission
+            or (
+                self.emission is not None
+                and (
+                    self.emission not in emission._ISSUED
+                    or not self.emission.live
+                    or self.emission.admission is not self.admission
+                    or self.emission.service is not owner
+                )
+            )
+            or resources.active_resource_boundary() is not self.boundary
+        ):
             raise StageGateError("original case checkpoint requires its live restored execution owner")
         selected = document["owner"]
-        if (tuple(map(str, (owner.workspace, owner.bundle_manifest, owner.repo))) != (
-                    selected["workspace"], selected["bundle_manifest"]["path"], selected["repo"])
-                or owner.snapshot_digest != selected["snapshot_sha256"]
-                or _digest(owner.profile) != selected["profile_sha256"]
-                or (self.admission.workspace, self.admission.bundle_manifest, self.admission.repo) != (
-                    owner.workspace, owner.bundle_manifest, owner.repo)
-                or self.admission.profile != owner.profile
-                or self.admission.snapshot_sha256 != owner.snapshot_digest
-                or _pin(owner.bundle_manifest) != selected["bundle_manifest"]
-                or _pin(selected["snapshot_marker"]["path"]) != selected["snapshot_marker"]
-                or _pin(document["spec"]["path"]) != document["spec"]
-                or _source(document["candidate"]) != document["candidate_sha256"]
-                or _pin(document["target"]["descriptor"]["path"]) != document["target"]["descriptor"]
-                or _digest(self.executor.target) != document["target"]["parsed_sha256"]
-                or _closure() != document["host_sources"]
-                or invocation_record.environment_identity(os.environ) != document["environment"]):
+        if (
+            tuple(map(str, (owner.workspace, owner.bundle_manifest, owner.repo)))
+            != (selected["workspace"], selected["bundle_manifest"]["path"], selected["repo"])
+            or owner.snapshot_digest != selected["snapshot_sha256"]
+            or _digest(owner.profile) != selected["profile_sha256"]
+            or (self.admission.workspace, self.admission.bundle_manifest, self.admission.repo)
+            != (owner.workspace, owner.bundle_manifest, owner.repo)
+            or self.admission.profile != owner.profile
+            or self.admission.snapshot_sha256 != owner.snapshot_digest
+            or _pin(owner.bundle_manifest) != selected["bundle_manifest"]
+            or _pin(selected["snapshot_marker"]["path"]) != selected["snapshot_marker"]
+            or _pin(document["spec"]["path"]) != document["spec"]
+            or _source(document["candidate"]) != document["candidate_sha256"]
+            or _pin(document["target"]["descriptor"]["path"]) != document["target"]["descriptor"]
+            or _digest(self.executor.target) != document["target"]["parsed_sha256"]
+            or _closure() != document["host_sources"]
+            or invocation_record.environment_identity(os.environ) != document["environment"]
+        ):
             raise StageGateError("original case checkpoint changed its sealed source/owner selection")
-        if self.boundary is not None and self.boundary.verify(
-                owner_pids=(document["parent"]["pid"],)) != document["resources"]["boundary_sha256"]:
+        if (
+            self.boundary is not None
+            and self.boundary.verify(owner_pids=(document["parent"]["pid"],))
+            != document["resources"]["boundary_sha256"]
+        ):
             raise StageGateError("original case checkpoint changed its kernel resource owner")
 
 
@@ -357,13 +377,17 @@ def restored_case_checkpoint():
     receipt = {}
     yield receipt
     state.verify()
-    receipt.update(schema=CHECKPOINT_SCHEMA, original_compiler_child=_receipt(state.document),
-                   worker=state.worker)
+    receipt.update(schema=CHECKPOINT_SCHEMA, original_compiler_child=_receipt(state.document), worker=state.worker)
 
 
 @contextlib.contextmanager
 def prepare_model_child(*, spec_path, environment, package_dir):
-    """Issue a sealed FD only from the actual original parent execution scope."""
+    """Issue a sealed FD only from the actual original parent execution scope.
+
+    ``environment`` is the exact mapping the child is launched with; build it
+    with :func:`merlin.common.cpu_pool.child_environment` so the launcher adds
+    nothing after it is sealed.
+    """
     executor = _original_executor()
     if executor is None:
         yield None
@@ -378,6 +402,9 @@ def prepare_model_child(*, spec_path, environment, package_dir):
     boundary = resources.active_resource_boundary()
     if boundary is not None and type(boundary) is not resources.ExternalResourceBoundary:
         raise StageGateError("model child resources require the exact live kernel-issued owner")
+    if cpu_pool.child_environment(environment) != dict(environment):
+        # Its launcher would add the class after sealing; the child would then refuse its environment.
+        raise StageGateError("model child environment lacks the caller's CPU lease class")
     document = {
         "schema": SCHEMA,
         "parent": _process(os.getpid()),
@@ -451,25 +478,34 @@ def prepare_model_children(*, spec_paths, environment, package_dir):
     owner = executor.owner
 
     def operation():
-        if (BW._ACTIVE_VERIFICATION.get() is not issued or not BW._current_verification(issued)
-                or issued.root != BW.bundle_snapshot_root(owner.workspace)
-                or issued.repo != owner.repo or issued.policy_bytes != BW._policy_bytes(owner.bundle)):
+        if (
+            BW._ACTIVE_VERIFICATION.get() is not issued
+            or not BW._current_verification(issued)
+            or issued.root != BW.bundle_snapshot_root(owner.workspace)
+            or issued.repo != owner.repo
+            or issued.policy_bytes != BW._policy_bytes(owner.bundle)
+        ):
             raise StageGateError("original child batch requires its live exact-owner snapshot operation")
 
     operation()
     with contextlib.ExitStack() as lifetime:
-        first = lifetime.enter_context(prepare_model_child(
-            spec_path=paths[0], environment=environment, package_dir=package_dir))
+        first = lifetime.enter_context(
+            prepare_model_child(spec_path=paths[0], environment=environment, package_dir=package_dir)
+        )
         if first is None or first.executor is not executor:
             raise StageGateError("original child batch lost its live execution owner")
-        if first.boundary is not None and first.boundary.verify(
-                writable_roots=tuple(path.parent for path in paths)) != first.document["resources"]["boundary_sha256"]:
+        if (
+            first.boundary is not None
+            and first.boundary.verify(writable_roots=tuple(path.parent for path in paths))
+            != first.document["resources"]["boundary_sha256"]
+        ):
             raise StageGateError("original child batch changed its live resource boundary")
         transports = [first]
         for path, root in zip(paths[1:], roots[1:], strict=True):
             document = {**first.document, "spec": _pin(path), "work_root": str(root)}
-            transports.append(lifetime.enter_context(_sealed_transport(
-                document, executor=executor, boundary=first.boundary)))
+            transports.append(
+                lifetime.enter_context(_sealed_transport(document, executor=executor, boundary=first.boundary))
+            )
         if len({transport.fd for transport in transports}) != len(transports):
             raise StageGateError("original child batch reused a capability descriptor")
         # Reopen shared source/closure/owner selections once at the end of this
@@ -518,8 +554,10 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
     if _closure() != document["host_sources"] or _source(document["candidate"]) != document["candidate_sha256"]:
         raise StageGateError("model child resolved another host or compiler source revision")
     owner = document["owner"]
-    workspace, archive, repo = (_plain(owner[key]["path"] if key == "bundle_manifest" else owner[key])
-                                for key in ("workspace", "bundle_manifest", "repo"))
+    workspace, archive, repo = (
+        _plain(owner[key]["path"] if key == "bundle_manifest" else owner[key])
+        for key in ("workspace", "bundle_manifest", "repo")
+    )
     bundle = yaml.safe_load(archive.read_bytes())
     with contextlib.ExitStack() as execution:
         # Batch only exact-owner setup. Close its full final payload read before
@@ -555,13 +593,15 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
                 if boundary.verify(owner_pids=(os.getppid(),)) != selected["boundary_sha256"]:
                     raise StageGateError("model child did not inherit the original live kernel resource boundary")
             execution.enter_context(resources.executing_resource_boundary(boundary))
-            execution.enter_context(R._original_execution_lifetime(
-                service,
-                target_experiment=te,
-                candidate=_plain(document["candidate"]),
-                work_root=_plain(document["work_root"]),
-                sandbox_inputs=_restore_inputs(document["inputs"]),
-            ))
+            execution.enter_context(
+                R._original_execution_lifetime(
+                    service,
+                    target_experiment=te,
+                    candidate=_plain(document["candidate"]),
+                    work_root=_plain(document["work_root"]),
+                    sandbox_inputs=_restore_inputs(document["inputs"]),
+                )
+            )
             if _owner_record(service) != owner:
                 raise StageGateError("model child original execution owner changed during setup")
         state = _RestoredChild(document, R.active_original_execution(), boundary)

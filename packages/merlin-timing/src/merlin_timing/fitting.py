@@ -38,6 +38,30 @@ def _condition(gram: list[list[float]], maximum: float) -> float:
     return condition
 
 
+def design_check(matrix: list[list[float]], *, maximum_condition: float) -> dict:
+    """Apply the fit's own identifiability gates to a design that has no labels yet.
+
+    The gates are exactly those :func:`nnls` enforces after :func:`fit` scales each column by its
+    largest value: two distinct points per parameter, and a full-rank scaled Gram whose condition
+    bound stays under ``maximum_condition``. Planning an experiment with them means a design that
+    passes here cannot later fail the fit for lack of identifiability; it says nothing about labels.
+    """
+    C.number(maximum_condition, "maximum condition", positive=True)
+    if not matrix or not matrix[0] or any(len(row) != len(matrix[0]) for row in matrix):
+        raise C.ContractError("design check requires a nonempty rectangular feature matrix")
+    width, count = len(matrix[0]), len(matrix)
+    scales = [max(1.0, max(abs(float(row[i])) for row in matrix)) for i in range(width)]
+    scaled = [[float(row[i]) / scales[i] for i in range(width)] for row in matrix]
+    if len({tuple(row) for row in scaled}) < 2 * width:
+        return {"identifiable": False, "reason": "fit requires two distinct points per parameter", "rows": count}
+    gram = [[sum(row[i] * row[j] for row in scaled) / count for j in range(width)] for i in range(width)]
+    try:
+        condition = _condition(gram, maximum_condition)
+    except C.ContractError as exc:
+        return {"identifiable": False, "reason": str(exc), "rows": count}
+    return {"identifiable": True, "reason": None, "rows": count, "scaled_design_condition_upper_bound": condition}
+
+
 def nnls(
     matrix: list[list[float]], labels: list[float], *, maximum_condition: float, max_iterations: int = 20000
 ) -> tuple[list[float], dict]:

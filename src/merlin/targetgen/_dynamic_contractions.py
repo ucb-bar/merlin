@@ -37,6 +37,12 @@ SOFTMAX_AXIS = "softmax_axis"
 SCALE_FLOOR = 1.1754943508222875e-38
 #: Metadata the emitted operations inherit from the contraction they replace.
 _INHERITED_META = ("nn_module_stack", "source_fn_stack", "stack_trace", "from_node")
+#: A rewritten site's independent check (``sites[i]["verification"]``): its emitted int8 result against
+#: the float contraction of its own operands, on the recipe's agreement samples. Recorded, never judged.
+VERIFICATION_SCHEMA = "m2m.dynamic_site_verification.v1"
+#: The in-process row key that carries a site's verification spec (FX nodes) until the check runs.
+VERIFY_KEY = "_verify"
+_CHECKS: dict[int, dict] = {}
 
 
 def qmax_of(recipe: dict) -> int:
@@ -315,7 +321,9 @@ def rewrite_activation_contraction(graph_module: Any, node: Any, block: dict, qm
         _runtime_planes(emit, b, axis=-2, planes=rhs_planes, qmax=qmax, census=census),
         census,
     )
-    return _finish(emit, node, result, census, smooth=smooth, planes=(lhs_planes, rhs_planes))
+    row = _finish(emit, node, result, census, smooth=smooth, planes=(lhs_planes, rhs_planes))
+    row[VERIFY_KEY] = verification_spec(emit, (lhs, rhs), smooth=smooth)
+    return row
 
 
 def rewrite_weight_contraction(graph_module: Any, node: Any, weight: Any, block: dict, qmax: int) -> dict:
@@ -341,7 +349,10 @@ def rewrite_weight_contraction(graph_module: Any, node: Any, weight: Any, block:
     if bias is not None:
         result = emit(aten.add.Tensor, result, _f32(emit, bias))
     result = emit(aten.reshape.default, result, [*shape[:-1], int(weight.shape[0])])
-    return _finish(emit, node, result, census, smooth=False, planes=(1, len(stored)))
+    row = _finish(emit, node, result, census, smooth=False, planes=(1, len(stored)))
+    reference = weight.detach().to(emit.torch.float32).clone()
+    row[VERIFY_KEY] = verification_spec(emit, (x,) if bias is None else (x, bias), kind="linear", weight=reference)
+    return row
 
 
 def _finish(emit: Emitter, node: Any, result: Any, census: dict, *, smooth: bool, planes: tuple) -> dict:
@@ -355,8 +366,126 @@ def _finish(emit: Emitter, node: Any, result: Any, census: dict, *, smooth: bool
         "shapes": [list(a.meta["val"].shape) for a in node.args[:2] if hasattr(a, "meta")],
         "planes": list(planes),
         "smooth": smooth,
+        # The replaced contraction's trace lineage: the issuer ties this site's device calls to it.
+        "lineage": list(emit.lineage),
         **census,
     }
     node.replace_all_uses_with(result)
     emit.graph.erase_node(node)
+    emit.replacement = result
     return row
+
+
+def verification_spec(emit: Emitter, operands: tuple, **reference: Any) -> dict:
+    """What the site check needs: the emitted result and the replaced contraction's float operands."""
+    spec = {"out": emit.replacement, "operands": tuple(operands), "kind": "matmul", "shift": None, "smooth": False}
+    spec.update(reference)
+    return spec
+
+
+def _site_metrics(got: Any, ref: Any) -> dict:
+    """One sample's agreement, defined as the recipe agreement's (cosine of the flattened tensors, max |e|)."""
+    import torch
+
+    g, r = got.reshape(-1), ref.reshape(-1)
+    if g.numel() != r.numel() or not g.numel():
+        return {"finite": False}
+    if not (bool(torch.isfinite(g).all()) and bool(torch.isfinite(r).all())):
+        return {"finite": False}
+    error = g - r
+    norms = float(g.norm()) * float(r.norm())
+    cosine = float((g * r).sum()) / norms if norms else (1.0 if not float(error.abs().max()) else 0.0)
+    rms_ref = float(r.square().mean().sqrt())
+    rms_err = float(error.square().mean().sqrt())
+    if not rms_ref and rms_err:
+        return {"finite": False}
+    return {
+        "finite": True,
+        "cosine": cosine,
+        "max_abs": float(error.abs().max()),
+        "rel_rmse": rms_err / rms_ref if rms_ref else 0.0,
+    }
+
+
+def _check(run: int, key: str, out: Any, *operands: Any) -> None:
+    """Site-check hook: the float reference of the replaced contraction, from the same operands."""
+    import torch
+
+    spec = _CHECKS[run]["specs"][key]
+    values = [value.detach().to(torch.float64) for value in operands]
+    if spec["kind"] == "linear":
+        bias = values[1] if len(values) > 1 else None
+        reference = torch.nn.functional.linear(values[0], spec["weight"].to(torch.float64), bias)
+    else:
+        a, b = values
+        if spec["shift"] is not None:
+            b = b - spec["shift"].to(torch.float64)
+        if spec["smooth"]:
+            b = b - b.mean(dim=-1, keepdim=True)
+        reference = torch.matmul(a, b)
+    reference = reference.to(torch.float32).to(torch.float64)
+    _CHECKS[run]["rows"].setdefault(key, []).append(_site_metrics(out.detach().to(torch.float64), reference))
+
+
+def _summary(samples: list, spec: dict) -> dict:
+    finite = bool(samples) and all(row["finite"] for row in samples)
+    shifted = spec["shift"] is not None or spec["smooth"]
+    record = {
+        "schema": VERIFICATION_SCHEMA,
+        "samples": len(samples),
+        "finite": finite,
+        "reference": f"float64_{spec['kind']}_of_site_operands_rounded_f32" + ("_shift_adjusted" if shifted else ""),
+        "cosine_min": None,
+        "cosine_mean": None,
+        "max_abs_error": None,
+        "rel_rmse_max": None,
+    }
+    if finite:
+        record.update(
+            cosine_min=min(row["cosine"] for row in samples),
+            cosine_mean=sum(row["cosine"] for row in samples) / len(samples),
+            max_abs_error=max(row["max_abs"] for row in samples),
+            rel_rmse_max=max(row["rel_rmse"] for row in samples),
+        )
+    return record
+
+
+def verify_sites(graph_module: Any, rows: list, samples: list) -> None:
+    """Check every rewritten site of ``rows`` on ``samples`` in one pass; write ``verification`` per row.
+
+    Each site's emitted int8 result is compared with the float contraction (f64, rounded to f32) of the
+    very operands the rewritten graph gives it, so the record measures the site's own integer form, not
+    any upstream difference. A smooth-shifted site is compared with the shifted contraction it is meant
+    to compute (the shift moves score rows by constants the softmax ignores). The pass leaves the graph
+    as it found it; the specs (FX nodes) are removed from the rows.
+    """
+    import torch
+
+    try:
+        from _capture_integer_mm import exact_integer_mm
+    except ImportError:
+        from merlin.targetgen._capture_integer_mm import exact_integer_mm
+
+    specs = {index: row.pop(VERIFY_KEY) for index, row in enumerate(rows) if VERIFY_KEY in row}
+    if not specs:
+        return
+    run = max(_CHECKS, default=0) + 1
+    _CHECKS[run] = {"specs": {}, "rows": {}}
+    graph, hooks = graph_module.graph, []
+    for index, spec in specs.items():
+        key = f"site{index}"
+        _CHECKS[run]["specs"][key] = spec
+        with graph.inserting_after(spec["out"]):
+            hooks.append(graph.call_function(_check, (run, key, spec["out"], *spec["operands"])))
+    graph_module.recompile()
+    try:
+        with torch.no_grad(), exact_integer_mm(torch):
+            for sample in samples:
+                graph_module(*(sample if isinstance(sample, (tuple, list)) else (sample,)))
+    finally:
+        for hook in hooks:
+            graph.erase_node(hook)
+        graph_module.recompile()
+        checked = _CHECKS.pop(run)
+    for index, spec in specs.items():
+        rows[index]["verification"] = _summary(checked["rows"].get(f"site{index}", []), spec)

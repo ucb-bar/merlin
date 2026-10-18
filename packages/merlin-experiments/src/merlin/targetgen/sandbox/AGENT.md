@@ -20,6 +20,7 @@ views even after original aliases or selected providers change.
   not import-time constants. Explicit universal paths do not qualify simulator-family
   configuration, sandbox operability or native tool execution.
 - `bwrap.py` — Deny-by-default argv assembly + the hermetic mount-table replay that PROVES no answer surface is reachable (coverage guard), without launching bwrap.
+- `claude_home.py` — The Claude CLI home an agent sandbox mounts: staged fresh for each launch, never the operator's.
 - `host_surfaces.py` — The answer surfaces host inputs create: private host files and every hardlink or bind alias that reaches them (`host_input_surfaces`, `private_file_surfaces`), masked last by `bwrap.apply_final_answer_masks`.
 - `__init__.py` — `build_sandbox(descriptor, ws, bundle)` → a `Sandbox` facade (argv / env / wrap / coverage_gap); `resolve_kind` for family routing.
 - `build_dependencies.py` — One-call host-owned pure-build source grants, preserving the existing answer masks and exact worker/request/tool pins. Never an agent mount API.
@@ -44,6 +45,7 @@ views even after original aliases or selected providers change.
   schedule roles are not support. Only the existing explicit `contracts/` exemption
   survives; the descriptor's historical backend location remains withheld too.
 - The coverage guard is the drift/cheat gate: `bwrap.coverage_gap(argv, surfaces)` replays the ordered mount table and returns any answer surface still reachable — it MUST be empty. The historical cheat gap (a hard-coded slug that left the `~/.claude` memory dir unmasked) is exactly a non-empty gap; the memory dir is derived from the current repo path so it can never go stale.
+- Agent sandboxes never mount the operator's `~/.claude` or `~/.claude.json`: it holds every host session's history, plans, file-history backups, transcripts, settings/hooks and global instructions, and masking `projects/` alone left the rest readable. `full_argv` and the Phase 1 composer pass `include_claude_home=False` and drop operator state from `claude_runtime_binds()`; a `claude` launch gets `claude_home.stage(...)` (empty `.claude/`, minimal `.claude.json`) whose only operator bind is the OAuth credential file, writable for token rotation. `base_argv`'s legacy whole-tree bind remains for callers outside Phase 1 that still opt in.
 - `apply_answer_masks` only masks a surface a bind would otherwise RE-EXPOSE (so it never `/dev/null`-overlays a path whose parent is an empty tmpfs — that mount would fail). Surfaces already hidden by deny-by-default need no overlay.
 - `apply_final_answer_masks` is the shared final policy for complete runtime bind lists: descriptor
   answers plus verified host-input mappings, including live/frozen aliases and private snapshot

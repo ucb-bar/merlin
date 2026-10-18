@@ -136,9 +136,10 @@ def resolve_fusion_contract(declaration, facts, isa, storage):
         instruction = isa.instruction(name)
         _fields(item, ("scalar_ir", "elements", "element_bits", "stages", "byte_orders", "readout", "execution"),
                 "elementwise declaration")
-        if (name not in effects or effects[name]["exact_copy"] or effects[name]["nonmemory_effects"]
+        if (name not in effects or effects[name]["exact_copy"]
+                or effects[name]["nonmemory_effects"] and not effects[name]["configuration_reads"]
                 or effects[name]["completion"] != "synchronous"):
-            raise ValueError("fusion scalar instructions require synchronous, complete, memory-only ISA effects")
+            raise ValueError("fusion requires synchronous memory-only effects or checked read-only configuration")
         if type(item["scalar_ir"]) is not str or not item["scalar_ir"]:
             raise ValueError("fusion computation must be explicit scalar MLIR text")
         if type(item["element_bits"]) is not list or not item["element_bits"] or len(item["element_bits"]) > 256:

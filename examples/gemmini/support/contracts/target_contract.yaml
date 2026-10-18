@@ -54,6 +54,61 @@ rtl_extraction:
     node: pooling_is_enabled
     dynamic_operand_contains: pool
     config_field: has_max_pool
+  # Role anchors for merlin.targetgen.rtl.timing_structure: module, port-prefix and bus-field names
+  # only. Every count, width, ID space and stage count is read from the elaborated HW; an anchor the
+  # RTL does not contain records that fact UNKNOWN. profile_resources is the reviewed mapping from
+  # those structural quantities onto timing-engine ResourceSpec fields (null = left to fitting).
+  timing_structure:
+    dispatch:
+      module: ReservationStation
+      classes: {load: io_issue_ld_, store: io_issue_st_, execute: io_issue_ex_}
+    memory_protocol: {request: a_bits_, response: d_bits_, id: source, data: data, size: size, size_encoding: log2_bytes}
+    memory_clients:
+      dma_read: {module: StreamReader, port_prefix: auto_core_out_}
+      dma_write: {module: StreamWriter, port_prefix: auto_out_}
+    dataflow: {cell_module: PE_256, select_port: io_in_control_dataflow}
+    latencies:
+      scratchpad_bank_read: {module: ScratchpadBank, from: io_read_req_bits_addr, to: io_read_resp_bits_data}
+      scratchpad_read: {module: Scratchpad, from: io_srams_read_0_req_bits_addr, to: io_srams_read_0_resp_bits_data}
+      accumulator_bank_read: {module: AccumulatorMem, from: io_read_req_bits_addr, to: io_read_resp_bits_data_0_0}
+      accumulator_read: {module: Scratchpad, from: io_acc_read_req_0_bits_addr, to: io_acc_read_resp_0_bits_data_0_0}
+      accumulator_adder: {module: AccPipe, from: io_op1, to: io_sum}
+      mesh_with_delays_ws: {module: MeshWithDelays, from: io_a_bits_0_0, to: io_resp_bits_data_0_0, mode: weight_stationary}
+    array_paths:
+      mesh_activation_to_partial_sum_ws: {module: Mesh, from_prefix: io_in_a_, to_prefix: io_out_b_, mode: weight_stationary}
+    profile_resources:
+      accelerator.load:
+        capacity: {buffer_instance: Gemmini/load_controller/cmd_tracker}
+        queue_capacity: {from: command_classes.classes.load.entries.value, minus: {buffer_instance: Gemmini/load_controller/cmd_tracker}}
+        basis: >-
+          capacity: load commands started and not completed (DMA command-tracker slots); queue_capacity:
+          load dispatch entries not in service (entries are held until completion)
+      accelerator.store:
+        capacity: {buffer_instance: Gemmini/store_controller/cmd_tracker}
+        queue_capacity: {from: command_classes.classes.store.entries.value, minus: {buffer_instance: Gemmini/store_controller/cmd_tracker}}
+        basis: >-
+          capacity: store commands started and not completed (DMA command-tracker slots); queue_capacity:
+          store dispatch entries not in service
+      accelerator.execute:
+        capacity: null
+        queue_capacity: null
+        basis: >-
+          the execute path overlaps preload/compute pairs through the mesh pipeline; no structural
+          in-flight bound maps onto engine lanes (dispatch entries and command buffers are recorded)
+      accelerator.config:
+        capacity: null
+        queue_capacity: null
+        basis: configuration commands occupy the dispatch class of the unit they configure
+      accelerator.dma_read:
+        capacity: memory_clients.clients.dma_read.request_channels
+        queue_capacity: null
+        basis: >-
+          one request channel issues one beat per cycle; in-flight transactions bound latency hiding and
+          are fitted together with read_bytes_per_cycle, not a lane count
+      accelerator.dma_write:
+        capacity: memory_clients.clients.dma_write.request_channels
+        queue_capacity: null
+        basis: one request channel; in-flight transactions are fitted with write_bytes_per_cycle
 runner:
   suite: gemmini-capsule-bench
   dtype: i8xi8_i32

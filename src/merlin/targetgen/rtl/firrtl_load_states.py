@@ -14,6 +14,7 @@ class LoadStateMapping:
     ports: tuple[tuple[str, int], ...]
     states: tuple[int, ...]
     stride_width: int
+    max_element_bytes: int | None = None
 
     def port(self, klass):
         return dict(self.ports).get(klass)
@@ -35,7 +36,7 @@ def derive_load_state_mapping(layouts, selection, isa):
         "stride_sink",
         "load_classes",
     }
-    if type(selection) is not dict or set(selection) != fields:
+    if type(selection) is not dict or not fields <= set(selection) or set(selection) - fields - {"transfer_bound"}:
         raise ValueError("load-state selection has missing or unsupported fields")
     if any(type(selection[key]) is not str or not selection[key] for key in fields - {"load_classes", "config_field"}):
         raise ValueError("load-state selection requires exact original source references")
@@ -223,7 +224,12 @@ def derive_load_state_mapping(layouts, selection, isa):
         address = address.args[0]
     if address != expected_address:
         raise ValueError("load-state DRAM address does not use the selected stride bank")
+    maximum = None
+    if "transfer_bound" in selection:
+        from .firrtl_transfer_bound import derive
+
+        maximum = derive(module, layouts, selection["transfer_bound"], isa, classes, invalidated)
     _source(path, layouts["source_sha256"])
     return LoadStateMapping(
-        str(path), layouts["source_sha256"], selection["config_class"], ports, tuple(range(count)), bits
+        str(path), layouts["source_sha256"], selection["config_class"], ports, tuple(range(count)), bits, maximum
     )

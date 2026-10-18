@@ -272,6 +272,43 @@ def declared_acc_scale(attrs: dict[str, Any], *, op: str) -> float:
     return float(value)
 
 
+def declared_acc_scale_by_column(attrs: dict[str, Any], columns: int, *, op: str) -> list[float]:
+    """Read finite float32 multipliers, exactly one for every output column."""
+    import math
+    import struct
+
+    if "acc_scale" in attrs:
+        raise ValueError(f"{op}: select either acc_scale or acc_scale_by_column, not both")
+    scales = attrs.get("acc_scale_by_column")
+    if not isinstance(scales, list) or not scales:
+        raise ValueError(f"{op}: acc_scale_by_column must be a nonempty numeric list")
+    if len(scales) != columns:
+        raise ValueError(f"{op}: acc_scale_by_column must name one multiplier per output column")
+    rounded = []
+    for scale in scales:
+        if isinstance(scale, bool) or not isinstance(scale, int | float):
+            raise ValueError(f"{op}: acc_scale_by_column needs finite numeric multipliers")
+        try:
+            number = struct.unpack("<f", struct.pack("<f", float(scale)))[0]
+        except (OverflowError, struct.error) as error:
+            raise ValueError(f"{op}: acc_scale_by_column multiplier is not representable as float32") from error
+        if not math.isfinite(number):
+            raise ValueError(f"{op}: acc_scale_by_column multiplier is not finite float32")
+        rounded.append(number)
+    return rounded
+
+
+def apply_declared_acc_scale(value: Tensor, attrs: dict[str, Any], *, op: str) -> Tensor:
+    """Apply a declared scalar or column-dependent float32 readout.
+
+    This states arithmetic, not hardware admission or a scale-change schedule.
+    """
+    if "acc_scale_by_column" not in attrs:
+        return value.requant_acc_scale(declared_acc_scale(attrs, op=op))
+    scales = declared_acc_scale_by_column(attrs, value.shape[-1] if value.shape else 0, op=op)
+    return value.requant_acc_scale_by_column(scales)
+
+
 def bias_tensor_name(operands: dict[str, Any], attrs: dict[str, Any], *, op: str) -> str:
     """Name of the bias tensor a ``bias_add``/``bias`` stage consumes. One definition, all engines.
 
@@ -416,6 +453,18 @@ def validate_command_buffer(cb: dict[str, Any]) -> list[str]:
     # with nothing pointing back at the omission. All 421 narrowing ops in the shipped corpus already
     # declare it, so this states an invariant that already holds rather than imposing a new one.
     for i, cmd in enumerate(cmds):
+        attrs = cmd.get("attributes") or {}
+        if "acc_scale_by_column" in attrs:
+            if "acc_scale" not in (attrs.get("epilogue") or []):
+                problems.append(f"command {i}: acc_scale_by_column requires its acc_scale epilogue stage")
+            scales = attrs.get("acc_scale_by_column")
+            dst = (cmd.get("operands") or {}).get("dst")
+            shape = ((cb.get("tensors") or {}).get(dst) or {}).get("shape")
+            columns = shape[-1] if isinstance(shape, list) and shape else len(scales) if isinstance(scales, list) else 0
+            try:
+                declared_acc_scale_by_column(attrs, columns, op=f"command {i}")
+            except ValueError as error:
+                problems.append(str(error))
         if str(cmd.get("opcode")) in NARROWING_OPCODES:
             attrs = cmd.get("attributes") or {}
             if "output_dtype" not in attrs:

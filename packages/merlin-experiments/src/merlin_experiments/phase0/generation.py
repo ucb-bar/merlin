@@ -19,7 +19,7 @@ from .capture_recipe import _selected_capture_recipe as _selected_capture_recipe
 from .claim_boundary import assert_no_claim_capsules, held_out_models
 from .instruction_roles import enforcement_problems, validate_roles
 from .profiles import load_profile, validate_profile_inputs
-from .program_admission import entry_refusal_is_final, screen_written
+from .program_admission import accelerator_placement_refusal, entry_refusal_is_final, screen_written
 from .provenance import _capture_failure_reason, _scrub_capsule_dir, update_provenance_manifest
 from .sealed_generation import verified_capture_failure
 from .software_screen import diagnostic_entry, screen_entry
@@ -667,7 +667,7 @@ def generate_target(
     from .component_integer_bounds import preflight_entry
 
     for entry in entries:
-        if entry.get("op") == "component_program" and entry["name"] not in preallocation_denials:
+        if CS.entry_component_program(entry, binding) is not None and entry["name"] not in preallocation_denials:
             try:
                 preflight_entry(entry, binding=binding)
             except ValueError as exc:
@@ -775,6 +775,7 @@ def generate_target(
     # gap stayed open for a reason that had nothing to do with it. Failures are COLLECTED, reported by
     # name, and re-raised at the end -- the run still fails, it just fails after doing the work it could.
     written, failures, unbuilt_roster, unprovable_forbids, omitted, admission = [], [], [], [], [], []
+    host_placed: list[dict] = []
     refused_generated: list[Path] = []
     for e in entries:
         family = (e.get("performance") or {}).get("family")
@@ -910,6 +911,14 @@ def generate_target(
                         host_capabilities=evidence.host_capabilities,
                     )
                 admission.append({"capsule": e.get("name"), "observation": "emitted_capsule", **observed})
+                # PLACEMENT DECIDES PUBLICATION. A written program with no accelerator-placed operation
+                # grades none of the author's work (host placement is Merlin-supplied), so it is removed
+                # and reported, exactly as an unprovable forbid is, never left on disk for a glob.
+                withheld = withhold_unaccelerated(str(e.get("name", "?")), observed, Path(w))
+                if withheld is not None:
+                    host_placed.append(withheld)
+                    print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {withheld['reason']}")
+                    continue
                 # A must-refuse member is refused by the declarations by construction; that refusal is
                 # what it grades, so it neither moves to the diagnostic cohort nor fails generation.
                 must_refuse = e.get("outcome") == "refuse"
@@ -1096,6 +1105,11 @@ def generate_target(
             f"  [roster] {len(unbuilt_roster)} declared roster model(s) could not be captured at this "
             f"target's derived format; they are recorded as not_built, never as covered"
         )
+    if host_placed:
+        print(
+            f"  [placement] {len(host_placed)} written capsule(s) place no operation on the accelerator; "
+            f"they are recorded, never published"
+        )
     if unprovable_forbids:
         print(
             f"  [lane] {len(unprovable_forbids)} synthesized host-lane capsule(s) were dropped: their "
@@ -1189,6 +1203,7 @@ def generate_target(
         unbuilt_roster=unbuilt_roster,
         claim_model_evaluation=claim_plan,
         unprovable_forbids=unprovable_forbids,
+        host_placement_not_published=host_placed,
         superseded=superseded,
     )
     if evidence is not None:
@@ -1277,6 +1292,7 @@ def generate_target(
             "unbuilt_roster": unbuilt_roster,
             "operation_admission": admission,
             "unprovable_forbids": unprovable_forbids,
+            "host_placement_not_published": host_placed,
             "failures": [{"capsule": n, "reason": why} for n, why in failures],
             "performance_materialization_errors": len(_performance_errors),
             "qualification": "not_established",
@@ -1440,6 +1456,22 @@ def _with_reference_gate(entry: dict, te, descriptor: Path) -> dict:
     if not resolved.is_absolute():
         resolved = Path(descriptor).parent / resolved
     return {**entry, "reference_gate": str(resolved)}
+
+
+def withhold_unaccelerated(name: str, observed: dict, directory: Path) -> dict | None:
+    """Remove a written member whose admitted program places nothing on the accelerator.
+
+    Returns the record that replaces it in the manifest, or ``None`` when the member stays. Only an
+    admitted screen is judged here: a refused or unknown one already leaves the graded cohort through
+    the diagnostic path, and a member already in that cohort is not public.
+    """
+    if observed.get("status") != "admitted" or directory.parent.name == "_diagnostic":
+        return None
+    reason = accelerator_placement_refusal(observed)
+    if reason is None:
+        return None
+    shutil.rmtree(directory)
+    return {"capsule": name, "placements": copy.deepcopy(observed.get("placements") or {}), "reason": reason}
 
 
 def _member_path(entry: dict) -> str | None:

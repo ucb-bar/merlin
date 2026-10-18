@@ -136,6 +136,11 @@ class ReadoutFacet:
     #: has a fully derived readout, and ``unknown`` is what stops a readout from licensing anything.
     operand_sum: dict[str, Any] | None = None
     operand_sum_absent: str | None = None
+    #: Command-buffer stages the contract's DERIVED output epilogue says this unit's output path
+    #: applies (:mod:`merlin.targetgen.rtl.output_epilogue`), and whether it accumulates an operand on
+    #: load. Read from the design, so a derived stage is applied even where no readout is declared.
+    derived_stages: tuple[str, ...] = ()
+    accumulates: bool = False
 
     def note(self, name: str, rung: str, observed: str) -> None:
         self.evidence.append(Evidence(name, rung, observed))
@@ -167,6 +172,8 @@ class ReadoutFacet:
             "stage_routes": [dict(route) for route in self.stage_routes],
             "operand_sum": ({**self.operand_sum, "bound_lsb": self.operand_sum_bound()} if self.operand_sum else None),
             "operand_sum_absent": self.operand_sum_absent,
+            "derived_stages": list(self.derived_stages),
+            "accumulates": self.accumulates,
             "unknown": dict(sorted(self.unknown.items())),
             "evidence": [{"field": e.field, "rung": e.rung, "observed": e.observed} for e in self.evidence],
         }
@@ -295,6 +302,8 @@ class ReadoutFacet:
         """
         from merlin.verify.epilogue_applicability import selectors_applying
 
+        if stage in self.derived_stages:
+            return True  # read from the design's own output path: stronger than any declaration
         capabilities = self.capabilities()
         if not capabilities:
             return None
@@ -598,6 +607,37 @@ def _from_operand_sum(facet: ReadoutFacet, contract: Mapping[str, Any] | None) -
     )
 
 
+def _contracts(unit: Mapping[str, Any] | None) -> bool:
+    """Whether ``unit`` (``None``: the target's one unit-less facet) is one a contraction leaves."""
+    if unit is None:
+        return True
+    families = {str((cap or {}).get("family")) for cap in unit.get("semantic_capabilities") or ()}
+    return "contraction" in families or "matmul" in (unit.get("ops") or ())
+
+
+def _from_output_epilogue(
+    facet: ReadoutFacet, record: Mapping[str, Any] | None, unit: Mapping[str, Any] | None
+) -> None:
+    """Fold the contract's derived output-epilogue record into a contraction unit's facet."""
+    if not record or not _contracts(unit):
+        return
+    from merlin.targetgen.rtl import output_epilogue as OE
+
+    checked = OE.validate(record)
+    facet.derived_stages = tuple(stage for stage, applies in sorted(checked["stages"].items()) if applies)
+    facet.accumulates = checked["accumulate"]["status"] == OE.DERIVED
+    if facet.derived_stages:
+        facet.note(
+            "derived_stages",
+            "rtl_derived",
+            f"the derived output epilogue applies {list(facet.derived_stages)} on move-out",
+        )
+    scale = checked["scale"]
+    if scale["status"] == OE.DERIVED and facet.scale_dtype is None:
+        facet.scale_dtype = str(scale["dtype"])
+        facet.note("scale_dtype", "rtl_derived", f"the readout decodes its scale as {scale['format']['format']}")
+
+
 _NO_RUNG = "no rung produced it"
 #: The structural ISA role of a readout that applies a scale (``semantic_families.ISA_ROLE_FAMILY``).
 _SCALED_READOUT_ROLE = "acc_readout_scaled"
@@ -614,6 +654,7 @@ def derive(
     stage_routes: Sequence[Mapping[str, Any]] | None = None,
     taxonomy: Mapping[str, Any] | None = None,
     operand_sum: Mapping[str, Any] | None = None,
+    output_epilogue: Mapping[str, Any] | None = None,
 ) -> ReadoutFacet:
     """Derive one unit's readout facet from supplied evidence. Pure: it loads nothing."""
     facet = ReadoutFacet(target=target, unit=str(unit.get("name")) if unit else None)
@@ -636,6 +677,7 @@ def derive(
     _from_registers(facet, body)
     _from_scalar_abi(facet, scalar_abi)
     _from_operand_sum(facet, operand_sum)
+    _from_output_epilogue(facet, output_epilogue, unit)
     # An unknown says which rungs were silent and why, because "not derived" tells the next person
     # nothing about whether to extract more or to stop looking.
     silent = []
@@ -896,6 +938,7 @@ def for_target(
             stage_routes=inputs.get("stage_routes"),
             taxonomy=inputs.get("taxonomy"),
             operand_sum=inputs.get("operand_sum"),
+            output_epilogue=contract.get("output_epilogue"),
         )
         for u in units
     ]
@@ -949,6 +992,11 @@ class TargetReadout:
     @property
     def unknown(self) -> dict[str, str]:
         return {key: why for f in self.facets for key, why in f.unknown.items()}
+
+    @property
+    def accumulates(self) -> bool:
+        """Whether some unit's derived output path adds an operand into the accumulator on load."""
+        return any(f.accumulates for f in self.facets)
 
     def operand_sum(self, multipliers: Sequence[float]) -> tuple[ReadoutFacet | None, str | None]:
         """``(facet, None)`` for the first unit that can sum operands under ``multipliers``, else

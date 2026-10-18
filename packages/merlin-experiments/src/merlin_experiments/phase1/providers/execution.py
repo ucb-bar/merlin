@@ -17,6 +17,7 @@ from pathlib import Path
 from merlin.common import arrival_stamp as AS
 from merlin.targetgen import experiment_tokens as ET
 
+from .. import author_subagents
 from ..context import InvocationContext
 from ..feedback import lifecycle as FL
 
@@ -133,16 +134,24 @@ def sandbox_command(
     bound back over the /scratch* masks) + the DERIVED answer-mask pass + toolchain env. The mask set now
     comes from the shared descriptor-driven answer surface (goldens/hidden/prior/oracle/grader/memory) and
     is coverage-proven by test_sandbox_isolation; masking is bundle-independent (a bind that re-exposes an
-    answer surface is re-masked here, not left to the bundle's denied list)."""
+    answer surface is re-masked here, not left to the bundle's denied list).
+
+    No mode mounts the operator's Claude state (``~/.claude``, ``~/.claude.json``). An ``inner`` that runs
+    the ``claude`` CLI gets a home staged fresh for that launch (``sandbox.claude_home``) instead."""
     from merlin.targetgen.sandbox import bwrap as _BW
+    from merlin.targetgen.sandbox import claude_home as _CH
     from merlin.targetgen.target_experiment import load_target_experiment
 
-    base_options = {"repo": context.repo}
+    base_options = {"repo": context.repo, "include_claude_home": False}
     if codex_mode:
-        base_options.update(include_claude_home=False, inherit_environment=False)
+        base_options["inherit_environment"] = False
     parts = _BW.base_argv(ws, bundle, **base_options)
+    home = None
     if not codex_mode:
-        parts += _BW.claude_runtime_binds()
+        parts += _CH.without_operator_state(_BW.claude_runtime_binds())
+        if _CH.launches_claude(inner):
+            home = _CH.stage(private_run_dir.name if private_run_dir is not None else "agent", workspace=ws)
+            parts += home.binds()
     target = load_target_experiment(context.descriptor)
     from merlin.targetgen.sandbox import toolchain as TC
 
@@ -163,6 +172,9 @@ def sandbox_command(
     parts = _BW.apply_final_answer_masks(
         parts, load_target_experiment(context.descriptor), ws, bundle, repo=context.repo
     )
+    # Sibling homes hold other launches' sessions; only this launch's home, at the CLI's paths, is visible.
+    if home is not None and _BW.is_exposed(parts, home.root.parent):
+        raise RuntimeError("staged Claude homes are visible at their host path in the agent sandbox")
     if private_run_dir is not None:
         from merlin_experiments.phase1.semantic_diagnostics import assert_private_mounts
 
@@ -348,8 +360,14 @@ def launch(
                 background_model=config.provider.background_model,
                 effort=effort,
                 continue_session=continuous,
-                **({"max_concurrent_subagents": config.provider.codex_max_subagents}
-                   if config.provider.codex_max_subagents is not None else {}),
+                **(
+                    {"max_concurrent_subagents": config.provider.codex_max_subagents}
+                    if config.provider.codex_max_subagents is not None
+                    else {}
+                ),
+                # The helper-thread ceiling this run RECORDED (environment.yaml), so the frozen home
+                # carries exactly the audited value, including across a resume.
+                **author_subagents.launch_kwargs(run_dir, sandbox),
                 **codex_call_kwargs(
                     config.provider.codex_runtime, context=config.context, run_dir=run_dir, model=model
                 ),

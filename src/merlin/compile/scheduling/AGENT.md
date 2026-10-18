@@ -25,6 +25,13 @@ and where each operand's region sits on chip.
   review, with three minimal namespace initializers. Keep algorithm/checker
   files identical and test all entry families in isolation. New public APIs and
   source membership require explicit review; never infer grants from an export.
+- `pointwise_source` checks a current typed tensor body against original target
+  calls, then independently reconstructs final decoded scalar dataflow after
+  scheduling. Reuse `dense_ir.checked_static_linalg_shell`, `scalar_graph` and
+  the existing interval memory. Unknown arithmetic/effects, init reads, shifted
+  external aliases and asynchronous arithmetic keep the original source route.
+  This source checker does not supply target instruction selection, ABI glue,
+  runtime ownership or independent execution qualification.
 - **Knobs, not constants.** Load on index change, lookahead depth, operand order/grouping, region
   placement and loop order were each measured or shown to move cycles, and none has a value that wins
   everywhere: the best setting depends on the SHAPE and on the SUBSTRATE. Defaults are documented in

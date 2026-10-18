@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from math import prod
 
 from merlin.sched.ir import Call, evaluate
@@ -17,6 +17,7 @@ from merlin.semantic_compiler.allocation_types import Reservation, StorageBank
 from merlin.targetgen.isa_dialect_gen import encode_instruction
 from merlin.targetgen.isa_spec import resolve_fact_integer
 
+from .configuration import ConfigurationAdapter, ConfigurationEffects
 from .program_limits import AddressWindow, EncodedAccess
 from .temporary_storage import StorageAdapter, StorageEffects, StorageOptimizationUnavailable
 
@@ -132,7 +133,8 @@ class TemporaryStorageContract:
         reservations = _reservations((*self.reservations, *reservations), banks)
         return banks, reservations, external_windows
 
-    def bind(self, isa, adapter, *, banks, reservations, external_windows, private_ownership):
+    def bind(self, isa, adapter, *, banks, reservations, external_windows, private_ownership,
+             configuration_adapter=None):
         """Derive geometry and check existing runtime/allocation premises."""
         if type(adapter) is not StorageAdapter or not adapter.qualification_identity:
             raise ValueError("selected storage requires an independently qualified effect/rewrite adapter")
@@ -141,6 +143,11 @@ class TemporaryStorageContract:
             private_ownership=private_ownership,
         )
         declarations = json.loads(self.declarations_json)
+        if configuration_adapter is not None and (
+            type(configuration_adapter) is not ConfigurationAdapter
+            or configuration_adapter.configuration_identity != adapter.configuration_identity
+        ):
+            raise ValueError("storage configuration checks require the same selected hardware and typed adapter")
 
         def project(call):
             if type(call) is not Call or call.instr not in declarations:
@@ -155,6 +162,15 @@ class TemporaryStorageContract:
                 raise ValueError("selected storage operands contain duplicate bindings")
             encode_instruction(isa, call.instr, values)
             declaration = declarations[call.instr]
+            state = None
+            if declaration["requires_configuration"]:
+                if configuration_adapter is None:
+                    raise StorageOptimizationUnavailable(
+                        "selected persistent-state effects require independent configuration qualification"
+                    )
+                state = configuration_adapter.project(call)
+                if type(state) is not ConfigurationEffects:
+                    raise StorageOptimizationUnavailable("selected configuration effects or RTL capacity are unknown")
             accesses = tuple(EncodedAccess(_space(a["space"], values), binding_value(a["start"], values),
                                            binding_value(a["size"], values), a["writes"])
                              for a in declaration["accesses"])
@@ -169,14 +185,16 @@ class TemporaryStorageContract:
             if (effect.accesses != accesses or effect.completion != completion or effect.token != token
                     or effect.waits != waits or effect.exact_copy != declaration["exact_copy"]):
                 raise ValueError("provider storage effects disagree with selected operands or software completion")
-            if effect.elementwise is not None and declaration["nonmemory_effects"]:
+            if (effect.elementwise is not None and declaration["nonmemory_effects"]
+                    and not declaration["configuration_reads"]):
                 raise ValueError("selected storage cannot treat extra execution effects as pure elementwise arithmetic")
             addresses = {a["start"]["argument"] for a in declaration["accesses"] if "argument" in a["start"]}
             preserved = {key: value for key, value in values.items() if key not in addresses}
             # Every nonaddress argument and the selected operation semantics
             # survive relocation, even if a provider accidentally omits them.
             key = hashlib.sha256(_json((call.instr, declaration["semantics"], preserved,
-                                       effect.semantic_key)).encode()).hexdigest()
+                                       effect.semantic_key, asdict(state) if state is not None else None))
+                                 .encode()).hexdigest()
             return replace(effect, semantic_key=key)
 
         return banks, reservations, external_windows, replace(adapter, project=project)
@@ -200,7 +218,7 @@ def _reservations(rows, banks):
     return tuple(result)
 
 
-def resolve_storage_contract(declaration, facts, isa):
+def resolve_storage_contract(declaration, facts, isa, *, configuration=None):
     row = _fields(declaration, ("schema", "banks", "external", "reservations", "instructions"), "contract")
     if row["schema"] != "merlin.temporary_storage_contract.v1":
         raise ValueError("unknown temporary storage contract version")
@@ -320,10 +338,22 @@ def resolve_storage_contract(declaration, facts, isa):
         if effects == {"status": "unknown"} or semantics == {"status": "unknown"}:
             raise ValueError("storage instructions require complete ISA effects and explicit operation semantics")
         for kind in ("reads", "writes"):
-            if (any(resources[r].kind == "state" for r in effects[kind])
-                    or {r for r in effects[kind] if resources[r].kind == "memory"} != coverage[kind]):
+            if {r for r in effects[kind] if resources[r].kind == "memory"} != coverage[kind]:
                 raise ValueError("storage access coverage disagrees with ISA memory or persistent-state effects")
+        state = {r for kind in ("reads", "writes") for r in effects[kind] if resources[r].kind == "state"}
+        config = configuration.get(name) if configuration is not None else None
+        if state and config is None:
+            raise ValueError("storage persistent-state effects require matching selected configuration declarations")
+        if state:
+            for kind, fields in (("reads", config["reads"]), ("writes", config["writes"]+config["clobbers"])):
+                if {r for r in effects[kind] if resources[r].kind == "state"} != {f["resource"] for f in fields}:
+                    raise ValueError("storage persistent-state coverage differs from selected configuration effects")
         nonmemory = any(resources[r].kind != "memory" for kind in ("reads", "writes") for r in effects[kind])
+        # Scalar semantics may depend on established settings, but removing a
+        # scalar instruction must never remove configuration writes/clobbers.
+        readonly = bool(state) and config["ordered"] and not config["writes"] and not config["clobbers"] and all(
+            resources[r].kind in ("memory", "state") for kind in ("reads", "writes") for r in effects[kind]
+        )
         if item["exact_copy"] and nonmemory:
             raise ValueError("storage exact copy cannot discard additional ISA execution or state effects")
         if item["exact_copy"] and (
@@ -331,5 +361,6 @@ def resolve_storage_contract(declaration, facts, isa):
             or accesses[0]["writes"] or not accesses[1]["writes"]
         ):
             raise ValueError("storage exact copy requires one read and write with explicit completion")
-        normalized[name] = {**item, "accesses": accesses, "semantics": semantics, "nonmemory_effects": nonmemory}
+        normalized[name] = {**item, "accesses": accesses, "semantics": semantics, "nonmemory_effects": nonmemory,
+                            "requires_configuration": bool(state), "configuration_reads": readonly}
     return TemporaryStorageContract(banks, external, tuple(reservations), _json(normalized))

@@ -181,6 +181,7 @@ def _lowering_sources() -> dict[str, Path]:
         "merlin.runtime.backends.zephyr_model",
         "merlin.runtime.backends.spike_model",
         "merlin.runtime.operation_profile",
+        "merlin.runtime.whole_model_readback",
     ):
         sources[name] = module_source_path(name)
     return sources

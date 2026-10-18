@@ -8,6 +8,11 @@ Preserve on-disk formats and numerical tolerances when moving code.
 accounting without importing a framework. Preserved BF16/FP16 Q/DQ is source
 floating arithmetic, never target admission or integer coverage; unresolved
 rewrites and unmatched refusal inventories remain errors.
+The shared dynamic integerization observation joins every recipe-rewritten site
+to the program-bound frontend trace, its declared per-site agreement bar and
+the exported contraction total. Both the sealed issuer and application inventory
+use it. Public projections omit the private graph, recipe details and site names;
+matching materialized bytes never establishes independent execution authority.
 
 `safetensors.py` owns bounded header framing and JSON decoding for capture rewrites
 and weight packers. It preserves metadata and entry order, never reads tensor data,

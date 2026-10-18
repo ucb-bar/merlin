@@ -21,12 +21,10 @@ import yaml
 from merlin.compile.model_execution_inputs import file_sha256, strict_tree_sha256
 from merlin_experiments.phase1.feedback import private_bucketize_support as bucketize_support
 from merlin_experiments.phase1.feedback import private_compilation_inputs as compilation_support
-from merlin_experiments.phase1.feedback.private_contraction_support import (
-    contraction_zero_init_fill as _contraction_zero_init_fill,
-)
 from merlin_experiments.phase1.feedback import private_control_support as control_support
 from merlin_experiments.phase1.feedback import private_data_movement as data_movement
 from merlin_experiments.phase1.feedback import private_f32_maximum_support as maximum_support
+from merlin_experiments.phase1.feedback import private_f32_reduction_support as f32_sum_support
 from merlin_experiments.phase1.feedback import private_host_source_dispatch as host_source_dispatch
 from merlin_experiments.phase1.feedback import private_index_host_support as index_support
 from merlin_experiments.phase1.feedback import private_integer_reduction_support as integer_support
@@ -42,6 +40,9 @@ from merlin_experiments.phase1.feedback.private_capture_roster import (
     captured_input_provenance as _captured_input_provenance,
 )
 from merlin_experiments.phase1.feedback.private_capture_roster import captured_programs as _captured_programs
+from merlin_experiments.phase1.feedback.private_contraction_support import (
+    contraction_zero_init_fill as _contraction_zero_init_fill,
+)
 from merlin_experiments.phase1.feedback.private_device_audit import (
     audit_built_device_host_compute as _audit_built_device_host_compute,
 )
@@ -50,7 +51,12 @@ from merlin_experiments.phase1.feedback.private_device_audit import (
     require_static_build_inputs as _require_static_build_inputs,
 )
 from merlin_experiments.phase1.feedback.private_group_provenance import (
-    eligible_source_identity as _eligible_source_identity,
+    convolution_input_preparations,
+    source_group_roster,
+    verify_routed_source_coverage,
+)
+from merlin_experiments.phase1.feedback.private_group_provenance import (
+    eligible_source_identity as _eligible_source_identity,  # noqa: F401 -- preserve compatibility alias
 )
 from merlin_experiments.phase1.feedback.private_group_provenance import (
     join_routed_source_groups as _join_routed_source_groups,  # noqa: F401 -- preserve source-join compatibility alias
@@ -58,7 +64,6 @@ from merlin_experiments.phase1.feedback.private_group_provenance import (
 from merlin_experiments.phase1.feedback.private_group_provenance import (
     routed_kernel_symbols as _routed_kernel_symbols,
 )
-from merlin_experiments.phase1.feedback.private_group_provenance import verify_routed_source_coverage
 from merlin_experiments.phase1.feedback.private_prebuilt_receipt import load_diagnostic_receipt
 from merlin_experiments.phase1.feedback.private_source_support_join import (
     linked_source_support_complete as _linked_source_support_complete,
@@ -68,11 +73,13 @@ from .private_model_inputs import _capture_tree_bindings as _verify_capture_bind
 from .private_model_inputs import _expected_input_provenance as _expected_input_provenance
 from .private_model_inputs import _recipe_derivation as _derive_recipe_binding
 from .private_model_inputs import _require_selected_input_bindings as _require_selected_input_bindings
+from .private_model_inputs import _selected_admission_views as _selected_admission_views
 from .private_model_inputs import _tree as _verify_input_tree
 
 SCHEMA = "merlin.phase1.private_full_models.v1"
 RESULT_SCHEMA = "merlin.phase1.private_full_model_build_gate.v15"
 BUILD_BOARD_SCOPE = "static_memory_layout_and_host_ISA_only; no board execution"
+SOURCE_PREFLIGHT_SCOPE = "compiler-independent private inputs and source obligations only; no build or gate claim"
 TRANSPOSE_DATA_SUPPORT_SCOPE = data_movement.SCOPE
 _transpose_data_support = data_movement.prove_transpose_source
 _verify_transpose_data_support = data_movement.verify_transpose
@@ -389,61 +396,6 @@ def _recipe_derivation(spec: Path, row: Mapping[str, Any], plan: Mapping[str, An
     return _derive_recipe_binding(spec, row, plan, pinned_file=_file, file_digest=file_sha256, **bindings)
 
 
-def _selected_admission_views(
-    software: Any,
-    profiles: Any,
-    *,
-    target: str,
-    host_package: Path,
-    host_package_sha256: str,
-    host_capabilities_path: Path,
-    host_capabilities_sha256: str,
-) -> tuple[dict, dict]:
-    """Use only a resolved exported spec and the exact selected host profile."""
-    from merlin.targetgen.host_capabilities import validate_host_capabilities
-    from merlin.targetgen.software_spec import validate_software_spec
-
-    if not isinstance(software, Mapping) or not isinstance(software.get("operations"), list):
-        raise ValueError("selected software admission view is not a normalized specification")
-    checked_software = validate_software_spec(dict(software), target=target, source="verified Phase 0 export")
-    if (
-        checked_software != software
-        or checked_software.get("status") != "reviewed"
-        or any("hardware" in operation for operation in checked_software["operations"])
-    ):
-        raise ValueError("selected software admission view is not a reviewed resolved specification")
-    if (
-        not isinstance(profiles, Mapping)
-        or host_capabilities_path.is_symlink()
-        or file_sha256(host_capabilities_path) != host_capabilities_sha256
-        or strict_tree_sha256(host_package)["sha256"] != host_package_sha256
-    ):
-        raise ValueError("selected host profile has no pinned package and capability document")
-    document = yaml.safe_load(host_capabilities_path.read_bytes())
-    if not isinstance(document, dict) or document.get("status") != "reviewed":
-        raise ValueError("selected host profile has no reviewed capability document")
-    compiler = document.get("compiler")
-    if not isinstance(compiler, Mapping) or not isinstance(compiler.get("dtype_strategy"), str):
-        raise ValueError("selected host profile has no precision lane")
-    dtype_strategy = compiler["dtype_strategy"]
-    validate_host_capabilities(document, package_sha256=host_package_sha256, dtype_strategy=dtype_strategy)
-    if len(profiles) != 1:
-        raise ValueError("selected host profile is not unique")
-    profile_name, profile = next(iter(profiles.items()))
-    if (
-        not isinstance(profile_name, str)
-        or not profile_name
-        or not isinstance(profile, Mapping)
-        or profile.get("status") != "reviewed"
-        or profile.get("package_sha256") != host_package_sha256
-        or profile.get("capability_spec_sha256") != host_capabilities_sha256
-        or profile.get("dtype_strategy") != dtype_strategy
-        or profile.get("capability_spec") != document
-    ):
-        raise ValueError("selected host profile differs from the pinned package or capability document")
-    return checked_software, {profile_name: dict(profile)}
-
-
 def _noncompute_support(row: Mapping[str, Any]) -> bool:
     """Only known control/data support may skip independent compute admission."""
     if row.get("disposition") != "support_required":
@@ -458,6 +410,20 @@ def _noncompute_support(row: Mapping[str, Any]) -> bool:
     raise ValueError(f"support-required source operation has no audited lowering class: {operation}")
 
 
+def _exact_source_groups(module, target: str, capture: Path, form) -> tuple[list, int]:
+    """Source groups whose absorbed float epilogue is PROVED to round as the capture does.
+
+    A group that takes a converted accumulator through a stored float bias and a quantize is an
+    integer readout only when the transition proof over its stored weights says so
+    (:mod:`merlin.xdsl_dialects.lowering.group_exact_float`). An unproved group is formed again with
+    its float chain left on the host, so the gate never demands an accelerator epilogue that would
+    compute something other than the reference. Returns the groups and how many were refused.
+    """
+    from merlin.llvmlower.source_compute_groups import form_exact_groups
+
+    return form_exact_groups(module, target, capture, form)
+
+
 def _source_obligations(
     capture: Path,
     target: str,
@@ -465,7 +431,9 @@ def _source_obligations(
     capability: Mapping,
     host: Mapping,
     selected_index_observation: Mapping[str, Any] | None = None,
-    *, facts_sha256: str | None = None, numeric_policy_sha256: str | None = None,
+    *,
+    facts_sha256: str | None = None,
+    numeric_policy_sha256: str | None = None,
 ) -> dict:
     """Recompute eligibility over the actual source, independently of the candidate route."""
     from merlin.common import mlir_query as mq
@@ -484,7 +452,7 @@ def _source_obligations(
         raise ValueError(f"full-model capture receipt is not verified: {checked.get('errors')}")
     text, _ = normalize_capture_mlir(source.read_text(encoding="utf-8"))
     module = mq.parse(text)
-    groups = form_source_groups(module, target)
+    groups, exact_float_refusals = _exact_source_groups(module, target, capture, form_source_groups)
     plan = CG.plan(module, target, groups=groups)
     CG.require_explained(plan)
     owners = {id(member): group for group in groups for member in group.members}
@@ -497,9 +465,16 @@ def _source_obligations(
     normalized_sha = sha256(text.encode("utf-8")).hexdigest()
     raw_verdicts = tuple(is_eligible(descriptor, cap_map) for descriptor in descriptors)
     demand = source_demand.derive(
-        groups, operations, raw_verdicts, source_sha256=source_sha, normalized_sha256=normalized_sha,
-        capability=capability, software=software, facts_sha256=facts_sha256,
-        numeric_policy_sha256=numeric_policy_sha256, source_operations=tuple(mq.walk(module)),
+        groups,
+        operations,
+        raw_verdicts,
+        source_sha256=source_sha,
+        normalized_sha256=normalized_sha,
+        capability=capability,
+        software=software,
+        facts_sha256=facts_sha256,
+        numeric_policy_sha256=numeric_policy_sha256,
+        source_operations=tuple(mq.walk(module)),
     )
     inventory = AI._application_operation_inventory(  # noqa: PLC2701 -- trusted exact inventory primitive
         source,
@@ -543,6 +518,7 @@ def _source_obligations(
     linkage = linkage_support.begin(source_sha, normalized_sha, len(parsed))
     arange = arange_support.begin(source_sha, normalized_sha, len(parsed), selected_index_observation)
     integer_reductions = integer_support.begin(source_sha, normalized_sha, len(parsed), selected_index_observation)
+    f32_reductions = f32_sum_support.begin(source_sha, normalized_sha, len(parsed), selected_index_observation)
     maximum = maximum_support.begin(
         source_sha, normalized_sha, checked["receipt_sha256"], parsed, selected_index_observation
     )
@@ -653,9 +629,11 @@ def _source_obligations(
             # standalone eligible op absent from grouping cannot disappear into host.
             if not row["mlir_operation"].startswith("linalg."):
                 unresolved.append({"row": row, "admission": admission, "reason": "eligible operation is not outlined"})
-        elif (hardware.get("status") != "unsupported"
-              or hardware.get("basis") != "selected_capability_contract"
-              or hardware.get("refusal") not in _EXPLICIT_HARDWARE_EXCLUSIONS):
+        elif (
+            hardware.get("status") != "unsupported"
+            or hardware.get("basis") != "selected_capability_contract"
+            or hardware.get("refusal") not in _EXPLICIT_HARDWARE_EXCLUSIONS
+        ):
             unresolved.append(
                 {"row": row, "admission": admission, "reason": "host compute is not proved hardware-unsupported"}
             )
@@ -674,6 +652,7 @@ def _source_obligations(
                 source_rows,
                 bounded_control,
                 maximum=maximum,
+                f32_reductions=f32_reductions,
             )
             linkage_support.record(linkage, row, host_decision, source_rows, linalg)
             arange_support.record(arange, capture, row, host_decision, parsed, source_rows)
@@ -681,33 +660,10 @@ def _source_obligations(
     if unresolved:
         raise SourceAdmissionError(unresolved)
     integer_support.verify_source(integer_reductions, source)
+    f32_sum_support.verify_source(f32_reductions, source)
     maximum_support.verify_source(maximum, source)
     index_support.verify_source(index_host, capture)
-    group_metrics = {}
-    group_provenance = []
-    seen_regions = set()
-    for group in groups:
-        if group.index not in eligible:
-            continue
-        region, nodes = _eligible_source_identity(group.root)
-        if region in seen_regions:
-            raise ValueError("eligible source groups repeat a provenance region")
-        seen_regions.add(region)
-        group_provenance.append(
-            {"source_group": group.index, "source_region_id": region, "source_node_ids": list(nodes)}
-        )
-        values = (value for member in reversed(group.members) for value in member.results)
-        for value in values:
-            shape, _dtype = mq.type_shape_dtype(value.type)
-            elements = 1
-            for extent in shape:
-                elements *= extent
-            n_bytes = mq.value_bytes(value.type)
-            if shape and elements > 0 and n_bytes > 0 and n_bytes % elements == 0:
-                group_metrics[group.index] = {"elements": elements, "element_bytes": n_bytes // elements}
-                break
-        if group.index not in group_metrics:
-            raise ValueError(f"eligible source group {group.index} has no exact static output extent")
+    group_roster = source_group_roster(groups, eligible, host_placement=CG.HOST, module=module)
     result = {
         "source_sha256": source_sha,
         "normalized_source_sha256": normalized_sha,
@@ -715,6 +671,7 @@ def _source_obligations(
         "n_source_operations": inventory["n_operations"],
         "n_linalg_regions": len(descriptors),
         "n_groups": len(groups),
+        "n_exact_float_epilogue_refusals": exact_float_refusals,
         "n_support_lowering_operations": support_lowering,
         "transpose_data_support": transpose_support,
         "generic_copy_data_support": generic_copy_support,
@@ -723,13 +680,12 @@ def _source_obligations(
         linkage_support.FIELD: linkage,
         "literal_arange_host_support": arange,
         integer_support.FIELD: integer_reductions,
+        f32_sum_support.FIELD: f32_reductions,
         maximum_support.FIELD: maximum,
         index_support.FIELD: index_host,
         ordered_scan_support.FIELD: ordered_scan,
         bucketize_support.FIELD: bucketize,
-        "eligible_groups": sorted(set(eligible)),
-        "eligible_group_provenance": group_provenance,
-        "eligible_group_metrics": group_metrics,
+        **group_roster,
         "host_groups": [group.index for group in groups if group.placement == CG.HOST],
         "host_justification": "source group reasons and exact reviewed host/software admissions",
         "accelerator_source_demand": demand,
@@ -777,6 +733,7 @@ def _verify_compiled_program(
     compilation_binding = compilation_support.verify(output, elf, required=require_compilation_recipe)
     sidecar_sha = None
     linked = 0
+    optional_linked = 0
     host_compute_audit = []
     if device_selected:
         sidecar_record = output.get("device_sidecar") or {}
@@ -787,11 +744,16 @@ def _verify_compiled_program(
         if emitted.get("granularity") != BY_GROUP or emitted.get("device") != target:
             raise ValueError(f"{program} emitted another device or a partial route")
         assigned = emitted.get("routed")
-        verify_routed_source_coverage(emitted, source)
+        joined = verify_routed_source_coverage(emitted, source)
         symbols = _routed_kernel_symbols(emitted)
         _linked_symbols(elf, symbols)
-        host_compute_audit = _audit_built_device_host_compute(elf.parent, assigned, source, target)
-        sidecar_sha, linked = sidecar_record["sha256"], len(assigned)
+        source["conv_input_preparation"] = convolution_input_preparations(emitted, source)
+        host_compute_audit = _audit_built_device_host_compute(
+            elf.parent, assigned, source, target, host_artifacts=output.get("host_artifacts")
+        )
+        sidecar_sha = sidecar_record["sha256"]
+        linked = len(set(joined.values()) & set(source["eligible_groups"]))
+        optional_linked = len(set(joined.values()) & set(source.get("optional_groups", [])))
     linked_build = {
         "capture_tree_sha256": stage_tree["sha256"],
         "elf_sha256": output["elf_sha256"],
@@ -820,6 +782,7 @@ def _verify_compiled_program(
     linalg_support.link(source, index_lowering, linked_build, capture_path=capture_path)
     arange_support.link(source, index_lowering, linked_build)
     integer_support.link(source, index_lowering, linked_build)
+    f32_sum_support.link(source, index_lowering, linked_build)
     maximum_support.link(source, index_lowering, linked_build, capture_path=capture_path)
     index_support.link(source, index_lowering, linked_build, capture_path=capture_path)
     ordered_scan_support.link(source, index_lowering, linked_build)
@@ -833,6 +796,8 @@ def _verify_compiled_program(
         "elf_sha256": output["elf_sha256"],
         "sidecar_sha256": sidecar_sha,
         "linked_device_groups": linked,
+        "linked_optional_device_groups": optional_linked,
+        "linked_total_device_groups": linked + optional_linked,
         "static_host_compute_audit": host_compute_audit,
         "candidate_tree_sha256": package_digest["sha256"],
         "index_lowering": index_lowering,
@@ -861,6 +826,7 @@ def run(
     build_options: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
     linked_elf_admission=None,
     native_result_format_selection=None,
+    source_only: bool = False,
 ) -> dict[str, Any]:
     """Build the frozen roster, one canonical partition, or a prebuilt diagnostic.
 
@@ -870,6 +836,8 @@ def run(
     ``selected_model`` retains the complete required roster and source freeze; it
     builds all programs of one declared model and never passes the full gate.
     Separate host processes may run these partitions under one original owner.
+    ``source_only`` (no ``submission``) stops each model after the same compiler-independent
+    input checks and source obligations: an operator preflight, never a build or gate result.
     """
     from merlin.compile.baremetal_model import compile_saved_model
     from merlin.compile.model_execution_inputs import selected_firrtl
@@ -881,8 +849,10 @@ def run(
     if native_result_format_selection is not None:
         from .private_result_format_selection import FrozenSelection
 
-        if (type(native_result_format_selection) is not FrozenSelection
-            or native_result_format_selection.target != target):
+        if (
+            type(native_result_format_selection) is not FrozenSelection
+            or native_result_format_selection.target != target
+        ):
             raise ValueError("native result format selection has no matching original run owner")
         native_result_format_selection.verify()
     spec = Path(private_spec)
@@ -928,8 +898,10 @@ def run(
             raise ValueError("prebuilt diagnostic receipts differ from the complete selected model")
     elif prebuilt_receipts is not None:
         raise ValueError("prebuilt receipts cannot enter the canonical full-model build")
-    package = Path(submission)
-    package_digest = strict_tree_sha256(package)
+    if source_only and (diagnostic or submission is not None):
+        raise ValueError("source preflight takes no candidate compiler or prebuilt diagnostic")
+    package = None if source_only else Path(submission)
+    package_digest = None if source_only else strict_tree_sha256(package)
     base = Path(out)
     base.mkdir(mode=0o700, parents=True, exist_ok=True)
     results = []
@@ -1061,8 +1033,7 @@ def run(
             if software.get("target") != target or capability.get("name") != target:
                 raise ValueError("selected software or capability declaration names another target")
             program_options = {
-                program: dict(((build_options or {}).get(name) or {}).get(program) or {})
-                for program, _ in programs
+                program: dict(((build_options or {}).get(name) or {}).get(program) or {}) for program, _ in programs
             }
             from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
 
@@ -1074,8 +1045,7 @@ def run(
                         raise ValueError("device_ir_budget must be explicit original build policy data")
                     program_ir_budgets[program] = DeviceIRBudget(**selected_budget)
             program_boards = {
-                program: options.pop("board", row["board"])
-                for program, options in program_options.items()
+                program: options.pop("board", row["board"]) for program, options in program_options.items()
             }
             if any(not isinstance(board, str) or not board for board in program_boards.values()):
                 raise ValueError("every program requires an explicit valid selected build board")
@@ -1093,24 +1063,36 @@ def run(
                 binding = (sha256(original_contract_bytes).hexdigest(), sha256(original_facts_bytes).hexdigest())
                 if binding not in native_result_ceilings:
                     native_result_ceilings[binding] = native_result_format_selection.issue(
-                        original_contract_bytes=original_contract_bytes, original_facts_bytes=original_facts_bytes,
+                        original_contract_bytes=original_contract_bytes,
+                        original_facts_bytes=original_facts_bytes,
                     )
                 native_result_ceiling = native_result_ceilings[binding]
             native_scope = (
                 original_result_format_scope(
-                    native_result_ceiling, target=target, original_contract_bytes=original_contract_bytes,
+                    native_result_ceiling,
+                    target=target,
+                    original_contract_bytes=original_contract_bytes,
                     original_facts_bytes=original_facts_bytes,
-                ) if native_result_ceiling is not None else nullcontext()
+                )
+                if native_result_ceiling is not None
+                else nullcontext()
             )
             with (
-                target_registry.observed_contract(target, dict(capability), source_path=capability_path), native_scope,
+                target_registry.observed_contract(target, dict(capability), source_path=capability_path),
+                native_scope,
             ):
                 sources, unresolved_demands = {}, {}
                 for program, stage in programs:
                     try:
                         sources[program] = _source_obligations(
-                            stage, target, software, capability, host, selected_index_observations[program],
-                            facts_sha256=facts["sha256"], numeric_policy_sha256=recipe_proof["recipe_semantic_sha256"],
+                            stage,
+                            target,
+                            software,
+                            capability,
+                            host,
+                            selected_index_observations[program],
+                            facts_sha256=facts["sha256"],
+                            numeric_policy_sha256=recipe_proof["recipe_semantic_sha256"],
                         )
                         if native_result_ceiling is not None:
                             sources[program]["accelerator_source_demand"]["native_result_format_ceiling"] = (
@@ -1126,6 +1108,9 @@ def run(
             if not any(source["eligible_groups"] for source in sources.values()):
                 raise ValueError("full model has no independently eligible accelerator computation")
             item["checks"]["source"] = sources
+            if source_only:
+                item["status"] = "source_inputs_verified"
+                continue
             compiled = []
             diagnostic_receipts = {}
             for program, stage in programs:
@@ -1286,16 +1271,21 @@ def run(
             item["status"] = "diagnostic_static_checks_passed" if diagnostic else "pass"
         except Exception as exc:  # noqa: BLE001 -- one model's refusal must not hide the others
             item["reason"] = _public_failure_reason(exc)
+            if source_only and isinstance(exc, SourceAdmissionError):
+                item["operator_unresolved"] = json.loads(json.dumps(exc._private_unresolved, default=str))
     result = {
         "schema": RESULT_SCHEMA,
         "target": target,
         "private_spec_sha256": spec_digest,
-        "candidate_tree_sha256": package_digest["sha256"],
+        "candidate_tree_sha256": package_digest["sha256"] if package_digest else None,
         "required_models": list(required_models),
         "required_programs": {name: list(required_programs[name]) for name in required_models},
         "models": results,
         "passed": (
-            selected_model is None and not diagnostic and bool(results)
+            selected_model is None
+            and not diagnostic
+            and not source_only
+            and bool(results)
             and all(item["status"] == "pass" for item in results)
         ),
         "scope": (
@@ -1330,8 +1320,13 @@ def run(
             partition_passed=len(results) == 1 and results[0]["status"] == "pass",
             scope="one complete declared model, canonical source and linked-ELF evidence; full roster gate incomplete",
         )
+    if source_only:
+        verified = bool(results) and all(item["status"] == "source_inputs_verified" for item in results)
+        result.update(mode="source_preflight", source_preflight_passed=verified, scope=SOURCE_PREFLIGHT_SCOPE)
     report = (
-        base / "private_full_model_gate.json"
+        base / "private_full_model_source_preflight.json"
+        if source_only
+        else base / "private_full_model_gate.json"
         if selected_model is None
         else base / f"private_full_model_partition-{sha256(selected_model.encode()).hexdigest()}.json"
     )

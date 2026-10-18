@@ -83,6 +83,149 @@ quantization:
     accumulator_dtype: i32
     scale_encoding: fp32
     eligible_operations: from_facts
+  # How every model is quantized for this target (merlin.targetgen.quant_methodology). Each hardware
+  # value is the word from_output_path: it is read from the selected contract's derived output path,
+  # never written here. Per-model changes exist only as reviewed model_variants rows.
+  methodology:
+    schema: merlin.quantization_methodology.v1
+    scale_granularity: from_output_path
+    bias: accumulator_preload_int32
+    epilogue: integer_domain
+    rounding: from_output_path
+    clamp: from_output_path
+    calibration:
+      activation: mse
+      weight: minmax
+    recovery:
+      cross_layer_equalization: false
+      bias_correction: false
+    float_island:
+      host: merlin
+      dtype: fp32
+      ops:
+      - softmax
+      - layer_norm
+      - rms_norm
+      - group_norm
+      - gelu
+      - silu
+      - rotary
+    model_variants:
+    - model: resnet50
+      name: native-epilogue-contractions-calibration-1024
+      status: reviewed
+      reviewed_by: Codex operator, user-directed continuation after measured recipe review, 2026-10-18
+      reason: Use contraction-only hardware-order epilogues under the common recovery policy. Keep residual
+        sums and the average pool on the host; the 1024-sample cap observes 260 disjoint calibration images.
+      measured_accuracy:
+        basis: Recipe agreement against the FP32 model on 64 samples; finite diagnostic, not dataset accuracy
+        argmax_agreement: 0.984375
+        cosine_mean: 0.9858536114916205
+        cosine_min: 0.9606804251670837
+        max_abs_error: 0.9978066086769104
+        samples: 64
+        calibration_samples: 260
+        baseline_cosine_mean: 0.9912215834483504
+        tradeoff: Mean cosine decreases; top-1 agreement remains 63/64, while worst cosine and maximum absolute
+          error improve.
+      changes:
+        families:
+        - contraction
+        calibration_count: 1024
+    - model: tiny_llama
+      name: static-heads-softmax2-bounded-partner2
+      status: reviewed
+      reviewed_by: Codex operator, user-directed continuation after measured recipe review, 2026-10-18
+      reason: Use two fixed softmax planes and two bounded signed-int8 residual planes for the value operand.
+        Retain the original score grid and unchanged per-site bars; extra precision repairs the weak context
+        site.
+      measured_accuracy:
+        basis: Full pretrained 22-layer model, 64 recipe-agreement samples per stage; attention-only check
+          on four streams disjoint from calibration; no dataset-accuracy claim
+        prefill:
+          argmax_agreement: 0.890625
+          cosine_mean: 0.9930144296959043
+          cosine_min: 0.9245473742485046
+          max_abs_error: 9.495887756347656
+          samples: 64
+        decode:
+          argmax_agreement: 0.921875
+          cosine_mean: 0.9946034317836165
+          cosine_min: 0.8284692764282227
+          max_abs_error: 12.52759075164795
+          samples: 64
+        prefill_calibration_samples: 128
+        decode_calibration_samples: 1024
+        baseline_prefill_cosine_mean: 0.9931617677211761
+        heldout_attention:
+          sites: 44
+          cosine_min: 0.9999570899268245
+          rel_rmse_max: 0.010253275908719361
+        attention_device_call_ratio: 1.6666666666666667
+        tradeoff: Prefill mean cosine decreases slightly; prefill and decode top-1 agreement improve. Attention
+          device calls increase by 5/3.
+      changes:
+        families:
+        - contraction
+        - operand_sum
+        - window_mean
+        - activation_contraction
+        dynamic:
+          families:
+          - activation_contraction
+          planes:
+            softmax_output: 2
+            softmax_partner: 2
+          scales: static_heads
+          schema: dynamic_contractions_v1
+          site_agreement:
+            cosine_min: 0.947588
+            rel_rmse_max: 0.457351
+            schema: dynamic_site_agreement_v1
+          smooth: null
+        calibration_count: 1024
+    - model: smolvla
+      name: static-heads-softmax2-bounded-operands2
+      status: reviewed
+      reviewed_by: Codex operator, user-directed continuation after measured recipe review, 2026-10-18
+      reason: Use two bounded residual planes for each ordinary score/value operand and two fixed softmax
+        planes. This preserves final action error under the common recovery policy and retains the original
+        per-site bars.
+      measured_accuracy:
+        basis: One observed input; flow-denoise trajectory compared with its FP32 reference over 10 x 50
+          x 32 action values; finite diagnostic, not dataset accuracy
+        final_rel_rmse: 0.057562654271323364
+        all_steps_rel_rmse: 0.013568965138741243
+        cosine: 0.9999080541400752
+        max_abs_error: 0.07584631443023682
+        baseline_all_steps_rel_rmse: 0.013446767081807483
+        baseline_cosine: 0.9999097337790571
+        attention_device_call_ratio: 2.6666666666666665
+        tradeoff: All-step error rises and cosine decreases slightly; final action error and maximum absolute
+          error improve. Attention device calls increase by 8/3.
+      changes:
+        families:
+        - contraction
+        - operand_sum
+        - window_mean
+        - activation_contraction
+        dynamic:
+          families:
+          - activation_contraction
+          planes:
+            residual_operand: 2
+            softmax_output: 2
+          scales: static_heads
+          schema: dynamic_contractions_v1
+          site_agreement:
+            cosine_min: 0.999165
+            rel_rmse_max: 0.057791
+            schema: dynamic_site_agreement_v1
+          smooth: null
+    description: Common hardware-order epilogues with MSE activation and minmax weight calibration. Recovery
+      is disabled across models; finite recipe-agreement measurements preserve primary metrics with the
+      recorded secondary tradeoffs. These measurements are not dataset accuracy or Phase 1 qualification.
+
 transfer_contracts:
   status: reviewed
   operand_load:

@@ -5,6 +5,105 @@ import pytest
 from merlin.targetgen.owned_host_model_execution import _host_call_proof, _mandatory_source_commands
 
 
+def test_proven_host_compute_veto_is_a_candidate_failure_without_native_tier_credit():
+    from merlin_experiments.phase1.feedback.qa import _candidate_native_feedback
+
+    from merlin.targetgen.owned_host_model_execution import _stopped_before_receipt
+
+    check = _stopped_before_receipt({"stage": "owned_host_execution", "type": "HostComputeVeto",
+                                     "detail": "scalar host work exceeds the source-derived budget"})
+    assert check["status"] == "fail"
+    assert check["failure"]["category"] == "host_compute_in_accelerator_group"
+    feedback = _candidate_native_feedback({"model_execution_check": check})
+    assert feedback["status"] == "fail"
+    assert feedback["components"]["emitted_host_compute"] == "violation"
+    assert "candidate_host_tensor_compute_violation" in feedback["violations"]
+    assert all(status != "pass" for status in feedback.get("tiers", {}).values())
+    unknown = _stopped_before_receipt({"stage": "owned_host_execution", "type": "ValueError",
+                                       "detail": "unknown control-flow proof"})
+    assert unknown["status"] == "incomplete"
+    wrong_stage = _stopped_before_receipt({"stage": "prepare_runtime_bundle", "type": "HostComputeVeto"})
+    assert wrong_stage["status"] == "incomplete"
+
+
+def test_owned_build_audit_binds_logical_input_copy_to_original_source(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase1.feedback import private_device_audit, private_full_models
+    from xdsl.dialects.builtin import ArrayAttr, StringAttr
+
+    from merlin.compile.model_execution_inputs import file_sha256
+    from merlin.targetgen import owned_host_model_execution as owned
+    from merlin.xdsl_dialects.lowering import compute_groups as groups_api
+
+    (tmp_path / "model.mlir").write_text("""module {
+      func.func @forward(%a: tensor<2x2xi8>, %b: tensor<2x2xi8>, %init: tensor<2x2xi32>)
+          -> tensor<2x2xi32> {
+        %r = linalg.matmul ins(%a, %b : tensor<2x2xi8>, tensor<2x2xi8>)
+          outs(%init : tensor<2x2xi32>) -> tensor<2x2xi32>
+        return %r : tensor<2x2xi32>
+      }
+    }""")
+
+    def groups(module, target):
+        root = next(op for op in module.walk() if op.name == "linalg.matmul")
+        root.attributes.update({"prov.region_id": StringAttr("original"),
+                                "prov.source_node_ids": ArrayAttr([StringAttr("node")])})
+        return [SimpleNamespace(index=4, placement=target, root=root, members=[root],
+                                stages=[groups_api.CONTRACTION])]
+
+    monkeypatch.setattr(groups_api, "form_groups", groups)
+    monkeypatch.setattr(groups_api, "plan", lambda *a, **k: {})
+    monkeypatch.setattr(groups_api, "require_explained", lambda _: None)
+    monkeypatch.setattr(owned, "_source_placement", lambda *a, **k: {
+        "eligible_source_regions": [{"source_group": 4}],
+    })
+    monkeypatch.setattr(private_full_models, "_linked_symbols", lambda *a: None)
+    audits = []
+
+    def audit(build, assigned, source, target, **kwargs):
+        audits.append(source["conv_input_preparation"])
+        return [{"status": "synthetic-native-boundary-only"}]
+
+    monkeypatch.setattr(private_device_audit, "audit_built_device_host_compute", audit)
+    entry = {"op": "conv2d", "Himg": 1, "Wimg": 2, "ci": 2, "kh": 1, "kw": 1, "N": 2,
+             "stride": [1, 1], "padding": [0, 0, 0, 0]}
+    emitted = {
+        "device": "fixture", "granularity": "group", "signatures": {"kernel": []},
+        "routed": [{"symbol": "kernel", "group": 9, "source_region_id": "original", "source_node_ids": ["node"],
+                    "parallel": [2, 2], "reduction": [2], "dtypes": ["i8", "i8", "i32"]}],
+        "entries": {"kernel": entry}, "programs": {"kernel": {"entry": dict(entry)}},
+        "call_buffers": {"kernel": [
+            {"role": "input_0", "shape": [1, 1, 2, 2], "dtype": "i8"},
+            {"role": "weight_0", "shape": [2, 2], "dtype": "i8"},
+            {"role": "out_0", "shape": [2, 2], "dtype": "i32"},
+        ]},
+    }
+    elf, sidecar = tmp_path / "model.elf", tmp_path / "device.json"
+    elf.write_bytes(b"synthetic test of orchestration; no native execution")
+
+    def run():
+        sidecar.write_text(json.dumps(emitted))
+        return owned._audit_owned_host_device_build(tmp_path, {"output": {
+            "elf": str(elf), "elf_sha256": file_sha256(elf),
+            "device_sidecar": {"path": str(sidecar), "sha256": file_sha256(sidecar)},
+        }}, target="fixture")
+
+    result = run()
+    assert result["joined_groups"] == {9: 4}
+    assert audits[0]["kernel"]["source_group"] == 4
+    assert audits[0]["kernel"]["call_buffers"] == emitted["call_buffers"]["kernel"]
+    emitted["routed"][0]["parallel"] = [3, 2]
+    emitted["entries"]["kernel"]["Wimg"] = 3
+    emitted["programs"]["kernel"]["entry"]["Wimg"] = 3
+    emitted["call_buffers"]["kernel"][0]["shape"] = [1, 1, 3, 2]
+    emitted["call_buffers"]["kernel"][2]["shape"] = [3, 2]
+    with pytest.raises(ValueError, match="original source contraction"):
+        run()
+    assert len(audits) == 1
+
+
 def test_actual_host_cfg_preserves_each_reused_source_call(tmp_path):
     from merlin.llvmlower import toolchain
 
@@ -256,9 +355,8 @@ def test_historical_model_flag_cannot_bypass_owned_receipt_audit(monkeypatch):
 
 
 def test_declared_eligible_mesh_model_without_actual_receipt_refuses_legacy_numeric_credit(monkeypatch):
-    from merlin.targetgen.capsule_grade import enforce_model_execution_check
-
     from merlin.targetgen import native_model_execution
+    from merlin.targetgen.capsule_grade import enforce_model_execution_check
     monkeypatch.setattr(native_model_execution, 'independent_frozen_source_eligibility',
                         lambda *a, **k: {'n_eligible': 1})
     capsule = {'semantic': {'must_accelerate': False}, 'lanes': {'require': ['on_mesh']}}

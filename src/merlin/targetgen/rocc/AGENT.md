@@ -18,7 +18,11 @@ The RoCC coprocessor interface: decoding a trace of it, and emitting one.
 **`target` is required and has no default.** The selected backend must expose `rocc_semantics`:
 `isa_constants(target)`, `decode_instruction(funct, rs1, rs2, isa)`, and
 `instruction_funct(name, rs1, isa)`. Operands are plain mappings with `raw`, `kind`,
-`arg_index`, and `offset`. Accelerator ABI roles come from the selected contract;
+`arg_index`, and `offset`; closed read-only module globals additionally carry their
+original `symbol` with kind `global`, without inventing a runtime address. Constant
+byte GEPs retain argument/global offsets. Dynamic indices, unproved aggregate layouts,
+mutable/external globals and non-entry CFG arguments remain unknown.
+Accelerator ABI roles come from the selected contract;
 field offsets and widths come from its original RTL facts. Missing capabilities refuse; there is no
 fallback to another target's decoder. The provider must declare or derive its ISA facts.
 

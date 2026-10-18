@@ -1,5 +1,8 @@
 """Portable scheduling decision IR shared with standalone target compilers."""
 
+from dataclasses import dataclass
+from typing import Any
+
 from xdsl.dialects.builtin import DenseArrayBase, IntegerAttr, i64
 from xdsl.irdl import IRDLOperation, attr_def, irdl_op_definition, traits_def
 from xdsl.traits import NoMemoryEffect
@@ -171,3 +174,108 @@ def recognize_signed_integer_matmul(op, dtypes=("i8", "i8", "i32")) -> tuple:
         ):
             raise ValueError("linalg.generic body has an unsupported arithmetic width, attribute or overflow flag")
     return lhs, rhs, init
+
+
+class InvalidLinalgPattern(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class StaticLinalgShell:
+    shape: tuple[int, ...]
+    args: tuple[Any, ...]
+    body: tuple[Any, ...]
+    ordered_types: tuple[str, ...]
+    input_maps: tuple[Any, ...]
+
+
+def validate_singleton_projection_map(mapping, output_shape: tuple[int, ...], input_shape: tuple[int, ...]) -> None:
+    """Require an ascending dimension projection or zero at a singleton input axis."""
+    from xdsl.ir.affine import AffineConstantExpr, AffineDimExpr
+
+    if mapping.num_dims != len(output_shape) or mapping.num_symbols != 0 or len(mapping.results) != len(input_shape):
+        raise InvalidLinalgPattern("pointwise input map is not a static singleton projection")
+    last_dim = -1
+    for extent, expr in zip(input_shape, mapping.results, strict=True):
+        if isinstance(expr, AffineConstantExpr) and type(expr.value) is int and expr.value == 0 and extent == 1:
+            continue
+        if (
+            not isinstance(expr, AffineDimExpr)
+            or type(expr.position) is not int
+            or expr.position <= last_dim
+            or expr.position >= len(output_shape)
+            or extent != output_shape[expr.position]
+        ):
+            raise InvalidLinalgPattern("pointwise input map is not a static singleton projection")
+        last_dim = expr.position
+
+
+def checked_static_linalg_shell(op, *, singleton_projection_inputs: bool = False) -> StaticLinalgShell:
+    """Check the common typed tensor/map shell; never admit a scalar body here."""
+
+    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, DenseArrayBase, NoneAttr, TensorType
+    from xdsl.dialects.linalg.attrs import IteratorType, IteratorTypeAttr
+    from xdsl.dialects.linalg.ops import GenericOp
+    from xdsl.ir.affine import AffineMap
+
+    if type(op) is not GenericOp or len(op.outputs) != 1 or len(op.results) != 1:
+        raise InvalidLinalgPattern("expected registered one-result linalg.GenericOp")
+    if op.successors:
+        raise InvalidLinalgPattern("linalg.generic has an unexpected successor")
+    if set(op.properties) != {"indexing_maps", "iterator_types", "operandSegmentSizes"}:
+        raise InvalidLinalgPattern("unrecognized linalg.generic property")
+    segments = op.properties["operandSegmentSizes"]
+    if (
+        not isinstance(segments, DenseArrayBase)
+        or str(segments.elt_type) != "i32"
+        or tuple(segments.iter_values()) != (len(op.inputs), 1)
+    ):
+        raise InvalidLinalgPattern("pointwise operand segments differ from input/output arity")
+    if any(not name.startswith("prov.") for name in op.attributes):
+        raise InvalidLinalgPattern("unrecognized linalg.generic attribute")
+    values = (*op.inputs, *op.outputs, *op.results)
+    if not all(isinstance(value.type, TensorType) for value in values):
+        raise InvalidLinalgPattern("pointwise operands and result must be tensors")
+    shape = tuple(op.results[0].type.get_shape())
+    if not shape or any(not isinstance(dim, int) or dim < 0 for dim in shape):
+        raise InvalidLinalgPattern("pointwise shape is not positive-rank static")
+    if not singleton_projection_inputs and any(tuple(value.type.get_shape()) != shape for value in values):
+        raise InvalidLinalgPattern("pointwise tensor shapes differ")
+    if singleton_projection_inputs and (
+        any(dim <= 0 for dim in shape)
+        or any(not value.type.has_static_shape() or any(dim <= 0 for dim in value.type.get_shape()) for value in values)
+    ):
+        raise InvalidLinalgPattern("projected pointwise tensors require positive static extents")
+    if any(not isinstance(value.type.encoding, NoneAttr) for value in values):
+        raise InvalidLinalgPattern("pointwise tensor encoding is not default")
+    if op.results[0].type != op.outputs[0].type:
+        raise InvalidLinalgPattern("pointwise result type differs from output init")
+    if not isinstance(op.indexing_maps, ArrayAttr) or any(
+        not isinstance(attribute, AffineMapAttr) for attribute in op.indexing_maps
+    ):
+        raise InvalidLinalgPattern("pointwise indexing maps are malformed")
+    maps = tuple(attribute.data for attribute in op.indexing_maps)
+    if len(maps) != len(op.inputs) + 1 or maps[-1] != AffineMap.identity(len(shape)):
+        raise InvalidLinalgPattern("pointwise destination indexing map is not identity")
+    if not singleton_projection_inputs:
+        if maps != (AffineMap.identity(len(shape)),) * len(maps):
+            raise InvalidLinalgPattern("pointwise indexing maps are not identity")
+    else:
+        for input_value, input_map in zip(op.inputs, maps[:-1], strict=True):
+            input_shape = tuple(input_value.type.get_shape())
+            validate_singleton_projection_map(input_map, shape, input_shape)
+    if not isinstance(op.iterator_types, ArrayAttr) or any(
+        not isinstance(attribute, IteratorTypeAttr) for attribute in op.iterator_types
+    ):
+        raise InvalidLinalgPattern("pointwise iterator metadata is malformed")
+    if tuple(attribute.data for attribute in op.iterator_types) != (IteratorType.PARALLEL,) * len(shape):
+        raise InvalidLinalgPattern("pointwise iterators are not all parallel")
+    if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
+        raise InvalidLinalgPattern("pointwise region must have one block")
+    block = op.regions[0].block
+    args = tuple(block.args)
+    ordered_types = tuple(str(value.type.element_type) for value in values)
+    if tuple(str(arg.type) for arg in args) != ordered_types[:-1]:
+        raise InvalidLinalgPattern("pointwise block argument types differ from tensor elements")
+    body = tuple(block.ops)
+    return StaticLinalgShell(shape, args, body, ordered_types, maps[:-1])

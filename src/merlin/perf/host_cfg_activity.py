@@ -38,6 +38,10 @@ _INTEGER = frozenset(
         "llvm.shl",
         "llvm.lshr",
         "llvm.ashr",
+        "llvm.intr.umin",
+        "llvm.intr.umax",
+        "llvm.intr.smin",
+        "llvm.intr.smax",
     }
 )
 _FLOAT = frozenset({"llvm.fadd", "llvm.fsub", "llvm.fmul", "llvm.fdiv", "llvm.frem", "llvm.fneg"})

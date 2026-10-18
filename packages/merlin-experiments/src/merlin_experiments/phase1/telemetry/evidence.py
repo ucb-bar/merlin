@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import sys
 from pathlib import Path
 
 from merlin_experiments.phase1.telemetry import timeline
@@ -119,6 +120,7 @@ def snapshot_codex_rollouts(run_dir: Path) -> list[Path]:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         copied.append(target)
+    copied.extend(_snapshot_thread_rollouts(run_dir, already=set(copied)))
     repo = _repo_from_run(run_dir)
     if repo is None:
         return copied
@@ -132,6 +134,43 @@ def snapshot_codex_rollouts(run_dir: Path) -> list[Path]:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
             copied.append(target)
+    return copied
+
+
+def _snapshot_thread_rollouts(run_dir: Path, *, already: set[Path]) -> list[Path]:
+    """Retain the rollout of every lead thread and every sub-agent descended from one.
+
+    A helper's file carries two ``session_meta`` rows (its own, then its parent's copied history), so
+    the exact-identity usage selection above never retains it; a lead without a usage sample is not
+    retained there either. Lineage comes from each thread's own metadata. A failure here is reported
+    and never fails the evidence seal.
+    """
+    from merlin_experiments.phase1.telemetry import author_agents
+
+    copied = []
+    try:
+        records = author_agents.threads(run_dir)["records"].values()
+    except Exception as exc:  # noqa: BLE001 -- accounting evidence must not gate the telemetry seal
+        print(f"[telemetry] thread rollouts not retained: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return copied
+    for record in records:
+        source = Path(record["rollout"]["path"])
+        if source.is_relative_to(run_dir):
+            continue  # Already a retained snapshot; never copy onto itself.
+        session = next((parent for parent in source.parents if parent.name == "sessions"), None)
+        suffix = session.parent.name.removeprefix(f"{run_dir.name}_r") if session is not None else ""
+        if not suffix.isdigit():
+            continue
+        target = run_dir / "rounds" / f"round_{suffix}.codex_rollout_snapshot" / source.relative_to(session)
+        if target in already:
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+        except OSError as exc:
+            print(f"[telemetry] rollout {source.name} not retained: {exc}", file=sys.stderr)
+            continue
+        copied.append(target)
     return copied
 
 
@@ -203,8 +242,12 @@ def declared_home_usage(run_dir: Path) -> dict:
     ]
     declared = [v for v in declared if v is not None]
     workspace = env.get("workspace_path")
-    if (not declared or any(not isinstance(v, str) for v in declared)
-        or len(set(declared)) != 1 or not isinstance(workspace, str)):
+    if (
+        not declared
+        or any(not isinstance(v, str) for v in declared)
+        or len(set(declared)) != 1
+        or not isinstance(workspace, str)
+    ):
         return unavailable
     home = Path(declared[0])
     if not home.is_absolute() or not Path(workspace).is_absolute():
@@ -232,15 +275,22 @@ def declared_home_usage(run_dir: Path) -> dict:
             latest = None
             for row in records:
                 payload = row.get("payload") or {}
-                if (row.get("type") != "event_msg" or not isinstance(payload, dict)
-                    or payload.get("type") != "token_count"):
+                if (
+                    row.get("type") != "event_msg"
+                    or not isinstance(payload, dict)
+                    or payload.get("type") != "token_count"
+                ):
                     continue
                 info = payload.get("info") or {}
                 usage = info.get("total_token_usage") if isinstance(info, dict) else None
                 if not isinstance(usage, dict):
                     continue
                 names = (
-                    "input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens"
+                    "input_tokens",
+                    "cached_input_tokens",
+                    "output_tokens",
+                    "reasoning_output_tokens",
+                    "total_tokens",
                 )
                 if any(type(usage.get(k)) is not int or usage[k] < 0 for k in names):
                     continue
@@ -251,9 +301,11 @@ def declared_home_usage(run_dir: Path) -> dict:
                 if fingerprint in seen:
                     continue
                 seen.add(fingerprint)
-                if (usage["cached_input_tokens"] + write > usage["input_tokens"]
+                if (
+                    usage["cached_input_tokens"] + write > usage["input_tokens"]
                     or usage["reasoning_output_tokens"] > usage["output_tokens"]
-                    or usage["total_tokens"] != usage["input_tokens"] + usage["output_tokens"]):
+                    or usage["total_tokens"] != usage["input_tokens"] + usage["output_tokens"]
+                ):
                     continue
                 stamp = timeline._stamp(row.get("timestamp"))
                 if stamp is None:
@@ -277,31 +329,47 @@ def declared_home_usage(run_dir: Path) -> dict:
         buckets = {
             "input_total": usage["input_tokens"],
             "fresh_input": usage["input_tokens"] - usage["cached_input_tokens"] - item["write"],
-            "cache_read": usage["cached_input_tokens"], "cache_write": item["write"],
-            "output": usage["output_tokens"], "reasoning": usage["reasoning_output_tokens"],
+            "cache_read": usage["cached_input_tokens"],
+            "cache_write": item["write"],
+            "output": usage["output_tokens"],
+            "reasoning": usage["reasoning_output_tokens"],
             "total": usage["total_tokens"],
         }
         span = item["stamp"] - item["start"] if item["start"] is not None else None
         span = span if span is not None and span > 0 else None
-        threads.append({
-            "thread_id": actor, "rounds": sorted(item["rounds"]), "source": item["source"],
-            "sampled_through": item["at"],
-            "tokens": buckets, "usage_sample_span_s": span, "cost_usd": None,
-            "input_tokens_per_client_observed_s": buckets["input_total"] / span if span else None,
-            "output_tokens_per_client_observed_s": buckets["output"] / span if span else None,
-            "reasoning_share_of_output": buckets["reasoning"] / buckets["output"] if buckets["output"] else None,
-        })
+        threads.append(
+            {
+                "thread_id": actor,
+                "rounds": sorted(item["rounds"]),
+                "source": item["source"],
+                "sampled_through": item["at"],
+                "tokens": buckets,
+                "usage_sample_span_s": span,
+                "cost_usd": None,
+                "input_tokens_per_client_observed_s": buckets["input_total"] / span if span else None,
+                "output_tokens_per_client_observed_s": buckets["output"] / span if span else None,
+                "reasoning_share_of_output": buckets["reasoning"] / buckets["output"] if buckets["output"] else None,
+            }
+        )
         for key in totals:
             totals[key] += buckets[key]
     return {
-        "available": bool(threads), "threads": threads, "cost_usd": None,
+        "available": bool(threads),
+        "threads": threads,
+        "cost_usd": None,
         "tokens": {
-            "tokens_input_total": totals["input_total"], "tokens_input_traffic": totals["input_total"],
-            "tokens_fresh_input": totals["fresh_input"], "tokens_cache_read": totals["cache_read"],
-            "tokens_cache_write": totals["cache_write"], "tokens_output": totals["output"],
-            "tokens_reasoning": totals["reasoning"], "tokens_total": totals["total"],
+            "tokens_input_total": totals["input_total"],
+            "tokens_input_traffic": totals["input_total"],
+            "tokens_fresh_input": totals["fresh_input"],
+            "tokens_cache_read": totals["cache_read"],
+            "tokens_cache_write": totals["cache_write"],
+            "tokens_output": totals["output"],
+            "tokens_reasoning": totals["reasoning"],
+            "tokens_total": totals["total"],
             "reasoning_is_subset_of_output": True,
-        } if threads else {},
+        }
+        if threads
+        else {},
         "usage_complete": False,
         "scope": "latest cumulative provider usage per exactly matched thread; volatile observation, not billing",
         "rate_note": "client-observed usage-sample traffic rates; not provider decode throughput or TTFT",
@@ -321,6 +389,7 @@ def rollout_telemetry(run_dir: Path) -> dict:
         return live
     paths = sorted((Path(run_dir) / "rounds").glob("round_*.codex_rollout_snapshot/**/*.jsonl"))
     responses = []
+    seen_responses: set = set()
     total = {"input_total": 0, "fresh_input": 0, "cache_read": 0, "cache_write": 0, "output": 0, "reasoning": 0}
     for path in paths:
         pending_start = None
@@ -349,6 +418,11 @@ def rollout_telemetry(run_dir: Path) -> dict:
                 usage = payload.get("usage") or {}
                 if not isinstance(usage, dict):
                     continue
+                # A forked sub-agent rollout may repeat a parent row; one response is counted once.
+                response_id = payload.get("response_id")
+                if response_id is not None and response_id in seen_responses:
+                    continue
+                seen_responses.add(response_id)
                 input_total = int(usage.get("input_tokens", 0) or 0)
                 cache_read = int(usage.get("cached_input_tokens", 0) or 0)
                 cache_write = int(usage.get("cache_write_input_tokens", 0) or 0)

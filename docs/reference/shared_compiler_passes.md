@@ -12,6 +12,8 @@ code_refs:
   - src/merlin/compile/scheduling/library_sources.py
   - src/merlin/compile/scheduling/compact_dense.py
   - src/merlin/compile/scheduling/dense_source.py
+  - src/merlin/compile/scheduling/pointwise_source.py
+  - src/merlin/llvmlower/group_profile_bindings.py
   - src/merlin/compile/scheduling/compact_verification.py
   - src/merlin/compile/scheduling/program_limits.py
   - src/merlin/model_check/program_admission.py
@@ -698,10 +700,31 @@ pointer transport independently of the corpus vocabulary; `i16` input embedding
 uses exact integer storage. This supplies type transport, not device arithmetic
 support. Unsupported element storage remains refused.
 
-The current per-group profiler cannot bracket the fresh-writer symbol handoff
-from the old routed-symbol roster. Those integration tests keep it disabled and
-report per-group contributions as unavailable. Functional forward counts are
-not hardware latency. Requested-byte reductions from neutral native execution
+The optional per-group profiler can follow the existing fresh-writer handoff.
+It reopens the retained pre-callback source and current prepared IR, checks that
+all original function bodies differ only in routed-call targets, then reads the
+new private wrapper's actual void ranked C interface. It checks direct borrowed
+calls, every descriptor argument including private scratch, original source
+types/operands/control flow, and unique source-to-callee mapping. Unknown added
+helpers, changed arithmetic, mixed original/new call targets and unknown ABI
+attributes diagnose. The ordinary build derives the mapping afresh, without a
+suffix or backend class; its generated binding JSON is an output, not an
+admission input. Original and selected source join the ordinary compilation recipe;
+the whole-model cache also binds the profiler's source owners.
+
+The linker wraps only the actual referenced borrowed entry, using its derived
+void pointer prototype. Repeated calls retain the original source route's name
+after the static source roster ends. The generated binding observation records
+the prepared-source and model-object hashes and actual undefined symbols. This
+is source/ABI attribution, not proof of target execution or numerical effects.
+The bracket includes the borrowed writer; fresh allocations, source preparation
+and dispatch outside that call contribute to gaps. Profiles with different
+boundaries or instrumentation selections are not paired timing comparisons.
+
+`test_dense_source_profile.py` exercises this through ordinary complete model
+compilation, actual linking and functional execution, preserving every output
+and carried state. Unprofiled execution remains available. Functional forward
+and per-group counts are not hardware latency. Requested-byte reductions from neutral native execution
 are not physical bus traffic. Larger native `.text` and compilation costs must
 be reported alongside traffic savings; the default planner has no calibrated
 cycle model. Qualified real target emission/mapping, runtime ownership and
@@ -716,6 +739,7 @@ temporary directory, and run:
 ```sh
 PYTHONPATH="$PWD/src" python -B -m pytest -p no:cacheprovider \
   merlin/tests/infra/test_dense_source_whole_model.py \
+  merlin/tests/infra/test_dense_source_profile.py \
   --basetemp "$TMPDIR/source-dense-reproduction" \
   -o tmp_path_retention_policy=all
 ```
@@ -842,9 +866,10 @@ a speedup claim. Smaller requested traffic does not establish latency savings.
 
 Existing target providers still need the fact-pinned dense declaration, checked
 allocation windows/reservations, qualified logical-operation projection and
-source-to-final-program conformance. Ordinary `lower_model` target routing has
-not been connected to this selected dense family: it retains its existing
-backend route. The integration must be supplied through public target hooks;
+source-to-final-program conformance. Source-bound catalogs can invoke the shared
+source entry through the ordinary build, as demonstrated above. Existing real
+target providers have not supplied its qualified contracts/adapters and retain
+their backend routes. Integration uses the public target hooks;
 no target source or protected reference compiler is imported by this mechanism.
 
 ## Executable schedule pipeline
@@ -1328,10 +1353,99 @@ This family does not eliminate packing or conversions unless the operation is
 independently qualified as an exact byte copy. It does not infer asynchronous
 handoffs, different-memory transfers, in-place epilogues, persistent ownership
 or executable target support. Source/destination overwrites keep the copy.
-Physical arithmetic fusion and target integration remain incomplete. Existing
-targets require a public, independently qualified actual-effect decoder and
+See physical elementwise fusion below for the separate arithmetic family. Existing
+targets still require a public, independently qualified actual-effect decoder and
 address rewriter before this mechanism can enter their normal lowering.
 Traffic results from synthetic execution are not hardware latency results.
+
+## Typed source to physical pointwise fusion
+
+`compile_source_pointwise` connects a current tensor `linalg.generic` to the
+existing `compile_schedule` allocation/fusion pipeline. The target supplies its
+original instruction sequence, private objects, qualified decoder/rewriter and
+physical fusion emitter. Merlin checks the original sequence against source
+arithmetic before optimization, then independently decodes the final program
+segments and checks their complete scalar dataflow against the same source.
+It does not treat a selected fusion, stage label or plan as implementation proof.
+
+The supported source family has positive static equal tensor shapes, identity
+indexing maps, parallel iterators and default layouts. Its complete scalar body
+uses the existing total integer `scalar_graph` domain: constants, arithmetic,
+comparisons, min/max and conversions. Intermediate wrapping and conversion order
+remain observable. The destination initializer must be unread; captured scalar
+values, broadcasts, reductions, floating operations, poison flags and unknown
+effects remain unsupported. Constants inside the scalar body are supported.
+The common tensor/map validator now lives in `transforms.dense_ir`; frontend
+recognizers import the same validator and exception rather than duplicate it.
+
+`PointwiseBindings` supplies each original tensor's complete contiguous external
+byte window and byte order, in source operand order. The runtime must establish
+the selected distinct external backings and invocation-private storage. Exact
+same-window input aliases are supported. Shifted or reinterpreted input aliases
+and input/output overlap refuse. Private bank views use the selected canonical
+physical backing, so writes through one view invalidate overlapping reads through
+another. The checker reuses the existing interval provenance memory and stores
+one scalar expression per whole vector; it never expands by tensor elements.
+Only qualified synchronous arithmetic and exact copies are admitted here.
+
+The enforced source ordering is `source-admission`, `schedule-lowering`, then
+`source-conformance`. These reuse `PassSpec` and `PipelineSession`; the nested
+scheduler retains its existing bounded allocation/fusion repair. Source, selected
+RTL/software files, numerical policy, shared-library sources and resource budgets
+bind the invocation. `PointwiseCompilation.images()` rejects changed source,
+schedule, library, selected files or final bytes before returning checked images.
+Unsupported source raises `UnsupportedElementwise`, allowing the caller to keep
+the original source route. Incorrect provider arithmetic or output raises a
+diagnostic; an infeasible schedule retains the existing scheduler diagnostic.
+
+```python
+from merlin.compile.scheduling.pointwise_source import compile_source_pointwise
+
+checked = compile_source_pointwise(
+    module, operation, original_kernel, temporaries, adapter, encoding, limits,
+    selected_contracts=contracts, bindings=runtime_bindings,
+    private_ownership=True,
+    fusion_emitters=qualified_emitters,
+    fusion_qualification_identity=qualification_identity,
+)
+images = checked.images()
+```
+
+An explicitly selected provider can call this entry from ordinary model
+preparation and link its implementation through the existing
+`prepared_model_transform` and `host_provider_builder` hooks. The neutral
+integration test uses those hooks, the existing fresh borrowed-writer rewrite,
+normal upstream host lowering, actual object/ELF linkage and complete model
+readback. Target instruction interpretation and ranked descriptor glue live only
+in test scaffolding, outside the exported shared library. This is not an
+automatic pointwise route for every existing backend. A real target still needs
+public source bindings, qualified scalar/effect/encoding contracts, realizable
+compositions and a source-preserving runtime ABI; the dense-only catalog cannot
+stand in for those missing hooks. No target repository is modified.
+
+Reproduce source mutations, native execution and ordinary paired model builds:
+
+```sh
+python -B -m pytest -p no:cacheprovider \
+  merlin/tests/infra/test_pointwise_source.py \
+  merlin/tests/infra/test_pointwise_source_whole_model.py \
+  merlin/tests/infra/test_shared_scheduling_export.py \
+  --basetemp "$TMPDIR/source-pointwise" \
+  -o junit_family=xunit1 --junitxml "$TMPDIR/source-pointwise.xml"
+```
+
+The recurrent model retains two host contractions, host addition, input packing,
+output copies, history, positions and unchanged inputs/weights. Baseline and
+optimized arms use identical inputs and numerical rules, changing only the
+fusion control. Retained `pair.json` records compilation wall time and sampled
+process-tree RSS, final ELF sections, encoded size, command counts, complete
+results and native requested instruction/packing bytes. Final ELF sections retain
+the exact program images; the test reopens loaded, readonly sections and decodes
+their actual instructions after linking. The neutral interpreter
+executes on the CPU; its functional Spike counter and process wall time are not
+accelerator latency. Packing bytes remain a separate unchanged cost. This
+experiment does not demonstrate real target support, Phase 2 pass synthesis or
+generalization learned by an agent.
 
 ## Physical elementwise fusion
 

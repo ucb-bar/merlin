@@ -25,6 +25,7 @@ from merlin.benchharness import repo_sha
 from merlin.targetgen.sandbox import bwrap as _BWS
 from merlin.targetgen.target_experiment import load_target_experiment
 
+from . import author_subagents as AS
 from . import corpus_inputs as CI
 from . import oot_history as _oot_history
 from . import run_inputs as RI
@@ -65,6 +66,7 @@ def _verify_client_selection(options, environment: dict) -> None:
     prior = (environment.get("run_config") or {}).get("codex_max_subagents")
     if prior != options.codex_max_subagents:
         raise RuntimeError("explicit Codex delegation limit changed")
+    AS.verify_resume(options, environment.get("run_config") or {})
     recorded = (environment.get("run_config") or {}).get("codex_runtime")
     if recorded != _client_selection(options):
         raise RuntimeError("explicit client selection changed")
@@ -140,6 +142,7 @@ class RunRequest:
             ),
             **({"codex_runtime": _client_selection(a)} if a.codex_binary else {}),
             **({"codex_max_subagents": a.codex_max_subagents} if a.codex_max_subagents is not None else {}),
+            **({"author_subagents": subagents} if (subagents := AS.selection(a)) is not None else {}),
             **({"readback_policy": readback_record(self.context)} if self.context.readback_policy is not None else {}),
         }
 
@@ -221,9 +224,10 @@ class PreparedRun:
         from .feedback import hidden_capsule_policy
 
         hidden_capsule_policy.verify_record(
-            hidden_capsule_policy.resolve(self.request.context.descriptor,
-                                           getattr(self.request.options, 'hidden_capsule_mode', '')),
-            self.environment.get('hidden_capsule_validation'),
+            hidden_capsule_policy.resolve(
+                self.request.context.descriptor, getattr(self.request.options, "hidden_capsule_mode", "")
+            ),
+            self.environment.get("hidden_capsule_validation"),
         )
         verify_readback_record(self.request.context, self.environment.get("readback_policy"))
         _verify_public_build_budget(self.request.options, self.environment)
@@ -477,16 +481,26 @@ def prepare(
     request: RunRequest, transport: WorkspaceTransport, stage_task: TaskStager, *, workspace_leases: list
 ) -> PreparedRun | int:
     """Close all preparation verification scopes before returning or refusing."""
-    with ExitStack() as snapshot_scopes:
+    from merlin.common.cpu_pool import PREPARATION, cpu_priority
+
+    # Preparation shares the compute pool; its leased steps queue behind author and grade work.
+    with cpu_priority(PREPARATION), ExitStack() as snapshot_scopes:
         return _prepare(
-            request, transport, stage_task, workspace_leases=workspace_leases,
+            request,
+            transport,
+            stage_task,
+            workspace_leases=workspace_leases,
             snapshot_scopes=snapshot_scopes,
         )
 
 
 def _prepare(
-    request: RunRequest, transport: WorkspaceTransport, stage_task: TaskStager, *,
-    workspace_leases: list, snapshot_scopes: ExitStack,
+    request: RunRequest,
+    transport: WorkspaceTransport,
+    stage_task: TaskStager,
+    *,
+    workspace_leases: list,
+    snapshot_scopes: ExitStack,
 ) -> PreparedRun | int:
     """Prepare/resume a run, returning its original refusal code or admitted inputs.
 
@@ -530,7 +544,7 @@ def _prepare(
     _environment_path = run_dir / "environment.yaml"
     from .feedback import hidden_capsule_policy
 
-    _hidden_capsule_policy = hidden_capsule_policy.resolve(context.descriptor, getattr(a, 'hidden_capsule_mode', ''))
+    _hidden_capsule_policy = hidden_capsule_policy.resolve(context.descriptor, getattr(a, "hidden_capsule_mode", ""))
     if _resuming:
         try:
             _environment_record = yaml.safe_load(_environment_path.read_text())
@@ -540,7 +554,8 @@ def _prepare(
             raise RuntimeError("resume refused: environment record is not a mapping")
         verify_readback_record(context, _environment_record.get("readback_policy"))
         hidden_capsule_policy.verify_record(
-            _hidden_capsule_policy, _environment_record.get('hidden_capsule_validation'),
+            _hidden_capsule_policy,
+            _environment_record.get("hidden_capsule_validation"),
         )
         _verify_public_build_budget(a, _environment_record)
         _verify_client_selection(a, _environment_record)
@@ -626,8 +641,11 @@ def _prepare(
     _seed_submission_record = None
     if _seed_source:
         _seed_submission_record = RI.seed_submission(
-            ws, _seed_source_preflight, run_dir, require_stable_source=bool(a.qualify_submission),
-            require_lineage=bool(a.seed_submission)
+            ws,
+            _seed_source_preflight,
+            run_dir,
+            require_stable_source=bool(a.qualify_submission),
+            require_lineage=bool(a.seed_submission),
         )
     _bundle_snapshot_record = None
     _model_host_lane_snapshot = None
@@ -726,6 +744,17 @@ def _prepare(
         _hidden_snapshot_record = RI.subtree_snapshot_record(_hidden_dir)
         if _hidden_snapshot_record["n_capsules"] <= 0:
             raise RuntimeError(f"hidden capsule snapshot contains no capsules: {_hidden_snapshot_record['path']}")
+        if _corpus_seal and not _resuming:
+            from ..phase0.coverage_commitment import admitted_source_roots
+            from .trace_readiness import require_ready as require_trace_ready
+
+            require_trace_ready(
+                admitted_source_roots(_policy_root, _public_root, contract=_contract_root),
+                target=context.target, contract=_contract_root,
+                output=run_dir / "trace_readiness.json",
+                hidden_roots=_hidden_dir,
+                expected_hidden_capsules=_hidden_snapshot_record["n_capsules"],
+            )
         if _te_setup.host_lane is not None:
             _, _model_host_lane_snapshot = _te_setup.resolve_host_lane(root=_snapshot_root / "repo")
             _model_host_lane_snapshot["run_snapshot"] = _bundle_snapshot_record
@@ -775,7 +804,9 @@ def _prepare(
     from .feedback import private_result_format_selection
 
     _, _native_result_record = private_result_format_selection.freeze_for_run(
-        a.native_result_format_selection, target=context.target, run_dir=run_dir,
+        a.native_result_format_selection,
+        target=context.target,
+        run_dir=run_dir,
         prior=_environment_record.get("native_result_format_selection") if _resuming else None,
         resuming=_resuming,
     )
@@ -785,7 +816,10 @@ def _prepare(
     from .feedback import public_owned_host_selection
 
     public_owned_host_selection.install_for_session(
-        _private_full_model_spec, _instruction_selection, target=context.target, run_dir=run_dir,
+        _private_full_model_spec,
+        _instruction_selection,
+        target=context.target,
+        run_dir=run_dir,
         selected_facts=_selected_public_facts,
         selected_facts_sha256=file_sha256(_selected_public_facts) if _selected_public_facts is not None else None,
         descriptor=context.descriptor,
@@ -835,14 +869,16 @@ def _prepare(
 
             public_members = discover_capsules(
                 [_policy_root] if _policy_root is not None else _te().graded_roots(),
-                labels={"public", "dev"}, contract=_contract_root or context.repo / "merlin/contract",
+                labels={"public", "dev"},
+                contract=_contract_root or context.repo / "merlin/contract",
             )
             excluded = set(_te().effective_exclusions(row.get("name") for row in public_members))
-            require_public_members(resource_policy, (row.get("name") for row in public_members
-                                                    if row.get("name") not in excluded))
-        append_resource_guidance(ws, run_dir, a, **(
-            {"public_codegen_policy": resource_policy} if resource_policy is not None else {}
-        ))
+            require_public_members(
+                resource_policy, (row.get("name") for row in public_members if row.get("name") not in excluded)
+            )
+        append_resource_guidance(
+            ws, run_dir, a, **({"public_codegen_policy": resource_policy} if resource_policy is not None else {})
+        )
     elif not (ws / "TASK.md").is_file():
         raise RuntimeError("resume refused: sealed workspace TASK.md is missing")
 
@@ -860,8 +896,9 @@ def _prepare(
     if _resuming:
         _identity = {
             "run_id": a.run_id,
-            "lineage_id": (((_environment_record.get("seed_submission") or {}).get("lineage") or {})
-                           .get("lineage_id") or a.run_id),
+            "lineage_id": (
+                ((_environment_record.get("seed_submission") or {}).get("lineage") or {}).get("lineage_id") or a.run_id
+            ),
             "arm": arm,
             "sandbox": a.sandbox,
             "bundle_id": bundle["bundle_id"],
@@ -1058,18 +1095,27 @@ def _prepare(
     # The receipt is host-private, and a failed probe refuses before authoring.
     from . import tooling_readiness as _TRpf
 
-    _tooling = _TRpf.run(
-        context,
-        _te_pf,
-        ws,
-        bundle,
-        tuple(_resolved_tool_ids),
-        _public_root,
-        run_dir,
-        _bundle_snapshot_record,
-        _bundle_manifest_sha256,
-        without_tools=tuple(a.without_tool),
-    )
+    if a.qualify_submission:
+        _tooling = {
+            "status": "not_required",
+            "checks": [],
+            "scope": "unpaid frozen-submission qualification starts no author or authoring-tool clients; "
+            "formal compiler, oracle, isolation and input-integrity gates remain required",
+        }
+        (run_dir / "tooling_readiness.yaml").write_text(yaml.safe_dump(_tooling, sort_keys=False))
+    else:
+        _tooling = _TRpf.run(
+            context,
+            _te_pf,
+            ws,
+            bundle,
+            tuple(_resolved_tool_ids),
+            _public_root,
+            run_dir,
+            _bundle_snapshot_record,
+            _bundle_manifest_sha256,
+            without_tools=tuple(a.without_tool),
+        )
     if _tooling["status"] == "no_go":
         failed = [f"{check['name']}: {check['detail']}" for check in _tooling["checks"] if not check["ok"]]
         print(

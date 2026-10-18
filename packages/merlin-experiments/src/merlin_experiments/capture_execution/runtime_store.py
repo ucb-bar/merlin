@@ -16,6 +16,7 @@ File modes are kept exactly as copied, because the selected tree digests bind th
 
 from __future__ import annotations
 
+import errno
 import fcntl
 import json
 import os
@@ -346,7 +347,19 @@ def _link_entry(entry: Path, runtime: Path) -> None:
             source = here / name
             if source.is_symlink() or not source.is_file():
                 raise ValueError(f"runtime store contains a nonregular member: {source}")
-            os.link(source, target_dir / name)
+            destination = target_dir / name
+            try:
+                os.link(source, destination)
+            except PermissionError as exc:
+                if exc.errno != errno.EPERM:
+                    raise
+                # chattr protection of a sealed snapshot also protects its shared
+                # cache inode. Linux refuses another hard-link to that inode;
+                # preserve the selected bytes and modes in a fresh private copy.
+                # Exclusive creation must still refuse an existing destination.
+                with source.open("rb") as original, destination.open("xb") as copied:
+                    shutil.copyfileobj(original, copied)
+                shutil.copystat(source, destination)
     # Modes last, deepest first, so a read-only directory never blocks linking its own members.
     for path, mode in sorted(directories, key=lambda row: len(row[0].parts), reverse=True):
         if path != runtime:

@@ -568,12 +568,18 @@ def test_native_storage_writer_preserves_result_policy_without_mac_qualification
         "ordered_result_types": [{"dtype": result, "shape": [3, 2] if op == "permute" else [2, 3]}],
     }
     entry = {
-        "name": "native_storage", "op": op, "source": "pytorch", "operand_dtype": dtype,
-        "capture_dtype": "fp32", "frontend_op": "selected.frontend",
-        "native_input_dtype": dtype, "native_output_dtype": result,
+        "name": "native_storage",
+        "op": op,
+        "source": "pytorch",
+        "operand_dtype": dtype,
+        "capture_dtype": "fp32",
+        "frontend_op": "selected.frontend",
+        "native_input_dtype": dtype,
+        "native_output_dtype": result,
         "generalization": {"must_accelerate": False, "eligible": False},
         "native_source_abi": {
-            "full_inventory_sha256": "a" * 64, "capture_sha256": "b" * 64,
+            "full_inventory_sha256": "a" * 64,
+            "capture_sha256": "b" * 64,
             "signature_sha256": hashlib.sha256(
                 json.dumps(signature, sort_keys=True, separators=(",", ":")).encode()
             ).hexdigest(),
@@ -907,10 +913,13 @@ def test_selected_host_axes_do_not_resolve_an_ambient_contract(tmp_path, monkeyp
     }
     monkeypatch.setattr(target_registry, "load_contract", lambda *_: pytest.fail("ambient contract was read"))
     coverage = selected_cohort_coverage(requirement, [member], inputs={"capability_contract": contract})
-    assert coverage["host_only"]["status"] == "ok"
-    assert coverage["host_only"]["covered_by"] == {"contraction": ["host_matmul"]}
-    assert coverage["host_lane"]["status"] == "ok"
-    assert coverage["host_lane"]["covered_by"] == {"contraction/f32": ["host_matmul"]}
+    # Host placement is Merlin-supplied: the host axes are recorded, never demanded of a public capsule,
+    # and a host-only capsule earns nothing on them.
+    for axis in ("host_only", "host_lane"):
+        assert coverage[axis]["status"] == "not_applicable"
+        assert coverage[axis]["uncovered"] == []
+        assert "covered_by" not in coverage[axis]
+        assert coverage[axis]["merlin_supplied_host"]["n_derived_requirements"] == 1
     with pytest.raises(ValueError, match="selected capability contract differs"):
         selected_cohort_coverage(
             requirement,

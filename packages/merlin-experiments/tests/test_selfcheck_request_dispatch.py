@@ -145,7 +145,8 @@ def test_owned_worker_stop_reaps_children_and_releases_locks(tmp_path):
             B._stop_owned_worker(process)
 
 
-def test_two_process_lanes_overlap_and_cancel_independently(tmp_path, monkeypatch):
+@pytest.mark.parametrize("ordinary_jobs", [1, 2])
+def test_two_process_lanes_overlap_and_cancel_independently(tmp_path, monkeypatch, ordinary_jobs):
     """Use the actual request handler; substitute only the external grading executable."""
     ws = tmp_path / "workspace"
     ch = ws / ".qa_channel"
@@ -179,6 +180,7 @@ raise SystemExit(B.main())
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     monkeypatch.setenv("MERLIN_SELFCHECK_BROKER_JOBS", "2")
+    monkeypatch.setenv("MERLIN_SELFCHECK_ORDINARY_JOBS", str(ordinary_jobs))
     diagnostic = request(ch, "diagnostic", offload_census=True)
     time.sleep(.01)
     numerical = request(ch, "numerical")
@@ -200,7 +202,12 @@ raise SystemExit(B.main())
             while not all((ch / ("started_" + rid)).exists() for rid in ("diagnostic", "numerical")):
                 assert time.monotonic() < end
                 time.sleep(.02)
-            assert not (ch / "started_later_numeric").exists()
+            if ordinary_jobs == 1:
+                assert not (ch / "started_later_numeric").exists()
+            else:
+                while not (ch / "started_later_numeric").exists():
+                    assert time.monotonic() < end
+                    time.sleep(.02)
             numerical.unlink()  # Existing ordinary cancellation protocol.
             while not (ch / "done_numerical").exists():
                 assert time.monotonic() < end
@@ -221,7 +228,8 @@ raise SystemExit(B.main())
     B._dispatch_requests(a, context, tmp_path, None, None)
     thread.join(timeout=20)
     assert not observed, observed
-    assert launch_order[:2] == [numerical.name, diagnostic.name]
+    assert launch_order[:2] == ([numerical.name, diagnostic.name] if ordinary_jobs == 1
+                                else [numerical.name, later.name])
     canceled = json.loads((ch / "resp_numerical.json").read_bytes())
     finished = json.loads((ch / "resp_diagnostic.json").read_bytes())
     assert "cancelled" in canceled["error"] and canceled["all_pass"] is False
@@ -230,3 +238,35 @@ raise SystemExit(B.main())
     for rid in ("diagnostic", "numerical"):
         info = json.loads((ch / ("started_" + rid)).read_bytes())
         assert B._process_record(info["pid"]) is None
+
+
+def test_iteration_scope_rejects_full_sweep_without_narrowing_denominator(monkeypatch):
+    monkeypatch.setenv('MERLIN_SELFCHECK_MAX_CAPSULES', '2')
+    assert B._feedback_scope_error({'capsules': 'all'})
+    assert B._feedback_scope_error({'capsules': 'a,b,c'})
+    assert B._feedback_scope_error({'capsules': 'a,a,b'}) is None
+    assert B._feedback_scope_error({'capsules': 'all', 'compile_only': True}) is None
+    monkeypatch.delenv('MERLIN_SELFCHECK_MAX_CAPSULES')
+    assert B._feedback_scope_error({'capsules': 'all'}) is None
+
+
+@pytest.mark.parametrize(("raw", "limit"), [("auto", 64), ("16", 16), ("64", 64)])
+def test_the_ordinary_capsule_bound_can_be_sized_from_the_compute_pool(tmp_path, monkeypatch, raw, limit):
+    # A private slot directory that is never created: sizing reads the roster, it takes no lease.
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", ",".join(str(cpu) for cpu in range(6, 14)))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "slots"))
+    monkeypatch.setenv("MERLIN_SELFCHECK_MAX_CAPSULES", raw)
+    names = [f"C{index}" for index in range(limit + 1)]
+    assert B._ordinary_capsule_limit() == limit
+    assert B._feedback_scope_error({"capsules": ",".join(names[:limit])}) is None
+    assert f"at most {limit} named capsules" in B._feedback_scope_error({"capsules": ",".join(names)})
+    assert B._feedback_scope_error({"capsules": "all"}) is not None
+    assert not (tmp_path / "slots").exists()
+
+
+def test_an_invalid_capsule_bound_refuses(monkeypatch):
+    monkeypatch.setenv("MERLIN_SELFCHECK_MAX_CAPSULES", "many")
+    with pytest.raises(ValueError, match="positive integer or 'auto'"):
+        B._feedback_scope_error({"capsules": "A"})
+    monkeypatch.delenv("MERLIN_SELFCHECK_MAX_CAPSULES")
+    assert B._feedback_scope_error({"capsules": "all"}) is None

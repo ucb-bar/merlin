@@ -36,15 +36,25 @@ _PARSED_MAX = 256
 _FAST_LOADER = getattr(yaml, "CSafeLoader", None)
 
 
-def _parse(text: str) -> Any:
-    """``yaml.safe_load(text)``'s value. A document libyaml refuses is parsed again by PyYAML, so a
-    malformed one raises exactly the error (message and source labels) it always did."""
+def fast_safe_load(data: str | bytes) -> Any:
+    """``yaml.safe_load(data)``'s value, scanned and parsed by libyaml when PyYAML was built with it.
+
+    The constructor and implicit-tag resolver are PyYAML's own safe ones either way, so the same text
+    builds the same document. A document libyaml refuses is parsed again by PyYAML, so a malformed one
+    raises exactly the error (message and source labels) it always did; without the C extension this
+    is plain ``yaml.safe_load``. Nothing is cached.
+    """
     if _FAST_LOADER is not None:
         try:
-            return yaml.load(text, Loader=_FAST_LOADER)  # noqa: S506 -- CSafeLoader is the safe loader
+            return yaml.load(data, Loader=_FAST_LOADER)  # noqa: S506 -- CSafeLoader is the safe loader
         except yaml.YAMLError:
             pass
-    return yaml.safe_load(text)
+    return yaml.safe_load(data)
+
+
+def _parse(text: str) -> Any:
+    """``yaml.safe_load(text)``'s value (see :func:`fast_safe_load`)."""
+    return fast_safe_load(text)
 
 
 def safe_load_text(text: str) -> Any:
