@@ -50,8 +50,10 @@ def candidate (f : ReshapeFacts.Fact) (s hint : Op) : Op :=
 def tryHints (f : ReshapeFacts.Fact) (s : Op) : List Op → Option Op
   | [] => none
   | hint :: hints =>
-    let v := candidate f s hint
-    if Legal f s v then some v else tryHints f s hints
+    if Sem.Ops.Tensor.resultTensorTy hint = Sem.Ops.Tensor.resultTensorTy s then
+      let v := candidate f s hint
+      if Legal f s v then some v else tryHints f s hints
+    else tryHints f s hints
 
 theorem tryHints_spec {f : ReshapeFacts.Fact} {s : Op} : ∀ hints v,
     tryHints f s hints = some v → Legal f s v ∧ v.results = s.results
@@ -59,7 +61,9 @@ theorem tryHints_spec {f : ReshapeFacts.Fact} {s : Op} : ∀ hints v,
   | hint :: hints, v, h => by
     simp only [tryHints] at h
     split at h
-    · next hl => cases h; exact ⟨hl, rfl⟩
+    · split at h
+      · next hl => cases h; exact ⟨hl, rfl⟩
+      · exact tryHints_spec hints v h
     · exact tryHints_spec hints v h
 
 /-- A fact is relevant only to its actual current result operand. Producers are retained. -/

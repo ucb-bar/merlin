@@ -29,6 +29,13 @@ def thirdFacts := ReshapeFacts.enrich secondFacts third ++ secondFacts
 #guard !(ReshapeFacts.advance [] thirdFacts (mkOp "unknown.write" [v 3 i32] [])).contains ultimate
 #guard (ReshapeFacts.advance [] thirdFacts (mkOp "unknown.write" [v 99 i32] [])) == thirdFacts
 
+-- Rebinding the ultimate source root may retain only an independently live intermediate root.
+def shadowRoot : Op := mkOp "tensor.collapse_shape" [v 0 (tensorTy [24] i32)] [2]
+  [("reassociation", .array [.array [.int 0 (.int 64), .int 1 (.int 64), .int 2 (.int 64)]])]
+def afterRootWrite := ReshapeFacts.advance [(2, .tensor [2, 3, 4] (.int 32))] secondFacts shadowRoot
+#guard afterRootWrite.head? == some (⟨0, 1, [6, 4], [24], .int 32⟩ : ReshapeFacts.Fact)
+#guard !(afterRootWrite.contains (⟨0, 0, [2, 3, 2, 2], [24], .int 32⟩ : ReshapeFacts.Fact))
+
 /-- Even long chains add only immediate and ultimate facts, rather than every ancestral path. -/
 def chain (count : Nat) : List ReshapeFacts.Fact :=
   (List.range count).foldl (fun facts n =>
