@@ -131,19 +131,19 @@ def _pg_domain(module):
     def has_index(t):
         if _PG_BINDING['index_bits'] == 64:
             return False
-        if ir.IndexType.isinstance(t):
+        if isinstance(t, ir.IndexType):
             return True
-        if ir.RankedTensorType.isinstance(t):
+        if isinstance(t, ir.RankedTensorType):
             return has_index(ir.RankedTensorType(t).element_type)
-        if ir.FunctionType.isinstance(t):
+        if isinstance(t, ir.FunctionType):
             ft = ir.FunctionType(t)
             return any(has_index(x) for x in (*ft.inputs, *ft.results))
         return False
     def visit(op):
         if any(has_index(v.type) for v in (*op.operands, *op.results)):
             raise ValueError('initial native proof gate refuses index-typed SSA values')
-        for a in op.attributes:
-            if ir.TypeAttr.isinstance(a.attr) and has_index(ir.TypeAttr(a.attr).value):
+        for _, attribute in op.attributes.items():
+            if isinstance(attribute, ir.TypeAttr) and has_index(attribute.value):
                 raise ValueError('initial native proof gate refuses index-typed function ABI')
         for region in op.regions:
             for block in region.blocks:

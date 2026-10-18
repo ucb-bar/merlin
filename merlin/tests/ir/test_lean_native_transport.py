@@ -21,14 +21,14 @@ def plan(monkeypatch):
 
 _FAKE_MODULE = """
 class Kind:
-    @staticmethod
-    def isinstance(value): return False
+    pass
 class IR:
     IndexType = RankedTensorType = FunctionType = TypeAttr = Kind
 class Module:
     def __init__(self):
         self.operation = self
-        self.operands = self.results = self.attributes = self.regions = []
+        self.operands = self.results = self.regions = []
+        self.attributes = {}
     def get_asm(self, **kwargs):
         return 'module { /* changed */ }' if (owner / 'mutate-module').exists() else 'module {}'
     def verify(self): return True
