@@ -10,11 +10,30 @@ code_refs: [src/merlin/targetgen/tool_profile.py, src/merlin/targetgen/tool_prof
 
 # Shared passes in ordinary compiler authoring
 
-A fresh **V6 common compiler substrate** makes the reviewed shared scheduling
-library available to ordinary compiler candidates. Phase 1 chooses and freezes
-one release; Phase 2 inherits exactly those grants and source identities. An
-older certified compiler cannot gain the library by editing its Phase 2 options.
-Versions 1–5 retain their original public APIs and proof policies.
+The **V6 common compiler substrate** makes the reviewed shared scheduling
+library available to ordinary compiler candidates. The implemented ordinary
+inheritance route freezes one release in Phase 1 and preserves its grants and
+source identities in Phase 2. Versions 1–5 retain their original public APIs
+and proof policies.
+
+This is an access-comparison contract, not a technical requirement to rerun
+Phase 1 authoring before optimizing an older compiler. A separate Phase 2
+experiment may select additional reviewed compiler libraries explicitly. It
+must preserve the Phase 1 compiler and evidence as its origin, copy the compiler
+into Phase 2, record the new library release separately, and revalidate baseline
+and candidate under the selected Phase 2 environment. It cannot attribute the
+new grants to the original Phase 1 run or claim the original same-grant ablation.
+All compared Phase 2 treatments must receive the same selected shared algorithms.
+
+The existing explicit `CompilerLibraryContract` and component-view APIs can
+review and isolate such a library. The ordinary retained-source authoring route
+currently binds compiler execution to the original Phase 1 profile owner; an
+additional-library selection is **not yet connected through that route**.
+Connecting it requires host-owned source/import and sandbox selection, original
+numerical/functional gates, queued-job custody and final evaluation using the
+same effective Phase 2 release. Changing a profile equality check alone cannot
+establish those connections. A new Phase 1 run is one available same-grant
+baseline, not the prerequisite for implementing this Phase 2 mode.
 
 The library provides checked mechanisms for tiling/operand reuse, temporary
 storage, capability-driven fusion and copy elimination, persistent configuration
