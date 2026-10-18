@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from . import check, stages
+from . import check, plans, stages
 
 
 @dataclass(frozen=True)
@@ -82,6 +82,8 @@ def run(
     output: Path,
     options: Options,
     preprocess: Callable[[str], tuple[str, dict[str, Any]]],
+    *,
+    plan: plans.Plan | None = None,
 ) -> VerifiedPreprocessing:
     """Run and verify shared passes, or raise before a caller can consume their output.
 
@@ -89,6 +91,8 @@ def run(
     match the supplied source and returned text exactly. Every boundary, including unchanged
     ones, is checked. No unsupported stage or unavailable prerequisite is treated as success.
     The caller consumes the returned text, rather than reopening a mutable handoff file.
+    A supplied plan must be resolved independently before execution. Without one, coverage is
+    explicitly limited to recorded boundaries and does not establish roster completeness.
     """
     output = output.resolve()
     evidence = output.parent / "lean-shared-passes" / uuid.uuid4().hex
@@ -97,18 +101,26 @@ def run(
     result: dict[str, Any] = {
         "schema": "merlin.lean.shared_handoff.v1",
         "scope": "recorded source tensor IR through shared preprocessing handoff",
+        "coverage_granularity": plan.granularity if plan else "recorded-boundary-only",
         "function": options.function,
         "index_bits": options.index_bits,
         "verdict": "unmeasured",
         "reason": "shared-pass validation has not completed",
     }
     check._atomic_json(report, result)
+    manifest = evidence / "expected-plan.json"
+    if plan is not None:
+        manifest.write_bytes(plan.canonical_bytes())
+        result.update(plan=str(manifest), plan_sha256=plan.sha256, expected_boundary_count=len(plan.boundaries))
+        check._atomic_json(report, result)
     try:
         with stages.capture(evidence / "stages") as recording:
             target, stats = preprocess(source)
             output.write_text(target, encoding="utf-8")
             stages.record_handoff(output)
         published, frozen = _inventory(recording)
+        if plan is not None:
+            plans.replay(plan, manifest, recording.root)
         if (published[0] / "before.mlir").read_bytes() != source.encode("utf-8"):
             raise VerificationError("capture does not begin at the supplied source bytes")
         if (published[-1] / "after.mlir").read_bytes() != target.encode("utf-8"):
@@ -143,9 +155,15 @@ def run(
             raise VerificationError(chain.get("reason", "shared-pass chain did not verify"))
         if _inventory(recording) != (published, frozen) or output.read_bytes() != target.encode("utf-8"):
             raise VerificationError("shared-pass capture or handoff changed during validation")
+        if plan is not None:
+            plans.replay(plan, manifest, recording.root)
         result.update(
             verdict="verified",
-            reason="every captured boundary and source definedness replayed",
+            reason=(
+                "every planned preprocessing boundary and source definedness replayed"
+                if plan is not None
+                else "every captured boundary and source definedness replayed; roster completeness not established"
+            ),
             chain=str(chain_path),
             source_sha256=_digest(source.encode("utf-8")),
             handoff_sha256=_digest(target.encode("utf-8")),
@@ -156,7 +174,7 @@ def run(
         return VerifiedPreprocessing(target, stats, report)
     except Exception as exc:
         result.update(
-            verdict="abstracted" if isinstance(exc, VerificationError) else "unmeasured",
+            verdict="abstracted" if isinstance(exc, (VerificationError, plans.PlanMismatch)) else "unmeasured",
             reason=f"{type(exc).__name__}: {exc}",
         )
         check._atomic_json(report, result)

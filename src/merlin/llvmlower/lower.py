@@ -160,11 +160,18 @@ def lower_model(
 
         handoff = work / "model.upstream.mlir"
         if shared_pass_verification is not None:
+            from merlin.verify.lean import plans as verification_plans
+            from merlin.verify.lean.handoff import VerificationError
             from merlin.verify.lean.handoff import run as verify_shared_passes
 
             if index_bits != shared_pass_verification.index_bits:
                 raise ValueError("shared-pass verification and explicit lowering index widths must match")
-            verified = verify_shared_passes(mlir_text, handoff, shared_pass_verification, preprocess)
+            if textual:
+                raise VerificationError("shared-pass verification requires planned structural preprocessing")
+            expected_plan = verification_plans.preprocessing()
+            verified = verify_shared_passes(
+                mlir_text, handoff, shared_pass_verification, preprocess, plan=expected_plan
+            )
             upstream_text, stats = verified.text, verified.stats
             stats["shared_pass_verification"] = str(verified.report)
         else:
