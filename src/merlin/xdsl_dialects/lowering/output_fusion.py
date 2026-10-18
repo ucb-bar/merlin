@@ -355,7 +355,7 @@ def offset_interval(source, target, channels, lo, hi, levels, target_range):
     lower = np.full(channels, ylo - lo, dtype=np.int64)
     upper = np.full(channels, yhi - hi, dtype=np.int64)
     conflict = np.full(channels, np.iinfo(np.int64).min, dtype=np.int64)
-    for q in levels[1:]:
+    for q in levels:
         s = _threshold(source, q, lo, hi, channels)
         t = _threshold(target, q, ylo, yhi, channels)
         interior = (s > lo) & (s <= hi)
@@ -524,7 +524,10 @@ def _prove(chain: Chain, path, target, bound, *, residual_values=None, residual_
 
     fdt = _numpy_float(chain.float_dtype)
     quantize = chain.stages[-1]
-    levels = list(range(int(quantize.detail["min"]), int(quantize.detail["max"]) + 1))
+    # Equal reachable thresholds do not forbid a wider device clamp from
+    # producing values ABOVE the source maximum. Its first unreachable level
+    # must also remain unreachable throughout the proved accumulator domain.
+    levels = list(range(int(quantize.detail["min"]), int(quantize.detail["max"]) + 2))
     acc = _accumulator_range(path)
     if acc is None:
         raise _Refused(UNMODELED, "the accumulator format is not an integer the proof can range over")

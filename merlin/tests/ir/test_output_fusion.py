@@ -221,6 +221,20 @@ def test_the_full_path_takes_the_whole_chain_with_the_bias_preloaded():
     assert _codes(device) == [("pool", OF.UNDECLARED)]  # nothing to pool in this chain
 
 
+@pytest.mark.parametrize("clamp", [(-8, 7), (-7, 127), (-128, 8)])
+def test_a_narrower_source_clamp_cannot_use_a_wider_device_readout(clamp):
+    device, _host = _fused(_module(bias=(0,) * 8, relu=False, quant=clamp), _path())
+    # Interior thresholds may agree while the device keeps increasing past 7.
+    # The first UNREACHABLE source level must also remain unreachable.
+    assert device.fusion["cut"] != "requant"
+    assert ("requant", OF.INEXACT) in _codes(device)
+
+
+def test_different_clamps_can_fuse_when_the_proved_domain_never_reaches_them():
+    device, _host = _fused(_module(bias=(0,) * 8, relu=False, quant=(-8, 7), out_scale=128.0), _path())
+    assert device.fusion["cut"] == "requant"
+
+
 def test_no_activation_keeps_the_readout_on_the_host_and_preloads_the_bias():
     device, host = _fused(_module(), _path(_drop("activation")))
     assert device.fusion["cut"] == "accumulator" and device.fusion["stages"] == ["bias"]
@@ -277,9 +291,15 @@ def test_without_a_preload_a_nonzero_bias_cannot_be_absorbed_at_all():
 
 def test_a_residual_is_accumulated_only_where_the_path_accumulates():
     text = _module(residual=True, quant=(-8, 7))
-    device, _host = _fused(text, _path())
+
+    def matching_clamp(path):
+        next(stage for stage in path["readout"] if stage["kind"] == "requant")["clamp"] = [-8, 7]
+
+    device, _host = _fused(text, _path(matching_clamp))
     assert device.fusion["cut"] == "requant" and "residual" in device.fusion["stages"]
-    device, host = _fused(text, _path(_drop("accumulate")))
+    without_accumulate = _path(_drop("accumulate"))
+    matching_clamp(without_accumulate)
+    device, host = _fused(text, OP.validate(without_accumulate))
     assert device.fusion["cut"] == "accumulator" and device.fusion["stages"] == ["bias"]
     assert device.fusion["proof"]["residual_on_host"]["code"] == OF.UNDECLARED
     assert any(CG.RESIDUAL_ADD in g.stages for g in host)

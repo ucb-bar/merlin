@@ -27,6 +27,11 @@ Plus the **whole-model dialect plane** that brings real model2MLIR modules into 
 
 ## Invariants
 
+Output-fusion threshold proofs include the minimum source output and the first
+unreachable level above its maximum. Interior thresholds cannot exclude values
+outside a narrower source clamp. Bounded domains that never reach either
+differing clamp remain eligible when their complete threshold proof succeeds.
+
 - **Outliner**: each compute op (`linalg.*` except `fill`/`yield`/`index`) becomes one kernel func; cheap pure producers (`arith.constant`/`tensor.empty`/`linalg.fill`) are *cloned into* the kernel; view/glue ops stay in the driver. Region-captured free values (model2MLIR `linalg.generic` gather bodies) MUST be lifted to kernel params — miss one and the kernel fails `IsolatedFromAbove`. The rewrite is value-preserving: inlining the kernels reproduces the original dataflow (proven bit-identical on host).
 - **Dispatch program** is a DAG: every node input is an earlier node output or a model arg (`verify_program`). `prune_dead_nodes` drops the dead cloned-accumulator view copies. The whole thing is JSON-serializable (runtime ABI).
 - Outlined kernel funcs are clean linalg — no `extract_slice` — so they round-trip through the xDSL printer (the whole model does not). This is what makes per-kernel compile + check work (`llvmlower/kernel_backend.py`).
