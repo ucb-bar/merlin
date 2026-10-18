@@ -98,9 +98,11 @@ theorem rewrite_spec (Γ : TEnv) (facts : List Fact) (s : Op) :
     split
     · next hc =>
       have hn : s.isTerminator = false := by
-        obtain ⟨_,hn,_,_,_,_,_,_,_,_,_,_⟩ := hc.1
-        rw [hc.2.2.2.2.1] at hn
-        simp [Op.isTerminator,terminatorNames,hn,Kind.name]
+        have hchecks := hc
+        obtain ⟨hsource,_,_,_,htrunc,_,_⟩ := hchecks
+        obtain ⟨_,hname,_,_,_,_,_,_,_,_,_,_⟩ := hsource
+        rw [htrunc] at hname
+        simp [Op.isTerminator,terminatorNames,hname,Kind.name]
       have hd : (direct s first last).isTerminator = false := by
         cases hk : (combined first last).kind <;>
           simp [direct,Op.isTerminator,terminatorNames,Kind.name,hk,Op.name]
