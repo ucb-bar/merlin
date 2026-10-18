@@ -1,6 +1,7 @@
 /- Typed reshape provenance permits mixed compositions that are not universally valid from
 result annotations alone. Target headers are merely candidates; every endpoint is rechecked. -/
 import MerlinVerify.Check.ReshapeFacts
+import MerlinVerify.Check.ReshapeDead
 import MerlinVerify.Check.TypedNormalizer
 
 namespace MerlinVerify.Check.ReshapeNormalize
@@ -120,7 +121,7 @@ def normalize (ib : Nat) (Γ : TEnv) (facts : List ReshapeFacts.Fact) (hints : L
       let rs ← s.results.mapM (fun r => vtyOf ib r.ty)
       let tail ← normalize ib ((s.results.map (·.id)).zip rs ++ Γ)
         (ReshapeFacts.advance Γ facts s) hints ss
-      pure (rewrite facts hints s :: tail)
+      pure (if ReshapeDead.drop? Γ s tail then tail else rewrite facts hints s :: tail)
 
 /-- Every prefix fact is learned from an actually successful source step and invalidated when
 any dependency is shadowed. Exact equality retains poison and all source failures. -/
@@ -167,17 +168,22 @@ theorem normalize_sound {ib : Nat} (d : Nat) :
                     (step_envTyped (merlinBook ib) (op := .mk name results operands attrs props regions successors)
                       hl hr hR hregs hib hd he hs)
                     (ReshapeFacts.advance_sound he hf hs) hib hd
-                have hvterm := (rewrite_spec facts hints
-                    (.mk name results operands attrs props regions successors)).1.trans ht
-                rw [evalOps_cons_step _ _ _ _ _ _ ht,
-                  evalOps_cons_step _ _ _ _ _ _ hvterm,
-                  (rewrite_spec facts hints (.mk name results operands attrs props regions successors)).2.2
-                    env hf ctx call]
-                cases hs : stepOp opSem ctx call env
-                    (.mk name results operands attrs props regions successors) with
-                | ub => rfl
-                | stuck _ => rfl
-                | ok env' => exact ih env' hs
+                split
+                · next hdrop =>
+                  obtain ⟨env', hs, heq⟩ := ReshapeDead.drop_sound hdrop he ctx call
+                  rw [evalOps_cons_step _ _ _ _ _ _ ht, hs, Outcome.bind_ok]
+                  exact heq.symm.trans (ih env' hs)
+                · have hvterm := (rewrite_spec facts hints
+                      (.mk name results operands attrs props regions successors)).1.trans ht
+                  rw [evalOps_cons_step _ _ _ _ _ _ ht,
+                    evalOps_cons_step _ _ _ _ _ _ hvterm,
+                    (rewrite_spec facts hints (.mk name results operands attrs props regions successors)).2.2
+                      env hf ctx call]
+                  cases hs : stepOp opSem ctx call env
+                      (.mk name results operands attrs props regions successors) with
+                  | ub => rfl
+                  | stuck _ => rfl
+                  | ok env' => exact ih env' hs
 
 def normalizer : TypedNormalizer where
   run ib _ Γ ss hints _ := normalize ib Γ [] (hints.filter (fun op => decide (Rules.ReshapeCompose.Names op))) ss
