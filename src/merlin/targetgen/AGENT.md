@@ -94,6 +94,9 @@ launching, capsule grading, golden generation, sandboxing and certification. The
   Unset GSim and Spike caps default to the shared pool size; explicit
   `MERLIN_GSIM_MAX_SLOTS`/`MERLIN_SPIKE_MAX_SLOTS` still win. Native retries
   keep their place in the pool's priority queue.
+  Positional-ELF invocations may carry the neutral reader's closed coherent
+  dump suffix. Stable kernel lock/owner/child/UID/birth checks still establish
+  overlap; partial or unknown suffixes consume capacity without a discount.
   Contract and FIRRTL build steps use that same compute namespace; absent shared
   configuration retains legacy build and GSim CPU selection.
 - `build_cache.build_identity` includes the independently selected original
