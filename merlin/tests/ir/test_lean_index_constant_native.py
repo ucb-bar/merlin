@@ -49,6 +49,8 @@ def test_corrupted_wrapped_literal_is_observable_natively(tmp_path, fidelity_too
     samples = [[[0], [37]]]
     outputs = []
     for label, path in [("before", before), ("after", after)]:
-        diff.compare(path.read_text(), samples, tmp_path / label, fidelity_tools, index_bits=index_bits)
+        diff.compare(
+            path.read_text(), samples, tmp_path / label, fidelity_tools, function="forward", index_bits=index_bits
+        )
         outputs.append(json.loads((tmp_path / label / "native-results.json").read_text())["results"])
     assert outputs[0] != outputs[1]
