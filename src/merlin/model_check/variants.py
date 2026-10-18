@@ -27,6 +27,8 @@ Every variant does at most :data:`MAX_MACS` multiply-accumulates over at most
 :data:`MAX_OPERAND_ELEMENTS` operand elements, and no exact accumulator can overflow on its operands.
 ``acc_scale`` moves by a relative step in :data:`SCALE_STEP`, rounded to :data:`SCALE_MANTISSA_BITS`
 significant bits, so float32, the interface text and the reference all hold the same number exactly.
+A column-scale vector is resized by cyclically repeating its original column sequence;
+its finite float32 gains and typed column readout are retained.
 Operands are seeded integers over the operand dtype's whole range, with both extremes present (a bias
 over an accumulator-sized range); a narrowing readout shrinks the weight range so a typical result is
 not saturated. Expected results are :func:`merlin.model_check.kernel_reference.call_outputs`.
@@ -555,6 +557,16 @@ def _restate(entry: Mapping[str, Any], cls: str, sizes: Mapping[str, int], rng) 
         out.update({"ci": sizes["ci"], "N": sizes["cout"], "Himg": sizes["H"], "Wimg": sizes["W"]})
     if out.get("acc_scale") is not None:
         out["acc_scale"] = _perturbed_scale(rng, float(out["acc_scale"]))
+    if entry.get("acc_scale_by_column") is not None:
+        columns = entry["acc_scale_by_column"]
+        if (
+            not isinstance(columns, list)
+            or len(columns) != int(entry["N"])
+            or not columns
+            or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in columns)
+        ):
+            raise VariantError("column readout needs one finite gain per original output column")
+        out["acc_scale_by_column"] = [columns[i % len(columns)] for i in range(int(out["N"]))]
     out["source_reference"] = f"{SOURCE} {cls} of {entry.get('name', 'kernel')}"
     return out
 
@@ -706,6 +718,8 @@ def _readout_scale(entry: Mapping[str, Any]) -> float:
     """The multiplier a readout applies to the accumulator (``acc_scale`` times a requant shift)."""
     stages = [str(s) for s in entry.get("epilogue") or ()]
     scale = float(entry["acc_scale"]) if "acc_scale" in stages and entry.get("acc_scale") is not None else 1.0
+    if "acc_scale" in stages and entry.get("acc_scale_by_column") is not None:
+        scale = max((abs(float(v)) for v in entry["acc_scale_by_column"]), default=1.0) or 1.0
     if "requant" in stages and entry.get("requant_shift") is not None:
         scale *= 2.0 ** -int(entry["requant_shift"])
     return scale

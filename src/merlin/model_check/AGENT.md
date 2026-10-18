@@ -45,3 +45,8 @@ Build, run and judge complete quantized models for a device submission.
 - This package never writes or edits device-kernel code and never modifies a submission.
 - Sealed inputs and every frozen bundle live under `/work/merlin/private/`; nothing here copies them into
   a path an agent sandbox can be granted.
+
+- Shape variants retain typed column readout: resize an explicit finite gain vector
+  with the new output width by cycling its original column sequence. Keep the
+  original readout form and recompute each variant's independent expected result;
+  changing N must not leave an old-width vector that makes every draw refuse.
