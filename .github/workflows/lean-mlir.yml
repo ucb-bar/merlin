@@ -75,7 +75,7 @@ jobs:
             esac
             lean_suites+=("$suite")
           done
-          uv run --no-sync pytest -q "${lean_suites[@]}" \
+          uv run --no-sync pytest -q -n 2 --dist loadfile "${lean_suites[@]}" \
             merlin/tests/ir/test_lower_quant_ext_granularities.py \
             merlin/tests/ir/test_normalization_reassociation.py \
             -k 'not standalone and not test_round_trip_identical' \
