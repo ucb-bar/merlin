@@ -137,6 +137,60 @@ def test_two_fresh_children_overlap_and_publish_only_verified_required_tiers(set
         assert json.loads(path.read_text()) == row
 
 
+def test_parent_metadata_checks_serialize_while_fresh_children_still_overlap(setup, monkeypatch, tmp_path):
+    """Admission must precede nested owner verification, not only its payload hash."""
+    from merlin.common import cpu_pool
+
+    cpus = sorted(os.sched_getaffinity(0))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPUS", ",".join(map(str, cpus[:2])))
+    monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "cpu-slots"))
+    monkeypatch.delenv("MERLIN_PREPARATION_CPUS", raising=False)
+    monkeypatch.delenv("MERLIN_GRADE_CPUS", raising=False)
+    original_executor = OC.CHILD._original_executor
+    original_verify = OC.CHILD.ModelChildTransport.verify_result
+    lock = threading.Lock()
+    together = threading.Barrier(2, timeout=0.1)
+    active, peak, checks = 0, 0, []
+
+    @contextlib.contextmanager
+    def observation(kind):
+        nonlocal active, peak
+        assert not cpu_pool.current_thread_owns_cpu_lease()
+        with lock:
+            active += 1
+            peak = max(peak, active)
+            checks.append(kind)
+        try:
+            try:
+                together.wait()  # Reaches two only when preparation is outside admission.
+            except threading.BrokenBarrierError:
+                pass
+            yield
+        finally:
+            with lock:
+                active -= 1
+
+    def executor():
+        with observation("setup"):
+            return original_executor()
+
+    def verify(self, result):
+        with observation("result"):
+            return original_verify(self, result)
+
+    monkeypatch.setattr(OC.CHILD, "_original_executor", executor)
+    monkeypatch.setattr(OC.CHILD.ModelChildTransport, "verify_result", verify)
+    with _scope(setup):
+        OC.validate(target=setup.target.target, adapters=setup.adapters, config=None, perf_extractor=None)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(copy_context().run, grade, setup, name, barrier=True) for name in ("one", "two")]
+            rows = [future.result(timeout=20) for future in futures]
+    assert peak == 1
+    assert checks.count("setup") == 4 and checks.count("result") == 2
+    assert all(row["status"] == "pass" for row in rows)
+    assert len({row["operator_grade_process"]["pid"] for row in rows}) == 2
+
+
 def test_missing_required_L3_is_incomplete_in_the_same_child_ladder(setup):
     with _scope(setup):
         row = grade(setup, "screen_only", missing_L3=True)
@@ -508,7 +562,7 @@ def test_background_capsules_verifying_hold_no_pool_cpu_and_an_author_request_ru
     monkeypatch.setenv("MERLIN_COMPUTE_CPUS", ",".join(map(str, cpus)))
     monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(slots))
     capsules = 4
-    arrived, release = threading.Barrier(capsules + 1), threading.Event()
+    arrived, release = threading.Event(), threading.Event()
     owned_in_body, held_while_verifying = [], []
     scan, original_root = BW._scanned_members, OC.CHILD.model_child_temporary_root
 
@@ -521,7 +575,7 @@ def test_background_capsules_verifying_hold_no_pool_cpu_and_an_author_request_ru
 
     def preparing():
         owned_in_body.append(cpu_pool.current_thread_owns_cpu_lease())
-        arrived.wait(timeout=5)
+        arrived.set()
         assert release.wait(timeout=10)
         return original_root()
 
@@ -535,8 +589,9 @@ def test_background_capsules_verifying_hold_no_pool_cpu_and_an_author_request_ru
     with _scope(setup), ThreadPoolExecutor(max_workers=capsules) as pool:
         futures = [pool.submit(copy_context().run, prepare, f"capsule-{index}") for index in range(capsules)]
         try:
-            # Every capsule reaches preparation at once: none is parked behind another's lease.
-            arrived.wait(timeout=5)
+            # One capsule prepares while siblings wait for admission without a CPU lease.
+            assert arrived.wait(timeout=5)
+            assert owned_in_body == [False]
             held_while_all_prepare = held()
             started = time.monotonic()
             with cpu_pool.cpu_priority(cpu_pool.AUTHOR), cpu_pool.shared_compute_pool(timeout_s=1):

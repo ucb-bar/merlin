@@ -3,6 +3,11 @@
 Host-only grading, redaction, certificate promotion and simulator dispatch live here.
 Inputs are explicit invocation context and corpus/contract paths, never native imports.
 
+`operator_child` admits complete parent preparation and completed-result custody
+through the snapshot reader gate, including nested metadata checks. Release the
+gate before child launch and waits; retain every original checker call and the
+existing held-CPU bypass. Historical pinned checker bytes remain unchanged.
+
 `compiler_profile_runtime` preserves explicitly caller-selected artifact ABI 0.2
 structural emission through the same original source owner and isolated package
 box. Revalidate the exact typed profile before and after the call, before output
