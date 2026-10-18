@@ -209,13 +209,16 @@ def program(shape, padded, offsets, element, pad_literal=None):
     }}'''
 
 
-@pytest.mark.parametrize("shape,padded,offsets,element,pad_literal,transpose", [
-    ((5,), (10,), (2,), "i8", None, False), ((2, 3), (4, 5), (1, 1), "i16", None, False),
-    ((5, 7), (7, 11), (1, 2), "i32", None, False), ((2, 3, 4), (4, 6, 7), (1, 2, 1), "f32", None, False),
-    ((2, 3), (5, 7), (2, 2), "f32", "-0.0", False), ((2, 3), (4, 5), (1, 1), "i16", None, True),
+@pytest.mark.parametrize("shape,padded,offsets,element,pad_literal,transpose,profile", [
+    ((5,), (10,), (2,), "i8", None, False, False), ((2, 3), (4, 5), (1, 1), "i16", None, False, False),
+    ((5, 7), (7, 11), (1, 2), "i32", None, False, False),
+    ((2, 3, 4), (4, 6, 7), (1, 2, 1), "f32", None, False, False),
+    ((2, 3), (5, 7), (2, 2), "f32", "-0.0", False, False),
+    ((2, 3), (4, 5), (1, 1), "i16", None, True, False),
+    ((5, 7), (7, 11), (1, 2), "i32", None, False, True),
 ])
 def test_ordinary_native_outputs_live_padding_aliases_and_carried_state(
-    tmp_path, shape, padded, offsets, element, pad_literal, transpose,
+    tmp_path, shape, padded, offsets, element, pad_literal, transpose, profile,
 ):
     from merlin.llvmlower.abi import HostModel, PrivateHostImagePolicy
     from merlin.llvmlower.codegen import mlir_runtime_c
@@ -237,6 +240,8 @@ struct unranked { int64_t rank; void *descriptor; };
 struct ranked { void *allocated, *aligned; int64_t offset; int64_t sizes[]; };
 uint64_t observed_copy_calls, observed_copy_bytes;
 uint64_t observed_malloc_calls, observed_malloc_bytes;
+int32_t observed_marker_count, observed_marker_ids[4096];
+void merlin_prof_mark(int32_t id) { observed_marker_ids[observed_marker_count++] = id; }
 extern void *__real_malloc(size_t);
 void *__wrap_malloc(size_t bytes) {
   observed_malloc_calls++; observed_malloc_bytes += bytes;
@@ -254,14 +259,29 @@ void __wrap_memrefCopy(int64_t width, struct unranked *src, struct unranked *dst
     measurements = {}
     for arm, switch in [("baseline", "-automatic-host-destinations"), ("optimized", "+automatic-host-destinations")]:
         with applied(Selection.parse(switch)):
-            result = lower_model(source, tmp_path / arm, targets=(), vectorize=False)
+            result = lower_model(source, tmp_path / arm, targets=(), vectorize=False,
+                                 op_profile=profile, ir_audit=profile)
         assert result.stats["automatic_host_destinations"]["rewrites"] == (arm == "optimized")
+        if profile:
+            import hashlib
+
+            observed = result.stats["operation_profile"]
+            assert observed["source_file_sha256"] == result.stats["automatic_host_destinations"]["output_file_sha256"]
+            table_path = tmp_path / arm / "op_profile_table.json"
+            assert hashlib.sha256(table_path.read_bytes()).hexdigest() == observed["table"]["sha256"]
+            table = json.loads(table_path.read_text())
+            audit = json.loads(result.audit_index.read_text())
+            stages = [row["name"] for row in audit["stages"]]
+            if arm == "optimized":
+                assert stages.index("host-destination-reused") < stages.index("operation-profiled")
+            assert stages.index("operation-profiled") < stages.index("xdsl-parsed")
         library_path = tmp_path / (arm + ".so")
         subprocess.run([str(clang()), "-O2", "-fPIC", "-shared", str(result.ll_path), str(mlir_runtime_c()),
                         str(support), "-Wl,--wrap=memrefCopy", "-Wl,--wrap=malloc", "-o", str(library_path)],
                        check=True, capture_output=True)
         invoke = HostModel.load(str(library_path), image_policy=PrivateHostImagePolicy(tmp_path.resolve()))
         library = invoke.lib
+        marker_count = ctypes.c_int32.in_dll(library, "observed_marker_count")
         assert invoke.image_sha256 is not None
         n = int(np.prod(shape))
         storage = np.full(n + 33, 67, dtype=dtype)
@@ -271,6 +291,7 @@ void __wrap_memrefCopy(int64_t width, struct unranked *src, struct unranked *dst
         state = base[1:].reshape(shape)
         original = storage.copy()
         for _ in range(3):
+            marker_count.value = 0
             backing = [np.full(int(np.prod(dims)) + 32, 99, dtype=dtype) for dims in (padded, padded, shape)]
             outputs = [buf[16:-16].reshape(dims) for buf, dims in zip(backing, (padded, padded, shape), strict=True)]
             old_state = state.base.copy()
@@ -279,6 +300,10 @@ void __wrap_memrefCopy(int64_t width, struct unranked *src, struct unranked *dst
                 x.T if transpose else x) + state
             next_state = (state + np.array(1, dtype=dtype)).astype(dtype)
             invoke([(a.ctypes.data, a.shape) for a in [x, state, *outputs]])
+            assert marker_count.value == (len(table) + 1 if profile else 0)
+            if profile:
+                ids = (ctypes.c_int32 * 4096).in_dll(library, "observed_marker_ids")
+                assert list(ids)[:marker_count.value] == list(range(len(table) + 1))
             np.testing.assert_array_equal(outputs[0], expected)
             np.testing.assert_array_equal(outputs[1], np.full(padded, pad_value, dtype=dtype))
             if element.startswith("f"):

@@ -104,8 +104,11 @@ Native checks use private outputs and exercise aliased inputs, live padding,
 carried state, boundary guards and several element widths and rectangular ranks.
 These cases establish no new accelerator support.
 
-Operation-profile markers are execution barriers. An instrumented build can
-retain the original insertion even when its uninstrumented control rewrites it.
+Operation-profile markers are execution barriers. A directly pre-instrumented
+build can retain the original insertion even when its uninstrumented control
+rewrites it. The ordinary functional-simulator builder inserts markers after
+this source transformation through `lower_model(..., op_profile=True)`; later
+bufferization and machine optimization can still be perturbed.
 Compare actual pass reports and paired complete executions before using a
 profile to prioritize later work. Runtime copy counters cover the wrapped copy
 routine only; inlined transfers and accelerator traffic require separate evidence.

@@ -17,6 +17,7 @@ llvmlower `toolchain`.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -747,16 +748,6 @@ def build(
                 entry_projection_source, work, model_dir, entry_weight_projection
             )
             compilation.bind_preparation("entry_weight_projection", work / "entry_weight_projection" / RECEIPT)
-        if op_profile:
-            # Instrumented AFTER preparation, so the ids name the ops that actually run -- instrumenting
-            # the raw module would number ops the rewrites go on to split, fuse or route away, and the
-            # table would then resolve PROF lines to the wrong names.
-            from ...llvmlower import op_profile as _op_profile
-
-            text, prof_table = _op_profile.instrument(Path(prepared_path).read_text(), structural=True)
-            prepared_path = work / "model_prof.mlir"
-            Path(prepared_path).write_text(text)
-            _op_profile.write_table(prof_table, work / "op_profile_table.json")
         compiler_plan = selected_model_compiler_plan(
             backend=backend, cflags_override=cflags_override, vlen=vlen, features=features
         )
@@ -784,7 +775,17 @@ def build(
             masked_contraction_effects=masked_contraction_effects,
             source_observation_effects=source_observation_effects,
             source_scalar_carrier=source_scalar_carrier,
+            **({"op_profile": True} if op_profile else {}),
         )  # produce only the .ll
+        if op_profile:
+            # Instrument after checked source transforms; earlier markers are conservative effect barriers.
+            profile = res.stats["operation_profile"]
+            for name, product in (("op_profile_table.json", profile["table"]),
+                                  ("model_prof.mlir", profile["instrumented_source"])):
+                payload = Path(product["path"]).read_bytes()
+                if hashlib.sha256(payload).hexdigest() != product["sha256"]:
+                    raise SpikeModelError("operation profile product changed before model build publication")
+                (work / name).write_bytes(payload)
     # BACKEND-level feature flags, on the MODEL OBJECT ONLY (the GCC-built harness units keep
     # `gcc_cflags`): a feature like the register-group width is an LLVM backend query no tile size
     # reaches. Empty features -> the flag list is unchanged, so model.o stays byte-identical.

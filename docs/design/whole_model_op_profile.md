@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-10-18
 related: [normal_search_feedback, runtime_escape_audit, compile_debugging]
-code_refs: [src/merlin/llvmlower/op_profile.py, src/merlin/llvmlower/op_profile_structural.py, src/merlin/runtime/operation_profile.py, src/merlin/compile/baremetal_model.py, src/merlin/model_check/full_build.py, merlin/runtime/c/merlin_op_prof.c, build_tools/scripts/k1_op_profile.py]
+code_refs: [src/merlin/llvmlower/op_profile.py, src/merlin/llvmlower/op_profile_structural.py, src/merlin/llvmlower/lower.py, src/merlin/runtime/backends/spike_model.py, src/merlin/runtime/operation_profile.py, src/merlin/compile/baremetal_model.py, src/merlin/model_check/full_build.py, merlin/runtime/c/merlin_op_prof.c, build_tools/scripts/k1_op_profile.py]
 ---
 
 # Whole-program operation profiling
@@ -22,6 +22,13 @@ route parses complete typed operation boundaries and supports exactly one
 selected function. Unsupported syntax or multiple selected functions refuse.
 The legacy text-based multi-function API remains separately available; it does
 not acquire the typed route's scope.
+
+The typed emitter checks the actual marker sequence and callback declaration,
+then removes those additions from a private clone and compares the complete
+remaining IR with its original source. Arithmetic, effects, typed metadata
+(including signed zero), interfaces and dataflow must remain unchanged. The
+table must describe the actual retained operations. This establishes source
+correspondence, not runtime counter semantics or machine scheduling.
 
 Marker calls sample the selected runtime counter and credit elapsed ticks to the
 previous operation. A sentinel closes the final interval before return. The
@@ -63,6 +70,22 @@ makes no execution claim. Executed runs retain `operation_profile.json` after
 the original complete-output gate. Full binary output frames are parsed as
 frames before reading their text diagnostics, so payload bytes cannot create
 false profiler records.
+
+The functional-simulator builder now delegates marker insertion to
+`lower_model(..., op_profile=True)`. Graph, automatic row and automatic
+destination transforms run first, with their original selections and checks;
+markers follow them before upstream preprocessing. `lower/operation-profile.json`
+binds the source at that boundary, emitted instrumented source and operation
+table by SHA256. The existing table beside the image contains identical bytes.
+IR audits record `operation-profiled` after the source transformation stages.
+An unsupported typed profiler request fails rather than silently dropping marks.
+
+This ordering prevents marker calls from suppressing these source transforms.
+It does not make profiling transparent to later bufferization, vectorization,
+allocation, LLVM optimization or execution. Direct callers that instrument
+before lowering, including the existing board/debug workflows, retain their
+earlier boundary; compare their own transformation records. Moving those
+workflows requires preserving their selected fallback and debug behavior.
 
 For the existing build-once/relink model path, select
 `BuildSettings(..., op_profile=True)` (or the explicit keyword to
