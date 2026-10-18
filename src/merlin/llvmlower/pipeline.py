@@ -1088,62 +1088,17 @@ DEALLOC_CHECK_TOKEN = "OK dealloc_placement"
 
 
 def apply_passes(mlir_text: str, pipeline: str, timeout: int = 600) -> str:
-    """Run ``pipeline`` over ``mlir_text`` in the m2m venv and return the printed module.
+    """Run a diagnostic pipeline with the production registry and fusion guard."""
+    from .native_diagnostics import apply_passes as _apply
 
-    A diagnostic/test seam, not a build path: it drives the SAME pass registry the lowering drives
-    (the torch-mlir wheel's), so a test that pins what a stage does to the IR cannot pass against a
-    different LLVM than the one that ships.
-    """
-    work = Path(tempfile.mkdtemp(prefix="merlin_apply_passes_"))
-    src, dst = work / "in.mlir", work / "out.mlir"
-    src.write_text(mlir_text, encoding="utf-8")
-    script = work / "apply.py"
-    script.write_text(
-        fusion_guard.inject("import sys\nfrom torch_mlir import ir\nfrom torch_mlir.passmanager import PassManager\n")
-        + "ctx = ir.Context()\n"
-        "with open(sys.argv[1]) as f:\n"
-        "    module = ir.Module.parse(f.read(), ctx)\n"
-        "PassManager.parse('builtin.module(' + sys.argv[3] + ')', ctx).run(module.operation)\n"
-        "with open(sys.argv[2], 'w') as f:\n"
-        "    f.write(str(module.operation))\n",
-        encoding="utf-8",
-    )
-    proc = subprocess.run(
-        [str(m2m_python()), str(script), str(src), str(dst), pipeline], capture_output=True, text=True, timeout=timeout
-    )
-    if proc.returncode != 0 or not dst.is_file():
-        raise PipelineError(f"apply_passes failed:\n{proc.stdout}\n{proc.stderr}")
-    return dst.read_text(encoding="utf-8")
+    return _apply(mlir_text, pipeline, timeout, m2m_python, PipelineError)
 
 
 def dealloc_placement_violations(mlir_text: str, timeout: int = 600) -> list[str]:
-    """Violations of the placement rule in a post-deallocation memref module.
+    """Check the production placement rule using its exact native source."""
+    from .native_diagnostics import dealloc_placement_violations as _violations
 
-    Empty list == every allocation whose free was sunk into the alloc's own block is used only
-    before that free. Runs the SAME source the build runs, out of process in the m2m venv (the MLIR
-    Python bindings live there), so a test and a build cannot disagree about what is checked.
-    """
-    import json
-
-    work = Path(tempfile.mkdtemp(prefix="merlin_dealloc_check_"))
-    src = work / "module.mlir"
-    src.write_text(mlir_text, encoding="utf-8")
-    script = work / "check.py"
-    script.write_text(
-        "import json, sys\n"
-        "from torch_mlir import ir\n" + DEALLOC_CHECK_PRELUDE + "ctx = ir.Context()\n"
-        "with open(sys.argv[1]) as f:\n"
-        "    module = ir.Module.parse(f.read(), ctx)\n"
-        "bad, n_alloc, n_sunk = _dealloc_placement_violations(module)\n"
-        "print('MERLIN_CHECK ' + json.dumps({'violations': bad, 'allocations': n_alloc, "
-        "'sunk': n_sunk}))\n",
-        encoding="utf-8",
-    )
-    proc = subprocess.run([str(m2m_python()), str(script), str(src)], capture_output=True, text=True, timeout=timeout)
-    if proc.returncode != 0:
-        raise PipelineError(f"dealloc placement check failed:\n{proc.stdout}\n{proc.stderr}")
-    line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("MERLIN_CHECK "))
-    return json.loads(line[len("MERLIN_CHECK ") :])["violations"]
+    return _violations(mlir_text, timeout, m2m_python, DEALLOC_CHECK_PRELUDE, PipelineError)
 
 
 # How a runner emits its result. The in-process torch-mlir bridge
