@@ -1,5 +1,7 @@
 """Neutral source-only tests for closed static floating-point math regions."""
 
+# ruff: noqa: E501 - emitted MLIR lines retain the producer's operation form.
+
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -332,9 +334,9 @@ def test_selected_math_symbol_contract_is_mandatory_and_exact(kind, symbol):
 
 
 def test_ordered_compare_select_clamp_is_distinct_and_source_exact():
-    body = '''%bound = "arith.constant"() <{value = 2.250000e+00 : f32}> : () -> f32
+    body = """%bound = "arith.constant"() <{value = 2.250000e+00 : f32}> : () -> f32
         %condition = "arith.cmpf"(%input, %bound) <{predicate = 2 : i64, fastmath = #arith.fastmath<none>}> : (f32, f32) -> i1
-        %value = "arith.select"(%condition, %bound, %input) : (i1, f32, f32) -> f32'''
+        %value = "arith.select"(%condition, %bound, %input) : (i1, f32, f32) -> f32"""
     text = _program("clamp_upper_literal", body=body)
     pattern = recognize_static_composite_math_body(_generic(text))
     assert pattern.operation == "clamp_upper_literal_compare_select"
@@ -346,3 +348,107 @@ def test_ordered_compare_select_clamp_is_distinct_and_source_exact():
     ):
         with pytest.raises(InvalidLinalgPattern):
             recognize_static_composite_math_body(_generic(changed))
+
+
+_MIN_NORMAL_BODY = """%bound = "arith.constant"() <{value = 1.17549435e-38 : f32}> : () -> f32
+        %condition = "arith.cmpf"(%input, %bound) <{predicate = 4 : i64, fastmath = #arith.fastmath<none>}> : (f32, f32) -> i1
+        %value = "arith.select"(%condition, %bound, %input) : (i1, f32, f32) -> f32"""
+_INT8_GRID_BODY = """%low = "arith.constant"() <{value = -127 : i64}> : () -> i64
+        %lowf = "arith.sitofp"(%low) : (i64) -> f32
+        %below = "arith.cmpf"(%input, %lowf) <{predicate = 4 : i64, fastmath = #arith.fastmath<none>}> : (f32, f32) -> i1
+        %raised = "arith.select"(%below, %lowf, %input) : (i1, f32, f32) -> f32
+        %high = "arith.constant"() <{value = 127 : i64}> : () -> i64
+        %highf = "arith.sitofp"(%high) : (i64) -> f32
+        %above = "arith.cmpf"(%raised, %highf) <{predicate = 2 : i64, fastmath = #arith.fastmath<none>}> : (f32, f32) -> i1
+        %value = "arith.select"(%above, %highf, %raised) : (i1, f32, f32) -> f32"""
+_QUANTIZATION_CLAMPS = {
+    "clamp_lower_f32_min_normal_compare_select": (_MIN_NORMAL_BODY, ("0x00800000",)),
+    "clamp_symmetric_int8_grid_compare_select": (_INT8_GRID_BODY, ("0xc2fe0000", "0x42fe0000")),
+}
+
+
+@pytest.mark.parametrize("kind", tuple(_QUANTIZATION_CLAMPS))
+@pytest.mark.parametrize("shape", ("7", "1x32x64x160"))
+def test_exact_quantization_clamps_are_recognized_with_their_exact_bounds(kind, shape):
+    body, bits = _QUANTIZATION_CLAMPS[kind]
+    pattern = recognize_static_composite_math_body(_generic(_program("clamp_upper_literal", shape=shape, body=body)))
+    assert pattern.operation == kind
+    assert pattern.ordered_types == ("f32", "f32", "f32")
+    assert pattern.literal_bits == bits
+    assert pattern.lowering_intrinsic_obligations == ()
+    assert validate_serialized_static_composite_math_pattern(asdict(pattern)) == pattern
+    declaration = {"schema": STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA, "operation": kind}
+    assert validate_static_composite_math_source_body(declaration) == declaration
+    for changed in (("0x00800001",), ("0xc3000000", "0x42fe0000"), ("0xc2fe0000", "0x43000000")):
+        if len(changed) == len(bits):
+            with pytest.raises(InvalidLinalgPattern, match="exact literals"):
+                validate_serialized_static_composite_math_pattern({**asdict(pattern), "literal_bits": list(changed)})
+
+
+@pytest.mark.parametrize(
+    ("kind", "old", "new"),
+    (
+        # Any other lower literal: the next f32 above FLT_MIN, twice FLT_MIN, or zero.
+        ("clamp_lower_f32_min_normal_compare_select", "1.17549435e-38", "1.17549449e-38"),
+        ("clamp_lower_f32_min_normal_compare_select", "1.17549435e-38", "2.3509887e-38"),
+        ("clamp_lower_f32_min_normal_compare_select", "1.17549435e-38", "0.000000e+00"),
+        ("clamp_lower_f32_min_normal_compare_select", "predicate = 4", "predicate = 5"),
+        ("clamp_lower_f32_min_normal_compare_select", "predicate = 4", "predicate = 12"),
+        ("clamp_lower_f32_min_normal_compare_select", "(%condition, %bound, %input)", "(%condition, %input, %bound)"),
+        ("clamp_lower_f32_min_normal_compare_select", "(%input, %bound)", "(%bound, %input)"),
+        ("clamp_lower_f32_min_normal_compare_select", "#arith.fastmath<none>", "#arith.fastmath<nnan>"),
+        ("clamp_symmetric_int8_grid_compare_select", "value = -127 : i64", "value = -128 : i64"),
+        ("clamp_symmetric_int8_grid_compare_select", "value = 127 : i64", "value = 126 : i64"),
+        ("clamp_symmetric_int8_grid_compare_select", "predicate = 4", "predicate = 5"),
+        ("clamp_symmetric_int8_grid_compare_select", "predicate = 2", "predicate = 3"),
+        ("clamp_symmetric_int8_grid_compare_select", '"arith.sitofp"(%low)', '"arith.uitofp"(%low)'),
+        ("clamp_symmetric_int8_grid_compare_select", "(%below, %lowf, %input)", "(%below, %input, %lowf)"),
+        ("clamp_symmetric_int8_grid_compare_select", "(%above, %highf, %raised)", "(%above, %highf, %input)"),
+        ("clamp_symmetric_int8_grid_compare_select", '"arith.cmpf"(%raised, %highf)', '"arith.cmpf"(%input, %highf)'),
+        ("clamp_symmetric_int8_grid_compare_select", "#arith.fastmath<none>", "#arith.fastmath<fast>"),
+    ),
+)
+def test_quantization_clamps_refuse_any_other_literal_predicate_or_dataflow(kind, old, new):
+    body, _ = _QUANTIZATION_CLAMPS[kind]
+    assert old in body
+    with pytest.raises(InvalidLinalgPattern):
+        recognize_static_composite_math_body(_generic(_program("clamp_upper_literal", body=body.replace(old, new, 1))))
+
+
+def test_int8_grid_clamp_refuses_swapped_bound_order_and_other_literal_types():
+    upper_first = (
+        _INT8_GRID_BODY.replace("value = -127", "value = UPPER")
+        .replace("value = 127", "value = -127")
+        .replace("value = UPPER", "value = 127")
+    )
+    narrow = _INT8_GRID_BODY.replace(": i64}> : () -> i64", ": i32}> : () -> i32").replace(
+        "(i64) -> f32", "(i32) -> f32"
+    )
+    for body in (upper_first, narrow):
+        with pytest.raises(InvalidLinalgPattern):
+            recognize_static_composite_math_body(_generic(_program("clamp_upper_literal", body=body)))
+
+
+@pytest.mark.parametrize("kind", tuple(_QUANTIZATION_CLAMPS))
+def test_quantization_clamp_declaration_admits_only_its_exact_body(kind):
+    body, _ = _QUANTIZATION_CLAMPS[kind]
+    selected, _ = _synthetic_host("clamp_upper_literal")
+    declaration = selected["host"]["capability_spec"]["operations"][0]
+    declaration["source_body"]["operation"] = kind
+    validate_host_capabilities(selected["host"]["capability_spec"])
+    row = {"mlir_operation": "linalg.generic", "count": 1}
+    signature = {
+        "family": "elementwise_map",
+        "ordered_operand_dtypes": ["f32", "f32"],
+        "ordered_result_dtypes": ["f32"],
+        "rank": 2,
+    }
+    exact = (_generic(_program("clamp_upper_literal", body=body)),)
+    assert admit_host_operation(selected, row, signature, source_operations=exact)["status"] == "admitted"
+    other = next(name for name in _QUANTIZATION_CLAMPS if name != kind)
+    for source in (
+        _program("clamp_upper_literal", body=_QUANTIZATION_CLAMPS[other][0]),
+        _program("clamp_upper_literal"),
+    ):
+        refused = admit_host_operation(selected, row, signature, source_operations=(_generic(source),))
+        assert refused["status"] == "unsupported"

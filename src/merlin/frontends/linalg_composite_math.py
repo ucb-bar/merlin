@@ -27,12 +27,24 @@ _FORMS = {
     "clamp_upper_literal": (("f32", "f32", "f32"), 1, ()),
     "clamp_upper_literal_compare_select": (("f32", "f32", "f32"), 1, ()),
     "clamp_lower_literal": (("f32", "f32", "f32"), 1, ()),
+    "clamp_lower_f32_min_normal_compare_select": (("f32", "f32", "f32"), 1, ()),
+    "clamp_symmetric_int8_grid_compare_select": (("f32", "f32", "f32"), 2, ()),
     "reciprocal_f32": (("f32", "f32", "f32"), 1, ()),
     "reciprocal_signed_i64_to_f32": (("i64", "f32", "f32"), 1, ()),
     "literal_base_pow_f32": (("f32", "f32", "f32"), 1, ("math.powf",)),
     "tanh_gelu_f32": (("f32", "f32", "f32"), 4, ("math.tanh",)),
 }
 _POSITIVE_ONE = "0x3f800000"
+# Exact bounds of the two quantization clamps: FLT_MIN (smallest positive normal f32), and the
+# symmetric int8 grid [-127, 127] written as i64 literals converted by arith.sitofp (exact in f32).
+_F32_MIN_NORMAL = "0x00800000"
+_INT8_GRID_BOUNDS = (-127, 127)
+_INT8_GRID_BITS = ("0xc2fe0000", "0x42fe0000")
+_EXACT_LITERALS = {
+    "clamp_lower_f32_min_normal_compare_select": (_F32_MIN_NORMAL,),
+    "clamp_symmetric_int8_grid_compare_select": _INT8_GRID_BITS,
+}
+_CMPF_OLT, _CMPF_OGT = 4, 2
 # Public mathematical coefficients, in the exact f32 source operation order.
 _TANH_GELU_LITERALS = ("0x3f000000", _POSITIVE_ONE, "0x3d372713", "0x3f4c422a")
 
@@ -141,11 +153,66 @@ def _recognize_clamp(body, source):
     return operation, (bits,)
 
 
+def _predicate(op) -> object:
+    predicate = op.properties.get("predicate")
+    return getattr(getattr(predicate, "value", None), "data", None)
+
+
+def _compare_select(compare, select, source, bound, predicate: int):
+    """One ordered compare of source against bound, selecting bound when it holds."""
+    from xdsl.dialects.arith import CmpfOp, SelectOp
+
+    if _predicate(compare) != predicate:
+        raise InvalidLinalgPattern("compare/select clamp uses a different ordered predicate")
+    condition = _scalar(compare, CmpfOp, (source, bound), "i1", frozenset({"predicate", "fastmath"}))
+    return _scalar(select, SelectOp, (condition, bound, source), "f32")
+
+
+def _recognize_lower_min_normal_clamp(body, source):
+    """x < FLT_MIN ? FLT_MIN : x, with exactly that literal (a positive-denominator guard)."""
+    bound, bits = _literal(body[0])
+    if bits != _F32_MIN_NORMAL:
+        raise InvalidLinalgPattern("lower compare/select clamp is admitted only at exactly FLT_MIN")
+    value = _compare_select(body[1], body[2], source, bound, _CMPF_OLT)
+    _yield(body[3], value)
+    return "clamp_lower_f32_min_normal_compare_select", (bits,)
+
+
+def _int8_grid_bound(constant, cast, expected: int):
+    from xdsl.dialects.arith import ConstantOp, SIToFPOp
+    from xdsl.dialects.builtin import IntegerAttr
+
+    literal = _scalar(constant, ConstantOp, (), "i64", frozenset({"value"}))
+    value = constant.properties.get("value")
+    if (
+        set(constant.properties) != {"value"}
+        or not isinstance(value, IntegerAttr)
+        or str(value.type) != "i64"
+        or type(value.value.data) is not int
+        or value.value.data != expected
+    ):
+        raise InvalidLinalgPattern("int8-grid clamp bound is not the exact i64 literal")
+    return _scalar(cast, SIToFPOp, (literal,), "f32")
+
+
+def _recognize_symmetric_int8_grid_clamp(body, source):
+    """max then min against sitofp(-127) and sitofp(127): the symmetric int8 quantization grid."""
+    low, high = _INT8_GRID_BOUNDS
+    lower = _int8_grid_bound(body[0], body[1], low)
+    clamped = _compare_select(body[2], body[3], source, lower, _CMPF_OLT)
+    upper = _int8_grid_bound(body[4], body[5], high)
+    value = _compare_select(body[6], body[7], clamped, upper, _CMPF_OGT)
+    _yield(body[8], value)
+    return "clamp_symmetric_int8_grid_compare_select", _INT8_GRID_BITS
+
+
 def _recognize_compare_select_clamp(body, source):
     from xdsl.dialects.arith import CmpfOp, SelectOp
 
     if len(body) != 4:
         raise InvalidLinalgPattern("literal compare/select clamp has extra or missing operations")
+    if _predicate(body[1]) == _CMPF_OLT:
+        return _recognize_lower_min_normal_clamp(body, source)
     bound, bits = _literal(body[0])
     predicate = body[1].properties.get("predicate")
     if getattr(getattr(predicate, "value", None), "data", None) != 2:
@@ -233,6 +300,20 @@ def recognize_static_composite_math_body(op) -> StaticCompositeMathPattern:
         if types != ("f32", "f32", "f32"):
             raise InvalidLinalgPattern("literal compare/select clamp requires f32 input/init/result")
         operation, literals = _recognize_compare_select_clamp(body, shell.args[0])
+    elif names == (
+        "arith.constant",
+        "arith.sitofp",
+        "arith.cmpf",
+        "arith.select",
+        "arith.constant",
+        "arith.sitofp",
+        "arith.cmpf",
+        "arith.select",
+        "linalg.yield",
+    ):
+        if types != ("f32", "f32", "f32"):
+            raise InvalidLinalgPattern("int8-grid compare/select clamp requires f32 input/init/result")
+        operation, literals = _recognize_symmetric_int8_grid_clamp(body, shell.args[0])
     elif names[:2] == ("arith.constant", "arith.divf"):
         if types != ("f32", "f32", "f32"):
             raise InvalidLinalgPattern("f32 reciprocal requires f32 input/init/result")
@@ -291,6 +372,8 @@ def validate_serialized_static_composite_math_pattern(record: object) -> StaticC
         bits.append(literal)
     if operation.startswith("reciprocal_") and tuple(bits) != (_POSITIVE_ONE,):
         raise InvalidLinalgPattern("serialized reciprocal does not use exact positive one")
+    if operation in _EXACT_LITERALS and tuple(bits) != _EXACT_LITERALS[operation]:
+        raise InvalidLinalgPattern("serialized quantization clamp bounds differ from their exact literals")
     if operation == "tanh_gelu_f32" and tuple(bits) != _TANH_GELU_LITERALS:
         raise InvalidLinalgPattern("serialized tanh GELU coefficient bits differ")
     listed = record.get("lowering_intrinsic_obligations")
