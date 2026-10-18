@@ -1,5 +1,12 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+`shape_spectrum` plans bounded joint tuples from explicitly public development
+metadata. Preserve semantic/layout partitions, correlations, occupied bins,
+extrema and budget-denied members. Occurrences are sampling proxies, never
+latency weights. The result grants no source, private-exclusion, accelerator or
+cohort admission; protected validation metadata cannot enter that public route.
+Older shape-free automatic policies retain their original meaning.
+
 Explicit ordinary `public_joint_boundaries` v2 selects typed connected cuts:
 casts with original dtype literals, integer representations, higher-rank batch
 contractions/broadcasting and reduction composition. Keep v1 float-only replay
