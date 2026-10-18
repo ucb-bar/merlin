@@ -37,6 +37,7 @@ from .program_limits import (
     _decode,
     finalize_program,
 )
+from .selected_contracts import SelectedSchedulingContracts
 from .spill_conformance import validate_spill_classes
 from .temporary_storage import (
     StorageAdapter,
@@ -152,6 +153,9 @@ def shared_library_sources():
         "merlin.sched.ir.kernel",
         "merlin.sched.ir.expr",
         "merlin.sched.ir.integer_domain",
+        "merlin.compile.scheduling.selected_contracts",
+        "merlin.targetgen.isa_spec",
+        "merlin.targetgen.isa_dialect_gen",
     )
     return {
         name: hashlib.sha256(Path(importlib.import_module(name).__file__).read_bytes()).hexdigest() for name in names
@@ -163,7 +167,9 @@ def _verify_kernel(kernel):
         raise ValueError("schedule pipeline requires structurally valid typed kernel IR")
 
 
-def _emission_effects(images, kernel, adapter, encoding, limits, max_calls, configuration_adapter=None):
+def _emission_effects(
+    images, kernel, adapter, encoding, limits, max_calls, configuration_adapter=None, selected_contracts=None
+):
     """Reconstruct complete effects from actual output, independently of requests."""
     actual = []
     actual_configuration = []
@@ -172,6 +178,8 @@ def _emission_effects(images, kernel, adapter, encoding, limits, max_calls, conf
         calls = encoding.decode_calls(image)
         if type(calls) is not tuple or any(type(call) is not Call for call in calls):
             raise ValueError("semantic decoder must reconstruct every actual instruction as typed calls")
+        if selected_contracts is not None:
+            selected_contracts.verify_image(image, calls)
         effects = _project(replace(kernel, body=calls), adapter, max_calls)
         if len(effects) != len(instructions):
             raise ValueError("actual semantic decoding and final instruction decoding disagree on coverage")
@@ -217,6 +225,8 @@ def compile_schedule(
     pass_order=(),
     fusion_capabilities=(),
     configuration_adapter=None,
+    selected_contracts=None,
+    configuration_qualification_identity=None,
 ) -> ScheduleCompilation:
     """Allocate, check, encode and finalize through the existing pass session.
 
@@ -224,6 +234,27 @@ def compile_schedule(
     existing legal route. Never emit a partially verified candidate. Target
     execution qualification is separate from shared transformation correctness.
     """
+    binding = None
+    if selected_contracts is not None:
+        if type(selected_contracts) is not SelectedSchedulingContracts:
+            raise ValueError("schedule inputs require explicitly selected RTL/software contracts")
+        selected_contracts.revalidate()
+        if (
+            type(adapter) is not StorageAdapter
+            or adapter.configuration_identity != selected_contracts.hardware_identity
+            or adapter.numerical_policy_identity != selected_contracts.numerical_policy
+            or configuration_adapter is not None
+        ):
+            raise ValueError("schedule adapters disagree with the selected RTL/software contracts")
+        if configuration_qualification_identity is not None:
+            configuration_adapter = selected_contracts.configuration_adapter(configuration_qualification_identity)
+        binding = selected_contracts.record()
+        binding["configuration_pass"] = (
+            "selected_qualified_declaration" if configuration_adapter is not None
+            else "unavailable_missing_qualification"
+        )
+    elif configuration_qualification_identity is not None:
+        raise ValueError("configuration qualification requires selected RTL/software contracts")
     if (
         type(adapter) is not StorageAdapter
         or type(encoding) is not ScheduleEncoding
@@ -358,6 +389,7 @@ def compile_schedule(
                 "encoding": encoding.qualification_identity,
                 "decoder": encoding.program_decoder.qualification_identity,
                 "continuation": asdict(continuation) if continuation is not None else None,
+                "selected_contracts": binding,
             }
         ),
         library=_hash(sources),
@@ -487,7 +519,10 @@ def compile_schedule(
 
     def emission():
         image = encoding.encode(session.module)
-        _emission_effects((image,), session.module, adapter, encoding, limits, budgets.max_calls, configuration_adapter)
+        _emission_effects(
+            (image,), session.module, adapter, encoding, limits, budgets.max_calls,
+            configuration_adapter, selected_contracts,
+        )
         return {"encoded": image}
 
     def final():
@@ -499,7 +534,8 @@ def compile_schedule(
             session.analysis("encoded"), limits, encoding.program_decoder, continuation=continuation, outputs=outputs
         )
         effects = _emission_effects(
-            program.segments, session.module, adapter, encoding, limits, budgets.max_calls, configuration_adapter
+            program.segments, session.module, adapter, encoding, limits, budgets.max_calls,
+            configuration_adapter, selected_contracts,
         )
         if len(program.segments) > 1 and configuration_adapter is not None:
             state_effects = tuple(configuration_adapter.project(call) for call in session.module.body)
@@ -537,7 +573,11 @@ def compile_schedule(
         "final_program": final,
     }
     for spec in specs:
+        if selected_contracts is not None:
+            selected_contracts.revalidate()
         session.run(spec, actions[spec.name])
+        if selected_contracts is not None:
+            selected_contracts.revalidate()
     return ScheduleCompilation(
         session.module,
         session.analysis("final_program"),
@@ -548,6 +588,7 @@ def compile_schedule(
             "context": asdict(context),
             "library_sources_sha256": sources,
             "resources": resources,
+            "selected_contracts": binding,
             "passes": [asdict(record) for record in session.records],
             "repair_rounds": session.repair_round,
             "storage": session.analysis("storage"),

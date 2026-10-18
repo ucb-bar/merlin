@@ -29,6 +29,7 @@ code_refs:
   - src/merlin/model_check/full_build.py
   - src/merlin/llvmlower/codegen_env.py
   - src/merlin/sched/ir/integer_domain.py
+  - src/merlin/compile/scheduling/selected_contracts.py
 ---
 
 # Shared compiler pass contracts
@@ -338,6 +339,87 @@ This entry is not evidence of that missing target integration or hardware
 execution qualification.
 
 ## Redundant configuration writes
+
+The ordinary `compile_schedule` entry can now consume both selected documents
+through `read_scheduling_contracts(facts_path, software_path, target=...)`.
+It reuses `targetgen.isa_spec.resolve_isa`: encoded fields, integer widths and
+state capacities resolve from the software ISA's references into the exact RTL
+facts bytes. The facts pin and explicit target must match. RTL extraction is
+not repeated here and synthetic facts remain synthetic.
+
+The selected `merlin.software_spec.v1` document must have reviewed status and an
+ISA declaration. Its additional scheduling section describes canonical state
+effects, separately from computation admission or numerical reference engines:
+
+```yaml
+scheduling:
+  schema: merlin.schedule_effects.v1
+  numerical_policy: selected-policy-identity
+  instruction_byteorder: little
+  configuration:
+    declared_instruction_name:
+      ordered: true
+      pure_write: true
+      reads: []
+      writes:
+        - resource: declared_state_resource
+          index: {argument: encoded_field_index}
+          value: {argument: encoded_value}
+      clobbers: []
+```
+
+Every resource must exist in the ISA as state with unit `fields`. Capacity,
+when known, is the number of canonical fields and must resolve from an RTL
+fact reference. Index/value bindings name integer ISA arguments or use
+`{constant: integer}`. Reads require the stated value; clobbers forget a field
+without assuming its reset value. State-resource read/write coverage must agree
+with the ISA's declared resource effects. A pure setter cannot also read state,
+clobber, touch memory or have unordered visibility. The projection checks actual
+operand encoding ranges and actual field indices, not instruction spellings or
+retained planning annotations. Providers must establish canonical mapping of
+physical fields and aliases and complete arithmetic/execution effects; the
+loader cannot infer those properties from a resource name.
+
+This initial realization family has fixed-width byte-aligned instructions with
+one decoded schedule call per word. Byte order is an explicit software-interface
+property. Final verification independently decodes actual words using the
+fact-bound ISA and compares all instruction and operand bindings against the
+provider decoder. A provider cannot hide changed bytes by returning the intended
+register values. Variable-width, packed-bit and opaque framing require their
+own qualified integration and are not interpreted by this family.
+
+Pass `selected_contracts=selection` and an independently selected
+`configuration_qualification_identity` to `compile_schedule`. It builds and
+consumes the configuration adapter automatically. Storage/encoding adapters must
+match `selection.hardware_identity` and its numerical policy. This new route
+does not accept a second arbitrary configuration callback. Without qualification
+it retains the original configuration stream and records
+`unavailable_missing_qualification`. Unknown capacities, undeclared instructions
+and unknown ordering are conservative barriers. Contradictory declarations,
+out-of-range fields or stale input bytes produce diagnostics.
+
+Both selected file identities and the resolved ISA identity enter the existing
+pipeline context and report. Input bytes are reopened before and after each
+pass, so a changed RTL file or software specification cannot authorize a later
+analysis or a successfully returned image. Derived fields are computed from
+immutable input bytes. Source hashes for the shared loader and ISA resolver/codec
+join the common library identity in every treatment. A review label or a
+qualification identity does not establish execution qualification on its own.
+
+`test_selected_schedule_contracts.py` exercises this path with synthetic
+fact-bound 32-bit little-endian and 64-bit big-endian operands, capacity and
+ordering changes, unknown/reset/nonidempotent instructions and changed final
+bytes. Independent native execution checks complete output guards, inputs and
+final state. False pulse-on-set semantics fail the independent comparison.
+JUnit records scheduling compilation time, actual encoded size, executed
+commands and requested payload bytes; memory remains unmeasured and emulator
+call time is not accelerator latency. These are whole transfer-program tests,
+not full-model or real-hardware integration results.
+
+Existing target providers still need the two pinned input documents, qualified
+canonical state semantics and actual operand/final-byte decoding before their
+ordinary full-model route can select this extension. They keep their existing
+legal route until then; this work makes no target repository changes.
 
 `eliminate_redundant_configuration` uses existing `sched.ir.Kernel` calls and a
 selected `ConfigurationAdapter` that decodes actual operands into integer field
