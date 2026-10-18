@@ -120,6 +120,13 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float):
     elif granularity == "channel" and is_weight:
         qscheme = torch.per_channel_symmetric if symmetric else torch.per_channel_affine
         observer, axis = PerChannelMinMaxObserver, 0
+        group = tensor.get("channels_per_scale")
+        if group is not None:
+            if type(group) is not int or group < 1 or not symmetric:
+                raise RecipeError("channels_per_scale needs a positive integer and symmetric channel scales")
+            import _recipe_observers as RO  # noqa: PLC0415 -- a sibling, by bare name
+
+            observer, arguments["channels_per_scale"] = RO.grouped_channel_observer(), group
     else:
         raise RecipeError(
             f"a static {'weight' if is_weight else 'activation'} scale per "
@@ -134,6 +141,66 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float):
         qscheme=qscheme,
         ch_axis=axis,
     )
+
+
+def _bias_onto_accumulator_grid(graph_module: Any) -> dict[str, Any]:
+    """Round every quantized contraction's stored float bias onto its accumulator grid, in place.
+
+    For ``y = conv(dq(x; s_x), dq(W; s_w)) + b`` the accumulator step of output channel ``c`` is
+    ``S_c = s_x * s_w[c]`` (f32). The bias becomes ``k_c * S_c`` with ``k_c = round(b_c / S_c)``
+    (half to even), an i32 the output path can preload. A bias whose ``k`` leaves i32 is refused.
+    Returns the census: sites, channels and the largest change in units of ``S``.
+    """
+    import torch
+
+    def attr(node: Any) -> Any:
+        value = graph_module
+        for part in str(node.target).split("."):
+            value = getattr(value, part)
+        return value
+
+    def named(node: Any, name: str) -> bool:
+        return getattr(node, "op", None) == "call_function" and name in str(node.target)
+
+    sites = channels = 0
+    worst = 0.0
+    contractions = (torch.ops.aten.conv2d.default, torch.ops.aten.linear.default)
+    for node in list(graph_module.graph.nodes):
+        if node.op != "call_function" or node.target not in contractions or len(node.args) < 3:
+            continue
+        x, w, bias = node.args[:3]
+        if getattr(bias, "op", None) != "get_attr" or not named(x, "dequantize_per_tensor"):
+            continue
+        if not named(w, "dequantize_per_channel") and not named(w, "dequantize_per_tensor"):
+            continue
+        s_x = x.args[1]
+        if isinstance(s_x, torch.fx.Node):
+            s_x = attr(s_x)
+        s_x = torch.as_tensor(s_x, dtype=torch.float32).reshape(())
+        s_w = w.args[1]
+        s_w = torch.as_tensor(attr(s_w) if isinstance(s_w, torch.fx.Node) else s_w, dtype=torch.float32).reshape(-1)
+        stored = attr(bias)
+        step = (s_x * s_w).expand(stored.shape[0]) if s_w.numel() == 1 else s_x * s_w
+        if step.shape != stored.shape or not bool(torch.all(step > 0)):
+            raise RecipeError(f"bias of {node.name} has no positive per-channel accumulator step")
+        codes = torch.round(stored.to(torch.float64) / step.to(torch.float64))
+        if bool(torch.any(codes.abs() > 2**31 - 1)):
+            raise RecipeError(f"bias of {node.name} leaves the i32 accumulator")
+        # The bias is the rescale of the integer code itself, in the integer rewrite's own order
+        # (f32(k) * s_x, then * s_w), so it is exactly the value a preloaded k would contribute.
+        per_channel = s_w.expand(stored.shape[0]) if s_w.numel() == 1 else s_w
+        snapped = (codes.to(torch.float32) * s_x) * per_channel
+        worst = max(worst, float(((snapped.double() - stored.double()) / step.double()).abs().max()))
+        with torch.no_grad():
+            stored.copy_(snapped)
+        sites += 1
+        channels += int(stored.numel())
+    return {
+        "sites": sites,
+        "channels": channels,
+        "max_change_in_steps": worst,
+        "rule": "k = round_half_even(b / (s_x * s_w)); b := (f32(k) * s_x) * s_w, the integer rewrite's rescale order",
+    }
 
 
 def _recipe_operators(torch: Any) -> dict[str, tuple[Any, ...]]:
@@ -1280,6 +1347,7 @@ def apply_recipe(
         raise RecipeError("static calibration saw no input sample")
     weight_rounding_report = weight_rounding.apply() if weight_rounding is not None else None
     quantized = convert_pt2e(prepared, use_reference_representation=False, fold_quantize=True)
+    bias_grid = _bias_onto_accumulator_grid(quantized) if recipe.get("bias_domain") == "accumulator" else None
     if original_frontend_snapshot is not None:
         from m2m.capture.trace import attach_quantization_boundaries
 
@@ -1309,6 +1377,7 @@ def apply_recipe(
         # Every annotated contraction, whatever its operands: the capture's census compares this with
         # the contractions the integer rewrite saw. The activation x activation share is broken out.
         "annotated_contractions": quantizer.annotated + quantizer.annotated_pairs,
+        **({"bias_on_accumulator_grid": bias_grid} if bias_grid is not None else {}),
         **(
             {
                 "annotated_activation_contractions": quantizer.annotated_pairs,
