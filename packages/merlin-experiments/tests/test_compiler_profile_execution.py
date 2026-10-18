@@ -241,7 +241,9 @@ def test_frozen_public_policy_uses_only_original_read_only_grants(tmp_path, monk
     from merlin.targetgen.sandbox import bwrap as B
 
     monkeypatch.setattr(B, "_snapshot_grants", lambda *args: ({}, [(str(selected), selected, selected)]))
-    monkeypatch.setattr(B, "_bundle_mount_args", lambda ws, bundle, repo: ["--ro-bind", str(selected), str(selected)])
+    monkeypatch.setattr(
+        B, "_bundle_mount_args", lambda ws, bundle, repo, **kwargs: ["--ro-bind", str(selected), str(selected)]
+    )
     masked = []
 
     def mask(argv, target, workspace, bundle, *, repo, capsules):
@@ -291,7 +293,7 @@ def test_public_policy_preparation_leases_and_releases_real_shared_cpu(tmp_path,
         return [*argv, "--tmpfs", str(tmp_path / "private")]
 
     monkeypatch.setattr(R, "_public_python_roots", roots)
-    monkeypatch.setattr(B, "_bundle_mount_args", lambda *args: [])
+    monkeypatch.setattr(B, "_bundle_mount_args", lambda *args, **kwargs: [])
     monkeypatch.setattr(B, "apply_final_answer_masks", masks)
     if reject:
         with pytest.raises(RuntimeError, match="private runtime alias rejected"):
@@ -543,3 +545,52 @@ def test_setup_mutation_prevents_grading_and_unwinds_execution(execution, monkey
             pytest.fail("unverified setup reached grading")
     assert P.active_package_executor() is None
     assert bundle_snapshot._ACTIVE_VERIFICATION.get() is None
+
+
+def test_flat_private_roster_stays_hidden_without_exceeding_bwrap_parser_capacity(tmp_path, monkeypatch):
+    """Real mount control for 3,100 private leaves, not compiler or hardware qualification."""
+    from merlin.targetgen.sandbox import bwrap as B
+    from merlin.targetgen.sandbox.host_surfaces import host_input_surfaces
+
+    if shutil.which("bwrap") is None:
+        pytest.skip("bwrap is absent")
+    repo, workspace, private = tmp_path / "repo", tmp_path / "run/workspace", tmp_path / "private"
+    repo.mkdir()
+    workspace.mkdir(parents=True)
+    private.mkdir()
+    paths = [private / f"module-{index}" for index in range(3100)]
+    for path in paths:
+        path.write_bytes(b"private")
+    bundle = {"allowed": [], "host_inputs": [{"path": str(path)} for path in paths], "denied": []}
+    B.materialize_bundle_inputs(workspace, bundle, repo=repo)
+    owner = SimpleNamespace(workspace=workspace, bundle=bundle, repo=repo,
+                            profile={"common_sources": [], "treatment_tools": []})
+    prefix = ("bwrap", "--unshare-net", "--unshare-pid", "--ro-bind", "/usr", "/usr",
+              "--ro-bind", "/lib", "/lib", "--ro-bind", "/lib64", "/lib64", "--proc", "/proc", "--dev", "/dev")
+    policy = C.PackageSandboxPolicy(prefix, (), (), workspace, tmp_path / "pkg", None)
+
+    def private_masks(argv, target, ws, selected, *, repo, capsules):
+        # No target answers in this control, but keep actual private alias discovery/masking.
+        return B.apply_answer_masks(argv, host_input_surfaces(argv, ws, selected, repo=repo))
+
+    monkeypatch.setattr(B, "apply_final_answer_masks", private_masks)
+    try:
+        legacy = B._bundle_mount_args(workspace, bundle, repo)
+        assert len(legacy) > 9000  # The original caller appended a mask for every private leaf.
+        actual = R.public_package_policy(policy, target=None, owner=owner)
+        assert len(actual.argv) < 128
+        visibility = B._MountVisibility(list(actual.argv))
+        assert all(not visibility.is_exposed(path) for path in paths)
+        process = subprocess.run([*actual.argv, "/usr/bin/true"], capture_output=True, text=True, timeout=20)
+        if process.returncode and "Operation not permitted" in process.stderr:
+            pytest.skip("Linux namespace creation is unavailable")
+        assert process.returncode == 0, process.stderr
+        # A later platform bind reopens one private file: the caller must restore its mask.
+        from dataclasses import replace
+        exposed = replace(policy, argv=(*policy.argv, "--ro-bind", str(private), str(private)))
+        masked = R.public_package_policy(exposed, target=None, owner=owner)
+        visibility = B._MountVisibility(list(masked.argv))
+        assert all(not visibility.is_exposed(path) for path in paths)
+        assert len(masked.argv) > len(actual.argv)  # Required masks are retained, even for a wide roster.
+    finally:
+        B.remove_bundle_snapshot(workspace)

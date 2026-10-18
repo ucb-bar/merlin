@@ -23,7 +23,11 @@ from pathlib import Path
 import yaml
 
 from merlin.common import cpu_pool
-from merlin.common.bundle_snapshot import shared_entry_verification, verified_snapshot_scope
+from merlin.common.bundle_snapshot import (
+    _snapshot_read_admission,
+    shared_entry_verification,
+    verified_snapshot_scope,
+)
 from merlin.targetgen import package_runtime as P
 from merlin.targetgen import tier_policy
 from merlin.targetgen.contract.readback_policy import ReadbackPolicy
@@ -147,8 +151,10 @@ def _prepared_child(document):
     """Batch only synchronous original-owner issuance; close custody before child launch.
 
     Holds no CPU lease itself. Snapshot verification leases one shared CPU per
-    stage behind its process admission gate, so a grade's capsules waiting to
-    verify never reserve pool CPUs that author requests are queued for; a held
+    stage behind its process admission gate. Take that same gate before the
+    entire setup, including metadata checks in nested original-owner calls.
+    Capsules waiting to verify never reserve pool CPUs queued author requests
+    need; a held
     slot is never preempted, so a lease held across this GIL-bound preparation
     used to keep the pool idle and locked for minutes per grade.
     """
@@ -159,7 +165,10 @@ def _prepared_child(document):
     with _LOCK:
         entry = _GRADE_ENTRIES.get(executor)
     with contextlib.ExitStack() as lifetime:
-        with verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo, entry=entry):
+        with (
+            _snapshot_read_admission(),
+            verified_snapshot_scope(owner.workspace, owner.bundle, repo=owner.repo, entry=entry),
+        ):
             root = CHILD.model_child_temporary_root()  # Retain original import/owner verification.
             if root is None:
                 raise StageGateError("operator child lost its original profile owner")
@@ -284,9 +293,10 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
             raise
         if process.returncode != 0 or not output.is_file():
             raise StageGateError(f"operator grade child exited {process.returncode} without a verified completion")
-        # Fresh and complete, and unleased here for the same reason as preparation: its snapshot
-        # read leases its own stage behind the admission gate.
-        row = transport.verify_result(json.loads(output.read_bytes()))
+        # Include original-owner metadata verification in the same admission as
+        # preparation. No gate or CPU lease spans child execution or its wait.
+        with _snapshot_read_admission():
+            row = transport.verify_result(json.loads(output.read_bytes()))
         if row.get("capsule") != capsule["name"] or adapter_selection(adapters, target=target) != selection:
             raise StageGateError("operator child result or selected oracle changed")
         for tier, value in (row.pop("operator_child_costs_s", {}) or {}).items():

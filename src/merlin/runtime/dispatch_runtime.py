@@ -87,17 +87,49 @@ def _np_dtype(elem: str):
 # --- forward-argument binding (inputs + weights), mirroring llvmlower.c_runtime ----------
 
 
-def resolve_forward_args(model_dir: str | Path) -> list[np.ndarray]:
-    """Numpy array for every ``func @forward`` argument, in signature order."""
+def resolve_forward_args(model_dir: str | Path, *, cache: ForwardArgsCache | None = None) -> list[np.ndarray]:
+    """Numpy array for every ``func @forward`` argument, in signature order.
+
+    With ``cache``, the stage's weights, buffers and lifted constants are read once per cache and the
+    same (read-only) arrays are returned on every call; only the model inputs are read from
+    ``inputs.npz`` each time.
+    """
+    model_dir = Path(model_dir)
+    inputs = np.load(model_dir / "inputs.npz")
+    files = tuple(inputs.files)
+    plan = cache.plan(model_dir, files) if cache is not None else _forward_plan(model_dir, files)
+    args: list[np.ndarray] = []
+    for entry in plan:
+        if isinstance(entry, _ModelInput):
+            arr = np.ascontiguousarray(inputs[entry.key])
+            if entry.element == "bf16":
+                args.append(f32_to_bf16(arr).reshape(entry.shape))
+            else:
+                args.append(arr.astype(_np_dtype(entry.element)).reshape(entry.shape))
+        else:
+            args.append(entry)
+    return args
+
+
+class _ModelInput:
+    """A ``@forward`` argument bound from ``inputs.npz`` member ``key`` on every call."""
+
+    __slots__ = ("element", "key", "shape")
+
+    def __init__(self, key: str, shape: Any, element: str) -> None:
+        self.key, self.shape, self.element = key, shape, element
+
+
+def _forward_plan(model_dir: Path, input_files: tuple[str, ...]) -> list[np.ndarray | _ModelInput]:
+    """Every ``@forward`` argument in signature order: the array of a weight, buffer or lifted constant,
+    or the ``inputs.npz`` member a model input is bound from (``input_files`` are that file's members)."""
     from ..llvmlower.model_runner import parse_forward_signature
     from ..llvmlower.weights_pack import load_safetensors_header
 
-    model_dir = Path(model_dir)
     sig = parse_forward_signature(model_dir / "model.mlir")
     man = json.loads((model_dir / "weights.safetensors.manifest.json").read_text())
     hdr, payload_off = load_safetensors_header(model_dir / "weights.safetensors")
     blob = (model_dir / "weights.safetensors").read_bytes()[payload_off:]
-    inputs = np.load(model_dir / "inputs.npz")
     extra_path = model_dir / "extra.npz"
     extra = np.load(extra_path) if extra_path.is_file() else None
     extra_files = list(getattr(extra, "files", []))
@@ -116,7 +148,7 @@ def resolve_forward_args(model_dir: str | Path) -> list[np.ndarray]:
                 return np.ascontiguousarray(extra[k])
         raise DispatchRuntimeError(f"buffer {name!r} not in {extra_path}")
 
-    args: list[np.ndarray] = []
+    plan: list[np.ndarray | _ModelInput] = []
     n_in = 0
     li = 0
     for i, (shape, dt) in enumerate(sig):
@@ -126,7 +158,7 @@ def resolve_forward_args(model_dir: str | Path) -> list[np.ndarray]:
             # dead -- the matmul consumes int8 int_data/scale via the qinner channel). Synthesize
             # a zero buffer of the arg's true shape/dtype for the dead descriptor.
             if meta.get("stub"):
-                args.append(np.zeros(shape, dtype=_np_dtype(dt)))
+                plan.append(np.zeros(shape, dtype=_np_dtype(dt)))
                 continue
             begin, end = hdr[meta["weight"]]["data_offsets"]
             store_dt = hdr[meta["weight"]].get("dtype")  # safetensors storage dtype
@@ -135,7 +167,7 @@ def resolve_forward_args(model_dir: str | Path) -> list[np.ndarray]:
                 arr = f8e4m3fn_to_f32(np.frombuffer(blob[begin:end], np.uint8)).reshape(shape)
             else:
                 arr = np.frombuffer(blob[begin:end], dtype=_np_dtype(dt)).reshape(shape)
-            args.append(np.ascontiguousarray(arr))
+            plan.append(np.ascontiguousarray(arr))
             continue
         name = meta.get("name", "") or ""
         if meta["kind"] == "buffer":
@@ -154,16 +186,60 @@ def resolve_forward_args(model_dir: str | Path) -> list[np.ndarray]:
         elif "lifted_tensor" in name:  # lifted get_attr constant (name varies by model)
             arr = np.ascontiguousarray(extra[lifted_names[li]])
             li += 1
-        elif name in input_order and f"in{input_order[name]}" in inputs.files:
-            arr = np.ascontiguousarray(inputs[f"in{input_order[name]}"])
+        elif name in input_order and f"in{input_order[name]}" in input_files:
+            plan.append(_ModelInput(f"in{input_order[name]}", shape, dt))
+            continue
         else:
-            arr = np.ascontiguousarray(inputs[f"in{n_in}"])
+            plan.append(_ModelInput(f"in{n_in}", shape, dt))
             n_in += 1
+            continue
         if dt == "bf16":
-            args.append(f32_to_bf16(arr).reshape(shape))
+            plan.append(f32_to_bf16(arr).reshape(shape))
         else:
-            args.append(arr.astype(_np_dtype(dt)).reshape(shape))
-    return args
+            plan.append(arr.astype(_np_dtype(dt)).reshape(shape))
+    return plan
+
+
+class ForwardArgsCache:
+    """The constant ``@forward`` arguments of each stage (weights, buffers, lifted constants), read once.
+
+    A stage is keyed by the resolved path, size and modification time of every file its constants and
+    its input binding are read from, and by the members of its ``inputs.npz``; a shadow directory whose
+    files link to a stage's shares that stage's entry. Every cached array is read-only, so the same
+    objects can be handed to every call: :meth:`is_constant` names them.
+    """
+
+    FILES = ("model.mlir", "weights.safetensors", "weights.safetensors.manifest.json", "extra.npz", "input_order.json")
+
+    def __init__(self) -> None:
+        self._plans: dict[tuple[Any, ...], list[np.ndarray | _ModelInput]] = {}
+        self._constants: dict[int, np.ndarray] = {}
+
+    def __len__(self) -> int:
+        return len(self._plans)
+
+    def plan(self, model_dir: Path, input_files: tuple[str, ...]) -> list[np.ndarray | _ModelInput]:
+        key = (*(self._identity(Path(model_dir) / name) for name in self.FILES), input_files)
+        if key not in self._plans:
+            plan = _forward_plan(Path(model_dir), input_files)
+            for entry in plan:
+                if isinstance(entry, np.ndarray):
+                    entry.flags.writeable = False
+                    self._constants[id(entry)] = entry
+            self._plans[key] = plan
+        return self._plans[key]
+
+    def is_constant(self, value: Any) -> bool:
+        """``value`` is one of the cached constant arguments (the very object)."""
+        return id(value) in self._constants
+
+    @staticmethod
+    def _identity(path: Path) -> tuple[str, int, int] | None:
+        if not path.exists():
+            return None
+        resolved = path.resolve()
+        stat = resolved.stat()
+        return str(resolved), stat.st_size, stat.st_mtime_ns
 
 
 # --- view-op evaluation ------------------------------------------------------------------
