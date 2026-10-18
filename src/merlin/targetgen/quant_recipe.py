@@ -391,7 +391,7 @@ STATIC_HEADS = "static_heads"
 SOFTMAX_OUTPUT = "softmax_output"
 WEIGHT = "weight"
 OPERAND = "operand"
-#: The operand a softmax output multiplies (attention's ``V``), as k int8 digits of its static per-head grid.
+#: The operand a softmax output multiplies (attention's ``V``), as k successively finer static int8 grids.
 #: ``P V`` is a convex combination of ``V``'s rows: when most of ``P`` sits on a row much smaller than the
 #: head's largest (an attention sink), the result is small against ``V``'s grid step and needs more digits.
 SOFTMAX_PARTNER = "softmax_partner"
@@ -434,8 +434,9 @@ def with_dynamic_contractions(
     operand replaced by ``exp(s - rowmax)`` in planes with fixed scales ``1 / (q * (q + 1)**j)``, the
     rows divided by their sum after the contraction (``_static_attention``). ``planes[OPERAND] = k``
     puts every other operand on a static per-head grid of k int8 digits (two digits: 15 bits), each
-    pair of digit planes one device call with one scale; ``planes[SOFTMAX_PARTNER] = k`` does so only for
-    the operand a softmax output multiplies. Activation contractions of a static recipe only.
+    pair of digit planes one device call with one scale; ``planes[SOFTMAX_PARTNER] = k`` selects bounded
+    round-and-clamp residual planes for the operand a softmax output multiplies, each successive grid
+    ``quant_max + 1`` times finer. Activation contractions of a static recipe only.
     """
     if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
         raise ValueError("only a derived quant_recipe_v1 can be extended")

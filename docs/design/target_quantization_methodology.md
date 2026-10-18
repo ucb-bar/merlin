@@ -141,6 +141,14 @@ A row without a review, a reason or a measurement is refused, and so is a change
 The private gate's own `capture_recipe_variant` review (base vs selected digests) still applies to
 whatever recipe a sealed capture selects.
 
+`dynamic.planes.softmax_partner` gives the operand beside a softmax output extra static residual
+planes. Each plane uses the same signed-int8 round-and-clamp producer domain; successive steps are
+`quant_max + 1` times finer. This preserves the host cast proof without introducing a wider integer
+clamp or floor. With two planes the context contraction takes twice as many device calls, while
+the score contraction keeps its original planes. Captures record `operand_encoding: bounded_residual`.
+Historical `planes.operand` recipes retain their original radix arithmetic. Selecting extra partner
+planes remains a numerical recipe choice requiring measurement and review.
+
 ## Where each model's derived recipe is recorded
 
 - Phase 0 evidence: `software/quantization-contract.json` records the methodology and the selected

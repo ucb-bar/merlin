@@ -1,16 +1,8 @@
-"""The operand a softmax output multiplies takes its own digit count: an attention sink stops costing accuracy.
+"""A softmax partner gets extra static residual planes when attention concentrates on a small row.
 
-WHY THIS EXISTS. Measured on TinyLlama's pretrained middle layers, decode stage: 87% of the attention mass
-sits on the first cache slot, and that slot's value rows are about 15x smaller than the head's largest.
-``P V`` is a convex combination of V's rows, so the output is mostly that small row, while one static int8
-scale per head sizes V's grid for the largest rows. The P.V sites carried a 23-29% relative error (cosine
-0.956-0.974) where every other site stayed near 2%; the probability planes were not at fault (exact V: 0.4%).
-
-Measured remedies on held-out calibration segments: one scale per (head, cache slot) folded into P clipped
-held-out rows (up to 21% error); per-column-group scales helped little (22%). Two int8 digits for V alone
-(a 15-bit static per-head grid) gave at most 0.7% on every layer. That is ``planes[SOFTMAX_PARTNER] = 2``:
-the P.V device calls double, every attention contraction stays int8, and Q and K keep one digit.
-
+P.V can be small against the value operand's per-head grid. The independent synthetic network below
+constructs that condition and checks the extra plane on unseen inputs. Each plane stays on the
+existing signed-int8 round-and-clamp producer domain; the rewrite adds no wide clamp or floor.
 The rewrite runs in the capture venv (``MERLIN_M2M_PYTHON``).
 """
 
@@ -91,7 +83,10 @@ for name, recipe in json.loads(sys.argv[2]).items():
     with torch.no_grad():
         errors = [(graph(*x) - model(*x)).double().pow(2).mean().sqrt() for x in held]
         rel = max(float(e / model(*x).double().pow(2).mean().sqrt()) for e, x in zip(errors, held))
-    out[name] = {"rel": rel, "planes": [r.get("planes") for r in rows], "calls": [r.get("device_calls") for r in rows]}
+    floors = sum(n.target == torch.ops.aten.floor.default for n in graph.graph.nodes)
+    clamps = [n.args[1:3] for n in graph.graph.nodes if n.target == torch.ops.aten.clamp.default and len(n.args) == 3]
+    out[name] = {"rel": rel, "planes": [r.get("planes") for r in rows],
+                 "calls": [r.get("device_calls") for r in rows], "floors": floors, "clamps": clamps}
 print(json.dumps(out))
 """
 
@@ -100,7 +95,9 @@ def test_two_digits_for_the_softmax_partner_rescue_a_sink(tmp_path):
     python = os.environ.get("MERLIN_M2M_PYTHON")
     if not python or not os.path.exists(python):
         pytest.skip("the model2MLIR torch interpreter is not configured")
-    recipes = json.dumps({"head": _static(), "partner": _static(**{QR.SOFTMAX_PARTNER: 2})})
+    recipes = json.dumps(
+        {"head": _static(), "partner": _static(**{QR.SOFTMAX_PARTNER: 2}), "legacy": _static(**{QR.OPERAND: 2})}
+    )
     done = subprocess.run([python, "-c", _SCRIPT, str(_DIR), recipes], capture_output=True, text=True, timeout=600)
     assert done.returncode == 0, done.stderr[-4000:]
     got = json.loads(done.stdout.strip().splitlines()[-1])
@@ -108,3 +105,7 @@ def test_two_digits_for_the_softmax_partner_rescue_a_sink(tmp_path):
     assert head["planes"] == [[1, 1], [2, 1]] and partner["planes"] == [[1, 1], [2, 2]]  # Q.K keeps one digit
     assert partner["calls"][0] == head["calls"][0] and partner["calls"][1] == 2 * head["calls"][1]
     assert partner["rel"] < head["rel"] / 4, got
+    assert partner["floors"] == 0
+    assert partner["clamps"] and all(clamp == [-127, 127] for clamp in partner["clamps"])
+    assert got["legacy"]["floors"] > 0
+    assert [-16384, 16383] in got["legacy"]["clamps"]
