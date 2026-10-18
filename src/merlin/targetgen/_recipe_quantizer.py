@@ -90,7 +90,7 @@ def _observer_name(tensor: Mapping[str, Any], *, is_weight: bool) -> str:
     return str(tensor.get("observer") or default)
 
 
-def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float):
+def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float, channel_axis: int = 0):
     """One ``QuantizationSpec`` from one recipe tensor spec."""
     import torch
     from torchao.quantization.pt2e import HistogramObserver, MinMaxObserver, PerChannelMinMaxObserver
@@ -120,7 +120,10 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float):
         axis = None
     elif granularity == "channel" and is_weight:
         qscheme = torch.per_channel_symmetric if symmetric else torch.per_channel_affine
-        observer, axis = PerChannelMinMaxObserver, 0
+        observer, axis = PerChannelMinMaxObserver, channel_axis
+        # PT2E forwards ch_axis only to observers named "PerChannel".
+        # Bind custom observers' axis in their constructor as well.
+        arguments["ch_axis"] = axis
         group = tensor.get("channels_per_scale")
         if group is not None:
             if type(group) is not int or group < 1 or not symmetric:
@@ -883,7 +886,12 @@ def build_quantizer(
                     torch.ops.aten.linear.default,
                     torch.ops.aten.conv2d.default,
                 ):
-                    stored = dataclasses.replace(self.weight, ch_axis=kernel.meta["val"].dim() - 1)
+                    axis = kernel.meta["val"].dim() - 1
+                    # PT2E forwards ch_axis only to observers whose class name
+                    # contains "PerChannel". Custom grouped observers also need
+                    # the axis bound in their constructor; the spec alone leaves
+                    # their observer on its default reduction axis.
+                    stored = _spec(weight, is_weight=True, eps=eps, channel_axis=axis)
                 if self.epilogue is not None and not planes and node.target in self.epilogue.contractions:
                     self.epilogue.annotate(node, stored, quantized_reader, owner(node))
                     self.annotated += 1
