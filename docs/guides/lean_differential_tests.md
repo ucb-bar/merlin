@@ -423,12 +423,25 @@ Index/tensor casts, extension/truncation alias roundtrips and signed-then-unsign
 remain outside this family. Native widths are at most 64 bits; binding acceptance additionally
 exercises wider integer types.
 
+`test_lean_integer_cast_nested.py` applies the same four families inside parallel and reduction
+bodies, including nested generics, captured scalar inputs, escaping intermediate results and
+128-cast source chains. Dead casts require proved typed totality and alpha-checked absence of
+continuation uses. The native companion uses independent signed/modular references and observable
+operand, signedness and escaping-output corruptions. Poison remains exact in the transformation
+proof; dirty inputs/accumulators still refuse source-definedness and strict chains. Origin facts
+are local to a block, so no outer cast relationship is assumed inside a region.
+
 `test_lean_reshape_typed.py` and its `_differential` companion exercise source-provenance mixed
 reshape composition, escaping and captured intermediates, zero/unit extents, alternative legal
 unit reassociations, and invalid target headers/operands. Native f32/f64 cases preserve input bits,
 including signed zero and NaN payloads. Bare-input cancellation, S3 transitions and arbitrary
-transitive chains remain outside coverage. The rank-two extraction capture has typed refinement,
-support and native evidence, while its separate source-definedness obligation still abstains.
+cross-region provenance remain outside coverage. `test_lean_reshape_chain.py` extends checked
+provenance through longer local chains, including 128 source reshape operations and escaping
+intermediates. `test_lean_reshape_nested.py` applies local composition inside generic regions
+through the shared body traversal. Dead intermediate reshapes are deleted only after proving
+typed totality, fresh results and absence of all continuation uses, including captures.
+Their native companions use independent flattened-bit and modular-sum references. Facts start
+empty at each block; outer shape provenance is not assumed inside a captured region.
 
 `test_lean_integer_body.py` and its `_differential` companion qualify exact unflagged integer
 commutation through generic bodies and nested reductions with fresh destinations. Wrong captured
@@ -441,6 +454,40 @@ programs are independently type checked and exactly normalized before the C1 com
 suite checks strict source-defined chains at both index widths, zero extents, escaping tensors,
 stale bytes, and valid MLIR corruptions in each family. Native execution is compared with independent
 bit arithmetic and flattened tensor references, including the intermediate compacted program.
+
+`test_lean_integer_idempotent.py` checks scalar `andi`, `ori`, signed/unsigned min and max with
+identical operands. Actual canonicalization removes these aliases inside parallel and reduction
+bodies. SSA substitution is a proposal checked by the alpha checker across captures, shadowing
+and escaping results. Poison is preserved exactly; dirty accumulators do not gain definedness.
+The native companion exhausts i1/i8 inputs and samples wider widths with independent modular
+references and observable corruptions. Long 128/256-alias cases retain checker timing evidence.
+The current substitution and continuation checks can be quadratic; these measurements do not
+establish model-scale performance or a linear bound.
+
+`test_lean_defined_bounds.py` proves positive-rank extraction definedness from actual producer
+facts. Index constants are decoded at the claimed width and interpreted as signed values after
+wrapping. Every coordinate must have a proved nonnegative interval wholly inside the actual
+dimension, and the source tensor must be initialized. Region arguments shadow captured facts;
+rebinding replaces their evidence. Zero extents, negative/out-of-bounds coordinates, dirty data
+and unknown input indices refuse. The native companion checks row-major references, nonzero
+multidimensional captures, index32 wrapping, bit-preserving float reads and observable wrong
+coordinates/captures. Existing bounded rank-two reshape and nested-splat examples now establish
+strict defined chains. S4's captured-destination native exclusion remains unchanged.
+
+Python `check_definedness` selects `DefinedExtended.check_sound`, which composes the legacy
+definedness checker with the independently proved bounds checker on the same input domain.
+The executable retains the legacy `check-definedness` command; its new
+`check-definedness-extended` command names the broader theorem. Chain replay recognizes each
+exact checker/theorem pair, independently replays it, and refuses substituted proof labels.
+
+`test_lean_floating_source.py` establishes scalar source totality for `arith.negf`, `math.fma`
+and the finite unary math vocabulary in `DefinedFloating.lean`, on initialized same-format
+operands without fast-math promises. Structured bodies use the same assembled leaf book.
+The proof quantifies over every existing `FloatModel`; it adds no numerical identity or float
+rewrite permission. F16/BF16 are covered by binding proofs. Its native companion qualifies only
+the existing f32/f64 interpretation of negate, abs, sqrt, rounding and FMA, with signed-zero,
+NaN-classification and independent finite references. Other unary math functions have parametric
+totality proofs here; this suite supplies no new native numerical fidelity evidence for them.
 
 ## Limits
 

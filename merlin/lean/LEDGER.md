@@ -34,8 +34,19 @@ combined-pass suites extend T3's bounded evidence. Cast widths, SSA provenance, 
 and transformation soundness are proved against the locked tensor model; native comparisons
 exercise selected initialized integer and bit-preserving tensor cases with independent references.
 These extensions introduce no new float laws or assumptions and do not prove general model,
-capture-producer or downstream-lowering fidelity. Unsupported cast directions, bare-input reshape
-cancellation, arbitrary shape chains and changed casts inside regions remain outside coverage.
+capture-producer or downstream-lowering fidelity. Cast composition now extends into supported
+generic bodies, preserving escaping intermediates and deleting only proved-total unused casts.
+Local reshape provenance extends transitively and into generic bodies. Captured outer provenance,
+unsupported cast directions and bare-input reshape cancellation remain outside coverage.
+
+Value-dependent extraction definedness derives signed index bounds from actual checked constant
+producers at the claimed index width, including wraparound. Facts follow SSA bindings and block
+argument shadowing. Initialized tensors and proved in-bounds coordinates are required; unknown
+input indices and out-of-bounds/poison sources refuse. Native qualification includes independent
+row-major references and nonzero multidimensional captures. Scalar floating totality additionally
+covers the finite unary vocabulary and FMA without adding float laws. Only the existing f32/f64
+negate/abs/sqrt/rounding/FMA interpretation gains native evidence here; other unary functions retain
+the parametric model-fidelity assumption. No complete IEEE instance is proved.
 
 The current `tensor.reassocValid` predicate rejects all-unit nonzero-rank to rank-zero reshape
 transitions, and their inverse, with empty reassociation. Upstream MLIR accepts and executes
@@ -59,6 +70,15 @@ The exact wheel's implementation root cause is not proved. These captured-destin
 outside native-fidelity qualification; known-gap regressions are counted separately from matched
 cases. Tensor-model refinement and definedness proofs do not establish this downstream behavior.
 Fresh per-iteration destinations are qualified separately. No semantics workaround is introduced.
+
+S5: one private checker build crashed in the bundled Clang backend while compiling generated
+`DefinedControl.c` (exit 139). The Lean proof kernels compiled. One isolated replay of the
+preprocessed reproducer and one isolated replay of the original build both succeeded with the
+same compiler/options and unchanged generated C. This intermittent tool failure remains
+unresolved; it is distinct from S1's historical evaluator exit 139 and S4's native tensor behavior.
+Tests accidentally launched against the stale executable were retained as invalid qualification;
+only the subsequent frozen successful build was qualified. Compiler fingerprints, commands,
+backtrace and both diagnostic replays are retained with shared-pass verification artifacts.
 
 ## Proposed dequantization source contract
 
