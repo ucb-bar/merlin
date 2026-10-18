@@ -81,3 +81,68 @@ def test_a_derived_group_is_written_as_one_accelerator_member():
     assert [m["epilogue"] for m in members] == [["acc_scale", "relu"]]
     assert members[0]["op"] == "matmul" and "acc_scale" in members[0]
     assert "derived output path" in members[0]["source_reference"]
+
+
+def _output_path(*, preload=True, activation=True, pool=True, accumulate=True):
+    readout = [
+        *([{"kind": "activation", "function": "relu", "domain": "accumulator"}] if activation else []),
+        {"kind": "convert", "to": "f32", "rounding": "half_even"},
+        {
+            "kind": "scale",
+            "dtype": "f32",
+            "rounding": "half_even",
+            "granularity": "per_command",
+            "columns_per_scale": 4,
+        },
+        {"kind": "requant", "to": "i8", "rounding": "half_even", "clamp": [-128, 127]},
+        *([{"kind": "pool", "reductions": ["max"], "padding": "unknown"}] if pool else []),
+    ]
+    accumulator = [
+        *([{"kind": "preload", "dtype": "i32", "range": [-8, 7], "rounding": "none"}] if preload else []),
+        *([{"kind": "accumulate", "dtype": "i32", "operand_scale": "none"}] if accumulate else []),
+    ]
+    return {
+        "schema": "output_path_v1",
+        "accumulator": {"dtype": "i32"},
+        "accumulator_stages": accumulator,
+        "readout": readout,
+        "exits": {"accumulator": True, "requant": True},
+    }
+
+
+def test_the_declared_output_path_alone_decides_the_demanded_chains(monkeypatch):
+    _writable(monkeypatch, stages=("bias_add", "acc_scale", "relu", "maxpool"))
+    no_facets = _oracle(derived=(), routed=False)
+    monkeypatch.setattr(CF, "_declared_output_path", lambda _t: _output_path())
+    assert [r["epilogue"] for r in CF._derived_epilogue_groups("synthetic", no_facets)] == [
+        ["bias_add", "acc_scale", "relu"],
+        ["bias_add", "acc_scale", "relu", "maxpool"],
+    ]
+    monkeypatch.setattr(CF, "_declared_output_path", lambda _t: _output_path(preload=False, pool=False))
+    assert [r["epilogue"] for r in CF._derived_epilogue_groups("synthetic", no_facets)] == [["acc_scale", "relu"]]
+    monkeypatch.setattr(CF, "_declared_output_path", lambda _t: _output_path(activation=False, pool=False))
+    assert [r["epilogue"] for r in CF._derived_epilogue_groups("synthetic", no_facets)] == [["bias_add", "acc_scale"]]
+
+
+def test_a_capability_no_capsule_can_state_is_reported_unstated_not_dropped():
+    unstated = CF._unstatable_path_stages(_output_path())
+    assert set(unstated) == {"accumulate", "column_group_scale"}
+    assert "4 columns" in unstated["column_group_scale"]
+    assert CF._unstatable_path_stages(_output_path(accumulate=False)).keys() == {"column_group_scale"}
+    assert CF._unstatable_path_stages(None) == {}
+
+
+def test_the_epilogue_axis_requires_what_the_output_path_performs(monkeypatch):
+    from merlin.targetgen import eligibility as E
+    from merlin.targetgen import isa_taxonomy as IT
+    from merlin.targetgen import readout_facet as RF
+
+    monkeypatch.setattr(E, "capability_map_for_target", lambda _t: {})
+    monkeypatch.setattr(IT, "taxonomy_for_target", lambda _t: IT._unknown("target 'synthetic'", "no descriptor"))
+    monkeypatch.setattr(RF, "epilogue_readouts", lambda _t: None)
+    monkeypatch.setattr(RF, "epilogue_stage_routes", lambda _t: ())
+    monkeypatch.setattr(CF, "_declared_output_path", lambda _t: _output_path())
+    required = {row["stage"]: row["evidenced_by"] for row in CF._epilogue_axis("synthetic")["required"]}
+    for stage in ("bias_add", "acc_scale", "relu", "maxpool"):
+        assert required[stage] == ["derived_output_path"]
+    assert "requant" not in required  # an integer shift is not on this path
