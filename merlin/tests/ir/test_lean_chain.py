@@ -248,7 +248,8 @@ def test_defined_chain_replays_real_preprocessing(tmp_path, monkeypatch, lean_to
 
 
 @pytest.mark.parametrize("artifact", ["ir", "receipt", "handoff"])
-def test_chain_rechecks_earlier_files_before_publication(tmp_path, monkeypatch, lean_tools, artifact):
+@pytest.mark.parametrize("legacy", [False, True])
+def test_chain_rechecks_earlier_files_before_publication(tmp_path, monkeypatch, lean_tools, artifact, legacy):
     from merlin.verify.lean import check
 
     stage = tmp_path / "stage"
@@ -263,20 +264,28 @@ def test_chain_rechecks_earlier_files_before_publication(tmp_path, monkeypatch, 
         check.check_support(stage / "before.mlir", "forward", support, m2m_python=lean_tools.m2m_python)["verdict"]
         == "verified"
     )
-    assert (
-        check.check_definedness(stage / "before.mlir", "forward", defined, m2m_python=lean_tools.m2m_python)["verdict"]
-        == "verified"
-    )
+    obligation = check._DEFINED if legacy else check._EXTENDED_DEFINED
+    if legacy:
+        source_proof = check._check_function(
+            obligation, stage / "before.mlir", "forward", defined, m2m_python=lean_tools.m2m_python, index_bits=64
+        )
+    else:
+        source_proof = check.check_definedness(
+            stage / "before.mlir", "forward", defined, m2m_python=lean_tools.m2m_python
+        )
+    assert source_proof["verdict"] == "verified"
     monkeypatch.setenv("MERLIN_LEAN_STAGES", str(tmp_path / "recorded"))
     handed = tmp_path / "handed.mlir"
     handed.write_text(source)
     lean_stages.record_handoff(handed)
     handoff = tmp_path / "recorded/handoff.json"
     validate = check._validate_receipt
+    injected = []
 
     def edit_after_replay(receipt, **kwargs):
         result = validate(receipt, **kwargs)
-        if kwargs["obligation"] == check._DEFINED:
+        if kwargs["obligation"] == obligation:
+            injected.append(artifact)
             if artifact == "ir":
                 (stage / "after.mlir").write_text(source + "\n// changed during a later replay\n")
             elif artifact == "receipt":
@@ -296,6 +305,7 @@ def test_chain_rechecks_earlier_files_before_publication(tmp_path, monkeypatch, 
         definedness=defined / "receipt.json",
         handoff=handoff,
     )
+    assert injected == [artifact], "the race must run after the actual source proof replay"
     assert result["verdict"] == result["refinement_verdict"] == "abstracted"
     assert "changed" in result["reason"]
 
