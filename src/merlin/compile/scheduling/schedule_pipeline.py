@@ -160,6 +160,9 @@ def shared_library_sources():
         "merlin.compile.scheduling.storage_contracts",
         "merlin.compile.scheduling.fusion_contracts",
         "merlin.compile.scheduling.spill_contracts",
+        "merlin.compile.scheduling.row_contracts",
+        "merlin.sched.codegen",
+        "merlin.sched.isa",
         "merlin.targetgen.isa_spec",
         "merlin.targetgen.isa_dialect_gen",
     )

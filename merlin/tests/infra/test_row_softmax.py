@@ -134,7 +134,7 @@ def test_full_domains_and_completed_state_reuse():
     assert result.report["executed_commands"] == 5 * (3 + 4 * 4)
     assert result.storage[0].base == result.storage[3].base  # maximum dies before normalization factor
     assert result.storage[2].base != result.storage[3].base  # simultaneous finish operands
-    assert verify(result, opts) == result.report
+    assert verify(result, opts) == {key: value for key, value in result.report.items() if key != "pipeline"}
 
 
 @pytest.mark.parametrize("dtype,separate", [("f32", False), ("f32", True), ("f64", True)])
@@ -248,7 +248,8 @@ def test_alternative_chunks_use_same_source_and_verifier():
     opts = fixture(columns=113, chunk=17, capacity=1024)
     variants = [compile_row_softmax(**opts, chunk_elements=n) for n in (1, 7, 8, 13, 17)]
     assert len({r.report["numerical_identity"] for r in variants}) == 1
-    assert all(verify(r, opts) == r.report for r in variants)
+    assert all(verify(r, opts) == {key: value for key, value in r.report.items() if key != "pipeline"}
+               for r in variants)
     assert variants[0].report["executed_commands"] > variants[-1].report["executed_commands"]
 
 

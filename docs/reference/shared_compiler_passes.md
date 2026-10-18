@@ -20,6 +20,7 @@ code_refs:
   - src/merlin/compile/scheduling/fusion_semantics.py
   - src/merlin/compile/scheduling/row_softmax.py
   - src/merlin/compile/scheduling/row_softmax_verification.py
+  - src/merlin/compile/scheduling/row_contracts.py
   - src/merlin/llvmlower/cpu_softmax.py
   - src/merlin/llvmlower/automatic_host.py
   - src/merlin/llvmlower/quant_round_check.py
@@ -1310,14 +1311,130 @@ execution contracts so a caller can retain its original source implementation.
 All-masked/arbitrary masks, nonfinite source domains, asynchronous primitives,
 unaddressable state, cross-row aliasing and unknown effects are unsupported.
 
-This is an executable shared counted-row path. It does **not** yet match and
-replace full-model source softmax automatically, integrate a real target's
-primitives, compose full QK–softmax–PV/KV execution, or verify final machine bytes.
+This is an executable shared counted-row path. It does **not** yet automatically
+route full-model source softmax to device primitives, integrate a real target's
+primitives, compose device QK–softmax–PV/KV execution, or verify final machine bytes.
 Those require source admission, public target primitive/projection hooks and a
 counted-program final decoder/completion contract. It does not run through the
 finite straight-line final-byte pipeline by expanding loops. Native reference
 agreement establishes the tested source algorithm, not hardware qualification,
 full-model gains, accelerator latency, or calibrated performance.
+
+### Complete rows selected from RTL and software documents
+
+`compile_row_softmax(..., selected_contracts=selected)` now consumes an optional
+`row_reduction` section of `merlin.schedule_effects.v1`. It reuses the existing
+row planner, state allocator, actual-call checker and counted C emitter. Supply
+`None` for `resources`, `banks` and `role_banks` to derive them, or supply
+conservative resource controls through the existing typed interfaces:
+
+```python
+result = compile_row_softmax(
+    problem, source_numerics, None, None, None, qualified_row_adapter,
+    selected_contracts=selected,
+    private_ownership=True, disjoint_arguments=True,
+)
+source = result.emit_c(target_instruction_set, symbol="normalize_scores")
+```
+
+The selected section has exactly these fields:
+
+| Field | Meaning and authority |
+| --- | --- |
+| `schema` | `merlin.complete_row_contract.v1` |
+| `algorithm` | All `RowSoftmaxNumerics` fields; exact source policy, dtype, exponential, lane order/tree, normalization and numerical premises |
+| `element_bits` | RTL fact reference agreeing with the software dtype |
+| `limits` | Fact references or `null` for `max_chunk_elements`, `granularity`, `index_bits` |
+| `support` | Explicit `partial_chunks`, `completion`, `order`, `state`, and `masks` |
+| `roles` | `maximum`, `exponentials`, `lanes`, `normalizer` to selected private storage bank names |
+| `external` | `input` and `output` to selected external byte-window resources |
+| `instructions` | All seven phase names to their actual instruction/operand bindings |
+
+The source numerical algorithm must equal the declared one, and its
+`source_policy` must match the selected numerical policy. The source lane count
+and tree are never chosen from hardware vector width. RTL alone cannot establish
+the exponential implementation, rounding, masks or reduction equivalence.
+Independent execution qualification remains required for the adapter. Supported
+execution is synchronous, exact source order and addressable invocation-private
+state. An unknown limit, unsupported mask or execution description diagnoses so
+the caller can retain its original complete source implementation.
+
+Each phase entry contains `instruction`, `bindings`, `local` and `constants`.
+`bindings` names actual typed ISA arguments for `row`, `column`, `count`,
+`period`, `offset`, and the applicable `source`/`output` pointers. `local` lists
+the phase's state operands in the existing `PHASE_ROLES` order. Each local entry
+names an integer byte-address argument and either `selector: null` for an
+implicit space or `{argument: ..., value: {fact: [...]}}` for an explicit
+memory selector. `constants` fixes every otherwise unused mode/argument to an
+integer or, for a typed address, `null`. Every actual operand must be covered
+exactly once. No argument or unknown effect is silently ignored.
+
+The selected ISA instruction must declare primitive
+`merlin.complete_row.<phase>`, matching logical `bindings`, and exactly
+`parameters: {numerical_identity: <source algorithm hash>, completion: ...}`.
+Its complete resource reads/writes must agree with the phase's source, state
+and output effects. These declarations bind the meaning of existing typed
+primitives; they do not synthesize or qualify their target implementation.
+The wrapper reconstructs `RowSoftmaxStep` from actual operands and independently
+compares it with the provider projection. The existing verifier then checks
+complete domains, masks, rounded algorithm identity and physical lifetimes.
+Wrong modes, spaces, pointers, counts or instruction names cannot inherit a
+retained request as their proof.
+
+Geometry and runtime ownership use `TemporaryStorageContract.allocation_model`,
+the same admission used by finite schedule allocation. Bank aliases, view
+bounds, alignment and packing/DMA reservations retain their existing checks.
+This boundary explicitly converts the row allocator's `byte` unit spelling to
+the selected storage contract's `bytes`; it infers no word addressing. Caller
+budgets can restrict chunk size, combine granularity or remove tail support,
+but cannot expand hardware limits or remap software state roles. Ordinary
+complete-row allocation still requires full-row exponential storage.
+
+Current source problem/mask, numerical policy, resources and library sources
+are rechecked around every pipeline action. Raw selected documents and resolver
+owners must remain current. The returned pipeline receipt records these inputs
+and the actual checked kernel. `emit_c` revalidates the kernel, index width,
+selected documents and shared source versions before and after rendering.
+It uses the existing immutable pass stamp; removing or rewriting the printable
+report cannot disable freshness. Changing instructions invalidates emission.
+This guards stale emission;
+it does not interpret arbitrary target C or establish final machine conformance.
+
+Native paired tests compare one-element chunks and the deterministic largest
+legal chunk on the same selected hardware/software and shared library version.
+They observe actual primitive commands and logical requested payloads, check all
+output bits against independent pinned Torch f32 or ordered `math.exp` f64
+references, and preserve inputs/guards. Additional complete neutral attention
+tests keep host QK/PV and cache updates identical between arms, check full
+probabilities, outputs, KV caches and positions over three invocations, and
+reject an implementation that resets denominator lanes at chunk boundaries.
+Those surrounding host contractions and cache writes are test integration;
+this pass does not optimize or qualify device attention instructions.
+Native `.text`, whole-library size and C-source size are recorded separately:
+fewer primitive calls need not shrink native code, since the host compiler can
+expand primitive bodies. Static call budgets do not replace final linked-image
+checks. Host-only call samples include dispatch and surrounding arithmetic and
+do not establish an accelerator speedup or a calibrated cost model.
+
+Reproduce with the existing native toolchain and pinned reference:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_selected_row_contracts.py \
+  merlin/tests/infra/test_selected_row_attention.py \
+  merlin/tests/infra/test_row_softmax.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/selected-row-check"
+```
+
+Limits of this selected C route remain explicit: source/output windows must be
+zero-based logical argument windows; general physical pointer relocation is a
+target integration requirement. Dynamic integer operands must be at least as
+wide as the selected checked 32/64-bit index domain. ISA address operands with
+stronger alignment need a separate mapping contract; allocation-bank alignment
+is supported independently. Arbitrary masks, asynchronous completion,
+nonaddressable state, new approximation policies and whole-row storage spills
+are not inferred. No target repository supplies these hooks through this
+change. Final machine bytes, real-model routing, compilation peak memory and
+qualified accelerator timing remain unresolved for this selected route.
 
 ## Automatic source row normalization
 

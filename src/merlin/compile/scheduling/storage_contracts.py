@@ -97,10 +97,8 @@ class TemporaryStorageContract:
     reservations: tuple[Reservation, ...]
     declarations_json: str
 
-    def bind(self, isa, adapter, *, banks, reservations, external_windows, private_ownership):
-        """Derive geometry and check existing runtime/allocation premises."""
-        if type(adapter) is not StorageAdapter or not adapter.qualification_identity:
-            raise ValueError("selected storage requires an independently qualified effect/rewrite adapter")
+    def allocation_model(self, *, banks, reservations, external_windows, private_ownership):
+        """Shared geometry/ownership admission, independent of instruction IR."""
         if private_ownership is not True or any(w.ownership != "invocation_private" for w in self.banks):
             raise StorageOptimizationUnavailable("selected storage lacks invocation-private runtime ownership")
         if any(w.ownership not in ("runtime_managed", "persistent") for w in self.external):
@@ -132,6 +130,16 @@ class TemporaryStorageContract:
         if type(reservations) is not tuple or any(type(r) is not Reservation for r in reservations):
             raise ValueError("selected storage reservations must be typed byte intervals")
         reservations = _reservations((*self.reservations, *reservations), banks)
+        return banks, reservations, external_windows
+
+    def bind(self, isa, adapter, *, banks, reservations, external_windows, private_ownership):
+        """Derive geometry and check existing runtime/allocation premises."""
+        if type(adapter) is not StorageAdapter or not adapter.qualification_identity:
+            raise ValueError("selected storage requires an independently qualified effect/rewrite adapter")
+        banks, reservations, external_windows = self.allocation_model(
+            banks=banks, reservations=reservations, external_windows=external_windows,
+            private_ownership=private_ownership,
+        )
         declarations = json.loads(self.declarations_json)
 
         def project(call):
