@@ -140,6 +140,67 @@ _FUSED = [
 ]
 
 
+@pytest.mark.parametrize("operation", ["matmul", "conv2d"])
+@pytest.mark.parametrize("gains", [[0.5] * 4 + [0.25] * 4 + [0.75], [0.5, 0.25, 0.75] * 3])
+def test_column_readout_admits_only_screened_logical_scalar_components(operation, gains):
+    from merlin.targetgen.interface_observations import command_rows
+
+    attrs = {"epilogue": ["bias", "acc_scale", "relu"], "output_dtype": "i8", "acc_scale_by_column": gains, "bias": "B"}
+    tensors = {
+        "A0": {"shape": [3, 4], "dtype": "i8", "role": "input"},
+        "W": {"shape": [4, 9], "dtype": "i8", "role": "weight"},
+        "Y0": {"shape": [3, 9], "dtype": "i8", "role": "output"},
+        "B": {"shape": [9], "dtype": "i32", "role": "bias"},
+    }
+    commands = [
+        {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "W", "dst": "acc0"}},
+        {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"}, "attributes": attrs},
+    ]
+    if operation == "conv2d":
+        tensors["A0"]["shape"] = [1, 1, 3, 4]
+        commands = [
+            {
+                "opcode": "CONV2D",
+                "operands": {"ifm": "A0", "weight": "W", "dst": "Y0"},
+                "attributes": {
+                    **attrs,
+                    "kernel": [1, 1, 4, 9],
+                    "stride": [1, 1],
+                    "padding": [0, 0, 0, 0],
+                    "dilation": [1, 1],
+                    "layout": "nhwc",
+                },
+            }
+        ]
+    cb = {"abi_version": "0.1", "target": "fixture", "tensors": tensors, "commands": commands}
+    evidence = _evidence()
+    evidence.contract = deepcopy(_CONTRACT)
+    evidence.contract["compute_units"][0]["semantic_capabilities"][1]["result_dtypes"] = ["i8"]
+    text = emit_interface_mlir(cb)
+    entries = program_admission.account_interface_text(text, target="fixture", evidence=evidence)
+    stages = [entry for entry in entries if entry["operation"] in {"acc_scale", "relu"}]
+    assert len(stages) == 2
+    assert all(
+        row["composed_observation"]["scale_granularity"] == "channel"
+        for row in command_rows(cb)
+        if row["operation"] in {"acc_scale", "relu"}
+    )
+    for stage in stages:
+        admitted = stage["accelerator_admission"]
+        assert admitted["status"] == "admitted", admitted
+        proof = admitted["logical_partition"]
+        assert proof["physical_implementation"] == "unverified"
+        assert [c for part in proof["parts"] for c in range(part["start"], part["stop"])] == list(range(9))
+    # Missing/incorrect original dimensions never gain scalar admission.
+    tensors["W"]["shape"][1] = 8
+    refused = program_admission.account_interface_text(emit_interface_mlir(cb), target="fixture", evidence=evidence)
+    assert all(
+        entry["accelerator_admission"]["status"] != "admitted"
+        for entry in refused
+        if entry["operation"] in {"acc_scale", "relu"}
+    )
+
+
 def test_a_written_interface_program_is_admitted_from_its_observations(tmp_path):
     capsule, directory = _capsule(tmp_path, "fused", _FUSED, _TENSORS)
     screen = program_admission.screen_written(capsule, directory, target="fixture", evidence=_evidence())

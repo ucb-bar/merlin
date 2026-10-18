@@ -15,6 +15,11 @@ Independent-column cases add gains varying within a physical scale vector;
 existing block-uniform cases remain mandatory. `output_scale_partition` binds
 the source gain vector and physical width as an arithmetic-only obligation.
 It grants no physical packing, command count, target implementation or execution.
+`interface_components` separately proves exhaustive disjoint logical output-column
+components of typed matrix/convolution sources. Ordinary software and hardware
+screens must admit each complete-reduction carrier and scalar-scale stage.
+The original observation retains channel granularity; component admission does
+not grant a physical command, address mapping, target implementation or execution.
 Per-channel methodology and reviewed model-variant selection preserve existing
 defaults and retain the physical scale width in capture recipes.
 Reviewed methodology variants may select the existing static activation digit
