@@ -253,6 +253,7 @@ def compile_schedule(
             banks, reservations, external_windows, adapter = selected_contracts.storage.bind(
                 selected_contracts.isa, adapter, banks=banks, reservations=reservations,
                 external_windows=external_windows, private_ownership=private_ownership,
+                configuration_adapter=configuration_adapter,
             )
             scopes.extend(("temporary_memory_windows", "physical_aliases", "storage_effects_and_completion"))
         fusion_binding = None

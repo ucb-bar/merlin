@@ -97,7 +97,9 @@ def execute(tmp_path, request):
     if compiler is None:
         pytest.skip("native compiler unavailable")
     source, library = tmp_path / "execute.c", tmp_path / "execute.so"
-    source.write_text(getattr(request, "param", _EXECUTOR))
+    specification = getattr(request, "param", _EXECUTOR)
+    source.write_text(specification["source"] if isinstance(specification, dict) else specification)
+    counter_count = specification.get("counters", 3) if isinstance(specification, dict) else 3
     subprocess.run(
         [compiler, "-O2", "-shared", "-fPIC", str(source), "-o", str(library)], check=True, capture_output=True
     )
@@ -123,7 +125,7 @@ def execute(tmp_path, request):
         capacities = (ctypes.c_uint64 * len(SPACES))(*([1024] * len(SPACES)))
         image = b"".join(images)
         raw = (ctypes.c_uint8 * len(image)).from_buffer_copy(image)
-        counters = (ctypes.c_uint64 * 3)()
+        counters = (ctypes.c_uint64 * counter_count)()
         assert fn(raw, len(image), pointers, capacities, counters, wrong) == 0
         for i, name in enumerate(SPACES):
             assert bytes(memory[i])[1024:] == before[i][1024:]

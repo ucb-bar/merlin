@@ -30,11 +30,21 @@ from merlin.transforms.certificates import ir_text
 
 
 class Provider:
+    case_builder = staticmethod(case)
+    executor_source = _EXECUTOR
+    observation_count = 6
+
     def __init__(self, work, *, enabled, separate):
         self.work, self.enabled, self.separate = work, enabled, separate
         work.mkdir()
         self.results, self.records = [], []
         self.c_source = None
+
+    def schedule_budgets(self):
+        return ScheduleBudgets(max_fusions=8 if self.enabled else 0)
+
+    def expected_instructions(self):
+        return ["fused"] if self.enabled else ["readout", "finish"]
 
     def prepare(self, source_path, output):
         original = mq.parse(source_path.read_text())
@@ -57,10 +67,8 @@ class Provider:
             directory = self.work / str(ordinal)
             directory.mkdir()
             m, n = source.shape
-            options = case(directory, m=m, n=n, separate=self.separate)
-            compiled = compile_source_pointwise(
-                original, operation, budgets=ScheduleBudgets(max_fusions=8 if self.enabled else 0), **options
-            )
+            options = self.case_builder(directory, m=m, n=n, separate=self.separate)
+            compiled = compile_source_pointwise(original, operation, budgets=self.schedule_budgets(), **options)
             symbol = f"source_writer_{ordinal}"
             bridge = f"_mlir_ciface_borrowed_{symbol}"
             image = b"".join(compiled.images())
@@ -106,15 +114,17 @@ class Provider:
         (self.work / "writers.json").write_text(json.dumps(self.records, indent=2))
         self.c_source = self.work / "provider.c"
         self.c_source.write_text(
-            _EXECUTOR.replace("#include <string.h>", "").replace(
+            self.executor_source.replace("#include <string.h>", "").replace(
                 "int execute(", "static __attribute__((noinline)) int execute("
             )
             + """
 typedef struct {void *allocated,*aligned;int64_t offset,sizes[2],strides[2];} descriptor;
-static uint64_t totals[6];
-uint64_t pointwise_count(int index){return totals[index];}
-void pointwise_reset(void){for(int i=0;i<6;i++)totals[i]=0;}
 """
+            + f"static uint64_t totals[{self.observation_count}];\n"
+            + """
+uint64_t pointwise_count(int index){return totals[index];}
+"""
+            + f"void pointwise_reset(void){{for(int i=0;i<{self.observation_count};i++)totals[i]=0;}}\n"
             + "\n".join(fragments)
         )
         for result in self.results:
@@ -243,7 +253,7 @@ def qualify(provider, arithmetic_inputs):
         compiler=str(compiler),
         commands=[argv],
         shapes=[list(array.shape) for array in outputs],
-        counters=[native.pointwise_count(i) for i in range(6)],
+        counters=[native.pointwise_count(i) for i in range(provider.observation_count)],
         scope="neutral native C and ranked ABI; not hardware qualification or timing",
     )
     (provider.work / "native_qualification.json").write_text(json.dumps(record, indent=2))

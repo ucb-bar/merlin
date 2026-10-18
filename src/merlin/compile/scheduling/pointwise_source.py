@@ -22,6 +22,7 @@ from merlin.transforms.certificates import ir_digest, ir_text
 from merlin.transforms.dense_ir import checked_static_linalg_shell
 from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
+from .configuration import verify_configuration_state
 from .fusion_semantics import ScalarBudgetExceeded, ScalarGraph, UnsupportedElementwise, scalar_graph, term
 from .library_sources import shared_library_sources
 from .program_limits import AddressWindow
@@ -108,7 +109,7 @@ class PointwiseBindings:
             raise ValueError("pointwise bindings require typed windows, byte layouts and an explicit alias premise")
 
 
-def _verify_vectors(source, kernel, bindings, banks, external, adapter, budgets):
+def _verify_vectors(source, kernel, bindings, banks, external, adapter, budgets, configuration_adapter=None):
     """Reconstruct whole-vector expressions using the existing interval memory."""
     if not bindings.external_buffers_disjoint:
         raise UnsupportedElementwise("pointwise runtime has not established distinct external backing ownership")
@@ -163,10 +164,17 @@ def _verify_vectors(source, kernel, bindings, banks, external, adapter, budgets)
         return part
 
     effects = _project(kernel, adapter, budgets.max_calls)
-    for effect in effects:
+    state = None
+    if configuration_adapter is not None:
+        state = verify_configuration_state(kernel, configuration_adapter, max_calls=budgets.max_calls)
+    for call, effect in zip(kernel.body, effects, strict=True):
         if effect.completion != "synchronous":
             raise UnsupportedElementwise("source pointwise arithmetic requires qualified synchronous completion")
         accesses = effect.accesses
+        if not accesses and configuration_adapter is not None:
+            configuration = configuration_adapter.project(call)
+            if configuration is not None and configuration.pure_write:
+                continue  # Selected ISA proves only persistent idempotent writes.
         for access in accesses:
             if access.space not in bank_map and (
                 not access.writes
@@ -215,6 +223,7 @@ def _verify_vectors(source, kernel, bindings, banks, external, adapter, budgets)
         "requested_write_bytes": sum(a.size for e in effects for a in e.accesses if a.writes),
         "source_scalar_sha256": sha256(source.scalar_ir).hexdigest(),
         "result_expression": returned.identity[1],
+        "configuration": state,
     }
 
 
@@ -266,6 +275,7 @@ def compile_source_pointwise(
     private_ownership=False,
     fusion_emitters=None,
     fusion_qualification_identity=None,
+    configuration_qualification_identity=None,
     max_source_elements=64 << 20,
     pass_order=(),
 ):
@@ -303,6 +313,8 @@ def compile_source_pointwise(
                 [asdict(b) for b in banks] if banks is not None else None,
                 [asdict(r) for r in reservations],
                 private_ownership,
+                fusion_qualification_identity,
+                configuration_qualification_identity,
             )
         ),
     )
@@ -331,6 +343,11 @@ def compile_source_pointwise(
     if len(order) != len(by_name) or set(order) != set(by_name):
         raise ValueError("pointwise pass order must name every source pass exactly once")
     validate_pass_order(tuple(by_name[name] for name in order))
+    configuration_adapter = (
+        selected_contracts.configuration_adapter(configuration_qualification_identity)
+        if configuration_qualification_identity is not None
+        else None
+    )
     physical_banks, fixed, external, projector = selected_contracts.storage.bind(
         selected_contracts.isa,
         adapter,
@@ -338,6 +355,7 @@ def compile_source_pointwise(
         reservations=reservations,
         external_windows=None,
         private_ownership=private_ownership,
+        configuration_adapter=configuration_adapter,
     )
     projector, _, _ = selected_contracts.fusion.bind(
         projector,
@@ -349,7 +367,7 @@ def compile_source_pointwise(
 
     def lower():
         source = session.analysis("pointwise_source")
-        _verify_vectors(source, kernel, bindings, physical_banks, external, projector, budgets)
+        _verify_vectors(source, kernel, bindings, physical_banks, external, projector, budgets, configuration_adapter)
         return {
             "compiled": compile_schedule(
                 kernel,
@@ -365,6 +383,7 @@ def compile_source_pointwise(
                 selected_contracts=selected_contracts,
                 fusion_emitters=fusion_emitters,
                 fusion_qualification_identity=fusion_qualification_identity,
+                configuration_qualification_identity=configuration_qualification_identity,
             )
         }
 
@@ -378,7 +397,14 @@ def compile_source_pointwise(
         actual = Kernel(kernel.name, kernel.args, tuple(calls), kernel.attrs)
         return {
             "conformance": _verify_vectors(
-                session.analysis("pointwise_source"), actual, bindings, physical_banks, external, projector, budgets
+                session.analysis("pointwise_source"),
+                actual,
+                bindings,
+                physical_banks,
+                external,
+                projector,
+                budgets,
+                configuration_adapter,
             )
         }
 

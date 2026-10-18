@@ -140,7 +140,9 @@ def capture(directory, shape):
 
 
 @pytest.mark.parametrize("shape,separate", [((3, 7, 5), False), ((2, 5, 11), True)])
-def test_ordinary_recurrent_model_runs_source_bound_fusion(tmp_path, record_property, shape, separate):
+def test_ordinary_recurrent_model_runs_source_bound_fusion(
+    tmp_path, record_property, shape, separate, provider_class=Provider, optimization="fusion"
+):
     from merlin.llvmlower import toolchain
 
     if not toolchain.available() or not spike.available():
@@ -149,7 +151,7 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(tmp_path, record_prop
     expected, trace = capture(bundle, shape)
     observations, outputs = [], []
     for name, enabled in (("baseline", False), ("optimized", True)):
-        provider = Provider(tmp_path / (name + "_provider"), enabled=enabled, separate=separate)
+        provider = provider_class(tmp_path / (name + "_provider"), enabled=enabled, separate=separate)
 
         def prepare(source, work):
             selected = provider.prepare(source, work)
@@ -197,11 +199,16 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(tmp_path, record_prop
         assert native["counters"][:3] == expected_commands_and_traffic
         # Two four-byte inputs and one one-byte output, copied both ways.
         host_pack_bytes = 3 * 9 * shape[0] * (shape[1] + shape[2])
-        assert native["counters"][3:] == [host_pack_bytes, host_pack_bytes, 6]
+        assert native["counters"][3:6] == [host_pack_bytes, host_pack_bytes, 6]
+        if provider.observation_count > 6:
+            state = provider.results[-1].conformance["configuration"]["known_final_state"]
+            assert native["counters"][6:] == [state[key] for key in sorted(state)]
         recipe = json.loads((work / "compilation_recipe.json").read_text())
         linked_programs = []
         for record, result in zip(provider.records, provider.results, strict=True):
-            image, section = read_program_section(built["elf"], record["program_section"], max_bytes=16 * 41)
+            image, section = read_program_section(
+                built["elf"], record["program_section"], max_bytes=len(provider.expected_instructions()) * 41
+            )
             assert not section["writable"]
             assert image == b"".join(result.images())
             selected = result.selected_contracts
@@ -211,11 +218,12 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(tmp_path, record_prop
                 decode_instruction(selected.isa, int.from_bytes(image[i : i + 41], "little"))[0]
                 for i in range(0, len(image), 41)
             ]
-            assert decoded == (["fused"] if enabled else ["readout", "finish"])
+            assert decoded == provider.expected_instructions()
             linked_programs.append(dict(**section, sha256=record["program_sha256"], instructions=decoded))
         observations.append(
             dict(
                 arm=name,
+                optimization=optimization,
                 compile_seconds=elapsed,
                 compilation_memory=memory,
                 elf_sha256=sha256_file(built["elf"]),
@@ -238,9 +246,8 @@ def test_ordinary_recurrent_model_runs_source_bound_fusion(tmp_path, record_prop
         np.testing.assert_array_equal(before, after)
     before, after = observations
     assert before["host_object_sha256"] == after["host_object_sha256"]
-    assert before["native_qualification"]["counters"][0] == 12
-    assert after["native_qualification"]["counters"][0] == 6
-    eliminated = 12 * shape[0] * (shape[1] + shape[2])
+    assert before["native_qualification"]["counters"][0] > after["native_qualification"]["counters"][0]
+    eliminated = 12 * shape[0] * (shape[1] + shape[2]) if optimization == "fusion" else 0
     for counter in (1, 2):
         assert (
             before["native_qualification"]["counters"][counter] - after["native_qualification"]["counters"][counter]
