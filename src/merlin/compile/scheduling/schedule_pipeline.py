@@ -37,6 +37,7 @@ from .program_limits import (
     _decode,
     finalize_program,
 )
+from .selected_contracts import SelectedSchedulingContracts
 from .spill_conformance import validate_spill_classes
 from .temporary_storage import (
     StorageAdapter,
@@ -91,6 +92,7 @@ class ScheduleBudgets:
     max_scalar_operations: int = 128
     max_scalar_ir_bytes: int = 65536
     eliminate_configuration: bool = True
+    optimize_storage: bool = True
 
     def __post_init__(self):
         if (
@@ -109,6 +111,7 @@ class ScheduleBudgets:
             )
             or type(self.eliminate_copies) is not bool
             or type(self.eliminate_configuration) is not bool
+            or type(self.optimize_storage) is not bool
         ):
             raise ValueError("schedule compilation requires explicit finite work, repair and solver budgets")
 
@@ -125,10 +128,34 @@ def _hash(value):
 
 
 def shared_library_sources():
-    """Current shared implementation identities, equal for every treatment."""
+    """One source roster for selection, planning, checking and later emission.
+
+    These identities detect source changes; they grant no library access and
+    are not a transitive dependency or toolchain qualification. Keep shared
+    semantics helpers here even when only another scheduling family uses them:
+    treatments must not silently select different verification versions.
+    """
     names = (
+        "merlin",
+        "merlin.compile",
+        "merlin.compile.scheduling",
+        "merlin.sched",
+        "merlin.sched.ir",
+        "merlin.sched.ir.parse",
+        "merlin.transforms",
+        "merlin.semantic_compiler",
+        "merlin.verify",
+        "merlin.llvmlower",
+        "merlin.targetgen",
         "merlin.transforms.pipeline",
+        "merlin.transforms.loops",
+        "merlin.transforms.normalization",
+        "merlin.transforms.planning",
+        "merlin.transforms.scalar_witness",
+        "merlin.transforms.unrolling",
+        "merlin.transforms.validation",
         "merlin.compile.scheduling.schedule_pipeline",
+        "merlin.compile.scheduling.block_schedule",
         "merlin.compile.scheduling.configuration",
         "merlin.compile.scheduling.temporary_storage",
         "merlin.compile.scheduling.copy_elimination",
@@ -142,6 +169,7 @@ def shared_library_sources():
         "merlin.compile.scheduling.compact_dense",
         "merlin.compile.scheduling.compact_verification",
         "merlin.transforms.dense_planning",
+        "merlin.transforms.dense_ir",
         "merlin.llvmlower.cpu_softmax",
         "merlin.transforms.pure_scalar",
         "merlin.transforms.certificates",
@@ -149,9 +177,21 @@ def shared_library_sources():
         "merlin.semantic_compiler.allocate",
         "merlin.semantic_compiler.allocation_types",
         "merlin.semantic_compiler.rules",
+        "merlin.semantic_compiler.model",
         "merlin.sched.ir.kernel",
         "merlin.sched.ir.expr",
+        "merlin.sched.ir.integer_domain",
+        "merlin.compile.scheduling.selected_contracts",
+        "merlin.compile.scheduling.dense_contracts",
+        "merlin.compile.scheduling.storage_contracts",
+        "merlin.compile.scheduling.fusion_contracts",
+        "merlin.compile.scheduling.spill_contracts",
+        "merlin.compile.scheduling.row_contracts",
+        "merlin.compile.scheduling.program_contracts",
         "merlin.sched.codegen",
+        "merlin.sched.isa",
+        "merlin.targetgen.isa_spec",
+        "merlin.targetgen.isa_dialect_gen",
     )
     return {
         name: hashlib.sha256(Path(importlib.import_module(name).__file__).read_bytes()).hexdigest() for name in names
@@ -163,7 +203,9 @@ def _verify_kernel(kernel):
         raise ValueError("schedule pipeline requires structurally valid typed kernel IR")
 
 
-def _emission_effects(images, kernel, adapter, encoding, limits, max_calls, configuration_adapter=None):
+def _emission_effects(
+    images, kernel, adapter, encoding, limits, max_calls, configuration_adapter=None, selected_contracts=None
+):
     """Reconstruct complete effects from actual output, independently of requests."""
     actual = []
     actual_configuration = []
@@ -172,6 +214,8 @@ def _emission_effects(images, kernel, adapter, encoding, limits, max_calls, conf
         calls = encoding.decode_calls(image)
         if type(calls) is not tuple or any(type(call) is not Call for call in calls):
             raise ValueError("semantic decoder must reconstruct every actual instruction as typed calls")
+        if selected_contracts is not None:
+            selected_contracts.verify_image(image, calls)
         effects = _project(replace(kernel, body=calls), adapter, max_calls)
         if len(effects) != len(instructions):
             raise ValueError("actual semantic decoding and final instruction decoding disagree on coverage")
@@ -180,6 +224,7 @@ def _emission_effects(images, kernel, adapter, encoding, limits, max_calls, conf
                 effect.completion != "synchronous"
                 or instruction.completion != "synchronous"
                 or instruction.branches
+                or not instruction.fallthrough
                 or effect.accesses != instruction.accesses
             ):
                 raise ValueError(
@@ -210,13 +255,20 @@ def compile_schedule(
     *,
     budgets=ScheduleBudgets(),
     reservations=(),
-    external_windows=(),
+    external_windows=None,
     private_ownership=False,
     spill_classes=(),
     continuation=None,
     pass_order=(),
     fusion_capabilities=(),
     configuration_adapter=None,
+    selected_contracts=None,
+    configuration_qualification_identity=None,
+    fusion_emitters=None,
+    fusion_qualification_identity=None,
+    spill_emitters=None,
+    spill_qualification_identity=None,
+    continuation_qualification_identity=None,
 ) -> ScheduleCompilation:
     """Allocate, check, encode and finalize through the existing pass session.
 
@@ -224,6 +276,84 @@ def compile_schedule(
     existing legal route. Never emit a partially verified candidate. Target
     execution qualification is separate from shared transformation correctness.
     """
+    if type(budgets) is not ScheduleBudgets:
+        raise ValueError("schedule compilation requires typed work and repair budgets")
+    binding = None
+    if selected_contracts is not None:
+        if type(selected_contracts) is not SelectedSchedulingContracts:
+            raise ValueError("schedule inputs require explicitly selected RTL/software contracts")
+        selected_contracts.revalidate()
+        if (
+            type(adapter) is not StorageAdapter
+            or adapter.configuration_identity != selected_contracts.hardware_identity
+            or adapter.numerical_policy_identity != selected_contracts.numerical_policy
+            or configuration_adapter is not None
+        ):
+            raise ValueError("schedule adapters disagree with the selected RTL/software contracts")
+        if configuration_qualification_identity is not None:
+            configuration_adapter = selected_contracts.configuration_adapter(configuration_qualification_identity)
+        scopes = ["instruction_encoding", "configuration_fields"]
+        if selected_contracts.storage is not None:
+            banks, reservations, external_windows, adapter = selected_contracts.storage.bind(
+                selected_contracts.isa, adapter, banks=banks, reservations=reservations,
+                external_windows=external_windows, private_ownership=private_ownership,
+            )
+            scopes.extend(("temporary_memory_windows", "physical_aliases", "storage_effects_and_completion"))
+        fusion_binding = None
+        if selected_contracts.fusion is not None:
+            if fusion_capabilities:
+                raise ValueError("selected fusion declarations cannot be overridden by arbitrary capabilities")
+            adapter, fusion_capabilities, fusion_binding = selected_contracts.fusion.bind(
+                adapter, emitters=fusion_emitters, qualification_identity=fusion_qualification_identity,
+                max_operations=budgets.max_scalar_operations, max_ir_bytes=budgets.max_scalar_ir_bytes,
+            )
+            scopes.extend(("scalar_computation_and_layouts", "physical_fusion_routes", "fusion_resource_bounds"))
+        elif fusion_emitters is not None or fusion_qualification_identity is not None:
+            raise ValueError("fusion emitters and qualification require a selected fusion contract")
+        spill_binding = None
+        if spill_classes:
+            raise ValueError("selected device spill declarations cannot be overridden by arbitrary capabilities")
+        if selected_contracts.spills is not None:
+            spill_classes, spill_binding = selected_contracts.spills.bind(
+                adapter, banks, emitters=spill_emitters, qualification_identity=spill_qualification_identity,
+            )
+            scopes.extend(("device_register_resources", "exact_spill_reload_routes"))
+        elif spill_emitters is not None or spill_qualification_identity is not None:
+            raise ValueError("device spill emitters and qualification require a selected spill contract")
+        program_binding = None
+        if selected_contracts.program is not None:
+            if type(encoding) is not ScheduleEncoding:
+                raise ValueError("selected final program requires typed schedule encoding")
+            limits, decoder, continuation, program_binding = selected_contracts.program.bind(
+                selected_contracts, limits, encoding.program_decoder, continuation,
+                continuation_qualification_identity,
+            )
+            encoding = replace(encoding, program_decoder=decoder)
+            scopes.extend(("final_program_limits", "physical_address_windows", "branch_encodings",
+                           "launch_state_continuation"))
+        elif continuation_qualification_identity is not None:
+            raise ValueError("continuation qualification requires a selected program contract")
+        binding = selected_contracts.record(scopes=tuple(scopes))
+        if fusion_binding is not None:
+            binding["fusion"] = fusion_binding
+        if spill_binding is not None:
+            binding["spills"] = spill_binding
+        if program_binding is not None:
+            binding["program"] = program_binding
+        binding["configuration_pass"] = (
+            "selected_qualified_declaration" if configuration_adapter is not None
+            else "unavailable_missing_qualification"
+        )
+    elif configuration_qualification_identity is not None:
+        raise ValueError("configuration qualification requires selected RTL/software contracts")
+    elif fusion_emitters is not None or fusion_qualification_identity is not None:
+        raise ValueError("fusion emitters and qualification require selected RTL/software contracts")
+    elif spill_emitters is not None or spill_qualification_identity is not None:
+        raise ValueError("device spill emitters and qualification require selected RTL/software contracts")
+    elif continuation_qualification_identity is not None:
+        raise ValueError("continuation qualification requires selected RTL/software program contracts")
+    if external_windows is None:
+        external_windows = ()
     if (
         type(adapter) is not StorageAdapter
         or type(encoding) is not ScheduleEncoding
@@ -310,6 +440,7 @@ def compile_schedule(
         specs = tuple(names[name] for name in pass_order)
     validate_pass_order(specs)
     _verify_kernel(kernel)
+    source_sha256 = kernel.digest()
     if (
         type(objects) is not tuple
         or any(type(obj) is not TemporaryObject for obj in objects)
@@ -358,6 +489,7 @@ def compile_schedule(
                 "encoding": encoding.qualification_identity,
                 "decoder": encoding.program_decoder.qualification_identity,
                 "continuation": asdict(continuation) if continuation is not None else None,
+                "selected_contracts": binding,
             }
         ),
         library=_hash(sources),
@@ -422,6 +554,7 @@ def compile_schedule(
                 spill_classes=spill_classes,
                 max_spills=budgets.max_spills,
                 eliminate_copies=budgets.eliminate_copies,
+                optimize=budgets.optimize_storage,
                 on_repair=lambda reason: session.repair(stage=3, reason=reason),
                 **model,
             )
@@ -435,8 +568,10 @@ def compile_schedule(
         if result is None:
             result = allocate(configured, objects)
         if result is None:
+            unavailable = binding.get("spills", {}).get("unavailable_classes", {}) if binding else {}
             raise StorageOptimizationUnavailable(
                 "no legal temporary allocation within the selected schedule repair family"
+                + ("; unavailable device spills: " + json.dumps(unavailable, sort_keys=True) if unavailable else "")
             )
         session.module = result.kernel
         report = dict(result.report)
@@ -487,7 +622,10 @@ def compile_schedule(
 
     def emission():
         image = encoding.encode(session.module)
-        _emission_effects((image,), session.module, adapter, encoding, limits, budgets.max_calls, configuration_adapter)
+        _emission_effects(
+            (image,), session.module, adapter, encoding, limits, budgets.max_calls,
+            configuration_adapter, selected_contracts,
+        )
         return {"encoded": image}
 
     def final():
@@ -496,10 +634,13 @@ def compile_schedule(
         # an otherwise illegal segmentation boundary.
         outputs = tuple(EncodedAccess(window.space, window.start, window.size) for window in external_windows)
         program = finalize_program(
-            session.analysis("encoded"), limits, encoding.program_decoder, continuation=continuation, outputs=outputs
+            session.analysis("encoded"), limits, encoding.program_decoder, continuation=continuation, outputs=outputs,
+            selected_contracts=(selected_contracts if selected_contracts is not None
+                                and selected_contracts.program is not None else None),
         )
         effects = _emission_effects(
-            program.segments, session.module, adapter, encoding, limits, budgets.max_calls, configuration_adapter
+            program.segments, session.module, adapter, encoding, limits, budgets.max_calls,
+            configuration_adapter, selected_contracts,
         )
         if len(program.segments) > 1 and configuration_adapter is not None:
             state_effects = tuple(configuration_adapter.project(call) for call in session.module.body)
@@ -537,17 +678,30 @@ def compile_schedule(
         "final_program": final,
     }
     for spec in specs:
+        if kernel.digest() != source_sha256:
+            raise ValueError("source schedule changed during compilation; recompile")
+        if selected_contracts is not None:
+            selected_contracts.revalidate()
+        if sources != shared_library_sources():
+            raise ValueError("shared scheduling library changed during compilation; recompile")
         session.run(spec, actions[spec.name])
+        if kernel.digest() != source_sha256:
+            raise ValueError("source schedule changed during compilation; recompile")
+        if sources != shared_library_sources():
+            raise ValueError("shared scheduling library changed during compilation; recompile")
+        if selected_contracts is not None:
+            selected_contracts.revalidate()
     return ScheduleCompilation(
         session.module,
         session.analysis("final_program"),
         {
             "schema": "merlin.schedule_compilation.v1",
-            "source_sha256": kernel.digest(),
+            "source_sha256": source_sha256,
             "schedule_sha256": session.module.digest(),
             "context": asdict(context),
             "library_sources_sha256": sources,
             "resources": resources,
+            "selected_contracts": binding,
             "passes": [asdict(record) for record in session.records],
             "repair_rounds": session.repair_round,
             "storage": session.analysis("storage"),

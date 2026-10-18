@@ -176,7 +176,8 @@ def verify_storage_dataflow(
 
     def valid_actual(access):
         if access.space in bank_map:
-            return access.start + access.size <= bank_map[access.space].capacity and not any(
+            return (bank_map[access.space].start <= access.start
+                    and access.start + access.size <= bank_map[access.space].capacity) and not any(
                 bank_map[row.storage].backing == bank_map[access.space].backing
                 and access.start < row.start + row.extent
                 and row.start < access.start + access.size
@@ -271,7 +272,8 @@ def verify_storage_dataflow(
                 obj = object_map[binding[0]]
                 base = access.start - binding[1]
                 alignment = lcm(obj.alignment, bank_map[obj.bank].alignment, bank_map[access.space].alignment)
-                if base < 0 or base % alignment or base + obj.size > bank_map[obj.bank].capacity:
+                if (base < bank_map[obj.bank].start or base % alignment
+                        or base + obj.size > bank_map[obj.bank].capacity):
                     raise ValueError("actual spilled object violates its original extent or physical alignment")
         # Preserve within-instruction alias relations too. A streaming target
         # need not read every operand before starting its first output write.

@@ -196,12 +196,12 @@ def verify_row_softmax(
     domain("normalize")
     if index != len(body):
         raise ValueError("row softmax has extra effects after its complete normalization")
-    # The existing emitter owns overflow checks for every emitted intermediate,
+    # The shared IR check bounds every emitted intermediate,
     # not just the final tensor byte extent. Exercise the same check before
     # publishing a scheduling receipt, including local addresses and loop ends.
-    from merlin.sched.codegen import _check_integer_domain
+    from merlin.sched.ir.integer_domain import check_integer_domain
 
-    _check_integer_domain(kernel, adapter.index_bits)
+    check_integer_domain(kernel, adapter.index_bits)
     return {
         "schema": "complete_row_softmax.v1",
         "kernel_sha256": kernel.digest(),

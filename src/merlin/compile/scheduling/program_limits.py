@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 from bisect import bisect_right
+from collections import deque
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 
@@ -82,6 +83,7 @@ class DecodedInstruction:
     branches: tuple[EncodedBranch, ...] = ()
     completion: str = "unknown"  # synchronous, asynchronous, drain or unknown
     relocatable: bool = False
+    fallthrough: bool = True
 
 
 @dataclass(frozen=True)
@@ -169,6 +171,12 @@ class FinalProgram:
     report: dict
 
 
+def _library_sources():
+    from .schedule_pipeline import shared_library_sources
+
+    return shared_library_sources()
+
+
 def _decode(image, limits, decoder):
     if type(image) is not bytes or not image:
         raise ValueError("final program checking requires actual nonempty encoded bytes")
@@ -190,6 +198,7 @@ def _decode(image, limits, decoder):
             or instruction.size % limits.instruction_alignment
             or instruction.completion not in {"synchronous", "asynchronous", "drain", "unknown"}
             or type(instruction.relocatable) is not bool
+            or type(instruction.fallthrough) is not bool
             or type(instruction.accesses) is not tuple
             or type(instruction.branches) is not tuple
         ):
@@ -225,17 +234,58 @@ def _decode(image, limits, decoder):
         raise ValueError("decoder left actual encoded bytes unchecked")
     if any(target not in boundaries for _source, target in targets):
         raise ValueError("actual branch does not reach an instruction boundary inside this program")
-    return instructions, tuple(targets)
+    # Decoder implementations may cache returned records. Analyses retain
+    # host-owned values so a later callback cannot rewrite earlier facts.
+    owned = tuple(replace(i, accesses=tuple(replace(a) for a in i.accesses),
+                          branches=tuple(replace(b) for b in i.branches)) for i in instructions)
+    return owned, tuple(targets)
+
+
+def _pending_after(instructions, targets):
+    """May-pending completion over actual branches, without executing loop trips."""
+    by_offset = {instruction.offset: index for index, instruction in enumerate(instructions)}
+    successors = [[] for _ in instructions]
+    for source, target in targets:
+        successors[by_offset[source]].append(by_offset[target])
+    for index, instruction in enumerate(instructions):
+        if instruction.fallthrough:
+            successors[index].append(index + 1)
+        elif not instruction.branches:
+            successors[index].append(len(instructions))
+    after = [set() for _ in instructions]
+    seen, work, exits = set(), deque([(0, False)]), set()
+    while work:
+        index, pending = work.popleft()
+        if index == len(instructions):
+            exits.add(pending)
+            continue
+        if (index, pending) in seen:
+            continue
+        seen.add((index, pending))
+        completion = instructions[index].completion
+        if completion == "asynchronous":
+            pending = True
+        elif completion == "drain":
+            pending = False
+        after[index].add(pending)
+        work.extend((successor, pending) for successor in successors[index])
+    return after, exits
 
 
 def _fits(size, count, limits):
     return size <= limits.max_bytes and (limits.max_instructions is None or count <= limits.max_instructions)
 
 
-def _safe_cuts(instructions, targets, continuation, outputs):
+def _safe_cuts(instructions, targets, continuation, outputs, physical_spaces=()):
     # Conservative byte-interval liveness. A write kills an earlier value only
     # when it completely covers the read interval. Partial writes over-retain.
-    live = {access for access in outputs if access.space not in continuation.preserved_spaces}
+    mapping = dict(physical_spaces)
+    def canonical(access):
+        return replace(access, space=mapping.get(access.space, access.space))
+    preserved = {mapping.get(space, space) for space in continuation.preserved_spaces}
+    instructions = tuple(replace(instruction, accesses=tuple(canonical(a) for a in instruction.accesses))
+                         for instruction in instructions)
+    live = {canonical(access) for access in outputs if canonical(access).space not in preserved}
     may_kill = not targets and all(instruction.completion == "synchronous" for instruction in instructions)
     retained = {}
     for instruction in reversed(instructions):
@@ -254,10 +304,10 @@ def _safe_cuts(instructions, targets, continuation, outputs):
         live.update(
             access
             for access in instruction.accesses
-            if not access.writes and access.space not in continuation.preserved_spaces
+            if not access.writes and access.space not in preserved
         )
     safe = {0}
-    pending = False
+    pending_states, _exits = _pending_after(instructions, targets)
     ends = [instruction.offset + instruction.size for instruction in instructions]
     crossing_changes = [0] * (len(ends) + 1)
     for source, target in targets:
@@ -268,17 +318,13 @@ def _safe_cuts(instructions, targets, continuation, outputs):
     for index, instruction in enumerate(instructions):
         if instruction.completion == "unknown" or not instruction.relocatable:
             raise ValueError("segmentation cannot move unknown completion or position-dependent instructions")
-        if instruction.completion == "asynchronous":
-            pending = True
-        elif instruction.completion == "drain":
-            pending = False
+        if not instruction.fallthrough and not instruction.branches:
+            raise ValueError("segmentation cannot continue after an instruction with unknown return/exit semantics")
         cut = instruction.offset + instruction.size
         crossing += crossing_changes[index]
         final_cut = cut == ends[-1]
-        if not pending and not crossing and (final_cut or not retained[cut]):
+        if True not in pending_states[index] and not crossing and (final_cut or not retained[cut]):
             safe.add(cut)
-    if pending:
-        raise ValueError("segmented program ends before explicit device completion")
     return safe
 
 
@@ -289,6 +335,9 @@ def finalize_program(
     *,
     continuation: Continuation | None = None,
     outputs: tuple[EncodedAccess, ...] | None = None,
+    selected_contracts=None,
+    continuation_qualification_identity=None,
+    physical_spaces=(),
 ) -> FinalProgram:
     """Count/check actual final instructions, then slice only legal closed regions.
 
@@ -296,11 +345,68 @@ def finalize_program(
     invent branch relaxation or spill code. If a branch or live volatile value
     spans the required cut, the selected target needs another declared lowering.
     """
+    supplied_limits, supplied_decoder, supplied_continuation, supplied_outputs = limits, decoder, continuation, outputs
+    def input_state():
+        return (
+            asdict(supplied_limits) if type(supplied_limits) is ProgramLimits else None,
+            asdict(supplied_continuation) if type(supplied_continuation) is Continuation else None,
+            (supplied_decoder.configuration_identity, supplied_decoder.qualification_identity,
+             id(supplied_decoder.decode))
+            if type(supplied_decoder) is ProgramDecoder else None,
+            tuple(asdict(a) if type(a) is EncodedAccess else a for a in supplied_outputs)
+            if type(supplied_outputs) is tuple else None,
+        )
+    selected_state = input_state()
+    sources = _library_sources()
+    def fresh():
+        if sources != _library_sources():
+            raise ValueError("final program checker changed during checking; replan")
+        if input_state() != selected_state:
+            raise ValueError("final program limits, decoder or continuation changed during checking; replan")
+        if selected_contracts is not None:
+            selected_contracts.revalidate()
+
+    binding = None
+    if selected_contracts is not None:
+        from .selected_contracts import SelectedSchedulingContracts
+
+        if type(selected_contracts) is not SelectedSchedulingContracts or selected_contracts.program is None:
+            raise ValueError("final program requires explicitly selected RTL/software program contracts")
+        selected_contracts.revalidate()
+        if physical_spaces:
+            raise ValueError("selected physical program aliases cannot be overridden")
+        limits, decoder, continuation, binding = selected_contracts.program.bind(
+            selected_contracts, limits, decoder, continuation, continuation_qualification_identity,
+        )
+        physical_spaces = selected_contracts.program.physical_spaces
+        if outputs is not None and (type(outputs) is not tuple or any(type(a) is not EncodedAccess for a in outputs)):
+            raise ValueError("final program publications require immutable typed original intervals")
+        outputs = tuple(dict.fromkeys((*(outputs or ()), *selected_contracts.program.published())))
+    elif continuation_qualification_identity is not None:
+        raise ValueError("continuation qualification requires selected program contracts")
     if type(limits) is not ProgramLimits or type(decoder) is not ProgramDecoder:
         raise ValueError("final checks require typed original limits and decoder selection")
+    if (type(physical_spaces) is not tuple
+            or any(type(row) is not tuple or len(row) != 2 or any(type(s) is not str or not s for s in row)
+                   for row in physical_spaces)
+            or len(dict(physical_spaces)) != len(physical_spaces)
+            or physical_spaces and not {w.space for w in limits.windows} <= set(dict(physical_spaces))
+            or set(dict(physical_spaces)) - ({name for name, _ in selected_contracts.program.physical_spaces}
+                                            if selected_contracts is not None else {w.space for w in limits.windows})):
+        raise ValueError("final physical aliases require unique declared byte spaces and canonical backings")
     if continuation is not None and type(continuation) is not Continuation:
         raise ValueError("final checks require typed original continuation semantics")
+    decode = decoder.decode
+    def checked_decode(data):
+        fresh()
+        actual = decode(data)
+        fresh()
+        return actual
+    decoder = replace(decoder, decode=checked_decode)
     instructions, targets = _decode(image, limits, decoder)
+    _pending, exits = _pending_after(instructions, targets)
+    if True in exits:
+        raise ValueError("final program has a control-flow path ending before explicit device completion")
     starts = {instruction.offset: index for index, instruction in enumerate(instructions)}
     starts[len(image)] = len(instructions)
     cuts = [0]
@@ -323,7 +429,11 @@ def finalize_program(
                 for window in limits.windows
             ):
                 raise ValueError("published output interval is outside declared address windows")
-        safe = _safe_cuts(instructions, targets, continuation, outputs)
+        if selected_contracts is not None:
+            selected_contracts.program.verify_configuration(
+                selected_contracts, image, continuation, decoder.qualification_identity,
+            )
+        safe = _safe_cuts(instructions, targets, continuation, outputs, physical_spaces)
         ordered_cuts = sorted(safe)
         # With byte/count upper bounds and cut legality independent of the
         # preceding cut, the farthest legal cut minimizes launches.
@@ -369,5 +479,15 @@ def finalize_program(
         "continuation": asdict(continuation) if len(segments) > 1 else None,
         "timing": "UNKNOWN",
         "execution_qualification": "not_established",
+        "completion_check": "unknown" if any(i.completion == "unknown" for i in instructions)
+        else "conservative_control_flow",
+        "physical_spaces": dict(physical_spaces),
+        "library_sources_sha256": sources,
     }
+    fresh()
+    if selected_contracts is not None:
+        report["selected_contracts"] = selected_contracts.record(scopes=(
+            "final_program_limits", "physical_address_windows", "branch_encodings", "launch_state_continuation",
+        ))
+        report["selected_contracts"]["program"] = binding
     return FinalProgram(segments, report)

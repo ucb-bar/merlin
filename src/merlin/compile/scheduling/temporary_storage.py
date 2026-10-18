@@ -302,16 +302,19 @@ def _problem(kernel, objects, banks, adapter, external_windows, private_ownershi
     for obj in objects:
         bank = bank_map[obj.bank]
         limit = bank.capacity - obj.size
+        minimum = bank.start
         alignment = bank.alignment
         for effect, row in zip(effects, bindings, strict=True):
             for access, binding in zip(effect.accesses, row, strict=True):
                 if binding is not None and binding[0] == obj.name:
                     limit = min(limit, bank_map[access.space].capacity - binding[1] - access.size)
+                    minimum = max(minimum, bank_map[access.space].start - binding[1])
                     alignment = lcm(alignment, bank_map[access.space].alignment)
         name = f"temporary_{len(placement_banks)}"
         while any(candidate.name == name for candidate in placement_banks):
             name += "_"
-        derived = replace(bank, name=name, capacity=max(1, obj.size + limit), alignment=alignment)
+        end = max(1, obj.size + limit)
+        derived = replace(bank, name=name, start=min(minimum, end), capacity=end, alignment=alignment)
         placement_banks.append(derived)
         object_banks[obj.name] = derived.name
     # Use the existing graph allocator. A completion event keeps every object
@@ -391,7 +394,8 @@ def verify_temporary_storage(
             address = after.start - offset
             if addresses.setdefault(node, address) != address:
                 raise ValueError("realized aliases disagree on their backing allocation")
-            if after.start + after.size > bank_map[after.space].capacity:
+            if (after.start < bank_map[after.space].start
+                    or after.start + after.size > bank_map[after.space].capacity):
                 raise ValueError("realized access exceeds its actual typed bank view")
     valid, reason = check_assignment(graph, order, addresses, placement_banks, reservations=reservations)
     if not valid:
@@ -451,6 +455,7 @@ def allocate_temporary_storage(
     max_spills=4,
     eliminate_copies=True,
     on_repair=None,
+    optimize=True,
 ) -> TemporaryStorageResult | None:
     """Allocate, consume addresses in actual calls, then independently verify.
 
@@ -483,6 +488,11 @@ def allocate_temporary_storage(
         raise ValueError("private-copy elimination must be explicitly boolean")
     if on_repair is not None and not callable(on_repair):
         raise ValueError("storage repair notification must be an explicit callable")
+    if type(optimize) is not bool:
+        raise ValueError("temporary optimization selection must be Boolean")
+    if not optimize:
+        report = verify_temporary_storage(kernel, kernel, objects, banks, adapter, **model)
+        return TemporaryStorageResult(kernel, {**report, "optimization": "disabled_verified_original"})
     fallback = None
     if eliminate_copies:
         from .copy_elimination import eliminate_private_copies

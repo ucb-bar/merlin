@@ -78,6 +78,17 @@ def _number(value: Any, label: str, facts: dict | None, *, fact_only: bool = Fal
     return _integer(value, label, minimum=minimum)
 
 
+def resolve_fact_integer(reference: dict, facts: dict, *, label: str, minimum: int = 0) -> int:
+    """Resolve a structural RTL reference without accepting a software literal.
+
+    Shared consumers use the same traversal and integer validation as the ISA
+    resolver. An absent, noninteger or undersized fact is a diagnostic.
+    """
+    if type(facts) is not dict:
+        raise IsaSpecError(f"{label}: an explicit RTL facts mapping is required")
+    return _number(reference, label, facts, fact_only=True, minimum=minimum)
+
+
 @dataclass(frozen=True)
 class IsaType:
     kind: str

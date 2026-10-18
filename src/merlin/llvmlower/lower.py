@@ -17,7 +17,9 @@ if TYPE_CHECKING:
     from .graph_optimizations import GraphOptimizationContract
 
 from merlin.common import compile_trace
+from merlin.common.digest import sha256_text
 from merlin.common.ir_audit import IrAudit, audit_mode
+from merlin.common.jsonio import write_pretty_json
 
 from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 from .codegen import build_host_shared, compile_ll
@@ -89,9 +91,9 @@ def lower_model(
     transform_schedule: str | None = None,
     hoist_static_allocs: bool = True,
     parallel: bool = False,
-    features: "frozenset[str] | None" = None,
+    features: frozenset[str] | None = None,
     parallel_harts: int | None = None,
-    parallel_chunks: "list | None" = None,
+    parallel_chunks: list | None = None,
     static_arena: bool | None = None,
     ir_audit: bool | str = False,
     audit_sidecars: tuple[str | Path, ...] = (),
@@ -195,6 +197,8 @@ def lower_model(
             stats["graph_optimizations"] = graph_report
         stats["automatic_host_rows"] = row_report
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
+        row_report["upstream_file_sha256"] = sha256_text(upstream_text)
+        write_pretty_json(work / "automatic-host-rows.json", row_report)
 
         audit.stage("upstream", upstream_text)
         lowering_selection: dict[str, Any] = {}
@@ -294,9 +298,9 @@ def lower_model_file(
     transform_schedule: str | None = None,
     hoist_static_allocs: bool = True,
     parallel: bool = False,
-    features: "frozenset[str] | None" = None,
+    features: frozenset[str] | None = None,
     parallel_harts: int | None = None,
-    parallel_chunks: "list | None" = None,
+    parallel_chunks: list | None = None,
     static_arena: bool | None = None,
     ir_audit: bool | str = False,
     audit_sidecars: tuple[str | Path, ...] = (),

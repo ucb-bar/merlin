@@ -325,7 +325,7 @@ def verify_row_softmax_storage(problem, numerics, storage, banks, role_banks, re
             or view.capacity < counts[role]
         ):
             raise ValueError("row state view has wrong backing, element width or capacity")
-        if (view.base + view.capacity) * width > bank.capacity:
+        if view.base * width < bank.start or (view.base + view.capacity) * width > bank.capacity:
             raise ValueError("row state view extends beyond its selected bank")
         addresses[ids[role]] = view.base * width
     valid, reason = check_assignment(graph, order, addresses, banks, reservations=reservations)
@@ -351,11 +351,32 @@ class RowSoftmaxCompilation:
     report: dict
     index_bits: int
     passes: tuple = ()
+    selected_contracts: object = None
+    checked_index_bits: int | None = None
 
     def emit_c(self, instruction_set, *, symbol):
         from merlin.sched.codegen import emit_c_function
 
-        return emit_c_function(self.kernel, instruction_set, symbol=symbol, index_bits=self.index_bits)
+        from .schedule_pipeline import shared_library_sources
+
+        def fresh():
+            if self.selected_contracts is not None:
+                self.selected_contracts.revalidate()
+            # Diagnostic dictionaries are mutable and grant no analysis
+            # custody. Use the existing frozen pass stamp even if a caller
+            # removes or rewrites its printable receipt.
+            stamp = self.passes[-1].after if self.passes else None
+            library = hashlib.sha256(json.dumps(shared_library_sources(), sort_keys=True).encode()).hexdigest()
+            if (
+                stamp is None or self.kernel.digest() != stamp.source_sha256
+                or self.index_bits != self.checked_index_bits or library != stamp.context.library
+            ):
+                raise ValueError("row checked kernel or shared library changed; replan before emission")
+
+        fresh()
+        source = emit_c_function(self.kernel, instruction_set, symbol=symbol, index_bits=self.index_bits)
+        fresh()
+        return source
 
 
 def _choose_chunk(problem, resources, explicit):
@@ -435,6 +456,7 @@ def compile_row_softmax(
     chunk_elements=None,
     timeout_ms=2000,
     pass_order=(),
+    selected_contracts=None,
 ):
     """Execute admission, tiling, allocation and verified dependency scheduling.
 
@@ -448,6 +470,7 @@ def compile_row_softmax(
 
     from .row_softmax_verification import verify_row_softmax
     from .schedule_pipeline import shared_library_sources
+    from .selected_contracts import SelectedSchedulingContracts
 
     specs = (
         PassSpec("row_semantics", 0, produces=("row_source",), mutates_ir=False, ir_level="schedule"),
@@ -478,6 +501,20 @@ def compile_row_softmax(
             raise ValueError("explicit row reduction ordering must contain every pass exactly once")
         specs = tuple(next(s for s in specs if s.name == name) for name in pass_order)
     validate_pass_order(specs)
+    source_adapter = adapter
+    binding = None
+    if selected_contracts is not None:
+        if type(selected_contracts) is not SelectedSchedulingContracts or selected_contracts.row_reduction is None:
+            raise ValueError("row scheduling requires explicitly selected complete-row RTL/software contracts")
+        selected_contracts.revalidate()
+        resources, banks, role_banks, reservations, adapter = selected_contracts.row_reduction.bind(
+            selected_contracts, problem, numerics, resources, banks, role_banks, adapter,
+            reservations=reservations, private_ownership=private_ownership,
+        )
+        binding = selected_contracts.record(scopes=(
+            "row_source_algorithm", "row_chunk_and_index_limits", "row_state_windows_and_reservations",
+            "complete_phase_operands_and_effects",
+        ))
     _admit(problem, numerics, resources, adapter, private_ownership, disjoint_arguments)
     _storage_problem(problem, numerics, banks, role_banks)
     if type(reservations) is not tuple or any(type(r) is not Reservation for r in reservations):
@@ -486,24 +523,26 @@ def compile_row_softmax(
     def identity(value):
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
+    def resource_inputs():
+        return dict(problem=asdict(problem), resources=asdict(resources), banks=[asdict(b) for b in banks],
+                    role_banks=role_banks, reservations=[asdict(r) for r in reservations],
+                    chunk_elements=chunk_elements, private_ownership=private_ownership,
+                    disjoint_arguments=disjoint_arguments, index_bits=adapter.index_bits)
+
+    def execution_inputs():
+        fields = ("qualification_identity", "configuration_identity", "numerical_identity", "index_bits",
+                  "synchronous_completion", "exact_source_order", "addressable_state")
+        return dict(selected_contracts=binding, adapters={
+            name: {key: getattr(value, key) for key in fields}
+            for name, value in (("source", source_adapter), ("bound", adapter))})
+
+    sources = shared_library_sources()
     context = PipelineContext(
         hardware=adapter.configuration_identity,
         numerical_policy=numerics.identity,
-        resources=identity(
-            dict(
-                problem=asdict(problem),
-                resources=asdict(resources),
-                banks=[asdict(b) for b in banks],
-                role_banks=role_banks,
-                reservations=[asdict(r) for r in reservations],
-                chunk_elements=chunk_elements,
-                private_ownership=private_ownership,
-                disjoint_arguments=disjoint_arguments,
-                index_bits=adapter.index_bits,
-            )
-        ),
-        execution=adapter.qualification_identity,
-        library=identity(shared_library_sources()),
+        resources=identity(resource_inputs()),
+        execution=identity(execution_inputs()),
+        library=identity(sources),
     )
 
     def verify_ir(value):
@@ -549,10 +588,26 @@ def compile_row_softmax(
         "row_schedule": scheduled,
     }
     storage = None
+    def fresh():
+        if (context.resources != identity(resource_inputs()) or context.numerical_policy != numerics.identity
+                or context.hardware != adapter.configuration_identity
+                or context.execution != identity(execution_inputs())):
+            raise ValueError("row source, numerical policy, resource or execution inputs changed; replan")
+        if sources != shared_library_sources():
+            raise ValueError("row shared library changed during compilation; replan")
+        if selected_contracts is not None:
+            selected_contracts.revalidate()
+
     for spec in specs:
+        fresh()
         session.run(spec, actions[spec.name])
+        fresh()
         if spec.name == "row_allocation":
             storage = session.analysis("row_storage")
-    return RowSoftmaxCompilation(
-        session.module, storage, session.analysis("row_realization"), adapter.index_bits, tuple(session.records)
-    )
+    report = {**session.analysis("row_realization"), "pipeline": {
+        "schema": "merlin.complete_row_pipeline.v1", "context": asdict(context),
+        "kernel_sha256": session.module.digest(), "library_sources_sha256": sources,
+        "selected_contracts": binding, "index_bits": adapter.index_bits,
+    }}
+    return RowSoftmaxCompilation(session.module, storage, report, adapter.index_bits, tuple(session.records),
+                                 selected_contracts, adapter.index_bits)

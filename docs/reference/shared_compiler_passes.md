@@ -10,15 +10,18 @@ code_refs:
   - src/merlin/compile/scheduling/compact_dense.py
   - src/merlin/compile/scheduling/compact_verification.py
   - src/merlin/compile/scheduling/program_limits.py
+  - src/merlin/compile/scheduling/program_contracts.py
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/device_spills.py
   - src/merlin/compile/scheduling/spill_conformance.py
+  - src/merlin/compile/scheduling/spill_contracts.py
   - src/merlin/compile/scheduling/copy_elimination.py
   - src/merlin/compile/scheduling/schedule_pipeline.py
   - src/merlin/compile/scheduling/fusion.py
   - src/merlin/compile/scheduling/fusion_semantics.py
   - src/merlin/compile/scheduling/row_softmax.py
   - src/merlin/compile/scheduling/row_softmax_verification.py
+  - src/merlin/compile/scheduling/row_contracts.py
   - src/merlin/llvmlower/cpu_softmax.py
   - src/merlin/llvmlower/automatic_host.py
   - src/merlin/llvmlower/quant_round_check.py
@@ -26,6 +29,16 @@ code_refs:
   - src/merlin/transforms/row_normalization.py
   - src/merlin/transforms/row_normalization_check.py
   - src/merlin/llvmlower/automatic_rows.py
+  - src/merlin/model_check/full_build.py
+  - src/merlin/llvmlower/codegen_env.py
+  - src/merlin/sched/ir/integer_domain.py
+  - src/merlin/compile/scheduling/selected_contracts.py
+  - src/merlin/compile/scheduling/dense_contracts.py
+  - src/merlin/compile/scheduling/storage_contracts.py
+  - src/merlin/compile/scheduling/fusion_contracts.py
+  - src/merlin/semantic_compiler/allocation_types.py
+  - src/merlin/semantic_compiler/allocate.py
+  - src/merlin/verify/lean_resource_geometry.py
 ---
 
 # Shared compiler pass contracts
@@ -116,6 +129,44 @@ Any actual IR mutation invalidates old analyses, including a mutation whose
 pass omitted an invalidation declaration. Changing a selected identity likewise
 makes an old analysis unusable. A failed action poisons its private session.
 An analysis pass that mutates IR is an error.
+
+Selected-contract resolution, compact dense scheduling, finite schedule
+compilation, row emission and final-program checks now use the same shared
+source-version roster. It includes the block-operation definitions, scalar
+admission and witness helpers, semantic value types and IR package/parser
+owners. A change detected during a provider callback rejects that compilation;
+a change after checking rejects later emission or contract reuse. Reselect and
+replan with a stable library. Versions describe source bytes, not loaded-code
+attestation, third-party dependencies or a complete transitive import closure.
+This roster grants no candidate import access: the separate reviewed
+compiler-library contract and existing authoring boundaries still apply.
+
+Compact dense C emission binds the actual checked kernel, index width and
+library through an immutable existing `AnalysisStamp`. Editing or deleting its
+printable realization report cannot bypass those checks. Source checks run
+before and after target C rendering; arbitrary C implementation equivalence
+still requires independent qualification.
+
+Ordinary whole-model image reuse also binds the raw `MERLIN_*` control values,
+the Python sources in the host lowering and transform families, direct build
+owners and selected target-input files. Only a digest of raw controls is stored;
+the display snapshot's redaction and long-value summaries cannot establish cache
+identity. Changing pass selection, a pass implementation or the selected target
+invalidates an older image. A hit reopens the ELF and verifies its recorded hash,
+and controls/source identities are rechecked before returning or publishing.
+Legacy records without these bindings rebuild. These are direct-input checks,
+not complete toolchain, capture, provider-resource or transitive dependency
+closure. They confer no numerical or execution qualification.
+
+Counted-schedule signed-index interval checking lives in
+`merlin.sched.ir.integer_domain`. Both row verification and C emission consume
+the same algorithm, bounding intermediate sums and products without expanding
+iterations. The emitter preserves its existing exception interface. The shared
+checker requires no emitter, ISA loader, backend or numerical framework. An
+isolated source-only test verifies one explicit import-closed library leaf with
+the existing compiler-library contract; this does not release the complete
+scheduling library or expand historical authoring grants. The full release
+still requires review of broader namespace and host-verification dependencies.
 
 `repair(stage=..., reason=...)` clears analyses and restarts an already selected
 legal fallback within an explicit repair budget. It cannot revive a failed
@@ -227,6 +278,128 @@ requires that public semantic boundary, actual addressing and tail legality,
 completion/continuation qualification, and final emitted-effect checks. It does
 not require changing a target's instruction implementation to fit Merlin.
 
+### Selected RTL and software inputs for dense scheduling
+
+The ordinary shared entry now accepts `selected_contracts=selection`, using the
+same two pinned documents as configuration cleanup. The optional `dense` section
+of `merlin.schedule_effects.v1` has schema `merlin.dense_schedule.v1`:
+
+| Section | Required contents | Owner of the information |
+| --- | --- | --- |
+| `primitive` | `m`, `k`, `n`, each `{fact: [structural, path]}` | RTL geometry |
+| `formats` | `lhs`, `rhs`, `accumulator`, each with `dtype` and fact-backed `bits` | Software format interpretation, RTL widths |
+| `storage` | Those three roles, each with `resource`, canonical `backing`, fact-backed `row_bytes`, `origin_bytes`, `alignment_rows` | ISA physical mapping and RTL bounds |
+| `external` | `lhs`, `rhs`, `output` ISA byte-memory resource names | Software memory interface |
+| `instructions` | `lhs_load`, `rhs_load`, `preload`, `compute`, `store`, each naming its declared ISA instruction | Qualified software operation mapping |
+| `semantics` | `layout`, `arithmetic`, `reduction`, `initialization`, `continuation`, `completion`, `accumulator`, `ownership` | Qualified software/runtime behavior |
+| `support` | Positive `max_m_blocks`, `max_k_blocks`, `max_n_blocks`; Boolean `partial_output_tiles`, `partial_output_blocks`, `partial_reduction_tiles` | Supported software instruction domain |
+
+For this family, semantics must explicitly select `row_major`,
+`signed_integer_mac_modular`, `source_order`, `zero`, `exact`, `synchronous`,
+`addressable`, and `invocation_private`, respectively. Each MAC updates the
+signed accumulator modulo its declared bit width; no saturation, rounding,
+reassociation or intermediate precision change is admitted. The family supports
+signed i8/i16/i32 formats whose widths agree with RTL. Unsupported semantics,
+including unknown/asynchronous completion, diagnose rather than silently using
+a synchronous schedule. This declaration does not validate the original
+operation's numerical admission or qualify a target implementation.
+
+Capacities come from the selected ISA's memory resources and their RTL fact
+references; units must be bytes. Coordinates in each assigned view use the
+existing absolute `base * unit_bytes` mapping into its canonical backing.
+`origin_bytes` bounds the resource's interval in that same coordinate system;
+it is not an additional offset added by emission. Fact-backed row widths include
+physical padding. Different views of one ISA resource cannot disguise its
+backing or origin. Distinct resources may explicitly alias one backing.
+Unknown capacities, unresolved references, contradictory widths and misaligned
+or out-of-window assignments diagnose. Canonical alias mappings still require
+independent target/runtime qualification.
+
+The allocation owner supplies already assigned `DenseLoopStorage` windows,
+excluding other live state. Optional `reservations` are existing `AddressWindow`
+objects in canonical backing bytes; overlapping packing, DMA or other live
+reservations refuse. The scheduler derives operand/accumulator byte budgets
+from those windows and narrows optional `DenseResources` search controls to the
+selected limits. It never allocates an entire local memory merely because its
+RTL capacity is known. Simultaneously live views must remain disjoint, even in
+one SRAM. The runtime owner must establish external-buffer disjointness and
+invocation-private ownership; document labels and identities alone provide no
+such evidence.
+
+For example, a lowering integration with checked assignments calls:
+
+```python
+selection = read_scheduling_contracts(facts_path, software_path, target=target)
+problem = selection.dense.problem(m, k, n)  # Computation extents, RTL primitive.
+result = schedule_compact_dense(
+    problem, None, assigned_storage, qualified_adapter,
+    name=operation_name, dtypes=selection.dense.dtypes,
+    static_budget=code_growth_budget, external_buffers_disjoint=True,
+    selected_contracts=selection, reservations=live_reservations,
+)
+if result is not None:
+    source = result.emit_c(instruction_set, symbol=operation_name)
+```
+
+The adapter must match the selected hardware/numerical identities and carry an
+independently selected `qualification_identity`. The contract maps actual
+instruction names to projected dense operations. Known ISA memory effects must
+exactly match their operation roles, allowing explicitly declared execution
+resources. Extra persistent-state effects refuse. This initial logical-coordinate
+binding requires integer ISA arguments with one full-width encoded field each,
+unit alignment and widths at least the checked C index width. Actual argument
+names must match. It conservatively declines narrower encodings even if a
+particular shape might fit them. Public target mapping extensions can later
+establish those narrower ranges without weakening the check.
+
+Dense compilation now uses the existing `PipelineSession`: admission precedes
+blocking, emission invalidates earlier analyses, and realization checks the
+emitted loop IR. Invalid explicit `pass_order` is rejected before execution.
+A bounded checking-budget repair invalidates analyses and repeats all stages
+with the simpler block. The receipt binds current computation, storage,
+resources, numerical policy, execution qualification identity, shared source
+hashes and both selected input byte hashes. Files and shared implementation
+hashes are checked around every stage. `emit_c` rechecks the selected files,
+verified kernel digest and implementation hashes before and after rendering.
+These checks do not decode arbitrary native machine code or qualify provider
+C instruction renderers; those remain explicit integration obligations.
+
+`test_selected_dense_contracts.py` runs paired baseline/optimized emitted C for
+three synthetic configurations: 2x3x4 and 3x2x5 primitives, 8/16-bit inputs,
+32-bit accumulators, padded separate memories and unequal-width views in one
+shared backing. A signed 16-bit case forces accumulator wraparound and compares
+against independent exact Python arithmetic with explicit modular reduction.
+The same programs also run inside a complete neutral host graph: transpose
+packing, dense dispatch, host bias/state arithmetic and position/state updates
+over two invocations. Every output, carried state, position, input and guard is
+checked. A falsely qualified native implementation that resets each reduction
+tile fails the independent reference, even though its projected loop is valid.
+Actual command/load counters match reconstructed loop effects. Host
+packing and postprocessing counts are reported separately and remain unchanged.
+This is a neutral graph experiment, not a real full-model or hardware result.
+
+Reproduce the paired records without downloads:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_selected_dense_contracts.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/selected-dense" \
+  -o junit_family=xunit1 --junitxml "$TMPDIR/selected-dense-results.xml"
+```
+
+JUnit properties record scheduling times, per-arm C source bytes, joint native
+library size, actual commands, requested load bytes, host packing traffic,
+host arithmetic and dispatch counts, and whole neutral graph host-call wall
+samples. Native build time is joint; peak compilation memory and accelerator
+timing remain unmeasured. Samples include ABI overhead and are insufficient for
+a speedup claim. Smaller requested traffic does not establish latency savings.
+
+Existing target providers still need the fact-pinned dense declaration, checked
+allocation windows/reservations, qualified logical-operation projection and
+source-to-final-program conformance. Ordinary `lower_model` target routing has
+not been connected to this selected dense family: it retains its existing
+backend route. The integration must be supplied through public target hooks;
+no target source or protected reference compiler is imported by this mechanism.
+
 ## Executable schedule pipeline
 
 `compile_schedule` connects the existing storage passes, effect checks and final
@@ -315,6 +488,87 @@ execution qualification.
 
 ## Redundant configuration writes
 
+The ordinary `compile_schedule` entry can now consume both selected documents
+through `read_scheduling_contracts(facts_path, software_path, target=...)`.
+It reuses `targetgen.isa_spec.resolve_isa`: encoded fields, integer widths and
+state capacities resolve from the software ISA's references into the exact RTL
+facts bytes. The facts pin and explicit target must match. RTL extraction is
+not repeated here and synthetic facts remain synthetic.
+
+The selected `merlin.software_spec.v1` document must have reviewed status and an
+ISA declaration. Its additional scheduling section describes canonical state
+effects, separately from computation admission or numerical reference engines:
+
+```yaml
+scheduling:
+  schema: merlin.schedule_effects.v1
+  numerical_policy: selected-policy-identity
+  instruction_byteorder: little
+  configuration:
+    declared_instruction_name:
+      ordered: true
+      pure_write: true
+      reads: []
+      writes:
+        - resource: declared_state_resource
+          index: {argument: encoded_field_index}
+          value: {argument: encoded_value}
+      clobbers: []
+```
+
+Every resource must exist in the ISA as state with unit `fields`. Capacity,
+when known, is the number of canonical fields and must resolve from an RTL
+fact reference. Index/value bindings name integer ISA arguments or use
+`{constant: integer}`. Reads require the stated value; clobbers forget a field
+without assuming its reset value. State-resource read/write coverage must agree
+with the ISA's declared resource effects. A pure setter cannot also read state,
+clobber, touch memory or have unordered visibility. The projection checks actual
+operand encoding ranges and actual field indices, not instruction spellings or
+retained planning annotations. Providers must establish canonical mapping of
+physical fields and aliases and complete arithmetic/execution effects; the
+loader cannot infer those properties from a resource name.
+
+This initial realization family has fixed-width byte-aligned instructions with
+one decoded schedule call per word. Byte order is an explicit software-interface
+property. Final verification independently decodes actual words using the
+fact-bound ISA and compares all instruction and operand bindings against the
+provider decoder. A provider cannot hide changed bytes by returning the intended
+register values. Variable-width, packed-bit and opaque framing require their
+own qualified integration and are not interpreted by this family.
+
+Pass `selected_contracts=selection` and an independently selected
+`configuration_qualification_identity` to `compile_schedule`. It builds and
+consumes the configuration adapter automatically. Storage/encoding adapters must
+match `selection.hardware_identity` and its numerical policy. This new route
+does not accept a second arbitrary configuration callback. Without qualification
+it retains the original configuration stream and records
+`unavailable_missing_qualification`. Unknown capacities, undeclared instructions
+and unknown ordering are conservative barriers. Contradictory declarations,
+out-of-range fields or stale input bytes produce diagnostics.
+
+Both selected file identities and the resolved ISA identity enter the existing
+pipeline context and report. Input bytes are reopened before and after each
+pass, so a changed RTL file or software specification cannot authorize a later
+analysis or a successfully returned image. Derived fields are computed from
+immutable input bytes. Source hashes for the shared loader and ISA resolver/codec
+join the common library identity in every treatment. A review label or a
+qualification identity does not establish execution qualification on its own.
+
+`test_selected_schedule_contracts.py` exercises this path with synthetic
+fact-bound 32-bit little-endian and 64-bit big-endian operands, capacity and
+ordering changes, unknown/reset/nonidempotent instructions and changed final
+bytes. Independent native execution checks complete output guards, inputs and
+final state. False pulse-on-set semantics fail the independent comparison.
+JUnit records scheduling compilation time, actual encoded size, executed
+commands and requested payload bytes; memory remains unmeasured and emulator
+call time is not accelerator latency. These are whole transfer-program tests,
+not full-model or real-hardware integration results.
+
+Existing target providers still need the two pinned input documents, qualified
+canonical state semantics and actual operand/final-byte decoding before their
+ordinary full-model route can select this extension. They keep their existing
+legal route until then; this work makes no target repository changes.
+
 `eliminate_redundant_configuration` uses existing `sched.ir.Kernel` calls and a
 selected `ConfigurationAdapter` that decodes actual operands into integer field
 reads, writes, clobbers and qualified ordering. A pure write must be independently
@@ -399,6 +653,159 @@ insertion requires the additional exact capabilities described below.
 Existing targets need the public effect/address-rewrite adapter and
 independent execution qualification before this pass can enter their ordinary
 lowering. That integration remains incomplete.
+
+### Selected resource windows and actual storage effects
+
+The same selected RTL/software pair can now drive temporary allocation through
+ordinary `compile_schedule`. Add a `storage` section to
+`merlin.schedule_effects.v1`, using schema
+`merlin.temporary_storage_contract.v1`:
+
+| Section | Required contents | Source of the information |
+| --- | --- | --- |
+| `banks` | ISA resource name to `backing`, fact-backed `start`, `size`, `alignment`, and `ownership` | RTL geometry plus qualified software physical mapping/ownership |
+| `external` | ISA resource name to `backing`, fact-backed `start`, `size`, and `ownership` | Declared runtime address windows and persistence |
+| `reservations` | List of `resource`, fact-backed `start`, `size`, and nonempty `purpose` | Packing, DMA staging, persistent or other unavailable intervals |
+| `instructions` | ISA instruction name to complete byte accesses, completion, token/waits and exact-copy declaration | Qualified software/ISA effects |
+
+Every memory resource must exist in the selected ISA with unit `bytes`.
+Capacities use that ISA's RTL references. Every window must fit the resource's
+known capacity. Unknown local capacities diagnose. Coordinates are canonical
+backing bytes: `start` is an inclusive lower bound and `start + size` an exclusive
+upper bound. This initial family does not translate differently based physical
+address spaces or infer units from instruction names.
+
+The existing `StorageBank` now supports an optional `start`, defaulting to zero;
+`capacity` remains the exclusive upper address bound. Zero-origin serialized
+records retain their previous form. The solver, independent assignment checker,
+fixed input/output checks, reservations, temporary alias reconstruction and
+spill/copy conformance honor both bounds. A typed alias can have its own lower
+bound without excluding those bytes from a wider view. The existing Lean
+geometry projection expresses nonzero lower bounds through its existing
+translated interval obligations, retaining alignment checks in the original
+coordinates. This adds no physical mapping theorem or execution qualification.
+
+Private banks must declare `invocation_private`, and the runtime/lowering owner
+must separately supply `private_ownership=True`. A software label cannot
+establish actual ownership. External resources must declare `runtime_managed`
+or `persistent`, remain fixed and use backings disjoint from private storage.
+Distinct external aliases require a qualified canonical projection first;
+this family refuses them rather than treating aliased state as independent.
+Within one external resource, overlapping fixed accesses retain their original
+order. Weights, positions and cache/state updates are not hoisted or relocated.
+
+An instruction declaration has this shape, with names selected as data:
+
+```yaml
+accesses:
+  - space: {resource: declared_input}
+    start: {argument: source_byte_address}
+    size: {argument: byte_count}
+    writes: false
+  - space: {resource: declared_local_view}
+    start: {argument: destination_byte_address}
+    size: {argument: byte_count}
+    writes: true
+completion: synchronous
+token: null
+waits: []
+exact_copy: true
+```
+
+Access starts/sizes bind an encoded integer argument or `{constant: integer}`.
+A typed ISA address argument is admitted for a byte start when its address space
+matches the declared resource. Its declared argument alignment and encoding
+range are checked by the existing ISA codec. Local starts must be relocatable
+arguments. Element-count scaling, strided transfers and opaque pointer framing
+need an explicit compatible projection; no multiplier or address conversion is
+invented. A memory selector can instead use
+`{argument: selector_name, choices: [{value: {fact: [path]}, resource: resource_name}]}`.
+Unlisted selector values diagnose. Reads/writes must cover exactly the ISA's
+memory effects, with explicit ISA operation semantics. Hidden persistent-state
+effects are unsupported in this family.
+
+Asynchronous declarations use `completion: asynchronous`, one numeric `token`
+binding and empty `waits`; pure completion instructions use `completion: wait`,
+`token: null`, no accesses and numeric `waits` bindings. Those tokens must be
+reconstructed from actual instruction operands. Unknown instructions/completion
+are barriers. A selected provider's projected accesses, completion, token/waits
+and exact-copy claim must agree with the declaration. Actual encoded argument
+ranges are checked. A semantic fingerprint retains the ISA operation semantics,
+all nonaddress arguments and the provider's nonaddress interpretation. An exact
+copy cannot carry additional ISA execution/state effects, and an instruction
+with extra execution effects cannot be treated as pure elementwise arithmetic.
+Arbitrary
+opaque implementation effects are not inferred from that fingerprint.
+
+Use the allocation owner's current objects and runtime premises:
+
+```python
+result = compile_schedule(
+    kernel, private_objects, None, qualified_storage_adapter,
+    qualified_encoding, program_limits,
+    selected_contracts=selection,
+    private_ownership=runtime_established_private_ownership,
+    reservations=packing_and_staging_reservations,
+    external_windows=runtime_windows,
+)
+```
+
+With `banks=None`, geometry is derived automatically. Explicit banks may only
+narrow selected windows and strengthen alignment, preserving physical aliases.
+Omitting `external_windows` derives the selected fixed windows; supplied runtime
+windows must be contained in them. Declared reservations and current runtime
+reservations are unioned across canonical aliases, preventing duplicate charges
+while preserving each interval's view bounds. Runtime owners still establish
+actual invocation ownership and allocation validity; RTL facts alone do not.
+Program-size/branch limits remain independently selected inputs at this stage.
+
+`ScheduleBudgets(optimize_storage=False)` retains and independently checks the
+original addresses, without relocation, private-copy elimination or spills.
+It is a legal baseline only when those original assignments fit the selected
+windows and reservations. Otherwise it diagnoses; virtual out-of-capacity
+addresses are not a runnable unoptimized route. The enabled arm uses the
+existing allocator, completion checks and bounded repairs. Shared implementation
+hashes and selected file bytes are revalidated around every schedule pass.
+
+The ordinary final-byte pipeline currently requires synchronous instructions.
+Selected asynchronous effects can enter the standalone allocator and its native
+completion tests; ordinary encoded compilation rejects them until final-byte
+and launch completion support is qualified. No metadata annotation substitutes
+for the actual wait. This remains an explicit integration gap.
+
+`test_selected_storage_contracts.py` exercises actual final bytes on independent
+neutral native machines with 32-bit big-endian and 64-bit little-endian integer
+operands, different alignments, shared aliases, separate memories, nonzero
+windows, tails, packing/DMA reservations and deferred completion. Complete
+transfer/arithmetic graphs preserve all output bytes, input guards and carried
+state over three invocations. A false physical-alias declaration passes projected
+checks but fails independent execution, demonstrating the qualification boundary.
+Mutations also cover capacities, selectors, ownership, missing initialization,
+waits, lying projections, rewritten addresses, final words and stale inputs.
+
+Reproduce the paired records:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_selected_storage_contracts.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/selected-storage" \
+  -o junit_family=xunit1 --junitxml "$TMPDIR/selected-storage-results.xml"
+```
+
+JUnit records both compilation times, exact encoded sizes, actual commands,
+requested read/write bytes, observed temporary address high-water marks and
+complete carried-state hashes. Host packing payload is reported separately and
+unchanged. Native banks retain their fixed physical capacity; a lower used
+address high-water mark is not lower RSS or smaller hardware SRAM. Traffic and
+command counts remain unchanged when this experiment only relocates storage.
+Compilation peak memory and accelerator timing remain unmeasured; native-call
+wall samples include interpreter/ABI overhead and establish no speedup.
+
+These are shared-mechanism and neutral graph tests. Real full-model target
+routing still needs public selected documents, qualified canonical byte-effects
+and address rewriting, runtime ownership/windows and final byte decoding.
+Ordinary target lowering retains its existing route. No target repository is
+modified, and historical model measurements keep their original source pins
+and unchanged numerical admission failures.
 
 ## Private copy elimination
 
@@ -518,6 +925,150 @@ floating readouts, direct contraction-body fusion, noncontiguous layouts,
 cross-memory handoffs and asynchronous fusion remain incomplete. Traffic
 reductions in these tests are not full-model latency results.
 
+### Fusion selected from RTL and software documents
+
+Ordinary `compile_schedule` can now build its fusion capabilities from an
+optional `fusion` section in the same selected scheduling document. Its schema
+is `merlin.physical_fusion_contract.v1`, and it requires the selected storage
+contract. This reuses `fusion.py`, `fusion_semantics.py`, the allocation pipeline
+and final independent ISA-word checks. It introduces no new arithmetic IR or
+pass manager.
+
+`elementwise` maps ISA instruction names to these required fields:
+
+| Field | Meaning and owner |
+| --- | --- |
+| `scalar_ir` | Complete scalar MLIR function defining the software arithmetic, including conversions and numeric boundaries |
+| `elements` | One to sixteen encoded integer argument/constant factors defining the logical element count |
+| `element_bits` | One RTL fact reference for each memory input/result width, checked against actual scalar MLIR types |
+| `stages` | Complete ordered software stage names, with repetitions preserved |
+| `byte_orders` | Explicit software byte order of each input/result, independently of instruction word byte order |
+| `readout` | Physical readout identity for a composed result; otherwise null |
+| `execution` | `contiguous_read_then_write` for this execution family, or an explicit unsupported/unknown declaration |
+
+The execution family means contiguous elementwise memory, no hidden effects,
+state, volatility, traps or cross-element dependence, and all inputs of an
+element read before writing it. Independent qualification must establish those
+properties. Floating arithmetic, unsupported integer operations/metadata and
+unknown execution retain the original materializations. Scalar-operation and
+source-byte budgets bound parsing and correspondence checks; no tensor elements
+are enumerated. Contradictory admitted widths/layouts or a provider projection
+that disagrees with the selected semantics diagnose.
+
+The storage contract now supports a byte extent of this form in addition to
+its existing argument/constant binding:
+
+```yaml
+size:
+  elements: [{argument: m}, {argument: n}]
+  element_bits: {fact: [facts, accumulator_bits]}
+```
+
+This is a bounded product of positive logical dimensions multiplied by the
+fact-backed byte width. It is not an arbitrary expression evaluator. Every
+factor binds an encoded integer ISA argument or a positive integer constant;
+nonpositive dimensions, missing bindings, excessive factors and subbyte widths
+refuse. This lets the same memory/effect contract describe shape-dependent
+matrix results and packing sizes without capturing benchmark constants. Sizes
+are reconstructed from actual operands and compared with the provider's effect
+projection before allocation and again through final bytes.
+
+`readouts` maps physical selector names to `applies`, `evidence`,
+`max_elements`, and `routes`. `applies` lists stages that this individual
+readout can realize. `max_elements` is an RTL fact reference, or null when the
+structural bound is unknown. A route explicitly names `producer`, `consumer`
+and `result` ISA instructions. Its result must carry that readout and exactly
+the concatenated ordered source stages. No union of different physical readouts
+can implement one composition. A bound does not qualify arithmetic or completion.
+
+For an integration that has independently qualified its semantics and physical
+emitter, the ordinary call is:
+
+```python
+result = compile_schedule(
+    kernel, objects, None, storage_adapter, encoding, limits,
+    selected_contracts=selection,
+    fusion_emitters={selector: physical_composition_emitter},
+    fusion_qualification_identity=selected_execution_evidence_identity,
+    private_ownership=runtime_established_private_ownership,
+    external_windows=runtime_windows,
+)
+```
+
+The target callback retains ownership of physical instruction construction. It
+may decline a pair. A returned instruction must match one declared route and
+pass the existing actual scalar/memory correspondence, allocation, completion,
+final-byte and size checks. Bounds are tested against actual producer extents.
+Missing qualification, emitter, structural bound or supported scalar semantics
+disables the affected capability and records why. The original route remains
+available where legal. Arbitrary parallel `fusion_capabilities` cannot override
+a selected fusion declaration. Without the extension, the existing explicit
+legacy interface remains separate and makes no selected-fusion claim.
+
+Typed semantics are constructed from the selected document and actual operands.
+A provider need not duplicate the scalar function in its projection. If it does
+supply a scalar function, its typed DAG, count, layouts, stages and readout must
+agree. A reviewed label or qualification string is not independent execution
+evidence. The selected instruction/operand codec checks actual emitted words;
+it does not infer the behavior of an opaque native instruction implementation.
+
+Selection is deterministic: readouts are visited by sorted selector name, and
+routes retain their declared order. The first compatible legal composition is
+used within the fusion budget. This is a conservative policy without latency
+estimates or calibration claims. Failed physical allocation restores the
+original composition, invalidates analyses and replans within the existing
+global repair budget. A numerical mismatch is an error, not a reason to emit an
+unchecked alternative. `ScheduleBudgets(max_fusions=0)` supplies the paired
+baseline through the same selected interfaces and verification rules.
+
+Resolved contracts now also bind the source hashes of their resolution owners.
+Changing a resolver after selection requires reselecting both inputs; unchanged
+file bytes cannot preserve analyses computed by an older resolver. Changes
+during selection or a pass diagnose. Numerical policy, actual IR and storage
+budgets remain bound by the existing pipeline stamps. These checks do not
+establish transitive third-party dependency closure or broaden authoring grants.
+
+`test_selected_fusion_contracts.py` executes complete neutral two-layer integer
+graphs, including rectangular contractions, 8/16-bit input elements, separate
+accumulators, shared/separate scratch memories and both complete output tensors.
+The selected interface removes both i32 readout stores/reloads: actual command
+counts change from seven to five. The fused operation still wraps its i32 sum
+before clamping and narrowing. Independent wide arithmetic checks every output,
+input preservation and guards. Three recurrent invocations feed the observed
+hidden output back as input and change weights/biases between calls; neither
+carried state nor mutable weights are hoisted. A false native implementation
+that skips wrapping fails the complete-output reference.
+
+Mutation tests cover unsupported execution/arithmetic, capacity boundaries,
+scalar widths, stage/conversion order, layouts, undeclared physical routes,
+extra ISA effects, final words, stale inputs/resolvers and allocation fallback.
+A deliberately restrictive physical view forces fallback and confirms that no
+planned transfer elimination is reported as realized. Existing mechanism tests
+also cover observers, overwrites, shifted aliases and unsupported completion.
+
+Reproduce the selected-interface pair without downloads:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_selected_fusion_contracts.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/selected-fusion" \
+  -o junit_family=xunit1 --junitxml "$TMPDIR/selected-fusion-results.xml"
+```
+
+JUnit records compiler time, exact encoded size, executed commands, actual
+requested read/write bytes, selected inputs and shared source hashes. Native
+host-call samples include marshalling/interpreter costs and establish no device
+latency or speedup. Compiler peak memory, calibrated timing and separate physical
+host/accelerator contributions remain unmeasured. These neutral graphs are not
+real-model or hardware qualification. Existing full-model records retain their
+original source identities, numerical thresholds and admission failures.
+
+Real target lowering still needs the selected two-document binding, qualified
+contiguous scalar execution, an actual composition emitter and complete final
+byte decoding. Direct contraction-body fusion, broadcast/noncontiguous bias,
+floating epilogues, cross-memory handoffs and asynchronous composition remain
+unsupported until those explicit contracts and execution evidence exist. No
+target implementation is changed to fit the shared pass.
+
 ## Exact device register spills
 
 The ordinary `allocate_temporary_storage` entry accepts selected `SpillClass`
@@ -556,6 +1107,118 @@ Existing backends need independently qualified register-class and transfer
 adapters before this mechanism can enter their ordinary target lowering. A
 synthetic execution qualifies the shared mechanism's stated scope only.
 
+### Device spills selected from RTL and software documents
+
+Ordinary `compile_schedule` can derive those existing `SpillClass` capabilities
+from the same selected RTL/software pair used for storage and fusion. This
+binds the spill planner to the selected device interface; it does not introduce
+another register allocator. Add an optional `spills` section under
+`merlin.schedule_effects.v1`, alongside the required selected `storage` section:
+
+```yaml
+spills:
+  schema: merlin.device_spill_contract.v1
+  classes:
+    vector_values:
+      register_bank: register_bytes
+      spill_bank: saved_bytes
+      width_bits: {fact: [facts, vector_register_bits]}
+      alignment: {fact: [facts, transfer_alignment_bytes]}
+      store: save_vector
+      reload: restore_vector
+      execution: synchronous_bit_preserving_bytes
+```
+
+Names are identifiers from the selected software/ISA document, not recognized
+target instructions. Each class explicitly identifies addressable device
+register bytes and a separate invocation-private spill memory. Both banks must
+already have selected byte windows, physical backing identities, ownership and
+RTL capacities. Aliased register/spill backings and multiple classes for one
+register bank reject. This family cannot express nonaddressable accumulator
+state or host CPU registers.
+
+`width_bits` and byte `alignment` must reference structural RTL facts, never
+literal tuning constants. Widths must contain whole bytes. Either may be `null`
+when unknown; that class is then disabled. Software declares `store` and
+`reload` separately, so a target can use different instructions in each
+direction. Both instructions must have complete, memory-only, exact-copy
+effects in the selected ISA/storage declarations, covering their respective
+directions. Inexact copies and hidden execution/state effects reject.
+Asynchronous transfers or an unknown/unsupported `execution` string disable
+the class; they do not acquire synchronous completion from RTL queue facts.
+
+The caller supplies only the target's physical transfer callbacks and an
+independently selected qualification identity:
+
+```python
+result = compile_schedule(
+    source_kernel, private_objects, None, storage_adapter, encoding, limits,
+    selected_contracts=selected,
+    private_ownership=True,
+    spill_emitters={"vector_values": emit_device_transfer},
+    spill_qualification_identity=qualified_transfer_evidence,
+    budgets=ScheduleBudgets(max_spills=2, max_repairs=2),
+)
+```
+
+The callback receives actual source/read and destination/write `EncodedAccess`
+objects and returns a typed instruction `Call`. Its result must use the selected
+store or reload instruction for that direction. Actual decoded accesses,
+complete width, bit-preserving effects and synchronous completion must match.
+The existing relocation checker subsequently preserves all nonaddress
+semantics. Actual final words are independently decoded against the selected
+ISA and checked against the realized schedule. No emitter name or private
+backend type is inspected.
+
+Missing emitters or independent qualification leave the class disabled.
+Feasible programs still compile without spilling; a pressure failure reports
+the unavailable class and reason. Supplying arbitrary `spill_classes` together
+with selected documents rejects, as do unselected callback keys. The legacy
+explicit-capability entry remains available without selected documents. Merely
+setting `status: reviewed` or attaching a qualification string does not prove
+that a machine implements exact transfers.
+
+Spills still consume the existing global repair budget, recompute liveness,
+allocation and completion, and invalidate emission/size results. Selected raw
+documents, numerical policy, resource parameters and shared resolver/planner
+source identities bind the pipeline analyses. Changes during selection or
+compilation reject; prior selected analyses cannot silently survive a changed
+resolver. With unknown timing costs, selection remains deterministic
+longest-unused-gap. No cycle estimate or calibrated tuning result is implied.
+When the transfer requires stronger alignment than the original arithmetic,
+replanning strengthens the saved register's alignment as well as the new spill
+and reload objects. A nonzero bank window does not waive that constraint.
+
+`test_selected_spill_contracts.py` runs the ordinary path over complete neutral
+stateful programs with 24-bit and 128-bit device register values, byte alignment
+one and eight, 64-bit little-endian and 32-bit big-endian operands, separate
+memories, tails and distinct reload instructions. Three invocations compare all
+output bytes, carried inputs and guards against independent byte arithmetic.
+A paired existing-explicit-capability arm uses identical inputs, hardware,
+shared source versions and transfer implementation; the selected binding
+preserves its actual commands and bytes, with no claimed speedup. Disabling
+spills under pressure diagnoses; undersized capacity, reservations, aliases,
+wrong transfer operands/instructions, changed software, repair limits and
+final code growth are exercised. A faulty native spill changes results despite
+identical declarations and command/traffic counters, disproving qualification
+based solely on those declarations.
+
+Reproduce with the project's Python environment:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_selected_spill_contracts.py \
+  merlin/tests/infra/test_device_spills.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/selected-spill-check"
+```
+
+These neutral executions do not qualify a real hardware implementation. Existing
+targets still need public selected device-register windows, exact software
+transfer/completion semantics, a qualified physical callback, actual-byte
+decoding and complete model integration. No target repository was modified to
+supply them. Compilation peak memory and accelerator timing remain unmeasured
+for this selected binding; broader asynchronous spills and model-level timing
+remain unresolved.
+
 ## Final encoded programs
 
 `finalize_program` checks actual encoded bytes through the selected target's
@@ -577,6 +1240,12 @@ reads conservatively rather than inferring path-specific liveness.
 
 An asynchronous instruction prevents a boundary until an actual decoded drain.
 Unknown completion and position-dependent instructions prevent segmentation.
+May-pending work is now propagated through the actual decoded branch graph.
+Conditional branches include both successors; an explicitly unconditional
+relative branch can omit fallthrough. A path that skips its drain and exits
+with pending work rejects, even if the entire image fits. The finite boolean
+analysis visits instruction states without expanding loop trip counts.
+This is a conservative completion check, not a proof of termination or timing.
 Every resulting segment is decoded again: its actual normalized effects must
 equal the original instruction effects and meet the final budgets. The receipt
 records actual counts, sizes and hashes; it does not establish execution timing
@@ -588,6 +1257,139 @@ and cover a distinct fixed-word representation. Existing target integrations do
 not supply this final decoder/continuation boundary automatically. Final machine
 program checks therefore remain an explicit integration requirement for those
 targets.
+
+### Final limits selected from RTL and software documents
+
+An optional `program` section of `merlin.schedule_effects.v1`, using schema
+`merlin.final_program_contract.v1`, binds the existing finalizer to the selected
+RTL/software pair. `compile_schedule` consumes it automatically before emission
+checks and finalization. Passing `None` for its `limits` argument derives the
+available constraints. A target/runtime provides the existing qualified
+decoder; a separate runtime qualification enables declared continuation:
+
+```python
+compiled = compile_schedule(
+    kernel, private_objects, None, storage_adapter, encoding, None,
+    selected_contracts=selected, private_ownership=True,
+    continuation_qualification_identity=qualified_runtime_evidence,
+)
+```
+
+The same binding works at the existing final-byte entry, including actual
+relative branches and asynchronous programs that the finite straight-line
+schedule compiler deliberately does not admit:
+
+```python
+final = finalize_program(
+    actual_image, None, qualified_decoder,
+    selected_contracts=selected,
+    continuation_qualification_identity=qualified_runtime_evidence,
+)
+```
+
+The selected `program` section has these exact fields:
+
+| Field | Contents and source |
+| --- | --- |
+| `schema` | `merlin.final_program_contract.v1` |
+| `limits` | RTL references or `null` for `max_bytes`, `max_instructions`, `instruction_alignment` |
+| `windows` | ISA byte-memory resource to fact-backed `start`, `size`, software `backing` and `visibility` |
+| `branches` | Rule name to actual `instruction`, integer `displacement` argument, fact-backed byte `scale` and software relative `origin` |
+| `instructions` | Actual ISA instruction name to `completion`, `relocatable`, `control_flow` |
+| `continuation` | `null`, or explicit launch completion, entry, persistence and bounded launch count |
+
+Window coordinates are canonical backing bytes. `visibility` is `private`,
+`external` or `unknown`; unknown storage remains observable. A window must fit
+known RTL capacity, and must not contradict or widen the existing selected
+storage window or its backing/ownership. Aliases must agree on visibility.
+The finalizer publishes all external/unknown windows conservatively in addition
+to caller outputs. Omitting an output cannot authorize loss of carried state.
+
+Branch displacement bounds come from the selected ISA field's actual width and
+the typed integer domain, including signedness. Software declares
+`origin: instruction` or `next_instruction`, and RTL supplies byte scale.
+`origin: unknown` remains unsupported when that branch occurs. The pass invents
+no PC rule, branch relaxation or instruction width. Current selected decoding
+supports complete, fixed-width, byte-aligned words from `ResolvedISA`; the
+existing explicitly qualified finalizer still supports other decoder framings.
+
+Instruction `completion` is `synchronous`, `asynchronous`, `drain` or `unknown`.
+`drain` is a qualified assertion that **all pending work is complete and visible**,
+not something inferred from an RTL queue depth or a wait spelling. Storage
+completion declarations must agree. Control flow is `fallthrough`,
+`conditional_relative`, `relative` (unconditional), or `unknown`. An unknown
+control/effect description is a barrier. A return/exit without a represented
+branch target cannot be segmented. A fitting unmodified image may retain
+unknown completion, reported explicitly; it acquires no completion certificate.
+
+Before each final check, the wrapper independently decodes actual ISA words,
+reconstructs declared byte accesses from the existing selected storage operand
+bindings, reconstructs relative branches, and checks completion, framing,
+fallthrough and relocation against the provider decoder. It consumes no retained
+instruction request list. Unknown memory projections diagnose. Segments are
+decoded again through the same checks; a decoder that changes its interpretation
+for shorter images cannot inherit the whole-image receipt.
+
+Continuation declares `sequential_completion`, `starts_at_zero`, a positive
+software `max_segments` budget, `preserved_backings`, and
+`preserved_configuration`. The latter maps ISA state resources to RTL field-index
+references. Preserving memory does not imply preserving configuration. Actual
+encoded state operations must have complete ordered configuration projections,
+and every affected field must survive launches. Other nonmemory execution state
+needs a separate continuation contract and currently blocks segmentation.
+False launch/entry declarations or missing independent runtime qualification
+disable segmentation; a fitting unmodified image remains available.
+
+Physical preservation applies to every alias of a backing. The finalizer
+canonicalizes spaces for its cut/liveness analysis while retaining each view's
+address checks and original bytes. This can remove unnecessary launches that
+an analysis over view names alone retained. Partial overwrites never kill an
+entire future read. A supplied `Continuation` can restrict the selected memory,
+configuration and launch budget, but cannot expand them or assign contradictory
+survival to two aliases. The generic explicit finalizer also accepts a complete
+`physical_spaces` mapping when no selected contract is used; partial or
+unselected alias overrides reject.
+
+Caller `ProgramLimits` may tighten byte/count budgets and branch reach, and
+restrict windows. They cannot widen hardware windows or change branch origin
+or scale. A missing hardware byte capacity can be paired with an explicit
+code-growth budget, but the receipt still says hardware byte capacity is
+unknown. Without either bound the pass diagnoses. Missing instruction count
+stays unknown, and actual instructions are still counted. Missing instruction
+alignment diagnoses; no default alignment is guessed.
+
+Selected raw documents, resolver/finalizer implementations, source controls and
+decoder/continuation identities must remain current across decoding and before
+return. Edits or callback mutations invalidate the check. These are binding
+checks, not independent qualification of a decoder or runtime implementation.
+Native negative controls demonstrate wrong outputs or final configuration when
+an implementation violates a declared alias or persistence rule.
+
+The tests execute actual little-endian 64-bit-field and big-endian 32-bit-field
+programs with different memory models, complete outputs and three invocations.
+They cover capacity boundaries, source copy elimination before final counting,
+closed forward/backward branches, branch paths that skip drains, completed
+asynchronous copies, aliased overwrites, launch/configuration persistence and
+stale or inconsistent final decoding. The paired explicit/selected entries use
+the same library version, source program, hardware limits and inputs. Observed
+launch counts, commands and requested bytes are separate results; fewer launches
+do not establish latency improvement.
+
+```sh
+python -B -m pytest merlin/tests/infra/test_selected_program_contracts.py \
+  merlin/tests/infra/test_selected_program_control.py \
+  merlin/tests/infra/test_program_limits.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/selected-program-check"
+```
+
+No target repository supplies this boundary through this change. Real-target
+decoder/launch qualification and complete model integration remain unresolved.
+These word-stream checks do not count instructions in arbitrary target C or a
+linked native ELF. In particular, a counted-row C program's static call count
+does not establish its final native instruction size; ordinary linked-image
+admission remains the applicable boundary until a qualified integration is
+provided. Compilation peak memory and accelerator timing for these selected
+checks are not established by the neutral executions.
 
 ## Complete-domain counted row softmax
 
@@ -666,14 +1468,130 @@ execution contracts so a caller can retain its original source implementation.
 All-masked/arbitrary masks, nonfinite source domains, asynchronous primitives,
 unaddressable state, cross-row aliasing and unknown effects are unsupported.
 
-This is an executable shared counted-row path. It does **not** yet match and
-replace full-model source softmax automatically, integrate a real target's
-primitives, compose full QK–softmax–PV/KV execution, or verify final machine bytes.
+This is an executable shared counted-row path. It does **not** yet automatically
+route full-model source softmax to device primitives, integrate a real target's
+primitives, compose device QK–softmax–PV/KV execution, or verify final machine bytes.
 Those require source admission, public target primitive/projection hooks and a
 counted-program final decoder/completion contract. It does not run through the
 finite straight-line final-byte pipeline by expanding loops. Native reference
 agreement establishes the tested source algorithm, not hardware qualification,
 full-model gains, accelerator latency, or calibrated performance.
+
+### Complete rows selected from RTL and software documents
+
+`compile_row_softmax(..., selected_contracts=selected)` now consumes an optional
+`row_reduction` section of `merlin.schedule_effects.v1`. It reuses the existing
+row planner, state allocator, actual-call checker and counted C emitter. Supply
+`None` for `resources`, `banks` and `role_banks` to derive them, or supply
+conservative resource controls through the existing typed interfaces:
+
+```python
+result = compile_row_softmax(
+    problem, source_numerics, None, None, None, qualified_row_adapter,
+    selected_contracts=selected,
+    private_ownership=True, disjoint_arguments=True,
+)
+source = result.emit_c(target_instruction_set, symbol="normalize_scores")
+```
+
+The selected section has exactly these fields:
+
+| Field | Meaning and authority |
+| --- | --- |
+| `schema` | `merlin.complete_row_contract.v1` |
+| `algorithm` | All `RowSoftmaxNumerics` fields; exact source policy, dtype, exponential, lane order/tree, normalization and numerical premises |
+| `element_bits` | RTL fact reference agreeing with the software dtype |
+| `limits` | Fact references or `null` for `max_chunk_elements`, `granularity`, `index_bits` |
+| `support` | Explicit `partial_chunks`, `completion`, `order`, `state`, and `masks` |
+| `roles` | `maximum`, `exponentials`, `lanes`, `normalizer` to selected private storage bank names |
+| `external` | `input` and `output` to selected external byte-window resources |
+| `instructions` | All seven phase names to their actual instruction/operand bindings |
+
+The source numerical algorithm must equal the declared one, and its
+`source_policy` must match the selected numerical policy. The source lane count
+and tree are never chosen from hardware vector width. RTL alone cannot establish
+the exponential implementation, rounding, masks or reduction equivalence.
+Independent execution qualification remains required for the adapter. Supported
+execution is synchronous, exact source order and addressable invocation-private
+state. An unknown limit, unsupported mask or execution description diagnoses so
+the caller can retain its original complete source implementation.
+
+Each phase entry contains `instruction`, `bindings`, `local` and `constants`.
+`bindings` names actual typed ISA arguments for `row`, `column`, `count`,
+`period`, `offset`, and the applicable `source`/`output` pointers. `local` lists
+the phase's state operands in the existing `PHASE_ROLES` order. Each local entry
+names an integer byte-address argument and either `selector: null` for an
+implicit space or `{argument: ..., value: {fact: [...]}}` for an explicit
+memory selector. `constants` fixes every otherwise unused mode/argument to an
+integer or, for a typed address, `null`. Every actual operand must be covered
+exactly once. No argument or unknown effect is silently ignored.
+
+The selected ISA instruction must declare primitive
+`merlin.complete_row.<phase>`, matching logical `bindings`, and exactly
+`parameters: {numerical_identity: <source algorithm hash>, completion: ...}`.
+Its complete resource reads/writes must agree with the phase's source, state
+and output effects. These declarations bind the meaning of existing typed
+primitives; they do not synthesize or qualify their target implementation.
+The wrapper reconstructs `RowSoftmaxStep` from actual operands and independently
+compares it with the provider projection. The existing verifier then checks
+complete domains, masks, rounded algorithm identity and physical lifetimes.
+Wrong modes, spaces, pointers, counts or instruction names cannot inherit a
+retained request as their proof.
+
+Geometry and runtime ownership use `TemporaryStorageContract.allocation_model`,
+the same admission used by finite schedule allocation. Bank aliases, view
+bounds, alignment and packing/DMA reservations retain their existing checks.
+This boundary explicitly converts the row allocator's `byte` unit spelling to
+the selected storage contract's `bytes`; it infers no word addressing. Caller
+budgets can restrict chunk size, combine granularity or remove tail support,
+but cannot expand hardware limits or remap software state roles. Ordinary
+complete-row allocation still requires full-row exponential storage.
+
+Current source problem/mask, numerical policy, resources and library sources
+are rechecked around every pipeline action. Raw selected documents and resolver
+owners must remain current. The returned pipeline receipt records these inputs
+and the actual checked kernel. `emit_c` revalidates the kernel, index width,
+selected documents and shared source versions before and after rendering.
+It uses the existing immutable pass stamp; removing or rewriting the printable
+report cannot disable freshness. Changing instructions invalidates emission.
+This guards stale emission;
+it does not interpret arbitrary target C or establish final machine conformance.
+
+Native paired tests compare one-element chunks and the deterministic largest
+legal chunk on the same selected hardware/software and shared library version.
+They observe actual primitive commands and logical requested payloads, check all
+output bits against independent pinned Torch f32 or ordered `math.exp` f64
+references, and preserve inputs/guards. Additional complete neutral attention
+tests keep host QK/PV and cache updates identical between arms, check full
+probabilities, outputs, KV caches and positions over three invocations, and
+reject an implementation that resets denominator lanes at chunk boundaries.
+Those surrounding host contractions and cache writes are test integration;
+this pass does not optimize or qualify device attention instructions.
+Native `.text`, whole-library size and C-source size are recorded separately:
+fewer primitive calls need not shrink native code, since the host compiler can
+expand primitive bodies. Static call budgets do not replace final linked-image
+checks. Host-only call samples include dispatch and surrounding arithmetic and
+do not establish an accelerator speedup or a calibrated cost model.
+
+Reproduce with the existing native toolchain and pinned reference:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_selected_row_contracts.py \
+  merlin/tests/infra/test_selected_row_attention.py \
+  merlin/tests/infra/test_row_softmax.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/selected-row-check"
+```
+
+Limits of this selected C route remain explicit: source/output windows must be
+zero-based logical argument windows; general physical pointer relocation is a
+target integration requirement. Dynamic integer operands must be at least as
+wide as the selected checked 32/64-bit index domain. ISA address operands with
+stronger alignment need a separate mapping contract; allocation-bank alignment
+is supported independently. Arbitrary masks, asynchronous completion,
+nonaddressable state, new approximation policies and whole-row storage spills
+are not inferred. No target repository supplies these hooks through this
+change. Final machine bytes, real-model routing, compilation peak memory and
+qualified accelerator timing remain unresolved for this selected route.
 
 ## Automatic source row normalization
 
@@ -681,6 +1599,12 @@ Ordinary `lower_model`/`lower_model_file` serial CPU lowering selects
 `automatic-host-rows` by default. Disable it with the existing optional-pass
 selector or `MERLIN_AUTOMATIC_HOST_ROWS=0`. The selection report records both arms'
 identical shared source hashes, source/output byte identities and refusals.
+Ordinary lowering writes `automatic-host-rows.json` next to
+`model.upstream.mlir`, including the upstream file's actual byte hash. It also
+returns the report in `LowerResult.stats["automatic_host_rows"]`. The upstream
+hash records product custody after preprocessing; the row inverse check applies
+at its original source stage and does not prove the intervening passes or machine
+code. Disabled and unsupported selections persist their diagnostic as well.
 This pass requires no separately captured quantization policy: the original typed
 source is the numerical algorithm and the pass changes no scalar arithmetic.
 
@@ -755,7 +1679,7 @@ ownership, real target support or absolute accuracy for an external model.
 
 | Concern | Existing mechanism | Requirement beyond the scope above |
 | --- | --- | --- |
-| Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line storage relocation | Target effect/rewrite adapters and ordinary lowering integration; general loop and persistent-storage allocation |
+| Temporary storage | Alias/liveness analyses, source reuse, checked SSA allocation, LLVM arena binding and consumed private straight-line relocation; selected RTL/software windows, aliases, reservations and actual operand/effect checks | Qualified target effect/rewrite adapters and ordinary model integration; general loop and persistent-storage allocation |
 | Register pressure | Bounded exact device spill/reload insertion, reusable slots, fresh allocation/completion checks and independent actual byte provenance | Qualified device register/transfer adapters and ordinary target integration; CPU allocation stays with the native toolchain |
 | Fusion and transfers | Readout composition admission and connected dispatch; exact private-copy forwarding; consumed total-integer elementwise physical composition with layout/numerical checks, allocation fallback and reconstructed final traffic | Floating/contraction epilogues, noncontiguous and asynchronous handoffs, and qualified full-model target integration |
 | Reductions and attention | Complete-domain counted row softmax; automatic narrow CPU source row scheduling and native QK–softmax–PV graphs with carried state; ordered source loops and complete CPU reductions | Qualified source-to-device connection, target hooks/final decoding, device QK–softmax–PV/KV composition and broader source algorithms |
