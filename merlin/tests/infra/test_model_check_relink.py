@@ -327,3 +327,43 @@ with open(sys.argv[1], 'r') as stream:
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5)
+
+
+def _host_policy(*, elf, evidence_root, status):
+    evidence_root.mkdir(parents=True, exist_ok=True)
+    path = evidence_root / "host-policy.json"
+    result = {"status": status, "elf_sha256": FB.sha256(elf)}
+    path.write_text(json.dumps(result))
+    return {**result, "report_path": str(path), "report_sha256": FB.sha256(path)}
+
+
+@pytest.mark.parametrize("status", ["accepted", "refused"])
+def test_explicit_host_policy_checks_actual_relinked_image(image, tmp_path, monkeypatch, status):
+    from functools import partial
+
+    from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+
+    stage, _, record = image
+    owner = Path(__file__).resolve()
+    policy = LinkedElfAdmissionService(
+        "neutral", partial(_host_policy, status=status), ((str(owner), FB.sha256(owner)),)
+    )
+    commands = []
+
+    def run(argv, cwd):
+        commands.append(argv)
+        Path(argv[argv.index("-o") + 1]).write_bytes(b"actual relinked fixture bytes")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(FB, "_run", run)
+    directory = tmp_path / "checked-relink"
+    if status == "refused":
+        with pytest.raises(FB.FullBuildError, match="admission refused"):
+            FB.relink(record, stage, {"in0": np.array([8, 9], np.float32)}, directory, admission=policy)
+        assert json.loads((directory / "compilation_recipe.json").read_text())["status"] == "invoked"
+    else:
+        result = FB.relink(record, stage, {"in0": np.array([8, 9], np.float32)}, directory, admission=policy)
+        assert result.read_bytes() == b"actual relinked fixture bytes"
+    assert len(commands) == 2
+    report = json.loads((directory / "cache-admission/host-policy.json").read_text())
+    assert report == {"status": status, "elf_sha256": FB.sha256(directory / "model.elf")}

@@ -13,6 +13,7 @@ code_refs:
   - src/merlin/compile/scheduling/compact_dense.py
   - src/merlin/compile/scheduling/compact_verification.py
   - src/merlin/compile/scheduling/program_limits.py
+  - src/merlin/model_check/program_admission.py
   - src/merlin/compile/scheduling/program_contracts.py
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/device_spills.py
@@ -1590,6 +1591,73 @@ and cover a distinct fixed-word representation. Existing target integrations do
 not supply this final decoder/continuation boundary automatically. Final machine
 program checks therefore remain an explicit integration requirement for those
 targets.
+
+### Checking a declared program in the final linked image
+
+`merlin.model_check.program_admission.service` connects the existing finalizer
+with `LinkedElfAdmissionService`. The original caller supplies a section name,
+a bounded reader budget, current `SelectedSchedulingContracts`, an independently
+qualified `ProgramDecoder` and its original source pins. The selected RTL facts
+bound bytes/count/alignment and address windows; software declarations describe
+instruction effects, branches and completion. Optional `ProgramLimits` can
+narrow those bounds through the same existing binder.
+
+```python
+from merlin.model_check.program_admission import service as program_admission
+
+admission = program_admission(
+    prerequisite=original_linked_image_policy,
+    selected_contracts=current_rtl_and_software,
+    decoder=qualified_decoder,
+    decoder_sources=original_decoder_source_pins,
+    section=declared_program_section,
+    reader_max_bytes=extraction_budget,
+)
+# Pass admission=admission to full_build.build(...), and to each relink.
+```
+
+The bridge reads the actual allocated, uncompressed, file-backed ELF section,
+checks its load-segment correspondence and decodes its complete bytes. It
+supports ELF32/ELF64 and both byte orders; malformed, missing, ambiguous,
+unsupported or over-budget sections refuse. Read-only mapping avoids copying
+the complete model image. Metadata, names and selected payload are bounded.
+A writable section is an observation at check time, not a runtime immutability
+claim. Section selection grants no execution, loader-entry or coverage proof;
+the original policy/provider must establish that these are the programs the
+runtime executes, with the declared effects and physical interpretation.
+
+Admission never segments a linked image: an oversized program must be replanned
+before linking and launcher generation. This boundary cannot approve a plan
+whose segments were never installed. Unknown runtime continuation stays
+unavailable. Instruction changes require fresh decoding and checks.
+
+The new service preserves an explicitly selected prerequisite policy. Both
+policies run on the same actual ELF, and a child cannot override a refusal.
+Reports retain only status, ELF digest and original report custody references
+for prerequisites, not their protected findings. Every later revalidation
+reopens all original reports and source selections, then streams the ELF once
+for the complete chain. There is no cross-call digest/verdict reuse. Callback
+selection and direct source pins establish attribution and drift detection,
+not transitive dependencies, source-to-bytecode equivalence or qualification.
+
+`full_build.build` now honors explicitly selected host admission on fresh
+builds and cache hits, and `full_build.relink` honors it before completing its
+recipe. A host build made with admission requires an explicit current service
+for relinks. Current policy is reevaluated; a saved acceptance is never reused
+as today's decision. A host build without an explicit policy retains its
+unselected route. Existing device admission remains required.
+
+Tests link real native ELF sections containing two neutral word formats,
+execute their actual extracted bytes with synchronous and asynchronous effects,
+and reject changed sources, bad addresses, unfinished work and exceeded limits.
+A separate complete neutral interpreter model runs through ordinary compilation,
+cache reuse, relinking and functional Spike. It consumes a program parameter
+from the declared ELF section, preserving complete state, positions and inputs
+against an independent full-word reference across invocations. Original-policy
+and composed-policy runs use the same linked program and inputs. This is an
+admission integration test with interpreted program data, not accelerator
+lowering or a hardware-support/performance result. No target decoder or hidden
+compiler implementation is discovered or exported by the bridge.
 
 ### Final limits selected from RTL and software documents
 

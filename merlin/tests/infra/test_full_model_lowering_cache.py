@@ -344,15 +344,16 @@ def _refuse(*, elf, evidence_root):
     return {**result, "report_sha256": FB.sha256(report)}
 
 
-def test_cache_hit_applies_current_admission_instead_of_old_acceptance(builds):
+@pytest.mark.parametrize("offload", [False, True])
+def test_cache_hit_applies_current_admission_instead_of_old_acceptance(builds, offload):
     build, calls, _, _ = builds
-    build()
-    reused = build()
+    build(offload=offload)
+    reused = build(offload=offload)
     assert reused["cache_admission"]["status"] == "accepted"
     assert Path(reused["cache_admission"]["report_path"]).is_file()
     assert reused["cache_lookup_seconds"] >= 0
     with pytest.raises(FB.FullBuildError, match="current linked ELF admission refused"):
-        build(admission=_service("neutral", _refuse))
+        build(offload=offload, admission=_service("neutral", _refuse))
     assert len(calls) == 1
 
 
@@ -744,3 +745,21 @@ func.func @forward(%w: tensor<2xf32>, %x: tensor<2xf32>, %s: tensor<2xf32>)
         with pytest.raises(ValueError, match="DTS bytes differ"):
             build()
     (root / "execution-evidence.json").write_text(json.dumps(evidence, indent=2))
+
+
+def test_fresh_host_build_runs_original_admission_before_publication(builds):
+    build, calls, _, _ = builds
+    with pytest.raises(FB.FullBuildError, match="current linked ELF admission refused"):
+        build(offload=False, admission=_service("neutral", _refuse))
+    assert len(calls) == 1
+    assert not (Path(calls[0]["output"]).parent / "build.json").exists()
+
+
+def test_host_admission_selection_is_frozen_before_compiler_callbacks(builds):
+    build, calls, _, changes = builds
+    policy = _service("neutral")
+    changes.append(lambda: object.__setattr__(policy, "evaluator", _refuse))
+    with pytest.raises(ValueError, match="selected evaluator"):
+        build(offload=False, admission=policy)
+    assert len(calls) == 1
+    assert not (Path(calls[0]["output"]).parent / "build.json").exists()

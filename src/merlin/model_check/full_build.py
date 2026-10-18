@@ -285,7 +285,7 @@ def _build_inputs(stage, submission, settings, directory, offload, weights_sourc
 
 def _cached_admission(record, admission, target, directory):
     """Evaluate today's selected policy on actual cached bytes, never an old verdict."""
-    if not record["device_routed"]:
+    if not record["device_routed"] and admission is None:
         return None, None
     if admission is None:
         from merlin.model_check.admission import service
@@ -294,10 +294,10 @@ def _cached_admission(record, admission, target, directory):
     from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
     if type(admission) is not LinkedElfAdmissionService:
-        raise FullBuildError("cached device image requires an explicit linked ELF admission service")
+        raise FullBuildError("linked image requires an explicit linked ELF admission service")
     result = admission.evaluate(elf=Path(record["elf"]), target=target, evidence_root=directory / "cache-admission")
     if result["status"] != "accepted":
-        raise FullBuildError("current linked ELF admission refused the cached device image")
+        raise FullBuildError("current linked ELF admission refused the linked image")
     return admission, result
 
 
@@ -483,6 +483,14 @@ def _build(
     from merlin.compile.baremetal_model import compile_saved_model
 
     lookup_started = time.monotonic()
+    if admission is not None:
+        from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+
+        if type(admission) is not LinkedElfAdmissionService:
+            raise FullBuildError("build requires an exact selected linked ELF admission service")
+        admission_selection = admission.verify(target)
+    else:
+        admission_selection = None
     key = {
         "stage": str(Path(stage).resolve()),
         "target": target,
@@ -490,6 +498,7 @@ def _build(
         "submission_sha256": submission_sha256 if offload else None,
         "settings": settings.record(),
         "offload": offload,
+        "host_admission_selected": not offload and admission is not None,
         "lowering": _lowering_identity(),
         "inputs": _build_inputs(stage, submission, settings, directory, offload, weights_source, target),
     }
@@ -506,6 +515,8 @@ def _build(
             and (not settings.op_profile or _profile_table_matches(record))
             and _relink_artifacts_match(record)
         ):
+            if admission is not None and admission.verify(target) != admission_selection:
+                raise FullBuildError("linked ELF admission selection changed during cache lookup")
             current_admission, admission_result = _cached_admission(record, admission, target, directory)
             if _build_inputs(stage, submission, settings, directory, offload, weights_source, target) != key["inputs"]:
                 raise FullBuildError("full-model build inputs changed during cache lookup")
@@ -526,7 +537,7 @@ def _build(
     image = directory / "image"
     if image.exists():
         shutil.rmtree(image)
-    if admission is None:
+    if admission is None and offload:
         from merlin.model_check.admission import service
 
         admission = service(target)
@@ -575,6 +586,12 @@ def _build(
         if Path(recipe["path"]) != build_dir / "compilation_recipe.json":
             raise FullBuildError("build returned a foreign relink recipe")
         record["relink_binding"], _ = _relink_artifacts(build_dir, elf, recipe["sha256"])
+    host_admission = None
+    if not offload and admission is not None:
+        if admission.verify(target) != admission_selection:
+            raise FullBuildError("linked ELF admission selection changed during compilation")
+        _, host_admission = _cached_admission(record, admission, target, directory)
+        record["host_admission"] = host_admission
     if _build_inputs(stage, submission, settings, directory, offload, weights_source, target) != key["inputs"]:
         raise FullBuildError("full-model build inputs changed during compilation")
     if _lowering_identity() != key["lowering"]:
@@ -585,6 +602,8 @@ def _build(
             raise FullBuildError("profiled build returned no current operation table")
     if elf.is_symlink() or sha256(elf) != record["elf_sha256"]:
         raise FullBuildError("linked ELF changed during compilation")
+    if host_admission is not None:
+        admission.revalidate(elf=elf, result=host_admission, target=target)
     record["seconds"] = round(time.monotonic() - lookup_started, 1)
     pending = record_path.with_suffix(".pending")
     pending.write_text(json.dumps(record, indent=1) + "\n")
@@ -670,11 +689,14 @@ def _relink(record, stage, inputs, directory, *, admission):
             raise FullBuildError("relink output overlaps a capture or original build")
     recipe = _verify_relink(record, Path(stage))
     admission_selection = None
-    if record["device_routed"]:
+    host_required = record["key"].get("host_admission_selected", False)
+    if type(host_required) is not bool:
+        raise FullBuildError("relink host admission selection must be an exact boolean")
+    if record["device_routed"] or host_required or admission is not None:
         from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
         if type(admission) is not LinkedElfAdmissionService:
-            raise FullBuildError("device relinking requires the currently selected linked ELF admission service")
+            raise FullBuildError("relinking requires the currently selected linked ELF admission service")
         admission_selection = admission.verify(record["key"]["target"])
     if directory.exists():
         shutil.rmtree(directory)
@@ -730,7 +752,7 @@ def _relink(record, stage, inputs, directory, *, admission):
     if not elf.is_file() or elf.is_symlink():
         raise FullBuildError("relink command produced no ordinary executable")
     _verify_relink(record, Path(stage), inputs_current=not record["device_routed"])
-    if record["device_routed"]:
+    if admission_selection is not None:
         if admission.verify(record["key"]["target"]) != admission_selection:
             raise FullBuildError("linked ELF admission selection changed during relinking")
         selected, result = _cached_admission({**record, "elf": str(elf)}, admission, record["key"]["target"], directory)
