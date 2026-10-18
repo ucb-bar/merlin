@@ -441,3 +441,20 @@ def test_imported_unused_void_command_result_is_not_a_host_value(monkeypatch, re
     module = Parser(ctx, text).parse_module()
     (row,) = HA.audit(module, [_site("entry", elements=97)], target="fixture")["groups"]
     assert row["verdict"] == (HA.CLEAN if clean else HA.HOST_COMPUTE), row
+
+
+def test_command_orchestration_exemption_refuses_unmodeled_effects(monkeypatch):
+    from merlin.targetgen.rocc import decode
+
+    monkeypatch.setattr(decode, "isa_constants", lambda target: {"CUSTOM_OPCODE": 123, "FUNCT_CLASS": {2: "MVIN"}})
+    text = _tile_remainder_kernel(97, 16, store=False).replace(
+        '%addr = llvm.ptrtoint %src',
+        '"llvm.intr.memcpy"(%input, %output, %one) : (!llvm.ptr, !llvm.ptr, i64) -> ()\n'
+        ' %addr = llvm.ptrtoint %src',
+    )
+    ctx = Context(allow_unregistered=True)
+    for dialect in (builtin.Builtin, llvm.LLVM):
+        ctx.load_dialect(dialect)
+    module = Parser(ctx, text).parse_module()
+    (row,) = HA.audit(module, [_site("entry", elements=97)], target="fixture")["groups"]
+    assert row["verdict"] == HA.HOST_COMPUTE, row
