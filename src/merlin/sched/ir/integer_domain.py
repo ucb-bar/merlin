@@ -75,4 +75,3 @@ def check_integer_domain(kernel, bits):
                 raise IntegerDomainError("unknown statement in selected integer index domain")
 
     walk(kernel.body, {})
-
