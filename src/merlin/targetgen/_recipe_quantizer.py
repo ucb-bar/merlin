@@ -145,7 +145,7 @@ def _spec(tensor: Mapping[str, Any], *, is_weight: bool, eps: float):
 
 
 def _bias_onto_accumulator_grid(graph_module: Any) -> dict[str, Any]:
-    """Round every quantized contraction's stored float bias onto its accumulator grid, in place.
+    """Round the quantized graph's float biases onto its accumulator grid without mutating source tensors.
 
     For ``y = conv(dq(x; s_x), dq(W; s_w)) + b`` the accumulator step of output channel ``c`` is
     ``S_c = s_x * s_w[c]`` (f32). The bias becomes ``k_c * S_c`` with ``k_c = round(b_c / S_c)``
@@ -192,8 +192,15 @@ def _bias_onto_accumulator_grid(graph_module: Any) -> dict[str, Any]:
         per_channel = s_w.expand(stored.shape[0]) if s_w.numel() == 1 else s_w
         snapped = (codes.to(torch.float32) * s_x) * per_channel
         worst = max(worst, float(((snapped.double() - stored.double()) / step.double()).abs().max()))
-        with torch.no_grad():
-            stored.copy_(snapped)
+        owned = snapped.to(dtype=stored.dtype, device=stored.device).detach()
+        owned.requires_grad_(stored.requires_grad)
+        if isinstance(stored, torch.nn.Parameter):
+            owned = torch.nn.Parameter(owned, requires_grad=stored.requires_grad)
+        parent = graph_module
+        *owners, leaf = str(bias.target).split(".")
+        for name in owners:
+            parent = getattr(parent, name)
+        setattr(parent, leaf, owned)
         sites += 1
         channels += int(stored.numel())
     return {
