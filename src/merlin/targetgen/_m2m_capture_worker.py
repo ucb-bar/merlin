@@ -1442,7 +1442,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             "original": original_snapshot,
         }
     trace_path = out / "frontend-trace.json"
-    trace_bytes = (json.dumps(frontend_trace, sort_keys=True, indent=2) + "\n").encode()
+    trace_bytes = (json.dumps(frontend_trace, sort_keys=True, separators=(",", ":")) + "\n").encode()
     trace_path.write_bytes(trace_bytes)
     # Ask the existing catalog implementation in this very capture process.
     # A workload-specific environment must not inherit another venv's denominator.
