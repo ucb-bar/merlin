@@ -3,9 +3,9 @@ title: Calibrating and validating annotated timing
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-17
+last_verified: 2026-10-18
 related: [architecture, performance_budget_unit]
-code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/capacities.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py, src/merlin/targetgen/rtl/timing_structure.py, src/merlin/targetgen/rtl/unit_correspondence.py]
+code_refs: [packages/merlin-timing/src/merlin_timing/contracts.py, packages/merlin-timing/src/merlin_timing/capacities.py, packages/merlin-timing/src/merlin_timing/fitting.py, packages/merlin-timing/src/merlin_timing/validation.py, packages/merlin-timing/src/merlin_timing/design.py, packages/merlin-timing/src/merlin_timing/feedback.py, packages/merlin-timing/src/merlin_timing/cli.py, packages/merlin-timing/src/merlin_timing/archive.py, packages/merlin-timing/src/merlin_timing/replay.py, packages/merlin-timing/src/merlin_timing/provider_bundle.py, examples/gemmini/verification/extract_rtl_timing_facts.py, src/merlin/targetgen/rtl/timing_structure.py, src/merlin/targetgen/rtl/unit_correspondence.py]
 ---
 
 # Calibrating and validating annotated timing
@@ -235,6 +235,41 @@ does not establish Spike accuracy. If the design check fails, add original
 capsules or compiler variants and measure them with gSIM before freezing a model.
 Repeating one ELF cannot create a variant pair. A static instruction trace is not
 a dynamic schedule.
+
+### Replaying a new native model against existing public labels
+
+When resource or cache structure changes, the old count reports still identify
+only their original model. Prepare a separate replay request without copying
+those reports into the new domain:
+
+```sh
+spike-timing archive-replay-plan --plan observation-plan.json \
+  --model-artifact structural-model.json --spike-executable /selected/spike \
+  --provider-library /selected/functional.so \
+  --provider-library /selected/timing-provider.so --output replay.json
+```
+
+This command performs no execution. It verifies the native model's exact ordered
+library hashes and freezes the selected observer binary and model identities.
+The hardware, observer source engine, label engine, memory regime and counter
+scope must agree with the original archive plan. The output's `observation_plan`
+contains the new model-file digest and otherwise preserves all original labels,
+source splits, ELF/input bindings and per-repeat boundary receipts. Missing
+reviews remain unavailable. Save that nested object as a separate plan; collect
+fresh native reports under the ordinary resource admission controls, and use
+`archive-attach` with that plan. Old-model reports refuse attachment even if an
+attachment envelope names the new plan digest.
+
+Before execution, the operator must verify the binary's source-engine identity,
+functional/native provider compatibility, immutable ELF extraction and all input
+hashes. The planner does not certify these runtime properties or complete missing
+instruction/resource semantics and prices. Held-out event validation and capacity
+extrapolation remain necessary before predictions may rank compiler candidates.
+In particular, copying cache geometry from a named hardware configuration does
+not establish its external-memory timing domain: use the actual label simulator's
+selected memory implementation. The current retained gSIM binary uses
+`mm_magic_t`, with response queuing and AXI backpressure, rather than a FireSim
+DRAM bridge or DRAMSim.
 
 ### Structural facts for the selected 16 GiB gSIM target
 

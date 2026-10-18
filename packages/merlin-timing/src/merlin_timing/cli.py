@@ -13,6 +13,7 @@ from . import contracts as C
 from . import design as D
 from . import feedback as B
 from . import fitting as F
+from . import replay as R
 from . import validation as V
 
 
@@ -49,6 +50,11 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--archive", required=True)
         command.add_argument("--archive-sha256", required=True)
     prepare.add_argument("--binding", required=True, help="reviewed counter, source split and exact execution bindings")
+    replay = commands.add_parser("archive-replay-plan", help="freeze a new-model replay without relabeling old reports")
+    replay.add_argument("--plan", required=True)
+    replay.add_argument("--model-artifact", required=True)
+    replay.add_argument("--spike-executable", required=True)
+    replay.add_argument("--provider-library", action="append", required=True)
     attach = commands.add_parser("archive-attach", help="join original native reports to the exact prepared plan")
     attach.add_argument("--plan", required=True)
     attach.add_argument("--reports", required=True)
@@ -68,7 +74,20 @@ def parser() -> argparse.ArgumentParser:
     )
     capacities.add_argument("--profile", required=True)
     capacities.add_argument("--facts", required=True, help=f"{K.SCHEMA} document")
-    for command in (fit, validate, compare, native, probe, inspect, prepare, attach, design, handoff, capacities):
+    for command in (
+        fit,
+        validate,
+        compare,
+        native,
+        probe,
+        inspect,
+        prepare,
+        replay,
+        attach,
+        design,
+        handoff,
+        capacities,
+    ):
         command.add_argument("--output", required=True)
     return root
 
@@ -107,6 +126,10 @@ def main(argv: list[str] | None = None) -> int:
             result = A.inspect_archive(arguments.archive, arguments.archive_sha256)
             if arguments.command == "archive-prepare":
                 result = A.prepare(result, C.read(arguments.binding))
+        elif arguments.command == "archive-replay-plan":
+            result = R.prepare(
+                C.read(arguments.plan), arguments.model_artifact, arguments.spike_executable, arguments.provider_library
+            )
         elif arguments.command == "archive-attach":
             result = A.attach(C.read(arguments.plan), C.read(arguments.reports))
         elif arguments.command == "archive-design-check":
