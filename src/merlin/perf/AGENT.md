@@ -93,6 +93,9 @@ must not fall back to checkout data when a selected schema is missing or invalid
 new Python component directories owned by existing surfaces. Pass code may be
 added only within that frozen scope; manifests grant nothing. Numerical inputs,
 independent verification and evaluator code remain outside candidate authority.
+`agent_guidance.build_compiler_edit_contract` selects this V2 boundary only with
+explicit host-owned `new_python_components`; its default preserves V1 identity.
+Inventory intent checks do not replace the freeze gate's actual absence check.
 
 ## The rule that governs everything here
 

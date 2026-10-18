@@ -187,6 +187,28 @@ and restoring an earlier revision removes its later pass modules. The ordinary
 isolated source-revision regression exercises this route with actual encoded
 programs and independently checked native outputs.
 
+The host can construct this authority directly from its verified source inventory:
+
+```python
+contract = build_compiler_edit_contract(
+    inventory,
+    new_python_components=[
+        {"directory": "passes", "surface_ids": ["scheduling"], "reason": "checked compiler transformations"}
+    ],
+)
+```
+
+Omitting `new_python_components` preserves the V1 document and digest. Explicitly
+providing it selects V2, including an empty list. Each directory must have an
+existing inventoried compiler parent (or the package root), own frozen surface
+IDs, and a host explanation. The builder checks scoped intent; the freeze gate
+independently checks actual directory absence, real parents and source identity.
+The source inventory alone cannot prove absence of unindexed files. Python-only
+edits under the reserved scope are captured in retained revisions; the original
+seed, unrelated compiler controls and evaluation remain protected. This API does
+not automatically enable a scope for existing experiment profiles: the host must
+explicitly select and freeze it before authoring.
+
 Editable transformation implementations remain separate from frozen numerical
 contracts, independent checkers, qualification and evaluators. Modifying a shared
 library mechanism requires an explicitly reviewed Phase 2 release selected

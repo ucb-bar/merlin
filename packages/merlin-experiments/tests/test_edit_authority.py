@@ -11,7 +11,7 @@ from merlin_experiments.phase2.edit_authority import FrozenEditAuthority
 
 from merlin.benchharness import hash_tree
 from merlin.perf import compiler_edit_scope, phase2_edit_contract
-from merlin.perf.agent_guidance import inspect_compiler_package
+from merlin.perf.agent_guidance import build_compiler_edit_contract, inspect_compiler_package
 
 
 @pytest.fixture(autouse=True)
@@ -153,6 +153,57 @@ def test_default_guidance_binding_and_inspection_stay_unchanged(package):
     assert "guidance_contract" not in binding
     assert "guidance_contract_sha256" not in binding
     assert authority.inspect_optimization_surfaces(candidate)["surfaces"][0]["scope"] == "codegen"
+
+
+def test_inventory_builder_new_pass_authority_freezes_and_retains_exact_source(package, tmp_path):
+    from merlin_experiments.phase2.retained_revisions import RetainedRevisionStore
+
+    authority, candidate, _, _ = package
+    inventory = inspect_compiler_package(candidate, host_surface_declarations=[declaration()])
+    contract = build_compiler_edit_contract(
+        inventory,
+        new_python_components=[
+            {"directory": "passes", "surface_ids": ["overlap"], "reason": "new checked scheduling transformations"}
+        ],
+    )
+    authority.freeze(candidate, contract, has_iterations=False, host_surface_declarations=[declaration()])
+    store = RetainedRevisionStore(
+        tmp_path / "revisions", edit_authority=authority, max_bytes=4096, max_files=20, max_total_bytes=32768
+    )
+    baseline = store.freeze(candidate)
+    (candidate / "passes").mkdir()
+    (candidate / "passes/__init__.py").write_text("")
+    original = "def select(shape):\n    return shape[0] > 16\n"
+    (candidate / "passes/blocking.py").write_text(original)
+    source = candidate / "compiler.py"
+    source.write_text(
+        source.read_text().replace("return 1", "from passes.blocking import select\n    return select((32,))")
+    )
+    assert authority.validate_candidate(candidate)["status"] == "allowed"
+    revision = store.freeze(candidate, parent_revision=baseline.revision_id)
+    (candidate / "passes/blocking.py").write_text("def select(shape):\n    return False\n")
+    assert (revision.source / "passes/blocking.py").read_text() == original
+    assert not (baseline.source / "passes").exists()
+    assert not (authority.seed / "passes").exists()
+    store.verify(revision)
+    source.write_text(source.read_text().replace("LIMIT = 16", "LIMIT = 8"))
+    with pytest.raises(ValueError, match="exceeds host-frozen authority"):
+        authority.validate_candidate(candidate)
+
+
+def test_inventory_cannot_prove_absence_freeze_checks_initial_disk(package):
+    authority, candidate, _, output = package
+    inventory = inspect_compiler_package(candidate, host_surface_declarations=[declaration()])
+    contract = build_compiler_edit_contract(
+        inventory,
+        new_python_components=[
+            {"directory": "passes", "surface_ids": ["overlap"], "reason": "new checked scheduling transformations"}
+        ],
+    )
+    (candidate / "passes").mkdir()
+    with pytest.raises(ValueError, match="absent, scoped"):
+        authority.freeze(candidate, contract, has_iterations=False)
+    assert list(output.iterdir()) == []
 
 
 def test_schema_change_during_freeze_cannot_publish_authority(selected_guidance, monkeypatch):
