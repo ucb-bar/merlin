@@ -5,6 +5,9 @@ import MerlinVerify.Check.ReshapeNested
 import MerlinVerify.Check.IntegerBody
 import MerlinVerify.Check.ScalarCarrier
 import MerlinVerify.Check.DenseExtract
+import MerlinVerify.Check.FromElementsSelect
+import MerlinVerify.Rules.IndexCompare
+import MerlinVerify.Check.ConstantAlias
 
 namespace MerlinVerify.Check.SharedNormalize
 
@@ -13,8 +16,13 @@ open MerlinVerify MerlinVerify.Sem.Ops
 /-- Local families share one recursive body traversal. The order lets materialization and
 carrier aliases expose scalar rewrite opportunities before the integer stage. -/
 def base (ib : Nat) (hints : List Op) : SplatNormalizer.Normalizer ib :=
-  BodyNormalize.sequential (DenseExtract.base ib (DenseExtract.hintOps hints))
-    (BodyNormalize.sequential (ScalarCarrier.base ib) (IntegerBody.base ib))
+  BodyNormalize.sequential (FromElementsSelect.base ib)
+    (BodyNormalize.sequential (DenseExtract.base ib (DenseExtract.hintOps hints))
+      (BodyNormalize.sequential (ScalarCarrier.base ib)
+        (BodyNormalize.sequential (IntegerBody.base ib)
+          (BodyNormalize.sequential
+            (FactNormalize.base Rules.IndexCompare.family ib (DenseExtract.hintOps hints))
+            (ConstantAlias.base ib)))))
 
 /-- Adapt the exact body normalizers without assuming any producer facts at function entry.
 The source and target syntax supply only a finite traversal budget. -/

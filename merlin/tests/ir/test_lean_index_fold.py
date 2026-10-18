@@ -1,7 +1,6 @@
 """Certify actual closed index folding at the checked width, retaining excluded comparison cases."""
 
 import json
-import re
 import subprocess
 
 import pytest
@@ -60,31 +59,7 @@ def stage_for(tmp_path, tools, text):
 def test_actual_closed_index_arithmetic(tmp_path, lean_tools, name, a, b, escape, index_bits):
     stage, before, after = stage_for(tmp_path, lean_tools, source(name, a, b, escape=escape))
     assert f"arith.{name}" not in after.read_text()
-    # C1's greedy alignment currently consumes an existing equal constant too early.
-    # Preserve this structural coverage gap rather than count it as certified folding.
-    mask = (1 << index_bits) - 1
-    left, right = a & mask, b & mask
-    operations = {
-        "addi": left + right,
-        "subi": left - right,
-        "muli": left * right,
-        "andi": left & right,
-        "ori": left | right,
-        "xori": left ^ right,
-    }
-    returned = re.search(r"return (%[^, ]+)", after.read_text()).group(1)
-    materialized = re.search(rf"{re.escape(returned)} = arith.constant (-?\d+) : index", after.read_text())
-    same_materialization = materialized is not None and int(materialized.group(1)) == a
-    if operations[name] & mask == left and (escape or same_materialization):
-        result = check_typed_stage(stage, m2m_python=lean_tools.m2m_python, index_bits=index_bits)
-        assert result["verdict"] == "abstracted", result.get("reason")
-        for checker, directory in [(check_support, "support"), (check_definedness, "defined")]:
-            result = checker(
-                before, "forward", tmp_path / directory, m2m_python=lean_tools.m2m_python, index_bits=index_bits
-            )
-            assert result["verdict"] == "verified", result.get("reason")
-    else:
-        certify(stage, before, lean_tools, tmp_path, index_bits=index_bits)
+    certify(stage, before, lean_tools, tmp_path, index_bits=index_bits)
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -204,12 +179,6 @@ def test_s6_wrapped_signed_compare_checks_actual_width(tmp_path, lean_tools, exp
 
 
 @pytest.mark.parametrize("index_bits", [32, 64])
-def test_cyclic_chain_retains_repeated_final_constant_coverage_gap(tmp_path, lean_tools, index_bits):
+def test_cyclic_chain_certifies_repeated_final_constant(tmp_path, lean_tools, index_bits):
     stage, before, _ = stage_for(tmp_path, lean_tools, source(length=128, cycle=True))
-    result = check_typed_stage(stage, m2m_python=lean_tools.m2m_python, index_bits=index_bits)
-    assert result["verdict"] == "abstracted", result.get("reason")
-    for checker, directory in [(check_support, "support"), (check_definedness, "defined")]:
-        result = checker(
-            before, "forward", tmp_path / directory, m2m_python=lean_tools.m2m_python, index_bits=index_bits
-        )
-        assert result["verdict"] == "verified", result.get("reason")
+    certify(stage, before, lean_tools, tmp_path, index_bits=index_bits)

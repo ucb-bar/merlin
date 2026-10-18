@@ -84,7 +84,11 @@ jobs:
               */test_lean_scalar_carrier_differential.py|*/test_lean_index_bounds_differential.py|\
               */test_lean_defined_conversions_native.py|\
               */test_lean_index_cast_bounds_differential.py|*/test_lean_index_range_add_differential.py|\
-              */test_lean_dense_extract_differential.py|*/test_lean_scalar_bitcast_native.py) continue ;;
+              */test_lean_dense_extract_differential.py|*/test_lean_scalar_bitcast_native.py|\
+              */test_lean_index_bitwise_bounds_differential.py|*/test_lean_index_fold_native.py|\
+              */test_lean_from_elements_select_differential.py|*/test_lean_index_compare_native.py|\
+              */test_lean_constant_alias_native.py|*/test_lean_from_elements_index_native.py|\
+              */test_lean_shared_composition_differential.py) continue ;;
             esac
             if (( binding_index % 3 == ${{ matrix.shard }} )); then
               lean_suites+=("$suite")

@@ -102,6 +102,48 @@ Tests accidentally launched against the stale executable were retained as invali
 only the subsequent frozen successful build was qualified. Compiler fingerprints, commands,
 backtrace and both diagnostic replays are retained with shared-pass verification artifacts.
 
+Closed index addition, subtraction, multiplication and bitwise operations can now be normalized
+from actual successful prefix steps at the claimed index width. Target constants remain untrusted
+materialization hints and must decode to the exact computed value. Rank-one `from_elements`
+selection joins actual constructor point facts with proved signed in-bounds constant indices;
+aliases validate the full continuation, including captures and shadowing. Neither family assumes
+producer facts at block entry. Cross-region provenance remains a separate coverage obligation.
+
+S6: a retained index32 example adds `2147483647` and `1`, then compares the result signed-less-than
+zero. Lean evaluates the original comparison to true, while the pinned native pipeline evaluates
+it to false. Canonicalization produces false, which agrees with native execution but differs from
+the original Lean result at index32; index64 results agree throughout. An explicit source DLTI
+index32 layout does not remove the discrepancy. This is an unresolved model/native or compiler
+configuration discrepancy, not an established upstream bug. Package version `20260531.828` is
+not a proven LLVM source revision. Exact sources, exports, tool fingerprints and pipelines are
+retained; the mismatch is counted separately from matching native qualification. No semantics,
+compiler or oracle workaround is introduced.
+
+The preprocessing gate resolves an immutable authored boundary roster before execution and
+checks its ordered occurrences, pass identities and unchanged boundaries before and after strict
+semantic replay. Independent roster replay takes the caller's expected plan; recorded metadata
+cannot define its own coverage denominator. Generic captures without an expected plan explicitly
+claim recorded-boundary coverage only. This does not extend the automatic gate to preparation,
+D1 or the OOT consumer.
+
+An explicit `preparation.capture` prefix can now extend the chain to the original source for
+ordinary preparation with no selected optional mutations, integer quantization, routing or
+provider callbacks. Capture alone is unverified. Consumption independently reconstructs the
+authored preparation roster, validates the retained prefix and exact actual preprocessing input,
+then checks original-source support/definedness and one concatenated strict chain. Mandatory
+frontend-intent and numerical repairs must actually prove or fail; capture does not grant them a
+new specification. Existing whole-model builders remain ungated by default, and D1/OOT remain
+outside this automatic route.
+
+Exact scalar constant aliases compare decoded runtime values, including raw floating bits,
+at the claimed index width; full-continuation renaming preserves captures and shadowing. This
+closes the previously recorded duplicate-value alignment gap in closed index folding. Index
+comparisons separately replay the actual predicate over proved local index values; the matching
+S6 index64 boundary verifies while the index32 mismatch refuses. Constructor selection can learn
+computed closed index values from successful original source steps without target intermediates.
+Independent constant motion across operand-using instructions and widening/truncation cancellation
+remain explicit mixed-family coverage gaps in this batch; native agreement alone is not a proof.
+
 ## Proposed dequantization source contract
 
 `Spec/Dequant.lean` specifies the distinct per-tensor and per-channel arithmetic orders from

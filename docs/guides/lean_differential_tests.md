@@ -542,7 +542,49 @@ Four separate native observations record a conservative model gap: legal float-t
 including f16/bf16, execute natively but are refused by the current Lean semantics. They are known-gap
 regressions and do not count as matching model/native qualification.
 
+`test_lean_index_fold.py` qualifies exact closed index arithmetic at the claimed width, with long
+chains, escaping producers, nested bodies and valid wrong-value mutations. Its native companion
+records the unresolved S6 index32 comparison discrepancy separately from matched arithmetic.
+`test_lean_index_bitwise_bounds.py` proves initialization and retains only justified singleton
+bounds, including wrapped-width and captured-read controls. `test_lean_from_elements_select.py`
+checks actual multi-element constructor selection, exact scalar aliases, empty-tensor refusal and
+signed index limits; native references select the scalar independently. Native execution never
+uses the out-of-bounds counterpart of a wrapped-width safety case.
+
+`test_lean_bounds_dispatch.py` checks deep initialized/overwrite bodies and poison failures.
+Destination facts select one recursive definedness route, avoiding duplicate retries on failed
+nested bodies. This preserves soundness; an arbitrary nonmonotone custom body book may lose
+acceptance from the old initialized-to-dirty retry. No model-scale complexity bound is claimed.
+
 The opt-in runtime gate currently wraps `lower_model` preprocessing through `model.upstream.mlir`.
+It resolves an authored immutable roster before execution and requires every ordered occurrence,
+including unchanged stages, with the exact pass identity. `test_lean_boundary_plans.py` covers
+omissions, reordered/duplicate occurrences, selection drift, retained-plan tampering and changes
+during replay, plus real strict chains at both widths. Independent roster replay requires the
+caller-supplied expected plan and is separate from semantic chain replay. Unplanned generic
+captures explicitly report recorded-boundary coverage only; gated textual preprocessing refuses.
+An explicit `preparation.capture` result can be supplied as `shared_pass_preparation` to
+`lower_model` or `lower_model_file`, together with `shared_pass_verification`. This extends the
+single strict chain to the original source through ordinary preparation. Capture is unverified;
+the consuming gate independently derives the expected roster and checks retained evidence and
+actual source/handoff bytes before and after replay. Selected optional mutations, integer
+quantization, routing and provider callbacks currently refuse before capture. Mandatory repairs
+receive no automatic semantic permission: the bool signed-to-unsigned frontend repair has a
+specific refusal regression. `test_lean_preparation_capture.py` covers actual chains at both
+widths, coherent forged denominators and evidence races. Whole-model builders remain unchanged.
+
+`test_lean_constant_alias.py` compares actual decoded scalar constants and checks complete
+continuation aliases. Raw float bits retain payloads and signed zero; no numerical identity is
+assumed. Its integration strengthens the existing cyclic128 and escaped-equal-value index cases
+from explicit abstention to strict verified chains. `test_lean_index_compare.py` separately checks
+all ten integer predicates over actual local index values and requires the S6 index32 refusal.
+`test_lean_from_elements_index.py` proves selection through closed computed indices even when
+canonicalization removes every intermediate index constant from the target.
+
+Mixed-family tests distinguish supported cast composition from two remaining coverage gaps:
+widening then truncating back, and independent constant hoisting across an operand-using cast.
+Both gaps retain defined sources, checker abstention and native matching controls; they are not
+counted as proved rewrite boundaries.
 It does not automatically enclose earlier model preparation or the D1 native tensor passes inside
 `lower_to_llvm_ir`. Tested theorem routes for those passes must be distinguished from automatic
 coverage of a production compilation. Full shared-pass coverage still needs recorded enabled-pass

@@ -233,7 +233,8 @@ a hole.
   (D12).
 - **What Lean adds:**
   - theorems quantified over all shapes, widths and float models;
-  - checking cost linear in program size, independent of tensor extents;
+  - symbolic shape and value proofs avoid executing tensor iteration spaces; parsing constants, SSA lookup,
+    normalization and candidate search still contribute to cost, which may be superlinear in IR size;
   - a small, reviewable statement surface.
 
 ### D2. Certifying passes emit hints, and the checker re-derives everything
@@ -1466,7 +1467,7 @@ The paper deadline (§13) decides how much of Tier B is attempted.
 | Float rewrites in Merlin passes are not exact-order | They are then `policy` or rejected. A finding is a result, not a reason to add a float law. |
 | Lean or Mathlib version churn | Pin once at G0 and do not upgrade before submission |
 | Agents game the checks | §1.2 guardrails in CI, WP-RT veto, pinned statements, mutation matrices |
-| Checker runtime on large programs | Linear algorithms only (C11 symbolic, never enumerative); compiled checker; measure at G2 |
+| Checker runtime on large programs | Linear-time checking remains a design goal; C11 is symbolic, without enumerating tensor iteration spaces; measure actual IR-size scaling at G2 |
 
 ## 13. Open questions
 

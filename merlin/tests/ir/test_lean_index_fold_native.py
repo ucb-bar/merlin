@@ -166,11 +166,10 @@ def test_s6_index_wrap_comparison_disagreement_is_retained(tmp_path, fidelity_to
 
 
 @pytest.mark.parametrize("index_bits", [32, 64])
-def test_cyclic_index_chain_matches_native_but_retains_alias_abstention(tmp_path, fidelity_tools, index_bits):
+def test_cyclic_index_chain_certifies_and_matches_native(tmp_path, fidelity_tools, index_bits):
     tools = SimpleNamespace(m2m_python=fidelity_tools.compiler_python)
     stage, before, after = stage_for(tmp_path, tools, source(length=128, cycle=True))
-    boundary = check_typed_stage(stage, m2m_python=tools.m2m_python, index_bits=index_bits)
-    assert boundary["verdict"] == "abstracted", boundary.get("reason")
+    certify(stage, before, tools, tmp_path, index_bits=index_bits)
     result = 17
     for n in range(128):
         result = reference(NAMES[n % len(NAMES)], result, 137 * n + 5, index_bits)
