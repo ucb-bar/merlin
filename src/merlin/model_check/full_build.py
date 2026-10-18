@@ -154,6 +154,8 @@ def _lowering_sources() -> dict[str, Path]:
             sources[namespace + "/" + path.relative_to(root).as_posix()] = path
     for name in (
         __name__, "merlin.compile.baremetal_model",
+        "merlin.compile.model_execution_inputs", "merlin.targetgen.rtl.facts",
+        "merlin.targetgen.target_registry",
         "merlin.runtime.backends.zephyr_model", "merlin.runtime.backends.spike_model",
         "merlin.runtime.operation_profile",
     ):
@@ -173,6 +175,99 @@ def _lowering_identity() -> dict:
         "selected_target_files": target_inputs(),
         "native_abi_source_sha256": sha256(runtime_dir() / "abi" / "mlir_runtime.c"),
     }
+
+
+def _build_inputs(stage, submission, settings, directory, offload, weights_source, target) -> dict:
+    """Stream current explicit inputs; paths and stat metadata cannot authorize reuse.
+
+    Reuse the saved-model compiler's strict tree reader, including policy, state
+    and unknown files. Read existing selected/scoped facts without extraction.
+    This is not a transitive provider, native resource or toolchain closure.
+    """
+    from merlin.compile.model_execution_inputs import strict_tree_sha256
+    from merlin.model_check.cache import TARGET_INPUTS
+    from merlin.targetgen.rtl.facts import find_facts, load_facts
+    from merlin.targetgen.target_registry import resolve
+
+    def path(value):
+        lexical = Path(value).absolute()
+        if any(member.is_symlink() for member in (lexical, *lexical.parents)):
+            raise FullBuildError(f"build input contains a symlink: {value}")
+        resolved = lexical.resolve(strict=True)
+        if resolved == directory.resolve() or directory.resolve().is_relative_to(resolved):
+            raise FullBuildError(f"build input contains the image cache: {resolved}")
+        if resolved.is_relative_to(directory.resolve()):
+            raise FullBuildError(f"build input is inside the image cache: {resolved}")
+        return resolved
+
+    try:
+        trees = {"capture": stage, "host_package": settings.host_package}
+        if offload:
+            trees["device_package"] = submission
+        inputs = {name: {"path": str(root := path(value)), **strict_tree_sha256(root)}
+                  for name, value in trees.items()}
+        files = {"board_catalog": settings.board_catalog, "host_dts": settings.host_dts}
+        files.update({name: value for name in TARGET_INPUTS if (value := os.environ.get(name))})
+        if weights_source is not None:
+            files["weights_source"] = weights_source
+        inputs.update({name: {"path": str(root := path(value)), "sha256": sha256(root)}
+                       for name, value in files.items()})
+        try:
+            facts = load_facts(target, regenerate=False)
+        except FileNotFoundError:
+            if os.environ.get("MERLIN_RTL_FACTS"):
+                raise
+            facts = None  # Unavailable remains unknown; cache lookup never extracts RTL.
+        inputs["selected_facts_sha256"] = (
+            hashlib.sha256(json.dumps(facts, sort_keys=True, allow_nan=False).encode()).hexdigest()
+            if facts is not None else None
+        )
+        artifact = find_facts(target) if facts is not None else None
+        inputs["selected_facts_file"] = (
+            {"path": str(root := path(artifact)), "sha256": sha256(root)} if artifact is not None else None
+        )
+        selected = resolve(target)  # Metadata only: never import an executable provider.
+        try:
+            software = selected.load_contract()
+        except FileNotFoundError:
+            if os.environ.get("MERLIN_TARGET_CONTRACT"):
+                raise
+            software = None
+        inputs["selected_capability_sha256"] = (
+            hashlib.sha256(json.dumps(software, sort_keys=True, allow_nan=False).encode()).hexdigest()
+            if software is not None else None
+        )
+        capability = selected.capability_contract_path
+        inputs["selected_capability_file"] = (
+            {"path": str(root := path(capability)), "sha256": sha256(root)}
+            if capability != selected.contract_path else None
+        )
+        inputs["provider_metadata"] = {
+            name: ({"path": str(root := path(value)), "sha256": sha256(root)}
+                   if value.exists() or value.is_symlink() else None)
+            for name, value in (("contract", selected.contract_path), ("dialect_plan", selected.dialect_plan_path))
+        }
+        return {"schema": "merlin.full_model_build_inputs.v1", **inputs}
+    except (OSError, ValueError) as error:
+        raise FullBuildError(f"cannot establish current full-model build inputs: {error}") from error
+
+
+def _cached_admission(record, admission, target, directory):
+    """Evaluate today's selected policy on actual cached bytes, never an old verdict."""
+    if not record["device_routed"]:
+        return None, None
+    if admission is None:
+        from merlin.model_check.admission import service
+
+        admission = service(target)
+    from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+
+    if type(admission) is not LinkedElfAdmissionService:
+        raise FullBuildError("cached device image requires an explicit linked ELF admission service")
+    result = admission.evaluate(elf=Path(record["elf"]), target=target, evidence_root=directory / "cache-admission")
+    if result["status"] != "accepted":
+        raise FullBuildError("current linked ELF admission refused the cached device image")
+    return admission, result
 
 
 def _routing(target: str, stage: Path, submission: Path, model: str, settings: BuildSettings, admission):
@@ -246,6 +341,7 @@ def _build(
 ):
     from merlin.compile.baremetal_model import compile_saved_model
 
+    lookup_started = time.monotonic()
     key = {
         "stage": str(Path(stage).resolve()),
         "target": target,
@@ -254,12 +350,8 @@ def _build(
         "settings": settings.record(),
         "offload": offload,
         "lowering": _lowering_identity(),
+        "inputs": _build_inputs(stage, submission, settings, directory, offload, weights_source, target),
     }
-    if weights_source is not None:
-        key["weights_source"] = {
-            "path": str(Path(weights_source).resolve(strict=True)),
-            "sha256": sha256(weights_source),
-        }
     record_path = directory / "build.json"
     if record_path.is_file():
         record = json.loads(record_path.read_text())
@@ -267,13 +359,24 @@ def _build(
         if (
             record.get("key") == key
             and elf.is_file()
+            and not elf.is_symlink()
             and elf.stat().st_size == record.get("elf_bytes")
             and sha256(elf) == record.get("elf_sha256")
             and (not settings.op_profile or _profile_table_matches(record))
         ):
+            current_admission, admission_result = _cached_admission(record, admission, target, directory)
+            if _build_inputs(stage, submission, settings, directory, offload, weights_source, target) != key["inputs"]:
+                raise FullBuildError("full-model build inputs changed during cache lookup")
             if _lowering_identity() != key["lowering"]:
                 raise FullBuildError("selected lowering controls or direct sources changed during cache lookup")
-            return {**record, "reused": True}
+            if elf.is_symlink() or sha256(elf) != record["elf_sha256"]:
+                raise FullBuildError("linked ELF changed during cache lookup")
+            if settings.op_profile and not _profile_table_matches(record):
+                raise FullBuildError("operation profile table changed during cache lookup")
+            if current_admission is not None:
+                current_admission.revalidate(elf=elf, result=admission_result, target=target)
+            return {**record, "reused": True, "cache_admission": admission_result,
+                    "cache_lookup_seconds": time.monotonic() - lookup_started}
     image = directory / "image"
     if image.exists():
         shutil.rmtree(image)
@@ -281,7 +384,6 @@ def _build(
         from merlin.model_check.admission import service
 
         admission = service(target)
-    started = time.monotonic()
     device = _routing(target, Path(stage), Path(submission), label, settings, admission) if offload else None
     receipt = compile_saved_model(
         capture=stage,
@@ -302,7 +404,6 @@ def _build(
         blob_weights=bool(device is not None and settings.dedup_weights),
         **({"weights_source": weights_source} if weights_source is not None else {}),
     )
-    seconds = time.monotonic() - started
     elf = Path(receipt["output"]["elf"])
     build_dir = elf.parent
     record = {
@@ -319,15 +420,19 @@ def _build(
         "weights_bin_bytes": (build_dir / "cgen" / "weights.bin").stat().st_size,
         "device_routed": device is not None,
         "dedup_weights": bool(device is not None and settings.dedup_weights),
-        "seconds": round(seconds, 1),
         "reused": False,
     }
+    if _build_inputs(stage, submission, settings, directory, offload, weights_source, target) != key["inputs"]:
+        raise FullBuildError("full-model build inputs changed during compilation")
     if _lowering_identity() != key["lowering"]:
         raise FullBuildError("selected lowering controls or direct sources changed during compilation")
     if settings.op_profile:
         record["op_profile_table"] = receipt["output"].get("op_profile_table")
         if not _profile_table_matches(record):
             raise FullBuildError("profiled build returned no current operation table")
+    if elf.is_symlink() or sha256(elf) != record["elf_sha256"]:
+        raise FullBuildError("linked ELF changed during compilation")
+    record["seconds"] = round(time.monotonic() - lookup_started, 1)
     pending = record_path.with_suffix(".pending")
     pending.write_text(json.dumps(record, indent=1) + "\n")
     pending.replace(record_path)

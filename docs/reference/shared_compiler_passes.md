@@ -165,9 +165,54 @@ the display snapshot's redaction and long-value summaries cannot establish cache
 identity. Changing pass selection, a pass implementation or the selected target
 invalidates an older image. A hit reopens the ELF and verifies its recorded hash,
 and controls/source identities are rechecked before returning or publishing.
-Legacy records without these bindings rebuild. These are direct-input checks,
-not complete toolchain, capture, provider-resource or transitive dependency
-closure. They confer no numerical or execution qualification.
+The native ABI implementation and the strict tree reader/selection owners are
+also pinned.
+
+`model_check.full_build.build` binds the current complete capture and host-package
+trees, and the device-package tree when offload is enabled. It reuses
+`model_execution_inputs.strict_tree_sha256`: filenames and every file's bytes
+participate, including numerical policy, state, inputs and unknown artifacts.
+Hashes stream file contents; weights are not copied or loaded into a second
+in-memory snapshot. The caller's submission digest cannot replace reading the
+actual package. Host twins need no submission files. Board catalog, host DTS,
+explicit target contract/RTL files and an optional reused weights blob have
+their own byte identities. Selected/scoped RTL and capability documents are
+bound even without backing files; available provider contract and dialect-plan
+files are pinned as metadata, without importing provider implementation code.
+Read-only fact discovery never extracts RTL. Missing facts remain unknown;
+facts appearing or changing during a build require a fresh attempt.
+
+These inputs are read again before publishing a build or returning a hit.
+Same-size changes with restored timestamps cannot reuse an older image. Missing
+inputs, symlinks and input/cache containment produce a diagnostic before
+compilation or reuse. Input-only relinking remains a separate path: it generates
+the requested driver inputs and checks regenerated weights and argument calls;
+these cache checks do not establish complete freshness of relink recipes and
+their transitive objects.
+
+A cached device image is evaluated by the currently selected
+`LinkedElfAdmissionService`; a prior acceptance never substitutes for today's
+policy. Refusal stops reuse. Source pins, actual ELF bytes and the evaluator's
+actual report are revalidated. A host twin issues no accelerator instructions
+and does not require device admission. Fresh build `seconds` include input and
+source validation; a hit reports its current `cache_lookup_seconds` separately
+from the retained original build cost. Both exclude the outer file-lock wait.
+
+Legacy records without these bindings rebuild. These checks do not establish
+complete toolchain/header, provider-resource or transitive dependency closure,
+nor validate a capture's numerical policy by hashing it. They confer no new
+numerical or hardware execution qualification. The focused transaction tests
+and real ordinary build/relink/functional-simulator state test run with:
+
+```bash
+python -B -m pytest merlin/tests/infra/test_full_model_lowering_cache.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/full-model-input-cache"
+```
+
+The real execution test skips when the selected native/cross toolchain and
+functional simulator are unavailable. It checks every output and carried state
+for three calls under each of two changed source programs, plus normal hardware
+pin refusal; this small test is not qualification of a complete model corpus.
 
 Shared pass-state types now live in `merlin.transforms.pipeline_state`.
 `transforms.pipeline` reexports the identical objects and retains its existing
