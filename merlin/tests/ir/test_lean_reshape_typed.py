@@ -184,12 +184,20 @@ def test_typed_mixed_preserves_nested_capture(tmp_path, lean_tools):
         check_support(before, "forward", tmp_path / "support", m2m_python=lean_tools.m2m_python)["verdict"]
         == "verified"
     )
-    # Nonzero-rank tensor.extract has semantic support, but is not in the initialized-output
-    # definedness fragment. This case therefore does not establish a strict definedness chain.
+    # Actual constant indices are proved in bounds for the captured rank-two tensor.
     assert (
         check_definedness(before, "forward", tmp_path / "defined", m2m_python=lean_tools.m2m_python)["verdict"]
-        == "abstracted"
+        == "verified"
     )
+    chain = compose_chain(
+        [stage],
+        tmp_path / "support/receipt.json",
+        "forward",
+        tmp_path / "chain.json",
+        definedness=tmp_path / "defined/receipt.json",
+        m2m_python=lean_tools.m2m_python,
+    )
+    assert chain["verdict"] == "verified", chain.get("reason")
     changed = subprocess.run(
         [str(lean_tools.m2m_python), "-c", CAPTURE_MUTATE, str(after)], capture_output=True, text=True, check=False
     )

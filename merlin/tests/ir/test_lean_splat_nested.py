@@ -167,10 +167,10 @@ def test_nested_splat_defined_chain(tmp_path, lean_tools, index_bits, dirty):
     assert replay("stale.json")["verdict"] != "verified"
 
 
-def test_nonzero_rank_extraction_does_not_claim_definedness(tmp_path, lean_tools):
+def test_constant_bounded_nonzero_rank_extraction_is_defined(tmp_path, lean_tools):
     stage, _ = _stage(tmp_path, _source())
     result = check_definedness(stage / "before.mlir", "subject", tmp_path / "defined", m2m_python=lean_tools.m2m_python)
-    assert result["verdict"] == "abstracted", result.get("reason")
+    assert result["verdict"] == "verified", result.get("reason")
 
 
 MUTATE = """
