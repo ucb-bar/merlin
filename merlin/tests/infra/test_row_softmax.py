@@ -425,8 +425,11 @@ uint64_t touched_high_water(int s){{return high_water[s];}}
     return source
 
 
-def execute_native(tmp_path, source, values, exp_object, name, spaces):
-    from merlin.llvmlower import toolchain
+def execute_native(tmp_path, source, values, exp_object, name, spaces, *, compiler=None):
+    if compiler is None:
+        from merlin.llvmlower import toolchain
+
+        compiler = toolchain.clang()
 
     # Some repository temp fixtures recycle directory names after each case;
     # dlopen caches by absolute path even after that file has been replaced.
@@ -436,13 +439,13 @@ def execute_native(tmp_path, source, values, exp_object, name, spaces):
     c.write_text(source)
     subprocess.run(
         [
-            str(toolchain.clang()),
+            str(compiler),
             "-O2",
             "-ffp-contract=off",
             "-shared",
             "-fPIC",
             str(c),
-            str(exp_object),
+            *([] if exp_object is None else [str(exp_object)]),
             "-lm",
             "-o",
             str(lib),

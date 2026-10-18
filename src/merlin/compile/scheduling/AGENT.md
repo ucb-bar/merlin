@@ -18,9 +18,13 @@ and where each operand's region sits on chip.
 ## Invariants
 
 - Contract resolution, compact dense, row/schedule compilation and final checking
-  share `schedule_pipeline.shared_library_sources`. Add semantic/checker helpers
+  share `library_sources.shared_library_sources` (reexported by `schedule_pipeline`). Add semantic/checker helpers
   to that roster rather than creating a per-family version list. Source identities
   neither grant candidate import access nor establish transitive dependency closure.
+- `export.export_shared_scheduling` copies the declared core for explicit host
+  review, with three minimal namespace initializers. Keep algorithm/checker
+  files identical and test all entry families in isolation. New public APIs and
+  source membership require explicit review; never infer grants from an export.
 - **Knobs, not constants.** Load on index change, lookahead depth, operand order/grouping, region
   placement and loop order were each measured or shown to move cycles, and none has a value that wins
   everywhere: the best setting depends on the SHAPE and on the SUBSTRATE. Defaults are documented in

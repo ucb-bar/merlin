@@ -84,9 +84,16 @@ class BuildSettings:
     arena_mb: int
     host_package: Path
     dedup_weights: bool = True
+    op_profile: bool = False
+
+    def __post_init__(self):
+        if type(self.op_profile) is not bool:
+            raise FullBuildError("operation profiling must be an explicit Boolean")
 
     @classmethod
-    def of(cls, models, model, host_package: Path, *, dedup_weights: bool = True) -> BuildSettings:
+    def of(
+        cls, models, model, host_package: Path, *, dedup_weights: bool = True, op_profile: bool = False,
+    ) -> BuildSettings:
         from merlin.common.paths import repo_root
 
         common = dict(models.full or {})
@@ -107,6 +114,7 @@ class BuildSettings:
             arena_mb=int(own["arena_mb"]),
             host_package=Path(host_package),
             dedup_weights=dedup_weights,
+            op_profile=op_profile,
         )
 
     def record(self) -> dict[str, Any]:
@@ -114,6 +122,21 @@ class BuildSettings:
 
 
 # ---------------------------------------------------------------------------------------------- build
+
+
+def _profile_table_matches(record: dict) -> bool:
+    """A profiled image can be reused only with its original adjacent table."""
+    table = record.get("op_profile_table")
+    if (not isinstance(table, dict) or not isinstance(table.get("path"), str)
+            or not isinstance(record.get("build_dir"), str)):
+        return False
+    path = Path(table["path"])
+    return (
+        path == Path(record["build_dir"]) / "op_profile_table.json"
+        and path.is_file()
+        and not path.is_symlink()
+        and sha256(path) == table.get("sha256")
+    )
 
 
 def _lowering_sources() -> dict[str, Path]:
@@ -132,12 +155,14 @@ def _lowering_sources() -> dict[str, Path]:
     for name in (
         __name__, "merlin.compile.baremetal_model",
         "merlin.runtime.backends.zephyr_model", "merlin.runtime.backends.spike_model",
+        "merlin.runtime.operation_profile",
     ):
         sources[name] = module_source_path(name)
     return sources
 
 
 def _lowering_identity() -> dict:
+    from merlin.common.paths import runtime_dir
     from merlin.llvmlower.codegen_env import cache_digest
     from merlin.model_check.cache import target_inputs
 
@@ -146,6 +171,7 @@ def _lowering_identity() -> dict:
         "project_controls_sha256": cache_digest(),
         "direct_sources_sha256": {name: sha256(path) for name, path in _lowering_sources().items()},
         "selected_target_files": target_inputs(),
+        "native_abi_source_sha256": sha256(runtime_dir() / "abi" / "mlir_runtime.c"),
     }
 
 
@@ -243,6 +269,7 @@ def _build(
             and elf.is_file()
             and elf.stat().st_size == record.get("elf_bytes")
             and sha256(elf) == record.get("elf_sha256")
+            and (not settings.op_profile or _profile_table_matches(record))
         ):
             if _lowering_identity() != key["lowering"]:
                 raise FullBuildError("selected lowering controls or direct sources changed during cache lookup")
@@ -270,6 +297,7 @@ def _build(
         respect_captured_quantization_scope=True,
         readback="full",
         group_profile=device is not None,
+        **({"op_profile": True} if settings.op_profile else {}),
         host_llvm_bitcode=True,
         blob_weights=bool(device is not None and settings.dedup_weights),
         **({"weights_source": weights_source} if weights_source is not None else {}),
@@ -296,6 +324,10 @@ def _build(
     }
     if _lowering_identity() != key["lowering"]:
         raise FullBuildError("selected lowering controls or direct sources changed during compilation")
+    if settings.op_profile:
+        record["op_profile_table"] = receipt["output"].get("op_profile_table")
+        if not _profile_table_matches(record):
+            raise FullBuildError("profiled build returned no current operation table")
     pending = record_path.with_suffix(".pending")
     pending.write_text(json.dumps(record, indent=1) + "\n")
     pending.replace(record_path)

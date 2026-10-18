@@ -519,7 +519,9 @@ def test_installed_resources_outside_checkout_keep_masks_and_audit_tokens(tmp_pa
     monkeypatch.setattr(A, "sys", SimpleNamespace(path=[str(site)], prefix=str(tmp_path / "python"), modules={}))
     expected = _write(site, "merlin/_data/contract/examples/expected_result.json")
     golden = _write(site, "merlin_experiments/_data/contract/capsules/public/sample/golden.yaml")
-    hidden = _write(site, "merlin_experiments/_data/contract/capsules/hidden/sample/capsule.yaml").parents[1]
+    hidden = _write(
+        site, "merlin_experiments/_data/contract/capsules/hidden/sample/capsule.yaml", "name: sample\n"
+    ).parents[1]
     surfaces = AS.answer_surfaces(isolated_policy)
     assert {surface.path for surface in surfaces} == {expected, golden, hidden}
     unmasked = ["--ro-bind", str(site), str(site)]
@@ -645,7 +647,7 @@ def test_real_release_wheel_files_are_covered_when_installed(tmp_path, isolated_
 def test_private_resource_masks_follow_each_declared_layout(tmp_path, isolated_policy, resource_root):
     golden = _write(tmp_path, f"{resource_root}/capsules/public/sample/golden.yaml")
     weight = _write(tmp_path, f"{resource_root}/capsules/public/sample/capsule.weights.safetensors")
-    hidden = _write(tmp_path, f"{resource_root}/capsules/hidden/sample/capsule.yaml").parents[1]
+    hidden = _write(tmp_path, f"{resource_root}/capsules/hidden/sample/capsule.yaml", "name: sample\n").parents[1]
     holdout = _write(tmp_path, f"{resource_root}/capsules/profiles/test.hidden.yaml")
     expected = _write(tmp_path, f"{resource_root}/examples/expected_command_buffer.json")
     fixture = _write(tmp_path, "merlin/tests/gemmini/fixtures/expected_command_buffer_g0.json")

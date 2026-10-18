@@ -9,16 +9,14 @@ their separate lowering routes; opaque output is never interpreted here.
 from __future__ import annotations
 
 import hashlib
-import importlib
 import json
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
-from pathlib import Path
 
 from merlin.sched.ir import Call, Kernel
 from merlin.sched.ir.kernel import check_structure
 from merlin.semantic_compiler.allocation_types import StorageBank
-from merlin.transforms.pipeline import PassSpec, PipelineContext, PipelineSession, validate_pass_order
+from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
 from .configuration import (
     ConfigurationAdapter,
@@ -27,6 +25,7 @@ from .configuration import (
     verify_configuration_state,
 )
 from .fusion import plan_fusion, validate_fusion_capabilities
+from .library_sources import shared_library_sources as shared_library_sources
 from .program_limits import (
     AddressWindow,
     Continuation,
@@ -127,75 +126,6 @@ def _hash(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
-def shared_library_sources():
-    """One source roster for selection, planning, checking and later emission.
-
-    These identities detect source changes; they grant no library access and
-    are not a transitive dependency or toolchain qualification. Keep shared
-    semantics helpers here even when only another scheduling family uses them:
-    treatments must not silently select different verification versions.
-    """
-    names = (
-        "merlin",
-        "merlin.compile",
-        "merlin.compile.scheduling",
-        "merlin.sched",
-        "merlin.sched.ir",
-        "merlin.sched.ir.parse",
-        "merlin.transforms",
-        "merlin.semantic_compiler",
-        "merlin.verify",
-        "merlin.llvmlower",
-        "merlin.targetgen",
-        "merlin.transforms.pipeline",
-        "merlin.transforms.loops",
-        "merlin.transforms.normalization",
-        "merlin.transforms.planning",
-        "merlin.transforms.scalar_witness",
-        "merlin.transforms.unrolling",
-        "merlin.transforms.validation",
-        "merlin.compile.scheduling.schedule_pipeline",
-        "merlin.compile.scheduling.block_schedule",
-        "merlin.compile.scheduling.configuration",
-        "merlin.compile.scheduling.temporary_storage",
-        "merlin.compile.scheduling.copy_elimination",
-        "merlin.compile.scheduling.device_spills",
-        "merlin.compile.scheduling.spill_conformance",
-        "merlin.compile.scheduling.program_limits",
-        "merlin.compile.scheduling.fusion",
-        "merlin.compile.scheduling.fusion_semantics",
-        "merlin.compile.scheduling.row_softmax",
-        "merlin.compile.scheduling.row_softmax_verification",
-        "merlin.compile.scheduling.compact_dense",
-        "merlin.compile.scheduling.compact_verification",
-        "merlin.transforms.dense_planning",
-        "merlin.transforms.dense_ir",
-        "merlin.llvmlower.cpu_softmax",
-        "merlin.transforms.pure_scalar",
-        "merlin.transforms.certificates",
-        "merlin.verify.epilogue_applicability",
-        "merlin.semantic_compiler.allocate",
-        "merlin.semantic_compiler.allocation_types",
-        "merlin.semantic_compiler.rules",
-        "merlin.semantic_compiler.model",
-        "merlin.sched.ir.kernel",
-        "merlin.sched.ir.expr",
-        "merlin.sched.ir.integer_domain",
-        "merlin.compile.scheduling.selected_contracts",
-        "merlin.compile.scheduling.dense_contracts",
-        "merlin.compile.scheduling.storage_contracts",
-        "merlin.compile.scheduling.fusion_contracts",
-        "merlin.compile.scheduling.spill_contracts",
-        "merlin.compile.scheduling.row_contracts",
-        "merlin.compile.scheduling.program_contracts",
-        "merlin.sched.codegen",
-        "merlin.sched.isa",
-        "merlin.targetgen.isa_spec",
-        "merlin.targetgen.isa_dialect_gen",
-    )
-    return {
-        name: hashlib.sha256(Path(importlib.import_module(name).__file__).read_bytes()).hexdigest() for name in names
-    }
 
 
 def _verify_kernel(kernel):

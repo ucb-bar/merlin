@@ -6,6 +6,7 @@ independently through ordinary native lowering.
 """
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -36,15 +37,21 @@ def builds(tmp_path, monkeypatch):
         elf.write_bytes(optional_passes.active().spell().encode() or b"default")
         for action in changed:
             action()
-        return {"output": {"elf": str(elf), "elf_sha256": FB.sha256(elf), "build_hash": "observed"}}
+        result = {"output": {"elf": str(elf), "elf_sha256": FB.sha256(elf), "build_hash": "observed"}}
+        if kwargs.get("op_profile"):
+            table = output / "op_profile_table.json"
+            table.write_text('[{"id":0,"mlir_op":"arith.constant"}]')
+            result["output"]["op_profile_table"] = {"path": str(table), "sha256": FB.sha256(table)}
+        return result
 
     monkeypatch.setattr(baremetal_model, "compile_saved_model", compiler)
     settings = FB.BuildSettings("selected-board", tmp_path / "boards", tmp_path / "cpu.dts", "typed", 1, tmp_path)
 
-    def build(*, target="neutral", offload=True):
+    def build(*, target="neutral", offload=True, op_profile=False):
         return FB.build(
             tmp_path, target=target, label="program", submission=tmp_path,
-            submission_sha256="source", settings=settings, directory=tmp_path / "image-cache",
+            submission_sha256="source", settings=replace(settings, op_profile=op_profile),
+            directory=tmp_path / "image-cache",
             admission=object(), offload=offload,
         )
 
@@ -92,6 +99,30 @@ def test_same_size_source_and_elf_mutations_and_foreign_target_force_rebuild(bui
     assert not build()["reused"]
     assert not build(target="other-neutral")["reused"]
     assert len(calls) == 4
+
+
+@pytest.mark.parametrize("during_build", [False, True])
+def test_native_abi_source_changes_invalidate_image_reuse(builds, tmp_path, monkeypatch, during_build):
+    from merlin.common import paths
+
+    build, calls, _, changed = builds
+    runtime = tmp_path / "runtime"
+    (runtime / "abi").mkdir(parents=True)
+    source = runtime / "abi/mlir_runtime.c"
+    source.write_text("body1")
+    monkeypatch.setattr(paths, "runtime_dir", lambda: runtime)
+    if during_build:
+        changed.append(lambda: source.write_text("body2"))
+        with pytest.raises(FB.FullBuildError, match="changed during compilation"):
+            build()
+        assert not (tmp_path / "image-cache/build.json").exists()
+        return
+    first = build()
+    assert build()["reused"]
+    source.write_text("body2")
+    second = build()
+    assert not second["reused"] and build()["reused"] and len(calls) == 2
+    assert first["key"]["lowering"]["native_abi_source_sha256"] != second["key"]["lowering"]["native_abi_source_sha256"]
 
 
 @pytest.mark.parametrize("change", ["selection", "source"])
@@ -142,3 +173,32 @@ def test_default_source_inventory_contains_actual_row_and_numerical_pass_owners(
     assert sources["merlin.llvmlower/automatic_host.py"].is_file()
     assert sources["merlin.llvmlower/optional_passes.py"].is_file()
     assert all(path.suffix == ".py" for path in sources.values())
+
+
+@pytest.mark.parametrize("mutation", ["content", "missing", "symlink", "receipt"])
+def test_profile_selection_and_table_mutation_prevent_image_cache_reuse(builds, mutation):
+    build, calls, _, _ = builds
+    plain = build()
+    assert "op_profile" not in calls[0] and "op_profile_table" not in plain
+    profiled = build(op_profile=True)
+    assert not profiled["reused"] and calls[1]["op_profile"] is True
+    assert build(op_profile=True)["reused"]
+    table = Path(profiled["op_profile_table"]["path"])
+    if mutation == "content":
+        table.write_text("[]")
+    elif mutation == "missing":
+        table.unlink()
+    elif mutation == "symlink":
+        content = table.read_bytes()
+        table.unlink()
+        other = table.with_suffix(".other")
+        other.write_bytes(content)
+        table.symlink_to(other)
+    else:
+        receipt = table.parent.parent / "build.json"
+        record = json.loads(receipt.read_text())
+        record.pop("op_profile_table")
+        receipt.write_text(json.dumps(record))
+    assert not build(op_profile=True)["reused"]
+    assert len(calls) == 3
+    assert not build()["reused"]

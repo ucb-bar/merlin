@@ -466,7 +466,7 @@ def compile_row_softmax(
     This synchronous schedule-to-C path is not final machine-byte conformance
     or ordinary full-model target integration.
     """
-    from merlin.transforms.pipeline import PassSpec, PipelineContext, PipelineSession, validate_pass_order
+    from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
     from .row_softmax_verification import verify_row_softmax
     from .schedule_pipeline import shared_library_sources

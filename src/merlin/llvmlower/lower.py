@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from .graph_optimizations import GraphOptimizationContract
 
 from merlin.common import compile_trace
-from merlin.common.digest import sha256_text
+from merlin.common.digest import sha256_file, sha256_text
 from merlin.common.ir_audit import IrAudit, audit_mode
 from merlin.common.jsonio import write_pretty_json
 
@@ -58,6 +58,9 @@ STAGES = compile_trace.declare(
         "input",
         "host-graph-optimized",
         "host-row-scheduled",
+        "host-destination-reused",
+        "host-rounding-selected",
+        "operation-profiled",
         *PREPROCESS_STAGES,
         "upstream",
         "upstream-scheduled",
@@ -104,8 +107,14 @@ def lower_model(
     source_scalar_carrier=None,
     retain_llvm_dialect: bool = False,
     graph_optimizations: GraphOptimizationContract | None = None,
+    op_profile: bool = False,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
+
+    ``op_profile=True`` inserts checked top-level ``@forward`` markers after
+    source graph/row/destination optimization and before upstream preprocessing.
+    The table and source identities are returned in ``stats['operation_profile']``.
+    Markers can still perturb downstream allocation and machine optimization.
 
     ``data_layout`` is the target's LLVM data layout, set on the module before translation (see
     :func:`merlin.llvmlower.pipeline.lower_to_llvm_ir`). ``index_bits`` explicitly binds every LLVM
@@ -150,11 +159,15 @@ def lower_model(
     :mod:`merlin.llvmlower.arena_bind`. Default OFF: unflagged, the emitted ``.ll`` is byte-identical
     to the baseline, and the report of what was bound lands in ``stats["static_arena"]``.
     """
+    if type(op_profile) is not bool:
+        raise ValueError("operation profiling requires an explicit boolean selection")
     with IrAudit(
         workdir, enabled=ir_audit, producer="merlin.llvmlower.lower_model", source=__file__, sidecars=audit_sidecars
     ) as audit:
         work = Path(workdir)
         work.mkdir(parents=True, exist_ok=True)
+        for name in ("operation-profile.json", "model.profiled.mlir", "op_profile_table.json"):
+            (work / name).unlink(missing_ok=True)
 
         audit.stage("input", mlir_text)
         graph_report = None
@@ -186,6 +199,46 @@ def lower_model(
         )
         if row_report["rewrites"]:
             audit.stage("host-row-scheduled", mlir_text)
+        from .automatic_destinations import prepare_automatic_destinations
+        from .toolchain import _env
+
+        mlir_text, destination_report = prepare_automatic_destinations(
+            mlir_text, serial=serial_rows and _env("MERLIN_COMPILER_DRIVER", "python") == "python",
+            index_bits=64 if index_bits is None else index_bits, data_layout=data_layout
+        )
+        if destination_report["rewrites"]:
+            from .impr_features import normalize
+
+            features = normalize(set(features or ()) | {"reuse_tensor_destination"})
+            audit.stage("host-destination-reused", mlir_text)
+        write_pretty_json(work / "automatic-host-destinations.json", destination_report)
+        from .automatic_rounding import prepare_automatic_rounding
+
+        mlir_text, rounding_report = prepare_automatic_rounding(
+            mlir_text, serial=serial_rows, index_bits=64 if index_bits is None else index_bits, data_layout=data_layout)
+        if rounding_report["rewrites"]:
+            audit.stage("host-rounding-selected", mlir_text)
+        write_pretty_json(work / "automatic-host-rounding.json", rounding_report)
+        profile_report = None
+        if op_profile:
+            from . import op_profile as profiler
+
+            profile_source_sha = sha256_text(mlir_text)
+            mlir_text, profile_table = profiler.instrument(mlir_text, structural=True)
+            profile_path = work / "model.profiled.mlir"
+            profile_path.write_text(mlir_text, encoding="utf-8")
+            table_path = profiler.write_table(profile_table, work / "op_profile_table.json")
+            profile_report = {
+                "schema": "merlin.lowering_operation_profile.v1",
+                "stage": "after_source_optimization_before_preprocessing",
+                "source_file_sha256": profile_source_sha,
+                "instrumented_source": {"path": str(profile_path), "sha256": sha256_file(profile_path)},
+                "table": {"path": str(table_path), "sha256": sha256_file(table_path)},
+                "operations": len(profile_table),
+                "machine_conformance": "not_established",
+            }
+            write_pretty_json(work / "operation-profile.json", profile_report)
+            audit.stage("operation-profiled", mlir_text)
         if textual:
             from .passes_xdsl import preprocess_text_textual
 
@@ -196,6 +249,10 @@ def lower_model(
         if graph_report is not None:
             stats["graph_optimizations"] = graph_report
         stats["automatic_host_rows"] = row_report
+        stats["automatic_host_destinations"] = destination_report
+        stats["automatic_host_rounding"] = rounding_report
+        if profile_report is not None:
+            stats["operation_profile"] = profile_report
         (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
         row_report["upstream_file_sha256"] = sha256_text(upstream_text)
         write_pretty_json(work / "automatic-host-rows.json", row_report)
@@ -311,6 +368,7 @@ def lower_model_file(
     source_scalar_carrier=None,
     retain_llvm_dialect: bool = False,
     graph_optimizations: GraphOptimizationContract | None = None,
+    op_profile: bool = False,
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
@@ -335,4 +393,5 @@ def lower_model_file(
         source_scalar_carrier=source_scalar_carrier,
         retain_llvm_dialect=retain_llvm_dialect,
         graph_optimizations=graph_optimizations,
+        op_profile=op_profile,
     )
