@@ -52,6 +52,14 @@ def captured (shadow : Bool := false) (dirty : Bool := false) : Module :=
 #guard Bounds.check 32 (captured false true) "f" [.tensor [2] .index] [.tensor [2] .index]
 #guard !Bounds.check 64 (captured true) "f" [.tensor [2] .index, .tensor [2] .index] [.tensor [2] .index]
 
+def unknownRebinding : Module :=
+  { ops := [func "f" [v 0 (tensorTy [2] i32), v 1 .index]
+    [mkOp "arith.constant" [v 2 .index] [] [("value", .int 0 .index)],
+     mkOp "arith.constant" [v 3 (.int 1)] [] [("value", .bool true)],
+     mkOp "arith.select" [v 2 .index] [3, 1, 1],
+     mkOp "tensor.extract" [v 4 i32] [0, 2], ret [4]]] }
+#guard !Bounds.check 64 unknownRebinding "f" [.tensor [2] i32, .scalar .index] [.scalar i32]
+
 -- Exhaustive small shapes include zero/unit extents and both sides of each bounds interval.
 #guard ([32, 64].all fun ib => (List.range 5).all fun size => (List.range 9).all fun raw =>
   let n : Int := (raw : Int) - 2
