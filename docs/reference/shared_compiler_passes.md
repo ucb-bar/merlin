@@ -11,6 +11,7 @@ code_refs:
   - src/merlin/compile/scheduling/export.py
   - src/merlin/compile/scheduling/library_sources.py
   - src/merlin/compile/scheduling/compact_dense.py
+  - src/merlin/compile/scheduling/dense_source.py
   - src/merlin/compile/scheduling/compact_verification.py
   - src/merlin/compile/scheduling/program_limits.py
   - src/merlin/model_check/program_admission.py
@@ -611,6 +612,117 @@ encoder/decoder contract. They keep their existing legal lowering. Integration
 requires that public semantic boundary, actual addressing and tail legality,
 completion/continuation qualification, and final emitted-effect checks. It does
 not require changing a target's instruction implementation to fit Merlin.
+
+### Deriving a dense schedule from current typed source
+
+`schedule_source_dense` connects the existing dense planner with source
+computation. It takes a verified original module and an operation from that
+module, the selected RTL/software contracts, physical assignments and an
+independently qualified `DenseLoopAdapter`. It derives M, K, N and element
+formats from the actual tensor types and scalar recurrence; a caller cannot
+replace those with a shape-only declaration.
+
+```python
+from merlin.compile.scheduling.dense_source import (
+    DenseSourceUnavailable, schedule_source_dense,
+)
+
+try:
+    compiled = schedule_source_dense(
+        module, operation,
+        selected_contracts=selected,
+        storage=assigned_windows,
+        adapter=qualified_adapter,
+        name=logical_kernel_name,
+        static_budget=command_site_budget,
+        external_buffers_disjoint=original_runtime_disjointness,
+    )
+except DenseSourceUnavailable:
+    compiled = None
+if compiled is not None:
+    source = compiled.emit_c(target_instructions, symbol=target_abi_symbol)
+# Otherwise retain the original legal route, or diagnose its absence.
+```
+
+Source admission currently supports static positive rank-two `linalg.generic`
+matmul maps, signless integer storage with explicitly signed widening, and
+modular multiply/add with no overflow flags. Inputs may have different standard
+integer widths and must not narrow before multiplication. Initialization must
+be an actual integer-zero fill into a fresh tensor destination, with the fill
+body checked too. Encoded layouts, unknown attributes/body operations, dynamic
+shapes, nonzero initialization, floating arithmetic, batched and broader
+contractions remain unavailable in this source matcher. Provenance labels only
+bind source instances; they never select a schedule.
+
+The shared recurrence recognizer in `transforms/dense_ir.py` also serves the
+legacy signed-int8 source reader. There is one scalar-body implementation.
+The logical element budget bounds source admission independently of physical
+storage and command-site budgets. The existing dense contract still checks
+rectangular primitives, byte widths, usable banks, aliases, reservations,
+completion, exact continuation, tails and assigned storage. Unknown physical
+facts do not become inferred capacities or runtime permissions.
+
+An outer `PipelineSession` requires source admission before dense lowering;
+the latter runs the existing checked dense pipeline. The result binds the whole
+original module, selected operation ordinal, selected contracts, shared library
+and exact checked lower-level kernel stamp. Source changes, another operation
+or another independently valid kernel cannot silently replace that binding.
+C emission rechecks it. This is source/emission custody with independent
+execution obligations, not a new proof authority.
+
+Neutral integration tests invoke this entry through the ordinary
+`DeviceRouting.catalog_builder` hook. They compile a complete recurrent graph
+with host addition, two contractions, clamp/narrowing, state history and position
+updates. Both baseline and optimized arms use identical source/inputs and the
+same library; resource controls restrict baseline retention. Different rectangular
+primitives, integer widths and physical backing declarations exercise the same
+entry. Complete functional outputs and all carried states match an independent
+ordered integer reference. Separate native execution of the exact emitted target
+C observes requested primitive commands/bytes and tests a false continuation
+implementation. These byte-memory execution models are not real accelerators.
+
+The integration uses the existing explicit `FreshTensorWriterContract` through
+`post_offload_transform`: the selected borrowed writer must completely write
+its fresh result, preserve inputs, retain/release no buffers and complete before
+return. The caller supplies that qualification and allocation alignment. The
+source matcher does not infer those facts from a function name or matching types.
+An opaque descriptor-returning function cannot be treated as a fresh allocation;
+the lifetime check refuses unsupported ownership. The ordinary pipeline permits
+loop-returned allocations only when its ownership-deallocation pipeline is
+present. The tests retain the loop and every intermediate carried state rather
+than substituting independent calls or a truncated reduction.
+
+Plain standard signed integer type spellings now reach the existing dense
+pointer transport independently of the corpus vocabulary; `i16` input embedding
+uses exact integer storage. This supplies type transport, not device arithmetic
+support. Unsupported element storage remains refused.
+
+The current per-group profiler cannot bracket the fresh-writer symbol handoff
+from the old routed-symbol roster. Those integration tests keep it disabled and
+report per-group contributions as unavailable. Functional forward counts are
+not hardware latency. Requested-byte reductions from neutral native execution
+are not physical bus traffic. Larger native `.text` and compilation costs must
+be reported alongside traffic savings; the default planner has no calibrated
+cycle model. Qualified real target emission/mapping, runtime ownership and
+complete-model timing still require their actual public integration contracts.
+The shared SDK explicitly exports this source entry and its existing semantic
+and checking dependencies; it exports no host compiler or target implementation.
+
+To reproduce the paired experiment from the repository root, select the existing
+MLIR/native toolchain and functional simulator, set `TMPDIR` to the task's
+temporary directory, and run:
+
+```sh
+PYTHONPATH="$PWD/src" python -B -m pytest -p no:cacheprovider \
+  merlin/tests/infra/test_dense_source_whole_model.py \
+  --basetemp "$TMPDIR/source-dense-reproduction" \
+  -o tmp_path_retention_policy=all
+```
+
+Each retained case writes `out/pair.json`, actual build recipes, console bytes,
+catalog commands and the admitted source. Missing native tools skip execution;
+a skip does not qualify the source-to-program path. The adjacent
+`test_dense_source.py` adds source, freshness and false-continuation mutations.
 
 ### Selected RTL and software inputs for dense scheduling
 

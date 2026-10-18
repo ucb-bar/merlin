@@ -26,8 +26,14 @@ __all__ = ["catalog_source_contractions", "device_contraction_ranks", "device_dt
 def _mlir(token: str) -> str | None:
     """A dtype token in MLIR spelling, or None when the registry does not know it (never guessed)."""
     try:
+        from merlin.common.quant_formats import machine_bits
         from merlin.targetgen.corpus_spec import dtype_info
 
+        # Plain signed integer widths are type spellings, not a closed corpus
+        # vocabulary or a claim that a device executes this arithmetic.
+        bits = machine_bits(str(token))
+        if bits and str(token).startswith(("int", "i")):
+            return f"i{bits}"
         return dtype_info(str(token))[1]
     except Exception:  # noqa: BLE001 -- an unknown token is a real answer: skip that rule
         return None

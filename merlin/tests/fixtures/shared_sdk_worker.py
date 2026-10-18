@@ -72,6 +72,29 @@ rows.execute_native = lambda *args, **kw: execute_row(*args, **kw, compiler=conf
 run("rows", rows.test_selected_complete_rows_execute_full_native_outputs,
     exp_object=None, record_property=record, dtype="f64", separate=True, index_bits=64, mask=rows.CausalRowMask(2))
 
+def source_dense_from_export(path):
+    from xdsl.context import Context
+    from xdsl.dialects import arith, builtin, func, linalg, tensor
+    from xdsl.parser import Parser
+
+    from merlin.compile.scheduling.dense_source import schedule_source_dense
+    context = Context()
+    for dialect in (arith.Arith, builtin.Builtin, func.Func, linalg.Linalg, tensor.Tensor):
+        context.load_dialect(dialect)
+    source = Path(config["fixtures"]).parent / "fixtures/shared_dense_source.mlir"
+    module = Parser(context, source.read_text()).parse_module()
+    operation = next(op for op in module.walk() if op.name == "linalg.generic")
+    selected, _, storage, adapter = dense.inputs(path, shape=(2, 3, 4))
+    result = schedule_source_dense(module, operation, selected_contracts=selected, storage=storage,
+        adapter=adapter, name="exported_source", static_budget=80, external_buffers_disjoint=True,
+        verification_timeout_ms=20_000)
+    assert result is not None
+    result.revalidate()
+    assert result.compiled.realization["pipeline"]["library_sources_sha256"] == shared_library_sources()
+
+
+run("source_dense", source_dense_from_export)
+
 origins = {}
 for name, module in tuple(sys.modules.items()):
     if name == "merlin" or name.startswith("merlin."):

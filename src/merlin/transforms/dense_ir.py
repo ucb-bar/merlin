@@ -72,3 +72,102 @@ def dense_schedule_op(problem, block, resources, static_commands, budget):
     )
     op.verify()
     return op
+
+
+def recognize_signed_integer_matmul(op, dtypes=("i8", "i8", "i32")) -> tuple:
+    """Read exact tensor matmul maps and signed modular multiply/add semantics.
+
+    This establishes the scalar recurrence, not zero initialization, ownership,
+    physical layout, target support or a numerical/qualification receipt.
+    """
+    from xdsl.dialects import arith
+    from xdsl.dialects.builtin import IntegerType, NoneAttr, Signedness, TensorType
+    from xdsl.dialects.linalg.attrs import IteratorType
+    from xdsl.dialects.linalg.ops import GenericOp, YieldOp
+    from xdsl.ir.affine import AffineDimExpr, AffineMap
+
+    if type(op) is not GenericOp:
+        raise ValueError("dense source requires a typed linalg.generic")
+    if type(dtypes) is not tuple or len(dtypes) != 3 or any(t not in ("i8", "i16", "i32", "i64") for t in dtypes):
+        raise ValueError("dense source requires explicit supported signed integer formats")
+    if len(op.inputs) != 2 or len(op.outputs) != 1 or len(op.results) != 1:
+        raise ValueError("linalg.generic is not a two-input, one-init, one-result contraction")
+    lhs, rhs = op.inputs
+    init = op.outputs[0]
+    values = (lhs, rhs, init, op.results[0])
+    if not all(isinstance(v.type, TensorType) for v in values) or [str(v.type.element_type) for v in values] != [
+        *dtypes,
+        dtypes[2],
+    ]:
+        raise ValueError("linalg.generic element types differ from the selected signed matmul formats")
+    if any(
+        type(v.type.element_type) is not IntegerType or v.type.element_type.signedness.data != Signedness.SIGNLESS
+        for v in values
+    ):
+        raise ValueError("dense source requires signless integer storage with explicit signed widening")
+    if any(type(v.type.encoding) is not NoneAttr for v in values):
+        raise ValueError("dense source requires ordinary unencoded tensor layouts")
+    if op.results[0].type != init.type:
+        raise ValueError("linalg.generic result type differs from its initialized output")
+    if set(op.attributes) - {"prov.region_id", "prov.fqn"} or set(op.properties) - {
+        "indexing_maps",
+        "iterator_types",
+        "operandSegmentSizes",
+    }:
+        raise ValueError("dense source has unknown operation attributes or executable library calls")
+    maps = tuple(attribute.data for attribute in op.indexing_maps)
+    d0, d1, d2 = (AffineDimExpr(i) for i in range(3))
+    expected = (AffineMap(3, 0, (d0, d2)), AffineMap(3, 0, (d2, d1)), AffineMap(3, 0, (d0, d1)))
+    if maps != expected:
+        raise ValueError("linalg.generic indexing maps are not rank-2 matmul maps")
+    if tuple(attribute.data for attribute in op.iterator_types) != (
+        IteratorType.PARALLEL,
+        IteratorType.PARALLEL,
+        IteratorType.REDUCTION,
+    ):
+        raise ValueError("linalg.generic iterators are not two parallel and one reduction")
+    if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
+        raise ValueError("linalg.generic requires a single scalar body block")
+    block = op.regions[0].block
+    args = list(block.args)
+    if len(args) != 3 or [str(arg.type) for arg in args] != list(dtypes):
+        raise ValueError("linalg.generic body argument types do not match signed matmul")
+    body = list(block.ops)
+    widened, cursor = [], 0
+    for argument, dtype in zip(args[:2], dtypes[:2]):
+        if int(dtype[1:]) > int(dtypes[2][1:]):
+            raise ValueError("dense source cannot narrow an input before multiplication")
+        if dtype == dtypes[2]:
+            widened.append(argument)
+            continue
+        if cursor >= len(body) or type(body[cursor]) is not arith.ExtSIOp:
+            raise ValueError("linalg.generic body is not signed widen, multiply, add, yield")
+        extension = body[cursor]
+        if (
+            list(extension.operands) != [argument]
+            or len(extension.results) != 1
+            or str(extension.results[0].type) != dtypes[2]
+            or extension.attributes
+            or extension.properties
+        ):
+            raise ValueError("linalg.generic body does not widen the ordered signed input elements")
+        widened.append(extension.results[0])
+        cursor += 1
+    if [type(inner) for inner in body[cursor:]] != [arith.MuliOp, arith.AddiOp, YieldOp]:
+        raise ValueError("linalg.generic body is not signed widen, multiply, add, yield")
+    mul, add, yld = body[cursor:]
+    if set(mul.operands) != set(widened) or len(mul.operands) != 2:
+        raise ValueError("linalg.generic body product does not use both widened inputs")
+    if set(add.operands) != {mul.results[0], args[2]} or len(add.operands) != 2:
+        raise ValueError("linalg.generic body sum does not use product and accumulator")
+    if list(yld.operands) != [add.results[0]] or yld.attributes or yld.properties:
+        raise ValueError("linalg.generic body yields a different value or has unknown yield effects")
+    for arithmetic in (mul, add):
+        if (
+            str(arithmetic.results[0].type) != dtypes[2]
+            or arithmetic.overflow_flags.data
+            or arithmetic.attributes
+            or set(arithmetic.properties) - {"overflowFlags"}
+        ):
+            raise ValueError("linalg.generic body has an unsupported arithmetic width, attribute or overflow flag")
+    return lhs, rhs, init

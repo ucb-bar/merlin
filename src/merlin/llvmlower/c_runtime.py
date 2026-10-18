@@ -34,12 +34,14 @@ if TYPE_CHECKING:
     from .entry_weight_projection import EntryWeightProjection
 
 DT_BYTES = {"f32": 4, "f64": 8, "bf16": 2, "f16": 2, "i64": 8, "i32": 4, "i16": 2, "i8": 1, "i1": 1}
-NP_OF = {"f32": np.float32, "f64": np.float64, "i64": np.int64, "i32": np.int32, "i8": np.int8, "i1": np.bool_}
+NP_OF = {"f32": np.float32, "f64": np.float64, "i64": np.int64, "i32": np.int32,
+         "i16": np.int16, "i8": np.int8, "i1": np.bool_}
 C_OF = {
     "f32": "float",
     "f64": "double",
     "i64": "long",
     "i32": "int",
+    "i16": "int16_t",
     "i8": "signed char",
     "i1": "signed char",
     "bf16": "unsigned short",
