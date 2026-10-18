@@ -92,3 +92,45 @@ def percentile_observer() -> Any:
 
     _CLASS.append(PercentileObserver)
     return PercentileObserver
+
+
+_GROUPED: list[Any] = []
+
+
+def grouped_channel_observer() -> Any:
+    """Per-output-channel weight scales shared by each run of ``channels_per_scale`` channels.
+
+    A readout that applies one scale to a group of output columns can hold a per-channel scale only
+    when it is uniform within each group. This observer takes each channel's symmetric range as the
+    largest range in its group (channels ``[g*n, (g+1)*n)``; the last group may be shorter), so every
+    channel of a group gets the same scale and none is clipped. ``.with_args(channels_per_scale=n)``.
+    """
+    if _GROUPED:
+        return _GROUPED[0]
+    import torch
+    from torchao.quantization.pt2e import PerChannelMinMaxObserver
+
+    class GroupedChannelObserver(PerChannelMinMaxObserver):
+        def __init__(self, channels_per_scale: int = 1, **kwargs: Any) -> None:
+            if type(channels_per_scale) is not int or channels_per_scale < 1:
+                raise ValueError("channels_per_scale must be a positive integer")
+            super().__init__(**kwargs)
+            if self.qscheme not in (torch.per_channel_symmetric,):
+                raise ValueError("grouped channel scales are symmetric per-channel scales")
+            self.channels_per_scale = channels_per_scale
+
+        @torch.jit.export
+        def calculate_qparams(self) -> Any:
+            low, high = self.min_val, self.max_val
+            magnitude = torch.maximum(low.abs(), high.abs())
+            n = self.channels_per_scale
+            shared = magnitude.clone()
+            for start in range(0, magnitude.numel(), n):
+                shared[start : start + n] = magnitude[start : start + n].max()
+            return self._calculate_qparams(-shared, shared)
+
+        def extra_repr(self) -> str:
+            return f"channels_per_scale={self.channels_per_scale}"
+
+    _GROUPED.append(GroupedChannelObserver)
+    return GroupedChannelObserver
