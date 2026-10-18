@@ -24,6 +24,7 @@ from pathlib import Path
 if __package__:
     from ._m2m_capture_artifacts import (
         _framework_catalog,
+        _framework_cpu_dispatch,
         finalize_session_artifacts,
         frontend_trace_bytes,
         write_frontend_trace,
@@ -32,6 +33,7 @@ if __package__:
 else:
     from merlin.targetgen._m2m_capture_artifacts import (
         _framework_catalog,
+        _framework_cpu_dispatch,
         finalize_session_artifacts,
         frontend_trace_bytes,
         write_frontend_trace,
@@ -151,6 +153,7 @@ def _seed_capture(seed: int, torch, threads: int = 1) -> dict:
         "rngs": ["python", "numpy", "torch"],
         "deterministic_algorithms": "required",
         "cpu_threads": torch.get_num_threads(),
+        "cpu_dispatch": _framework_cpu_dispatch(torch),
         "scope": "selected framework build and inputs",
     }
 

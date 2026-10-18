@@ -480,3 +480,10 @@ dtypes, extents) and `plan_identity` hashes it with each staged interface. Sweep
 may run corners on threads (one shared compute slot per in-flight corner, caller
 context copied) or through a trusted `runner`; either way the summary is assembled
 in plan order and a missing or malformed outcome is an `error`, never coverage.
+
+Capture determinism records the framework's observed CPU dispatch and explicit
+`ATEN_CPU_CAPABILITY` override without selecting arithmetic or changing gates.
+An unavailable observation remains unknown. Multi-output recipe diagnostics
+retain the historical f32 value projection and accumulate metrics in f64;
+single-output numeric receipts remain unchanged. Capture cache identity binds
+the complete-output agreement helper as a direct implementation owner.

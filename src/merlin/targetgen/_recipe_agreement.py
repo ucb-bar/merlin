@@ -71,6 +71,8 @@ def compare(reference, candidate, samples, *, limit, as_tuple):
                 left, right = left.float().flatten(), right.float().flatten()
                 if not bool(torch.isfinite(left).all()) or not bool(torch.isfinite(right).all()):
                     raise AgreementError(f"agreement output {index} is not finite")
+                if len(expected) > 1:
+                    left, right = left.double(), right.double()
                 pairs.append((left, right))
             if len(pairs) == 1:
                 summary.add(*pairs[0])
@@ -80,5 +82,6 @@ def compare(reference, candidate, samples, *, limit, as_tuple):
                 summary.add(torch.cat([pair[0] for pair in pairs]), torch.cat([pair[1] for pair in pairs]))
     result = summary.result()
     if len(outputs) > 1:
+        result["multi_output_metric_policy"] = "fp32_values_fp64_accumulation_v1"
         result["outputs"] = [{"output_index": index, **metrics.result()} for index, metrics in enumerate(outputs)]
     return result

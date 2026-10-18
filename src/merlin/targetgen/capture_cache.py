@@ -33,6 +33,7 @@ def implementation_identity() -> dict:
         "merlin.targetgen._capture_session_reference",
         "merlin.targetgen._aten_opset_worker",
         "merlin.targetgen._recipe_quantizer",
+        "merlin.targetgen._recipe_agreement",
         "merlin.targetgen._recipe_observers",
         "merlin.targetgen._integer_epilogue",
         "merlin.targetgen._dynamic_contractions",

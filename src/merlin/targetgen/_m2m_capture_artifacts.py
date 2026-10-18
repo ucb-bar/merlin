@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 
@@ -24,6 +25,25 @@ def _framework_catalog(torch) -> dict:
             "n_all_aten": None,
             "reason": f"capture framework catalog unavailable: {type(exc).__name__}: {exc}",
         }
+
+
+def _framework_cpu_dispatch(torch) -> dict:
+    """Observe this framework's CPU path without selecting or normalizing arithmetic."""
+    record = {
+        "status": "unavailable",
+        "capability": None,
+        "environment_override": os.environ.get("ATEN_CPU_CAPABILITY"),
+    }
+    getter = getattr(getattr(getattr(torch, "backends", None), "cpu", None), "get_cpu_capability", None)
+    if callable(getter):
+        try:
+            capability = getter()
+        except (AttributeError, RuntimeError, ValueError) as error:
+            record["reason"] = f"{type(error).__name__}: {error}"
+        else:
+            if isinstance(capability, str) and capability:
+                record.update(status="observed", capability=capability)
+    return record
 
 
 def frontend_trace_bytes(trace: dict) -> bytes:
