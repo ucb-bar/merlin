@@ -101,6 +101,30 @@ def test_same_size_source_and_elf_mutations_and_foreign_target_force_rebuild(bui
     assert len(calls) == 4
 
 
+@pytest.mark.parametrize("during_build", [False, True])
+def test_native_abi_source_changes_invalidate_image_reuse(builds, tmp_path, monkeypatch, during_build):
+    from merlin.common import paths
+
+    build, calls, _, changed = builds
+    runtime = tmp_path / "runtime"
+    (runtime / "abi").mkdir(parents=True)
+    source = runtime / "abi/mlir_runtime.c"
+    source.write_text("body1")
+    monkeypatch.setattr(paths, "runtime_dir", lambda: runtime)
+    if during_build:
+        changed.append(lambda: source.write_text("body2"))
+        with pytest.raises(FB.FullBuildError, match="changed during compilation"):
+            build()
+        assert not (tmp_path / "image-cache/build.json").exists()
+        return
+    first = build()
+    assert build()["reused"]
+    source.write_text("body2")
+    second = build()
+    assert not second["reused"] and build()["reused"] and len(calls) == 2
+    assert first["key"]["lowering"]["native_abi_source_sha256"] != second["key"]["lowering"]["native_abi_source_sha256"]
+
+
 @pytest.mark.parametrize("change", ["selection", "source"])
 def test_changed_selection_or_source_during_compilation_is_never_published(builds, monkeypatch, change):
     build, calls, source, changed = builds

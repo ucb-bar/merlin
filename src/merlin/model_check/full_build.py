@@ -162,6 +162,7 @@ def _lowering_sources() -> dict[str, Path]:
 
 
 def _lowering_identity() -> dict:
+    from merlin.common.paths import runtime_dir
     from merlin.llvmlower.codegen_env import cache_digest
     from merlin.model_check.cache import target_inputs
 
@@ -170,6 +171,7 @@ def _lowering_identity() -> dict:
         "project_controls_sha256": cache_digest(),
         "direct_sources_sha256": {name: sha256(path) for name, path in _lowering_sources().items()},
         "selected_target_files": target_inputs(),
+        "native_abi_source_sha256": sha256(runtime_dir() / "abi" / "mlir_runtime.c"),
     }
 
 
