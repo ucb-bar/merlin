@@ -89,6 +89,11 @@ Compiler edit-surface vocabulary is read from the selected manifest schema durin
 `inspect_compiler_package`, never during import. Its explicit `contract` argument
 must not fall back to checkout data when a selected schema is missing or invalid.
 
+`compiler_edit_scope` preserves V1 authority and accepts explicitly selected V2
+new Python component directories owned by existing surfaces. Pass code may be
+added only within that frozen scope; manifests grant nothing. Numerical inputs,
+independent verification and evaluator code remain outside candidate authority.
+
 ## The rule that governs everything here
 
 Every module is a **generic, trait-gated analysis**. Gating is on **derived traits**, never on an

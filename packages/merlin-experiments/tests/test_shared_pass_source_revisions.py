@@ -40,9 +40,31 @@ TUNED = """def schedule(shape, resources):
                            eliminate_configuration=resources["persistent_fields"] >= 2 and all(x > 0 for x in shape),
                            eliminate_copies=False, optimize_storage=True)
 """
+NEW_PASS_POLICY = """def schedule(shape, resources):
+    from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+    from passes.configuration import eliminate
+    return ScheduleBudgets(max_fusions=0, eliminate_configuration=eliminate(shape, resources),
+                           eliminate_copies=False, optimize_storage=True)
+"""
+NEW_PASS = """def eliminate(shape, resources):
+    return resources["persistent_fields"] >= 2 and all(x > 0 for x in shape)
+"""
 
 
-@pytest.mark.parametrize("ordinary_inputs", [BASELINE], indirect=True, ids=["checked-shared-policy"])
+@pytest.mark.parametrize(
+    "ordinary_inputs",
+    [
+        BASELINE,
+        {
+            "source": BASELINE,
+            "new_python_components": [
+                {"directory": "passes", "surface_ids": ["schedule"], "reason": "new candidate compiler passes"}
+            ],
+        },
+    ],
+    indirect=True,
+    ids=["checked-shared-policy", "new-pass-module"],
+)
 def test_normal_queue_retains_policy_and_changes_realized_configuration(ordinary_inputs, tmp_path, monkeypatch):
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "storage"))
     monkeypatch.syspath_prepend(str(repo_root() / "merlin/tests/targetgen"))
@@ -166,11 +188,20 @@ def test_normal_queue_retains_policy_and_changes_realized_configuration(ordinary
         root=tmp_path / "queue",
     )
     try:
-        (policy.candidate / "compiler.py").write_text(TUNED)
+        initial = store.freeze(policy.candidate)
+        new_pass = policy.edit_authority.contract["schema"] == "compiler_edit_contract_v2"
+        if new_pass:
+            (policy.candidate / "passes").mkdir()
+            (policy.candidate / "passes/__init__.py").write_text("")
+            (policy.candidate / "passes/configuration.py").write_text(NEW_PASS)
+        (policy.candidate / "compiler.py").write_text(NEW_PASS_POLICY if new_pass else TUNED)
         revision = store.freeze(policy.candidate)
         job = pool.submit(revision.revision_id, kind=ORDINARY_KIND, timeout_s=120)
         # A later live edit must not change the queued immutable compiler.
         (policy.candidate / "compiler.py").write_text("def schedule(*args):\n    raise RuntimeError('live edit')\n")
+        if new_pass:
+            (policy.candidate / "passes/configuration.py").write_text("raise RuntimeError('later pass edit')\n")
+            assert (revision.source / "passes/configuration.py").read_text() == NEW_PASS
         deadline = time.monotonic() + 125
         while not job["terminal"] and time.monotonic() < deadline:
             time.sleep(0.05)
@@ -191,5 +222,8 @@ def test_normal_queue_retains_policy_and_changes_realized_configuration(ordinary
                 assert old["encoded_bytes"] > new["encoded_bytes"]
                 for key in ("shape", "separate", "transfer_bytes", "final_settings", "output_sha256"):
                     assert old[key] == new[key]
+        store.restore(initial.revision_id, policy.candidate)
+        assert (policy.candidate / "compiler.py").read_text() == BASELINE
+        assert not (policy.candidate / "passes").exists()
     finally:
         pool.close()

@@ -126,3 +126,70 @@ numerical/functional gates, calibrated timing, bounded equal search budgets and
 frozen policies evaluated on unseen workloads. Whole-model measurements must
 include host arithmetic, packing, transfers and dispatch. Command reductions
 remain command results until paired timing establishes an execution improvement.
+
+## Pass and abstraction inventory
+
+The exact public module roster is `compile.scheduling.export.PUBLIC_MODULES`.
+These are executable shared mechanisms with explicit admission limits, rather
+than a promise that every target's ordinary compiler already calls them:
+
+| Mechanism | Shared interface | Present scope |
+| --- | --- | --- |
+| Blocking and reuse | `schedule_compact_dense`, `schedule_source_dense` | Counted dense loops, M/N order, K panels and tails; synchronous completion and exact accumulator continuation |
+| Block scheduling | `schedule_contraction`, `schedule_convolution` | Load order, bounded lookahead and placement; explicit geometry and residency checks |
+| Temporary allocation and copy removal | `allocate_temporary_storage`, `compile_schedule` | Invocation-private lifetimes, reservations and exact private copies; finite schedules |
+| Physical fusion | `plan_fusion`, `compile_source_pointwise` | Declared integer scalar stages/readouts with checked layouts and effects |
+| Configuration cleanup | `eliminate_redundant_configuration` | Pure ordered persistent writes; unknown effects remain barriers |
+| Device spilling | `allocate_with_spills` | Explicit exact synchronous save/reload capabilities |
+| Complete-row reductions | `compile_row_softmax` | Selected maximum/exponential/sum/normalization algorithm and complete-row workspace |
+| Final program checks | `finalize_program` | Actual decoded size, addresses and branches; segmentation needs qualified continuation |
+
+Typed computations and numerical boundaries describe what must execute.
+`DenseResources`, `Geometry`, `StorageBank` and reservations describe available
+physical resources. `StorageEffects` and `ConfigurationEffects` describe
+ownership, reads/writes, persistence and completion. `ScheduleEncoding` and
+target adapters connect selected calls to actual encoded/decoded instructions.
+`PassSpec`, `PipelineContext`, `AnalysisStamp` and `PipelineSession` enforce
+ordering and freshness. `read_scheduling_contracts` resolves selected RTL facts
+and reviewed software/ISA effects; structural geometry cannot supply missing
+arithmetic or synchronization semantics.
+
+The xDSL schedule dialect additionally represents layout preservation, pack
+hoisting, placement, accumulator lifetime, dispatch grouping and interface
+selection. A represented decision or stream analysis is not an executed
+transformation; verify its consumer and emitted program before claiming a gain.
+
+Remaining generic work includes automatic asynchronous overlap/double buffering,
+loop-carried and cross-operation residency, and broader source composition for
+contraction epilogues and batched attention/KV layouts. Existing asynchronous
+effect records support dependency checks but do not supply those scheduling
+transformations. Target work supplies qualified state/completion effects,
+addressing, encoders/decoders and actual primitive support. Neither layer should
+select behavior by model name or benchmark identity.
+
+Phase 2 may add or modify compiler transformations as well as tune policy.
+The host-frozen edit contract selects existing pass symbols. Explicit
+`compiler_edit_contract_v2.new_python_components` can also reserve absent
+directories for new Python pass modules, each owned by existing surfaces:
+
+```yaml
+schema: compiler_edit_contract_v2
+new_python_components:
+  - directory: passes
+    surface_ids: [scheduling]
+    reason: checked compiler transformations
+```
+
+This fragment supplements the original required decisions and symbol authority;
+it cannot grant itself permissions from a candidate manifest. V1 keeps its
+existing interpretation. New modules are retained with each candidate revision,
+and restoring an earlier revision removes its later pass modules. The ordinary
+isolated source-revision regression exercises this route with actual encoded
+programs and independently checked native outputs.
+
+Editable transformation implementations remain separate from frozen numerical
+contracts, independent checkers, qualification and evaluators. Modifying a shared
+library mechanism requires an explicitly reviewed Phase 2 release selected
+equally for compared treatments; the additional-library runtime connection
+described above remains necessary. New candidate pass modules do not silently
+make a frozen shared SDK writable.

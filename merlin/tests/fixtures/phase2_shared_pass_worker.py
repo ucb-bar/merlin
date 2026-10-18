@@ -15,6 +15,8 @@ config = json.loads(Path(sys.argv[1]).read_bytes())
 root, work = Path(config["bundle"]), Path(config["work"])
 assert not any(name == "merlin" or name.startswith("merlin.") for name in sys.modules)
 sys.path[:0] = [str(root), config["fixtures"], *config["dependencies"]]
+# The selected compiler may own new pass modules; the frozen SDK keeps precedence.
+sys.path.insert(1, str(Path(config["candidate"]).parent))
 
 import numpy as np  # noqa: E402
 import test_configured_pointwise as configured  # noqa: E402
