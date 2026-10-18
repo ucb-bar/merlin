@@ -60,7 +60,10 @@
       "if": {
         "properties": {
           "theorem": {
-            "const": "MerlinVerify.Check.chain_typed_defined_refines"
+            "enum": [
+              "MerlinVerify.Check.chain_typed_defined_refines",
+              "MerlinVerify.Check.chain_typed_extended_defined_refines"
+            ]
           }
         },
         "required": [
@@ -84,6 +87,45 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_definedness": {
+            "properties": {
+              "checker": {
+                "const": "MerlinVerify.Check.DefinedExtended.check"
+              }
+            },
+            "required": [
+              "checker"
+            ]
+          }
+        },
+        "required": [
+          "source_definedness"
+        ]
+      },
+      "then": {
+        "properties": {
+          "theorem": {
+            "enum": [
+              "MerlinVerify.Check.chain_extended_defined_refines",
+              "MerlinVerify.Check.chain_typed_extended_defined_refines"
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "theorem": {
+            "enum": [
+              "MerlinVerify.Check.chain_defined_refines",
+              "MerlinVerify.Check.chain_typed_defined_refines"
+            ]
+          }
+        }
+      }
     }
   ],
   "properties": {
@@ -93,7 +135,9 @@
     "theorem": {
       "enum": [
         "MerlinVerify.Check.chain_defined_refines",
-        "MerlinVerify.Check.chain_typed_defined_refines"
+        "MerlinVerify.Check.chain_typed_defined_refines",
+        "MerlinVerify.Check.chain_extended_defined_refines",
+        "MerlinVerify.Check.chain_typed_extended_defined_refines"
       ]
     },
     "refinement_theorem": {

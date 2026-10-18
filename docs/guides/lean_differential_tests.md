@@ -479,6 +479,10 @@ definedness checker with the independently proved bounds checker on the same inp
 The executable retains the legacy `check-definedness` command; its new
 `check-definedness-extended` command names the broader theorem. Chain replay recognizes each
 exact checker/theorem pair, independently replays it, and refuses substituted proof labels.
+Extended receipts compose through `chain_extended_defined_refines` or its typed counterpart,
+whose hypotheses name the actual extended check. Legacy receipts retain the legacy composition
+theorems. The schema checks both the source obligation and the matching composition identity;
+bounds-only sources exercise this distinction at both index widths.
 
 `test_lean_floating_source.py` establishes scalar source totality for `arith.negf`, `math.fma`
 and the finite unary math vocabulary in `DefinedFloating.lean`, on initialized same-format
@@ -488,6 +492,30 @@ rewrite permission. F16/BF16 are covered by binding proofs. Its native companion
 the existing f32/f64 interpretation of negate, abs, sqrt, rounding and FMA, with signed-zero,
 NaN-classification and independent finite references. Other unary math functions have parametric
 totality proofs here; this suite supplies no new native numerical fidelity evidence for them.
+
+`test_lean_scalar_carrier.py` qualifies actual rank-zero `tensor.from_elements`/`tensor.extract`
+folding, escaping producers, captured scalar uses, local generic bodies and chains of aliases.
+The scalar-carrier pass runs before integer cast normalization so removing a carrier can expose
+cast composition; `test_lean_shared_composition.py` requires a strict chain for that mixed case.
+The native companion compares exact integer/float bits with independent input-bit references,
+including signed zero and NaN payloads. Rank-zero splat alias targets are manually proposed:
+the pinned canonicalizer does not perform that fold. Positive-rank aliases remain refused.
+
+`test_lean_index_bounds.py` propagates exact singleton ranges through initialized, unflagged
+index add/subtract/multiply at the actual bit width, including signed wraparound. Unknown
+operands can establish initialized results without inventing bounds. The native companion checks
+independent modular arithmetic, captured tensor extraction and observable in-bounds mutations.
+This source-definedness proof does not certify the canonicalizer's index constant-fold rewrite;
+that boundary currently abstains even when both programs have matching defined execution.
+
+`test_lean_defined_conversions.py` proves scalar floating extension/truncation and fixed-width
+signed/unsigned integer-to-float source totality, including initialized generic/reduction bodies.
+The rules use arbitrary `FloatModel` conversion functions and prove no numerical identities.
+Default attributes and actual legal width directions are required. Direct index-to-float operands
+are rejected by the pinned MLIR verifier. The native companion qualifies selected f32/f64 cases
+with integer-only, single-rounding IEEE references, including integer64-to-float32 cases where an
+intermediate binary64 rounding would give a wrong answer. NaNs compare by class; f16/bf16 retain
+binding evidence only. Float-to-integer totality and explicit rounding/promises remain outside.
 
 ## Limits
 

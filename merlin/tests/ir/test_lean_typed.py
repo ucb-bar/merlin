@@ -117,7 +117,7 @@ def test_mixed_typed_and_universal_chain(tmp_path, lean_tools, position):
     )
     jsonschema.validate(chain, json.loads((repo_root() / "merlin/contract/schemas/lean_chain.schema.json").read_text()))
     assert chain["verdict"] == chain["refinement_verdict"] == "verified", chain.get("reason")
-    assert chain["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
+    assert chain["theorem"] == "MerlinVerify.Check.chain_typed_extended_defined_refines"
     assert chain["refinement_theorem"] == "MerlinVerify.Check.chain_typed_refines"
     assert chain["index_bits"] == 64
 

@@ -54,7 +54,7 @@ def test_fill_generalization_composes_with_source_definedness(tmp_path, lean_too
         m2m_python=lean_tools.m2m_python,
     )
     assert result["verdict"] == "verified", result.get("reason")
-    assert result["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
+    assert result["theorem"] == "MerlinVerify.Check.chain_typed_extended_defined_refines"
 
 
 @pytest.mark.parametrize("fault", ["input", "body", "returned_storage"])

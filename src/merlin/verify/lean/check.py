@@ -421,6 +421,8 @@ CHAIN_THEOREM = "MerlinVerify.Check.chain_refines"
 DEFINED_CHAIN_THEOREM = "MerlinVerify.Check.chain_defined_refines"
 TYPED_CHAIN_THEOREM = "MerlinVerify.Check.chain_typed_refines"
 TYPED_DEFINED_CHAIN_THEOREM = "MerlinVerify.Check.chain_typed_defined_refines"
+EXTENDED_DEFINED_CHAIN_THEOREM = "MerlinVerify.Check.chain_extended_defined_refines"
+TYPED_EXTENDED_DEFINED_CHAIN_THEOREM = "MerlinVerify.Check.chain_typed_extended_defined_refines"
 
 
 def _result_identity(result: dict[str, Any], obligation: _Obligation) -> None:
@@ -723,9 +725,13 @@ def _compose_chain(
         ):
             reasons.append("handoff file changed or is not a valid recorded handoff")
             refinement_verdict = "abstracted"
+    if defined_info["checker"] == EXTENDED_DEFINED_CHECKER:
+        chain_theorem = TYPED_EXTENDED_DEFINED_CHAIN_THEOREM if typed else EXTENDED_DEFINED_CHAIN_THEOREM
+    else:
+        chain_theorem = TYPED_DEFINED_CHAIN_THEOREM if typed else DEFINED_CHAIN_THEOREM
     doc: dict[str, Any] = {
         "schema": "merlin.lean.chain.v1",
-        "theorem": TYPED_DEFINED_CHAIN_THEOREM if typed else DEFINED_CHAIN_THEOREM,
+        "theorem": chain_theorem,
         "refinement_theorem": TYPED_CHAIN_THEOREM if typed else CHAIN_THEOREM,
         **({"index_bits": sup["index_bits"]} if typed else {}),
         "domain": domain,

@@ -110,7 +110,7 @@ def _chain(tmp_path, stage, function, tools, index_bits):
         m2m_python=tools.m2m_python,
     )
     assert result["verdict"] == "verified", result.get("reason")
-    assert result["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
+    assert result["theorem"] == "MerlinVerify.Check.chain_typed_extended_defined_refines"
 
 
 def _captured_source(shape=(2, 3), coordinates=(1, 2), *, dirty=False, multiple=False):

@@ -187,7 +187,7 @@ def test_long_integer_fold_certified_chain_and_native_execution(tmp_path, fideli
         definedness=tmp_path / "defined/receipt.json",
     )
     assert chain["verdict"] == "verified", chain.get("reason")
-    assert chain["theorem"] == "MerlinVerify.Check.chain_defined_refines"
+    assert chain["theorem"] == "MerlinVerify.Check.chain_extended_defined_refines"
 
     samples = [[[keep]] for keep in [0, 1 << 31, (1 << 32) - 1]]
     expected = str((-17 + sum(constants)) % 8192)

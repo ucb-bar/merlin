@@ -75,7 +75,7 @@ def test_mixed_reshape_defined_chain_and_stale_output(tmp_path, lean_tools, inde
 
     checked = replay()
     assert checked["verdict"] == "verified", checked.get("reason")
-    assert checked["theorem"] == "MerlinVerify.Check.chain_defined_refines"
+    assert checked["theorem"] == "MerlinVerify.Check.chain_extended_defined_refines"
     assert checked["domain"].endswith(f"contexts with {index_bits}-bit index")
     after.write_text(after.read_text() + "\n// changed bytes after proof publication\n")
     assert replay()["verdict"] == "abstracted"

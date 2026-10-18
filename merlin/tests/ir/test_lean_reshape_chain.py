@@ -76,7 +76,7 @@ def test_transitive_strict_chain(tmp_path, lean_tools, index_bits, escape):
 
     checked = replay()
     assert checked["verdict"] == "verified", checked.get("reason")
-    assert checked["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
+    assert checked["theorem"] == "MerlinVerify.Check.chain_typed_extended_defined_refines"
     after.write_text(after.read_text() + "\n// changed after receipt\n")
     assert replay()["verdict"] == "abstracted"
 

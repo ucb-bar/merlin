@@ -75,7 +75,7 @@ def test_typed_mixed_strict_chain(tmp_path, lean_tools, index_bits, result, shap
 
     checked = replay()
     assert checked["verdict"] == "verified", checked.get("reason")
-    assert checked["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
+    assert checked["theorem"] == "MerlinVerify.Check.chain_typed_extended_defined_refines"
     assert checked["index_bits"] == index_bits
     after.write_text(after.read_text() + "\n// stale bytes\n")
     assert replay()["verdict"] == "abstracted"

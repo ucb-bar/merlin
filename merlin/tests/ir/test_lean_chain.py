@@ -198,7 +198,7 @@ def test_defined_chain_replays_real_preprocessing(tmp_path, monkeypatch, lean_to
     jsonschema.validate(result, json.loads(SCHEMA.read_text()))
     assert result["verdict"] == result["refinement_verdict"] == "verified", result.get("reason")
     assert result["source_definedness"]["verdict"] == "verified"
-    assert result["theorem"] == "MerlinVerify.Check.chain_defined_refines"
+    assert result["theorem"] == "MerlinVerify.Check.chain_extended_defined_refines"
     assert result["domain"] == receipt["domain"] and result["domain"].startswith("nonpoison inputs")
     assert "reason" not in result
     missing = compose(None)

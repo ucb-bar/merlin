@@ -83,7 +83,7 @@ def certify(tmp_path, tools, casts=CASTS[2], *, empty=False, compact=False, inde
         assert receipt["verdict"] == "verified", receipt.get("reason")
     receipt = replay(tmp_path, tools, stage)
     assert receipt["verdict"] == "verified", receipt.get("reason")
-    assert receipt["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
+    assert receipt["theorem"] == "MerlinVerify.Check.chain_typed_extended_defined_refines"
     return stage, before, after
 
 

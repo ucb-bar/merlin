@@ -164,7 +164,7 @@ def test_integer_body_defined_chain(tmp_path, lean_tools, index_bits, nested, re
         m2m_python=lean_tools.m2m_python,
     )
     assert result["verdict"] == "verified", result.get("reason")
-    assert result["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
+    assert result["theorem"] == "MerlinVerify.Check.chain_typed_extended_defined_refines"
 
 
 MUTATE = """

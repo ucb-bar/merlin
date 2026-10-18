@@ -73,7 +73,7 @@ def test_copy_defined_chain_and_stale_output_rejection(tmp_path, lean_tools, ind
 
     result = replay()
     assert result["verdict"] == "verified", result.get("reason")
-    assert result["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
+    assert result["theorem"] == "MerlinVerify.Check.chain_typed_extended_defined_refines"
     after.write_text(after.read_text() + "\n// changed live output after proof publication\n")
     assert replay()["verdict"] != "verified"
 

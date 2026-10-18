@@ -97,7 +97,7 @@ def test_nested_reshape_strict_chain(tmp_path, lean_tools, index_bits, escape):
         m2m_python=lean_tools.m2m_python,
     )
     assert checked["verdict"] == "verified", checked.get("reason")
-    assert checked["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
+    assert checked["theorem"] == "MerlinVerify.Check.chain_typed_extended_defined_refines"
 
 
 MUTATE = """

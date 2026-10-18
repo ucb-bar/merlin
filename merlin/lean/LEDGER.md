@@ -40,13 +40,16 @@ Local reshape provenance extends transitively and into generic bodies. Captured 
 unsupported cast directions and bare-input reshape cancellation remain outside coverage.
 
 Value-dependent extraction definedness derives signed index bounds from actual checked constant
-producers at the claimed index width, including wraparound. Facts follow SSA bindings and block
+producers and initialized unflagged index arithmetic at the claimed width, including wraparound. Facts follow SSA bindings and block
 argument shadowing. Initialized tensors and proved in-bounds coordinates are required; unknown
 input indices and out-of-bounds/poison sources refuse. Native qualification includes independent
 row-major references and nonzero multidimensional captures. Scalar floating totality additionally
 covers the finite unary vocabulary and FMA without adding float laws. Only the existing f32/f64
 negate/abs/sqrt/rounding/FMA interpretation gains native evidence here; other unary functions retain
-the parametric model-fidelity assumption. No complete IEEE instance is proved.
+the parametric model-fidelity assumption. No complete IEEE instance is proved. Scalar format conversion and fixed-width integer-to-float
+totality likewise add no numerical laws; selected f32/f64 native cases use exact single-rounding
+references. Rank-zero from-elements/extract alias proofs preserve all scalar bits and poison;
+positive-rank aliases still require a separate bounds bridge.
 
 The current `tensor.reassocValid` predicate rejects all-unit nonzero-rank to rank-zero reshape
 transitions, and their inverse, with empty reassociation. Upstream MLIR accepts and executes
@@ -54,6 +57,13 @@ these forms. This is a conservative support gap: source support and coverage-cha
 abstain, even when a conditional composition boundary accepts because the source is stuck.
 These transitions are outside qualified coverage; no semantics change or new assumption is
 introduced by the composition rules.
+
+An extended source-definedness receipt must compose through the matching extended chain
+theorem. A cross-review found that the initial Python integration still labelled these chains
+with the legacy theorem, whose Boolean premise was narrower. Additive composition theorems,
+exact schema identity checks and bounds-only typed/untyped regressions correct that receipt
+mismatch. The old theorem statements and the semantics remain unchanged; old affected chain
+receipts must be regenerated.
 
 Rank-zero `linalg.transpose` cannot currently be qualified: the installed MLIR binding crashes
 in verification, and assertion-enabled upstream `mlir-opt` reproduces an empty-permutation-map

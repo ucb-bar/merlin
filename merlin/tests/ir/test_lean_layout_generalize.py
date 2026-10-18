@@ -137,7 +137,7 @@ def test_layout_defined_chain_rejects_stale_source(tmp_path, lean_tools, case, i
 
     result = replay()
     assert result["verdict"] == "verified", result.get("reason")
-    assert result["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
+    assert result["theorem"] == "MerlinVerify.Check.chain_typed_extended_defined_refines"
     before.write_text(before.read_text() + "\n// changed live source\n")
     assert replay()["verdict"] != "verified"
 
@@ -277,7 +277,7 @@ def test_float_reduction_has_proved_definedness(tmp_path, lean_tools, element):
         m2m_python=lean_tools.m2m_python,
     )
     assert chain["verdict"] == "verified", chain.get("reason")
-    assert chain["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
+    assert chain["theorem"] == "MerlinVerify.Check.chain_typed_extended_defined_refines"
 
 
 MIXED_SOURCE = """func.func @forward(%value: i32, %init: tensor<2xi32>) -> (tensor<2xi32>, tensor<3x2xi32>) {

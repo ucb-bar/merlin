@@ -161,7 +161,7 @@ def test_nested_splat_defined_chain(tmp_path, lean_tools, index_bits, dirty):
 
     result = replay("chain.json")
     assert result["verdict"] == "verified", result.get("reason")
-    assert result["theorem"] == "MerlinVerify.Check.chain_typed_defined_refines"
+    assert result["theorem"] == "MerlinVerify.Check.chain_typed_extended_defined_refines"
     after = stage / "after.mlir"
     after.write_text(after.read_text() + "\n// changed actual nested output after proof publication\n")
     assert replay("stale.json")["verdict"] != "verified"
