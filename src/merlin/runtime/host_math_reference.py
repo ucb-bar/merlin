@@ -1,6 +1,6 @@
 """Array oracle for an explicitly selected, shared-source binary32 libm policy.
 
-Only ``portable_exp_trig`` selects this adapter. Native remains NumPy/platform
+Only explicit portable policies select this adapter. Native remains NumPy/platform
 owned and returns no adapter, without building or writing anything. The portable
 oracle and generated runtime compile the same reviewed C implementation; this is
 arithmetic correspondence, not model, device or performance qualification.
@@ -24,9 +24,10 @@ import numpy as np
 from merlin.runtime.host_math import host_math_recipe
 
 _SCHEMA = "merlin.host_math.reference.v1"
-_POLICY = "portable_exp_trig"
+_POLICIES = ("portable_exp_trig", "portable_neural_f32")
 _FLAGS = ("-std=c11", "-O2", "-fPIC")
 _OPERATIONS = {"math.exp": 0, "math.sin": 1, "math.cos": 2}
+_NEURAL_OPERATIONS = {**_OPERATIONS, "math.tanh": 3, "math.powf": 4}
 _WRAPPER = r"""
 #include <fenv.h>
 #include <stddef.h>
@@ -42,6 +43,20 @@ int merlin_reference_math_array(int op, const float *input, float *output, size_
   return 0;
 }
 """
+_NEURAL_WRAPPER = (
+    _WRAPPER.replace("op > 2", "op > 3").replace(
+        "else output[i] = __wrap_cosf(input[i]);",
+        "else if (op == 2) output[i] = __wrap_cosf(input[i]);\n    else output[i] = __wrap_tanhf(input[i]);",
+    )
+    + r"""
+int merlin_reference_math_binary(const float *left, const float *right,
+                                float *output, size_t count) {
+  if (fegetround() != FE_TONEAREST) return -2;
+  for (size_t i = 0; i < count; ++i) output[i] = __wrap_powf(left[i], right[i]);
+  return 0;
+}
+"""
+)
 _ACTIVE: ContextVar[HostMathEvaluator | None] = ContextVar("merlin_host_math_reference", default=None)
 
 
@@ -56,18 +71,26 @@ def _digest(value) -> str:
 class HostMathEvaluator:
     """One byte-bound compiled oracle, with one C call per entire input array."""
 
-    policy = _POLICY
-
     def __init__(self, directory: Path, receipt: dict):
         self._directory = directory
         self._receipt = receipt
+        self.policy = receipt["inputs"]["policy"]
         self._verify()
         self._library = ctypes.CDLL(str(directory / "host_math_reference.so"))
         self._function = self._library.merlin_reference_math_array
         pointer = ctypes.POINTER(ctypes.c_float)
         self._function.argtypes = [ctypes.c_int, pointer, pointer, ctypes.c_size_t]
         self._function.restype = ctypes.c_int
+        self._binary = None
+        if self.policy == "portable_neural_f32":
+            self._binary = self._library.merlin_reference_math_binary
+            self._binary.argtypes = [pointer, pointer, pointer, ctypes.c_size_t]
+            self._binary.restype = ctypes.c_int
         self._verify()
+
+    @property
+    def operations(self) -> tuple[str, ...]:
+        return tuple(_NEURAL_OPERATIONS if self.policy == "portable_neural_f32" else _OPERATIONS)
 
     def _verify(self) -> None:
         for name, expected in self._receipt["files"].items():
@@ -90,7 +113,7 @@ class HostMathEvaluator:
         return {
             "schema": _SCHEMA,
             "policy": self.policy,
-            "operations": list(_OPERATIONS),
+            "operations": list(self.operations),
             "element_type": "f32",
             "rounding": "round_to_nearest_ties_to_even",
             "scope": "returned values; errno and floating exception flags unclaimed",
@@ -99,19 +122,39 @@ class HostMathEvaluator:
             "library_sha256": self._receipt["files"]["host_math_reference.so"],
         }
 
-    def evaluate(self, op_name: str, array: np.ndarray) -> np.ndarray:
-        if op_name not in _OPERATIONS:
+    def evaluate(self, op_name: str, array: np.ndarray, other: np.ndarray | None = None) -> np.ndarray:
+        if op_name not in self.operations:
             raise ValueError(f"portable host-math does not select {op_name!r}")
         value = np.asarray(array)
         if value.dtype != np.dtype(np.float32):
             raise ValueError("portable host-math requires native binary32 input")
+        right = None
+        if op_name == "math.powf":
+            if other is None:
+                raise ValueError("portable powf needs two binary32 operands")
+            right = np.asarray(other)
+            if right.dtype != np.dtype(np.float32):
+                raise ValueError("portable host-math requires native binary32 input")
+            value, right = np.broadcast_arrays(value, right)
+        elif other is not None:
+            raise ValueError("unary portable host-math takes one operand")
         self._verify()
         contiguous = np.ascontiguousarray(value)
         output = np.empty(contiguous.shape, dtype=np.float32)
         pointer = ctypes.POINTER(ctypes.c_float)
-        status = self._function(
-            _OPERATIONS[op_name], contiguous.ctypes.data_as(pointer), output.ctypes.data_as(pointer), contiguous.size
-        )
+        if right is not None:
+            rhs = np.ascontiguousarray(right)
+            status = self._binary(
+                contiguous.ctypes.data_as(pointer),
+                rhs.ctypes.data_as(pointer),
+                output.ctypes.data_as(pointer),
+                contiguous.size,
+            )
+        else:
+            operations = _NEURAL_OPERATIONS if self.policy == "portable_neural_f32" else _OPERATIONS
+            status = self._function(
+                operations[op_name], contiguous.ctypes.data_as(pointer), output.ctypes.data_as(pointer), contiguous.size
+            )
         if status == -2:
             raise RuntimeError("portable host-math requires round-to-nearest ties-to-even")
         if status != 0:
@@ -129,19 +172,20 @@ def reference_math(policy: str, work: Path, compiler: str | Path = "cc") -> Host
     """
     if policy == "native":
         return None
-    if policy != _POLICY:
-        raise ValueError("reference host_math_policy must be 'native' or 'portable_exp_trig'")
+    if policy not in _POLICIES:
+        raise ValueError("reference host_math_policy must be 'native', 'portable_exp_trig', or 'portable_neural_f32'")
     recipe = host_math_recipe(policy)
     resolved = Path(shutil.which(str(compiler)) or compiler).resolve(strict=True)
     if not resolved.is_file():
         raise ValueError("reference host-math compiler must be a regular executable")
     scalar = recipe.source
     assert scalar is not None
-    source = scalar + "\n" + _WRAPPER
+    wrapper = _NEURAL_WRAPPER if policy == "portable_neural_f32" else _WRAPPER
+    source = scalar + "\n" + wrapper
     inputs = {
         "policy": policy,
         "scalar_source_sha256": hashlib.sha256(scalar.encode()).hexdigest(),
-        "wrapper_sha256": hashlib.sha256(_WRAPPER.encode()).hexdigest(),
+        "wrapper_sha256": hashlib.sha256(wrapper.encode()).hexdigest(),
         "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
         "adapter_sha256": _sha(Path(__file__)),
         "compiler": {"path": str(resolved), "sha256": _sha(resolved)},
@@ -197,10 +241,7 @@ def reference_math(policy: str, work: Path, compiler: str | Path = "cc") -> Host
                 for name in ("host_math_reference.c", "host_math_reference.o", "host_math_reference.so")
             },
         }
-        if (
-            inputs["compiler"]["sha256"] != _sha(resolved)
-            or source != host_math_recipe(policy).source + "\n" + _WRAPPER
-        ):
+        if inputs["compiler"]["sha256"] != _sha(resolved) or source != host_math_recipe(policy).source + "\n" + wrapper:
             raise RuntimeError("portable host-math producer inputs changed during compilation")
         pending = directory / "receipt.pending"
         pending.write_text(json.dumps(receipt, indent=2) + "\n")

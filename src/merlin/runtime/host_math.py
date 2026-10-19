@@ -37,9 +37,23 @@ def host_math_recipe(policy: str = "native") -> HostMathRecipe:
             compile_flags=("-std=c11", "-fno-builtin", "-fno-fast-math", "-ffp-contract=off"),
             link_flags=("-Wl,--wrap=expf", "-Wl,--wrap=sinf", "-Wl,--wrap=cosf"),
         )
+    if policy == "portable_neural_f32":
+        base = host_math_recipe("portable_exp_trig")
+        return HostMathRecipe(
+            source=(
+                base.source
+                + "\n"
+                + Path(__file__).with_name("portable_pow.c").read_text()
+                + "\n"
+                + Path(__file__).with_name("portable_tanh.c").read_text()
+            ),
+            compile_flags=base.compile_flags,
+            link_flags=(*base.link_flags, "-Wl,--wrap=powf", "-Wl,--wrap=tanhf"),
+        )
     if policy != "expf_via_double":
         raise ValueError(
-            "host_math_policy must be 'native', 'portable_trig', 'portable_exp_trig', or 'expf_via_double'"
+            "host_math_policy must be 'native', 'portable_trig', 'portable_exp_trig', "
+            "'portable_neural_f32', or 'expf_via_double'"
         )
     return HostMathRecipe(
         source=("#include <math.h>\nfloat __wrap_expf(float x) { return (float)exp((double)x); }\n"),

@@ -375,13 +375,16 @@ def _body_op(op, env: dict[int, Any], *, index_of: Callable[[int], np.ndarray] |
         raise LinalgNumpyError("arith.bitcast is not evaluated")
     if name.startswith("math."):
         x = fl(args[0])
-        if name in {"math.exp", "math.sin", "math.cos"}:
+        if name in {"math.exp", "math.sin", "math.cos", "math.tanh", "math.powf"}:
             from merlin.runtime.host_math_reference import active_host_math
 
             selected = active_host_math()
-            if selected is not None:
+            if selected is not None and name in selected.operations:
                 if element != "f32":
                     raise LinalgNumpyError("selected portable host math supports only f32 transcendental operations")
+                if name == "math.powf":
+                    return selected.evaluate(name, np.asarray(x, dtype=np.float32),
+                                             np.asarray(fl(args[1]), dtype=np.float32))
                 return selected.evaluate(name, np.asarray(x, dtype=np.float32))
         with np.errstate(all="ignore"):
             if name == "math.exp":
