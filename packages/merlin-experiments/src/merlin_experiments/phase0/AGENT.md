@@ -1,3 +1,11 @@
+`development_reduced_models` freezes complete public depth-reduced PyTorch graphs.
+Extract pinned upstream arithmetic definitions unchanged, preserve every distinct
+stage and self/cross-attention period, and forbid weight/config network loading.
+Meta construction is structural evidence only. Missing selected whole-graph
+numerical contracts remain explicit refusals; no FP tolerance or int8 recipe is
+inferred from model availability. Dependency leaf pins do not replace the full
+original sealed runtime closure. Keep all prior cohort manifests unchanged.
+
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
 `connected_integer_bounds` reconstructs typed source intervals for every operation,
@@ -13,7 +21,9 @@ signed input and every exact output policy remain required. Diagnostic sidecars
 are not owners. Missing executable correspondence refuses; check panel bounds
 separately from full i32 accumulation and keep old isolated-group admission intact.
 
-`development_test_audit` preserves all source IDs and reports requirement members,
+`development_test_audit` requires explicit positive M/N/K resource granules; never
+assume a square target tile. Shape-only convolution controls do not prove a stem
+role. It preserves all source IDs and reports requirement members,
 actual recorded execution/refusal, coarse capacity brackets and semantic duplicates.
 Do not infer device lease, bank arbitration, physical row floors, complete reduced
 models or queue/overlap effects from shapes; those remain explicit obligations.
