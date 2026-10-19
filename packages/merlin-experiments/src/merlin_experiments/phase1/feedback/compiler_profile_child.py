@@ -41,6 +41,7 @@ from merlin_experiments.phase2.retained_revisions import source_inventory
 SCHEMA = "merlin.original_model_child.v1"
 LIBRARY_SCHEMA = "merlin.original_model_child.v2"
 PASSES_SCHEMA = "merlin.original_model_child.v3"
+CHECKED_SOURCE_SCHEMA = "merlin.original_model_child.v4"
 CHECKPOINT_SCHEMA = "merlin.original_model_child_case_checkpoint.v1"
 _RESTORED_CHILD = contextvars.ContextVar("original_restored_child_checkpoint", default=None)
 _RESTORED_ISSUED = weakref.WeakSet()
@@ -197,7 +198,7 @@ def _restore_inputs(record):
     return C.PackageSandboxInputs(TC.ToolchainPaths(**paths), TC.SimToolchain(**sim), values["harness"], surfaces)
 
 
-def _closure(*, library=False, passes=False):
+def _closure(*, library=False, passes=False, checked_source=False):
     """Direct invoked host owners; this makes no transitive dependency claim."""
     from merlin.common.paths import module_source_path
 
@@ -211,6 +212,7 @@ def _closure(*, library=False, passes=False):
         resources.__name__,
         resources.kernel.__name__,
         "merlin.targetgen.capsule_runner",
+        "merlin.targetgen.capsule_candidate_context",
         "merlin.targetgen.capsule_source_identity",
         "merlin_experiments.phase1.feedback.operator_child",
         "merlin_experiments.phase1.feedback.scale_probe_child",
@@ -229,10 +231,18 @@ def _closure(*, library=False, passes=False):
             "merlin.targetgen.compiler_pass_selection",
             "merlin.llvmlower.reviewed_pass_capabilities",
         )
+    if checked_source:
+        names += (
+            "merlin.targetgen.checked_source_model_diagnostic",
+            "merlin.targetgen.checked_source_model_diagnostic_execution",
+            "merlin_experiments.phase0.connected_integer_qualification",
+        )
     return [_pin(module_source_path(name)) for name in names]
 
 
 def _selected_closure(document):
+    if document["schema"] == CHECKED_SOURCE_SCHEMA:
+        return _closure(library="compiler_library" in document, passes=True, checked_source=True)
     return (
         _closure(library="compiler_library" in document, passes=True)
         if document["schema"] == PASSES_SCHEMA
@@ -259,6 +269,9 @@ class ModelChildTransport:
         self.fd, self.document, self.executor, self.boundary = fd, document, executor, boundary
         self.compiler_library_selection = active_compiler_library()
         self.compiler_pass_selection = active_compiler_passes()
+        from merlin.targetgen.checked_source_model_diagnostic import active_checked_source_diagnostic
+
+        self.checked_source_diagnostic = active_checked_source_diagnostic()
 
     @property
     def argv(self):
@@ -288,6 +301,12 @@ class ModelChildTransport:
             None if self.compiler_pass_selection is None else self.compiler_pass_selection.record()
         ) != original.get("compiler_passes"):
             raise StageGateError("original model child compiler pass owner changed")
+        if "checked_source_diagnostic" in original:
+            from merlin.targetgen.checked_source_model_diagnostic import active_checked_source_diagnostic
+
+            if (active_checked_source_diagnostic() is not self.checked_source_diagnostic
+                    or self.checked_source_diagnostic.record() != original["checked_source_diagnostic"]):
+                raise StageGateError("original model child checked source diagnostic owner changed")
         if self.boundary is not None:
             if self.boundary.verify() != original["resources"]["boundary_sha256"]:
                 raise StageGateError("original model child kernel resource owner changed")
@@ -425,6 +444,32 @@ def restored_case_checkpoint():
     receipt.update(schema=CHECKPOINT_SCHEMA, original_compiler_child=_receipt(state.document), worker=state.worker)
 
 
+def require_restored_model_context(field, record, *, package_dir, target):
+    """Require this exact context in the actual sealed v4 worker's source spec.
+
+    A plain dictionary, an issued pass owner in another process, or a copied
+    worker checkpoint does not select a diagnostic execution route.
+    """
+    state = _RESTORED_CHILD.get()
+    if type(state) is not _RestoredChild:
+        raise StageGateError("checked model context requires the original restored sealed worker")
+    state.verify()
+    document = state.document
+    spec = json.loads(Path(document["spec"]["path"]).read_bytes())
+    if (document["schema"] != CHECKED_SOURCE_SCHEMA or field != "checked_source_diagnostic"
+            or document.get(field) != record
+            or (spec.get("candidate_context") or {}).get(field) != record
+            or spec.get("package_dir") != str(package_dir)
+            or spec.get("target") != target
+            or document["candidate"] != str(package_dir)):
+        raise StageGateError("checked model context differs from its original sealed parent/spec")
+    return copy_record(record)
+
+
+def copy_record(record):
+    return json.loads(json.dumps(record, sort_keys=True, allow_nan=False))
+
+
 @contextlib.contextmanager
 def prepare_model_child(*, spec_path, environment, package_dir):
     """Issue a sealed FD only from the actual original parent execution scope.
@@ -435,9 +480,19 @@ def prepare_model_child(*, spec_path, environment, package_dir):
     """
     library = active_compiler_library()
     passes = active_compiler_passes()
+    from merlin.targetgen import checked_source_model_diagnostic as diagnostic
+
+    spec = json.loads(_plain(spec_path).read_bytes())
+    checked = (spec.get("candidate_context") or {}).get(diagnostic.CONTEXT_FIELD)
+    selected_diagnostic = diagnostic.active_checked_source_diagnostic()
+    if checked is not None:
+        if (type(selected_diagnostic) is not diagnostic.CheckedSourceModelDiagnostic
+                or selected_diagnostic.record() != checked):
+            raise StageGateError("checked model child requires the actual original host diagnostic selection")
+        selected_diagnostic.verify_for(spec["capsule"], target=spec["target"])
     executor = _original_executor()
     if executor is None:
-        if library is not None or passes is not None:
+        if library is not None or passes is not None or checked is not None:
             raise StageGateError("additional compiler library/pass model child requires its original execution owner")
         yield None
         return
@@ -457,7 +512,9 @@ def prepare_model_child(*, spec_path, environment, package_dir):
         # Its launcher would add the class after sealing; the child would then refuse its environment.
         raise StageGateError("model child environment lacks the caller's CPU lease class")
     document = {
-        "schema": PASSES_SCHEMA if passes is not None else LIBRARY_SCHEMA if library is not None else SCHEMA,
+        "schema": CHECKED_SOURCE_SCHEMA if checked is not None else (
+            PASSES_SCHEMA if passes is not None else LIBRARY_SCHEMA if library is not None else SCHEMA),
+        **({diagnostic.CONTEXT_FIELD: checked} if checked is not None else {}),
         **({"compiler_library": library.record()} if library is not None else {}),
         **({"compiler_passes": passes.record()} if passes is not None else {}),
         "parent": _process(os.getpid()),
@@ -474,7 +531,7 @@ def prepare_model_child(*, spec_path, environment, package_dir):
         },
         "inputs": _inputs_record(inputs),
         "host_sources": (
-            _closure(library=library is not None, passes=True)
+            _closure(library=library is not None, passes=True, checked_source=checked is not None)
             if passes is not None
             else _closure(library=library is not None)
         ),
@@ -598,11 +655,13 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
         raw = stream.read(MAX_BYTES + 1)
     document = _decode_selection(raw)
     if (
-        document.get("schema") not in (SCHEMA, LIBRARY_SCHEMA, PASSES_SCHEMA)
+        document.get("schema") not in (SCHEMA, LIBRARY_SCHEMA, PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA)
         or (document.get("schema") == SCHEMA and "compiler_library" in document)
         or (document.get("schema") == LIBRARY_SCHEMA and "compiler_library" not in document)
-        or (document.get("schema") != PASSES_SCHEMA and "compiler_passes" in document)
-        or (document.get("schema") == PASSES_SCHEMA and "compiler_passes" not in document)
+        or (document.get("schema") not in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA) and "compiler_passes" in document)
+        or (document.get("schema") in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA) and "compiler_passes" not in document)
+        or (document.get("schema") != CHECKED_SOURCE_SCHEMA and "checked_source_diagnostic" in document)
+        or (document.get("schema") == CHECKED_SOURCE_SCHEMA and "checked_source_diagnostic" not in document)
         or document["parent"] != _process(os.getppid())
         or document["spec"] != _pin(spec_path)
         or type(spec_bytes) is not bytes
@@ -633,7 +692,7 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
             library = restore_selection(document["compiler_library"])
             execution.enter_context(scoped_compiler_library(library))
         passes = None
-        if document["schema"] == PASSES_SCHEMA:
+        if document["schema"] in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA):
             from merlin.targetgen.compiler_pass_selection import restore_original_selection
 
             _plain(document["work_root"]).mkdir(parents=True, exist_ok=True)
@@ -689,7 +748,17 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
         _RESTORED_ISSUED.add(state)
         token = _RESTORED_CHILD.set(state)
         try:
-            yield _receipt(document)
+            if document["schema"] == CHECKED_SOURCE_SCHEMA:
+                from merlin.targetgen import checked_source_model_diagnostic as diagnostic
+
+                checked = diagnostic.restore_checked_source_diagnostic(
+                    document[diagnostic.CONTEXT_FIELD], capsule=spec["capsule"], target=spec["target"],
+                    package_dir=spec["package_dir"],
+                )
+                with diagnostic.scoped_checked_source_diagnostic(checked):
+                    yield _receipt(document)
+            else:
+                yield _receipt(document)
         finally:
             _RESTORED_CHILD.reset(token)
             _RESTORED_ISSUED.discard(state)

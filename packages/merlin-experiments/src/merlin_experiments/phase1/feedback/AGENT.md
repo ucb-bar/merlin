@@ -1,5 +1,14 @@
 # `packages/merlin-experiments/src/merlin_experiments/phase1/feedback`
 
+Explicit checked-complete-source model diagnostics use child transport v4.
+Require the original parent's live issued selector, exact sealed spec/context,
+candidate, restored pass factory/registry and invoked grader source pins. A
+dictionary, copied child receipt or foreign context cannot select this route.
+Its independently recomputed L0/L1/L2 and actual source/effect checks do not
+waive L3 or issue public-program, final certification or timing authority.
+Old v1–v3 child selections retain their interpretation. Source custody pins the
+extracted original context-assembly helper along with the canonical runner.
+
 Additional Phase 2 compiler libraries use explicit sealed model-child transport
 v2: bind, freshly reconstruct and recheck their exact reviewed source leaves
 alongside the unchanged original executor/profile and resource gates. Reopen
