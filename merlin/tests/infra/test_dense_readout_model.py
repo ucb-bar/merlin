@@ -331,9 +331,14 @@ def test_ordinary_recurrent_dense_readout_removes_dump_and_conversion(
     b = baseline["source_receipt"]["bindings"][0]["schedule"]["pipeline"]
     a = optimized["source_receipt"]["bindings"][0]["schedule"]["pipeline"]
     assert b["library_sources_sha256"] == a["library_sources_sha256"]
-    assert {k: v for k, v in b["selected_contracts"].items() if k != "consumed_scopes"} == {
-        k: v for k, v in a["selected_contracts"].items() if k != "consumed_scopes"
+    assert {k: v for k, v in b["selected_contracts"].items() if k not in ("consumed_scopes", "output_readout")} == {
+        k: v for k, v in a["selected_contracts"].items() if k not in ("consumed_scopes", "output_readout")
     }
+    assert "output_readout" not in b["selected_contracts"]
+    readout = a["selected_contracts"]["output_readout"]
+    assert readout["identity"] == model[0].dense.output_readout.identity
+    assert readout["qualification_identity"] == optimized["original_qualification"]["identity"]
+    assert readout["output_dtype"] == "i8"
     for key in ("hardware", "library", "numerical_policy"):
         assert b["context"][key] == a["context"][key]
     assert baseline["source_receipt"]["source_sha256"] == optimized["source_receipt"]["source_sha256"]
