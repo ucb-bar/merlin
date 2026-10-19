@@ -1,0 +1,20 @@
+[
+  {
+    "path": "defaults-sources/configuration_smolvlm.py.source",
+    "sha256": "e171e43fa6871de04e18ea0b367f3b02e029e5cb1f6295a8f10296f13adab982",
+    "bytes": 9359,
+    "installed_path": "/work/merlin/tasks/phase1-harness-v2/model2mlir/.venv/lib/python3.12/site-packages/transformers/models/smolvlm/configuration_smolvlm.py",
+    "public_package": "transformers",
+    "package_version": "4.57.6",
+    "source_kind": "selected_local_public_package_source"
+  },
+  {
+    "path": "defaults-sources/modeling_smolvlm.py.source",
+    "sha256": "2ea6741e7861d53c751a9c66960963bff81d3b6650df0ea99ca5ca9e3a3f90fb",
+    "bytes": 41990,
+    "installed_path": "/work/merlin/tasks/phase1-harness-v2/model2mlir/.venv/lib/python3.12/site-packages/transformers/models/smolvlm/modeling_smolvlm.py",
+    "public_package": "transformers",
+    "package_version": "4.57.6",
+    "source_kind": "selected_local_public_package_source"
+  }
+]
