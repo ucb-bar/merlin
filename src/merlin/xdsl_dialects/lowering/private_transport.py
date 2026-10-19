@@ -42,6 +42,32 @@ class PrivateTensorTransport:
     element_type: AnyFloat | IntegerType
 
 
+def prune_unobserved_transport_views(module):
+    """Clone and drop unused static shape-only views before privacy analysis.
+
+    Removed views have one unencoded static tensor input and result, preserve
+    contiguous flat contents, and have no users. Calls, allocations, arithmetic,
+    dynamic/encoded views and all observed branches survive. This cleanup grants
+    no permission to ignore actual fanout or change an endpoint representation.
+    """
+    module.verify()
+    result, removed = module.clone(), 0
+    for op in reversed(tuple(result.walk())):
+        if (op.name not in {"tensor.collapse_shape", "tensor.expand_shape"}
+                or len(op.operands) != 1 or len(op.results) != 1 or tuple(op.results[0].uses)):
+            continue
+        types = (op.operands[0].type, op.results[0].type)
+        if (any(not isinstance(t, TensorType) or not isinstance(t.encoding, NoneAttr)
+                or any(d <= 0 for d in t.get_shape()) for t in types)
+                or contiguous_tensor_root(op.results[0]) is not contiguous_tensor_root(op.operands[0])):
+            continue
+        op.detach()
+        op.erase()
+        removed += 1
+    result.verify()
+    return result, removed
+
+
 def private_call_edges(module):
     """Find single-use destination-call edges through static shape-only views."""
     result = []

@@ -7,6 +7,7 @@ from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.xdsl_dialects.lowering.private_transport import (
     PrivateTensorTransport,
     private_call_edges,
+    prune_unobserved_transport_views,
     rewrite_private_transports,
 )
 
@@ -105,3 +106,31 @@ def test_symbol_collision_refuses_without_mutating_input():
     with pytest.raises(ValueError, match="collides"):
         rewrite_private_transports(original, collision)
     assert str(original) == before
+
+
+def test_unused_static_view_branches_can_be_pruned_before_private_edge_selection():
+    original = module(barrier='''
+        %dead0=tensor.collapse_shape %p [[0,1]]:tensor<2x16xf32> into tensor<32xf32>
+        %dead1=tensor.expand_shape %dead0 [[0,1]] output_shape [2,16]
+          :tensor<32xf32> into tensor<2x16xf32>
+        %dead_constant=arith.constant 2.0:f32
+    ''')
+    before = str(original)
+    assert not private_call_edges(original)
+    cleaned, removed = prune_unobserved_transport_views(original)
+    assert str(original) == before and removed == 2
+    assert any(op.name == "arith.constant" for op in cleaned.walk())
+    transformed, records = rewrite_private_transports(cleaned, select)
+    assert len(records) == 1
+    transformed.verify()
+
+
+@pytest.mark.parametrize("kwargs", [{"live": True}, {"repeated": True},
+    {"barrier": "func.call @effect():()->()"},
+    {"barrier": "%dead=tensor.cast %p:tensor<2x16xf32> to tensor<?x16xf32>"}])
+def test_view_cleanup_never_hides_observation_unknown_views_or_effect_barriers(kwargs):
+    original = module(**kwargs)
+    before = str(original)
+    cleaned, removed = prune_unobserved_transport_views(original)
+    assert not removed and str(cleaned) == before
+    assert not rewrite_private_transports(cleaned, select)[1]
