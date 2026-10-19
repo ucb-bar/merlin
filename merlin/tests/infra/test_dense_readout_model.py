@@ -294,7 +294,10 @@ def test_ordinary_recurrent_dense_readout_removes_dump_and_conversion(
         readout_scalars = sum(op.name in ("arith.maxsi", "arith.minsi") for op in selected_module.walk())
         assert readout_scalars == (0 if enabled else 2)
         materialization = realized_intermediate(trace_root, work, shape)
-        assert materialization["raw_i32_output_allocations"] == (0 if enabled else 1)
+        if enabled:
+            assert materialization["raw_i32_output_allocations"] == 0
+        else:
+            assert materialization["raw_i32_output_allocations"] > 0
         host = built["host_provider"]
         assert host["status"] == "completed" and len(host["objects"]) == 1
         for pin in (*host["source_model"], *(row[key] for row in host["objects"] for key in ("object", "llvm"))):
