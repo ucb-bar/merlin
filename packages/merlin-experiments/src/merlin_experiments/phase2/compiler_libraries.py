@@ -74,8 +74,12 @@ def prompt_inputs(inputs):
     if selection is None:
         return inputs
     root = guest_root(selection)
+    from .compiler_library_guidance import selected_inventory
+
     return replace(
         inputs,
+        **({"additional_compiler_library": selected_inventory()}
+           if "additional_compiler_library" in inputs.__dataclass_fields__ else {}),
         allowed_paths=tuple(
             dict.fromkeys(
                 (

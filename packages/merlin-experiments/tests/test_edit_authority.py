@@ -337,6 +337,82 @@ def test_inspection_keeps_frozen_semantics_and_current_source_locations(package)
     assert after["host_guidance_binding"]["inventory_sha256"] == authority.binding["guidance_inventory_sha256"]
 
 
+def test_public_context_projects_actual_v2_authority_without_private_seed_or_new_permissions(package):
+    from merlin_experiments.phase2.compiler_library_guidance import publish_edit_authority
+
+    authority, candidate, _, _ = package
+    context = candidate.parent / "STAGE_CONTEXT.json"
+    context.write_text(json.dumps({"automatic_optimization_inventory": {"descriptive": True}}))
+    inventory = inspect_compiler_package(candidate, host_surface_declarations=[declaration()])
+    contract = build_compiler_edit_contract(inventory, new_python_components=[
+        {"directory": "passes", "surface_ids": ["overlap"], "reason": "new checked candidate transform"}])
+    authority.freeze(candidate, contract, has_iterations=False)
+    projection = publish_edit_authority(authority, candidate)
+    saved = json.loads(context.read_text())
+    assert saved["frozen_compiler_edit_authority"] == projection
+    assert saved["automatic_optimization_inventory"] == {"descriptive": True}
+    assert projection["contract"] == authority.contract
+    assert projection["contract"]["existing_symbols"][0]["path"] == "compiler.py"
+    assert projection["contract"]["existing_symbols"][0]["symbol"] == "schedule"
+    assert projection["contract"]["new_python_components"][0]["directory"] == "passes"
+    assert projection["initial_candidate_sha256"] == authority.binding["initial_candidate_sha256"]
+    assert projection["contract_document_sha256"] == authority.binding["contract_document_sha256"]
+    assert "seed_path" not in json.dumps(projection) and str(authority.seed) not in json.dumps(projection)
+    saved["frozen_compiler_edit_authority"]["contract"]["existing_symbols"][0]["symbol"] = "protected"
+    context.write_text(json.dumps(saved))
+    source = candidate / "compiler.py"
+    source.write_text(source.read_text().replace("return 2", "return 9"))
+    with pytest.raises(ValueError, match="exceeds host-frozen authority"):
+        authority.validate_candidate(candidate)
+
+
+def test_context_cannot_publish_unconfigured_or_mutated_authority(package):
+    from merlin_experiments.phase2.compiler_library_guidance import publish_edit_authority
+
+    authority, candidate, contract, _ = package
+    context = candidate.parent / "STAGE_CONTEXT.json"
+    context.write_text("{}")
+    with pytest.raises(contracts.StageGateError, match="actual frozen"):
+        publish_edit_authority(authority, candidate)
+    authority.freeze(candidate, contract, has_iterations=False)
+    authority.contract["existing_symbols"][0]["symbol"] = "protected"
+    with pytest.raises(ValueError, match="changed"):
+        publish_edit_authority(authority, candidate)
+    assert context.read_text() == "{}"
+
+
+def test_normal_queued_round_publishes_frozen_permissions_before_policy_or_workers(package, tmp_path, monkeypatch):
+    import inspect
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase2 import ordinary_search_stage as S
+
+    authority, candidate, contract, _ = package
+    context = candidate.parent / "STAGE_CONTEXT.json"
+    context.write_text("{}")
+    selected_contract = tmp_path / "selected.json"
+    selected_contract.write_text(json.dumps(contract))
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    policy, pool = object(), object()
+    monkeypatch.setattr(S, "FrozenEditAuthority", lambda *a, **k: authority)
+
+    def prepare(**kwargs):
+        assert kwargs["edit_authority"] is authority
+        projection = json.loads(context.read_text())["frozen_compiler_edit_authority"]
+        assert projection["contract"] == authority.contract
+        assert projection["initial_candidate_sha256"] == hash_tree(candidate)["sha256"]
+        return policy
+
+    monkeypatch.setattr(S, "prepare_ordinary_search_policy", prepare)
+    monkeypatch.setattr(S.BUILD, "install", lambda *a, **k: None)
+    selection = SimpleNamespace(install=lambda actual, **kwargs: pool if actual is policy else None)
+    arguments = {name: None for name, row in inspect.signature(S.prepare_round).parameters.items()
+                 if name != "selection" and row.default is inspect.Parameter.empty}
+    arguments.update(stage_root=stage, candidate=candidate, edit_contract=selected_contract)
+    assert S.prepare_round(selection, **arguments) == (policy, pool)
+
+
 def test_allowed_edits_do_not_reset_cumulative_unauthorized_edit_baseline(package):
     authority, candidate, contract, output = package
     authority.freeze(candidate, contract, has_iterations=False)

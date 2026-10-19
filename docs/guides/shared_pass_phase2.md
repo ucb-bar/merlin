@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-10-19
 related: [../reference/shared_compiler_passes, phase2_corpus_search]
-code_refs: [src/merlin/targetgen/tool_profile.py, src/merlin/targetgen/tool_profile_shared.py, src/merlin/targetgen/common_transforms.py, src/merlin/targetgen/compiler_library.py, packages/merlin-experiments/src/merlin_experiments/phase2/compiler_libraries.py, packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py]
+code_refs: [src/merlin/targetgen/tool_profile.py, src/merlin/targetgen/tool_profile_shared.py, src/merlin/targetgen/common_transforms.py, src/merlin/targetgen/compiler_library.py, packages/merlin-experiments/src/merlin_experiments/phase2/compiler_libraries.py, packages/merlin-experiments/src/merlin_experiments/phase2/compiler_library_state.py, packages/merlin-experiments/src/merlin_experiments/phase2/compiler_library_guidance.py, packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py]
 ---
 
 # Shared passes in ordinary compiler authoring
@@ -34,6 +34,27 @@ include the selection; broker and queued member threads retain it for both arms.
 The sandbox mounts exact reviewed leaves, reopens their hashes, reserves its
 library namespace against overlays, and preserves original public leaves outside
 the selected replacement set. Candidate manifests cannot select a release.
+
+The selected-release prompt and `STAGE_CONTEXT.json` expose a source-derived
+public API inventory: reviewed contract identity, exact guest source paths and
+digests, declaration lines, public class methods and bounded parameter/docstring
+previews. Omitted declarations are counted. Imported names are descriptive;
+dynamic exports and value aliases remain unresolved. Reading the inventory
+executes no selected library code and grants no target support or timing credit.
+The shared algorithms are reviewed authored code; software effects and RTL
+facts constrain legal policy inputs and target-adapter applicability.
+
+When normal queued search freezes its edit authority, the host projects the
+actual validated contract into `STAGE_CONTEXT.json` as
+`frozen_compiler_edit_authority`, before policy or worker creation. It retains
+initial-source and contract digests, exact existing paths/symbols, scoped helper
+extensions and explicitly approved v2 new Python components. Private seed paths
+are excluded. Editing the projection, automatic inventory or candidate manifest
+cannot change the original authority. Candidate-owned policies and transformation
+bodies may change within that authority; the selected library remains read-only.
+The prompt connects hypotheses to owned entrypoints, expected emitted-program
+changes, affected public shapes, retained revisions, independent correctness
+and paired measurements or qualified predictions. UNKNOWN feedback stays visible.
 
 The host `authoring.run_stage` API accepts `compiler_library_selection`
 before any authoring preflight. The outer author receives exact read-only source

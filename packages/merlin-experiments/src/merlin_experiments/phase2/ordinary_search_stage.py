@@ -37,6 +37,9 @@ def prepare_round(
     authority_root.mkdir(mode=0o700)
     authority = FrozenEditAuthority(authority_root, guidance_contract=contract_root)
     authority.freeze(candidate, mapping_file(edit_contract), has_iterations=False)
+    from .compiler_library_guidance import publish_edit_authority
+
+    publish_edit_authority(authority, candidate)
     policy = prepare_ordinary_search_policy(
         functional_runs_root=functional_runs_root,
         functional_run_id=functional_run_id,
