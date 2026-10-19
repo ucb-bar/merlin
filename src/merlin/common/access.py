@@ -209,6 +209,7 @@ MODULE_ACCESS = (
     _module("merlin_experiments.phase1.recovery", "grader"),
     _module("merlin_experiments.phase1.conformance", "grader"),
     _module("merlin_experiments.phase1.conformance_sources", "grader"),
+    _module("merlin_experiments.phase1.conformance_selfcheck", "grader"),
     _module("merlin_experiments.corpus.release", "grader"),
     _module("merlin_experiments.corpus.preparation", "grader"),
     _module("merlin.runtime.reference", "oracle"),
