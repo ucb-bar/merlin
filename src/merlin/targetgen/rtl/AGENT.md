@@ -285,3 +285,11 @@ simulation configuration stand for the target configuration's unit-internal timi
 from arithmetic. Port/selector names and pipeline-like module names do not prove
 signed numerical formats, accumulation behavior or cycle latency; those fields
 remain unknown until the selected arithmetic dataflow is observed.
+
+`firrtl_scalar_cutpoints.ScalarCutpoints` observes explicit bounded unsigned
+combinational cuts on a private parsed-source snapshot. Preserve aggregate mux
+projection, vector bounds, priority connects and exact sink truncation. Unbound
+inputs, registers, memories, signed arithmetic, unsupported primitives and budget
+overflows refuse; never read a register's next-state connect as its current value.
+A two-state cutpoint result supplies no reachability, protocol, instruction,
+physical-transfer or timing authority. Original owners retain file custody.

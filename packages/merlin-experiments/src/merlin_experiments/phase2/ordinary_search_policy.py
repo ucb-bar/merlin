@@ -135,6 +135,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         services,
         e2e_sentinel,
         compiler_library_selection=None,
+        compiler_pass_selection=None,
         _issuer,
     ):
         if _issuer is not _ISSUER:
@@ -156,6 +157,11 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         ):
             raise StageGateError("additional compiler libraries require an explicit reviewed host selection")
         self._compiler_library_selection = compiler_library_selection
+        from merlin.targetgen.compiler_pass_selection import CompilerPassSelection
+
+        if compiler_pass_selection is not None and type(compiler_pass_selection) is not CompilerPassSelection:
+            raise StageGateError("compiler passes require an explicit original host selection")
+        self._compiler_pass_selection = compiler_pass_selection
         self._functional, self._corpus, self._selected_feedback = functional, corpus, feedback
         self._contract_root, self._issuer = contract_root, _issuer
         self.evaluation_pool, self.search_coordinator = None, None
@@ -321,6 +327,11 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         return {
             "schema": "merlin.ordinary_corpus_search_binding.v1",
             **({"additional_compiler_library": library_selection.record()} if library_selection is not None else {}),
+            **(
+                {"compiler_passes": self._compiler_pass_selection.record()}
+                if self._compiler_pass_selection is not None
+                else {}
+            ),
             "workflow_id": self.workflow_id,
             "scope": "frozen_development_corpus_simulator_cycles",
             "functional_origin": _data(functional),
@@ -654,6 +665,7 @@ def prepare_ordinary_search_policy(
     build_runtime_view=None,
     build_product_index=None,
     compiler_library_selection=None,
+    compiler_pass_selection=None,
 ):
     """Admit the same Phase 1 functional fork and ordinary corpus feedback route.
 
@@ -722,6 +734,7 @@ def prepare_ordinary_search_policy(
             if compiler_library_selection is not None
             else COMPILER_LIBRARY.active_compiler_library()
         ),
+        compiler_pass_selection=compiler_pass_selection,
         _issuer=_ISSUER,
     )
     if native_runtime_view is not None:

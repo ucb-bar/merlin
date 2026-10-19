@@ -218,6 +218,29 @@ pending; a numerical match does not supply those missing authorities.
 
 ### Explicit reviewed capability selection
 
+The original-host `targetgen.compiler_pass_selection.CompilerPassSelection`
+binds an exact live registry, binding and mechanism roster. Its
+`prepare_compiler` creates a disjoint compiler copy before retained-source and
+edit-authority freezing; it never swaps a package inside the original executor.
+Missing capability refuses preparation. Both compared arms must receive the
+same selected library and adapter code; candidate policy remains a separately
+editable source component. Preparation supplies no execution qualification.
+
+The ordinary `run_stage` host API accepts `compiler_pass_selection`; queued
+policy contexts and their binding retain that same owner. Original sealed
+model-child transport v3 optionally carries it, alongside the unchanged library
+selection. Fresh children execute a source-pinned original factory which reruns
+independent admission and must reconstruct the exact registry and resolutions.
+A copied successful owner record cannot construct this selection. Original
+v1/v2 child schemas and absent-selection defaults retain their interpretation.
+This host infrastructure grants no additional candidate imports or target support.
+
+The final functional guard rechecks both arms and requires the selected owner's
+original emitted-program checker. A missing checker makes the guard offending;
+preparation, a policy request or earlier paired evidence cannot replace it.
+These APIs connect custody and execution ownership, not automatic target-name
+discovery or formal admission of the provisional Phase 1 checkpoint.
+
 The host-only `llvmlower.reviewed_pass_capabilities` registry transports live
 original owners. `PassCapabilityBinding` requires exact hardware, software,
 numerical policy, runtime and library identities. An original host may construct
@@ -483,6 +506,22 @@ library mechanism requires an explicitly reviewed Phase 2 release selected
 equally for compared treatments; the additional-library runtime connection
 described above remains necessary. New candidate pass modules do not silently
 make a frozen shared SDK writable.
+
+## Complete layer execution artifacts
+
+Ordinary layer execution explicitly retains executed-program V2 evidence: the
+effective command buffer, lowered LLVM, linked kernel, complete console, build
+receipt and original completed execution invocation. The original ELF and
+harness remain content addressed per simulator. V1 keeps its original meaning.
+Changed or missing evidence refuses additional pass realization; retention does
+not create a numerical or certification verdict. Final target consumers must
+also reopen the original graded source, selected runtime and compiler snapshot,
+and independently decode the actual issued program and all output values.
+
+Artifact retention is bounded verification work. Its operator walltime is
+separate from target execution cycles. Packing, dispatch and transfers inside
+the selected execution window remain part of that window. Retaining these
+artifacts neither qualifies a timing model nor enables a target capability.
 
 ## Continue implementation from another workspace
 

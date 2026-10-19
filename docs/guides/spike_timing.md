@@ -569,3 +569,38 @@ model; original process and fitting custody remain required. Missing observation
 or failed gates produce a diagnostic handoff with ranking disabled. Qualification
 from these labels applies to the declared gSIM capsule-call domain. It establishes
 neither FireSim cycle accuracy nor full-model performance.
+
+### Diagnosing native price sensitivity
+
+`native-sensitivity` compares supplied native prediction probes against only the
+original public TRAIN labels. It runs no simulator, fits no prices, consumes no
+held/calibration labels and grants no timing qualification:
+
+```sh
+spike-timing native-sensitivity --dataset original-dataset.json \
+  --evaluations native-probes.json --output sensitivity.json
+```
+
+The explicit `merlin.native_sensitivity_input.v1` input binds the canonical
+dataset digest and a bounded evaluation list. Each evaluation declares its model
+digest, fixed-structure digest, the same named nonnegative parameter roster and
+predictions for **every declared TRAIN case**. Unknown predictions are `null`;
+held or calibration case keys refuse. The caller must independently verify that
+only those prices changed and that source, runtime, complete numerics and raw
+counts remained fixed. These diagnostics do not supply that authority.
+
+The report preserves unavailable original cases, refuses to score an evaluation
+missing an otherwise available prediction, and reports per-family error, local
+one-parameter responses, coupled response directions and training residual
+correlations. Analysis has an explicit scalar-work bound. Identical parameter
+points cannot claim conflicting predictions. A masked response does not mean an
+operation is free: another pipeline stage, resource bottleneck or integer-cycle
+quantization may hide its cost. Local response rank is not physical parameter
+identification, especially when probes cross different nonlinear contexts.
+
+Use these diagnostics to request distinguishing public Phase 1 probes and
+source/RTL service evidence. Freeze group splits and the evaluator candidate
+before held checks. An improvement in training error alone cannot replace the
+incumbent; preserve the prior model and all rejected candidates, original labels,
+counter reviews and missing observations. New capacity or attention regimes need
+their own compatible evidence even when archived-domain accuracy passes.

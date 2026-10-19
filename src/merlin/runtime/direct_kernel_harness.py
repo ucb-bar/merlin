@@ -309,6 +309,7 @@ def render_direct_kernel(
     complete_call_timing=None,
     kernel_call_timing=None,
     source_owned_mutables=(),
+    blobs=None,
 ):
     """Render complete pointer-call storage with explicitly selected readback.
 
@@ -496,6 +497,20 @@ def render_direct_kernel(
             raise ValueError("direct kernel software alignment is smaller than a container word")
         payload = "0"
         if access != "write" and name not in mutable:
+            from .tensor_payload import TensorPayload
+
+            if type(inputs[name]) is TensorPayload:
+                if type(blobs) is not dict or access != "read":
+                    raise ValueError("streamed direct inputs require explicit sidecars and read-only pointers")
+                symbol = f"tensor_{index}"
+                if symbol in blobs or symbol in {abi.entry_symbol, abi.completion_symbol, prelude_symbol}:
+                    raise ValueError("streamed direct input symbol overlaps existing storage")
+                data = inputs[name].bind(
+                    shape=tensors[name]["shape"], dtype=tensors[name]["dtype"], byte_order=abi.byte_order
+                )
+                blobs[symbol] = {"bytes": data, "align": abi.tensor_alignment, "elems": count, "section": ".data"}
+                declarations.append(f"extern unsigned char {symbol}[{count * width}];")
+                continue
             raw = _raw(tensors[name], inputs[name], count=count, width=width, dtype=dtype, byte_order=abi.byte_order)
             payload = ",".join(f"0x{value:02x}" for value in raw)
         declarations.append(

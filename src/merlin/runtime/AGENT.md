@@ -7,6 +7,12 @@ the per-backend adapters under `backends/`.
 
 ## What belongs here
 
+- `tensor_payload` transports exact lazy scalar input bytes to the existing
+  logical-pointer renderer. Original shape/dtype/endian/extent and readonly
+  argument checks precede binary sidecars; data sections, mutable scratch,
+  output poisoning and complete readback retain their selected semantics.
+  This supplies no packing, memref bridge, numerical or device authority.
+
 - `host_provider` keeps its original object/ABI/pin/linked-image checks. Its
   sole empty-builder exception recognizes the exact original
   `PointwiseSourceRouting.build` owner and reopens a completed zero-island,

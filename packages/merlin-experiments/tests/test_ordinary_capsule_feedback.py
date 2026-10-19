@@ -252,3 +252,108 @@ def test_native_diagnostics_do_not_fabricate_scope_or_qualification(compiled, ma
         assert report["native_event_timing"]["status"] == "UNKNOWN"
         assert report["native_event_timing"].get("estimated_cycles") is None
     assert report["timing_cycles"] is None and report["roofline"]["attainment"] is None
+
+
+def service(compiled, machine, scope="workload"):
+    compiled["source_sha256"] = "f" * 64
+    return {
+        "schema": "merlin.phase2.service_effect_evidence.v1",
+        "scope": scope,
+        "source_sha256": compiled["source_sha256"],
+        "elf_sha256": compiled["elf_sha256"],
+        **{key: machine[key] for key in ("scope_sha256", "device_sha256")},
+        "resources": {
+            "readout": {
+                "unit": "bytes",
+                "capacity_per_cycle_upper": 8,
+                "provenance": "selected structural port ceiling",
+            }
+        },
+        "events": [
+            {
+                "id": "result",
+                "demand": {"readout": 128},
+                "compulsory": scope == "workload",
+                "provenance": "original selected readout and complete-output ownership",
+            }
+        ],
+    }
+
+
+def test_source_bound_service_floor_is_recomputed_and_predictions_never_price_it(compiled, machine):
+    evidence = service(compiled, machine)
+    evidence["saved_floor_cycles"] = 999999
+    report = F.join_capsule_feedback(
+        {"source_sha256": "f" * 64},
+        compiled,
+        target="fixture-target",
+        machine=machine,
+        service_evidence=evidence,
+        prediction={"status": "qualified_screen", "estimated_cycles": 8},
+    )
+    result = report["resource_service"]
+    assert result["floor"]["floor_cycles"] == 16
+    assert result["measured_cycles"] is None and result["attainment"] is None
+    assert result["status"] == "partial_unmeasured"
+    assert not result["convergence_eligible"]
+
+
+@pytest.mark.parametrize("field", ["source_sha256", "elf_sha256", "device_sha256", "scope_sha256"])
+def test_foreign_service_effects_cannot_attach_to_current_candidate(compiled, machine, field):
+    evidence = service(compiled, machine)
+    evidence[field] = "different"
+    report = F.join_capsule_feedback(
+        {"source_sha256": "f" * 64}, compiled, target="fixture-target", machine=machine, service_evidence=evidence
+    )
+    assert report["resource_service"]["status"] == "UNKNOWN"
+
+
+def test_actual_measured_subfloor_refutes_and_schedule_waste_cannot_change_workload_target(compiled, machine):
+    evidence = service(compiled, machine, "emitted_schedule")
+    result = F.join_capsule_feedback(
+        {"source_sha256": "f" * 64},
+        compiled,
+        target="fixture-target",
+        machine=machine,
+        service_evidence=evidence,
+        measurement=measurement(compiled, machine, 12),
+    )["resource_service"]
+    assert result["status"] == "floor_refuted"
+    assert result["gap_cycles"] == -4 and result["attainment"] is None
+    assert not result["objective_floor_eligible"] and not result["convergence_eligible"]
+
+
+def test_setup_and_verification_costs_never_remove_in_window_execution(compiled, machine, raw):
+    compiled["candidate_diagnostics"]["collection_cost"] = {"wall_seconds": 2.5}
+    raw["wall_seconds"] = 9999  # ISS process walltime cannot become target cycles.
+    raw["cycle_breakdown"] = {"scope": "whole_trace", "additive": False, "resources": [{"busy_unit_cycles": 1000000}]}
+    report = join(
+        compiled,
+        machine,
+        raw_report=raw,
+        measurement=measurement(compiled, machine, 20),
+        prediction={"prediction_kind": "event_timing", "status": "qualified", "estimated_cycles": 7},
+    )
+    cost = report["cost_boundaries"]
+    assert cost["setup"]["compiler_analysis_wall_seconds"] == 2.5
+    assert cost["setup"]["compilation_wall_seconds"] is None
+    assert cost["verification"]["wall_seconds"] is None
+    assert cost["execution_window"]["measured_target_cycles"] == 20
+    assert cost["execution_window"]["estimated_target_cycles"] == 7
+    assert cost["execution_window"]["observed_scope_kind"] == "whole_program"
+    assert cost["execution_window"]["complete_model_coverage"].startswith("UNKNOWN")
+    assert "packing" in cost["execution_window"]["included_if_performed_inside_window"]
+    assert cost["resource_context"]["scope"] == "whole_trace"
+    assert cost["resource_context"]["execution_window_utilization"] is None
+    assert not cost["walltime_to_target_cycle_conversion"]
+    assert report["timing_cycles"] == 20 and report["roofline"]["attainment"] == 0.5
+
+
+def test_unjoined_scope_and_nonfinite_setup_observation_remain_unknown(compiled, machine, raw):
+    compiled["candidate_diagnostics"]["collection_cost"] = {"wall_seconds": float("nan")}
+    raw["elf_sha256"] = "foreign"
+    cost = join(compiled, machine, raw_report=raw)["cost_boundaries"]
+    assert cost["setup"]["compiler_analysis_wall_seconds"] is None
+    assert cost["execution_window"]["observed_scope_kind"] is None
+    assert cost["execution_window"]["measured_target_cycles"] is None
+    assert cost["execution_window"]["cold_warm_state"].startswith("UNKNOWN")

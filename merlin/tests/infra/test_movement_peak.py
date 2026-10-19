@@ -99,41 +99,51 @@ def test_padded_and_useful_arithmetic_are_both_reported() -> None:
     assert doc["attainable_useful_macs_per_cycle"] == pytest.approx(compute["useful_macs"] / doc["floor_cycles"])
 
 
-def test_requested_unique_and_physical_bytes_are_separate_and_tails_cost_whole_beats() -> None:
+def test_hypothetical_segments_never_claim_actual_physical_traffic() -> None:
     machine = _machine()
     ports = MP.movement_peak({"facts": _BODY})
     aligned = SR.staged_roofline([SR.Contraction(8, 8, 8)], machine, ports, result_bytes=1)["movement"]
-    assert aligned["unique_bytes"] == aligned["requested_bytes"] == aligned["physical_bytes"]
+    assert aligned["unique_bytes"] == aligned["requested_bytes"] == aligned["hypothetical_beat_rounded_bytes"]
+    assert aligned["physical_bytes"] == {"read": None, "write": None}
     tail = SR.staged_roofline([SR.Contraction(8, 9, 8)], machine, ports, result_bytes=1)["movement"]
     assert tail["requested_bytes"]["read"] == 8 * 9 + 9 * 8
     # Each A row is one 8-byte segment plus a one-byte tail, which costs a whole beat.
-    assert tail["physical_bytes"]["read"] > tail["requested_bytes"]["read"]
+    assert tail["hypothetical_beat_rounded_bytes"]["read"] > tail["requested_bytes"]["read"]
+    assert tail["physical_bytes"]["read"] is None
 
 
-def test_serial_stages_are_summed_and_merlin_host_compute_is_excluded() -> None:
+def test_bank_count_proves_neither_overlap_nor_serial_addition() -> None:
     ports = MP.movement_peak({"facts": _BODY})
-    overlapped = SR.staged_roofline([SR.Contraction(64, 64, 64)], _machine(), ports, result_bytes=1)
-    assert overlapped["composition"]["overlap_admissible"] is True
-    terms = overlapped["compute"]["padded_cycles"], overlapped["movement"]["cycles"]
-    assert overlapped["floor_cycles"] == pytest.approx(max(terms))
-    assert overlapped["status"] == "partial" and "accelerator_host_stage" in overlapped["unresolved"]
+    declaration = {"read": 8192, "write": 4096, "provenance": "original interface-crossing proof"}
+    floors = []
+    for banks in (1, 2, 4):
+        body = copy.deepcopy(_BODY)
+        body["memories"][1]["banks"] = banks
+        doc = SR.staged_roofline(
+            [SR.Contraction(64, 64, 64)],
+            _machine(body),
+            ports,
+            result_bytes=1,
+            accelerator_host_cycles=100,
+            merlin_host_operations={"linalg.softmax": 1},
+            compulsory_transfer_bytes=declaration,
+        )
+        assert doc["composition"]["overlap_admissible"] is None
+        assert doc["composition"]["serial_stages"] == []
+        assert doc["floor_cycles"] == max(doc["compute"]["useful_cycles"], doc["movement"]["cycles"])
+        assert doc["host"]["merlin_supplied_operations"] == {"linalg.softmax": 1}
+        assert doc["status"] == "partial" and not doc["convergence_eligible"]
+        floors.append(doc["floor_cycles"])
+    assert len(set(floors)) == 1
 
-    single = copy.deepcopy(_BODY)
-    single["memories"][1]["banks"] = 1
-    single["memories"][1]["depth"] = 64
-    serial = SR.staged_roofline(
-        [SR.Contraction(64, 64, 64)],
-        _machine(single),
-        ports,
-        result_bytes=1,
-        accelerator_host_cycles=100,
-        merlin_host_operations={"linalg.softmax": 1},
-    )
-    assert serial["composition"]["overlap_admissible"] is False
-    terms = serial["compute"]["padded_cycles"], serial["movement"]["cycles"]
-    assert serial["floor_cycles"] == pytest.approx(sum(terms) + 100)
-    assert serial["host"]["merlin_supplied_operations"] == {"linalg.softmax": 1}
-    assert serial["status"] == "derived"
+
+def test_geometry_does_not_make_padding_or_logical_bytes_compulsory():
+    doc = SR.staged_roofline([SR.Contraction(1, 9, 3)], _machine(), MP.movement_peak({"facts": _BODY}), result_bytes=1)
+    assert doc["floor_cycles"] == 27 / 64
+    assert doc["compute"]["padded_cycles"] > doc["floor_cycles"]
+    assert doc["movement"]["cycles"] is None
+    assert "movement" in doc["unresolved"]
+    assert SR.position(doc, float("nan"))["attainment"] is None
 
 
 def test_a_measurement_below_the_floor_refutes_it() -> None:

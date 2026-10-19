@@ -575,6 +575,7 @@ def run_stage(
     compiler_library_selection=None,
     diagnostic_library_stage: bool = False,
     archive_screen_selection=None,
+    compiler_pass_selection=None,
 ) -> Path:
     """Run bounded authoring rounds and return the sealed candidate-record path.
 
@@ -979,6 +980,7 @@ def run_stage(
                 whole_model_inputs=whole_model_profile_inputs,
                 external_boundary=external_resource_boundary,
                 archive_screen_selection=archive_screen_selection,
+                compiler_pass_selection=compiler_pass_selection,
             )
         broker = PB.Broker(
             inner,

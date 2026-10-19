@@ -15,6 +15,11 @@ from functools import wraps
 from pathlib import Path, PurePosixPath
 
 from merlin.targetgen.compiler_library import CompilerLibrarySelection, active_compiler_library, scoped_compiler_library
+from merlin.targetgen.compiler_pass_selection import (
+    CompilerPassSelection,
+    active_compiler_passes,
+    scoped_compiler_passes,
+)
 from merlin.targetgen.compiler_profile_admission import active_compiler_imports
 
 from .contracts import StageGateError
@@ -26,13 +31,18 @@ def stage_selection(function):
     @wraps(function)
     def call(*args, **kwargs):
         selection = kwargs.get("compiler_library_selection")
+        passes = kwargs.get("compiler_pass_selection")
         if selection is not None and type(selection) is not CompilerLibrarySelection:
             raise StageGateError("author stage requires an explicit reviewed compiler library owner")
         if selection is None and active_compiler_library() is not None:
             raise StageGateError("author stage cannot inherit an unbound additional compiler library")
         if selection is None and kwargs.get("diagnostic_library_stage"):
             raise StageGateError("diagnostic library stage requires its explicit reviewed release")
-        with scoped_compiler_library(selection):
+        if passes is not None and type(passes) is not CompilerPassSelection:
+            raise StageGateError("author stage requires original live compiler pass selection")
+        if passes is None and active_compiler_passes() is not None:
+            raise StageGateError("author stage cannot inherit unbound compiler pass selection")
+        with scoped_compiler_library(selection), scoped_compiler_passes(passes):
             return function(*args, **kwargs)
 
     return call
@@ -78,8 +88,11 @@ def prompt_inputs(inputs):
 
     return replace(
         inputs,
-        **({"additional_compiler_library": selected_inventory()}
-           if "additional_compiler_library" in inputs.__dataclass_fields__ else {}),
+        **(
+            {"additional_compiler_library": selected_inventory()}
+            if "additional_compiler_library" in inputs.__dataclass_fields__
+            else {}
+        ),
         allowed_paths=tuple(
             dict.fromkeys(
                 (
@@ -97,18 +110,31 @@ def paired_functional_guard(function):
     @wraps(function)
     def call(baseline, candidate, *args, **kwargs):
         selection = active_compiler_library()
-        if selection is None:
+        passes = active_compiler_passes()
+        if selection is None and passes is None:
             return function(baseline, candidate, *args, **kwargs)
-        record = selection.record()
+        record = None if selection is None else selection.record()
         baseline_kwargs = dict(kwargs)
         output = baseline_kwargs.get("grade_root")
         if output is not None:
             baseline_kwargs["grade_root"] = Path(output).with_name(Path(output).name + "_library_baseline")
         baseline_result = function(baseline, baseline, *args, **baseline_kwargs)
         result = function(baseline, candidate, *args, **kwargs)
-        if selection.record() != record:
+        if selection is not None and selection.record() != record:
             raise StageGateError("additional compiler library changed during final functional qualification")
         result = {**result, "additional_compiler_library": record, "library_baseline_guard": baseline_result}
+        if passes is not None:
+            result["compiler_pass_selection"] = passes.record()
+            try:
+                result["compiler_pass_realizations"] = passes.check_functional_guard(
+                    baseline, candidate, baseline_result, result, grade_root=output
+                )
+            except ValueError as error:
+                result["status"] = "offending"
+                result["offenders"] = [
+                    *result.get("offenders", ()),
+                    {"kind": "compiler_pass_final_realization_unavailable", "reason": str(error)},
+                ]
         if baseline_result.get("status") != "clean":
             result["status"] = "offending"
             result["offenders"] = [*result.get("offenders", ()), {"kind": "additional_library_baseline_unqualified"}]
@@ -124,7 +150,10 @@ def scoped_policy(function):
     def call(policy, *args, **kwargs):
         if policy._compiler_library_selection is None and active_compiler_library() is not None:
             raise StageGateError("ordinary policy cannot inherit an unbound additional compiler library")
-        with scoped_compiler_library(policy._compiler_library_selection):
+        passes = getattr(policy, "_compiler_pass_selection", None)
+        if passes is None and active_compiler_passes() is not None:
+            raise StageGateError("ordinary policy cannot inherit unbound compiler pass selection")
+        with scoped_compiler_library(policy._compiler_library_selection), scoped_compiler_passes(passes):
             return function(policy, *args, **kwargs)
 
     return call
