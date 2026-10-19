@@ -11,6 +11,7 @@ from merlin_experiments.phase1.feedback import compiler_profile_runtime as R
 from test_compiler_profile_execution import execution  # noqa: F401 -- shared synthetic transport fixture
 
 from merlin.common import invocation_record
+from merlin.common.cpu_pool import current_thread_owns_cpu_lease
 from merlin.targetgen.compiler_pass_selection import _pin
 
 
@@ -21,7 +22,10 @@ def emitted(request, monkeypatch):
     owner.bundle_manifest.write_text("synthetic transport fixture\n")
     owner.profile = {"sha256": "a" * 64}
     owner.snapshot_digest = "b" * 64
-    monkeypatch.setattr(R.CommonTransformService, "_verify", lambda self: None)
+    def verify(self):
+        assert current_thread_owns_cpu_lease()
+
+    monkeypatch.setattr(R.CommonTransformService, "_verify", verify)
     pkg = SimpleNamespace(directory=package, integrity_exempt=False, manifest={})
     monkeypatch.setattr(E.P, "load_package", lambda path: pkg)
     monkeypatch.setattr(E.P, "integrity_scan", lambda pkg: None)
@@ -70,6 +74,7 @@ def test_actual_original_scope_retains_temporary_products(emitted):
     assert record["copied_input"]["path"] != record["source"]["path"]
     assert Path(record["lowered"]["path"]).read_text() == result.stdout
     assert R._EMISSION_OBSERVATION.get() is None
+    assert not current_thread_owns_cpu_lease()
 
 
 @pytest.mark.parametrize("key", ["source", "copied_input", "copied_output", "command_buffer", "lowered", "invocation"])
@@ -128,10 +133,11 @@ def test_complete_native_source_binding_and_foreign_arm_refusal(emitted):
 
     class Owner:
         def check_compiler_binding(self, package):
+            assert current_thread_owns_cpu_lease()
             assert package == Path(record["compiler_package"]["path"])
 
         def revalidate(self):
-            pass
+            assert current_thread_owns_cpu_lease()
 
     assert receipt.check_native_artifacts(Owner(), arm)["schema"] == E.SCHEMA
     wrong = {**arm, "lowered": _pin(source)}
