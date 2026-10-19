@@ -372,6 +372,19 @@ def actual_final_packing(work, built, provider, geometry, selection, *, panel):
     qualification = json.loads((provider.work / "original_allocation_qualification.json").read_text())
     allocator = qualification["runtime_source"]
     assert sha256_file(Path(allocator["path"])) == allocator["sha256"]
+    recipe = json.loads((work / "compilation_recipe.json").read_text())
+    assert recipe["status"] == "completed"
+    allocator_builds = [row for row in recipe["commands"] if any(p["path"] == allocator["path"] for p in row["inputs"])]
+    assert len(allocator_builds) == 1
+    allocation_object = allocator_builds[0]["output"]
+    assert any(
+        p["path"] == allocator["path"] and p["sha256"] == allocator["sha256"] for p in allocator_builds[0]["inputs"]
+    )
+    assert sha256_file(Path(allocation_object["path"])) == allocation_object["sha256"]
+    assert any(
+        p["path"] == allocation_object["path"] and p["sha256"] == allocation_object["sha256"]
+        for p in recipe["commands"][-1]["inputs"]
+    )
     roster_path = work / "lower/borrowed-buffer-calls.json"
     original_calls = read_borrowed_calls(json.loads(roster_path.read_text()))
     uses = tuple(
