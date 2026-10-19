@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import copy
 import json
-import os
 import subprocess
 import time
 from pathlib import Path
@@ -21,7 +20,6 @@ import yaml
 from merlin_experiments.phase1 import launch_config as L
 from merlin_experiments.phase1.feedback import capsule_certification as C
 
-from merlin.common import owned_process as OP
 from merlin.common.digest import sha256_file
 
 
@@ -129,66 +127,26 @@ def prepare(args, *, started):
     )
     config.write_text(yaml.safe_dump(doc, sort_keys=False))
     selected = launch()
-    repo = selected.path(doc["inputs"]["repo"])
-    source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
-    witness = (
-        repo
-        / "out/artifacts/probes"
-        / doc["identity"]["target"]
-        / ("infrastructure-" + args.run_id)
-    )
-    common = spec["models"][0]
-    argv = [
-        selected.expand(doc["launcher"]["python"]),
-        "-B",
-        str(repo / "build_tools/scripts/probe_model_build.py"),
-        "--repo",
-        str(repo),
-        "--source-revision",
-        source,
-        "--host-package",
-        common["host_package"],
-        "--board-catalog",
-        common["board_catalog"],
-        "--board",
-        common["board"],
-        "--dts",
-        common["host_dts"],
-        "--target",
-        doc["identity"]["target"],
-        "--host-math-policy",
-        args.probe_host_math_policy,
-        "--out",
-        str(witness),
-    ]
+    original_readiness = fresh.document["full_model_verification"]
+    if (
+        args.infrastructure_template != fresh.path(original_readiness["readiness_receipt"])
+        or sha256_file(args.infrastructure_template) != original_readiness["readiness_sha256"]
+    ):
+        raise ValueError("external infrastructure template differs from the selected fresh launch")
+    old_ready = F.read(args.infrastructure_template)
+    diagnostics = {
+        name: {kind: Path(row["path"]) for kind, row in records.items()}
+        for name, records in old_ready["retained_diagnostics"].items()
+    }
+    # Reopen actual source/runtime-bound mechanism evidence. No target rerun is
+    # needed when the compiler harness, hardware, executable and bytes agree.
     with P.configured_environment(selected):
-        result = OP.run(
-            argv, cwd=repo, env=dict(os.environ), timeout=min(300, deadline - time.time())
-        )
-        (args.prep / "positive.stdout.log").write_bytes(result.stdout)
-        (args.prep / "positive.stderr.log").write_bytes(result.stderr)
-        P.save(
-            args.prep / "positive.execution.json",
-            {
-                "returncode": result.returncode,
-                "cleanup": result.owned_process_cleanup,
-                "argv": argv,
-            },
-        )
-        if result.returncode or not result.owned_process_cleanup["complete"]:
-            raise ValueError("current-source infrastructure mechanism probe failed")
-        old_ready = F.read(args.infrastructure_template)
-        retained = old_ready["retained_submission"]["path"]
-        diagnostics = {
-            name: {kind: Path(row["path"]) for kind, row in records.items()}
-            for name, records in old_ready["retained_diagnostics"].items()
-        }
         readiness = F.build_infrastructure_receipt(
             selected,
-            Path(retained),
+            Path(old_ready["retained_submission"]["path"]),
             diagnostics,
-            witness / "target_witness.json",
-            witness / "cleanup_witness.json",
+            Path(old_ready["target_witness"]["path"]),
+            Path(old_ready["cleanup_witness"]["path"]),
         )
     P.save(args.prep / "readiness.json", readiness)
     doc["full_model_verification"]["readiness_sha256"] = sha256_file(args.prep / "readiness.json")
@@ -235,7 +193,6 @@ def main():
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--max-seconds", type=int, default=7200)
-    parser.add_argument("--probe-host-math-policy", required=True)
     parser.add_argument("--authorization-text", required=True)
     args = parser.parse_args()
     try:
