@@ -130,3 +130,32 @@ def test_installed_entry_passes_only_pinned_plan_to_original_api(selected, monke
     monkeypatch.setattr(L, "run_plan", lambda actual, clock, **kw: calls.append((actual, clock, kw)))
     assert L.main(["--plan", record["path"], "--plan-sha256", record["sha256"], "--output", str(root / "fresh")]) == 0
     assert calls[0][0] == plan and calls[0][2]["output"] == root / "fresh"
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_terminal_reporting_uses_original_pool_finalization(tmp_path, monkeypatch, failed):
+    import threading
+
+    import test_evaluation_costs as C
+
+    fixture = C.parent.__wrapped__(tmp_path, monkeypatch)
+    parent = next(fixture)
+    try:
+        parent.pool._lock = threading.RLock()
+        job = parent.job()
+        parent.pool._finish(job, error=StageGateError("source refused") if failed else None)
+        receipt = (job.root / "cleanup.json").read_bytes()
+        events = []
+        status = L._wait_for_job(
+            parent.pool,
+            {"job_id": job.job_id},
+            output=tmp_path,
+            report=lambda stage, **values: events.append((stage, values)),
+            remaining=lambda: pytest.fail("terminal job must not wait or reset its deadline"),
+        )
+        assert status["state"] == ("refused" if failed else "completed")
+        assert events[-1][1] == {"queue_state": status["state"]}
+        assert (job.root / "cleanup.json").read_bytes() == receipt
+        assert json.loads((tmp_path / "queue-status.json").read_bytes())["terminal"]
+    finally:
+        fixture.close()

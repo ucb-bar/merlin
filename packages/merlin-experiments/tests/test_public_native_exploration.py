@@ -213,3 +213,88 @@ def test_native_inference_reopens_checked_source_without_editing_original_receip
         actual = N.NATIVE.inference_case(**arguments)
         assert actual["numeric"]["receipt_sha256"] == sha256_file(path)
     assert path.read_bytes() == before
+
+
+def test_fast_native_hook_follows_immutable_numerical_receipt(source, tmp_path, monkeypatch):
+    """Neutral engines prove transport ordering, not target timing qualification."""
+    from contextlib import nullcontext
+
+    from merlin_experiments.phase2 import campaign as C
+    from merlin_experiments.phase2 import ordinary_fast_feedback as FAST
+    from merlin_experiments.phase2.retained_revisions import RetainedRevisionStore
+
+    public_root = tmp_path / "native-hook-policy"
+    public_root.mkdir()
+    args, *_ = inputs.__wrapped__(public_root, monkeypatch)
+    selected = selection(source)
+    binding = replace(
+        selected.correspondence.binding,
+        hardware=args["compiler_pass_selection"].binding.hardware,
+        software=args["compiler_pass_selection"].binding.software,
+    )
+    selected = replace(
+        selected,
+        expected_rtl_facts_sha256=binding.hardware,
+        expected_observed_contract_sha256=binding.software,
+        correspondence=ReviewedPassCapability("timing_model_correspondence", binding, selected.correspondence.owner),
+        native_semantics=ReviewedPassCapability("native_timing_semantics", binding, selected.native_semantics.owner),
+    )
+    observations = []
+
+    def neutral_native(self, policy, member, workspace, value, **kwargs):
+        path = workspace / "ordinary_observation.json"
+        raw = path.read_bytes()
+        receipt = json.loads(raw)
+        assert sha256_file(path) == value["evidence_sha256"]
+        assert receipt["functional_status"] == "PASS"
+        assert receipt["original_grade"]["checked_source_status"] == "complete_source_L0_L1_L2_diagnostic_pass"
+        assert all(receipt["original_grade"]["tiers"][tier]["status"] == "pass" for tier in ("L0", "L1", "L2"))
+        assert "native_exploration" not in receipt
+        observations.append((path, raw))
+        return projection(self, [90, 110])
+
+    monkeypatch.setattr(N.PublicNativeExploration, "observe_member", neutral_native)
+    monkeypatch.setattr(FAST.CR, "simulator_adapter", lambda *a: "neutral")
+    monkeypatch.setattr(C, "package_sandbox_policy", lambda *a: "neutral")
+    monkeypatch.setattr(C, "boxed_entrypoints", lambda *a: nullcontext())
+    monkeypatch.setattr(D.PublicSourceDiagnosticPolicy, "compiler_execution", lambda *a, **kw: nullcontext())
+    monkeypatch.setattr(FAST, "compiled_observation", lambda *a, **kw: {"status": "UNKNOWN"})
+    monkeypatch.setattr(FAST, "observe_passed_census", lambda *a, **kw: {"status": "UNKNOWN"})
+    monkeypatch.setattr(
+        FAST.CR,
+        "run_capsule",
+        lambda *a, **kw: {
+            "status": "incomplete",
+            "checked_source_status": "complete_source_L0_L1_L2_diagnostic_pass",
+            "tiers": {tier: {"status": "pass"} for tier in ("L0", "L1", "L2")},
+        },
+    )
+    owner = N.prepare_public_native_exploration(selected)
+    policy = D.prepare_public_source_diagnostic(**args, native_exploration=owner)
+    store = RetainedRevisionStore(
+        tmp_path / "native-retained",
+        edit_authority=policy.edit_authority,
+        max_bytes=1 << 20,
+        max_files=100,
+        max_total_bytes=4 << 20,
+    )
+    revision, baseline = store.freeze(args["candidate"]), store.freeze(args["baseline"])
+    result = policy.evaluate_retained(
+        revision,
+        baseline,
+        work_root=args["work_root"] / "native-hook",
+        call_index=0,
+        timeout_s=120,
+        selected_members=tuple(sorted(policy.validate_search_inputs())),
+    )
+    assert result["schema"] == D.NATIVE_FEEDBACK_SCHEMA
+    assert result["promotion"] == "DIAGNOSTIC_ONLY" and result["screening"]["status"] == "UNKNOWN"
+    assert policy._ordinary_screen is None
+    assert observations and all(path.read_bytes() == raw for path, raw in observations)
+    for cell in result["cells"]:
+        for arm in ("baseline", "candidate"):
+            value = cell[arm]
+            assert value["timing_cycles"] is None and value["pending_tiers"] == ["L3"]
+            assert value["native_exploration"]["prediction"]["status"] == "qualified_native"
+            assert value["native_exploration"]["measured_cycles"] is None
+    FAST.validate_feedback(result, policy=policy, revision=revision, kind=FAST.SELECTED_KIND)
