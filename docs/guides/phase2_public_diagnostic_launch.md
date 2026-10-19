@@ -73,6 +73,18 @@ that scope. Every actual compiler-binding callback and native runtime/semantics
 check still executes; subsequent records enter new fresh scopes. The original
 profile, corpus, baseline, source and numerical checks are unchanged.
 
+The original host may explicitly select
+`metadata_protocol="merlin.public_native_metadata.v1"` during preparation.
+This privately issues one exact ordered registry of the selected Count,
+native-semantics and bridge capabilities. One pure selection-record operation
+then checks these original owners at entry and exit while retaining every
+getter's object, implementation, source and full binding checks. Arbitrary
+containing registries and copied records cannot select this protocol. Runtime
+verification and the actual current compiler-binding callback still run on each
+use. Execution, count observation and prediction stay outside the scope.
+Omitting the protocol preserves the original V1 and bridge-only V2 behavior;
+selecting it changes no V2 record semantics or timing qualification.
+
 This explicit selection uses diagnostic feedback version 2. After each original
 complete L0/L1/L2/source observation, it runs the existing boxed plain and annotated
 count observer on that same ELF. Its original numerical receipt is unchanged.
