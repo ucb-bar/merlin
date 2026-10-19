@@ -106,7 +106,12 @@ This option is useful for per-record Phase 1 archives with missing original
 counter reviews; it supplies no substitute observations or native event prices.
 
 `compare` reports diagnostic estimates without a qualification receipt. Its
-qualified intervals and ordering require `--qualification receipt.json`, where
+per-case `screen_terms` retain observed feature counts, fitted coefficients and
+additive estimated-cycle contributions. These explain the empirical estimate;
+they do not measure physical resource stalls, latency or overlap. Out-of-domain
+cases have no contribution estimate.
+
+Qualified intervals and ordering require `--qualification receipt.json`, where
 the receipt contains the exact original `dataset` and its `report`. The tool
 recomputes validation rather than trusting a supplied success flag. Only separated
 empirical intervals decide an ordering; overlapping or unqualified intervals do

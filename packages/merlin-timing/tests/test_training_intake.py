@@ -5,6 +5,7 @@ import copy
 import pytest
 from data_helpers import sample
 from merlin_timing import contracts as C
+from merlin_timing import feedback as B
 from merlin_timing import fitting as F
 from merlin_timing import validation as V
 
@@ -82,3 +83,28 @@ def test_explicit_relative_loss_optimizes_training_relative_error_and_is_rebuilt
     relative["fit_loss"] = "absolute_squared"
     with pytest.raises(C.ContractError):
         V.validate(data, relative)
+
+
+def test_feedback_exposes_observed_terms_without_claiming_hardware_attribution():
+    data = sample()
+    model = F.fit(data, loss="relative_squared")
+    cases = {
+        "schema": C.CASES,
+        "profile": data["profile"],
+        "domain": data["domain"],
+        "cases": [
+            {
+                "case_id": "case",
+                "workload_sha256": data["cases"][0]["workload_sha256"],
+                "features": {"host_instructions": 10},
+            }
+        ],
+    }
+    result = B.compare(model, cases)["cases"][0]
+    terms = result["screen_terms"]
+    assert terms["fixed_cycles"] + sum(r["estimated_cycles"] for r in terms["features"]) == result["estimated_cycles"]
+    assert terms["features"][0]["observed_count"] == 10
+    assert "not physical" in terms["interpretation"]
+    assert result["status"] == "diagnostic" and result["interval"] is None
+    cases["cases"][0]["features"]["host_instructions"] = 1000
+    assert B.compare(model, cases)["cases"][0]["screen_terms"] is None

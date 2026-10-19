@@ -47,6 +47,21 @@ def compare(screen: dict, cases: dict, *, qualification: dict | None = None) -> 
                 "estimated_cycles": prediction,
                 "interval": interval if authorized else None,
                 "diagnostic_interval": interval,
+                "screen_terms": {
+                    "fixed_cycles": screen["fixed_cycles"],
+                    "features": [
+                        {
+                            "name": name,
+                            "observed_count": case["features"][name],
+                            "coefficient": screen["coefficients"][name],
+                            "estimated_cycles": case["features"][name] * screen["coefficients"][name],
+                        }
+                        for name in screen["feature_names"]
+                    ],
+                    "interpretation": "correlated screening terms; not physical latency, stall or overlap attribution",
+                }
+                if prediction is not None
+                else None,
                 "status": "qualified_screen" if authorized and interval else "diagnostic",
                 "reason": reason or (None if authorized else "no qualified held-out screen receipt"),
             }
