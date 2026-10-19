@@ -553,9 +553,10 @@ def _prepare_model_mlir(
         if respect_captured_quantization_scope:
             from ...llvmlower.quant_scope import captured_quantized_contraction
 
-            apply_quant(
-                module,
+            _lean_stages.run(
+                "prepare-quantize-int8", apply_quant, module,
                 list(selected_passes),
+                _record_nested=False,
                 named_contraction=named_contraction,
                 prequant_gather=prequant_gather,
                 report_out=_qrep,
@@ -566,9 +567,10 @@ def _prepare_model_mlir(
                 "contraction_int8 only; conv/nonlinear integer approximation passes disabled"
             )
         else:
-            apply_quant(
-                module,
+            _lean_stages.run(
+                "prepare-quantize-int8", apply_quant, module,
                 list(selected_passes),
+                _record_nested=False,
                 named_contraction=named_contraction,
                 prequant_gather=prequant_gather,
                 report_out=_qrep,
@@ -1128,6 +1130,17 @@ def prepare_for_lowering(
                 f"`routing_rule`."
             )
 
+    from ...verify.lean import stages as _lean_stages
+
+    _routing_before = None
+    if device is not None and _lean_stages.enabled():
+        _routing_before = Path(prepared).read_text()
+        _previous = _lean_stages.completed(_lean_stages._dir())[-1]
+        _lean_stages.record_boundary(
+            "prepare-routing-prefix", f"{__name__}.prepare_for_lowering",
+            (_previous / "after.mlir").read_text(), _routing_before,
+        )
+
     # DEVICE OFFLOAD, for the same reason and in the same place as the matrix routing above: a
     # contraction that has become a call is no longer on the vector path, so the register-block table
     # below must be derived from the IR that REMAINS. Inert unless a routing was supplied, and inert
@@ -1181,6 +1194,14 @@ def prepare_for_lowering(
             f"[device] routed {moved.moved} {_grain}(s) to {device.device} across "
             f"{len(moved.signatures)} signature(s)"
             + (f"; declined: {[why for _s, why in moved.skipped]}" if moved.skipped else "")
+        )
+
+    if _routing_before is not None:
+        _lean_stages.record_boundary(
+            "prepare-device-routing", "merlin.llvmlower.device_offload.rewrite_prepared_file",
+            _routing_before, Path(prepared).read_text(),
+            extra={"claim_type": "contractSeam", "trust_class": "assumed",
+                   "reason": "device routing contract is outside verified preparation"},
         )
 
     # The register-group-width REQUEST, resolved for the same reason the per-op block table is: the

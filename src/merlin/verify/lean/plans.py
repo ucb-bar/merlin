@@ -148,7 +148,7 @@ def preprocessing() -> Plan:
     return Plan("lower_model structural preprocessing only", tuple(boundaries), "individual-preprocessing-boundaries")
 
 
-def preparation() -> Plan:
+def preparation(*, int8_compute: bool = False, routing: bool = False) -> Plan:
     """Authored ordinary shared-preparation hook roster (no selected optional mutations).
 
     Configuration admission is performed before entry by ``preparation.capture``. The final slot
@@ -171,8 +171,22 @@ def preparation() -> Plan:
         ("prepare-print", "merlin.xdsl_dialects._common.text"),
         ("prepare-finish", "merlin.runtime.backends.zephyr_model.prepare_for_lowering"),
     )
+    if int8_compute:
+        index = next(i for i, slot in enumerate(slots) if slot[0] == "prepare-lower-quant-ext")
+        slots = (*slots[:index], ("prepare-quantize-int8", f"{lower}.quant_passes.apply_quant"), *slots[index:])
+    if routing:
+        slots = (
+            *slots[:-1],
+            ("prepare-routing-prefix", "merlin.runtime.backends.zephyr_model.prepare_for_lowering"),
+            ("prepare-device-routing", f"{lower}.device_offload.rewrite_prepared_file"),
+            slots[-1],
+        )
     return Plan(
-        "ordinary shared preparation only; no optional mutations or provider routing",
+        (
+            "shared preparation with explicit assumed device routing; no optional mutations"
+            if routing
+            else "ordinary shared preparation only; no optional mutations or provider routing"
+        ),
         tuple(Boundary(*slot) for slot in slots),
         "recorded-preparation-hooks-and-composite-tail",
     )

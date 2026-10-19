@@ -35,6 +35,8 @@ class CapturedPreparation:
     index_bits: int
     compiler_python: Path
     fingerprints: tuple[tuple[str, str], ...]
+    int8_compute: bool = False
+    routing: bool = False
 
     @property
     def manifest(self) -> Path:
@@ -51,11 +53,50 @@ def _admit(*, int8_compute, quant_passes, features, matrix, device, outline_int8
         for entry in optional_passes.REGISTRY
         if entry.switch and os.environ.get(entry.switch) == "1" and selection.state(entry.name) is not False
     ]
-    if int8_compute or quant_passes is not None:
+    from merlin.llvmlower.quant_passes import compute_passes
+    from merlin.llvmlower.quant_scope import FEATURE as captured_scope
+
+    allowed = frozenset({captured_scope}) if int8_compute else frozenset()
+    if int8_compute:
+        if (
+            features != allowed
+            or quant_passes is None
+            or tuple(quant_passes) != ("contraction_int8",)
+            or compute_passes(quant_passes) != ("contraction_int8",)
+        ):
+            raise ValueError("preparation int8 requires captured scope and exactly contraction_int8")
+    elif quant_passes is not None:
         raise ValueError("preparation capture does not yet cover selected integer quantization")
-    if features or effective_features or selection.enable or legacy or os.environ.get("MERLIN_VEC_RANK"):
+    if (
+        frozenset(features or ()) - allowed
+        or effective_features - allowed
+        or selection.enable
+        or legacy
+        or os.environ.get("MERLIN_VEC_RANK")
+    ):
         raise ValueError("preparation capture does not yet cover optional mutations or effective policy selections")
-    if matrix is not None or device is not None or outline_int8 or prepared_model_transform is not None:
+    if device is not None:
+        from merlin.llvmlower.device_build import DeviceRouting
+        from merlin.llvmlower.device_offload import BY_GROUP
+
+        if (
+            type(device) is not DeviceRouting
+            or device.granularity != BY_GROUP
+            or any(
+                getattr(device, name, None) is not None
+                for name in (
+                    "prepared_transform",
+                    "catalog_builder",
+                    "post_offload_transform",
+                    "final_elf_audit",
+                    "exact_selection",
+                    "catalog_manifest",
+                    "catalog_object",
+                )
+            )
+        ):
+            raise ValueError("preparation routing requires plain group routing without provider callbacks")
+    if matrix is not None or outline_int8 or prepared_model_transform is not None:
         raise ValueError("preparation capture does not cover routing, outlining or provider callbacks")
 
 
@@ -90,7 +131,7 @@ def capture(
         prepared_model_transform=prepared_model_transform,
     )
     # Resolve the roster before executing even the parser. No expectation comes from stage records.
-    expected = plans.preparation()
+    expected = plans.preparation(int8_compute=int8_compute, routing=device is not None)
     from merlin.runtime.backends.zephyr_model import prepare_for_lowering
 
     from .handoff import _inventory
@@ -139,7 +180,7 @@ def capture(
         outline_int8=outline_int8,
         prepared_model_transform=prepared_model_transform,
     )
-    if concrete:
+    if frozenset(concrete) != frozenset(features or ()):
         raise ValueError("ordinary preparation unexpectedly selected concrete features")
     published, fingerprints = _inventory(recording)
     plans.replay(expected, evidence / "expected-plan.json", recording.root)
@@ -154,13 +195,14 @@ def capture(
             "status": "captured_unverified",
             "scope": expected.scope,
             "configuration": {
-                "int8_compute": False,
-                "quant_passes": None,
-                "features": [],
+                "int8_compute": int8_compute,
+                "quant_passes": list(quant_passes) if quant_passes is not None else None,
+                "features": sorted(features or ()),
                 "blocking": blocking,
                 "harts": harts,
                 "vlen": vlen,
-                "routing_or_provider_callback": False,
+                "routing_or_provider_callback": device is not None,
+                "routing_trust_class": "assumed" if device is not None else None,
                 "optional_policy_enables": [],
             },
             "plan_sha256": expected.sha256,
@@ -182,6 +224,8 @@ def capture(
         options.index_bits,
         options.compiler_python,
         tuple(sorted(fingerprints.items())),
+        int8_compute,
+        device is not None,
     )
 
 
@@ -189,10 +233,15 @@ def validate(captured: CapturedPreparation, options: Options, source: bytes) -> 
     """Recheck an untrusted retained prefix against actual inputs; this grants no semantic proof."""
     from .handoff import _inventory
 
-    expected = plans.preparation()
+    if captured.routing:
+        raise ValueError("assumed routing seam requires segmented composition; not a refinement chain")
+    expected = plans.preparation(int8_compute=captured.int8_compute)
     if captured.plan != expected:
         raise ValueError("retained capture differs from the independently authored preparation roster")
-    if captured.features:
+    from merlin.llvmlower.quant_scope import FEATURE as captured_scope
+
+    allowed = frozenset({captured_scope}) if captured.int8_compute else frozenset()
+    if captured.features != allowed:
         raise ValueError("retained capture claims unchecked concrete preparation features")
 
     if (captured.function, captured.index_bits, captured.compiler_python) != (
