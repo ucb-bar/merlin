@@ -83,9 +83,9 @@ def source_observation(text):
         from merlin.targetgen.contract.interface_emit import parse_interface_mlir
 
         cb = parse_interface_mlir(text)
-        from merlin.perf.offload import offload_report
+        from merlin.perf.work_volume import work_from_command_buffer
 
-        work = offload_report(cb)
+        work = work_from_command_buffer(cb)
         tensors = {name: {key: spec.get(key) for key in ("shape", "dtype", "role")}
                    for name, spec in cb.get("tensors", {}).items()}
         return {"status": "observed", "grammar": "public_interface", "tensors": tensors,
@@ -94,9 +94,10 @@ def source_observation(text):
                                 "numeric_attributes": {key: value for key, value in row.get("attributes", {}).items()
                                                        if key in NUMERIC_ATTRIBUTES}}
                                for i, row in enumerate(cb.get("commands", []))],
-                "macs": None if work.routed_is_lower_bound else work.routed_macs,
+                "macs": work.exact_macs,
                 "reduction_domain_points": None,
-                "work_basis": "original interface command geometry; unsupported work remains UNKNOWN",
+                "work_basis": "original interface, canonical command semantics; unsupported work remains UNKNOWN",
+                "work_refusals": list(work.refusals),
                 "semantic_equivalence": "UNKNOWN", "source_numeric_contract": "declared attributes only"}
     from merlin.frontends.linalg_mlir import parse_mlir_text
 

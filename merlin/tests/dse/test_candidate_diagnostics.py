@@ -109,3 +109,33 @@ llvm.return } }'''
     changed = deepcopy(cb)
     changed["params"]["global_program_plan"]["source_sha256"] = "b" * 64
     assert observe(changed)["status"] == "refused"
+
+
+def test_interface_source_work_resolves_resident_rhs_from_original_semantics():
+    from merlin.perf.candidate_source import source_observation
+    from merlin.targetgen.contract.interface_emit import emit_interface_mlir
+
+    cb = {"target": "test_unit", "tensors": {
+        "A": {"shape": [2, 3], "dtype": "i8", "role": "input"},
+        "W": {"shape": [3, 4], "dtype": "i8", "role": "weight"},
+        "Y": {"shape": [2, 4], "dtype": "i32", "role": "output"}}, "commands": [
+        {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "private_weight"}, "attributes": {}},
+        {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A", "rhs": "private_weight", "dst": "partial"},
+         "attributes": {}},
+        {"opcode": "COMMIT", "operands": {"src": "partial", "dst": "Y"}, "attributes": {"output_dtype": "i32"}},
+        {"opcode": "EVICT", "operands": {"handle": "private_weight"}, "attributes": {}}]}
+    observed = source_observation(emit_interface_mlir(cb))
+    assert observed["macs"] == 24 and observed["work_refusals"] == []
+
+
+def test_elementwise_lhs_and_destination_shapes_do_not_invent_contraction_macs():
+    from merlin.perf.candidate_source import source_observation
+    from merlin.targetgen.contract.interface_emit import emit_interface_mlir
+
+    cb = {"target": "test_unit", "tensors": {
+        name: {"shape": [17, 16], "dtype": "i8", "role": "output" if name == "Y" else "input"}
+        for name in ("A", "B", "Y")}, "commands": [{"opcode": "RESIDUAL_ADD",
+        "operands": {"lhs": "A", "rhs": "B", "dst": "Y"}, "attributes": {}}]}
+    observed = source_observation(emit_interface_mlir(cb))
+    assert observed["macs"] is None
+    assert "RESIDUAL_ADD" in observed["work_refusals"][0]
