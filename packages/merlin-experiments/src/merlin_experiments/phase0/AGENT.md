@@ -18,6 +18,16 @@ unchanged. Unknown semantics, source aliases, failed lineage and parse-budget
 denials refuse without partial files. Do not infer compiler or model numerical
 qualification from a newer release used only as a private-source inventory.
 
+`operator_dense_projection` is private transient exclusion intake, never compiler
+input or an execution transform. Hash every original byte and preserve the
+existing typed canonicalizer. Resource placeholders are allowed only for checked
+immediate-function-body dense initializers, whose values the original projection
+already omits. Check full hexadecimal storage length, original registered literal
+grammar, every marker's actual typed owner, and independent streaming/compact/
+decoded-memory ceilings. Never elide contraction-region constants, unknown
+elements or unbounded literal forms; no projected source leaves enter author
+inputs or publication. Original ordinary-source intake remains unchanged.
+
 `sealed_native_program` reopens original sealed native stages with complete
 integral golden.json outputs, exact source leaves and receipt-bound metadata.
 Relocate metadata paths only; never modify captured bytes or use lossy output-zero
