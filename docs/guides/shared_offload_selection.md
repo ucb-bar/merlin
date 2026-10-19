@@ -345,6 +345,15 @@ selection, current source/resource/numerical context and sidecar identities. The
 and custody; they do not decode arbitrary backend output or prove the target's
 numerical, ownership or completion behavior.
 
+Each selection boundary obtains its record through one complete live check of
+the actual routing. Original selector and cost callbacks still have their
+required checks before and after execution. A lookup of the already-bound
+source returns its current operations only after full validation; a reparsed
+module is independently read and bound to its own operation objects. No prior
+verdict or file hash is reused across these boundaries. For an explicit record
+inspection against a routing copy, use `selection.record(routing=current)`;
+changing that copy's numerical policy or resources requires replanning too.
+
 This route refuses group routing, catalogs and `ExactOffloadSelection` mixing.
 An opaque `prepared_model_transform` or later `post_offload_transform` ABI rewrite
 is unsupported. An original `DeviceRouting.prepared_transform` may retain an
