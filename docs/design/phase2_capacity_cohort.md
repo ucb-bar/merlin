@@ -162,6 +162,59 @@ floor arithmetic, cohort membership, objective weights or the frozen attainment 
 The existing `search_priorities` savings view and the feedback roofline cells are unchanged. They now
 receive a movement term on the facts-only route as well.
 
+### Automating roofline evidence construction
+
+Part of this construction already runs automatically. Phase 0's
+`capacity_families.derive_basis` derives geometry, capacities and movement ports from
+the selected facts, and `_roofline` constructs staged bounds for generated template
+work. Ordinary Phase 2 feedback separately derives contraction extents and declared
+operand volumes through `feedback_metrics`, then calls `capsule_roofline`. These
+paths cover their supported source declarations; they do not interpret every typed
+program or establish complete execution costs.
+
+Other existing observations remain separate. `component_source_demand` derives
+bounded logical work, payloads, dependencies, aliases, epochs and liveness from an
+original checked tensor program. `component_compiled_features` reopens the original
+public source and ABI before using that analysis. The ordinary feedback contraction
+reader does not yet consume this `component_program` evidence. Candidate diagnostics
+also emit `candidate_cost_graph`: verified source/host ownership can be present,
+while device multiplicity, physical bytes, execution lanes and service intervals
+remain UNKNOWN. Its conditional composition helper has no production timing/ranking
+connection. Logical payloads and static instructions cannot fill those gaps.
+
+The smallest next connection is a versioned source-bound input record at the
+existing public component generation/feature boundary. Reuse the checked tensor
+analyzer and source-demand owner to derive shapes and required arithmetic, original
+publication, and logical reuse/liveness; join those records to the existing selected
+facts extractors and reviewed software effects. Preserve source/ABI, hardware,
+software, numerical-policy and boundary identities, and retain each missing term's
+full reason. This is one adapter between existing owners, not another general
+measurement harness or a new roofline formula.
+
+Required work needs its own check. The current source-demand report counts eager
+nodes and declared input payloads; dead nodes and unused inputs are not compulsory
+work or traffic. Reconcile the original output-reachable SSA cone, including aliases
+and update epochs, or initially refuse programs whose required-work proof is absent.
+Even live operation counts are not a universal arithmetic lower bound when the
+selected numerical contract permits a cheaper equivalent algorithm. Public development
+sources supply this analysis; protected validation programs and answers stay outside
+compiler-author inputs.
+
+Target integration still needs one reviewed, versioned mapping from software/ISA
+arithmetic, layouts, memory effects and completion to RTL resources and qualified
+execution. Once established for a domain, the same mapping can serve new shapes
+automatically, with resource/domain checks and identity revalidation. This avoids
+manual per-capsule target recipes. Physical interface crossings, beat/burst behavior,
+resident or warm state, accelerator-feeding host costs and legal overlap remain
+UNKNOWN until their respective evidence exists. A conservative numeric lower bound
+is different from a constructively legal, independently qualified attainable schedule.
+
+Checked emitted instructions and actual transfer/host observations can explain the
+candidate's distance from its frozen bound. They cannot redefine required work or
+raise the candidate's own objective floor. New construction must first produce
+reviewable diagnostic inputs, then enter a separately admitted future cohort; it
+does not change an active cohort's floors, membership, weights or attainment target.
+
 ## D. Calibration validation (design and selection; not run)
 
 This step runs once, after Phase 1 and before Phase 2, on the RTL simulator (`$target_oracle:L3`).
