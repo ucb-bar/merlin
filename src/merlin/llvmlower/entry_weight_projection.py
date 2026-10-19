@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
 from hashlib import sha256
 from io import StringIO
@@ -25,6 +25,7 @@ from xdsl.dialects.builtin import (
     FunctionType,
     ModuleOp,
     NoneAttr,
+    StringAttr,
     SymbolRefAttr,
     TensorType,
 )
@@ -488,6 +489,37 @@ def apply_entry_weight_projection(module: ModuleOp, projection: EntryWeightProje
     return selected
 
 
+def rename_projected_entry(module: ModuleOp, projection: EntryWeightProjection, symbol: str):
+    """Reprove an exact entry rename before regenerating namespaced callers.
+
+    The original generated-caller contract already refuses address escapes and
+    unknown symbolic users. No ABI alias is inferred from a requested spelling.
+    The caller still owns renaming its compiled entry to the returned symbol.
+    """
+    if not isinstance(symbol, str) or not symbol.isascii() or not symbol.isidentifier():
+        raise ValueError("projected entry symbol must be an ASCII identifier")
+    apply_entry_weight_projection(module, projection)
+    renamed = module.clone()
+    entry, calls = _validate(renamed, projection.contract, projection.argument_table)
+    for operation in renamed.body.block.ops:
+        interface = operation.get_trait(SymbolOpInterface)
+        name = interface.get_sym_attr_name(operation) if interface is not None else None
+        if name is not None and name.data == symbol and operation is not entry:
+            raise ValueError("projected entry rename collides with an existing symbol")
+    entry.sym_name = StringAttr(symbol)
+    for call in calls:
+        call.properties["callee"] = SymbolRefAttr(symbol)
+    renamed.verify()
+    plan = plan_entry_weight_projection(
+        renamed, entry_contract=replace(projection.contract, entry_symbol=symbol),
+        argument_table=projection.argument_table)
+    if (plan.original_to_projected != projection.original_to_projected or
+            plan.erased_operations != projection.erased_operations or
+            plan.direct_calls_rewritten != projection.direct_calls_rewritten):
+        raise ValueError("projected entry rename changed its argument or arithmetic proof")
+    return renamed, plan
+
+
 def prepare_entry_weight_projection(prepared: Path, work: Path, model_dir: Path, contract: GeneratedDispatchABI | None):
     """Normal post-preparation seam; None returns the original path with no I/O."""
     if contract is None:
@@ -506,6 +538,8 @@ def prepare_entry_weight_projection(prepared: Path, work: Path, model_dir: Path,
     path.write_text(module_text(selected))
     receipt = {
         "schema": "merlin.entry_weight_projection.v1",
+        "source_path": str(prepared.resolve()),
+        "source_file_sha256": _pin(prepared).sha256,
         **asdict(plan),
         "argument_table_sha256": table.identity,
         "selected_path": str(path.resolve()),

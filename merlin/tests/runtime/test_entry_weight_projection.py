@@ -524,7 +524,7 @@ def test_normal_upstream_rv64_and_native_ciface_keep_exact_outputs(tmp_path):
     assert built["n_args"] == 5 and built["weights_bytes"] == 20
     record = json.loads((work / "compilation_recipe.json").read_text())
     assert record["status"] == "completed" and "entry_weight_projection" in record["preparation"]
-    result = spike_model.run(built["elf"], mem_bytes=built["mem_bytes"], isa="rv64gc", timeout=60)
+    result = spike_model.run(built["elf"], mem_bytes=built["mem_bytes"], isa="rv64gc_zicntr", timeout=60)
     np.testing.assert_array_equal(result["outputs"], np.array([1, 4, 7, 10, 13], np.float32))
     # Use the exact same upstream LLVM and normal native ABI helper. Both result
     # buffers, multiple invocations and readonly inputs are checked separately.

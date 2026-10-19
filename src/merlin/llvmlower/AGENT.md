@@ -1,5 +1,11 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`session_projection` rederives saved immutable-entry projections from their
+actual prepared SSA and captured argument sources. Generated session callers
+use checked namespaced proofs; logical state/stream input access maps to the
+projected descriptors. Every selected proof reopens before shared weight
+materialization. Targets own compiled-symbol renaming and final ELF admission.
+
 ## Purpose
 
 `stock_cli` is an explicitly selected scalar transport through stock upstream

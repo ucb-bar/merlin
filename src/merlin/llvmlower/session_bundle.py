@@ -11,12 +11,15 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..common.mlir_query import forward_signature
 from ..common.yaml import load_yaml
 from . import c_runtime
 from .model_runner import parse_forward_signature
+
+if TYPE_CHECKING:
+    from .session_projection import ProgramEntryProjection
 
 
 def _identifier(value: object, where: str) -> str:
@@ -231,8 +234,23 @@ def rename_forward(mlir_text: str, entrypoint: str) -> str:
     return "".join(out)
 
 
-def _adapter_source(index: int, program: Program, invoke_name: str) -> str:
+def _adapter_source(index: int, program: Program, invoke_name: str,
+                    original_to_projected: tuple[int | None, ...] | None = None) -> str:
     prefix = f"merlin_stage_{index}"
+    remap, remap_input = "", ""
+    if original_to_projected is not None:
+        if len(original_to_projected) < len(program.inputs):
+            raise ValueError("projected adapter lacks captured input slots")
+        rows = "\n".join(f"    case {i}: return {mapped};"
+                         for i, mapped in enumerate(original_to_projected) if mapped is not None)
+        remap = f'''static int original_input_arg(int arg) {{
+  switch (arg) {{
+{rows}
+    default: return -1;
+  }}
+}}
+'''
+        remap_input = "  arg = original_input_arg(arg);\n"
     return f'''/* Generated multi-program stage adapter. */
 #include <stddef.h>
 #include "merlin_model.h"
@@ -240,6 +258,7 @@ def _adapter_source(index: int, program: Program, invoke_name: str) -> str:
 #include "model_io.h"
 extern void {invoke_name}(void **);
 static merlin_descriptor_t DESCS[MERLIN_N_ARGS];
+{remap}\
 static size_t arg_bytes(const merlin_arg_t *arg) {{
   size_t n = (size_t)arg->elem_size;
   for (int i = 0; i < arg->rank; i++) n *= (size_t)arg->dims[i];
@@ -259,10 +278,12 @@ int {prefix}_run(const void *weights, long step, int validate) {{
   return 0;
 }}
 void *{prefix}_input(int arg) {{
+{remap_input}\
   return arg >= 0 && arg < MERLIN_N_ARGS && MERLIN_ARGS[arg].kind == MERLIN_INPUT
       ? MERLIN_INPUT_PTR[arg] : 0;
 }}
 size_t {prefix}_input_bytes(int arg) {{
+{remap_input}\
   return arg >= 0 && arg < MERLIN_N_ARGS && MERLIN_ARGS[arg].kind == MERLIN_INPUT
       ? arg_bytes(&MERLIN_ARGS[arg]) : 0;
 }}
@@ -429,11 +450,15 @@ long merlin_session_quality_output_lastdim(void);
 
 
 def generate(root: str | Path, out_dir: str | Path, *,
-             materialize_weights: bool = True) -> dict[str, Any]:
+             materialize_weights: bool = True,
+             entry_projections: dict[str, ProgramEntryProjection] | None = None) -> dict[str, Any]:
     """Generate stage-local runtime artifacts plus a cross-stage scheduler."""
     if type(materialize_weights) is not bool:
         raise TypeError("materialize_weights must be a bool")
     session = load(root)
+    selections = {} if entry_projections is None else dict(entry_projections)
+    if not set(selections) <= set(session.program_names):
+        raise ValueError("session entry projection names an unknown program")
     out = Path(out_dir).resolve()
     out.mkdir(parents=True, exist_ok=True)
     records: list[dict[str, Any]] = []
@@ -442,6 +467,13 @@ def generate(root: str | Path, out_dir: str | Path, *,
         invoke = "merlin_invoke" if index == 0 else f"merlin_stage_{index}_invoke"
         stage_out = out / f"stage_{index}_{program.name}"
         weight_options = {} if materialize_weights else {"materialize_weights": False}
+        projected_source = None
+        if program.name in selections:
+            from .session_projection import generation_options
+
+            options, projected_source = generation_options(
+                selections[program.name], entrypoint=entrypoint, out=stage_out)
+            weight_options.update(options)
         info = c_runtime.generate(program.bundle, stage_out, program.bundle / "inputs.npz",
                                   ciface_name=entrypoint, invoke_name=invoke,
                                   **weight_options)
@@ -452,9 +484,11 @@ def generate(root: str | Path, out_dir: str | Path, *,
             raise ValueError(
                 f"stage {program.name!r} bundle {program.bundle} carries {info['n_qinner']} "
                 "quant-inner tensor(s); the session lowering does not lift them to arguments")
+        remap = (tuple(selections[program.name].projection.original_to_projected)
+                 if program.name in selections else None)
         (stage_out / "stage_adapter.c").write_text(
-            _adapter_source(index, program, invoke), encoding="utf-8")
-        renamed = rename_forward(
+            _adapter_source(index, program, invoke, remap), encoding="utf-8")
+        renamed = projected_source if projected_source is not None else rename_forward(
             (program.bundle / "model.mlir").read_text(encoding="utf-8"), entrypoint)
         (stage_out / "model.renamed.mlir").write_text(renamed, encoding="utf-8")
         weights = stage_out / "weights.bin"
@@ -488,6 +522,7 @@ def generate(root: str | Path, out_dir: str | Path, *,
 
 def materialize_shared_weights(
     session: MultiProgramSession, manifest: dict[str, Any], out_dir: str | Path,
+    *, entry_projections: dict[str, ProgramEntryProjection] | None = None,
 ) -> dict[str, Any]:
     """Materialize one verified weight blob for a session with a shared layout.
 
@@ -497,6 +532,9 @@ def materialize_shared_weights(
     Target linkers can then package it in their own object format.
     """
     rows = manifest.get("programs")
+    selections = {} if entry_projections is None else dict(entry_projections)
+    if not set(selections) <= set(session.program_names):
+        raise ValueError("session entry projection names an unknown program")
     if not isinstance(rows, list) or len(rows) != len(session.programs):
         raise ValueError("session weight manifest differs from its program schedule")
     selected: tuple[Program, dict[str, Any]] | None = None
@@ -504,6 +542,19 @@ def materialize_shared_weights(
     for program, row in zip(session.programs, rows, strict=True):
         if not isinstance(row, dict) or row.get("name") != program.name:
             raise ValueError("session weight manifest differs from its program schedule")
+        if (row.get("entry_projection") is not None) != (program.name in selections):
+            raise ValueError("shared weight materialization needs its selected entry projection")
+        if program.name in selections:
+            from merlin.common import mlir_query
+
+            from .entry_weight_projection import apply_entry_weight_projection
+
+            selected_projection = selections[program.name]
+            proof = selected_projection.projection
+            apply_entry_weight_projection(mlir_query.parse(selected_projection.source), proof)
+            if (row["entry_projection"]["argument_table_sha256"] != proof.argument_table.identity or
+                    row["entry_projection"]["original_to_projected"] != list(proof.original_to_projected)):
+                raise ValueError("shared weight manifest differs from its current projection proof")
         size, digest = row.get("weights_bytes"), row.get("weights_sha256")
         if (type(size) is not int or size < 0 or not isinstance(digest, str)
                 or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest)):
@@ -522,15 +573,25 @@ def materialize_shared_weights(
     out = Path(out_dir).resolve()
     if out.exists() or out.is_symlink():
         raise ValueError("shared weight output directory must be fresh")
+    weight_options = {}
+    if program.name in selections:
+        from .session_projection import generation_options
+
+        weight_options, _ = generation_options(
+            selections[program.name], entrypoint=row["entrypoint"], out=out)
+    if (row.get("entry_projection") is not None) != bool(weight_options):
+        raise ValueError("shared weight materialization needs its selected entry projection")
     info = c_runtime.generate(
         program.bundle, out, program.bundle / "inputs.npz",
         ciface_name=row["entrypoint"], invoke_name=row["invoke"],
         materialize_weights=True,
+        **weight_options,
     )
     blob = out / "weights.bin"
     expected = (row["weights_bytes"], row["weights_sha256"])
     if (blob.is_symlink() or not blob.is_file() or
             (info.get("weights_bytes"), info.get("weights_sha256")) != expected or
+            info.get("entry_projection") != row.get("entry_projection") or
             blob.stat().st_size != expected[0]):
         raise ValueError("materialized shared weights differ from the session manifest")
     with blob.open("rb") as stream:
