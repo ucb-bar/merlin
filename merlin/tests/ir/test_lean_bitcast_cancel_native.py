@@ -8,7 +8,7 @@ from test_lean_defined_conversions import certify
 from test_lean_minmax_commutative_native import compare_expected
 from test_lean_scalar_bitcast_native import values
 
-from merlin.verify.lean.check import check_definedness, check_support, check_typed_stage
+from merlin.verify.lean.check import check_typed_stage
 
 PAIRS = [("i32", "f32"), ("f32", "i32"), ("i64", "f64"), ("f64", "i64")]
 
@@ -80,14 +80,11 @@ def test_rejected_bitcast_mutation_changes_independent_native_reference(tmp_path
 
 
 @pytest.mark.parametrize("src,mid", [("i32", "f32"), ("f32", "i32")])
-def test_pure_identity_generic_native_matches_while_alias_rule_is_missing(tmp_path, fidelity_tools, src, mid):
+def test_identity_generic_native_matches_with_a_defined_return_chain(tmp_path, fidelity_tools, src, mid):
     selected = SimpleNamespace(m2m_python=fidelity_tools.compiler_python)
     stage, before, after = stage_for(tmp_path, selected, body_source(src, mid, accumulate=False))
     assert "linalg.generic" not in after.read_text()
-    for checker, name in [(check_support, "support"), (check_definedness, "defined")]:
-        result = checker(before, "forward", tmp_path / name, m2m_python=selected.m2m_python)
-        assert result["verdict"] == "verified", result.get("reason")
-    assert check_typed_stage(stage, m2m_python=selected.m2m_python)["verdict"] == "abstracted"
+    certify(stage, before, selected, tmp_path)
     data = values(32)
     samples = [[[x, x ^ 0xFFFFFFFF, x], [17, 37, 59], [183771 + n]] for n, x in enumerate(data)]
     expected = [[*sample[0], sample[2][0]] for sample in samples]

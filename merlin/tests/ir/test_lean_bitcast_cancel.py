@@ -119,13 +119,10 @@ def test_unmodelled_float_bitcast_is_still_refused(tmp_path, lean_tools, src, mi
 
 
 @pytest.mark.parametrize("src,mid", [("i32", "f32"), ("f32", "i32")])
-def test_eliminating_entire_identity_generic_remains_a_separate_gap(tmp_path, lean_tools, src, mid):
+def test_eliminating_identity_generic_at_return_has_a_defined_chain(tmp_path, lean_tools, src, mid):
     stage, before, after = stage_for(tmp_path, lean_tools, body_source(src, mid, accumulate=False))
     assert "linalg.generic" not in after.read_text()
-    for checker, name in [(check_support, "support"), (check_definedness, "defined")]:
-        result = checker(before, "forward", tmp_path / name, m2m_python=lean_tools.m2m_python)
-        assert result["verdict"] == "verified", result.get("reason")
-    assert check_typed_stage(stage, m2m_python=lean_tools.m2m_python)["verdict"] == "abstracted"
+    certify(stage, before, lean_tools, tmp_path)
 
 
 MUTATE = """
