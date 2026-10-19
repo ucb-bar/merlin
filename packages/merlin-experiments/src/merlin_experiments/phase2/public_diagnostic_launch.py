@@ -15,6 +15,7 @@ import shutil
 import time
 from contextlib import nullcontext
 from pathlib import Path
+from types import MethodType
 
 from merlin.common.cpu_pool import current_thread_owns_cpu_lease, shared_compute_pool
 from merlin.targetgen.compiler_pass_selection import CompilerPassSelection, restore_original_factory
@@ -168,7 +169,8 @@ def _wait_for_job(pool, job, *, output, report, remaining):
 
 
 def run_plan(
-    plan, clock, *, output, completed=None, native_exploration=None, external_boundary=None, candidate_source=None
+    plan, clock, *, output, completed=None, native_exploration=None, external_boundary=None, candidate_source=None,
+    compiler_pass_selection=None, compiler_pass_preparation=None,
 ):
     """Run under an optional original live envelope; never reconstruct one.
 
@@ -180,6 +182,10 @@ def run_plan(
     ``candidate_source`` is an explicit original-host source directory, not a
     V1 plan field or saved owner. Its bounded bytes must pass the same frozen
     edit authority and retained-source issuer as the initial control revision.
+
+    Explicit live pass preparation runs on both independent copies before edit
+    authority is frozen. It is not a V1 plan field, a saved owner, or scheduling
+    qualification. Both seeds receive the same original host-selected policy.
     """
     from .evaluation_pool import AssignedResources
     from .external_resources import executing_resource_boundary
@@ -200,6 +206,9 @@ def run_plan(
         resources.verify(external_boundary=external_boundary)
         if external_boundary is not None:
             external_boundary.verify(writable_roots=(Path(output).absolute(),))
+        if compiler_pass_selection is not None or compiler_pass_preparation is not None:
+            with shared_compute_pool(timeout_s=min(120, max(0, clock["deadline_unix"] - time.time()))):
+                _validate_preparation(compiler_pass_selection, compiler_pass_preparation)
         return _execute_plan(
             plan,
             clock,
@@ -209,7 +218,59 @@ def run_plan(
             resources=resources,
             external_boundary=external_boundary,
             candidate_source=candidate_source,
+            compiler_pass_selection=compiler_pass_selection,
+            compiler_pass_preparation=compiler_pass_preparation,
         )
+
+
+def _validate_preparation(selection, preparation):
+    from .compiler_pass_preparation import CompilerPassPreparation
+
+    if selection is None and preparation is None:
+        return None
+    if type(selection) is not CompilerPassSelection or type(preparation) is not CompilerPassPreparation:
+        raise StageGateError("diagnostic preparation requires the original live selection and typed host policies")
+    choices = preparation.record()
+    if (selection.factory is None or selection.mechanisms != (choices["mechanism"],)
+            or choices["baseline_policy"] != choices["candidate_policy"]):
+        raise StageGateError("diagnostic preparation requires one original factory and equal seed policies")
+    selection.revalidate()
+    capability = selection.resolve(choices["mechanism"])
+    if capability is None:
+        raise StageGateError("diagnostic preparation lacks its exact original live capability")
+    owner = capability.owner
+    for name in ("prepare_compiler", "check_compiler_binding"):
+        callback = getattr(owner, name, None)
+        if type(callback) is not MethodType or callback.__self__ is not owner:
+            raise StageGateError("diagnostic preparation requires original bound preparation/checker methods")
+    return choices
+
+
+def _prepare_diagnostic_sources(plan, *, output, selection, preparation, library, factory):
+    """Use the existing original preparer; keep raw parent and compared bytes distinct."""
+    from merlin.targetgen.compiler_pass_selection import copy_compiler_source
+
+    from . import campaign
+    from .compiler_pass_preparation import prepare_pair, verify_pair
+
+    _validate_preparation(selection, preparation)
+    if selection.binding.library != library.contract.sha256 or selection.factory.record() != factory.record():
+        raise StageGateError("diagnostic preparation changed its original factory or selected library")
+    original = Path(output) / "original-compiler"
+    raw_sha = campaign.materialize_readonly_tree(Path(plan["compiler"]), original)
+    record = prepare_pair(
+        selection, preparation, original=original, functional_sha256=raw_sha,
+        root=Path(output) / "compiler-preparation",
+    )
+    candidate, baseline = Path(output) / "candidate", Path(output) / "baseline"
+    copy_compiler_source(Path(record["candidate_seed"]["path"]), candidate)
+    comparison_sha = campaign.materialize_readonly_tree(Path(record["baseline"]["path"]), baseline)
+    if (comparison_sha != record["baseline"]["sha256"]
+            or _inventory(candidate) != _inventory(baseline)
+            or _inventory(plan["compiler"]) != plan["compiler_inventory"]):
+        raise StageGateError("diagnostic preparation changed its raw parent or equal comparison seeds")
+    verify_pair(record, selection, functional_sha256=raw_sha)
+    return candidate, baseline, record
 
 
 def _retain_candidate_source(revisions, initial, source, expected_inventory):
@@ -256,7 +317,8 @@ def _create_pool(*, policy, revisions, resources, external_boundary):
 
 
 def _execute_plan(
-    plan, clock, *, output, completed, native_exploration, resources, external_boundary, candidate_source=None
+    plan, clock, *, output, completed, native_exploration, resources, external_boundary, candidate_source=None,
+    compiler_pass_selection=None, compiler_pass_preparation=None,
 ):
     from merlin.perf.phase2_edit_contract import validate_against_package
     from merlin.targetgen.checked_source_model_diagnostic import select_checked_source_diagnostic
@@ -332,26 +394,42 @@ def _execute_plan(
             ):
                 raise StageGateError("original compiler profile or snapshot changed")
             os.environ["MERLIN_TARGET_EXPERIMENT"] = str(target.path)
+            library = restore_selection(json.loads(read_pin(plan["library_selection"]))["selection"])
+            factory = restore_original_factory(plan["factory"])
             candidate, baseline = output / "candidate", output / "baseline"
-            shutil.copytree(plan["compiler"], candidate)
-            campaign.materialize_readonly_tree(candidate, baseline)
-            if _inventory(plan["compiler"]) != original or _inventory(candidate) != original:
-                raise StageGateError("immutable compiler changed during preparation")
+            if compiler_pass_preparation is None:
+                shutil.copytree(plan["compiler"], candidate)
+                campaign.materialize_readonly_tree(candidate, baseline)
+                if _inventory(plan["compiler"]) != original or _inventory(candidate) != original:
+                    raise StageGateError("immutable compiler changed during preparation")
+            else:
+                candidate, baseline, prepared = _prepare_diagnostic_sources(
+                    plan, output=output, selection=compiler_pass_selection,
+                    preparation=compiler_pass_preparation, library=library, factory=factory,
+                )
+                state["compiler_preparation"] = prepared
+                write_json(output / "compiler-preparation-selection.json", prepared)
             edit = json.loads(read_pin(plan["edit_contract"]))
             validate_against_package(edit, candidate)
             authority_root = output / "edit-authority"
             authority_root.mkdir()
             authority = FrozenEditAuthority(authority_root, guidance_contract=output / "contract")
             authority.freeze(candidate, edit, has_iterations=False)
-            library = restore_selection(json.loads(read_pin(plan["library_selection"]))["selection"])
-            factory = restore_original_factory(plan["factory"])
         stages.append({"stage": "original_preflight", "wall_seconds": time.monotonic() - started})
         report("fresh_original_current_source_admission")
         tick = time.monotonic()
-        registry = factory.create(work_root=output / "source-admission")
+        registry = (factory.create(work_root=output / "source-admission") if compiler_pass_selection is None
+                    else compiler_pass_selection.registry)
         with shared_compute_pool(timeout_s=min(120, remaining())):
             # Only the diagnostic source capability is requested. No schedule or timing grant.
-            capability = registry._capabilities[0]
+            if compiler_pass_selection is not None:
+                _validate_preparation(compiler_pass_selection, compiler_pass_preparation)
+            sources = [cap for cap in registry._capabilities if cap.mechanism == "source_execution_diagnostic"]
+            if len(sources) != 1:
+                raise StageGateError("diagnostic launch requires one exact original source execution owner")
+            capability = sources[0]
+            if compiler_pass_selection is not None and capability.binding != compiler_pass_selection.binding:
+                raise StageGateError("diagnostic preparation and source execution bindings differ")
             passes = CompilerPassSelection(
                 registry, capability.binding, mechanisms=("source_execution_diagnostic",), factory=factory
             )
