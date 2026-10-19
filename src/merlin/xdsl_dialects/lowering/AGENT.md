@@ -16,6 +16,9 @@ Plus the **whole-model dialect plane** that brings real model2MLIR modules into 
   Explicit callers own numerical placement and source-obligation accounting.
 - `shared_preparation.py` shares provider-declared deterministic byte-tensor
   preparations across read-only consumers with equivalent static view inputs.
+  Identical closed identity-indexed floating extensions of the same tensor
+  root can share preparation; narrowing, initializer reads and other casts
+  still refuse. Both element types remain part of the equivalence key.
   Keep buffers explicit in SSA, honor effect barriers and live-byte budgets,
   preserve consumer order, and leave representation/numerics to the provider.
 - `private_transport.py` changes private destination-call edge representations

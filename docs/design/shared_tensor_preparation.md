@@ -22,10 +22,16 @@ semantic contract. The provider must qualify numerical equivalence, format,
 layout and synchronous completion, including padding and exceptional inputs.
 The generic pass does not infer those facts from symbols or provenance.
 
-Grouping requires the same SSA root, identical consumer input types and the
-same preparation entry and representation. Static unencoded expand/collapse
-views preserve flat contents; transposes, slices, casts, dynamic extents and
-encoded views do not establish equivalence. Unknown effects split groups.
+Grouping requires equivalent SSA inputs, identical consumer input types and
+the same preparation entry and representation. Static unencoded expand/collapse
+views preserve flat contents. Distinct closed elementwise floating extensions
+also compare equal when they widen the same source SSA through identical
+static types and identity indexing. Their entire scalar body must be exactly
+`arith.extf` followed by its yield, without attributes, initializer reads or
+captures. The key retains both source and destination types; widening never
+makes a narrow tensor equivalent to a wide tensor. Transposes, slices, arbitrary
+casts, dynamic extents and encoded views do not establish equivalence.
+Unknown effects split groups.
 Crossed external calls require read-only inputs and a private, freshly allocated
 write-only destination. Live consumer results and fanout remain visible.
 

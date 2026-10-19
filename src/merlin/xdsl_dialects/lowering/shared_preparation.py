@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import prod
 
-from xdsl.dialects import func, tensor
+from xdsl.dialects import arith, func, tensor
 from xdsl.dialects.builtin import (
     ArrayAttr,
     DictionaryAttr,
@@ -19,7 +19,10 @@ from xdsl.dialects.builtin import (
     StringAttr,
     TensorType,
 )
+from xdsl.dialects.linalg.attrs import IteratorType
+from xdsl.dialects.linalg.ops import GenericOp, YieldOp
 from xdsl.ir import Region
+from xdsl.ir.affine import AffineMap
 
 from .tensor_chains import destination_only_tensor_call, pure_tensor_compute
 
@@ -58,6 +61,41 @@ def contiguous_tensor_root(value):
             break
         value = source
     return value
+
+
+def _preparation_input_key(value):
+    """Equal flat views or identical closed, elementwise floating extensions.
+
+    Extension stays in the key: a rounded narrow value and its widened value
+    never compare equal. Only the same source SSA, input/output types and exact
+    scalar operation establish equivalence; arbitrary casts still stop.
+    """
+    root = contiguous_tensor_root(value)
+    op = root.owner
+    if (not isinstance(op, GenericOp) or not pure_tensor_compute(op)
+            or len(op.inputs) != 1 or len(op.outputs) != 1 or len(op.results) != 1):
+        return root
+    source, destination = op.inputs[0], op.outputs[0]
+    types = (source.type, destination.type, root.type)
+    if (any(not isinstance(t, TensorType) or not isinstance(t.encoding, NoneAttr)
+            or any(d <= 0 for d in t.get_shape()) for t in types)
+            or types[1] != types[2] or types[0].get_shape() != types[1].get_shape()):
+        return root
+    rank = len(types[0].get_shape())
+    if (len(op.iterator_types) != rank
+            or any(it.data != IteratorType.PARALLEL for it in op.iterator_types)
+            or tuple(m.data for m in op.indexing_maps) != (AffineMap.identity(rank),) * 2):
+        return root
+    body = op.body.block
+    steps = tuple(body.ops)
+    if (len(body.args) != 2 or len(steps) != 2
+            or not isinstance(steps[0], arith.ExtFOp) or not isinstance(steps[1], YieldOp)
+            or steps[0].input is not body.args[0]
+            or steps[0].result.type != types[1].element_type
+            or body.args[1].uses or steps[0].attributes or steps[0].properties
+            or tuple(steps[1].operands) != (steps[0].result,)):
+        return root
+    return ("elementwise_extf", types[0], types[1], contiguous_tensor_root(source))
 
 
 def _bytes(spec):
@@ -110,7 +148,7 @@ def share_tensor_preparations(module, select, *, max_live_bytes: int):
                     raise ValueError("shared preparation has invalid consumer argument mapping")
                 size = _bytes(spec)
                 original = op.arguments[spec.input_index]
-                key = (contiguous_tensor_root(original), original.type,
+                key = (_preparation_input_key(original), original.type,
                        spec.prepare_symbol, spec.prepared_type)
                 pending.setdefault(key, []).append((position, op, spec, size))
             groups.extend(pending.values())
