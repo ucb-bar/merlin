@@ -49,23 +49,59 @@ NEW_PASS_POLICY = """def schedule(shape, resources):
 NEW_PASS = """def eliminate(shape, resources):
     return resources["persistent_fields"] >= 2 and all(x > 0 for x in shape)
 """
+NEW_TRANSFORM_POLICY = """def schedule(shape, resources):
+    from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
+    from merlin.compile.scheduling.pointwise_source import PointwiseScheduleRewrite
+    from passes.configuration import compose
+    return (ScheduleBudgets(max_fusions=0, eliminate_configuration=False,
+                            eliminate_copies=False, optimize_storage=True),
+            (PointwiseScheduleRewrite("compose-source", compose),))
+"""
+NEW_TRANSFORM = """def compose(candidate, context):
+    from dataclasses import replace
+    from merlin.compile.scheduling.pointwise_source import PointwiseScheduleCandidate
+    pairs = tuple(zip(candidate.kernel.body, context.configuration_effects, strict=True))
+    arithmetic = tuple(call for call, effect in pairs if not effect.pure_write)
+    if len(arithmetic) != 2:
+        return candidate
+    for capability in context.fusion_capabilities:
+        fused = capability.emit(*arithmetic)
+        if fused is not None:
+            setup = tuple(call for call, effect in pairs if effect.pure_write)
+            return PointwiseScheduleCandidate(replace(candidate.kernel, body=(*setup, fused)), ())
+    return candidate
+"""
 
 
 @pytest.mark.parametrize(
-    "ordinary_inputs",
+    "ordinary_inputs,transformation",
     [
-        BASELINE,
-        {
-            "source": BASELINE,
-            "new_python_components": [
-                {"directory": "passes", "surface_ids": ["schedule"], "reason": "new candidate compiler passes"}
-            ],
-        },
+        (BASELINE, False),
+        (
+            {
+                "source": BASELINE,
+                "new_python_components": [
+                    {"directory": "passes", "surface_ids": ["schedule"], "reason": "new candidate compiler passes"}
+                ],
+            },
+            False,
+        ),
+        (
+            {
+                "source": BASELINE,
+                "new_python_components": [
+                    {"directory": "passes", "surface_ids": ["schedule"], "reason": "new candidate transformations"}
+                ],
+            },
+            True,
+        ),
     ],
-    indirect=True,
-    ids=["checked-shared-policy", "new-pass-module"],
+    indirect=["ordinary_inputs"],
+    ids=["checked-shared-policy", "new-pass-module", "new-transformation"],
 )
-def test_normal_queue_retains_policy_and_changes_realized_configuration(ordinary_inputs, tmp_path, monkeypatch):
+def test_normal_queue_retains_policy_and_changes_realized_configuration(
+    ordinary_inputs, tmp_path, monkeypatch, transformation
+):
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "storage"))
     monkeypatch.syspath_prepend(str(repo_root() / "merlin/tests/targetgen"))
     monkeypatch.syspath_prepend(str(repo_root() / "merlin/tests/infra"))
@@ -155,6 +191,7 @@ def test_normal_queue_retains_policy_and_changes_realized_configuration(ordinary
                         image_sha256=hashlib.sha256(image).hexdigest(),
                         encoded_bytes=len(image),
                         output_sha256=hashlib.sha256(output).hexdigest(),
+                        rewrites=item["rewrites"],
                     )
                 )
         (workspace / "shared-pass-evidence.json").write_text(
@@ -190,18 +227,20 @@ def test_normal_queue_retains_policy_and_changes_realized_configuration(ordinary
     try:
         initial = store.freeze(policy.candidate)
         new_pass = policy.edit_authority.contract["schema"] == "compiler_edit_contract_v2"
+        pass_source = NEW_TRANSFORM if transformation else NEW_PASS
         if new_pass:
             (policy.candidate / "passes").mkdir()
             (policy.candidate / "passes/__init__.py").write_text("")
-            (policy.candidate / "passes/configuration.py").write_text(NEW_PASS)
-        (policy.candidate / "compiler.py").write_text(NEW_PASS_POLICY if new_pass else TUNED)
+            (policy.candidate / "passes/configuration.py").write_text(pass_source)
+        compiler_source = NEW_TRANSFORM_POLICY if transformation else NEW_PASS_POLICY if new_pass else TUNED
+        (policy.candidate / "compiler.py").write_text(compiler_source)
         revision = store.freeze(policy.candidate)
         job = pool.submit(revision.revision_id, kind=ORDINARY_KIND, timeout_s=120)
         # A later live edit must not change the queued immutable compiler.
         (policy.candidate / "compiler.py").write_text("def schedule(*args):\n    raise RuntimeError('live edit')\n")
         if new_pass:
             (policy.candidate / "passes/configuration.py").write_text("raise RuntimeError('later pass edit')\n")
-            assert (revision.source / "passes/configuration.py").read_text() == NEW_PASS
+            assert (revision.source / "passes/configuration.py").read_text() == pass_source
         deadline = time.monotonic() + 125
         while not job["terminal"] and time.monotonic() < deadline:
             time.sleep(0.05)
@@ -218,10 +257,17 @@ def test_normal_queue_retains_policy_and_changes_realized_configuration(ordinary
         for baseline in (row for row in evidence if row["arm"] == "baseline"):
             candidate = next(row for row in evidence if row["arm"] == "candidate")
             for old, new in zip(baseline["observations"], candidate["observations"], strict=True):
-                assert old["commands"] == 18 and new["commands"] == 4
+                assert old["commands"] == 18 and new["commands"] == (17 if transformation else 4)
                 assert old["encoded_bytes"] > new["encoded_bytes"]
-                for key in ("shape", "separate", "transfer_bytes", "final_settings", "output_sha256"):
+                for key in ("shape", "separate", "final_settings", "output_sha256"):
                     assert old[key] == new[key]
+                if transformation:
+                    elements = old["shape"][0] * old["shape"][1]
+                    assert old["transfer_bytes"] == [12 * elements, 5 * elements]
+                    assert new["transfer_bytes"] == [8 * elements, elements]
+                    assert old["rewrites"] == [] and new["rewrites"] == ["compose-source"]
+                else:
+                    assert old["transfer_bytes"] == new["transfer_bytes"]
         store.restore(initial.revision_id, policy.candidate)
         assert (policy.candidate / "compiler.py").read_text() == BASELINE
         assert not (policy.candidate / "passes").exists()

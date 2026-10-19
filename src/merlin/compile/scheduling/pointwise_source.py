@@ -9,7 +9,8 @@ backend output, floating reassociation, broadcasts or asynchronous arithmetic.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 from math import prod
 
@@ -22,14 +23,14 @@ from merlin.transforms.certificates import ir_digest, ir_text
 from merlin.transforms.dense_ir import checked_static_linalg_shell
 from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
-from .configuration import verify_configuration_state
+from .configuration import ConfigurationEffects, verify_configuration_rewrite, verify_configuration_state
 from .fusion_semantics import ScalarBudgetExceeded, ScalarGraph, UnsupportedElementwise, scalar_graph, term
 from .library_sources import shared_library_sources
 from .program_limits import AddressWindow
 from .schedule_pipeline import ScheduleBudgets, ScheduleCompilation, compile_schedule
 from .selected_contracts import SelectedSchedulingContracts
 from .spill_conformance import _Memory, _Piece
-from .temporary_storage import _project
+from .temporary_storage import TemporaryObject, _problem, _project
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,135 @@ class PointwiseSource:
     shape: tuple[int, ...]
     scalar_ir: bytes
     graph: ScalarGraph
+
+
+@dataclass(frozen=True)
+class PointwiseScheduleCandidate:
+    """A proposed instruction program and its exact private storage declarations."""
+
+    kernel: Kernel
+    objects: tuple[TemporaryObject, ...]
+
+
+@dataclass(frozen=True)
+class PointwiseRewriteContext:
+    """Current computation and selected resource data available to a new pass.
+
+    No checker, evaluator or reference answer is supplied. The original caller
+    still owns the candidate source revision and execution sandbox.
+    """
+
+    shape: tuple[int, ...]
+    scalar_ir: bytes
+    banks: tuple
+    reservations: tuple
+    external_windows: tuple[AddressWindow, ...]
+    fusion_capabilities: tuple
+    storage_effects: tuple
+    configuration_effects: tuple
+    hardware_identity: str
+    numerical_policy: str
+
+
+@dataclass(frozen=True)
+class PointwiseScheduleRewrite:
+    """Author-supplied transformation; its output receives no proof authority.
+
+    New implementations may change actual instructions and private temporaries,
+    beyond the built-in scheduling knobs. Only the bounded synchronous integer
+    source family and independently selected capabilities below are supported.
+    """
+
+    name: str
+    apply: Callable[[PointwiseScheduleCandidate, PointwiseRewriteContext], PointwiseScheduleCandidate]
+
+    def __post_init__(self):
+        if not isinstance(self.name, str) or not self.name.strip() or not callable(self.apply):
+            raise ValueError("pointwise rewrites require an explicit name and callable implementation")
+
+
+def _configuration_writes(kernel, configuration_adapter, projector, budgets):
+    """Separate persistent writes from already source-checked scalar reads.
+
+    Pure writes can be omitted only by the existing independent state induction.
+    Other state mutation, unknown visibility and pulses remain unsupported.
+    Full programs separately prove every arithmetic read's established settings.
+    """
+    if configuration_adapter is None:
+        raise UnsupportedElementwise("new pointwise rewrites require independently qualified configuration effects")
+    effects = _project(kernel, projector, budgets.max_calls)
+    writes = []
+    for call, memory in zip(kernel.body, effects, strict=True):
+        state = configuration_adapter.project(call)
+        if type(state) is not ConfigurationEffects or not state.ordered:
+            raise UnsupportedElementwise("new pointwise rewrites require known ordered instruction state effects")
+        if state.pure_write:
+            if memory.accesses or memory.exact_copy or memory.elementwise is not None:
+                raise ValueError("pure configuration write disagrees with actual memory or arithmetic effects")
+            writes.append(call)
+        elif state.writes or state.clobbers:
+            raise UnsupportedElementwise("new pointwise rewrites cannot alter non-pure configuration mutation")
+    return replace(kernel, body=tuple(writes))
+
+
+def _rewrite_candidate(
+    candidate, rewrite, context, source, bindings, projector, budgets, configuration_adapter, private_ownership
+):
+    before = candidate.kernel.digest()
+    object_identity = term([asdict(obj) for obj in candidate.objects])
+    original_writes = _configuration_writes(candidate.kernel, configuration_adapter, projector, budgets)
+    current = replace(
+        context,
+        storage_effects=_project(candidate.kernel, projector, budgets.max_calls),
+        configuration_effects=tuple(configuration_adapter.project(call) for call in candidate.kernel.body),
+    )
+    proposal = rewrite.apply(candidate, current)
+    if candidate.kernel.digest() != before or term([asdict(obj) for obj in candidate.objects]) != object_identity:
+        raise ValueError("pointwise rewrite mutated its original input; return a separate candidate")
+    if (
+        type(proposal) is not PointwiseScheduleCandidate
+        or type(proposal.kernel) is not Kernel
+        or (proposal.kernel.name, proposal.kernel.args, proposal.kernel.attrs)
+        != (candidate.kernel.name, candidate.kernel.args, candidate.kernel.attrs)
+    ):
+        raise ValueError("pointwise rewrite changed the original invocation boundary")
+    # These are existing independent checks of proposed effects, not a pass's
+    # own declared correspondence or a list of intended transformations.
+    _problem(
+        proposal.kernel,
+        proposal.objects,
+        context.banks,
+        projector,
+        context.external_windows,
+        private_ownership,
+        budgets.max_calls,
+        budgets.max_objects,
+    )
+    conformance = _verify_vectors(
+        source,
+        proposal.kernel,
+        bindings,
+        context.banks,
+        context.external_windows,
+        projector,
+        budgets,
+        configuration_adapter,
+    )
+    configuration = verify_configuration_rewrite(
+        original_writes,
+        _configuration_writes(proposal.kernel, configuration_adapter, projector, budgets),
+        configuration_adapter,
+        max_calls=budgets.max_calls,
+    )
+    return proposal, {
+        "name": rewrite.name,
+        "source_schedule_sha256": before,
+        "rewritten_schedule_sha256": proposal.kernel.digest(),
+        "private_objects_sha256": term([asdict(obj) for obj in proposal.objects]),
+        "source_conformance": conformance,
+        "configuration": configuration,
+        "timing": "UNKNOWN",
+    }
 
 
 def read_pointwise_source(operation, *, max_elements, max_operations, max_ir_bytes):
@@ -240,6 +370,7 @@ class PointwiseCompilation:
     checked_schedule_sha256: str
     source_passes: tuple
     conformance: dict
+    rewrite_checks: tuple = ()
 
     def revalidate(self):
         self.selected_contracts.revalidate()
@@ -278,12 +409,16 @@ def compile_source_pointwise(
     configuration_qualification_identity=None,
     max_source_elements=64 << 20,
     pass_order=(),
+    rewrites=(),
 ):
     """Use the ordinary scheduler with source admission and final-byte checking.
 
     UnsupportedElementwise leaves the caller's original source route available.
     An incorrect provider sequence raises ValueError before any result escapes.
     This entry neither invents instruction selection nor qualifies execution.
+    Optional new rewrite implementations must pass the same source, resource,
+    configuration and final-byte checks as existing transformations. At most
+    eight uniquely named rewrites run, with fixed per-program work ceilings.
     """
     if (
         type(module) is not builtin.ModuleOp
@@ -298,6 +433,13 @@ def compile_source_pointwise(
             "pointwise compilation requires current typed source, bindings and selected storage/scalar contracts"
         )
     module.verify()
+    if (
+        type(rewrites) is not tuple
+        or len(rewrites) > 8
+        or any(type(rewrite) is not PointwiseScheduleRewrite for rewrite in rewrites)
+        or len({rewrite.name for rewrite in rewrites}) != len(rewrites)
+    ):
+        raise ValueError("pointwise compilation requires at most eight unique typed schedule rewrites")
     selected_contracts.revalidate()
     library = tuple(sorted(shared_library_sources().items()))
     context = PipelineContext(
@@ -315,6 +457,7 @@ def compile_source_pointwise(
                 private_ownership,
                 fusion_qualification_identity,
                 configuration_qualification_identity,
+                tuple(rewrite.name for rewrite in rewrites),
             )
         ),
     )
@@ -338,6 +481,20 @@ def compile_source_pointwise(
             ir_level="linalg",
         ),
     )
+    if rewrites:
+        specs = (
+            specs[0],
+            PassSpec(
+                "candidate-rewrites",
+                1,
+                requires=("pointwise_source",),
+                produces=("pointwise_candidate", "rewrite_checks"),
+                mutates_ir=False,
+                ir_level="linalg",
+            ),
+            replace(specs[1], stage=2, requires=("pointwise_source", "pointwise_candidate")),
+            replace(specs[2], stage=3),
+        )
     by_name = {spec.name: spec for spec in specs}
     order = pass_order or tuple(by_name)
     if len(order) != len(by_name) or set(order) != set(by_name):
@@ -348,6 +505,8 @@ def compile_source_pointwise(
         if configuration_qualification_identity is not None
         else None
     )
+    if rewrites and configuration_adapter is None:
+        raise UnsupportedElementwise("new pointwise rewrites require independently qualified configuration effects")
     physical_banks, fixed, external, projector = selected_contracts.storage.bind(
         selected_contracts.isa,
         adapter,
@@ -357,7 +516,7 @@ def compile_source_pointwise(
         private_ownership=private_ownership,
         configuration_adapter=configuration_adapter,
     )
-    projector, _, _ = selected_contracts.fusion.bind(
+    projector, capabilities, _ = selected_contracts.fusion.bind(
         projector,
         emitters=fusion_emitters,
         qualification_identity=fusion_qualification_identity,
@@ -365,13 +524,60 @@ def compile_source_pointwise(
         max_ir_bytes=budgets.max_scalar_ir_bytes,
     )
 
+    def transform():
+        source = session.analysis("pointwise_source")
+        _problem(
+            kernel,
+            objects,
+            physical_banks,
+            projector,
+            external,
+            private_ownership,
+            budgets.max_calls,
+            budgets.max_objects,
+        )
+        _verify_vectors(source, kernel, bindings, physical_banks, external, projector, budgets, configuration_adapter)
+        context = PointwiseRewriteContext(
+            source.shape,
+            source.scalar_ir,
+            physical_banks,
+            fixed,
+            external,
+            capabilities,
+            (),
+            (),
+            selected_contracts.hardware_identity,
+            selected_contracts.numerical_policy,
+        )
+        candidate, checks = PointwiseScheduleCandidate(kernel, objects), []
+        for rewrite in rewrites:
+            candidate, check = _rewrite_candidate(
+                candidate,
+                rewrite,
+                context,
+                source,
+                bindings,
+                projector,
+                budgets,
+                configuration_adapter,
+                private_ownership,
+            )
+            selected_contracts.revalidate()
+            if tuple(sorted(shared_library_sources().items())) != library:
+                raise ValueError("pointwise shared library changed during candidate rewrite; replan")
+            checks.append(check)
+        return {"pointwise_candidate": candidate, "rewrite_checks": tuple(checks)}
+
     def lower():
         source = session.analysis("pointwise_source")
-        _verify_vectors(source, kernel, bindings, physical_banks, external, projector, budgets, configuration_adapter)
+        candidate = session.analysis("pointwise_candidate") if rewrites else PointwiseScheduleCandidate(kernel, objects)
+        _verify_vectors(
+            source, candidate.kernel, bindings, physical_banks, external, projector, budgets, configuration_adapter
+        )
         return {
             "compiled": compile_schedule(
-                kernel,
-                objects,
+                candidate.kernel,
+                candidate.objects,
                 physical_banks,
                 adapter,
                 encoding,
@@ -417,6 +623,7 @@ def compile_source_pointwise(
                 max_ir_bytes=budgets.max_scalar_ir_bytes,
             )
         },
+        "candidate-rewrites": transform,
         "schedule-lowering": lower,
         "source-conformance": final,
     }
@@ -438,6 +645,7 @@ def compile_source_pointwise(
         compiled.kernel.digest(),
         tuple(session.records),
         session.analysis("conformance"),
+        session.analysis("rewrite_checks") if rewrites else (),
     )
     result.revalidate()
     return result
