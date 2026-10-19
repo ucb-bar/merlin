@@ -75,7 +75,12 @@ def matrix(members):
                 "pattern": declaration.get("pattern"),
                 "geometry": declaration.get("geometry", request.get("shape")),
                 "layout": request.get("layout", declaration.get("pattern")),
-                "purposes": request.get("purposes", [capacity["exercises"]] if "exercises" in capacity else []),
+                "purposes": request.get(
+                    "purposes",
+                    [request["purpose"]] if "purpose" in request else (
+                        [capacity["exercises"]] if "exercises" in capacity else []
+                    ),
+                ),
                 "mechanism_basis": capacity.get("why", request.get("basis")),
                 "original_capacity_working_set": capacity.get("working_set"),
                 "source_sha256": member.get("loader_identity", {}).get("sha256"),
