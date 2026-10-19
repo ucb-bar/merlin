@@ -1,5 +1,11 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`broadcast_preparation` budgets aligned call-local input conversions by actual
+dense broadcast reuse. It emits complete refresh loops; no pointer cache or
+cross-invocation validity is inferred. Providers prove immutable inputs, private
+disjoint storage, conversion/rounding semantics, and refusal before using
+prepared values. Structural reuse is a cost proxy, not measured profitability.
+
 `tensor_broadcast` derives dense broadcast coordinates from checked static
 singleton projection maps and emits a bounded flat C index. It refuses maps
 without an ascending output-axis embedding. Callers retain source arithmetic,
