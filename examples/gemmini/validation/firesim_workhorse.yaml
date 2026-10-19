@@ -1,0 +1,30 @@
+schema: merlin.post_freeze.firesim.selection.v1
+phase: phase1                     # Select phase2 for its independently frozen compiler.
+compiler: ${FROZEN_COMPILER}
+freeze_record:
+  path: ${FREEZE_RECORD}
+  compiler_sha256_field: frozen_submission.hash_tree_sha256
+workload_contract: ${MERLIN_REPO}/examples/gemmini/protocol/experiment.yaml
+deployment:
+  mode: workhorse_locked_ssm_on_demand
+  launcher: ~/bin/fpga-run
+  region: ${AWS_REGION}
+  manager_instance: ${FIRESIM_MANAGER_INSTANCE}
+  ssm_document: FsimRunGemmini
+  agfi: ${FIRESIM_AGFI}
+  results_prefix: ${FIRESIM_RESULTS_PREFIX}
+  target_clock_hz: 30000000
+  # This describes FPGA execution speed, not the architectural timing denominator.
+  observed_host_clock_hz: 110000000
+  manager_contract: null          # Administrator-supplied, hash-bound build/transport contract.
+budget:
+  max_jobs: 3                     # One complete chain per model, strictly serialized.
+  job_wall_s: 7200
+  retries: 0
+# Populate only after actual compiled payloads and administrator registration exist.
+# Each assets list has boot_elf, chain_manifest, input, reference and build_receipt roles.
+# The registry must bind exact compiler/contract/assets/AGFI, not just a workload name.
+models:
+  resnet50: {registered_workload: null, registration: null, assets: []}
+  tiny_llama: {registered_workload: null, registration: null, assets: []}
+  smolvla: {registered_workload: null, registration: null, assets: []}
