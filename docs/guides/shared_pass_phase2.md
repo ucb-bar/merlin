@@ -29,10 +29,11 @@ composition algorithms for generated compilers. Select a library release before
 Phase 1; Phase 2 inherits that same release and can tune the compiler's decisions
 without changing the checks used to admit its output.
 
-This guide covers the `merlin.common_compiler_substrate.v6` release profile.
-Versions 1–5 retain their existing APIs and verification policies. An already
-certified compiler keeps its frozen profile; changing Phase 2 options cannot
-add library access to it.
+This guide covers the `merlin.common_compiler_substrate.v6` and
+`merlin.common_compiler_substrate.v7` release profiles. Versions 1–6 retain their
+existing API inventories and verification policies. An already certified
+compiler keeps its frozen profile; changing Phase 2 options cannot add library
+access to it.
 
 ## Inputs and backend requirements
 
@@ -134,6 +135,36 @@ Keep the hardware and software inputs, public corpus, numerical policy,
 toolchain and qualification selections explicit. Phase 1 freezes the release
 and its access profile. Run Phase 2 through the ordinary source-revision search
 with that inherited profile.
+
+### Select a versioned inventory
+
+For a fresh V7 selection, prepare the release explicitly:
+
+```sh
+python -m merlin.targetgen.tool_profile_shared \
+  --python-source-root "$MERLIN_SOURCE_ROOT" \
+  --license-directory "$MERLIN_LICENSE_ROOT" \
+  --library-version 7 \
+  --output-dir "$TMPDIR/common-v7"
+```
+
+Select `--common-substrate merlin.common_compiler_substrate.v7` and the prepared
+`common-v7` root when generating the new bundles. The Python exporter and release
+preparer likewise accept `version=7`; their default remains version 6.
+
+V7 has separate closed source, public-module and namespace inventories. Its
+manifest uses `merlin.shared_scheduling_library.v2` with `inventory_version: 7`;
+V6 retains its v1 manifest. Relabeling a release or recomputing a manifest hash
+does not convert it between versions. Reviewed V7 additions cannot enlarge the
+V6 inventories or an inherited compiler's access.
+
+The initial V7 inventory exposes the same reviewed scheduling APIs as V6. The
+new version supplies an explicit boundary for future reviewed additions; it
+does not grant additional model-building services, target capabilities or
+qualification. Existing host-side optimizations in ordinary lowering do not
+become candidate-importable APIs merely by selecting V7. A new pass entry or
+bounded service needs its own reviewed inventory and original selection before
+authoring, equally across treatments.
 
 ## Choose optimization policies in Phase 2
 
