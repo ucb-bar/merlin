@@ -62,13 +62,11 @@ def audit_built_device_host_compute(
     from xdsl.dialects import builtin, func, llvm
     from xdsl.parser import Parser
 
-    from merlin.llvmlower.device_shim import kernel_abi_for
+    from merlin.llvmlower.device_build import executable_kernel_entry
     from merlin.verify import host_compute_audit as HA
     from merlin.verify.llvm_symbols import defined_function
 
-    abi = kernel_abi_for(target)
-    if abi is None:
-        raise ValueError("selected device has no readable kernel ABI for host-compute audit")
+    entry_symbol = executable_kernel_entry(target)
     device_dir = build / "device"
     if device_dir.is_symlink() or not device_dir.is_dir():
         raise ValueError("linked build has no ordinary device-artifact directory")
@@ -111,7 +109,7 @@ def audit_built_device_host_compute(
         module = Parser(context, artifact.read_text(encoding="utf-8")).parse_module()
         functions = HA._functions(module)  # noqa: PLC2701 -- shared independent host-code reader
         try:
-            kernel = defined_function(module, abi.symbol)
+            kernel = defined_function(module, entry_symbol)
         except ValueError as error:
             raise ValueError(f"linked group {index} has no body for its target ABI kernel") from error
         sites = [

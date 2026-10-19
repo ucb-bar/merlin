@@ -24,6 +24,7 @@ def synthetic_build(tmp_path, monkeypatch):
     monkeypatch.setattr(DB, "_objcopy", lambda: "objcopy")
     monkeypatch.setattr(mesh, "_mesh_tile_binding", lambda *a, **kw: None)
     monkeypatch.setattr(device_shim, "kernel_abi_for", lambda _device: SimpleNamespace(symbol="kernel"))
+    monkeypatch.setattr(DB, "executable_kernel_entry", lambda _device: "kernel")
     monkeypatch.setattr(
         device_shim,
         "emit_translation_unit",
