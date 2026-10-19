@@ -61,8 +61,7 @@ def render(declaration):
     shift = declaration["arithmetic"]["readout_shift"]
     statements = [
         *body(P.render(convolution)),
-        f"prefix = torch.div(point_wide + {2 ** (shift - 1)}, {2**shift}, rounding_mode='floor')"
-        ".clamp(-128,127).to(torch.int8)",
+        f"prefix = _saturate_i8(torch.div(point_wide + {2 ** (shift - 1)}, {2**shift}, rounding_mode='floor'))",
         *body(P.render(action)),
     ]
     names = [row["name"] for row in description["inputs"]]
@@ -70,6 +69,7 @@ def render(declaration):
         '"""Independent public vision/prefix/action source, not a full model."""',
         "import torch",
         "",
+        *D._integer_saturation_source(),
         f"# Declaration: {description['declaration_sha256']}",
         "class Program(torch.nn.Module):",
         "    def forward(self," + ",".join(names) + "):",

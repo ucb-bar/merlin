@@ -27,6 +27,11 @@ every spectrum-selection denial and original capacity request/refusal. V2
 `development_patterns`, composition and reuse factories preserve exact declared
 integer arithmetic and all live-outs. Spatial sources currently use explicit
 packing and integer GEMM, not a qualified native convolution instruction.
+Generated integer saturation uses same-type `maximum`/`minimum` bounds because
+the selected frontend's integer `clamp` decomposition constructs a floating
+attribute and refuses `i32`. Keep half-up division before saturation, signed
+endpoints and independent complete-output references unchanged. Regenerated
+loaders acquire new source hashes; do not rewrite previously frozen capsules.
 `development_reference` owns an independently implemented NumPy exact reference.
 `development_cohort` freezes byte inventories, ABI, complete-call boundaries and
 per-member coverage before capture. Bound reference costs before allocation;
