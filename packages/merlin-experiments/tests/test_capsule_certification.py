@@ -8,6 +8,7 @@ import ast
 import hashlib
 import inspect
 import json
+import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -509,3 +510,22 @@ def test_original_required_resource_policy_cannot_be_skipped(selected, monkeypat
     monkeypatch.setattr(public_scalability_gate, "selected_policy", lambda selected: {"required": True})
     with pytest.raises(ValueError, match="admitted profile"):
         C._resources(selected.run, selected.resources, "b" * 64)
+
+
+def test_identical_verifier_and_descriptor_copies_keep_original_observed_pins(selected, monkeypatch):
+    from merlin_experiments.phase1 import authoring_conformance as AC
+
+    s = selected
+    _, published = publish_author(s)
+    copied = s.run.parent / "copied-descriptor.yaml"
+    shutil.copyfile(s.descriptor, copied)
+    for module in (C, AC):
+        destination = s.run.parent / (Path(module.__file__).name + ".copy")
+        shutil.copyfile(module.__file__, destination)
+        monkeypatch.setattr(module, "__file__", str(destination))
+    reopened = C.verify_phase2_handoff(s.run, descriptor=copied)
+    assert reopened == published
+    assert reopened["descriptor"]["path"] == str(s.descriptor)
+    s.descriptor.write_bytes(s.descriptor.read_bytes() + b" ")
+    with pytest.raises(ValueError, match="changed"):
+        C.verify_phase2_handoff(s.run, descriptor=copied)
