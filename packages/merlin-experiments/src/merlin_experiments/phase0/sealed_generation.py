@@ -222,13 +222,17 @@ class SealedCaptureSource(PytorchRefSource):
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
 
-def verified_capture_failure(capsule: dict) -> str | None:
-    """Why a generation-time capture in this capsule is not an admitted sealed execution, or ``None``."""
+def verified_capture_failure(capsule: dict, *, require_attestation: bool = False) -> str | None:
+    """Why the original capture seal is unavailable, or ``None``.
+
+    The optional stricter mode always reopens the complete original attestation,
+    including materialized captures. It never consumes a cached verification.
+    """
     from .capture_execution_attestation import AttestationNotVerified, require_verified_execution
 
-    if capsule.get("materialized_capture"):
+    if capsule.get("materialized_capture") and not require_attestation:
         return None  # a declared iteration capture, attested at derivation and re-checked by evidence
-    if not (capsule.get("pytorch_ref") or capsule.get("source") == "pytorch"):
+    if not require_attestation and not (capsule.get("pytorch_ref") or capsule.get("source") == "pytorch"):
         return None
     attestations = capsule.get("capture_execution_attestations") or []
     raw = (capsule.get("frontend_trace") or {}).get("capture_mlir_sha256")
