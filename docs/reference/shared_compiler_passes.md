@@ -2602,3 +2602,35 @@ state need paired execution and independent references under unchanged policies.
 Functional simulator instruction counts, traffic reductions, compilation cost
 and qualified latency measurements are different results and must be reported
 separately.
+
+### Explicit finite staged dense effects
+
+`merlin.compile.scheduling.staged_dense` adds the separate
+`merlin.staged_dense.v1` contract. It preserves dense-v1's original synchronous
+meaning. The new finite vocabulary distinguishes operand loads, independently
+proved zero initialization, descriptor issue, following compute consumption,
+raw identity readout and completion fences. Descriptors read RHS cells at
+compute consumption; a fence preserves a pending descriptor. Optional retained
+weights require an independently established prior weight consumption and a
+matching panel. Hardware/software/numerical/execution identities, private
+storage bounds, arithmetic widths and ownership premises are explicit.
+
+Candidate `StagedDenseRewrite` implementations run in their declared tuple
+order. `rewrite_staged_dense` independently checks original and resulting
+effects using `staged_dense_verification`: complete source products, zero seed,
+ordered accumulator continuation, private cell provenance, bounded tails,
+complete unique outputs and no final pending descriptor. Candidate code cannot
+change the original source/effects or selected resource contract. The initial
+generic rewrite removes an immutable RHS reload only while every exact private
+cell still contains that source panel; overlapping LHS writes invalidate reuse.
+It adds no allocation, removes no fence and promises no asynchronous overlap.
+
+This is a logical compiler mechanism, not executable target admission. The
+original target must project actual emitted operands/effects, supply qualified
+ownership/completion contracts and independently check final linked execution
+and complete source outputs. Unknown effects, unsupported readouts, symbolic
+loops and exhausted finite proof budgets refuse. Double buffering, general
+asynchronous overlap and cross-operation persistence are not enabled by this
+API. Exporting these new source owners requires an explicitly reviewed new SDK
+release, selected equally for baseline and candidate; old frozen releases keep
+their original source membership and semantics.

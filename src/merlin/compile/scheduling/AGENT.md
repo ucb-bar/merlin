@@ -11,6 +11,7 @@ and where each operand's region sits on chip.
 - `block_schedule.py` — Order the block moves and computes of a contraction over a target's on-chip
   stores.
 - `derive.py` — Derive a block-schedule Geometry from a target's facts.
+- `staged_dense.py` / `staged_dense_verification.py` — finite staged descriptor/consume proposals and independent source-product/state checks. Descriptor issue is not synchronous completion; the original target must bind actual emitted effects and independently check final executions.
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->

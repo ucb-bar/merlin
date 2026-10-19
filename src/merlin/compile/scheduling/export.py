@@ -32,6 +32,7 @@ PUBLIC_MODULES = (
     "merlin.compile.scheduling.row_softmax", "merlin.compile.scheduling.schedule_pipeline",
     "merlin.compile.scheduling.selected_contracts", "merlin.compile.scheduling.spill_conformance",
     "merlin.compile.scheduling.temporary_storage", "merlin.llvmlower.cpu_softmax",
+    "merlin.compile.scheduling.staged_dense",
     "merlin.sched.ir.expr", "merlin.sched.ir.integer_domain", "merlin.sched.ir.kernel", "merlin.sched.ir.parse",
     "merlin.sched.isa.types", "merlin.semantic_compiler.allocation_types",
     "merlin.targetgen.isa_dialect_gen", "merlin.targetgen.isa_spec",
