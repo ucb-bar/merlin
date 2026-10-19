@@ -1,5 +1,12 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`constant_object` can explicitly share immutable compiled data only after
+reopening every operand byte, zero padding, exported symbol and alignment.
+A fresh provider-assembled reference supplies ELF identity and non-data metadata;
+relocations, code, other allocated storage, extra symbols and changed inputs
+refuse before linking. This is storage identity, not packing semantics, a new
+compilation observation, runtime reuse or final executable admission.
+
 `session_projection` rederives saved immutable-entry projections from their
 actual prepared SSA and captured argument sources. Generated session callers
 use checked namespaced proofs; logical state/stream input access maps to the
