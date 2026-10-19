@@ -1189,12 +1189,12 @@ def rewrite_bounded_match(match, width):
     return BoundedIm2ColRewrite(source, identity, width, tuple(operations), tuple(arms), result)
 
 
-def verify_bounded_match(rewrite, *, expected_source=None):
+def verify_bounded_match(rewrite, *, expected_source=None, expected_bindings=None):
     """Reconstruct the realized affine windows, complete output coverage and reuse.
 
-    An original pass analysis may supply expected_source to bind the witness to
-    its immutable current-source context. No allocation or timing is inferred
-    from these source-level tensor destinations.
+    Original pass analyses supply expected_source and expected_bindings to bind
+    the witness and external SSA values to their immutable current-source context.
+    These source-level tensor destinations establish neither allocation nor timing.
     """
     from xdsl.dialects import arith, builtin, scf, tensor
     from xdsl.dialects.linalg.attrs import IteratorType
@@ -1212,6 +1212,10 @@ def verify_bounded_match(rewrite, *, expected_source=None):
         "requires the original typed source witness",
     )
     source = rewrite.source
+    require(
+        expected_bindings is None or (source.input, source.weight, source.initializer) == expected_bindings,
+        "original external SSA bindings changed",
+    )
     require(
         source.identity == rewrite.source_identity and (expected_source is None or expected_source == source.identity),
         "original source witness changed",

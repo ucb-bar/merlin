@@ -202,3 +202,29 @@ def test_analysis_staleness_and_bad_widths_refuse_before_rewrite(tmp_path, mutat
         match.expand.attributes["unknown"] = builtin.UnitAttr()
     with pytest.raises(ValueError, match="changed after admission"):
         ip.bounded_source_identity(match)
+
+
+@pytest.mark.parametrize("binding", ["input", "weight"])
+def test_same_typed_external_binding_substitution_refuses_original_context(tmp_path, binding):
+    _, _, _, selected, source, _ = build(tmp_path)
+    source = source.replace(", %w:", ", %other: tensor<1x2x6x11xi8>, %otherw: tensor<3x12xi8>, %w:")
+    module = mq.parse(source)
+    operation = [op for op in module.walk() if type(op) is GenericOp][-1]
+    match = ip.match_bounded_im2col(operation, selected_contracts=selected)
+    assert match is not None
+    original = (match.gather.inputs[0], match.contraction.inputs[0], match.contraction.outputs[0])
+    rewritten = ip.rewrite_bounded_match(match, 3)
+    arguments = rewritten.source.input.owner.args
+    if binding == "input":
+        replacement = arguments[1]
+        for arm in rewritten.arms:
+            arm.patch.operands = (replacement, *arm.patch.operands[1:])
+    else:
+        replacement = arguments[2]
+        for arm in rewritten.arms:
+            arm.contraction.operands = (replacement, *arm.contraction.operands[1:])
+    mutated = replace(rewritten, source=replace(rewritten.source, **{binding: replacement}))
+    module.verify()
+    assert mutated.source_identity == mutated.source.identity  # A canonical standalone function erases SSA binding.
+    with pytest.raises(ValueError, match="external SSA bindings"):
+        ip.verify_bounded_match(mutated, expected_source=rewritten.source_identity, expected_bindings=original)
