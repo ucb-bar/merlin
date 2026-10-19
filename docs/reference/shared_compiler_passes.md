@@ -32,6 +32,7 @@ code_refs:
   - src/merlin/llvmlower/cpu_softmax.py
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/llvmlower/source_model.py
+  - src/merlin/llvmlower/source_dense.py
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/runtime/host_provider.py
   - src/merlin/runtime/backends/spike_model.py
@@ -625,6 +626,7 @@ replace those with a shape-only declaration.
 from merlin.compile.scheduling.dense_source import (
     DenseSourceUnavailable, schedule_source_dense,
 )
+from merlin.compile.scheduling.dense_contracts import DenseSchedulingUnavailable
 
 try:
     compiled = schedule_source_dense(
@@ -636,7 +638,7 @@ try:
         static_budget=command_site_budget,
         external_buffers_disjoint=original_runtime_disjointness,
     )
-except DenseSourceUnavailable:
+except (DenseSourceUnavailable, DenseSchedulingUnavailable):
     compiled = None
 if compiled is not None:
     source = compiled.emit_c(target_instructions, symbol=target_abi_symbol)
@@ -669,7 +671,24 @@ or another independently valid kernel cannot silently replace that binding.
 C emission rechecks it. This is source/emission custody with independent
 execution obligations, not a new proof authority.
 
-Neutral integration tests invoke this entry through the ordinary
+An ordinary model build can select `SourceDenseLowering` through
+`shared_source_lowerings=(selection,)`. Merlin discovers supported source
+contractions without a backend source matcher or provenance IDs, uses the same
+planner, and installs fresh-result writers through the existing model transaction.
+The selection freezes physical assignments, reservations, qualification and
+search/code-growth controls. `resources=None` derives available resources from
+the current contracts and assigned windows; explicit resources may tighten them.
+Unavailable declared capabilities or legal blocking retain the source route.
+Incorrect mappings, overlapping live reservations and stale inputs diagnose.
+See [enable shared passes in model builds](../guides/shared_source_lowering.md)
+for callbacks, receipts, qualification scope and final admission requirements.
+
+`read_source_dense` provides the same semantic reader without a scheduling
+session and revalidates selected inputs. It returns a problem description,
+not an execution capability. `DenseSourceResult.revalidate()` also checks the
+compiled kernel's index-width and library custody before implementation callbacks.
+
+Existing catalog integration tests invoke this entry through the ordinary
 `DeviceRouting.catalog_builder` hook. They compile a complete recurrent graph
 with host addition, two contractions, clamp/narrowing, state history and position
 updates. Both baseline and optimized arms use identical source/inputs and the

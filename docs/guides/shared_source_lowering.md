@@ -7,6 +7,7 @@ last_verified: 2026-10-18
 related: [shared_pass_phase2, ../reference/shared_compiler_passes]
 code_refs:
   - src/merlin/llvmlower/source_model.py
+  - src/merlin/llvmlower/source_dense.py
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/runtime/backends/spike_model.py
@@ -24,12 +25,13 @@ the existing fresh-result ABI.
 
 | Selection | Accepted computation | Optimizations |
 | --- | --- | --- |
+| `SourceDenseLowering` | Static rank-two integer contractions with checked signed widening, modular arithmetic and zero initialization | Resource-derived blocking, operand reuse and compact counted loops |
 | `SourcePointwiseLowering` | Static, contiguous, total integer elementwise operations whose scalar semantics appear in the selected software specification | Qualified fusion, temporary allocation, persistent configuration cleanup and exact device spills |
 | `SourceRowLowering` | Canonical complete-row softmax under its original numerical policy | Resource-bounded chunks, retained intermediate state and complete-domain reductions |
 
 These are optional backend integration interfaces. Existing targets need their
 own qualified mappings and runtime bindings before selecting them. A target name
-or an imported library does not enable either family.
+or an imported library does not enable these families.
 
 Read the [pass contracts](../reference/shared_compiler_passes.md) for the exact
 supported arithmetic, layouts, completion rules and numerical boundaries.
@@ -49,7 +51,21 @@ or `None` when no mapping is available. Merlin independently checks the original
 instruction sequence and the final decoded program against the source.
 The mapping cannot change the selected capacities, decoders or budgets.
 
-Both families use two implementation callbacks:
+For dense contractions, supply a `DenseLoopStorage`, qualified `DenseLoopAdapter`
+and static command-site budget. Merlin derives dimensions and the full ordered
+reduction from the source, then uses the existing compact dense planner.
+Assigned windows must account for live storage, packing and staging reservations.
+Optional `DenseResources` controls restrict the search and cannot widen declared
+capacities. Missing addressable storage, qualification or exact synchronous
+continuation keeps the original route. Named matmul, floating arithmetic,
+transposes, batches and nonzero seeds remain outside this source family.
+
+Dense checking covers source and schedule IR. Its pinned C emission does not
+establish arbitrary target C or final machine-code semantics. The backend must
+independently qualify instruction bodies and ABI effects and supply applicable
+final-image checks. Static command sites are not final machine instructions.
+
+All families use two implementation callbacks:
 
 - `prepare(bindings, directory)` supplies implementations for the checked
   bindings in an invocation-private directory.
@@ -73,17 +89,17 @@ built = spike_model.build(
     capture_directory,
     build_directory,
     backend=selected_host_backend,
-    shared_source_lowerings=(pointwise_selection, row_selection),
+    shared_source_lowerings=(dense_selection, pointwise_selection, row_selection),
     full_readback=True,
 )
 ```
 
-Supply either family alone when appropriate. The existing
+Supply a family alone or combine supported selections. The existing
 `shared_row_lowering=row_selection` option remains available for row-only builds.
 Do not select the same family twice or combine these options with explicit
 `prepared_model_transform` or `host_provider_builder` hooks.
 
-Merlin discovers both families on one original source snapshot and applies their
+Merlin discovers selected families on one original source snapshot and applies their
 nonoverlapping replacements in one transaction. Registration order does not
 change discovery or rewriting. The existing provider linker checks the combined
 object roster, function ABIs and required symbols. An active device selection
@@ -92,7 +108,7 @@ including admission of the final linked image.
 
 ## Inspect results and handle refusal
 
-Preparation writes `source_pointwise.json`, `source_rows.json` or, for a combined
+Preparation writes `source_dense.json`, `source_pointwise.json`, `source_rows.json` or, for a combined
 selection, `source_schedules.json`. The receipt identifies source and selected
 IR, checked bindings, pass reports and declined mappings. Retain the normal
 compilation recipe and provider-link receipt with the final image.

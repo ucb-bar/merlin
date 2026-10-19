@@ -40,7 +40,7 @@ semantics or performance costs. Missing facts remain unknown.
 
 Shared entries accept typed source or schedule IR. A compiler must call the
 appropriate entry with its selected contracts and qualified backend bindings.
-Ordinary model builds can select supported pointwise and row families through
+Ordinary model builds can select supported dense, pointwise and row families through
 `shared_source_lowerings=(...)`; Merlin then discovers, schedules and rewrites
 eligible regions. See [enable shared passes in model builds](shared_source_lowering.md)
 for the integration interface and fallback behavior. Backend bindings supply
@@ -102,6 +102,13 @@ fixed during tuning. Most `ScheduleBudgets.max_*` fields bound verification
 work; increasing them is not a performance optimization. When costs are unknown,
 use the entry's documented conservative policy or supply calibration evidence.
 
+Inspect realized costs when choosing alternatives. Fusion can shorten traffic
+while lengthening live ranges and increasing register pressure. Exact device
+spill handling requires declared register classes and save/reload effects; the
+native toolchain retains host CPU register allocation. Configuration cleanup
+removes only writes proved redundant under declared persistence and reset rules.
+Unknown instruction effects remain barriers.
+
 ## Guarantees and limitations
 
 The shared checks bind analyses to the current IR, hardware and software
@@ -126,6 +133,12 @@ Neutral execution tests establish shared-mechanism behavior. They do not qualify
 an accelerator backend or establish hardware latency. Consult the
 [supported domains and limitations](../reference/shared_compiler_passes.md)
 before selecting an entry.
+
+Generality means running unchanged shared algorithms and checks with different
+declared resource and execution models. It does not mean every pass is useful
+on every target. Demonstrate performance transfer separately on held-out models
+and configurations with independently qualified bindings. Phase 2 may tune
+legal policies; it must not change the contracts to make a candidate pass.
 
 ## Compare compilers fairly
 
