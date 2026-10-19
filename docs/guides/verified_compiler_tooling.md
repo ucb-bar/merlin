@@ -808,16 +808,50 @@ services are not added to the authoring import grant.
 
 Current validation covers source matching, rectangular primitives, tails,
 separate accumulator/output widths, missing qualification and mutations of
-store semantics or checked context. Run the focused source tests with:
+store semantics or checked context. Native logical-buffer tests cover both
+input widths, packed and borrowed descriptors, strides, alignment fallback,
+alias rejection and writes past the final one-byte output. Run these checks with:
 
 ```sh
 python -B -m pytest merlin/tests/infra/test_dense_integer_readout.py \
   merlin/tests/infra/test_pointwise_constant_captures.py \
+  merlin/tests/infra/test_source_dense_readout_lowering.py \
+  merlin/tests/infra/test_logical_readout_execution.py \
   -p no:cacheprovider --basetemp "$TMPDIR/dense-integer-readout-check"
 ```
 
-Ordinary complete-model paired execution is a separate qualification step.
-This scope establishes no real accelerator support, timing improvement,
+Two paired three-step recurrent models also exercise ordinary compilation,
+linking and functional execution. They check all five outputs, including
+carried state, position and unchanged input/weights, against an independent
+integer reference. The i16 case includes overflow before the final clamp.
+Actual primitive traces check complete reduction, four-byte accumulators,
+one-byte stores and the absence of a full-width output-store route. The
+retained native bufferization product contains no raw i32 output allocation
+in the optimized arm. This checkpoint's allocation sites are not a count of
+runtime allocations after later elimination.
+
+| Contraction M × K × N | Requested output bytes, baseline → fused | Host packing bytes in each direction, baseline → fused |
+|---|---|---|
+| 3 × 7 × 5, i8 operands | 180 → 45 | 348 → 213 |
+| 4 × 9 × 7, i16 operands | 336 → 84 | 930 → 678 |
+
+These totals cover three invocations of the reviewed neutral C primitives.
+Command counts and operand-load bytes remain unchanged. Instrumentation and
+other host work still contribute to complete-model execution; the primitive
+code itself grows in these tests. Requested payload reductions do not establish
+bus traffic or a timing improvement. Compilation time, sampled process-tree
+RSS, static sizes and functional instruction counts are recorded separately.
+
+Reproduce the paired models with the selected native/RISC-V toolchain and
+functional simulator available:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_dense_readout_model.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/dense-readout-model-check" \
+  -o tmp_path_retention_policy=all
+```
+
+This scope establishes no real accelerator support, qualified timing,
 floating-scale reassociation or nearest-even readout implementation. Ordered
 f32 scaling needs the existing full-domain numerical proof and original
 qualified rounding/scale contract before it can use this path.
