@@ -902,7 +902,7 @@ def _logical_entry(
     addr_decl = ", ".join(f"p{i}_addr, p{i}_bytes" for i in range(len(call)))
     lines.append(f"/* {symbol}: logical kernel ABI, pointer order {', '.join(b.name for b in order)}. */")
     lines.append(f"{result_t} {symbol}(\n    " + ",\n    ".join(params) + ")\n{")
-    lines.append(f"  {result_t} r;\n  memset(&r, 0, sizeof r);")
+    lines.append(f"  {result_t} r = {{0}};")
     if shape_checks:
         lines.append(f"  if ({' || '.join(shape_checks)}) return r;")
         lines.append(f"  if ({' || '.join(stride_checks)}) __builtin_trap();")
