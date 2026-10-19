@@ -14,6 +14,11 @@ import MerlinVerify.Check.InsertExtract
 import MerlinVerify.Rules.IntegerNeutral
 import MerlinVerify.Rules.IntegerCompareOrder
 import MerlinVerify.Check.RegionExact
+import MerlinVerify.Check.AlphaNormalize
+import MerlinVerify.Check.ScalarConstantHoist
+import MerlinVerify.Check.BitcastCancel
+import MerlinVerify.Check.TensorEmptyDead
+import MerlinVerify.Check.ParallelFusion
 
 namespace MerlinVerify.Check.SharedNormalize
 
@@ -25,13 +30,16 @@ def base (ib : Nat) (hints : List Op) : SplatNormalizer.Normalizer ib :=
   let selection := BodyNormalize.sequential (FromElementsSelect.base ib)
     (DenseExtract.base ib (DenseExtract.hintOps hints))
   let scalarAliases := BodyNormalize.sequential (ScalarCarrier.base ib)
-    (BodyNormalize.sequential (IntegerBody.unorderedBase ib) (Rules.IntegerCastPartial.base ib))
+    (BodyNormalize.sequential (IntegerBody.unorderedBase ib)
+      (BodyNormalize.sequential (Rules.IntegerCastPartial.base ib) (BitcastCancel.base ib)))
   let indexFacts := BodyNormalize.sequential
     (FactNormalize.base Rules.IndexCompare.family ib (DenseExtract.hintOps hints))
     (FactNormalize.base Rules.IndexConstant.family ib [])
   let insertions := BodyNormalize.sequential (InsertExtract.base ib) (Rules.IntegerNeutral.base ib)
-  BodyNormalize.sequential selection
+  let aliases := BodyNormalize.sequential selection
     (BodyNormalize.sequential scalarAliases (BodyNormalize.sequential indexFacts insertions))
+  BodyNormalize.sequential (ScalarConstantHoist.base ib)
+    (BodyNormalize.sequential aliases (TensorEmptyDead.base ib))
 
 /-- Adapt the exact body normalizers without assuming any producer facts at function entry.
 The source and target syntax supply only a finite traversal budget. -/
@@ -54,11 +62,14 @@ theorem scalarOrdering_exact : RegionExact.Exact scalarOrdering :=
     (fun ctx call env ops => Rules.IntegerOrder.operations_equal ctx call ops env)
     (fun ctx call env ops => Rules.IntegerCompareOrder.operations_equal ctx call ops env)
 
-/-- Local families preserve escaping bindings and prove exact deletion of total dead producers.
-One final ordering traversal follows all aliases, including parent capture renames. -/
+/-- Fusion runs before scalar identities can erase its matched primitive. Local families then
+preserve escaping bindings and delete only total dead producers. Checked lexical names make the
+final numeric-ID ordering stable after aliases and scope motion. -/
 def normalizer : TypedNormalizer :=
-  bodies.sequential (ReshapeNested.normalizer.sequential
-    (RegionExact.normalizer scalarOrdering scalarOrdering_exact))
+  ParallelFusion.normalizer.sequential
+    (bodies.sequential (ReshapeNested.normalizer.sequential
+      (AlphaNormalize.normalizer.sequential
+        (RegionExact.normalizer scalarOrdering scalarOrdering_exact))))
 
 def check (ib : Nat) (src tgt : Module) (fn : String) (argTys resTys : List VTy) : Bool :=
   TypedNormalizeC1.check normalizer ib src tgt fn argTys resTys
