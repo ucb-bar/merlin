@@ -25,6 +25,7 @@ from merlin.targetgen import package_runtime as P
 from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
 
 _INVOCATION_PUBLICATION = contextvars.ContextVar("original_snapshot_publication", default=None)
+_EMISSION_OBSERVATION = contextvars.ContextVar("original_profile_emission_observation", default=None)
 
 
 def finish_snapshot_invocation():
@@ -538,6 +539,21 @@ class _Executor:
                 if artifact_profile is not None:
                     require_profile(artifact_profile)
                 finish_snapshot_invocation()
+                observation = _EMISSION_OBSERVATION.get()
+                if observation is not None:
+                    from .compiler_profile_emission import retain_original_products
+
+                    retain_original_products(
+                        observation,
+                        self,
+                        pkg,
+                        name,
+                        Path(input_mlir),
+                        incoming,
+                        outgoing,
+                        result,
+                        invocation_directory,
+                    )
                 if outgoing is not None and (outgoing.exists() or outgoing.is_symlink()):
                     copy_plain_file(outgoing, output_json, output=True)
         with cpu_pool.shared_compute_pool():
