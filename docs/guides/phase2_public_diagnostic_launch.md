@@ -68,6 +68,10 @@ metadata traversal. Existing scoped verification checks the original owner befor
 and after that traversal while keeping getter identity/source/binding checks
 active. No scope spans source execution, count observation or timing prediction;
 a failed final owner recheck prevents the metadata result from returning.
+One diagnostic policy selection record groups its native metadata getters in
+that scope. Every actual compiler-binding callback and native runtime/semantics
+check still executes; subsequent records enter new fresh scopes. The original
+profile, corpus, baseline, source and numerical checks are unchanged.
 
 This explicit selection uses diagnostic feedback version 2. After each original
 complete L0/L1/L2/source observation, it runs the existing boxed plain and annotated

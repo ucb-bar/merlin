@@ -197,3 +197,20 @@ def test_native_metadata_scope_rechecks_original_proof_before_result_consumption
             original.compiler_binding = replace(original.compiler_binding, software="changed-during-record")
     with pytest.raises(ValueError, match="original source/native proof changed"):
         native.record()
+
+
+@pytest.mark.parametrize("field", ["hardware", "software", "numerical_policy", "runtime", "library"])
+def test_native_metadata_scope_rejects_each_foreign_compiler_binding(source, inputs, field):
+    args, selected, bridge = setup(source, inputs)
+    original = bridge.owner
+    native = N.prepare_public_native_exploration(selected, binding_correspondence=bridge)
+    policy = D.prepare_public_source_diagnostic(**args, native_exploration=native)
+    changed = SimpleNamespace(
+        feedback_evaluator=policy.feedback_evaluator,
+        _compiler_pass_selection=SimpleNamespace(
+            binding=replace(original.compiler_binding, **{field: "foreign-in-scope"})
+        ),
+    )
+    with pytest.raises((ValueError, StageGateError)):
+        with native._metadata_operation():
+            native.verify_for(changed)
