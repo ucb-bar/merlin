@@ -17,10 +17,17 @@ def selected(launch, run_dir, deadline):
     if Path(value['config']) != launch.config.path or value['deadline_unix'] != deadline:
         raise ValueError('selected native full chain config/deadline differs')
     root = Path(value['static_root'])
-    if root.exists():
-        raise ValueError('selected native static workspace must be fresh')
-    root.mkdir(parents=True, mode=0o700)
-    return {'selection': value, 'root': root, 'spec': spec, 'run_dir': run_dir}
+    if root.is_symlink() or (root.exists() and not root.is_dir()):
+        raise ValueError('selected native metadata root is indirect')
+    if any((root / name).exists() or (root / name).is_symlink()
+           for name in ('static-index.json', 'full-chain-qualification.json')):
+        raise ValueError('selected native metadata already contains completed intake')
+    partition_root = root / launch.run_id
+    if partition_root.exists() or partition_root.is_symlink():
+        raise ValueError('selected native attempt must be fresh')
+    partition_root.mkdir(parents=True, mode=0o700)
+    return {'selection': value, 'root': root, 'partition_root': partition_root,
+            'spec': spec, 'run_dir': run_dir}
 
 
 def worker_argv(context, launch, name, submission, pin, owner_pin):
@@ -28,7 +35,7 @@ def worker_argv(context, launch, name, submission, pin, owner_pin):
     return [python, '-u', str(Path(__file__).with_name('native_full_chain.py')),
             '--job', str(pin), '--owner-pin', str(owner_pin), '--run-dir', str(context['run_dir']),
             '--descriptor', str(launch.path(launch.document['inputs']['descriptor'])),
-            '--submission', str(submission), '--out', str(context['root'] / name),
+            '--submission', str(submission), '--out', str(context['partition_root'] / name),
             '--model', name, '--deadline-unix', str(context['selection']['deadline_unix'])]
 
 
@@ -36,7 +43,7 @@ def publish_static(context, names):
     path = context['root'] / 'static-index.json'
     if path.exists():
         return
-    records = {name: context['root'] / name / 'native-static.json' for name in names}
+    records = {name: context.get('partition_root', context['root']) / name / 'native-static.json' for name in names}
     if not all((p.parent / 'partition-ready.json').is_file() for p in records.values()):
         return
     # Each ready marker is observational. The native consumer independently

@@ -57,3 +57,49 @@ def test_numerical_receipt_cannot_publish_partial_or_failed_finalization(modules
     with pytest.raises(ValueError, match='finalization failed'):
         supervisor.publish_numerical(context, None, state=state, **args)
     assert not (tmp_path / 'full-chain-qualification.json').exists()
+
+
+@pytest.mark.parametrize('mode', ['paid', 'qualified', 'missing_selection'])
+def test_only_explicit_frozen_qualification_delegates_source_precheck(modules, monkeypatch, tmp_path, mode):
+    from merlin_experiments.phase1.feedback import private_numerical_selection as selection
+    supervisor, _ = modules
+    called = []
+    monkeypatch.setattr(supervisor.P, 'source_preparation', lambda *a: called.append('paid') or {'checked': True})
+    monkeypatch.setattr(selection, 'read', lambda *a: None if mode == 'missing_selection' else {'mode': selection.MODE})
+    if mode == 'missing_selection':
+        with pytest.raises(ValueError, match='canonical native full-chain'):
+            supervisor.P.source_preparation_for(None, tmp_path, tmp_path / 'spec', qualification_only=True)
+        assert not called
+    else:
+        value = supervisor.P.source_preparation_for(
+            None, tmp_path, tmp_path / 'spec', qualification_only=mode == 'qualified')
+        if mode == 'paid':
+            assert called == ['paid'] and value['checked'] is True
+        else:
+            assert not called and value['source_preflight_passed'] is False
+            assert value['candidate_qualified'] is False and value['author_allowed'] is False
+            assert value['status'] == 'delegated_to_canonical_native_static_gate'
+
+
+def test_fresh_attempt_preserves_failed_metadata_and_rejects_completed_intake(modules, monkeypatch, tmp_path):
+    from merlin_experiments.phase1.feedback import private_numerical_selection as selection
+    supervisor, _ = modules
+    config = tmp_path / 'config'
+    config.write_text('{}')
+    root = tmp_path / 'static'
+    (root / 'old-failed-model').mkdir(parents=True)
+    previous = root / 'old-failed-model/record.json'
+    previous.write_text('original-failure')
+    value = {'static_root': str(root), 'config': str(config), 'deadline_unix': 123}
+    monkeypatch.setattr(selection, 'read', lambda _: value)
+    launch = SimpleNamespace(path=lambda p: p, config=SimpleNamespace(path=config),
+        document={'inputs': {'private_full_model_spec': str(tmp_path / 'spec')}}, run_id='new-run')
+    context = supervisor.selected(launch, tmp_path / 'run', 123)
+    assert context['partition_root'] == root / 'new-run'
+    assert previous.read_text() == 'original-failure'
+    with pytest.raises(ValueError, match='attempt must be fresh'):
+        supervisor.selected(launch, tmp_path / 'run', 123)
+    (root / 'static-index.json').write_text('{}')
+    launch.run_id='third-run'
+    with pytest.raises(ValueError, match='completed intake'):
+        supervisor.selected(launch, tmp_path / 'run', 123)

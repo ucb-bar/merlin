@@ -227,7 +227,13 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                 raise ValueError("qualification requires selected all-declared-output evidence")
             # The ordinary launcher performs source/config/pin, bundle-seal and
             # positive infrastructure readiness admission; it starts no author.
-            readiness = P.prepare(launch, prep)
+            from merlin_experiments.phase1.feedback import private_numerical_selection
+
+            source_delegated = ("private_full_model_spec" in launch.document["inputs"]
+                and private_numerical_selection.read(launch.path(
+                    launch.document["inputs"]["private_full_model_spec"])) is not None)
+            readiness = (P.prepare(launch, prep, qualification_only=True) if source_delegated
+                         else P.prepare(launch, prep))
             P.save(prep / "launch-readiness.json", readiness)
             selected, identity = F.selection(launch), F.selected_identity(launch)
             if "native" in selected["names"] or not selected["names"]:
