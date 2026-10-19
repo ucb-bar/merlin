@@ -530,6 +530,26 @@ remain in the held-out coverage denominator.
 native report envelopes. Known registered feature counters include explicit
 zeros. An arbitrary absent feature is unknown and is never filled with zero.
 
+The normal Phase 2 queue can receive an explicit original-host
+`NativeArchiveScreenSelection` from `phase2.archive_screen_selection`. Select
+`screen_path=None`: this route reruns the original archive held gates with
+`prediction_kind="event_timing"` and consumes actual native report predictions,
+never a fitted linear screen. Alongside the original exact hardware/software
+correspondence owner it requires a live independently reviewed
+`native_timing_semantics` capability with the same facts, software, feature
+schema, model and ordered-library binding. Source availability, geometry and
+good fit statistics cannot issue this resource/completion/overlap review.
+
+Fresh queued inference reopens the original complete L0/L1/L2 numerical receipt
+and the actual plain/annotated process products for the same ELF, input and
+counter window. Identical executable arms remain separately checked, but supply
+one native inference; conflicting observations refuse. All raw activity columns,
+including unfitted and constant ones, constrain the domain. A mechanism family
+without held comparison evidence and an unqualified capacity regime remain
+UNKNOWN. Predictions guide exploration only: measured promotion, plateau and
+final gates remain unchanged, and predicted cycles never establish roofline
+attainment. The default archive selection retains its empirical interpretation.
+
 The handoff binds the immutable archive, dataset, split manifest, selected Spike
 executable/configuration, model artifact and training code. Its held-out report
 includes per-case absolute/relative errors and shape/family breakdowns. Selection

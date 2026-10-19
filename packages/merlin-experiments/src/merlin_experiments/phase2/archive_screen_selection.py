@@ -21,7 +21,7 @@ class ArchiveScreenSelection:
     archive_sha256: str
     binding_path: Path
     observations_path: Path
-    screen_path: Path
+    screen_path: Path | None
     runtime: ArchiveSpikeRuntime
     correspondence: ReviewedPassCapability
     expected_rtl_facts_sha256: str
@@ -32,6 +32,11 @@ class ArchiveScreenSelection:
         from .archive_screen_review import review_archive
 
         self.correspondence.revalidate()
+        native = type(self) is NativeArchiveScreenSelection
+        if native:
+            from .archive_native_screen import verify_semantics
+
+            verify_semantics(self.native_semantics, self.correspondence.binding)
         return review_archive(
             runtime=self.runtime,
             archive=self.archive,
@@ -39,26 +44,44 @@ class ArchiveScreenSelection:
             binding_path=self.binding_path,
             observations_path=self.observations_path,
             screen_path=self.screen_path,
+            prediction_kind="event_timing" if native else "empirical_screen",
         )
 
     def install(self, policy):
         """Rebuild original eligibility/held gates before admitting any job."""
         if (
-            type(self) is not ArchiveScreenSelection
+            type(self) not in (ArchiveScreenSelection, NativeArchiveScreenSelection)
             or type(self.runtime) is not ArchiveSpikeRuntime
             or type(self.correspondence) is not ReviewedPassCapability
         ):
             raise StageGateError("normal archive screening requires explicit original live host owners")
+        if type(self) is NativeArchiveScreenSelection:
+            from .archive_native_screen import verify_semantics
+
+            verify_semantics(self.native_semantics, self.correspondence.binding)
+            if self.screen_path is not None:
+                raise StageGateError("native event selection cannot consume a fitted linear screen")
         arguments = {field.name: getattr(self, field.name) for field in fields(self)}
         owner = issue_archive_screen(policy, **arguments)
         policy.install_screen(owner)
         return owner
 
 
+@dataclass(frozen=True)
+class NativeArchiveScreenSelection(ArchiveScreenSelection):
+    """Explicit separately versioned native selection; screen_path must be None.
+
+    Both a live resource-semantics review and native held gates are required.
+    This selection cannot promote predictions to measured objective values.
+    """
+
+    native_semantics: ReviewedPassCapability
+
+
 def install(selection, policy):
     """Called only after the original policy/build selection and before its pool."""
     if selection is not None:
-        if type(selection) is not ArchiveScreenSelection:
+        if type(selection) not in (ArchiveScreenSelection, NativeArchiveScreenSelection):
             raise StageGateError("archive-screen JSON cannot replace original host selection")
         return selection.install(policy)
     return None

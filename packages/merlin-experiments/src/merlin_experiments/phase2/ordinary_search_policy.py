@@ -40,6 +40,7 @@ from merlin_experiments.phase1.feedback import candidate_observations as CANDIDA
 from merlin_experiments.phase1.feedback import compiler_profile_runtime as PROFILE_RUNTIME
 
 from . import archive_count_observation as ARCHIVE_COUNTS
+from . import archive_native_screen as ARCHIVE_NATIVE
 from . import archive_spike_runtime as ARCHIVE_RUNTIME
 from . import campaign as PC
 from . import census_launch as CENSUS_LAUNCH
@@ -189,6 +190,9 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             (CAL, "issue_from_samples", CAL.issue_from_samples),
             (ARCHIVE_SCREEN, "issue_archive_screen", ARCHIVE_SCREEN.issue_archive_screen),
             (ARCHIVE_COUNTS, "observe", ARCHIVE_COUNTS.observe),
+            (ARCHIVE_NATIVE, "inference_case", ARCHIVE_NATIVE.inference_case),
+            (ARCHIVE_NATIVE, "compare", ARCHIVE_NATIVE.compare),
+            (ARCHIVE_NATIVE, "verify_semantics", ARCHIVE_NATIVE.verify_semantics),
             (MEMBER_SELECTION, "prepare", MEMBER_SELECTION.prepare),
             (CANDIDATE_CENSUS, "observe_passed_census", CANDIDATE_CENSUS.observe_passed_census),
             (CENSUS_LAUNCH, "observe_dynamic_census", CENSUS_LAUNCH.observe_dynamic_census),
@@ -230,6 +234,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             ARCHIVE_SCREEN,
             ARCHIVE_RUNTIME,
             ARCHIVE_COUNTS,
+            ARCHIVE_NATIVE,
             BUILD,
             PROV,
             QUEUE_CAL,

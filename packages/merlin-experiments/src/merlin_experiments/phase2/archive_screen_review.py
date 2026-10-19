@@ -25,14 +25,27 @@ def domain_reason(report, ranges):
     return None
 
 
-def review_archive(*, runtime, archive, archive_sha256, binding_path, observations_path, screen_path):
+def review_archive(
+    *,
+    runtime,
+    archive,
+    archive_sha256,
+    binding_path,
+    observations_path,
+    screen_path,
+    prediction_kind="empirical_screen",
+):
     """Reopen actual original records; no saved qualified flag substitutes."""
     runtime.verify()
     model = json.loads(runtime.model_json)
     inventory = A.inspect_archive(archive, archive_sha256)
     binding, _b = RT.metadata(binding_path)
     observations, _o = RT.metadata(observations_path)
-    screen, _s = RT.metadata(screen_path)
+    if prediction_kind not in {"empirical_screen", "event_timing"}:
+        raise StageGateError("archive review requires an explicit supported prediction kind")
+    if (screen_path is None) != (prediction_kind == "event_timing"):
+        raise StageGateError("native event review cannot consume a fitted linear screen")
+    screen = RT.metadata(screen_path)[0] if screen_path is not None else None
     selected_domain = dict(model["domain"], target_model_sha256=F.digest(runtime.model_path))
     if (
         binding["domain"] != selected_domain
@@ -42,9 +55,13 @@ def review_archive(*, runtime, archive, archive_sha256, binding_path, observatio
         raise StageGateError("archive timing/runtime/source selection differs from the original reviewed public intake")
     plan = A.prepare(inventory, binding)
     dataset = A.attach(plan, observations)
-    report = V.validate(dataset, screen)
-    if not report["qualified"] or report["event_engine_qualified"] or dataset["profile"] != "phase1-public":
-        raise StageGateError("original archive empirical held gates did not qualify")
+    report = V.validate(dataset, screen, prediction_kind=prediction_kind)
+    if (
+        not report["qualified"]
+        or report["event_engine_qualified"] != (prediction_kind == "event_timing")
+        or dataset["profile"] != "phase1-public"
+    ):
+        raise StageGateError("original archive " + prediction_kind + " held gates did not qualify")
     cases = {c["case_id"]: c for c in dataset["cases"]}
     raw = [
         (cases[r["case_id"]], observations["reports"][r["record_id"]]["report"])
@@ -65,6 +82,13 @@ def review_archive(*, runtime, archive, archive_sha256, binding_path, observatio
         "screen": screen,
         "report": report,
         "raw_activity_ranges": ranges,
-        "families": sorted({case["mechanism_family"] for case in dataset["cases"] if case["split"] == "train"}),
+        "families": sorted(
+            {case["mechanism_family"] for case in dataset["cases"] if case["split"] == "train"}
+            & (
+                {family for family, evidence in report["families"].items() if evidence["eligible_pairs"] > 0}
+                if prediction_kind == "event_timing"
+                else {case["mechanism_family"] for case in dataset["cases"]}
+            )
+        ),
         "authority": "preflight only; original ordinary policy required for installation",
     }
