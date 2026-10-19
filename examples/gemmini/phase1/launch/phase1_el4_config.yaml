@@ -22,7 +22,7 @@ variables:
   INSTRUCTION_SELECTION: ${TASK_ROOT}/private/instruction-selection
   ORACLE_TIMING: ${TASK_ROOT}/.tmp/phase1-prep-20261017-v4/oracle-timing.json
   RUN: ${REPO}/out/runs/gemmini/phase1/${RUN_ID}
-  SOURCE_REVISION: 9edf4061ed7f539a0333d448590da0fd676df87f
+  SOURCE_REVISION: ab9ed6f7d380e917078b0aae10e5532215bca693
   SUPERVISOR_FINAL_RESERVE_S: '4500'
   SUPERVISOR_PSS_MAX_BYTES: '206158430208'
   SUPERVISOR_HOST_HEADROOM_BYTES: '25769803776'
@@ -193,7 +193,13 @@ runtime_pins:
     sha256: 1823de2dbed575cc8c33ca100ce55722696463500a29d9fe3b3bfefda77ec719
   operator_launcher:
     path: ${REPO}/examples/gemmini/phase1/launch/launch_phase1.py
-    sha256: 07914e63be4274fadac7d0ce8883455863cd0aaa1bb097077789bb6d1f06aebc
+    sha256: 4a5d09bc9bea09ad3eb044bc811ddb1bb2529d7441b4c9d9bbcee078ee11fc35
+  operator_model_verification:
+    path: ${REPO}/examples/gemmini/phase1/launch/full_model_verification.py
+    sha256: cd0cd1e2cf44650afb6e68df47b609a7032e2f74fa6321e2acd594c574caa109
+  operator_supervisor:
+    path: ${REPO}/examples/gemmini/phase1/launch/launch_supervisor.py
+    sha256: 47ac9d140e8a322b27cb0a4a2a2769734c62bec0338794e4dca380b597413a0b
   private_bundle_manifest:
     path: ${NUMERICS_BUNDLE}/MANIFEST.json
     sha256: 8c809fed1e3afb246b54b263d4a74c5dfc265a9e7affbd7c56bde54aa4706752
