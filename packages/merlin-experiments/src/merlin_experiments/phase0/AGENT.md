@@ -65,6 +65,16 @@ immutable deadline. Lease per source, retain external RSS/CPU/scratch supervisio
 and refuse incomplete/over-budget work before writing any selected hash file.
 It grants no semantic, numerical, compiler or corpus admission.
 
+`sealed_native_materialization` explicitly composes complete original integer
+references when the old producer receipt omitted them. Reopen the original live
+seal, preserve every producer field/member and every source byte, and bind the
+new receipt to the original receipt bytes and exact sealed program. A framework
+catalog remains owned by its original receipt-bound metadata digest. This
+composition is byte evidence only: the ordinary writer must still recheck the
+original seal, complete outputs, source arithmetic and actual realization owner.
+Apply the selected public payload bound before array loading; never reinterpret
+the loader/source text ceiling as the complete capture payload ceiling.
+
 Explicit private-selection V4 selects `operator_structured_exclusion` on BOTH
 sides. Registered tensor reductions require complete dimensions, tensor/scalar
 ABI and ownership; their versioned hashes do not grant execution support.

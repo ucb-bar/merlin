@@ -32,13 +32,37 @@ def _root(attestation, program):
     return Path(capture["model_path"]).parent
 
 
-def read(attestation, *, program, source_member):
+def _payload_limit(root, maximum):
+    if type(maximum) is not int or maximum < 1:
+        raise ValueError("sealed native payload needs an explicit positive public bound")
+    receipt = root / "capture_receipt.json"
+    if receipt.is_symlink() or receipt.stat().st_size > min(maximum, 1 << 20):
+        raise ValueError("sealed native metadata exceeds its selected public bound")
+    from merlin.common import strict_json
+
+    document = strict_json.loads(receipt.read_bytes(), max_bytes=1 << 20)
+    names = set(document["artifacts"]) | {"golden.json"}
+    names.update(path.name for path in root.iterdir()
+                 if path.name in {"golden.npy", "goldens.npz", "pytorch-opset.json"})
+    total = receipt.stat().st_size
+    for name in names:
+        path = root / name
+        if Path(name).name != name or path.is_symlink() or not path.is_file():
+            raise ValueError("sealed native payload leaves are absent or indirect")
+        total += path.stat().st_size
+        if total > maximum:
+            raise ValueError("sealed native payload exceeds its selected public bound before array loading")
+
+
+def read(attestation, *, program, source_member, max_payload_bytes=None):
     """Reopen complete original source/inputs/outputs; relocate only metadata paths."""
     require_verified_execution(attestation)
     selection = capture_selection.load(
         Path(attestation["selection"]["path"]), expected_sha256=attestation["selection"]["sha256"]
     )
     plan, root = selection["plan"], _root(attestation, program)
+    if max_payload_bytes is not None:
+        _payload_limit(root, max_payload_bytes)
     member = PurePosixPath(source_member)
     if member.is_absolute() or ".." in member.parts or member.as_posix() != source_member:
         raise ValueError("sealed source member must be an exact relative workload leaf")

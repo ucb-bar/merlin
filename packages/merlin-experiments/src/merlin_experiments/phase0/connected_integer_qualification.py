@@ -77,8 +77,13 @@ def source_proof(cap, directory):
         if len(matches) != 1:
             raise ValueError("connected source must select one unique original verified session program")
         root = Path(capture["capture_path"]) / "stages" / matches[0]["name"]
+        selected_program = matches[0]["name"]
     else:
         root = Path(capture["model_path"]).parent
+        selected_program = None
+    from .sealed_native_materialization import verify_against_original
+
+    verify_against_original(directory, attestation, program=selected_program, root=root)
     metadata = json.loads((root / "meta.json").read_bytes())
     native_integer.validate(root, metadata, plan)
     _verify_frontend_evidence_dir(directory)
