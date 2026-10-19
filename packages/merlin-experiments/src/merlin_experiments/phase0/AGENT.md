@@ -1,5 +1,21 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+`development_envelopes` derives public architecture-informed source requests
+from content-pinned public configs and a separately disclosed operator envelope.
+Occurrence proxies sample joint shapes; they are never latency weights. Keep
+every spectrum-selection denial and original capacity request/refusal. V2
+`development_patterns`, composition and reuse factories preserve exact declared
+integer arithmetic and all live-outs. Spatial sources currently use explicit
+packing and integer GEMM, not a qualified native convolution instruction.
+`development_reference` owns an independently implemented NumPy exact reference.
+`development_cohort` freezes byte inventories, ABI, complete-call boundaries and
+per-member coverage before capture. Bound reference costs before allocation;
+sum-of-source payloads prove neither simultaneous liveness nor physical traffic.
+`development_capture` is a bounded diagnostic using the ordinary capture/writer,
+not a sealed source-exclusion or hardware/software admission authority. Retain
+UNKNOWN complete rooflines and baseline execution until original owners qualify
+them. Public architecture inspection removes any future unseen-workload claim.
+
 `development_sources` constructs fresh explicit-public grouped-head integer
 mixing programs and stages them through the existing workload-roster owner.
 Retain exact declared readout arithmetic, complete scores/results/KV live-outs,

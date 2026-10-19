@@ -27,6 +27,10 @@ def _digest(value):
 
 def describe(declaration):
     """Derive complete input/result geometry before allocating tensors or files."""
+    if isinstance(declaration, dict) and declaration.get("schema") == "merlin.phase0.public_development_source.v2":
+        from .development_patterns import describe as describe_pattern
+
+        return describe_pattern(declaration)
     if (
         not isinstance(declaration, dict)
         or set(declaration) != {"schema", "scope", "name", "pattern", "geometry", "arithmetic", "max_logical_elements"}
@@ -102,6 +106,10 @@ def describe(declaration):
 
 def render(declaration):
     """Unroll grouped contractions, exact readout and carried KV; retain live-outs."""
+    if isinstance(declaration, dict) and declaration.get("schema") == "merlin.phase0.public_development_source.v2":
+        from .development_patterns import render as render_pattern
+
+        return render_pattern(declaration)
     description = describe(declaration)
     geometry = declaration["geometry"]
     shift = declaration["arithmetic"]["readout_shift"]
@@ -160,7 +168,7 @@ def capsule_entry(declaration, loader):
         "capture_quantization": "already_materialized",
         "output_numeric_policy": "captured_per_output_v1",
         "outs": [row["name"] for row in description["outputs"]],
-        "source_reference": f"{SCHEMA}:{description['declaration_sha256']}",
+        "source_reference": f"{declaration['schema']}:{description['declaration_sha256']}",
     }
 
 
