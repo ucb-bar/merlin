@@ -20,6 +20,15 @@ retained compiler does not qualify a fresh compiler or certify current reference
 The launcher never repairs or seals inputs. A missing or mismatched receipt
 refuses authoring.
 
+Preparation also invokes the existing compiler-independent private source
+preflight before starting the author. Every selected model and program must have
+verified source inputs under the selected facts, source contracts and host build
+observation. The source-only report deliberately grants no candidate or retained
+compiler qualification. Its private report and frozen sources remain under
+`source-preflight/` in the preparation directory. Repeated preparation reuses
+them only after reopening the exact source/input/tool identity and retained
+output bytes; changed inputs select a fresh check, and modified receipts refuse.
+
 Each new compiler author starts from an empty submission. There is no seed,
 resume, previous compiler, curated kernel provider or handwritten adapter.
 `variables.SOURCE_REVISION` selects the source baseline; the launcher checks

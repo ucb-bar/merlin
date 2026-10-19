@@ -988,6 +988,8 @@ def test_real_grade_rollup_withholds_legacy_tiers_cost_and_numeric_for_candidate
     package, capsules = tmp_path / "package", tmp_path / "capsules"
     package.mkdir()
     capsules.mkdir()
+    tool = package / "compiler.py"
+    tool.write_text("# Existing declared tool; this fixture tests model audit rollup.\n")
     capsule = {"name": "M", "kind": "model", "label": "public", "semantic": {"must_accelerate": True}}
     row = {
         "capsule": "M",
@@ -1016,7 +1018,9 @@ def test_real_grade_rollup_withholds_legacy_tiers_cost_and_numeric_for_candidate
             },
         },
     }
-    monkeypatch.setattr(grade_module, "load_package", lambda *a, **k: SimpleNamespace(integrity_exempt=False))
+    monkeypatch.setattr(
+        grade_module, "load_package", lambda *a, **k: SimpleNamespace(integrity_exempt=False, tool=tool)
+    )
     monkeypatch.setattr(grade_module, "integrity_scan", lambda *a, **k: None)
     monkeypatch.setattr(grade_module, "build_package", lambda *a, **k: None)
     monkeypatch.setattr(grade_module.CR, "discover_capsules", lambda *a, **k: [capsule])

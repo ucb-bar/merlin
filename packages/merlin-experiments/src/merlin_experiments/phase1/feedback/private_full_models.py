@@ -32,6 +32,7 @@ from merlin_experiments.phase1.feedback import private_linalg_support as linalg_
 from merlin_experiments.phase1.feedback import private_linkage_support as linkage_support
 from merlin_experiments.phase1.feedback import private_linked_elf_selection as linked_policy
 from merlin_experiments.phase1.feedback import private_literal_arange_admission as arange_support
+from merlin_experiments.phase1.feedback import private_model_math_policy as math_policy
 from merlin_experiments.phase1.feedback import private_ordered_scan_support as ordered_scan_support
 from merlin_experiments.phase1.feedback import private_pure_stage_support as pure_stage
 from merlin_experiments.phase1.feedback import private_source_demand as source_demand
@@ -75,6 +76,7 @@ from .private_model_inputs import _recipe_derivation as _derive_recipe_binding
 from .private_model_inputs import _require_selected_input_bindings as _require_selected_input_bindings
 from .private_model_inputs import _selected_admission_views as _selected_admission_views
 from .private_model_inputs import _tree as _verify_input_tree
+from .private_source_preflight import _notify as _source_progress
 
 SCHEMA = "merlin.phase1.private_full_models.v1"
 RESULT_SCHEMA = "merlin.phase1.private_full_model_build_gate.v15"
@@ -434,6 +436,7 @@ def _source_obligations(
     *,
     facts_sha256: str | None = None,
     numeric_policy_sha256: str | None = None,
+    progress=None,
 ) -> dict:
     """Recompute eligibility over the actual source, independently of the candidate route."""
     from merlin.common import mlir_query as mq
@@ -447,11 +450,15 @@ def _source_obligations(
     from merlin_experiments.phase1.feedback.private_pool_support import prove_pool_source
 
     source = capture / "model.mlir"
+    _source_progress(progress, "capture_receipt")
     checked = AI.verify_capture_receipt(source)
     if checked.get("status") != "verified_materialized":
         raise ValueError(f"full-model capture receipt is not verified: {checked.get('errors')}")
+    _source_progress(progress, "normalization")
     text, _ = normalize_capture_mlir(source.read_text(encoding="utf-8"))
+    _source_progress(progress, "parse")
     module = mq.parse(text)
+    _source_progress(progress, "group_formation")
     groups, exact_float_refusals = _exact_source_groups(module, target, capture, form_source_groups)
     plan = CG.plan(module, target, groups=groups)
     CG.require_explained(plan)
@@ -464,6 +471,7 @@ def _source_obligations(
     source_sha = file_sha256(source)
     normalized_sha = sha256(text.encode("utf-8")).hexdigest()
     raw_verdicts = tuple(is_eligible(descriptor, cap_map) for descriptor in descriptors)
+    _source_progress(progress, "source_demand")
     demand = source_demand.derive(
         groups,
         operations,
@@ -476,6 +484,7 @@ def _source_obligations(
         numeric_policy_sha256=numeric_policy_sha256,
         source_operations=tuple(mq.walk(module)),
     )
+    _source_progress(progress, "operation_inventory")
     inventory = AI._application_operation_inventory(  # noqa: PLC2701 -- trusted exact inventory primitive
         source,
         target,
@@ -484,6 +493,7 @@ def _source_obligations(
         software_spec=dict(software),
         host_capabilities=dict(host),
     )
+    _source_progress(progress, "source_support")
     bounded_control = control_support.prove_if_selected(
         module,
         inventory,
@@ -580,9 +590,12 @@ def _source_obligations(
         raw_sha256=source_sha,
         normalized_sha256=normalized_sha,
     )
+    _source_progress(progress, "host_admission")
     unresolved = []
     support_lowering = 0
-    for row in inventory["signatures"]:
+    for row_index, row in enumerate(inventory["signatures"]):
+        if row_index % 128 == 0:
+            _source_progress(progress, "host_admission", current=row_index, total=len(inventory["signatures"]))
         if ordered_scan_ordinals.intersection(row["ordinals"]):
             if not set(row["ordinals"]) <= ordered_scan_ordinals:
                 raise ValueError("source ordered scan row mixes proved and unproved operations")
@@ -827,6 +840,7 @@ def run(
     linked_elf_admission=None,
     native_result_format_selection=None,
     source_only: bool = False,
+    progress=None,
 ) -> dict[str, Any]:
     """Build the frozen roster, one canonical partition, or a prebuilt diagnostic.
 
@@ -912,6 +926,7 @@ def run(
             continue
         item: dict[str, Any] = {"model": name, "status": "fail", "checks": {}}
         results.append(item)
+        _source_progress(progress, "model_inputs", model=name)
         try:
             identity = row.get("source_identity") or {}
             if identity != {"model_id": name, "scope": "complete_network", "role": "private_validation"}:
@@ -1035,6 +1050,7 @@ def run(
             program_options = {
                 program: dict(((build_options or {}).get(name) or {}).get(program) or {}) for program, _ in programs
             }
+            selected_math = math_policy.bind(document, spec, row, target, program_options, item["checks"])
             from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
 
             program_ir_budgets = {}
@@ -1084,6 +1100,11 @@ def run(
                 sources, unresolved_demands = {}, {}
                 for program, stage in programs:
                     try:
+                        _source_progress(progress, "program_source", model=name, program=program)
+
+                        def observe(event):
+                            _source_progress(progress, model=name, program=program, **event)
+
                         sources[program] = _source_obligations(
                             stage,
                             target,
@@ -1093,6 +1114,7 @@ def run(
                             selected_index_observations[program],
                             facts_sha256=facts["sha256"],
                             numeric_policy_sha256=recipe_proof["recipe_semantic_sha256"],
+                            **({"progress": observe} if progress is not None else {}),
                         )
                         if native_result_ceiling is not None:
                             sources[program]["accelerator_source_demand"]["native_result_format_ceiling"] = (
@@ -1108,8 +1130,10 @@ def run(
             if not any(source["eligible_groups"] for source in sources.values()):
                 raise ValueError("full model has no independently eligible accelerator computation")
             item["checks"]["source"] = sources
+            math_policy.require_sources(selected_math, sources)
             if source_only:
                 item["status"] = "source_inputs_verified"
+                _source_progress(progress, "model_complete", model=name, status=item["status"])
                 continue
             compiled = []
             diagnostic_receipts = {}
@@ -1268,9 +1292,11 @@ def run(
             linked_policy.unchanged(instruction_selection)
             if native_result_ceiling is not None:
                 native_result_ceiling.revalidate_sources()
+            math_policy.recheck(selected_math)
             item["status"] = "diagnostic_static_checks_passed" if diagnostic else "pass"
         except Exception as exc:  # noqa: BLE001 -- one model's refusal must not hide the others
             item["reason"] = _public_failure_reason(exc)
+            _source_progress(progress, "model_complete", model=name, status="fail")
             if source_only and isinstance(exc, SourceAdmissionError):
                 item["operator_unresolved"] = json.loads(json.dumps(exc._private_unresolved, default=str))
     result = {

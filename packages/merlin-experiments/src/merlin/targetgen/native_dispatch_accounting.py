@@ -51,11 +51,13 @@ def _host_compute_report(command_buffer: Mapping[str, Any], lowered_mlir_text: s
 
 
 def _mandatory_command_blocks(function: Any, commands: set[Any]) -> bool:
-    """A return cannot be reached after removing blocks carrying real work commands.
+    """Prove selected work on every returning path, including finite positive loops.
 
-    This proves one command issues on every *returning* path, including a loop's
-    zero-trip edge. Nontermination and equivalence to source computation are
-    separate obligations; neither is inferred from this CFG property.
+    The structural cut proves the common case without evaluating conditions.
+    A loop's syntactic zero-trip edge can bypass work even when its actual
+    constant induction guarantees work. Only the existing complete constant-CFG
+    accounting may discharge that case. Nontermination and source equivalence
+    remain separate obligations; matching a command is the caller's authority.
     """
     from merlin.perf.host_cfg_index import prepare_host_cfg
 
@@ -71,7 +73,25 @@ def _mandatory_command_blocks(function: Any, commands: set[Any]) -> bool:
             continue
         reached.add(block)
         if block.last_op is not None and block.last_op.name == "llvm.return":
-            return False
+            from merlin.perf.host_cfg_activity import analyze_host_cfg_activity
+
+            activity = analyze_host_cfg_activity(function, prepared_cfg=cfg)
+            counts = activity.get("blocks")
+            if activity.get("status") != "derived" or not isinstance(counts, list) or len(counts) != len(cfg.blocks):
+                return False
+            for index, row in enumerate(counts):
+                if (
+                    not isinstance(row, dict)
+                    or row.get("block") != index
+                    or type(row.get("execution_count")) is not int
+                    or row["execution_count"] < 0
+                ):
+                    return False
+            return any(
+                counts[index]["execution_count"] > 0
+                for index, candidate in enumerate(cfg.blocks)
+                if candidate in carrying
+            )
         pending.extend(cfg.successors[block])
     return True
 
@@ -102,8 +122,15 @@ def _kernel_command_inventory(path: Path, *, symbol: str, table: Mapping[str, An
     # Decode the independently verified owner section and complete extent.
     run = subprocess.run(
         [
-            str(disassembler), "-d", "--disassemble-zeroes", "--triple=riscv64", "-M", "no-aliases",
-            f"--section={extent['section']}", f"--start-address={start}", f"--stop-address={start + size}",
+            str(disassembler),
+            "-d",
+            "--disassemble-zeroes",
+            "--triple=riscv64",
+            "-M",
+            "no-aliases",
+            f"--section={extent['section']}",
+            f"--start-address={start}",
+            f"--stop-address={start + size}",
             str(path),
         ],
         capture_output=True,

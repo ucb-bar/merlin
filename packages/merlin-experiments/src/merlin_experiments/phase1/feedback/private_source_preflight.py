@@ -12,16 +12,73 @@ This runs exactly those checks -- :func:`.private_full_models.run` with
 execution build options and optional native result-format selection a formal
 grade would use -- with no candidate, and reports each model's first refusal.
 It grants nothing: a passing preflight is not a gate result.
+
+The CLI emits private stage records on stderr and atomically replaces one bounded
+progress JSON file in its output directory. API callers can opt into the same
+journal or a callback. These observations never grant admission, and stop before
+the caller hashes a completed preparation for reuse.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 REPORT = "private_full_model_source_preflight.json"
+PROGRESS = "private_full_model_source_progress.json"
+
+
+def _notify(progress, stage, **details):
+    """Observational callbacks cannot alter admission or a formal verdict."""
+    if progress is not None:
+        try:
+            progress({"stage": stage, **details})
+        except Exception:
+            pass
+
+
+def _observer(callback, path):
+    """Keep one bounded, atomic private record; never change an admission result."""
+    started, sequence = time.monotonic(), 0
+
+    def observe(event):
+        nonlocal sequence
+        sequence += 1
+        record = {
+            "schema": "merlin.phase1.private_source_progress.v1",
+            "sequence": sequence,
+            "updated_at": datetime.now(UTC).isoformat(),
+            "elapsed_seconds": round(time.monotonic() - started, 3),
+        }
+        for key in ("stage", "model", "program", "status"):
+            if isinstance(event.get(key), str):
+                record[key] = event[key][:128]
+        for key in ("current", "total"):
+            if type(event.get(key)) is int and event[key] >= 0:
+                record[key] = event[key]
+        if path is not None:
+            temporary = path.with_name(path.name + ".pending")
+            try:
+                fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+                with os.fdopen(fd, "w") as stream:
+                    json.dump(record, stream, sort_keys=True)
+                    stream.write("\n")
+                os.replace(temporary, path)
+            except OSError:
+                pass
+        if callback is not None:
+            try:
+                callback(record)
+            except Exception:
+                pass
+
+    return observe
 
 
 def preflight(
@@ -31,6 +88,8 @@ def preflight(
     out: str | Path,
     target: str,
     native_result_format_selection: str | Path | None = None,
+    progress=None,
+    progress_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Run the gate's compiler-independent checks for every declared model into a fresh ``out``."""
     from . import private_full_model_execution as execution
@@ -43,14 +102,18 @@ def preflight(
     if out.exists() or out.is_symlink():
         raise ValueError("source preflight needs a fresh private output directory")
     out.mkdir(mode=0o700, parents=True)
+    observe = _observer(progress, Path(progress_path) if progress_path is not None else None)
     sources = out / "sources"
+    observe({"stage": "source_freeze"})
     freeze = private_source_freeze.stage(spec, sources, target=target)
+    observe({"stage": "descriptor"})
     selection, _record = freeze_for_run(native_result_format_selection, target=target, run_dir=out)
     required_models = models.requirements_for(descriptor)
     required_programs = models.program_requirements_for(descriptor)
     gate = execution.gate_for(descriptor, required_programs=required_programs)
+    observe({"stage": "selected_facts"})
     with selected_input_facts(spec, target=target, required_models=required_models):
-        return models.run(
+        result = models.run(
             None,
             spec,
             target=target,
@@ -63,7 +126,10 @@ def preflight(
             build_options=execution.build_options(gate) if gate is not None else None,
             native_result_format_selection=selection,
             source_only=True,
+            **({"progress": observe} if progress is not None or progress_path is not None else {}),
         )
+    observe({"stage": "complete", "status": "source_inputs_verified" if result["source_preflight_passed"] else "fail"})
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -75,6 +141,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--descriptor", required=True, type=Path, help="target experiment descriptor of the launch")
     parser.add_argument("--target", required=True, help="target the specification and descriptor select")
     parser.add_argument("--out", required=True, type=Path, help="fresh operator-private output directory")
+    parser.add_argument(
+        "--progress-file", type=Path, help="atomic private stage record (default: OUT/" + PROGRESS + ")"
+    )
     parser.add_argument(
         "--native-result-format-selection",
         default="",
@@ -88,6 +157,8 @@ def main(argv: list[str] | None = None) -> int:
         out=args.out,
         target=args.target,
         native_result_format_selection=args.native_result_format_selection,
+        progress=lambda event: print(json.dumps(event, sort_keys=True), file=sys.stderr, flush=True),
+        progress_path=args.progress_file or args.out / PROGRESS,
     )
     for item in result["models"]:
         print(f"{item['model']}: {item['status']}" + (f" -- {item['reason']}" if item.get("reason") else ""))
