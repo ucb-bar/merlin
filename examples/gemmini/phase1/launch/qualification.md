@@ -27,31 +27,87 @@ This mode requires `original_empty_origin: true` and the original source revisio
 Root's actual termination and owned-cleanup evidence remains independently pinned.
 
 Bind the corrected source and operator runtime hashes in a separate reviewed
-config, preserving the selected corpus, model inputs, numerical policy and normal
-simulator. Select `full_model_verification.output_scope: all_declared` and its
-pinned `all_output_plan`; the helper refuses their absence. Prepare the config's
-private-model declaration in the new prep directory before invoking it.
+config, preserving the selected corpus, private host-selection inputs, numerical
+policy and simulator. Choose the validation scope explicitly; the default for
+historical configs remains `full`.
+
+## Capsule-only requalification
+
+Set `validation_scope: capsules` to grade the same frozen compiler against the
+complete selected public and hidden capsule rosters. The native command retains
+the private spec and instruction-selection inputs needed by public host/model
+capsules. It starts no author, full-model source preflight, private full-model
+execution, model-check job or all-output audit. The ordinary capsule preparation
+still checks the current source/config/runtime pins, corpus seal and private
+bundle/spec metadata; deferred model payload/readiness checks receive no pass
+credit. Copy the selected private spec byte-for-byte into the new prep directory.
+
+The capsule-only supervisor accepts at most **3600 seconds**, including preparation,
+grading and independent certificate reopening. Use a new run ID, prep directory
+and explicit absolute deadline. Its inherited simulator and per-capsule budgets
+remain selected inputs; the outer deadline owns the whole process tree.
 
 ```sh
 python examples/gemmini/phase1/launch/qualify_phase1.py \
-  --config CURRENT_CONFIG --task-root TASK_ROOT --prep NEW_OPERATOR_PREP \
-  --run-id NEW_QUALIFICATION_ID --submission FROZEN_FRESH_COMPILER \
+  --config CAPSULE_QUALIFICATION_CONFIG --task-root TASK_ROOT \
+  --prep NEW_OPERATOR_PREP --run-id NEW_CAPSULE_QUALIFICATION_ID \
+  --submission FROZEN_FRESH_COMPILER \
   --author-proof HANDOFF_JSON --author-proof-sha256 HANDOFF_SHA256 \
-  --deadline-unix ORIGINAL_CAMPAIGN_ABSOLUTE_DEADLINE --run
+  --deadline-unix NEW_BOUNDED_QUALIFICATION_DEADLINE \
+  --budget-extension QUALIFICATION_BUDGET_JSON \
+  --budget-extension-sha256 QUALIFICATION_BUDGET_SHA256 --run
 ```
 
-Without `--run`, only the derived unpaid native command is printed. The actual
-run performs ordinary source/config/bundle/positive-readiness admission, then
-starts native `--qualify-submission` grading and every selected full-model job
-concurrently. The dedicated supervisor uses process sessions, start ticks, boot
-identity and Linux subreaper cleanup. Its deadline alarm also covers preparation
-and in-process offline all-output audits; cleanup may continue after the cutoff
-to reap children, but no incomplete execution receives credit.
+A deadline after the original campaign cutoff requires the existing explicit,
+hash-bound `merlin.operator.qualification_budget_extension.v1` receipt and its
+operator authorization. Bind the original handoff SHA, original deadline, exact
+submission SHA, authorization time and new finite deadline. This is a separately
+accounted qualification budget, not an extension or successful completion of the
+original three-hour authoring experiment. The original handoff stays unchanged.
 
-`status.json` records the separate native and model outcomes, all-output receipts,
-cleanup, and the conjunction `phase1_complete`. The existing native
-`submission_qualification.json` remains authoritative for formal grading. Both
-records explicitly state `qualification_only: true` and
-`authoring_converged: false`. A current-source qualification never rewrites the
-original source's failed receipts. Native grading alone, a judged-only output
-comparison, or a successful build alone cannot complete this route.
+On success, `submission_qualification.json` and `status.json` report
+`validation_scope: capsules` and `capsule_complete: true`. The supervisor reopens
+the actual technical `capsule_certification.json`, its exact frozen compiler,
+selected descriptor, complete rosters and required evidence; exit zero alone
+cannot grant completion. `authoring_converged`, `phase1_complete`,
+`external_full_models_complete` and `overall_release_qualified` remain false.
+The technical capsule certificate does not mint an authored-convergence or final
+Phase 2 publication. External models stay pending under their own later owner.
+
+A source change since an old full-model readiness receipt does not make that
+receipt current. This capsule route does not consume it as qualification. Refresh
+`SOURCE_REVISION` and every changed operator/runtime source pin, archive the
+resolved config and keep historical model evidence under its original identity.
+Full-model readiness must be rebound independently before selecting full scope.
+
+## Complete external qualification
+
+Set `validation_scope: full` to retain the original conjunction of native formal
+grading and the selected complete model chains. Select
+`full_model_verification.output_scope: all_declared` and its pinned
+`all_output_plan`; this scope refuses their absence. Prepare the config's private
+model declaration in the new prep directory before invoking the helper.
+
+```sh
+python examples/gemmini/phase1/launch/qualify_phase1.py \
+  --config CURRENT_FULL_CONFIG --task-root TASK_ROOT --prep NEW_OPERATOR_PREP \
+  --run-id NEW_FULL_QUALIFICATION_ID --submission FROZEN_FRESH_COMPILER \
+  --author-proof HANDOFF_JSON --author-proof-sha256 HANDOFF_SHA256 \
+  --deadline-unix SELECTED_QUALIFICATION_ABSOLUTE_DEADLINE --run
+```
+
+Use the same explicit budget-extension flags when a separately authorized full
+qualification goes beyond the original deadline. Without `--run`, the helper
+only prints the derived unpaid native command. Full scope performs ordinary
+source/config/bundle/positive-readiness admission, then starts native
+`--qualify-submission` grading and every selected full-model job concurrently.
+Native grading, a judged-only comparison or a successful build alone cannot
+complete full qualification.
+
+Both scopes use process sessions, start ticks, boot identity and Linux subreaper
+cleanup. The deadline alarm covers preparation and in-process verification;
+cleanup may continue after cutoff to reap children, but incomplete work never
+receives credit. `status.json` records the selected scope, separate outcomes,
+qualification clock and cleanup. Both scopes explicitly retain
+`qualification_only: true` and `authoring_converged: false`. Current-source
+qualification never rewrites the original source's failed receipts.
