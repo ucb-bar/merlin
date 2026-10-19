@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
 import sys
+import time
 import zlib
 from dataclasses import replace
 from pathlib import Path
@@ -20,6 +22,7 @@ from merlin_experiments.phase2 import campaign as C
 from merlin_experiments.phase2.contracts import StageGateError
 
 from merlin.common import bundle_snapshot as BW
+from merlin.common import cpu_pool
 from merlin.common.paths import repo_root
 from merlin.targetgen import compiler_profile_admission as API
 from merlin.targetgen import package_runtime as P
@@ -43,6 +46,18 @@ with CHILD.restore_model_child(int(sys.argv[1]), spec_path=spec, spec_bytes=raw)
     P.integrity_scan(SimpleNamespace(directory=Path(job['package_dir']),integrity_exempt=False,manifest={}))
     assert not Path('/proc/self/fd/'+sys.argv[1]).exists()
 print(json.dumps({'status':'source-scope-control-only','original_compiler_child':receipt}))
+"""
+
+_CPU_CONTROL = """import hashlib,sys
+from pathlib import Path
+from merlin.common import cpu_pool
+script=sys.argv[3]
+transfer=cpu_pool.CompilerCPUTransfer(*map(int,sys.argv[4:7]))
+sys.argv=sys.argv[:3]
+owner=hashlib.sha256(Path(sys.argv[2]).read_bytes()).hexdigest()
+with cpu_pool.borrow_compiler_cpu(transfer,owner_sha256=owner):
+    exec(compile(script,'<original-profile-test-child>','exec'),globals())
+assert cpu_pool._ACTIVE_LEASE.get() is None
 """
 
 
@@ -95,6 +110,7 @@ def original(tmp_path, monkeypatch):
         private=private,
         spec=spec,
         frozen=frozen,
+        child_cpu_runs=[],
     )
 
 
@@ -109,14 +125,69 @@ def _scope(original):
 
 
 def _run(transport, original, *, environment=None, script=_CONTROL):
-    return subprocess.run(
-        [sys.executable, "-c", script, str(transport.fd), str(original.spec)],
-        pass_fds=transport.pass_fds,
-        capture_output=True,
-        text=True,
-        timeout=20,
-        env=dict(os.environ) if environment is None else environment,
+    queued = time.monotonic()
+    record = {"status": "waiting_for_original_cpu", "child_timeout_seconds": 20}
+    original.child_cpu_runs.append(record)
+    try:
+        # Queue time is not child execution. Lend this exact slot while waiting;
+        # the child must not wait for a second slot held by its own parent.
+        with cpu_pool.shared_compute_pool(timeout_s=60):
+            record.update(queue_seconds=time.monotonic() - queued, parent_cpus=sorted(os.sched_getaffinity(0)))
+            owner = hashlib.sha256(original.spec.read_bytes()).hexdigest()
+            with cpu_pool.transfer_compiler_cpu(owner_sha256=owner) as transfer:
+                command = [sys.executable, "-c", script, str(transport.fd), str(original.spec)]
+                pass_fds = transport.pass_fds
+                record["private_cpu_transfer"] = transfer is not None
+                if transfer is not None:
+                    command = [sys.executable, "-c", _CPU_CONTROL, str(transport.fd), str(original.spec),
+                               script, *map(str, transfer.pass_fds)]
+                    pass_fds = tuple(sorted(set((*pass_fds, *transfer.pass_fds))))
+                    record["closed_private_fd_numbers"] = [transfer.metadata_fd, transfer.lifetime_fd]
+                started = time.monotonic()
+                try:
+                    result = subprocess.run(command, pass_fds=pass_fds, capture_output=True, text=True, timeout=20,
+                                            env=dict(os.environ) if environment is None else environment)
+                    record.update(status="child_returned", returncode=result.returncode)
+                    return result
+                finally:
+                    # subprocess.run kills and joins on timeout before these
+                    # transfer/slot lifetimes can close.
+                    record["child_wall_seconds"] = time.monotonic() - started
+    except TimeoutError:
+        record.update(status="original_cpu_queue_refused", queue_seconds=time.monotonic() - queued)
+        raise
+    except subprocess.TimeoutExpired:
+        record["status"] = "original_child_20s_timeout"
+        raise
+
+
+def test_actual_child_borrows_parent_cpu_and_closes_transfer_before_return(original):
+    if not cpu_pool.shared_compute_enabled():
+        pytest.skip("requires an explicitly selected original shared CPU namespace")
+    parent_lease, parent_affinity = cpu_pool._ACTIVE_LEASE.get(), os.sched_getaffinity(0)
+    script = _CONTROL.replace(
+        "from types import SimpleNamespace",
+        "from types import SimpleNamespace\nfrom merlin.common import cpu_pool\n"
+        "assert cpu_pool.current_thread_owns_cpu_lease()",
+    ).replace(
+        "'original_compiler_child':receipt", "'original_compiler_child':receipt,'cpus':sorted(os.sched_getaffinity(0))"
     )
+    with _scope(original):
+        with CHILD.prepare_model_child(spec_path=original.spec, environment=dict(os.environ),
+                                       package_dir=original.candidate) as transport:
+            result = _run(transport, original, script=script)
+            assert result.returncode == 0, result.stderr
+            record = original.child_cpu_runs[-1]
+            assert record["private_cpu_transfer"]
+            assert json.loads(result.stdout)["cpus"] == record["parent_cpus"]
+            assert len(record["parent_cpus"]) == 1
+            assert record["child_timeout_seconds"] == 20
+            for fd in record["closed_private_fd_numbers"]:
+                with pytest.raises(OSError):
+                    os.fstat(fd)
+            transport.verify_result(json.loads(result.stdout))
+    assert cpu_pool._ACTIVE_LEASE.get() is parent_lease
+    assert os.sched_getaffinity(0) == parent_affinity
 
 
 def _additional_library(original):
