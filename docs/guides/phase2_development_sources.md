@@ -406,3 +406,23 @@ Building a weight object and a kernel object establishes component compilation;
 only the original complete model build establishes a linked program. Neither
 static accelerator instruction presence nor a successful link establishes actual
 product coverage, numerical target execution, device residency or latency.
+
+The retained `parameter-compile-scaling-v2` evidence verifies complete captures,
+references, streamed weight objects and generated kernel objects for the four
+affordable members. `parameter-full-build-v2` additionally uses the unchanged
+ordinary native build API with `simulator=None` for the 3 MiB member. Its original
+renderer embeds C initializers: this complete link does not yet consume the
+separately demonstrated streamed blob. The resulting ELF contains three distinct,
+nonoverlapping 1 MiB parameter symbols whose complete loaded bytes match their
+independent seed sources; the original caller passes them in the exact pointer
+ABI order. The build used 8.93 CPU seconds and 9.21 seconds elapsed, with a
+3,164,416-byte ELF. Target numerical execution was not requested. The 16 MiB
+member retains its original source/reference cost refusal.
+
+For the original development roster, `original-writer-qualified87-v3` also
+completed the ordinary writer using the live source-execution owner. It rechecks
+the sealed source, signed inputs, 945 complete output values, 2,646 actual product
+contributions and the scoped 20-bit panel/32-bit accumulator correspondence.
+That member's arithmetic realization is qualified; formal public-cohort,
+private-exclusion, hardware and timing admission remain separate. The other
+sealed batch member, 96, retains its missing-realization-owner refusal.
