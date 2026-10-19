@@ -95,6 +95,17 @@ neither observed physical traffic nor DRAM traffic. Completion latency, retries,
 translation, downstream sharing and a fixed workload floor remain unresolved.
 This additive path does not change an existing timing model or measured result.
 
+The ordinary feedback join's optional `source_service_context` explicitly
+selects feedback V4. A live target owner supplies generic schema
+`merlin.phase2.source_service_context.v1`, with exact source, ELF and device
+identities, `observation_kind="complete_functional_commit_trace"`, resources,
+noncompulsory events and unresolved terms. The join recomputes emitted-schedule
+service without a completion chain. It exposes the result as whole-trace
+context, with null counter window, cycles, gap and attainment even if the caller
+also supplies a measured counter window or a qualified prediction. Missing or
+foreign bindings refuse the context. This preserves the original strict
+counter-bound `service_evidence` path; omitted context retains the old versions.
+
 Ordinary feedback also emits `cost_boundaries` with separate setup, verification,
 declared execution-window and whole-trace context blocks. Original compiler
 analysis walltime is reported as setup when present; compile, input staging and
