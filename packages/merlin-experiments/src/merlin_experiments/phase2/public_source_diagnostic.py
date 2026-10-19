@@ -30,10 +30,12 @@ from . import ordinary_fast_feedback as FAST
 from . import public_diagnostic_corpus as PUBLIC_CORPUS
 from .contracts import StageGateError, canonical_json, document_sha256, sha256_file
 from .edit_authority import FrozenEditAuthority
+from .public_native_exploration import PublicNativeExploration
 from .retained_revisions import RetainedRevision, source_inventory
 
 SCHEMA = "merlin.public_source_diagnostic_policy.v1"
 FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v1"
+NATIVE_FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v2"
 _ISSUER = object()
 _ISSUED = weakref.WeakKeyDictionary()
 
@@ -150,6 +152,7 @@ class PublicSourceDiagnosticPolicy:
             self._compiler_library_selection,
             self._compiler_pass_selection,
             self._checked_source_diagnostic,
+            self._native_exploration,
         )
 
     @property
@@ -170,11 +173,13 @@ class PublicSourceDiagnosticPolicy:
             raise StageGateError("public diagnostic target changed its selected descriptor")
         if self._compiler_pass_selection.binding.library != library.contract.sha256:
             raise StageGateError("public diagnostics changed the selected compiler library release")
+        if self._native_exploration is not None:
+            self._native_exploration.verify_for(self)
         baseline = _inventory(self._baseline, readonly=True)
         if baseline != self._binding_baseline:
             raise StageGateError("public diagnostic original baseline binding changed")
         return {
-            "schema": SCHEMA,
+            "schema": SCHEMA if self._native_exploration is None else "merlin.public_source_diagnostic_policy.v2",
             "formal_admission": False,
             "promotion_authority": "NONE",
             "timing": "UNKNOWN",
@@ -207,6 +212,7 @@ class PublicSourceDiagnosticPolicy:
             "compiler_pass_selection": self._compiler_pass_selection.record(),
             "checked_source_diagnostic": CHECKED.record(self._checked_source_diagnostic, self._compiler_pass_selection),
             "runtime_source_pins": self._source_pins,
+            **({"native_exploration": self._native_exploration.record()} if self._native_exploration else {}),
         }
 
     def validate_search_inputs(self, *, deadline=None):
@@ -224,6 +230,7 @@ class PublicSourceDiagnosticPolicy:
             or type(self.target_experiment) is not TargetExperiment
             or type(self._corpus) not in (CORPUS.FrozenPerformanceCorpus, PUBLIC_CORPUS.FrozenPublicDiagnosticCorpus)
             or type(self.edit_authority) is not FrozenEditAuthority
+            or self._native_exploration is not None and type(self._native_exploration) is not PublicNativeExploration
             or self.edit_authority.initial_source != self.candidate
             or any(getattr(owner, name) is not function for owner, name, function in self._functions)
             or any(_source(row["path"]) != row for row in self._source_pins)
@@ -348,6 +355,7 @@ def prepare_public_source_diagnostic(
     checked_source_diagnostic,
     contract_root,
     work_root,
+    native_exploration=None,
 ):
     """Issue public development execution only; the formal constructor is unchanged."""
     if (
@@ -359,6 +367,7 @@ def prepare_public_source_diagnostic(
         or type(service) is not CommonTransformService
         or type(compiler_library_selection) is not CompilerLibrarySelection
         or type(compiler_pass_selection) is not CompilerPassSelection
+        or native_exploration is not None and type(native_exploration) is not PublicNativeExploration
     ):
         raise StageGateError("public diagnostics require original live source, profile, edit and pass owners")
     candidate, baseline, work_root = map(Path, (candidate, baseline, work_root))
@@ -395,6 +404,7 @@ def prepare_public_source_diagnostic(
             _compiler_library_selection=compiler_library_selection,
             _compiler_pass_selection=compiler_pass_selection,
             _checked_source_diagnostic=checked_source_diagnostic,
+            _native_exploration=native_exploration,
             _contract_root=Path(contract_root),
             _binding_baseline=baseline_inventory,
             receipt_path=work_root / "diagnostic-policy.json",
