@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .graph_optimizations import GraphOptimizationContract
+    from .host_graph_policy import HostGraphPolicy
 
 from merlin.common import compile_trace
 from merlin.common.digest import sha256_file, sha256_text
@@ -107,7 +108,7 @@ def lower_model(
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
     retain_llvm_dialect: bool = False,
-    graph_optimizations: GraphOptimizationContract | None = None,
+    graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     op_profile: bool = False,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
@@ -126,8 +127,10 @@ def lower_model(
     Its custody receipt in ``stats`` ends at returned upstream LLVM, before
     later arena/ciface transforms, object production and linking.
 
-    ``graph_optimizations`` explicitly selects source-pinned logical host layout
-    propagation and/or contiguous dispatch fusion before preprocessing. Structural
+    ``graph_optimizations`` selects a source-pinned graph contract or original
+    software-bound HostGraphPolicy before preprocessing. The latter binds this
+    actual prepared source and retains default host passes and checked fallback.
+    Structural
     semantic checks and caller cost constraints are reported; this supplies no
     target placement, hardware qualification or cycle prediction.
 
@@ -168,15 +171,19 @@ def lower_model(
         work = Path(workdir)
         work.mkdir(parents=True, exist_ok=True)
         for name in ("operation-profile.json", "model.profiled.mlir", "op_profile_table.json",
-                     "host-graph-optimization.json", "host-graph-input.mlir", "host-graph-optimized.mlir"):
+                     "host-graph-optimization.json", "host-graph-input.mlir", "host-graph-optimized.mlir",
+                     "host-graph-software.yaml", "host-graph-policy.json"):
             (work / name).unlink(missing_ok=True)
 
         audit.stage("input", mlir_text)
         graph_report = None
         if graph_optimizations is not None:
             from .graph_optimizations import optimize_host_graph
+            from .host_graph_policy import HostGraphPolicy
 
             (work / "host-graph-input.mlir").write_text(mlir_text, encoding="utf-8")
+            if type(graph_optimizations) is HostGraphPolicy:
+                graph_optimizations.retain(work)
             mlir_text, graph_report = optimize_host_graph(mlir_text, graph_optimizations)
             (work / "host-graph-optimized.mlir").write_text(mlir_text, encoding="utf-8")
             write_pretty_json(work / "host-graph-optimization.json", graph_report)
@@ -192,7 +199,7 @@ def lower_model(
             or transform_schedule is not None
             or parallel_harts is not None
             or parallel_chunks is not None
-            or graph_optimizations is not None
+            or (graph_optimizations is not None and type(graph_optimizations) is not HostGraphPolicy)
             or masked_contraction_effects is not None
             or source_observation_effects is not None
             or source_scalar_carrier is not None
@@ -386,7 +393,7 @@ def lower_model_file(
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
     retain_llvm_dialect: bool = False,
-    graph_optimizations: GraphOptimizationContract | None = None,
+    graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     op_profile: bool = False,
 ) -> LowerResult:
     audit_mode(ir_audit)

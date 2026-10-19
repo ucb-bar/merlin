@@ -14,6 +14,11 @@ from pathlib import Path
 
 REQUEST_SCHEMA = "merlin.host_optimization_request.v1"
 REPORT_SCHEMA = "merlin.host_optimization_selection.v1"
+POLICY_SCHEMA = "merlin.host_optimization_admission.v1"
+_PREMISES = (
+    "independent_element_order_unobserved", "floating_environment_unobserved_nontrapping",
+    "sequential_execution", "successful_allocations", "non_reentrant_entry",
+)
 _CHOICES = ("propagate_layout", "fusion", "hoist_static_allocs", "sink_deallocs", "static_arena")
 _STAGES = ("logical_host", "structured_host", "llvm")
 
@@ -67,6 +72,30 @@ class HostOptimizationContext:
             raise ValueError("host optimization requires an explicit positive index width")
         if self.data_layout is not None and (type(self.data_layout) is not str or not self.data_layout):
             raise ValueError("host optimization requires an explicit compiler data layout")
+
+
+def context_from_software(software, *, semantic_sha256, target, entry, index_bits=None, allow_missing=False):
+    """Read original software permissions; identities and review labels grant none."""
+    if (type(software) is not dict or software.get("schema") != "merlin.software_spec.v1"
+            or software.get("status") != "reviewed"):
+        raise ValueError("host permissions require the original reviewed software semantics")
+    if software.get("target") != target or type(target) is not str or not target:
+        raise ValueError("host permissions changed the original target selection")
+    policy = software.get("host_optimization")
+    if policy is None and allow_missing:
+        return HostOptimizationContext(entry, semantic_sha256, index_bits=index_bits)
+    required = {"schema", "permitted_stages", "permitted_optimizations"}
+    if (type(policy) is not dict or not required <= set(policy)
+            or set(policy) - required - {"data_layout", *_PREMISES} or policy["schema"] != POLICY_SCHEMA):
+        raise ValueError("host choices lack the original supported host permission schema")
+    if any(type(policy[key]) is not list for key in ("permitted_stages", "permitted_optimizations")):
+        raise ValueError("original host permissions require explicit arrays")
+    return HostOptimizationContext(
+        entry=entry, semantic_sha256=semantic_sha256,
+        permitted_stages=tuple(policy["permitted_stages"]),
+        permitted_optimizations=tuple(policy["permitted_optimizations"]), index_bits=index_bits,
+        data_layout=policy.get("data_layout"), **{name: policy.get(name, False) for name in _PREMISES},
+    )
 
 
 @dataclass(frozen=True)

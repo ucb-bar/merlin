@@ -287,7 +287,8 @@ def actual_lowering(output, receipt):
 def implementation_pins():
     modules = {
         name: importlib.import_module("merlin.llvmlower." + name)
-        for name in ("graph_optimizations", "layout_propagation", "layout_conformance", "quant_round_check")
+        for name in ("graph_optimizations", "layout_propagation", "layout_conformance", "quant_round_check",
+                     "host_graph_policy", "host_optimization_request")
     }
     modules["pipeline_state"] = importlib.import_module("merlin.transforms.pipeline_state")
     modules["dense_float_ir"] = importlib.import_module("merlin.common.dense_float_ir")
@@ -318,18 +319,37 @@ def reviewed_preparation(options, root):
     return source
 
 
+def software_policy(root, *, enabled=True, floating=True):
+    from merlin.llvmlower.host_graph_policy import read_host_graph_policy
+    from merlin.llvmlower.host_optimization_request import POLICY_SCHEMA
+
+    path = root / "original-software.yaml"
+    if not path.exists():
+        path.write_text(yaml.safe_dump({
+            "schema": "merlin.software_spec.v1", "status": "reviewed", "target": "neutral",
+            "host_optimization": {
+                "schema": POLICY_SCHEMA, "permitted_stages": ["logical_host"],
+                "permitted_optimizations": ["propagate_layout"],
+                "independent_element_order_unobserved": True,
+                "floating_environment_unobserved_nontrapping": floating,
+            },
+        }))
+    return read_host_graph_policy(path, target="neutral", entry="forward", enabled=enabled)
+
+
 @pytest.mark.parametrize("shape", [(1, 3, 5, 7), (2, 2, 7, 5)])
 def test_public_model_preserves_float_quantization_and_eliminates_layout_materializations(
-    tmp_path, monkeypatch, record_property, shape, annotated=False
+    tmp_path, monkeypatch, record_property, shape, annotated=False, automatic=False
 ):
     expected, root, options = setup(tmp_path, monkeypatch, shape, annotated=annotated)
     reviewed = reviewed_preparation(options, root)
     source_sha = sha256_file(reviewed)
     observations, outputs = [], []
     for name, enabled in (("original", False), ("layout", True)):
-        # Select the same host pipeline and permissions in both arms. In
-        # particular, graph selection disables automatic host destination rules.
-        contract = GraphOptimizationContract(
+        # Both arms select identical host controls. A software policy keeps
+        # ordinary automatic host passes enabled; an explicit contract keeps
+        # its existing source-pinned route.
+        contract = software_policy(root, enabled=enabled) if automatic else GraphOptimizationContract(
             source_sha, "forward", propagate_layout=enabled,
             independent_element_order_unobserved=True, floating_environment_unobserved_nontrapping=True,
         )
@@ -370,6 +390,12 @@ def test_public_model_preserves_float_quantization_and_eliminates_layout_materia
         assert graph_files["input"].read_bytes() == reviewed.read_bytes()
         assert graph["transformed_sha256"] == sha256_file(graph_files["optimized"])
         assert graph["implementation_sources_sha256"] == pins
+        if automatic:
+            selection = graph["automatic_selection"]
+            assert selection["status"] == ("applied" if enabled else "unchanged")
+            assert selection["policy"] == json.loads(json.dumps(contract.record()))
+            assert graph_files["input"].read_bytes() != (options["capture"] / "model.mlir").read_bytes()
+            assert set(result["host_graph_optimization"]) == {"input", "selected", "report", "software_spec", "policy"}
         if enabled:
             assert graph["layout"]["library_sources_sha256"] == pins
             assert graph["layout"]["after_transpose_bytes"] == 0
@@ -420,6 +446,61 @@ def test_annotated_scalar_yields_preserve_complete_float_model_and_provenance(
     test_public_model_preserves_float_quantization_and_eliminates_layout_materializations(
         tmp_path, monkeypatch, record_property, (1, 3, 5, 7), annotated=True
     )
+
+
+def test_original_software_automatically_selects_prepared_model_layout(
+    tmp_path, monkeypatch, record_property
+):
+    test_public_model_preserves_float_quantization_and_eliminates_layout_materializations(
+        tmp_path, monkeypatch, record_property, (1, 3, 5, 7), annotated=True, automatic=True
+    )
+
+
+def test_original_software_without_float_permission_executes_unchanged_model(tmp_path, monkeypatch):
+    expected, root, options = setup(tmp_path, monkeypatch, (1, 3, 5, 7), annotated=True)
+    policy = software_policy(root, floating=False)
+    receipt = compile_saved_model(**options, output=root / "fallback", graph_optimizations=policy)
+    assert receipt["status"] == "verified_complete_output"
+    artifacts = receipt["output"]["host_graph_optimization"]
+    source = Path(artifacts["input"]["path"])
+    assert source.read_bytes() == Path(artifacts["selected"]["path"]).read_bytes()
+    graph = json.loads(Path(artifacts["report"]["path"]).read_text())
+    assert graph["automatic_selection"]["status"] == "unchanged" and "layout" not in graph
+    assert "environment contract" in graph["automatic_selection"]["reason"]
+    ordinary = compile_saved_model(**options, output=root / "ordinary")
+    assert ordinary["status"] == "verified_complete_output"
+    llvm = Path(receipt["output"]["host_artifacts"]["llvm_ir"]["path"])
+    original_llvm = Path(ordinary["output"]["host_artifacts"]["llvm_ir"]["path"])
+    assert llvm.read_bytes() == original_llvm.read_bytes()
+    for built in (receipt, ordinary):
+        with np.load(built["output"]["outputs_npz"]) as archive:
+            for i, reference in enumerate(expected):
+                assert archive["out" + str(i)].tobytes() == reference.tobytes()
+
+
+def test_original_software_mutation_during_model_execution_refuses_receipt(tmp_path, monkeypatch):
+    _, root, options = setup(tmp_path, monkeypatch, (1, 3, 5, 7), annotated=True)
+    policy = software_policy(root)
+    original = spike_model.run_raw
+
+    def mutate(*args, **kwargs):
+        result = original(*args, **kwargs)
+        policy.software_path.write_bytes(policy.software_bytes + b"\n")
+        return result
+
+    monkeypatch.setattr(spike_model, "run_raw", mutate)
+    output = root / "changed"
+    with pytest.raises(ValueError, match="software specification changed"):
+        compile_saved_model(**options, output=output, graph_optimizations=policy)
+    failed = json.loads((output / "baremetal_model.json").read_text())
+    assert failed["status"] == "failed"
+
+
+def test_original_software_target_must_match_model_selection(tmp_path, monkeypatch):
+    _, root, options = setup(tmp_path, monkeypatch, (1, 3, 5, 7), annotated=True)
+    policy = software_policy(root)
+    with pytest.raises(ValueError, match="software target differs"):
+        compile_saved_model(**{**options, "target": "different"}, output=root / "wrong", graph_optimizations=policy)
 
 
 def test_unknown_executable_yield_attribute_refuses_before_simulation(tmp_path, monkeypatch):

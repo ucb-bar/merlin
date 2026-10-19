@@ -12,11 +12,19 @@ import json
 from dataclasses import asdict, dataclass
 from math import prod
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from xdsl.dialects import builtin, func
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.xdsl_dialects._common import text
+
+if TYPE_CHECKING:
+    from .host_graph_policy import HostGraphPolicy
+
+
+class GraphOptimizationUnavailable(ValueError):
+    """A supported optional choice lacks permission or its required savings."""
 
 
 @dataclass(frozen=True)
@@ -188,14 +196,15 @@ def _implementation_sources():
         for name, path in (
             ("graph_optimizations", Path(__file__)),
             *((name, Path(__file__).with_name(name + ".py")) for name in (
-                "layout_propagation", "layout_conformance", "quant_round_check")),
+                "layout_propagation", "layout_conformance", "quant_round_check",
+                "host_graph_policy", "host_optimization_request")),
             ("pipeline_state", Path(pipeline_state.__file__)),
             ("dense_float_ir", Path(dense_float_ir.__file__)),
         )
     }
 
 
-def recheck_host_graph_artifacts(directory: Path, contract: GraphOptimizationContract) -> dict:
+def recheck_host_graph_artifacts(directory: Path, contract: GraphOptimizationContract | HostGraphPolicy) -> dict:
     """Reopen actual source/report bytes; this grants no machine-code qualification."""
     paths = {role: Path(directory) / name for role, name in (
         ("input", "host-graph-input.mlir"), ("selected", "host-graph-optimized.mlir"),
@@ -203,6 +212,10 @@ def recheck_host_graph_artifacts(directory: Path, contract: GraphOptimizationCon
     )}
     if any(path.is_symlink() or not path.is_file() for path in paths.values()):
         raise ValueError("host graph optimization artifacts are absent or indirect")
+    from .host_graph_policy import HostGraphPolicy
+
+    if type(contract) is HostGraphPolicy:
+        return contract.recheck(directory, paths)
     if type(contract) is not GraphOptimizationContract:
         raise ValueError("host graph artifacts require the original typed contract")
     contract.validate(paths["input"].read_text())
@@ -217,7 +230,7 @@ def recheck_host_graph_artifacts(directory: Path, contract: GraphOptimizationCon
             for role, path in paths.items()}
 
 
-def optimize_host_graph(source: str, contract: GraphOptimizationContract) -> tuple[str, dict]:
+def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostGraphPolicy) -> tuple[str, dict]:
     """Select the existing layout/fusion mechanisms before host preprocessing.
 
     The admitted source-check domain is static pointwise tensors/permutations.
@@ -225,6 +238,10 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract) -> tup
     device residency and target conversion emitters require separate OOT APIs.
     Lowering/LLVM conformance and independent numerical execution remain required.
     """
+    from .host_graph_policy import HostGraphPolicy
+
+    if type(contract) is HostGraphPolicy:
+        return contract.optimize(source)
     if type(contract) is not GraphOptimizationContract:
         raise ValueError("graph optimization needs the explicit supported contract")
     contract.validate(source)
@@ -252,7 +269,8 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract) -> tup
             for value in (*op.operands, *op.results)
         )
         if floating and not contract.floating_environment_unobserved_nontrapping:
-            raise ValueError("floating layout propagation requires its nontrapping/unobserved environment contract")
+            raise GraphOptimizationUnavailable(
+                "floating layout propagation requires its nontrapping/unobserved environment contract")
         original = module.clone()
         bodies = _layout_bodies(original)
         before_bytes = _transpose_bytes(original)
@@ -281,7 +299,7 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract) -> tup
         session.run(specs[2], lambda: {"conformance": _check_layout_output(original, module, bodies)})
         after_bytes = _transpose_bytes(module)
         if before_bytes - after_bytes < contract.minimum_transpose_bytes_saved:
-            raise ValueError("layout rewrite does not satisfy its materialization-byte cost contract")
+            raise GraphOptimizationUnavailable("layout rewrite does not satisfy its materialization-byte cost contract")
         report["layout"] = {
             "rewrite": layout.to_dict(),
             "before_transpose_bytes": before_bytes,

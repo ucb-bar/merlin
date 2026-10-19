@@ -29,6 +29,7 @@ from merlin.targetgen.application_inventory import verify_capture_receipt
 
 if TYPE_CHECKING:
     from merlin.llvmlower.graph_optimizations import GraphOptimizationContract
+    from merlin.llvmlower.host_graph_policy import HostGraphPolicy
     from merlin.llvmlower.source_dense import SourceDenseLowering
     from merlin.llvmlower.source_pointwise import SourcePointwiseLowering
     from merlin.llvmlower.source_rows import SourceRowLowering
@@ -314,7 +315,7 @@ def compile_saved_model(
     blob_weights: bool = True,
     weights_source: str | Path | None = None,
     shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
-    graph_optimizations: GraphOptimizationContract | None = None,
+    graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
@@ -328,6 +329,10 @@ def compile_saved_model(
     bindings to the ordinary builder. Its source discovery, fallback and
     device admission checks remain authoritative. Retained provider and
     preparation records establish custody, not a new execution qualification.
+
+    ``graph_optimizations`` accepts an exact source contract or a HostGraphPolicy
+    from original versioned software permissions. The latter binds the actual
+    prepared source and rechecks software custody through execution.
 
     ``readback="full"`` builds the image to print every forward result complete
     (:mod:`merlin.runtime.whole_model_readback`); execution then holds each result to the capture's
@@ -364,6 +369,13 @@ def compile_saved_model(
         raise BaremetalModelError("operation profiling must be an explicit Boolean")
     if type(shared_source_lowerings) is not tuple:
         raise BaremetalModelError("shared source lowerings require an immutable tuple of typed selections")
+    if graph_optimizations is not None:
+        from merlin.llvmlower.host_graph_policy import HostGraphPolicy
+
+        if type(graph_optimizations) is HostGraphPolicy:
+            graph_optimizations.revalidate()
+            if graph_optimizations.target != target:
+                raise BaremetalModelError("host graph software target differs from the selected model target")
     if shared_source_lowerings:
         from merlin.llvmlower.source_dense import SourceDenseLowering
         from merlin.llvmlower.source_pointwise import SourcePointwiseLowering

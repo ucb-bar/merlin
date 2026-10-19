@@ -5,7 +5,7 @@ status: current
 owner: ir
 last_verified: 2026-10-18
 related: [verified_compiler_roadmap, compiler_verification, phase0_specification, compiler_authoring_prompts, phase0_phase1_setup]
-code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, src/merlin/llvmlower/graph_optimizations.py, src/merlin/llvmlower/layout_conformance.py, src/merlin/llvmlower/layout_propagation.py, src/merlin/llvmlower/lower.py, src/merlin/runtime/backends/spike_model.py, src/merlin/compile/baremetal_model.py, packages/merlin-experiments/src/merlin_experiments/phase1/brokers, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py]
+code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, src/merlin/llvmlower/graph_optimizations.py, src/merlin/llvmlower/host_graph_policy.py, src/merlin/llvmlower/host_optimization_request.py, src/merlin/llvmlower/layout_conformance.py, src/merlin/llvmlower/layout_propagation.py, src/merlin/llvmlower/lower.py, src/merlin/runtime/backends/spike_model.py, src/merlin/compile/baremetal_model.py, packages/merlin-experiments/src/merlin_experiments/phase1/brokers, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py]
 ---
 
 # Shared transformations, ISA generation and Lean verification
@@ -429,8 +429,50 @@ still requires the complete ordinary gate on its immutable compiler revision.
 
 ## Select logical host graph optimizations
 
+For ordinary model compilation, select original versioned software permissions
+without manually preparing a source hash:
+
+```python
+from merlin.llvmlower.host_graph_policy import read_host_graph_policy
+
+policy = read_host_graph_policy(
+    software_path, target=selected_target, entry="forward",
+    minimum_transpose_bytes_saved=1, maximum_added_operations=8192,
+)
+# Pass graph_optimizations=policy to compile_saved_model or spike_model.build.
+```
+
+The selected `merlin.software_spec.v1` file must have `status: reviewed` and the
+selected target. Its existing permission block is shared with the Phase 2
+original-executor route:
+
+```yaml
+host_optimization:
+  schema: merlin.host_optimization_admission.v1
+  permitted_stages: [logical_host]
+  permitted_optimizations: [propagate_layout]
+  independent_element_order_unobserved: true
+  floating_environment_unobserved_nontrapping: true
+```
+
+These are operator-supplied semantic premises. A review label, dtype or RTL fact
+does not prove them. Omitted permissions remain false. This host-only pass needs
+no accelerator ISA or storage declaration: it changes tensor indexing while
+retaining scalar arithmetic, and makes no hardware resource or cost inference.
+
+The policy binds the actual source at the existing post-preparation logical
+hook, preserving captured quantization and the selected native host pipeline.
+Original automatic host passes remain enabled. `enabled=False` provides a paired
+baseline under the same controls. Missing permission or insufficient transpose
+byte savings retains exact input source; no partially rewritten source is used.
+Unknown permission fields, malformed input, stale software/library bytes and
+failed conformance remain errors. Exceeding a construction budget remains a
+precise diagnostic. The software snapshot, policy, derived source-bound contract
+and selection status are retained and rechecked through saved-model execution.
+This selection accepts one policy or one explicit contract, never both.
+
 `lower_model`, `lower_model_file`, `spike_model.build` and `compile_saved_model`
-accept `graph_optimizations=` with an explicit
+also accept `graph_optimizations=` with an explicit
 `merlin.llvmlower.graph_optimizations.GraphOptimizationContract` binding the
 actual source SHA-256 and entry function. Select `propagate_layout=True` and
 declare `independent_element_order_unobserved=True` for layout propagation.
@@ -478,7 +520,8 @@ proxies do not predict cycles. Reports retain `timing=UNKNOWN` and do not claim
 Lean or hardware conformance. Physical encodings and device ABI remain OOT
 responsibilities; this route selects no device placement or schedules.
 Ordinary lowering selects this route
-only when the caller supplies a contract. If no legal rewrite meets the
+only when the caller supplies a contract or software policy. With an explicit
+source contract, if no legal rewrite meets the
 explicit minimum savings, selection fails with a diagnostic; omit the contract
 or use `propagate_layout=False` to retain the source layout. Failed checks never
 publish partially rewritten IR.
