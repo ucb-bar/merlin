@@ -11,6 +11,7 @@ code_refs:
   - src/merlin/llvmlower/source_model.py
   - src/merlin/llvmlower/native_source_model.py
   - src/merlin/perf/offload_profitability.py
+  - src/merlin/runtime/host_provider.py
 ---
 
 # Select checked whole-model offload alternatives
@@ -118,6 +119,16 @@ Observed sample minima and maxima describe those samples; even identical
 executable bytes do not turn them into bounds on future latency. Live evidence
 validation has a compilation cost and may dominate a small build. Report that
 cost alongside the observed execution measurements.
+
+An original cost verifier checking several completed provider records can use
+`revalidate_host_providers((original_record, candidate_record))` to check their
+combined file set. The helper hashes each shared path once within that read-only
+call, checks every record's expected identity and actual receipt, and rejects
+changed original records. Each later call reads the files again. This supplies
+link custody only; timing, numerical results and execution qualification remain
+the original verifier's obligations. The caller must retain ownership against
+concurrent writers; the helper does not create an atomic filesystem snapshot.
+`max_records` bounds the batch before serialization or file access (default 4096).
 
 ## Phase 2 integration boundary
 

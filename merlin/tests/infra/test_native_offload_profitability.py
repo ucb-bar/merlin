@@ -36,7 +36,7 @@ from merlin.perf.component_cost import (
     ComponentFeatureObservation,
 )
 from merlin.perf.term import Bounds, PerformanceTerm, Provenance, Validity
-from merlin.runtime.host_provider import revalidate_host_provider
+from merlin.runtime.host_provider import revalidate_host_provider, revalidate_host_providers
 from merlin.transforms.certificates import ir_text
 
 
@@ -277,8 +277,8 @@ def test_observed_complete_native_cost_is_consumed_by_ordinary_placement(tmp_pat
                 assert actual.dtype == wanted.dtype and actual.shape == wanted.shape
                 np.testing.assert_array_equal(actual, wanted)
                 np.testing.assert_array_equal(saved[f"in{index}"], wanted)
+        revalidate_host_providers(tuple(arm["record"]["host_provider"] for arm in arms.values()))
         for name, arm in arms.items():
-            revalidate_host_provider(arm["record"]["host_provider"])
             assert (
                 arm["native"].image_sha256 == sha256_file(arm["result"].host_so) == observations[name].executable_sha256
             )
