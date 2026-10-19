@@ -52,6 +52,11 @@ products and unsupported multiplicity remain UNKNOWN. Feature keys are closed,
 unpriced observations. Experiments owns actual public selection, original emission
 and invocation reopening. Never project literal tensor payloads or private paths.
 
+`compiler_plan_evidence` parses emitted LLVM through the public typed metadata
+context. Preserve original annotation bytes and operand/CFG verification; do
+not strip optimization properties to make a source/emission join pass. Parsed
+metadata never establishes arithmetic, target effects or timing equivalence.
+
 `candidate_cost_graph` retains verified original task/source ownership and per-task
 host CFG demand, declared representation/device requests and exact missing effects.
 Opaque calls/assembly and unowned work remain UNKNOWN. Conditional CycleInterval
