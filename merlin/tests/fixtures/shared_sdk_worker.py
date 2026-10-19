@@ -102,6 +102,45 @@ def source_dense_from_export(path):
 
 run("source_dense", source_dense_from_export)
 
+
+def dense_float_io_from_export(path):
+    from merlin.transforms.certificates import ir_text, parse_ir
+
+    module = parse_ir('''builtin.module {
+      %c = arith.constant dense<[0xFF800000, 0x7F800001, 0x80000000]> : tensor<3xf32>
+    }''')
+    expected = bytes.fromhex("000080ff0100807f00000080")
+    assert module.body.block.first_op.value.data.data == expected
+    assert parse_ir(ir_text(module)).body.block.first_op.value.data.data == expected
+
+
+run("dense_float_io", dense_float_io_from_export)
+
+
+def source_rows_from_export(path):
+    from test_source_rows import case
+    from xdsl.context import Context
+    from xdsl.dialects import arith, builtin, func, linalg, math, scf, tensor
+    from xdsl.parser import Parser
+
+    from merlin.compile.scheduling.row_softmax import compile_source_rows
+    from merlin.transforms.certificates import ir_text
+
+    _, _, original, _, kwargs = case(path)
+    context = Context()
+    for dialect in (arith.Arith, builtin.Builtin, func.Func, linalg.Linalg, math.Math, scf.Scf, tensor.Tensor):
+        context.load_dialect(dialect)
+    module = Parser(context, ir_text(original)).parse_module()
+    body = next(op for op in module.walk() if type(op) is func.FuncOp).body.block
+    result = compile_source_rows(module, body.last_op.arguments[0].owner, **kwargs)
+    result.revalidate()
+    assert result.source.operations[0].value.data.data == bytes.fromhex("000080ff") * 2
+    assert result.compiled.report["pipeline"]["library_sources_sha256"] == shared_library_sources()
+    record("scope", json.dumps("compile-only typed source binding; primitive execution tested separately"))
+
+
+run("source_rows_compile", source_rows_from_export)
+
 def source_pointwise_from_export(path):
     from types import SimpleNamespace
 
@@ -155,6 +194,7 @@ result = {"schema": "merlin.shared_sdk_execution.v1", "completed": completed,
           "bytecode_disabled": sys.dont_write_bytecode,
           "library_sha256": manifest["library_sha256"], "source_owners": sources,
           "module_origins": origins, "observations": observations,
-          "scope": "neutral native regressions only; no real target/model or accelerator timing qualification"}
+          "scope": ("neutral native regressions and named compile-only cases; "
+                    "no real target or accelerator timing qualification")}
 Path(config["result"]).write_text(json.dumps(result, indent=2) + "\n")
 print("completed", len(completed), "isolated cases from", len(sources), "source owners")
