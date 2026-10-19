@@ -643,12 +643,14 @@ def _full_selfcheck(calls: list[ToolCall]) -> bool:
     it had in fact performed 76 times (measured, atlas arm-4, 2026-09-04). Forgery is still excluded,
     because a fabricated echo does not produce a capsule report.
     """
+    from .conformance_selfcheck import all_invocation, completed_all_request
+
+    if completed_all_request(calls, tokenize=_shell_tokens):
+        return True
     for call in calls:
         if not call.result_present:
             continue
-        ex = _exec_str(call)
-        over_all_capsules = "--capsules all" in ex or '--capsules "all"' in ex
-        if "agent_selfcheck" in ex and over_all_capsules and _is_selfcheck_report(call.result_text):
+        if all_invocation(call, tokenize=_shell_tokens) and _is_selfcheck_report(call.result_text):
             return True
         # the bedrock self_check tool: default (no capsules key) or an explicit "all"
         if call.name == "self_check" and call.input.get("capsules") in (None, "", "all"):
