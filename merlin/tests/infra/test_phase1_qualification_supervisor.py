@@ -52,10 +52,12 @@ def test_qualifier_command_keeps_inputs_without_author_options(helper, tmp_path)
                 "--descriptor", "/selected/descriptor", "--private-full-model-spec", "/private/spec",
                 "--codex-binary", "/client", "--codex-auth-source", "/credential-path-not-opened",
                 "--codex-home-root", "/home-input", "--live-conformance-feedback",
-                "--round-timeout", "7200", "--sandbox", "bwrap", "--bundle", "reviewed"]
+                "--round-timeout", "7200", "--sandbox", "bwrap", "--bundle", "reviewed",
+                "--validation-scope", "capsules"]
     argv = helper.qualifier_argv(SimpleNamespace(argv=selected), tmp_path / "frozen")
     assert argv[-2:] == ["--qualify-submission", str(tmp_path / "frozen")]
     assert "--private-full-model-spec" in argv and "--descriptor" in argv
+    assert argv[argv.index("--validation-scope") + 1] == "capsules"
     assert not any("codex-" in arg or "conformance" in arg or "round-timeout" in arg for arg in argv)
 
 
@@ -253,7 +255,7 @@ def test_original_deadline_also_interrupts_offline_audit(helper, tmp_path):
     assert state["phase1_complete"] is False and state["cleanup"]["complete"] is True
 
 
-def _toy_supervisor(helper, tmp_path, *, audit_status="pass", native_exit=0, hang=False):
+def _toy_supervisor(helper, tmp_path, *, audit_status="pass", native_exit=0, hang=False, scope="full"):
     """Run the real owner in its own process so pytest never becomes a subreaper."""
     script = tmp_path / "driver.py"
     script.write_text('''
@@ -262,7 +264,8 @@ from pathlib import Path
 from types import SimpleNamespace as N
 sys.path.insert(0, sys.argv[1])
 import qualify_phase1 as Q
-root=Path(sys.argv[2]); hang=sys.argv[3]=='True'; audit_status=sys.argv[4]; native_exit=int(sys.argv[5])
+root=Path(sys.argv[2]); hang=sys.argv[3]=='True'; audit_status=sys.argv[4]
+native_exit=int(sys.argv[5]); scope=sys.argv[6]
 package={'path':str(root/'compiler'),'hash_tree_sha256':'source','model_check_tree_sha256':'full'}
 (root/'compiler').mkdir(); (root/'proof').write_text('{}')
 def command(name):
@@ -292,10 +295,13 @@ Q.P.configured_environment=lambda l:contextlib.nullcontext()
 Q.admit_handoff=lambda *a:package
 Q.sha256_file=lambda p:'pinned'
 Q.qualifier_argv=lambda *a:command('native')
-Q.formal_complete=lambda F,n,*a:n['process'].poll()==0
+Q.formal_complete=lambda F,n,*a,**kw:n['process'].poll()==0
+if scope=='capsules':
+    def forbidden(*a,**kw): raise AssertionError('external model path selected')
+    F.selection=forbidden; F.output_verification=forbidden; F.model_command=forbidden
 policy={'output_scope':'all_declared','all_output_plan':{},'input':'visible/v00'}
 cpus=sorted(os.sched_getaffinity(0))[:1]
-launch=N(document={'full_model_verification':policy,'inputs':{'repo':str(root)},
+launch=N(document={'validation_scope':scope,'full_model_verification':policy,'inputs':{'repo':str(root),'descriptor':str(root/'descriptor')},
                    'identity':{'target':'fixture','arm':'fixture'},
                    'cpu':{'author':{'cpus':[]},'compute_pool':{'cpus':cpus}}},
          variables={'RUN':str(root/'newrun'),'REFERENCE_CPUS':'','SUPERVISOR_PSS_MAX_BYTES':'1000000',
@@ -304,5 +310,73 @@ raise SystemExit(Q.run(launch,root/'prep',root/'compiler',root/'proof','pinned',
                        time.time()+(1.2 if hang or audit_status=='block' else 8),poll_s=.02))
 ''')
     return subprocess.run([sys.executable, str(script), str(Path(helper.__file__).parent), str(tmp_path),
-                           str(hang), audit_status, str(native_exit)], capture_output=True, text=True, timeout=15,
+                           str(hang), audit_status, str(native_exit), scope],
+                          capture_output=True, text=True, timeout=15,
                           env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+
+
+@pytest.mark.parametrize("exit_code", [0, 1])
+def test_capsule_qualification_starts_only_native_and_never_claims_full_completion(helper, tmp_path, exit_code):
+    result = _toy_supervisor(helper, tmp_path, native_exit=exit_code, scope="capsules")
+    state = json.loads((tmp_path / "prep/status.json").read_text())
+    assert result.returncode == (0 if exit_code == 0 else 1), result.stderr
+    assert set(state["job_exit_codes"]) == {"native"}
+    assert state["models"] == {}
+    assert state["validation_scope"] == "capsules"
+    assert state["capsule_complete"] is (exit_code == 0)
+    assert state["phase1_complete"] is state["external_full_models_complete"] is False
+    assert state["overall_release_qualified"] is state["authoring_converged"] is False
+    assert state["cleanup"]["complete"] is True
+    assert not any((tmp_path / f"{name}.started").exists() for name in ("one", "two", "three"))
+
+
+def test_capsule_formal_completion_reopens_technical_receipt_and_exact_source(helper, tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import capsule_certification as C
+
+    path = tmp_path / "submission_qualification.json"
+    record = {"schema": "merlin.phase1.submission_qualification.v1", "qualification_only": True,
+              "validation_scope": "capsules", "authoring_converged": False,
+              "selected_source_tree_sha256": "source", "graded_source_sha256": "source",
+              "official_grade": {"complete": True, "validation_scope": "capsules",
+                                 "capsule_certification": {"path": "technical", "sha256": "exact"}}}
+    path.write_text(json.dumps(record))
+    evidence = {"submission_sha256": "source", "capsule_complete": True,
+                "receipt": {"path": "technical", "sha256": "exact"}}
+    monkeypatch.setattr(C, "verify", lambda *a, **kw: evidence)
+    F = SimpleNamespace(read=lambda p: json.loads(p.read_text()))
+    native = {"process": SimpleNamespace(poll=lambda: 0)}
+    package = {"hash_tree_sha256": "source"}
+    args = dict(validation_scope="capsules", descriptor=tmp_path / "descriptor")
+    assert helper.formal_complete(F, native, tmp_path, package, **args)
+    assert not helper.formal_complete(F, native, tmp_path, package)  # No full-scope promotion.
+    for changed in ({"submission_sha256": "other"}, {"capsule_complete": False},
+                    {"receipt": {"path": "technical", "sha256": "changed"}}):
+        monkeypatch.setattr(C, "verify", lambda *a, **kw: {**evidence, **changed})
+        assert not helper.formal_complete(F, native, tmp_path, package, **args)
+
+    def missing(*a, **kw):
+        raise ValueError("actual selected capsule evidence is incomplete")
+
+    monkeypatch.setattr(C, "verify", missing)
+    assert not helper.formal_complete(F, native, tmp_path, package, **args)
+
+
+def test_capsule_qualification_deadline_reaps_its_only_native_tree(helper, tmp_path):
+    result = _toy_supervisor(helper, tmp_path, scope="capsules", hang=True)
+    state = json.loads((tmp_path / "prep/status.json").read_text())
+    assert result.returncode == 2, result.stderr
+    assert set(state["job_exit_codes"]) == {"native"}
+    assert state["capsule_complete"] is state["phase1_complete"] is False
+    assert state["cleanup"]["complete"] is True
+    assert "DeadlineReached" in state["termination_reason"]
+    for path in tmp_path.glob("*.descendant"):
+        pid, ticks = map(int, path.read_text().split())
+        stat = Path(f"/proc/{pid}/stat")
+        assert not stat.exists() or int(stat.read_text().rsplit(")", 1)[1].split()[19]) != ticks
+
+
+def test_capsule_qualification_refuses_more_than_one_hour_before_owning_processes(helper, tmp_path):
+    with pytest.raises(ValueError, match="at most one hour"):
+        helper.run(SimpleNamespace(document={"validation_scope": "capsules"}), tmp_path / "prep",
+                   tmp_path / "candidate", tmp_path / "proof", "sha", time.time() + 3602)
+    assert not (tmp_path / "prep").exists()

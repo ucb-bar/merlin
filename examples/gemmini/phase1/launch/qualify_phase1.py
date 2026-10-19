@@ -2,7 +2,8 @@
 
 This separate operator route preserves the old run and never upgrades its grade
 or claims authoring convergence. Native formal grading and the selected complete
-model chains start together; all-declared-output audits remain mandatory.
+model chains start together under full scope. Explicit capsule scope starts only
+native capsule qualification; complete external model validation remains pending.
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ def qualifier_argv(launch, submission: Path) -> list[str]:
         "--private-full-model-spec", "--driver", "--model", "--sandbox",
         "--experiment", "--schedule", "--qa-timeout", "--model-budget-s",
         "--sim-max-jobs", "--sim-per-capsule-timeout", "--instruction-selection",
-        "--native-result-format-selection", "--hidden-capsule-mode", "--readback-policy",
+        "--native-result-format-selection", "--hidden-capsule-mode", "--readback-policy", "--validation-scope",
     }
     argv = list(launch.argv[:3])
     for index, item in enumerate(launch.argv[3:], start=3):
@@ -155,19 +156,34 @@ def admit_handoff(F, path: Path, expected_sha256: str, submission: Path, deadlin
     return package
 
 
-def formal_complete(F, native, run_dir: Path, package: dict) -> bool:
+def formal_complete(F, native, run_dir: Path, package: dict, *, validation_scope="full", descriptor=None) -> bool:
     path = run_dir / "submission_qualification.json"
     if native["process"].poll() != 0 or not path.is_file():
         return False
     value = F.read(path)
-    return (
+    complete = (
         value.get("schema") == "merlin.phase1.submission_qualification.v1"
         and value.get("qualification_only") is True
         and value.get("authoring_converged") is False
         and value.get("selected_source_tree_sha256") == package["hash_tree_sha256"]
         and value.get("graded_source_sha256") == package["hash_tree_sha256"]
+        and value.get("validation_scope", "full") == validation_scope
         and value.get("official_grade", {}).get("complete") is True
     )
+    if not complete or validation_scope == "full":
+        return complete
+    if validation_scope != "capsules" or descriptor is None:
+        return False
+    from merlin_experiments.phase1.feedback import capsule_certification
+
+    try:
+        verified = capsule_certification.verify(run_dir, descriptor=descriptor)
+        return (verified["submission_sha256"] == package["hash_tree_sha256"]
+                and verified["capsule_complete"] is True
+                and value["official_grade"].get("validation_scope") == "capsules"
+                and value["official_grade"].get("capsule_certification") == verified["receipt"])
+    except (ValueError, KeyError, OSError):
+        return False
 
 
 def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
@@ -176,6 +192,13 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
     """A dedicated process owns/reaps all children, including escaped sessions."""
     if not math.isfinite(deadline) or deadline <= time.time():
         raise ValueError("original campaign deadline already expired")
+    scope = launch.document.get("validation_scope", "full")
+    if scope not in {"full", "capsules"}:
+        raise ValueError("unknown qualification validation scope")
+    capsule_only = scope == "capsules"
+    if capsule_only and deadline - time.time() > 3600:
+        raise ValueError("capsule-only requalification requires a finite budget of at most one hour")
+    started = time.time()
     F = P.operator_module("full_model_verification")
     S = P.operator_module("launch_supervisor")
     processes = S.Processes()
@@ -183,7 +206,10 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
     boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
     state = {"schema": "merlin.operator.submission_qualification_supervisor.v1",
              "qualification_only": True, "authoring_converged": False,
-             "phase1_complete": False, "status": "preparing", "models": {},
+             "validation_scope": scope, "capsule_complete": False,
+             "phase1_complete": False, "external_full_models_complete": False,
+             "overall_release_qualified": False, "status": "preparing", "models": {},
+             "qualification_started_unix": started, "qualification_budget_s": deadline - started,
              "deadline_unix": deadline, "author_proof": {"path": str(proof), "sha256": proof_sha256}}
     prep.mkdir(parents=True, exist_ok=True)
     if (prep / "status.json").exists():
@@ -217,7 +243,7 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                 descriptor = launch.path(launch.document["inputs"]["descriptor"])
                 if F.read(proof)["descriptor"]["sha256"] != sha256_file(descriptor):
                     raise ValueError("external model job selects a different capsule descriptor")
-                state.update(capsule_complete=True, external_validation_only=True,
+                state.update(capsule_complete=not capsule_only, external_validation_only=not capsule_only,
                              phase1_clock_preserved=True, deadline_reset=False,
                              qualification_budget_extended=False, budget_extension=budget)
             else:
@@ -236,28 +262,29 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
             if run_dir.exists() or workspace.exists():
                 raise ValueError("qualification requires a distinct unused run ID and workspace")
             policy = launch.document.get("full_model_verification") or {}
-            if policy.get("output_scope") != "all_declared" or "all_output_plan" not in policy:
+            if not capsule_only and (policy.get("output_scope") != "all_declared" or "all_output_plan" not in policy):
                 raise ValueError("qualification requires selected all-declared-output evidence")
             # The ordinary launcher performs source/config/pin, bundle-seal and
             # positive infrastructure readiness admission; it starts no author.
             from merlin_experiments.phase1.feedback import private_numerical_selection
 
-            source_delegated = ("private_full_model_spec" in launch.document["inputs"]
+            source_delegated = (not capsule_only and "private_full_model_spec" in launch.document["inputs"]
                 and private_numerical_selection.read(launch.path(
                     launch.document["inputs"]["private_full_model_spec"])) is not None)
             readiness = (P.prepare(launch, prep, qualification_only=True) if source_delegated
                          else P.prepare(launch, prep))
             P.save(prep / "launch-readiness.json", readiness)
-            selected, identity = F.selection(launch), F.selected_identity(launch)
-            if "native" in selected["names"] or not selected["names"]:
+            selected = {"names": []} if capsule_only else F.selection(launch)
+            identity = F.selected_identity(launch)
+            if not capsule_only and ("native" in selected["names"] or not selected["names"]):
                 raise ValueError("selected model roster is empty or uses reserved native role")
-            output = F.output_verification()
-            context = output.validate(launch, identity=identity, models=selected["models"])
-            if context is None:
+            output = None if capsule_only else F.output_verification()
+            context = None if capsule_only else output.validate(launch, identity=identity, models=selected["models"])
+            if not capsule_only and context is None:
                 raise ValueError("qualification has no all-output context")
-            chain = P.operator_module("selected_chain_supervision")
+            chain = None if capsule_only else P.operator_module("selected_chain_supervision")
             native_chain = (chain.selected(launch, run_dir, deadline)
-                            if "private_full_model_spec" in launch.document["inputs"] else None)
+                            if not capsule_only and "private_full_model_spec" in launch.document["inputs"] else None)
             assigned = S.assigned_cpus(launch)
             remaining = int(deadline - time.time())
             if remaining <= 0:
@@ -281,7 +308,8 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                                              prep / "native-pin.json")
                 row = processes.start(argv, prep / f"{name}.log", role=name, cwd=repo, env=env, cpus=assigned)
                 pid = row["process"].pid
-                row.update(report=report, pin=prep / f"{name}-pin.json", input_id=policy["input"])
+                row.update(report=report, pin=prep / f"{name}-pin.json",
+                           input_id=None if capsule_only else policy["input"])
                 process_pin = (prep / f"{name}-process.json"
                                if native_chain is not None and name != "native" else row["pin"])
                 P.save(process_pin, {"selected_identity": identity, "submission": package,
@@ -289,7 +317,8 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                        "pid": pid, "start_ticks": processes.known.get(pid, (None, None))[0],
                        "boot_id": boot, "process_group": pid, "deadline_unix": deadline})
                 children[name] = row
-            state.update(status="formal_and_full_models", selected_identity=identity, submission=package)
+            state.update(status="capsule_qualification" if capsule_only else "formal_and_full_models",
+                         selected_identity=identity, submission=package)
             publish()
             while True:
                 if time.time() >= deadline:
@@ -328,10 +357,12 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                 state.update(owned_processes=len(records), pss_bytes=charged, host_available_bytes=available,
                              remaining_s=max(0, deadline - time.time()))
                 if all(row["process"].poll() is not None for row in children.values()):
-                    native = formal_complete(F, children["native"], run_dir, package)
-                    models = all(row["full_chain_complete"] for row in state["models"].values())
+                    native = (formal_complete(F, children["native"], run_dir, package,
+                              validation_scope=scope, descriptor=launch.path(launch.document["inputs"]["descriptor"]))
+                              if capsule_only else formal_complete(F, children["native"], run_dir, package))
+                    models = not capsule_only and all(row["full_chain_complete"] for row in state["models"].values())
                     final = (output.finalize(context, {n: children[n] for n in selected["names"]})
-                             if models else {"status": "incomplete"})
+                             if models else {"status": "not_selected" if capsule_only else "incomplete"})
                     unchanged = (F.package_identity(submission) == package
                                  and F.selected_identity(launch) == identity
                                  and sha256_file(proof) == proof_sha256)
@@ -340,10 +371,15 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                         unchanged = (unchanged and sha256_file(Path(budget["path"])) == budget["sha256"]
                                      and sha256_file(Path(budget["authorization"]["path"]))
                                      == budget["authorization"]["sha256"])
-                    state.update(native_formal_complete=native, all_outputs_finalization=final,
+                    state.update(native_formal_complete=native if not capsule_only else False,
+                                 capsule_complete=native and unchanged if capsule_only else False,
+                                 native_capsule_complete=native if capsule_only else False,
+                                 all_outputs_finalization=final,
                                  phase1_complete=native and models and final["status"] == "pass" and unchanged,
-                                 status="finished", frozen_inputs_unchanged=unchanged)
-                    if capsule_proof:
+                                 status="finished", frozen_inputs_unchanged=unchanged,
+                                 qualification_completed_unix=time.time(),
+                                 qualification_wall_s=time.time() - started)
+                    if capsule_proof and not capsule_only:
                         from merlin_experiments.phase1.feedback import capsule_certification
                         final_publication = capsule_certification.verify_phase2_handoff(
                             proof.parent, descriptor=launch.path(launch.document["inputs"]["descriptor"]))
@@ -353,7 +389,9 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                         state.update(external_full_models_complete=state["phase1_complete"],
                                      external_validation_completed_unix=time.time(),
                                      overall_release_qualified=state["phase1_complete"])
-                    code = 0 if state["phase1_complete"] else 1
+                    state["external_validation_status"] = "pending" if capsule_only else (
+                        "pass" if state["phase1_complete"] else "incomplete")
+                    code = 0 if (state["capsule_complete"] if capsule_only else state["phase1_complete"]) else 1
                     break
                 publish()
                 time.sleep(poll_s)
@@ -380,6 +418,8 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
             state.update(phase1_complete=False, external_full_models_complete=False,
                          overall_release_qualified=False, status="cleanup_unknown")
             code = 2
+        if capsule_only and code != 0:
+            state["capsule_complete"] = False
         publish()
         for sig, handler in previous.items():
             signal.signal(sig, handler)

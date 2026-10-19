@@ -186,6 +186,26 @@ def test_unpaid_qualification_uses_formal_child_and_refuses_selected_source_drif
     assert formal_invocation.run(capsule, public_capsules=public, selected_rtl_facts=None) == 1
     assert calls[-1][calls[-1].index("--validation-scope") + 1] == "capsules"
 
+    # Fresh unpaid capsule qualification must select the same scope, not enter
+    # any full-model requirement resolver after its capsule formal child exits.
+    from merlin_experiments.phase1.feedback import capsule_certification as CC
+    from merlin_experiments.phase1.feedback import certification, private_full_models
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(formal_invocation.subprocess, "run", lambda argv, **kw: subprocess.CompletedProcess(argv, 0))
+        scoped.setattr(certification, "_official_grade_result", lambda *a, **kw: pytest.fail("full-model gate"))
+        scoped.setattr(private_full_models, "requirements_for", lambda *a: pytest.fail("full-model requirements"))
+        scoped.setattr(CC, "verify", lambda *a, **kw: {"receipt": {"path": "technical", "sha256": "selected"}})
+        assert qualification.execute(capsule) == 0
+    qualified = json.loads((capsule.run_dir / "submission_qualification.json").read_text())
+    assert qualified["validation_scope"] == "capsules"
+    assert qualified["official_grade"]["validation_scope"] == "capsules"
+    assert qualified["official_grade"]["capsule_certification"] == {"path": "technical", "sha256": "selected"}
+    assert qualified["capsule_complete"] is True
+    for field in ("authoring_converged", "external_full_models_complete", "overall_release_qualified",
+                  "phase2_iteration_ready"):
+        assert qualified[field] is False
+
     def changed_during_formal(argv, **_kwargs):
         (selected / "compiler.py").write_text("# changed while the child ran\n")
         return subprocess.CompletedProcess(argv, 1)
