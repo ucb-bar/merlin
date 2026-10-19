@@ -281,6 +281,63 @@ def service(compiled, machine, scope="workload"):
     }
 
 
+def source_context(compiled, machine):
+    evidence = service(compiled, machine, "emitted_schedule")
+    return {
+        "schema": "merlin.phase2.source_service_context.v1",
+        "observation_kind": "complete_functional_commit_trace",
+        **{key: evidence[key] for key in ("source_sha256", "elf_sha256", "device_sha256", "resources", "events")},
+        "unresolved": {"downstream": "no complete interconnect service proof"},
+    }
+
+
+def test_functional_trace_service_never_borrows_current_counter_cycles_or_predictions(compiled, machine):
+    evidence = source_context(compiled, machine)
+    report = F.join_capsule_feedback(
+        {"source_sha256": "f" * 64},
+        compiled,
+        target="fixture-target",
+        machine=machine,
+        source_service_context=evidence,
+        measurement=measurement(compiled, machine, 100),
+        prediction={"status": "qualified_screen", "estimated_cycles": 12},
+    )
+    context = report["source_service_context"]
+    assert report["schema"] == "merlin.phase2.ordinary_capsule_feedback.v4"
+    assert report["timing_cycles"] == 100 and report["screen"]["estimated_cycles"] == 12
+    assert context["floor"]["floor_cycles"] == 16
+    assert context["floor"]["scope"] == "emitted_schedule"
+    assert context["counter_window"] is None
+    assert context["measured_cycles"] is None and context["estimated_cycles"] is None
+    assert context["attainment"] is None and context["gap_cycles"] is None
+    assert context["objective_floor_eligible"] is False and context["convergence_eligible"] is False
+    assert "counter_window" in context["floor"]["unresolved"]
+    assert report["resource_service"]["status"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    "damage", ["source_sha256", "elf_sha256", "device_sha256", "scope_sha256", "compulsory", "rate"]
+)
+def test_foreign_or_relabelled_functional_service_cannot_supply_context(compiled, machine, damage):
+    evidence = source_context(compiled, machine)
+    if damage == "compulsory":
+        evidence["events"][0]["compulsory"] = True
+    elif damage == "rate":
+        evidence["resources"]["readout"]["capacity_per_cycle_upper"] = -1
+    else:
+        evidence[damage] = "a" * 64
+    report = F.join_capsule_feedback(
+        {"source_sha256": "f" * 64},
+        compiled,
+        target="fixture-target",
+        machine=machine,
+        source_service_context=evidence,
+    )
+    assert report["source_service_context"]["status"] == "UNKNOWN"
+    assert report["source_service_context"]["floor"] is None
+    assert report["timing_cycles"] is None
+
+
 def test_source_bound_service_floor_is_recomputed_and_predictions_never_price_it(compiled, machine):
     evidence = service(compiled, machine)
     evidence["saved_floor_cycles"] = 999999
@@ -362,9 +419,14 @@ def test_unjoined_scope_and_nonfinite_setup_observation_remain_unknown(compiled,
 
 
 def retained_measurement(compiled, machine, cycles):
-    return {**measurement(compiled, machine, cycles), "kind": "retained_measured_target_cycles",
-            "measured_now": False, "archive_sha256": "a" * 64,
-            "record_ids": ["b" * 64, "c" * 64], "receipt_sha256s": ["d" * 64, "f" * 64]}
+    return {
+        **measurement(compiled, machine, cycles),
+        "kind": "retained_measured_target_cycles",
+        "measured_now": False,
+        "archive_sha256": "a" * 64,
+        "record_ids": ["b" * 64, "c" * 64],
+        "receipt_sha256s": ["d" * 64, "f" * 64],
+    }
 
 
 def test_original_retained_cycles_remain_historical_and_only_partial_ratio_is_reported(compiled, machine):
@@ -381,10 +443,17 @@ def test_original_retained_cycles_remain_historical_and_only_partial_ratio_is_re
     assert window["measured_target_cycles"] is None and window["historical_measured_target_cycles"] == 20
 
 
-@pytest.mark.parametrize("change", [
-    {"measured_now": True}, {"record_ids": []}, {"receipt_sha256s": []}, {"archive_sha256": "invented"},
-    {"scope_sha256": "foreign"}, {"elf_sha256": "foreign"},
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"measured_now": True},
+        {"record_ids": []},
+        {"receipt_sha256s": []},
+        {"archive_sha256": "invented"},
+        {"scope_sha256": "foreign"},
+        {"elf_sha256": "foreign"},
+    ],
+)
 def test_missing_or_relabelled_retained_receipts_cannot_supply_any_cycles(compiled, machine, change):
     value = {**retained_measurement(compiled, machine, 20), **change}
     report = join(compiled, machine, measurement=value)

@@ -29,6 +29,7 @@ from merlin_experiments.phase1.feedback.candidate_observations import (
 )
 
 from . import campaign as PC
+from . import ordinary_checked_source as CHECKED_SOURCE
 from .contracts import StageGateError, exact_tree_record, mapping_file, sha256_file, write_json
 from .ordinary_archive_screen import OrdinaryArchiveScreen
 from .retained_revisions import executing_revisions
@@ -170,20 +171,44 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
         raise StageGateError("ordinary compile/Spike exhausted its original aggregate deadline")
     workspace.mkdir(parents=True, mode=0o700)
     before = revision.source_sha256, member.source_sha256
-    capsule = dict(CR.load_capsule(member.source_dir, contract=str(policy._contract_root)))
+    from .public_source_diagnostic import selected as diagnostic_policy
+
+    capsule = dict(
+        policy.load_capsule(member, deadline=deadline)
+        if diagnostic_policy(policy)
+        else CR.load_capsule(member.source_dir, contract=str(policy._contract_root))
+    )
     required = tuple(capsule.get("required_oracle_tiers") or ())
     # Keep the full original obligations. The ordinary runner records missing
     # deeper tiers as incomplete; consumers read actual L0/L1/L2 observations.
     capsule["oracle_tier_ceiling"] = "L2"
     from .public_program_measurement import selection as public_selection
 
-    model_selection = public_selection(capsule, policy.feedback_evaluator.rtl_identity, simulator="spike")
+    checked = CHECKED_SOURCE.for_capsule(policy, capsule, deadline=deadline)
+    model_selection = (
+        None
+        if checked is not None
+        else public_selection(capsule, policy.feedback_evaluator.rtl_identity, simulator="spike")
+    )
     from merlin_experiments.phase1.feedback.compiler_profile_runtime import original_compiler_imports
 
-    with original_compiler_imports(getattr(policy.feedback_evaluator, "_compiler_profile_service", None)):
+    if checked is not None:
+        remaining = int(deadline - time.monotonic())
+        if remaining < 1:
+            raise StageGateError("ordinary compile/Spike exhausted its original aggregate deadline")
+    execution = (
+        policy.compiler_execution(revision.source, workspace, deadline=deadline)
+        if diagnostic_policy(policy)
+        else original_compiler_imports(getattr(policy.feedback_evaluator, "_compiler_profile_service", None))
+    )
+    with execution:
         sandbox = PC.package_sandbox_policy(policy.target_experiment, workspace, revision.source)
         started = time.monotonic()
         with PC.boxed_entrypoints(sandbox):
+            if diagnostic_policy(policy):
+                remaining = int(deadline - time.monotonic())
+                if remaining < 1:
+                    raise StageGateError("public diagnostic setup exhausted its original aggregate deadline")
             grade = CR.run_capsule(
                 capsule,
                 revision.source,
@@ -196,9 +221,13 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
                 timeout=remaining,
                 workers=workers,
                 **({"model_execution_selection": model_selection} if model_selection is not None else {}),
+                **({"checked_source_diagnostic": checked} if checked is not None else {}),
+                **({"model_budget_s": remaining} if checked is not None else {}),
             )
     tiers = grade.get("tiers") or {}
     functional = all((tiers.get(tier) or {}).get("status") == "pass" for tier in ("L0", "L1", "L2"))
+    if diagnostic_policy(policy):
+        functional = functional and grade.get("checked_source_status") == "complete_source_L0_L1_L2_diagnostic_pass"
     if before != (str(hash_tree(revision.source)["sha256"]), exact_tree_record(member.source_dir)["sha256"]):
         raise StageGateError("ordinary cheap execution changed frozen compiler or input bytes")
     compiled = compiled_observation(
@@ -232,29 +261,76 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
         "elapsed_seconds": time.monotonic() - started,
         "physical_memory_traffic": None,
         "timing_cycles": None,
+        **(
+            {"public_diagnostic_execution_view": capsule["public_diagnostic_execution_view"]}
+            if "public_diagnostic_execution_view" in capsule
+            else {}
+        ),
     }
     if type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen:
-        result["archive_counts"] = policy._ordinary_screen.observe_member(
-            policy, member, workspace, compiled, sandbox=sandbox,
-            remaining_s=max(0, deadline - time.monotonic()), functional=functional,
+        result["archive_counts"] = (
+            {
+                "status": "UNKNOWN",
+                "reason": "explicit checked-source diagnostic has no scored timing scope",
+            }
+            if checked is not None
+            else policy._ordinary_screen.observe_member(
+                policy,
+                member,
+                workspace,
+                compiled,
+                sandbox=sandbox,
+                remaining_s=max(0, deadline - time.monotonic()),
+                functional=functional,
+            )
         )
         result["elapsed_seconds"] = time.monotonic() - started
-    write_json(evidence, {**result, "original_grade": grade})
-    return {**result, "evidence_sha256": sha256_file(evidence)}
+    write_json(
+        evidence,
+        {
+            **result,
+            "original_grade": grade,
+            **(
+                {
+                    "checked_source_diagnostic": CHECKED_SOURCE.record(
+                        checked,
+                        policy._compiler_pass_selection,
+                        deadline=deadline,
+                    )
+                }
+                if checked is not None
+                else {}
+            ),
+        },
+    )
+    result = {**result, "evidence_sha256": sha256_file(evidence)}
+    native = getattr(policy, "_native_exploration", None)
+    if native is not None:
+        result["native_exploration"] = native.observe_member(
+            policy, member, workspace, result, sandbox=sandbox,
+            remaining_s=max(0, deadline - time.monotonic()),
+        )
+    return result
 
 
 def evaluate_retained(
     policy, revision, baseline_revision, *, work_root, call_index, timeout_s, workers, selected_members=None
 ):
     """Observe original public members; an explicit subset is diagnostic only."""
-    policy.validate_search_inputs()
+    from .public_source_diagnostic import selected as diagnostic_policy
+
+    deadline = time.monotonic() + timeout_s if diagnostic_policy(policy) else None
+    policy.validate_search_inputs(**({"deadline": deadline} if diagnostic_policy(policy) else {}))
     revision.verify(authority=policy.edit_authority)
     baseline_revision.verify(authority=policy.edit_authority)
     work_root = Path(work_root)
     work_root.mkdir(parents=True, mode=0o700)
-    deadline = time.monotonic() + timeout_s
+    if deadline is None:
+        deadline = time.monotonic() + timeout_s
     members = tuple(sorted(policy.search_corpus.capsules, key=lambda row: (row.family, row.capsule)))
     partial = selected_members is not None
+    if getattr(policy, "_checked_source_diagnostic", None) is not None and not partial:
+        raise StageGateError("checked-source witnesses require selected diagnostic-only compile/Spike feedback")
     if partial:
         from .ordinary_measurement_selection import select_members
 
@@ -301,15 +377,21 @@ def evaluate_retained(
         }
         for index, member in enumerate(members)
     ]
+    from .public_source_diagnostic import FEEDBACK_SCHEMA as DIAGNOSTIC_SCHEMA
+    from .public_source_diagnostic import NATIVE_FEEDBACK_SCHEMA
+    from .public_source_diagnostic import selected as diagnostic_policy
+
+    diagnostic = diagnostic_policy(policy)
+    native = getattr(policy, "_native_exploration", None) if diagnostic else None
     document = {
-        "schema": (
-            ARCHIVE_SCHEMA if type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen else SCHEMA
-        ),
+        "schema": (NATIVE_FEEDBACK_SCHEMA if native is not None else DIAGNOSTIC_SCHEMA)
+        if diagnostic
+        else (ARCHIVE_SCHEMA if type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen else SCHEMA),
         "kind": SELECTED_KIND if partial else KIND,
         "candidate_sha256": revision.source_sha256,
         "tuning_corpus_sha256": policy.search_corpus.capsules_sha256,
         "manifest_sha256": policy.search_corpus.manifest_sha256,
-        "certificate_sha256": policy.feedback_evaluator.certificate.sha256,
+        "certificate_sha256": None if diagnostic else policy.feedback_evaluator.certificate.sha256,
         "configuration_sha256": policy.search_closure_sha256,
         "cells": cells,
         "promotion": "DIAGNOSTIC_ONLY" if partial else "SCREENING_ONLY",
@@ -324,10 +406,14 @@ def evaluate_retained(
         }
     screen = getattr(policy, "_ordinary_screen", None)
     if screen is not None and not partial:
-        document["screening"] = screen.screen(policy, document, **(
-            {"work_root": work_root} if type(screen) is OrdinaryArchiveScreen else {}
-        ))
-    policy.validate_search_inputs()
+        document["screening"] = screen.screen(
+            policy, document, **({"work_root": work_root} if type(screen) is OrdinaryArchiveScreen else {})
+        )
+    if native is not None:
+        from ._public_native_feedback import join
+
+        document["native_exploration"] = join(document, owner=native)
+    policy.validate_search_inputs(**({"deadline": deadline} if diagnostic_policy(policy) else {}))
     if time.monotonic() > deadline:
         raise StageGateError("ordinary cheap observation exceeded its aggregate deadline")
     write_json(work_root / "ordinary_fast_feedback.json", document)
@@ -336,6 +422,12 @@ def evaluate_retained(
 
 def validate_feedback(document, *, policy, revision, kind=KIND):
     """Validate transport against the live original selection, never grant model authority."""
+    from .public_source_diagnostic import FEEDBACK_SCHEMA as DIAGNOSTIC_SCHEMA
+    from .public_source_diagnostic import NATIVE_FEEDBACK_SCHEMA
+    from .public_source_diagnostic import selected as diagnostic_policy
+
+    diagnostic = diagnostic_policy(policy)
+    native = getattr(policy, "_native_exploration", None) if diagnostic else None
     archive = type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen
     fields = {
         "schema",
@@ -352,6 +444,8 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
     partial = kind == SELECTED_KIND
     if partial:
         fields.add("selected_members")
+    if native is not None:
+        fields.add("native_exploration")
     if (
         type(document) is not dict
         or set(document) != fields
@@ -366,20 +460,28 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
             document["promotion"],
         )
         != (
-            ARCHIVE_SCHEMA if archive else SCHEMA,
+            (NATIVE_FEEDBACK_SCHEMA if native is not None else DIAGNOSTIC_SCHEMA)
+            if diagnostic else ARCHIVE_SCHEMA if archive else SCHEMA,
             kind,
             revision.source_sha256,
             policy.search_corpus.capsules_sha256,
             policy.search_corpus.manifest_sha256,
-            policy.feedback_evaluator.certificate.sha256,
+            None if diagnostic else policy.feedback_evaluator.certificate.sha256,
             policy.search_closure_sha256,
             "DIAGNOSTIC_ONLY" if partial else "SCREENING_ONLY",
         )
         or kind not in (KIND, SELECTED_KIND)
+        or (diagnostic and (kind != SELECTED_KIND or archive))
     ):
         raise StageGateError("ordinary cheap result differs from its original source/corpus/runtime selection")
     expected = {(row.family, row.capsule): row.source_sha256 for row in policy.search_corpus.capsules}
     selected = set(expected)
+    views = policy.binding()["public_execution_views"] if diagnostic else None
+    expected_views = (
+        dict(zip(((row.family, row.capsule) for row in policy.search_corpus.capsules), views, strict=True))
+        if views is not None
+        else {}
+    )
     if partial:
         from .ordinary_measurement_selection import select_members
 
@@ -431,14 +533,23 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
                     "physical_memory_traffic",
                     "timing_cycles",
                     "evidence_sha256",
-                } | ({"archive_counts"} if archive else set())
+                }
+                | ({"archive_counts"} if archive else set())
+                | ({"public_diagnostic_execution_view"} if identity in expected_views else set())
+                | ({"native_exploration"} if native is not None else set())
                 or not is_sha256(value["evidence_sha256"])
             ):
                 raise StageGateError("ordinary cheap observation must expose only its private evidence digest")
+            if identity in expected_views and value["public_diagnostic_execution_view"] != expected_views[identity]:
+                raise StageGateError("ordinary cheap observation changed its original public execution view")
             if value["physical_memory_traffic"] is not None or value["timing_cycles"] is not None:
                 raise StageGateError("ordinary cheap features cannot claim physical traffic or cycle timing")
             if not math.isfinite(value["elapsed_seconds"]) or value["elapsed_seconds"] < 0:
                 raise StageGateError("ordinary cheap observation has invalid cost")
+    if native is not None:
+        from ._public_native_feedback import validate
+
+        validate(document, owner=native)
     return document
 
 

@@ -23,7 +23,7 @@ def verify_semantics(capability, binding):
     capability.revalidate()
 
 
-def inference_case(*, key, member, family, dataset, manifest_sha256, report, directory, value):
+def inference_case(*, key, member, family, dataset, manifest_sha256, report, directory, value, checked_source=None):
     """Reopen the original private numerical verdict for this exact queued arm."""
     from merlin_timing import contracts as C
 
@@ -33,6 +33,14 @@ def inference_case(*, key, member, family, dataset, manifest_sha256, report, dir
         raise StageGateError("native inference lost its original full numerical observation")
     original = json.loads(path.read_bytes())
     public = {name: item for name, item in original.items() if name != "original_grade"}
+    if checked_source is not None:
+        from .ordinary_checked_source import record
+
+        if (type(checked_source) is not tuple or len(checked_source) != 2
+                or original.get("original_grade", {}).get("checked_source_status")
+                != "complete_source_L0_L1_L2_diagnostic_pass"
+                or public.pop("checked_source_diagnostic", None) != record(*checked_source)):
+            raise StageGateError("native diagnostic inference lost its original live complete-source selection")
     if canonical_json(public) != canonical_json({k: v for k, v in value.items() if k != "evidence_sha256"}):
         raise StageGateError("native inference numerical receipt differs from its original returned observation")
     tiers = original.get("original_grade", {}).get("tiers", {})

@@ -90,6 +90,12 @@ The observer confers no correctness, stage applicability or admission.
 `complete_streams` seals the caller's incrementally captured raw files without
 loading the full trace into RAM. The caller still owns actual bounded execution,
 cleanup and stream completion; the method cannot issue those observations.
+`replayable_text` feeds existing line consumers from complete bounded raw UTF-8
+files without materializing the whole text. Each exhausted pass checks original
+bytes and a fresh reopened hash; it preserves Python splitlines semantics across
+chunk boundaries. The caller supplies its original raw byte ceiling and owns
+execution, decoder, source and admission authority. No compression exemption,
+sampling, persistent proof cache or partial-pass receipt is supplied.
 Actual subprocess runs freeze the selected effective environment and bind its
 complete process-byte mapping by digest and key roster without recording values.
 `require_environment` compares an explicit protected expected mapping; legacy

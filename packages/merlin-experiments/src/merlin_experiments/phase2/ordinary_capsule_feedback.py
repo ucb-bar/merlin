@@ -132,12 +132,16 @@ def _measurement_origin(measurement):
     value = _mapping(measurement)
     if value.get("kind") == "measured_target_cycles" and value.get("measured_now") is True:
         return "fresh_current_execution"
-    if (value.get("kind") == "retained_measured_target_cycles" and value.get("measured_now") is False
-            and is_sha256(value.get("archive_sha256"))
-            and isinstance(value.get("record_ids"), list) and 0 < len(value["record_ids"]) <= 10000
-            and isinstance(value.get("receipt_sha256s"), list)
-            and len(value["receipt_sha256s"]) == len(value["record_ids"])
-            and all(is_sha256(pin) for pin in (*value["record_ids"], *value["receipt_sha256s"]))):
+    if (
+        value.get("kind") == "retained_measured_target_cycles"
+        and value.get("measured_now") is False
+        and is_sha256(value.get("archive_sha256"))
+        and isinstance(value.get("record_ids"), list)
+        and 0 < len(value["record_ids"]) <= 10000
+        and isinstance(value.get("receipt_sha256s"), list)
+        and len(value["receipt_sha256s"]) == len(value["record_ids"])
+        and all(is_sha256(pin) for pin in (*value["record_ids"], *value["receipt_sha256s"]))
+    ):
         return "retained_original_public_execution"
     return None
 
@@ -263,8 +267,13 @@ def _service_feedback(evidence, member, compiled, machine, measurement):
     comparable = measured is not None and _positive(bound)
     refuted = comparable and measured < bound
     return {
-        "status": "floor_refuted" if refuted else "historical_partial_measured" if comparable and historical
-        else "partial_measured" if comparable else "partial_unmeasured",
+        "status": "floor_refuted"
+        if refuted
+        else "historical_partial_measured"
+        if comparable and historical
+        else "partial_measured"
+        if comparable
+        else "partial_unmeasured",
         "floor": floor,
         "measured_cycles": None if historical else measured,
         "historical_measured_cycles": measured if historical else None,
@@ -279,6 +288,68 @@ def _service_feedback(evidence, member, compiled, machine, measurement):
     }
 
 
+def _source_service_context(evidence, member, compiled, machine):
+    """Describe whole functional-trace service without borrowing ROI cycles."""
+    unknown = {"status": "UNKNOWN", "floor": None, "attainment": None, "convergence_eligible": False}
+    if (
+        not isinstance(evidence, Mapping)
+        or set(evidence)
+        != {
+            "schema",
+            "source_sha256",
+            "elf_sha256",
+            "device_sha256",
+            "observation_kind",
+            "resources",
+            "events",
+            "unresolved",
+        }
+        or evidence.get("schema") != "merlin.phase2.source_service_context.v1"
+        or evidence.get("observation_kind") != "complete_functional_commit_trace"
+        or compiled.get("status") != "observed"
+        or not is_sha256(member.get("source_sha256"))
+        or member["source_sha256"] != compiled.get("source_sha256")
+        or member["source_sha256"] != evidence.get("source_sha256")
+        or not is_sha256(compiled.get("elf_sha256"))
+        or compiled["elf_sha256"] != evidence.get("elf_sha256")
+        or not is_sha256(machine.get("device_sha256"))
+        or machine["device_sha256"] != evidence.get("device_sha256")
+        or not isinstance(evidence.get("events"), (list, tuple))
+        or len(evidence["events"]) > 100000
+        or any(not isinstance(row, Mapping) or row.get("compulsory") is not False for row in evidence["events"])
+    ):
+        return {**unknown, "reason": "functional-trace service does not join original source, ELF and device"}
+    try:
+        floor = R.compose_service_floor(
+            evidence["resources"],
+            evidence["events"],
+            scope="emitted_schedule",
+            unresolved={
+                **_MISSING,
+                **dict(evidence["unresolved"]),
+                "counter_window": "complete functional trace has no admitted cycle-counter-window service join",
+            },
+        )
+    except (ValueError, TypeError, KeyError, OverflowError) as error:
+        return {**unknown, "reason": "invalid functional-trace service inventory: " + str(error)}
+    return {
+        "status": "partial_functional_trace_context",
+        "floor": floor,
+        "source_sha256": evidence["source_sha256"],
+        "elf_sha256": evidence["elf_sha256"],
+        "device_sha256": evidence["device_sha256"],
+        "observation_kind": evidence["observation_kind"],
+        "counter_window": None,
+        "measured_cycles": None,
+        "estimated_cycles": None,
+        "attainment": None,
+        "gap_cycles": None,
+        "objective_floor_eligible": False,
+        "convergence_eligible": False,
+        "interpretation": "source-bound schedule context only; original caller owns live effect verification",
+    }
+
+
 def join_capsule_feedback(
     member,
     compiled,
@@ -290,6 +361,7 @@ def join_capsule_feedback(
     machine=None,
     measurement=None,
     service_evidence=None,
+    source_service_context=None,
 ):
     """Join caller-owned public data; launch/read no files and grant no qualification.
 
@@ -300,6 +372,8 @@ def join_capsule_feedback(
     supplied facts only, never an ambient target. For measured partial-floor
     diagnostics, its explicit scope/device identities must match ``measurement``.
     Source logical payload and requested DMA bytes never price movement here.
+    Explicit ``source_service_context`` selects V4 whole-functional-trace channel
+    diagnostics. It never receives counter-window measurements or predictions.
     """
     member, compiled = _mapping(member), _mapping(compiled)
     diagnostics = _mapping(compiled.get("candidate_diagnostics"))
@@ -331,8 +405,13 @@ def join_capsule_feedback(
         "measured_cycles": None if historical else measured,
         "historical_measured_cycles": measured if historical else None,
         "measurement_origin": origin,
-        "status": "floor_refuted" if refuted else "historical_partial_measured" if comparable and historical
-        else "partial_measured" if comparable else "UNKNOWN",
+        "status": "floor_refuted"
+        if refuted
+        else "historical_partial_measured"
+        if comparable and historical
+        else "partial_measured"
+        if comparable
+        else "UNKNOWN",
         "attainment": None,
         "partial_floor_ratio": bound / measured if comparable and not refuted else None,
         "gap_cycles": measured - bound if comparable else None,
@@ -342,8 +421,25 @@ def join_capsule_feedback(
     native = _native(_mapping(raw_report), compiled, _mapping(prediction))
     return public_projection(
         {
-            "schema": "merlin.phase2.ordinary_capsule_feedback.v3" if historical else
-            "merlin.phase2.ordinary_capsule_feedback.v2" if native is not None else SCHEMA,
+            "schema": "merlin.phase2.ordinary_capsule_feedback.v4"
+            if source_service_context is not None
+            else "merlin.phase2.ordinary_capsule_feedback.v3"
+            if historical
+            else "merlin.phase2.ordinary_capsule_feedback.v2"
+            if native is not None
+            else SCHEMA,
+            **(
+                {
+                    "source_service_context": _source_service_context(
+                        source_service_context,
+                        member,
+                        compiled,
+                        selected,
+                    )
+                }
+                if source_service_context is not None
+                else {}
+            ),
             **({"native_event_timing": native} if native is not None else {}),
             "authority": "none",
             "promotion_authority": "NONE",
@@ -377,7 +473,10 @@ def join_capsule_feedback(
                 "interpretation": "emitted declarations and static sites do not prove dynamic effects",
             },
             "cost_boundaries": _boundaries(
-                compiled, diagnostics, _mapping(raw_report), _mapping(prediction),
+                compiled,
+                diagnostics,
+                _mapping(raw_report),
+                _mapping(prediction),
                 {"accepted_cycles": measured, "measurement_origin": origin},
             ),
             "host_and_packing": {

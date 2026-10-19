@@ -52,6 +52,30 @@ def scoped_realization_owner(owner):
         _OWNER.reset(token)
 
 
+def _exact_output_policies(outputs, output_abi, policy):
+    """Expand only an already exact, ABI-identical shared result policy.
+
+    Homogeneous multiple results use the ordinary source writer's shared policy;
+    heterogeneous results require the complete existing per-output policy.
+    Every result is still compared independently with its complete sealed ABI.
+    """
+    if not outputs or len(outputs) != len(output_abi) or len(set(outputs)) != len(outputs):
+        raise ValueError("connected source output policy does not cover its complete ABI")
+    if all(policy == dict(compare="exact_int", dtype=abi["dtype"]) for abi in output_abi):
+        return {name: policy for name in outputs}
+    if (
+        policy.get("compare") == "per_output"
+        and isinstance(policy.get("outputs"), dict)
+        and set(policy["outputs"]) == set(outputs)
+        and all(
+            policy["outputs"][name] == dict(compare="exact_int", dtype=abi["dtype"])
+            for name, abi in zip(outputs, output_abi, strict=True)
+        )
+    ):
+        return policy["outputs"]
+    raise ValueError("connected source needs complete independently exact numeric policy for every output")
+
+
 def source_proof(cap, directory):
     """Reopen original sealed source, exact signed inputs and every complete output."""
     directory = Path(directory)
@@ -102,12 +126,7 @@ def source_proof(cap, directory):
         raise ValueError("connected source ordered inputs/outputs differ from its complete ABI")
     golden = golden_store.load_golden(directory)
     policy = cap.get("numeric_policy") or {}
-    if len(outputs) == 1 and policy == dict(compare="exact_int", dtype=metadata["output_abi"][0]["dtype"]):
-        output_policies = {outputs[0]: policy}
-    elif policy.get("compare") == "per_output" and set(policy.get("outputs", {})) == set(outputs):
-        output_policies = policy["outputs"]
-    else:
-        raise ValueError("connected source needs complete independently exact per-output numeric policies")
+    output_policies = _exact_output_policies(outputs, metadata["output_abi"], policy)
     captured_golden = json.loads((root / "golden.json").read_bytes())
     captured_golden = captured_golden if len(outputs) > 1 else [captured_golden]
     if set(golden["outputs"]) != set(outputs):

@@ -50,6 +50,17 @@ executes no selected library code and grants no target support or timing credit.
 The shared algorithms are reviewed authored code; software effects and RTL
 facts constrain legal policy inputs and target-adapter applicability.
 
+New compiler preparation may explicitly copy and select
+`targetgen.selected_library_imports.activate_selected_sources_v2` before imports.
+When the recorded host root is absent inside the sandbox, V2 opens only the
+existing `/perf-compiler-library/<contract-sha256>/python` projection and rechecks
+every selected source before and after loading. Missing original dependency
+roots add no imports; the guest tree already contains the exact admitted public
+dependencies. Existing invalid roots and preloaded foreign leaves still refuse.
+This is a startup path connection, with no host-directory grant, SDK algorithm
+change or qualification authority. V1 and previously prepared packages retain
+their original startup; both treatments must select V2 before source freeze.
+
 When normal queued search freezes its edit authority, the host projects the
 actual validated contract into `STAGE_CONTEXT.json` as
 `frozen_compiler_edit_authority`, before policy or worker creation. It retains
@@ -275,6 +286,29 @@ against that candidate's actual emitted bytes. Explicit checked-source v4/v5
 diagnostics still cap execution at L2 and preserve pending L3, formal admission
 and promotion gates. Qualification restoration, current-artifact proof, execution
 and queue costs must be reported separately; unavailable subdivisions stay UNKNOWN.
+
+An original factory may also declare
+`metadata_verification_protocol: merlin.pass_metadata_operation.v1`. This bounds
+one selection, preparation or delegation metadata operation with full original
+registry checks before and after its nested getters. Object, callback, source,
+binding and identity checks remain live inside the operation. Results may be
+consumed only after the final check succeeds. Factories without this declaration
+keep their original per-getter verification. Current program, source, numerical,
+execution and timing checks are never cached by this scope. Its implementation
+is included in the sealed child's original host-source roster.
+
+Model-child preparation closes its opted-in metadata operation, including the
+final full original check, before exposing the sealed transport to its caller.
+It refuses an inherited active registry metadata operation, including a foreign
+registry or copied context. A caller must finish metadata work before launching
+or waiting for grading. Failed setup or final checks close the transport; actual
+child restoration, current-program checks and result verification stay separate.
+
+Library verification separately reopens and hashes every selected source and
+checks the current complete import closure on every call. It can reuse bounded,
+immutable Python syntax facts for identical bytes, filenames and parser
+implementations. This changes verification work, not selected SDK algorithms,
+target qualification or predicted accelerator cycles.
 
 The final functional guard rechecks both arms and requires the selected owner's
 original emitted-program checker. A missing checker makes the guard offending;

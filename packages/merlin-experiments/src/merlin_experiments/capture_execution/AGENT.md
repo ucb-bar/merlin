@@ -18,6 +18,10 @@ explicit serialized limits may select at most64 leaves/16MiB. Compose only expli
 selected absent leaves through read-only mounts and empty task-owned placeholders;
 verify the complete effective namespace against the original selected inventory.
 Absent flat leaf directories require existing CAS ancestors and pinned parent modes.
+V3 requires explicit `overlay_version=3` and adds bounded nested absent directories;
+derive canonical, owned directory modes from every selected source leaf, limiting
+created directories to the selected leaf ceiling (at most64). Reopen the complete
+CAS, leaves and parent modes before returning. V1/V2 interpretation stays unchanged.
 Do not replace existing members, waive missing aliases/dependencies, or repair the
 source store. Preserve the default writable-CAS owner and its historical behavior.
 

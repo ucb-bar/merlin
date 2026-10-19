@@ -195,6 +195,16 @@ selection to the original immutable queued job. Partial results cannot enter
 complete empirical calibration, provisional complete-roster ordering or measured
 promotion. Full cheap/RTL/final gates remain unchanged; selection supplies no
 proof of dependency impact or artifact/verdict reuse.
+`ordinary_checked_source` carries an explicit host-owned live selector through
+this selected diagnostic route. Bind its exact original pass selection and
+revalidate source/callback/facts before execution. Do not infer missing public
+placements or restore authority from JSON. Metadata admission is capped at 120
+seconds and clipped to the feedback deadline; refuse expiry before owner checks
+and refresh the compiler's remaining allowance afterward. This is not preemption
+of a synchronous proof: the enclosing resource guard remains responsible for
+that boundary. Preserve DIAGNOSTIC_ONLY, null timing, pending L3, the complete
+frozen roster, and the factory's original formal Phase 1 gate. Neutral transport
+tests cannot establish an admitted target queue or performance promotion.
 Join fresh emitted LLVM and actual linked ELF/invocation products before using
 the core static-site observer. Unsupported bodies stay UNKNOWN; neither sites
 nor linked bytes are physical work. `ordinary_calibration` executes this fixed
