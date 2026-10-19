@@ -224,3 +224,11 @@ def test_census_retains_raw_totals_and_the_exact_parameter_proof(monkeypatch):
     assert row["verdict"] == HA.CLEAN
     assert row["host_raw_payload_bytes"] == 16 and row["host_payload_bytes"] == 0
     assert row["command_parameters"]["configuration_commands"] == 4
+
+
+def test_many_duplicate_storage_roots_refuse_before_repeated_storage_scans(monkeypatch):
+    _observer(monkeypatch)
+    extra = "\n".join(f"%extra{i} = llvm.mlir.addressof @parameters : !llvm.ptr" for i in range(64))
+    result = _audit(_SOURCE.replace("llvm.br ^head(%zero", extra + "\n    llvm.br ^head(%zero"))
+    assert result["verdict"] == HA.HOST_COMPUTE
+    assert "storage roots exceed" in result["command_parameters"]["detail"]

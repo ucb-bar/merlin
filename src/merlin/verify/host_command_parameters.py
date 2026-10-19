@@ -225,6 +225,8 @@ def _prove(function, activity, *, target):
     addresses = [op for op in function.walk() if isinstance(op, AddressOfOp)]
     if not addresses:
         raise ValueError("no immutable command parameter storage")
+    if len(addresses) > 64:
+        raise ValueError("command parameter storage roots exceed the finite proof bound")
     storages, pointers, loads, packing, endpoints = {}, set(), set(), set(), set()
     for address in addresses:
         storage, data = _storage(address, function)
