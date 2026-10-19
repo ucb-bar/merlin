@@ -675,9 +675,9 @@ def test_official_grade_refuses_manifest_selected_narrow_roster(tmp_path):
 
 
 def test_built_group_artifact_vetoes_candidate_host_arithmetic(tmp_path, monkeypatch):
-    from merlin.llvmlower import device_shim
+    from merlin.llvmlower import device_build
 
-    monkeypatch.setattr(device_shim, "kernel_abi_for", lambda _target: SimpleNamespace(symbol="kernel"))
+    monkeypatch.setattr(device_build, "executable_kernel_entry", lambda _target: "kernel")
     device = tmp_path / "device"
     device.mkdir()
     body = "\n".join(
@@ -719,9 +719,9 @@ def test_built_group_artifact_vetoes_candidate_host_arithmetic(tmp_path, monkeyp
 def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkeypatch, second_group_optional):
     from xdsl.parser import Parser
 
-    from merlin.llvmlower import device_shim, toolchain
+    from merlin.llvmlower import device_build, toolchain
 
-    monkeypatch.setattr(device_shim, "kernel_abi_for", lambda _target: SimpleNamespace(symbol="kernel"))
+    monkeypatch.setattr(device_build, "executable_kernel_entry", lambda _target: "kernel")
     monkeypatch.setattr(toolchain, "nm", lambda: "nm")
     monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: SimpleNamespace(stdout=""))
     device = tmp_path / "device"
@@ -796,9 +796,9 @@ def test_built_kernel_audit_reuses_exact_bytes_not_source_calls(tmp_path, monkey
 
 
 def test_unknown_built_kernel_audit_preserves_actual_diagnostics_and_still_refuses(tmp_path, monkeypatch):
-    from merlin.llvmlower import device_shim
+    from merlin.llvmlower import device_build
 
-    monkeypatch.setattr(device_shim, "kernel_abi_for", lambda _target: SimpleNamespace(symbol="kernel"))
+    monkeypatch.setattr(device_build, "executable_kernel_entry", lambda _target: "kernel")
     device = tmp_path / "device"
     device.mkdir()
     artifact = device / "stem.device.mlir"
