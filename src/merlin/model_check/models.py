@@ -29,6 +29,16 @@ class ModelsFileError(ValueError):
     """The models file is missing, malformed, or names something it does not define."""
 
 
+def selected_host_math_policy(model: Model, full: dict[str, Any] | None = None) -> str:
+    """One explicit host arithmetic selection for both execution and reference derivation."""
+    from merlin.runtime.host_math import host_math_recipe
+
+    own = model.extra.get("full") or {}
+    policy = own.get("host_math_policy", (full or {}).get("host_math_policy", "native"))
+    host_math_recipe(policy)  # Validate before creating build or reference artifacts.
+    return policy
+
+
 @dataclass(frozen=True)
 class Program:
     name: str
