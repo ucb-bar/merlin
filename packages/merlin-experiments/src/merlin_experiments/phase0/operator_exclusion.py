@@ -18,6 +18,9 @@ from merlin.targetgen import component_program
 
 SCHEMA = "merlin.phase0.operator_private_exclusion.v1"
 SCHEMA_V2 = "merlin.phase0.operator_private_exclusion.v2"
+SCHEMA_V3 = "merlin.phase0.operator_private_exclusion.v3"
+SCHEMA_V4 = "merlin.phase0.operator_private_exclusion.v4"
+SCHEMA_V5 = "merlin.phase0.operator_private_exclusion.v5"
 SIGNATURE_SCHEMA = "merlin.phase0.contraction_exclusion_signature.v1"
 REFUSAL = "public corpus publication eligibility is not established"
 _ISSUER = object()
@@ -148,10 +151,10 @@ class OperatorPrivateExclusion:
 
             data = strict_json.loads(raw, max_bytes=1024 * 1024)
             keys = ("excluded_source_sha256", "excluded_contraction_sha256")
-            if isinstance(data, dict) and data.get("schema") == SCHEMA_V2:
+            if isinstance(data, dict) and data.get("schema") in {SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5}:
                 keys += ("excluded_typed_ir_sha256",)
             if (not isinstance(data, dict) or set(data) != {"schema", *keys}
-                    or data["schema"] not in {SCHEMA, SCHEMA_V2}):
+                    or data["schema"] not in {SCHEMA, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5}):
                 raise PublicationRefusal()
             for key in keys:
                 rows = data[key]
@@ -164,9 +167,9 @@ class OperatorPrivateExclusion:
                     raise PublicationRefusal()
             if not any(data[key] for key in keys):
                 raise PublicationRefusal()
-            return tuple(frozenset(data.get(key, [])) for key in (
+            return (*tuple(frozenset(data.get(key, [])) for key in (
                 "excluded_source_sha256", "excluded_contraction_sha256", "excluded_typed_ir_sha256"
-            ))
+            )), data["schema"])
         except (OSError, TypeError, ValueError):
             raise PublicationRefusal() from None
 
@@ -179,7 +182,7 @@ class OperatorPrivateExclusion:
     def check_member(self, directory):
         """Reopen complete ordinary source before promotion or corpus sealing."""
         try:
-            sources, contractions, typed = self._hashes()
+            sources, contractions, typed, schema = self._hashes()
             directory = Path(directory)
             self.outside(directory)
             if any(path.is_symlink() for path in (directory, *directory.parents, *directory.rglob("*"))):
@@ -205,7 +208,14 @@ class OperatorPrivateExclusion:
             if set(signatures) & contractions:
                 raise PublicationRefusal()
             if typed:
-                from .operator_typed_exclusion import signatures as typed_signatures
+                if schema == SCHEMA_V5:
+                    from .operator_registered_exclusion import signatures as typed_signatures
+                elif schema == SCHEMA_V4:
+                    from .operator_structured_exclusion import signatures as typed_signatures
+                elif schema == SCHEMA_V3:
+                    from .operator_mixed_exclusion import signatures as typed_signatures
+                else:
+                    from .operator_typed_exclusion import signatures as typed_signatures
 
                 if set(typed_signatures(source, max_bytes=32 * 1024 * 1024)) & typed:
                     raise PublicationRefusal()

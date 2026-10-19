@@ -18,6 +18,57 @@ unchanged. Unknown semantics, source aliases, failed lineage and parse-budget
 denials refuse without partial files. Do not infer compiler or model numerical
 qualification from a newer release used only as a private-source inventory.
 
+`operator_dense_projection` is private transient exclusion intake, never compiler
+input or an execution transform. Hash every original byte and preserve the
+existing typed canonicalizer. Resource placeholders are allowed only for checked
+immediate-function-body dense initializers, whose values the original projection
+already omits. Check full hexadecimal storage length, original registered literal
+grammar, every marker's actual typed owner, and independent streaming/compact/
+decoded-memory ceilings. Never elide contraction-region constants, unknown
+elements or unbounded literal forms; no projected source leaves enter author
+inputs or publication. Original ordinary-source intake remains unchanged.
+
+Explicit `operator_streaming_exclusion_issuer` uses the unchanged typed signature
+and V2 private reader. Separate streaming byte limits do not enlarge compact
+parse ceilings. `validation_sources_v2` may compose only a selected source leaf
+alias owned by the exact original sealed catalog role with an ordinary current
+target; complete source bytes must match the original seal and the full alias
+binding is re-resolved before issuance. Preserve every selected identity, refuse
+alias chains/ancestors, and never claim historical link spelling was sealed.
+No partial selection, protected names/shapes/answers or byte-only fallback may
+escape trusted intake. Original ordinary-source alias refusals remain unchanged.
+Streaming private intake verifies the entire original generation but selects
+only its committed `hidden` capsule roles; `public` and `dev` Phase1 sources
+remain reusable. Unknown roles refuse. The separately selected protected model
+source inventory remains complete and independent of those capsule labels.
+
+`operator_windowed_ir` is an explicit private allocation route, not a semantic
+summary. Reconstruct every original operation/region with exact SSA and aliases,
+verify the complete final module and recheck all initializer owners. Parser
+windows, aggregate syntax and external RSS/CPU limits remain hard gates.
+
+Explicit private-selection V5 selects `operator_registered_exclusion` on BOTH
+sides. Require actual registered maps/iterators, complete typed outputs and
+scalar ownership; iterator coordinates must name valid enclosing generic loops.
+No guessed operation family, unknown effect or numerical grant is permitted.
+
+Explicit private-selection V4 selects `operator_structured_exclusion` on BOTH
+sides. Registered tensor reductions require complete dimensions, tensor/scalar
+ABI and ownership; their versioned hashes do not grant execution support.
+Older signatures and selection interpretations remain unchanged.
+
+Explicit private-selection V3 selects `operator_mixed_exclusion` on BOTH sides.
+Linalg keeps the exact V1 typed hashes; the restricted original merlin_iface raw
+signed-i8/i32 value algebra is checked completely and reified as generic/named
+linalg semantic images before invoking that same canonicalizer. Named images
+widen signed inputs explicitly before homogeneous i32 multiplication. Require
+all original declarations, SSA, attributes, zero-initial contraction, raw commit
+and pack/evict ownership. Changed readouts, initialization, continuations, unknown
+operations or unowned effects refuse. Images may conservatively overexclude;
+they are neither numerical execution nor compiler support. V1/V2 reader meanings
+and default issuer behavior remain unchanged; never ignore an unreadable grammar
+as zero contractions or use a byte-only fallback.
+
 `sealed_native_program` reopens original sealed native stages with complete
 integral golden.json outputs, exact source leaves and receipt-bound metadata.
 Relocate metadata paths only; never modify captured bytes or use lossy output-zero

@@ -54,6 +54,29 @@ target or timing qualification. Normal queued authoring projects the already
 frozen edit contract into public stage context, excluding private seed paths;
 the original private authority still validates every retained candidate edit.
 
+`compiler_pass_state` reopens only an explicit operator-selected, byte-pinned
+original factory under the already selected search resource context. Its fresh
+admission root cannot alias the stage or selected library. Preserve live
+independent admission, exact release and registry checks; serialized success
+cannot authorize a mechanism. CLI transport does not prepare a compiler or
+change the original functional/timing gates.
+
+`compiler_pass_preparation` supplies explicit choices for one original composite
+capability, never executable authority. Prepare both treatments independently
+from the same immutable original compiler before inventory and edit/source
+freeze. Keep original parent, readonly derived baseline and candidate seed
+separate; their digests are different. Reopen actual selected-library binding
+through the original bound owner. A saved preparation cannot construct that
+owner or replace fresh complete same-release final functional checks.
+
+Prepared ordinary authoring uses candidate schema 5 / handoff 3. Preserve the
+raw Phase 1 fork path and digest separately from actual comparison/seed hashes.
+Final consumption needs independent original host policy choices and fresh
+preparation replay, not just self-consistent saved metadata. Queue authority
+freezes the actual prepared candidate; preparation never widens its surfaces.
+Paired workers carry the same live owner and library. The original full grade,
+source/native/issue check and timing gates remain required for both treatments.
+
 `agent_workspace` projects capsule inputs using frozen reference roles in
 `merlin.targetgen.capsule_privacy` and the central answer registry. Live-source
 deletion cannot disclose frozen expected values; public inputs remain usable.

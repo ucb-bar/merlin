@@ -15,6 +15,8 @@ import hashlib
 import importlib.util
 import inspect
 import json
+import shutil
+import stat
 import threading
 from dataclasses import asdict
 from pathlib import Path
@@ -58,6 +60,28 @@ def _tree(root):
                 raise ValueError("compiler pass package exceeds its original source bound")
             rows.append((path.relative_to(root).as_posix(), sha256_file(path)))
     return _digest(rows)
+
+
+def copy_compiler_source(source, destination):
+    """Create an owned writable copy, preserving every original source byte.
+
+    Read-only Phase 1 snapshots remain immutable. Target preparation may change
+    only this fresh disjoint destination before the ordinary edit/source freeze.
+    """
+    source, destination = Path(source), Path(destination)
+    origin = _tree(source)
+    if (
+        destination.exists() or destination.is_symlink() or not destination.is_absolute()
+        or destination.resolve() != destination or destination.is_relative_to(source)
+        or source.is_relative_to(destination) or any(path.is_symlink() for path in destination.parents)
+    ):
+        raise ValueError("compiler source copy requires a fresh disjoint destination")
+    shutil.copytree(source, destination, symlinks=False)
+    for path in (destination, *destination.rglob("*")):
+        path.chmod(path.stat().st_mode | stat.S_IWUSR)
+    if _tree(source) != origin or _tree(destination) != origin:
+        raise ValueError("compiler source bytes changed during owned preparation copy")
+    return destination
 
 
 class OriginalPassFactory:
@@ -211,9 +235,11 @@ class CompilerPassSelection:
 
 
 def restore_original_selection(record, *, work_root):
-    """Only a verified original-parent transport may call this host-only API.
+    """Only an explicit original host or verified parent transport may call this.
 
-    It executes the original source-pinned admission callback, then compares the
+    The CLI independently selects and pins operator input bytes; a child needs
+    its independently checked sealed-parent transport. This executes the
+    original source-pinned admission callback, then compares the
     actual live registry. It does not deserialize successful capability owners.
     """
     if type(record) is not dict or set(record) != {

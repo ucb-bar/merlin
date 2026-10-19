@@ -4226,3 +4226,71 @@ class TestAgentVisibleRefusal:
             assert needle and remediation
             assert "/" not in remediation and "\\" not in remediation, remediation
             assert len(remediation) > 30, f"{needle!r} maps to a remediation that says nothing"
+
+
+def _prepared_record_format(tmp_path):
+    """Synthetic custody format only; this supplies no live owner or admission."""
+    from merlin_experiments.phase2 import compiler_pass_preparation as P
+
+    document, library = _library_record(tmp_path)
+    selection = {"mechanisms": ["composite"]}
+    policy = P.CompilerPassPreparation(
+        "composite", baseline_policy={"enabled": False}, candidate_policy={"enabled": True}
+    ).record()
+    receipt = dict(
+        schema="merlin.prepared_compiler_pass.v1",
+        selection=selection,
+        mechanism="composite",
+        source="/original",
+        source_sha256=SHA_A,
+        prepared_sha256=SHA_B,
+    )
+    prepared = dict(
+        schema=P.PAIR_SCHEMA,
+        selection=selection,
+        preparation=policy,
+        original=dict(path="/original", sha256=SHA_A),
+        baseline=dict(path="/prepared-baseline", sha256=SHA_D),
+        candidate_seed=dict(path="/prepared-seed", sha256=SHA_C),
+        preparations={"baseline": receipt, "candidate_seed": copy.deepcopy(receipt)},
+    )
+    prepared["sha256"] = P._sha(prepared)
+    document.update(schema_version=RECORD.PREPARED_SCHEMA_VERSION, compiler_pass_preparation=prepared)
+    document["base_functional"]["snapshot"] = "/original"
+    document["candidate"]["initial_sha256"] = SHA_C
+    document["prompt"]["facts"]["compiler_pass_preparation"] = P.prompt_projection(prepared)
+    document["prompt"]["facts_sha256"] = hashlib.sha256(PAS._canonical_json(document["prompt"]["facts"])).hexdigest()
+    document["functional_guard"].update(
+        compiler_pass_selection=selection, compiler_pass_realizations={"composite": {"synthetic_format_only": True}}
+    )
+    return document, library
+
+
+def test_prepared_schema_preserves_original_parent_and_requires_explicit_version(tmp_path):
+    document, _ = _prepared_record_format(tmp_path)
+    assert RECORD.validate_candidate_record(document)["candidate"]["initial_sha256"] != SHA_A
+    for mutation in ("legacy", "initial", "original", "realization"):
+        changed = copy.deepcopy(document)
+        if mutation == "legacy":
+            changed["schema_version"] = RECORD.LIBRARY_SCHEMA_VERSION
+        elif mutation == "initial":
+            changed["candidate"]["initial_sha256"] = SHA_A
+        elif mutation == "original":
+            changed["base_functional"]["snapshot"] = "/prepared-baseline"
+        else:
+            changed["functional_guard"]["compiler_pass_realizations"] = {}
+        with pytest.raises(PAS.StageGateError, match="prepar|initial|original"):
+            RECORD.validate_candidate_record(changed)
+
+
+def test_prepared_saved_success_does_not_supply_original_host_choices(tmp_path):
+    document, library = _prepared_record_format(tmp_path)
+    record = tmp_path / "prepared_candidate.json"
+    record.write_text(json.dumps(document))
+    with pytest.raises(PAS.StageGateError, match="independently selected original host policies"):
+        VERIFY.verify_candidate_record(
+            record,
+            compiler_library_selection=library,
+            compiler_preparation_verification_root=tmp_path / "original-replay",
+        )
+    assert not (tmp_path / "original-replay").exists()

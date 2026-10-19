@@ -177,6 +177,8 @@ class MeasurementBinding:
     corpus_manifest_sha256: str
     corpus_capsules_sha256: str
     certificate_sha256: str
+    compiler_library_binding: Mapping[str, Any] | None = None
+    compiler_pass_preparation: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -204,7 +206,9 @@ def _read_measurement(manifest_path: Path, expected_sha256: str | None = None, *
     manifest = json.loads(payload)
     if not isinstance(manifest, Mapping):
         raise MeasurementEvidenceError("paired measurement manifest must be a mapping")
-    if require_current_schema and manifest.get("schema") != "paired_arm4_performance_campaign_v2":
+    if require_current_schema and manifest.get("schema") not in {
+        "paired_arm4_performance_campaign_v2", "paired_arm4_prepared_performance_campaign_v1"
+    }:
         raise MeasurementEvidenceError(
             "unsupported paired campaign schema (expected paired_arm4_performance_campaign_v2)"
         )
@@ -324,10 +328,12 @@ def verify_paired_measurement(
     completion = manifest.get("completion") or {}
     engine_policy = manifest.get("engine_policy") or {}
     plan = manifest.get("measurement_plan") or {}
-    if plan.get("schema") != "paired_arm4_measurement_plan_v3":
-        raise MeasurementEvidenceError(
-            "unsupported paired measurement plan schema (expected paired_arm4_measurement_plan_v3)"
-        )
+    from .measurement_library_binding import validate_expected_treatments
+
+    try:
+        validate_expected_treatments(manifest, expected, raw_cells)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
+        raise MeasurementEvidenceError(str(error)) from error
     if manifest.get("measurement_plan_sha256") != hashlib.sha256(_canonical_bytes(plan)).hexdigest():
         raise MeasurementEvidenceError("paired measurement plan digest is invalid")
     try:

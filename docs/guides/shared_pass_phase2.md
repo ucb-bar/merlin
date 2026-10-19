@@ -241,6 +241,23 @@ preparation, a policy request or earlier paired evidence cannot replace it.
 These APIs connect custody and execution ownership, not automatic target-name
 discovery or formal admission of the provisional Phase 1 checkpoint.
 
+The ordinary authoring CLI can reopen an explicitly reviewed pass selection
+using `--compiler-pass-selection`, `--compiler-pass-selection-sha256` and
+`--compiler-pass-admission-root` together with the selected library flags. The
+SHA-256 pins the exact selection file bytes. The fresh admission directory must
+be disjoint from the author stage and outside the selected library. The CLI
+first checks the selected search resource boundary, then reruns the original
+source-pinned factory within that resource context and compares the live
+registry. A saved successful verdict supplies no capability. Original callbacks
+retain their independent resource admission; selecting no hard boundary adds
+no hard limits. The CLI forwards the resulting owner through the existing
+ordinary stage and final checks. Compiler preparation remains a separate host
+choice before source/edit freezing. The CLI also requires
+`--compiler-pass-preparation` and `--compiler-pass-preparation-sha256` when
+selecting passes; those pin the policies for both copied compilers. The
+ordinary stage applies the live owner's checked preparation before freezing
+the actual edit surfaces. See [compiler preparation](phase2_compiler_preparation.md).
+
 The host-only `llvmlower.reviewed_pass_capabilities` registry transports live
 original owners. `PassCapabilityBinding` requires exact hardware, software,
 numerical policy, runtime and library identities. An original host may construct
