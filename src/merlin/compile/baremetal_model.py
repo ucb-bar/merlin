@@ -28,6 +28,7 @@ from merlin.runtime.boards import CONSOLE_HTIF, FLOW_BAREMETAL, load_boards
 from merlin.targetgen.application_inventory import verify_capture_receipt
 
 if TYPE_CHECKING:
+    from merlin.llvmlower.graph_optimizations import GraphOptimizationContract
     from merlin.llvmlower.source_dense import SourceDenseLowering
     from merlin.llvmlower.source_pointwise import SourcePointwiseLowering
     from merlin.llvmlower.source_rows import SourceRowLowering
@@ -313,6 +314,7 @@ def compile_saved_model(
     blob_weights: bool = True,
     weights_source: str | Path | None = None,
     shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
+    graph_optimizations: GraphOptimizationContract | None = None,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
@@ -503,6 +505,8 @@ def compile_saved_model(
         if selection is not None:
             receipt["engine_selection"] = selection
         build_options = {"math_archive_symbols": math_archive_symbols} if math_archive_symbols is not None else {}
+        if graph_optimizations is not None:
+            build_options["graph_optimizations"] = graph_optimizations
         if shared_source_lowerings:
             receipt["inputs"]["shared_source_lowerings"] = [type(value).__name__ for value in shared_source_lowerings]
             build_options["shared_source_lowerings"] = shared_source_lowerings
@@ -566,6 +570,11 @@ def compile_saved_model(
             **({"host_bitcode_transport": built["host_bitcode_transport"]} if host_llvm_bitcode else {}),
             "device_artifacts": built.get("device_artifacts"),
         }
+        if graph_optimizations is not None:
+            from merlin.llvmlower.graph_optimizations import recheck_host_graph_artifacts
+
+            graph_artifacts = recheck_host_graph_artifacts(output_path / "build" / "lower", graph_optimizations)
+            receipt["output"]["host_graph_optimization"] = graph_artifacts
         if shared_source_lowerings:
             from merlin.llvmlower.prepared_model_transform import RECEIPT as PREPARATION_RECEIPT
             from merlin.runtime.host_provider import revalidate_host_provider
@@ -763,6 +772,9 @@ def compile_saved_model(
             raise BaremetalModelError("selected RTL facts or source FIRRTL changed during execution")
         if materialized_inputs is not None:
             materialized_inputs.verify(capture_path)
+        if graph_optimizations is not None:
+            if recheck_host_graph_artifacts(output_path / "build" / "lower", graph_optimizations) != graph_artifacts:
+                raise BaremetalModelError("host graph optimization artifacts changed during execution")
         if shared_source_lowerings:
             for value in shared_source_lowerings:
                 value.selected_contracts.revalidate()

@@ -130,14 +130,38 @@ def _input_layout(value, block):
     return candidates[0] if candidates and all(x == candidates[0] for x in candidates) else None
 
 
-def rewrite_module(module, *, reduction_channel_block: int = 0) -> LayoutReport:
+def rewrite_module(module, *, reduction_channel_block: int = 0, pointwise_only: bool = False,
+                   maximum_added_operations: int = 8192) -> LayoutReport:
     if type(reduction_channel_block) is not int or reduction_channel_block < 0:
         raise ValueError("reduction_channel_block must be a nonnegative integer")
+    if type(pointwise_only) is not bool or type(maximum_added_operations) is not int or maximum_added_operations <= 0:
+        raise ValueError("layout checking requires an explicit family and positive code budget")
     report = LayoutReport()
     cache = {}
+    segments = {}
+    added = 0
+    if pointwise_only:
+        from .layout_conformance import pointwise_kind
+
+        for region in (region for op in module.walk() for region in op.regions):
+            for block in region.blocks:
+                segment = 0
+                for op in block.ops:
+                    segments[op] = segment
+                    if pointwise_kind(op) is None:
+                        segment += 1
+
+    def eligible(op):
+        return not pointwise_only or pointwise_kind(op) is not None
 
     def add(op, anchor):
+        nonlocal added
+        added += sum(1 for _ in op.walk())
+        if pointwise_only and added > maximum_added_operations:
+            raise ValueError("layout exceeds its explicit compilation-space cost contract")
         anchor.parent.insert_op_before(op, anchor)
+        if pointwise_only:
+            segments[op] = segments[anchor]
         return op.results[0]
 
     def demand(value, permutation, anchor):
@@ -147,19 +171,21 @@ def rewrite_module(module, *, reduction_channel_block: int = 0) -> LayoutReport:
         rank = len(permutation)
         if permutation == tuple(range(rank)):
             return value
-        key = (anchor.parent, value, permutation)
+        key = (anchor.parent, value, permutation, segments.get(anchor))
         if key in cache:
             return cache[key]
         shape = ty.get_shape()
         out_ty = TensorType(ty.get_element_type(), [shape[i] for i in permutation])
         op = value.owner
-        same_block = isinstance(op, Operation) and op.parent is anchor.parent
+        same_block = (isinstance(op, Operation) and op.parent is anchor.parent and eligible(op)
+                      and (not pointwise_only or segments[op] == segments[anchor]))
         result = None
         if same_block and (old := _permutation(op)) is not None:
             report.canceled += 1
             result = demand(op.operands[0], tuple(old[i] for i in permutation), anchor)
         # Moving only unit axes preserves the flat element order and is a view.
-        elif [i for i in permutation if shape[i] != 1] == [i for i in range(rank) if shape[i] != 1]:
+        elif ([i for i in permutation if shape[i] != 1] == [i for i in range(rank) if shape[i] != 1]
+              and (not pointwise_only or sum(d != 1 for d in shape) <= 1)):
             reassoc = ArrayAttr([ArrayAttr([IntegerAttr(i, i64) for i in range(rank)])])
             flat = add(
                 tensor.CollapseShapeOp.create(
@@ -183,7 +209,7 @@ def rewrite_module(module, *, reduction_channel_block: int = 0) -> LayoutReport:
                 ),
                 anchor,
             )
-        elif same_block and op.name in ("tensor.extract_slice", "tensor.insert_slice"):
+        elif not pointwise_only and same_block and op.name in ("tensor.extract_slice", "tensor.insert_slice"):
             expected = 1 if op.name == "tensor.extract_slice" else 2
             arrays = [op.properties.get(name) for name in ("static_offsets", "static_sizes", "static_strides")]
             if (
@@ -255,19 +281,43 @@ def rewrite_module(module, *, reduction_channel_block: int = 0) -> LayoutReport:
         cache[key] = result
         return result
 
-    originals = [(op, _permutation(op)) for op in module.walk()]
+    originals = [(op, _permutation(op) if eligible(op) else None) for op in module.walk()]
     for op, permutation in originals:
-        if permutation is None or not op.results[0].uses or _static_type(op.results[0]) is None:
+        if (not eligible(op) or permutation is None or not op.results[0].uses
+                or _static_type(op.results[0]) is None):
             continue
         report.requested += 1
         result = demand(op.operands[0], permutation, op)
+        if pointwise_only:
+            # Cancellation may expose an alias rather than a fresh snapshot.
+            # Keep the original materialization if a later opaque effect lies
+            # between it and an observation of that alias.
+            from .layout_conformance import unit_source
+
+            backing = result
+            while isinstance(backing.owner, Operation) and pointwise_kind(backing.owner) == "unit_view":
+                backing = unit_source(backing.owner)
+            snapshot = (isinstance(backing.owner, Operation)
+                        and pointwise_kind(backing.owner) in {"generic", "transpose", "splat", "constant"})
+            if not snapshot and any(use.operation.parent is not op.parent
+                                    or segments.get(use.operation) != segments[op] for use in op.results[0].uses):
+                continue
         op.results[0].replace_all_uses_with(result)
         for key, cached in list(cache.items()):
             if cached is op.results[0]:
                 cache[key] = result
             if key[1] is op.results[0]:
-                cache.setdefault((key[0], result, key[2]), cache.pop(key))
+                cache.setdefault((key[0], result, key[2], key[3]), cache.pop(key))
         op.parent.erase_op(op)
+    if pointwise_only:
+        # Remove only known, unused tensor computations. Scalar region order and
+        # opaque operations remain intact; the independent checker sees the result.
+        for operation in reversed(list(module.walk())):
+            if (operation.parent is not None and eligible(operation) and operation.results
+                    and all(isinstance(value.type, TensorType) and not value.uses for value in operation.results)):
+                operation.parent.erase_op(operation)
+        module.verify()
+        return report
     # Consume a preferred input layout at a reduction boundary. Only move
     # parallel axes across reduction axes; preserve both subsequences exactly.
     # In particular floating-point reductions retain their original scalar order.

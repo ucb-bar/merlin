@@ -167,7 +167,8 @@ def lower_model(
     ) as audit:
         work = Path(workdir)
         work.mkdir(parents=True, exist_ok=True)
-        for name in ("operation-profile.json", "model.profiled.mlir", "op_profile_table.json"):
+        for name in ("operation-profile.json", "model.profiled.mlir", "op_profile_table.json",
+                     "host-graph-optimization.json", "host-graph-input.mlir", "host-graph-optimized.mlir"):
             (work / name).unlink(missing_ok=True)
 
         audit.stage("input", mlir_text)
@@ -175,7 +176,10 @@ def lower_model(
         if graph_optimizations is not None:
             from .graph_optimizations import optimize_host_graph
 
+            (work / "host-graph-input.mlir").write_text(mlir_text, encoding="utf-8")
             mlir_text, graph_report = optimize_host_graph(mlir_text, graph_optimizations)
+            (work / "host-graph-optimized.mlir").write_text(mlir_text, encoding="utf-8")
+            write_pretty_json(work / "host-graph-optimization.json", graph_report)
             audit.stage("host-graph-optimized", mlir_text)
         from .automatic_rows import prepare_automatic_rows
 

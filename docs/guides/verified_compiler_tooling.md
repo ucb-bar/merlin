@@ -3,9 +3,9 @@ title: Shared transformations, ISA generation and Lean verification
 kind: guide
 status: current
 owner: ir
-last_verified: 2026-10-12
+last_verified: 2026-10-18
 related: [verified_compiler_roadmap, compiler_verification, phase0_specification, compiler_authoring_prompts, phase0_phase1_setup]
-code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, packages/merlin-experiments/src/merlin_experiments/phase1/brokers, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py]
+code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, src/merlin/llvmlower/graph_optimizations.py, src/merlin/llvmlower/layout_conformance.py, src/merlin/llvmlower/layout_propagation.py, src/merlin/llvmlower/lower.py, src/merlin/runtime/backends/spike_model.py, src/merlin/compile/baremetal_model.py, packages/merlin-experiments/src/merlin_experiments/phase1/brokers, packages/merlin-experiments/src/merlin_experiments/phase1/feedback/compiler_profile_child.py]
 ---
 
 # Shared transformations, ISA generation and Lean verification
@@ -429,28 +429,82 @@ still requires the complete ordinary gate on its immutable compiler revision.
 
 ## Select logical host graph optimizations
 
-`lower_model` and `lower_model_file` accept an explicit
+`lower_model`, `lower_model_file`, `spike_model.build` and `compile_saved_model`
+accept `graph_optimizations=` with an explicit
 `merlin.llvmlower.graph_optimizations.GraphOptimizationContract` binding the
 actual source SHA-256 and entry function. Select `propagate_layout=True` and
 declare `independent_element_order_unobserved=True` for layout propagation.
 Floating tensors additionally require
 `floating_environment_unobserved_nontrapping=True`. The first selected domain
-is positive static pointwise tensors and permutations.
+is positive static pointwise tensors and permutations. The original software
+contract must establish these permissions; RTL dimensions cannot supply them.
+
+For example, NHWC → NCHW → broadcast bias → ReLU → captured quantization →
+NHWC can perform its arithmetic directly in NHWC. Every scalar operation,
+conversion, rounding and clamp remains in its source order. Static singleton
+bias axes can use checked views. This does not fuse arithmetic stages or
+change the numerical policy.
 
 Select `fusion_groups` as immutable tuples of contiguous nodes from the
 outlined logical graph. This route reuses the existing logical host dispatch
 planner and emitter. Independent checks compare complete typed interfaces,
-actual scalar regions, symbolic logical output coordinates, opaque-observer
-operands and expanded actual source against the emitted driver. Unsupported
-views, reductions, opaque regions and undefined calls refuse this selection.
+actual scalar regions, symbolic logical output coordinates and expanded actual
+source against the emitted driver. External declarations, calls and structured
+single-block regions can surround checked pointwise computations. Their typed
+interfaces, ordered opaque operations, operands, results, nested captures and
+terminators remain unchanged. Unknown operations are barriers, including
+operations with unknown executable metadata. An independent observation check
+rejects moving a materialized tensor read past an unknown effect. Arbitrary
+reshapes, slices, reductions and unstructured control flow are not interpreted
+by this selected family. Flatten/expand bias views require an adjacent static
+pair and at most one nonunit source axis; other views remain boundaries.
 
 `minimum_transpose_bytes_saved`, `minimum_dispatches_saved` and
 `maximum_added_operations` are explicit structural cost contracts. Code growth
-is checked before fused-body cloning and afterward. These proxies do not
-predict cycles. Reports retain `timing=UNKNOWN` and do not claim Lean or
-hardware conformance. Physical formats, device placement, transfers and
-scheduling remain OOT responsibilities; ordinary lowering selects this route
-only when the caller supplies a contract.
+is bounded during layout construction and before fused-body cloning. These
+proxies do not predict cycles. Reports retain `timing=UNKNOWN` and do not claim
+Lean or hardware conformance. Physical encodings and device ABI remain OOT
+responsibilities; this route selects no device placement or schedules.
+Ordinary lowering selects this route
+only when the caller supplies a contract. If no legal rewrite meets the
+explicit minimum savings, selection fails with a diagnostic; omit the contract
+or use `propagate_layout=False` to retain the source layout. Failed checks never
+publish partially rewritten IR.
+
+The source hash binds the exact input to the logical-host hook, after ordinary
+preparation. A contract for an earlier capture is rejected when preparation
+changes its bytes. Callers must bind their reviewed prepared source; the
+compiler does not silently retarget permissions or hashes. Existing host
+optimization requests use this same hook under their original permissions.
+
+The lowering directory retains `host-graph-input.mlir`,
+`host-graph-optimized.mlir` and `host-graph-optimization.json`. The report binds
+implementation source hashes, current numerical/resource context and ordered
+source-analysis, rewrite and conformance records. Rewriting invalidates the
+source-coordinate analysis. Ordinary bare-metal builds bind the report in the
+compilation recipe; saved-model receipts expose all three artifact identities
+and recheck source, implementation and contract custody before and after
+execution. These are observations, not machine-code equivalence proofs or new
+authoring access grants.
+
+Validate the mechanism with:
+
+```sh
+python -B -m pytest merlin/tests/ir/test_host_graph_optimizations.py \
+  merlin/tests/ir/test_layout_propagation.py \
+  merlin/tests/infra/test_host_layout_model.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/host-layout-check"
+```
+
+The model test requires the ordinary native lowering and functional simulator.
+It compares complete recurrent history, float state, position, inputs and bias
+against an independent ordered reference. It inspects actual lowered IR,
+allocation sites, raw LLVM call bodies and final native artifacts. Native
+inlining is allowed and recorded separately from logical boundaries.
+Functional instruction counts and logical transpose bytes do not measure
+accelerator latency or physical bus
+traffic. These neutral host models establish neither real-accelerator support
+nor general full-model speedups.
 
 ## Keep the authored ISA minimal
 
