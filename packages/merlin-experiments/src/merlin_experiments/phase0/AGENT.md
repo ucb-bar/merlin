@@ -1,3 +1,5 @@
+# AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
+
 `sealed_native_program` reopens original sealed native stages with complete
 integral golden.json outputs, exact source leaves and receipt-bound metadata.
 Relocate metadata paths only; never modify captured bytes or use lossy output-zero
@@ -11,8 +13,6 @@ Meta construction is structural evidence only. Missing selected whole-graph
 numerical contracts remain explicit refusals; no FP tolerance or int8 recipe is
 inferred from model availability. Dependency leaf pins do not replace the full
 original sealed runtime closure. Keep all prior cohort manifests unchanged.
-
-# AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
 `connected_integer_bounds` reconstructs typed source intervals for every operation,
 additive reduction prefix and complete live-out. Undefined storage, non-linear
