@@ -10,6 +10,12 @@ re-proved; unselected users keep the original endpoint. Providers separately
 prove original rounding/effects/refusal, immutable inputs, private retained
 preparation and synchronous completion. No operation movement, source view
 removal, packing implementation or default target policy is supplied.
+Explicit compact-input binding changes only the selected read argument to one
+matrix per proved group; the provider expands reads by batch/repeat. Static
+views and an optional compact transpose preserve exact source words, including
+square-matrix orientation. Other users keep the original tensors; upstream
+owns dead-code elimination and buffer/view realization. This requires a
+separately qualified provider ABI and grants no asynchronous or alias permission.
 
 `word_group_preparation` emits serial, call-local converted words and their
 unsigned-key maximum from explicit conversion/magnitude callbacks. It keeps

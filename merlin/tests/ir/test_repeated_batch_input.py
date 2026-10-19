@@ -193,3 +193,63 @@ def test_shared_declaration_can_have_different_proved_repetition_groups():
     ])
     assert [row["input_proofs"][0]["contiguous_batch_repeat"] for row in reports] == [4, 3]
     assert first.callee.root_reference.data == "repeat_four" and second.callee.root_reference.data == "repeat_three"
+
+
+@pytest.mark.parametrize("rows,cols", [(5, 7), (7, 5), (5, 5)])
+@pytest.mark.parametrize("transpose", [False, True])
+def test_compact_input_reconstructs_every_original_raw_word_and_preserves_other_users(rows, cols, transpose):
+    from xdsl.dialects import tensor
+    from xdsl.dialects.linalg.ops import TransposeOp
+
+    groups, repeat = 3, 4
+    module, call = fixture(groups=groups, repeat=repeat, rows=rows, cols=cols, transpose=transpose)
+    original = call.arguments[0]
+    other = call.clone()
+    call.parent.insert_op_before(other, call)
+    inputs = call.parent.args[0]
+    words = np.arange(groups * rows * cols, dtype=np.uint32).reshape(inputs.type.get_shape())
+    words.reshape(-1)[:6] = [0, 0x80000000, 0x7FC12345, 0x7F812345, 0x7F800000, 0xFF800000]
+
+    def evaluate(value):
+        if value is inputs:
+            return words
+        operation = value.owner
+        if isinstance(operation, (tensor.CollapseShapeOp, tensor.ExpandShapeOp)):
+            return evaluate(operation.operands[0]).reshape(value.type.get_shape())
+        assert isinstance(operation, TransposeOp)
+        return evaluate(operation.inputs[0]).transpose(tuple(operation.permutation.get_values()))
+
+    reports = rewrite_repeated_batch_consumers(module, [
+        RepeatedBatchConsumer("reader", "compact_reader", 0, repeat, (call,), compact=True)])
+    compact = evaluate(call.arguments[0])
+    expected = np.broadcast_to(words, (1, groups, repeat, rows, cols))
+    if transpose:
+        expected = expected.transpose(0, 1, 2, 4, 3)
+    assert np.repeat(compact, repeat, axis=0).tobytes() == expected.tobytes()
+    assert compact.size == groups * rows * cols and call.arguments[0] is not original
+    assert other.arguments[0] is original and other.callee.root_reference.data == "reader"
+    assert reports[0]["compact_input"] and reports[0]["input_proofs"][0]["matrix_transposed"] == transpose
+    assert tuple(call.results[0].type.get_shape()) == (groups * repeat, *compact.shape[-2:])
+    module.verify()
+
+
+def test_compact_binding_rejects_unproved_input_before_any_mutation():
+    module, call = fixture()
+    arguments = list(call.arguments)
+    arguments[0] = call.parent.args[1]
+    call.operands = arguments
+    before = str(module)
+    with pytest.raises(ValueError, match="no proved"):
+        rewrite_repeated_batch_consumers(module, [
+            RepeatedBatchConsumer("reader", "compact_reader", 0, 4, compact=True)])
+    assert str(module) == before
+
+
+def test_transpose_orientation_is_part_of_the_immutable_proof():
+    from dataclasses import replace
+
+    _, call = fixture(rows=5, cols=5, transpose=True)
+    proof = prove_repeated_batch_input(call.arguments[0])
+    assert proof.matrix_transposed
+    with pytest.raises(ValueError, match="coordinates changed"):
+        validate_repeated_batch_input(replace(proof, matrix_transposed=False))
