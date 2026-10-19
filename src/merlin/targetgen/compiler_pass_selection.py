@@ -211,9 +211,11 @@ class CompilerPassSelection:
 
 
 def restore_original_selection(record, *, work_root):
-    """Only a verified original-parent transport may call this host-only API.
+    """Only an explicit original host or verified parent transport may call this.
 
-    It executes the original source-pinned admission callback, then compares the
+    The CLI independently selects and pins operator input bytes; a child needs
+    its independently checked sealed-parent transport. This executes the
+    original source-pinned admission callback, then compares the
     actual live registry. It does not deserialize successful capability owners.
     """
     if type(record) is not dict or set(record) != {

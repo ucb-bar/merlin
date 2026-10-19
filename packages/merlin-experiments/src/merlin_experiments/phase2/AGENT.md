@@ -34,6 +34,13 @@ target or timing qualification. Normal queued authoring projects the already
 frozen edit contract into public stage context, excluding private seed paths;
 the original private authority still validates every retained candidate edit.
 
+`compiler_pass_state` reopens only an explicit operator-selected, byte-pinned
+original factory under the already selected search resource context. Its fresh
+admission root cannot alias the stage or selected library. Preserve live
+independent admission, exact release and registry checks; serialized success
+cannot authorize a mechanism. CLI transport does not prepare a compiler or
+change the original functional/timing gates.
+
 `agent_workspace` projects capsule inputs using frozen reference roles in
 `merlin.targetgen.capsule_privacy` and the central answer registry. Live-source
 deletion cannot disclose frozen expected values; public inputs remain usable.
