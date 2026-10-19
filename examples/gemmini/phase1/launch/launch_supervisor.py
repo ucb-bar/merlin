@@ -104,6 +104,15 @@ class Processes:
             row["stream"].close()
 
 
+def assigned_cpus(launch) -> set[int]:
+    """The explicit CPU union; completed reference preparation may reserve none."""
+    return (
+        set(launch.document["cpu"]["author"]["cpus"])
+        | set(launch.document["cpu"]["compute_pool"]["cpus"])
+        | {int(cpu) for cpu in launch.variables.get("REFERENCE_CPUS", "").split(",") if cpu.strip()}
+    )
+
+
 def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int:
     document = launch.document
     total = document["budgets"]["supervisor_backstop_s"]
@@ -130,11 +139,7 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
         / run_dir.name
         / "workspace"
     )
-    assigned = (
-        set(document["cpu"]["author"]["cpus"])
-        | set(document["cpu"]["compute_pool"]["cpus"])
-        | {int(cpu) for cpu in launch.variables["REFERENCE_CPUS"].split(",")}
-    )
+    assigned = assigned_cpus(launch)
     policy = document.get("full_model_verification")
     selected = F.selection(launch) if policy else None
     identity = F.selected_identity(launch) if policy else None
