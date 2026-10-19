@@ -12,7 +12,7 @@ from test_ordinary_native_archive_screen import source as source
 from test_public_native_exploration import selection
 from test_public_source_diagnostic import inputs as public_inputs
 
-from merlin.llvmlower.reviewed_pass_capabilities import ReviewedPassCapability
+from merlin.llvmlower.reviewed_pass_capabilities import ReviewedPassCapabilities, ReviewedPassCapability
 
 
 @pytest.fixture
@@ -29,8 +29,10 @@ class NeutralCorrespondenceOwner:
         self.compiler_binding = compiler_binding
         self.native_binding = native_binding
         self._original = (compiler_binding, native_binding)
+        self.checks = 0
 
     def revalidate(self):
+        self.checks += 1
         if (self.compiler_binding, self.native_binding) != self._original:
             raise ValueError("original source/native proof changed")
 
@@ -120,3 +122,38 @@ def test_saved_foreign_or_mutated_bridge_is_not_authority(source, inputs, monkey
         bridge.owner.compiler_binding = replace(bridge.owner.compiler_binding, software="forged-proof")
     with pytest.raises((ValueError, StageGateError)):
         native.verify()
+
+
+def test_one_bridge_metadata_traversal_checks_original_owner_at_both_boundaries(source, inputs):
+    _, selected, bridge = setup(source, inputs)
+    registry = ReviewedPassCapabilities((bridge,))
+    original = bridge.owner
+    before = original.checks
+    value = N._bridge_verification(bridge, selected.correspondence.binding, registry)
+    assert value[0] is bridge
+    assert original.checks == before + 2
+    bridge.record()
+    assert original.checks == before + 3
+
+
+def test_bridge_final_metadata_check_rejects_changed_original_proof(source, inputs, monkeypatch):
+    _, selected, bridge = setup(source, inputs)
+    registry = ReviewedPassCapabilities((bridge,))
+    original = bridge.owner
+    digest = N.F.digest
+
+    def change_after_read(path):
+        result = digest(path)
+        original.compiler_binding = replace(original.compiler_binding, software="changed-proof")
+        return result
+
+    monkeypatch.setattr(N.F, "digest", change_after_read)
+    with pytest.raises(ValueError, match="original source/native proof changed"):
+        N._bridge_verification(bridge, selected.correspondence.binding, registry)
+
+
+def test_bridge_metadata_operation_refuses_another_registry(source, inputs):
+    _, selected, bridge = setup(source, inputs)
+    registry = ReviewedPassCapabilities(())
+    with pytest.raises(StageGateError, match="exact bridge registry"):
+        N._bridge_verification(bridge, selected.correspondence.binding, registry)

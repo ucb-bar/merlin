@@ -15,7 +15,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MethodType
 
-from merlin.llvmlower.reviewed_pass_capabilities import PassCapabilityBinding, ReviewedPassCapability
+from merlin.llvmlower import reviewed_metadata as METADATA
+from merlin.llvmlower.reviewed_pass_capabilities import (
+    PassCapabilityBinding,
+    ReviewedPassCapabilities,
+    ReviewedPassCapability,
+)
 from merlin.runtime import _native_files as F
 
 from . import _archive_feedback as HISTORY
@@ -35,22 +40,25 @@ _ISSUED = weakref.WeakKeyDictionary()
 BRIDGE_MECHANISM = "compiler_source_native_correspondence"
 
 
-def _bridge_verification(bridge, native_binding):
-    if (
-        type(bridge) is not ReviewedPassCapability
-        or bridge.mechanism != BRIDGE_MECHANISM
-        or bridge.binding != native_binding
-    ):
+def _bridge_verification(bridge, native_binding, registry):
+    if type(bridge) is not ReviewedPassCapability or type(registry) is not ReviewedPassCapabilities:
         raise StageGateError("native correspondence requires the original exact reviewed bridge")
-    owner = bridge.owner
-    callback = getattr(owner, "verify_compiler_binding", None)
-    if type(callback) is not MethodType or callback.__self__ is not owner:
-        raise StageGateError("native correspondence requires its original bound verification method")
-    source = inspect.getsourcefile(callback.__func__)
-    if source is None or Path(source).is_symlink() or not Path(source).is_file():
-        raise StageGateError("native correspondence verification source is unavailable")
-    path = Path(source).resolve()
-    return bridge, bridge.identity, callback.__func__, callback.__func__.__code__, str(path), F.digest(path)
+    if len(registry._capabilities) != 1 or registry._capabilities[0] is not bridge:
+        raise StageGateError("native correspondence requires its original exact bridge registry")
+    # Only historical-owner metadata getters are coalesced. The original owner
+    # runs at both boundaries, and a failed final recheck prevents return.
+    with METADATA.scoped_registry_metadata_verification(registry):
+        if bridge.mechanism != BRIDGE_MECHANISM or bridge.binding != native_binding:
+            raise StageGateError("native correspondence requires the original exact reviewed bridge")
+        owner = bridge.owner
+        callback = getattr(owner, "verify_compiler_binding", None)
+        if type(callback) is not MethodType or callback.__self__ is not owner:
+            raise StageGateError("native correspondence requires its original bound verification method")
+        source = inspect.getsourcefile(callback.__func__)
+        if source is None or Path(source).is_symlink() or not Path(source).is_file():
+            raise StageGateError("native correspondence verification source is unavailable")
+        path = Path(source).resolve()
+        return bridge, bridge.identity, callback.__func__, callback.__func__.__code__, str(path), F.digest(path)
 
 
 @dataclass(frozen=True, eq=False)
@@ -84,7 +92,8 @@ class PublicNativeExploration:
             raise StageGateError("public native exploration semantics correspondence changed")
         if (
             self.binding_correspondence is not None
-            and _bridge_verification(self.binding_correspondence, self.selection.correspondence.binding) != issued[6]
+            and _bridge_verification(self.binding_correspondence, self.selection.correspondence.binding, issued[7])
+            != issued[6]
         ):
             raise StageGateError("public native exploration original binding correspondence changed")
         for path, digest in self.files:
@@ -177,7 +186,16 @@ def prepare_public_native_exploration(selection, *, binding_correspondence=None)
         or selection.correspondence.binding != binding
     ):
         raise StageGateError("public native exploration requires exact live model correspondence")
-    bridge = _bridge_verification(binding_correspondence, binding) if binding_correspondence is not None else None
+    bridge_registry = None
+    if binding_correspondence is not None:
+        if type(binding_correspondence) is not ReviewedPassCapability:
+            raise StageGateError("native correspondence requires the original exact reviewed bridge")
+        bridge_registry = ReviewedPassCapabilities((binding_correspondence,))
+    bridge = (
+        _bridge_verification(binding_correspondence, binding, bridge_registry)
+        if binding_correspondence is not None
+        else None
+    )
     reviewed = selection.preflight()
     catalog = HISTORY.prepare(
         archive=selection.archive,
@@ -195,6 +213,11 @@ def prepare_public_native_exploration(selection, *, binding_correspondence=None)
                 *(Path(module.__file__).resolve() for module in modules),
                 Path(HISTORY.source_observation.__code__.co_filename).resolve(),
                 Path(__file__).resolve(),
+                *(
+                    (Path(METADATA.__file__).resolve(), Path(inspect.getsourcefile(ReviewedPassCapabilities)).resolve())
+                    if bridge_registry is not None
+                    else ()
+                ),
             )
         )
     )
@@ -225,6 +248,7 @@ def prepare_public_native_exploration(selection, *, binding_correspondence=None)
         functions,
         (selection.correspondence.identity, selection.native_semantics.identity),
         bridge,
+        bridge_registry,
     )
     try:
         result.verify()
