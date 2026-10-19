@@ -22,7 +22,7 @@ def original(tmp_path, monkeypatch):
     return PROFILE.original.__wrapped__(tmp_path, monkeypatch)
 
 
-def _selection(original, *, opt_in=True):
+def _selection(original, *, opt_in=True, callbacks=None):
     source = original.private / "delegating_fixture.py"
     source.write_text('''from pathlib import Path
 from merlin.llvmlower.reviewed_pass_capabilities import (
@@ -61,10 +61,62 @@ def redeem(snapshot,*,token,work_root):
     inputs = dict(binding=binding, log=str(original.private / "admission.log"))
     if opt_in:
         inputs["parent_delegation_protocol"] = D.PROTOCOL
+    if callbacks is not None:
+        inputs["parent_delegation_callbacks"] = callbacks
     factory = OriginalPassFactory(module.restore, inputs)
     selected = CompilerPassSelection(factory.create(work_root=original.private / "parent-admission"),
                                      PassCapabilityBinding(**binding), mechanisms=("synthetic",), factory=factory)
     return selected, module
+
+
+@pytest.mark.parametrize("entry", ["author_stage", "retained_policy"])
+def test_normal_workers_carry_explicit_factory_delegation_without_manual_scope(original, entry):
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase2 import compiler_libraries as L
+
+    passes, _module = _selection(original, callbacks=dict(exporter="export", redeemer="redeem"))
+
+    def execute(*args, **kwargs):
+        assert D.active_original_parent_pass_delegation().selection is passes
+        with CHILD.prepare_model_child(spec_path=original.spec, environment=dict(os.environ),
+                                       package_dir=original.candidate) as transport:
+            assert transport.document["schema"] == CHILD.DELEGATED_PASSES_SCHEMA
+            result = PROFILE._run(transport, original)
+            assert result.returncode == 0, result.stderr
+            transport.verify_result(json.loads(result.stdout))
+
+    with PROFILE._scope(original):
+        if entry == "author_stage":
+            L.stage_selection(execute)(compiler_pass_selection=passes)
+        else:
+            L.scoped_policy(execute)(SimpleNamespace(_compiler_library_selection=None,
+                                                     _compiler_pass_selection=passes))
+    assert D.active_original_parent_pass_delegation() is None
+    assert (original.private / "admission.log").read_text().splitlines() == ["full", "redeem"]
+
+
+@pytest.mark.parametrize("callbacks", [
+    {"exporter": "export"},
+    {"exporter": "export", "redeemer": "redeem", "unknown": "restore"},
+    {"exporter": "export", "redeemer": "not.present"},
+    {"exporter": "missing", "redeemer": "redeem"},
+])
+def test_normal_worker_rejects_incomplete_or_foreign_declared_callbacks(original, callbacks):
+    passes, _module = _selection(original, callbacks=callbacks)
+    with pytest.raises(ValueError, match="original"):
+        with D.scoped_selected_parent_pass_delegation(passes):
+            raise AssertionError("invalid original callback declarations entered")
+
+
+def test_normal_worker_callbacks_require_protocol_and_same_active_selection(original):
+    passes, _module = _selection(original, opt_in=False, callbacks=dict(exporter="export", redeemer="redeem"))
+    with pytest.raises(ValueError, match="protocol"):
+        with D.scoped_selected_parent_pass_delegation(passes):
+            raise AssertionError("missing opt-in entered")
+    # A legacy selection still keeps its original full-child-admission route.
+    with D.scoped_selected_parent_pass_delegation(None) as selected:
+        assert selected is None
 
 
 def test_v5_actual_parent_qualification_is_inherited_without_repeating_admission(original):

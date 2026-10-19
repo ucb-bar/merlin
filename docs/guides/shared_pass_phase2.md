@@ -42,7 +42,9 @@ the selected replacement set. Candidate manifests cannot select a release.
 The selected-release prompt and `STAGE_CONTEXT.json` expose a source-derived
 public API inventory: reviewed contract identity, exact guest source paths and
 digests, declaration lines, public class methods and bounded parameter/docstring
-previews. Omitted declarations are counted. Imported names are descriptive;
+previews. Inventory v2 shares its bounded preview budget across modules and
+shows public entrypoints before methods and imported names, so later scheduling
+modules remain discoverable. Omitted declarations are counted. Imported names are descriptive;
 dynamic exports and value aliases remain unresolved. Reading the inventory
 executes no selected library code and grants no target support or timing credit.
 The shared algorithms are reviewed authored code; software effects and RTL
@@ -244,6 +246,16 @@ live selection and original source-pinned top-level target callbacks, then uses
 `scoped_original_parent_pass_delegation` around ordinary capsule evaluation.
 The scope belongs to the same selected pass owner; candidate context JSON cannot
 select delegation. Default v1–v4 transport still reruns the full factory.
+
+Ordinary author stages, retained-policy workers and paired measurement workers
+can select this scope automatically when the original factory inputs also name
+`parent_delegation_callbacks: {exporter: export_qualification, redeemer:
+redeem_qualification}`. Each named callback must be a top-level function in the
+exact pinned factory source leaf. This declaration belongs to the operator's
+original selection, never candidate code or saved success. Factories without
+the callback declaration retain full child admission; malformed declarations
+refuse. Workers preserve the same live selection and close their scopes after
+execution, including when grading raises.
 
 The v5 child checks its inherited readonly sealed kernel object against the exact
 descriptor still held by its actual parent, alongside the original spec,

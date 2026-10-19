@@ -1285,6 +1285,7 @@ def execute_schedule(
     """
     from merlin.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
     from merlin.targetgen.compiler_pass_selection import active_compiler_passes, scoped_compiler_passes
+    from merlin_experiments.phase1.feedback.compiler_pass_delegation import scoped_selected_parent_pass_delegation
 
     from .compiler_library_state import handoff_selection
 
@@ -1313,7 +1314,8 @@ def execute_schedule(
         name = f"e{spec.execution_index:04d}__{spec.pair_id}__{spec.arm}"
         handoff_selection(plan)
         PREPARATION.handoff_selection(plan)
-        with scoped_compiler_library(library), scoped_compiler_passes(passes):
+        with (scoped_compiler_library(library), scoped_compiler_passes(passes),
+              scoped_selected_parent_pass_delegation(passes)):
             raw = executor(
                 spec,
                 workspaces / name,

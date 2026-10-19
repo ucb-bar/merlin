@@ -17,6 +17,8 @@ from xdsl.dialects import builtin
 
 from merlin.common import mlir_query as Q
 
+from . import operator_initializer_identity as ID
+
 MARKER = "prov.merlin_operator_dense_projection_v1"
 HANDLE = "merlin_operator_dense_projection_v1_"
 _HEADER = re.compile(rb"(?P<head>[ \t]*%[A-Za-z0-9_.$-]+[ \t]*=[ \t]*arith\.constant)\b")
@@ -243,6 +245,7 @@ def scan(stream, *, max_input_bytes, max_compact_bytes, max_literal_bytes=65536,
                     break
                 if pending.startswith(b'"0x'):
                     current["hex_chars"] = 0
+                    current["storage"] = ID.new_hex_storage()
                     del pending[:3]
                     state = "hex"
                 else:
@@ -254,6 +257,7 @@ def scan(stream, *, max_input_bytes, max_compact_bytes, max_literal_bytes=65536,
                 if _HEX.fullmatch(data) is None:
                     raise ValueError("dense projection hexadecimal initializer is malformed")
                 current["hex_chars"] += len(data)
+                current["storage"].feed(data)
                 del pending[:len(data)]
                 if end < 0:
                     break

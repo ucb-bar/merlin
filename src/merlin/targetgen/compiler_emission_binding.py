@@ -34,8 +34,22 @@ def check_compiler_emission(owner, arm, *, argument_templates, required_sources)
     for pin in (cb, lowered, native):
         if _pin(pin["path"]) != {key: pin[key] for key in ("path", "sha256")}:
             raise ValueError("qualification compilation/native output custody changed")
-    source = json.loads(Path(native["path"]).read_bytes())["source"]["interface"]
-    source = {key: source[key] for key in ("path", "sha256")}
+    native_sources = json.loads(Path(native["path"]).read_bytes())["source"]
+    # Native preparation retains a runtime-bundle copy. The actual compiler
+    # invocation must still name the original capsule's interface, rather
+    # than an arbitrary same-hash alias supplied in a candidate record.
+    declaration = native_sources["capsule_declaration"]
+    native_source = native_sources["interface"]
+    for pin in (declaration, native_source):
+        if _pin(Path(pin["path"])) != {key: pin[key] for key in ("path", "sha256")}:
+            raise ValueError("qualification native source custody changed")
+    source_path = Path(declaration["path"]).parent / "capsule.interface.mlir"
+    source = _pin(source_path)
+    if (
+        source["sha256"] != native_source["sha256"]
+        or source_path.read_bytes() != Path(native_source["path"]).read_bytes()
+    ):
+        raise ValueError("qualification runtime source differs from the original capsule interface")
     expected = [
         str(Path(package["path"]) / "compiler.py"),
         *(part.format(input_mlir=source["path"], output_json=cb["path"]) for part in argument_templates),

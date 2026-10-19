@@ -58,7 +58,7 @@ def _body(op):
     return dict(argument_types=[str(v.type) for v in block.args], operations=rows)
 
 
-def _structured(op):
+def _structured(op, *, body_reader=_body):
     if not isinstance(op, LinalgStructuredOperation) or op.name == "builtin.unregistered":
         raise ValueError("named tensor exclusion has no registered structured semantics")
     maps, iterators = op.get_indexing_maps(), op.get_iterator_types()
@@ -74,7 +74,7 @@ def _structured(op):
                 or any(d <= 0 for d in typ.get_shape()) or mapping.data.num_symbols
                 or mapping.data.num_dims != len(kinds) or len(mapping.data.results) != len(typ.get_shape())):
             raise ValueError("named tensor exclusion has incomplete typed indexing maps")
-    body = _body(op)
+    body = body_reader(op)
     block = op.regions[0].block
     yield_op = block.last_op
     if (len(block.args) != len(op.operands)
@@ -87,7 +87,7 @@ def _structured(op):
     return maps, iterators, body, "reduction" in kinds
 
 
-def module_signatures(module):
+def module_signatures(module, *, body_reader=_body):
     """Project a complete verified AST; no unknown named operation is skipped."""
     module.verify()
     result = []
@@ -97,7 +97,7 @@ def module_signatures(module):
             _index(op)
             continue
         if name == "linalg.reduce":
-            result.append(R._reduction(op))
+            result.append(R._reduction(op, body_reader=body_reader))
             continue
         if name == "linalg.generic":
             iterators = op.properties.get("iterator_types")
@@ -110,7 +110,7 @@ def module_signatures(module):
                 "linalg.yield", "linalg.transpose", "linalg.fill", "linalg.copy"
             }:
                 continue
-            maps, iterators, body, reduction = _structured(op)
+            maps, iterators, body, reduction = _structured(op, body_reader=body_reader)
             if reduction:
                 result.append(T._hash(dict(schema=OP_SCHEMA, operation=name,
                     ordered_operands=[T._type(v) for v in op.operands],
@@ -122,7 +122,7 @@ def module_signatures(module):
             raise ValueError("typed contraction exclusion has no registered semantics")
         result.append(T._hash(dict(schema=T.SCHEMA, operation=name,
             ordered_operands=[T._type(v) for v in op.operands],
-            ordered_results=[T._type(v) for v in op.results], attributes=T._attributes(op), scalar_body=_body(op))))
+            ordered_results=[T._type(v) for v in op.results], attributes=T._attributes(op), scalar_body=body_reader(op))))
     return tuple(result)
 
 

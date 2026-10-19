@@ -462,6 +462,20 @@ withhold those leaves even after the original capture disappears. Original
 `_int_mm` contraction signatures retain ordered shapes, signed storage and exact
 result comparison independently of output names or unrelated live-outs.
 
+If an original producer receipt omitted `golden.json`, explicit
+`sealed_native_materialization.materialize` may construct a separate bundle with
+`merlin.native_integer_reference_composition.v1`. The original verified seal,
+source, producer receipt and output bytes stay unchanged. The additive record
+contains the exact original receipt bytes and sealed program identities, retains
+every producer-owned member, and adds complete original integer references.
+The same-process framework catalog retains its original metadata-hash ownership.
+Core verification grants only byte materialization; the ordinary writer still
+requires the live original sealed capture and independent source/realization
+proof. That proof rechecks the composition against the actual original source
+and all added reference bytes. Missing authority or changed outputs refuse.
+Public payload budgets are checked before arrays load. Loader/source-text limits
+remain distinct from complete capture payload limits, including the catalog.
+
 Promotion and corpus freezing of v3 members require a live, externally supplied
 `OperatorPrivateExclusion`. Its path, contents and match details never become
 public evidence. A missing selection gives the generic publication refusal;
@@ -560,9 +574,29 @@ unsupported interfaces and scalar effects refuse. Existing hashes and V1–V4
 interpretations remain unchanged; this is still exclusion rather than numerical
 or accelerator qualification.
 
+`source_mode="merlin.phase0.pure_capture_source_exclusion.v1"` explicitly selects
+private-exclusion V6 on both sides. Complete scalar captures use the existing
+registered scalar-region reader with additional function-entry, dominance and
+pure producer-DAG checks. Every original constant storage byte contributes to
+captured initializer identities, including streamed hexadecimal payloads; array,
+splat and hexadecimal spellings with identical storage agree. Names do not select
+identity. Unknown resources, effects, foreign blocks, undefined tensors and
+forward references refuse. Original V1–V5 signatures stay unchanged, and this
+private exclusion grammar grants no numerical or executable capability.
+
+An operator may separately select `operator_identity_resources.select` with an
+exact owner-only policy file, digest and fresh private progress sibling. Its V1
+policy binds the original inventory, exact parse/stream limits, shared CPU
+namespace, immutable start/deadline and per-source/total budgets. Each source
+acquires and releases its own original shared lease. The issuer requires a live
+resource owner and externally supervised worker RSS/CPU/scratch/wall limits;
+signal scopes and complete peak-resource checks also refuse overruns. This
+provisions private hash construction only. Earlier resource denials and every
+public capture/reference/runtime ceiling keep their original meaning.
+
 For a graph whose checked initializer-free syntax exceeds one parse window,
 `input_mode="merlin.phase0.complete_typed_ssa_windows.v1"` is an additional
-explicit operator selection with the V4 or V5 source grammar. Each window uses the
+explicit operator selection with the V4, V5 or V6 source grammar. Each window uses the
 original parser and exact SSA/type/attribute aliases. The reader reconstructs
 every operation and nested region in the complete original module, preserves
 all function declarations/definitions and symbol-table checks, verifies

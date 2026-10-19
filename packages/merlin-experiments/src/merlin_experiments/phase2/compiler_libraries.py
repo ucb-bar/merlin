@@ -21,6 +21,7 @@ from merlin.targetgen.compiler_pass_selection import (
     scoped_compiler_passes,
 )
 from merlin.targetgen.compiler_profile_admission import active_compiler_imports
+from merlin_experiments.phase1.feedback.compiler_pass_delegation import scoped_selected_parent_pass_delegation
 
 from .contracts import StageGateError
 
@@ -42,7 +43,8 @@ def stage_selection(function):
             raise StageGateError("author stage requires original live compiler pass selection")
         if passes is None and active_compiler_passes() is not None:
             raise StageGateError("author stage cannot inherit unbound compiler pass selection")
-        with scoped_compiler_library(selection), scoped_compiler_passes(passes):
+        with (scoped_compiler_library(selection), scoped_compiler_passes(passes),
+              scoped_selected_parent_pass_delegation(passes)):
             return function(*args, **kwargs)
 
     return call
@@ -153,7 +155,8 @@ def scoped_policy(function):
         passes = getattr(policy, "_compiler_pass_selection", None)
         if passes is None and active_compiler_passes() is not None:
             raise StageGateError("ordinary policy cannot inherit unbound compiler pass selection")
-        with scoped_compiler_library(policy._compiler_library_selection), scoped_compiler_passes(passes):
+        with (scoped_compiler_library(policy._compiler_library_selection), scoped_compiler_passes(passes),
+              scoped_selected_parent_pass_delegation(passes)):
             return function(policy, *args, **kwargs)
 
     return call

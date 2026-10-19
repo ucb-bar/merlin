@@ -117,7 +117,13 @@ def verify_capture_receipt(path: str | Path) -> dict:
     metadata = None
     metadata_identity = None
     if doc.get("schema") != "m2m.capture-receipt.v1":
-        errors.append("unsupported capture receipt schema")
+        from merlin.targetgen.native_reference_composition import SCHEMA, validate
+
+        try:
+            validate(doc)
+        except (KeyError, TypeError, ValueError):
+            errors.append("invalid capture receipt composition" if doc.get("schema") == SCHEMA else
+                          "unsupported capture receipt schema")
     if (doc.get("materialized_abi") or {}).get("complete") is not True:
         errors.append("capture receipt does not declare a complete materialized ABI")
     artifacts = doc.get("artifacts")
