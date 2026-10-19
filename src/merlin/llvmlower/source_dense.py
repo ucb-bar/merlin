@@ -320,12 +320,18 @@ def validate_offload_selection(selection):
         if type(comparison) is not OffloadCostDecision:
             raise ValueError("dense profitability requires an original typed complete-cost comparison")
         record = comparison.record()
+        if selection.offload_plan is not plan or selection.offload_comparison is not comparison:
+            raise ValueError("dense profitability selection changed during original verification; replan")
+        # The original verifier is a callback. Its cost query is checked by the
+        # comparator, but outer source/resources must also remain current.
+        plan.revalidate(context=offload_context(selection))
         if (
-            comparison.stamp != plan.stamp
+            record["stamp"] != asdict(plan.stamp)
             or record["original_selection_sha256"] != ordinary_dense_route_identity(plan.stamp)
             or record["candidate_selection_sha256"] != plan.plan.digest
         ):
             raise ValueError("dense profitability evidence differs from the original source or exact route selections")
+        return record
 
 
 @dataclass(frozen=True)
