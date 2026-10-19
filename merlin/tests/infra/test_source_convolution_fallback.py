@@ -121,7 +121,8 @@ def test_partial_panel_coverage_replans_original_once_before_preparing_any_provi
     assert len(receipt["bindings"]) == int(full_available)
 
 
-def test_provider_cannot_replace_both_live_packing_plan_and_comparison_stamp(tmp_path):
+@pytest.mark.parametrize("receipt_mutation", ["unchanged", "optional_pointer", "remove_role"])
+def test_provider_cannot_replace_both_live_packing_plan_and_comparison_stamp(tmp_path, receipt_mutation):
     config, _, module = configured(tmp_path, logical=False)
     owner, callbacks = [], []
 
@@ -131,6 +132,10 @@ def test_provider_cannot_replace_both_live_packing_plan_and_comparison_stamp(tmp
         # These two in-memory fields agree after this mutation. The original
         # source receipt must still require both actual panel uses and payload.
         owner[0].packing_plans = owner[0]._packing_stamp = ()
+        if receipt_mutation == "optional_pointer":
+            owner[0].preparation_receipt = None
+        if receipt_mutation == "remove_role":
+            owner[0].pins = tuple((path, digest) for path, digest in owner[0].pins if path.name != "source_dense.json")
 
     config = replace(config, prepare=mutate)
     transform, builder = bind_source_lowerings((config,), None, None, None)

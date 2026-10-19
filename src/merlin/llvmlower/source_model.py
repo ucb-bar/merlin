@@ -15,6 +15,8 @@ from pathlib import Path
 
 from merlin.common.digest import is_sha256, sha256_file
 
+_SOURCE_LABELS = {"row": "source_rows", "pointwise": "source_pointwise", "dense": "source_dense"}
+
 
 @dataclass(frozen=True)
 class SourceRegion:
@@ -61,7 +63,6 @@ class _SourceModelBuild:
         self.device, self.device_admission = device, device_admission
         self.bindings = None
         self.packing_plans = self._packing_stamp = ()
-        self.preparation_receipt = None
         self.selection_values = tuple(_values(f.selection) for f in families)
         self.components = tuple(
             (value, _values(value))
@@ -100,10 +101,18 @@ class _SourceModelBuild:
         for path, digest in self.pins:
             if not path.is_file() or path.is_symlink() or sha256_file(path) != digest:
                 raise ValueError("shared source preparation inputs or selected output changed; replan")
-        if self.preparation_receipt is not None:
-            record = json.loads(self.preparation_receipt.read_text())
-            if record.get("packing_plans", []) != json.loads(json.dumps(self.packing_plans)):
-                raise ValueError("original convolution packing coverage differs from its pinned source receipt")
+        if self.packing_plans or any(
+            getattr(f.selection, "max_convolution_packing_bytes", None) is not None for f in self.families
+        ):
+            # Derive the receipt role from original family selection and pinned
+            # files. A mutable optional receipt pointer cannot disable custody.
+            receipts = {path for path, _ in self.pins if path.name == self._label() + ".json"}
+            if hasattr(self, "selected_source") and len(receipts) != 1:
+                raise ValueError("original convolution packing coverage lacks its pinned source receipt")
+            for path in receipts:
+                record = json.loads(path.read_text())
+                if record.get("packing_plans", []) != json.loads(json.dumps(self.packing_plans)):
+                    raise ValueError("original convolution packing coverage differs from its pinned source receipt")
         for group in self.bindings or ():
             for binding in group:
                 binding.compilation.revalidate()
@@ -117,6 +126,9 @@ class _SourceModelBuild:
             from .device_build import require_device_elf_admission
 
             require_device_elf_admission(self.device, self.device_admission)
+
+    def _label(self):
+        return "source_schedules" if len(self.families) != 1 else _SOURCE_LABELS[self.families[0].name]
 
     def observe_native(self, paths, remember):
         """Retain actual checked lifetime files through provider/link validation."""
@@ -367,15 +379,7 @@ class _SourceModelBuild:
             replacement.body.block.add_op(declaration)
         rewrite_fresh_tensor_writers(replacement, [binding.writer for _, binding in replacements])
         replacement.verify()
-        label = (
-            "source_schedules"
-            if len(self.families) != 1
-            else {
-                "row": "source_rows",
-                "pointwise": "source_pointwise",
-                "dense": "source_dense",
-            }[self.families[0].name]
-        )
+        label = self._label()
         selected_path, receipt = output / (label + ".mlir"), output / (label + ".json")
         if replacements or any(row["rewritten"] for row in normalizations):
             selected_path.write_text(ir_text(replacement))
@@ -424,7 +428,6 @@ class _SourceModelBuild:
         paths = (Path(source_path), selected_path, receipt)
         self.selected_source = selected_path.resolve()
         self.pins = (*self.pins, *((path.resolve(), sha256_file(path)) for path in paths))
-        self.preparation_receipt = receipt.resolve() if normalizations else None
         self.revalidate()
         for family, group in zip(self.families, self.bindings, strict=True):
             if group:
@@ -483,7 +486,11 @@ class _SourceModelBuild:
         if not self.packing_plans:
             return
         from merlin.common.jsonio import write_pretty_json
-        from merlin.verify.host_packing_storage import PackingStorageUse, inspect_packing_storage
+        from merlin.verify.host_packing_storage import (
+            PackingStorageRequest,
+            PackingStorageUse,
+            inspect_packing_storage_batch,
+        )
 
         roster = source_borrowed_calls(self.build, context.prepared_path)
         if roster is None:
@@ -492,37 +499,65 @@ class _SourceModelBuild:
             role: {"path": str(path.resolve()), "sha256": sha256_file(path), "size_bytes": path.stat().st_size}
             for role, path in (("llvm_ir", context.model_llvm_path), ("object", context.model_object_path))
         }
+        groups = {}
         for index, (family_index, entry, uses, payload, identity) in enumerate(self.packing_plans):
             selected = self.families[family_index].selection
             if selected.packing_allocation_effects is None:
                 raise ValueError("bounded convolution storage lacks original qualified allocation semantics")
-            directory = context.workdir / f"packing_storage_{index}"
-            report = inspect_packing_storage(
+            request = PackingStorageRequest(
+                tuple(PackingStorageUse(symbol, argument) for symbol, argument in uses),
+                selected.max_convolution_packing_bytes,
+            )
+            groups.setdefault((entry, selected.packing_allocation_effects), []).append(
+                (index, request, payload, identity)
+            )
+        retained = {}
+        for group_index, ((entry, effects), islands) in enumerate(groups.items()):
+            batch = inspect_packing_storage_batch(
                 artifacts,
                 borrowed_calls=roster.calls,
-                uses=tuple(PackingStorageUse(symbol, argument) for symbol, argument in uses),
-                allocation_effects=selected.packing_allocation_effects,
-                max_payload_bytes=selected.max_convolution_packing_bytes,
+                requests=tuple(island[1] for island in islands),
+                allocation_effects=effects,
                 entry=entry,
-                diagnostics=directory,
+                diagnostics=context.workdir / f"packing_storage_batch_{group_index}",
             )
-            if report["logical_payload_bytes"] != payload:
-                raise ValueError("final native packing coverage differs from the checked source panels")
-            if any(sha256_file(Path(path)) != digest for path, digest in report["pins"].items()):
-                raise ValueError("final native packing observation changed before adoption")
-            self.observe_native(tuple(Path(path) for path in report["pins"]), True)
-            link = directory / "source_packing.json"
-            write_pretty_json(
-                link,
-                {
-                    "schema": "merlin.source_packing_storage.v1",
-                    "source_identity": identity,
-                    "source_payload_bytes": payload,
-                    "native": report,
-                    "scope": "per-island activation payload and requested backing; excludes padding/output/ABI storage",
-                },
-            )
-            self.observe_native((link,), True)
+            for path, digest in batch["pins"].items():
+                if path in retained and retained[path] != digest:
+                    raise ValueError("final native packing observations disagree about retained bytes")
+                retained[path] = digest
+            for request_index, ((index, _, payload, identity), result) in enumerate(
+                zip(islands, batch["results"], strict=True)
+            ):
+                # Native coalescing may share backing between statically distinct
+                # source panels. Exact descriptor/use coverage was checked above;
+                # sharing can reduce their conservative source payload sum.
+                if result["logical_payload_bytes"] > payload:
+                    raise ValueError("final native packing coverage exceeds the checked source panels")
+                report = {
+                    **batch["combined"],
+                    **result,
+                    **{key: batch[key] for key in ("observation", "pins", "report")},
+                    "batch_request_index": request_index,
+                }
+                directory = context.workdir / f"packing_storage_{index}"
+                directory.mkdir()
+                link = directory / "source_packing.json"
+                write_pretty_json(
+                    link,
+                    {
+                        "schema": "merlin.source_packing_storage.v1",
+                        "source_identity": identity,
+                        "source_payload_bytes": payload,
+                        "native": report,
+                        "scope": (
+                            "per-island activation payload and requested backing; excludes padding/output/ABI storage"
+                        ),
+                    },
+                )
+                retained[str(link.resolve())] = sha256_file(link)
+        if any(sha256_file(Path(path)) != digest for path, digest in retained.items()):
+            raise ValueError("final native packing observation changed before adoption")
+        self.observe_native(tuple(Path(path) for path in retained), True)
 
     def build(self, context):
         from merlin.compile.scheduling.library_sources import LIBRARY_MODULES
