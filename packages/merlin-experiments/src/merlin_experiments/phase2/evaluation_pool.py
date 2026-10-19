@@ -559,7 +559,7 @@ class ComponentEvaluationPool:
             selected_route = self.inputs.ordinary and kind in SELECTED_KINDS
             if (
                 kind not in self.inputs.kinds
-                and not selected_route
+                and (not selected_route or self.inputs.diagnostic)
                 or type(timeout_s) not in (int, float)
                 or not 1 <= timeout_s <= 2400
             ):

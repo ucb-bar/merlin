@@ -190,7 +190,14 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
         remaining = int(deadline - time.monotonic())
         if remaining < 1:
             raise StageGateError("ordinary compile/Spike exhausted its original aggregate deadline")
-    with original_compiler_imports(getattr(policy.feedback_evaluator, "_compiler_profile_service", None)):
+    from .public_source_diagnostic import selected as diagnostic_policy
+
+    execution = (
+        policy.compiler_execution(revision.source, workspace, deadline=deadline)
+        if diagnostic_policy(policy)
+        else original_compiler_imports(getattr(policy.feedback_evaluator, "_compiler_profile_service", None))
+    )
+    with execution:
         sandbox = PC.package_sandbox_policy(policy.target_experiment, workspace, revision.source)
         started = time.monotonic()
         with PC.boxed_entrypoints(sandbox):
@@ -210,6 +217,8 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
             )
     tiers = grade.get("tiers") or {}
     functional = all((tiers.get(tier) or {}).get("status") == "pass" for tier in ("L0", "L1", "L2"))
+    if diagnostic_policy(policy):
+        functional = functional and grade.get("checked_source_status") == "complete_source_L0_L1_L2_diagnostic_pass"
     if before != (str(hash_tree(revision.source)["sha256"]), exact_tree_record(member.source_dir)["sha256"]):
         raise StageGateError("ordinary cheap execution changed frozen compiler or input bytes")
     compiled = compiled_observation(
@@ -287,12 +296,16 @@ def evaluate_retained(
     policy, revision, baseline_revision, *, work_root, call_index, timeout_s, workers, selected_members=None
 ):
     """Observe original public members; an explicit subset is diagnostic only."""
-    policy.validate_search_inputs()
+    from .public_source_diagnostic import selected as diagnostic_policy
+
+    deadline = time.monotonic() + timeout_s if diagnostic_policy(policy) else None
+    policy.validate_search_inputs(**({"deadline": deadline} if diagnostic_policy(policy) else {}))
     revision.verify(authority=policy.edit_authority)
     baseline_revision.verify(authority=policy.edit_authority)
     work_root = Path(work_root)
     work_root.mkdir(parents=True, mode=0o700)
-    deadline = time.monotonic() + timeout_s
+    if deadline is None:
+        deadline = time.monotonic() + timeout_s
     members = tuple(sorted(policy.search_corpus.capsules, key=lambda row: (row.family, row.capsule)))
     partial = selected_members is not None
     if getattr(policy, "_checked_source_diagnostic", None) is not None and not partial:
@@ -343,15 +356,19 @@ def evaluate_retained(
         }
         for index, member in enumerate(members)
     ]
+    from .public_source_diagnostic import FEEDBACK_SCHEMA as DIAGNOSTIC_SCHEMA
+    from .public_source_diagnostic import selected as diagnostic_policy
+
+    diagnostic = diagnostic_policy(policy)
     document = {
-        "schema": (
-            ARCHIVE_SCHEMA if type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen else SCHEMA
-        ),
+        "schema": DIAGNOSTIC_SCHEMA
+        if diagnostic
+        else (ARCHIVE_SCHEMA if type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen else SCHEMA),
         "kind": SELECTED_KIND if partial else KIND,
         "candidate_sha256": revision.source_sha256,
         "tuning_corpus_sha256": policy.search_corpus.capsules_sha256,
         "manifest_sha256": policy.search_corpus.manifest_sha256,
-        "certificate_sha256": policy.feedback_evaluator.certificate.sha256,
+        "certificate_sha256": None if diagnostic else policy.feedback_evaluator.certificate.sha256,
         "configuration_sha256": policy.search_closure_sha256,
         "cells": cells,
         "promotion": "DIAGNOSTIC_ONLY" if partial else "SCREENING_ONLY",
@@ -369,7 +386,7 @@ def evaluate_retained(
         document["screening"] = screen.screen(
             policy, document, **({"work_root": work_root} if type(screen) is OrdinaryArchiveScreen else {})
         )
-    policy.validate_search_inputs()
+    policy.validate_search_inputs(**({"deadline": deadline} if diagnostic_policy(policy) else {}))
     if time.monotonic() > deadline:
         raise StageGateError("ordinary cheap observation exceeded its aggregate deadline")
     write_json(work_root / "ordinary_fast_feedback.json", document)
@@ -378,6 +395,10 @@ def evaluate_retained(
 
 def validate_feedback(document, *, policy, revision, kind=KIND):
     """Validate transport against the live original selection, never grant model authority."""
+    from .public_source_diagnostic import FEEDBACK_SCHEMA as DIAGNOSTIC_SCHEMA
+    from .public_source_diagnostic import selected as diagnostic_policy
+
+    diagnostic = diagnostic_policy(policy)
     archive = type(getattr(policy, "_ordinary_screen", None)) is OrdinaryArchiveScreen
     fields = {
         "schema",
@@ -408,16 +429,17 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
             document["promotion"],
         )
         != (
-            ARCHIVE_SCHEMA if archive else SCHEMA,
+            DIAGNOSTIC_SCHEMA if diagnostic else ARCHIVE_SCHEMA if archive else SCHEMA,
             kind,
             revision.source_sha256,
             policy.search_corpus.capsules_sha256,
             policy.search_corpus.manifest_sha256,
-            policy.feedback_evaluator.certificate.sha256,
+            None if diagnostic else policy.feedback_evaluator.certificate.sha256,
             policy.search_closure_sha256,
             "DIAGNOSTIC_ONLY" if partial else "SCREENING_ONLY",
         )
         or kind not in (KIND, SELECTED_KIND)
+        or (diagnostic and (kind != SELECTED_KIND or archive))
     ):
         raise StageGateError("ordinary cheap result differs from its original source/corpus/runtime selection")
     expected = {(row.family, row.capsule): row.source_sha256 for row in policy.search_corpus.capsules}
