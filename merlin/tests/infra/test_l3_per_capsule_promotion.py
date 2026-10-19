@@ -21,6 +21,7 @@ UNKNOWN rather than as success (this repo has "a check that could not run report
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import inspect
 import sys
@@ -113,7 +114,20 @@ def test_the_checkpoint_gate_no_longer_demands_all_pass():
     assert "_l3_checkpoint_should_run(_run_l3, " in src, "the cert-tier flag stays the first guard"
     assert ", _l3_eligible)" in src, "and the gate is handed the per-capsule eligible list"
     assert 'verdict.get("all_pass") or (_EXPERIMENT == "realistic" and _ready_marker)' not in src
-    assert "_verilator_grade(vatt, _l3_eligible, _l3_held)" in src
+    grade_calls = [
+        node
+        for node in ast.walk(ast.parse(src))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_verilator_grade"
+    ]
+    assert grade_calls, "the checkpoint invokes the per-capsule grader"
+    assert all(
+        len(call.args) == 3
+        and all(
+            isinstance(argument, ast.Name) and argument.id == expected
+            for argument, expected in zip(call.args, ("vatt", "_l3_eligible", "_l3_held"), strict=True)
+        )
+        for call in grade_calls
+    ), "the grader receives the attempt and per-capsule eligible/held lists"
 
 
 def test_an_unreadable_loop_tier_status_is_held_back_not_promoted():
@@ -311,8 +325,23 @@ def test_every_agent_turn_starts_a_grader_that_lands_a_verdict_under_it():
         for call in starts
     )
     assert all(
-        any(k.arg == "grade_callback" and ast.unparse(k.value) == "_grade" for k in call.keywords) for call in starts
+        any(k.arg == "grade_callback" and ast.unparse(k.value) == "_background_grade" for k in call.keywords)
+        for call in starts
     )
+    bindings = [
+        node.value
+        for node in ast.walk(ast.parse(src))
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_background_grade" for target in node.targets)
+    ]
+    assert len(bindings) == 1
+    wrapper = bindings[0]
+    assert isinstance(wrapper, ast.Call) and ast.unparse(wrapper.func) == "T.timed"
+    callback = wrapper.args[0]
+    assert isinstance(callback, ast.Call) and ast.unparse(callback.func) == "partial"
+    assert ast.unparse(callback.args[0]) == "LG.grade"
+    assert any(k.arg == "inputs" and ast.unparse(k.value) == "grading_inputs" for k in callback.keywords)
+    assert any(k.arg == "advisory_background" and ast.unparse(k.value) == "True" for k in callback.keywords)
     grades = calls(body, "grade_callback")
     assert any(
         [shape(arg) for arg in call.args[:3]]
