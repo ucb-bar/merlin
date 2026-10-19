@@ -538,8 +538,15 @@ def start_background(
     failures = GradeFailureAlert(run_dir, threshold=grade_failure_alert_threshold())
 
     def _grade_body() -> None:
-        if not (ws / "qa" / "verdict.json").exists():
-            landed, tries = False, 0
+        first_snapshot_obsolete = False
+        verdict_path = ws / "qa" / "verdict.json"
+        try:
+            previous = json.loads(verdict_path.read_text())
+            readiness_pending = (previous.get("package_readiness") or {}).get("status") == "not_ready"
+        except (OSError, ValueError, AttributeError):
+            readiness_pending = False
+        if not verdict_path.exists() or readiness_pending:
+            landed, readiness_published, tries = False, False, 0
             while not stop.is_set():
                 tries += 1
                 try:
@@ -557,7 +564,19 @@ def start_background(
                     if stop.wait(FIRST_GRADE_POLL_S):
                         break
                     continue
+                if (v.get("package_readiness") or {}).get("status") == "not_ready":
+                    readiness_published = True
+                    if tries == 1 or tries % 10 == 0:
+                        print(
+                            f"[first-grade] declared tool not ready; no capsules executed; "
+                            f"retrying every {FIRST_GRADE_POLL_S}s",
+                            flush=True,
+                        )
+                    if stop.wait(FIRST_GRADE_POLL_S):
+                        break
+                    continue
                 landed = True
+                first_snapshot_obsolete = v.get("snapshot_current") is False
                 print(
                     f"[first-grade] loop-tier verdict published: {v.get('n_passed')}/"
                     f"{v.get('n_capsules')} at {v.get('tiers_graded')} "
@@ -567,6 +586,8 @@ def start_background(
                 break
             if not landed:
                 print(
+                    "[first-grade] only package-readiness feedback landed; no capsules executed"
+                    if readiness_published else
                     "[first-grade] NO verdict landed during this turn — the agent ran without "
                     "feedback; treat the turn's result accordingly",
                     flush=True,
@@ -577,7 +598,10 @@ def start_background(
         t = 0
         previous_key = None
         interval = max(30, int(cadence.grade_interval))
-        delay, completed_source = interval, None
+        # A buildable first snapshot still finishes under its original custody.
+        # If edits superseded it, preserve that evidence and grade the current
+        # source immediately rather than adding another whole interval.
+        delay, completed_source = (0 if first_snapshot_obsolete else interval), None
         while not stop.wait(delay):
             delay = interval
             before = source_identity() if source_identity is not None else None

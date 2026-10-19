@@ -785,7 +785,8 @@ def fast_grade(
         # grade did not reach stays UNKNOWN in the document below rather than reading as clean.
         print(f"[first-grade] grade error: {type(e).__name__}: {str(e)[:200]}", flush=True)
         _fast_score = {}
-    red = _qc._per_capsule_from_results(fruns)
+    package_not_ready = (_fast_score.get("package_readiness") or {}).get("status") == "not_ready"
+    red = {} if package_not_ready else _qc._per_capsule_from_results(fruns)
     for row in _fast_score.get("per_capsule") or []:
         if row.get("background_deferred") and row.get("capsule") not in red:
             red[row["capsule"]] = {"status": "gated", "tiers": {}}
@@ -796,6 +797,23 @@ def fast_grade(
         structural_evidence=_fast_score.get("structural_evidence_all_pass"),
         cohort_complete=_qc._original_cohort_complete(_fast_score),
     )
+    if package_not_ready:
+        # Package bootstrap ran; no capsule or oracle did. This is readiness
+        # feedback, never a reduced cohort or an empty passing grade.
+        verdict.update(
+            all_pass=False,
+            gradeable=False,
+            n_passed=0,
+            n_capsules=0,
+            per_capsule=[],
+            mandatory_tiers_complete=False,
+            tiers_graded=[],
+            tiers_not_run=sorted(set(adapters) | set(_withheld)),
+            package_readiness=_fast_score["package_readiness"],
+            package_failure=_fast_score.get("failure"),
+            note="The declared compiler tool is missing after package build; no capsules executed. "
+            "Finish the declared tool; the first grade will retry shortly. The selected cohort is unchanged.",
+        )
     verdict["graded_source_sha256"] = snapshot_digest
     if background_guard.reason() is not None:
         verdict.update(
@@ -808,12 +826,12 @@ def fast_grade(
                 "source_sha256": background_guard.source,
             },
         )
+    verdict["graded_request_sha256"] = background_guard.source
+    verdict["snapshot_current"] = background_guard.current()
     out = run_dir / "qa_history" / f"verdict_fast_{tick}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     verdict = write_verdict(out, verdict)
     (ws / "qa").mkdir(exist_ok=True)
-    verdict["graded_request_sha256"] = background_guard.source
-    verdict["snapshot_current"] = background_guard.current()
     if verdict["snapshot_current"]:
         verdict = write_verdict(ws / "qa" / "verdict.json", verdict)
     _record_plateau(run_dir)  # operator-side; deliberately not in the agent's verdict

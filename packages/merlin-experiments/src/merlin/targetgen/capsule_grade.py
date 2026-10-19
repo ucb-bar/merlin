@@ -1381,6 +1381,12 @@ def grade(
             integrity_scan(pkg, **({"additional_forbidden": additional_forbidden} if additional_forbidden else {}))
             score["integrity_status"] = "clean" if not pkg.integrity_exempt else "exempt"
         build_package(pkg)
+        # A manifest can land before its source entrypoint during authoring.
+        # Check once, after a declared build has had the chance to produce it,
+        # rather than issuing a doomed original-process request per capsule.
+        if not pkg.tool.is_file():
+            score["package_readiness"] = {"status": "not_ready", "reason": "declared_tool_missing"}
+            raise CertFailure("build", "elaboration_error", f"declared tool is not a file: {pkg.tool}")
     except CertFailure as cf:
         score["integrity_status"] = f"FAIL[{cf.plane}]: {cf.detail[:200]}"
         score["functional_pass"] = 0

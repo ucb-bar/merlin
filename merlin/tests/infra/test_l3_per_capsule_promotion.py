@@ -341,7 +341,20 @@ def test_background_grade_ids_cannot_collide_with_round_ids():
     assert len({FL.grade_key(r, t) for r in range(3) for t in range(1, 151)}) == 450
 
 
-def test_an_existing_verdict_is_not_replaced_by_the_fast_one():
-    """Round 1+ already inherits the previous round's verdict; the fast grade is for a BLIND agent."""
-    body = inspect.getsource(FL.start_background)
-    assert 'if not (ws / "qa" / "verdict.json").exists():' in body
+def test_an_existing_verdict_is_not_replaced_by_the_fast_one(tmp_path):
+    """A real prior grade survives; only a not-ready package still needs its first grade."""
+    workspace = tmp_path / "workspace"
+    (workspace / "qa").mkdir(parents=True)
+    path = workspace / "qa/verdict.json"
+    original = '{"n_capsules": 2, "n_passed": 1, "all_pass": false}'
+    path.write_text(original)
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("an existing capsule verdict must not trigger the fast first grade")
+
+    handle = FL.start_background(
+        workspace, tmp_path / "run", FL.GradeCadence(30, False, 300), interval_grades=False,
+        grade_callback=unexpected, fast_grade_callback=unexpected,
+    )
+    FL.stop_background(handle)
+    assert path.read_text() == original
