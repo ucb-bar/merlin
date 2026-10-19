@@ -4,6 +4,7 @@ import json
 import math
 
 import pytest
+from test_lean_defined_bounds import _chain
 from test_lean_parallel_fusion import source, stage_for
 from test_lean_reshape_compose import _verify_mlir
 
@@ -32,10 +33,12 @@ def _reference(values, width, producer, consumer):
     ],
 )
 def test_real_fused_integer_bodies_match_original_and_independent_reference(
-    tmp_path, fidelity_tools, bits, shape, width, producer, consumer
+    tmp_path, fidelity_tools, lean_tools, bits, shape, width, producer, consumer
 ):
     program = source(shape, width, producer, consumer)
-    _, _, after = stage_for(tmp_path / "actual", fidelity_tools.compiler_python, program)
+    assert lean_tools.m2m_python == fidelity_tools.compiler_python
+    stage, _, after = stage_for(tmp_path / "actual", fidelity_tools.compiler_python, program)
+    _chain(tmp_path / "strict-chain", stage, "forward", lean_tools, bits)
     n = math.prod(shape)
     mask = (1 << width) - 1
     cases = [[0, 1, mask, 1 << (width - 1), 7, 13], [mask, 3, 11, 5, 17, 19]]
