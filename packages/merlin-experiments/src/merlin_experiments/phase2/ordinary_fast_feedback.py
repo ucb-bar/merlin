@@ -457,6 +457,12 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
         raise StageGateError("ordinary cheap result differs from its original source/corpus/runtime selection")
     expected = {(row.family, row.capsule): row.source_sha256 for row in policy.search_corpus.capsules}
     selected = set(expected)
+    views = policy.binding()["public_execution_views"] if diagnostic else None
+    expected_views = (
+        dict(zip(((row.family, row.capsule) for row in policy.search_corpus.capsules), views, strict=True))
+        if views is not None
+        else {}
+    )
     if partial:
         from .ordinary_measurement_selection import select_members
 
@@ -510,9 +516,12 @@ def validate_feedback(document, *, policy, revision, kind=KIND):
                     "evidence_sha256",
                 }
                 | ({"archive_counts"} if archive else set())
+                | ({"public_diagnostic_execution_view"} if identity in expected_views else set())
                 or not is_sha256(value["evidence_sha256"])
             ):
                 raise StageGateError("ordinary cheap observation must expose only its private evidence digest")
+            if identity in expected_views and value["public_diagnostic_execution_view"] != expected_views[identity]:
+                raise StageGateError("ordinary cheap observation changed its original public execution view")
             if value["physical_memory_traffic"] is not None or value["timing_cycles"] is not None:
                 raise StageGateError("ordinary cheap features cannot claim physical traffic or cycle timing")
             if not math.isfinite(value["elapsed_seconds"]) or value["elapsed_seconds"] < 0:

@@ -382,6 +382,7 @@ def test_public_roster_preflight_and_binding_use_complete_batch(inputs, tmp_path
         contract,
         ignore=lambda directory, names: [name for name in names if (Path(directory) / name).is_symlink()],
     )
+    original_capsule = D._capsule
     monkeypatch.setattr(D, "_capsule", lambda *_a, **_kw: pytest.fail("binding must not repeat single-member views"))
     policy = D.prepare_public_source_diagnostic(**dict(args, corpus=corpus, contract_root=contract))
     binding = policy.binding()
@@ -393,3 +394,50 @@ def test_public_roster_preflight_and_binding_use_complete_batch(inputs, tmp_path
         == corpus.capsules[0].source_sha256
     )
     assert binding["formal_admission"] is False and binding["timing"] == "UNKNOWN"
+
+    monkeypatch.setattr(D, "_capsule", original_capsule)
+    # The genuine published view reaches both the retained producer and consumer.
+    # Only target execution is neutral in this regression.
+    monkeypatch.setattr(FAST.CR, "simulator_adapter", lambda *a: "neutral")
+    monkeypatch.setattr(CAMPAIGN, "package_sandbox_policy", lambda *a: "neutral")
+    monkeypatch.setattr(CAMPAIGN, "boxed_entrypoints", lambda *a: nullcontext())
+    monkeypatch.setattr(FAST, "compiled_observation", lambda *a, **kw: {"status": "UNKNOWN"})
+    monkeypatch.setattr(FAST, "observe_passed_census", lambda *a, **kw: {"status": "UNKNOWN"})
+    monkeypatch.setattr(D.PublicSourceDiagnosticPolicy, "compiler_execution", lambda *a, **kw: nullcontext())
+    monkeypatch.setattr(
+        FAST.CR,
+        "run_capsule",
+        lambda *a, **kw: {
+            "status": "incomplete",
+            "checked_source_status": "complete_source_L0_L1_L2_diagnostic_pass",
+            "tiers": {tier: {"status": "pass"} for tier in ("L0", "L1", "L2")},
+        },
+    )
+    policy = D.prepare_public_source_diagnostic(**dict(args, corpus=corpus, contract_root=contract))
+    store = RetainedRevisionStore(
+        tmp_path / "view-revisions",
+        edit_authority=policy.edit_authority,
+        max_bytes=1 << 20,
+        max_files=100,
+        max_total_bytes=4 << 20,
+    )
+    revision = store.freeze(args["candidate"])
+    baseline = store.freeze(args["baseline"])
+    result = policy.evaluate_retained(
+        revision,
+        baseline,
+        work_root=args["work_root"] / "published-view",
+        call_index=0,
+        timeout_s=120,
+        selected_members=tuple(sorted(policy.validate_search_inputs())),
+    )
+    arm = result["cells"][0]["candidate"]
+    assert arm["public_diagnostic_execution_view"] == binding["public_execution_views"][0]
+    assert FAST.validate_feedback(result, policy=policy, revision=revision, kind=FAST.SELECTED_KIND) == result
+    changed = copy.deepcopy(result)
+    changed["cells"][0]["candidate"]["public_diagnostic_execution_view"]["schema"] = "forged"
+    with pytest.raises(StageGateError, match="original public execution view"):
+        FAST.validate_feedback(changed, policy=policy, revision=revision, kind=FAST.SELECTED_KIND)
+    del changed["cells"][0]["candidate"]["public_diagnostic_execution_view"]
+    with pytest.raises(StageGateError, match="private evidence digest"):
+        FAST.validate_feedback(changed, policy=policy, revision=revision, kind=FAST.SELECTED_KIND)
