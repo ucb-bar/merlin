@@ -1,5 +1,13 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase2
 
+`_ordinary_service_effects` consumes only an explicitly selected original live
+effect owner with the native selection's exact binding. Reopen actual current
+source/emission, annotated process, counter and ELF custody before feedback.
+Emitted-schedule demand stays noncompulsory and cannot issue measured cycles,
+fixed workload attainment, statistical qualification, convergence or promotion.
+Absent selection preserves the original archive-screen version/behavior;
+unsupported effects remain UNKNOWN and private source provenance is not exposed.
+
 Freezing public integer capture v3 requires the live operator-private exclusion
 selection before and after copying. Preserve the generic refusal and keep all
 private hashes/paths outside the public snapshot. Frozen reference closures
