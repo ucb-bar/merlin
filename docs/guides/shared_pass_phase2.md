@@ -42,7 +42,9 @@ the selected replacement set. Candidate manifests cannot select a release.
 The selected-release prompt and `STAGE_CONTEXT.json` expose a source-derived
 public API inventory: reviewed contract identity, exact guest source paths and
 digests, declaration lines, public class methods and bounded parameter/docstring
-previews. Omitted declarations are counted. Imported names are descriptive;
+previews. Inventory v2 shares its bounded preview budget across modules and
+shows public entrypoints before methods and imported names, so later scheduling
+modules remain discoverable. Omitted declarations are counted. Imported names are descriptive;
 dynamic exports and value aliases remain unresolved. Reading the inventory
 executes no selected library code and grants no target support or timing credit.
 The shared algorithms are reviewed authored code; software effects and RTL
