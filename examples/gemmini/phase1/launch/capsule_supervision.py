@@ -124,6 +124,9 @@ def run(launch, prep: Path, preparation_started: float, *, memory, processes_fac
         signal.setitimer(signal.ITIMER_REAL, 0)
         try:
             processes.close()
+        except BaseException as error:
+            state.update(capsule_complete=False, status="cleanup_unknown", cleanup_error=str(error))
+            raise
         finally:
             for signum, handler in previous.items():
                 signal.signal(signum, handler)
