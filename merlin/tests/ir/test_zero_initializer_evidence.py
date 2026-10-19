@@ -6,6 +6,7 @@ import hashlib
 import pytest
 
 from merlin.perf.zero_initializer_evidence import check_zero_initializer_grouping
+from merlin.targetgen.oot_starterkit.plan import validate_mixed_program_plan
 
 SOURCE = """module { func.func @forward(%a:tensor<3x5xi8>, %b:tensor<5x7xi8>) -> tensor<3x7xi32> {
   %z = arith.constant 0 : i32
@@ -123,5 +124,66 @@ def test_nonzero_initializer_with_self_consistent_source_hash_still_refuses(zero
 def test_unknown_source_effect_cannot_self_authorize_a_group():
     source = SOURCE.replace("linalg.generic {", "linalg.generic {unknown_effect=1:i32,")
     before, after = pair(source)
+    with pytest.raises(ValueError, match="unproved"):
+        check_zero_initializer_grouping(source, before, after)
+
+
+@pytest.mark.parametrize("shared_scalar", [False, True], ids=["returned_initializer", "shared_scalar_constant"])
+def test_closed_group_cannot_absorb_returned_storage_or_a_shared_scalar(shared_scalar):
+    result = "tensor<3x7xi32>"
+    source = SOURCE.replace(f"-> {result} {{", f"-> ({result},{result}) {{", 1)
+    output = "extra" if shared_scalar else "seed"
+    if shared_scalar:
+        source = source.replace(
+            "  return %r:", '  %extra = "tensor.splat"(%z) : (i32) -> tensor<3x7xi32>\n  return %r:'
+        )
+    source = source.replace(
+        f"return %r:{result}", f"return %r,%{'extra' if shared_scalar else 'init'}:{result},{result}"
+    )
+    before, _ = pair(source)
+    plan = before["params"]["global_program_plan"]
+    if shared_scalar:
+        before["tensors"][output] = {"shape": [3, 7], "dtype": "i32", "role": "output"}
+        before["kernel_abi"]["args"].append({"tensor": output, "access": "write"})
+        before["compiler_pointer_abi"]["arguments"].append(output)
+        plan["source_values"].append({"op_index": 3, "result_index": 0, "tensor": output})
+        plan["tasks"].append(
+            dict(
+                task_index=3,
+                source_op_indices=[3],
+                kind="host",
+                reads=[],
+                writes=[output],
+                instruction_start=4,
+                instruction_end=5,
+            )
+        )
+        plan.update(source_op_count=4, epilogue_instruction_range=[5, 6], schedule_instruction_count=6)
+    else:
+        before["tensors"][output]["role"] = "output"
+    before["kernel_abi"]["outputs"].append(output)
+    plan["output_bindings"].append(output)
+    after = copy.deepcopy(before)
+    new = after["params"]["global_program_plan"]
+    fused = new["tasks"][2]
+    fused.update(
+        task_index=0,
+        source_op_indices=[0, 1, 2],
+        reads=["a", "b"],
+        writes=["seed", "out"],
+        instruction_start=1,
+        instruction_end=2,
+    )
+    remaining = new["tasks"][3:]
+    if remaining:
+        remaining[0].update(task_index=1, instruction_start=2, instruction_end=3)
+    new.update(
+        tasks=[fused, *remaining],
+        epilogue_instruction_range=[2 + len(remaining), 3 + len(remaining)],
+        schedule_instruction_count=3 + len(remaining),
+    )
+    assert validate_mixed_program_plan(source, before)["ok"] is True
+    assert validate_mixed_program_plan(source, after)["ok"] is True
+    assert check_zero_initializer_grouping(source, before, before)["groups"] == []
     with pytest.raises(ValueError, match="unproved"):
         check_zero_initializer_grouping(source, before, after)
