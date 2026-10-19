@@ -306,7 +306,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         compiler_profile_service=compiler_profile_service,
         verify_grade_inputs=_verify_implementation_sources,
         driver_grade_completed=lambda receipt: _driver_grade_receipt.__setitem__(0, receipt),
-        rtl_facts=a.rtl_facts,
+        rtl_facts=selected_rtl_facts,
     )
     _grade = T.timed(
         partial(
