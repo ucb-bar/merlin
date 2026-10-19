@@ -191,6 +191,7 @@ def source_preparation(launch, prep: Path) -> dict:
             out=directory,
             target=identity["target"],
             native_result_format_selection=native,
+            progress_path=directory / preflight.PROGRESS,
         )
         if _source_preflight_inputs(launch)[0] != identity:
             raise ValueError("source preparation inputs changed during preflight")

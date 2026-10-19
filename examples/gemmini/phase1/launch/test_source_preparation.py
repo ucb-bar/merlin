@@ -37,9 +37,11 @@ def prepared(operator, tmp_path, monkeypatch):
     monkeypatch.setattr(operator, "_source_preflight_inputs", lambda _: (copy.deepcopy(identity), None))
     calls = []
 
-    def preflight(spec, *, descriptor, out, target, native_result_format_selection):
+    def preflight(spec, *, descriptor, out, target, native_result_format_selection, progress_path):
         calls.append((spec, descriptor, target, native_result_format_selection))
         out.mkdir()
+        assert progress_path == out / P.PROGRESS
+        progress_path.write_text(json.dumps({"stage": "complete"}))
         (out / "frozen-source").write_text("exact original source")
         report = {
             "mode": "source_preflight",
@@ -76,6 +78,8 @@ def test_source_only_success_is_reused_without_candidate_or_retained_compiler(op
     assert first["reused"] is False and len(calls) == 1
     second = operator.source_preparation(launch, tmp_path)
     assert second["reused"] is True and second["report"] == first["report"] and len(calls) == 1
+    progress = Path(first["report"]["path"]).with_name(P.PROGRESS)
+    assert json.loads(progress.read_text()) == {"stage": "complete"}
 
 
 @pytest.mark.parametrize("mutation", ["false", "omitted_model", "omitted_program", "candidate_credit"])
