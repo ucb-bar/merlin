@@ -118,6 +118,7 @@ class PublicSourceDiagnosticPolicy:
                 (CORPUS, "verify_frozen_performance_corpus"),
                 (CommonTransformService, "_verify"),
                 (PublicSourceDiagnosticPolicy, "_binding"),
+                (PublicSourceDiagnosticPolicy, "_binding_metadata"),
                 (PublicSourceDiagnosticPolicy, "validate_search_inputs"),
                 (PublicSourceDiagnosticPolicy, "binding"),
                 (PublicSourceDiagnosticPolicy, "compiler_execution"),
@@ -164,6 +165,12 @@ class PublicSourceDiagnosticPolicy:
         return self._baseline
 
     def _binding(self, *, deadline=None):
+        native = self._native_exploration
+        operation = contextlib.nullcontext() if native is None else native._metadata_operation()
+        with operation:
+            return self._binding_metadata(deadline=deadline)
+
+    def _binding_metadata(self, *, deadline=None):
         service = self.feedback_evaluator._compiler_profile_service
         service._verify()
         self.edit_authority.check_integrity()

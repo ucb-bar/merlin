@@ -11,6 +11,7 @@ import inspect
 import json
 import sys
 import weakref
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import MethodType
@@ -69,6 +70,26 @@ class PublicNativeExploration:
     files: tuple
     _issuer: object
     binding_correspondence: ReviewedPassCapability | None = None
+
+    @contextmanager
+    def _metadata_operation(self):
+        """Bound one trusted selection-record operation, never target work.
+
+        Original owner checks bracket the operation. Native runtime/semantics
+        checks and the actual compiler-binding callback still run on every use.
+        """
+        issued = _ISSUED.get(self)
+        if type(self) is not PublicNativeExploration or issued is None or self._issuer is not _ISSUER:
+            raise StageGateError("public native metadata requires its original live owner")
+        if issued[7] is None:
+            yield
+            return
+        with METADATA.scoped_registry_metadata_verification(issued[7]):
+            self.verify()
+            try:
+                yield
+            finally:
+                self.verify()
 
     def verify(self):
         issued = _ISSUED.get(self)
@@ -228,7 +249,8 @@ def prepare_public_native_exploration(selection, *, binding_correspondence=None)
     functions = tuple(
         (owner, name, getattr(owner, name), getattr(owner, name).__code__)
         for owner, names in (
-            (PublicNativeExploration, ("verify", "record", "verify_for", "observe_member")),
+            (PublicNativeExploration, ("verify", "record", "verify_for", "observe_member", "_metadata_operation")),
+            (PublicNativeExploration._metadata_operation, ("__wrapped__",)),
             (OBSERVATION, ("observe", "validate_projection")),
             (NATIVE, ("inference_case", "compare", "verify_semantics")),
             (COUNTS, ("observe",)),
