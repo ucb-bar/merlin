@@ -7,6 +7,7 @@ from xdsl.dialects import builtin, func
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower.repeated_batch_input import (
     RepeatedBatchConsumer,
+    private_repeated_batch_inputs,
     prove_repeated_batch_input,
     rewrite_repeated_batch_consumers,
     validate_repeated_batch_input,
@@ -253,3 +254,69 @@ def test_transpose_orientation_is_part_of_the_immutable_proof():
     assert proof.matrix_transposed
     with pytest.raises(ValueError, match="coordinates changed"):
         validate_repeated_batch_input(replace(proof, matrix_transposed=False))
+
+
+@pytest.mark.parametrize("observer", ["none", "source", "expanded"])
+def test_private_compaction_distinguishes_source_observation_from_live_expansion(observer):
+    module, call = fixture(transpose=True)
+    proof = prove_repeated_batch_input(call.arguments[0])
+    if observer != "none":
+        function = call.parent.parent_op()
+        returned = call.parent.last_op
+        value = proof.source if observer == "source" else proof.value
+        returned.operands = [*returned.operands, value]
+        function.properties["function_type"] = builtin.FunctionType.from_lists(
+            function.function_type.inputs, [operand.type for operand in returned.operands])
+    module.verify()
+    proof = prove_repeated_batch_input(call.arguments[0])
+    before = str(module)
+    selected = private_repeated_batch_inputs({(call, 0): proof})
+    assert bool(selected) == (observer != "expanded")
+    assert str(module) == before
+
+
+@pytest.mark.parametrize("both", [False, True])
+def test_shared_expansion_requires_the_complete_selected_consumer_set(both):
+    _, first = fixture()
+    second = first.clone()
+    first.parent.insert_op_before(second, first)
+    proof = prove_repeated_batch_input(first.arguments[0])
+    uses = {(first, 0): proof}
+    if both:
+        uses[(second, 0)] = proof
+    assert private_repeated_batch_inputs(uses) == (frozenset(uses) if both else frozenset())
+
+
+def test_private_compaction_rechecks_sibling_views_to_a_fixed_point():
+    from xdsl.dialects import tensor
+
+    module, first = fixture()
+    logical = first.arguments[0]
+    group = builtin.ArrayAttr([builtin.ArrayAttr([builtin.IntegerAttr(axis, builtin.i64) for axis in range(3)])])
+    flat = tensor.CollapseShapeOp.create(
+        operands=[logical], result_types=[builtin.TensorType(builtin.f32, [int(np.prod(logical.type.get_shape()))])],
+        properties={"reassociation": group})
+    first.parent.insert_op_before(flat, first)
+    view = tensor.ExpandShapeOp(flat.results[0], (), group, logical.type.get_shape(), logical.type)
+    first.parent.insert_op_before(view, first)
+    second = func.CallOp("reader", [view.results[0], first.arguments[1]], [first.results[0].type])
+    first.parent.insert_op_before(second, first)
+    returned = first.parent.last_op
+    returned.operands = [*returned.operands, view.results[0]]
+    function = first.parent.parent_op()
+    function.properties["function_type"] = builtin.FunctionType.from_lists(
+        function.function_type.inputs, [value.type for value in returned.operands])
+    module.verify()
+    uses = {(call, 0): prove_repeated_batch_input(call.arguments[0]) for call in [first, second]}
+    assert private_repeated_batch_inputs(uses) == frozenset()
+
+
+def test_private_compaction_refuses_changed_source_uses_and_wrong_argument_binding():
+    _, call = fixture()
+    proof = prove_repeated_batch_input(call.arguments[0])
+    with pytest.raises(ValueError, match="original input use"):
+        private_repeated_batch_inputs({(call, 1): proof})
+    other = call.clone()
+    call.parent.insert_op_before(other, call)
+    with pytest.raises(ValueError, match="changed"):
+        private_repeated_batch_inputs({(call, 0): proof})

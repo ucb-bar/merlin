@@ -161,6 +161,43 @@ def validate_repeated_batch_input(proof: RepeatedBatchInput) -> None:
         raise ValueError("batch repetition coordinates changed after analysis")
 
 
+def private_repeated_batch_inputs(uses):
+    """Select a closed set whose expanded copy/view results can become dead.
+
+    ``uses`` maps explicit ``(consumer, argument)`` pairs to current source
+    proofs. Keep removing selections with an escaping intermediate until the
+    complete remaining use graph closes. Source values before the broadcast
+    may have other users. This is a structural cost guard, not a numerical,
+    alias, DCE, scheduling or measured-profitability grant. It mutates no IR.
+    """
+    from xdsl.ir import Operation
+
+    uses = dict(uses)
+    chains = {}
+    for key, proof in uses.items():
+        if type(proof) is not RepeatedBatchInput:
+            raise ValueError("private batch selection requires an exact source proof")
+        if type(key) is not tuple or len(key) != 2:
+            raise ValueError("private batch selection requires explicit consumer/argument pairs")
+        consumer, argument = key
+        if (not isinstance(consumer, Operation) or consumer.parent is None
+                or type(argument) is not int or not 0 <= argument < len(consumer.operands)
+                or consumer.operands[argument] is not proof.value):
+            raise ValueError("private batch selection differs from its original input use")
+        validate_repeated_batch_input(proof)
+        chains[key] = frozenset(item.operation for item in proof._witness)
+    selected = set(uses)
+    while selected:
+        operations = set().union(*(chains[key] for key in selected))
+        escaped = {key for key in selected if any(
+            use.operation not in operations and (use.operation, use.index) not in selected
+            for operation in chains[key] for result in operation.results for use in result.uses)}
+        if not escaped:
+            break
+        selected.difference_update(escaped)
+    return frozenset(selected)
+
+
 def _compact_input(proof, anchor):
     """Build ordinary tensor views and, when required, a compact matrix transpose.
 
