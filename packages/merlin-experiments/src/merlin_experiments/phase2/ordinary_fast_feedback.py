@@ -178,7 +178,7 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
     capsule["oracle_tier_ceiling"] = "L2"
     from .public_program_measurement import selection as public_selection
 
-    checked = CHECKED_SOURCE.for_capsule(policy, capsule)
+    checked = CHECKED_SOURCE.for_capsule(policy, capsule, deadline=deadline)
     model_selection = (
         None
         if checked is not None
@@ -186,6 +186,10 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
     )
     from merlin_experiments.phase1.feedback.compiler_profile_runtime import original_compiler_imports
 
+    if checked is not None:
+        remaining = int(deadline - time.monotonic())
+        if remaining < 1:
+            raise StageGateError("ordinary compile/Spike exhausted its original aggregate deadline")
     with original_compiler_imports(getattr(policy.feedback_evaluator, "_compiler_profile_service", None)):
         sandbox = PC.package_sandbox_policy(policy.target_experiment, workspace, revision.source)
         started = time.monotonic()
@@ -268,6 +272,7 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
                     "checked_source_diagnostic": CHECKED_SOURCE.record(
                         checked,
                         policy._compiler_pass_selection,
+                        deadline=deadline,
                     )
                 }
                 if checked is not None

@@ -162,3 +162,54 @@ def test_optin_does_not_bypass_original_formal_phase1_gate(ordinary_inputs, sour
     monkeypatch.setattr(OS.FI, "require_formal_qualification", refuse)
     with pytest.raises(StageGateError, match="original formal Phase 1"):
         OS.prepare_ordinary_search_policy(**ordinary_inputs.arguments, checked_source_diagnostic=source_selection[1])
+
+
+@pytest.mark.parametrize("deadline,expected", [(None, 120), (15, 5)])
+def test_original_metadata_admission_has_bounded_queue_wait(source_selection, monkeypatch, deadline, expected):
+    from contextlib import contextmanager
+
+    helper = FAST.CHECKED_SOURCE
+    passes, selected, *_ = source_selection
+    waits = []
+
+    @contextmanager
+    def lease(*, timeout_s):
+        waits.append(timeout_s)
+        yield
+
+    monkeypatch.setattr(helper, "monotonic", lambda: 10)
+    monkeypatch.setattr(helper, "shared_compute_pool", lease)
+    assert helper.record(selected, passes, deadline=deadline)["promotion_authority"] == "NONE"
+    assert waits == [expected]
+
+
+def test_expired_or_overrun_metadata_cannot_expose_a_record(source_selection, monkeypatch):
+    helper = FAST.CHECKED_SOURCE
+    passes, selected, *_ = source_selection
+    monkeypatch.setattr(helper, "monotonic", lambda: 10)
+    with pytest.raises(StageGateError, match="aggregate deadline"):
+        helper.record(selected, passes, deadline=9)
+    ticks = iter((10, 10, 20))
+    monkeypatch.setattr(helper, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(helper, "shared_compute_pool", lambda **_kwargs: nullcontext())
+    with pytest.raises(StageGateError, match="aggregate deadline"):
+        helper.record(selected, passes, deadline=15)
+
+
+def test_member_selection_uses_remaining_feedback_budget(queued, monkeypatch):
+    from contextlib import contextmanager
+
+    helper = FAST.CHECKED_SOURCE
+    policy, passes, selected, *_ = queued
+    waits = []
+
+    @contextmanager
+    def lease(*, timeout_s):
+        waits.append(timeout_s)
+        yield
+
+    monkeypatch.setattr(helper, "monotonic", lambda: 30)
+    monkeypatch.setattr(helper, "shared_compute_pool", lease)
+    with scoped_compiler_passes(passes):
+        assert helper.for_capsule(policy, policy._test_state["capsule"], deadline=32) is selected
+    assert waits == [2]
