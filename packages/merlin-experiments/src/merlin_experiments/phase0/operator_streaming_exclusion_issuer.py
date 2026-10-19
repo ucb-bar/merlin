@@ -7,6 +7,7 @@ signature algorithm, selected numerical policy, or publication qualification.
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import json
 import os
@@ -94,6 +95,7 @@ def issue(pointer_path, pointer_sha256, destination, *, forbidden_roots,
                         parsed_compact_bytes = metadata["compact_bytes"]
                         peak_scratch_bytes = max(peak_scratch_bytes, parsed_compact_bytes)
                         del module
+                        gc.collect()
                         projected = P.Projection(metadata["source_sha256"], metadata["source_bytes"],
                                                  b"", len(initializers), hex_bytes)
                 else:

@@ -553,7 +553,8 @@ For a graph whose checked initializer-free syntax exceeds one parse window,
 `input_mode="merlin.phase0.complete_typed_ssa_windows.v1"` is an additional
 explicit operator selection with the V4 source grammar. Each window uses the
 original parser and exact SSA/type/attribute aliases. The reader reconstructs
-every operation and nested region in one complete original function, verifies
+every operation and nested region in the complete original module, preserves
+all function declarations/definitions and symbol-table checks, verifies
 the whole module and rechecks every projected initializer owner. Its bounded
 private scratch holds no answers and is never compiler input. Per-window parser,
 aggregate syntax, operation-count and external RSS/CPU ceilings remain mandatory.
