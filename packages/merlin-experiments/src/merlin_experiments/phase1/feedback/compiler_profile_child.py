@@ -28,7 +28,7 @@ from merlin.common.bundle_snapshot import verified_snapshot_scope
 from merlin.common.digest import sha256_file
 from merlin.targetgen import compiler_profile_admission as API
 from merlin.targetgen import package_runtime as P
-from merlin.targetgen.compiler_library import active_compiler_library
+from merlin.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
 from merlin.targetgen.target_experiment import TargetExperiment, load_target_experiment
 from merlin_experiments.phase1.brokers.common_transforms import CommonTransformService
 from merlin_experiments.phase1.feedback import compiler_profile_runtime as R
@@ -38,6 +38,7 @@ from merlin_experiments.phase2.contracts import StageGateError
 from merlin_experiments.phase2.retained_revisions import source_inventory
 
 SCHEMA = "merlin.original_model_child.v1"
+LIBRARY_SCHEMA = "merlin.original_model_child.v2"
 CHECKPOINT_SCHEMA = "merlin.original_model_child_case_checkpoint.v1"
 _RESTORED_CHILD = contextvars.ContextVar("original_restored_child_checkpoint", default=None)
 _RESTORED_ISSUED = weakref.WeakSet()
@@ -194,30 +195,34 @@ def _restore_inputs(record):
     return C.PackageSandboxInputs(TC.ToolchainPaths(**paths), TC.SimToolchain(**sim), values["harness"], surfaces)
 
 
-def _closure():
+def _closure(*, library=False):
     """Direct invoked host owners; this makes no transitive dependency claim."""
     from merlin.common.paths import module_source_path
 
-    return [
-        _pin(module_source_path(name))
-        for name in (
-            __name__,
-            R.__name__,
-            CommonTransformService.__module__,
-            API.__name__,
-            P.__name__,
-            C.__name__,
-            resources.__name__,
-            resources.kernel.__name__,
-            "merlin.targetgen.capsule_runner",
-            "merlin.targetgen.capsule_source_identity",
-            "merlin_experiments.phase1.feedback.operator_child",
-            "merlin_experiments.phase1.feedback.scale_probe_child",
-            "merlin_experiments.phase1.feedback.scale_probe_batch",
-            "merlin_experiments.phase1.feedback.compile_only",
-            "merlin.targetgen.simulation_certificate",
+    names = (
+        __name__,
+        R.__name__,
+        CommonTransformService.__module__,
+        API.__name__,
+        P.__name__,
+        C.__name__,
+        resources.__name__,
+        resources.kernel.__name__,
+        "merlin.targetgen.capsule_runner",
+        "merlin.targetgen.capsule_source_identity",
+        "merlin_experiments.phase1.feedback.operator_child",
+        "merlin_experiments.phase1.feedback.scale_probe_child",
+        "merlin_experiments.phase1.feedback.scale_probe_batch",
+        "merlin_experiments.phase1.feedback.compile_only",
+        "merlin.targetgen.simulation_certificate",
+    )
+    if library:
+        names += (
+            "merlin.targetgen.compiler_library",
+            "merlin_experiments.phase2.compiler_library_state",
+            "merlin_experiments.phase2.compiler_libraries",
         )
-    ]
+    return [_pin(module_source_path(name)) for name in names]
 
 
 def _owner_record(service):
@@ -237,6 +242,7 @@ def _owner_record(service):
 class ModelChildTransport:
     def __init__(self, *, fd, document, executor, boundary):
         self.fd, self.document, self.executor, self.boundary = fd, document, executor, boundary
+        self.compiler_library_selection = active_compiler_library()
 
     @property
     def argv(self):
@@ -254,10 +260,14 @@ class ModelChildTransport:
             or _owner_record(self.executor.owner) != original["owner"]
             or _pin(original["target"]["descriptor"]["path"]) != original["target"]["descriptor"]
             or _digest(self.executor.target) != original["target"]["parsed_sha256"]
-            or _closure() != original["host_sources"]
+            or _closure(library=original["schema"] == LIBRARY_SCHEMA) != original["host_sources"]
             or invocation_record.environment_identity(os.environ) != original["parent_environment"]
         ):
             raise StageGateError("original model child source or execution owner changed")
+        if active_compiler_library() is not self.compiler_library_selection or (
+            None if self.compiler_library_selection is None else self.compiler_library_selection.record()
+        ) != original.get("compiler_library"):
+            raise StageGateError("original model child additional compiler library owner changed")
         if self.boundary is not None:
             if self.boundary.verify() != original["resources"]["boundary_sha256"]:
                 raise StageGateError("original model child kernel resource owner changed")
@@ -289,13 +299,18 @@ class ModelChildTransport:
 
 def _receipt(document):
     return {
-        "schema": SCHEMA,
+        "schema": document["schema"],
         "transport_sha256": _digest(document),
         "snapshot_sha256": document["owner"]["snapshot_sha256"],
         "profile_sha256": document["owner"]["profile_sha256"],
         "candidate_sha256": document["candidate_sha256"],
         "environment_sha256": document["environment"]["sha256"],
         "scope": "restored original compiler execution selections; no numerical or timing authority",
+        **(
+            {"compiler_library_sha256": _digest(document["compiler_library"])}
+            if document["schema"] == LIBRARY_SCHEMA
+            else {}
+        ),
     }
 
 
@@ -307,6 +322,7 @@ class _RestoredChild:
         self.admission, self.emission = API._ACTIVE.get(), emission._ACTIVE.get()
         self.modules = self.admission.modules
         self.worker, self.thread = _process(os.getpid()), threading.current_thread()
+        self.compiler_library_selection = active_compiler_library()
 
     def verify(self):
         """Check live ownership and small selections; parent reopens snapshot bytes.
@@ -356,10 +372,14 @@ class _RestoredChild:
             or _source(document["candidate"]) != document["candidate_sha256"]
             or _pin(document["target"]["descriptor"]["path"]) != document["target"]["descriptor"]
             or _digest(self.executor.target) != document["target"]["parsed_sha256"]
-            or _closure() != document["host_sources"]
+            or _closure(library=document["schema"] == LIBRARY_SCHEMA) != document["host_sources"]
             or invocation_record.environment_identity(os.environ) != document["environment"]
         ):
             raise StageGateError("original case checkpoint changed its sealed source/owner selection")
+        if active_compiler_library() is not self.compiler_library_selection or (
+            None if self.compiler_library_selection is None else self.compiler_library_selection.record()
+        ) != document.get("compiler_library"):
+            raise StageGateError("original case checkpoint changed its additional compiler library owner")
         if (
             self.boundary is not None
             and self.boundary.verify(owner_pids=(document["parent"]["pid"],))
@@ -389,10 +409,11 @@ def prepare_model_child(*, spec_path, environment, package_dir):
     with :func:`merlin.common.cpu_pool.child_environment` so the launcher adds
     nothing after it is sealed.
     """
-    if active_compiler_library() is not None:
-        raise StageGateError("additional compiler library cannot enter serialized model child; use the inline route")
+    library = active_compiler_library()
     executor = _original_executor()
     if executor is None:
+        if library is not None:
+            raise StageGateError("additional compiler library model child requires its original execution owner")
         yield None
         return
     candidate = _plain(package_dir)
@@ -409,7 +430,8 @@ def prepare_model_child(*, spec_path, environment, package_dir):
         # Its launcher would add the class after sealing; the child would then refuse its environment.
         raise StageGateError("model child environment lacks the caller's CPU lease class")
     document = {
-        "schema": SCHEMA,
+        "schema": LIBRARY_SCHEMA if library is not None else SCHEMA,
+        **({"compiler_library": library.record()} if library is not None else {}),
         "parent": _process(os.getpid()),
         "spec": _pin(spec_path),
         "environment": invocation_record.environment_identity(environment),
@@ -423,7 +445,7 @@ def prepare_model_child(*, spec_path, environment, package_dir):
             "parsed_sha256": _digest(te),
         },
         "inputs": _inputs_record(inputs),
-        "host_sources": _closure(),
+        "host_sources": _closure(library=library is not None),
         "python": _pin(Path(sys.executable).resolve()),
         "work_root": str(_plain(spec_path).parent / "compiler"),
         "resources": None,
@@ -468,8 +490,6 @@ def prepare_model_children(*, spec_paths, environment, package_dir):
     The caller must close its exact snapshot operation before launching children;
     every child's restoration and each transport's final verifier stay unchanged.
     """
-    if active_compiler_library() is not None:
-        raise StageGateError("additional compiler library cannot enter serialized model children; use the inline route")
     from merlin.common import bundle_snapshot as BW
 
     paths = tuple(_plain(path) for path in spec_paths)
@@ -533,6 +553,7 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
         or fd < 3
         or P.active_package_executor() is not None
         or API.active_compiler_imports() is not None
+        or active_compiler_library() is not None
     ):
         raise StageGateError("model child requires a fresh interpreter and original inherited descriptor")
     if fcntl.fcntl(fd, _GET_SEALS) & _SEALS != _SEALS:
@@ -544,7 +565,9 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
         raw = stream.read(MAX_BYTES + 1)
     document = _decode_selection(raw)
     if (
-        document.get("schema") != SCHEMA
+        document.get("schema") not in (SCHEMA, LIBRARY_SCHEMA)
+        or (document.get("schema") == SCHEMA and "compiler_library" in document)
+        or (document.get("schema") == LIBRARY_SCHEMA and "compiler_library" not in document)
         or document["parent"] != _process(os.getppid())
         or document["spec"] != _pin(spec_path)
         or type(spec_bytes) is not bytes
@@ -556,7 +579,10 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
     for pin in document["host_sources"]:
         if _pin(pin["path"]) != pin:
             raise StageGateError("model child original invoked host source changed")
-    if _closure() != document["host_sources"] or _source(document["candidate"]) != document["candidate_sha256"]:
+    if (
+        _closure(library=document["schema"] == LIBRARY_SCHEMA) != document["host_sources"]
+        or _source(document["candidate"]) != document["candidate_sha256"]
+    ):
         raise StageGateError("model child resolved another host or compiler source revision")
     owner = document["owner"]
     workspace, archive, repo = (
@@ -565,6 +591,12 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
     )
     bundle = yaml.safe_load(archive.read_bytes())
     with contextlib.ExitStack() as execution:
+        library = None
+        if document["schema"] == LIBRARY_SCHEMA:
+            from merlin_experiments.phase2.compiler_library_state import restore_selection
+
+            library = restore_selection(document["compiler_library"])
+            execution.enter_context(scoped_compiler_library(library))
         # Batch only exact-owner setup. Close its full final payload read before
         # yielding the grader capability; actual calls and final checks stay fresh.
         with verified_snapshot_scope(workspace, bundle, repo=repo):
@@ -623,10 +655,12 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
         raise StageGateError("model child original execution owner changed during grading")
     if (
         _pin(target["descriptor"]["path"]) != target["descriptor"]
-        or _closure() != document["host_sources"]
+        or _closure(library=document["schema"] == LIBRARY_SCHEMA) != document["host_sources"]
         or invocation_record.environment_identity(os.environ) != document["environment"]
     ):
         raise StageGateError("model child original target/host sources/environment changed during grading")
+    if library is not None and library.record() != document["compiler_library"]:
+        raise StageGateError("model child additional compiler library changed during grading")
 
 
 def run_model_grade(argv):

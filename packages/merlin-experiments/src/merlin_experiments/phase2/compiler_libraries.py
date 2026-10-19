@@ -30,11 +30,6 @@ def stage_selection(function):
             raise StageGateError("author stage requires an explicit reviewed compiler library owner")
         if selection is None and active_compiler_library() is not None:
             raise StageGateError("author stage cannot inherit an unbound additional compiler library")
-        if selection is not None and kwargs.get("diagnostic_library_stage") is not True:
-            raise StageGateError(
-                "additional-library authoring requires explicit diagnostic_library_stage=True; "
-                "legacy final measurement handoff is unsupported"
-            )
         if selection is None and kwargs.get("diagnostic_library_stage"):
             raise StageGateError("diagnostic library stage requires its explicit reviewed release")
         with scoped_compiler_library(selection):

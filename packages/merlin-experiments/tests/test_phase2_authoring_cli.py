@@ -59,7 +59,10 @@ def test_authoring_requires_explicit_inputs(tmp_path, capsys, option):
     assert "--" + option in capsys.readouterr().err
 
 
-def test_installed_cli_forwards_selected_locations_and_suite(tmp_path, monkeypatch, captured_sandbox_inputs):
+@pytest.mark.parametrize("additional", [False, True])
+def test_installed_cli_forwards_selected_locations_and_suite(
+    tmp_path, monkeypatch, captured_sandbox_inputs, additional
+):
     observed = {}
     monkeypatch.setattr(CLI, "load_target_experiment", lambda path, **kw: SimpleNamespace(path=path, **kw))
     record = tmp_path / "record.json"
@@ -70,13 +73,32 @@ def test_installed_cli_forwards_selected_locations_and_suite(tmp_path, monkeypat
         return record
 
     monkeypatch.setattr(CLI.authoring, "run_stage", run_stage)
-    assert CLI.main(arguments(tmp_path)) == 0
+    args = arguments(tmp_path)
+    if additional:
+        from test_compiler_libraries import selected
+
+        selection, _ = selected(tmp_path)
+        contract = tmp_path / "reviewed.json"
+        contract.write_text(json.dumps(selection.contract.record()))
+        args += [
+            "--compiler-library-root",
+            str(selection.root),
+            "--compiler-library-contract",
+            str(contract),
+            "--compiler-library-contract-sha256",
+            selection.contract.sha256,
+        ]
+    assert CLI.main(args) == 0
     for name in ("functional-runs-root", "stage-root", "source-root", "contract-root"):
         assert observed[name.replace("-", "_")] == tmp_path / name
     assert observed["suite"] == "fixture-study"
     assert observed["sandbox_inputs"] is captured_sandbox_inputs
     assert observed["target_experiment"].path == Path("target.yaml")
     assert observed["target_experiment"].source_root == tmp_path / "source-root"
+    if additional:
+        assert observed["compiler_library_selection"].record() == selection.record()
+    else:
+        assert "compiler_library_selection" not in observed
 
 
 def test_installed_authoring_loads_real_descriptor_from_explicit_external_root(tmp_path, monkeypatch):

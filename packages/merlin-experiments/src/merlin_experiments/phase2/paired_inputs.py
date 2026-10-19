@@ -182,6 +182,7 @@ def load_paired_inputs(
     gsim_certificate_sha256: str,
     waive_functional_gate: tuple[str, ...] = (),
     functional_runs_root: Path,
+    compiler_library_selection=None,
 ) -> PM.PairedInputs:
     """Load a sealed candidate plus an explicit tuning or host-only held-out corpus."""
     functional = PC.inspect_functional_run(
@@ -192,7 +193,14 @@ def load_paired_inputs(
     )
     try:
         handoff = VERIFY.verify_candidate_handoff(
-            record_path, verify_authoring_tools=False, target_experiment=target_experiment
+            record_path,
+            verify_authoring_tools=False,
+            target_experiment=target_experiment,
+            **(
+                {"compiler_library_selection": compiler_library_selection}
+                if compiler_library_selection is not None
+                else {}
+            ),
         )
         if phase == "tuning":
             expected_manifest = Path(corpus_root) / "performance_corpus_manifest.json"
@@ -235,6 +243,9 @@ def load_paired_inputs(
 
 
 def identity_guard(inputs: PM.PairedInputs) -> dict[str, Any]:
+    from .compiler_library_state import handoff_selection
+
+    library = handoff_selection(inputs.handoff)
     _verify_measurement_corpus(inputs.corpus, inputs.phase)
     GATE.load_certificate(inputs.gsim_certificate.path, expected_sha256=inputs.gsim_certificate.sha256)
     return {
@@ -244,4 +255,9 @@ def identity_guard(inputs: PM.PairedInputs) -> dict[str, Any]:
         "corpus_capsules_sha256": inputs.corpus.capsules_sha256,
         "candidate_record_sha256": inputs.handoff.record_sha256,
         "gsim_certificate_sha256": inputs.gsim_certificate.sha256,
+        **(
+            {"compiler_library_binding_sha256": inputs.handoff.compiler_library_binding["sha256"]}
+            if library is not None
+            else {}
+        ),
     }

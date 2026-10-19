@@ -321,6 +321,7 @@ def verify_candidate_record(
     require_consumable: bool = True,
     verify_authoring_tools: bool = False,
     target_experiment: TargetExperiment | None = None,
+    compiler_library_selection=None,
 ) -> dict:
     """Re-hash immutable run artifacts; optionally require the live authoring tools to remain pinned."""
     raw_path = Path(path)
@@ -330,6 +331,12 @@ def verify_candidate_record(
     document = RECORD.validate_candidate_record(
         json.loads(path.read_text(encoding="utf-8")), require_consumable=require_consumable
     )
+    if document["schema_version"] == RECORD.LIBRARY_SCHEMA_VERSION:
+        from .compiler_library_state import verify_binding
+
+        verify_binding(document["additional_compiler_library"], compiler_library_selection)
+    elif compiler_library_selection is not None:
+        raise StageGateError("legacy candidate record cannot acquire an additional compiler library")
     if verify_authoring_tools:
         for binary_path, expected, label in (
             (document["target"]["descriptor"], document["target"]["descriptor_sha256"], "target descriptor"),
@@ -541,11 +548,17 @@ def verify_candidate_record(
     except GATE.GsimGateError as exc:
         raise StageGateError(f"development GSIM certificate bytes changed: {exc}") from exc
     _verify_audit_requalification(path, document, target_experiment)
+    if document["schema_version"] == RECORD.LIBRARY_SCHEMA_VERSION:
+        verify_binding(document["additional_compiler_library"], compiler_library_selection)
     return document
 
 
 def verify_candidate_handoff(
-    path: Path, *, verify_authoring_tools: bool = False, target_experiment: TargetExperiment | None = None
+    path: Path,
+    *,
+    verify_authoring_tools: bool = False,
+    target_experiment: TargetExperiment | None = None,
+    compiler_library_selection=None,
 ) -> RECORD.VerifiedCandidateHandoff:
     """Return the only normalized stage-to-measurement API after full byte verification."""
     document = verify_candidate_record(
@@ -553,8 +566,17 @@ def verify_candidate_handoff(
         require_consumable=True,
         verify_authoring_tools=verify_authoring_tools,
         target_experiment=target_experiment,
+        **(
+            {"compiler_library_selection": compiler_library_selection} if compiler_library_selection is not None else {}
+        ),
     )
     base, candidate = document["base_functional"], document["candidate"]
+    library_binding, library_snapshot = None, None
+    if document["schema_version"] == RECORD.LIBRARY_SCHEMA_VERSION:
+        from .compiler_library_state import verify_binding
+
+        library_binding = copy.deepcopy(document["additional_compiler_library"])
+        library_snapshot = verify_binding(library_binding, compiler_library_selection)
     corpus, prompt = document["performance_corpus"], document["prompt"]
     broker, agent = document["broker"], document["agent"]
     bundle = base["bundle_input_snapshot"]
@@ -642,4 +664,8 @@ def verify_candidate_handoff(
         telemetry_preflight_sha256=str(document["telemetry"]["preflight_sha256"]),
         telemetry_source_sha256=source_sha256,
         agent_contract=agent_contract,
+        schema_version=2 if library_binding is not None else 1,
+        compiler_library_binding=library_binding,
+        compiler_library_selection=library_snapshot,
+        compiler_library_host_selection=compiler_library_selection,
     )

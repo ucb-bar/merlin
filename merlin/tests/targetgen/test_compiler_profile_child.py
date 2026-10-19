@@ -79,12 +79,19 @@ def original(tmp_path, monkeypatch):
         json.dumps({"package_dir": str(candidate), "target": target.target, "capsule": {"name": "synthetic"}})
     )
     frozen = next(
-        path for row in bundle["allowed"]
+        path
+        for row in bundle["allowed"]
         if (path := BW.snapshot_path(BW.bundle_snapshot_root(workspace), Path(row["path"]), repo)).is_file()
         and path.stat().st_size > 1
     )
     return SimpleNamespace(
-        owner=owner, candidate=candidate, target=target, inputs=inputs, private=private, spec=spec, frozen=frozen,
+        owner=owner,
+        candidate=candidate,
+        target=target,
+        inputs=inputs,
+        private=private,
+        spec=spec,
+        frozen=frozen,
     )
 
 
@@ -107,6 +114,92 @@ def _run(transport, original, *, environment=None, script=_CONTROL):
         timeout=20,
         env=dict(os.environ) if environment is None else environment,
     )
+
+
+def _additional_library(original):
+    from merlin.targetgen.compiler_library import CompilerLibrarySelection, freeze_compiler_library
+
+    root = original.private / "additional"
+    (root / "merlin").mkdir(parents=True)
+    (root / "merlin/__init__.py").write_text("")
+    (root / "merlin/portable.py").write_text("def lower(value):\n return value + 1\n")
+    (root / "private-answer.txt").write_text("private leaf is not granted")
+    contract = freeze_compiler_library(
+        root,
+        review_id="child-scope-test",
+        public_modules=("merlin.portable",),
+        sources=(("merlin/__init__.py", "merlin"), ("merlin/portable.py", "merlin.portable")),
+    )
+    return CompilerLibrarySelection(contract, root)
+
+
+def test_fresh_child_reconstructs_same_reviewed_library_without_changing_original_profile(original):
+    from merlin.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
+
+    selection = _additional_library(original)
+    (original.candidate / "tool.py").write_text("from merlin.portable import lower\n")
+    script = _CONTROL.replace(
+        "    job=json.loads(raw)",
+        """    job=json.loads(raw)
+    from merlin.targetgen.compiler_library import active_compiler_library
+    library=active_compiler_library()
+    assert library is not None and library.contract.review_id == 'child-scope-test'
+    assert not API.active_compiler_imports().permits('merlin.portable')
+    assert 'private-answer.txt' not in {member.path for member in library.contract.members}
+    assert receipt['schema'] == CHILD.LIBRARY_SCHEMA
+    assert receipt['compiler_library_sha256'] == CHILD._digest(library.record())""",
+    )
+    with scoped_compiler_library(selection), _scope(original):
+        profile_before = original.owner.profile.copy()
+        with CHILD.prepare_model_child(
+            spec_path=original.spec, environment=dict(os.environ), package_dir=original.candidate
+        ) as transport:
+            assert transport.document["schema"] == CHILD.LIBRARY_SCHEMA
+            assert transport.document["compiler_library"] == selection.record()
+            result = _run(transport, original, script=script)
+            assert result.returncode == 0, result.stderr
+            transport.verify_result(json.loads(result.stdout))
+            assert active_compiler_library() is selection
+        assert original.owner.profile == profile_before
+    assert active_compiler_library() is None
+
+
+@pytest.mark.parametrize("change", ["before", "during", "missing", "legacy_upgrade"])
+def test_sealed_child_rejects_stale_missing_or_legacy_library_injection(original, change):
+    from merlin.targetgen.compiler_library import scoped_compiler_library
+
+    selection = _additional_library(original)
+    with scoped_compiler_library(selection), _scope(original):
+        with CHILD.prepare_model_child(
+            spec_path=original.spec, environment=dict(os.environ), package_dir=original.candidate
+        ) as transport:
+            script = _CONTROL
+            if change == "before":
+                (selection.root / "merlin/portable.py").write_text("changed = True\n")
+            elif change == "during":
+                script = script.replace(
+                    "    job=json.loads(raw)",
+                    "    job=json.loads(raw)\n"
+                    "    from merlin.targetgen.compiler_library import active_compiler_library\n"
+                    "    (active_compiler_library().root/'merlin/portable.py').write_text('changed = True\\n')",
+                )
+            else:
+                document = dict(transport.document)
+                if change == "missing":
+                    document.pop("compiler_library")
+                else:
+                    document["schema"] = CHILD.SCHEMA
+                with CHILD._sealed_transport(
+                    document, executor=transport.executor, boundary=transport.boundary
+                ) as forged:
+                    result = _run(forged, original)
+                assert result.returncode != 0 and "original parent/spec" in result.stderr
+                return
+            result = _run(transport, original, script=script)
+            assert result.returncode != 0 and "library" in result.stderr
+            # Restore selected bytes so the parent scope can close normally;
+            # the failed child never issues a successful result receipt.
+            (selection.root / "merlin/portable.py").write_text("def lower(value):\n return value + 1\n")
 
 
 def test_actual_fresh_interpreter_restores_exact_original_profile_source_and_sealed_scope(original):
@@ -138,7 +231,8 @@ def observe(stream, *args, **kwargs):
 BW.hashlib.file_digest = observe
 """.replace("PAYLOAD", repr(str(original.frozen)))
     script = prefix + _CONTROL.replace(
-        "    assert P.active_package_executor() is not None", """    assert len(reads) == 2
+        "    assert P.active_package_executor() is not None",
+        """    assert len(reads) == 2
     assert BW._ACTIVE_VERIFICATION.get() is None
     CHILD._owner_record(P.active_package_executor().owner)
     assert len(reads) == 3
@@ -146,7 +240,9 @@ BW.hashlib.file_digest = observe
     )
     with _scope(original):
         with CHILD.prepare_model_child(
-            spec_path=original.spec, environment=dict(os.environ), package_dir=original.candidate,
+            spec_path=original.spec,
+            environment=dict(os.environ),
+            package_dir=original.candidate,
         ) as transport:
             result = _run(transport, original, script=script)
             assert result.returncode == 0, result.stderr
@@ -163,16 +259,20 @@ def measured(stream,*args,**kwargs):
     return digest(stream,*args,**kwargs)
 BW.hashlib.file_digest=measured
 """.replace("PAYLOAD", repr(str(original.frozen)))
-    script = prefix + _CONTROL.replace("    assert P.active_package_executor() is not None", """    assert len(reads)==2
+    script = prefix + _CONTROL.replace(
+        "    assert P.active_package_executor() is not None",
+        """    assert len(reads)==2
     with CHILD.restored_case_checkpoint() as closed:
         assert closed=={}
     assert closed['original_compiler_child']==receipt
     assert closed['worker']['pid']==os.getpid()
     assert len(reads)==2, 'case checkpoint repeated a whole snapshot scan'
-    assert P.active_package_executor() is not None""")
+    assert P.active_package_executor() is not None""",
+    )
     with _scope(original):
-        with CHILD.prepare_model_child(spec_path=original.spec, environment=dict(os.environ),
-                package_dir=original.candidate) as transport:
+        with CHILD.prepare_model_child(
+            spec_path=original.spec, environment=dict(os.environ), package_dir=original.candidate
+        ) as transport:
             result = _run(transport, original, script=script)
             assert result.returncode == 0, result.stderr
             transport.verify_result(json.loads(result.stdout))
@@ -202,11 +302,13 @@ def altered_lifetime(*args, **kwargs):
 R._original_execution_lifetime = altered_lifetime
 """
         script = prefix + _CONTROL.replace(
-            "    assert P.active_package_executor() is not None", "    print('GRADER ENTERED', flush=True)",
+            "    assert P.active_package_executor() is not None",
+            "    print('GRADER ENTERED', flush=True)",
         )
     else:
         script = prefix + _CONTROL.replace(
-            "    assert P.active_package_executor() is not None", """    print('GRADER ENTERED', flush=True)
+            "    assert P.active_package_executor() is not None",
+            """    print('GRADER ENTERED', flush=True)
     mutate()
     CHILD._owner_record(P.active_package_executor().owner)
     print('MUTATED OWNER ACCEPTED', flush=True)""",
@@ -214,7 +316,9 @@ R._original_execution_lifetime = altered_lifetime
     with pytest.raises((RuntimeError, ValueError), match="content differs"):
         with _scope(original):
             with CHILD.prepare_model_child(
-                spec_path=original.spec, environment=dict(os.environ), package_dir=original.candidate,
+                spec_path=original.spec,
+                environment=dict(os.environ),
+                package_dir=original.candidate,
             ) as transport:
                 result = _run(transport, original, script=script)
                 assert result.returncode != 0 and "content differs" in result.stderr
@@ -237,12 +341,15 @@ def changed_archive(service, **kwargs):
 R._original_execution_lifetime = changed_archive
 """
     script = prefix + _CONTROL.replace(
-        "    assert P.active_package_executor() is not None", "    print('GRADER ENTERED', flush=True)",
+        "    assert P.active_package_executor() is not None",
+        "    print('GRADER ENTERED', flush=True)",
     )
     with pytest.raises(ValueError, match="changed"):
         with _scope(original):
             with CHILD.prepare_model_child(
-                spec_path=original.spec, environment=dict(os.environ), package_dir=original.candidate,
+                spec_path=original.spec,
+                environment=dict(os.environ),
+                package_dir=original.candidate,
             ) as transport:
                 result = _run(transport, original, script=script)
                 assert result.returncode != 0 and "authority changed" in result.stderr
@@ -250,25 +357,34 @@ R._original_execution_lifetime = changed_archive
 
 
 def test_large_original_runtime_selection_restores_through_sealed_bounded_fd(original):
-    surfaces = tuple(AnswerSurface("private runtime", original.private / f"member-{index:05d}", "file", "hidden")
-                     for index in range(3000))
+    surfaces = tuple(
+        AnswerSurface("private runtime", original.private / f"member-{index:05d}", "file", "hidden")
+        for index in range(3000)
+    )
     original.inputs = replace(original.inputs, surfaces=surfaces)
     with _scope(original):
-        with CHILD.prepare_model_child(spec_path=original.spec, environment=dict(os.environ),
-                                       package_dir=original.candidate) as transport:
+        with CHILD.prepare_model_child(
+            spec_path=original.spec, environment=dict(os.environ), package_dir=original.candidate
+        ) as transport:
             assert os.fstat(transport.fd).st_size <= CHILD.MAX_BYTES
             assert len(json.dumps(transport.document).encode()) > CHILD.MAX_BYTES
-            result = _run(transport, original, script=_CONTROL.replace(
-                "assert P.active_package_executor() is not None",
-                "assert len(P.active_package_executor().inputs.surfaces) == 3000"))
+            result = _run(
+                transport,
+                original,
+                script=_CONTROL.replace(
+                    "assert P.active_package_executor() is not None",
+                    "assert len(P.active_package_executor().inputs.surfaces) == 3000",
+                ),
+            )
             assert result.returncode == 0, result.stderr
             transport.verify_result(json.loads(result.stdout))
 
 
 @pytest.mark.parametrize("payload", ["oversized", "truncated", "suffix"])
 def test_compressed_selection_refuses_expansion_and_unclosed_streams(payload):
-    compressed = (zlib.compress(b"x" * (CHILD.MAX_SELECTION_BYTES + 1))
-                  if payload == "oversized" else zlib.compress(b"{}"))
+    compressed = (
+        zlib.compress(b"x" * (CHILD.MAX_SELECTION_BYTES + 1)) if payload == "oversized" else zlib.compress(b"{}")
+    )
     if payload == "truncated":
         compressed = compressed[:-1]
     elif payload == "suffix":
