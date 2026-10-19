@@ -11,10 +11,14 @@ change its historical score or certify its incomplete model checks.
 
 `launch_phase1.py` reads the config directly and refuses authoring until the
 source revision, config pins, complete private input seal and CPU allocation
-verify. It also requires a byte-bound receipt showing that all three complete
-model chains execute and match the selected quantized references with the
-retained compiler. It never repairs or seals inputs as part of launching. A
-missing or mismatched receipt refuses authoring.
+verify. It also requires a byte-bound readiness receipt. The original
+`merlin.phase1.full_model_readiness.v1` receipt still requires all three retained
+models to pass. The separate `merlin.phase1.infrastructure_readiness.v2` receipt
+admits authoring after current infrastructure and reference checks, preserving
+the old compiler's failed or partial results as historical diagnostics. A failed
+retained compiler does not qualify a fresh compiler or certify current references.
+The launcher never repairs or seals inputs. A missing or mismatched receipt
+refuses authoring.
 
 Each new compiler author starts from an empty submission. There is no seed,
 resume, previous compiler, curated kernel provider or handwritten adapter.
@@ -44,9 +48,40 @@ are selected before execution, not adjusted after observing results.
 This explicitly selected comparison does not need a redundant CPU-only Spike
 twin or a fresh NumPy recomputation of the entire reference chain. Neither is
 reported as passing. Comparisons against the original floating model remain
-quality diagnostics. The operator full-model checker uses its additive
-contract 1.16 option; the immutable v25 author-facing contract remains valid
-for its existing commands.
+quality diagnostics. The operator checker records its selected contract version;
+the immutable v25 author-facing contract remains valid for its existing commands.
+
+## Infrastructure admission
+
+The v2 receipt pins current source, tools, private specification, complete input
+seal and numerical-reference policy. It cross-checks each catalog's source graph
+against the selected capture, preselection and execution attestation. An older
+capture with different input dimensions cannot certify the selected workload.
+Native preflight retains its full capture-tree and hardware-correspondence checks.
+
+Positive target evidence comes from a private infrastructure probe, separate from
+the public accelerator capsule corpus. Its ordinary full-model build is relinked
+with two different inputs and executed on the selected Spike configuration. The
+validator reopens original and relink compilation recipes, tools, ELF files,
+input arrays and raw observed process output. It decodes every output through
+Merlin's normal readback and recomputes strict comparisons for mixed int32/float32
+arrays; changed inputs must produce changed outputs. Source-only tests and
+asserted JSON pass flags do not establish target execution. The generic probe
+may use host code and does not qualify any accelerator compiler implementation.
+
+A separate bounded nested-process timeout records captured child identities and
+the actual guardian cleanup result. Admission checks the pinned observations and
+rejects any surviving observed process. Both probe reports name the exact
+collector pinned as `runtime_pins.operator_infrastructure_witness`.
+
+`full_model_verification.build_infrastructure_receipt(launch, retained, diagnostics,
+target_witness, cleanup_witness)` builds and validates the receipt from artifact
+paths. `diagnostics` maps every selected model to its original report and invocation
+pin; stopped diagnostics retain their partial wrapper. Historical source/input
+identities remain unchanged. The caller publishes the returned JSON and pins its
+SHA256 in the canonical config. Final model qualification still requires all three
+complete models on the exact newly authored compiler. A v2 readiness receipt is
+only permission to begin that experiment; it is not Phase 1 completion.
 
 ## Resource and time policy
 

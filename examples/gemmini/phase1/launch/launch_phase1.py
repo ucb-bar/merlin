@@ -143,6 +143,10 @@ def prepare(launch: L.Launch, prep: Path) -> dict:
         "config": record["config"],
         "private_inputs": verified,
         "full_model_readiness": readiness,
+        "readiness_scope": "infrastructure_preflight"
+        if readiness and readiness.get("schema") == "merlin.phase1.infrastructure_readiness.v2"
+        else "retained_full_model_qualification" if readiness else "launch_configuration",
+        "phase1_complete": False,
     }
 
 
@@ -176,7 +180,8 @@ def main() -> int:
         args.prep.mkdir(parents=True, exist_ok=True)
         ready = prepare(launch, args.prep)
         save(args.prep / "launch-readiness.json", ready)
-        print(json.dumps({"status": "ready", "config": str(launch.config.path), "run_id": args.run_id}), flush=True)
+        print(json.dumps({"status": "ready", "readiness_scope": ready["readiness_scope"], "phase1_complete": False,
+                          "config": str(launch.config.path), "run_id": args.run_id}), flush=True)
         return run(launch, args.prep, started) if args.run else 0
     except (ValueError, OSError, B.BundleError, RuntimeError) as error:
         print(json.dumps({"status": "refused", "error": str(error)}), flush=True)
