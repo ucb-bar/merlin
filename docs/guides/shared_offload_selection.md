@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: core
 last_verified: 2026-10-19
-related: [../reference/shared_compiler_passes.md]
+related: [../reference/shared_compiler_passes.md, shared_pass_phase2.md]
 code_refs:
   - src/merlin/llvmlower/offload_plan.py
   - src/merlin/llvmlower/source_dense.py
@@ -139,11 +139,16 @@ offload plans, bounded convolution-panel controls and complete-cost comparisons
 currently require trusted host orchestration; the ordinary Phase 2 services do
 not yet expose these new choices.
 
-A future host service must accept bounded source-bound choices while retaining
-the original resources, numerical/effect qualifications and cost verifier. Its
-implementation and verification closure must be fixed before authoring and
-identical across compared treatments. Importing host providers or measurement
-internals into an inherited compiler sandbox is not an integration mechanism.
+The explicit `SourceDenseChoices` owner and separate `source-choices-v1` broker
+workflow accept finite source-bound choices while retaining the original
+resources, numerical/effect qualifications and cost verifier. See the
+[source-choice service guide](shared_pass_phase2.md#an-original-owned-source-choice-service)
+for original selection, private outputs and candidate request format. This
+host-domain prototype does not extend an inherited profile or qualify a fresh
+generated compiler. Its implementation and verification closure must be fixed
+before authoring and identical across compared treatments. Importing host
+providers or measurement internals into an inherited compiler sandbox is not
+an integration mechanism.
 
 ## Compile and inspect the result
 

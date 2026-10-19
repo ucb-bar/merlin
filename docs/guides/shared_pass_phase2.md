@@ -15,7 +15,9 @@ code_refs:
   - src/merlin/compile/scheduling/pointwise_source.py
   - src/merlin/compile/scheduling/row_softmax.py
   - src/merlin/llvmlower/source_dense.py
+  - src/merlin/llvmlower/source_choices.py
   - src/merlin/targetgen/capsule_common.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/source_choices_workflow.py
   - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py
 ---
 
@@ -143,7 +145,9 @@ V6 exposes the existing shared schedule entries; it does not expose every
 original-caller model-building API. In particular,
 `SourceDenseLowering.convolution_route`, `max_convolution_packing_bytes`,
 `offload_plan` and `with_complete_offload_cost` currently require trusted host
-orchestration. The ordinary Phase 2 broker does not yet accept these choices.
+orchestration. The separate opt-in source-choice workflow below can compile
+predeclared alternatives through the broker. Ordinary authoring/search launchers
+do not yet select it or construct a qualified generated-target adapter.
 See [checked whole-model offload selection](shared_offload_selection.md) for
 their executable scope and fallback rules.
 
@@ -172,6 +176,95 @@ spill handling requires declared register classes and save/reload effects; the
 native toolchain retains host CPU register allocation. Configuration cleanup
 removes only writes proved redundant under declared persistence and reset rules.
 Unknown instruction effects remain barriers.
+
+### Evolve policies and passes
+
+Parameter search selects legal control points. Heuristic search changes the
+compiler policy that selects those points from current shapes, layouts,
+resources and qualified costs. Both use the same frozen legality checks.
+
+A candidate may also implement its own transformation where its original edit
+contract permits it. That transformation must pass the independent checks for
+its actual output; a proposed rule cannot certify itself. Unknown semantics or
+unsupported proof coverage retain their refusal. Automatic discovery of general
+passes is a separate research/evaluation claim, not provided by this service.
+
+Promoting a transformation into the shared library requires a new reviewed
+release and equal access for every compared treatment. Do not rewrite a frozen
+library or verifier during a tuning run. Freeze the learned policy before
+evaluating held-out shapes, configurations and complete models.
+
+## An original-owned source-choice service
+
+`SourceDenseChoices` binds one original source, its explicit entry, one
+`SourceDenseLowering` configuration and a finite roster of permitted choices.
+Each choice derives from that same configuration: it cannot replace resources,
+numerical policy, qualifications, ABI or provider callbacks. Original source,
+control, library or evidence changes require a new selection. A preissued
+offload plan must match the resulting configuration and source; convolution
+normalization cannot silently inherit an old plan.
+
+For example, an original caller can declare two loop orders:
+
+```python
+from merlin.llvmlower.source_choices import SourceDenseChoice, SourceDenseChoices
+
+choices = SourceDenseChoices(
+    public_source,
+    entry="forward",
+    baseline=original_config,
+    choices=(
+        SourceDenseChoice("ordinary"),
+        SourceDenseChoice("n-major", controls=(("outer_order", ("n", "m")),)),
+    ),
+    output_root=private_control / "source-products",
+)
+```
+
+The host selects `source-choices-v1` through `select_workflow`, passes this exact
+live owner as `source_choices`, and supplies `workflow.build_registry()` to the
+existing `Broker`. The private receipt directory and output root must be
+disjoint from the candidate; the output root must lie below the receipt
+directory. Only the fixed `compile-source-choice` action is registered. No
+candidate command or tool probe is inherited by this workflow.
+
+The candidate writes a direct child file such as `choice.json` containing:
+
+```json
+{
+  "schema": "merlin.source_dense_choice_request.v1",
+  "source_sha256": "<SHA-256 from the original advertisement>",
+  "choice_id": "n-major"
+}
+```
+
+The normal broker client submits it with
+`compile-source-choice request=choice.json`. Requests cannot supply source or
+output paths, controls, callbacks, effects, costs or qualification. The broker
+retains the actual request bytes privately and returns only bounded compilation
+status and artifact identities. The original host retains `owner.results` for
+complete product inspection and independent execution checks. Concurrent or
+recursive compilation through one owner refuses rather than sharing mutable
+provider state.
+
+This route calls ordinary `lower_model_file` and preserves its current
+host-domain-only restriction for shared source lowerings. It checks the actual
+named entry, linked products, provider and completed recipe; compilation alone
+supplies no numerical or runtime qualification. Broker admission deadlines are
+checked before and after compilation and result verification. They do not
+preempt an in-process Python callback or establish a new hard resource limit.
+
+Select only original authorized public development sources and freeze the
+service/checker closure before authoring, equally across treatments. Neither
+the constructor nor a saved registry issues that authorization or fresh Phase 1
+lineage. The ordinary authoring gate continues to reject this new workflow;
+connecting it to agent search still requires the original launcher, generated
+revision adapter and qualification contracts.
+
+Reproduce the shared mechanism with
+`merlin/tests/infra/test_source_choice_broker_model.py`: real broker requests,
+ordinary compilation and complete native recurrent execution under two neutral
+resource models. These tests establish no Gemmini execution qualification.
 
 ## Guarantees and limitations
 
