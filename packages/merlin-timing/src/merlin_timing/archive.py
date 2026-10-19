@@ -733,8 +733,12 @@ def attach(plan: dict, reports: dict) -> dict:
         for key, row in by_id.items()
         if key not in reports["reports"] or row["label"]["status"] != "pass"
     }
-    for key, envelope in reports["reports"].items():
-        original = by_id[key]
+    # JSON object order is not evidence. Reconstruct the original frozen plan
+    # order so saving reports with sorted keys preserves the fitted dataset.
+    for key, original in by_id.items():
+        if key not in reports["reports"]:
+            continue
+        envelope = reports["reports"][key]
         if original["scope_binding"] is None:
             raise C.ContractError("native observation requires an original counter-window review")
         report = envelope.get("report") if isinstance(envelope, dict) else None

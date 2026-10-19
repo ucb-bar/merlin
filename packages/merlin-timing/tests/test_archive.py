@@ -256,6 +256,16 @@ def test_archive_to_original_report_dataset_preserves_repeats_and_scope(tmp_path
     assert not V.validate(data, prediction_kind="event_timing")["qualified"]
 
 
+def test_observation_json_roundtrip_preserves_original_plan_record_order(tmp_path):
+    plan, _, _, _ = prepared(tmp_path)
+    reports = reports_for(plan)
+    original = A.attach(plan, reports)
+    saved = json.loads(json.dumps(reports, sort_keys=True))
+    saved["reports"] = dict(reversed(tuple(saved["reports"].items())))
+    assert A.attach(plan, saved) == original
+    assert C.digest(A.attach(json.loads(json.dumps(plan, sort_keys=True)), saved)) == C.digest(original)
+
+
 @pytest.mark.parametrize("damage", ["hash", "missing", "summary", "selection", "duplicate", "traversal", "link"])
 def test_archive_corruption_refuses(tmp_path, damage):
     index, payload, _ = fixture(tmp_path)

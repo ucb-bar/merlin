@@ -66,12 +66,14 @@ def compare(screen: dict, cases: dict, *, qualification: dict | None = None) -> 
                 "reason": reason or (None if authorized else "no qualified held-out screen receipt"),
             }
         )
-    if len(rows) * (len(rows) - 1) // 2 > C.MAX_PAIR_COMPARISONS:
+    groups = {}
+    for row in rows:
+        groups.setdefault(row["workload_sha256"], []).append(row)
+    if sum(len(group) * (len(group) - 1) // 2 for group in groups.values()) > C.MAX_PAIR_COMPARISONS:
         raise C.ContractError("prediction pair comparisons exceed the explicit 20000-pair resource limit")
     rankings = []
-    for left, right in itertools.combinations(rows, 2):
-        if left["workload_sha256"] != right["workload_sha256"]:
-            continue
+    pairs = (pair for group in groups.values() for pair in itertools.combinations(group, 2))
+    for left, right in pairs:
         a, b = left["interval"], right["interval"]
         winner = left["case_id"] if a and b and a[1] < b[0] else right["case_id"] if a and b and b[1] < a[0] else None
         rankings.append(
