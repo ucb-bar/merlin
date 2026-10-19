@@ -294,7 +294,7 @@ def actual_panel_buffers(trace_root, work, provider, geometry, *, panel):
                 assert owner.name in ("memref.alloc", "memref.alloca"), owner.name
                 return owner
 
-            discovered = {}
+            discovered, checkpoint_violations = {}, []
             for call in module.walk():
                 if call.name != "func.call" or call.properties["callee"].string_value() not in symbols:
                     continue
@@ -306,11 +306,15 @@ def actual_panel_buffers(trace_root, work, provider, geometry, *, panel):
                     current = current.parent_op()
                 loop = next(op for op in ancestors if op.name == "scf.for")
                 if panel:
-                    # A region-owned allocation under this loop could malloc,
-                    # free and recycle the same address. Reject it nonetheless.
+                    # Preserve the observed upstream counterexample. This
+                    # checkpoint cannot qualify final reuse: later stock
+                    # lowering may hoist the actual malloc out of every loop.
                     owner = allocation.parent_op()
                     while owner is not None:
-                        assert owner is not loop, "activation panel allocated inside the window loop"
+                        if owner is loop:
+                            checkpoint_violations.append(
+                                dict(symbol=name, reason="activation panel allocated inside the window loop")
+                            )
                         owner = owner.parent_op()
                 discovered[name] = allocation
             assert set(discovered) == set(symbols)
@@ -344,7 +348,9 @@ def actual_panel_buffers(trace_root, work, provider, geometry, *, panel):
                     static_padded_allocation_sites=len(pad),
                     static_i32_output_allocation_sites=output_sites,
                     output_allocation_scope="actual pre-DCE sites, not executed malloc count or peak RAM",
-                    panel_allocations_outside_window_loops=panel,
+                    panel_allocations_outside_window_loops=panel and not checkpoint_violations,
+                    checkpoint_violations=checkpoint_violations,
+                    qualification_scope="intermediate observation only; independent final-native proof required",
                     budget_scope=(
                         "activation packing roots only; excludes padded image, complete output/history, "
                         "output/writer tiles, C ABI scratch, native-engine state and code"
@@ -353,6 +359,81 @@ def actual_panel_buffers(trace_root, work, provider, geometry, *, panel):
             )
     assert len(rows) == 1
     return rows[0]
+
+
+def actual_final_packing(work, built, provider, geometry, selection, *, panel):
+    """Consume the production proof; baseline observes its original full extent."""
+    from dataclasses import asdict
+    from pathlib import Path
+
+    from merlin.llvmlower.borrowed_buffer_calls import read_borrowed_calls
+    from merlin.verify.host_packing_storage import PackingStorageUse, inspect_packing_storage
+
+    qualification = json.loads((provider.work / "original_allocation_qualification.json").read_text())
+    allocator = qualification["runtime_source"]
+    assert sha256_file(Path(allocator["path"])) == allocator["sha256"]
+    recipe = json.loads((work / "compilation_recipe.json").read_text())
+    assert recipe["status"] == "completed"
+    allocator_builds = [row for row in recipe["commands"] if any(p["path"] == allocator["path"] for p in row["inputs"])]
+    assert len(allocator_builds) == 1
+    allocation_object = allocator_builds[0]["output"]
+    assert any(
+        p["path"] == allocator["path"] and p["sha256"] == allocator["sha256"] for p in allocator_builds[0]["inputs"]
+    )
+    assert sha256_file(Path(allocation_object["path"])) == allocation_object["sha256"]
+    assert any(
+        p["path"] == allocation_object["path"] and p["sha256"] == allocation_object["sha256"]
+        for p in recipe["commands"][-1]["inputs"]
+    )
+    roster_path = work / "lower/borrowed-buffer-calls.json"
+    original_calls = read_borrowed_calls(json.loads(roster_path.read_text()))
+    uses = tuple(
+        PackingStorageUse(binding.writer.wrapper_symbol or binding.writer.symbol, 1) for binding in provider.bindings
+    )
+    if panel:
+        links = list(work.glob("host_provider/packing_storage_*/source_packing.json"))
+        assert len(links) == 1, "bounded route requires the original production native qualification"
+        link = json.loads(links[0].read_text())
+        assert link["schema"] == "merlin.source_packing_storage.v1"
+        report = link["native"]
+        assert link["source_payload_bytes"] == report["logical_payload_bytes"]
+        assert report["max_payload_bytes"] == geometry["budget"]
+        # The completed host transaction must retain the original report pins.
+        pins = built["host_provider"]["compilation_pins"]
+        assert pins[str(links[0].resolve())] == sha256_file(links[0])
+        assert all(pins[path] == digest for path, digest in report["pins"].items())
+    else:
+        n, ci, _, _ = geometry["shape"]
+        kh, kw = geometry["kernel"]
+        oh, ow = geometry["output"]
+        full = n * ci * kh * kw * oh * ow * geometry["width"]
+        # This is an observer bound from the actual original full source extent,
+        # not a change to the fixed target facts or selected optimization budget.
+        report = inspect_packing_storage(
+            built["host_artifacts"],
+            borrowed_calls=original_calls,
+            uses=uses,
+            allocation_effects=selection.packing_allocation_effects,
+            max_payload_bytes=full,
+            entry="forward",
+            diagnostics=work / "full_packing_observation",
+        )
+        assert report["logical_payload_bytes"] == full
+    assert report["schema"] == "merlin.final_packing_storage.v1"
+    assert report["allocation_effects"] == qualification["effects"]
+    assert json.loads(json.dumps(report["original_borrowed_calls"])) == json.loads(
+        json.dumps([asdict(c) for c in original_calls])
+    )
+    assert {(row["symbol"], row["argument"]) for row in report["uses"]} == {
+        (use.wrapper_symbol, use.argument) for use in uses
+    }
+    assert all(row["allocation_outside_all_cfg_cycles"] for row in report["buffers"])
+    assert all(len(row["release_operations"]) == 1 for row in report["buffers"])
+    assert report["allocator_requested_bytes"] == (report["logical_payload_bytes"] + report["alignment_overhead_bytes"])
+    assert all(sha256_file(Path(path)) == digest for path, digest in report["pins"].items())
+    record = report["report"]
+    assert sha256_file(Path(record["path"])) == record["sha256"]
+    return report
 
 
 def realized_gather_work(selected_path):
@@ -442,14 +523,39 @@ def test_ordinary_convolution_uses_bounded_live_panels_and_checks_complete_state
         work.mkdir()
         trace_root = work / "lowering_trace"
         started = time.perf_counter()
-        with (
-            compilation_memory() as memory,
-            compile_trace.session(compile_trace.Request(str(trace_root), dump_after=("mlir:one-shot-bufferize",))),
-        ):
-            built = build_model(bundle, work, selection)
-        seconds = time.perf_counter() - started
+        memory = {}
+        try:
+            with (
+                compilation_memory() as memory,
+                compile_trace.session(compile_trace.Request(str(trace_root), dump_after=("mlir:one-shot-bufferize",))),
+            ):
+                built = build_model(bundle, work, selection)
+        finally:
+            seconds = time.perf_counter() - started
+            # Retain costs even if production qualification or a later observer
+            # fails. Do not lose real measurements behind the success verdict.
+            (work / "build_observations.json").write_text(
+                json.dumps(
+                    dict(
+                        compile_seconds=seconds,
+                        compilation_memory=memory,
+                        scope="sampled build process costs; no accelerator latency claim",
+                    ),
+                    indent=2,
+                )
+            )
         console, wall = FB.run_host(built["elf"], timeout_s=30)
         (work / "console.bin").write_bytes(console)
+        (work / "execution_observations.json").write_text(
+            json.dumps(
+                dict(
+                    simulator_process_wall_seconds=wall,
+                    console_sha256=sha256_file(work / "console.bin"),
+                    scope="functional simulator process wall time; not accelerator latency",
+                ),
+                indent=2,
+            )
+        )
         actual, metadata = FB.read(console, bundle, built["build_hash"])
         assert len(actual) == len(expected) == 5
         for got, want in zip(actual, expected, strict=True):
@@ -459,8 +565,14 @@ def test_ordinary_convolution_uses_bounded_live_panels_and_checks_complete_state
         calls, descriptors = observe_calls(console, provider, native)
         panel = route == "auto"
         buffers = actual_panel_buffers(trace_root, work, provider, geometry, panel=panel)
+        final_storage = actual_final_packing(work, built, provider, geometry, selection, panel=panel)
         if panel:
-            assert buffers["activation_payload_bytes"] <= geometry["budget"]
+            # Regression/rationale: high-level carried buffers do not prove the
+            # intermediate actually reused them. Final native proof above is
+            # mandatory before accepting the narrower final workspace claim.
+            assert buffers["checkpoint_violations"]
+            assert not buffers["panel_allocations_outside_window_loops"]
+            assert final_storage["logical_payload_bytes"] <= geometry["budget"]
             for epoch in range(3):
                 per_epoch = len(descriptors) // 3
                 current = descriptors[epoch * per_epoch : (epoch + 1) * per_epoch]
@@ -516,6 +628,7 @@ def test_ordinary_convolution_uses_bounded_live_panels_and_checks_complete_state
                     for i, r in enumerate(provider.records)
                 ],
                 actual_buffers=buffers,
+                final_native_storage=final_storage,
                 actual_source_gather_work=gather_work,
                 source_receipt=source,
                 source_receipt_sha256=sha256_file(source_path),
@@ -551,6 +664,13 @@ def test_ordinary_convolution_uses_bounded_live_panels_and_checks_complete_state
         == after["actual_buffers"]["full_padded_image_payload_bytes"]
     )
     assert after["actual_buffers"]["activation_payload_bytes"] < before["actual_buffers"]["activation_payload_bytes"]
+    assert (
+        after["final_native_storage"]["logical_payload_bytes"] < before["final_native_storage"]["logical_payload_bytes"]
+    )
+    assert (
+        after["final_native_storage"]["allocator_requested_bytes"]
+        < before["final_native_storage"]["allocator_requested_bytes"]
+    )
     assert before["total_counters"][2] == after["total_counters"][2] == 3 * features * positions * 4
     assert after["total_counters"][5] > before["total_counters"][5] == 3
     # With timing unknown, automatic selection enforces the explicitly chosen
@@ -584,4 +704,33 @@ def test_wrong_actual_panel_reduction_refuses_before_provider_link(tmp_path):
     with pytest.raises(AssertionError, match="Arrays are not equal"):
         build_model(bundle, work, provider.selection())
     assert not (provider.work / "native_qualification.json").exists()
+    assert not list(work.rglob("*.elf"))
+
+
+def test_changed_production_packing_report_refuses_before_model_link(tmp_path):
+    from test_convolution_route_provider import ConvolutionProvider
+    from test_dense_ordinary_model import build_model
+    from test_selected_dense_contracts import inputs as dense_inputs
+
+    from merlin.llvmlower import toolchain
+
+    if not toolchain.available():
+        pytest.skip("native ABI qualification unavailable")
+    geometry = CASES[0]
+    facts = tmp_path / "capabilities"
+    facts.mkdir()
+    k = geometry["shape"][1] * int(np.prod(geometry["kernel"]))
+    positions = geometry["shape"][0] * int(np.prod(geometry["output"]))
+    model = dense_inputs(facts, tile=geometry["tile"], shape=(geometry["outputs"], k, positions))
+    bundle = tmp_path / "capture"
+    _, epochs = capture(bundle, geometry)
+    provider = ConvolutionProvider(
+        tmp_path / "provider", model, geometry, epochs, budget=geometry["budget"], mutation="packing_report"
+    )
+    work = tmp_path / "model"
+    work.mkdir()
+    with pytest.raises(ValueError, match="changed|packing"):
+        build_model(bundle, work, provider.selection())
+    assert provider.report_tampered
+    assert list(work.glob("host_provider/packing_storage_*/source_packing.json"))
     assert not list(work.rglob("*.elf"))

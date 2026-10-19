@@ -865,6 +865,10 @@ An original caller supplies `ConfigurationIRSelection` through
 The selection binds the original fact-resolved ISA, persistent-state effects,
 independent qualification identity, enabled flag and bounded work controls.
 Matching instruction names or an agent-authored annotation grants no semantics.
+Only redundant whole setters with no results and qualified pure, idempotent
+effects can disappear. Each supported block starts with unknown state. Dynamic
+operands, calls, opaque regions and unknown effects prevent reuse of known
+configuration; no state is assumed across invocations or control-flow boundaries.
 The default `max_ir_bytes` is 8 MiB, checked before parsing or cloning;
 `max_operations` and `max_fields` separately bound analysis work.
 
@@ -901,6 +905,24 @@ gain or hardware support. Existing frozen Phase 1/2 authoring import profiles
 remain unchanged. Phase 2 may tune enabled/budget controls only under an explicit
 original grant to the same reviewed library version, inputs and verification
 rules; adding an export or roster entry alone does not grant authoring access.
+
+Run the neutral consumed-IR execution check with:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_target_configuration_native.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/target-configuration-native" \
+  -o tmp_path_retention_policy=all
+```
+
+The test compiles emitted LLVM into native objects and executes a recurrent
+program for three invocations. It compares complete output histories, carried
+state, positions and preserved inputs with an independent scalar reference.
+Two declared encoding widths and byte orders exercise the shared mechanism;
+they are not two physical hardware qualifications. Executed setters fall from
+30 to 15, with work, resets, unknown-effect barriers and logical data access
+unchanged. The retained pair records include compilation time, object/ELF
+identities and counts. Peak memory, physical traffic and execution timing remain
+unmeasured; this establishes no accelerator latency or whole-model speedup.
 
 ## Keep the authored ISA minimal
 

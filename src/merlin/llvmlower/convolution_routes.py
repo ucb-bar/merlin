@@ -159,10 +159,58 @@ def normalize_convolution_source(module, selection, validate):
         "policy": "largest resource-legal panel within explicit summed activation packing payload budget",
         "timing": "UNKNOWN; no profitability claim",
         "pipeline": [],
+        "outcomes": [],
+        "budget_scope": "per-island logical activation packing payload; not final allocation or total host RAM",
+        "outcome_coverage": "recognized source islands only; unsupported operations and their costs remain unknown",
     }
-    if selection.convolution_route == "full" or selection.max_convolution_packing_bytes is None:
+    if selection.max_convolution_packing_bytes is None:
         return module, report
     contracts = selection.selected_contracts
+    if _parse(contracts.facts_bytes, contracts.software_bytes, contracts.target)[4] != contracts.dense:
+        raise ValueError("convolution resources differ from original selected declarations; reselect")
+
+    def outcome(match, ordinal):
+        full = None
+        if match is not None:
+            full = match.k * match.m * contracts.dense.problem(match.f, match.k, match.m).rhs_bytes
+        return {
+            "source_identity": None if match is None else bounded_source_identity(match),
+            "source_operation_ordinal": ordinal,
+            "requested_packing_budget_bytes": selection.max_convolution_packing_bytes,
+            "full_packing_payload_bytes": full,
+            "selected_route": "full",
+            "selected_packing_payload_bytes": full,
+            "budget_status": (
+                "unknown" if full is None else "met" if full <= selection.max_convolution_packing_bytes else "exceeded"
+            ),
+            "reason": "original_full_route",
+            "evidence": "source_plan; final allocation unestablished",
+        }
+
+    # Report retained full routes even when execution qualification is missing.
+    # Recognition still uses the original typed semantics and bounded reader;
+    # neither a target name nor an unsupported opaque operation creates an island.
+    outcome_indices = {}
+    if contracts.dense is None:
+        report["outcomes"].append(outcome(None, None))
+    else:
+        for ordinal, operation in enumerate(module.walk()):
+            match = match_bounded_im2col(
+                operation, selected_contracts=contracts, max_elements=selection.max_source_elements
+            )
+            if match is not None:
+                if len(outcome_indices) >= selection.max_islands:
+                    raise ValueError("convolution discovery exceeds its selected island budget")
+                outcome_indices[ordinal] = len(report["outcomes"])
+                report["outcomes"].append(outcome(match, ordinal))
+
+    def retain(reason, indices=None):
+        for index in range(len(report["outcomes"])) if indices is None else indices:
+            report["outcomes"][index]["reason"] = reason
+
+    if selection.convolution_route == "full":
+        retain("explicit_full_route")
+        return module, report
     if (
         contracts.dense is None
         or selection.borrowed_effects is None
@@ -176,13 +224,13 @@ def normalize_convolution_source(module, selection, validate):
         )
     ):
         report["declined"].append("qualified synchronous noescape dense ownership is unavailable")
+        retain("missing_qualified_dense_ownership")
         return module, report
     if any(store.capacity_bytes is None for store in contracts.dense.stores):
         report["declined"].append("dense physical capacity is unknown")
+        retain("unknown_dense_capacity")
         return module, report
     selection.borrowed_effects.__post_init__()
-    if _parse(contracts.facts_bytes, contracts.software_bytes, contracts.target)[4] != contracts.dense:
-        raise ValueError("convolution resources differ from original selected declarations; reselect")
 
     def context():
         return PipelineContext(
@@ -273,7 +321,7 @@ def normalize_convolution_source(module, selection, validate):
 
     def windows():
         found = []
-        for operation in candidate.walk():
+        for ordinal, operation in enumerate(candidate.walk()):
             if operation.name != "linalg.generic":
                 continue
             match = match_bounded_im2col(
@@ -282,27 +330,34 @@ def normalize_convolution_source(module, selection, validate):
             if match is not None:
                 if len(found) >= selection.max_islands:
                     raise ValueError("convolution discovery exceeds its selected island budget")
-                found.append(match)
+                if ordinal not in outcome_indices:
+                    raise ValueError("convolution source changed after original route admission; replan")
+                found.append((match, outcome_indices[ordinal]))
         return {"windows": tuple(found)}
+
+    planned_outcome_indices = []
 
     def routes():
         plans = []
-        for match in session.analysis("windows"):
+        for match, index in session.analysis("windows"):
             element_bytes = contracts.dense.problem(match.f, match.k, match.m).rhs_bytes
             full = match.k * match.m * element_bytes
             if selection.convolution_route == "auto" and full <= selection.max_convolution_packing_bytes:
+                retain("full_route_within_budget", (index,))
                 continue
             width, reason = _select_width(match, selection)
             if width is None:
                 report["declined"].append(reason)
+                retain(reason, (index,))
                 continue
-            plans.append((match, width, bounded_source_identity(match)))
+            plans.append((match, width, bounded_source_identity(match), index))
+            planned_outcome_indices.append(index)
         return {"routes": tuple(plans)}
 
     def realize():
         initial_count = sum(1 for _ in candidate.walk())
         realized = []
-        for planned, width, _ in session.analysis("routes"):
+        for planned, width, _, outcome_index in session.analysis("routes"):
             # Re-read later windows after any earlier checked SSA substitutions.
             match = match_bounded_im2col(
                 planned.contraction,
@@ -373,14 +428,20 @@ def normalize_convolution_source(module, selection, validate):
                 )
                 if current != expected:
                     raise ValueError("convolution construction changes an operation outside its checked region")
-            realized.append((result, identity, bindings, padding, before_identity, ir_digest(candidate)))
+            realized.append((result, identity, bindings, padding, before_identity, ir_digest(candidate), outcome_index))
             if sum(1 for _ in candidate.walk()) - initial_count > selection.max_convolution_added_operations:
                 raise _GrowthBudgetExceeded("convolution construction exceeds its source operation budget")
         return {"realized": tuple(realized)}
 
     def check():
+        from xdsl.dialects import func
+
         rows = []
-        for result, identity, bindings, padding, before_identity, after_identity in session.analysis("realized"):
+        positions = {operation: ordinal for ordinal, operation in enumerate(candidate.walk())}
+        selected_identity = ir_digest(candidate)
+        for result, identity, bindings, padding, before_identity, after_identity, outcome_index in session.analysis(
+            "realized"
+        ):
             checked = verify_bounded_match(result, expected_source=identity, expected_bindings=bindings)
             width_bytes = contracts.dense.problem(result.source.f, result.source.k, result.source.m).rhs_bytes
             actual_bytes = sum(
@@ -391,9 +452,18 @@ def normalize_convolution_source(module, selection, validate):
             )
             if actual_bytes > selection.max_convolution_packing_bytes:
                 raise ValueError("realized convolution packing payload exceeds the selected budget")
+            entry = result.arms[0].contraction.parent_op()
+            while entry is not None and type(entry) is not func.FuncOp:
+                entry = entry.parent_op()
+            if entry is None or any(arm.contraction not in positions for arm in result.arms):
+                raise ValueError("realized convolution contractions lack their actual source membership")
             rows.append(
                 {
                     "selected_width": result.width,
+                    "source_operation_ordinal": report["outcomes"][outcome_index]["source_operation_ordinal"],
+                    "selected_contraction_ordinals": [positions[arm.contraction] for arm in result.arms],
+                    "entry_function": entry.sym_name.data,
+                    "selected_source_sha256": selected_identity,
                     "source_identity": identity,
                     "before_ir_sha256": before_identity,
                     "after_ir_sha256": after_identity,
@@ -407,6 +477,12 @@ def normalize_convolution_source(module, selection, validate):
                     * contracts.dense.problem(result.source.f, result.source.k, result.source.m).accumulator_bytes,
                 }
             )
+            report["outcomes"][outcome_index].update(
+                selected_route="panel",
+                selected_packing_payload_bytes=actual_bytes,
+                budget_status="met",
+                reason="checked_source_panel_route",
+            )
         return {"checked": rows}
 
     try:
@@ -415,6 +491,7 @@ def normalize_convolution_source(module, selection, validate):
     except _GrowthBudgetExceeded as error:
         validate()
         report["declined"].append(str(error))
+        retain("source_growth_budget", planned_outcome_indices)
         return module, report
     rows = session.analysis("checked")
     report.update(

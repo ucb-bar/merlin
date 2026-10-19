@@ -130,10 +130,18 @@ def test_declined_command_buffer_cannot_compile_an_emitted_stub(synthetic_build,
 
     def invoke(_package, command, source, output=None, **kwargs):
         if command == "emit_analysis_bundle":
-            output.write_text(json.dumps({
-                "abi_version": "0.1", "target": "synthetic", "tensors": {}, "commands": [],
-                "params": {}, "declined": {"reason": "unsupported connected source"},
-            }))
+            output.write_text(
+                json.dumps(
+                    {
+                        "abi_version": "0.1",
+                        "target": "synthetic",
+                        "tensors": {},
+                        "commands": [],
+                        "params": {},
+                        "declined": {"reason": "unsupported connected source"},
+                    }
+                )
+            )
         return SimpleNamespace(returncode=0, stdout="module { llvm.func @kernel() { llvm.return } }", stderr="")
 
     monkeypatch.setattr(package_runtime, "run_entrypoint", invoke)
@@ -258,15 +266,21 @@ def test_static_budget_refuses_before_clang_and_retains_raw_products(synthetic_b
     from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
 
     build, tool, _, calls, _, _ = synthetic_build
+
     def translate(argv, *, timeout):
         result = tool(argv, timeout=timeout)
         if argv[0] == "translate":
-            Path(argv[-1]).write_text('define void @k() {\n'
-                                     ' call void asm "x", ""()\n call void asm "y", ""()\n ret void\n}\n')
+            Path(argv[-1]).write_text(
+                'define void @k() {\n call void asm "x", ""()\n call void asm "y", ""()\n ret void\n}\n'
+            )
         return result
+
     monkeypatch.setattr(DB, "_run_build_tool", translate)
-    result = build(names=("a",), stop_on_first_failure=True,
-                   device_ir_budget=DeviceIRBudget(mode="enforce", max_inline_asm_sites=1))
+    result = build(
+        names=("a",),
+        stop_on_first_failure=True,
+        device_ir_budget=DeviceIRBudget(mode="enforce", max_inline_asm_sites=1),
+    )
     assert not result.ok and "device_ir_static_expansion_budget" in result.skipped[0][1]
     assert [name for name, _output, _thread in calls] == ["translate"]
     report = result.build_metrics["a"]
@@ -282,9 +296,11 @@ def test_shared_artifact_analysis_runs_once_and_real_compilation_timings_are_ret
     build, _, _, _, artifacts, _ = synthetic_build
     artifacts.update(a="shared", b="shared")
     actual, calls = S.analyze_device_ir, []
+
     def measured(path):
         calls.append(path)
         return actual(path)
+
     monkeypatch.setattr(S, "analyze_device_ir", measured)
     result = build(names=("a", "b"))
     assert result.ok and len(calls) == 1
@@ -298,12 +314,35 @@ def test_changed_llvm_after_analysis_refuses_before_process(synthetic_build, mon
 
     build, _, _, calls, _, _ = synthetic_build
     actual = S.inspect_device_ir
+
     def changed(path, budget):
         result = actual(path, budget)
         path.write_bytes(path.read_bytes() + b"changed bytes")
         return result
+
     monkeypatch.setattr(S, "inspect_device_ir", changed)
     result = build(names=("a",), stop_on_first_failure=True)
     assert not result.ok and "changed after" in result.skipped[0][1]
     assert [name for name, _output, _thread in calls] == ["translate"]
     assert result.build_metrics["a"]["decision"]["reason"] == "device_ir_changed_after_analysis"
+
+
+def test_transient_artifact_swap_refuses_before_translation(synthetic_build, monkeypatch):
+    build, _, _, calls, _, _ = synthetic_build
+    observed = DB._observed_build_tool
+
+    def swapped(argv, **kwargs):
+        if kwargs["stage"] != "device_llvm_translation":
+            return observed(argv, **kwargs)
+        source = kwargs["inputs"][0]
+        original = source.read_bytes()
+        source.write_bytes(b"different emitted program")
+        try:
+            return observed(argv, **kwargs)
+        finally:
+            source.write_bytes(original)
+
+    monkeypatch.setattr(DB, "_observed_build_tool", swapped)
+    with pytest.raises(ValueError, match="device LLVM changed"):
+        build(names=("a",))
+    assert not any(command == "translate" for command, _, _ in calls)
