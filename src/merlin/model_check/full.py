@@ -105,6 +105,14 @@ def judged_inputs(
 
 
 def reference_chain(model: Model, bundle: B.Bundle, arrays, counts: dict[str, int], cache: Path) -> CH.ChainRun:
+    """Recompute under the bundle's declared host primitive policy, binding its actual source bytes."""
+    from merlin.model_check.references import reference_math_context
+
+    with reference_math_context(model, bundle, cache):
+        return _reference_chain(model, bundle, arrays, counts, cache)
+
+
+def _reference_chain(model: Model, bundle: B.Bundle, arrays, counts: dict[str, int], cache: Path) -> CH.ChainRun:
     """Every INT8 reference step, with byte-bound disk reuse and one constant cache for the chain."""
     from merlin.model_check import catalog as CAT
     from merlin.model_check import full_reference_cache as RC

@@ -104,7 +104,9 @@ def test_old_unkeyed_steps_are_ignored_and_partial_counts_do_not_alias(tmp_path)
     assert len(list((cache / "v1").iterdir())) == 2
 
 
-@pytest.mark.parametrize("mutation", ["input", "weights", "reference", "evaluator", "manifest", "chain"])
+@pytest.mark.parametrize(
+    "mutation", ["input", "weights", "reference", "evaluator", "manifest", "chain", "configuration"]
+)
 def test_each_reference_input_invalidates_a_previously_valid_context(tmp_path, monkeypatch, mutation):
     model, catalog, bundle, arrays = _setup(tmp_path)
     counts = {"step": 4}
@@ -122,6 +124,10 @@ def test_each_reference_input_invalidates_a_previously_valid_context(tmp_path, m
         monkeypatch.setattr(RC, "evaluator_identity", lambda: {"source": "different"})
     elif mutation == "manifest":
         (bundle.root / "MANIFEST.json").write_text('{"models":{},"revision":2}')
+    elif mutation == "configuration":
+        directory = bundle.root / "configuration"
+        directory.mkdir()
+        (directory / "models.yaml").write_text("a selected host math configuration")
     else:
         binding = {"from": "constant", "value": [[1] * 4] * 2, "dtype": "int8"}
         model = replace(model, programs=(replace(model.programs[0], inputs=(binding,)),))

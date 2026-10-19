@@ -10,7 +10,7 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.18**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.19**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -80,8 +80,9 @@ whole model:**
    minimal replay ELF runs it on Spike on a sample of its groups and the split's boundary inputs
    (`fast`: up to 3 groups × 2 inputs per unique kernel; `--jobs` runs kernels in parallel).
    Every output is compared bit for bit (§4.2), or by §4.3 for a declared approximate kernel.
-3. Model gate: when every kernel is exact, the integrated model computes exactly the INT8 reference, so
-   the model metrics are the bundle's precomputed INT8-reference metrics, reported as such. Declared
+3. Kernel-replay model gate: when every kernel is exact, model metrics describe the bundle's precomputed
+   INT8 reference, reported as such. This does not prove the full program's host math, transport or
+   carried state; full execution remains a separate check. Declared
    approximate kernels are the only case that runs a model replay: the INT8 program on the host
    (`linalg_numpy`), with just those groups answered by the submission's kernel on Spike, then §4.4.
 4. Census from the bundle's grouping plus each kernel's outcome (lowered, or refused by the package).
@@ -125,6 +126,22 @@ Existing FP-baseline quality data is informational, including when absent or unp
 pass or fail the selected comparison. A failed exact-kernel gate prevents expensive full execution.
 Any missing program step, selected-output mismatch, nonfinite output or partial chain prevents an
 unqualified full-model pass. `--decode-steps` retains its explicit partial behavior.
+
+`full.host_math_policy` explicitly selects host scalar arithmetic, with a per-model `full` override
+over the common `full` block. The default `native` preserves existing emitted calls and reference
+behavior. `portable_exp_trig` defines binary32 `exp`, `sin` and `cos` using the same versioned scalar C
+source in Merlin's runtime and its batched reference adapter. It does not compile model IR in the
+reference, alter accelerator quantization, change tolerances or define other transcendental functions.
+The selected compile flags prohibit contraction and fast math; the adapter requires nearest-even
+rounding. Default reference evidence remains compatible.
+
+Reference derivation records the actual policy, scalar source, reference compiler/object/library
+identities and output digest in `reference_numeric_contract.json`. A non-native direct comparison
+requires that receipt in the bundle seal and checks its output, version, selected policy, scalar source
+and compile-flag correspondence before building. A changed policy or implementation requires newly
+derived, separately sealed references; resealing an old output under a new declaration is rejected.
+Build and per-step reference caches bind the selected implementation. Hoisted reference constants
+cannot cross numerical implementations, and configuration/source mutations prevent publication.
 
 Full-mode INT8 references share a constant/weight cache across recurrent steps. Persisted reference
 steps are reused only under a versioned identity of the full chain, counts, input bytes, capture and
@@ -501,3 +518,6 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   mismatch, retaining numerical failure evidence, completed counts and the sealed-reference recheck.
   Later chain steps are not executed or credited; incomplete inputs have no full-input FP metrics.
   Host-twin execution and numerical tolerances remain unchanged.
+- 1.19 (2026-10-19): explicit shared-source host exp/trig policy is forwarded through reference and full
+  compilation. Selected implementation bytes bind caches and per-case numerical receipts; non-native
+  references require sealed policy/output/source correspondence. Native defaults remain unchanged.

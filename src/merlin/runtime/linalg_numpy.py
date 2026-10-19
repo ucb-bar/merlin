@@ -1,4 +1,4 @@
-"""A linalg-on-tensors module evaluated in numpy: the model's own reference, with no compiler in it.
+"""A linalg-on-tensors module evaluated independently, without lowering the model.
 
     values = evaluate(module, arguments)                     # every result of @forward
     values = evaluate(module, arguments, observe=hook)       # hook(op, index, results) per op
@@ -23,6 +23,9 @@ Semantics, stated because an oracle that rounds differently from the model is a 
 * non-contraction floating reductions carry their initial accumulator through the source's
   lexicographic reduction indices, rounding each body operation at its declared type. Only an
   explicit ``reassoc`` flag on each floating combiner permits a NumPy reduction tree.
+* an explicitly selected host-math context may define binary32 exp/sin/cos using versioned scalar
+  source shared with the runtime. It does not compile model IR or import a device implementation;
+  all other interpreter operations remain independently evaluated from the source IR.
 
 Only the vocabulary a captured model uses is implemented, and anything else RAISES naming the
 operation: an evaluator that skipped an op would compute a different model and still return.
@@ -52,14 +55,20 @@ __all__ = [
 NUMERIC_CONTRACT_VERSION = "merlin.linalg_numpy.numeric.v2.strict_float_reductions"
 
 
-def numeric_contract() -> dict[str, str]:
+def numeric_contract() -> dict[str, Any]:
     """Policy identity for newly derived references; source/dependency bytes also need binding."""
-    return {
+    contract = {
         "version": NUMERIC_CONTRACT_VERSION,
         "floating_reductions": "source_lexicographic_init_first_per_operation_rounding",
         "explicit_reassociation": "numpy_f32_f64_tree_only_with_combiner_reassoc",
         "floating_contractions": "blas_bounded_up_to_reassociation",
     }
+    from merlin.runtime.host_math_reference import active_host_math
+
+    selected = active_host_math()
+    if selected is not None:
+        contract["host_math"] = selected.identity()
+    return contract
 
 
 class LinalgNumpyError(RuntimeError):
@@ -366,6 +375,14 @@ def _body_op(op, env: dict[int, Any], *, index_of: Callable[[int], np.ndarray] |
         raise LinalgNumpyError("arith.bitcast is not evaluated")
     if name.startswith("math."):
         x = fl(args[0])
+        if name in {"math.exp", "math.sin", "math.cos"}:
+            from merlin.runtime.host_math_reference import active_host_math
+
+            selected = active_host_math()
+            if selected is not None:
+                if element != "f32":
+                    raise LinalgNumpyError("selected portable host math supports only f32 transcendental operations")
+                return selected.evaluate(name, np.asarray(x, dtype=np.float32))
         with np.errstate(all="ignore"):
             if name == "math.exp":
                 y = np.exp(x)
@@ -986,6 +1003,15 @@ class ConstantCache:
         self._results: dict[tuple[int, tuple[int, ...]], tuple[Any, list[Any]]] = {}
         self._contained: dict[int, tuple[Any, bool]] = {}
         self._derived: dict[tuple[Any, ...], tuple[Any, Any, Any]] = {}
+        self._numeric_contract: dict[str, Any] | None = None
+
+    def bind_numeric_contract(self) -> None:
+        """Refuse reuse of hoisted arithmetic under a different selected numerical implementation."""
+        current = numeric_contract()
+        if self._numeric_contract is None:
+            self._numeric_contract = current
+        elif self._numeric_contract != current:
+            raise LinalgNumpyError("constant cache numerical policy differs from this evaluation")
 
     def __len__(self) -> int:
         return len(self._values)
@@ -1082,6 +1108,8 @@ def evaluate(
     constants once and reuses its results: the arguments the caller marked constant, and what such ops
     compute from them. The results are the same bytes either way.
     """
+    if constants is not None:
+        constants.bind_numeric_contract()
     defined = {op.sym_name.data: op for op in module.walk() if op.name == "func.func" and op.body.blocks}
 
     def call(op, env) -> list[Any]:

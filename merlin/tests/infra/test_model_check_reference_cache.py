@@ -191,6 +191,56 @@ def test_reference_policy_mutation_during_chain_cannot_publish_judged_outputs(tm
     assert not (cases[0]["out"] / "int8.npz").exists()
 
 
+def test_selected_math_case_writes_byte_bound_reference_declaration(tmp_path):
+    import shutil
+
+    if shutil.which("cc") is None:
+        pytest.skip("needs a native C compiler")
+    _model, _catalog, cases, job = _setup(tmp_path, count=1)
+    job.host_math_policy = "portable_exp_trig"
+    row = REF.reference_case(job, cases[0], cache=None, scratch=tmp_path / "work")
+    receipt = json.loads((cases[0]["out"] / "reference_numeric_contract.json").read_text())
+    assert receipt["numeric_contract"] == row["int8_numeric_contract"]
+    assert receipt["numeric_contract"]["host_math"]["policy"] == "portable_exp_trig"
+    assert receipt["outputs_sha256"] == hashlib.sha256((cases[0]["out"] / "int8.npz").read_bytes()).hexdigest()
+    # Exercise the real producer -> bundle seal -> direct consumer boundary.
+    from merlin.model_check import bundle as B
+    from merlin.model_check import full_quantized as FQ
+
+    root = job.blobs.parent.parent
+    configuration = root / "configuration" / "models.yaml"
+    configuration.parent.mkdir()
+    configuration.write_text(json.dumps({"full": {"host_math_policy": "portable_exp_trig"}}))
+    paths = sorted(p for p in root.rglob("*") if p.is_file())
+    sums = root / "SHA256SUMS"
+    sums.write_text("".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(root)}\n" for p in paths))
+    (root / "MANIFEST.json").write_text(json.dumps({
+        "schema": B.MANIFEST_SCHEMA, "captures": str(tmp_path / "captures"), "models": {"m": {}},
+        "seal": {"sums": "SHA256SUMS", "sums_sha256": hashlib.sha256(sums.read_bytes()).hexdigest()},
+    }))
+    frozen, validation = FQ.sealed_reference(B.Bundle(root), job.model, configuration, "visible/v00")
+    assert len(frozen) == 1
+    assert validation["numeric_contract"]["numeric_contract"] == receipt["numeric_contract"]
+
+
+def test_reference_configuration_mutation_cannot_publish_judged_outputs(tmp_path, monkeypatch):
+    _model, _catalog, cases, job = _setup(tmp_path, count=1)
+    configuration = tmp_path / "models.yaml"
+    configuration.write_text("selected configuration")
+    job.host_math_configuration = (configuration, hashlib.sha256(configuration.read_bytes()).hexdigest())
+    original = CH.run_reference
+
+    def changed(*args, **kwargs):
+        result = original(*args, **kwargs)
+        configuration.write_text("different configuration")
+        return result
+
+    monkeypatch.setattr(CH, "run_reference", changed)
+    with pytest.raises(INP.InputError, match="configuration changed"):
+        REF.reference_case(job, cases[0], cache=None, scratch=tmp_path / "work")
+    assert not (cases[0]["out"] / "int8.npz").exists()
+
+
 def test_the_worker_count_is_bounded_by_cases_and_memory() -> None:
     gib = 1 << 30
     assert REF.worker_count(4, 64, 26 * gib, available=123 * gib) == 4

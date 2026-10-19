@@ -116,6 +116,10 @@ def material(model, bundle, arrays, counts, catalogs) -> dict[str, Any]:
         "bundle_sums_sha256": (
             file_digest(bundle.root / "SHA256SUMS") if (bundle.root / "SHA256SUMS").is_file() else None
         ),
+        "models_configuration_sha256": (
+            file_digest(bundle.root / "configuration" / "models.yaml")
+            if (bundle.root / "configuration" / "models.yaml").is_file() else None
+        ),
         "programs": {
             name: {"catalog": catalog.record(), "stage_sha256": tree_digest(catalog.stage),
                    "reference_sha256": tree_digest(catalog.ref_prepared.parent)}
