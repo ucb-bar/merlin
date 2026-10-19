@@ -1,6 +1,7 @@
 """Ordinary native execution of exact split/permuted integer producers."""
 
 from math import prod
+from pathlib import Path
 
 import pytest
 from test_packed_producer_destinations import program
@@ -79,11 +80,13 @@ def test_ordinary_native_packed_producer_removes_actual_scan_and_keeps_complete_
     import ctypes
     import hashlib
     import json
+    import shutil
     import subprocess
     import time
 
     import numpy as np
 
+    from merlin.common.digest import sha256_file
     from merlin.llvmlower.abi import HostModel, PrivateHostImagePolicy
     from merlin.llvmlower.codegen import mlir_runtime_c
     from merlin.llvmlower.lower import lower_model
@@ -107,6 +110,9 @@ TRACE(1) TRACE(2) TRACE(4) TRACE(8) TRACE(16)
 void __sanitizer_cov_trace_pc_guard(uint32_t *p) {}
 void __sanitizer_cov_trace_pc_guard_init(uint32_t *a, uint32_t *b) {}
 """)
+    observed_compiler = Path(shutil.which(str(clang())) or clang()).resolve()
+    observed_inputs = (observed_compiler, mlir_runtime_c().resolve(), observer.resolve())
+    observed_pins = {str(path): sha256_file(path) for path in observed_inputs}
     results = {}
     for arm, selector in (("baseline", "-automatic-host-permutations"), ("optimized", "automatic-host-permutations")):
         started = time.perf_counter()
@@ -118,21 +124,22 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *a, uint32_t *b) {}
         # Normal ordinary -O2 linked image plus separately observed exact LLVM.
         # Instrumented counters are requested scalar accesses, not bus/timing.
         observed = tmp_path / (arm + "-observed.so")
+        observed_argv = [
+            str(clang()),
+            "-O0",
+            "-shared",
+            "-fPIC",
+            "-fsanitize-coverage=trace-loads,trace-stores,trace-pc-guard",
+            str(compiled.ll_path),
+            str(mlir_runtime_c()),
+            str(observer),
+            "-lm",
+            "-o",
+            str(observed),
+        ]
         observer_started = time.perf_counter()
         subprocess.run(
-            [
-                str(clang()),
-                "-O0",
-                "-shared",
-                "-fPIC",
-                "-fsanitize-coverage=trace-loads,trace-stores,trace-pc-guard",
-                str(compiled.ll_path),
-                str(mlir_runtime_c()),
-                str(observer),
-                "-lm",
-                "-o",
-                str(observed),
-            ],
+            observed_argv,
             check=True,
             capture_output=True,
         )
@@ -140,6 +147,10 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *a, uint32_t *b) {}
         image_results = []
         for image, instrumented in ((compiled.host_so, False), (observed, True)):
             model = HostModel.load(str(image), image_policy=PrivateHostImagePolicy(image.parent.resolve()))
+
+            def counters():
+                return tuple(ctypes.c_uint64.in_dll(model.lib, name).value for name in ("read_bytes", "write_bytes"))
+
             state = np.zeros(logical, dtype=dtype)
             complete, invocations = [], []
             for epoch in range(3):
@@ -169,7 +180,9 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *a, uint32_t *b) {}
                 call_directory.mkdir(exist_ok=True)
                 inputs = call_directory / f"inputs-{epoch}.npz"
                 np.savez(inputs, values=old_values, state=old_state)
+                before_counts = counters() if instrumented else None
                 model([(a.ctypes.data, a.shape) for a in (values, state, *outputs)])
+                after_counts = counters() if instrumented else None
                 for actual, reference in zip(outputs, (expected, expected_state), strict=True):
                     assert actual.tobytes() == reference.tobytes()
                 assert values.tobytes() == old_values.tobytes() and state.tobytes() == old_state.tobytes()
@@ -183,6 +196,15 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *a, uint32_t *b) {}
                         outputs=str(returned),
                         outputs_sha256=hashlib.sha256(returned.read_bytes()).hexdigest(),
                         readonly_alias=epoch == 1,
+                        actual_input_sha256_after_call={
+                            name: hashlib.sha256(array.tobytes()).hexdigest()
+                            for name, array in (("values", values), ("state", state))
+                        },
+                        observed_read_write_bytes=(
+                            [after - before for before, after in zip(before_counts, after_counts, strict=True)]
+                            if instrumented
+                            else None
+                        ),
                     )
                 )
                 complete.append([hashlib.sha256(a.tobytes()).hexdigest() for a in outputs])
@@ -213,6 +235,11 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *a, uint32_t *b) {}
             object_path=str(compiled.host_so.with_suffix(".o")),
             object_sha256=hashlib.sha256(compiled.host_so.with_suffix(".o").read_bytes()).hexdigest(),
             observed_image_compile_seconds=observer_compile_seconds,
+            observed_build_argv=observed_argv,
+            observed_build_input_sha256={
+                str(compiled.ll_path.resolve()): sha256_file(compiled.ll_path),
+                **observed_pins,
+            },
             observed_compile_scope=(
                 "separate instrumented -O0 LLVM/runtime/observer build; excluded from compile_seconds"
             ),
@@ -233,4 +260,5 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *a, uint32_t *b) {}
     assert baseline["images"][0]["complete_outputs_sha256"] == optimized["images"][0]["complete_outputs_sha256"]
     for field in ("read_bytes", "write_bytes"):
         assert baseline["images"][1][field] - optimized["images"][1][field] == 3 * prod(shape)
+    assert observed_pins == {str(path): sha256_file(path) for path in observed_inputs}
     (tmp_path / "pair.json").write_text(json.dumps(results, indent=2))
