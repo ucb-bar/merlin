@@ -78,14 +78,14 @@ standard LLVM representation with independent arithmetic reconstruction. See
 [host integer rounding](host_integer_rounding.md) for source contracts, budgets,
 fallback and qualification scope.
 
-## Abstractions and the research question
+## Compiler interfaces
 
-Phase 0/1/2 describe a procedure. The interfaces below describe what compiler
-authors and search agents can reason about, and what the shared compiler checks.
-They extend existing Merlin representations rather than introduce one universal
-IR for both source computations and arbitrary target instructions.
+Shared passes separate computation semantics, physical resources, analysis
+state and emitted programs. Compiler authors can reuse the algorithms across
+different resource descriptions while keeping source and target IR at the
+levels needed by their checks.
 
-| Abstraction | Concrete interface | What becomes reusable | A falsifiable check |
+| Abstraction | Concrete interface | What becomes reusable | Validation |
 | --- | --- | --- | --- |
 | Typed computation and numerical boundaries | Existing dense/Scheduling IR, `ElementwiseSemantics`, and checked source scalar regions | Choose blocking or composition from shapes, layouts and arithmetic instead of operation names | Preserve the complete reduction and conversions; reject a changed mask coordinate or accumulator order |
 | Physical resources and execution effects | `DenseResources`, `StorageBank`, `TemporaryObject`, `StorageEffects` and `ConfigurationEffects` | Use the same reuse, allocation and state-cleanup algorithms with different capacities, separate memories and completion behavior | Reject reuse before a pending transfer completes; retain setup after an unknown state change |
@@ -102,15 +102,6 @@ Phase 2 can search the same bounded alternatives with calibrated costs while
 using the same legality and realization checks. A chosen schedule alone is not
 a transferable compiler rule. A rule must consume the current operation and
 capability inputs and make a checked decision on new inputs.
-
-The research hypothesis is that these interfaces reduce the effort needed to
-build a correct compiler and help optimization decisions transfer to unseen
-workloads and hardware configurations. The existence of familiar passes does
-not establish that hypothesis or its novelty. Evaluation must measure authoring
-effort, correctness, held-out whole-model performance and target integration
-effort, with and without the interfaces under the same access boundaries and
-shared-library version. Calibrated timing proxies are one input to that
-evaluation, not the compiler abstraction itself.
 
 Executable examples include
 `merlin/tests/infra/test_configuration_elimination.py` (persistent writes,

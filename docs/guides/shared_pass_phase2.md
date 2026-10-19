@@ -1,5 +1,5 @@
 ---
-title: Shared passes in ordinary compiler authoring
+title: Use shared passes in compiler generation
 kind: guide
 status: current
 owner: targetgen
@@ -8,33 +8,49 @@ related: [../reference/shared_compiler_passes, phase2_corpus_search]
 code_refs: [src/merlin/targetgen/tool_profile.py, src/merlin/targetgen/tool_profile_shared.py, src/merlin/targetgen/common_transforms.py, packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py]
 ---
 
-# Shared passes in ordinary compiler authoring
+# Use shared passes in compiler generation
 
-A fresh **V6 common compiler substrate** makes the reviewed shared scheduling
-library available to ordinary compiler candidates. Phase 1 chooses and freezes
-one release; Phase 2 inherits exactly those grants and source identities. An
-older certified compiler cannot gain the library by editing its Phase 2 options.
-Versions 1–5 retain their original public APIs and proof policies.
+Merlin's shared compiler library provides checked scheduling, storage and
+composition algorithms for generated compilers. Select a library release before
+Phase 1; Phase 2 inherits that same release and can tune the compiler's decisions
+without changing the checks used to admit its output.
 
-The library provides checked mechanisms for tiling/operand reuse, temporary
-storage, capability-driven fusion and copy elimination, persistent configuration
-cleanup, explicitly supported device spills, complete row reductions and final
-program limits. Availability is independent of target support. A backend must
-supply typed computation, current resources, exact instruction effects, realized
-encoding/decoding and independently qualified execution semantics where required.
-Opaque backend output and missing capabilities remain unavailable.
+This guide covers the `merlin.common_compiler_substrate.v6` release profile.
+Versions 1–5 retain their existing APIs and verification policies. An already
+certified compiler keeps its frozen profile; changing Phase 2 options cannot
+add library access to it.
 
-Library availability does not automatically enroll every pass in saved-model
-compilation. Current dense, pointwise and typed-row full-model regressions supply
-explicit test adapters through the ordinary preparation/build hooks. They verify
-execution under that selection; automatic production routing from declared
-capabilities into these source entries remains unfinished. A generated compiler
-can call the exported entries, but importing the SDK alone changes no schedule.
+## Inputs and backend requirements
 
-## Prepare the release before Phase 1
+The compiler needs a selected hardware configuration, a numerical policy, and
+resource and code-growth budgets. Optional controls can restrict the supported
+optimization choices.
 
-Select explicit canonical source and output paths. Temporary examples below use
-the current managed task's `TMPDIR`; retain a release needed by an active run.
+| Input | What it establishes |
+| --- | --- |
+| Versioned RTL facts | Extracted dimensions, element widths, capacities, banks and address limits |
+| Software and ISA specification | Arithmetic, layouts, conversions, instruction effects, ownership and completion rules |
+| Numerical policy | Permitted arithmetic and the original admission thresholds |
+| Budgets and controls | Bounds on compilation work, code growth and legal optimization choices |
+
+A backend must also supply the applicable instruction implementations, physical
+mapping, encoding and decoding, and independent execution qualification.
+Structural RTL facts alone cannot establish arithmetic equivalence, completion
+semantics or performance costs. Missing facts remain unknown.
+
+Shared entries accept typed source or schedule IR. A compiler must call the
+appropriate entry with its selected contracts and qualified backend bindings.
+Importing the library does not enable passes on arbitrary backend output or
+automatically replace a saved-model compiler's routing. See the
+[pass reference](../reference/shared_compiler_passes.md) for each entry's accepted
+IR, required capabilities and fallback behavior.
+
+## Prepare a library release
+
+Choose the Merlin source tree, its license directory, and a fresh destination
+for the release. `MERLIN_SOURCE_ROOT` must be the absolute canonical Python
+source directory (`<checkout>/src`) used by the running Merlin installation;
+`MERLIN_LICENSE_ROOT` is the directory containing `LICENSE` and `NOTICE`.
 
 ```sh
 python -m merlin.targetgen.tool_profile_shared \
@@ -43,111 +59,81 @@ python -m merlin.targetgen.tool_profile_shared \
   --output-dir "$TMPDIR/common-v6"
 ```
 
-This stages the existing shared SDK plus exact preceding common facilities and
-host checker sources in **one Python source root**. It retains the exporter's
-three fixed namespace replacements, excluding backend discovery from the public
-namespace. Profile checks bind both the original host namespace hashes and the
-published namespace hashes. Algorithm files remain byte-identical to the selected
-source release. The manifest, LICENSE and NOTICE receive exact resource grants.
-External package versions are recorded; this does not qualify their implementation.
+The command stages the shared library, verification support, licenses and a
+manifest of source identities. Retain the release while a compiler uses it.
+Staging files does not itself grant a candidate access to them; bundle creation
+selects the permitted APIs and resources.
 
-For assisted treatments, also repeat `--tool NAME` for the union of the existing
-`tool_registry.ARM_TOOLS` entries being compared. The preparer stages only those
-registry-declared tool files, with fixed file/byte bounds; staging grants nothing.
-The original bundle still selects each arm's grants and answer masks. A directory
-containing staged host checker files is never itself a candidate grant.
+For experiments that expose additional authoring tools, repeat `--tool NAME`
+for the selected registered tools. Each treatment's bundle still determines
+which tools and resources that treatment may access.
 
-Use the normal bundle generator with:
+Pass the prepared release to the normal bundle generator:
 
 ```text
 --common-substrate merlin.common_compiler_substrate.v6
 --python-source-root <the prepared common-v6 root>
 ```
 
-Keep the usual descriptor, public corpus, numerical policy, RTL/software input
-selection, toolchain and qualification requirements. The ordinary Phase 1
-snapshot and authoring admission run unchanged. Its profile must be inherited
-exactly by ordinary Phase 2, including queued source-revision search through
-`authoring.run_stage` with the existing search configuration and compiler edit
-contract. No separate tuner or pass manager is required.
+Keep the hardware and software inputs, public corpus, numerical policy,
+toolchain and qualification selections explicit. Phase 1 freezes the release
+and its access profile. Run Phase 2 through the ordinary source-revision search
+with that inherited profile.
 
-## What Phase 2 changes
+## Choose optimization policies in Phase 2
 
-The compiler's editable policy can choose supported loop orders, blocking,
-operand retention, fusion candidates, copy cleanup or configuration cleanup from
-current operation semantics, shapes, layouts and resource descriptions. Compile
-those choices through the same shared checks and independent final evaluation.
-A policy is ordinary candidate source: the existing immutable revision store
-pins its bytes before evaluation, so later author edits cannot change a queued
-compiler. There is no new serialized callback or candidate-provided evaluator.
+The compiler can choose supported blocking, loop order, operand retention,
+composition, copy elimination and configuration cleanup from the current
+operations, shapes, layouts and resources. Changes are ordinary compiler source
+revisions; each queued evaluation uses the frozen bytes of that revision.
 
-Pass order is also a useful policy choice, within declared prerequisites, IR
-levels and invalidations. For example, fusion before tiling may expose reuse;
-tiling before fusion may make a composition fit. Phase 1 retains a deterministic
-default. A Phase 2 search over alternative orders must use the existing
-`PassSpec`/`PipelineSession` checks and bounded repair, rebuilding invalidated
-analyses. It cannot move checks before the operations they verify or retain
-allocation after spills. Current entry points validate explicit orders; an
-automated search over alternative complete-model pass sequences is future work.
+Pass order is constrained by prerequisites, IR levels and invalidations. Current
+entries validate explicit orders. A rewrite that changes instructions requires
+new emission and program-size checks; spill insertion requires fresh allocation
+and completion checks. Automated search over complete-model pass sequences is
+not provided by the release.
 
-Keep physical capacities, numerical policy, qualification identities, completion
-rules and verification gates fixed. Most `ScheduleBudgets.max_*` fields bound
-checker work; increasing them is not a performance optimization. The broker's
-existing frozen common-transform request schema is unchanged. An agent can also
-propose new compiler transformations, but library availability is not evidence
-that a reusable rule has been learned.
+Keep physical capacities, numerical policy, qualification and verification gates
+fixed during tuning. Most `ScheduleBudgets.max_*` fields bound verification
+work; increasing them is not a performance optimization. When costs are unknown,
+use the entry's documented conservative policy or supply calibration evidence.
 
-## Comparison and verified scope
+## Guarantees and limitations
 
-Every V6 treatment receives the same shared algorithms and release identity.
-V6 includes generic ISA parsing/generation algorithms as common infrastructure;
-historical ISA-tool ablations therefore need a new interpretation. Target facts,
-software declarations, runtime tools and independent qualification keep their
-original separate grants. Do not compare a library-assisted arm against an arm
-silently denied the same library and attribute the difference solely to tuning.
+The shared checks bind analyses to the current IR, hardware and software
+selection, numerical policy and library version. Stale analyses and invalid
+explicit ordering are rejected. Repairs use bounded budgets and recompute the
+affected analyses.
 
-The ordinary retained-queue regression exercises two candidate policies through
-public shared APIs, actual encoded/decoded instructions and an independent
-neutral native executor. It checks complete output bytes, untouched guards,
-persistent settings, requested traffic and a live-edit mutation. The policy and shared compiler run in an isolated `-I -S` process from the
-actual frozen source snapshot; every loaded Merlin owner and SDK hash is checked.
-The host reopens the resulting bytes with a separate decoder/native executor.
-The test substitutes the normal measurement executor, and its external
-functional/timing roles are explicitly synthetic. This establishes executable
-routing, not a qualified accelerator, a learned heuristic or hardware speedup.
-Source, namespace, manifest and frozen-resource mutations must refuse admission;
-all-treatment checks require identical common source rosters and SDK identities.
+Emission checks operate on the representations each entry explicitly supports.
+Where required, actual emitted instructions and effects must be reconstructed
+independently. A selected plan or a successful link alone does not establish
+correct execution. Unknown operations, effects and unsupported handoffs remain
+barriers. Retain the original legal route when an optimization is unavailable;
+otherwise propagate its diagnostic.
 
-Actual Phase 2 optimization studies still require admitted target hooks, original
-numerical/functional gates, calibrated timing, bounded equal search budgets and
-frozen policies evaluated on unseen workloads. Whole-model measurements must
-include host arithmetic, packing, transfers and dispatch. Command reductions
-remain command results until paired timing establishes an execution improvement.
+Capability requirements differ by pass. For example, device spills require
+declared register classes and exact save/reload semantics; complete-row
+reductions require the original reduction domain and numerical order. The
+library does not infer addressable accumulators, asynchronous completion,
+supported masks or new approximation policies from a target name or shape.
 
-## Continue implementation from another workspace
+Neutral execution tests establish shared-mechanism behavior. They do not qualify
+an accelerator backend or establish hardware latency. Consult the
+[supported domains and limitations](../reference/shared_compiler_passes.md)
+before selecting an entry.
 
-The `shared-scheduling` branch is an incomplete implementation checkpoint.
-Start with the production-routing gap above before expanding policy search:
+## Compare compilers fairly
 
-1. Inspect `compile/scheduling/{dense_source,pointwise_source,row_softmax}.py`,
-   the selected contracts, `compile/route_before_build.py` and
-   `llvmlower/prepared_model_transform.py`. Connect one supported source family
-   through ordinary production preparation using explicit qualified backend
-   capabilities, preserving the source fallback for unsupported cases.
-2. Replace the test-specific selection for that family with a test of the normal
-   entry. Preserve independent checks of complete outputs and carried state, actual emitted
-   effects, stale-input and numerical mutations, packing and compilation metrics.
-   The test providers are neutral execution fixtures, never target support or
-   production compiler implementations to copy into the library.
-3. Expose legal policy alternatives to Phase 2 through the same frozen library.
-   Keep facts, software semantics, numerical admission, qualification and checker
-   limits fixed. Demonstrate held-out transfer separately from helper availability.
+Every V6 treatment must receive the same shared algorithms and release identity.
+V6 includes generic ISA parsing and generation, so comparisons must account for
+that common access. Preserve the separate grants for target facts, software
+specifications, runtime tools and independent qualification. Protected reference
+implementations and evaluation answers remain outside authoring inputs.
 
-The source-spill and source-row ordinary-model regressions live in
-`merlin/tests/infra/test_spilled_pointwise_model.py` and
-`merlin/tests/infra/test_source_row_model.py`; the shared export and frozen V6
-profile tests cover source closure and identical authoring access. Use the
-reproduction commands in [the pass reference](../reference/shared_compiler_passes.md).
-Local temporary reports and model binaries are not part of a Git checkout;
-recreate them with the existing toolchains and task-local `TMPDIR`. Do not infer
-hardware qualification or calibrated timing from these neutral regressions.
+Freeze tuned policies before evaluating unseen workloads. Use identical inputs
+and unchanged numerical thresholds, checking complete outputs and carried state.
+Measure complete models, including host arithmetic, packing, copies, layout
+conversions, dispatch and accelerator work. Report compilation time, peak memory,
+code size, commands and requested bytes separately from paired execution timing.
+Functional Spike instruction counts are not accelerator latency cycles.
