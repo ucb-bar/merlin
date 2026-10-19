@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -150,6 +151,139 @@ def test_sealed_reference_mismatch_refuses_before_build(tmp_path, monkeypatch, c
     with pytest.raises(ValueError):
         F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
     assert not calls
+
+
+def _portable_reference(tmp_path, monkeypatch, *, selection="common"):
+    from dataclasses import replace
+
+    from merlin.runtime import linalg_numpy as LN
+    from merlin.runtime.host_math import host_math_recipe
+
+    args, report, models, model, bundle, calls = _setup(tmp_path, monkeypatch)
+    policy = "portable_trig"
+    if selection == "common":
+        models.path.write_text(json.dumps({"full": {"host_math_policy": policy}}))
+    else:
+        model = replace(model, extra={"full": {"host_math_policy": policy}})
+        models.model = lambda _: model
+    recipe = host_math_recipe(policy)
+    path = bundle.root / "m/visible/v00/reference_numeric_contract.json"
+    reference = path.with_name("int8.npz")
+    contract = {**LN.numeric_contract(), "host_math": {
+        "policy": policy, "scalar_source_sha256": hashlib.sha256(recipe.source.encode()).hexdigest(),
+        "compile_flags": list(recipe.compile_flags),
+    }}
+    receipt = {"schema": "merlin.model_check.reference_numeric_contract.v1", "numeric_contract": contract,
+               "evaluator_sha256": hashlib.sha256(Path(LN.__file__).read_bytes()).hexdigest(),
+               "outputs_sha256": hashlib.sha256(reference.read_bytes()).hexdigest()}
+    path.write_text(json.dumps(receipt))
+    _seal(bundle.root)
+    return args, report, models, model, bundle, calls, path, receipt
+
+
+@pytest.mark.parametrize("selection", ["common", "model"])
+def test_portable_policy_requires_corresponding_sealed_numerical_receipt(tmp_path, monkeypatch, selection):
+    args, report, models, _model, bundle, calls, path, receipt = _portable_reference(
+        tmp_path, monkeypatch, selection=selection
+    )
+    result = F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
+    assert R.settle(result)["status"] == "pass" and len(calls) == 2
+    proof = result["model_metrics"]["per_input"][0]["reference_validation"]
+    assert proof["unchanged"]
+    assert proof["numeric_contract"]["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert proof["numeric_contract"]["numeric_contract"] == receipt["numeric_contract"]
+
+
+@pytest.mark.parametrize("change", [
+    "missing", "unsealed", "changed", "outputs", "version", "policy", "source", "flags",
+    "evaluator", "schema", "nonobject", "contract_type",
+])
+def test_portable_reference_receipt_mismatch_refuses_before_build(tmp_path, monkeypatch, change):
+    args, report, models, _model, bundle, calls, path, receipt = _portable_reference(tmp_path, monkeypatch)
+    if change == "missing":
+        path.unlink()
+    elif change == "unsealed":
+        payload = path.read_bytes()
+        path.unlink()
+        _seal(bundle.root)
+        path.write_bytes(payload)
+    elif change == "changed":
+        path.write_text(json.dumps({**receipt, "evaluator_sha256": "a" * 64}))
+    else:
+        if change in {"outputs", "evaluator"}:
+            receipt[f"{change}_sha256"] = "wrong"
+        elif change == "version":
+            receipt["numeric_contract"]["version"] = "old evaluator policy"
+        elif change == "policy":
+            receipt["numeric_contract"]["host_math"]["policy"] = "native"
+        elif change == "source":
+            receipt["numeric_contract"]["host_math"]["scalar_source_sha256"] = "0" * 64
+        elif change == "flags":
+            receipt["numeric_contract"]["host_math"]["compile_flags"] = ["-fno-builtin"]
+        elif change == "schema":
+            receipt["schema"] = "unrecognized receipt"
+        elif change == "nonobject":
+            receipt = []
+        elif change == "contract_type":
+            receipt["numeric_contract"] = "not an identity"
+        path.write_text(json.dumps(receipt))
+    if change not in {"unsealed", "changed"}:
+        _seal(bundle.root)
+    with pytest.raises(ValueError):
+        F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
+    assert not calls
+
+
+def test_portable_receipt_mutation_during_execution_is_an_infrastructure_failure(tmp_path, monkeypatch):
+    args, report, models, _model, bundle, _calls, path, _receipt = _portable_reference(tmp_path, monkeypatch)
+    original = F.execute
+
+    def execute(*a, **kwargs):
+        result = original(*a, **kwargs)
+        path.write_bytes(path.read_bytes() + b"\n")
+        return result
+
+    monkeypatch.setattr(F, "execute", execute)
+    result = F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
+    assert R.settle(result)["status"] == "error"
+    assert result["failures"][0]["kind"] == "infrastructure"
+
+
+def test_native_legacy_references_need_no_sidecar_or_unselected_c_source(tmp_path, monkeypatch):
+    from merlin.runtime import host_math
+
+    args, report, models, _model, bundle, _calls = _setup(tmp_path, monkeypatch)
+    original = host_math.host_math_recipe
+
+    def recipe(policy="native"):
+        assert policy == "native", "native reference validation must not load an unselected C policy"
+        return original(policy)
+
+    monkeypatch.setattr(host_math, "host_math_recipe", recipe)
+    result = F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
+    assert R.settle(result)["status"] == "pass"
+    assert "numeric_contract" not in result["model_metrics"]["per_input"][0]["reference_validation"]
+
+
+def test_changing_and_resealing_config_cannot_relabel_native_reference_as_portable(tmp_path, monkeypatch):
+    args, report, models, _model, bundle, calls = _setup(tmp_path, monkeypatch)
+    models.path.write_text(json.dumps({"full": {"host_math_policy": "portable_trig"}}))
+    _seal(bundle.root)
+    with pytest.raises(ValueError, match="bundle seal/configuration binding"):
+        F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
+    assert not calls
+
+
+def test_model_native_override_does_not_require_common_portable_receipt(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    args, report, models, model, bundle, _calls = _setup(tmp_path, monkeypatch)
+    models.path.write_text(json.dumps({"full": {"host_math_policy": "portable_trig"}}))
+    model = replace(model, extra={"full": {"host_math_policy": "native"}})
+    models.model = lambda _: model
+    _seal(bundle.root)
+    result = F.check(args, report, models=models, bundle=bundle, log=lambda *_: None)
+    assert R.settle(result)["status"] == "pass"
 
 
 def test_reference_mutation_during_execution_is_not_credited(tmp_path, monkeypatch):

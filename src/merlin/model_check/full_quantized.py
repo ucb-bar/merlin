@@ -10,11 +10,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
+import yaml
 
 from merlin.model_check import chain as CH
 from merlin.model_check import full_reference_cache as RC
 from merlin.model_check import metrics as M
-from merlin.model_check.models import ModelsFileError
+from merlin.model_check.models import ModelsFileError, selected_host_math_policy
 
 DEFAULT_ATOL = 2e-6
 DEFAULT_RTOL = 1e-5
@@ -35,6 +36,40 @@ def _bindings(model, counts):
     ]
 
 
+def _numeric_receipt(path, expected_sha, outputs_sha, selected_policy):
+    from merlin.runtime import linalg_numpy as LN
+    from merlin.runtime.host_math import host_math_recipe
+
+    payload = path.read_bytes()
+    receipt_sha = hashlib.sha256(payload).hexdigest()
+    if receipt_sha != expected_sha:
+        raise ValueError("sealed reference numerical-contract bytes differ from SHA256SUMS")
+    receipt = json.loads(payload)
+    if not isinstance(receipt, dict):
+        raise ValueError("sealed reference numerical contract must be an object")
+    contract = receipt.get("numeric_contract") or {}
+    if not isinstance(contract, dict) or not isinstance(contract.get("host_math"), dict):
+        raise ValueError("sealed reference numerical contract requires a host math identity")
+    host_math = contract["host_math"]
+    recipe = host_math_recipe(selected_policy)
+    evaluator_sha = receipt.get("evaluator_sha256")
+    flags = host_math.get("compile_flags")
+    if (
+        receipt.get("schema") != "merlin.model_check.reference_numeric_contract.v1"
+        or receipt.get("outputs_sha256") != outputs_sha
+        or contract.get("version") != LN.NUMERIC_CONTRACT_VERSION
+        or host_math.get("policy") != selected_policy
+        or recipe.source is None
+        or host_math.get("scalar_source_sha256") != hashlib.sha256(recipe.source.encode("utf-8")).hexdigest()
+        or not isinstance(flags, list) or any(flag not in flags for flag in recipe.compile_flags)
+        or not isinstance(evaluator_sha, str) or len(evaluator_sha) != 64
+        or any(char not in "0123456789abcdef" for char in evaluator_sha)
+    ):
+        raise ValueError("sealed reference numerical contract differs from the selected host math policy")
+    return {"path": str(path), "sha256": receipt_sha, "numeric_contract": contract,
+            "evaluator_sha256": evaluator_sha}
+
+
 def sealed_reference(bundle, model, models_path, input_id):
     """Read only sealed, configuration-corresponding reference bytes; retain their identities for recheck."""
     root = bundle.root.resolve()
@@ -48,9 +83,18 @@ def sealed_reference(bundle, model, models_path, input_id):
         raise ValueError("reference or seal pathname escapes the selected bundle")
     sums = root / sums_name
     path = root / reference_name
+    configuration = Path(models_path).read_bytes()
+    selected = yaml.safe_load(configuration)
+    common = (selected.get("full") or {}) if isinstance(selected, dict) else {}
+    if not isinstance(common, dict):
+        raise ModelsFileError("models full-mode settings must be a mapping")
+    host_math_policy = selected_host_math_policy(model, common)
+    receipt_path = path.with_name("reference_numeric_contract.json")
     # Frozen bundles may reuse protected payloads through symlinks. The sealed
     # relative name and bytes bind them; a location-only rejection would refuse valid reuse.
     wanted = {path.relative_to(root).as_posix(), "configuration/models.yaml"}
+    if host_math_policy != "native":
+        wanted.add(receipt_path.relative_to(root).as_posix())
     expected = {}
     digest = hashlib.sha256()
     with sums.open("rb") as stream:
@@ -65,11 +109,16 @@ def sealed_reference(bundle, model, models_path, input_id):
         raise ValueError("selected quantized reference has no valid bundle seal/configuration binding")
     payload = path.read_bytes()
     reference_sha = hashlib.sha256(payload).hexdigest()
-    config_sha = RC.file_digest(Path(models_path))
+    config_sha = hashlib.sha256(configuration).hexdigest()
     if reference_sha != expected[path.relative_to(root).as_posix()]:
         raise ValueError("sealed INT8 reference bytes differ from SHA256SUMS")
     if config_sha != expected["configuration/models.yaml"]:
         raise ValueError("selected models configuration differs from the sealed reference's configuration")
+    numeric_receipt = None
+    if host_math_policy != "native":
+        numeric_receipt = _numeric_receipt(
+            receipt_path, expected[receipt_path.relative_to(root).as_posix()], reference_sha, host_math_policy
+        )
     with np.load(io.BytesIO(payload), allow_pickle=False) as data:
         names = [f"out{i}" for i in range(len(data.files))]
         if set(data.files) != set(names):
@@ -86,6 +135,8 @@ def sealed_reference(bundle, model, models_path, input_id):
                       {**binding, "dtype": value.dtype.str, "shape": list(value.shape)}
                       for binding, value in zip(_bindings(model, counts), values, strict=True)
                   ], "unchanged": False}
+    if numeric_receipt is not None:
+        validation["numeric_contract"] = numeric_receipt
     return values, validation
 
 
