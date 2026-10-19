@@ -280,7 +280,7 @@ def test_batch_shared_root_does_not_grant_unselected_call_escape():
         )
 
 
-def test_batch_imports_and_retains_one_observation_and_singleton_shape(tmp_path, monkeypatch):
+def test_batch_imports_once_and_retains_one_request_projections(tmp_path, monkeypatch):
     from merlin.verify import host_call_alignment as importer
     from merlin.verify import host_packing_storage as checker
 
@@ -307,18 +307,23 @@ def test_batch_imports_and_retains_one_observation_and_singleton_shape(tmp_path,
     assert result["pins"][report] == result["report"]["sha256"]
 
     source, calls, uses, effects = fixture()
-    singleton = checker.inspect_packing_storage(
+    single_request = checker.inspect_packing_storage_batch(
         {},
         borrowed_calls=calls,
-        uses=uses,
+        requests=(checker.PackingStorageRequest(uses, 4),),
         allocation_effects=effects,
-        max_payload_bytes=4,
         entry="model",
         diagnostics=tmp_path,
     )
-    assert singleton["schema"] == "merlin.final_packing_storage.v1"
-    assert singleton["logical_payload_bytes"] == 4
-    assert "results" not in singleton and "combined" not in singleton
+    assert single_request["schema"] == "merlin.final_packing_storage_batch.v1"
+    assert len(single_request["results"]) == 1
+    assert (
+        single_request["results"][0]["logical_payload_bytes"]
+        == single_request["combined"]["logical_payload_bytes"]
+        == 4
+    )
+    assert single_request["results"][0]["uses"] == single_request["combined"]["uses"]
+    assert len(imports) == 2
 
 
 @pytest.mark.parametrize("uses,budget", [((), 4), ([], 4), ((PackingStorageUse("writer", 0),), 0)])
