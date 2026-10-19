@@ -229,6 +229,31 @@ def test_config_excludes_its_own_directories_and_the_operator_patches():
     assert excluded["examples/gemmini/phase1/patches"] == "conv-input-residency-r39"
 
 
+def test_capsule_launch_has_explicit_external_owner_and_keeps_private_host_selection(tmp_path):
+    def edit(document):
+        document["validation_scope"] = "capsules"
+        document["external_validation"] = {"budget_s": 7200, "start_after": "capsule_owner_terminal",
+                                           "submission": "verified_frozen_capsule_handoff"}
+        document["inputs"]["private_full_model_spec"] = "${PREP}/private-models.yaml"
+    path = _checkout(tmp_path, edit)
+    launch = lc.build(lc.load(path), task_root=tmp_path, prep=tmp_path, environ={"HOME": "/h"})
+    flags = lc.split_argv(launch.argv)[1]
+    assert flags["--validation-scope"] == ["capsules"]
+    assert flags["--private-full-model-spec"] == [str(tmp_path / "private-models.yaml")]
+    assert "--instruction-selection" in flags and "--seed-submission" not in flags
+    document = yaml.safe_load(path.read_text())
+    document.pop("external_validation")
+    path.write_text(yaml.safe_dump(document))
+    with pytest.raises(lc.ConfigError, match="external_validation"):
+        lc.load(path)
+
+
+def test_legacy_launch_argv_does_not_add_validation_scope(tmp_path):
+    launch = lc.build(lc.load(repo_root() / LAUNCH), task_root=tmp_path, prep=tmp_path,
+                      environ={"HOME": "/h"})
+    assert "--validation-scope" not in launch.argv
+
+
 @pytest.mark.parametrize("live_conformance", [False, True])
 def test_rendered_argv_is_accepted_by_the_installed_controller_parser(tmp_path, live_conformance):
     from merlin_experiments.phase1 import options

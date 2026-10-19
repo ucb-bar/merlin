@@ -175,6 +175,16 @@ def test_unpaid_qualification_uses_formal_child_and_refuses_selected_source_drif
     assert len(receipt["initial_candidate_sha256"]) == 64
     assert len(receipt["graded_source_sha256"]) == 64
     assert len(calls) == 1
+    assert "--validation-scope" not in calls[0]
+
+    # The same real formal invocation preserves protected host inputs while
+    # forwarding the explicitly selected capsule boundary to the child.
+    from dataclasses import replace
+
+    capsule = prepared("capsule-formal")
+    capsule.request.options = replace(capsule.request.options, validation_scope="capsules")
+    assert formal_invocation.run(capsule, public_capsules=public, selected_rtl_facts=None) == 1
+    assert calls[-1][calls[-1].index("--validation-scope") + 1] == "capsules"
 
     def changed_during_formal(argv, **_kwargs):
         (selected / "compiler.py").write_text("# changed while the child ran\n")

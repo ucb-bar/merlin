@@ -9,6 +9,16 @@
     "schema": {"const": "merlin.phase1.launch_config.v1"},
     "id": {"$ref": "#/$defs/token"},
     "description": {"type": "string"},
+    "validation_scope": {"enum": ["full", "capsules"], "description": "Legacy full completion by default; capsules exports a strict frozen handoff before external model validation."},
+    "external_validation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["budget_s", "start_after", "submission"],
+      "properties": {
+        "budget_s": {"$ref": "#/$defs/seconds"},
+        "start_after": {"const": "capsule_owner_terminal"},
+        "submission": {"const": "verified_frozen_capsule_handoff"}
+      }
+    },
     "release_config": {"type": "string", "minLength": 1},
     "variables": {"$ref": "#/$defs/variables"},
     "identity": {
@@ -231,6 +241,10 @@
       }
     }
   },
+  "allOf": [{
+    "if": {"required": ["validation_scope"], "properties": {"validation_scope": {"const": "capsules"}}},
+    "then": {"required": ["external_validation"]}
+  }],
   "$defs": {
     "token": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
     "text": {"type": "string", "minLength": 1},

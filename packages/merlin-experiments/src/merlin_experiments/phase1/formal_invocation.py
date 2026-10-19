@@ -79,6 +79,11 @@ def run(
         "--capsules",
         str(public_capsules),
     ]
+    validation_scope = getattr(options, "validation_scope", "full")
+    if validation_scope not in {"full", "capsules"}:
+        raise ValueError("unknown Phase 1 validation scope")
+    if validation_scope != "full":
+        command += ["--validation-scope", validation_scope]
     if hidden is None:
         capsule = Path(target.capsule_corpus)
         hidden = (capsule if capsule.is_absolute() else context.repo / capsule).parent / "hidden"

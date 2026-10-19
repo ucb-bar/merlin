@@ -192,6 +192,24 @@ def test_prepare_accepts_all18_with_finished_or_reserved_reference_cpus(allocati
     assert readiness_calls == [w.launch] and result["phase1_complete"] is False
 
 
+def test_capsule_prepare_keeps_metadata_but_defers_model_payload_and_source_work(allocation_prepare, monkeypatch):
+    launcher, w, readiness_calls = allocation_prepare
+    w.launch.document["validation_scope"] = "capsules"
+    w.launch.variables["REFERENCE_CPUS"] = ""
+    w.launch.document["cpu"]["compute_pool"]["cpus"] = list(range(16))
+    w.launch.document["cpu"]["author"]["cpus"] = [16, 17]
+    def forbidden(*args, **kwargs):
+        raise AssertionError("whole-model prerequisite entered capsule preparation")
+    monkeypatch.setattr(launcher.S, "verify", forbidden)
+    monkeypatch.setattr(launcher, "source_preparation", forbidden)
+    value = launcher.prepare(w.launch, w.prep)
+    assert value["readiness_scope"] == "capsule_runtime_preflight"
+    assert value["private_inputs"]["status"] == "deferred_to_external_validation"
+    assert value["private_source_preparation"]["source_preflight_passed"] is False
+    assert value["full_model_readiness"] is None and not readiness_calls
+    assert w.launch.path(w.launch.document["inputs"]["private_full_model_spec"]).is_file()
+
+
 @pytest.mark.parametrize("damage", ["author_overlap", "reference_overlap", "missing_cpu", "unavailable_cpu"])
 def test_prepare_refuses_overlap_or_missing_assigned_cpu(allocation_prepare, monkeypatch, damage):
     launcher, w, readiness_calls = allocation_prepare

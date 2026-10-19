@@ -121,7 +121,7 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
     headroom = int(launch.variables["SUPERVISOR_HOST_HEADROOM_BYTES"])
     if not 0 < reserve < total or min(limit, headroom) <= 0:
         raise ValueError("invalid supervisor time or memory policy")
-    if time.monotonic() - started >= total - reserve:
+    if document.get("validation_scope", "full") != "capsules" and time.monotonic() - started >= total - reserve:
         raise ValueError("preparation exhausted the authoring allocation")
     from merlin_experiments.phase1.launch_config import Prepend
 
@@ -140,6 +140,19 @@ def run(launch, prep: Path, started: float, *, memory, poll_s: float = 5) -> int
         / "workspace"
     )
     assigned = assigned_cpus(launch)
+    validation_scope = document.get("validation_scope", "full")
+    if validation_scope not in {"full", "capsules"}:
+        raise ValueError("unknown Phase 1 validation scope")
+    if validation_scope == "capsules":
+        import importlib.util
+
+        source = Path(__file__).with_name("capsule_supervision.py")
+        spec = importlib.util.spec_from_file_location("capsule_supervision", source)
+        if spec is None or spec.loader is None:
+            raise ValueError("capsule supervisor is unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.run(launch, prep, started, memory=memory, processes_factory=Processes, env=env, poll_s=poll_s)
     policy = document.get("full_model_verification")
     selected = F.selection(launch) if policy else None
     identity = F.selected_identity(launch) if policy else None
