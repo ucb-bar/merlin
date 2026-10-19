@@ -91,6 +91,14 @@ relocations, code, other allocated storage, extra symbols and changed inputs
 refuse before linking. This is storage identity, not packing semantics, a new
 compilation observation, runtime reuse or final executable admission.
 
+`immutable_constant_pool` plans shared readonly blobs only under explicit
+provider representation and unobserved-address contracts. It reopens every
+complete original input, including duplicates, compares actual bytes, preserves
+required alignments and binds per-group symbol maps. Unknown or identity-observing
+uses refuse; different representations remain separate. Providers prove complete
+object use closure, perform relocations, retain fallback and qualify final-image
+reach/admission/execution. Payload equality alone grants none of those facts.
+
 `session_projection` rederives saved immutable-entry projections from their
 actual prepared SSA and captured argument sources. Generated session callers
 use checked namespaced proofs; logical state/stream input access maps to the
