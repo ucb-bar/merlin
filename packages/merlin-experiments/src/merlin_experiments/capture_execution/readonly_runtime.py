@@ -14,21 +14,29 @@ from pathlib import Path
 
 from merlin.common import strict_json
 
+from . import readonly_runtime_directories as D
 from . import runtime_store as R
 from .sealed_static import _canonical_path, _digest, _file_digest, _json, _tree
 
 SCHEMA = "merlin.sealed_m2m_readonly_runtime.v1"
 OVERLAY_SCHEMA = "merlin.sealed_m2m_readonly_runtime.v2"
+NESTED_OVERLAY_SCHEMA = D.SCHEMA
 
 
-def select(plan, *, entry: Path, marker_sha256: str, destination: Path, overlays=None, overlay_limits=None):
+def select(
+    plan, *, entry: Path, marker_sha256: str, destination: Path, overlays=None, overlay_limits=None, overlay_version=2
+):
     """Select only an existing exact CAS hit; a miss never builds an entry."""
+    if type(overlay_version) is not int or overlay_version not in {2, 3} or (overlay_version == 3 and overlays is None):
+        raise ValueError("runtime overlay version must explicitly select supported composition")
     entry = _canonical_path(Path(entry), exists=True)
     marker = entry.parent / f"{entry.name}.complete.json"
     if not marker.is_file() or _file_digest(marker) != marker_sha256:
         raise ValueError("read-only runtime is not the independently pinned selected cache hit")
     if overlays is not None:
-        return _select_overlay(plan, entry, marker, marker_sha256, overlays, overlay_limits)
+        return _select_overlay(
+            plan, entry, marker, marker_sha256, overlays, overlay_limits, nested=overlay_version == 3
+        )
     if entry.name != R._identity(plan) or overlay_limits is not None:
         raise ValueError("read-only runtime is not the independently pinned selected cache hit")
     token = R._verified_cached_entry(plan, destination, None, entry.parent)
@@ -45,7 +53,11 @@ def select(plan, *, entry: Path, marker_sha256: str, destination: Path, overlays
 
 
 def verify(plan, selection, destination):
-    if not isinstance(selection, dict) or selection.get("schema") not in {SCHEMA, OVERLAY_SCHEMA}:
+    if not isinstance(selection, dict) or selection.get("schema") not in {
+        SCHEMA,
+        OVERLAY_SCHEMA,
+        NESTED_OVERLAY_SCHEMA,
+    }:
         raise ValueError("read-only runtime selection schema is unsupported")
     observed = select(
         plan,
@@ -56,8 +68,9 @@ def verify(plan, selection, destination):
             {
                 "overlays": {row["guest_member"]: Path(row["source"]) for row in selection["overlays"]},
                 "overlay_limits": selection["overlay_limits"],
+                **({"overlay_version": 3} if selection["schema"] == NESTED_OVERLAY_SCHEMA else {}),
             }
-            if selection["schema"] == OVERLAY_SCHEMA
+            if selection["schema"] in {OVERLAY_SCHEMA, NESTED_OVERLAY_SCHEMA}
             else {}
         ),
     )
@@ -145,7 +158,9 @@ def file_path(selection, guest_member):
 
 def effective_rows(selection, *, source_rows=None):
     rows = _tree(Path(selection["entry"])) if source_rows is None else copy.deepcopy(source_rows)
-    for parent, mode in selection.get("created_directories", {}).items():
+    for parent, mode in sorted(
+        selection.get("created_directories", {}).items(), key=lambda item: (len(Path(item[0]).parts), item[0])
+    ):
         ancestor = Path(parent).parent.as_posix()
         if parent in rows or ancestor not in rows or rows[ancestor]["kind"] != "directory":
             raise ValueError("selected runtime overlay directory needs an existing direct ancestor")
@@ -171,7 +186,7 @@ def effective_rows(selection, *, source_rows=None):
     return rows
 
 
-def _select_overlay(plan, entry, marker, marker_sha256, overlays, limits):
+def _select_overlay(plan, entry, marker, marker_sha256, overlays, limits, *, nested=False):
     limits = dict(max_leaves=16, max_total_bytes=1024**2) if limits is None else limits
     if (
         not isinstance(limits, dict)
@@ -188,7 +203,7 @@ def _select_overlay(plan, entry, marker, marker_sha256, overlays, limits):
     ):
         raise ValueError("read-only source CAS marker differs from selected runtime")
     selected = {
-        "schema": OVERLAY_SCHEMA,
+        "schema": NESTED_OVERLAY_SCHEMA if nested else OVERLAY_SCHEMA,
         "entry": str(entry),
         "source_cas_identity": entry.name,
         "effective_runtime_identity": R._identity(plan),
@@ -198,6 +213,14 @@ def _select_overlay(plan, entry, marker, marker_sha256, overlays, limits):
         "overlays": [],
         "created_directories": {},
         "runtime_rows_verifier_sha256": _file_digest(Path(R.__file__)),
+        **(
+            {
+                "max_created_directories": limits["max_leaves"],
+                "directory_verifier_sha256": _file_digest(Path(D.__file__)),
+            }
+            if nested
+            else {}
+        ),
     }
     entry_stat = entry.stat()
     before = _tree(entry)
@@ -211,7 +234,9 @@ def _select_overlay(plan, entry, marker, marker_sha256, overlays, limits):
         if not source.is_file() or source.stat().st_uid != os.getuid():
             raise ValueError("runtime overlay source is not a regular file")
         parent = p.parent.as_posix()
-        if parent not in before:
+        if nested:
+            D.add_parents(member, source, before, selected["created_directories"], limit=limits["max_leaves"])
+        elif parent not in before:
             ancestor = p.parent.parent.as_posix()
             if ancestor not in before or before[ancestor]["kind"] != "directory":
                 raise ValueError("runtime overlay directory needs an existing direct CAS ancestor")
@@ -241,6 +266,8 @@ def _select_overlay(plan, entry, marker, marker_sha256, overlays, limits):
         _json(sorted((name, *sorted(row.items())) for name, row in before.items()))
     )
     _overlay_directories(selected)
+    if nested:
+        D.recheck(selected, before, rows)
     after = entry.stat()
     if _file_digest(marker) != marker_sha256 or any(
         getattr(entry_stat, field) != getattr(after, field)

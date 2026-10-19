@@ -282,7 +282,8 @@ def test_actual_native_integer_worker_retains_original_frontend_and_complete_out
     assert not (output / "sealed_m2m_pending.json").exists()  # functional worker proof, never a sealed receipt
 
 
-def test_readonly_overlay_executes_in_actual_isolated_namespace(tmp_path):
+@pytest.mark.parametrize("overlay_version", [2, 3])
+def test_readonly_overlay_executes_in_actual_isolated_namespace(tmp_path, overlay_version):
     bwrap, shell = os.environ.get("MERLIN_TEST_BWRAP") or shutil.which("bwrap"), shutil.which("sh")
     if bwrap is None or shell is None or shutil.which("ldd") is None:
         pytest.skip("selected host namespace smoke tools unavailable")
@@ -295,10 +296,11 @@ def test_readonly_overlay_executes_in_actual_isolated_namespace(tmp_path):
     store = tmp_path / "store"
     store.mkdir()
     entry = store / "initial"
-    python = entry / "opt/capture-venv/bin/cache/python"
+    package = "cache" if overlay_version == 2 else "cache/metadata/nested"
+    python = entry / f"opt/capture-venv/bin/{package}/python"
     python.parent.mkdir(parents=True)
     shutil.copy2(Path(shell).resolve(), python)
-    (python.parent.parent / "marker").write_text("selected\n")
+    (entry / "opt/capture-venv/bin/marker").write_text("selected\n")
     base = entry / "opt/base"
     base.mkdir()
     (base / "identity").write_text("selected tiny namespace fixture; no framework environment copy")
@@ -316,16 +318,16 @@ def test_readonly_overlay_executes_in_actual_isolated_namespace(tmp_path):
     entry = moved
     marker = store / (entry.name + ".complete.json")
     marker.write_text(json.dumps(dict(identity=entry.name, base=plan["base"], system_libs=plan["system_libs"])))
-    overlay = tmp_path / "selected-cache/python"
-    overlay.parent.mkdir()
-    (entry / "opt/capture-venv/bin/cache/python").rename(overlay)
-    (entry / "opt/capture-venv/bin/cache").rmdir()
+    overlay_root = tmp_path / "selected-cache"
+    (entry / "opt/capture-venv/bin/cache").rename(overlay_root)
+    overlay = overlay_root / ("python" if overlay_version == 2 else "metadata/nested/python")
     selected = R.select(
         plan,
         entry=entry,
         marker_sha256=_file_digest(marker),
         destination=tmp_path,
-        overlays={"opt/capture-venv/bin/cache/python": overlay},
+        overlays={f"opt/capture-venv/bin/{package}/python": overlay},
+        overlay_version=overlay_version,
     )
     runtime, source, output = (tmp_path / name for name in ("runtime", "source", "output"))
     for p in (runtime, source, output):
@@ -335,7 +337,7 @@ def test_readonly_overlay_executes_in_actual_isolated_namespace(tmp_path):
         (runtime / name).mkdir()
     (runtime / output.relative_to("/")).mkdir(parents=True)
     command = (
-        "/opt/capture-venv/bin/cache/python",
+        f"/opt/capture-venv/bin/{package}/python",
         "-c",
         "IFS= read -r value < /opt/capture-venv/bin/marker; "
         '[ "$value" = selected ] && ! (printf changed > /opt/capture-venv/bin/marker)',

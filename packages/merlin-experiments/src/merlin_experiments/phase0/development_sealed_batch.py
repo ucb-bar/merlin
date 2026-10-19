@@ -126,6 +126,7 @@ def runtime_preflight(path, *, sha256):
     if selection.get("schema") not in {
         "merlin.sealed_m2m_readonly_runtime.v1",
         "merlin.sealed_m2m_readonly_runtime.v2",
+        "merlin.sealed_m2m_readonly_runtime.v3",
     }:
         raise ValueError("explicit original readonly runtime selection is required")
     entry = Path(selection["entry"])

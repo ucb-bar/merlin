@@ -84,7 +84,7 @@ def test_host_only_declaration_cannot_be_staged_as_accelerator_development(tmp_p
     assert not (tmp_path / "prepared").exists()
 
 
-def _runtime_selection(tmp_path, *, present):
+def _runtime_selection(tmp_path, *, present, version=2):
     entry = tmp_path / "runtime-store"
     if present:
         entry.mkdir()
@@ -92,7 +92,7 @@ def _runtime_selection(tmp_path, *, present):
     selection.write_text(
         json.dumps(
             dict(
-                schema="merlin.sealed_m2m_readonly_runtime.v2",
+                schema=f"merlin.sealed_m2m_readonly_runtime.v{version}",
                 entry=str(entry),
                 source_cas_identity="0" * 64,
                 effective_runtime_identity="1" * 64,
@@ -103,8 +103,9 @@ def _runtime_selection(tmp_path, *, present):
 
 
 @pytest.mark.parametrize("present", [False, True])
-def test_storage_preflight_never_upgrades_a_directory_to_a_runtime_grant(tmp_path, present):
-    selection, digest = _runtime_selection(tmp_path, present=present)
+@pytest.mark.parametrize("version", [2, 3])
+def test_storage_preflight_never_upgrades_a_directory_to_a_runtime_grant(tmp_path, present, version):
+    selection, digest = _runtime_selection(tmp_path, present=present, version=version)
     result = B.runtime_preflight(selection, sha256=digest)
     assert result["status"] == ("ORIGINAL_OWNER_REQUIRED" if present else "REFUSED_MISSING_SELECTED_RUNTIME")
     assert result["runtime_qualified"] is False
