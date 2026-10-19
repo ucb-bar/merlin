@@ -1,6 +1,7 @@
 /- Initialized tensor reads require actual nonnegative runtime index bounds. The optional range
 facts are proved at their producers and travel with the current SSA binding, including captures. -/
 import MerlinVerify.Check.IndexBounds
+import MerlinVerify.Check.DefinedInsert
 import MerlinVerify.Check.IndexArithmetic
 import MerlinVerify.Check.IndexCastBounds
 import MerlinVerify.Check.IndexClampBounds
@@ -71,9 +72,11 @@ def extractBook (ib : Nat) : Refined.Book model opSem ib where
 
 /-- Existing rules retain their original proof obligations and do not invent index evidence. -/
 def leafBook (ib : Nat) : Refined.Book model opSem ib :=
-  (((((constantBook ib).orElse (IndexArithmetic.book ib)).orElse (IndexCastBounds.book ib)).orElse
-    ((IndexClampBounds.book ib).orElse (IndexRemainderBounds.book ib))).orElse (extractBook ib)).orElse
-    (Refined.Book.lift model (Definedness.book ib))
+  let existing :=
+    (((((constantBook ib).orElse (IndexArithmetic.book ib)).orElse (IndexCastBounds.book ib)).orElse
+      ((IndexClampBounds.book ib).orElse (IndexRemainderBounds.book ib))).orElse (extractBook ib)).orElse
+      (Refined.Book.lift model (Definedness.book ib))
+  (Insert.book ib).orElse existing
 
 /-- Structured body arguments receive their proved element type/initialization facts; captured
 index ranges stay in the enclosing refined environment and block arguments shadow them normally. -/

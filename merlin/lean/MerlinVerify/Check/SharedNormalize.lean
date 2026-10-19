@@ -9,8 +9,11 @@ import MerlinVerify.Check.FromElementsSelect
 import MerlinVerify.Rules.IndexCompare
 import MerlinVerify.Check.ConstantAlias
 import MerlinVerify.Rules.IndexConstant
-import MerlinVerify.Rules.CastCancel
+import MerlinVerify.Rules.IntegerCastPartial
+import MerlinVerify.Check.InsertExtract
 import MerlinVerify.Rules.IntegerNeutral
+import MerlinVerify.Rules.IntegerCompareOrder
+import MerlinVerify.Check.RegionExact
 
 namespace MerlinVerify.Check.SharedNormalize
 
@@ -19,15 +22,16 @@ open MerlinVerify MerlinVerify.Sem.Ops
 /-- Local families share one recursive body traversal. The order lets materialization and
 carrier aliases expose scalar rewrite opportunities before the integer stage. -/
 def base (ib : Nat) (hints : List Op) : SplatNormalizer.Normalizer ib :=
-  BodyNormalize.sequential (FromElementsSelect.base ib)
-    (BodyNormalize.sequential (DenseExtract.base ib (DenseExtract.hintOps hints))
-      (BodyNormalize.sequential (ScalarCarrier.base ib)
-        (BodyNormalize.sequential (BodyNormalize.sequential (IntegerBody.unorderedBase ib) (Rules.CastCancel.base ib))
-          (BodyNormalize.sequential
-            (FactNormalize.base Rules.IndexCompare.family ib (DenseExtract.hintOps hints))
-            (BodyNormalize.sequential
-              (FactNormalize.base Rules.IndexConstant.family ib [])
-              (Rules.IntegerNeutral.base ib))))))
+  let selection := BodyNormalize.sequential (FromElementsSelect.base ib)
+    (DenseExtract.base ib (DenseExtract.hintOps hints))
+  let scalarAliases := BodyNormalize.sequential (ScalarCarrier.base ib)
+    (BodyNormalize.sequential (IntegerBody.unorderedBase ib) (Rules.IntegerCastPartial.base ib))
+  let indexFacts := BodyNormalize.sequential
+    (FactNormalize.base Rules.IndexCompare.family ib (DenseExtract.hintOps hints))
+    (FactNormalize.base Rules.IndexConstant.family ib [])
+  let insertions := BodyNormalize.sequential (InsertExtract.base ib) (Rules.IntegerNeutral.base ib)
+  BodyNormalize.sequential selection
+    (BodyNormalize.sequential scalarAliases (BodyNormalize.sequential indexFacts insertions))
 
 /-- Adapt the exact body normalizers without assuming any producer facts at function entry.
 The source and target syntax supply only a finite traversal budget. -/
@@ -40,10 +44,21 @@ def bodies : TypedNormalizer where
       (max (RegionDepth.ops ss) (RegionDepth.ops hints))).sound
       d Γ [] ss ns yields ctx call env hc hn he (by intro f hf; cases hf) hi hd
 
+/-- Unconditional ordering families share one traversal through every original region, including
+named-op bodies. Both families retain result bindings and prove equality for arbitrary environments. -/
+def scalarOrdering : List Op → List Op :=
+  Rules.IntegerCompareOrder.operations ∘ Rules.IntegerOrder.operations
+
+theorem scalarOrdering_exact : RegionExact.Exact scalarOrdering :=
+  RegionExact.compose
+    (fun ctx call env ops => Rules.IntegerOrder.operations_equal ctx call ops env)
+    (fun ctx call env ops => Rules.IntegerCompareOrder.operations_equal ctx call ops env)
+
 /-- Local families preserve escaping bindings and prove exact deletion of total dead producers.
-One final ordering-only traversal follows all aliases, including parent capture renames. -/
+One final ordering traversal follows all aliases, including parent capture renames. -/
 def normalizer : TypedNormalizer :=
-  bodies.sequential (ReshapeNested.normalizer.sequential IntegerBody.ordering)
+  bodies.sequential (ReshapeNested.normalizer.sequential
+    (RegionExact.normalizer scalarOrdering scalarOrdering_exact))
 
 def check (ib : Nat) (src tgt : Module) (fn : String) (argTys resTys : List VTy) : Bool :=
   TypedNormalizeC1.check normalizer ib src tgt fn argTys resTys
