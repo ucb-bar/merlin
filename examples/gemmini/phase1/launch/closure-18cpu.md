@@ -41,8 +41,9 @@ that only separately pinned operator metadata has changed since that revision.
 The retained compiler and readiness reports are private diagnostics and are
 not available to the fresh author.
 
-The sealed v26 release contains 161 capsules: 153 public (147 executable and six
-expected refusals) and eight private. Capsules are restricted to accelerator
+The sealed v26 release contains 161 capsules: 153 public and eight private.
+Execution and expected-refusal obligations come from the sealed descriptors.
+Capsules are restricted to accelerator
 work. Full-model captures select ResNet50, TinyLlama's 22 layers with batch one,
 32 prefill tokens and 32 decode steps, and SmolVLA's complete batch-one chain
 with a 512-pixel camera, action chunk 50 and ten denoising steps. Existing input
@@ -144,14 +145,19 @@ python examples/gemmini/phase1/launch/launch_phase1.py \
 
 Add `--run` to launch the native controller after all gates pass. Its console
 goes to `$PREP/phase1-native.log`; config and private input verification receipts,
-controller identity and memory samples are kept in `$PREP`. Once authoring
-stops, three full-model checks start on the immutable compiler snapshot in
-parallel with the native final grade. Their actual model commands and pins
-are retained. A changed candidate supersedes those checks. Completion requires
-the checked snapshot to match the native ledger and final published compiler.
-The supervisor owns both native and full-model process trees and enforces one
-deadline and memory policy across them. A controller exit alone does not
-establish Phase 1 completion.
+controller identity and memory samples are kept in `$PREP`. Under the selected
+capsule scope, final public grading, compiler freezing and hidden grading publish
+the capsule result independently. The separate external owner starts complete
+model validation only after reopening that capsule handoff and the capsule owner
+has terminated. It uses its own finite budget and retains the exact model
+commands, output comparisons and process pins. Capsule certification does not
+claim end-to-end model completion; that requires the independently recorded
+external results on the same compiler. A controller exit alone establishes neither.
+
+If a fresh campaign stops before certification, preserve its original incomplete
+result and deadline. The [qualification-only route](qualification.md) can check
+its exact final compiler under a separately recorded budget without starting an
+author or claiming that the original campaign converged.
 
 ## Inspect rendered inputs
 
