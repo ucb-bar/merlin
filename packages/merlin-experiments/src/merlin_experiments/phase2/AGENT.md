@@ -156,6 +156,12 @@ annotated execution follows original complete numerics and actual ELF producers.
 No hidden labels, copied qualification flags, raw-host fallback or prediction
 promotion. Raw products stay private; v2 feedback retains UNKNOWN members and
 joins partial source/count/roofline diagnostics. Native timing stays independent.
+Explicit native archive inference requires both a live independently reviewed
+event/resource-semantics capability and freshly reconstructed native held gates.
+Linear screening cannot qualify that route. Reopen the original full numerical
+arm receipt and actual plain/annotated products; identical executions may share
+one prediction only when their original reports agree. Family presence in
+training alone does not qualify unseen attention or capacity regimes.
 Optional native runtime/index selections remain original live process owners,
 and default calls stay fresh. Publish artifact archives only from the parent
 completion hook after actual cleanup and durable resource release; publication

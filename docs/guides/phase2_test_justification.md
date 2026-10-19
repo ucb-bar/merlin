@@ -2,7 +2,7 @@
 title: "Justifying Phase 2 tests from Phase 0 evidence"
 kind: guide
 status: current
-last_verified: 2026-10-08
+last_verified: 2026-10-19
 owner: experiments
 related: [phase0_specification, generating_capsules, normal_search_feedback]
 code_refs:
@@ -64,6 +64,45 @@ not yet admitted by the selected software spec. The generated contraction-depth
 chain is therefore not a substitute for those source chains. First resolve the
 software/placement obligation or produce an independently justified host/accel
 boundary witness; only then can its timing support a connected-slice claim.
+
+## Review whether the tests distinguish compiler decisions
+
+A shape inventory is insufficient for freezing a new development cohort. For
+each intended policy, identify its legal alternatives, a nearby case where it
+must refuse or fall back, and an independent transfer case. Match the alternatives
+on the same complete source, inputs, required accelerator work, numerical policy
+and measurement boundary. Keep controls and failures in the frozen roster.
+
+| Policy question | Required distinguishing cases |
+| --- | --- |
+| Retain operands or reload them? | Reuse once, twice and many times; immutable versus mutated storage; alias and intervening clobber controls. Account for all simultaneously live A/B, output, reserved and ping-pong intervals. Total tensor bytes alone do not prove fit. |
+| Change blocking, placement or overlap? | Last legal and first overflowing allocations for each storage/bank limit; zero, one and two available next-panel slots; independently vary packet-width boundaries and bank conflicts. Derive these sizes from current hardware and software contracts. |
+| Reorder tiles or retain command loops? | Independent axis tails, including one element and one less than a tile; one/two/many loop iterations and code-size limits. Verify complete issued work, reduction order, accumulator state and final writes. |
+| Eliminate packing or a layout conversion? | Contiguous and segmented/strided sources; an escaping user that needs the original materialization; ownership and lifetime controls. Inspect emitted objects, since an apparent source copy may already have disappeared. |
+| Clean up configurations or fences? | Identical and changed configurations, intervening consumers, pending asynchronous work and drains that remain necessary. A large contraction does not by itself establish queue pressure. |
+| Fuse readouts or attention? | Exactly selected scalar/grouped readout, bias/activation order, rounding ties, saturation and output tails; complete QK-mask-softmax-PV with GQA/KV state. Escaping scores and changed state must block invalid elimination. Integer QK/PV witnesses do not establish complete attention equivalence. |
+
+Apply this review at three scales: primitive decision witnesses, connected
+source-faithful graphs, and complete public reduced-depth models. Reduced depth
+may remove repeated layers; it must preserve the widths, layouts, nonlinear
+operations and carried state responsible for the constraint being tested.
+Declare any omitted component and unsupported numerical contract explicitly.
+
+An operator may inspect a separately authorized reference implementation for
+general mechanisms and counterexamples. Record exact source revisions and
+translate findings into independently generated semantic/resource tests. This
+does not admit that implementation, its old hardware facts, private captures,
+answers or historical timing labels to an experimental author, nor replace
+the inherited Phase 1 compiler. Evaluate a learned policy against independent
+shapes and compositions after freezing it. Development models already inspected
+are development evidence, not unseen validation.
+
+For every requirement, retain the exact candidate member identities and separate
+source/reference, capture, compiler emission, full numerical execution,
+instruction/effect and timing evidence. Mark an unsupported or unexecuted
+requirement as such even if a similarly named family exists. Coarse logical
+capacity bands, declarations of residency and source operation counts cannot
+stand in for an actual emitted schedule and its checks.
 
 ## Turn a measured gap into a development capsule
 

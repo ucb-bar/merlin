@@ -11,6 +11,7 @@ from merlin.llvmlower.reviewed_pass_capabilities import PassCapabilityBinding, R
 from merlin.runtime import _native_files as F
 
 from . import archive_count_observation as OBS
+from . import archive_native_screen as NATIVE
 from . import archive_screen_review as REVIEW
 from . import archive_spike_runtime as RT
 from . import ordinary_capsule_feedback as FEEDBACK
@@ -63,12 +64,19 @@ class OrdinaryArchiveScreen:
     files: tuple[tuple[str, str, tuple], ...]
     families: tuple[str, ...]
     _issuer: object
+    native_semantics: ReviewedPassCapability | None = None
+    native_semantics_identity: str | None = None
 
     @property
     def sha256(self):
         return document_sha256(
             {
-                "schema": "merlin.ordinary_archive_screen.v1",
+                "schema": (
+                    "merlin.ordinary_archive_screen.v2"
+                    if self.native_semantics
+                    else "merlin.ordinary_archive_screen.v1"
+                ),
+                **({"native_semantics_identity": self.native_semantics_identity} if self.native_semantics else {}),
                 "review_id": self.review_id,
                 "context_sha256": self.context_sha256,
                 "runtime_sha256": self.runtime.sha256,
@@ -88,6 +96,10 @@ class OrdinaryArchiveScreen:
         self.correspondence.revalidate()
         if self.correspondence.identity != self.correspondence_identity:
             raise StageGateError("original count-model correspondence owner changed")
+        if self.native_semantics is not None:
+            NATIVE.verify_semantics(self.native_semantics, self.correspondence.binding)
+            if self.native_semantics.identity != self.native_semantics_identity:
+                raise StageGateError("original native event semantics owner changed")
         for path, _digest, identity in self.files:
             selected = F.canonical(Path(path))
             if F.identity(selected.stat()) != identity:
@@ -101,7 +113,8 @@ class OrdinaryArchiveScreen:
             "source": "reviewed_phase1_public_archive",
             "metrics": report["metrics"],
             "authority": "exploration ordering only",
-            "event_engine_qualified": False,
+            "event_engine_qualified": self.native_semantics is not None,
+            **({"prediction_kind": "event_timing"} if self.native_semantics else {}),
             "raw_activity_features_guarded": len(json.loads(self.ranges_json)),
             "domain_limits": [
                 "exact runtime/scope/hardware selection",
@@ -225,19 +238,38 @@ class OrdinaryArchiveScreen:
                                 raise StageGateError("original count report lacks its actual process producer")
                         reason = _domain_reason(report, ranges)
                         if reason is None:
-                            requests.append(
-                                {
-                                    "case_id": key,
-                                    "workload_sha256": workload,
-                                    "features": {n: report["feature_counts"][n] for n in screen["feature_names"]},
-                                }
-                            )
+                            if self.native_semantics is not None:
+                                requests.append(
+                                    NATIVE.inference_case(
+                                        key=key,
+                                        member=member,
+                                        family=_family(member),
+                                        dataset=dataset,
+                                        manifest_sha256=policy.search_corpus.manifest_sha256,
+                                        report=report,
+                                        directory=directory,
+                                        value=value,
+                                    )
+                                )
+                            else:
+                                requests.append(
+                                    {
+                                        "case_id": key,
+                                        "workload_sha256": workload,
+                                        "features": {n: report["feature_counts"][n] for n in screen["feature_names"]},
+                                    }
+                                )
                 if reason is not None:
                     unavailable[key] = reason
-        comparison = B.compare(
-            screen,
-            {"schema": C.CASES, "profile": dataset["profile"], "domain": dataset["domain"], "cases": requests},
-            qualification={"dataset": dataset, "report": json.loads(self.report_json)},
+        qualification = {"dataset": dataset, "report": json.loads(self.report_json)}
+        comparison = (
+            NATIVE.compare(requests, dataset=dataset, qualification=qualification)
+            if self.native_semantics is not None
+            else B.compare(
+                screen,
+                {"schema": C.CASES, "profile": dataset["profile"], "domain": dataset["domain"], "cases": requests},
+                qualification=qualification,
+            )
         )
         predictions = {row["case_id"]: row for row in comparison["cases"]}
         facts, _facts_pin = RT.metadata(policy.feedback_evaluator.rtl_facts_path, maximum=8 << 20)
@@ -284,8 +316,9 @@ class OrdinaryArchiveScreen:
                     key=lambda r: (r["conservative_saved_cycles"] is None, -(r["conservative_saved_cycles"] or 0)),
                 )
             ],
-            "scope": "public archive empirical exploration only; original incumbent/final/plateau gates unchanged",
-            "event_engine_qualified": False,
+            "scope": "public archive exploration only; original incumbent/final/plateau gates unchanged",
+            "event_engine_qualified": self.native_semantics is not None,
+            **({"prediction_kind": "event_timing"} if self.native_semantics else {}),
             "promotion_authority": "NONE",
         }
 
@@ -303,6 +336,7 @@ def issue_archive_screen(
     correspondence,
     expected_rtl_facts_sha256,
     expected_observed_contract_sha256,
+    native_semantics=None,
 ):
     """Reconstruct eligibility and held gates from the exact reviewed public archive.
 
@@ -334,27 +368,36 @@ def issue_archive_screen(
     ):
         raise StageGateError("archive screen needs original exact live count-model hardware correspondence")
     correspondence.revalidate()
+    if native_semantics is not None:
+        NATIVE.verify_semantics(native_semantics, binding)
     if (
         policy._ordinary_screen is not None
         or policy.evaluation_pool is not None
         or F.digest(policy.feedback_evaluator.rtl_facts_path) != expected_rtl_facts_sha256
     ):
         raise StageGateError("archive screen must bind exact original facts before queue admission")
-    reviewed = REVIEW.review_archive(runtime=runtime, archive=archive, archive_sha256=archive_sha256,
-        binding_path=binding_path, observations_path=observations_path, screen_path=screen_path)
+    reviewed = REVIEW.review_archive(
+        runtime=runtime,
+        archive=archive,
+        archive_sha256=archive_sha256,
+        binding_path=binding_path,
+        observations_path=observations_path,
+        screen_path=screen_path,
+        prediction_kind="event_timing" if native_semantics is not None else "empirical_screen",
+    )
     dataset, screen, report, ranges = (reviewed[key] for key in ("dataset", "screen", "report", "raw_activity_ranges"))
     from merlin_timing import feedback as B
     from merlin_timing import fitting as FIT
     from merlin_timing import observations as O
 
-    sources = (A, C, V, B, FIT, O, RT, OBS, CAP, REVIEW, FEEDBACK, FEEDBACK.R)
+    sources = (A, C, V, B, FIT, O, RT, OBS, CAP, REVIEW, FEEDBACK, FEEDBACK.R, NATIVE)
     paths = tuple(
         dict.fromkeys(
             (
                 Path(archive),
                 Path(binding_path),
                 Path(observations_path),
-                Path(screen_path),
+                *((Path(screen_path),) if screen_path is not None else ()),
                 policy.feedback_evaluator.rtl_facts_path,
                 *(Path(m.__file__).resolve() for m in sources),
                 Path(__file__).resolve(),
@@ -375,6 +418,8 @@ def issue_archive_screen(
         files,
         tuple(reviewed["families"]),
         _ISSUER,
+        native_semantics,
+        native_semantics.identity if native_semantics else None,
     )
     result.verify(policy)
     return result

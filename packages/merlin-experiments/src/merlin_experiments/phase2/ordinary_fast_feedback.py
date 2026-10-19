@@ -238,6 +238,7 @@ def _member_arm(*, policy, revision, member, workspace, deadline, workers):
             policy, member, workspace, compiled, sandbox=sandbox,
             remaining_s=max(0, deadline - time.monotonic()), functional=functional,
         )
+        result["elapsed_seconds"] = time.monotonic() - started
     write_json(evidence, {**result, "original_grade": grade})
     return {**result, "evidence_sha256": sha256_file(evidence)}
 
