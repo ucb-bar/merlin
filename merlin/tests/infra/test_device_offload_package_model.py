@@ -87,6 +87,25 @@ def run_elf(elf, *, simulator, timeout, capture_bytes):
         record["qualified_whole_call_timing"] = "UNKNOWN"
 
 
+def harness_build_recipe():
+    """Declare this fixture's scalar ISA, entry and bounded synchronous call frame."""
+    from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
+
+    runtime = spike_model._harness_dir()
+    # The selected scalar runtime gives each hart 16 KiB (crt.S); reserve at
+    # most one quarter for this tiny private leaf, leaving caller/runtime room.
+    assert "li    t1, 16384" in (runtime / "crt.S").read_text()
+    return HarnessBuildRecipe(
+        compiler=spike_model._spike.gcc_path(),
+        include_roots=(runtime,),
+        support_sources=tuple(runtime / name for name in ("crt.S", "htif.c", "printf_min.c", "libc_min.c")),
+        link_script=runtime / "model_link.ld",
+        load_address=spike_model.DRAM_BASE,
+        cflags=("-march=" + EXECUTOR_ISA, "-mabi=lp64d", "-mcmodel=medany", "-nostdlib", "-nostartfiles"),
+        kernel_stack_frame=KernelStackFramePolicy(neutral_contract()["harness_abi"]["entry_symbol"], 4096),
+    )
+
+
 @contextmanager
 def original_scalar_executor(target):
     """Register actual execution support for this explicit neutral endpoint only."""
