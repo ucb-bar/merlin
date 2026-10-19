@@ -2231,7 +2231,7 @@ def _model_tier_map(
     return tiers
 
 
-def model_budget_seconds() -> float | None:
+def model_budget_seconds(*, override: float | None = None) -> float | None:
     """Wall-clock ceiling for ONE whole-model capsule, or ``None`` for unlimited (the default).
 
     Unlimited is the right default for an operator certification run: a whole model on a
@@ -2245,6 +2245,13 @@ def model_budget_seconds() -> float | None:
     in 40 min, the capstone then ran 5 h 30 m past the round's own 4 h timeout, wrote not one byte into
     its run directory, and the round never graded. Its own step timeout was 900 s.
     """
+    if override is not None:
+        import math
+
+        if type(override) not in (int, float) or not math.isfinite(override) or override <= 0:
+            raise ValueError("explicit model budget must be finite and positive")
+        inherited = model_budget_seconds()
+        return min(float(override), inherited) if inherited else float(override)
     raw = os.environ.get("MERLIN_MODEL_BUDGET_S", "").strip()
     if not raw:
         return None
@@ -2735,7 +2742,9 @@ def _grade_public_program_capsule_inline(
         result["candidate_source_eligibility_failure"] = {"type": type(exc).__name__, "detail": str(exc)[:2000]}
         if diagnostic_selection is not None:
             from .checked_source_model_diagnostic_execution import finish_unavailable
-            return finish_unavailable(diagnostic_selection, result, capsule, target=target, deadline=diagnostic_deadline)
+            return finish_unavailable(
+                diagnostic_selection, result, capsule, target=target, deadline=diagnostic_deadline
+            )
         return enforce_model_execution_check(result, capsule, target=target)
 
     readback_policy = None
@@ -4737,6 +4746,7 @@ def run_capsule(
     adapter_managed_tiers: tuple[str, ...] = (),
     model_execution_selection: dict | None = None,
     checked_source_diagnostic=None,
+    model_budget_s: float | None = None,
     _defer_result_publication: bool = False,
 ) -> dict:
     """Run the original target-selected package/capsule ladder and full gates.
@@ -4794,7 +4804,7 @@ def run_capsule(
         # with nothing written until it finishes an operator cannot tell a working run from a wedged
         # one -- which is exactly how a 5h30m stall was read as progress. Written first, so the run
         # directory says what started, when, and under what ceiling.
-        _budget = model_budget_seconds()
+        _budget = model_budget_seconds() if model_budget_s is None else model_budget_seconds(override=model_budget_s)
         if checked_source_diagnostic is not None and (not _budget or _budget <= 0):
             raise ValueError("checked source diagnostic requires the original sealed worker hard deadline")
         paths.run_path.mkdir(parents=True, exist_ok=True)

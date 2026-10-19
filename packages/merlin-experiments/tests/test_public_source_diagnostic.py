@@ -163,6 +163,7 @@ def test_selected_retained_route_uses_same_issued_policy_and_keeps_all_obligatio
 
     def run(cap, package, **kwargs):
         assert kwargs["checked_source_diagnostic"] is args["checked_source_diagnostic"]
+        assert 0 < kwargs["model_budget_s"] <= kwargs["timeout"]
         kwargs["checked_source_diagnostic"].verify_for(cap, target=args["target_experiment"].target)
         calls.append(package)
         return {
