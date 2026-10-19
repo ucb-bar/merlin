@@ -316,6 +316,7 @@ def compile_saved_model(
     weights_source: str | Path | None = None,
     shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
+    prepack_weights: bool = False,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
@@ -333,6 +334,12 @@ def compile_saved_model(
     ``graph_optimizations`` accepts an exact source contract or a HostGraphPolicy
     from original versioned software permissions. The latter binds the actual
     prepared source and rechecks software custody through execution.
+
+    ``prepack_weights=True`` pre-applies checked static immutable weight layout
+    chains before both lowering and runtime ABI generation. The generated caller
+    requires pure tensor source and original non-updated stored arguments;
+    mutable state, unknown effects and unsupported layouts refuse the selection.
+    False retains the original capture and performs no prepacking I/O.
 
     ``readback="full"`` builds the image to print every forward result complete
     (:mod:`merlin.runtime.whole_model_readback`); execution then holds each result to the capture's
@@ -367,6 +374,8 @@ def compile_saved_model(
         raise BaremetalModelError("host LLVM bitcode transport must be an explicit Boolean")
     if type(op_profile) is not bool:
         raise BaremetalModelError("operation profiling must be an explicit Boolean")
+    if type(prepack_weights) is not bool:
+        raise BaremetalModelError("weight prepacking must be an explicit Boolean optimization choice")
     if type(shared_source_lowerings) is not tuple:
         raise BaremetalModelError("shared source lowerings require an immutable tuple of typed selections")
     if graph_optimizations is not None:
@@ -536,6 +545,11 @@ def compile_saved_model(
             from merlin.llvmlower.quant_scope import FEATURE as captured_quantization_scope
 
             build_options["features"] = frozenset({captured_quantization_scope})
+        if prepack_weights:
+            from merlin.llvmlower.weight_prepack import ensure_registered
+
+            receipt["inputs"]["prepack_weights"] = True
+            build_options["features"] = frozenset((*build_options.get("features", ()), ensure_registered()))
         from merlin.llvmlower.blob_weights import requested as blob_weights_requested
 
         with blob_weights_requested(blob_weights):
@@ -609,14 +623,19 @@ def compile_saved_model(
                 if prepared_record["selected_sha256"] != prepared_record["input_snapshot_sha256"]:
                     raise BaremetalModelError("shared source replacement lost its completed provider record")
             else:
-                expected_sources = [{
-                    "path": str(Path(prepared_record["selected_path"]).resolve()),
-                    "sha256": prepared_record["selected_sha256"],
-                }, *(
-                    {"path": str(Path(built["host_artifacts"][role]["path"]).resolve()),
-                     "sha256": built["host_artifacts"][role]["sha256"]}
-                    for role in ("llvm_ir", "object")
-                )]
+                expected_sources = [
+                    {
+                        "path": str(Path(prepared_record["selected_path"]).resolve()),
+                        "sha256": prepared_record["selected_sha256"],
+                    },
+                    *(
+                        {
+                            "path": str(Path(built["host_artifacts"][role]["path"]).resolve()),
+                            "sha256": built["host_artifacts"][role]["sha256"],
+                        }
+                        for role in ("llvm_ir", "object")
+                    ),
+                ]
                 if (
                     provider_record["executable"] != {"path": str(elf.resolve()), "sha256": elf_sha}
                     or provider_record["source_model"] != expected_sources
@@ -738,8 +757,10 @@ def compile_saved_model(
                 from merlin.runtime.operation_profile import summarize
                 from merlin.runtime.out_bin import binary_console_diagnostics
 
-                text = binary_console_diagnostics(console).decode("utf-8", errors="replace") if full else (
-                    console.decode("utf-8", errors="replace") if isinstance(console, bytes) else console
+                text = (
+                    binary_console_diagnostics(console).decode("utf-8", errors="replace")
+                    if full
+                    else (console.decode("utf-8", errors="replace") if isinstance(console, bytes) else console)
                 )
                 profile = summarize(json.loads(profile_table.read_text()), text)
                 profile_path = output_path / "operation_profile.json"
@@ -792,8 +813,9 @@ def compile_saved_model(
                 value.selected_contracts.revalidate()
             if preparation.is_symlink() or not preparation.is_file() or _sha(preparation) != preparation_sha:
                 raise BaremetalModelError("shared source preparation receipt changed during execution")
-            if any(path.is_symlink() or not path.is_file() or _sha(path) != digest
-                   for path, digest in preparation_inputs):
+            if any(
+                path.is_symlink() or not path.is_file() or _sha(path) != digest for path, digest in preparation_inputs
+            ):
                 raise BaremetalModelError("shared source preparation input or selected IR changed during execution")
             revalidate_host_provider(provider_record)
         receipt["status"] = "compiled" if run == "none" else "verified_complete_output"

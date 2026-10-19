@@ -3,7 +3,7 @@ title: Shared Phase 1 scheduling
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-17
+last_verified: 2026-10-18
 ---
 
 # Shared Phase 1 scheduling
@@ -38,6 +38,45 @@ The shared compiler can be developed and tested without editing a target
 repository. Tests should exercise neutral representations, different resource
 geometries and unavailable capabilities. Existing target integrations are
 consumers and validation examples, not definitions of the shared API.
+
+## Relation to established compiler abstractions
+
+IREE's [Flow/Stream/HAL separation](https://iree.dev/reference/mlir-dialects/Stream/)
+distinguishes dispatchable tensor computation, explicit asynchronous scheduling
+and device execution. Its [Stream passes](https://iree.dev/reference/mlir-passes/Stream/)
+propagate completion timepoints and reuse storage under timeline ordering.
+Merlin's corresponding integration contracts must retain computation semantics
+before dispatch and actual completion dependencies before storage reuse. A
+source-level last use alone cannot establish asynchronous completion.
+
+XLA's [lowering pipeline](https://openxla.org/xla/hlo_to_thunks) separates layout
+assignment, fusion, copy insertion, scheduling and buffer assignment. Layout
+conflicts can require real copies; ownership can also require copies before
+in-place writes. This motivates separate layout, alias and realized-effect
+checks rather than assuming every copy is redundant. Its
+[rematerialization pass](https://openxla.org/xla/hlo_passes) also illustrates a
+different legal choice: recompute a pure intermediate to shorten its storage
+lifetime. Admitting that choice in Merlin would require current effects,
+numerical legality, resource bounds and an explicit cost policy.
+
+These transformations and abstractions are established compiler techniques.
+Their presence does not by itself establish a novel contribution. Merlin's
+research question is whether explicit resource facts and independently qualified
+software semantics can make reusable transformations easier to compose and tune
+for a newly generated backend, while retaining checked whole-model behavior.
+This requires held-out workload/target evidence and comparisons with equivalent
+shared libraries and verification rules. It cannot be inferred from a list of
+pass names or a successful tuning run.
+
+IREE's [tuning interface](https://iree.dev/reference/tuning/) already separates
+dispatch knobs, validity constraints and Transform dialect tuning specifications.
+Merlin Phase 2 should likewise choose among legal bounded alternatives and
+parameters through the same checked pass interfaces. Pass ordering remains
+constrained by prerequisites, current analyses and invalidations; tuning cannot
+remove those obligations. Existing handwritten algorithms and future
+agent-proposed choices must use the same original input contracts and admission
+rules. This is a design comparison, not a claim that all corresponding passes
+or cross-target integrations are implemented.
 
 ## Dense operand reuse and command budgets
 

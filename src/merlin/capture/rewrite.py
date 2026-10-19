@@ -27,6 +27,7 @@ import os
 import shutil
 import struct
 from dataclasses import asdict, dataclass, field
+from math import prod
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,28 @@ _NP = {
     "F32": np.float32,
     "F64": np.float64,
     "BF16": np.uint16,
+}
+_MLIR_DTYPE = {
+    "I8": "i8",
+    "U8": "ui8",
+    "I16": "i16",
+    "I32": "i32",
+    "I64": "i64",
+    "F16": "f16",
+    "BF16": "bf16",
+    "F32": "f32",
+    "F64": "f64",
+}
+_MANIFEST_DTYPE = {
+    "I8": {"int8", "i8"},
+    "U8": {"uint8", "ui8", "u8"},
+    "I16": {"int16", "i16"},
+    "I32": {"int32", "i32"},
+    "I64": {"int64", "i64"},
+    "F16": {"float16", "f16", "half"},
+    "BF16": {"bfloat16", "bf16"},
+    "F32": {"float32", "f32", "float"},
+    "F64": {"float64", "f64", "double"},
 }
 
 
@@ -95,69 +118,84 @@ def _link_or_copy(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
-def _replace_ssa(line: str, old: str, new: str) -> str:
-    """Replace SSA name `old` with `new` respecting token boundaries -- `%15285` is not `%152850`."""
-    if old not in line:
-        return line
-    out, i = [], 0
-    while True:
-        j = line.find(old, i)
-        if j < 0:
-            out.append(line[i:])
-            break
-        end = j + len(old)
-        nxt = line[end] if end < len(line) else ""
-        out.append(line[i:j])
-        out.append(old if nxt.isdigit() else new)
-        i = end
-    return "".join(out)
+def _selected_relayouts(module, args, func_name, relayouts=None):
+    from ..xdsl_dialects.lowering.weight_layout import WeightRelayout, weight_layout_report
+
+    if type(args) is not set or any(type(i) is not int or i < 0 for i in args):
+        raise RewriteRefused("weight relayout requires nonnegative argument indices")
+    fresh = {r.arg: r for r in weight_layout_report(module, func_name).hoistable}
+    if not args <= fresh.keys():
+        raise RewriteRefused("selected arguments lack a verified sole-input-use transpose")
+    selected = {i: fresh[i] for i in sorted(args)}
+    if relayouts is not None:
+        supplied = tuple(relayouts)
+        if (
+            any(type(r) is not WeightRelayout for r in supplied)
+            or len(supplied) != len(selected)
+            or {r.arg: r for r in supplied} != selected
+        ):
+            raise RewriteRefused("weight relayout selection is stale for the current source permutation")
+    return selected
 
 
-def rewrite_transposed_args(mlir_text: str, args: set[int]) -> tuple[str, int]:
-    """Delete each hoisted `linalg.transpose` (and the `tensor.empty` feeding its `outs`), give the
-    argument the transposed type, and forward every use of the transpose result to the argument.
+def _references_symbol(attribute, name):
+    from xdsl.dialects import builtin
 
-    Returns the new text and the number of ops removed. Structural line handling, no regex: an op is
-    found by its `= linalg.transpose ins(` shape and its operands by `partition`, per the repo's
-    no-regex rule.
+    if isinstance(attribute, builtin.SymbolRefAttr):
+        return attribute.root_reference.data == name
+    if isinstance(attribute, builtin.DictionaryAttr):
+        children = attribute.data.values()
+    elif isinstance(attribute, builtin.ArrayAttr):
+        children = attribute.data
+    else:
+        children = getattr(attribute, "parameters", ())
+    return any(_references_symbol(child, name) for child in children)
+
+
+def rewrite_transposed_args(
+    mlir_text: str, args: set[int], func_name: str = "forward", *, relayouts=None
+) -> tuple[str, int]:
+    """Rewrite verified rank-N tensor transposes by SSA identity, retaining unrelated IR.
+
+    A supplied selection must match the current parsed permutation, including permutations
+    whose shapes happen to be equal. Only an actually dead tensor.empty init is erased.
+    Internal callers of the changed function ABI are unsupported and refuse.
     """
-    want = {f"%{a}" for a in args}
-    lines = mlir_text.splitlines()
+    from xdsl.dialects import tensor
+    from xdsl.rewriter import Rewriter
 
-    drop_defs: set[str] = set()
-    subst: dict[str, str] = {}
-    retype: dict[str, tuple[str, str]] = {}
-    for line in lines:
-        s = line.strip()
-        if " = linalg.transpose ins(" not in s:
-            continue
-        res = s.split(" =", 1)[0].strip()
-        src = s.split("ins(", 1)[1].split(":", 1)[0].strip()
-        if src not in want:
-            continue
-        in_t = s.split("ins(", 1)[1].split(":", 1)[1].split(")")[0].strip()
-        out_t = s.split("outs(", 1)[1].split(":", 1)[1].split(")")[0].strip()
-        outs_val = s.split("outs(", 1)[1].split(":", 1)[0].strip()
-        drop_defs.add(res)
-        drop_defs.add(outs_val)
-        subst[res] = src
-        retype[src] = (in_t, out_t)
+    from ..common import mlir_query as mq
+    from ..common.ir_lock import IR_LOCK
+    from ..xdsl_dialects._common import text
+    from ..xdsl_dialects.lowering.weight_layout import _func, layout_chain
 
-    out_lines: list[str] = []
-    dropped = 0
-    for line in lines:
-        s = line.strip()
-        defname = s.split(" =", 1)[0].strip() if " =" in s else None
-        if defname in drop_defs:
-            dropped += 1
-            continue
-        if s.startswith("func.func @forward"):
-            for arg, (old_t, new_t) in retype.items():
-                line = line.replace(f"{arg}: {old_t}", f"{arg}: {new_t}")
-        for res, src in subst.items():
-            line = _replace_ssa(line, res, src)
-        out_lines.append(line)
-    return "\n".join(out_lines) + "\n", dropped
+    with IR_LOCK:
+        module = mq.parse(mlir_text)
+        selected = _selected_relayouts(module, args, func_name, relayouts)
+        fn = _func(module, func_name)
+        if any(
+            _references_symbol(attribute, func_name)
+            for op in module.walk()
+            for attribute in (*op.attributes.values(), *op.properties.values())
+        ):
+            raise RewriteRefused("weight relayout cannot change an internally referenced function ABI")
+        dropped = 0
+        for index in selected:
+            arg = fn.args[index]
+            operations, _steps = layout_chain(arg, fn)
+            inits = [op.outputs[0].owner for op in operations if op.name == "linalg.transpose"]
+            replacement = Rewriter.replace_value_with_new_type(arg, operations[-1].results[0].type)
+            Rewriter.replace_op(operations[-1], [], [replacement])
+            for op in reversed(operations[:-1]):
+                Rewriter.erase_op(op)
+            dropped += len(operations)
+            for init in inits:
+                if isinstance(init, tensor.EmptyOp) and init.parent is not None and not init.results[0].uses:
+                    Rewriter.erase_op(init)
+                    dropped += 1
+        fn.update_function_type()
+        module.verify()
+        return text(module, generic=True) + "\n", dropped
 
 
 class RewriteRefused(ValueError):
@@ -165,40 +203,109 @@ class RewriteRefused(ValueError):
     a rewrite that cannot be proven value-preserving must not be applied silently."""
 
 
-def _read_header(safetensors: Path) -> dict[str, Any]:
-    """The safetensors header (tensor name -> spec), without the `__metadata__` entry."""
-    header, _ = load_header(safetensors)
-    header.pop("__metadata__", None)
-    return header
-
-
 def hoist_safety_problems(
-    src: Path | str, man: dict[str, Any], want: dict[str, int], hoisted_args: set[int]
+    src: Path | str,
+    man: dict[str, Any],
+    want: dict[str, int],
+    hoisted_args: set[int],
+    *,
+    relayouts=None,
+    func_name: str = "forward",
+    immutable_arguments: tuple[int, ...] | None = None,
 ) -> list[str]:
-    """Reasons the stored layout of `want` (weight name -> arg) CANNOT be pre-applied to `src`.
+    """Join fresh typed layouts to bounded, unaliased storage and invocation ownership.
 
-    Empty means safe. Each check is here because its ABSENCE is silent -- the IR analysis proves the
-    transpose is the argument's sole consumer, which says nothing about how the argument's bytes are
-    stored, and every one of these would have produced a bundle that builds, links and grades while
-    reading the wrong bytes:
-
-    1. **The weight is not in the blob.** A quantized-subclass weight is STUBBED in the manifest
-       (`{"stub": true}`; `resnet50_v1_5_int8_w8a8_consistent` and `lstmnetvit_int8_w8a8_consistent`
-       have 1 and 22 of them) and has no safetensors entry at all. :func:`_rewrite_safetensors`
-       iterates the HEADER, so such a name is simply never reached -- while the manifest shape below
-       is flipped regardless, leaving a manifest that describes a transpose nobody performed.
-    2. **Not 2-D.** Only a 2-D weight has an unambiguous pre-applied transpose.
-    3. **Another argument reads the same weight.** `mining/section_build` and the capture manifests
-       both key weights by NAME, so two `@forward` arguments can name one tensor. Transposing it for
-       a hoisted argument silently transposes it for the other reader too.
-    4. **A byte range shared with another tensor.** Two distinct names can index overlapping bytes
-       (a tied head, an aliased view). Rewriting one rewrites the other's data underneath it.
+    ``immutable_arguments`` is an ORIGINAL caller premise, never inferred from IR attributes.
+    It permits externalized buffers only when the caller has established they stay immutable.
+    Without it, legacy manifest-declared parameters are the only eligible stored arguments.
+    Session state and streams always refuse, even if the premise names them.
     """
+    from ..common import mlir_query as mq
+    from ..common.ir_lock import IR_LOCK
+
     src = Path(src)
-    header = _read_header(src / "weights.safetensors")
     problems: list[str] = []
+    try:
+        with IR_LOCK:
+            selected = _selected_relayouts(
+                mq.parse((src / "model.mlir").read_text()), hoisted_args, func_name, relayouts
+            )
+        header, payload_offset = load_header(src / "weights.safetensors")
+        if "__metadata__" in header:
+            metadata = header.pop("__metadata__")
+            if type(metadata) is not dict or any(type(k) is not str or type(v) is not str for k, v in metadata.items()):
+                raise ValueError("safetensors metadata must map strings to strings")
+    except (ValueError, OSError) as exc:
+        return [str(exc)]
+    if type(man) is not dict or any(
+        type(k) is not str or not k.isdigit() or type(v) is not dict for k, v in man.items()
+    ):
+        return ["weight manifest must map numeric argument indices to records"]
+    if immutable_arguments is not None and (
+        type(immutable_arguments) is not tuple
+        or any(type(i) is not int or i < 0 for i in immutable_arguments)
+        or len(immutable_arguments) != len(set(immutable_arguments))
+    ):
+        return ["immutable arguments require distinct explicit nonnegative indices"]
+    payload_bytes = (src / "weights.safetensors").stat().st_size - payload_offset
+    ranges = {}
+    for name, spec in header.items():
+        if type(spec) is not dict or type(spec.get("dtype")) is not str:
+            problems.append(f"weight {name!r} has an invalid header record")
+            continue
+        shape, offsets = spec.get("shape"), spec.get("data_offsets")
+        if (
+            type(shape) is not list
+            or any(type(d) is not int or d < 0 for d in shape)
+            or type(offsets) is not list
+            or len(offsets) != 2
+            or any(type(i) is not int for i in offsets)
+            or not 0 <= offsets[0] <= offsets[1] <= payload_bytes
+        ):
+            problems.append(f"weight {name!r} has invalid shape or payload bounds")
+            continue
+        ranges[name] = tuple(offsets)
+        dtype = _NP.get(spec.get("dtype"))
+        if dtype is not None and prod(shape) * np.dtype(dtype).itemsize != offsets[1] - offsets[0]:
+            problems.append(f"weight {name!r} header shape/dtype does not match its payload byte extent")
+    session = src / "session_contract.yaml"
+    updated = set()
+    if session.is_file():
+        from ..common.yaml import load_yaml
+
+        try:
+            contract = load_yaml(session)
+            if type(contract) is not dict or contract.get("version") != 1:
+                raise ValueError("only version 1 single-program session ownership is supported")
+            for role in ("states", "streams"):
+                entries = contract.get(role, [])
+                if entries is None:
+                    entries = []
+                if type(entries) is not list:
+                    raise ValueError(f"session {role} must be a list")
+                for entry in entries:
+                    if type(entry) is not dict or type(entry.get("input_arg")) is not int or entry["input_arg"] < 0:
+                        raise ValueError(f"session {role} requires nonnegative input_arg indices")
+                    updated.add(entry["input_arg"])
+        except Exception as exc:
+            problems.append(f"cannot establish session argument immutability: {exc}")
 
     for name, arg in sorted(want.items(), key=lambda kv: kv[1]):
+        entry = man.get(str(arg), {})
+        if arg not in selected or entry.get("weight") != name:
+            problems.append(f"arg {arg}: weight selection differs from the source or manifest")
+            continue
+        if (
+            entry.get("stub")
+            or entry.get("mutable")
+            or arg in updated
+            or entry.get("kind") not in ("param", "buffer")
+            or (immutable_arguments is None and entry.get("kind") != "param")
+            or (immutable_arguments is not None and arg not in immutable_arguments)
+        ):
+            problems.append(
+                f"arg {arg}: stored argument is stubbed, mutable/session-carried or lacks original immutable ownership"
+            )
         spec = header.get(name)
         if spec is None:
             stubbed = bool(man.get(str(arg), {}).get("stub"))
@@ -209,20 +316,28 @@ def hoist_safety_problems(
                 "describe a transpose that never happened"
             )
             continue
-        if len(spec.get("shape", ())) != 2:
-            problems.append(f"arg {arg}: weight {name!r} has shape {spec.get('shape')}; only 2-D weights are hoisted")
+        layout = selected[arg]
+        if type(spec) is not dict or type(spec.get("dtype")) is not str:
+            continue
+        if spec.get("shape") != layout.shape or ("shape" in entry and entry["shape"] != layout.shape):
+            problems.append(f"arg {arg}: source, manifest and header shapes disagree")
+        dtype = spec.get("dtype")
+        if _MLIR_DTYPE.get(dtype) != layout.dtype or dtype not in _NP:
+            problems.append(f"arg {arg}: source and safetensors dtype disagree or are unsupported")
+        if "dtype" in entry and str(entry["dtype"]).removeprefix("torch.") not in _MANIFEST_DTYPE.get(dtype, ()):
+            problems.append(f"arg {arg}: manifest and safetensors dtype disagree")
 
     for key, entry in man.items():
         w = entry.get("weight")
         if w not in want or not key.isdigit():
             continue
-        if int(key) not in hoisted_args:
+        if int(key) != want[w]:
             problems.append(
-                f"weight {w!r} is also read by arg {key}, which is NOT hoisted; pre-transposing it "
-                "would change what that argument sees"
+                f"weight {w!r} is also read by arg {key}; pre-transposing it would change what that argument sees"
             )
 
-    ranges = {n: tuple(s["data_offsets"]) for n, s in header.items() if "data_offsets" in s}
+    if set(want.values()) != hoisted_args:
+        problems.append("selected argument identities alias one stored weight name")
     for name in sorted(want):
         mine = ranges.get(name)
         if mine is None:
@@ -244,21 +359,23 @@ def retarget_weights_file(mlir_text: str, weights_path: Path | str) -> tuple[str
     `gemma2_2b_int8_full_seq8_pretransposed` and every other `_pretransposed` bundle on disk still
     name the ORIGINAL `weights.safetensors`, so anyone reading one concludes it is stock.
 
-    Structural, no regex: the attribute is found by its literal key on the module line and its value
-    ends at the next quote.
+    Parsed attributes retain the same behavior for custom and generic module syntax.
     """
-    key = 'prov.weights_file = "'
-    out: list[str] = []
-    changed = False
-    for line in mlir_text.splitlines():
-        if not changed and line.lstrip().startswith("builtin.module") and key in line:
-            head, _, rest = line.partition(key)
-            _old, quote, tail = rest.partition('"')
-            if quote:
-                line = f'{head}{key}{weights_path}"{tail}'
-                changed = True
-        out.append(line)
-    return "\n".join(out) + "\n", changed
+    from xdsl.dialects.builtin import StringAttr
+
+    from ..common import mlir_query as mq
+    from ..common.ir_lock import IR_LOCK
+    from ..xdsl_dialects._common import text
+
+    with IR_LOCK:
+        module = mq.parse(mlir_text)
+        if "prov.weights_file" not in module.attributes:
+            return mlir_text, False
+        if not isinstance(module.attributes["prov.weights_file"], StringAttr):
+            raise RewriteRefused("prov.weights_file must be a string attribute")
+        module.attributes["prov.weights_file"] = StringAttr(str(weights_path))
+        module.verify()
+        return text(module, generic=True) + "\n", True
 
 
 #: written by the hoist itself -- never carried over from the source bundle
@@ -287,45 +404,43 @@ def _carry_sidecars(src: Path, dst: Path, written: set[str]) -> list[str]:
     return skipped
 
 
-def hoist_weight_transposes(src: Path | str, dst: Path | str, func_name: str = "forward") -> RewriteRecord:
-    """Store every sole-use weight in the layout its consumer wants, so the model stops transposing
-    weights at run time.
-
-    A `linalg.transpose` reading a function argument is not computation: it is the model paying, on
-    every inference, to convert a weight into a layout the packer could have written once. On
-    Gemma 2 2B, 183 of them moved **2,493.0 MiB per inference** against a 2,505 MiB weight blob --
-    essentially every weight, every time -- and the largest, the 562.5 MiB int8 tied head, is what
-    killed a whole-model FireSim run with `FAIL alloc bytes=589824064` at op 11,494 of 11,526.
-
-    SOUNDNESS, CHECKED NOT ASSUMED. Pre-transposing is value-preserving only when the transpose is
-    the argument's SOLE consumer; anything else reading the argument would silently begin seeing
-    transposed data. The hoistable set comes from
-    :func:`merlin.xdsl_dialects.lowering.weight_layout.weight_layout_report`, which splits sole-use
-    from mixed-use and never merges them, and blocked re-layouts are left exactly as they are.
-
-    BIT-EXACT. A transpose moves elements, it does not compute. Every value a consumer sees is the
-    value it saw before, at the same index, so goldens carry over untouched. Per weight this asserts
-    that the bytes written are exactly `stored.T`, so an error surfaces here rather than as wrong
-    logits hours later on a simulator.
-    """
+def _weight_selection(src, func_name, immutable_arguments):
     from ..common import mlir_query as mq
     from ..common.ir_lock import IR_LOCK
     from ..xdsl_dialects.lowering.weight_layout import weight_layout_report
 
-    src, dst = Path(src), Path(dst)
+    src = Path(src)
     mlir_text = (src / "model.mlir").read_text()
     with IR_LOCK:
         report = weight_layout_report(mq.parse(mlir_text), func_name)
 
     man = json.loads((src / "weights.safetensors.manifest.json").read_text())
+    if type(man) is not dict or any(
+        type(key) is not str
+        or not key.isdigit()
+        or type(entry) is not dict
+        or ("weight" in entry and type(entry["weight"]) is not str)
+        for key, entry in man.items()
+    ):
+        raise RewriteRefused("weight manifest must bind numeric arguments to stored tensor names")
+    if immutable_arguments is not None and (
+        type(immutable_arguments) is not tuple
+        or any(type(i) is not int or i < 0 for i in immutable_arguments)
+        or len(immutable_arguments) != len(set(immutable_arguments))
+    ):
+        raise RewriteRefused("immutable arguments require distinct explicit nonnegative indices")
     weight_args = {int(k) for k, entry in man.items() if k.isdigit() and "weight" in entry}
     # The IR-only analysis also sees sole-use transposes of runtime inputs.  Those values have no
     # stored payload to rewrite and must remain graph operations; they do not invalidate independent
     # manifest-declared weight candidates.  Storage eligibility is decided here, where the manifest
     # is authoritative, rather than guessed from provenance or argument position.
-    by_arg = {r.arg: r for r in report.hoistable if r.arg in weight_args}
+    by_arg = {
+        r.arg: r
+        for r in report.hoistable
+        if r.arg in weight_args and (immutable_arguments is None or r.arg in immutable_arguments)
+    }
     unpriceable_weights = [
-        problem for problem in report.unpriceable if any(problem.startswith(f"arg {arg}:") for arg in weight_args)
+        problem for problem in report.unpriceable if any(problem.startswith(f"arg {arg}:") for arg in by_arg)
     ]
     if unpriceable_weights:
         raise ValueError(  # fail closed: an unpriced weight is not a free one
@@ -345,49 +460,45 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str, func_name: str = "
     # the graph and says nothing about how the bytes are STORED -- a stubbed weight, a weight two
     # arguments name, an aliased byte range. Each of those produces a bundle that builds and grades
     # while reading the wrong bytes, so they are checked here and refused, never worked around.
-    problems = hoist_safety_problems(src, man, want, set(by_arg))
+    problems = hoist_safety_problems(
+        src,
+        man,
+        want,
+        set(by_arg),
+        relayouts=tuple(by_arg.values()),
+        func_name=func_name,
+        immutable_arguments=immutable_arguments,
+    )
     if problems:
         raise RewriteRefused(f"cannot pre-apply the weight layout of {src.name}: " + "; ".join(problems))
 
-    dst.mkdir(parents=True, exist_ok=True)
-    done = _rewrite_safetensors(src, dst, set(want))
-    if done != len(want):  # belt-and-braces: the checks above should make this
-        raise RewriteRefused(  # unreachable, and a silent undercount is the failure
-            f"{src.name}: transposed {done} of {len(want)} weights; refusing to write a bundle whose "
-            "manifest claims a layout its bytes do not have"
-        )
+    return mlir_text, report, man, weight_args, by_arg, want
 
-    for entry in man.values():
-        if entry.get("weight") in want and "shape" in entry:
-            entry["shape"] = [entry["shape"][1], entry["shape"][0]]
-    (dst / "weights.safetensors.manifest.json").write_text(json.dumps(man, indent=2))
 
-    new_text, dropped = rewrite_transposed_args(mlir_text, set(by_arg))
-    # Point the provenance at the blob this bundle actually has (see `retarget_weights_file`).
-    new_text, retargeted = retarget_weights_file(new_text, (dst / "weights.safetensors").resolve())
-    (dst / "model.mlir").write_text(new_text)
-
-    skipped = _carry_sidecars(src, dst, _HOIST_WRITES)
-    if (src / REWRITES_FILE).is_file():  # carry the chain forward, do not start a new one
-        shutil.copy2(src / REWRITES_FILE, dst / REWRITES_FILE)
-
-    rec = RewriteRecord(
+def _hoist_record(src, report, weight_args, by_arg, dropped, retargeted, skipped):
+    """Describe the source-derived rewrite after its actual IR/payload checks."""
+    return RewriteRecord(
         name="hoist_weight_transposes",
         source_bundle=src.name,
         soundness=(
             "each hoisted argument's transpose is its SOLE consumer, so pre-applying the "
             "layout cannot change what any other reader sees; verified per argument by "
-            "weight_layout_report, and each weight's bytes asserted equal to stored.T"
+            "weight_layout_report, and each weight's raw element bytes follow the checked layout chain; "
+            "immutable invocation ownership is a separate original caller/manifest premise"
         ),
         effect={
-            "weights_pre_transposed": done,
-            "transposes_removed": len(by_arg),
+            "weights_pre_transposed": len(by_arg),
+            "transposes_removed": sum(r.transposes for r in by_arg.values()),
             "ops_removed": dropped,
+            "layouts": [asdict(r) for r in by_arg.values()],
             "bytes_moved_per_inference_before": sum(r.bytes_moved for r in by_arg.values()),
             "mib_moved_per_inference_before": round(sum(r.bytes_moved for r in by_arg.values()) / 2**20, 1),
             "bytes_moved_per_inference_after": 0,
             "blocked_not_hoisted": len(report.blocked),
-            "non_weight_transposes_not_hoisted": len(report.hoistable) - len(by_arg),
+            "outside_immutable_selection": len(
+                [r for r in report.hoistable if r.arg in weight_args and r.arg not in by_arg]
+            ),
+            "non_weight_transposes_not_hoisted": sum(r.arg not in weight_args for r in report.hoistable),
             "weights_file_retargeted": retargeted,
             "sidecars_not_carried": skipped,
             "analysis": "merlin.xdsl_dialects.lowering.weight_layout.weight_layout_report",
@@ -399,10 +510,16 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str, func_name: str = "
         )
         + (
             [
-                f"{len(report.hoistable) - len(by_arg)} sole-use transpose(s) were NOT hoisted because "
+                f"{sum(r.arg not in weight_args for r in report.hoistable)} sole-use layout chain(s) "
+                "were NOT hoisted because "
                 "their arguments are runtime inputs, not manifest-declared weights"
             ]
-            if len(report.hoistable) != len(by_arg)
+            if any(r.arg not in weight_args for r in report.hoistable)
+            else []
+        )
+        + (
+            ["stored layout chains outside the original immutable argument selection remain unchanged"]
+            if any(r.arg in weight_args and r.arg not in by_arg for r in report.hoistable)
             else []
         )
         + ([f"stale, NOT carried over from the source bundle: {skipped}"] if skipped else [])
@@ -412,12 +529,73 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str, func_name: str = "
             else ["prov.weights_file was absent, so it could not be retargeted at this bundle's own weights"]
         ),
     )
+
+
+def hoist_weight_transposes(
+    src: Path | str,
+    dst: Path | str,
+    func_name: str = "forward",
+    *,
+    immutable_arguments: tuple[int, ...] | None = None,
+) -> RewriteRecord:
+    """Store every sole-use weight in the layout its consumer wants, so the model stops transposing
+    weights at run time.
+
+    A `linalg.transpose` reading a function argument is not computation: it is the model paying, on
+    every inference, to convert a weight into a layout the packer could have written once. On
+    Gemma 2 2B, 183 of them moved **2,493.0 MiB per inference** against a 2,505 MiB weight blob --
+    essentially every weight, every time -- and the largest, the 562.5 MiB int8 tied head, is what
+    killed a whole-model FireSim run with `FAIL alloc bytes=589824064` at op 11,494 of 11,526.
+
+    SOUNDNESS, CHECKED NOT ASSUMED. Pre-transposing is value-preserving only when the transpose is
+    the argument's SOLE consumer; anything else reading the argument would silently begin seeing
+    transposed data. The hoistable set comes from
+    :func:`merlin.xdsl_dialects.lowering.weight_layout.weight_layout_report`, which splits sole-use
+    from mixed-use and never merges them, and blocked re-layouts are left exactly as they are.
+
+    BIT-EXACT. A transpose moves elements, it does not compute. Every value a consumer sees is the
+    value it saw before, at the same index, so goldens carry over untouched. Per weight this asserts
+    that the bytes written follow the source's exact layout chain, so an error surfaces here rather than as wrong
+    logits hours later on a simulator.
+    """
+    src, dst = Path(src), Path(dst)
+    if src.resolve() == dst.resolve() or dst.exists():
+        raise RewriteRefused("weight relayout requires a fresh destination distinct from its source")
+    mlir_text, report, man, weight_args, by_arg, want = _weight_selection(src, func_name, immutable_arguments)
+
+    new_text, dropped = rewrite_transposed_args(mlir_text, set(by_arg), func_name, relayouts=tuple(by_arg.values()))
+    if (src / "model.mlir").read_text() != mlir_text:
+        raise RewriteRefused("weight layout source changed during selection")
+    dst.mkdir(parents=True)
+    done = _rewrite_safetensors(src, dst, {name: by_arg[arg] for name, arg in want.items()})
+    if done != len(want):  # belt-and-braces: the checks above should make this
+        raise RewriteRefused(  # unreachable, and a silent undercount is the failure
+            f"{src.name}: transposed {done} of {len(want)} weights; refusing to write a bundle whose "
+            "manifest claims a layout its bytes do not have"
+        )
+
+    for entry in man.values():
+        if entry.get("weight") in want and "shape" in entry:
+            entry["shape"] = list(by_arg[want[entry["weight"]]].result_shape)
+    (dst / "weights.safetensors.manifest.json").write_text(json.dumps(man, indent=2))
+
+    # Point the provenance at the blob this bundle actually has (see `retarget_weights_file`).
+    new_text, retargeted = retarget_weights_file(new_text, (dst / "weights.safetensors").resolve())
+    (dst / "model.mlir").write_text(new_text)
+
+    skipped = _carry_sidecars(src, dst, _HOIST_WRITES)
+    if (src / REWRITES_FILE).is_file():  # carry the chain forward, do not start a new one
+        shutil.copy2(src / REWRITES_FILE, dst / REWRITES_FILE)
+
+    rec = _hoist_record(src, report, weight_args, by_arg, dropped, retargeted, skipped)
     record_rewrite(dst, rec)
     return rec
 
 
-def _rewrite_safetensors(src: Path, dst: Path, want: set[str]) -> int:
-    """Copy the blob, transposing exactly the tensors in `want`, keeping order and tight packing."""
+def _rewrite_safetensors(src: Path, dst: Path, want: dict) -> int:
+    """Apply verified layouts to raw element-byte records, keeping tensor order and metadata."""
+    from ..xdsl_dialects.lowering.weight_layout import apply_layout_steps
+
     with open(src / "weights.safetensors", "rb") as f:
         header, data_start = read_header(f)
         meta = header.pop("__metadata__", None)
@@ -429,9 +607,7 @@ def _rewrite_safetensors(src: Path, dst: Path, want: set[str]) -> int:
             s, e = spec["data_offsets"]
             shape = list(spec["shape"])
             if name in want:
-                if len(shape) != 2:
-                    raise ValueError(f"{name}: only 2-D weights are hoisted, got {shape}")
-                shape = [shape[1], shape[0]]
+                shape = list(want[name].result_shape)
             new_header[name] = {"dtype": spec["dtype"], "shape": shape, "data_offsets": [off, off + (e - s)]}
             order.append((name, s, e, spec))
             off += e - s
@@ -450,21 +626,139 @@ def _rewrite_safetensors(src: Path, dst: Path, want: set[str]) -> int:
                     left = e - s
                     while left:
                         chunk = f.read(min(left, 64 << 20))
+                        if not chunk:
+                            raise RewriteRefused(f"{name}: source payload truncated while copying")
                         out.write(chunk)
                         left -= len(chunk)
                     continue
                 dt = _NP.get(spec["dtype"])
                 if dt is None:
                     raise ValueError(f"{name}: unknown safetensors dtype {spec['dtype']!r}")
-                arr = np.frombuffer(f.read(e - s), dtype=dt).reshape(spec["shape"])
-                t = np.ascontiguousarray(arr.T)
-                # the assertions that make a silent layout error impossible
-                assert t.shape == tuple(new_header[name]["shape"]), name
-                assert t.nbytes == e - s, name
-                assert np.array_equal(t.T, arr), f"{name}: transpose round-trip failed"
+                raw = f.read(e - s)
+                if len(raw) != e - s:
+                    raise RewriteRefused(f"{name}: source payload truncated while relaying out")
+                arr = np.frombuffer(raw, dtype=np.dtype(f"V{np.dtype(dt).itemsize}")).reshape(spec["shape"])
+                t = apply_layout_steps(arr, want[name].steps)
+                if t.shape != tuple(new_header[name]["shape"]) or t.nbytes != e - s:
+                    raise RewriteRefused(f"{name}: layout shape/byte extent changed")
                 out.write(t.tobytes())
                 done += 1
     return done
+
+
+def verify_hoisted_bundle(
+    src: Path | str,
+    dst: Path | str,
+    func_name: str = "forward",
+    *,
+    immutable_arguments: tuple[int, ...] | None = None,
+) -> dict:
+    """Reconstruct a produced bundle from current source semantics and original bytes.
+
+    A receipt or matching output digest does not establish this relation. The actual
+    output IR must equal the typed source rewrite, and inverse layout steps must recover
+    every original element byte. Untouched tensors are compared in bounded chunks.
+    This establishes a conditional storage rewrite, not implementation qualification.
+    """
+    from ..common import mlir_query as mq
+    from ..common.ir_lock import IR_LOCK
+    from ..common.jsonio import canonical_json, strict_json_equal
+    from ..xdsl_dialects._common import text
+
+    src, dst = Path(src), Path(dst)
+    original, report, manifest, weight_args, by_arg, want = _weight_selection(src, func_name, immutable_arguments)
+    expected, removed = rewrite_transposed_args(original, set(by_arg), func_name, relayouts=tuple(by_arg.values()))
+    expected, retargeted = retarget_weights_file(expected, (dst / "weights.safetensors").resolve())
+    with IR_LOCK:
+        actual_module, expected_module = mq.parse((dst / "model.mlir").read_text()), mq.parse(expected)
+        actual_module.verify()
+        if text(actual_module, generic=True) != text(expected_module, generic=True):
+            raise RewriteRefused("hoisted model IR differs from the checked source layout rewrite")
+    for entry in manifest.values():
+        if entry.get("weight") in want and "shape" in entry:
+            entry["shape"] = list(by_arg[want[entry["weight"]]].result_shape)
+    actual_manifest = json.loads((dst / "weights.safetensors.manifest.json").read_text())
+    if not strict_json_equal(actual_manifest, manifest):
+        raise RewriteRefused("hoisted manifest differs from source layout geometry or ownership")
+    source_header, source_offset = load_header(src / "weights.safetensors")
+    actual_header, actual_offset = load_header(dst / "weights.safetensors")
+    expected_header, cursor = {}, 0
+    for name, spec in source_header.items():
+        if name == "__metadata__":
+            continue
+        begin, end = spec["data_offsets"]
+        shape = by_arg[want[name]].result_shape if name in want else spec["shape"]
+        expected_header[name] = dict(
+            dtype=spec["dtype"], shape=list(shape), data_offsets=[cursor, cursor + end - begin]
+        )
+        cursor += end - begin
+    if "__metadata__" in source_header:
+        expected_header["__metadata__"] = source_header["__metadata__"]
+    if (
+        not strict_json_equal(actual_header, expected_header)
+        or (dst / "weights.safetensors").stat().st_size != actual_offset + cursor
+    ):
+        raise RewriteRefused("hoisted safetensors header, bounds or final payload extent disagree with source")
+    with (
+        (src / "weights.safetensors").open("rb") as source_file,
+        (dst / "weights.safetensors").open("rb") as actual_file,
+    ):
+        for name, spec in source_header.items():
+            if name == "__metadata__":
+                continue
+            begin, end = spec["data_offsets"]
+            actual_begin, _actual_end = actual_header[name]["data_offsets"]
+            source_file.seek(source_offset + begin)
+            actual_file.seek(actual_offset + actual_begin)
+            count = end - begin
+            if name in want:
+                layout = by_arg[want[name]]
+                width = np.dtype(_NP[spec["dtype"]]).itemsize
+                raw = actual_file.read(count)
+                if len(raw) != count:
+                    raise RewriteRefused(f"{name}: hoisted payload truncated")
+                inverse = np.frombuffer(raw, dtype=np.dtype(f"V{width}")).reshape(layout.result_shape)
+                for step in reversed(layout.steps):
+                    if step.operation == "linalg.transpose":
+                        permutation = tuple(step.permutation.index(axis) for axis in range(len(step.permutation)))
+                        inverse = np.transpose(inverse, permutation)
+                    else:
+                        inverse = inverse.reshape(step.shape)
+                if np.ascontiguousarray(inverse).tobytes() != source_file.read(count):
+                    raise RewriteRefused(f"{name}: inverse layout does not recover original stored element bytes")
+            else:
+                while count:
+                    size = min(count, 1 << 20)
+                    left, right = source_file.read(size), actual_file.read(size)
+                    if len(left) != size or left != right:
+                        raise RewriteRefused(f"{name}: untouched stored element bytes changed")
+                    count -= size
+    # A cache-owned hash cannot establish that carried invocation/state metadata
+    # is still the original metadata. Compare that relation independently, too.
+    from ..common.digest import sha256_file
+
+    source_files = {p.name: p for p in src.iterdir() if p.is_file()}
+    skipped = sorted(name for name in source_files if name.startswith(_STALE_PREFIX))
+    expected_names = (source_files.keys() - set(skipped)) | _HOIST_WRITES
+    actual_names = {p.name for p in dst.iterdir() if p.is_file()}
+    # This one cache receipt is not part of the capture-bundle format.
+    actual_names.discard("weight-prepack-identity.json")
+    if actual_names != expected_names:
+        raise RewriteRefused("hoisted sidecar roster differs from the original bundle")
+    for name in expected_names - _HOIST_WRITES:
+        if sha256_file(source_files[name]) != sha256_file(dst / name):
+            raise RewriteRefused(f"hoisted carried sidecar differs from original source: {name}")
+    rec = _hoist_record(src, report, weight_args, by_arg, removed, retargeted, skipped)
+    original_history = (
+        json.loads((src / REWRITES_FILE).read_text()) if (src / REWRITES_FILE).is_file() else {"rewrites": []}
+    )
+    expected_history = {**original_history, "rewrites": [*original_history["rewrites"], asdict(rec)]}
+    actual_history = json.loads((dst / REWRITES_FILE).read_text())
+    # JSON normalization only changes tuples into lists; no supplied field is
+    # ignored, including prior history, layouts, caveats and effect counters.
+    if canonical_json(actual_history) != canonical_json(expected_history):
+        raise RewriteRefused("hoisted rewrite history or reported effects differ from reconstructed source")
+    return rec.effect
 
 
 def specialize_gather(src: Path | str, dst: Path | str, func_name: str = "forward") -> RewriteRecord:
