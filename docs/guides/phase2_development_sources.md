@@ -389,3 +389,20 @@ establish no qualified target latency or automatic performance admission. The
 separate two-program sealed batch replayed four complete independent outputs;
 its original evidence is retained under the managed task's
 `out/artifacts/verification/development-sources/sealed-native-batch-v3`.
+
+`development_parameter_stress` adds independent public parameter-owning integer
+graphs for compilation scaling. Every immutable signed i8 Parameter participates
+in a connected projection/readout chain; both final i32 and i8 live-outs have
+complete independent references. Width, depth and explicit sharing control real
+parameter bytes separately from work. The retained additive ladder has 256 KiB,
+1 MiB and 3 MiB distinct payloads, a 256 KiB shared-parameter control with the
+same work as the 1 MiB member, and a 16 MiB source/reference cost refusal. It
+preserves the existing exact half-up/saturating boundary; it introduces no
+probability conversion or numerical tolerance. All old manifests remain frozen.
+
+Captured safetensors bytes, source-owned parameter count, streamed weight blobs,
+compiled data sections and generated kernels require separate byte checks.
+Building a weight object and a kernel object establishes component compilation;
+only the original complete model build establishes a linked program. Neither
+static accelerator instruction presence nor a successful link establishes actual
+product coverage, numerical target execution, device residency or latency.

@@ -40,6 +40,13 @@ def describe(declaration):
     """Derive complete input/result geometry before allocating tensors or files."""
     if (
         isinstance(declaration, dict)
+        and declaration.get("schema") == "merlin.phase0.public_parameter_compile_stress.v1"
+    ):
+        from .development_parameter_stress import describe as parameter_description
+
+        return parameter_description(declaration)
+    if (
+        isinstance(declaration, dict)
         and declaration.get("schema") == "merlin.phase0.public_attention_semantic_source.v1"
     ):
         from .development_attention import describe as attention
@@ -123,6 +130,13 @@ def describe(declaration):
 
 
 def render(declaration):
+    if (
+        isinstance(declaration, dict)
+        and declaration.get("schema") == "merlin.phase0.public_parameter_compile_stress.v1"
+    ):
+        from .development_parameter_stress import render as parameter_render
+
+        return parameter_render(declaration)
     if (
         isinstance(declaration, dict)
         and declaration.get("schema") == "merlin.phase0.public_attention_semantic_source.v1"
