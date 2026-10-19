@@ -135,6 +135,18 @@ Compute and movement overlap (taking the max) only when the stores admit a secon
 Otherwise they are summed, and a serial host stage is always added. The attainable rate is quoted in
 useful MACs per cycle.
 
+These existing stage formulas have limits that the guidance gate does not repair.
+Padding rounds M and K by array rows and N by array columns. Two resident contexts
+permit the overlap composition without proving actual queue, DMA or bank scheduling;
+unknown buffering currently selects the serial sum without establishing that execution
+must serialize. Movement takes the maximum of read and write costs under an independent-port
+premise. Custom LHS byte volumes use unrounded requested bytes; in the dense-LHS beat branch,
+a custom RHS byte override is not charged to physical reads. Planned tiling and declared
+residency also do not reconstruct actual emitted transfers, and accelerator-feeding host cost
+is an externally supplied term. Reuse only within reviewed accounting premises; an omitted
+or unproved term cannot become known merely because a numeric floor exists. Correcting these
+formulas or replacing frozen cohort floors requires a separate reviewed change.
+
 `phase2.roofline_priority` ranks members by worst-repeat attainment (floor / measured), furthest
 below the roofline first. Partial numeric floors remain useful for exploratory ranking, but their
 attainment cannot establish completion. It reports `converged` only when every repeat has a fully
