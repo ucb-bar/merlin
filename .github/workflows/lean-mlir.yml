@@ -103,6 +103,7 @@ jobs:
               */test_lean_extended_composition_native.py|\
               */test_lean_bitcast_cancel_native.py|*/test_lean_tensor_empty_dead_native.py|\
               */test_lean_scalar_constant_hoist_native.py|\
+              */test_lean_parallel_fusion_differential.py|\
               */test_lean_native_gate_structured_differential.py|\
               */test_lean_wide_integer_differential.py|\
               */test_lean_motion_captures_differential.py|\
