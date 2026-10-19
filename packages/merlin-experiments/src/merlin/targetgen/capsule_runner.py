@@ -39,6 +39,7 @@ import yaml
 
 from .capsule_lane_evidence import dispatch_boundary_report as dispatch_boundary_report
 from .capsule_lane_evidence import lane_report as _lane_report
+from .capsule_lane_evidence import oracle_source_scope
 from .capsule_lane_evidence import whole_program_completion_lane_report as whole_program_completion_lane_report
 from .capsule_source_identity import _capture_compiler_source, _finish_compiler_source
 from .capsule_tier_result import TierResult as TierResult
@@ -5302,11 +5303,8 @@ def run_capsule(
                 import sys as _sys
 
                 _sys.stderr.write(f"WARNING: liveness screen failed (advisory): {_le}\n")
-            # trace_check is ADVISORY: instruction-class coverage / ordering / UNKNOWN are diagnostics
-            # for the author, NOT the verdict. Correctness is decided by the numeric + L2/L3 RTL oracle
-            # below (which EXECUTE the actual emitted stream), and the hidden golden precludes faking an
-            # answer — so an instruction our decoder cannot yet classify must never fail a conformant
-            # backend (the old gate short-circuited before the RTL oracle even ran).
+            # Structural observations supplement numerical execution. Applicable trace
+            # requirements gate qualification; numerical passes alone are not certificates.
             # The RoCC/inline-asm bare-metal harness passes each operand buffer as a POINTER argument, so
             # its address model is pointer_args: DRAM addresses must derive from the kernel's args, not be
             # baked. (A fixed-preload oracle — e.g. the program oracle — would pass "fixed_preload"; the
@@ -5322,6 +5320,7 @@ def run_capsule(
                 subsumes=TCK.subsumption_for(eff_target),
                 # Whose derived facts a declared residency mode reads.
                 target=eff_target,
+                lowered_module=_parsed_lowered_shared,
             )
             # The MODE-FREE movement diagnostic, kept OUT of `violations` on purpose. It is a
             # whole-program performance observation, not a conformance one: `violations` feeds
@@ -5610,7 +5609,8 @@ def run_capsule(
                 with _prepared_tier_reuse(name, tier, mand, target=eff_target, generated=paths.generated,
                         shas=_pin_shas, from_rtl=tier in cfg.rtl_tiers,
                         simulation_context=_simulation_context):
-                    res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
+                    with oracle_source_scope(capsule, oracle_cb, llvm_text):
+                        res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
             except _CarriedPreparedTier as carried:
                 tiers[tier] = carried.result
                 continue

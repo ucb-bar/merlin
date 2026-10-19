@@ -179,7 +179,7 @@ def _source_host_compute(name, capsule, buffer, artifact, outcome, *, target):
         preparation = None
     return host_compute_row(
         name, buffer, artifact, outcome,
-        **({"input_preparation": preparation, "target": target} if preparation is not None else {}),
+        input_preparation=preparation, target=target,
     )
 
 

@@ -291,3 +291,20 @@ def dispatch_boundary_report(mesh_execution: dict | None) -> dict:
         "host_segments": sum(k == _bd.HOST for k, _ in segs),
         "detail": "derived only from completed calls in the runner-owned dispatch ledger",
     }
+
+
+def oracle_source_scope(capsule, command_buffer, lowered_mlir):
+    """Bind unpublished scratch to the original capsule source before any oracle call."""
+    from contextlib import nullcontext
+    from pathlib import Path
+
+    from merlin.targetgen.contract.source_ownership import source_mutable_scope
+
+    if ((command_buffer.get("kernel_abi") or {}).get("kind") != "whole_program"
+            or not any(spec.get("role") == "intermediate" for spec in command_buffer["tensors"].values())):
+        return nullcontext()
+    source_name = capsule.get("linalg_mlir") or capsule.get("interface_mlir")
+    if not source_name or not capsule.get("__dir__"):
+        raise ValueError("whole-program scratch requires the original capsule source")
+    source_path = Path(capsule["__dir__"]) / source_name
+    return source_mutable_scope(source_path.read_bytes(), command_buffer, lowered_mlir=lowered_mlir)
