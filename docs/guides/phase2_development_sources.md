@@ -513,6 +513,12 @@ aliases and retargeting refuse. The historical link spelling is not inferred
 from a seal that records content hashes. Every selected source identity remains
 in the roster; protected names, shapes, answers and hash sets stay outside author
 and publication roots. The ordinary issuer and its original refusals are unchanged.
+The streaming route verifies every original generation commitment before using
+the original `hidden` capsule labels for private exclusion. Original `public`
+and `dev` sources remain reusable; unknown labels refuse. The independently
+selected protected model-source roster remains complete. A complete generation
+inventory is not itself evidence that all of its public training kernels are
+protected validation workloads.
 
 `development_controls` supplies additional public source legality controls through
 the existing `development_sources.describe/render/stage`, independent reference,
