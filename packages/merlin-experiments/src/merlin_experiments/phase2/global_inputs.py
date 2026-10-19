@@ -21,6 +21,7 @@ from . import contracts as P2_CONTRACTS
 from . import host_policy as HP
 from . import stage_inputs as INPUTS
 from . import static_identity as SI
+from .capsule_iteration import FrozenCapsulePhase1
 from .edit_authority import FrozenEditAuthority
 from .mechanism_program import MechanismProgram
 from .portfolio_checkpoint import load_historical_reference
@@ -130,7 +131,7 @@ class GlobalExperimentInputs:
     target: str
     target_sha256: str
     target_descriptor: Path | None
-    phase1: FrozenPhase1 | None
+    phase1: FrozenPhase1 | FrozenCapsulePhase1 | None
     phase1_binding: Mapping[str, Any] | None
     contract_root: Path
     controller_source: Path
@@ -163,7 +164,7 @@ class GlobalExperimentInputs:
         controller_source: Path,
         portfolio_sentinels: Sequence[INPUTS.StageE2ESentinel] = (),
         target_descriptor: Path | None = None,
-        phase1: FrozenPhase1 | None = None,
+        phase1: FrozenPhase1 | FrozenCapsulePhase1 | None = None,
         optimization_baseline: Path | None = None,
         optimization_baseline_sha256: str | None = None,
         optimization_baseline_reason: str = "host-selected immutable optimization comparison seed",
@@ -321,7 +322,7 @@ class _AdmittedGlobalInputs:
     target: str
     target_sha256: str
     target_descriptor: Path | None
-    phase1: FrozenPhase1 | None
+    phase1: FrozenPhase1 | FrozenCapsulePhase1 | None
     phase1_binding: Mapping[str, Any] | None
     contract_root: Path
     controller_source: Path

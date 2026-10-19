@@ -8,6 +8,7 @@ export instead of admitting a saved success flag. Hidden scores stay host-only.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 from datetime import UTC, datetime
@@ -183,7 +184,7 @@ def _phase(run_dir: Path, name: str, *, descriptor: Path, frozen: dict, hidden_p
         required_tier=hidden_policy["required_tier"] if name == "hidden" else "L3",
         functional_hidden=functional,
     )
-    if summary["formal_complete"] is not True:
+    if summary["formal_complete"] is not True or score.get("integrity_exempt") is not False:
         raise ValueError(f"{name} capsule phase incomplete: {summary['completion_failures']}")
     rows = score.get("per_capsule")
     if (
@@ -192,6 +193,7 @@ def _phase(run_dir: Path, name: str, *, descriptor: Path, frozen: dict, hidden_p
         or any(
             not isinstance(row, dict)
             or row.get("status") != "pass"
+            or row.get("label") not in selection["labels"]
             or not isinstance(row.get("capsule"), str)
             or not row["capsule"]
             for row in rows
@@ -308,6 +310,9 @@ def _evidence(run_dir: Path, descriptor: Path, resources: dict, *, create: bool)
         name: _phase(run_dir, name, descriptor=descriptor, frozen=frozen, hidden_policy=policy)
         for name in ("public", "hidden")
     }
+    names = [{row["capsule"] for row in _read(phases[name]["score"])["per_capsule"]} for name in ("public", "hidden")]
+    if names[0] & names[1]:
+        raise ValueError("public and hidden capsule identities must be distinct")
     return {
         "schema": SCHEMA,
         "validation_scope": "capsules",
@@ -409,6 +414,8 @@ def _publication_inputs(run_dir, descriptor):
     technical = verify(run_dir, descriptor=descriptor)
     summary_pin, telemetry_pin = pin(run_dir / "qa_loop_summary.yaml"), pin(run_dir / "timing_detailed.json")
     summary = yaml.safe_load(Path(summary_pin["path"]).read_bytes())
+    environment = yaml.safe_load((run_dir / "environment.yaml").read_bytes())
+    _author_integrity(run_dir, environment, summary)
     telemetry = _read(telemetry_pin)
     if (
         summary.get("validation_scope") != "capsules"
@@ -431,6 +438,43 @@ def _publication_inputs(run_dir, descriptor):
     return technical, summary_pin, telemetry_pin
 
 
+def _author_integrity(run_dir, environment, summary):
+    from merlin.targetgen.sandbox.answer_surfaces import audit_hit_is_violation
+
+    mask = environment.get("golden_mask_selftest") or {}
+    snapshot = environment.get("bundle_input_snapshot") or {}
+    if (
+        environment.get("sandbox") != "bwrap"
+        or environment.get("isolation_violations") != []
+        or mask.get("leaked_answer_files") != []
+        or type(mask.get("n_answer_files_masked")) is not int
+        or mask["n_answer_files_masked"] <= 0
+        or snapshot.get("version") != 4
+        or type(snapshot.get("n_files")) is not int
+        or snapshot["n_files"] <= 0
+        or type(snapshot.get("n_bytes")) is not int
+        or snapshot["n_bytes"] <= 0
+    ):
+        raise ValueError("capsule author publication lacks clean isolation and answer-mask input provenance")
+    rounds = summary.get("rounds")
+    if not isinstance(rounds, list) or not rounds:
+        raise ValueError("capsule author publication has no completed audited round")
+    finalized = summary.get("finalize")
+    if not isinstance(finalized, dict):
+        raise ValueError("capsule author publication has no finalization record")
+    if not finalized.get("skipped") or (run_dir / "rounds/finalize.transcript.jsonl").exists():
+        rounds = [*rounds, finalized]
+    for row in rounds:
+        hits = row.get("audit_hits") if isinstance(row, dict) else None
+        if (
+            not isinstance(row, dict)
+            or row.get("answer_access_clean") is not True
+            or not isinstance(hits, list)
+            or any(audit_hit_is_violation(hit) for hit in hits)
+        ):
+            raise ValueError("capsule author publication has an incomplete or violated answer-access audit")
+
+
 def publish_phase2_handoff(
     run_dir: Path, *, descriptor: Path, transcript: Path, endpoint_kind: str, resolved_tools
 ) -> dict:
@@ -438,6 +482,7 @@ def publish_phase2_handoff(
     from .. import authoring_conformance as AC
     from .. import conformance
 
+    answer_surfaces = importlib.import_module("merlin.targetgen.sandbox.answer_surfaces")
     run_dir, descriptor, transcript = Path(run_dir).absolute(), Path(descriptor).absolute(), Path(transcript).absolute()
     technical, summary_pin, telemetry_pin = _publication_inputs(run_dir, descriptor)
     environment = yaml.safe_load((run_dir / "environment.yaml").read_bytes())
@@ -467,7 +512,7 @@ def publish_phase2_handoff(
             descriptor,
         ),
         outputs=(output,),
-        dependencies=(Path(__file__), Path(conformance.__file__)),
+        dependencies=(Path(__file__), Path(conformance.__file__), Path(answer_surfaces.__file__)),
     ) as observation:
         conf, accepted = AC.workflow_conformance(
             transcript,

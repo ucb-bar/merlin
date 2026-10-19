@@ -21,7 +21,8 @@ from merlin_experiments.phase1.feedback import certification as CERT
 from merlin_experiments.phase1.feedback import formal, freeze, public_owned_host_selection
 
 
-def score(package, count, *, functional=False):
+def score(package, count, *, functional=False, hidden=False):
+    label = "hidden" if hidden else "public"
     result = {
         "package": package,
         "n_capsules": count,
@@ -29,6 +30,7 @@ def score(package, count, *, functional=False):
         "functional_pass": 1,
         "gradeable": True,
         "integrity_status": "clean",
+        "integrity_exempt": False,
         "numeric_all_exact": True,
         "trace_all_pass": True,
         "model_execution_all_pass": True,
@@ -47,14 +49,15 @@ def score(package, count, *, functional=False):
             "excluded_name_set_sha256": "a" * 64,
             "admitted_name_set_sha256": hashlib.sha256(
                 json.dumps(
-                    sorted(f"synthetic-{i}" for i in range(count)),
+                    sorted(f"{label}-synthetic-{i}" for i in range(count)),
                     separators=(",", ":"),
                 ).encode()
             ).hexdigest(),
         },
         "per_capsule": [
             {
-                "capsule": f"synthetic-{i}",
+                "capsule": f"{label}-synthetic-{i}",
+                "label": label,
                 "status": "pass",
                 "numeric": "pass",
                 "tiers": {"L2" if functional else "L3": "pass"},
@@ -112,6 +115,10 @@ def selected(tmp_path, monkeypatch):
     environment = {
         "validation_scope": "capsules",
         "arm": "baseline",
+        "sandbox": "bwrap",
+        "isolation_violations": [],
+        "golden_mask_selftest": {"leaked_answer_files": [], "n_answer_files_masked": 1},
+        "bundle_input_snapshot": {"version": 4, "n_files": 1, "n_bytes": 1, "content_sha256": "a" * 64},
         "resolved_tools": [],
         "task_scope": {"required_public_dev_capsules": 2, "held_out_capsules": 1},
         "started_at": datetime.now(UTC).isoformat(),
@@ -135,6 +142,7 @@ def selected(tmp_path, monkeypatch):
             package,
             1 if labels == {"hidden"} else 2,
             functional=kwargs.get("hidden_capsule_mode") == "functional_spike",
+            hidden=labels == {"hidden"},
         ),
     )
     from merlin_experiments.phase1.feedback import compiler_profile_runtime
@@ -369,6 +377,8 @@ def publish_author(s):
         "authoring_complete": True,
         "numeric_all_pass": True,
         "workflow_conformant": True,
+        "rounds": [{"answer_access_clean": True, "audit_hits": []}],
+        "finalize": {"skipped": "synthetic fixture has no paid finalizer"},
         "phase2_iteration_ready": True,
         "capsule_complete": True,
         "formal_complete": False,
@@ -529,3 +539,42 @@ def test_identical_verifier_and_descriptor_copies_keep_original_observed_pins(se
     s.descriptor.write_bytes(s.descriptor.read_bytes() + b" ")
     with pytest.raises(ValueError, match="changed"):
         C.verify_phase2_handoff(s.run, descriptor=copied)
+
+
+@pytest.mark.parametrize("fault", ["answer_hit", "missing_audit", "leaked_mask", "isolation"])
+def test_publication_preserves_answer_access_and_isolation_integrity(selected, fault):
+    environment = yaml.safe_load((selected.run / "environment.yaml").read_bytes())
+    summary = {
+        "rounds": [{"answer_access_clean": True, "audit_hits": []}],
+        "finalize": {"skipped": "no finalizer turn"},
+    }
+    C._author_integrity(selected.run, environment, summary)
+    if fault == "answer_hit":
+        summary["rounds"][0]["audit_hits"] = [{"kind": "unknown_content_read"}]
+    elif fault == "missing_audit":
+        del summary["rounds"][0]["audit_hits"]
+    elif fault == "leaked_mask":
+        environment["golden_mask_selftest"]["leaked_answer_files"] = ["private.bin"]
+    else:
+        environment["isolation_violations"] = ["private mount exposed"]
+    with pytest.raises(ValueError, match="provenance|audit"):
+        C._author_integrity(selected.run, environment, summary)
+
+
+def test_same_public_and_hidden_capsule_identity_cannot_certify(selected, monkeypatch):
+    s = selected
+    original = formal._score
+
+    def reused(*args, **kwargs):
+        result = original(*args, **kwargs)
+        if args[3] == {"hidden"}:
+            result["per_capsule"][0]["capsule"] = "public-synthetic-0"
+            result["cohort_admission"]["admitted_name_set_sha256"] = hashlib.sha256(
+                json.dumps(["public-synthetic-0"], separators=(",", ":")).encode(),
+            ).hexdigest()
+        return result
+
+    monkeypatch.setattr(formal, "_score", reused)
+    grade_and_freeze(s)
+    with pytest.raises(ValueError, match="identities must be distinct"):
+        C.publish(s.run, descriptor=s.descriptor, resources=s.resources)

@@ -57,3 +57,38 @@ terminal operator checkpoint cannot become author convergence through this API.
 The author cost record retains its existing authoring-only wall time; the
 technical certificate separately records actual author-start to capsule-grade
 completion wall time. A historical full run cannot resume under capsule scope.
+
+## Phase 2 iteration while models are pending
+
+The existing portfolio worker accepts an explicit campaign-config variant:
+
+```yaml
+phase1_validation_scope: capsules
+functional_run_id: <completed fresh capsule run>
+functional_submission_sha256: <exact frozen compiler tree SHA>
+capsule_publication_sha256: <independently selected capsule_publication.json SHA>
+functional_expected_public_passed: 153
+functional_expected_public_total: 153
+waive_functional_gate: []
+```
+
+The counts above describe this selected corpus; the worker checks the independent
+config assertions against the actual receipt and does not supply a denominator.
+The selected target descriptor must have the same bytes as the capsule run's
+descriptor. Original observed inputs and source pins must still reopen unchanged.
+
+`phase2.capsule_iteration.FrozenCapsulePhase1` is the corresponding programmatic
+binding for `GlobalPerfExperiment`. Its strict `verify(baseline)` reopens the final
+capsule publication and compiler. Paid portfolio rounds use the same answer-free
+inputs, edit authority, scheduling, analysis and probe tooling as ordinary rounds.
+The normal V4 private/public snapshot owner is still required. Each such run is
+labelled `launch_scope: capsule_iteration`; its checkpoints remain reusable for
+iteration and explicitly retain `final_results_qualified: false` and
+`external_full_models_complete: false`.
+
+The full `FrozenPhase1` API rejects capsule-only runs. Renaming the binding or
+changing checkpoint flags cannot promote one into final results. Final consumers
+can call `capsule_iteration.require_final_results(binding, descriptor=...)`, which
+refuses capsule bindings and reopens the existing full formal-model gate for a
+separately qualified full binding. External model validation therefore stays a
+required admission step for final model/result claims and release.

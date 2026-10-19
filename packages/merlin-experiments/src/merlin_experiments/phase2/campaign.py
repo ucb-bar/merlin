@@ -739,6 +739,8 @@ def inspect_functional_run(
         raise CampaignGateError(f"functional submission contains a digest-excluded path: {excluded}")
 
     environment = _mapping_file(run_dir / "environment.yaml", yaml_file=True)
+    if environment.get("validation_scope", "full") == "capsules":
+        raise CampaignGateError("capsule-only publication requires explicit capsule_iteration admission")
     verify_private_input_snapshot(run_dir, environment)
     summary = _mapping_file(run_dir / "qa_loop_summary.yaml", yaml_file=True)
     freeze = _mapping_file(run_dir / "freeze.json")
