@@ -229,6 +229,86 @@ def test_no_instruction_policy_is_not_implicit_permission(tmp_path):
         ORIGINAL._roles([original])
 
 
+def test_v26_style_missing_policy_is_per_case_unavailable_without_building(tmp_path, monkeypatch):
+    """Selected Phase1 public capsules have no performance candidate arm."""
+    monkeypatch.delenv("MERLIN_TARGET_EXPERIMENT", raising=False)
+    original = capsule(tmp_path)
+    original.pop("performance")
+    (Path(original["__dir__"]) / "capsule.yaml").write_text(json.dumps(
+        {key: value for key, value in original.items() if key != "__dir__"}))
+    candidate, contract = tmp_path / "candidate", tmp_path / "contract"
+    candidate.mkdir()
+    contract.mkdir()
+    (candidate / "compiler.py").write_text("unused = True\n")
+    facts_dir = tmp_path / "facts"
+    facts_dir.mkdir()
+    facts = facts_dir / "facts.json"
+    facts.write_text('{"facts":{"target":"fixture"}}')
+    owner = object.__new__(ORIGINAL.CommonTransformService)
+    owner.profile = {"sha256": "p" * 64, "host_index_bits": 64}
+    owner._verify = lambda: None
+    owner.compiler_imports = nullcontext
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("unselected instruction permissions must never reach build")
+
+    import merlin.targetgen.native_model_execution as native
+
+    monkeypatch.setattr(native, "_build_service_for", unexpected)
+    monkeypatch.setattr(ORIGINAL.CO, "compile_source_only", unexpected)
+    result = ORIGINAL.observe(candidate=candidate, target_experiment=SimpleNamespace(target="fixture"),
+                              capsules=[original], contract=contract, facts_path=facts,
+                              common_service=owner, work_root=tmp_path / "products", timeout_s=30)
+    assert len(result["cases"]) == len(SOURCES.SCALES)
+    for row in result["cases"]:
+        assert row["compilation_status"] == "unavailable"
+        assert row["reason"] == "instruction_policy_unavailable"
+        diagnostic = row["instruction_policy_diagnostic"]
+        assert diagnostic["missing_field"] == (
+            "performance.arms.candidate.instruction_policy.prohibited_instruction_roles")
+        assert "without --compile-only" in diagnostic["action"]
+        assert diagnostic["permission_inferred"] is False
+        assert row["numeric"] == row["rtl"] == "not_attempted"
+    assert result["all_pass"] is False
+
+
+def test_compile_only_reuses_and_pins_actual_selected_native_policy(tmp_path, monkeypatch):
+    from merlin.targetgen import target_experiment
+    from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+
+    original = capsule(tmp_path)
+    original.pop("performance")
+    original.update(expected={"instruction_classes": ["LOAD"]}, required_oracle_tiers=["L0", "L1", "L2"])
+    root = Path(original["__dir__"])
+    (root / "capsule.yaml").write_text(json.dumps({k: v for k, v in original.items() if k != "__dir__"}))
+    (root / "expected_instruction_coverage.yaml").write_text('{"instruction_classes":["LOAD"]}')
+    descriptor, manifest = tmp_path / "experiment.yaml", tmp_path / "MANIFEST.yaml"
+    descriptor.write_text("selected: fixture\n")
+    manifest.write_text('{"instruction_policy":{"status":"resolved",'
+                        '"prohibited_instruction_roles":["selected_role"]}}')
+    monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(descriptor))
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda path:
+                        SimpleNamespace(target="fixture", capsule_corpus=tmp_path / "isa"))
+    selected = ORIGINAL._case_instruction_policy(original, target="fixture")
+    assert selected["diagnostic"] is None and selected["roles"] == ("selected_role",)
+    assert str(manifest) in dict(selected["pins"])
+    checker = ORIGINAL._InstructionPolicy("fixture", selected["roles"], {}, tmp_path / "facts")
+    source = Path(ORIGINAL.__file__).resolve()
+    admission = LinkedElfAdmissionService("fixture", checker.evaluate, (
+        (str(source), ORIGINAL.sha256_file(source)), *selected["pins"]))
+    admission.verify("fixture")
+    manifest.write_text('{"instruction_policy":{"status":"resolved","prohibited_instruction_roles":[]}}')
+    with pytest.raises(ValueError, match="source pin changed"):
+        admission.verify("fixture")
+    # Even an explicit empty capsule policy cannot hide an unavailable selected native policy.
+    manifest.write_text("{}")
+    original["performance"] = {"arms": {"candidate": {"instruction_policy": {
+        "prohibited_instruction_roles": []}}}}
+    refused = ORIGINAL._case_instruction_policy(original, target="fixture")
+    assert refused["roles"] is None
+    assert refused["diagnostic"]["code"] == "selected_native_instruction_policy_unavailable"
+
+
 def test_plain_profile_dict_cannot_select_compiler_import_authority(tmp_path):
     with pytest.raises(ValueError, match="original admitted"):
         ORIGINAL.observe(
