@@ -3,9 +3,9 @@ title: Shared passes in ordinary compiler authoring
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-10-18
+last_verified: 2026-10-19
 related: [../reference/shared_compiler_passes, phase2_corpus_search]
-code_refs: [src/merlin/targetgen/tool_profile.py, src/merlin/targetgen/tool_profile_shared.py, src/merlin/targetgen/common_transforms.py, packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py]
+code_refs: [src/merlin/targetgen/tool_profile.py, src/merlin/targetgen/tool_profile_shared.py, src/merlin/targetgen/common_transforms.py, src/merlin/targetgen/compiler_library.py, packages/merlin-experiments/src/merlin_experiments/phase2/compiler_libraries.py, packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py]
 ---
 
 # Shared passes in ordinary compiler authoring
@@ -25,15 +25,22 @@ and candidate under the selected Phase 2 environment. It cannot attribute the
 new grants to the original Phase 1 run or claim the original same-grant ablation.
 All compared Phase 2 treatments must receive the same selected shared algorithms.
 
-The existing explicit `CompilerLibraryContract` and component-view APIs can
-review and isolate such a library. The ordinary retained-source authoring route
-currently binds compiler execution to the original Phase 1 profile owner; an
-additional-library selection is **not yet connected through that route**.
-Connecting it requires host-owned source/import and sandbox selection, original
-numerical/functional gates, queued-job custody and final evaluation using the
-same effective Phase 2 release. Changing a profile equality check alone cannot
-establish those connections. A new Phase 1 run is one available same-grant
-baseline, not the prerequisite for implementing this Phase 2 mode.
+The explicit `CompilerLibraryContract` and component-view APIs review and
+isolate such a library. A host-owned `CompilerLibrarySelection(contract, root)`
+now connects additional imports to the normal package sandbox and ordinary
+retained feedback API. Pass it as `compiler_library_selection` to
+`prepare_ordinary_search_policy`. The fixed search binding and artifact context
+include the selection; broker and queued member threads retain it for both arms.
+The sandbox mounts exact reviewed leaves, reopens their hashes, reserves its
+library namespace against overlays, and preserves original public leaves outside
+the selected replacement set. Candidate manifests cannot select a release.
+
+This API connection does **not yet enable the complete authoring CLI stage**:
+author-visible grants, serialized child evaluation and final evaluation still
+need an explicit same-release selection. It also supplies no target adapter,
+dependency installation, runtime or timing qualification. Original Phase 1
+profile equality and functional admission remain unchanged. A new Phase 1 run
+is one available same-grant baseline, not a prerequisite for this Phase 2 mode.
 
 The library provides checked mechanisms for tiling/operand reuse, temporary
 storage, capability-driven fusion and copy elimination, persistent configuration

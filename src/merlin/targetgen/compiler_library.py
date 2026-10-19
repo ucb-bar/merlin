@@ -8,9 +8,12 @@ semantic generality, or replace runtime filesystem/network isolation.
 from __future__ import annotations
 
 import ast
+import contextlib
+import contextvars
 import hashlib
 import json
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from importlib.util import resolve_name
 from pathlib import Path, PurePosixPath
 
@@ -19,6 +22,7 @@ from merlin.common.access import MODULE_ACCESS, is_harness_module, module_matche
 SCHEMA = "merlin.compiler_library.v1"
 _FORBIDDEN_MODULES = ("merlin.runtime.reference", "merlin.runtime.simulator", "merlin_experiments")
 _EXCLUDED_PARTS = frozenset({".git", "out", "docs", "tests", "__pycache__"})
+_ACTIVE_LIBRARY = contextvars.ContextVar("selected_additional_compiler_library", default=None)
 
 
 class CompilerLibraryError(ValueError):
@@ -244,3 +248,58 @@ def selected_library_record(contract: CompilerLibraryContract | None, root: Path
         raise CompilerLibraryError("compiler library selection requires a canonical unlinked root")
     contract.verify(root)
     return {"root": str(root), "contract_sha256": contract.sha256, "contract": contract.record()}
+
+
+@dataclass(frozen=True, eq=False)
+class CompilerLibrarySelection:
+    """Explicit host selection, separate from a historical compiler profile.
+
+    Membership is reviewed by the caller. This binds immutable bytes and exact
+    imports only; runtime isolation and numerical qualification stay independent.
+    """
+
+    contract: CompilerLibraryContract
+    root: Path
+    _binding: bytes = dataclass_field(init=False, repr=False)
+
+    def __post_init__(self):
+        if type(self.contract) is not CompilerLibraryContract or not isinstance(self.root, Path):
+            raise CompilerLibraryError("additional compiler imports require an explicit contract and root")
+        record = selected_library_record(self.contract, self.root)
+        object.__setattr__(self, "_binding", json.dumps(record, sort_keys=True, separators=(",", ":")).encode())
+
+    def record(self):
+        record = selected_library_record(self.contract, self.root)
+        if json.dumps(record, sort_keys=True, separators=(",", ":")).encode() != self._binding:
+            raise CompilerLibraryError("additional compiler library selection changed")
+        return record
+
+
+@contextlib.contextmanager
+def scoped_compiler_library(selection: CompilerLibrarySelection | None):
+    """Trusted call scope; candidate manifests cannot install this selection."""
+    if selection is None:
+        yield
+        return
+    if type(selection) is not CompilerLibrarySelection:
+        raise CompilerLibraryError("additional compiler imports require an explicit host selection")
+    selection.record()
+    active = _ACTIVE_LIBRARY.get()
+    if active is not None and active is not selection:
+        raise CompilerLibraryError("cannot replace a live additional compiler library selection")
+    token = _ACTIVE_LIBRARY.set(selection)
+    try:
+        yield
+        selection.record()
+    finally:
+        _ACTIVE_LIBRARY.reset(token)
+
+
+def active_compiler_library():
+    """Reopen the current host-selected bytes before import or mount admission."""
+    selection = _ACTIVE_LIBRARY.get()
+    if selection is not None:
+        if type(selection) is not CompilerLibrarySelection:
+            raise CompilerLibraryError("additional compiler imports lost their selected owner")
+        selection.record()
+    return selection

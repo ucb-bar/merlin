@@ -7,12 +7,58 @@ from types import SimpleNamespace
 import pytest
 from merlin_experiments.phase2 import evaluation_pool as EP
 from merlin_experiments.phase2 import ordinary_search_policy as OS
+from merlin_experiments.phase2 import paired_measurement as PME
+from merlin_experiments.phase2.contracts import StageGateError
 from merlin_experiments.phase2.evaluation_pool import AssignedResources, JobResources
 from merlin_experiments.phase2.retained_revisions import RetainedRevisionStore
 from merlin_experiments.phase2.search_coordinator import ComponentSearchCoordinator
 from merlin_experiments.phase2.search_inputs import ORDINARY_KIND
+from test_compiler_libraries import selected as select_library
 from test_ordinary_search_policy import ordinary_inputs as ordinary_inputs
 from test_ordinary_search_policy import revisions
+
+from merlin.targetgen.compiler_library import CompilerLibraryError, active_compiler_library, scoped_compiler_library
+
+
+def test_parallel_members_keep_fixed_additional_library_selection(ordinary_inputs, tmp_path, monkeypatch):
+    selection, _ = select_library(tmp_path / "additional")
+    execute = PME.run_execution
+    seen = []
+
+    def observe(*args, **kwargs):
+        assert active_compiler_library() is selection
+        seen.append(args[0].arm)
+        return execute(*args, **kwargs)
+
+    monkeypatch.setattr(PME, "run_execution", observe)
+    policy = OS.prepare_ordinary_search_policy(**ordinary_inputs.arguments, compiler_library_selection=selection)
+    assert policy.binding()["additional_compiler_library"] == selection.record()
+    candidate, baseline = revisions(policy, tmp_path)
+    monkeypatch.setenv("MERLIN_PERF_SWEEP_WORKERS", "2")
+    feedback = policy.evaluate_retained(
+        candidate, baseline, work_root=tmp_path / "parallel-library", call_index=0, timeout_s=20, workers=2
+    )
+    assert feedback["summary"]["all_correct"]
+    assert set(seen) == {"baseline", "candidate"}
+    assert active_compiler_library() is None
+    (selection.root / "merlin/portable.py").write_text("changed library bytes")
+    ordinary_inputs.executions.clear()
+    with pytest.raises(CompilerLibraryError, match="changed|digest"):
+        policy.evaluate_retained(
+            candidate, baseline, work_root=tmp_path / "changed-library", call_index=1, timeout_s=20
+        )
+    assert not ordinary_inputs.executions
+
+
+def test_policy_without_library_cannot_inherit_unbound_ambient_selection(ordinary_inputs, tmp_path):
+    policy = OS.prepare_ordinary_search_policy(**ordinary_inputs.arguments)
+    assert "additional_compiler_library" not in policy.binding()
+    candidate, baseline = revisions(policy, tmp_path)
+    selection, _ = select_library(tmp_path / "additional")
+    with scoped_compiler_library(selection):
+        with pytest.raises(StageGateError, match="unbound"):
+            policy.evaluate_retained(candidate, baseline, work_root=tmp_path / "unbound", call_index=0, timeout_s=10)
+    assert not ordinary_inputs.executions
 
 
 def test_parallel_normal_members_keep_both_retained_compiler_contexts(ordinary_inputs, tmp_path, monkeypatch):

@@ -27,6 +27,7 @@ from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
 from merlin.runtime import complete_call_timing as COMPLETE_TIMING
 from merlin.runtime import direct_kernel_harness as DIRECT_HARNESS
 from merlin.runtime import harness_render as LOGICAL_HARNESS
+from merlin.targetgen import compiler_library as COMPILER_LIBRARY
 from merlin.targetgen import native_model_execution as NATIVE_MODEL
 from merlin.targetgen import native_model_policy as MODEL_POLICY
 from merlin.targetgen import public_program_timing as PUBLIC_PROGRAM
@@ -40,6 +41,7 @@ from merlin_experiments.phase1.feedback import compiler_profile_runtime as PROFI
 
 from . import campaign as PC
 from . import census_launch as CENSUS_LAUNCH
+from . import compiler_libraries as LIBRARIES
 from . import corpus as CORPUS
 from . import corpus_feedback as CF
 from . import development_feedback as DF
@@ -127,6 +129,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         feedback_round,
         services,
         e2e_sentinel,
+        compiler_library_selection=None,
         _issuer,
     ):
         if _issuer is not _ISSUER:
@@ -142,6 +145,12 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             e2e_sentinel=e2e_sentinel,
         )
         self.edit_authority = edit_authority
+        if (
+            compiler_library_selection is not None
+            and type(compiler_library_selection) is not COMPILER_LIBRARY.CompilerLibrarySelection
+        ):
+            raise StageGateError("additional compiler libraries require an explicit reviewed host selection")
+        self._compiler_library_selection = compiler_library_selection
         self._functional, self._corpus, self._selected_feedback = functional, corpus, feedback
         self._contract_root, self._issuer = contract_root, _issuer
         self.evaluation_pool, self.search_coordinator = None, None
@@ -190,6 +199,8 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             (COMPLETE_TIMING, "from_contract", COMPLETE_TIMING.from_contract),
         )
         owners = (
+            COMPILER_LIBRARY,
+            LIBRARIES,
             PROFILE_RUNTIME,
             PROFILE_CHANNEL,
             FI,
@@ -274,6 +285,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         ):
             raise StageGateError("normal search action contract differs from its original selected owners")
 
+    @LIBRARIES.scoped_policy
     def execute(self, request, action_name, rendered, call_index, timeout_s, started):
         if action_name in {action.name for action in QSA.actions()}:
             return QSA.execute(self, action_name, rendered, timeout_s, started)
@@ -289,8 +301,10 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             or executor.keywords != {"contract_root": self._contract_root}
         ):
             raise StageGateError("ordinary search requires the original fixed development executor")
+        library_selection = self._compiler_library_selection
         return {
             "schema": "merlin.ordinary_corpus_search_binding.v1",
+            **({"additional_compiler_library": library_selection.record()} if library_selection is not None else {}),
             "workflow_id": self.workflow_id,
             "scope": "frozen_development_corpus_simulator_cycles",
             "functional_origin": _data(functional),
@@ -469,6 +483,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
     def search_closure_sha256(self):
         return document_sha256(self.binding())
 
+    @LIBRARIES.scoped_policy
     def evaluate_retained(
         self,
         revision,
@@ -622,6 +637,7 @@ def prepare_ordinary_search_policy(
     artifact_retest_index=None,
     build_runtime_view=None,
     build_product_index=None,
+    compiler_library_selection=None,
 ):
     """Admit the same Phase 1 functional fork and ordinary corpus feedback route.
 
@@ -685,6 +701,11 @@ def prepare_ordinary_search_policy(
         feedback_round=feedback_round,
         services=services,
         e2e_sentinel=e2e_sentinel,
+        compiler_library_selection=(
+            compiler_library_selection
+            if compiler_library_selection is not None
+            else COMPILER_LIBRARY.active_compiler_library()
+        ),
         _issuer=_ISSUER,
     )
     if native_runtime_view is not None:
