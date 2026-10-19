@@ -3,7 +3,7 @@ title: Enable shared passes in model builds
 kind: guide
 status: current
 owner: core
-last_verified: 2026-10-18
+last_verified: 2026-10-19
 related: [shared_pass_phase2, ../reference/shared_compiler_passes]
 code_refs:
   - src/merlin/compile/baremetal_model.py
@@ -13,6 +13,7 @@ code_refs:
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/llvmlower/dealloc_lifetime.py
   - src/merlin/llvmlower/borrowed_buffer_calls.py
+  - src/merlin/llvmlower/logical_borrowed_abi.py
   - src/merlin/compile/scheduling/schedule_pipeline.py
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/copy_elimination.py
@@ -84,6 +85,78 @@ The backend remains responsible for instruction bodies, descriptor handling,
 strides, final pointer alignment, ownership, complete writes and completion.
 Qualification identities record independent evidence; a hash does not establish
 that evidence.
+
+### Avoid compatible dense operand packing
+
+An optional `SourceDenseLowering.logical_abi: LogicalBorrowedABI` lets Merlin
+own the ranked descriptor bridge. The provider implements the explicit
+`binding.logical_kernel_symbol` taking three logical row-major pointers;
+Merlin separately generates, pins, compiles and links the bridge. The provider
+must not also define that bridge. No backend C is inspected to infer effects.
+
+The original dense software declaration must include:
+
+```yaml
+logical_pointer_abi:
+  schema: merlin.logical_pointer_abi.v1
+  layout: dense_row_major
+  alignment_bytes: [2, 2, 4]  # Example: independently required A/B/C alignment.
+  access: [read_only, read_only, fully_written]
+  bounds: logical_elements
+  completion: synchronous
+```
+
+RTL geometry and capacities do not establish this pointer ABI. Supply the exact
+parsed declaration, independently qualified `BorrowedBufferEffects`, a
+`format_qualification_identity` for bounded logical reads and complete writes,
+and an explicit `max_stack_bytes` fallback-array budget. The effects must match
+the selection's original `borrowed_effects`. These are conditional premises
+about the implementation; a declaration or numerical test alone cannot qualify
+them. The current bridge supports positive static rank-two i8/i16/i32 buffers
+and the selected 64-bit ranked caller ABI.
+
+With `borrow_contiguous=True`, each actual descriptor independently bypasses
+packing when its strides are exactly row-major and its pointer **including the
+offset** meets the declared alignment. Other positive-stride layouts or
+misaligned pointers use bounded typed scratch and byte-preserving copies.
+`borrow_contiguous=False` forces the same bridge to pack, providing a paired
+baseline with identical primitives, contracts and schedules. A budget that
+cannot hold the complete fallback retains the original source route.
+
+Before calling the primitive, the bridge checks extents, signed index and
+address arithmetic, output injectivity and disjoint output and input bounding
+ranges. Malformed descriptors and output overlap trap. Read-only inputs can
+alias at this bridge boundary; source scheduling still requires its own
+original ownership and disjointness premises. Accessible allocation sizes are
+not encoded in ordinary ranked descriptors and remain an independent caller
+premise. The scratch budget includes array storage and alignment padding;
+compiler frame overhead and callee stack still require separate budgeting.
+
+Optional `observe_transfers=True` additionally requires separately qualified
+`observer_effects` and `observer_preserves_logical_state=True`. The provider
+implements `binding.logical_observer_symbol(read_bytes, write_bytes, mask)`;
+the bridge calls it after primitive completion and output copies. Counts cover
+executed logical copy-loop bytes. They exclude guard accesses and logging and
+do not measure physical bus traffic or accelerator latency. Observation is off
+by default.
+
+This route does not cache prepared weights between calls, infer invocation
+invariance or support asynchronous primitive completion. A backend without the
+qualified logical-pointer contract retains its existing ABI implementation.
+
+With the ordinary toolchain configured, reproduce its neutral paired model,
+fallback and mutation checks with:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_logical_dense_model.py \
+  merlin/tests/infra/test_source_logical_abi.py \
+  merlin/tests/ir/test_logical_borrowed_abi.py -p no:cacheprovider \
+  --basetemp "$TMPDIR/logical-buffer-check"
+```
+
+The model report separates build and functional-simulator wall time and sampled
+process-tree RSS. Build includes native qualification and linking; simulator
+time includes diagnostic instrumentation. Neither measures accelerator latency.
 
 For a loop that replaces a carried buffer, a source-family selection can also
 supply `borrowed_effects: BorrowedBufferEffects`. The original provider contract

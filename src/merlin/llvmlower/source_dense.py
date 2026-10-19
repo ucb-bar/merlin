@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from merlin.transforms.dense_planning import DenseResources
 
     from .fresh_tensor_writer import FreshTensorWriterContract
+    from .logical_borrowed_abi import LogicalBorrowedABI
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,8 @@ class SourceDenseLowering:
     verification_timeout_ms: int = 2000
     max_repairs: int = 1
     borrowed_effects: BorrowedBufferEffects | None = None
+    logical_abi: LogicalBorrowedABI | None = None
+    borrow_contiguous: bool = True
 
     def __post_init__(self):
         from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
@@ -61,29 +64,60 @@ class SourceDenseLowering:
         from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
         from merlin.transforms.dense_planning import DenseResources
 
+        from .logical_borrowed_abi import LogicalBorrowedABI
+
         validate_effects(self.borrowed_effects)
+        if type(self.borrow_contiguous) is not bool:
+            raise ValueError("logical buffer borrowing requires an explicit Boolean control")
+        if self.logical_abi is not None:
+            if (
+                type(self.logical_abi) is not LogicalBorrowedABI
+                or type(self.selected_contracts) is not SelectedSchedulingContracts
+                or self.selected_contracts.dense is None
+                or self.logical_abi.declaration != self.selected_contracts.dense.logical_pointer_abi
+                or self.logical_abi.qualified_effects != self.borrowed_effects
+            ):
+                raise ValueError("logical pointer ABI must match original software and qualified borrowed effects")
+            self.logical_abi.__post_init__()
         alignment = self.allocation_alignment
         if (
             type(self.selected_contracts) is not SelectedSchedulingContracts
-            or type(self.storage) is not DenseLoopStorage or type(self.adapter) is not DenseLoopAdapter
+            or type(self.storage) is not DenseLoopStorage
+            or type(self.adapter) is not DenseLoopAdapter
             or self.execution_domain not in ("host", "device")
-            or type(alignment) is not int or not 0 < alignment < 1 << 63 or alignment & (alignment - 1)
-            or type(self.static_budget) is not int or self.static_budget < 0
+            or type(alignment) is not int
+            or not 0 < alignment < 1 << 63
+            or alignment & (alignment - 1)
+            or type(self.static_budget) is not int
+            or self.static_budget < 0
             or any(not callable(f) for f in (self.prepare, self.build))
             or any(type(v) is not bool for v in (self.private_ownership, self.external_buffers_disjoint))
-            or self.resources is not None and type(self.resources) is not DenseResources
-            or type(self.reservations) is not tuple or any(type(r) is not AddressWindow for r in self.reservations)
-            or type(self.outer_order) is not tuple or self.outer_order not in (("m", "n"), ("n", "m"))
-            or any(type(v) is not int or v <= 0 for v in (
-                self.max_source_elements, self.max_islands, self.verification_timeout_ms,
-            ))
-            or type(self.max_repairs) is not int or self.max_repairs not in (0, 1)
+            or self.resources is not None
+            and type(self.resources) is not DenseResources
+            or type(self.reservations) is not tuple
+            or any(type(r) is not AddressWindow for r in self.reservations)
+            or type(self.outer_order) is not tuple
+            or self.outer_order not in (("m", "n"), ("n", "m"))
+            or any(
+                type(v) is not int or v <= 0
+                for v in (
+                    self.max_source_elements,
+                    self.max_islands,
+                    self.verification_timeout_ms,
+                )
+            )
+            or type(self.max_repairs) is not int
+            or self.max_repairs not in (0, 1)
         ):
             raise ValueError("source dense lowering requires fixed typed capabilities and bounded controls")
-        if any(type(v) is not DenseMemoryView for v in (
-            self.storage.lhs, self.storage.rhs,
-            *((self.storage.accumulator,) if self.storage.accumulator is not None else ()),
-        )):
+        if any(
+            type(v) is not DenseMemoryView
+            for v in (
+                self.storage.lhs,
+                self.storage.rhs,
+                *((self.storage.accumulator,) if self.storage.accumulator is not None else ()),
+            )
+        ):
             raise ValueError("source dense storage requires explicit physical memory views")
         self.selected_contracts.revalidate()
 
@@ -92,6 +126,9 @@ class SourceDenseLowering:
 class SourceDenseBinding:
     compilation: DenseSourceResult
     writer: FreshTensorWriterContract
+    logical_kernel_symbol: str | None = None
+    logical_abi_source: Path | None = None
+    logical_observer_symbol: str | None = None
 
 
 def discover_dense(module, selection, validate):
@@ -125,15 +162,31 @@ def discover_dense(module, selection, validate):
             continue
         if len(regions) + len(declined) >= selection.max_islands:
             raise ValueError("source dense discovery exceeds the selected island budget")
+        if selection.logical_abi is not None:
+            from .logical_borrowed_abi import dense_buffers, scratch_bytes
+
+            try:
+                scratch_bytes(dense_buffers(problem, contracts.dense.dtypes), selection.logical_abi)
+            except ValueError as error:
+                declined.append(str(error))
+                continue
         validate()
         try:
             result = schedule_source_dense(
-                module, operation, selected_contracts=contracts, storage=selection.storage, adapter=adapter,
-                name="source_dense_" + str(len(regions)), static_budget=selection.static_budget,
-                external_buffers_disjoint=selection.external_buffers_disjoint, resources=selection.resources,
-                reservations=selection.reservations, outer_order=selection.outer_order,
+                module,
+                operation,
+                selected_contracts=contracts,
+                storage=selection.storage,
+                adapter=adapter,
+                name="source_dense_" + str(len(regions)),
+                static_budget=selection.static_budget,
+                external_buffers_disjoint=selection.external_buffers_disjoint,
+                resources=selection.resources,
+                reservations=selection.reservations,
+                outer_order=selection.outer_order,
                 max_source_elements=selection.max_source_elements,
-                verification_timeout_ms=selection.verification_timeout_ms, max_repairs=selection.max_repairs,
+                verification_timeout_ms=selection.verification_timeout_ms,
+                max_repairs=selection.max_repairs,
             )
         except DenseSchedulingUnavailable as error:
             validate()
