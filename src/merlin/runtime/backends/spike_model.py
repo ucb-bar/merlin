@@ -529,7 +529,10 @@ def build(
         admit_linked_device_elf,
         freeze_device_elf_admission,
         freeze_device_ir_budget,
+        freeze_device_target_configuration,
         require_device_elf_admission,
+        require_device_target_configuration,
+        revalidate_device_target_artifacts,
     )
     from ...llvmlower.link_supplier_trace import trace_symbol_flags
 
@@ -539,6 +542,11 @@ def build(
     if type(host_llvm_bitcode) is not bool:
         raise TypeError("host LLVM bitcode transport requires an explicit Boolean selection")
     device_ir_budget = freeze_device_ir_budget(device)
+    target_configuration_selection = freeze_device_target_configuration(device)
+    if target_configuration_selection is not None and (
+        device.catalog_manifest is not None or device.catalog_builder is not None
+    ):
+        raise ValueError("target configuration cleanup requires consumed IR; compiled catalogs are unsupported")
     supplier_flags = () if math_archive_symbols is None else trace_symbol_flags(math_archive_symbols)
     (Path(work) / "execution_memory_admission.json").unlink(missing_ok=True)
     if host_llvm_transform_chain is not None:
@@ -913,6 +921,7 @@ def build(
                 "available to build them against; the image would not link"
             )
         require_device_elf_admission(device, device_admission_selection)
+        target_configuration = require_device_target_configuration(device, target_configuration_selection)
         if _dev_side.get("device") != device.device:
             raise RuntimeError("device offload sidecar does not match selected device")
         exact = getattr(device, "exact_selection", None)
@@ -928,6 +937,8 @@ def build(
                 raise RuntimeError("device offload sidecar lost exact operation or package identity")
         _dev_dts = _dev_args["dtypes"]
         if _dev_side.get("catalog_manifest") is not None:
+            if target_configuration is not None:
+                raise ValueError("target configuration cleanup cannot observe compiled catalog IR")
             from ...llvmlower.device_catalog import build_catalog_objects
 
             _dev_build = build_catalog_objects(
@@ -973,7 +984,9 @@ def build(
                 package_sha256=_dev_side.get("package_sha256"),
                 call_buffers=_dev_args.get("call_buffers"),  # every pointer of a group's logical interface
                 device_ir_budget=device_ir_budget,
+                **({"target_configuration": target_configuration} if target_configuration is not None else {}),
             )
+        require_device_target_configuration(device, target_configuration_selection)
         if exact is not None:
             exact.check_package(device.package_dir)
             exact.check_backend_contract()
@@ -1298,6 +1311,7 @@ def build(
             linked_sha256=compilation.record["commands"][-1]["output"]["sha256"],
             directory=work,
         )
+    revalidate_device_target_artifacts(device, target_configuration_selection, device_artifacts)
     compilation.completed(elf)
     return {
         "elf": elf,
