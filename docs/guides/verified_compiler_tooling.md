@@ -726,6 +726,102 @@ python -B -m pytest merlin/tests/infra/test_copy_prefetch.py \
 The export test uses an isolated interpreter and a neutral native executor;
 it does not qualify any accelerator implementation.
 
+## Fuse an exact integer dense output path
+
+The dense source route can keep a complete reduction in i32 and store its
+final result as i8 through one declared integer readout. For example, a
+single-use `maxsi(acc, 0)`, `minsi(value, 127)`, `trunci` epilogue can run in
+the store path. This separates the accumulator format from the output format:
+the planner's accumulator capacity, initialization, reduction order and exact
+continuation remain i32. A truncation without a clamp has different semantics
+and cannot inherit this readout.
+
+The original dense software declaration can include this optional member:
+
+```yaml
+output_readout:
+  schema: merlin.dense_integer_readout.v1
+  scalar_ir: |
+    module { func.func @readout(%x: i32) -> i8 {
+      %zero = arith.constant 0 : i32
+      %high = arith.constant 127 : i32
+      %positive = arith.maxsi %x, %zero : i32
+      %bounded = arith.minsi %positive, %high : i32
+      %result = arith.trunci %bounded : i32 to i8
+      func.return %result : i8
+    } }
+  output:
+    dtype: i8
+    bits: {fact: [facts, output_bits]}
+  instruction: store_i8
+```
+
+`store_i8` is an example selected ISA instruction, not a builtin opcode. It
+must be distinct from the original full-width store, have explicit integer
+operand bindings, read only the accumulator and write only the output. The
+width reference must resolve to eight bits in the selected facts. The scalar
+function must be a supported total unary integer computation from i32 to i8;
+floating operations and unknown effects are refused. Its expression must
+match the original source computation, including operation order, widths,
+signed comparisons and constants.
+
+Supply `SourceDenseLowering.readout_qualification_identity` from independent
+qualification of that implementation. The declaration, instruction spelling,
+width fact and an epilogue-stage label do not establish execution semantics.
+With this declaration and qualification available, the ordinary source route
+attempts fusion by default. Set `fuse_output_readout=False` for the paired
+baseline while keeping the same facts, software specification and library.
+The direct shared scheduling API uses `output_readout=` and
+`readout_qualification_identity=` on `schedule_compact_dense`; source checking
+additionally binds the original `output_operation` through
+`schedule_source_dense`.
+
+Source matching requires a same-block, single-use consumer of the complete
+accumulator tensor. The pointwise computation must not read its initializer
+or captured runtime values. Exact typed integer constants may be captured;
+the checker clones and checks their current values rather than treating every
+capture as invariant. Unknown intervening operations are barriers. Missing
+capability or qualification, additional accumulator consumers and unsupported
+epilogues retain the dense contraction and ordinary host epilogue. Malformed
+declarations, stale inputs and incorrect realized stores are errors.
+
+When selecting the shared logical descriptor bridge, also supply
+`LogicalBorrowedABI.readout_format_qualification_identity` for the final i8
+pointer format, matching the selected readout qualification. The bridge must
+use one-byte output elements in its descriptor guards, scratch budget, C
+signature and packing fallback. Its accumulator allocation remains four-byte
+i32 storage. This is separate from borrowed-buffer completion, noescape and
+nofree qualification; neither fact implies the other.
+
+The actual projected store must reconstruct the checked readout identity from
+its instruction and operands. The verifier checks final output width, tails,
+complete reduction and accumulator ownership, and accounts requested output
+bytes at the final width. These checks condition on independently qualified
+instruction implementations; a selected plan or host source rewrite alone
+does not prove that a backend eliminated its intermediate transfers.
+
+The mechanism stays within the existing 61-source shared library. Phase 1 and
+Phase 2 must receive the same version, source hashes, controls and verification
+rules. Tuning may select a legal readout; it cannot change its scalar semantics,
+hardware widths, qualification or numerical thresholds. Trusted model-binding
+services are not added to the authoring import grant.
+
+Current validation covers source matching, rectangular primitives, tails,
+separate accumulator/output widths, missing qualification and mutations of
+store semantics or checked context. Run the focused source tests with:
+
+```sh
+python -B -m pytest merlin/tests/infra/test_dense_integer_readout.py \
+  merlin/tests/infra/test_pointwise_constant_captures.py \
+  -p no:cacheprovider --basetemp "$TMPDIR/dense-integer-readout-check"
+```
+
+Ordinary complete-model paired execution is a separate qualification step.
+This scope establishes no real accelerator support, timing improvement,
+floating-scale reassociation or nearest-even readout implementation. Ordered
+f32 scaling needs the existing full-domain numerical proof and original
+qualified rounding/scale contract before it can use this path.
+
 ## Keep the authored ISA minimal
 
 The software spec optionally contains `isa` with schema `merlin.isa_spec.v1`.
