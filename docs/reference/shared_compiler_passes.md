@@ -4,7 +4,7 @@ kind: reference
 status: current
 owner: core
 last_verified: 2026-10-19
-related: [../design/shared_phase1_scheduling.md]
+related: [../design/shared_phase1_scheduling.md, ../guides/shared_offload_selection.md]
 code_refs:
   - src/merlin/transforms/pipeline.py
   - src/merlin/transforms/pipeline_state.py
@@ -112,6 +112,11 @@ Phase 2 can search the same bounded alternatives with calibrated costs while
 using the same legality and realization checks. A chosen schedule alone is not
 a transferable compiler rule. A rule must consume the current operation and
 capability inputs and make a checked decision on new inputs.
+
+For complete-source CPU/offload choices and conservative complete-cost selection,
+see [checked whole-model offload alternatives](../guides/shared_offload_selection.md).
+The source plan cannot grant target support or substitute for realized-program
+and complete-execution verification.
 
 Executable examples include
 `merlin/tests/infra/test_configuration_elimination.py` (persistent writes,
