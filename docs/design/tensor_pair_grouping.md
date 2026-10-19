@@ -1,12 +1,12 @@
 ---
-title: Private tensor pair grouping
+title: Private tensor chain grouping
 kind: design
 status: current
 owner: core
 last_verified: 2026-10-18
 ---
 
-# Private tensor pair grouping
+# Private tensor chain grouping
 
 `merlin.xdsl_dialects.lowering.tensor_chains` finds disjoint producer/consumer
 pairs in typed tensor IR. The target supplies the operations it supports;
@@ -38,3 +38,22 @@ still requires positive cost evidence.
 Tests in `merlin/tests/ir/test_tensor_chains.py` cover private chains, fanout,
 live outputs, unknown effects, and read/write destination contracts. These
 rules do not establish whole-model correctness or a hardware timing result.
+
+`private_tensor_chain` extends the same analysis to an explicitly ordered chain
+of two or more pure source operations. Each intermediate must have exactly one
+input use by the next operation. Repeated inputs, fanout, reordered operations
+and intervening unsupported effects refuse. Only pure source arithmetic moves;
+this contract does not allow moving an already lowered device call across
+another device call.
+
+After a provider qualifies the arithmetic and endpoint implementation,
+`replace_private_tensor_chain` can replace that chain in its caller-owned
+module. It checks the exact set of external inputs, static unencoded tensor
+result, unused scalar output-initializer arguments, common module ownership,
+and compatibility with any existing endpoint declaration. It inserts a fresh
+destination and one synchronous destination-passing call at the final source
+operation, then removes the private source operations and verifies the module.
+Providers retain source-policy coverage for every consumed operation and own
+rounding, exception behavior, completion, resource and profitability contracts.
+The utility mutates the explicitly supplied working module; pipeline stages
+must parse or clone their input before invoking it.

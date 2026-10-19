@@ -5,8 +5,10 @@ import pytest
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.xdsl_dialects.lowering.tensor_chains import (
     destination_only_tensor_call,
+    private_tensor_chain,
     private_tensor_pairs,
     pure_tensor_compute,
+    replace_private_tensor_chain,
 )
 
 
@@ -98,3 +100,60 @@ def test_crossing_call_requires_read_inputs_and_private_destination(access, shar
     selected = private_tensor_pairs((first, second), can_cross=lambda op:
                                    pure_tensor_compute(op) or destination_only_tensor_call(op))
     assert len(selected) == expected
+
+
+def three_operations(**kwargs):
+    module = parse_mlir_text(source(**kwargs))
+    first, second = candidates(module)
+    last = second.clone()
+    last.operands = [second.results[0], first.inputs[0], second.outputs[0]]
+    result = second.next_op
+    result.operands = [last.results[0]]
+    second.parent.insert_op_before(last, result)
+    module.verify()
+    return module, (first, second, last)
+
+
+def test_three_operation_endpoint_preserves_public_result_and_input_order():
+    module, chain = three_operations()
+    inputs = tuple(chain[0].parent.args)
+    assert private_tensor_chain(chain)
+    call = replace_private_tensor_chain(module, chain, symbol="connected", inputs=inputs[::-1])
+    assert tuple(call.arguments[:-1]) == inputs[::-1]
+    assert not candidates(module)
+    assert call.next_op.arguments[0] is call.results[0]
+    assert destination_only_tensor_call(call)
+    module.verify()
+
+
+@pytest.mark.parametrize("mutation", ["effect", "fanout", "initializer", "inputs", "collision"])
+def test_three_operation_refusal_does_not_modify_the_module(mutation):
+    from xdsl.dialects import func
+    from xdsl.ir import Region
+
+    module, chain = three_operations(barrier="func.call @effect():()->()" if mutation == "effect" else "")
+    inputs = tuple(chain[0].parent.args)
+    if mutation == "fanout":
+        chain[-1].operands = [chain[1].results[0], chain[0].results[0], chain[-1].outputs[0]]
+    elif mutation == "initializer":
+        arithmetic = next(iter(chain[0].body.block.ops))
+        arithmetic.operands = [chain[0].body.block.args[0], chain[0].body.block.args[-1]]
+    elif mutation == "inputs":
+        inputs = inputs[:-1]
+    elif mutation == "collision":
+        module.body.block.add_op(func.FuncOp("connected", ([], []), Region(), visibility="private"))
+    module.verify()
+    before = str(module)
+    with pytest.raises(ValueError):
+        replace_private_tensor_chain(module, chain, symbol="connected", inputs=inputs)
+    assert str(module) == before
+
+
+def test_chain_order_and_module_identity_are_checked():
+    module, chain = three_operations()
+    assert not private_tensor_chain(chain[::-1])
+    assert not private_tensor_chain((chain[0], chain[0]))
+    other, _ = three_operations()
+    with pytest.raises(ValueError, match="different module"):
+        replace_private_tensor_chain(other, chain, symbol="connected", inputs=tuple(chain[0].parent.args))
+    module.verify()
