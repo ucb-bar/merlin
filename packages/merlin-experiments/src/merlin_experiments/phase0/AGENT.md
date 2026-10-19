@@ -42,6 +42,11 @@ only its committed `hidden` capsule roles; `public` and `dev` Phase1 sources
 remain reusable. Unknown roles refuse. The separately selected protected model
 source inventory remains complete and independent of those capsule labels.
 
+`operator_windowed_ir` is an explicit private allocation route, not a semantic
+summary. Reconstruct every original operation/region with exact SSA and aliases,
+verify the complete final module and recheck all initializer owners. Parser
+windows, aggregate syntax and external RSS/CPU limits remain hard gates.
+
 Explicit private-selection V4 selects `operator_structured_exclusion` on BOTH
 sides. Registered tensor reductions require complete dimensions, tensor/scalar
 ABI and ownership; their versioned hashes do not grant execution support.

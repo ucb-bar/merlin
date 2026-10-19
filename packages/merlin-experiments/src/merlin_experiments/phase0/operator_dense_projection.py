@@ -88,6 +88,11 @@ def _literal_module(value, typ):
 
 def _validate(compact, constants, *, max_decoded_bytes):
     module = Q.parse(compact.decode("utf-8"))
+    return validate_module(module, constants, max_decoded_bytes=max_decoded_bytes)
+
+
+def validate_module(module, constants, *, max_decoded_bytes):
+    """Recheck ALL projected initializer owners in the complete typed module."""
     module.verify()
     seen, decoded, hex_bytes = set(), 0, 0
     for op in Q.walk(module):
@@ -152,8 +157,23 @@ def _validate(compact, constants, *, max_decoded_bytes):
 def project(stream, *, max_input_bytes, max_compact_bytes, max_literal_bytes=65536,
             max_retained_literal_bytes=4 << 20, max_decoded_bytes=4 << 20, max_constants=8192,
             chunk_bytes=65536):
+    """The original complete compact parse and initializer-ownership route."""
+    metadata, compact, constants = scan(
+        stream, max_input_bytes=max_input_bytes, max_compact_bytes=max_compact_bytes,
+        max_literal_bytes=max_literal_bytes, max_retained_literal_bytes=max_retained_literal_bytes,
+        max_decoded_bytes=max_decoded_bytes, max_constants=max_constants, chunk_bytes=chunk_bytes)
+    hex_bytes = _validate(compact, constants, max_decoded_bytes=max_decoded_bytes)
+    return Projection(metadata["source_sha256"], metadata["source_bytes"], compact,
+                      len(constants), hex_bytes)
+
+
+def scan(stream, *, max_input_bytes, max_compact_bytes, max_literal_bytes=65536,
+         max_retained_literal_bytes=4 << 20, max_decoded_bytes=4 << 20, max_constants=8192,
+         chunk_bytes=65536, sink=None):
     """Hash full binary input and bound every parser/retained-literal allocation.
 
+    This low-level scan is not a checked Projection. Complete typed parsing and
+    validate_module remain mandatory before its metadata can support intake.
     Pretty-printed custom-form constants beginning a physical line are the
     supported intake domain. Other forms remain unchanged and must fit the
     compact parse ceiling. Hex values require their full typed byte count;
@@ -164,15 +184,20 @@ def project(stream, *, max_input_bytes, max_compact_bytes, max_literal_bytes=655
               max_decoded_bytes, max_constants, chunk_bytes)
     if any(type(n) is not int or n < 1 for n in limits) or chunk_bytes > 1 << 20:
         raise ValueError("dense projection requires explicit finite source and allocation bounds")
-    digest, size, compact, pending = hashlib.sha256(), 0, bytearray(), bytearray()
+    digest, size, emitted, compact, pending = hashlib.sha256(), 0, 0, bytearray(), bytearray()
     constants, retained, reserved_tail = [], 0, b""
     state, line_projected, current = "normal", False, None
     reserved = HANDLE.encode().removesuffix(b"_")
 
     def emit(data):
-        if len(compact) + len(data) > max_compact_bytes:
+        nonlocal emitted
+        if emitted + len(data) > max_compact_bytes:
             raise ValueError("dense projection exceeds the unchanged compact IR parse budget")
-        compact.extend(data)
+        emitted += len(data)
+        if sink is None:
+            compact.extend(data)
+        elif sink(data) != len(data):
+            raise ValueError("dense projection scratch sink did not retain complete syntax")
 
     while True:
         piece = stream.readline(chunk_bytes)
@@ -210,7 +235,7 @@ def project(stream, *, max_input_bytes, max_compact_bytes, max_literal_bytes=655
                     emit(pending)
                     pending.clear()
                     line_projected = False
-                elif len(pending) > max_compact_bytes - len(compact):
+                elif len(pending) > max_compact_bytes - emitted:
                     raise ValueError("dense projection exceeds the unchanged compact IR parse budget")
                 break
             if state == "kind":
@@ -263,6 +288,6 @@ def project(stream, *, max_input_bytes, max_compact_bytes, max_literal_bytes=655
     if state != "normal":
         raise ValueError("dense projection source ends inside an initializer")
     emit(pending)
-    result = bytes(compact)
-    hex_bytes = _validate(result, constants, max_decoded_bytes=max_decoded_bytes)
-    return Projection(digest.hexdigest(), size, result, len(constants), hex_bytes)
+    # This scan is NOT verified evidence. A consumer must reconstruct and
+    # verify the complete module, then call validate_module for every marker.
+    return dict(source_sha256=digest.hexdigest(), source_bytes=size, compact_bytes=emitted), bytes(compact), constants

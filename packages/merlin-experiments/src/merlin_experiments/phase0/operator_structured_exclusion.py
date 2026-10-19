@@ -57,6 +57,11 @@ def signatures(source, *, max_bytes):
     if b"merlin_iface.version" in source:
         return M.signatures(source, max_bytes=max_bytes)
     module = Q.parse(source.decode("utf-8"))
+    return module_signatures(module)
+
+
+def module_signatures(module):
+    """The identical hash projection over a complete independently parsed AST."""
     module.verify()
     result = []
     for op in Q.walk(module):

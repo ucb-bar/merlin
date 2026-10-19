@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import tempfile
 
 from merlin.common.digest import sha256_file
 
@@ -20,10 +21,12 @@ from . import operator_exclusion_issuer as U
 from . import operator_mixed_exclusion as M
 from . import operator_structured_exclusion as R
 from . import operator_typed_exclusion as T
+from . import operator_windowed_ir as W
 
 
 def issue(pointer_path, pointer_sha256, destination, *, forbidden_roots,
-          max_ir_bytes, max_total_ir_bytes, max_source_bytes, max_total_source_bytes, source_mode=None):
+          max_ir_bytes, max_total_ir_bytes, max_source_bytes, max_total_source_bytes, source_mode=None,
+          input_mode=None):
     """Use separate streaming-input bounds without increasing parser ceilings.
 
     No protected source, symbol, shape, initializer value or exclusion hash set
@@ -34,6 +37,8 @@ def issue(pointer_path, pointer_sha256, destination, *, forbidden_roots,
     destination = U._destination(destination, forbidden_roots)
     if source_mode not in {None, M.SCHEMA, R.SCHEMA}:
         raise U.IssuanceRefusal("protected streaming intake has no selected reviewed source grammar")
+    if input_mode not in {None, W.SCHEMA} or (input_mode is not None and source_mode != R.SCHEMA):
+        raise U.IssuanceRefusal("protected windowed intake needs its explicit complete structured grammar")
     limits = (max_ir_bytes, max_total_ir_bytes, max_source_bytes, max_total_source_bytes)
     if (any(type(n) is not int or n < 1 for n in limits) or max_total_ir_bytes < max_ir_bytes
             or max_total_source_bytes < max_source_bytes):
@@ -52,13 +57,16 @@ def issue(pointer_path, pointer_sha256, destination, *, forbidden_roots,
             "protected original streamed inventory or complete catalog ownership was not verified"
         ) from None
     source_hashes, typed_hashes = set(), set()
-    source_bytes = compact_bytes = constants = hex_bytes = 0
+    source_bytes = compact_bytes = constants = hex_bytes = peak_scratch_bytes = 0
     try:
         for row in sources.values():
             path = I.ordinary(row["read_path"])
             before = path.stat()
             available = min(max_source_bytes, max_total_source_bytes - source_bytes)
-            compact_available = min(max_ir_bytes, max_total_ir_bytes - compact_bytes)
+            remaining_ir = max_total_ir_bytes - compact_bytes
+            compact_available = min(max_ir_bytes, remaining_ir)
+            parsed_hashes = None
+            parsed_compact_bytes = None
             if available < before.st_size or compact_available < 1:
                 raise ValueError("streaming source or aggregate parse cost denied")
             with path.open("rb") as stream:
@@ -71,6 +79,23 @@ def issue(pointer_path, pointer_sha256, destination, *, forbidden_roots,
                     if len(raw) > compact_available:
                         raise ValueError("raw interface source changed beyond the compact parse budget")
                     projected = P.Projection(hashlib.sha256(raw).hexdigest(), len(raw), raw, 0, 0)
+                elif input_mode == W.SCHEMA:
+                    # Scratch is owner-only and outside every author/publication
+                    # root. No projected protected source is published or used
+                    # as compiler input. Every operation remains in the final AST.
+                    with tempfile.TemporaryFile(mode="w+b", dir=destination.parent) as scratch:
+                        metadata, _, initializers = P.scan(
+                            stream, max_input_bytes=available, max_compact_bytes=remaining_ir, sink=scratch.write)
+                        scratch.seek(0)
+                        module, _ = W.parse(scratch, max_window_bytes=max_ir_bytes,
+                                             max_total_bytes=max_total_ir_bytes)
+                        hex_bytes = P.validate_module(module, initializers, max_decoded_bytes=4 << 20)
+                        parsed_hashes = R.module_signatures(module)
+                        parsed_compact_bytes = metadata["compact_bytes"]
+                        peak_scratch_bytes = max(peak_scratch_bytes, parsed_compact_bytes)
+                        del module
+                        projected = P.Projection(metadata["source_sha256"], metadata["source_bytes"],
+                                                 b"", len(initializers), hex_bytes)
                 else:
                     projected = P.project(stream, max_input_bytes=available, max_compact_bytes=compact_available)
             after = path.stat()
@@ -79,14 +104,15 @@ def issue(pointer_path, pointer_sha256, destination, *, forbidden_roots,
                            for key in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns"))):
                 raise ValueError("selected original source changed")
             source_bytes += projected.source_bytes
-            compact_bytes += len(projected.compact)
+            compact_bytes += len(projected.compact) if parsed_compact_bytes is None else parsed_compact_bytes
             constants += projected.projected_constants
             hex_bytes += projected.hexadecimal_payload_bytes
             source_hashes.add(projected.source_sha256)
             signature = R.signatures if source_mode == R.SCHEMA else (
                 M.signatures if source_mode == M.SCHEMA else T.signatures
             )
-            typed_hashes.update(signature(projected.compact, max_bytes=max_ir_bytes))
+            typed_hashes.update(signature(projected.compact, max_bytes=max_ir_bytes)
+                                if parsed_hashes is None else parsed_hashes)
             if len(source_hashes) > 8192 or len(typed_hashes) > 8192:
                 raise ValueError("complete hash roster exceeds reader bound")
         if I.resolve_streaming_v2(pointer_path, pointer_sha256) != sources:
@@ -124,9 +150,11 @@ def issue(pointer_path, pointer_sha256, destination, *, forbidden_roots,
         distinct_source_hashes=len(source_hashes), distinct_typed_ir_hashes=len(typed_hashes),
         catalog_bound_source_aliases=sum(row["alias"] is not None for row in sources.values()),
         compact_source_bytes=compact_bytes, checked_initializer_count=constants,
+        peak_private_scratch_bytes=peak_scratch_bytes,
         checked_hexadecimal_payload_bytes=hex_bytes,
         signature_schema=source_mode if source_mode is not None else T.SCHEMA, typed_signature_schema=T.SCHEMA,
         parse_limits=dict(max_ir_bytes=max_ir_bytes, max_total_ir_bytes=max_total_ir_bytes),
+        input_mode=input_mode or "complete_compact_module",
         streaming_limits=dict(max_source_bytes=max_source_bytes, max_total_source_bytes=max_total_source_bytes),
         qualification="private exclusion only; no numerical, compiler, hardware, timing or cohort admission",
         alias_scope=("original sealed source hash and catalog namespace; current ordinary target rechecked, "

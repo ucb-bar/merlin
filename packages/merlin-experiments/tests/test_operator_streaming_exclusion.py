@@ -237,3 +237,29 @@ def test_mixed_source_mode_is_explicit_v3_and_legacy_streaming_keeps_its_refusal
     assert saved['schema'] == E.SCHEMA_V3
     assert saved['excluded_typed_ir_sha256'] == list(M.signatures(source.read_bytes(), max_bytes=LIMIT))
     assert receipt['signature_schema'] == M.SCHEMA and receipt['typed_signature_schema'] == T.SCHEMA
+
+
+def test_windowed_intake_is_explicit_complete_and_uses_identical_public_private_hashes(tmp_path, monkeypatch):
+    import test_operator_windowed_ir as WIN
+    from merlin_experiments.phase0 import operator_structured_exclusion as R
+    from merlin_experiments.phase0 import operator_windowed_ir as W
+
+    raw = WIN.B.program().encode()
+    source = tmp_path/'original.mlir'
+    source.write_bytes(raw)
+    selected = {str(source): dict(sha256=H.pin(source)['sha256'], read_path=str(source), alias=None)}
+    monkeypatch.setattr(I, 'resolve_streaming_v2', lambda *_: selected)
+    private = tmp_path/'private'
+    private.mkdir(mode=0o700)
+    destination = private/'selection.json'
+    live, receipt = S.issue(tmp_path/'pointer.json', 'a'*64, destination,
+        forbidden_roots=[tmp_path/'public'], source_mode=R.SCHEMA, input_mode=W.SCHEMA, **limits())
+    data = json.loads(destination.read_bytes())
+    assert data['schema'] == E.SCHEMA_V4
+    assert set(data['excluded_typed_ir_sha256']) == set(R.signatures(raw, max_bytes=LIMIT))
+    assert receipt['input_mode'] == W.SCHEMA and receipt['compact_source_bytes'] == len(raw)
+    assert repr(live) == '<OperatorPrivateExclusion>'
+    assert list(private.iterdir()) == [destination]  # No retained private scratch.
+    with pytest.raises(U.IssuanceRefusal):
+        S.issue(tmp_path/'pointer.json', 'a'*64, private/'bad.json',
+            forbidden_roots=[tmp_path/'public'], source_mode=M.SCHEMA, input_mode=W.SCHEMA, **limits())
