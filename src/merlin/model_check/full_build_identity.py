@@ -30,6 +30,7 @@ def build_material(stage, target, label, submission, submission_sha256, settings
     gcc = spike.gcc_path()
     tools = {
         "clang": toolchain.clang(),
+        "mlir_optimizer": toolchain.llvm_install() / "bin" / "mlir-opt",
         "translate": toolchain.mlir_translate(),
         "optimizer": toolchain.llvm_opt(),
         "compiler_python": toolchain.compiler_python(),
@@ -66,6 +67,8 @@ def build_material(stage, target, label, submission, submission_sha256, settings
         "source": project,
         "runtime_sha256": package_digest(runtime_dir()),
         "tools": selected,
+        "compiler_driver": toolchain._env("MERLIN_COMPILER_DRIVER", "python"),
+        "dotenv_sha256": content_digest(repo_root() / ".env") if (repo_root() / ".env").is_file() else None,
         "target_inputs": target_inputs(),
         "environment_sha256": content_digest_bytes(
             {name: value for name, value in os.environ.items() if name.startswith("MERLIN_")
