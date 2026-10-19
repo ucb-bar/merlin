@@ -1,5 +1,13 @@
 # AGENT.md — src/merlin/targetgen
 
+`selected_library_imports` is a stdlib-only source startup helper for an
+already host-selected compiler snapshot. It may be copied identically into
+both compiler treatments before imports. Exact namespace/leaf sources precede
+explicit original host dependency roots; preloaded foreign leaves refuse.
+Its source record is data, not review, import, sandbox or qualification authority.
+The original CompilerLibrarySelection, profile masks and final same-release
+handoff checks remain mandatory. No selected SDK API or historical default changes.
+
 Model entries may explicitly select `output_numeric_policy:
 captured_per_output_v1` to apply the existing exact captured-ABI numerical
 checks independently to every live-out. This permits mixed storage results
