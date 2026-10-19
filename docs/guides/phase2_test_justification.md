@@ -227,3 +227,16 @@ mathematically minimum corpus or a replacement for full-family confirmation.
 It neither weights model runtime with static MACs nor turns standalone
 capsules into source-equivalent connected slices. If no complete family covers
 a selected evidence axis, selection refuses instead of producing an empty run.
+
+An original host may explicitly pass a live `CheckedSourceModelDiagnostic` and
+its same original compiler-pass selection to `prepare_ordinary_search_policy`.
+This is an optional connection for selected compile/Spike witnesses: the queue
+forwards that original selector to the existing sealed model-child route, keeps
+L3 requirements, reports `DIAGNOSTIC_ONLY`, and leaves timing `UNKNOWN`. It does
+not infer public-program placement, score a complete cohort, or accept a saved
+selector record as authority. The ordinary policy still requires its original
+formal Phase 1 admission. A provisional Phase 1 checkpoint cannot instantiate
+this policy; neutral retained-revision and fresh-child transport tests do not
+establish a qualified target queue run. Actual boxed source/compiler/effect
+diagnostics remain separate evidence until those original gates are met and
+the selected target queue is independently exercised.
