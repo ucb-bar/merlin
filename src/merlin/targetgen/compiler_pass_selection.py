@@ -291,26 +291,14 @@ class CompilerPassSelection:
         return reports
 
 
-def restore_original_selection(record, *, work_root):
-    """Only an explicit original host or verified parent transport may call this.
+def restore_original_factory(factory):
+    """Reopen an explicitly host-selected source factory, never saved owners.
 
-    The CLI independently selects and pins operator input bytes; a child needs
-    its independently checked sealed-parent transport. This executes the
-    original source-pinned admission callback, then compares the
-    actual live registry. It does not deserialize successful capability owners.
+    The caller must select the exact operator-pinned record. Qualification is
+    issued only when this returned original factory subsequently runs create().
     """
-    if type(record) is not dict or set(record) != {
-        "schema",
-        "registry",
-        "binding",
-        "mechanisms",
-        "resolutions",
-        "factory",
-    }:
-        raise ValueError("original compiler pass transport is incomplete")
-    factory = record["factory"]
-    if record["schema"] != SCHEMA or type(factory) is not dict:
-        raise ValueError("compiler pass transport has no original independent admission factory")
+    if type(factory) is not dict:
+        raise ValueError("original compiler pass factory must be an explicit record")
     if (
         set(factory) != {"schema", "callback", "sources", "inputs"}
         or factory["schema"] != "merlin.original_pass_factory.v1"
@@ -331,6 +319,30 @@ def restore_original_selection(record, *, work_root):
     )
     if owner.record() != factory:
         raise ValueError("compiler pass reconstruction selected a different original factory")
+    return owner
+
+
+def restore_original_selection(record, *, work_root):
+    """Only an explicit original host or verified parent transport may call this.
+
+    The CLI independently selects and pins operator input bytes; a child needs
+    its independently checked sealed-parent transport. This executes the
+    original source-pinned admission callback, then compares the
+    actual live registry. It does not deserialize successful capability owners.
+    """
+    if type(record) is not dict or set(record) != {
+        "schema",
+        "registry",
+        "binding",
+        "mechanisms",
+        "resolutions",
+        "factory",
+    }:
+        raise ValueError("original compiler pass transport is incomplete")
+    factory = record["factory"]
+    if record["schema"] != SCHEMA or type(factory) is not dict:
+        raise ValueError("compiler pass transport has no original independent admission factory")
+    owner = restore_original_factory(factory)
     registry = owner.create(work_root=work_root)
     # Admission callbacks may wait for separately leased children. Only the
     # subsequent synchronous selection construction/getters borrow this leaf.
