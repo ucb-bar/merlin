@@ -647,7 +647,7 @@ def build(
         raise ValueError("output_dump_cap must be a positive signed 32-bit integer")
     if not isinstance(output_sha256, bool):
         raise ValueError("output_sha256 must be a bool")
-    from ..host_math import build_host_math, host_math_recipe
+    from ..host_math import build_host_math, host_math_recipe, record_math_suppliers
 
     host_math_recipe(host_math_policy)  # Refuse unsupported policy before build mutation.
     if host_provider_builder is not None and not callable(host_provider_builder):
@@ -1287,13 +1287,7 @@ def build(
         inputs=[h / "model_link.ld", *objs, libm_archive],
         output=elf,
     )
-    if requested_suppliers:
-        expected_suppliers = {symbol: libm_archive for symbol in (math_archive_symbols or ())}
-        if runtime_symbols:
-            if len(math_objects) != 1:
-                raise SpikeModelError("selected host math runtime has no singular compiled object")
-            expected_suppliers.update({symbol: math_objects[0] for symbol in runtime_symbols.values()})
-        compilation.record_link_suppliers(expected_suppliers, link_result)
+    record_math_suppliers(compilation, libm_archive, math_archive_symbols, runtime_symbols, math_objects, link_result)
     if device is not None and getattr(device, "final_elf_audit", None) is not None:
         device.final_elf_audit(elf)
     close_host_provider(host_provider_receipt, objs, elf, inspector=provider_inspector, link_flags=math_link_flags)

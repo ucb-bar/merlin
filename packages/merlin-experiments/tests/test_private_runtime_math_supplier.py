@@ -14,7 +14,7 @@ from merlin_experiments.phase1.feedback import private_linkage_support as linkag
 from merlin.common.digest import sha256_file
 from merlin.llvmlower.compilation_recipe import CompilationRecipe
 from merlin.llvmlower.link_supplier_trace import trace_symbol_flags
-from merlin.runtime.host_math import build_host_math, host_math_recipe, runtime_symbol_bindings
+from merlin.runtime.host_math import build_host_math, host_math_recipe, record_math_suppliers, runtime_symbol_bindings
 from merlin.targetgen.host_linkage_contract import (
     RUNTIME_SCHEMA,
     RUNTIME_SUPPLIER,
@@ -121,7 +121,7 @@ def _native_build(tmp_path, policy):
         inputs=inputs,
         output=elf,
     )
-    recipe.record_link_suppliers({symbol: objects[0] for symbol in wrappers.values()}, result)
+    record_math_suppliers(recipe, archive, None, wrappers, objects, result)
     recipe.completed(elf)
     selected = {
         "gcc_requested": cc,
