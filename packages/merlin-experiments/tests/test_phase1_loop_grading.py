@@ -132,6 +132,44 @@ def test_plateau_does_not_promote_legacy_or_other_source_snapshot_counts(tmp_pat
     assert not result["current_source_grade_available"] and not result["stuck"]
 
 
+def test_shape_pending_progress_drops_current_credit_after_last_capsule(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+
+    from merlin_experiments.phase1.feedback import promotion
+
+    ws, run = tmp_path / "ws", tmp_path / "run"
+    (ws / "submission").mkdir(parents=True)
+    (ws / "submission/manifest.yaml").write_text("language: python\n")
+    compiler = ws / "submission/compiler.py"
+    compiler.write_text("VALUE = 1\n")
+    inputs = G.GradingInputs(context(tmp_path), "raw_baseline", tmp_path / "public", (), None)
+    monkeypatch.setattr(G, "compiler_execution", lambda *a, **kw: nullcontext())
+    monkeypatch.setattr(G.OH, "commit_graded", lambda *a, **kw: None)
+    monkeypatch.setattr(G, "_write_stage_ledger", lambda *a, **kw: None)
+    monkeypatch.setattr(G.FL, "record_channel_health", lambda *a: None)
+    monkeypatch.setattr(G, "_attach_codegen_scalability", lambda *a, **kw: None)
+    monkeypatch.setattr(promotion, "resolve_tiers", lambda *a, **kw: (None, None, None))
+    monkeypatch.setenv("MERLIN_BACKGROUND_PROGRESS", "1")
+
+    def qa(candidate, *args, **kwargs):
+        kwargs["on_capsule_complete"]({"capsule": "a", "status": "pass", "tiers": {"L2": "pass"}})
+        return {"all_pass": True, "n_passed": 1, "n_capsules": 1, "per_capsule": []}
+
+    observed = []
+
+    def shape(verdict, *args, **kwargs):
+        compiler.write_text("VALUE = 2\n")
+        kwargs["before_probe"]()
+        observed.append(json.loads((ws / "qa/progress.json").read_text()))
+
+    monkeypatch.setattr(G, "_attach_shape_generalization", shape)
+    G.grade(ws, run, 901, False, 10, inputs=inputs, qa_runner=qa, advisory_background=True)
+    assert len(observed) == 1
+    assert observed[0]["state"] == "shape_coverage_pending"
+    assert observed[0]["n_passed"] == 1 and observed[0]["snapshot_current"] is False
+    assert observed[0]["current_source_n_passed"] is None
+
+
 def context(root, target="fixture"):
     return InvocationContext(
         root, root / "descriptor.yaml", root, target, root / "runs", root / "reports", root / "bundles", ()

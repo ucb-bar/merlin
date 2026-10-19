@@ -302,7 +302,11 @@ def grade(
         write_verdict(ws / "qa" / "verdict.json", interim)
         if progress_rows:
             progress = json.loads(progress_path.read_text())
-            progress.update(state="shape_coverage_pending", snapshot_current=interim["snapshot_current"])
+            progress.update(
+                state="shape_coverage_pending",
+                snapshot_current=interim["snapshot_current"],
+                current_source_n_passed=interim["current_source_n_passed"],
+            )
             temporary = progress_path.with_suffix(".tmp")
             temporary.write_text(json.dumps(progress, indent=2) + "\n")
             temporary.replace(progress_path)
