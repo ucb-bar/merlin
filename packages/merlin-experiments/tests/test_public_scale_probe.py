@@ -206,6 +206,87 @@ def test_original_emission_actual_llvm_counts_and_explicit_resource_refusal(emit
     assert len(result["emission_invocation_sha256"]) == len(result["translation_invocation_sha256"]) == 64
 
 
+def test_scale_package_build_and_emit_share_one_deadline(emitted_case, monkeypatch):
+    from merlin.targetgen import capsule_common
+
+    candidate, contract, source, output = emitted_case
+    now, observed = [100.0], []
+    monkeypatch.setattr(PROBE.time, "monotonic", lambda: now[0])
+
+    def build(*args, timeout):
+        observed.append(("build", timeout))
+        now[0] += 7
+
+    original_lower = capsule_common.lower_interface
+
+    def lower(*args, **kwargs):
+        observed.append(("lower", kwargs["timeout"]))
+        kwargs["invoke"]("fixture", "emit", source)
+        return original_lower(*args, **kwargs)
+
+    def entry(*args, timeout, **kwargs):
+        observed.append(("entrypoint", timeout))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(PROBE.P, "build_package", build)
+    monkeypatch.setattr(PROBE.P, "run_entrypoint", entry)
+    monkeypatch.setattr(capsule_common, "lower_interface", lower)
+    with PROBE.P.scoped_package_executor(SimpleNamespace(
+        run_entrypoint=lambda *a, **kw: None, build_package=lambda *a, **kw: None,
+    )):
+        result = PROBE._emit_scale_case(candidate, source, output, contract=contract,
+                                       target="fixture", timeout_s=10, ir_budget=None)
+    assert observed == [("build", 10.0), ("lower", 3.0), ("entrypoint", 3.0)]
+    assert result["lowering_status"] == "emitted"
+
+
+def test_scale_build_that_spends_budget_cannot_start_emission(emitted_case, monkeypatch):
+    from merlin.targetgen import capsule_common
+
+    candidate, contract, source, output = emitted_case
+    now = [100.0]
+    monkeypatch.setattr(PROBE.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(PROBE.P, "build_package", lambda *a, **kw: now.__setitem__(0, 111.0))
+    monkeypatch.setattr(
+        capsule_common, "lower_interface", lambda *a, **kw: pytest.fail("expired build started emission")
+    )
+    with (
+        PROBE.P.scoped_package_executor(SimpleNamespace(
+            run_entrypoint=lambda *a, **kw: None, build_package=lambda *a, **kw: None,
+        )),
+        pytest.raises(TimeoutError, match="deadline expired"),
+    ):
+        PROBE._emit_scale_case(candidate, source, output, contract=contract,
+                               target="fixture", timeout_s=10, ir_budget=None)
+
+
+def test_scale_cpu_queue_wait_cannot_restart_translation_budget(emitted_case, monkeypatch):
+    from contextlib import contextmanager
+
+    from merlin.common import cpu_pool
+
+    candidate, contract, source, output = emitted_case
+    now = [100.0]
+    monkeypatch.setattr(PROBE.time, "monotonic", lambda: now[0])
+
+    @contextmanager
+    def queue(*, timeout_s):
+        assert timeout_s == 10.0
+        now[0] += 11
+        yield
+
+    monkeypatch.setattr(cpu_pool, "shared_compute_pool", queue)
+    monkeypatch.setattr(PROBE.subprocess, "run", lambda *a, **kw: pytest.fail("expired queue started translation"))
+    with (
+        PROBE.P.scoped_package_executor(SimpleNamespace(
+            run_entrypoint=lambda *a, **kw: None, build_package=lambda *a, **kw: None,
+        )),
+        pytest.raises(TimeoutError, match="deadline expired"),
+    ):
+        PROBE._emit_scale_case(candidate, source, output, contract=contract,
+                               target="fixture", timeout_s=10, ir_budget=None)
+
+
 def test_emission_requires_original_scoped_executor_and_typed_policy(emitted_case):
     candidate, contract, source, output = emitted_case
     with pytest.raises(ValueError, match="original scoped"):
