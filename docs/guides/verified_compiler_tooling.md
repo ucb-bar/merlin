@@ -800,7 +800,7 @@ bytes at the final width. These checks condition on independently qualified
 instruction implementations; a selected plan or host source rewrite alone
 does not prove that a backend eliminated its intermediate transfers.
 
-The mechanism stays within the existing 61-source shared library. Phase 1 and
+The mechanism uses the versioned shared library. Phase 1 and
 Phase 2 must receive the same version, source hashes, controls and verification
 rules. Tuning may select a legal readout; it cannot change its scalar semantics,
 hardware widths, qualification or numerical thresholds. Trusted model-binding
