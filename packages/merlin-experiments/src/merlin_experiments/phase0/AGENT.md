@@ -1,5 +1,12 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+`connected_integer_bounds` reconstructs typed source intervals for every operation,
+additive reduction prefix and complete live-out. Undefined storage, non-linear
+recurrences, unknown effects and overflowing intermediates refuse. Source i32 is
+not a claim of a 32-bit physical mesh MAC; selected executable panel/MAC/accumulator
+scope requires a separately checked target correspondence before admission. Do not
+replace that obligation with final-output equality or a legacy 20-bit full-K rule.
+
 `development_capture_intake` reopens complete original and supplementary references
 under independent pins before diagnostic capture. Preserve the full source roster,
 numerical policy, ABI and complete-call boundary. Reused reference bytes are not a
