@@ -224,6 +224,9 @@ class PreparedRun:
 
     def verify_inputs(self) -> None:
         from .feedback import hidden_capsule_policy
+        from .feedback.capsule_certification import verify_scope
+
+        verify_scope(getattr(self.request.options, "validation_scope", "full"), self.environment)
 
         hidden_capsule_policy.verify_record(
             hidden_capsule_policy.resolve(
@@ -555,6 +558,9 @@ def _prepare(
             raise RuntimeError(f"resume refused: environment record unreadable: {exc}") from exc
         if not isinstance(_environment_record, dict):
             raise RuntimeError("resume refused: environment record is not a mapping")
+        from .feedback.capsule_certification import verify_scope
+
+        verify_scope(getattr(a, "validation_scope", "full"), _environment_record)
         verify_readback_record(context, _environment_record.get("readback_policy"))
         hidden_capsule_policy.verify_record(
             _hidden_capsule_policy,
@@ -969,6 +975,7 @@ def _prepare(
             "background_model": a.background_model or None,
             "sandbox": a.sandbox,
             "qa_loop": not bool(a.qualify_submission),
+            "validation_scope": getattr(a, "validation_scope", "full"),
             **({"qualification_only": True} if a.qualify_submission else {}),
             "run_config": _run_config,
             "hidden_capsule_validation": _hidden_capsule_policy,

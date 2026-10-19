@@ -275,7 +275,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         max(0, int(a.sim_max_jobs)),
         selected_rtl_facts,
         sim_per_capsule_timeout=a.sim_per_capsule_timeout,
-        model_gate_interval=a.grade_interval if context.target == "gemmini" and a.experiment == "full" else 0,  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        model_gate_interval=(a.grade_interval if context.target == "gemmini" and a.experiment == "full"
+                             and getattr(a, "validation_scope", "full") == "full" else 0),  # target-ok: Full scope
     )
 
     public_build_service = None
@@ -590,7 +591,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         # FINAL AUTHORITATIVE GRADE: the background grades are progress reports on a moving workspace;
         # the run's verdict is a grade of the submission as the session left it.
         verdict = _grade(ws, run_dir, state["tick"] + 1, a.no_oracle, a.qa_timeout)
-        if context.target == "gemmini" and a.experiment == "full":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        if context.target == "gemmini" and a.experiment == "full":  # target-ok: Gemmini scope
             from . import oot_history as _OH
 
             _OH.verify_turn_end(run_dir, ws / "submission", verdict.get("oot_commit"))
@@ -767,7 +768,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             break
 
         verdict = _grade(ws, run_dir, rnd, a.no_oracle, a.qa_timeout)
-        if context.target == "gemmini" and a.experiment == "full":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+        if context.target == "gemmini" and a.experiment == "full":  # target-ok: Gemmini scope
             from . import oot_history as _OH
 
             _OH.verify_turn_end(run_dir, ws / "submission", verdict.get("oot_commit"))
@@ -1248,12 +1249,12 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     # VERIFIED result (the relaunch design means the converging round's agent never saw the passing
     # verdict, so its self-reported status lags by one round). Guarantees the frozen report matches.
     finalize = None
-    if _authoring_complete() and context.target == "gemmini" and a.experiment == "full":  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+    if _authoring_complete() and context.target == "gemmini" and a.experiment == "full":  # target-ok: Gemmini scope
         # A report-finalize turn and the driver's status-line stamp change submission bytes after the
         # last agent-source OOT commit. The model task asks for the report during authoring; preserve
         # that exact tree for the official grade and record the visible model status here.
         finalize = {
-            "skipped": "gemmini model report belongs to the agent's final authoring tree",  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+            "skipped": "gemmini model report belongs to the agent's final authoring tree",  # target-ok: Gemmini scope
             "visible_model_status_line": _verified_status_line(verdict),
             "status_line_stamped_by_driver": False,
         }
@@ -1405,10 +1406,11 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         from merlin_experiments.phase1.feedback import private_full_model_execution as PFX
         from merlin_experiments.phase1.feedback import private_full_models as PFM
 
-        official_grade = CERT._official_grade_result(
+        official_grade = CERT._selected_grade_result(
             grade_rc,
             run_dir,
-            require_model_check=context.target == "gemmini",  # target-ok: This is the explicitly selected Gemmini full-model Phase 1 path
+            validation_scope=getattr(a, "validation_scope", "full"), descriptor=context.descriptor,
+            require_model_check=context.target == "gemmini",  # target-ok: Gemmini scope
             required_models=PFM.requirements_for(context.descriptor),
             required_programs=PFM.program_requirements_for(context.descriptor),
             execution_gate=PFX.gate_for(
@@ -1443,20 +1445,11 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         "sha256": hashlib.sha256(_telemetry_bytes).hexdigest(),
         "bytes": len(_telemetry_bytes),
     }
-    formal_complete = (not incomplete_operator_seal) and CERT._formal_completion(
-        bool(verdict.get("all_pass")),
-        workflow_conformant,
-        official_grade["complete"],
-        telemetry["complete"],
-    )
-    qa_summary.update(
-        {
-            "converged": formal_complete,
-            "formal_complete": formal_complete,
-            "official_grade": official_grade,
-            "telemetry": telemetry,
-        }
-    )
+    qa_summary.update(CERT._completion_for_scope(
+        validation_scope=getattr(a, "validation_scope", "full"), numeric_all_pass=bool(verdict.get("all_pass")),
+        workflow_conformant=workflow_conformant, official_grade=official_grade, telemetry=telemetry,
+        checkpoint=incomplete_operator_seal,
+    ))
     (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(qa_summary, sort_keys=False))
     # The official grader wrote the manifest before process telemetry existed. Bind that final process
     # record into the same manifest and ensure its top-level completion claim cannot contradict the QA
@@ -1467,13 +1460,14 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         _manifest_doc["telemetry"] = telemetry
         _completion = _manifest_doc.setdefault("completion", {})
         _completion["telemetry_complete"] = telemetry["complete"]
+        _completion["phase2_iteration_ready"] = qa_summary.get("phase2_iteration_ready", False)
         if not telemetry["complete"]:
             _completion["formal_grade_complete"] = False
         _manifest_path.write_text(yaml.safe_dump(_manifest_doc, sort_keys=False))
     # The detailed usage record is written before the potentially long outer grade so the grader can
     # include it in its manifest.  Correct its launcher exit code once the authoritative grade exists.
     _cd = yaml.safe_load(_cy.read_text()) or {}
-    _cd["exit_code"] = 0 if formal_complete else 1
+    _cd["exit_code"] = 0 if qa_summary["converged"] else 1
     _cy.write_text(yaml.safe_dump(_cd, sort_keys=False))
     from .capsule_timing_archive import finalize_run
 
@@ -1483,13 +1477,17 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
     if _manifest_path.is_file():
         _manifest_doc["capsule_timing"] = _capsule_timing
         _manifest_path.write_text(yaml.safe_dump(_manifest_doc, sort_keys=False))
+    qa_summary = CERT._publish_capsule_handoff(
+        run_dir, qa_summary, validation_scope=getattr(a, "validation_scope", "full"), descriptor=context.descriptor,
+        transcript=_latest_authoring_tpath, endpoint_kind=_endpoint_kind, tools=resolved_tools(),
+    )
     print(
         f"\nrun complete: {run_dir}  numeric_all_pass={verdict.get('all_pass')} "
         f"workflow_conformant={workflow_conformant} "
-        f"official_grade_complete={official_grade['complete']} formal_complete={formal_complete} "
+        f"official_grade_complete={official_grade['complete']} formal_complete={qa_summary['formal_complete']} "
         f"rounds={len(rounds_summary)} capsule_timing_ready={_capsule_timing['timing_ready']}"
     )
-    return 0 if formal_complete else 1
+    return 0 if qa_summary["converged"] else 1
 
 
 def _emit_run_timing(run_dir: Path, rounds_summary: list) -> dict:

@@ -427,6 +427,27 @@ def test_live_conformance_selection_is_frozen_across_admission_and_resume(projec
         _run(changed, lambda _: pytest.fail("resume changed live workflow feedback selection"))
 
 
+@pytest.mark.parametrize("scope", ["full", "capsules"])
+def test_validation_scope_is_admitted_and_cannot_change_on_resume(project, monkeypatch, scope):
+    _external_substitutes(monkeypatch)
+    base = _request(project)
+    request = dataclasses.replace(base, options=dataclasses.replace(base.options, validation_scope=scope))
+
+    def admitted(prepared):
+        prepared.verify_inputs()
+        assert prepared.environment["validation_scope"] == scope
+        return 0
+
+    assert _run(request, admitted) == 0
+    resumed = dataclasses.replace(request, options=dataclasses.replace(request.options, resume=True))
+    assert _run(resumed, admitted) == 0
+    changed = dataclasses.replace(resumed, options=dataclasses.replace(
+        resumed.options, validation_scope="capsules" if scope == "full" else "full",
+    ))
+    with pytest.raises(ValueError, match="validation scope differs"):
+        _run(changed, lambda _: pytest.fail("resume changed validation scope"))
+
+
 def test_public_object_build_selection_is_frozen_and_cannot_be_enabled_on_resume(project, monkeypatch):
     _external_substitutes(monkeypatch)
     selection = {"trusted_source_pins_sha256": "a" * 64, "clang": {"sha256": "b" * 64}}
