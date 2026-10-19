@@ -18,6 +18,10 @@ Plus the **whole-model dialect plane** that brings real model2MLIR modules into 
   preparations across read-only consumers with equivalent static view inputs.
   Keep buffers explicit in SSA, honor effect barriers and live-byte budgets,
   preserve consumer order, and leave representation/numerics to the provider.
+- `private_transport.py` changes private destination-call edge representations
+  through static unencoded shape-only views. Providers qualify endpoint
+  equivalence, rounding and refusals. The pass preserves call order and public
+  types, refuses fanout/effect barriers, and never treats names as a proof.
 
 ## What does not belong here
 
