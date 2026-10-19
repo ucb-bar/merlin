@@ -433,3 +433,45 @@ def test_whole_module_digest_does_not_make_a_different_entry_the_same_plan(tmp_p
     )
     with pytest.raises(ValueError, match="another original entry or graph"):
         other.select(helper_plan, explicit=True)
+
+
+@pytest.mark.parametrize("change", ["numeric", "resources", "source"])
+def test_context_only_check_rejects_stale_original_inputs(tmp_path, monkeypatch, change):
+    bound, selected, *_ = fixture(tmp_path, monkeypatch)
+    if change == "numeric":
+        bound.routing.numeric_policy["comparison"] = "changed"
+    elif change == "resources":
+        object.__setattr__(bound.routing, "device_ir_budget", DeviceIRBudget(max_bytes=7))
+    else:
+        bound.source.module.attributes["prov.changed"] = builtin.UnitAttr()
+    with pytest.raises(ValueError, match="changed|differs|stale"):
+        selected.revalidate_context(routing=bound.routing)
+
+
+def test_context_only_check_never_calls_original_selector_cost_or_policy(tmp_path, monkeypatch):
+    bound, selected, selector, *_ = fixture(tmp_path, monkeypatch)
+    selected, _ = priced(selected)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("context-only freshness must not call an original evaluator")
+
+    # Retain the real original callback identities while making their bodies
+    # fail if executed. Checking implementation selection must remain legal.
+    original = selected.comparison._check
+    armed = {"value": False}
+
+    def checked_cost():
+        if armed["value"]:
+            forbidden()
+        return original()
+
+    object.__setattr__(selected.comparison, "_check", checked_cost)
+    selected = bound.select(selected.plan, selected.comparison)
+    armed["value"] = True
+    selector.hook = forbidden
+    monkeypatch.setattr(LinkedElfAdmissionService, "evaluate", forbidden)
+    monkeypatch.setattr(LinkedElfAdmissionService, "revalidate", forbidden)
+    before = selector.calls
+    bound.revalidate_context(routing=bound.routing)
+    selected.revalidate_context(routing=bound.routing)
+    assert selector.calls == before

@@ -283,24 +283,25 @@ class DeviceOffloadSource:
             limits=[self.max_package_files, self.max_package_bytes],
         )
 
-    def revalidate(self, *, routing=None):
-        current = self.routing if routing is None else routing
+    def revalidate_context(self, *, routing=None):
+        """Reopen original dependencies without selector, cost or policy callbacks."""
         self.source.revalidate()
-        before = self._current(current)
+        before = self._current(self.routing if routing is None else routing)
         _require(canonical_json(before).decode() == self._record, "original route context changed; replan")
         _require(
             self.implementation_identity == canonical_sha256(before["package"])
             and self.context == _context(before, self.original_ordinals),
             "original source/context/package binding changed; replan",
         )
-        _require(
-            _mask(self.source.module, current) == self.original_ordinals, "original selector outcomes changed; replan"
-        )
-        _require(
-            canonical_json(self._current(current)).decode() == self._record,
-            "original route changed during selector; replan",
-        )
         self.source.revalidate()
+
+    def revalidate(self, *, routing=None):
+        self.revalidate_context(routing=routing)
+        _require(
+            _mask(self.source.module, self.routing if routing is None else routing) == self.original_ordinals,
+            "original selector outcomes changed; replan",
+        )
+        self.revalidate_context(routing=routing)
 
     def select(self, plan, comparison=None, *, explicit=False):
         self.revalidate()
@@ -333,12 +334,7 @@ def bind_device_offload_source(
     max_package_files=4096,
     max_package_bytes=64 << 20,
 ):
-    """Freeze a current prepared source and original package route before callbacks.
-
-    Explicit configuration and file pins are original-owned identity scope only.
-    Missing host options/tool/runtime closure remain the measurement verifier's
-    obligation; supplying hashes does not make that closure or timing qualified.
-    """
+    """Freeze source/route identity; hashes do not qualify host closure or timing."""
     _require(
         type(configuration) is tuple
         and all(
@@ -422,6 +418,13 @@ class DeviceOffloadSelection:
             and _same_callback(_callback_selection(self.comparison._check), self._comparison_callback),
             "original cost verifier changed",
         )
+
+    def revalidate_context(self, *, routing=None):
+        """Check source, route and plan freshness without calling original evaluators."""
+        self._binding()
+        self.owner.revalidate_context(routing=routing)
+        _candidate(self.owner, self.plan)
+        self._binding()
 
     def revalidate(self, *, routing=None):
         self._binding()
