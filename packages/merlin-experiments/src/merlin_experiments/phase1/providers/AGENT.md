@@ -25,6 +25,12 @@ checkout-specific dependency paths. The batch banner passes the parsed provider 
 the same accounting policy as execution. Fake CLI tests qualify process,
 transcript and cleanup behavior, not a provider account, kernel sandbox or full installed engine.
 
+Default author kickoff prompts direct the agent to the current round brief and its operator errata
+before TASK.md. Required discovery must execute before submission edits or delegated compiler edits;
+stage discovery/scaffold outputs outside submission until those invocations finish. The minimal
+manifest instruction applies only afterward, before waiting for a grade. Keep this ordering identical
+across Codex and OpenCode. Custom canary prompts retain their own tasks.
+
 Codex `run_round` accepts explicit `codex_binary` and `codex_home_root` inputs.
 Phase 2 passes its preflight-selected executable and stage-local home root without
 mutating `CODEX_BIN` or the shared artifact cache function. Omitted inputs retain

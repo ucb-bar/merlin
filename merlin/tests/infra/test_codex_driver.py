@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common.paths import merlin_dir, module_source_path
+from merlin.common.paths import merlin_dir
 
 _HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
 if str(_HARNESS) not in sys.path:
@@ -551,10 +551,47 @@ def test_the_default_prompt_requires_narrow_iteration_before_a_full_sweep(tmp_pa
     assert "`python3 agent_selfcheck.py --submission submission --capsules <names>`" in prompt
     assert "certified pass/fail per capsule" in prompt
     assert "--sim spike --capsules" not in prompt
-    assert "Build something minimal and write submission/manifest.yaml FIRST" in prompt
+    assert "submission/manifest.yaml before waiting for a grade" in prompt
     assert "then use await_verdict.py rather than a poll loop" in prompt
     assert "do not launch `--capsules all` merely to refresh it" in prompt
     assert "--capsules all` with your shell after each build" not in prompt
+
+
+def test_rendered_primary_prompt_requires_discovery_before_submission_or_delegation(tmp_path):
+    """The real default stdin prompt must expose pre-edit errata before asking for a manifest."""
+    _rc, tpath, _records = _run(tmp_path, _fake_codex(tmp_path, _stream()))
+    prompt = (tpath.parent / "round_00.prompt.txt").read_text()
+    assert prompt.index("qa/round_brief.md") < prompt.index("TASK.md")
+    assert "Before changing submission/ or delegating compiler edits" in prompt
+    assert "operator errata" in prompt
+    assert "in the main author transcript before any submission mutation" in prompt
+    assert "source does not substitute for required tool execution" in prompt
+    assert "Keep discovery/scaffold outputs outside submission/" in prompt
+    assert "until all required pre-edit tool invocations have completed successfully" in prompt
+    assert prompt.index("mandatory pre-edit discovery/tool invocation") < prompt.index("Then build or")
+    assert "After completing the required pre-edit discovery, promptly build something minimal" in prompt
+    assert "write submission/manifest.yaml FIRST" not in prompt
+
+
+def test_opencode_rendered_primary_prompt_preserves_the_same_pre_edit_order(tmp_path, monkeypatch):
+    """Inspect the actual command argument without running a client or contacting a provider."""
+    from merlin_experiments.phase1.providers import opencode_agent as OA
+
+    _rc, tpath, _records = _run(tmp_path, _fake_codex(tmp_path, _stream()))
+    codex_prompt = (tpath.parent / "round_00.prompt.txt").read_text()
+    commands = []
+
+    def observe(command, *_args, **_kwargs):
+        commands.append(command)
+        return 0, "", ""  # No session is fabricated; only command/prompt rendering is exercised.
+
+    monkeypatch.setattr(OA, "_capture", observe)
+    OA.run_round(tmp_path / "ws", tmp_path / "opencode-run", "test/model", {}, None, "none", 0, 60)
+    assert len(commands) == 1 and commands[0][-2] == "--auto"
+    assert commands[0][-1] == codex_prompt
+    system = OA._system_prompt(None)
+    assert system.index("qa/round_brief.md") < system.index("TASK.md")
+    assert "mandatory pre-edit discovery before authoring" in system
 
 
 def test_the_default_prompt_teaches_checks_that_do_not_block_the_author(tmp_path):
@@ -576,22 +613,6 @@ def test_the_default_prompt_teaches_checks_that_do_not_block_the_author(tmp_path
     assert "never graded officially" in prompt
 
 
-def test_codex_and_opencode_arms_get_the_same_standing_instruction():
-    """Instruction parity: two arms of one campaign must be asked the same thing in the same words."""
-    import ast
-
-    def default_prompt(module: str) -> str:
-        tree = ast.parse(module_source_path(module).read_text())
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "msg" for t in node.targets):
-                if isinstance(node.value, ast.IfExp):
-                    return ast.literal_eval(node.value.orelse)
-        raise AssertionError(f"no default round prompt in {module}")
-
-    codex = default_prompt("merlin_experiments.phase1.providers.codex_agent")
-    opencode = default_prompt("merlin_experiments.phase1.providers.opencode_agent")
-    assert codex == opencode
-    assert "--wait-budget 5" in codex
 
 
 def test_a_missing_codex_binary_fails_the_round_without_raising(tmp_path):

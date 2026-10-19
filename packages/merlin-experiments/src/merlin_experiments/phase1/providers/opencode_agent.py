@@ -35,6 +35,7 @@ from pathlib import Path
 
 from merlin.common import arrival_stamp as _AS  # the one arrival-time convention
 from merlin_experiments.phase1.providers import model_tiers as _MT
+from merlin_experiments.phase1.providers.authoring_prompt import authoring_prompt
 
 # opencode's provider id for Amazon Bedrock (the @ai-sdk/amazon-bedrock provider). Overridable via env for a
 # differently-registered provider. A model value that already carries a provider ("prov/model") is respected.
@@ -75,7 +76,9 @@ def _system_prompt(te) -> str:
     reads."""
     return (
         "You are an autonomous compiler engineer working in this workspace.\n"
-        "TASK.md is your specification and is authoritative: read it first and follow it. If a prior "
+        "Before changing submission/ or delegating compiler edits, read current qa/round_brief.md (if present), "
+        "including operator errata, then TASK.md, your authoritative specification. Complete the instructions' "
+        "mandatory pre-edit discovery before authoring. If a prior "
         "round left `qa/verdict.json`, read that too -- it is the official grader verdict for your last "
         "submission.\n"
         "Tool mapping for this environment: use your edit/write tools to create and change files, and "
@@ -790,40 +793,7 @@ def run_round(
     env["OPENCODE_CONFIG"] = cfgf.name
     env["OPENCODE_DISABLE_PROJECT_CONFIG"] = "1"  # a stray opencode.json in cwd must not shadow our config
 
-    msg = (
-        prompt
-        if prompt is not None
-        else (
-            "Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
-            "backend under submission/ per those instructions. During iteration, check the capsules an edit affects "
-            "with `python3 agent_selfcheck.py --submission submission --capsules <names>`. Without `--sim` it runs "
-            "every tier each capsule declares mandatory, with the grade's own simulators, and reports a certified "
-            "pass/fail per capsule; `--sim spike` is only a faster screen that cannot certify. KEEP WORKING WHILE "
-            "CHECKS RUN: add `--wait-budget 5` to get a request id back within seconds, keep editing (each check "
-            "grades a snapshot taken when it starts), and collect the verdict later with `python3 agent_selfcheck.py "
-            "--attach <id>`; `--list` shows your requests. Several requests may be in flight at once. Put every "
-            "capsule an edit affects into ONE comma-separated request rather than one per capsule: they run in "
-            "parallel across the CPU pool and per-request overhead dominates small checks. Iterate on named "
-            "capsules; `--capsules changed` is a slow sweep that rebuilds every capsule (use it rarely); "
-            "`--capsules failing` re-checks what did not pass in your most recent check. To try alternatives side by "
-            "side, copy submission/ to variants/<name>/, change the copy, and check it with `--submission "
-            "variants/<name>`; variant results are labelled self-check results only, never graded officially, so "
-            "copy the winner into submission/. Do not repeatedly grade the whole corpus. Run `--capsules all` only "
-            "after the focused checks improve and the candidate is ready for a regression sweep. You may edit "
-            "submission/ while a self-check runs; compare the verdict's source digest with your current bytes. "
-            "Goldens are withheld; "
-            "iterate until the complete corpus passes. THE FIRST GRADE NEEDS YOUR SUBMISSION FIRST: the harness "
-            "grades submission/, so while submission/manifest.yaml does not exist there is NOTHING to grade and no "
-            "verdict can ever arrive -- an absent qa/verdict.json is not a queue you wait in, it means you have not "
-            "submitted yet. MEASURED: two runs each burned their whole first round blocked on await_verdict.py "
-            "reporting 'the waiter is healthy but has received nothing' while the harness logged 'no "
-            "submission/manifest.yaml to grade yet' every 30s -- a mutual wait that consumes the round timeout. "
-            "Build something minimal and write submission/manifest.yaml FIRST; only once a verdict exists does "
-            "waiting for the next one make sense (then use await_verdict.py rather than a poll loop, and do not "
-            "launch `--capsules all` merely to refresh it). Use exact capsule directory names for focused checks. "
-            "Begin now."
-        )
-    )
+    msg = prompt if prompt is not None else authoring_prompt()
     run_cmd = [opencode_bin, "run", "--format", "json", "--agent", agent_name, "-m", mid, "--dir", str(ws)]
     # opencode spells reasoning effort `--variant` (provider-specific: high / max / minimal). Passing it is
     # what makes an opencode arm comparable to the codex and claude arms of the same campaign.
