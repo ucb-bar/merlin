@@ -404,6 +404,10 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
     """
     if type(component_only) is not bool:
         raise TypeError("component_only must be an explicit Boolean")
+    if entry.get("public_source_role") is not None:
+        from .public_source_roles import require_entry
+
+        require_entry(entry)
     written = _write_capsule_inner(
         entry, binding, out_root, facts_sha, **({"capture": capture} if capture is not None else {})
     )
@@ -491,6 +495,11 @@ def _write_capsule(entry, binding, out_root, facts_sha: str = "", *, capture=Non
             cap["numeric_falsifiability"] = _prov
             dirty = True
     if dirty:
+        capf.write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
+    if entry.get("public_source_role") is not None:
+        from .public_source_roles import stamp_written
+
+        stamp_written(entry, cap, d)
         capf.write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
     _write_capsule_readme(entry, cap, d)
     return written

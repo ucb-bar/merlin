@@ -1,5 +1,18 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+`public_source_roles` is explicit prospective operator setup, never a historical
+score correction or execution certificate. Select the exact mode0600 full-roster
+profile with the original live private-exclusion owner. Preserve explicit source
+guards; every undeclared intent requires a new operator role and reason, including
+refused/unavailable members. Join exact original request/declaration/loader and
+capture/profile pins through requirements and the live writer scope. Functional
+sources retain complete reference, arithmetic and actual-realization checks on
+the model route, with no performance objective. New formal freezes require the
+whole selected objective roster and retain every functional obligation; serialized
+profile/binding records cannot replace the live owner. V1/V2 defaults and existing
+manifests remain unchanged. New roles on reused captures do not change historical
+capture chronology or retrospectively qualify their old publications.
+
 Public-program selection v2 explicitly selects native_integer_v1 and materialized
 capture v3. Preserve complete typed golden.json outputs and exact per-output
 policies; legacy floating captures retain their historical reference format.

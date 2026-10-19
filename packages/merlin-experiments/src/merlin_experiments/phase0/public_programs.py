@@ -33,8 +33,11 @@ def validate_selection(value):
         or value["schema"] not in {POLICY_SCHEMA, INTEGER_POLICY_SCHEMA}
         or (integer and value.get("source_mode") != N.MODE)
         or value["selection"] != "declared_performance_applications"
-        or any(type(value[key]) is not int or value[key] < 1 for key in value
-               if key not in {"schema", "selection", "source_mode"})
+        or any(
+            type(value[key]) is not int or value[key] < 1
+            for key in value
+            if key not in {"schema", "selection", "source_mode"}
+        )
     ):
         raise ValueError("public program selection needs the declared performance roster and explicit finite budgets")
     return copy.deepcopy(value)
@@ -133,8 +136,12 @@ def original_contractions(trace, *, source_mode=None):
 
     rows = []
     contractions = {
-        "aten.linear.default", "aten.matmul.default", "aten.mm.default", "aten.bmm.default",
-        "aten.conv2d.default", "aten.convolution.default",
+        "aten.linear.default",
+        "aten.matmul.default",
+        "aten.mm.default",
+        "aten.bmm.default",
+        "aten.conv2d.default",
+        "aten.convolution.default",
     }
     if source_mode is not None:
         if source_mode != N.MODE:
@@ -158,9 +165,11 @@ def original_contractions(trace, *, source_mode=None):
         lhs, rhs = (row["shape"] for row in operands)
         if target == "aten._int_mm.default" and (
             [row.get("dtype") for row in tensors] != ["int8", "int8", "int32"]
-            or len(lhs) != 2 or len(rhs) != 2
+            or len(lhs) != 2
+            or len(rhs) != 2
             or results[0]["shape"] != [lhs[0], rhs[1]]
-            or len(args) != 2 or node["kwargs"]
+            or len(args) != 2
+            or node["kwargs"]
         ):
             raise ValueError("public _int_mm needs its original rank-two signed i8/i8/i32 storage")
         if target == "aten.linear.default":
@@ -217,6 +226,8 @@ def check_budget(directory: Path, selection):
 
 def performance(entry, *, trace, forms, facts_sha256):
     """A whole-call objective with conditional existing hardware boundaries."""
+    if (entry.get("public_source_role") or {}).get("selected_member", {}).get("role") == "functional_guard":
+        raise ValueError("explicit source functional guard cannot become a performance objective")
     capture = entry["materialized_capture"]
     semantics = source_semantics(trace, source_mode=capture.get("source_mode"))
     label = capture["workload_id"]
@@ -375,7 +386,15 @@ def verify_written(capsule, directory):
         ):
             raise ValueError("public program original profile changed")
     semantics = source_semantics(json.loads(raw_trace), source_mode=capture.get("source_mode"))
-    selected = capsule["performance"]["gate"]["source_execution_basis"]
+    if capsule.get("public_source_role"):
+        from .public_source_roles import verify_written as verify_source_role
+
+        role = verify_source_role(capsule, directory)
+        selected = capsule["public_source_role"]["source_execution_basis"]
+        if role == "objective" and selected != capsule["performance"]["gate"]["source_execution_basis"]:
+            raise ValueError("objective source role differs from its actual complete-call basis")
+    else:
+        selected = capsule["performance"]["gate"]["source_execution_basis"]
     if (
         selected["operations"] != semantics["operation_semantics"]
         or selected["capture_sha256"] != raw_hash
