@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 import launch_phase1 as P
+import yaml
 from merlin_experiments.phase1 import launch_config as L
 
 from merlin.common import owned_children
@@ -53,14 +54,37 @@ def admit_handoff(F, path: Path, expected_sha256: str, submission: Path, deadlin
     package = F.package_identity(submission)
     original = Path(proof["original_run_dir"])
     original_deadline = float(proof["original_hard_deadline_unix"])
+    mode = proof.get("freeze_mode", "native_oot")
+    if mode == "native_oot":
+        checkpoint_digest = F.oot_repo.tree_digest(original / "oot", proof["native_oot_commit"])
+    elif mode == "terminal_author_operator_checkpoint":
+        checkpoint = Path(proof["operator_oot_path"])
+        source = Path(proof["terminal_authored_source_path"])
+        environment = yaml.safe_load((original / "environment.yaml").read_text())
+        source_revision = proof["original_source_revision"]
+        if (
+            not checkpoint.is_absolute() or checkpoint.is_symlink() or not checkpoint.is_dir()
+            or checkpoint.resolve().is_relative_to(original.resolve())
+            or not source.is_absolute() or source.is_symlink() or not source.is_dir()
+            or source.resolve() != (Path(environment["workspace_path"]) / "submission").resolve()
+            or environment.get("run_id") != original.name
+            or proof.get("original_empty_origin") is not True
+            or len(source_revision) != 40 or any(c not in "0123456789abcdef" for c in source_revision)
+            or any(proof[key] != package["hash_tree_sha256"] for key in (
+                "actual_terminal_source_tree_sha256", "source_sha256_before", "source_sha256_after"))
+            or F.hash_tree(source).get("sha256") != package["hash_tree_sha256"]
+        ):
+            raise ValueError("terminal authored source/operator checkpoint correspondence failed")
+        checkpoint_digest = F.oot_repo.tree_digest(checkpoint, proof["operator_oot_commit"])
+    else:
+        raise ValueError("unknown fresh compiler freeze mode")
     if (
         proof.get("schema") != "merlin.operator.fresh_author_handoff.v1"
         or proof.get("qualification_only") is not True
         or proof.get("authoring_converged") is not False
         or proof.get("frozen_submission") != package
         or not math.isfinite(original_deadline) or deadline > original_deadline
-        or F.oot_repo.tree_digest(original / "oot", proof["native_oot_commit"])
-        != package["hash_tree_sha256"]
+        or checkpoint_digest != package["hash_tree_sha256"]
     ):
         raise ValueError("fresh author handoff/candidate/deadline correspondence failed")
     if sha256_file(path) != expected_sha256:

@@ -13,6 +13,19 @@ Create a pinned `merlin.operator.fresh_author_handoff.v1` JSON containing
 record), `qualification_only: true` and `authoring_converged: false`. Include the
 original terminal-author, conformance and transcript evidence as extra fields.
 
+When the original controller blocks after actual author termination on stale
+grading bookkeeping, use the explicit alternative
+`freeze_mode: terminal_author_operator_checkpoint`. Create a **separate** operator
+OOT repository and supply `operator_oot_path`, `operator_oot_commit`,
+`terminal_authored_source_path`, `actual_terminal_source_tree_sha256`,
+`source_sha256_before` and `source_sha256_after`. The three source hashes, reopened
+terminal source and operator checkpoint digest must all match the frozen compiler.
+The source path must be the original run environment's workspace submission.
+Retain the stale original native OOT as `original_native_oot`; do not call the
+operator checkpoint a native author checkpoint or invent author convergence.
+This mode requires `original_empty_origin: true` and the original source revision.
+Root's actual termination and owned-cleanup evidence remains independently pinned.
+
 Bind the corrected source and operator runtime hashes in a separate reviewed
 config, preserving the selected corpus, model inputs, numerical policy and normal
 simulator. Select `full_model_verification.output_scope: all_declared` and its

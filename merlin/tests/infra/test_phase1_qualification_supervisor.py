@@ -68,6 +68,47 @@ def test_formal_result_requires_exact_frozen_source_and_qualification_scope(help
         assert not helper.formal_complete(F, native, tmp_path, {"hash_tree_sha256": "source"})
 
 
+def test_operator_checkpoint_reopens_actual_terminal_source_without_native_claim(helper, tmp_path):
+    F = importlib.import_module("full_model_verification")
+    original = tmp_path / "original"
+    source = tmp_path / "workspace/submission"
+    source.mkdir(parents=True)
+    (source / "manifest.yaml").write_text("entrypoints: {}\n")
+    (source / "compiler.py").write_text("# genuinely authored terminal fixture\n")
+    original.mkdir()
+    (original / "environment.yaml").write_text(json.dumps({
+        "run_id": original.name, "workspace_path": str(source.parent)}))
+    checkpoint = tmp_path / "operator-oot"
+    F.oot_repo.init(checkpoint)
+    record = F.oot_repo.commit_candidate(checkpoint, source, label="operator terminal checkpoint",
+                                         when=1, run_id=original.name)
+    compiler = tmp_path / "frozen"
+    F.oot_repo.export(checkpoint, record.commit, compiler)
+    package = F.package_identity(compiler)
+    proof = {"schema": "merlin.operator.fresh_author_handoff.v1", "qualification_only": True,
+        "authoring_converged": False, "original_run_dir": str(original), "frozen_submission": package,
+        "original_hard_deadline_unix": 10, "freeze_mode": "terminal_author_operator_checkpoint",
+        "operator_oot_path": str(checkpoint), "operator_oot_commit": record.commit,
+        "terminal_authored_source_path": str(source), "original_source_revision": "a" * 40,
+        "original_empty_origin": True, **{k: package["hash_tree_sha256"] for k in (
+            "actual_terminal_source_tree_sha256", "source_sha256_before", "source_sha256_after")}}
+    path = tmp_path / "handoff.json"
+
+    def admit(value):
+        path.write_text(json.dumps(value))
+        return helper.admit_handoff(F, path, sha256_file(path), compiler, 9)
+
+    assert "native_oot_commit" not in proof and not (original / "oot").exists()
+    assert admit(proof) == package
+    for key, value in [("source_sha256_before", "wrong"), ("source_sha256_after", "wrong"),
+                       ("terminal_authored_source_path", str(compiler)), ("original_empty_origin", False)]:
+        with pytest.raises(ValueError, match="correspondence"):
+            admit({**proof, key: value})
+    (source / "compiler.py").write_text("# changed after captured terminal identity\n")
+    with pytest.raises(ValueError, match="correspondence"):
+        admit(proof)
+
+
 @pytest.mark.parametrize("audit_status,native_exit,expected", [
     ("pass", 0, True), ("fail", 0, False), ("pass", 1, False)])
 def test_all_four_roles_and_all_output_gate_are_required(helper, tmp_path, audit_status, native_exit, expected):
