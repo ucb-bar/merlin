@@ -19,6 +19,7 @@ import shutil
 import stat
 import threading
 from dataclasses import asdict
+from functools import wraps
 from pathlib import Path
 from types import FunctionType
 
@@ -26,9 +27,19 @@ from merlin.common.digest import sha256_file
 from merlin.llvmlower.reviewed_pass_capabilities import PassCapabilityBinding, ReviewedPassCapabilities
 
 SCHEMA = "merlin.compiler_pass_selection.v1"
+METADATA_PROTOCOL = "merlin.pass_metadata_operation.v1"
 _ACTIVE = contextvars.ContextVar("original_compiler_pass_selection", default=None)
 _LOCK = threading.RLock()
 _SCOPES = 0
+
+
+def _metadata_call(function):
+    @wraps(function)
+    def checked(self, *args, **kwargs):
+        with self.metadata_operation():
+            return function(self, *args, **kwargs)
+
+    return checked
 
 
 def _plain(value):
@@ -71,9 +82,13 @@ def copy_compiler_source(source, destination):
     source, destination = Path(source), Path(destination)
     origin = _tree(source)
     if (
-        destination.exists() or destination.is_symlink() or not destination.is_absolute()
-        or destination.resolve() != destination or destination.is_relative_to(source)
-        or source.is_relative_to(destination) or any(path.is_symlink() for path in destination.parents)
+        destination.exists()
+        or destination.is_symlink()
+        or not destination.is_absolute()
+        or destination.resolve() != destination
+        or destination.is_relative_to(source)
+        or source.is_relative_to(destination)
+        or any(path.is_symlink() for path in destination.parents)
     ):
         raise ValueError("compiler source copy requires a fresh disjoint destination")
     shutil.copytree(source, destination, symlinks=False)
@@ -147,6 +162,11 @@ class CompilerPassSelection:
         if factory is not None and type(factory) is not OriginalPassFactory:
             raise ValueError("compiler pass reconstruction requires an original host factory")
         self.registry, self.binding, self.mechanisms, self.factory = registry, binding, mechanisms, factory
+        with self.metadata_operation():
+            self._initialize_record()
+
+    def _initialize_record(self):
+        registry, binding, mechanisms, factory = self.registry, self.binding, self.mechanisms, self.factory
         self._record = {
             "schema": SCHEMA,
             "registry": registry.record(),
@@ -161,6 +181,33 @@ class CompilerPassSelection:
         self.identity = _digest(self._record)
         self.revalidate()
 
+    @contextlib.contextmanager
+    def metadata_operation(self):
+        """Bound nested metadata only when the original factory opts in.
+
+        Old factories retain all per-getter checks. An opted-in operation checks
+        the original registry and factory at both boundaries before returning
+        data. Current source, execution and final program checks are unaffected.
+        """
+        factory = self.factory
+        if factory is not None and type(factory) is not OriginalPassFactory:
+            raise ValueError("pass metadata operation requires its original factory")
+        declaration = None if factory is None else factory.inputs.get("metadata_verification_protocol")
+        if declaration is None:
+            yield
+            return
+        if declaration != METADATA_PROTOCOL:
+            raise ValueError("unknown original pass metadata verification protocol")
+        factory.revalidate()
+        from merlin.llvmlower.reviewed_metadata import scoped_registry_metadata_verification
+
+        with scoped_registry_metadata_verification(self.registry):
+            yield
+            if self.factory is not factory:
+                raise ValueError("original pass metadata factory changed")
+            factory.revalidate()
+
+    @_metadata_call
     def revalidate(self):
         if (
             type(self.registry) is not ReviewedPassCapabilities
@@ -177,16 +224,19 @@ class CompilerPassSelection:
         ):
             raise ValueError("original compiler pass selection changed")
 
+    @_metadata_call
     def record(self):
         self.revalidate()
         return copy.deepcopy(self._record)
 
+    @_metadata_call
     def resolve(self, mechanism):
         self.revalidate()
         if mechanism not in self.mechanisms:
             raise ValueError("compiler pass mechanism was not originally selected")
         return self.registry.resolve(mechanism, self.binding)
 
+    @_metadata_call
     def prepare_compiler(self, mechanism, source, destination, *, policy):
         """Prepare once before source/edit freeze; absent capability refuses."""
         capability = self.resolve(mechanism)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from functools import wraps
 from pathlib import Path
 from types import MethodType
 
@@ -22,6 +23,17 @@ from .contracts import StageGateError
 
 POLICY_SCHEMA = "merlin.compiler_pass_preparation.v1"
 PAIR_SCHEMA = "merlin.prepared_compiler_pair.v1"
+
+
+def _metadata_call(function):
+    @wraps(function)
+    def checked(selection, *args, **kwargs):
+        if type(selection) is not CompilerPassSelection:
+            return function(selection, *args, **kwargs)
+        with selection.metadata_operation():
+            return function(selection, *args, **kwargs)
+
+    return checked
 
 
 def _plain(value):
@@ -264,6 +276,7 @@ def handoff_selection(handoff):
     return selection
 
 
+@_metadata_call
 def prepare_pair(selection, preparation, *, original, functional_sha256, root):
     """Apply the selected composite once per arm, before inventory/edit freeze."""
     if type(selection) is not CompilerPassSelection or type(preparation) is not CompilerPassPreparation:
