@@ -11,3 +11,9 @@ Compiler candidates belong in the companion gemmini-mlir task checkout.
 
 Preserve the campaign's original start/deadline and immutable baseline. A
 passing subset is exploratory evidence, not formal promotion or convergence.
+
+`timing_config.py` derives the store activation reset from the selected pinned
+FIRRTL through `reset_facts.py` and the generic capacity-fact API. The store reset
+must not initialize the independent execute activation register or supply timing
+prices. New models require fresh saved-public-ELF observer reports; functional
+console agreement alone is not an independent output or native-timing verdict.

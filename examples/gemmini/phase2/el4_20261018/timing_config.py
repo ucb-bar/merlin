@@ -13,7 +13,8 @@ import common as C
 
 C.configure()
 import yaml
-from merlin_timing.capacities import model_resources
+from merlin_timing.capacities import apply, model_resources
+from reset_facts import accumulator_activation_reset
 
 from merlin.targetgen.rtl.timing_structure import apply_to_profile
 
@@ -29,7 +30,7 @@ GENERATED = C.P1 / ".tmp/chipyard-fire-aligned/sims/verilator/generated-src" / S
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", type=Path, default=C.OUT / "spike-structural-config-v1")
+    parser.add_argument("--output-dir", type=Path, default=C.OUT / "spike-structural-config-v2")
     root = parser.parse_args(argv).output_dir
     if root.exists():
         parser.error("retain the previous output and select a fresh --output-dir")
@@ -72,8 +73,16 @@ def main(argv=None):
     if set(selected_sources) != {"harness:blackboxes.cpp", "vendor:mm.cc", "vendor:mm.h"}:
         raise ValueError("gSIM receipt omits the selected memory implementation")
     mapped = apply_to_profile(original, facts, mapping)
+    elaborations = facts["inputs"]["firrtl_inputs"]
+    if len(elaborations) != 1:
+        raise ValueError("selected reset derivation requires exactly one pinned FIRRTL elaboration")
+    reset_facts = accumulator_activation_reset(
+        Path(elaborations[0]["path"]), elaborations[0]["sha256"], C.file_hash(PROFILE)
+    )
+    mapped = apply(mapped, reset_facts, profile_sha256=C.file_hash(PROFILE))
     model_path = RUN / "count_only_model.json"
     model = copy.deepcopy(json.loads(model_path.read_text()))
+    model["target"]["hardware"] = copy.deepcopy(mapped["target"]["hardware"])
     model["resources"] = [dict(row, id=index) for index, row in enumerate(model_resources(mapped))]
     model["memory"] = {
         "coherence_granule": caches["l2"]["line_bytes"],
@@ -83,7 +92,7 @@ def main(argv=None):
     }
     structure = facts["facts"]["timing_structure"]
     report = {
-        "schema": "phase2.spike_structural_config.v1",
+        "schema": "phase2.spike_structural_config.v2",
         "launches": [],
         "prediction_authority": "NONE",
         "facts_sha256": C.file_hash(FACTS),
@@ -102,16 +111,18 @@ def main(argv=None):
         "local_memory": facts["facts"]["memory_address_spaces"],
         "fixed_latencies": mapped["structural_mapping"]["fixed_latencies"],
         "remaining": mapped["structural_mapping"]["fit_from_measurement"],
+        "reset_facts": reset_facts,
         "model_assumptions": [
             "Existing Spike LRU tags and writeback_invalidate coherence approximate the selected hierarchy.",
             "Cache geometry is derived; cache replacement/coherence protocol equivalence is not established.",
             "Only completely derived resource mappings enter the native model; no invented lanes or queues.",
             "CPU execution/issue binding, execute/config resource semantics and all unpriced costs remain unresolved.",
-            "Reset activation and supported ISA/counter-taint semantics still need provider/observer closure.",
+            "Store activation reset is derived; execute reset and ISA/counter-taint semantics remain distinct.",
             "Original count reports bind the original model; they are not predictions from this new model.",
             "The new model must be frozen, replayed on saved public ELFs and held-validated before ranking authority.",
         ],
     }
+    C.save(root / "reset-facts.json", reset_facts)
     C.save(root / "device-profile.json", mapped)
     C.save(root / "model.json", model)
     report["model_sha256"] = C.file_hash(root / "model.json")
