@@ -1,3 +1,17 @@
+---
+title: Launch a public diagnostic retained queue
+kind: guide
+status: current
+owner: merlin-experiments
+last_verified: 2026-10-19
+related: [phase2_component_search, spike_timing]
+code_refs:
+  - packages/merlin-experiments/src/merlin_experiments/phase2/public_diagnostic_launch.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/public_source_diagnostic.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/public_native_exploration.py
+  - packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_fast_feedback.py
+---
+
 # Public diagnostic retained queue
 
 `merlin-phase2-public-diagnostic` (or `python -m merlin_experiments.phase2.public_diagnostic_launch`)
@@ -32,3 +46,25 @@ an original in-process consumer before cleanup; saved feedback does not recreate
 that authority. An optional typed native exploration owner may be selected by an
 original host when the corresponding policy API supports it; there is no JSON
 native-qualification switch in this launcher.
+
+For native predictions, the original host calls
+`prepare_public_native_exploration(native_selection)` with the existing exact
+`NativeArchiveScreenSelection`. Preparation reopens public archive eligibility,
+native held gates, hardware correspondence and independently reviewed event
+semantics. Pass the returned live owner as `native_exploration=` to
+`run_plan` or `prepare_public_source_diagnostic`. Saved qualification records
+cannot select it. The default remains the original diagnostic route.
+
+This explicit selection uses diagnostic feedback version 2. After each original
+complete L0/L1/L2/source observation, it runs the existing boxed plain and annotated
+count observer on that same ELF. Its original numerical receipt is unchanged.
+Unsupported source geometry, capacity, layouts or event activity remain UNKNOWN;
+no extra process is started for a rejected source domain. The first version
+admits only the existing checked direct signed integer contraction source domain.
+
+Per-member residual intervals provide exploration priorities. Overlapping
+intervals leave ordering UNKNOWN. Unselected obligations remain visible, with no
+complete performance-objective claim. Predictions never populate measured cycles,
+roofline attainment, a measured incumbent or plateau evidence. Existing formal
+search and final qualification retain their original gates. Count observation is
+additional evaluation work inside the same parent deadline and resource envelope.
