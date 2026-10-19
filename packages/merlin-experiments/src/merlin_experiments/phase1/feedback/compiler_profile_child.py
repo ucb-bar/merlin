@@ -42,6 +42,7 @@ SCHEMA = "merlin.original_model_child.v1"
 LIBRARY_SCHEMA = "merlin.original_model_child.v2"
 PASSES_SCHEMA = "merlin.original_model_child.v3"
 CHECKED_SOURCE_SCHEMA = "merlin.original_model_child.v4"
+DELEGATED_PASSES_SCHEMA = "merlin.original_model_child.v5"
 CHECKPOINT_SCHEMA = "merlin.original_model_child_case_checkpoint.v1"
 _RESTORED_CHILD = contextvars.ContextVar("original_restored_child_checkpoint", default=None)
 _RESTORED_ISSUED = weakref.WeakSet()
@@ -198,7 +199,7 @@ def _restore_inputs(record):
     return C.PackageSandboxInputs(TC.ToolchainPaths(**paths), TC.SimToolchain(**sim), values["harness"], surfaces)
 
 
-def _closure(*, library=False, passes=False, checked_source=False):
+def _closure(*, library=False, passes=False, checked_source=False, parent_delegation=False):
     """Direct invoked host owners; this makes no transitive dependency claim."""
     from merlin.common.paths import module_source_path
 
@@ -237,10 +238,18 @@ def _closure(*, library=False, passes=False, checked_source=False):
             "merlin.targetgen.checked_source_model_diagnostic_execution",
             "merlin_experiments.phase0.connected_integer_qualification",
         )
+    if parent_delegation:
+        names += (
+            "merlin_experiments.phase1.feedback.compiler_pass_delegation",
+            "merlin_experiments.phase1.feedback.compiler_pass_parent_proof",
+        )
     return [_pin(module_source_path(name)) for name in names]
 
 
 def _selected_closure(document):
+    if document["schema"] == DELEGATED_PASSES_SCHEMA:
+        return _closure(library="compiler_library" in document, passes=True,
+                        checked_source="checked_source_diagnostic" in document, parent_delegation=True)
     if document["schema"] == CHECKED_SOURCE_SCHEMA:
         return _closure(library="compiler_library" in document, passes=True, checked_source=True)
     return (
@@ -272,6 +281,9 @@ class ModelChildTransport:
         from merlin.targetgen.checked_source_model_diagnostic import active_checked_source_diagnostic
 
         self.checked_source_diagnostic = active_checked_source_diagnostic()
+        from .compiler_pass_delegation import active_original_parent_pass_delegation
+
+        self.parent_pass_delegation = active_original_parent_pass_delegation()
 
     @property
     def argv(self):
@@ -307,6 +319,12 @@ class ModelChildTransport:
             if (active_checked_source_diagnostic() is not self.checked_source_diagnostic
                     or self.checked_source_diagnostic.record() != original["checked_source_diagnostic"]):
                 raise StageGateError("original model child checked source diagnostic owner changed")
+        if "parent_pass_delegation" in original:
+            from .compiler_pass_delegation import active_original_parent_pass_delegation
+
+            if (active_original_parent_pass_delegation() is not self.parent_pass_delegation
+                    or self.parent_pass_delegation.record() != original["parent_pass_delegation"]):
+                raise StageGateError("original model child live parent qualification changed")
         if self.boundary is not None:
             if self.boundary.verify() != original["resources"]["boundary_sha256"]:
                 raise StageGateError("original model child kernel resource owner changed")
@@ -349,6 +367,11 @@ def _receipt(document):
             {"compiler_library_sha256": _digest(document["compiler_library"])} if "compiler_library" in document else {}
         ),
         **({"compiler_passes_sha256": _digest(document["compiler_passes"])} if "compiler_passes" in document else {}),
+        **({"inherited_pass_qualification": {
+            "schema": "merlin.original_parent_pass_qualification.v1",
+            "delegation_sha256": _digest(document["parent_pass_delegation"]),
+            "fresh_pair_evaluation": False,
+        }} if "parent_pass_delegation" in document else {}),
     }
 
 
@@ -456,7 +479,8 @@ def require_restored_model_context(field, record, *, package_dir, target):
     state.verify()
     document = state.document
     spec = json.loads(Path(document["spec"]["path"]).read_bytes())
-    if (document["schema"] != CHECKED_SOURCE_SCHEMA or field != "checked_source_diagnostic"
+    if (document["schema"] not in (CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
+            or field != "checked_source_diagnostic"
             or document.get(field) != record
             or (spec.get("candidate_context") or {}).get(field) != record
             or spec.get("package_dir") != str(package_dir)
@@ -482,9 +506,14 @@ def prepare_model_child(*, spec_path, environment, package_dir):
     passes = active_compiler_passes()
     from merlin.targetgen import checked_source_model_diagnostic as diagnostic
 
+    from .compiler_pass_delegation import active_original_parent_pass_delegation
+
     spec = json.loads(_plain(spec_path).read_bytes())
     checked = (spec.get("candidate_context") or {}).get(diagnostic.CONTEXT_FIELD)
     selected_diagnostic = diagnostic.active_checked_source_diagnostic()
+    delegated = active_original_parent_pass_delegation()
+    if delegated is not None and delegated.selection is not passes:
+        raise StageGateError("parent qualification does not belong to the active original pass selection")
     if checked is not None:
         if (type(selected_diagnostic) is not diagnostic.CheckedSourceModelDiagnostic
                 or selected_diagnostic.record() != checked):
@@ -492,7 +521,7 @@ def prepare_model_child(*, spec_path, environment, package_dir):
         selected_diagnostic.verify_for(spec["capsule"], target=spec["target"])
     executor = _original_executor()
     if executor is None:
-        if library is not None or passes is not None or checked is not None:
+        if library is not None or passes is not None or checked is not None or delegated is not None:
             raise StageGateError("additional compiler library/pass model child requires its original execution owner")
         yield None
         return
@@ -512,8 +541,10 @@ def prepare_model_child(*, spec_path, environment, package_dir):
         # Its launcher would add the class after sealing; the child would then refuse its environment.
         raise StageGateError("model child environment lacks the caller's CPU lease class")
     document = {
-        "schema": CHECKED_SOURCE_SCHEMA if checked is not None else (
-            PASSES_SCHEMA if passes is not None else LIBRARY_SCHEMA if library is not None else SCHEMA),
+        "schema": DELEGATED_PASSES_SCHEMA if delegated is not None else (
+            CHECKED_SOURCE_SCHEMA if checked is not None else (
+                PASSES_SCHEMA if passes is not None else LIBRARY_SCHEMA if library is not None else SCHEMA)),
+        **({"parent_pass_delegation": delegated.record()} if delegated is not None else {}),
         **({diagnostic.CONTEXT_FIELD: checked} if checked is not None else {}),
         **({"compiler_library": library.record()} if library is not None else {}),
         **({"compiler_passes": passes.record()} if passes is not None else {}),
@@ -531,7 +562,8 @@ def prepare_model_child(*, spec_path, environment, package_dir):
         },
         "inputs": _inputs_record(inputs),
         "host_sources": (
-            _closure(library=library is not None, passes=True, checked_source=checked is not None)
+            _closure(library=library is not None, passes=True, checked_source=checked is not None,
+                     parent_delegation=delegated is not None)
             if passes is not None
             else _closure(library=library is not None)
         ),
@@ -553,14 +585,19 @@ def prepare_model_child(*, spec_path, environment, package_dir):
 
 @contextlib.contextmanager
 def _sealed_transport(document, *, executor, boundary):
-    raw = _encode_selection(document)
     fd = _memfd()
     readonly = None
     try:
+        document = copy_record(document)
+        if document["schema"] == DELEGATED_PASSES_SCHEMA:
+            readonly = os.open(f"/proc/self/fd/{fd}", os.O_RDONLY | os.O_CLOEXEC)
+            document["parent_delegation_fd"] = readonly
+        raw = _encode_selection(document)
         with os.fdopen(os.dup(fd), "wb") as stream:
             stream.write(raw)
         fcntl.fcntl(fd, _ADD_SEALS, _SEALS)
-        readonly = os.open(f"/proc/self/fd/{fd}", os.O_RDONLY | os.O_CLOEXEC)
+        if readonly is None:
+            readonly = os.open(f"/proc/self/fd/{fd}", os.O_RDONLY | os.O_CLOEXEC)
         os.close(fd)
         fd = None
         yield ModelChildTransport(fd=readonly, document=_data(document), executor=executor, boundary=boundary)
@@ -650,18 +687,28 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
         raise StageGateError("model child capability descriptor is not immutable and sealed")
     if fcntl.fcntl(fd, fcntl.F_GETFL) & os.O_ACCMODE != os.O_RDONLY:
         raise StageGateError("model child capability descriptor retains writable authority")
+    inherited_stat = os.fstat(fd)
+    inherited_identity = (inherited_stat.st_dev, inherited_stat.st_ino)
     os.lseek(fd, 0, os.SEEK_SET)
     with os.fdopen(fd, "rb") as stream:
         raw = stream.read(MAX_BYTES + 1)
     document = _decode_selection(raw)
     if (
-        document.get("schema") not in (SCHEMA, LIBRARY_SCHEMA, PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA)
+        document.get("schema") not in (SCHEMA, LIBRARY_SCHEMA, PASSES_SCHEMA,
+                                       CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
         or (document.get("schema") == SCHEMA and "compiler_library" in document)
         or (document.get("schema") == LIBRARY_SCHEMA and "compiler_library" not in document)
-        or (document.get("schema") not in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA) and "compiler_passes" in document)
-        or (document.get("schema") in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA) and "compiler_passes" not in document)
-        or (document.get("schema") != CHECKED_SOURCE_SCHEMA and "checked_source_diagnostic" in document)
+        or (document.get("schema") not in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
+            and "compiler_passes" in document)
+        or (document.get("schema") in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
+            and "compiler_passes" not in document)
+        or (document.get("schema") not in (CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA)
+            and "checked_source_diagnostic" in document)
         or (document.get("schema") == CHECKED_SOURCE_SCHEMA and "checked_source_diagnostic" not in document)
+        or ((document.get("schema") == DELEGATED_PASSES_SCHEMA)
+            != ("parent_pass_delegation" in document and "parent_delegation_fd" in document))
+        or (document.get("schema") != DELEGATED_PASSES_SCHEMA
+            and ("parent_pass_delegation" in document or "parent_delegation_fd" in document))
         or document["parent"] != _process(os.getppid())
         or document["spec"] != _pin(spec_path)
         or type(spec_bytes) is not bytes
@@ -685,6 +732,12 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
     )
     bundle = yaml.safe_load(archive.read_bytes())
     with contextlib.ExitStack() as execution:
+        if document["schema"] == DELEGATED_PASSES_SCHEMA:
+            from .compiler_pass_delegation import restored_original_parent_qualification
+            from .compiler_pass_parent_proof import _verified_parent_scope
+
+            proof = execution.enter_context(_verified_parent_scope(document, inherited_identity))
+            execution.enter_context(restored_original_parent_qualification(proof))
         library = None
         if "compiler_library" in document:
             from merlin_experiments.phase2.compiler_library_state import restore_selection
@@ -692,7 +745,7 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
             library = restore_selection(document["compiler_library"])
             execution.enter_context(scoped_compiler_library(library))
         passes = None
-        if document["schema"] in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA):
+        if document["schema"] in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA):
             from merlin.targetgen.compiler_pass_selection import restore_original_selection
 
             _plain(document["work_root"]).mkdir(parents=True, exist_ok=True)
@@ -748,7 +801,7 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
         _RESTORED_ISSUED.add(state)
         token = _RESTORED_CHILD.set(state)
         try:
-            if document["schema"] == CHECKED_SOURCE_SCHEMA:
+            if "checked_source_diagnostic" in document:
                 from merlin.targetgen import checked_source_model_diagnostic as diagnostic
 
                 checked = diagnostic.restore_checked_source_diagnostic(
@@ -776,6 +829,34 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
         raise StageGateError("model child additional compiler library changed during grading")
     if passes is not None and passes.record() != document["compiler_passes"]:
         raise StageGateError("model child compiler pass selection changed during grading")
+
+
+def _verify_parent_delegation_inputs(document):
+    """Reopen original source/spec bindings before and throughout redemption."""
+    from .compiler_pass_delegation import PROTOCOL
+    from .compiler_pass_delegation import SCHEMA as DELEGATION_SCHEMA
+
+    delegated = document.get("parent_pass_delegation")
+    if (document["schema"] != DELEGATED_PASSES_SCHEMA or type(delegated) is not dict
+            or delegated.get("schema") != DELEGATION_SCHEMA or delegated.get("protocol") != PROTOCOL
+            or delegated.get("selection") != document.get("compiler_passes")
+            or delegated["selection"]["factory"]["inputs"].get("parent_delegation_protocol") != PROTOCOL
+            or _pin(document["spec"]["path"]) != document["spec"]
+            or invocation_record.environment_identity(os.environ) != document["environment"]
+            or _selected_closure(document) != document["host_sources"]
+            or _source(document["candidate"]) != document["candidate_sha256"]
+            or _pin(Path(sys.executable).resolve()) != document["python"]):
+        raise StageGateError("original parent qualification changed its sealed source/spec selection")
+    factory = delegated["selection"]["factory"]
+    for pin in (factory["callback"], *factory["sources"], delegated["exporter"], delegated["redeemer"]):
+        if _pin(pin["path"]) != {key: pin[key] for key in ("path", "sha256")}:
+            raise StageGateError("original parent qualification implementation source changed")
+
+
+def verified_parent_pass_delegation(proof):
+    from .compiler_pass_parent_proof import verified_parent_pass_delegation as verify
+
+    return verify(proof)
 
 
 def run_model_grade(argv):
