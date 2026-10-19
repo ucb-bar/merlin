@@ -54,7 +54,7 @@ def test_full_mode_and_binding_select_the_fire_aligned_16gib_board():
     assert settings.board == binding["board"] == "firesim_gemmini_rocket_u250_30mhz"
     assert catalog[settings.board]["dram_bytes"] == "16 GiB"
     assert settings.host_dts.name == "firechip.chip.FireSim.FireSimGemminiRocketConfig.dts"
-    assert binding["elaboration"]["dts"].endswith("GemminiGsimFireSimAlignedConfig.dts")
+    assert Path(binding["elaboration"]["dts"]).name == settings.host_dts.name
     assert binding["fpga"]["dts"].endswith(settings.host_dts.name)
 
 
