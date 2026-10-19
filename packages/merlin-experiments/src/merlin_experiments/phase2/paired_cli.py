@@ -20,6 +20,7 @@ from merlin_experiments.phase2 import bottleneck_priority as BP
 from merlin_experiments.phase2 import campaign as PC
 from merlin_experiments.phase2 import gsim_gate as GATE
 from merlin_experiments.phase2 import measurement_evidence as ME
+from merlin_experiments.phase2 import measurement_library_binding as MB
 from merlin_experiments.phase2 import measurement_support as MS
 from merlin_experiments.phase2 import paired_inputs as PI
 from merlin_experiments.phase2 import paired_measurement as PM
@@ -335,6 +336,7 @@ def main(
                     corpus_manifest_sha256=inputs.corpus.manifest_sha256,
                     corpus_capsules_sha256=inputs.corpus.capsules_sha256,
                     certificate_sha256=inputs.gsim_certificate.sha256,
+                    **MB.binding_arguments(inputs.handoff),
                 ),
             )
             if priority["status"] in {"written", "already_present"}:

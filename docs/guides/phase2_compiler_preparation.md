@@ -82,6 +82,18 @@ policy; the measurement plan and raw products retain the preparation identity.
 `paired_inputs.original_baseline(inputs)` supplies the preserved Phase 1 path;
 `inputs.baseline` and `inputs.baseline_sha256` describe the actual comparison arm.
 
+The paired evidence reader accepts plan versions 4 and 5 only when its caller
+explicitly supplies the original selected-library binding and, for version 5,
+the original preparation record. The raw Phase 1 digest remains
+`functional_submission_sha256`; the prepared campaign separately records
+`comparison_baseline_sha256`. The reader reopens every original raw execution
+product, checks its digest, rejoins the actual scheduled compiler arm, and
+requires the same library and preparation identities. Rehashing changed
+metadata cannot replace those expected bindings. Adoption and parent-bound
+reporting obtain them from the verified handoff's original live owners.
+Legacy plan version 3 keeps its original interpretation and cannot inherit a
+selected library or prepared treatment.
+
 Production preparation requires the ordinary queued route and its explicit edit
 authority. It preserves unwaived Phase 1 qualification, corpus admission, original
 numerical and certification checks, and timing-domain requirements. Source-only

@@ -245,6 +245,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 
 ## Uncategorized (needs front-matter or relocation to artifacts/)
 
+- [guides/phase2_compiler_preparation.md](guides/phase2_compiler_preparation.md)
 - [guides/phase2_resource_floors.md](guides/phase2_resource_floors.md)
 - [guides/spike_timing_boundaries.md](guides/spike_timing_boundaries.md)
 - [reference/llvm_loop_organization.md](reference/llvm_loop_organization.md)
