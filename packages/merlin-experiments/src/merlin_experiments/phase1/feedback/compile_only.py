@@ -97,11 +97,19 @@ def _emit_scale_case(candidate, source, output, *, contract, target, timeout_s, 
         raise ValueError("scale probe budget must be the original typed host selection")
     if P.active_package_executor() is None:
         raise ValueError("scale probe lost its original scoped package executor")
+    deadline = time.monotonic() + timeout_s
+
+    def remaining_seconds():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("original scale emission deadline expired")
+        return remaining
+
     package = P.load_package(candidate, contract=contract)
     if package.target != target:
         raise ValueError("scale probe package belongs to another original target")
     P.integrity_scan(package)
-    P.build_package(package, timeout=timeout_s)
+    P.build_package(package, timeout=remaining_seconds())
     generated = output / "generated"
     generated.mkdir(parents=True, mode=0o700)
     source_pin = CO._pin(source)
@@ -114,13 +122,10 @@ def _emit_scale_case(candidate, source, output, *, contract, target, timeout_s, 
             "lowered.llvm.mlir",
         )
     )
-    deadline = time.monotonic() + timeout_s
-
     def invoke(*args, **kwargs):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError("original scale emission deadline expired")
-        return P.run_entrypoint(*args, **{**kwargs, "timeout": remaining, "invocation_directory": generated})
+        return P.run_entrypoint(
+            *args, **{**kwargs, "timeout": remaining_seconds(), "invocation_directory": generated}
+        )
 
     with invocation_record.observe_call(
         output,
@@ -132,7 +137,7 @@ def _emit_scale_case(candidate, source, output, *, contract, target, timeout_s, 
         dependencies=(Path(__file__),),
     ) as observed:
         _, artifact = CC.lower_interface(
-            package, source, generated, contract=contract, timeout=timeout_s, invoke=invoke
+            package, source, generated, contract=contract, timeout=remaining_seconds(), invoke=invoke
         )
         observed.returned(stdout=artifact)
     if CO._pin(source) != source_pin or products[-1].read_text() != artifact:
@@ -143,9 +148,6 @@ def _emit_scale_case(candidate, source, output, *, contract, target, timeout_s, 
     lowered_pin = CO._pin(products[-1])
     llvm = generated / "lowered.ll"
     command = [str(mlir_translate().resolve()), "--mlir-to-llvmir", str(products[-1]), "-o", str(llvm)]
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise TimeoutError("original scale translation deadline expired")
     with invocation_record.observe(
         output,
         stage="public_scale_llvm_translation",
@@ -154,9 +156,9 @@ def _emit_scale_case(candidate, source, output, *, contract, target, timeout_s, 
         outputs=(llvm,),
         dependencies=(Path(__file__),),
     ) as translated:
-        with shared_compute_pool(timeout_s=remaining):
+        with shared_compute_pool(timeout_s=remaining_seconds()):
             process = subprocess.run(
-                command, capture_output=True, text=True, timeout=max(0.001, deadline - time.monotonic())
+                command, capture_output=True, text=True, timeout=remaining_seconds()
             )
         translated.complete(process)
     if process.returncode:
