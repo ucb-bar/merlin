@@ -24,6 +24,7 @@ RESULT_AREAS = (
 _REQUIRED_ARTIFACTS = ("harness", "input_interface", "command_buffer", "static_instruction_trace", "numeric_report")
 _MAX_INVOCATIONS = 4096
 _MAX_INVOCATION_BYTES = 1 << 20
+_MAX_OBSERVER_DOCUMENT_BYTES = 16 << 20
 
 
 class TimingArchiveError(ValueError):
@@ -335,19 +336,30 @@ def _row(root: Path, path: Path, area: str, visibility: str) -> dict:
     # Evidence-only annotated-Spike observations of the gSIM-measured program, when a pass wrote them
     # (merlin_experiments.phase1.annotated_spike_evidence). Indexed only while the report names the
     # exact ELF still in place, so a stale observation never rides beside a different program.
-    from .annotated_spike_evidence import EVIDENCE_DIR, PROGRAM_ROLE
+    from .annotated_spike_evidence import EVIDENCE_DIR, FUNCTIONAL_PROGRAM_ROLE, PROGRAM_ROLE
 
-    observation = path.parent / EVIDENCE_DIR / PROGRAM_ROLE
-    for name, location in (
-        ("annotated_spike_report", observation / "report.json"),
-        ("annotated_spike_counter_review", observation / "counter_window_review.json"),
+    for role, prefix, elf_sha in (
+        (PROGRAM_ROLE, "annotated_spike", (artifacts["elf"] or {}).get("sha256")),
+        (FUNCTIONAL_PROGRAM_ROLE, "annotated_spike_functional", (executions.get("L2") or {}).get("elf_sha256")),
     ):
-        observed = artifact(location)
-        try:
-            named = json.loads(location.read_text(encoding="utf-8")).get("elf_sha256") if observed else None
-        except (OSError, ValueError, AttributeError):
-            named = None
-        artifacts[name] = observed if named is not None and named == (artifacts["elf"] or {}).get("sha256") else None
+        observation = path.parent / EVIDENCE_DIR / role
+        for suffix, filename in (
+            ("report", "report.json"),
+            ("counter_review", "counter_window_review.json"),
+            ("scope_binding", "scope_binding.json"),
+        ):
+            location = observation / filename
+            observed = artifact(location)
+            try:
+                named = json.loads(location.read_text(encoding="utf-8")).get("elf_sha256") if observed else None
+            except (OSError, ValueError, AttributeError):
+                named = None
+            artifacts[prefix + "_" + suffix] = observed if named is not None and named == elf_sha else None
+        bound = all(artifacts[prefix + "_" + suffix] for suffix in ("report", "counter_review", "scope_binding"))
+        for console in ("functional", "annotated"):
+            artifacts[prefix + "_" + console + "_console"] = (
+                artifact(observation / (console + "_console.log")) if bound else None
+            )
     elf_ref, harness_ref = artifacts["elf"], artifacts["harness"]
     harness = generated / "harness.c"
     scope_matches = _kernel_scopes(harness.read_text(encoding="utf-8")) if harness_ref else []
@@ -514,8 +526,66 @@ def audit(run_dir: Path) -> dict:
             "numerics with every identity present, independently of the capsule's overall verdict"
         ),
         "visibility_policy": "grading_hidden results are hidden and never enter public calibration",
+        "observer_artifacts": _observer_artifacts(root, rows),
         "records": rows,
     }
+
+
+def _observer_artifacts(root: Path, rows: list[dict]) -> dict:
+    """Only the observer's fixed public control documents, never binaries or arbitrary referenced paths."""
+    from .annotated_spike_evidence import EVIDENCE_SCHEMA, RETAINED_INPUT_FILES
+
+    summary_path = root / "annotated_spike_evidence.json"
+    if not summary_path.exists():
+        return {}
+
+    def reference(path, expected=None):
+        if any(part.is_symlink() for part in (path, *path.parents) if part != root.parent):
+            raise TimingArchiveError(f"observer artifact is a symlink: {path}")
+        if not path.is_file() or path.stat().st_size > _MAX_OBSERVER_DOCUMENT_BYTES:
+            raise TimingArchiveError(f"observer control document is missing or oversized: {path}")
+        sha = _file_sha256(path)
+        if expected is not None and sha != expected:
+            raise TimingArchiveError(f"observer control document differs from its recorded identity: {path}")
+        return {"path": path.relative_to(root).as_posix(), "sha256": sha, "bytes": path.stat().st_size}
+
+    artifacts = {"summary": reference(summary_path)}
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    public_results = {row["result"] for row in rows if row["visibility"] == "public"}
+    if (
+        not isinstance(summary, dict)
+        or summary.get("schema") != EVIDENCE_SCHEMA
+        or not isinstance(summary.get("observations"), list)
+        or any(not isinstance(row, dict) or row.get("result") not in public_results for row in summary["observations"])
+    ):
+        raise TimingArchiveError("observer summary does not bind exclusively to this run's public results")
+    retained = summary.get("retained_inputs")
+    if retained is not None:
+        selected = summary.get("selected_inputs")
+        if (
+            not isinstance(retained, dict)
+            or set(retained) != set(RETAINED_INPUT_FILES)
+            or not isinstance(selected, dict)
+            or any(
+                not isinstance(pin, dict)
+                or not isinstance(selected.get(name), dict)
+                or pin.get("sha256") != selected[name].get("sha256")
+                for name, pin in retained.items()
+            )
+        ):
+            raise TimingArchiveError("retained observer controls differ from the selected input identities")
+    for name, filename, pin in (
+        ("model", "count_only_model.json", summary.get("model")),
+        *(
+            (name, "observer_inputs/" + filename, pin)
+            for name, filename in RETAINED_INPUT_FILES.items()
+            if (pin := (summary.get("retained_inputs") or {}).get(name)) is not None
+        ),
+    ):
+        if not isinstance(pin, dict) or not _sha256(pin.get("sha256")):
+            raise TimingArchiveError(f"observer control document has no recorded identity: {name}")
+        artifacts[name] = reference(root / filename, pin["sha256"])
+    return artifacts
 
 
 def _write_tar(destination: Path, index: dict, members: list[tuple[str, Path, dict | None]], root: Path) -> None:
@@ -575,12 +645,14 @@ def archive(run_dir: Path, destination: Path, *, require_ready: bool = True) -> 
                 files.append(path)
             elif not path.is_dir():
                 raise TimingArchiveError(f"capsule artifact is not a regular file: {path}")
-    _write_tar(destination, index, [("run/" + p.relative_to(root).as_posix(), p, None) for p in files], root)
+    members = [("run/" + p.relative_to(root).as_posix(), p, None) for p in files]
+    members.extend(("run/" + ref["path"], root / ref["path"], ref) for ref in index["observer_artifacts"].values())
+    _write_tar(destination, index, members, root)
     return {
         **index,
         "archive": str(destination),
         "archive_sha256": _file_sha256(destination),
-        "artifact_files": len(files),
+        "artifact_files": len(members),
     }
 
 
@@ -631,6 +703,7 @@ def training_archive(run_dir: Path, destination: Path, *, index: dict | None = N
             if path.is_symlink() or not path.is_file():
                 raise TimingArchiveError(f"indexed capsule artifact is not a regular file: {path}")
             members.append(("run/" + reference["path"], path, reference if name != "result" else None))
+    members.extend(("run/" + ref["path"], root / ref["path"], ref) for ref in subset["observer_artifacts"].values())
     _write_tar(destination, subset, members, root)
     return {
         **subset,
