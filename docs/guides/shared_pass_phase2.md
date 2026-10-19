@@ -218,6 +218,29 @@ pending; a numerical match does not supply those missing authorities.
 
 ### Explicit reviewed capability selection
 
+The original-host `targetgen.compiler_pass_selection.CompilerPassSelection`
+binds an exact live registry, binding and mechanism roster. Its
+`prepare_compiler` creates a disjoint compiler copy before retained-source and
+edit-authority freezing; it never swaps a package inside the original executor.
+Missing capability refuses preparation. Both compared arms must receive the
+same selected library and adapter code; candidate policy remains a separately
+editable source component. Preparation supplies no execution qualification.
+
+The ordinary `run_stage` host API accepts `compiler_pass_selection`; queued
+policy contexts and their binding retain that same owner. Original sealed
+model-child transport v3 optionally carries it, alongside the unchanged library
+selection. Fresh children execute a source-pinned original factory which reruns
+independent admission and must reconstruct the exact registry and resolutions.
+A copied successful owner record cannot construct this selection. Original
+v1/v2 child schemas and absent-selection defaults retain their interpretation.
+This host infrastructure grants no additional candidate imports or target support.
+
+The final functional guard rechecks both arms and requires the selected owner's
+original emitted-program checker. A missing checker makes the guard offending;
+preparation, a policy request or earlier paired evidence cannot replace it.
+These APIs connect custody and execution ownership, not automatic target-name
+discovery or formal admission of the provisional Phase 1 checkpoint.
+
 The host-only `llvmlower.reviewed_pass_capabilities` registry transports live
 original owners. `PassCapabilityBinding` requires exact hardware, software,
 numerical policy, runtime and library identities. An original host may construct
