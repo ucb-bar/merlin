@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from merlin_experiments.phase1 import launch_config as L
@@ -55,7 +56,33 @@ def memory(records: dict[int, tuple[int, int]]) -> tuple[int, int]:
     return charged, available
 
 
+@contextmanager
+def configured_environment(launch: L.Launch):
+    """Use the selected child runtime while inspecting its readiness evidence."""
+    before = dict(os.environ)
+    selected = {key: value for key, value in before.items() if not key.startswith("MERLIN_")}
+    for name, value in {**launch.environment, **launch.launch_environment}.items():
+        selected[name] = (
+            value.prefix + (":" + selected[name] if selected.get(name) else "")
+            if isinstance(value, L.Prepend)
+            else value
+        )
+    selected["PYTHONDONTWRITEBYTECODE"] = "1"
+    try:
+        os.environ.clear()
+        os.environ.update(selected)
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(before)
+
+
 def prepare(launch: L.Launch, prep: Path) -> dict:
+    with configured_environment(launch):
+        return _prepare(launch, prep)
+
+
+def _prepare(launch: L.Launch, prep: Path) -> dict:
     doc = launch.document
     origin = doc["origin"]
     if (
