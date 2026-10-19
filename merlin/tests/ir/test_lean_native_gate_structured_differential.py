@@ -133,8 +133,9 @@ def test_actual_captured_operand_fusion_remains_fail_closed_before_native_suffix
         [[2, 3], [11, 13], [17, 19], [7]],
         [[1, 2], [23, 29], [31, 37], [4294967295]],
     ]
-    expected = [[str(((value + capture[0]) & 4294967295) ** 2 & 4294967295) for value in x]
-                for x, _, _, capture in samples]
+    expected = [
+        [str(((value + capture[0]) & 4294967295) ** 2 & 4294967295) for value in x] for x, _, _, capture in samples
+    ]
     # Equal sampled executions do not discharge the missing fusion theorem. The
     # actual compilation remains stopped, and no strict native-prefix claim exists.
     for label, program in (("original", CAPTURED_FUSION_SOURCE), ("held", (root / "native/current.mlir").read_text())):

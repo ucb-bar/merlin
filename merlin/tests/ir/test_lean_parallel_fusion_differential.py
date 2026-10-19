@@ -65,8 +65,7 @@ def test_captured_scalar_fusion_native_matches_without_claiming_proof(tmp_path, 
         [[2, 3], [11, 13], [17, 19], [7]],
         [[1, 2], [23, 29], [31, 37], [4294967295]],
     ]
-    expected = [[str(((x + capture[0]) & 4294967295) ** 2 & 4294967295) for x in xs]
-                for xs, _, _, capture in samples]
+    expected = [[str(((x + capture[0]) & 4294967295) ** 2 & 4294967295) for x in xs] for xs, _, _, capture in samples]
     # The binding suite requires this changed boundary to abstain. Equal sampled
     # executions are empirical evidence and do not discharge its missing proof.
     for label, text in (("original", program), ("actual-fused", after.read_text())):
