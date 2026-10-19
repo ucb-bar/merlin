@@ -119,6 +119,19 @@ class DenseSourceResult:
     selection_identity: str
     compiled: CompactDenseResult
     source_passes: tuple
+    output_operation: object = None
+    output_operation_ordinal: int | None = None
+    output_readout: object = None
+    checked_readout: str | None = None
+    readout_qualification_identity: str | None = None
+
+    @property
+    def operations(self):
+        return (self.operation,) if self.output_operation is None else (self.operation, self.output_operation)
+
+    @property
+    def output_dtype(self):
+        return self.compiled.kernel.args[-1].dtype
 
     def revalidate(self):
         self.selected_contracts.revalidate()
@@ -130,6 +143,22 @@ class DenseSourceResult:
             or type(self.compiled) is not CompactDenseResult
             or self.compiled.checked_emission != self.lowered_stamp
             or self.compiled.kernel.digest() != self.lowered_stamp.source_sha256
+            or self.output_operation is not None
+            and not any(
+                i == self.output_operation_ordinal and op is self.output_operation
+                for i, op in enumerate(self.source.walk())
+            )
+            or (None if self.output_readout is None else self.output_readout.identity) != self.checked_readout
+            or self.compiled.output_readout != self.output_readout
+            or (self.output_operation is None) != (self.output_readout is None)
+            or self.output_readout is not None
+            and self.source_stamp.context.execution
+            != (
+                "dense.readout.execution.v1:"
+                + _digest(
+                    (self.readout_qualification_identity, self.output_readout.identity, self.output_operation_ordinal)
+                )
+            )
         ):
             raise ValueError("dense source, selected contracts or shared library changed; replan")
         self.compiled.revalidate()
@@ -159,6 +188,8 @@ def schedule_source_dense(
     verification_timeout_ms=2000,
     max_repairs=1,
     pass_order=(),
+    output_operation=None,
+    readout_qualification_identity=None,
 ):
     """Compile one current source operation; missing capability keeps fallback explicit.
 
@@ -180,11 +211,30 @@ def schedule_source_dense(
         raise ValueError("dense source operation is not in the selected module")
     module.verify()
     selected_contracts.revalidate()
+    output_readout = None
+    if output_operation is not None:
+        output_readout = read_source_dense_readout(
+            operation,
+            output_operation,
+            selected_contracts=selected_contracts,
+            qualification_identity=readout_qualification_identity,
+            max_source_elements=max_source_elements,
+        )
+    elif readout_qualification_identity is not None:
+        raise ValueError("dense output qualification requires an original output operation")
+    output_ordinal = (
+        None if output_operation is None else next(i for i, op in enumerate(module.walk()) if op is output_operation)
+    )
     selection = _selection(selected_contracts)
     context = PipelineContext(
         hardware=selected_contracts.hardware_identity,
         numerical_policy=selected_contracts.numerical_policy,
-        execution=adapter.qualification_identity,
+        execution=(
+            adapter.qualification_identity
+            if output_readout is None
+            else "dense.readout.execution.v1:"
+            + _digest((readout_qualification_identity, output_readout.identity, output_ordinal))
+        ),
         resources=_digest(
             (
                 asdict(storage),
@@ -196,6 +246,8 @@ def schedule_source_dense(
                 outer_order,
                 verification_timeout_ms,
                 max_repairs,
+                None if output_readout is None else asdict(output_readout),
+                readout_qualification_identity,
             )
         ),
         library=_digest(shared_library_sources()),
@@ -239,6 +291,8 @@ def schedule_source_dense(
             verification_timeout_ms=verification_timeout_ms,
             max_repairs=max_repairs,
             selected_contracts=selected_contracts,
+            output_readout=output_readout,
+            readout_qualification_identity=readout_qualification_identity,
         )
         fresh()
         return {"compiled_dense": result}
@@ -246,9 +300,15 @@ def schedule_source_dense(
     for step in order:
         session.run(
             by_name[step],
-            (lambda: {"semantic_problem": read_source_dense(
-                operation, selected_contracts=selected_contracts, max_source_elements=max_source_elements,
-            )})
+            (
+                lambda: {
+                    "semantic_problem": read_source_dense(
+                        operation,
+                        selected_contracts=selected_contracts,
+                        max_source_elements=max_source_elements,
+                    )
+                }
+            )
             if step == "source-admission"
             else lower,
         )
@@ -266,6 +326,72 @@ def schedule_source_dense(
         selection,
         compiled,
         tuple(session.records),
+        output_operation,
+        output_ordinal,
+        output_readout,
+        None if output_readout is None else output_readout.identity,
+        readout_qualification_identity,
     )
     result.revalidate()
     return result
+
+
+def read_source_dense_readout(
+    operation, output_operation, *, selected_contracts, qualification_identity, max_source_elements=64 << 20
+):
+    """Match one original unary integer output computation to one declared readout.
+
+    Extra accumulator consumers, runtime captures and unsupported source keep
+    the existing dense plus CPU route. A declaration is never qualification.
+    """
+    from xdsl.dialects.linalg.ops import GenericOp
+
+    from .fusion_semantics import UnsupportedElementwise, term
+    from .pointwise_source import read_pointwise_source
+
+    if (
+        type(selected_contracts) is not SelectedSchedulingContracts
+        or selected_contracts.dense is None
+        or type(output_operation) is not GenericOp
+    ):
+        raise DenseSourceUnavailable("dense output readout requires a declared typed pointwise source")
+    readout = selected_contracts.dense.output_readout
+    if readout is None or type(qualification_identity) is not str or not qualification_identity.strip():
+        raise DenseSourceUnavailable("dense output readout lacks a declared independently qualified implementation")
+    if (
+        operation.parent_block() is None
+        or operation.parent_block() is not output_operation.parent_block()
+        or len(tuple(operation.results[0].uses)) != 1
+        or next(iter(operation.results[0].uses)).operation is not output_operation
+        or tuple(output_operation.inputs) != (operation.results[0],)
+    ):
+        raise DenseSourceUnavailable("dense readout requires one same-block consumer of the complete accumulator")
+    between = operation.next_op
+    while between is not output_operation:
+        if (
+            between is None
+            or type(between) not in (tensor.EmptyOp, arith.ConstantOp)
+            or between.attributes
+            or between.regions
+            or between.successors
+        ):
+            raise DenseSourceUnavailable("dense output readout cannot cross unknown operations or execution effects")
+        between = between.next_op
+    try:
+        source = read_pointwise_source(
+            output_operation,
+            max_elements=max_source_elements,
+            max_operations=128,
+            max_ir_bytes=65536,
+            allow_constant_captures=True,
+        )
+    except UnsupportedElementwise as error:
+        raise DenseSourceUnavailable(str(error)) from error
+    expected = readout.graph()
+    if (
+        source.graph.input_bits != (32,)
+        or source.graph.output_bits != 8
+        or source.graph.expression((term("dense_accumulator"),)) != expected.expression((term("dense_accumulator"),))
+    ):
+        raise DenseSourceUnavailable("dense source output differs from the selected exact integer readout")
+    return readout
