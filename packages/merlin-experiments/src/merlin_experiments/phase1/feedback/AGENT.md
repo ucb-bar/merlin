@@ -67,6 +67,16 @@ presence and source/global-plan joins do not waive ordinary grades. Source drift
 ambiguous products and unsupported observers retain UNKNOWN. Raw paths, answer
 values and private grading records never enter the returned report.
 
+`candidate_execution_products` reopens explicit retained v2 public-layer roles
+from the original current functional grade. Bound the complete source and
+execution namespaces before the original collectors read payloads; retain raw
+compiler declarations separately from the effective completed-call buffer.
+Require original producer, snapshot, build, invocation and byte custody joins.
+Python-call and subprocess receipts keep their original completion meanings.
+Legacy emission-only diagnostics keep their reader. This observation adds no
+numerical, source-equivalence, target-execution or timing authority; refusal
+produces UNKNOWN and never substitutes a basename-selected product.
+
 `candidate_census` optionally appends descriptive dynamic activity to ordinary
 selfcheck and normal cheap feedback only after the original numerical screen.
 Use the same selected public descriptor and original package policy; the fixed
