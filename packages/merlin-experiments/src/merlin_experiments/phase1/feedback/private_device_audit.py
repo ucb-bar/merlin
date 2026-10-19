@@ -64,6 +64,7 @@ def audit_built_device_host_compute(
 
     from merlin.llvmlower.device_shim import kernel_abi_for
     from merlin.verify import host_compute_audit as HA
+    from merlin.verify.llvm_symbols import defined_function
 
     abi = kernel_abi_for(target)
     if abi is None:
@@ -109,8 +110,10 @@ def audit_built_device_host_compute(
             context.load_dialect(dialect)
         module = Parser(context, artifact.read_text(encoding="utf-8")).parse_module()
         functions = HA._functions(module)  # noqa: PLC2701 -- shared independent host-code reader
-        if abi.symbol not in functions:
-            raise ValueError(f"linked group {index} has no body for its target ABI kernel")
+        try:
+            defined_function(module, abi.symbol)
+        except ValueError as error:
+            raise ValueError(f"linked group {index} has no body for its target ABI kernel") from error
         sites = [
             HA.GroupSite(
                 group=index,

@@ -387,14 +387,12 @@ def _pinned(record, role):
 
 
 def _llvm_function(module, symbol):
-    matches = [
-        op
-        for op in module.body.block.ops
-        if op.name == "llvm.func" and getattr(op.properties.get("sym_name"), "data", None) == symbol
-    ]
-    if len(matches) != 1 or not matches[0].body.blocks:
-        raise ValueError(f"actual LLVM has no unique defined function {symbol!r}")
-    return matches[0]
+    from merlin.verify.llvm_symbols import defined_function
+
+    try:
+        return defined_function(module, symbol)
+    except ValueError as error:
+        raise ValueError(f"actual LLVM has no unique defined function {symbol!r}") from error
 
 
 def _mandatory_source_commands(function, commands, obligations):
