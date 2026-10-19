@@ -56,6 +56,11 @@ the per-backend adapters under `backends/`.
 - `host_math.py` — explicit portable libm evaluation policies and their compiled runtime objects.
   The default emits nothing. A selected policy changes linked-byte identity and must pass the
   caller's original numerical contract; it does not promise errno or exception-flag equivalence.
+- `host_math_reference.py` — the explicit `portable_exp_trig` array oracle compiles the same
+  pinned Arm exp/sin/cos C sources as the selected runtime recipe. Its task-local context defaults
+  to absent; binary32 inputs and round-to-nearest are required. Source, compiler, object and shared
+  library bytes remain bound and checked. Arithmetic correspondence alone grants no model,
+  accelerator or timing qualification; changed arithmetic requires new reference evidence.
 - `host_arithmetic.py` and `host_outward.py` share explicitly selected CPU
   arithmetic implementations independently of accelerators. ISA/ABI, source
   arithmetic and effect permissions remain caller obligations. Namespaces bind

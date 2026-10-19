@@ -1,0 +1,35 @@
+{
+  "upstream": "https://github.com/ARM-software/optimized-routines",
+  "commit": "97362b2eab91d35d30c4ac2c8c79dcd4dae4331b",
+  "license": "MIT OR Apache-2.0 WITH LLVM-exception",
+  "license_file": "portable_trig.LICENSE",
+  "sources": {
+    "math/expf.c": {
+      "url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/97362b2eab91d35d30c4ac2c8c79dcd4dae4331b/math/expf.c",
+      "sha256": "bf34b67b817ad7382179afd8d52c2afc076965ee9aa01c9b6606a0f9b51a4996"
+    },
+    "math/exp2f_data.c": {
+      "url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/97362b2eab91d35d30c4ac2c8c79dcd4dae4331b/math/exp2f_data.c",
+      "sha256": "b8974df5886979f7bdd0fd83b0b7453786b9f715d36e593174ab94f0f9438d71"
+    },
+    "math/math_config.h": {
+      "url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/97362b2eab91d35d30c4ac2c8c79dcd4dae4331b/math/math_config.h",
+      "sha256": "349a7cab00e14cf51c26ada62832eeeddc0a85de302f0ab2b6ff87713db01015"
+    },
+    "math/math_errf.c": {
+      "url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/97362b2eab91d35d30c4ac2c8c79dcd4dae4331b/math/math_errf.c",
+      "sha256": "2c5d68148296649b10743b2fec80bf4234fbb14e8d00a05a2dc0ba25930fedb8"
+    },
+    "LICENSE": {
+      "url": "https://raw.githubusercontent.com/ARM-software/optimized-routines/97362b2eab91d35d30c4ac2c8c79dcd4dae4331b/LICENSE",
+      "sha256": "650afbf29f214451e02241adc42534e82c9d6ae2b38e2444b92b5a1ffcaf9346"
+    }
+  },
+  "adaptation": [
+    "Standalone expf and shared table/config/error helpers; symbols namespaced; exported __wrap_expf.",
+    "Fixed upstream tablebits5/TOINT_INTRINSICS0 configuration; errno/test/glibc alias glue omitted.",
+    "Algorithm, coefficient/table literals and arithmetic expression ordering retained.",
+    "Existing portable_trig.c uses the same pinned upstream commit.",
+    "Float32/float64 IEEE formats, no excess precision, round-to-nearest ties-even, no contraction/fastmath; errno and exception flags unclaimed."
+  ]
+}
