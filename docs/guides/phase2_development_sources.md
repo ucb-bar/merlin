@@ -16,6 +16,8 @@ code_refs:
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_shape_supplement.py
   - packages/merlin-experiments/src/merlin_experiments/capture_execution/native_integer.py
   - packages/merlin-experiments/src/merlin_experiments/capture_execution/readonly_runtime.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_dense_projection.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/operator_streaming_exclusion_issuer.py
 ---
 
 # Construct fresh connected public development sources
@@ -490,6 +492,27 @@ numerical, compiler, hardware or timing contract. The current selected source
 bundle includes multi-gigabyte IR leaves and source aliases, so the bounded
 ordinary-source intake records a refusal. No empty or public-overlap-derived
 replacement selection is manufactured.
+
+For large initializer-bearing sources, the operator can explicitly select
+`operator_streaming_exclusion_issuer.issue` instead of the ordinary issuer.
+Supply separate finite `max_source_bytes` and `max_total_source_bytes` streaming
+limits while retaining the original `max_ir_bytes` and `max_total_ir_bytes`
+parser limits. The transient projection hashes every original byte and checks
+complete typed hexadecimal storage lengths. Bounded array literals and scalar
+splats use the original registered parser. Only actual immediate-function-body
+`arith.constant` initializers receive resource placeholders: their values were
+already omitted by the unchanged `typed_ir_exclusion_signature.v1` algorithm.
+Constants in contraction regions and unsupported forms refuse. This transient
+source is never compiler input, an executable transformation or a numerical grant.
+
+That explicit intake also supports an original source leaf alias when the
+byte-pinned sealed catalog owns its exact source namespace and role. Its current
+target must be ordinary, complete bytes must match the original source seal,
+and the full binding is checked again before issuance. Alias chains, ancestor
+aliases and retargeting refuse. The historical link spelling is not inferred
+from a seal that records content hashes. Every selected source identity remains
+in the roster; protected names, shapes, answers and hash sets stay outside author
+and publication roots. The ordinary issuer and its original refusals are unchanged.
 
 `development_controls` supplies additional public source legality controls through
 the existing `development_sources.describe/render/stage`, independent reference,
