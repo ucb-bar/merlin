@@ -1,6 +1,8 @@
 """Independent integer references for complete fresh grouped-head source calls."""
 
 import copy
+import json
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -125,6 +127,57 @@ def test_declared_readout_rounding_and_saturation_on_independent_inputs():
     assert (((expected[0] + 4) // 8) > 127).any()
     assert (((expected[0] + 4) // 8) < -128).any()
     assert expected[2][0, :2].tolist() == [4, -4]
+
+
+def test_selected_capture_framework_preserves_saturation_endpoints_and_signed_ties():
+    """Run under the actual selected frontend even if pytest has no Torch."""
+    from merlin.targetgen import capsule_source
+
+    source = capsule_source.PytorchRefSource(timeout=120)
+    if not source.available():
+        pytest.skip("selected Model2MLIR capture runtime unavailable")
+    values = [
+        -(2**31),
+        -1029,
+        -1028,
+        -1027,
+        -1025,
+        -1024,
+        -1023,
+        -129,
+        -128,
+        -5,
+        -4,
+        -3,
+        3,
+        4,
+        5,
+        126,
+        127,
+        128,
+        1011,
+        1012,
+        1013,
+        1019,
+        1020,
+        1021,
+        2**31 - 5,
+    ]
+    script = D.render(declaration()) + (
+        f"\nvalues = torch.tensor({values!r}, dtype=torch.int32)\n"
+        "print(__import__('json').dumps([_saturate_i8(values).tolist(), "
+        "_saturate_i8(torch.div(values + 4, 8, rounding_mode='floor')).tolist()]))\n"
+    )
+    with shared_compute_pool(timeout_s=120):
+        process = subprocess.run(
+            [str(source.python), "-B", "-c", script], capture_output=True, text=True, timeout=120, check=True
+        )
+    saturated, rounded = json.loads(process.stdout)
+    # Independent wide NumPy arithmetic catches wrapping, negative rounding,
+    # saturation-before-division and off-by-one endpoint mistakes.
+    wide = np.asarray(values, dtype=np.int64)
+    np.testing.assert_array_equal(saturated, np.clip(wide, -128, 127))
+    np.testing.assert_array_equal(rounded, np.clip((wide + 4) // 8, -128, 127))
 
 
 def test_source_materializes_through_existing_roster_stager(tmp_path):

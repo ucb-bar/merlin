@@ -154,7 +154,9 @@ def test_logical_payload_never_mints_physical_liveness_or_complete_roofline():
     assert result["roofline"]["status"] == "UNKNOWN" and result["roofline"]["attainment"] is None
 
 
-@pytest.mark.parametrize("declaration", [cases()[3], cases()[6], cases()[7]], ids=lambda row: row["pattern"])
+@pytest.mark.parametrize(
+    "declaration", [cases()[3], cases()[5], cases()[6], cases()[7]], ids=lambda row: row["pattern"]
+)
 def test_ordinary_capture_writer_checks_new_connected_source_patterns(tmp_path, declaration):
     from merlin_experiments.phase0 import development_capture as capture
 

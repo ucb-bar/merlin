@@ -21,6 +21,17 @@ CONTRACT = "signed_i8_i32_round_half_up_saturate_i8"
 _AXES = {"steps", "prefix_tokens", "query_tokens", "kv_heads", "query_heads", "head_dim"}
 
 
+def _integer_saturation_source():
+    # The selected FXImporter constructs floating bounds for integer clamp.
+    # Typed min/max expresses the same signed saturation without that frontend bug.
+    return [
+        "def _saturate_i8(value):",
+        "    lower = torch.maximum(value, torch.full_like(value, -128))",
+        "    return torch.minimum(lower, torch.full_like(value, 127)).to(torch.int8)",
+        "",
+    ]
+
+
 def _digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
@@ -133,6 +144,7 @@ def render(declaration):
         '"""Fresh public integer grouped-head mixing; no softmax or model claim."""',
         "import torch",
         "",
+        *_integer_saturation_source(),
         f"# Public declaration: {description['declaration_sha256']}",
         "class Program(torch.nn.Module):",
         "    def forward(self, " + ", ".join(names) + "):",
@@ -150,8 +162,8 @@ def render(declaration):
             lines += [
                 f"        scores_{suffix} = torch._int_mm(q{step}[{head}].contiguous(), "
                 f"cache_k{step}[{group}].transpose(0, 1).contiguous())",
-                f"        readout_{suffix} = torch.div(scores_{suffix} + {2 ** (shift - 1)}, "
-                f"{2**shift}, rounding_mode='floor').clamp(-128, 127).to(torch.int8)",
+                f"        readout_{suffix} = _saturate_i8(torch.div(scores_{suffix} + {2 ** (shift - 1)}, "
+                f"{2**shift}, rounding_mode='floor'))",
                 f"        mixed_{suffix} = torch._int_mm(readout_{suffix}, cache_v{step}[{group}].contiguous())",
             ]
         lines += [f"        cache_k = cache_k{step}", f"        cache_v = cache_v{step}"]

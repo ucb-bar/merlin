@@ -133,10 +133,7 @@ def render(declaration):
     shift = declaration["arithmetic"]["readout_shift"]
 
     def readout(expression):
-        return (
-            f"torch.div(({expression}) + {2 ** (shift - 1)}, {2**shift}, rounding_mode='floor')"
-            ".clamp(-128,127).to(torch.int8)"
-        )
+        return f"_saturate_i8(torch.div(({expression}) + {2 ** (shift - 1)}, {2**shift}, rounding_mode='floor'))"
 
     body = []
     if pattern.startswith("matmul"):
@@ -162,15 +159,16 @@ def render(declaration):
     else:
         body = [
             "prefix_wide = torch._int_mm(prefix, prefix_weight)",
-            f"prefix_cache = {readout('prefix_wide')}.to(torch.int32)"
-            ".sum(0,keepdim=True,dtype=torch.int32).clamp(-128,127).to(torch.int8)",
+            f"prefix_cache = _saturate_i8({readout('prefix_wide')}.to(torch.int32)"
+            ".sum(0,keepdim=True,dtype=torch.int32))",
             "current = state",
         ]
         for step in range(g["steps"]):
             body += [
                 f"action_wide{step} = torch._int_mm(current, state_weight)",
-                f"action_state{step} = ({readout(f'action_wide{step}')}.to(torch.int32) + current.to(torch.int32)"
-                " + prefix_cache.to(torch.int32)).clamp(-128,127).to(torch.int8)",
+                f"action_state{step} = _saturate_i8({readout(f'action_wide{step}')}.to(torch.int32)"
+                " + current.to(torch.int32)"
+                " + prefix_cache.to(torch.int32))",
                 f"current = action_state{step}",
             ]
         body += [f"decoded = current[:{g['decode']}]"]
@@ -179,6 +177,7 @@ def render(declaration):
         '"""Fresh explicit public integer source; no model/timing qualification."""',
         "import torch",
         "",
+        *D._integer_saturation_source(),
         f"# Declaration: {description['declaration_sha256']}",
         "class Program(torch.nn.Module):",
         "    def forward(self, " + ",".join(names) + "):",
