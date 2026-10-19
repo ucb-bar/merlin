@@ -214,3 +214,21 @@ def test_native_metadata_scope_rejects_each_foreign_compiler_binding(source, inp
     with pytest.raises((ValueError, StageGateError)):
         with native._metadata_operation():
             native.verify_for(changed)
+
+
+@pytest.mark.parametrize("fault", ["proof", "runtime"])
+def test_native_metadata_operation_retains_primary_error_and_final_refusal(source, inputs, fault):
+    _, selected, bridge = setup(source, inputs)
+    original = bridge.owner
+    native = N.prepare_public_native_exploration(selected, binding_correspondence=bridge)
+    with pytest.raises(RuntimeError, match="original metadata body") as caught:
+        with native._metadata_operation():
+            if fault == "proof":
+                original.compiler_binding = replace(original.compiler_binding, software="changed-before-error")
+            else:
+                selected.runtime.model_path.write_bytes(selected.runtime.model_path.read_bytes() + b"\n")
+            raise RuntimeError("original metadata body")
+    expected = "final metadata/qualification check failed" if fault == "proof" else "Public native final metadata"
+    assert any(expected in note for note in caught.value.__notes__)
+    with pytest.raises((ValueError, StageGateError)):
+        native.record()
