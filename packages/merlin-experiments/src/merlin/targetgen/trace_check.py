@@ -331,6 +331,7 @@ def check(
     address_model: str | None = None,
     subsumes: dict | None = None,
     target: str | None = None,
+    lowered_module=None,
 ) -> dict:
     """Validate ``trace`` against capsule ``expected`` (+ optional command buffer).
 
@@ -383,7 +384,13 @@ def check(
     if ins:
         if classes[0] != "FENCE":
             violations.append("trace does not open with a FENCE")
-        if classes[-1] != "FENCE":
+        if lowered_module is not None:
+            from merlin.targetgen.rocc.control_flow import closing_fence_on_normal_returns
+
+            closing_fence = closing_fence_on_normal_returns(lowered_module)
+            if closing_fence is not True:
+                violations.append("normal returning CFG paths lack a proved closing FENCE")
+        elif classes[-1] != "FENCE":
             violations.append("trace does not close with a FENCE")
     if "FLUSH" in present:
         flush_i = classes.index("FLUSH")

@@ -181,7 +181,9 @@ def test_claimed_numeric_result_without_actual_owned_build_never_promotes():
     assert checked["model_execution_check"]["status"] == "incomplete"
 
 
-def test_device_custody_reopens_real_translation_compile_and_symbol_only_rename(tmp_path):
+@pytest.mark.parametrize("isolated", [False, True])
+@pytest.mark.parametrize("optimized", [False, True])
+def test_device_custody_reopens_real_translation_compile_and_symbol_only_rename(tmp_path, isolated, optimized):
     from merlin.llvmlower import device_build, toolchain
     from merlin.targetgen.owned_host_model_execution import _verify_device_custody
 
@@ -189,6 +191,7 @@ def test_device_custody_reopens_real_translation_compile_and_symbol_only_rename(
     if not objcopy or not toolchain.mlir_translate().is_file() or not toolchain.clang().is_file():
         pytest.skip("requires selected compiler tools; no accelerator or simulation")
     artifact, translated, raw, obj = [tmp_path / name for name in ("kernel.mlir", "kernel.ll", "raw.o", "kernel.o")]
+    optimized_ir, optimized_mlir = tmp_path / "optimized.ll", tmp_path / "optimized.mlir"
     artifact.write_text("module { llvm.func @kernel() { llvm.return } }\n")
     custody = {}
     commands = [
@@ -199,17 +202,58 @@ def test_device_custody_reopens_real_translation_compile_and_symbol_only_rename(
             artifact,
             translated,
         ),
+    ]
+    if optimized:
+        commands += [
+            (
+                "optimization",
+                "device_llvm_optimization",
+                [
+                    toolchain.clang(),
+                    "--target=riscv64-unknown-elf",
+                    "-O2",
+                    "-S",
+                    "-emit-llvm",
+                    str(translated),
+                    "-o",
+                    str(optimized_ir),
+                ],
+                translated,
+                optimized_ir,
+            ),
+            (
+                "optimized_import",
+                "device_optimized_llvm_import",
+                [
+                    toolchain.mlir_translate(),
+                    "--import-llvm",
+                    "--mlir-print-op-generic",
+                    str(optimized_ir),
+                    "-o",
+                    str(optimized_mlir),
+                ],
+                optimized_ir,
+                optimized_mlir,
+            ),
+        ]
+    object_input = optimized_ir if optimized else translated
+    flags = ["-O2", "-Xclang", "-disable-llvm-passes"] if optimized else []
+    commands += [
         (
             "compilation",
             "device_object_compilation",
-            [toolchain.clang(), "--target=riscv64-unknown-elf", "-c", str(translated), "-o", str(raw)],
-            translated,
+            [toolchain.clang(), "--target=riscv64-unknown-elf", *flags, "-c", str(object_input), "-o", str(raw)],
+            object_input,
             raw,
         ),
         (
             "rename",
             "device_object_symbol_rename",
-            [objcopy, "--redefine-sym=kernel=kernel_0", str(raw), str(obj)],
+            (
+                device_build.rename_object_command(objcopy, "kernel", "kernel_0", raw, obj)
+                if isolated
+                else [objcopy, "--redefine-sym=kernel=kernel_0", str(raw), str(obj)]
+            ),
             raw,
             obj,
         ),
@@ -219,17 +263,111 @@ def test_device_custody_reopens_real_translation_compile_and_symbol_only_rename(
             command, timeout=30, directory=tmp_path, stage=stage, inputs=(source,), output=output
         )
         assert run.returncode == 0, run.stderr
-    _verify_device_custody(
-        {"custody": custody},
+    from merlin.targetgen.native_model_execution import _digest
+
+    entry = {"custody": custody}
+    if optimized:
+        entry["artifacts"] = {
+            "optimized_llvm_ir": _digest(optimized_ir),
+            "optimized_llvm_mlir": _digest(optimized_mlir),
+        }
+    assert _verify_device_custody(
+        entry,
         artifact=artifact,
         llvm_ir=translated,
         obj=obj,
         original_symbol="kernel",
         kernel_symbol="kernel_0",
-    )
+    ) == (optimized_mlir if optimized else None)
+    if optimized:
+        selected_copy = tmp_path / "shared-translation-copy.ll"
+        selected_copy.write_bytes(translated.read_bytes())
+        assert (
+            _verify_device_custody(
+                entry,
+                artifact=artifact,
+                llvm_ir=selected_copy,
+                obj=obj,
+                original_symbol="kernel",
+                kernel_symbol="kernel_0",
+            )
+            == optimized_mlir
+        )
+        for role in ("optimization", "optimized_import"):
+            missing = {**entry, "custody": {key: value for key, value in custody.items() if key != role}}
+            with pytest.raises(ValueError, match="complete codegen custody"):
+                _verify_device_custody(
+                    missing,
+                    artifact=artifact,
+                    llvm_ir=translated,
+                    obj=obj,
+                    original_symbol="kernel",
+                    kernel_symbol="kernel_0",
+                )
+        unrelated = tmp_path / "unrelated.ll"
+        unrelated.write_bytes(optimized_ir.read_bytes())
+        wrong = {**entry, "artifacts": {**entry["artifacts"], "optimized_llvm_ir": _digest(unrelated)}}
+        with pytest.raises(ValueError, match="exact selected LLVM transform"):
+            _verify_device_custody(
+                wrong,
+                artifact=artifact,
+                llvm_ir=translated,
+                obj=obj,
+                original_symbol="kernel",
+                kernel_symbol="kernel_0",
+            )
+        saved = optimized_ir.read_bytes()
+        optimized_ir.write_bytes(saved + b"; changed\n")
+        with pytest.raises(ValueError, match="changed"):
+            _verify_device_custody(
+                entry,
+                artifact=artifact,
+                llvm_ir=translated,
+                obj=obj,
+                original_symbol="kernel",
+                kernel_symbol="kernel_0",
+            )
+        optimized_ir.write_bytes(saved)
+        repeated_raw, repeated_obj = tmp_path / "reoptimized.raw.o", tmp_path / "reoptimized.o"
+        run, repeated_compile, _ = device_build._observed_build_tool(
+            [
+                toolchain.clang(),
+                "--target=riscv64-unknown-elf",
+                "-O2",
+                "-c",
+                str(optimized_ir),
+                "-o",
+                str(repeated_raw),
+            ],
+            timeout=30,
+            directory=tmp_path,
+            stage="device_object_compilation",
+            inputs=(optimized_ir,),
+            output=repeated_raw,
+        )
+        assert run.returncode == 0, run.stderr
+        run, repeated_rename, _ = device_build._observed_build_tool(
+            device_build.rename_object_command(objcopy, "kernel", "kernel_0", repeated_raw, repeated_obj),
+            timeout=30,
+            directory=tmp_path,
+            stage="device_object_symbol_rename",
+            inputs=(repeated_raw,),
+            output=repeated_obj,
+        )
+        assert run.returncode == 0, run.stderr
+        repeated = {**entry, "custody": {**custody, "compilation": repeated_compile, "rename": repeated_rename}}
+        with pytest.raises(ValueError, match="exact selected LLVM transform"):
+            _verify_device_custody(
+                repeated,
+                artifact=artifact,
+                llvm_ir=translated,
+                obj=repeated_obj,
+                original_symbol="kernel",
+                kernel_symbol="kernel_0",
+            )
     with pytest.raises(ValueError, match="rename transform"):
         _verify_device_custody(
-            {"custody": custody},
+            entry,
             artifact=artifact,
             llvm_ir=translated,
             obj=obj,
@@ -239,13 +377,42 @@ def test_device_custody_reopens_real_translation_compile_and_symbol_only_rename(
     obj.write_bytes(obj.read_bytes() + b"changed")
     with pytest.raises(ValueError, match="product changed"):
         _verify_device_custody(
-            {"custody": custody},
+            entry,
             artifact=artifact,
             llvm_ir=translated,
             obj=obj,
             original_symbol="kernel",
             kernel_symbol="kernel_0",
         )
+
+
+def test_optimized_inventory_requires_complete_selected_structural_decode():
+    from types import SimpleNamespace
+
+    from merlin.targetgen.owned_host_model_execution import _optimized_command_functs
+
+    module = SimpleNamespace(walk=lambda: [SimpleNamespace(name="llvm.inline_asm") for _ in range(3)])
+    table = {"custom_opcode": 123, "names": {"0": "configure", "4": "compute"}}
+    trace = {
+        "abi": {"custom_opcode": "0x7b"},
+        "instructions": [
+            {"class": "CONFIG", "funct": 0},
+            {"class": "COMPUTE", "funct": 4},
+            {"class": "FENCE", "funct": None},
+        ],
+    }
+    assert _optimized_command_functs(module, trace, table, source_functs=[0, 4, 4]) == [0, 4]
+    for source in ([], [0], [0, 4, 6]):
+        with pytest.raises(ValueError, match="introduced or discarded"):
+            _optimized_command_functs(module, trace, table, source_functs=source)
+    for invalid in (
+        {**trace, "abi": {"custom_opcode": "0x0b"}},
+        {**trace, "instructions": trace["instructions"][:2]},
+        {**trace, "instructions": [{"class": "UNKNOWN", "funct": 0}, *trace["instructions"][1:]]},
+        {**trace, "instructions": [{"class": "CONFIG", "funct": 99}, *trace["instructions"][1:]]},
+    ):
+        with pytest.raises(ValueError, match="decode|unknown command|ISA identity"):
+            _optimized_command_functs(module, invalid, table, source_functs=[0, 4])
 
 
 def test_empty_global_class_roster_is_explicit_only_for_source_bound_models(tmp_path, monkeypatch):
