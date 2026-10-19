@@ -45,11 +45,12 @@ from .host_compiler_policy import _select_host_vectorize as _select_host_vectori
 
 if TYPE_CHECKING:
     from ...llvmlower.entry_weight_projection import GeneratedDispatchABI
+    from ...llvmlower.graph_optimizations import GraphOptimizationContract
+    from ...llvmlower.host_graph_policy import HostGraphPolicy
     from ...llvmlower.host_transform_chain import HostLLVMTransformChain
     from ...llvmlower.source_dense import SourceDenseLowering
     from ...llvmlower.source_pointwise import SourcePointwiseLowering
     from ...llvmlower.source_rows import SourceRowLowering
-
 RVV_CFLAGS = ["-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"]
 
 #: Cross-compilation triple for the clang-built objects. Named because more than one object is built with
@@ -451,6 +452,7 @@ def build(
     host_provider_builder: Callable | None = None,
     shared_row_lowering: SourceRowLowering | None = None,
     shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
+    graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     cflags_override: list[str] | None = None,
     vlen: int | None = None,
     console: str = "htif",
@@ -786,6 +788,7 @@ def build(
             masked_contraction_effects=masked_contraction_effects,
             source_observation_effects=source_observation_effects,
             source_scalar_carrier=source_scalar_carrier,
+            **({"graph_optimizations": graph_optimizations} if graph_optimizations is not None else {}),
             **({"op_profile": True} if op_profile else {}),
         )  # produce only the .ll
         if op_profile:
@@ -801,6 +804,8 @@ def build(
     # `gcc_cflags`): a feature like the register-group width is an LLVM backend query no tile size
     # reaches. Empty features -> the flag list is unchanged, so model.o stays byte-identical.
     lowered_index = res.stats.get("index_lowering")
+    if graph_optimizations is not None:
+        compilation.bind_preparation("host_graph", work / "lower" / "host-graph-optimization.json")
     if (
         not isinstance(lowered_index, dict)
         or lowered_index.get("index_bits") != index_observation["index_bits"]

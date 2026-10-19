@@ -20,6 +20,7 @@ from merlin.runtime.host_provider import (
     close_host_provider,
     prepare_host_provider,
     read_host_function_abi,
+    revalidate_host_provider,
 )
 
 
@@ -118,7 +119,38 @@ def test_default_hook_is_inert(tmp_path):
     )
     assert prepare_host_provider(None, context, inspector=None) == ((), None)
     close_host_provider(None, (), tmp_path / "absent.elf", inspector=None)
+    revalidate_host_provider(None)
     assert not context.workdir.exists()
+
+
+@pytest.mark.parametrize("mutation", ["prepared", "dependency", "object", "llvm", "executable", "receipt", "symlink"])
+def test_completed_provider_custody_expires_after_real_file_changes(tmp_path, mutation):
+    context, build, nm = _fixture(tmp_path)
+    paths, receipt = prepare_host_provider(lambda ctx: build, context, inspector=nm)
+    with pytest.raises(ValueError, match="completed link"):
+        revalidate_host_provider(receipt)
+    executable = tmp_path / "linked.so"
+    _link(context, paths, executable)
+    close_host_provider(receipt, [context.model_object_path, *paths], executable, inspector=nm)
+    revalidate_host_provider(receipt)
+    if mutation == "receipt":
+        record = json.loads(Path(receipt["receipt_path"]).read_text())
+        record["numerical_witness_sha256"] = "3" * 64
+        Path(receipt["receipt_path"]).write_text(json.dumps(record))
+    else:
+        path = {
+            "prepared": context.prepared_path, "dependency": tmp_path / "provider.c",
+            "object": paths[0], "llvm": build.objects[0].llvm_path,
+            "executable": executable, "symlink": context.prepared_path,
+        }[mutation]
+        if mutation == "symlink":
+            backup = path.with_suffix(".original")
+            path.rename(backup)
+            path.symlink_to(backup)
+        else:
+            path.write_bytes(path.read_bytes() + b"\nchanged after link\n")
+    with pytest.raises(ValueError, match="changed|regular"):
+        revalidate_host_provider(receipt)
 
 
 @pytest.mark.parametrize("optimization", ["-O0", "-O2"])
@@ -128,6 +160,7 @@ def test_actual_provider_calls_source_fallback_and_closes_link(tmp_path, optimiz
     executable = tmp_path / "linked.so"
     _link(context, paths, executable)
     close_host_provider(receipt, [context.model_object_path, *paths], executable, inspector=nm)
+    revalidate_host_provider(receipt)
     library = ctypes.CDLL(str(executable))
     library.entry.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     original = np.array([-5, -0.75, -0.0, 1.25, 7], dtype=np.float32)

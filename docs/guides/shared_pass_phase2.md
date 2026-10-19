@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-10-18
 related: [shared_source_lowering, ../reference/shared_compiler_passes, phase2_corpus_search]
-code_refs: [src/merlin/targetgen/tool_profile.py, src/merlin/targetgen/tool_profile_shared.py, src/merlin/targetgen/common_transforms.py, packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py]
+code_refs: [src/merlin/targetgen/tool_profile.py, src/merlin/targetgen/tool_profile_shared.py, src/merlin/targetgen/common_transforms.py, src/merlin/compile/baremetal_model.py, packages/merlin-experiments/src/merlin_experiments/phase2/ordinary_search_stage.py]
 ---
 
 # Use shared passes in compiler generation
@@ -43,7 +43,7 @@ appropriate entry with its selected contracts and qualified backend bindings.
 Ordinary model builds can select supported dense, pointwise and row families through
 `shared_source_lowerings=(...)`; Merlin then discovers, schedules and rewrites
 eligible regions. See [enable shared passes in model builds](shared_source_lowering.md)
-for the integration interface and fallback behavior. Backend bindings supply
+for the integration interface, the `compile_saved_model` entry and fallback behavior. Backend bindings supply
 implementations and ABI support. Importing the library alone does not change
 routing or interpret arbitrary backend output. See the
 [pass reference](../reference/shared_compiler_passes.md) for each entry's accepted
