@@ -13,6 +13,11 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   scratch by default, respecting TMPDIR and preserving captured input folders.
   An explicit work directory retains the printer artifacts for inspection.
 - `facts.py` — lifting the inventory to contract-level reuse facts, driving the core pipeline with real model shapes, residency-variant DSE measurement.
+- `attention_dataflow.py` — target-independent relationships between tagged
+  QK, softmax and PV operations through unique structural SSA producer paths.
+  Region labels bind identity; their spelling and module names do not choose
+  relationships. This analysis grants no arithmetic, fusion, placement,
+  physical-layout, lifetime or numerical permission.
 - `linalg_math_patterns.py` — source-only, closed unary f32 sine/cosine scalar-region checks;
   no host admission or numerical-equivalence claim. Its unary schema refuses scalar-literal power.
 - `linalg_composite_math.py` — separate source-only, closed literal clamp, reciprocal,
