@@ -301,14 +301,33 @@ def verify_selected_synthesis(
                     f"{synth_profile}: materialized source does not bind its exact full iteration inventory"
                 )
             if performance_source:
-                from .public_programs import CAPTURE_SCHEMA
+                from .public_programs import capture_schema
 
                 if (
-                    binding.get("schema") != CAPTURE_SCHEMA
+                    binding.get("schema") != capture_schema(selected_programs["selection"])
                     or entry.get("cat") != "_perf"
                     or entry.get("label") != "dev"
                 ):
                     raise ValueError("public performance program must be an explicitly selected dev member")
+                source_mode = selected_programs["selection"].get("source_mode")
+                if binding.get("source_mode") != source_mode:
+                    raise ValueError("public capture source mode differs from its original selection")
+                if source_mode:
+                    from .connected_integer_qualification import SELECTION
+
+                    expected_attestation = (spec_doc.get("performance_capture_preselections") or {}).get(
+                        "attestations", {}
+                    ).get(label)
+                    if (
+                        expected_attestation is None
+                        or entry.get("capture_execution_attestations") != [expected_attestation]
+                        or entry.get("capture_quantization") != "already_materialized"
+                        or entry.get("output_numeric_policy") != "captured_per_output_v1"
+                        or entry.get("source_integer_proof") != SELECTION
+                    ):
+                        raise ValueError(
+                            "integer public profile changed its sealed source or exact arithmetic selection"
+                        )
     permitted_statuses = {"inventoried", "incomplete"} if diagnostic else {"inventoried"}
     from . import public_boundaries as PB
 

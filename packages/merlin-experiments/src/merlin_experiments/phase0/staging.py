@@ -67,7 +67,7 @@ def write_staged(
     Returns what ``write`` returned, with a staged member path mapped to its final corpus path.
     """
     out_root = Path(out_root)
-    from .operator_exclusion import require_selection
+    from .operator_exclusion import check_publication, require_selection
 
     require_selection(operator_exclusion, out_root)
     out_root.mkdir(parents=True, exist_ok=True)
@@ -75,9 +75,8 @@ def write_staged(
     try:
         _link_existing(stage, out_root, member)
         written = write(stage)
-        if operator_exclusion is not None:
-            for created in _corpus_members(stage):
-                operator_exclusion.check_member(created)
+        for created in _corpus_members(stage):
+            check_publication(operator_exclusion, created)
         moved = promote(stage, out_root)
         if isinstance(written, (str, Path)) and written and Path(written).is_relative_to(stage):
             return moved.get(Path(written), out_root / Path(written).relative_to(stage))

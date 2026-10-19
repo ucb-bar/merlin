@@ -49,7 +49,9 @@ def contraction_signature_hashes(capsule, *, directory=None):
     try:
         if (
             capsule.get("public_boundary")
-            or (capsule.get("materialized_capture") or {}).get("schema") == "merlin.materialized_public_capture.v2"
+            or (capsule.get("materialized_capture") or {}).get("schema") in {
+                "merlin.materialized_public_capture.v2", "merlin.materialized_public_capture.v3"
+            }
         ):
             from .public_programs import original_contractions, verify_written
 
@@ -60,9 +62,15 @@ def contraction_signature_hashes(capsule, *, directory=None):
                 raise PublicationRefusal()
             verify_written(capsule, directory)
             trace = json.loads((Path(directory) / "frontend-trace.json").read_bytes())
+            source_mode = (capsule.get("materialized_capture") or {}).get("source_mode")
             return tuple(
-                _digest({"schema": SIGNATURE_SCHEMA, **row, "numeric_policy": capsule["numeric_policy"]})
-                for row in original_contractions(trace)
+                _digest({"schema": SIGNATURE_SCHEMA, **row, "numeric_policy": (
+                    {"compare": "exact_int", "dtype": row["ordered_results"][0]["dtype"]}
+                    if source_mode == "native_integer_v1" else capsule["numeric_policy"]
+                )})
+                for row in original_contractions(
+                    trace, source_mode=source_mode
+                )
             )
         saved = capsule["component_program"]
         original = capsule["operation"]
@@ -207,3 +215,22 @@ def require_selection(selection, *publication_roots):
     for root in publication_roots:
         if root is not None:
             selection.outside(root)
+
+
+def check_publication(selection, directory):
+    """New integer publication requires the actual private selector at each seal.
+
+    Legacy callers retain their optional selection. No saved capsule field can
+    supply a private selection or establish that protected work was excluded.
+    """
+    if selection is not None:
+        require_selection(selection, directory)
+        selection.check_member(directory)
+        return
+    try:
+        document = yaml.safe_load((Path(directory) / "capsule.yaml").read_bytes())
+        capture = document.get("materialized_capture") if isinstance(document, dict) else None
+        if isinstance(capture, dict) and capture.get("schema") == "merlin.materialized_public_capture.v3":
+            raise PublicationRefusal()
+    except (OSError, TypeError, ValueError):
+        raise PublicationRefusal() from None

@@ -330,12 +330,11 @@ def freeze_performance_corpus(
     from merlin_experiments.phase2 import test_justification as TJ
 
     snapshot_root = Path(snapshot_root).resolve()
-    from merlin_experiments.phase0.operator_exclusion import require_selection
+    from merlin_experiments.phase0.operator_exclusion import check_publication, require_selection
 
     require_selection(operator_exclusion, corpus.corpus_root, snapshot_root)
-    if operator_exclusion is not None:
-        for member in corpus.capsules:
-            operator_exclusion.check_member(member.source_dir)
+    for member in corpus.capsules:
+        check_publication(operator_exclusion, member.source_dir)
     if snapshot_root.exists() or snapshot_root.is_symlink():
         raise StageGateError(f"performance snapshot is not fresh: {snapshot_root}")
     if CONTRACTS.sha256_file(corpus.provenance_manifest) != corpus.provenance_sha256:
@@ -367,8 +366,7 @@ def freeze_performance_corpus(
         destination = capsules_root / member.source_relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(member.source_dir, destination, symlinks=False)
-        if operator_exclusion is not None:
-            operator_exclusion.check_member(destination)
+        check_publication(operator_exclusion, destination)
         copied = CONTRACTS.exact_tree_record(destination)
         if copied != before or CONTRACTS.exact_tree_record(member.source_dir) != before:
             raise StageGateError(f"performance capsule changed during freeze: {member.capsule}")

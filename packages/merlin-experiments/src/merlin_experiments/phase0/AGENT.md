@@ -1,5 +1,14 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+Public-program selection v2 explicitly selects native_integer_v1 and materialized
+capture v3. Preserve complete typed golden.json outputs and exact per-output
+policies; legacy floating captures retain their historical reference format.
+The ordinary writer needs the original verified sealed attestation and live
+realization owner. Promotion and freezing require a real operator-private hash
+selection, never a saved public overlap verdict. Original integer contractions
+are hashed from actual typed semantics independently of output names; every
+expected-output leaf remains protected in live and frozen author views.
+
 `sealed_native_program` reopens original sealed native stages with complete
 integral golden.json outputs, exact source leaves and receipt-bound metadata.
 Relocate metadata paths only; never modify captured bytes or use lossy output-zero

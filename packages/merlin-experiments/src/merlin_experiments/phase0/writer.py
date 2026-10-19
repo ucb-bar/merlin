@@ -860,7 +860,21 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
 
         if entry.get("materialized_capture"):
             artifact = CSRC.materialized_model_artifacts(entry["materialized_capture"])
-            return CSRC.write_model_capsule(entry, eb, out_root, artifact=artifact)
+            written = CSRC.write_model_capsule(entry, eb, out_root, artifact=artifact)
+            from merlin.targetgen.materialized_integer_capture import selected
+
+            if selected(entry["materialized_capture"]):
+                from .capture_execution_attestation import require_verified_execution
+
+                attestations = entry.get("capture_execution_attestations")
+                if not isinstance(attestations, list) or len(attestations) != 1:
+                    raise ValueError("integer public writer needs its one original sealed execution")
+                require_verified_execution(attestations[0])
+                path = Path(written) / "capsule.yaml"
+                cap = yaml.safe_load(path.read_bytes())
+                cap["capture_execution_attestations"] = copy.deepcopy(attestations)
+                path.write_text(yaml.safe_dump(cap, sort_keys=False))
+            return written
         src = capture if capture is not None else capture_source()
         if not src.available():
             _skip_or_require_m2m(entry)
