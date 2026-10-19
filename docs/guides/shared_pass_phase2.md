@@ -123,3 +123,31 @@ numerical/functional gates, calibrated timing, bounded equal search budgets and
 frozen policies evaluated on unseen workloads. Whole-model measurements must
 include host arithmetic, packing, transfers and dispatch. Command reductions
 remain command results until paired timing establishes an execution improvement.
+
+## Continue implementation from another workspace
+
+The `shared-scheduling` branch is an incomplete implementation checkpoint.
+Start with the production-routing gap above before expanding policy search:
+
+1. Inspect `compile/scheduling/{dense_source,pointwise_source,row_softmax}.py`,
+   the selected contracts, `compile/route_before_build.py` and
+   `llvmlower/prepared_model_transform.py`. Connect one supported source family
+   through ordinary production preparation using explicit qualified backend
+   capabilities, preserving the source fallback for unsupported cases.
+2. Replace the test-specific selection for that family with a test of the normal
+   entry. Preserve independent checks of complete outputs and carried state, actual emitted
+   effects, stale-input and numerical mutations, packing and compilation metrics.
+   The test providers are neutral execution fixtures, never target support or
+   production compiler implementations to copy into the library.
+3. Expose legal policy alternatives to Phase 2 through the same frozen library.
+   Keep facts, software semantics, numerical admission, qualification and checker
+   limits fixed. Demonstrate held-out transfer separately from helper availability.
+
+The source-spill and source-row ordinary-model regressions live in
+`merlin/tests/infra/test_spilled_pointwise_model.py` and
+`merlin/tests/infra/test_source_row_model.py`; the shared export and frozen V6
+profile tests cover source closure and identical authoring access. Use the
+reproduction commands in [the pass reference](../reference/shared_compiler_passes.md).
+Local temporary reports and model binaries are not part of a Git checkout;
+recreate them with the existing toolchains and task-local `TMPDIR`. Do not infer
+hardware qualification or calibrated timing from these neutral regressions.
