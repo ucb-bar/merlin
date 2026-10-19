@@ -41,6 +41,14 @@ independent admission, exact release and registry checks; serialized success
 cannot authorize a mechanism. CLI transport does not prepare a compiler or
 change the original functional/timing gates.
 
+`compiler_pass_preparation` supplies explicit choices for one original composite
+capability, never executable authority. Prepare both treatments independently
+from the same immutable original compiler before inventory and edit/source
+freeze. Keep original parent, readonly derived baseline and candidate seed
+separate; their digests are different. Reopen actual selected-library binding
+through the original bound owner. A saved preparation cannot construct that
+owner or replace fresh complete same-release final functional checks.
+
 `agent_workspace` projects capsule inputs using frozen reference roles in
 `merlin.targetgen.capsule_privacy` and the central answer registry. Live-source
 deletion cannot disclose frozen expected values; public inputs remain usable.
