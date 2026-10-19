@@ -6,11 +6,13 @@ owner: core
 last_verified: 2026-10-18
 related: [shared_pass_phase2, ../reference/shared_compiler_passes]
 code_refs:
+  - src/merlin/compile/baremetal_model.py
   - src/merlin/llvmlower/source_model.py
   - src/merlin/llvmlower/source_dense.py
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/runtime/backends/spike_model.py
+  - src/merlin/runtime/host_provider.py
 ---
 
 # Enable shared passes in model builds
@@ -106,6 +108,32 @@ object roster, function ABIs and required symbols. An active device selection
 also requires the original `DeviceRouting` and `LinkedElfAdmissionService`,
 including admission of the final linked image.
 
+The saved-model API accepts the same tuple:
+
+```python
+from merlin.compile.baremetal_model import compile_saved_model
+
+receipt = compile_saved_model(
+    capture=capture_directory,
+    package=selected_host_package,
+    board_catalog=board_catalog,
+    board=selected_board,
+    dts=host_dts,
+    output=fresh_output_directory,
+    target=selected_target,
+    run="spike",
+    arena_mb=arena_mb,
+    readback="full",
+    shared_source_lowerings=(dense_selection,),
+)
+```
+
+The output directory must be fresh and below the configured `MERLIN_OUT_ROOT`.
+To judge every result, supply the capture's complete `goldens.npz` and
+`output_order.json`; a reference for result zero does not validate other results
+or carried state. Existing board, host ISA, simulator and device-admission rules
+still apply. Selecting source passes grants no new candidate authoring access.
+
 ## Inspect results and handle refusal
 
 Preparation writes `source_dense.json`, `source_pointwise.json`, `source_rows.json` or, for a combined
@@ -115,6 +143,14 @@ compilation recipe and provider-link receipt with the final image.
 Combined providers retain each family's numerical and effect witness identity
 in `host_provider/source_lowerings.json`; this records their custody and does
 not create a new numerical qualification.
+
+For a selected saved-model build, `output.shared_source_preparation` retains the
+actual preparation receipt path and hash. `output.host_provider` and
+`output.linked_elf_admission` retain the producer's records when present.
+Before publishing execution success, the caller rechecks selected contracts,
+prepared source/selection files and completed provider dependencies against
+their original identities. These are custody checks, not a new numerical or
+hardware qualification. `run="none"` records compilation only.
 
 Unsupported source or unavailable capabilities keep the original computation.
 If no region qualifies, the prepared source bytes remain unchanged and no
