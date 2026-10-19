@@ -66,6 +66,8 @@ def arrays_digest(arrays) -> str:
 
 def evaluator_identity() -> dict[str, Any]:
     """Conservative source/dependency closure of the reference parser and evaluator, read afresh."""
+    from merlin.runtime.linalg_numpy import numeric_contract
+
     core = importlib.util.find_spec("merlin.model_check")
     if core is None or not core.origin:
         raise RuntimeError("no core source closure for the reference evaluator")
@@ -90,6 +92,7 @@ def evaluator_identity() -> dict[str, Any]:
         for package in library.glob("python*/site-packages/torch_mlir"):
             bindings[str(package)] = tree_digest(package)
     return {
+        "numeric_contract": numeric_contract(),
         "sources": {str(root): tree_digest(root, python_only=True) for root in roots},
         "generic_printer": {"python": str(printer),
                             "sha256": file_digest(printer) if printer.is_file() else None,

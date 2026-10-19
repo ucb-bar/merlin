@@ -42,6 +42,7 @@ from merlin.model_check import inputs as INP
 from merlin.model_check import metrics as M
 from merlin.model_check.bundle import Bundle
 from merlin.model_check.models import Model
+from merlin.runtime import linalg_numpy as LN
 
 REFERENCE_WORKER = Path(__file__).with_name("reference_worker.py")
 FP_TASK = {"logits": "fp_resnet", "next_token_distribution": "fp_tiny_llama", "per_channel": "fp_smolvla"}
@@ -174,7 +175,13 @@ def build(
         results = (reference_case(job, case, cache=cache, scratch=scratch) for case in cases)
     else:
         results = iter(_pooled_cases(job, cases, count, scratch, log))
-    summary: dict[str, Any] = {"model": model.name, "fp_numerics_env": FP_NUMERICS_ENV, "fp_runs": runs, "inputs": {}}
+    summary: dict[str, Any] = {
+        "model": model.name,
+        "fp_numerics_env": FP_NUMERICS_ENV,
+        "fp_runs": runs,
+        "int8_numeric_contract": LN.numeric_contract(),
+        "inputs": {},
+    }
     rows: list[dict[str, Any]] = []
     baseline_rows: list[dict[str, Any]] = []
     for case, result in zip(cases, results, strict=True):
@@ -192,7 +199,13 @@ def build(
                 step=0,
             )
         headline = {k: v for k, v in result["metrics"].items() if k != "per_channel"}
-        summary["inputs"][case["name"]] = {**headline, "steps": result["steps"], "seconds": result["seconds"]}
+        summary["inputs"][case["name"]] = {
+            **headline,
+            "steps": result["steps"],
+            "seconds": result["seconds"],
+            "int8_numeric_contract": result["int8_numeric_contract"],
+            "evaluator_sha256": result["evaluator_sha256"],
+        }
         log(f"[references] {model.name} {case['name']}: {json.dumps(headline)}")
     summary["admission"] = _admission(model, rows, baseline_rows)
     (bundle.root / model.name / "reference_quality.json").write_text(json.dumps(summary, indent=1) + "\n")
@@ -216,6 +229,8 @@ def reference_case(job: CaseJob, case: dict[str, Any], *, cache: CH.ChainCache |
     Writes the case's own files (``int8.npz``, ``metrics_int8.json``, ``metrics_baseline.json``) and
     returns its rows; the caller writes ``calls.json``. ``scratch`` must be this process's own."""
     model, here = job.model, case["out"]
+    numeric_contract = LN.numeric_contract()
+    evaluator_sha256 = hashlib.sha256(Path(LN.__file__).read_bytes()).hexdigest()
     kind = model.judged["kind"]
     blobs = CAT.BlobStore(job.blobs)
     t0 = time.monotonic()
@@ -236,6 +251,11 @@ def reference_case(job: CaseJob, case: dict[str, Any], *, cache: CH.ChainCache |
         )
 
     run = CH.run_reference(model, job.catalogs, arrays, scratch, record=record, cache=cache)
+    if (
+        LN.numeric_contract() != numeric_contract
+        or hashlib.sha256(Path(LN.__file__).read_bytes()).hexdigest() != evaluator_sha256
+    ):
+        raise INP.InputError("reference evaluator source/policy changed during the chain")
     judged = CH.judged_outputs(model, run)
     with np.load(here / "fp.npz") as data:
         fp = [np.asarray(data[k]) for k in data.files]
@@ -248,6 +268,8 @@ def reference_case(job: CaseJob, case: dict[str, Any], *, cache: CH.ChainCache |
             base = M.model_metrics(kind, [np.asarray(data[k]) for k in data.files], fp, model.judged)
         (here / "metrics_baseline.json").write_text(json.dumps(base, indent=1) + "\n")
     return {
+        "int8_numeric_contract": numeric_contract,
+        "evaluator_sha256": evaluator_sha256,
         "metrics": metrics,
         "baseline": base,
         "calls": calls_by_program,

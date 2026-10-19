@@ -20,6 +20,9 @@ Semantics, stated because an oracle that rounds differently from the model is a 
   is why a float comparison against them is BOUNDED, never exact;
 * ``bf16`` is stored as its 16-bit pattern (the runtime's layout) and computed in float32, each bf16
   result rounded to nearest-even, which is what a bf16 operation over f32 math does.
+* non-contraction floating reductions carry their initial accumulator through the source's
+  lexicographic reduction indices, rounding each body operation at its declared type. Only an
+  explicit ``reassoc`` flag on each floating combiner permits a NumPy reduction tree.
 
 Only the vocabulary a captured model uses is implemented, and anything else RAISES naming the
 operation: an evaluator that skipped an op would compute a different model and still return.
@@ -37,12 +40,26 @@ import numpy as np
 __all__ = [
     "ConstantCache",
     "LinalgNumpyError",
+    "NUMERIC_CONTRACT_VERSION",
     "bf16_round",
     "evaluate",
     "evaluate_op",
     "last_uses",
+    "numeric_contract",
     "storage_dtype",
 ]
+
+NUMERIC_CONTRACT_VERSION = "merlin.linalg_numpy.numeric.v2.strict_float_reductions"
+
+
+def numeric_contract() -> dict[str, str]:
+    """Policy identity for newly derived references; source/dependency bytes also need binding."""
+    return {
+        "version": NUMERIC_CONTRACT_VERSION,
+        "floating_reductions": "source_lexicographic_init_first_per_operation_rounding",
+        "explicit_reassociation": "numpy_f32_f64_tree_only_with_combiner_reassoc",
+        "floating_contractions": "blas_bounded_up_to_reassociation",
+    }
 
 
 class LinalgNumpyError(RuntimeError):
@@ -517,6 +534,22 @@ def _split_reduction(block, acc_args: Sequence[Any]):
     return out
 
 
+def _ordered_float_reduction(split) -> bool:
+    """Scalar fast-math permission belongs to the actual combiner, never provenance/shape."""
+    for combiner, _ in split:
+        element = _elem(combiner.results[0].type)
+        if element not in {"bf16", "f16", "f32", "f64"}:
+            continue
+        # NumPy promotes low-precision reduction intermediates. Reassociation does
+        # not authorize changing each source operation's declared precision.
+        if element in {"bf16", "f16"}:
+            return True
+        flags = getattr(getattr(combiner, "fastmath", None), "data", ())
+        if not any(getattr(flag, "value", None) == "reassoc" for flag in flags):
+            return True
+    return False
+
+
 def _depends_on(value, targets: set[int], block) -> bool:
     seen: set[int] = set()
     stack = [value]
@@ -660,12 +693,11 @@ def _generic(op, env: dict[int, Any], constants: ConstantCache | None = None) ->
             results.append(_contiguous(_store(_output_from_space(full, amap, shape), element)))
         return results
 
-    # A GENERAL REDUCTION: the non-accumulator side is computed over the iteration space (it reads
-    # only inputs), reduced along the reduction dims with the body's own combiner, and combined with
-    # the initial output once.
+    # General reductions use the original source loop unless their arithmetic permits the folded
+    # path. That path computes the input-only side, folds it, then combines the initial output once.
     accs = list(block.args[len(inputs) :])
     split = _split_reduction(block, accs)
-    if split is None:
+    if split is None or _ordered_float_reduction(split):
         return _sequential_reduction(op, block, env, views, space, reduced, maps, shapes, elements, len(inputs))
     acc_ids = {id(a) for a in accs}
     for body in block.ops:
@@ -694,8 +726,7 @@ def _generic(op, env: dict[int, Any], constants: ConstantCache | None = None) ->
     return results
 
 
-#: A reduction the body does not state as combiner(acc, x) is run one reduction index at a time, in
-#: the IR's own order; this bounds how many steps that may take.
+#: A source-ordered reduction runs one reduction index at a time; bound that interpreter work.
 SEQUENTIAL_REDUCTION_LIMIT = 1 << 16
 
 
@@ -706,7 +737,7 @@ def _sequential_reduction(op, block, env, views, space, reduced, maps, shapes, e
     steps = int(np.prod([space[d] for d in reduced], dtype=np.int64))
     if steps > SEQUENTIAL_REDUCTION_LIMIT:
         raise LinalgNumpyError(
-            f"a reduction whose body is not combiner(acc, x) runs {steps} steps, over the "
+            f"a source-ordered reduction runs {steps} steps, over the "
             f"{SEQUENTIAL_REDUCTION_LIMIT} this evaluator steps through"
         )
     n = len(space)
@@ -767,6 +798,8 @@ def _reduce(op, env) -> list[np.ndarray]:
     split = _split_reduction(block, list(block.args[count:]))
     if split is None or any(x is not arg for (_c, x), arg in zip(split, block.args[:count], strict=True)):
         raise LinalgNumpyError("a linalg.reduce whose body is not combiner(input, acc) is not evaluated")
+    if _ordered_float_reduction(split):
+        return _ordered_reduce(op, env, dims)
     out = []
     for (combiner, _x), value, init, result in zip(split, inputs, inits, op.results, strict=True):
         element = _elem(result.type)
@@ -776,6 +809,36 @@ def _reduce(op, env) -> list[np.ndarray]:
             total = _COMBINERS[combiner.name](np.asarray(_load(env[id(init)], element)), folded)
         out.append(_contiguous(_store(_cast_to(total, element), element, _shape(result.type))))
     return out
+
+
+def _ordered_reduce(op, env, dims) -> list[np.ndarray]:
+    """Interpret the original scalar region at each reduction point, with the original init."""
+    count = len(op.results)
+    inputs, inits = list(op.operands)[:count], list(op.operands)[count:]
+    block = op.regions[0].blocks[0]
+    values = [_load(env[id(value)], _elem(value.type)) for value in inputs]
+    carried = [np.array(_load(env[id(value)], _elem(value.type))) for value in inits]
+    shape = values[0].shape
+    steps = math.prod(shape[dim] for dim in dims)
+    if steps > SEQUENTIAL_REDUCTION_LIMIT:
+        raise LinalgNumpyError(
+            f"a source-ordered reduction runs {steps} steps, over the "
+            f"{SEQUENTIAL_REDUCTION_LIMIT} this evaluator steps through"
+        )
+    for point in np.ndindex(*(shape[dim] for dim in dims)):
+        at = dict(zip(dims, point, strict=True))
+        selection = tuple(at.get(dim, slice(None)) for dim in range(len(shape)))
+        arguments = [value[selection] for value in values] + carried
+        local = {id(arg): value for arg, value in zip(block.args, arguments, strict=True)}
+        for body in block.ops:
+            if body.name == "linalg.yield":
+                carried = [np.array(local[id(value)]) for value in body.operands]
+                break
+            local[id(body.results[0])] = _body_op(body, _Chain(local, env))
+    return [
+        _contiguous(_store(value, _elem(result.type), _shape(result.type)))
+        for value, result in zip(carried, op.results, strict=True)
+    ]
 
 
 def _scf_for(op, env) -> list[Any]:

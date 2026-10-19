@@ -74,6 +74,12 @@ domain, reviewed ownership, promotion, alias, physical effects or target support
 
 ## Purpose
 
+Unscoped package entrypoints use the shared dedicated child guardian. Timeouts
+and normal leader exits reap the whole adopted descendant tree before returning;
+an expensive nested compiler cannot silently survive its timed-out entrypoint.
+The scoped executor still owns its own original execution and cleanup route.
+This changes process lifetime only, not package outputs or numerical gates.
+
 TargetGen pipeline: ingest -> evidence -> synthesize -> generate -> validate. Turns a
 target's local docs/examples/source into human-reviewable plans and a generated
 `merlin-target-<name>/` repo skeleton.

@@ -7,6 +7,7 @@ safetensors) is run as a chain over several inputs: once per case with nothing k
 
 from __future__ import annotations
 
+import hashlib
 import json
 import struct
 from pathlib import Path
@@ -154,6 +155,9 @@ def test_a_pool_gives_the_serial_bytes_in_case_order_with_a_scratch_per_worker(t
     lines: list[str] = []
     pooled = REF._pooled_cases(job, cases, 2, tmp_path / "work", lines.append)  # noqa: SLF001
     assert [r["metrics"] for r in pooled] == [r["metrics"] for r in serial]
+    assert all(row["int8_numeric_contract"] == LN.numeric_contract() for row in [*serial, *pooled])
+    expected_evaluator = hashlib.sha256(Path(LN.__file__).read_bytes()).hexdigest()
+    assert all(row["evaluator_sha256"] == expected_evaluator for row in [*serial, *pooled])
     assert [(c["out"] / "int8.npz").read_bytes() for c in cases] == written
     workers = tmp_path / "work" / "workers"
     claimed = {i: int((workers / "claims" / str(i)).read_text()) for i in range(len(cases))}
@@ -169,6 +173,22 @@ def test_a_pool_refuses_a_job_it_cannot_send_to_a_worker(tmp_path) -> None:
     job.keep_call = lambda _symbol, ordinal: ordinal < 1
     with pytest.raises(INP.InputError, match="picklable"):
         REF._pooled_cases(job, cases, 2, tmp_path / "work", print)  # noqa: SLF001
+
+
+def test_reference_policy_mutation_during_chain_cannot_publish_judged_outputs(tmp_path, monkeypatch):
+    _model, _catalog, cases, job = _setup(tmp_path, count=1)
+    original = CH.run_reference
+    policy = LN.numeric_contract()
+
+    def changed(*args, **kwargs):
+        result = original(*args, **kwargs)
+        monkeypatch.setattr(LN, "numeric_contract", lambda: {**policy, "version": "changed during execution"})
+        return result
+
+    monkeypatch.setattr(CH, "run_reference", changed)
+    with pytest.raises(INP.InputError, match="source/policy changed"):
+        REF.reference_case(job, cases[0], cache=None, scratch=tmp_path / "work")
+    assert not (cases[0]["out"] / "int8.npz").exists()
 
 
 def test_the_worker_count_is_bounded_by_cases_and_memory() -> None:

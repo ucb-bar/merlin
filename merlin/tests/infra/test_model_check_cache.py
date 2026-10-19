@@ -228,6 +228,54 @@ def test_without_the_cache_the_build_is_returned_as_built(tmp_path):
     assert built.kernels == {"a": "kern_0"} and built.objects == [tmp_path / "w" / "a.o"]
 
 
+def test_cached_required_refusal_does_not_start_other_missing_kernels(tmp_path):
+    pkg = tmp_path / "package"
+    pkg.mkdir()
+    (pkg / "manifest.yaml").write_text("fixture\n")
+    catalog = _catalog({"a": _IFACE, "r": _IFACE + "// refusal\n"})
+    build = _Build(refuse={"r": "unsupported first interface"})
+    kwargs = {
+        "package_dir": pkg,
+        "toolchain": SimpleNamespace(device_cflags=()),
+        "build": build,
+        "root": tmp_path / "cache",
+    }
+    first = KC.build_kernels(catalog, ["r"], workdir=tmp_path / "first", **kwargs)
+    assert first.refused == {"r": "unsupported first interface"}
+    stopped = KC.build_kernels(catalog, ["a", "r"], workdir=tmp_path / "stopped", stop_on_first_failure=True, **kwargs)
+    assert build.calls == [["r"]]
+    assert list(stopped.unattempted) == ["a"] and stopped.refused == first.refused
+    assert len(list((tmp_path / "cache/kernels").glob("*/entry.json"))) == 1
+
+
+def test_unattempted_kernels_never_become_cached_package_refusals(tmp_path):
+    pkg = tmp_path / "package"
+    pkg.mkdir()
+    (pkg / "manifest.yaml").write_text("fixture\n")
+    catalog = _catalog({"a": _IFACE, "b": _IFACE + "// later\n"})
+    calls = []
+
+    def failed(_target, _sidecar, symbols, **kwargs):
+        calls.append((list(symbols), kwargs.get("stop_on_first_failure")))
+        return SimpleNamespace(kernels={}, objects=(), skipped=(("a", "timed out after 1s"),))
+
+    result = KC.build_kernels(
+        catalog,
+        ["a", "b"],
+        package_dir=pkg,
+        workdir=tmp_path / "work",
+        toolchain=SimpleNamespace(device_cflags=()),
+        build=failed,
+        root=tmp_path / "cache",
+        stop_on_first_failure=True,
+    )
+    assert calls == [(["a", "b"], True)]
+    assert result.refused == {"a": "timed out after 1s"} and list(result.unattempted) == ["b"]
+    assert not list((tmp_path / "cache").rglob("entry.json")), (
+        "Neither timeout nor unattempted work is a reusable refusal"
+    )
+
+
 def test_a_replay_console_is_reused_only_for_the_same_image(tmp_path, monkeypatch):
     harness = tmp_path / "harness"
     harness.mkdir()

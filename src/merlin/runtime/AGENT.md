@@ -115,4 +115,8 @@ admission, command schedule, device lowering or RTL qualification.
 - Real implementations only; every result is gated (simulator == reference; dispatch
   runtime == torch golden). `dispatch_runtime` raises on any view op it cannot evaluate —
   no silent skips.
+- `linalg_numpy.numeric_contract()` versions reference arithmetic. Named and non-contraction
+  generic floating reductions preserve source index order, the original init and per-operation
+  rounding; f32/f64 combiners may explicitly permit reassociation. New evaluator bytes/policy require
+  newly derived reference evidence; never rewrite or relabel a historical sealed bundle.
 - Every subdirectory must also contain an AGENT.md.

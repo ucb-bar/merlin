@@ -328,6 +328,7 @@ def _replay_cases(
     symbols = sorted({c.symbol for c in cases})
     toolchain = RP.toolchain_for(args.host_package)
     use_cache = not getattr(args, "no_cache", False)
+    mandatory_build = getattr(args, "mode", None) == "full"
     started = time.monotonic()
     built = KC.build_kernels(
         catalog,
@@ -338,9 +339,11 @@ def _replay_cases(
         build=RP.build_kernels,
         enabled=use_cache,
         root=cache_root,
+        stop_on_first_failure=mandatory_build,
     )
     build_seconds = time.monotonic() - started
     refused, objects = built.refused, built.objects
+    build_failed = mandatory_build and bool(refused or built.unattempted)
 
     def run(image_dir: Path, main_c: Path, data_s: Path, linked) -> tuple[str, float, dict[str, Any]]:
         if engine is not None or args.engine != "spike":
@@ -361,7 +364,7 @@ def _replay_cases(
 
     verdicts: list[dict[str, Any]] = []
     images: list[dict[str, Any]] = []
-    runnable = [c for c in cases if c.symbol in built.kernels]
+    runnable = [] if build_failed else [c for c in cases if c.symbol in built.kernels]
     if engine is not None:  # board images, run on Spike then on the bound RTL engine
         verdicts, images = EN.replay_on_board(
             catalog.target,
@@ -417,6 +420,20 @@ def _replay_cases(
                 }
             )
             continue
+        if symbol in built.unattempted or build_failed:
+            detail = built.unattempted.get(symbol) or "not replayed after a required kernel build failure"
+            kernels.append(
+                {
+                    "symbol": symbol,
+                    **identity,
+                    "status": "unfinished",
+                    "cases": 0,
+                    "exact": 0,
+                    "mismatches": [detail],
+                    "detail": detail,
+                }
+            )
+            continue
         row = per_symbol.get(symbol, {"symbol": symbol, "cases": 0, "exact": 0, "mismatches": []})
         status = "pass" if row["cases"] and row["exact"] == row["cases"] else "fail"
         kernels.append({**row, **identity, "status": status, "mismatches": row["mismatches"][:5]})
@@ -438,6 +455,7 @@ def _replay_cases(
             "seconds": round(build_seconds, 1),
             "built": len(built.kernels),
             "refused": len(refused),
+            **({"unattempted": len(built.unattempted)} if built.unattempted else {}),
             "cache": built.stats,
         },
         "kernels": kernels,
@@ -476,7 +494,7 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     work = Path(tempfile.mkdtemp(prefix=f"{model.name}-{stamp}-", dir=root))
     programs = _programs(model, args)
-    for program in programs:
+    for program_index, program in enumerate(programs):
         report["programs"].append(
             _replay_program(
                 args,
@@ -492,6 +510,12 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
                 deadline=deadline,
             )
         )
+        if getattr(args, "mode", None) == "full" and (
+            report["programs"][-1]["refused"]
+            or any(k["status"] == "unfinished" for k in report["programs"][-1]["kernels"])
+        ):
+            report["programs_unattempted"] = programs[program_index + 1 :]
+            break
         # The sealed split also carries the program's shape variants, judged like recorded calls.
         if args.split != "visible":
             varied = VAR.load(bundle.root, model.name, program, bundle.catalog(model.name, program))
@@ -511,6 +535,11 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
                 )
                 varied.annotate(row["kernels"])
                 report["programs"].append({"program": program, "split": "sealed", "source": VAR.SOURCE, **row})
+                if getattr(args, "mode", None) == "full" and (
+                    row["refused"] or any(k["status"] == "unfinished" for k in row["kernels"])
+                ):
+                    report["programs_unattempted"] = programs[program_index + 1 :]
+                    break
     variant_calls = sum(k.get("cases", 0) for p in report["programs"] if p.get("source") for k in p["kernels"])
     kernels = [k for p in report["programs"] for k in p["kernels"]]
     refused = [k for k in kernels if k["status"] == "refused"]
@@ -518,9 +547,17 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
     if engine is not None:
         _engine_gates(report, kernels)
     report["gates"]["build"] = {
-        "status": "pass" if not refused else "fail",
-        "detail": f"{len(kernels) - len(refused)}/{len(kernels)} kernels built",
+        "status": "pass"
+        if not refused and not any(p["build"].get("unattempted") for p in report["programs"])
+        else "fail",
+        "detail": f"{sum(p['build']['built'] for p in report['programs'])}/{len(kernels)} kernels built",
     }
+    if "programs_unattempted" in report:
+        report["gates"]["build"].update(
+            partial=True,
+            detail=report["gates"]["build"]["detail"] + "; stopped after a required build failure; "
+            f"{len(report['programs_unattempted'])} later program(s) not attempted",
+        )
     report["gates"]["kernel_exact"] = {
         "status": "pass" if kernels and not failed and not refused else "fail",
         "partial": not all_calls,
@@ -613,6 +650,15 @@ def check(args: argparse.Namespace, report: dict) -> dict:
 
         full.validate(args)
         report = _replay(args, report, all_calls=False, group=None)
+        if report["gates"]["build"]["status"] != "pass":
+            report["gates"]["kernel_exact"]["partial"] = True
+            selected = getattr(args, "full_comparison", "host-twin")
+            report["comparison"] = {
+                "selected": selected,
+                "status": "not_run",
+                "detail": "a required accelerator kernel could not be built",
+            }
+            return report
         report["gates"]["kernel_exact"]["partial"] = False
         return full.check(args, report, models=load_models(args.models), bundle=_bundle(args))
     from merlin.model_check.approximations import declared

@@ -219,10 +219,21 @@ def observe(directory: Path, **kwargs):
             invocation.failed(RuntimeError("invocation did not report completion"))
 
 
-def run(argv, *, directory: Path, stage: str, inputs=(), outputs=(), dependencies=(), **kwargs):
+def run(argv, *, directory: Path, stage: str, inputs=(), outputs=(), dependencies=(),
+        owned_process_tree: bool = False, **kwargs):
     # Observe and execute the same immutable snapshot, even if a caller's
     # mutable mapping or ambient environment changes at the observation point.
     kwargs["env"] = dict(os.environ if kwargs.get("env") is None else kwargs["env"])
+    runner = subprocess.run
+    if owned_process_tree:
+        import sys
+
+        from . import owned_children, owned_process
+
+        runner = owned_process.run
+        dependencies = (
+            *dependencies, Path(owned_process.__file__), Path(owned_children.__file__), Path(sys.executable)
+        )
     with observe(
         directory,
         stage=stage,
@@ -233,7 +244,15 @@ def run(argv, *, directory: Path, stage: str, inputs=(), outputs=(), dependencie
         cwd=kwargs.get("cwd"),
         env=kwargs.get("env"),
     ) as record:
-        result = subprocess.run(argv, **kwargs)
+        try:
+            result = runner(argv, **kwargs)
+        except BaseException as error:
+            if owned_process_tree and (cleanup := getattr(error, "owned_process_cleanup", None)):
+                record.document["process_tree_cleanup"] = cleanup
+                record._write()
+            raise
+        if owned_process_tree:
+            record.document["process_tree_cleanup"] = result.owned_process_cleanup
         record.complete(result)
         return result
 

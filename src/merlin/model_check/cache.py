@@ -152,6 +152,7 @@ class KernelSet:
     objects: list[Path] = field(default_factory=list)  # distinct objects to link
     refused: dict[str, str] = field(default_factory=dict)  # symbol -> package/build refusal
     stats: dict[str, Any] = field(default_factory=dict)
+    unattempted: dict[str, str] = field(default_factory=dict)
 
 
 def kernel_material(catalog, symbol: str, *, package_sha256: str, toolchain, tools: Mapping[str, Any]) -> dict:
@@ -259,7 +260,7 @@ def _store_refusal(directory: Path, why: str, material) -> None:
     _publish(directory, write)
 
 
-def _build(build, catalog, symbols, package_dir, workdir, toolchain):
+def _build(build, catalog, symbols, package_dir, workdir, toolchain, stop_on_first_failure=False):
     return build(
         catalog.target,
         catalog.sidecar,
@@ -270,6 +271,7 @@ def _build(build, catalog, symbols, package_dir, workdir, toolchain):
         accum_dtype=catalog.routing["accum_dtype"],
         numeric_policy=catalog.routing["numeric_policy"],
         toolchain=toolchain,
+        **({"stop_on_first_failure": True} if stop_on_first_failure else {}),
     )
 
 
@@ -283,6 +285,7 @@ def build_kernels(
     build: Callable[..., Any],
     enabled: bool = True,
     root: Path | None = None,
+    stop_on_first_failure: bool = False,
 ) -> KernelSet:
     """The package's kernels for ``symbols``: from the store where their key is, else ``build``.
 
@@ -293,10 +296,21 @@ def build_kernels(
     """
     wanted = sorted(set(symbols))
     if not enabled:
-        built = _build(build, catalog, wanted, package_dir, workdir, toolchain)
+        built = _build(build, catalog, wanted, package_dir, workdir, toolchain, stop_on_first_failure)
         objects = [Path(o) for o in built.objects if Path(o).name != "device_shim.o"]
         refused = {str(sym): str(why) for sym, why in built.skipped}
-        return KernelSet(dict(built.kernels), objects, refused, {"enabled": False, "hits": 0, "misses": len(wanted)})
+        unattempted = {}
+        if stop_on_first_failure and refused:
+            if "all" in refused:
+                refused = {s: refused["all"] for s in wanted}
+            unattempted = {
+                s: "not attempted after a required kernel build failure"
+                for s in wanted
+                if s not in built.kernels and s not in refused
+            }
+        return KernelSet(
+            dict(built.kernels), objects, refused, {"enabled": False, "hits": 0, "misses": len(wanted)}, unattempted
+        )
     from merlin.llvmlower.device_build import _objcopy
     from merlin.llvmlower.toolchain import clang, mlir_translate
 
@@ -325,13 +339,18 @@ def build_kernels(
             result.kernels[symbol] = entry["kernel_symbol"]
             result.objects.append(store / keys[symbol] / "kernel.o")
     result.stats.update(hits=len(wanted) - len(missing), misses=len(missing))
-    if missing:
-        built = _build(build, catalog, missing, package_dir, workdir, toolchain)
+    if missing and stop_on_first_failure and result.refused:
+        result.unattempted = {s: "not attempted after a cached required kernel refusal" for s in missing}
+    elif missing:
+        built = _build(build, catalog, missing, package_dir, workdir, toolchain, stop_on_first_failure)
         storable = objcopy is not None and package_digest(Path(package_dir)) == package_sha256
         skipped = {str(sym): str(why) for sym, why in built.skipped}
         for symbol in missing:
             directory = store / keys[symbol]
             if symbol not in built.kernels:
+                if stop_on_first_failure and skipped and symbol not in skipped and "all" not in skipped:
+                    result.unattempted[symbol] = "not attempted after a required kernel build failure"
+                    continue
                 why = skipped.get(symbol) or skipped.get("all") or "the device build produced no kernel for this symbol"
                 result.refused[symbol] = why
                 if storable and symbol in skipped and "timed out" not in why:
