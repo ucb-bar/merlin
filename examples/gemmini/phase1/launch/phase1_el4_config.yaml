@@ -21,12 +21,12 @@ variables:
   INSTRUCTION_SELECTION: ${TASK_ROOT}/private/instruction-selection
   ORACLE_TIMING: ${TASK_ROOT}/.tmp/phase1-prep-20261017-v4/oracle-timing.json
   RUN: ${REPO}/out/runs/gemmini/phase1/${RUN_ID}
-  SOURCE_REVISION: 24ae4b4b6f09a27e4ae8649e52c81af927eded7c
+  SOURCE_REVISION: c2ab00f8965fc5fc613bc25e5d74c1815b205041
   SUPERVISOR_FINAL_RESERVE_S: '4500'
   SUPERVISOR_PSS_MAX_BYTES: '206158430208'
   SUPERVISOR_HOST_HEADROOM_BYTES: '25769803776'
   REFERENCE_CPUS: ''
-  READINESS: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-overnight-20261019-v1/post-freeze-qualification-v1
+  READINESS: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-overnight-20261019-v1/post-freeze-qualification-v2
 identity:
   target: gemmini
   level: EL4
@@ -75,12 +75,12 @@ full_model_verification:
   rtol: 1.0e-05
   split: visible
   input: visible/v00
-  readiness_receipt: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-overnight-20261019-v1/post-freeze-qualification-v1/readiness.json
-  readiness_sha256: f75deb7085caa9290f6dcb18f919b7409e326a8866d628924a6f4a78bdafcfcf
+  readiness_receipt: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-overnight-20261019-v1/post-freeze-qualification-v2/readiness.json
+  readiness_sha256: aff3a200829cb8f658a1ae785574179e9bcb69c6fe6fe81d871c14995abecd90
   output_scope: all_declared
   all_output_plan:
-    path: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-overnight-20261019-v1/post-freeze-qualification-v1/all-output-plan.json
-    sha256: 8d5c2250591db36693b7d154a8c36c3d7df605215f88b42726cca7528bfa14f5
+    path: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-overnight-20261019-v1/post-freeze-qualification-v2/all-output-plan.json
+    sha256: 146d9588e9ee911d0cfe1d1c2557a07409f01360b432ea38108fab62f0c0f8bb
 origin:
   initial_submission: empty; fresh start from scratch
   seed_submission: null
