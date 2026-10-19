@@ -17,6 +17,7 @@ from merlin.compile.scheduling.library_sources import LIBRARY_MODULES
 
 _NAMESPACE_MODULES = (
     "merlin",
+    "merlin.common",
     "merlin.compile",
     "merlin.compile.scheduling",
     "merlin.llvmlower",
@@ -31,12 +32,33 @@ _NAMESPACE_MODULES = (
 )
 
 
-def shared_inventory(namespaces, public):
+def shared_inventory(namespaces, public, *, library_modules=LIBRARY_MODULES):
     """Stable exact membership; package initializers never become public APIs."""
-    namespaces = tuple(dict.fromkeys((*namespaces, *(name + ".__init__" for name in _NAMESPACE_MODULES))))
+    namespaces = tuple(dict.fromkeys((*namespaces, *(name + ".__init__" for name in _NAMESPACE_MODULES
+                                                   if name in library_modules))))
     public = tuple(dict.fromkeys((*public, *PUBLIC_MODULES)))
-    implementation = tuple(name for name in LIBRARY_MODULES if name not in _NAMESPACE_MODULES and name not in public)
+    implementation = tuple(name for name in library_modules if name not in _NAMESPACE_MODULES and name not in public)
     return namespaces, public, implementation
+
+
+def _release_modules(document):
+    """Preserve the two explicit V6 source rosters; never add live grants to an archive."""
+    original = tuple(module for module in LIBRARY_MODULES if module not in
+                     ("merlin.common", "merlin.common.dense_float_ir"))
+    members = document.get("members", []) if isinstance(document, dict) else []
+    if isinstance(members, list):
+        actual = [row.get("module") for row in members if isinstance(row, dict)]
+        for modules in (LIBRARY_MODULES, original):
+            if len(actual) == len(members) and actual == [*modules, None, None]:
+                return modules
+    raise ValueError("shared compiler source inventory changed")
+
+
+def profile_inventory(profile, namespaces, public):
+    """Derive unchanged grants from this frozen release, not the current checkout."""
+    return shared_inventory(
+        namespaces, public, library_modules=_release_modules(profile.get("shared_scheduling_library"))
+    )
 
 
 def _digest(document):
@@ -61,10 +83,9 @@ def reviewed_shared_manifest(root):
     if document.get("public_modules") != list(PUBLIC_MODULES):
         raise ValueError("shared compiler public API inventory changed")
     members = document.get("members", [])
-    if not isinstance(members, list) or [row.get("module") for row in members] != [*LIBRARY_MODULES, None, None]:
-        raise ValueError("shared compiler source inventory changed")
+    library_modules = _release_modules(document)
     expected_paths = [
-        name.replace(".", "/") + ("/__init__.py" if name in _NAMESPACE_MODULES else ".py") for name in LIBRARY_MODULES
+        name.replace(".", "/") + ("/__init__.py" if name in _NAMESPACE_MODULES else ".py") for name in library_modules
     ] + ["LICENSE", "NOTICE"]
     for row, relative in zip(members, expected_paths, strict=True):
         if row.get("path") != relative or hashlib.sha256(_read(root, relative)).hexdigest() != row.get("sha256"):
@@ -95,8 +116,7 @@ def validate_profile_release(profile):
         raise ValueError("shared compiler profile API changed")
     rows = {row["module"].removesuffix(".__init__"): row for row in profile["common_sources"]}
     members = document.get("members", [])
-    if not isinstance(members, list) or [row.get("module") for row in members] != [*LIBRARY_MODULES, None, None]:
-        raise ValueError("shared compiler profile export membership changed")
+    _release_modules(document)
     replacements = document.get("replaced_namespace_source_sha256")
     if type(replacements) is not dict or set(replacements) != set(_NAMESPACES):
         raise ValueError("shared compiler profile namespace inventory changed")

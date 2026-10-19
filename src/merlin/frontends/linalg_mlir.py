@@ -107,8 +107,7 @@ def parse_mlir_text(text: str, ctx=None):
     context in :mod:`merlin.frontends.quant_ext`); it defaults to the permissive
     :func:`make_context`.
     """
-    from xdsl.parser import Parser
-
+    from ..common.dense_float_ir import DenseFloatParser
     from ..common.ir_lock import IR_LOCK
 
     text = strip_paren_results(text)
@@ -120,7 +119,7 @@ def parse_mlir_text(text: str, ctx=None):
     # of seconds against builds and simulations that take minutes, so the cost of serializing here is
     # small and the alternative is a build whose success depends on scheduling.
     with IR_LOCK:
-        return Parser(ctx or make_context(), text).parse_module()
+        return DenseFloatParser(ctx or make_context(), text).parse_module()
 
 
 def parse_mlir_file(path: str | Path, ctx=None):

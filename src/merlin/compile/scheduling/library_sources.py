@@ -13,6 +13,8 @@ from pathlib import Path
 
 LIBRARY_MODULES = (
     'merlin',
+    'merlin.common',
+    'merlin.common.dense_float_ir',
     'merlin.compile',
     'merlin.compile.scheduling',
     'merlin.compile.scheduling.block_schedule',
