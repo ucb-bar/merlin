@@ -19,6 +19,7 @@ import MerlinVerify.Check.ScalarConstantHoist
 import MerlinVerify.Check.BitcastCancel
 import MerlinVerify.Check.TensorEmptyDead
 import MerlinVerify.Check.ParallelFusion
+import MerlinVerify.Check.IdentityReturnComparison
 
 namespace MerlinVerify.Check.SharedNormalize
 
@@ -72,11 +73,13 @@ def normalizer : TypedNormalizer :=
         (RegionExact.normalizer scalarOrdering scalarOrdering_exact))))
 
 def check (ib : Nat) (src tgt : Module) (fn : String) (argTys resTys : List VTy) : Bool :=
-  TypedNormalizeC1.check normalizer ib src tgt fn argTys resTys
+  TypedNormalizeC1.checkWith normalizer
+    (TypedComparison.script.orElse IdentityReturn.comparison) ib src tgt fn argTys resTys
 
 theorem check_sound {ib : Nat} {src tgt : Module} {fn : String} {argTys resTys : List VTy}
     (h : check ib src tgt fn argTys resTys = true) :
     FuncRefinesC opSem (fun ctx => ctx.indexBits = ib) (fun args => HasTys ib args argTys)
-      tgt fn src fn := TypedNormalizeC1.check_sound normalizer h
+      tgt fn src fn := TypedNormalizeC1.checkWith_sound normalizer
+        (TypedComparison.script.orElse IdentityReturn.comparison) h
 
 end MerlinVerify.Check.SharedNormalize
