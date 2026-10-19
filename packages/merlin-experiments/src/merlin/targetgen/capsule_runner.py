@@ -2808,6 +2808,8 @@ def _grade_public_program_capsule_inline(
             "command_buffer": _digest((paths.generated / "command_buffer.json").resolve(strict=True)),
             "lowered_mlir": _digest((paths.generated / context["fourth_output_name"]).resolve(strict=True)),
         }
+        if "__model_source_transport" in capsule:
+            result["candidate_source_transport"] = capsule["__model_source_transport"]
         from merlin.perf.work_volume import command_buffer_evidence
 
         result["work_volume"], result["command_buffer_artifact"] = command_buffer_evidence(
@@ -6356,7 +6358,45 @@ def _pin_model_capsule(capsule: dict, destination: Path) -> dict:
             directory.chmod(0o700)
     if not (destination / "capsule.yaml").is_file():
         raise ValueError(f"model capsule snapshot has no capsule.yaml: {raw}")
-    return {**capsule, "__dir__": str(destination)}
+    # CAS placement may share source inodes. These two files are subsequently
+    # consumed by the compiler/context and reopened as original source roles;
+    # give them private inodes BEFORE either consumer receives this capsule.
+    import shutil
+    import tempfile
+
+    from .native_model_execution import _digest
+
+    interface = Path(capsule.get("interface_mlir", "capsule.interface.mlir"))
+    if interface.is_absolute() or ".." in interface.parts:
+        raise ValueError("model interface must be local to its capsule")
+    transport = {}
+    inputs = [("capsule_declaration", Path("capsule.yaml"))]
+    if "interface_mlir" in capsule or (source / interface).exists():
+        inputs.append(("source_interface", interface))
+    for role, relative in inputs:
+        original, consumed = source / relative, destination / relative
+        if (original.is_symlink() or original.resolve(strict=True) != original
+                or not original.is_file() or original.stat().st_size > 64 << 20):
+            raise ValueError("model source input is indirect, missing or exceeds byte limit")
+        before = original.stat()
+        pin = _digest(original)
+        with tempfile.NamedTemporaryFile(dir=consumed.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+        try:
+            shutil.copyfile(consumed, temporary)
+            temporary.chmod(0o400)
+            copied = _digest(temporary)
+            after = original.stat()
+            stable = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
+            if (copied["sha256"] != pin["sha256"] or _digest(original) != pin
+                    or any(getattr(before, key) != getattr(after, key) for key in stable)):
+                raise ValueError("model source changed during private input transport")
+            temporary.replace(consumed)
+        finally:
+            temporary.unlink(missing_ok=True)
+        transport[role] = {"original": pin, "consumed": _digest(consumed)}
+    return {**capsule, "__dir__": str(destination), "__model_source_transport": {
+        "schema": "merlin.model_source_input_transport.v1", "inputs": transport}}
 
 
 def _capsule_dependency_waves(capsules: list[dict]) -> list[list[dict]]:
