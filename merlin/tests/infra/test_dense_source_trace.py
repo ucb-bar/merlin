@@ -13,14 +13,17 @@ NAMES = {
     "preload": ("weight", "k", "n", "acc", "continue", "rows", "cols", "depth"),
     "compute": ("lhs", "m", "k", "rows", "depth"),
     "store": ("row", "col", "rows", "cols", "acc"),
+    "store_i8": ("row", "col", "rows", "cols", "acc"),
 }
 KINDS = tuple(NAMES)
 
 
-def check_trace(records, problem, storage, arguments):
+def check_trace(records, problem, storage, arguments, *, output_dtype="i32"):
     """Reconstruct every actual effect, including cross-view physical aliases."""
     memory, outputs, computations, calls = {}, set(), set(), []
     pending, loads, stores = None, 0, 0
+    assert output_dtype in ("i32", "i8"), "unsupported final output type"
+    output_bytes = 4 if output_dtype == "i32" else 1
     mt, kt, nt = problem.tiles
 
     def extent(start, size, tile):
@@ -91,6 +94,7 @@ def check_trace(records, problem, storage, arguments):
                 memory[address] = (*owner, a["k"] * problem.tile_k + a["depth"], byte)
             pending = None
         else:
+            assert name == ("store" if output_bytes == 4 else "store_i8"), "wrong actual readout mode"
             assert a["rows"] == extent(a["row"], problem.m, problem.tile_m), "wrong store tail"
             assert a["cols"] == extent(a["col"], problem.n, problem.tile_n), "wrong store tail"
             for i, j, byte, address in addresses(storage.accumulator, a["acc"], a["rows"], a["cols"], 4):
@@ -98,10 +102,14 @@ def check_trace(records, problem, storage, arguments):
                 assert memory.get(address) == ("acc", owner[0], owner[1], problem.k, byte), (
                     "incomplete/overwritten output"
                 )
-                assert owner not in outputs, "duplicate output"
-                outputs.add(owner)
-            stores += a["rows"] * a["cols"] * 4
-    assert pending is None and len(outputs) == problem.m * problem.n * 4, "incomplete output coverage"
+            for i in range(a["rows"]):
+                for j in range(a["cols"]):
+                    for byte in range(output_bytes):
+                        owner = (a["row"] + i, a["col"] + j, byte)
+                        assert owner not in outputs, "duplicate output"
+                        outputs.add(owner)
+            stores += a["rows"] * a["cols"] * output_bytes
+    assert pending is None and len(outputs) == problem.m * problem.n * output_bytes, "incomplete output coverage"
     assert len(computations) == mt * nt * kt, "incomplete reduction coverage"
     kernel = Kernel("observed_dense", arguments, tuple(calls))
     return dict(
