@@ -12,6 +12,7 @@ code_refs:
   - src/merlin/llvmlower/source_pointwise.py
   - src/merlin/llvmlower/source_rows.py
   - src/merlin/llvmlower/dealloc_lifetime.py
+  - src/merlin/llvmlower/borrowed_buffer_calls.py
   - src/merlin/compile/scheduling/schedule_pipeline.py
   - src/merlin/compile/scheduling/temporary_storage.py
   - src/merlin/compile/scheduling/copy_elimination.py
@@ -83,6 +84,23 @@ The backend remains responsible for instruction bodies, descriptor handling,
 strides, final pointer alignment, ownership, complete writes and completion.
 Qualification identities record independent evidence; a hash does not establish
 that evidence.
+
+For a loop that replaces a carried buffer, a source-family selection can also
+supply `borrowed_effects: BorrowedBufferEffects`. The original provider contract
+must separately establish `no_retained_aliases`, `no_releases` and
+`complete_before_return`, with a `qualification_identity` for that ABI
+implementation. All three premises must be explicit. Instruction completion
+flags, read/write annotations and numerical test success do not establish ABI
+effects. The default is `None`, which grants no borrowed-call lifetime facts.
+
+Merlin freezes these premises with the original selected source and contracts.
+At the checked post-deallocation boundary it requires exact ranked declarations
+and checks each surviving fresh-result wrapper's positional forwarding body.
+Grants attach to actual calls in checked root functions; a shadowed symbol does
+not inherit them. The initial route supports one fresh result and no private
+workspace. Unknown calls, ABI changes and unsupported scopes refuse.
+This selection requires the checked deallocation stage; it does not disable
+verification or grant runtime support.
 
 ## Build the model
 
@@ -203,13 +221,20 @@ not be treated as successful optimization.
 The host lifetime verifier distinguishes initial, previous, fresh and final
 buffer generations in a closed serial `scf.for`. The loop must have a positive
 static trip count, direct fresh allocations, false entry and true backedge
-ownership flags, synchronous intrinsic uses, guarded previous-owner releases
+ownership flags, synchronous intrinsic or explicitly contracted borrowed uses,
+guarded previous-owner releases
 after their last uses, and one final owner release after observation. Separate
 carried buffers remain distinct even when they share an ownership flag;
 unchanged carried buffers preserve their original aliases. Numeric element
 types and explicit view provenance prevent buffer handles from escaping through
 other memory. The ordinary post-deallocation IR is checked before lowering
 continues, and the lowering recipe records the checker source.
+With selected borrowed effects, `borrowed-buffer-calls.json` retains the
+original roster, `borrowed-buffer-lifetime.mlir` retains the complete actual
+module at that boundary, and `borrowed-buffer-lifetime.json` records conditional
+checking. The parent authenticates the native output and pins these files
+through provider construction and final dependency checks. These observations
+establish neither implementation effects nor hardware qualification themselves.
 
 Zero-trip or dynamic loops, ownership returned to another scope, unknown calls,
 and runtime pointer-deduplication helpers remain unsupported by this proof.

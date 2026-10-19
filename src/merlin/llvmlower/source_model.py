@@ -46,7 +46,7 @@ def _values(value):
 
 class _SourceModelBuild:
     def __init__(self, families, device, device_admission):
-        from . import fresh_tensor_writer
+        from . import borrowed_buffer_calls, fresh_tensor_writer
 
         self.families = families
         self.device, self.device_admission = device, device_admission
@@ -57,7 +57,9 @@ class _SourceModelBuild:
             for name in ("adapter", "encoding", "limits", "budgets")
             if (value := getattr(f.selection, name, None)) is not None
         )
-        owners = (Path(__file__), Path(fresh_tensor_writer.__file__), *(f.source_file for f in families))
+        owners = (Path(__file__), Path(fresh_tensor_writer.__file__), Path(borrowed_buffer_calls.__file__),
+                  *(Path(__file__).with_name(name) for name in ("dealloc_lifetime.py", "pipeline.py", "lower.py")),
+                  *(f.source_file for f in families))
         self.pins = tuple((path.resolve(), sha256_file(path)) for path in dict.fromkeys(owners))
 
     def revalidate(self):
@@ -84,6 +86,23 @@ class _SourceModelBuild:
             from .device_build import require_device_elf_admission
 
             require_device_elf_admission(self.device, self.device_admission)
+
+    def observe_native(self, paths, remember):
+        """Retain actual checked lifetime files through provider/link validation."""
+        self.revalidate()
+        known = dict(self.pins)
+        for path in paths:
+            if path.is_symlink() or not path.is_file():
+                raise ValueError("native lifetime observation requires unchanged regular files")
+            digest = sha256_file(path)
+            if not remember and known.get(path) != digest:
+                raise ValueError("native lifetime observation is not an original retained checkpoint")
+            if path in known and known[path] != digest:
+                raise ValueError("native lifetime observation changed; replan")
+            known[path] = digest
+        if remember:
+            self.pins = tuple(known.items())
+        self.revalidate()
 
     def prepare(self, source_path, output):
         from xdsl.dialects import builtin, func, tensor
@@ -126,6 +145,7 @@ class _SourceModelBuild:
                 result_index = len(region.inputs)
                 writer = FreshTensorWriterContract(
                     symbol, result_index, (result_index,), borrowed, family.selection.allocation_alignment,
+                    borrowed_effects=family.selection.borrowed_effects,
                 )
                 binding = family.binding(region.compilation, writer)
                 group.append(binding)
@@ -196,6 +216,7 @@ class _SourceModelBuild:
         })
         self.revalidate()
         paths = (Path(source_path), selected_path, receipt)
+        self.selected_source = selected_path.resolve()
         self.pins = (*self.pins, *((path.resolve(), sha256_file(path)) for path in paths))
         self.revalidate()
         for family, group in zip(self.families, self.bindings, strict=True):
@@ -311,6 +332,27 @@ def source_provider_builder(builder):
         if not any(owner.bindings):
             return None
     return builder
+
+
+def source_borrowed_calls(builder, prepared_path):
+    """Original selected writer effects; no grants from a declaration or target."""
+    owner = getattr(builder, "__self__", None)
+    if type(owner) is not _SourceModelBuild or getattr(builder, "__func__", None) is not _SourceModelBuild.build:
+        return None
+    owner.revalidate()
+    if owner.bindings is None:
+        raise ValueError("shared source effects used before ordinary preparation")
+    writers = tuple(binding.writer for group in owner.bindings for binding in group)
+    if not any(writer.borrowed_effects is not None for writer in writers):
+        return None
+    if Path(prepared_path).resolve() != owner.selected_source:
+        raise ValueError("borrowed source effects require the original selected prepared source")
+    from .borrowed_buffer_calls import from_writers
+
+    pins = (*owner.pins, *((path.resolve(), sha256_file(path)) for family in owner.families for path in (
+        family.selection.selected_contracts.facts_path, family.selection.selected_contracts.software_path,
+    )))
+    return from_writers(owner.selected_source, writers, pins, owner.revalidate, owner.observe_native)
 
 
 def source_device_work(builder):

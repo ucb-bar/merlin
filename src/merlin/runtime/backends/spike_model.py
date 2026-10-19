@@ -646,8 +646,7 @@ def build(
     from ..host_math import build_host_math, host_math_recipe
 
     host_math_recipe(host_math_policy)  # Refuse unsupported policy before build mutation.
-    from ...llvmlower.source_model import bind_source_lowerings
-
+    from ...llvmlower.source_model import bind_source_lowerings, source_borrowed_calls
     prepared_model_transform, host_provider_builder = bind_source_lowerings(
         shared_source_lowerings, shared_row_lowering, prepared_model_transform, host_provider_builder,
         device=device, device_admission=device_admission_selection,
@@ -788,6 +787,7 @@ def build(
             masked_contraction_effects=masked_contraction_effects,
             source_observation_effects=source_observation_effects,
             source_scalar_carrier=source_scalar_carrier,
+            borrowed_buffer_calls=source_borrowed_calls(host_provider_builder, prepared_path),
             **({"graph_optimizations": graph_optimizations} if graph_optimizations is not None else {}),
             **({"op_profile": True} if op_profile else {}),
         )  # produce only the .ll

@@ -8,6 +8,113 @@ reuse for allocation cycles. The native runner and public checker share it.
 """
 
 RUNNER_PRELUDE = r'''
+_OBL_CALL_ROSTER = ()
+_OBL_CALL_OUTPUT = None
+
+
+def _obl_callee(op):
+    if op.name != 'func.call' or op.results:
+        return None
+    try:
+        return ir.FlatSymbolRefAttr(op.attributes['callee']).value
+    except (ValueError, KeyError):
+        return None
+
+
+def _obl_borrowed_calls(module):
+    if not _OBL_CALL_ROSTER:
+        return set(), set(), []
+    functions, supported, violations = {}, set(), []
+    for op in module.body.operations:
+        if op.operation.name != 'func.func':
+            continue
+        symbol = ir.StringAttr(op.attributes['sym_name']).value
+        if symbol in functions:
+            return set(), set(), ['borrowed ABI: duplicate current function symbol ' + symbol]
+        functions[symbol] = op.operation
+    for record in _OBL_CALL_ROSTER:
+        try:
+            effects = record['effects']
+            if (not effects['qualification_identity'] or any(effects.get(k) is not True for k in (
+                    'no_retained_aliases', 'no_releases', 'complete_before_return'))):
+                raise ValueError('original complete borrowed effects are absent')
+            wrapper_name, borrowed = record['wrapper_symbol'], record['borrowed_symbol']
+            types = tuple(ir.Type.parse(t, context=module.context) for t in record['argument_types'])
+            if any(not _obl_numeric_type(ir.MemRefType(t).element_type) for t in types):
+                raise ValueError('borrowed ABI requires ranked numeric memory arguments')
+            result_index = record['result_argument']
+            declaration = functions.get(borrowed)
+            if declaration is None:
+                raise ValueError('original borrowed declaration is missing: ' + borrowed)
+            typ = ir.FunctionType(ir.TypeAttr(declaration.attributes['function_type']).value)
+            if (tuple(typ.inputs) != types or typ.results or any(r.blocks for r in declaration.regions)
+                    or 'llvm.emit_c_interface' not in declaration.attributes):
+                raise ValueError('current borrowed declaration/ABI differs: ' + borrowed)
+            wrapper = functions.get(wrapper_name)
+            if wrapper is not None:
+                typ = ir.FunctionType(ir.TypeAttr(wrapper.attributes['function_type']).value)
+                if (tuple(typ.inputs) != (*types, types[result_index]) or typ.results
+                        or len(wrapper.regions) != 1 or len(wrapper.regions[0].blocks) != 1):
+                    raise ValueError('current fresh-writer wrapper ABI differs: ' + wrapper_name)
+                block = wrapper.regions[0].blocks[0]
+                body = tuple(op.operation for op in block.operations)
+                expected = tuple(block.arguments[len(types) if i == result_index else i]
+                                 for i in range(len(types)))
+                if (len(body) != 2 or _obl_callee(body[0]) != borrowed
+                        or tuple(body[0].operands) != expected
+                        or body[1].name != 'func.return' or body[1].operands):
+                    raise ValueError('current fresh-writer forwarding body differs: ' + wrapper_name)
+                supported.add(wrapper_name)
+            supported.add(borrowed)
+        except (ValueError, KeyError, IndexError) as error:
+            violations.append('borrowed ABI: ' + str(error))
+    if violations:
+        return set(), set(), violations
+    # Bind grants to actual operations in checked root functions. A matching
+    # flat spelling in a nested symbol table grants no permission.
+    uses = set()
+    scopes = ('scf.for', 'scf.if', 'linalg.generic', 'linalg.fill')
+    for function in functions.values():
+        for op in _obl_ops(function):
+            name = _obl_callee(op)
+            if name not in supported:
+                continue
+            parent = op.block.owner.operation
+            while parent.name in scopes:
+                parent = parent.block.owner.operation
+            if parent != function:
+                continue
+            typ = ir.FunctionType(ir.TypeAttr(functions[name].attributes['function_type']).value)
+            if tuple(v.type for v in op.operands) == tuple(typ.inputs):
+                uses.add(op.operation)
+    return uses, supported, []
+
+
+def _obl_known_use(op, calls):
+    return op.name in _OBL_VIEWS | _OBL_USES or op.operation in calls
+
+
+def _obl_write_observation(module, violations):
+    if _OBL_CALL_OUTPUT is None:
+        return
+    import hashlib, json
+    text = module.operation.get_asm(print_generic_op_form=True)
+    with open(_OBL_CALL_OUTPUT['checkpoint'], 'w') as stream:
+        stream.write(text)
+    _, accepted, problems = _obl_borrowed_calls(module)
+    report = dict(schema='merlin.borrowed_buffer_lifetime.v1',
+                  status='checked' if not violations and not problems else 'refused',
+                  original=_OBL_CALL_OUTPUT['original'], violations=list(violations),
+                  checkpoint_sha256=hashlib.sha256(text.encode()).hexdigest(),
+                  accepted_symbols=sorted(accepted),
+                  scope='conditional original borrowed effects and current typed forwarding bodies')
+    with open(_OBL_CALL_OUTPUT['report'], 'w') as stream:
+        json.dump(report, stream, sort_keys=True)
+    with open(_OBL_CALL_OUTPUT['report'], 'rb') as stream:
+        digest = hashlib.sha256(stream.read()).hexdigest()
+    print('OK borrowed_buffer_lifetime', digest, report['checkpoint_sha256'])
+
+
 _OBL_VIEWS = frozenset((
     'memref.cast', 'memref.subview', 'memref.reinterpret_cast',
     'memref.collapse_shape', 'memref.expand_shape', 'memref.extract_strided_metadata',
@@ -104,7 +211,7 @@ def _obl_release_value(op, aliases):
             and aliases.get(op.operands[0], False))
 
 
-def _obl_prove(loop):
+def _obl_prove(loop, calls):
     loop = loop.operation
     body = loop.regions[0].blocks[0]
     operations = tuple(op.operation for op in body.operations)
@@ -171,7 +278,7 @@ def _obl_prove(loop):
                 raise ValueError('previous generation escapes the loop')
             if use.operation == release.operation:
                 continue
-            if use.name not in _OBL_VIEWS | _OBL_USES:
+            if not _obl_known_use(use, calls):
                 raise ValueError('unknown or escaping previous-buffer use: ' + use.name)
             ancestor = use
             while ancestor.block != body:
@@ -185,7 +292,7 @@ def _obl_prove(loop):
             if use.operation == terminal.operation:
                 if tuple(j for j, v in enumerate(yielded) if v in aliases) != (i,):
                     raise ValueError('fresh owner yielded in more than one position')
-            elif use.name not in _OBL_VIEWS | _OBL_USES:
+            elif not _obl_known_use(use, calls):
                 raise ValueError('unknown, releasing or escaping fresh-buffer use: ' + use.name)
     if releases != set(guards):
         raise ValueError('ownership branch releases an unrelated or duplicate buffer')
@@ -197,6 +304,8 @@ def _obl_prove(loop):
         if name in _OBL_SCALARS | _OBL_VIEWS | _OBL_USES:
             if name in _OBL_SCALARS and any(_memref_typed(v) for v in (*op.operands, *op.results)):
                 raise ValueError('memref escapes through a scalar operation')
+            continue
+        if op.operation in calls:
             continue
         if name in ('memref.alloc', 'scf.yield'):
             continue
@@ -227,7 +336,7 @@ def _obl_prove(loop):
             if use.operation == frees[0].operation:
                 continue
             _obl_memory_types(use)
-            if use.name not in _OBL_VIEWS | _OBL_USES:
+            if not _obl_known_use(use, calls):
                 raise ValueError('unknown or escaping final-buffer use: ' + use.name)
             for inner in _obl_ops(use):
                 _obl_memory_types(inner)
@@ -239,13 +348,13 @@ def _obl_prove(loop):
     return fresh
 
 
-def _owned_buffer_loops(order):
+def _owned_buffer_loops(order, calls):
     proved, violations = {}, []
     for loop in order:
         if loop.operation.name != 'scf.for':
             continue
         try:
-            fact = _obl_prove(loop)
+            fact = _obl_prove(loop, calls)
             if fact:
                 proved[loop.operation] = fact
         except ValueError as error:
@@ -309,7 +418,9 @@ def _dealloc_placement_violations(module):
             for b in region.blocks:
                 visit(b, op)
 
-    proved, loop_violations = _owned_buffer_loops(order)
+    calls, _, call_violations = _obl_borrowed_calls(module)
+    proved, loop_violations = _owned_buffer_loops(order, calls)
+    loop_violations.extend(call_violations)
     fresh_sites = {alloc.operation for fact in proved.values() for alloc in fact.values()}
     alias, roots, root_values, uses = {}, {}, {}, {}
     for op in order:

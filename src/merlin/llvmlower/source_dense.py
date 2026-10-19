@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .borrowed_buffer_calls import BorrowedBufferEffects, validate_effects
+
 if TYPE_CHECKING:
     from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage
     from merlin.compile.scheduling.dense_source import DenseSourceResult
@@ -51,6 +53,7 @@ class SourceDenseLowering:
     max_islands: int = 64
     verification_timeout_ms: int = 2000
     max_repairs: int = 1
+    borrowed_effects: BorrowedBufferEffects | None = None
 
     def __post_init__(self):
         from merlin.compile.scheduling.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
@@ -58,6 +61,7 @@ class SourceDenseLowering:
         from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
         from merlin.transforms.dense_planning import DenseResources
 
+        validate_effects(self.borrowed_effects)
         alignment = self.allocation_alignment
         if (
             type(self.selected_contracts) is not SelectedSchedulingContracts

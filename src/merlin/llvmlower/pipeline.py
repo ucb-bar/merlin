@@ -813,6 +813,7 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
                      late if late_head else (), post_openmp if post_head else (),
                      pre_generalize)
     bad, n_alloc, n_sunk = _dealloc_placement_violations(module)
+    _obl_write_observation(module, bad)
     print('OK dealloc_placement', n_alloc, 'allocations', n_sunk, 'sunk', len(bad), 'violations')
     if bad:
         raise RuntimeError('post-deallocation lifetime verification failed '
@@ -1007,7 +1008,7 @@ def apply_passes(mlir_text: str, pipeline: str, timeout: int = 600) -> str:
     return dst.read_text(encoding="utf-8")
 
 
-def dealloc_placement_violations(mlir_text: str, timeout: int = 600) -> list[str]:
+def dealloc_placement_violations(mlir_text: str, timeout: int = 600, *, borrowed_calls=()) -> list[str]:
     """Violations of the placement rule in a post-deallocation memref module.
 
     Empty list == every allocation whose free was sunk into the alloc's own block is used only
@@ -1018,13 +1019,17 @@ def dealloc_placement_violations(mlir_text: str, timeout: int = 600) -> list[str
     """
     import json
 
+    from .borrowed_buffer_calls import bind_native
+
+    prelude = bind_native(DEALLOC_CHECK_PRELUDE, borrowed_calls)
+
     work = Path(tempfile.mkdtemp(prefix="merlin_dealloc_check_"))
     src = work / "module.mlir"
     src.write_text(mlir_text, encoding="utf-8")
     script = work / "check.py"
     script.write_text(
         "import json, sys\n"
-        "from torch_mlir import ir\n" + DEALLOC_CHECK_PRELUDE + "ctx = ir.Context()\n"
+        "from torch_mlir import ir\n" + prelude + "ctx = ir.Context()\n"
         "with open(sys.argv[1]) as f:\n"
         "    module = ir.Module.parse(f.read(), ctx)\n"
         "module.operation.verify()\n"
@@ -1405,6 +1410,7 @@ def lower_to_llvm_ir(
     source_observation_effects=None,
     source_scalar_carrier=None,
     retain_llvm_dialect: bool = False,
+    borrowed_buffer_calls=None,
 ) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
@@ -1435,6 +1441,12 @@ def lower_to_llvm_ir(
     # A refused invocation must not leave the prior build's successful receipt
     # looking current, including failures before feature/pipeline resolution.
     (work / _RECIPE_FILENAME).unlink(missing_ok=True)
+    if borrowed_buffer_calls is not None:
+        from .borrowed_buffer_calls import BorrowedBufferCalls
+
+        if type(borrowed_buffer_calls) is not BorrowedBufferCalls:
+            raise ValueError("explicit original borrowed-buffer selection required")
+        borrowed_buffer_calls.revalidate(mlir_text)
     from .source_observation_stage import CHECKPOINT as _SOURCE_CHECKPOINT
     from .source_observation_stage import REPORT as _SOURCE_REPORT
 
@@ -1540,6 +1552,7 @@ def lower_to_llvm_ir(
                 "parallel_chunks": parallel_chunks is not None, "hoist_static_allocs=False": not hoist_static_allocs,
                 "source_scalar_carrier": source_scalar_carrier is not None,
                 "retain_llvm_dialect": retain_llvm_dialect,
+                "borrowed_buffer_calls": borrowed_buffer_calls is not None,
             },
         )
     from .llvm_loop_outline import (
@@ -1686,6 +1699,14 @@ def lower_to_llvm_ir(
             max_response_bytes=source_scalar_carrier.max_response_bytes,
             timeout=timeout,
         )
+    if borrowed_buffer_calls is not None:
+        from .borrowed_buffer_calls import prepare_native
+
+        if 'optimize-allocation-liveness' not in pipeline:
+            raise ValueError("borrowed lifetime selection requires the checked post-deallocation boundary")
+        runner_src, roster = prepare_native(borrowed_buffer_calls, mlir_text, runner_src, work)
+        recipe_sources.update(borrowed_buffer_calls=roster,
+                              borrowed_call_contracts=Path(__file__).with_name("borrowed_buffer_calls.py"))
     runner.write_text(runner_src, encoding="utf-8")
     # argv[4] gates the self-copy erase, so the frozen hand_v0 control keeps its byte-identical
     # lowering unless the feature is explicitly enabled.
@@ -1875,6 +1896,16 @@ def lower_to_llvm_ir(
     if audit is not None:
         audit.collect_views()
     _harvest_native(traced, stage_out)
+    if borrowed_buffer_calls is not None:
+        from .borrowed_buffer_calls import verify_native
+
+        checked = verify_native(borrowed_buffer_calls, mlir_text, work, native_stdout=proc.stdout, native_runner=runner)
+        from .borrowed_buffer_calls import CHECKPOINT, REPORT
+
+        recipe.bind_source("borrowed_lifetime_checkpoint", work / CHECKPOINT)
+        recipe.bind_source("borrowed_lifetime_report", work / REPORT)
+        if lowering_selection is not None:
+            lowering_selection["borrowed_buffer_lifetime"] = checked
     if scalar_stage is not None:
         import hashlib as _hashlib
         import json as _json
