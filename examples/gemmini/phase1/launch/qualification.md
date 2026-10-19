@@ -24,7 +24,7 @@ The source path must be the original run environment's workspace submission.
 Retain the stale original native OOT as `original_native_oot`; do not call the
 operator checkpoint a native author checkpoint or invent author convergence.
 This mode requires `original_empty_origin: true` and the original source revision.
-Root's actual termination and owned-cleanup evidence remains independently pinned.
+The original author's termination and owned-cleanup evidence remain independently pinned.
 
 Bind the corrected source and operator runtime hashes in a separate reviewed
 config, preserving the selected corpus, private host-selection inputs, numerical

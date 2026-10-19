@@ -801,10 +801,38 @@ def test_selected_cli_config_load_preserves_exact_workspace_trust(tmp_path):
     CA._verify_frozen_config(home, info["config_sha256"])
 
 
+def _native_candidate_probe_binary():
+    """Select the actual CLI file; a launcher alias may be hidden by the outer mounts."""
+    selected = shutil.which(os.environ.get("CODEX_BIN", "codex"))
+    if not shutil.which("bwrap") or selected is None:
+        pytest.skip("live Codex/bwrap isolation probe requires both installed executables")
+    return str(Path(selected).resolve(strict=True))
+
+
+def _native_candidate_probe_runtime(root, binary, auth):
+    from types import SimpleNamespace
+
+    from merlin_experiments.phase1.providers.codex_runtime import SelectedCodexRuntime, selection_record
+
+    selection = selection_record(
+        SimpleNamespace(
+            codex_binary=binary,
+            codex_auth_source=str(auth),
+            codex_home_root=str(root / "client-homes"),
+            codex_canary=False,
+            driver="codex",
+            sandbox="bwrap",
+            allow_unsandboxed=False,
+        )
+    )
+    paths = (selection["binary"], selection["helper_path"])
+    runtime = SelectedCodexRuntime(tuple(sorted(selection.items())), paths, (), (), "")
+    return runtime, Path(selection["home_root"]) / "isolated-codex"
+
+
 def test_native_candidate_profile_blocks_synthetic_auth_inside_outer_bwrap(tmp_path, monkeypatch):
     """No model request: test the real installed CLI against a dummy auth mount."""
-    if not shutil.which("bwrap") or not shutil.which("codex"):
-        pytest.skip("live Codex/bwrap isolation probe requires both installed executables")
+    codex_bin = _native_candidate_probe_binary()
     from merlin.targetgen.sandbox import bwrap as BW
 
     fake_real = tmp_path / "operator-codex"
@@ -813,8 +841,10 @@ def test_native_candidate_profile_blocks_synthetic_auth_inside_outer_bwrap(tmp_p
     monkeypatch.setattr(CA, "real_codex_home", lambda: fake_real)
     ws = tmp_path / "workspace"
     ws.mkdir()
-    home = tmp_path / "isolated-codex"
-    info = CA.prepare_codex_home(home, model="gpt-5.6-sol", effort="high", workspace=ws)
+    runtime, home = _native_candidate_probe_runtime(tmp_path, codex_bin, fake_real / "auth.json")
+    info = CA.prepare_codex_home(
+        home, model="gpt-5.6-sol", effort="high", workspace=ws, candidate_read_paths=runtime.read_paths
+    )
     assert tomllib.loads((home / "config.toml").read_text())["default_permissions"] == "merlin-candidate"
     CA._verify_frozen_config(home, info["config_sha256"])
 
@@ -826,40 +856,43 @@ def test_native_candidate_profile_blocks_synthetic_auth_inside_outer_bwrap(tmp_p
     CA._preflight_candidate_sandbox(
         ws,
         home,
-        str(shutil.which("codex")),
+        codex_bin,
         {},
         sandbox_command,
         rounds,
         0,
+        runtime_binds=runtime.runtime_binds,
     )
-    # If the exact deny is removed, the broader /scratch read grant exposes the
-    # dummy file. The mandatory preflight must refuse this weaker profile.
+    # Explicitly exposing the dummy home must fail, independently of TMPDIR's
+    # location. No broad real-home or operator-credential grant is needed.
     config = home / "config.toml"
-    config.write_text(config.read_text().replace(f'{json.dumps(str(home))} = "deny"\n', ""))
+    config.write_text(
+        config.read_text().replace(f'{json.dumps(str(home))} = "deny"\n', f'{json.dumps(str(home))} = "read"\n')
+    )
     with pytest.raises(RuntimeError, match="preflight failed"):
         CA._preflight_candidate_sandbox(
             ws,
             home,
-            str(shutil.which("codex")),
+            codex_bin,
             {},
             sandbox_command,
             rounds,
             1,
+            runtime_binds=runtime.runtime_binds,
         )
 
 
 def test_native_candidate_cannot_reach_parent_open_auth_or_relogin(tmp_path, monkeypatch):
     """Probe /proc FDs, process memory, ptrace, and a nested CLI with dummy auth."""
-    if not shutil.which("bwrap") or not shutil.which("codex"):
-        pytest.skip("live Codex/bwrap isolation probe requires both installed executables")
+    codex_bin = _native_candidate_probe_binary()
     from merlin.targetgen.sandbox import bwrap as BW
 
     fake_real = tmp_path / "operator-codex"
     fake_real.mkdir()
     (fake_real / "auth.json").write_text(json.dumps({"OPENAI_API_KEY": "sk-synthetic-test-only"}))
     host_login = subprocess.run(
-        ["codex", "login", "status"],
-        env={**os.environ, "CODEX_HOME": str(fake_real)},
+        [codex_bin, "login", "status"],
+        env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(tmp_path), "CODEX_HOME": str(fake_real)},
         capture_output=True,
         timeout=10,
     )
@@ -867,8 +900,10 @@ def test_native_candidate_cannot_reach_parent_open_auth_or_relogin(tmp_path, mon
     monkeypatch.setattr(CA, "real_codex_home", lambda: fake_real)
     ws = tmp_path / "workspace"
     ws.mkdir()
-    home = tmp_path / "isolated-codex"
-    CA.prepare_codex_home(home, model="gpt-5.6-sol", effort="high", workspace=ws)
+    runtime, home = _native_candidate_probe_runtime(tmp_path, codex_bin, fake_real / "auth.json")
+    CA.prepare_codex_home(
+        home, model="gpt-5.6-sol", effort="high", workspace=ws, candidate_read_paths=runtime.read_paths
+    )
 
     candidate = """
 import ctypes, json, os, subprocess
@@ -891,7 +926,7 @@ memory_readable = libc.process_vm_readv(pid, ctypes.byref(local_vec), 1, ctypes.
 ptrace_attached = libc.ptrace(0x4206, pid, None, None) == 0  # PTRACE_SEIZE, no stop
 if ptrace_attached:
     libc.ptrace(17, pid, None, None)  # PTRACE_DETACH
-login = subprocess.run(["codex", "login", "status"], capture_output=True, timeout=10)
+login = subprocess.run([os.environ["CODEX_PROBE_BINARY"], "login", "status"], capture_output=True, timeout=10)
 result = {"parent_visible": os.path.exists(f"/proc/{pid}"),
           "fd_readable": fd_readable, "memory_readable": memory_readable,
           "ptrace_attached": ptrace_attached, "nested_codex_logged_in": login.returncode == 0}
@@ -905,7 +940,7 @@ env = os.environ.copy()
 env.update(HOLDER_PID=str(os.getpid()), HOLDER_FD=str(fd),
            HOLDER_ADDR=str(ctypes.addressof(buffer)), HOLDER_SIZE=str(len(buffer)))
 command = (["/usr/bin/python3", "-c", sys.argv[2]] if sys.argv[3] == "direct" else
-           ["codex", "sandbox", "-P", "merlin-candidate", "-C", sys.argv[1],
+           [os.environ["CODEX_PROBE_BINARY"], "sandbox", "-P", "merlin-candidate", "-C", sys.argv[1],
             "--", "/usr/bin/python3", "-c", sys.argv[2]])
 child = subprocess.run(command, env=env, capture_output=True, text=True, timeout=20)
 sys.stdout.write(child.stdout)
@@ -913,7 +948,8 @@ sys.stderr.write(child.stderr)
 sys.exit(child.returncode)
 """
     prefix = BW.base_argv(ws, {}, repo=tmp_path, include_claude_home=False, inherit_environment=False)
-    prefix += CA.codex_runtime_binds(home)
+    prefix += runtime.runtime_binds(home)
+    prefix += ["--setenv", "CODEX_PROBE_BINARY", codex_bin]
     direct = subprocess.run(
         prefix + ["/usr/bin/python3", "-c", holder, str(ws), candidate, "direct"],
         cwd=ws,

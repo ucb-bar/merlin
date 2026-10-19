@@ -28,16 +28,20 @@ def _new_rows():
     ]
 
 
-def test_existing_declaration_objects_are_preserved():
+def test_existing_declaration_semantics_are_preserved():
     historical = repo_root() / "examples/gemmini/platform/host-capabilities.yaml"
     assert sha256(historical.read_bytes()).hexdigest() == (
         "c504847fde594949d64d174c82ecaef1422fc74c8a409488a89e304b2de626a8"
     )
     old = [row for row in _document()["operations"] if row not in _new_rows()]
     assert len(old) == 91
-    assert sha256(json.dumps(old, sort_keys=True, separators=(",", ":")).encode()).hexdigest() == (
-        "a4fa6973c6be50ada44eccec4ac43d769096c9a3fd50ea11bcbbfbffa9ddb967"
-    )
+    original = yaml.safe_load(historical.read_bytes())["operations"]
+    # Public successor metadata omits session-specific reviewer descriptions.
+    # Every source, numerical, linkage and admission field must remain exact.
+    for previous, current in zip(deepcopy(original), deepcopy(old), strict=True):
+        for row in (previous, current):
+            row.get("numerical_contract", {}).get("evidence", {}).pop("reviewed_by", None)
+        assert current == previous
 
 
 def test_default_descriptor_resolves_successor_without_changing_payload(tmp_path, monkeypatch):

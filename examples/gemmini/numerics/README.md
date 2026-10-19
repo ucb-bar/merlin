@@ -109,13 +109,13 @@ preprocessing in its pinned environment:
 ## Reproducibility
 
 **Sealed inputs are never committed.** They are produced by the same rules into the private root
-(`/work/merlin/private/<target>/numerics/stored/<model>/sealed.{npz,json}`, in the same format) and
+(`/private/<target>/numerics/stored/<model>/sealed.{npz,json}`, in the same format) and
 appear here only as sha256 in `MANIFEST.json`, so the set can be verified when it is released. The
 model-ready arrays of every input stay private as well (`derived/<model>/<split>/<id>/`). Regenerate with:
 
 ```sh
 python -m merlin.model_check inputs-prepare --model resnet50 --data <dir with the pinned sources> \
-    --private /work/merlin/private/gemmini/numerics --python <resnet50 venv>/bin/python --out report.json
+    --private /private/gemmini/numerics --python <resnet50 venv>/bin/python --out report.json
 ```
 (`tiny_llama` also takes `--set tokenizer_path=<checkpoint snapshot> --set rows_python=<venv with pyarrow>`;
 `smolvla` takes `--set policy_path=... --set vlm_path=...` and a LeRobot 0.6 environment.) The public

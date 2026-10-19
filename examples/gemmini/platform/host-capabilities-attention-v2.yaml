@@ -2,14 +2,14 @@
 schema: merlin.host_capabilities.v1
 status: reviewed
 review:
-  decision: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md"
-  scope: the 150 host placements proposed by the RTL facts in W1_SEAL_REVIEW.md
-  addendum: "operator approval 2026-10-03 in this session: exact rank-3/4 i8/f32/i64 dequantize_per_tensor host contract only; finite native checks do not prove device execution"
-  primitive_addendum: "operator approval 2026-10-06 in this session: only the eight exact typed scalar-host primitive declarations below; finite saved probes do not certify all inputs, emitted compiler, accelerator, or RTL execution"
+  decision: "Recorded operator review of the typed host declarations below."
+  scope: "Host source admission; independent numerical and execution checks remain required."
+  addendum: "exact rank-3/4 i8/f32/i64 dequantize_per_tensor host contract only; finite native checks do not prove device execution"
+  primitive_addendum: "only the eight exact typed scalar-host primitive declarations below; finite saved probes do not certify all inputs, emitted compiler, accelerator, or RTL execution"
   selected_source_addendum: "Selected-lowering build/link/host-placement review only: exact typed source bodies, selected index bounds and linked-image checks remain mandatory; the historical source-only review leaves numerical contracts unreviewed unless separately reviewed below. Source-call-to-symbol routing is not proved."
-  library_numerical_policy_addendum: "Codex authored-policy review 2026-10-11: only the selected sin/cos/tanh-GELU approximation assumptions below; no operator corpus-sealing approval or blanket execution/accuracy qualification."
+  library_numerical_policy_addendum: "only the selected sin/cos/tanh-GELU approximation assumptions below; no operator corpus-sealing approval or blanket execution/accuracy qualification."
   successor: attention-host-placement-v2-20261019
-  attention_source_addendum: "Coordinating session decision 2026-10-19: add only the nine exact typed attention-preparation declarations below for a prospective fresh host view. Closed parsed source bodies, selected index bounds, source-to-linked-image correspondence and ordinary numerical execution remain mandatory. Existing declarations, sealed views, numerical policies and accelerator obligations are unchanged; this review is not an all-input numerical or hardware qualification."
+  attention_source_addendum: "add only the nine exact typed attention-preparation declarations below for a prospective fresh host view. Closed parsed source bodies, selected index bounds, source-to-linked-image correspondence and ordinary numerical execution remain mandatory. Existing declarations, sealed views, numerical policies and accelerator obligations are unchanged; this review is not an all-input numerical or hardware qualification."
 compiler:
   package_sha256: 89e00e39c929ec0310b0a60d1860d2d8fa833b7ef1a57af5775092c24d5ebb9a
   dtype_strategy: int8_w8a8
@@ -27,7 +27,7 @@ operations:
       status: reviewed
       semantics: {arithmetic: ieee754_binary32, rounding: round_to_nearest_even, subnormals: preserved,
                   per_element: correctly_rounded_single_operation, nan: riscv_canonical_nan}
-      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed f32 signatures and arith.mulf/addf/divf/maximumf bodies in the captured graph; emitted scalar-package execution remains an obligation"}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "observed f32 signatures and arith.mulf/addf/divf/maximumf bodies in the captured graph; emitted scalar-package execution remains an obligation"}
   - id: host_f32_elementwise_transcendental
     ops: [aten.rsqrt.default, aten.pow.Tensor_Scalar, aten.sigmoid.default]
     families: [elementwise_map]
@@ -37,7 +37,7 @@ operations:
       status: reviewed
       semantics: {arithmetic: ieee754_binary32, rounding: round_to_nearest_even, subnormals: preserved,
                   transcendental_accuracy: selected_lowering_approximation_not_correctly_rounded}
-      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed f32 signatures and math.rsqrt/math.powf/math.exp+arith.negf bodies in the captured graph; emitted scalar-package execution remains an obligation"}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "observed f32 signatures and math.rsqrt/math.powf/math.exp+arith.negf bodies in the captured graph; emitted scalar-package execution remains an obligation"}
   - id: host_f32_exp_rank1
     status: reviewed
     ops: [aten.exp.default]
@@ -48,7 +48,7 @@ operations:
       status: reviewed
       semantics: {arithmetic: ieee754_binary32, transcendental_accuracy: selected_lowering_approximation_not_correctly_rounded, all_input_accuracy: unqualified, device_execution: unqualified}
       evidence:
-        reviewed_by: "codex-operator for copparihollmann, 2026-10-10"
+        reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
         review_sha256: 8feeba17bc5692a634b7009b86f669b0223d508e904b7b8780e993fd197bb28d
         basis: "Exact rank-1 f32 math.exp source without fast-math; stock libm lowering matched independently rounded math.exp on 1038 finite native probes (maximum 0 ulp). The same IR built an object with the selected scalar RV64 flags. RV64 execution, nonfinite behavior and all-input accuracy remain unqualified; candidate lowering and numerical execution are separate mandatory gates."
   - id: host_f32_reduction
@@ -60,7 +60,7 @@ operations:
       status: reviewed
       semantics: {arithmetic: ieee754_binary32, rounding: round_to_nearest_even, subnormals: preserved,
                   accumulator: f32, reduction_order: selected_lowering, epsilon: graph_parameter}
-      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed f32 linalg.reduce/linalg.generic signatures (addf, divf, maximumf, subf, exp, rsqrt bodies); emitted scalar-package execution remains an obligation"}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "observed f32 linalg.reduce/linalg.generic signatures (addf, divf, maximumf, subf, exp, rsqrt bodies); emitted scalar-package execution remains an obligation"}
   - id: host_review_prepared_f32_maximum
     status: reviewed
     ops: [aten.amax.default]
@@ -70,7 +70,7 @@ operations:
     numerical_contract:
       status: unreviewed
       semantics: {scope: selected_prepared_source_build_link_host_placement_only, original_to_prepared_equivalence: not_proved, PyTorch_numerical_equivalence: not_proved, all_input_native_equivalence: not_proved, existing_numerical_tolerance: unchanged}
-      evidence: {exact_prepared_source_body: required, selected_index_observation: required, all_source_roots_reproved: required, candidate_capture_elf_join: required, reviewed_by: "operator approval 2026-10-07 of review SHA256 2d185844f009a1552a1313d035cba628bfee0cec7878cc6d943ad406a66ec3ca"}
+      evidence: {exact_prepared_source_body: required, selected_index_observation: required, all_source_roots_reproved: required, candidate_capture_elf_join: required, reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."}
   - id: host_i32_to_f32_cast
     ops: [aten._to_copy.default]
     families: [elementwise_map]
@@ -79,7 +79,7 @@ operations:
     numerical_contract:
       status: reviewed
       semantics: {conversion: signed_int32_to_ieee754_binary32, rounding: round_to_nearest_even, exact_range: "|x| <= 2^24"}
-      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed i32->f32 signature with arith.sitofp body in the captured graph; emitted scalar-package execution remains an obligation"}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "observed i32->f32 signature with arith.sitofp body in the captured graph; emitted scalar-package execution remains an obligation"}
   - id: host_quantize_per_tensor_int8
     ops: [quantized_decomposed.quantize_per_tensor.default]
     families: [elementwise_map]
@@ -90,7 +90,7 @@ operations:
       semantics: {formula: "q = clamp(roundeven(x * (1/scale)) + zero_point, quant_min, quant_max)",
                   rounding: round_half_to_even, scale_granularity: tensor, zero_point: 0,
                   quant_min: -128, quant_max: 127, scale_dtype: f32}
-      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "selected int8 recipe (activation: tensor, static, symmetric, quant_min -128, quant_max 127); host quantize lowering roundeven(x*(1/s)) in llvmlower/passes_quant_int.py; observed f32,f32,i64->i8 signature"}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "selected int8 recipe (activation: tensor, static, symmetric, quant_min -128, quant_max 127); host quantize lowering roundeven(x*(1/s)) in llvmlower/passes_quant_int.py; observed f32,f32,i64->i8 signature"}
   - id: host_dequantize_per_tensor
     status: reviewed
     ops: [quantized_decomposed.dequantize_per_tensor.default]
@@ -101,7 +101,7 @@ operations:
       status: reviewed
       semantics: {formula: "f32(i8 - zero_point) * scale", scale_granularity: tensor, zero_point: 0}
       evidence:
-        reviewed_by: "operator approval 2026-10-03 in this session"
+        reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
         basis: "Fresh preselected sealed int8 captures of residual_cnn and causal_decoder have this exact typed signature. Independent rank-3 and rank-4 PyTorch probe captures and native-host qualifications matched their exact input goldens at zero tolerance. The selected standard-dialect lowering uses signed integer-to-f32 conversion, subtraction of the zero point, then multiplication by the f32 scale. These finite checks support this narrowly reviewed declaration, not RVV/device execution or every scale, shape and value."
   - id: host_embedding_gather
     ops: [aten.embedding.default]
@@ -111,7 +111,7 @@ operations:
     numerical_contract:
       status: reviewed
       semantics: {arithmetic: exact_copy, index_dtype: i64, index_domain: "0 <= index < num_embeddings (out-of-range not admitted)"}
-      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed i64,f32->f32 signature with linalg.index/arith.index_cast/tensor.extract body (pure gather) in the captured graph"}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "observed i64,f32->f32 signature with linalg.index/arith.index_cast/tensor.extract body (pure gather) in the captured graph"}
   - id: host_f32_value_only_max_pool
     status: reviewed
     ops: [aten.max_pool2d_with_indices.default]
@@ -130,7 +130,7 @@ operations:
         equal_values: first_maximum
         nan: last_encountered_nan
       evidence:
-        reviewed_by: "operator approval 2026-10-06 in this session"
+        reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
         basis: "Independent selected scalar-package Spike geometry and tie checks matched exactly (six and three output values). Admission additionally requires the fail-closed source check of static geometry, floor mode, unused indices, negative-infinity padding and exact ordered reduction. Finite checks do not prove all values, Rocket RTL execution or whole-model correctness; no BF16 or accelerator support is admitted."
   - id: host_f32_batched_contraction
     ops: [aten.bmm.default]
@@ -141,7 +141,7 @@ operations:
       status: reviewed
       semantics: {arithmetic: ieee754_binary32, product_rounding: round_to_nearest_even, accumulator: f32,
                   reduction_order: selected_lowering, subnormals: preserved, fma_contraction: selected_lowering}
-      evidence: {reviewed_by: "operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md", basis: "observed f32 bmm signature (accum f32, rank 3); RTL facts admit only int8 operands on the accelerator datapath; emitted scalar-package execution remains an obligation"}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "observed f32 bmm signature (accum f32, rank 3); RTL facts admit only int8 operands on the accelerator datapath; emitted scalar-package execution remains an obligation"}
   # The ordered operands below include the output/init operand of each lowering.
   # Only these exact typed/rank selectors were approved on 2026-10-06.
   - id: host_f32_neg_rank4
@@ -153,7 +153,7 @@ operations:
     numerical_contract:
       status: reviewed
       semantics: {operation: ieee754_binary32_sign_bit_negation, flags: none, native_nonfinite: unqualified}
-      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and independent finite selected-scalar-package probe; nonfinite native execution and all-input correctness remain unqualified."}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "Exact typed source/IR screen and independent finite selected-scalar-package probe; nonfinite native execution and all-input correctness remain unqualified."}
   - id: host_f32_ge_scalar_rank4
     status: reviewed
     ops: [aten.ge.Scalar]
@@ -163,7 +163,7 @@ operations:
     numerical_contract:
       status: reviewed
       semantics: {comparison: ordered_greater_or_equal, signed_zero: compares_equal, nan: false}
-      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and independent finite selected-scalar-package probe; all-input and RTL execution remain unqualified."}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "Exact typed source/IR screen and independent finite selected-scalar-package probe; all-input and RTL execution remain unqualified."}
   - id: host_review_f32_oeq_scalar_rank4
     status: reviewed
     ops: [aten.eq.Scalar]
@@ -173,7 +173,7 @@ operations:
     numerical_contract:
       status: reviewed
       semantics: {scope: selected_prepared_source_build_link_host_placement_only, comparison: ordered_equal, nan_result: false, signed_zero_equal: true, original_to_prepared_equivalence: not_proved, full_model_numerical_equivalence: not_run, existing_numerical_tolerance: unchanged}
-      evidence: {reviewed_by: "operator approval 2026-10-07 of exact Eq-only review SHA-256 885f5fe380c57db016e4a727ed7b1230dfd5ff95a0006c573d741b8085f1dcb7", neutral_source_sha256: 85bdb646a68d5987bc9c1d9b77a11b10aacd8de2d77e709b3181c5b543778a92, neutral_native_receipt_sha256: ae6108825481d49c479f4cdb218336bfd21a08f1b0b7a662542ef39e6b9b22aa, selected_index_and_elf_join: required, all_input_numerical_equivalence: not_claimed}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", neutral_source_sha256: 85bdb646a68d5987bc9c1d9b77a11b10aacd8de2d77e709b3181c5b543778a92, neutral_native_receipt_sha256: ae6108825481d49c479f4cdb218336bfd21a08f1b0b7a662542ef39e6b9b22aa, selected_index_and_elf_join: required, all_input_numerical_equivalence: not_claimed}
   - id: host_f32_where_rank4
     status: reviewed
     ops: [aten.where.self]
@@ -183,7 +183,7 @@ operations:
     numerical_contract:
       status: reviewed
       semantics: {selection: predicate_selected_operand, arithmetic_on_selected_value: none}
-      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and independent finite selected-scalar-package probe; all-input and RTL execution remain unqualified."}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "Exact typed source/IR screen and independent finite selected-scalar-package probe; all-input and RTL execution remain unqualified."}
   - id: host_i64_scalar_eq_le_rank1
     status: reviewed
     ops: [aten.eq.Scalar, aten.le.Scalar, aten.eq.Tensor]
@@ -193,7 +193,7 @@ operations:
     numerical_contract:
       status: reviewed
       semantics: {comparison: exact_signed_integer_equality_or_order, integer_dtype: i64}
-      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and saved rank-1 signed-endpoint Spike probe; 18 output words matched, not an all-input or RTL proof."}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "Exact typed source/IR screen and saved rank-1 signed-endpoint Spike probe; 18 output words matched, not an all-input or RTL proof."}
   - id: host_i64_tensor_le_rank1_rank4
     status: reviewed
     ops: [aten.le.Tensor]
@@ -203,7 +203,7 @@ operations:
     numerical_contract:
       status: reviewed
       semantics: {comparison: exact_signed_integer_order, integer_dtype: i64}
-      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and independent rank-1/rank-4 finite probes; no all-input or RTL proof."}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "Exact typed source/IR screen and independent rank-1/rank-4 finite probes; no all-input or RTL proof."}
   - id: host_i64_add_rank1
     status: reviewed
     ops: [aten.add.Tensor]
@@ -213,7 +213,7 @@ operations:
     numerical_contract:
       status: reviewed
       semantics: {arithmetic: twos_complement_modulo_2_64, signed_no_wrap: false}
-      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and independent selected-scalar-package probe checking every result bit; no all-input or RTL proof."}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "Exact typed source/IR screen and independent selected-scalar-package probe checking every result bit; no all-input or RTL proof."}
   - id: host_i1_to_f32_rank1_rank4
     status: reviewed
     ops: [aten._to_copy.default]
@@ -223,7 +223,7 @@ operations:
     numerical_contract:
       status: reviewed
       semantics: {conversion: unsigned_boolean_to_ieee754_binary32, exact_values: [0, 1], signed_i1_conversion: excluded}
-      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen; saved signed-endpoint compare capture lowers Boolean conversion as uitofp i1 and matches all 18 output words on Spike, not RTL or all-input proof."}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "Exact typed source/IR screen; saved signed-endpoint compare capture lowers Boolean conversion as uitofp i1 and matches all 18 output words on Spike, not RTL or all-input proof."}
   - id: host_i64_to_f32_rank1_rank3
     status: reviewed
     ops: [aten._to_copy.default]
@@ -233,7 +233,7 @@ operations:
     numerical_contract:
       status: reviewed
       semantics: {conversion: signed_int64_to_ieee754_binary32, rounding: round_to_nearest_even, execution: selected_startup_and_isa_path}
-      evidence: {reviewed_by: "operator approval 2026-10-06", basis: "Exact typed source/IR screen and independent finite selected-scalar-package probe; all-input and RTL execution remain unqualified."}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", basis: "Exact typed source/IR screen and independent finite selected-scalar-package probe; all-input and RTL execution remain unqualified."}
   # Reviewed selected-source placement; all new numerical contracts remain
   # unreviewed. Parsed body, index bounds and exact linked build are mandatory.
   - id: host_review_f32_add_r1
@@ -460,7 +460,7 @@ operations:
         selected_libm_archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
         scalar_abi: sinf_f32_to_f32
       evidence:
-        reviewed_by: Codex authored-policy review, 2026-10-11
+        reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
         review_sha256: 992a78ce61f312aeeba662cc66112d9bfabf8cdf849c68549a60ed0305a85384
         review_source: examples/gemmini/verification/host_library_numerical_policy_review.yaml
         basis: Selected immutable library approximation is the declared policy; strict
@@ -500,7 +500,7 @@ operations:
         selected_libm_archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
         scalar_abi: cosf_f32_to_f32
       evidence:
-        reviewed_by: Codex authored-policy review, 2026-10-11
+        reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
         review_sha256: 992a78ce61f312aeeba662cc66112d9bfabf8cdf849c68549a60ed0305a85384
         review_source: examples/gemmini/verification/host_library_numerical_policy_review.yaml
         basis: Selected immutable library approximation is the declared policy; strict
@@ -609,7 +609,7 @@ operations:
         ordered_operations: exact_selected_parsed_source_body
         selected_libm_archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934
       evidence:
-        reviewed_by: Codex authored-policy review, 2026-10-11
+        reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
         review_sha256: 992a78ce61f312aeeba662cc66112d9bfabf8cdf849c68549a60ed0305a85384
         review_source: examples/gemmini/verification/host_library_numerical_policy_review.yaml
         basis: Selected immutable library approximation is the declared policy; strict
@@ -748,7 +748,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
   - id: host_review_mixed_f64_f64_arith_addf
     status: "reviewed"
     ops: ["aten.add.Tensor"]
@@ -757,7 +757,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_f64_arith_addf"}
   - id: host_review_mixed_bf16_bf16_arith_addf
     status: "reviewed"
@@ -767,7 +767,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_bf16_arith_addf"}
   - id: host_review_mixed_f64_arith_constant_arith_divf
     status: "reviewed"
@@ -777,7 +777,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_arith_constant_arith_divf"}
   - id: host_review_mixed_f64_arith_constant_math_powf
     status: "reviewed"
@@ -787,7 +787,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_arith_constant_math_powf"}
     linkage_contract: {schema: merlin.host_linkage_contract.v1, supplier: selected_math_archive, archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934, symbols: [pow]}
   - id: host_review_mixed_bf16_f32_arith_extf_arith_addf
@@ -798,7 +798,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_f32_arith_extf_arith_addf"}
   - id: host_review_mixed_f64_f32_arith_extf_arith_mulf
     status: "reviewed"
@@ -808,7 +808,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_f32_arith_extf_arith_mulf"}
   - id: host_review_mixed_bf16_f32_arith_extf_arith_mulf
     status: "reviewed"
@@ -818,7 +818,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_f32_arith_extf_arith_mulf"}
   - id: host_review_mixed_bf16_arith_extf
     status: "reviewed"
@@ -828,7 +828,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_arith_extf"}
   - id: host_review_mixed_f64_f64_arith_mulf
     status: "reviewed"
@@ -838,7 +838,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_f64_arith_mulf"}
   - id: host_review_mixed_bf16_bf16_arith_mulf
     status: "reviewed"
@@ -848,7 +848,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "bf16_bf16_arith_mulf"}
   - id: host_review_mixed_i1_f64_f64_arith_select
     status: "reviewed"
@@ -858,7 +858,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "i1_f64_f64_arith_select"}
   - id: host_review_mixed_i64_arith_sitofp
     status: "reviewed"
@@ -868,7 +868,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "i64_arith_sitofp"}
   - id: host_review_mixed_f64_f64_arith_subf
     status: "reviewed"
@@ -878,7 +878,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_f64_arith_subf"}
   - id: host_review_mixed_f64_arith_truncf
     status: "reviewed"
@@ -888,7 +888,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_arith_truncf"}
   - id: host_review_mixed_f32_arith_truncf
     status: "reviewed"
@@ -898,7 +898,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f32_arith_truncf"}
   - id: host_review_mixed_f64_math_cos
     status: "reviewed"
@@ -908,7 +908,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_math_cos"}
     linkage_contract: {schema: merlin.host_linkage_contract.v1, supplier: selected_math_archive, archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934, symbols: [cos]}
   - id: host_review_mixed_f64_math_sin
@@ -919,7 +919,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
     source_body: {"schema": "merlin.static_mixed_pointwise_body.v1", "operation": "f64_math_sin"}
     linkage_contract: {schema: merlin.host_linkage_contract.v1, supplier: selected_math_archive, archive_sha256: 38965f2df6e94d3389596fcf414caf37040294fc0f43f3afa3e4369acb837934, symbols: [sin]}
   - id: host_review_mixed_quant_ext_quantize_per_tensor_i8
@@ -930,7 +930,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
   - id: host_review_mixed_quant_ext_dequantize_per_tensor_bf16
     status: "reviewed"
     ops: ["quantized_decomposed.dequantize_per_tensor.default"]
@@ -939,7 +939,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
 
   - id: host_review_bf16_named_matmul
     status: reviewed
@@ -949,7 +949,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
   - id: host_review_f32_convolution_named_matmul
     status: reviewed
     placement: host
@@ -958,7 +958,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
   - id: host_review_f32_projected_bias_add
     status: reviewed
     placement: host
@@ -968,7 +968,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
   - id: host_review_bf16_scalar_fill
     status: reviewed
     placement: host
@@ -977,7 +977,7 @@ operations:
     numerical_contract:
       status: "unreviewed"
       semantics: {"scope": "selected_typed_source_build_link_host_routing_only", "prepared_dtype": "preserved", "framework_equivalence": "not_proved", "all_input_accuracy": "unqualified", "existing_numerical_tolerance": "unchanged"}
-      evidence: {"reviewed_by": "coordinating session decision 2026-10-12: preserve mixed precision and extend Merlin owned host support", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
+      evidence: {"reviewed_by": "Recorded operator review; the stated evidence and qualification scope remain mandatory.", "native_execution": "separate mandatory qualification", "source_and_linked_image": "mandatory"}
   - id: host_review_literal_upper_compare_select_f32
     status: reviewed
     ops: [aten.clamp.default]
@@ -1014,7 +1014,7 @@ operations:
     numerical_contract:
       status: unreviewed
       semantics: {scope: source_build_link_host_placement_only, lower_bound: exact_f32_minimum_normal, existing_numerical_tolerance: unchanged, all_input_accuracy: unqualified}
-      evidence: {reviewed_by: coordinating_session_2026_10_19, source_body_and_linked_image: required}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", source_body_and_linked_image: required}
   - id: host_review_attention_int8_grid_clamp
     status: reviewed
     ops: [aten.clamp.default]
@@ -1025,7 +1025,7 @@ operations:
     numerical_contract:
       status: unreviewed
       semantics: {scope: source_build_link_host_placement_only, bounds: exact_source_symmetric_int8_grid, existing_numerical_tolerance: unchanged, all_input_accuracy: unqualified}
-      evidence: {reviewed_by: coordinating_session_2026_10_19, source_body_and_linked_image: required}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", source_body_and_linked_image: required}
   - id: host_review_attention_rounded_int8_cast
     status: reviewed
     ops: [aten._to_copy.default]
@@ -1036,7 +1036,7 @@ operations:
     numerical_contract:
       status: unreviewed
       semantics: {scope: source_build_link_host_placement_only, conversion: signed_i8_after_exact_roundeven_and_grid_clamp_chain, existing_numerical_tolerance: unchanged, all_input_accuracy: unqualified}
-      evidence: {reviewed_by: coordinating_session_2026_10_19, complete_source_chain_and_linked_image: required}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", complete_source_chain_and_linked_image: required}
   - id: host_review_attention_i32_to_f32
     status: reviewed
     ops: [aten._to_copy.default]
@@ -1047,7 +1047,7 @@ operations:
     numerical_contract:
       status: unreviewed
       semantics: {scope: source_build_link_host_placement_only, conversion: signed_i32_to_f32, existing_numerical_tolerance: unchanged, all_input_accuracy: unqualified}
-      evidence: {reviewed_by: coordinating_session_2026_10_19, source_body_and_linked_image: required}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", source_body_and_linked_image: required}
   - id: host_review_attention_projected_sub_f32
     status: reviewed
     ops: [aten.sub.Tensor]
@@ -1058,7 +1058,7 @@ operations:
     numerical_contract:
       status: unreviewed
       semantics: {scope: source_build_link_host_placement_only, operand_maps: source_proved_static_projection, existing_numerical_tolerance: unchanged, all_input_accuracy: unqualified}
-      evidence: {reviewed_by: coordinating_session_2026_10_19, source_body_and_linked_image: required}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", source_body_and_linked_image: required}
   - id: host_review_attention_exp_f32
     status: reviewed
     ops: [aten.exp.default]
@@ -1069,7 +1069,7 @@ operations:
     numerical_contract:
       status: unreviewed
       semantics: {scope: source_build_link_host_placement_only, fastmath: none, existing_numerical_tolerance: unchanged, selected_math_implementation: separate_obligation, all_input_accuracy: unqualified}
-      evidence: {reviewed_by: coordinating_session_2026_10_19, source_body_and_linked_image: required}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", source_body_and_linked_image: required}
   - id: host_review_attention_roundeven_f32
     status: reviewed
     ops: [aten.round.default]
@@ -1080,7 +1080,7 @@ operations:
     numerical_contract:
       status: unreviewed
       semantics: {scope: source_build_link_host_placement_only, operation: round_half_to_even, existing_numerical_tolerance: unchanged, all_input_accuracy: unqualified}
-      evidence: {reviewed_by: coordinating_session_2026_10_19, source_body_and_linked_image: required}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", source_body_and_linked_image: required}
   - id: host_review_attention_sum_f32
     status: reviewed
     ops: [aten.sum.dim_IntList]
@@ -1090,7 +1090,7 @@ operations:
     numerical_contract:
       status: unreviewed
       semantics: {scope: source_build_link_host_placement_only, accumulation: source_proved_f32_sum, reduction_order: selected_lowering, existing_numerical_tolerance: unchanged, all_input_accuracy: unqualified}
-      evidence: {reviewed_by: coordinating_session_2026_10_19, exact_f32_reduction_witness: required, source_body_and_linked_image: required}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", exact_f32_reduction_witness: required, source_body_and_linked_image: required}
   - id: host_review_i1_logical_not
     status: reviewed
     ops: [aten.logical_not.default]
@@ -1101,7 +1101,7 @@ operations:
     numerical_contract:
       status: unreviewed
       semantics: {scope: source_build_link_host_placement_only, operation: exact_i1_logical_negation, existing_numerical_tolerance: unchanged, all_input_execution: unqualified}
-      evidence: {reviewed_by: coordinating_session_2026_10_19, exact_typed_boolean_source_and_linked_image: required}
+      evidence: {reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory.", exact_typed_boolean_source_and_linked_image: required}
 
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.

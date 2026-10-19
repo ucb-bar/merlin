@@ -56,8 +56,12 @@ Build, run and judge complete quantized models for a device submission.
 - Nothing here names a model or a target: models, programs, chains and judged outputs come from
   `examples/<target>/numerics/models.yaml`, the target from the selected target contract.
 - This package never writes or edits device-kernel code and never modifies a submission.
-- Sealed inputs and every frozen bundle live under `/work/merlin/private/`; nothing here copies them into
+- Sealed inputs and every frozen bundle live under `/private/`; nothing here copies them into
   a path an agent sandbox can be granted.
+- Whole-model build reuse reopens observed recipe/ELF identities and keys the original capture,
+  compiler/runtime source and direct selected tools. Recurrent input templates retain the build's
+  static weights; the caller's sealed-capture lifetime remains required. Runtime input rebinding
+  records each actual driver compilation and final link without supplying device implementations.
 
 `program_admission.service` requires an original prerequisite admission, current
 selected RTL/software contracts, a declared loaded section and independently
@@ -66,11 +70,6 @@ exports protected findings or approves segmentation without rewriting the image
 and launcher. Host build/cache/relink honors explicit admission; a saved verdict
 never replaces current evaluation. Source pins establish attribution, not
 runtime/physical/numerical/timing qualification or complete program coverage.
-
-- Whole-model build reuse reopens observed recipe/ELF identities and keys the original capture,
-  compiler/runtime source and direct selected tools. Recurrent input templates retain the build's
-  static weights; the caller's sealed-capture lifetime remains required. Runtime input rebinding
-  records each actual driver compilation and final link without supplying device implementations.
 
 - Shape variants retain typed column readout: resize an explicit finite gain vector
   with the new output width by cycling its original column sequence. Keep the

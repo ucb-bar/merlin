@@ -1,14 +1,14 @@
 # Fresh EL4 closure launch, 18 CPUs
 
-`phase1_el4_config.yaml` is the canonical operator configuration.
-`el4-closure-18cpu-v25.yaml` is a compatibility symlink to that same file.
-It selects an empty-origin author, sealed v26 accelerator inputs, the native
-controller with explicit capsule scope, an independent external full-model
-validation budget, and the resource limits below. These files
-are operator inputs, excluded from author sandbox grants. The earlier
-`el4-phase1-closure-20261018-reboot-v1` campaign retains its original config and
-verification receipts in its own preparation directory; edits here do not
-change its historical score or certify its incomplete model checks.
+`phase1_el4_config.yaml` is a portable deployment template for an empty-origin
+EL4 author with 18 assigned CPUs, independently issued accelerator inputs and
+separate capsule and external-model budgets. Before launch, copy it to an
+operator preparation directory together with its `errata/` directory, preserving
+the relative layout. Select `variables.SOURCE_REVISION` and replace
+every zero SHA256 with the actual input or runtime digest. Provision the sealed
+corpus, private model metadata and positive readiness evidence separately.
+An unchanged template deliberately cannot pass launch admission. Operator
+configuration and private inputs remain outside author sandbox grants.
 
 `launch_phase1.py` reads the config directly and verifies the source revision,
 config pins, public runtime, private host-selection metadata and CPU allocation
@@ -41,8 +41,8 @@ that only separately pinned operator metadata has changed since that revision.
 The retained compiler and readiness reports are private diagnostics and are
 not available to the fresh author.
 
-The sealed v26 release contains 161 capsules: 153 public and eight private.
-Execution and expected-refusal obligations come from the sealed descriptors.
+The selected sealed corpus defines public and hidden capsule membership.
+Execution and expected-refusal obligations come from those descriptors.
 Capsules are restricted to accelerator
 work. Full-model captures select ResNet50, TinyLlama's 22 layers with batch one,
 32 prefill tokens and 32 decode steps, and SmolVLA's complete batch-one chain
@@ -121,8 +121,7 @@ supervisor records the actual deadlines, process identities and memory samples
 in the preparation directory. A new campaign always needs a fresh run ID.
 The independent external owner has a separate two-hour validation budget after
 the completed capsule handoff. It does not restart the author or extend the
-capsule clock. Historical overnight attempt deadlines remain attached only to
-their original receipts.
+capsule clock. Historical attempt deadlines remain attached to their original receipts.
 
 The selected release requires public compilation-scale checks during authoring.
 Five type-only convolution scales share one 120-second compilation deadline,
@@ -181,9 +180,8 @@ python -m merlin_experiments.phase1.launch_config verify \
   --var REPO="$REPO" --controller-pid "$CONTROLLER_PID"
 ```
 
-Live monitoring for the current task is `.tmp/phase1-status` and
-`tail -f .tmp/phase1-live.log`; inspect their selected preparation directory
-before attributing a status to a new run. The heartbeat updates every 30 seconds.
+Monitor the selected preparation directory through `status.json` and
+`tail -f "$PREP/live.log"`. The heartbeat updates every 30 seconds.
 Reference preparation counts and materialized capsules are reported separately
 from compiler passes. Full-model execution waits for an immutable final
 submission and a verified private input seal. During authoring,

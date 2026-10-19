@@ -11,9 +11,8 @@ code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src
 # Full-model check contract (model_check v1)
 
 Contract version **1.22**. A change bumps the version and adds a changelog line at the end; nothing here
-changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
-consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
-`git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
+changes silently. The model-check package owns this contract; the Phase 1 harness
+consumes it. Pin the source revision and selected input bundle for every invocation.
 
 `merlin.model_check` builds, runs and judges complete quantized models for a device **submission**
 (a package with `manifest.yaml`) on Spike, and replays single device kernels on Spike or gSIM. It is
@@ -49,7 +48,7 @@ exact-kernel, quantized-chain or all-declared-output gates. The ordinary CLI def
 
 Every subcommand takes `--submission DIR`, optional `--models FILE` (default: the target's
 `examples/<target>/numerics/models.yaml`), optional `--bundle DIR` (default
-`/work/merlin/private/<target>/numerics/current`, a symlink to the frozen version) and optional
+`/private/<target>/numerics/current`, a symlink to the frozen version) and optional
 `--work DIR` (default under the repo's `out/` root). Every subcommand writes one JSON report to `--out`.
 
 ```
@@ -392,12 +391,12 @@ inputs/<model>/visible.json          # {<id>: metadata}; a model without arrays 
 calibration/<model>.json             # calibration item ids + sha256, disjoint from inputs
 ```
 Sealed inputs (8 per model, from different source items) are produced by the same generator but stored
-privately at `/work/merlin/private/<target>/numerics/stored/<model>/sealed.{npz,json}`, in the same
+privately at `/private/<target>/numerics/stored/<model>/sealed.{npz,json}`, in the same
 format; a public example never holds a holdout. The public `MANIFEST.json` commits to them by sha256
 only, so the sealed set is verifiable when it is released. `merlin.model_check.inputs.stored` reads
 either split. The model-ready arrays stay private and one file per input
 (`derived/<model>/<split>/<id>/`).
-Frozen bundle (generated, private): `/work/merlin/private/<target>/numerics/<version>/`
+Frozen bundle (generated, private): `/private/<target>/numerics/<version>/`
 ```
 MANIFEST.json                        # generator/merlin/model2mlir commits, capture hashes, engine inputs
                                      # (host package, contract, RTL facts), binding {receipt, sha256, status},
@@ -432,7 +431,7 @@ in its own scratch (`<model>/.chain_work/workers/<k>/`), and splits the FP refer
 rows, logs and `calls.json` are written in case order, and the count is bounded by the host's available
 memory. None of this changes a byte of the bundle.
 
-**Sealed data is never granted to an agent sandbox.** `/work/merlin/private/**` must appear in no
+**Sealed data is never granted to an agent sandbox.** `/private/**` must appear in no
 grant; the harness tests its bwrap arguments for it.
 
 ### 8.1 Sealed shape variants (rule v1)

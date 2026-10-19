@@ -356,6 +356,7 @@ def active_profile_service():
 class _Executor:
     def __init__(self, owner, target, candidate, work_root, *, sandbox_inputs=None):
         self.owner, self.target, self.work_root, self.inputs = owner, target, Path(work_root), sandbox_inputs
+        self.candidate = Path(candidate)
         from merlin_experiments.phase2.campaign import PackagePolicyScope
 
         # One executor is one original execution scope: its entrypoint calls
@@ -375,7 +376,7 @@ class _Executor:
 
     def _snapshot_identity(self):
         owner = self.owner
-        return (os.getpid(), owner, self.source_sha256, self.work_root, owner.workspace, owner.repo,
+        return (os.getpid(), owner, self.candidate, self.source_sha256, self.work_root, owner.workspace, owner.repo,
                 getattr(owner, "bundle_manifest", None),
                 json.dumps(owner.bundle, sort_keys=True, allow_nan=False),
                 json.dumps(getattr(owner, "profile", None), sort_keys=True, allow_nan=False))

@@ -1,28 +1,17 @@
 schema: merlin.host_capabilities.v1
 status: reviewed
 review:
-  decision: operator decision 2026-10-01 via coordinating session, approving W1_DECLARATIONS_DRAFT.md
-  scope: the 150 host placements proposed by the RTL facts in W1_SEAL_REVIEW.md
-  addendum: 'operator approval 2026-10-03 in this session: exact rank-3/4 i8/f32/i64
-    dequantize_per_tensor host contract only; finite native checks do not prove device
-    execution'
-  primitive_addendum: 'operator approval 2026-10-06 in this session: only the eight
-    exact typed scalar-host primitive declarations below; finite saved probes do not
-    certify all inputs, emitted compiler, accelerator, or RTL execution'
+  decision: "Recorded operator review of the typed host declarations below."
+  scope: "Host source admission; independent numerical and execution checks remain required."
+  addendum: "exact rank-3/4 i8/f32/i64 dequantize_per_tensor host contract only; finite native checks do not prove device execution"
+  primitive_addendum: "only the eight exact typed scalar-host primitive declarations below; finite saved probes do not certify all inputs, emitted compiler, accelerator, or RTL execution"
   selected_source_addendum: 'Selected-lowering build/link/host-placement review only:
     exact typed source bodies, selected index bounds and linked-image checks remain
     mandatory; the historical source-only review leaves numerical contracts unreviewed
     unless separately reviewed below. Source-call-to-symbol routing is not proved.'
-  library_numerical_policy_addendum: 'Codex authored-policy review 2026-10-11: only
-    the selected sin/cos/tanh-GELU approximation assumptions below; no operator corpus-sealing
-    approval or blanket execution/accuracy qualification.'
+  library_numerical_policy_addendum: "only the selected sin/cos/tanh-GELU approximation assumptions below; no operator corpus-sealing approval or blanket execution/accuracy qualification."
   successor: attention-host-placement-v2-20261019
-  attention_source_addendum: 'Coordinating session decision 2026-10-19: add only the
-    nine exact typed attention-preparation declarations below for a prospective fresh
-    host view. Closed parsed source bodies, selected index bounds, source-to-linked-image
-    correspondence and ordinary numerical execution remain mandatory. Existing declarations,
-    sealed views, numerical policies and accelerator obligations are unchanged; this
-    review is not an all-input numerical or hardware qualification.'
+  attention_source_addendum: "add only the nine exact typed attention-preparation declarations below for a prospective fresh host view. Closed parsed source bodies, selected index bounds, source-to-linked-image correspondence and ordinary numerical execution remain mandatory. Existing declarations, sealed views, numerical policies and accelerator obligations are unchanged; this review is not an all-input numerical or hardware qualification."
 compiler:
   package_sha256: 89e00e39c929ec0310b0a60d1860d2d8fa833b7ef1a57af5775092c24d5ebb9a
   dtype_strategy: int8_w8a8
@@ -55,8 +44,7 @@ operations:
       per_element: correctly_rounded_single_operation
       nan: riscv_canonical_nan
     evidence:
-      reviewed_by: operator decision 2026-10-01 via coordinating session, approving
-        W1_DECLARATIONS_DRAFT.md
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: observed f32 signatures and arith.mulf/addf/divf/maximumf bodies in the
         captured graph; emitted scalar-package execution remains an obligation
 - id: host_f32_elementwise_transcendental
@@ -82,8 +70,7 @@ operations:
       subnormals: preserved
       transcendental_accuracy: selected_lowering_approximation_not_correctly_rounded
     evidence:
-      reviewed_by: operator decision 2026-10-01 via coordinating session, approving
-        W1_DECLARATIONS_DRAFT.md
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: observed f32 signatures and math.rsqrt/math.powf/math.exp+arith.negf
         bodies in the captured graph; emitted scalar-package execution remains an
         obligation
@@ -111,7 +98,7 @@ operations:
       all_input_accuracy: unqualified
       device_execution: unqualified
     evidence:
-      reviewed_by: codex-operator for copparihollmann, 2026-10-10
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       review_sha256: 8feeba17bc5692a634b7009b86f669b0223d508e904b7b8780e993fd197bb28d
       basis: Exact rank-1 f32 math.exp source without fast-math; stock libm lowering
         matched independently rounded math.exp on 1038 finite native probes (maximum
@@ -147,8 +134,7 @@ operations:
       reduction_order: selected_lowering
       epsilon: graph_parameter
     evidence:
-      reviewed_by: operator decision 2026-10-01 via coordinating session, approving
-        W1_DECLARATIONS_DRAFT.md
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: observed f32 linalg.reduce/linalg.generic signatures (addf, divf, maximumf,
         subf, exp, rsqrt bodies); emitted scalar-package execution remains an obligation
 - id: host_review_prepared_f32_maximum
@@ -179,7 +165,7 @@ operations:
       selected_index_observation: required
       all_source_roots_reproved: required
       candidate_capture_elf_join: required
-      reviewed_by: operator approval 2026-10-07 of review SHA256 2d185844f009a1552a1313d035cba628bfee0cec7878cc6d943ad406a66ec3ca
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
 - id: host_i32_to_f32_cast
   ops:
   - aten._to_copy.default
@@ -201,8 +187,7 @@ operations:
       rounding: round_to_nearest_even
       exact_range: '|x| <= 2^24'
     evidence:
-      reviewed_by: operator decision 2026-10-01 via coordinating session, approving
-        W1_DECLARATIONS_DRAFT.md
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: observed i32->f32 signature with arith.sitofp body in the captured graph;
         emitted scalar-package execution remains an obligation
 - id: host_quantize_per_tensor_int8
@@ -237,8 +222,7 @@ operations:
       quant_max: 127
       scale_dtype: f32
     evidence:
-      reviewed_by: operator decision 2026-10-01 via coordinating session, approving
-        W1_DECLARATIONS_DRAFT.md
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: 'selected int8 recipe (activation: tensor, static, symmetric, quant_min
         -128, quant_max 127); host quantize lowering roundeven(x*(1/s)) in llvmlower/passes_quant_int.py;
         observed f32,f32,i64->i8 signature'
@@ -268,7 +252,7 @@ operations:
       scale_granularity: tensor
       zero_point: 0
     evidence:
-      reviewed_by: operator approval 2026-10-03 in this session
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: Fresh preselected sealed int8 captures of residual_cnn and causal_decoder
         have this exact typed signature. Independent rank-3 and rank-4 PyTorch probe
         captures and native-host qualifications matched their exact input goldens
@@ -297,8 +281,7 @@ operations:
       index_dtype: i64
       index_domain: 0 <= index < num_embeddings (out-of-range not admitted)
     evidence:
-      reviewed_by: operator decision 2026-10-01 via coordinating session, approving
-        W1_DECLARATIONS_DRAFT.md
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: observed i64,f32->f32 signature with linalg.index/arith.index_cast/tensor.extract
         body (pure gather) in the captured graph
 - id: host_f32_value_only_max_pool
@@ -329,7 +312,7 @@ operations:
       equal_values: first_maximum
       nan: last_encountered_nan
     evidence:
-      reviewed_by: operator approval 2026-10-06 in this session
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: Independent selected scalar-package Spike geometry and tie checks matched
         exactly (six and three output values). Admission additionally requires the
         fail-closed source check of static geometry, floor mode, unused indices, negative-infinity
@@ -362,8 +345,7 @@ operations:
       subnormals: preserved
       fma_contraction: selected_lowering
     evidence:
-      reviewed_by: operator decision 2026-10-01 via coordinating session, approving
-        W1_DECLARATIONS_DRAFT.md
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: observed f32 bmm signature (accum f32, rank 3); RTL facts admit only
         int8 operands on the accelerator datapath; emitted scalar-package execution
         remains an obligation
@@ -390,7 +372,7 @@ operations:
       flags: none
       native_nonfinite: unqualified
     evidence:
-      reviewed_by: operator approval 2026-10-06
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: Exact typed source/IR screen and independent finite selected-scalar-package
         probe; nonfinite native execution and all-input correctness remain unqualified.
 - id: host_f32_ge_scalar_rank4
@@ -417,7 +399,7 @@ operations:
       signed_zero: compares_equal
       nan: false
     evidence:
-      reviewed_by: operator approval 2026-10-06
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: Exact typed source/IR screen and independent finite selected-scalar-package
         probe; all-input and RTL execution remain unqualified.
 - id: host_review_f32_oeq_scalar_rank4
@@ -450,7 +432,7 @@ operations:
       full_model_numerical_equivalence: not_run
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: operator approval 2026-10-07 of exact Eq-only review SHA-256 885f5fe380c57db016e4a727ed7b1230dfd5ff95a0006c573d741b8085f1dcb7
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       neutral_source_sha256: 85bdb646a68d5987bc9c1d9b77a11b10aacd8de2d77e709b3181c5b543778a92
       neutral_native_receipt_sha256: ae6108825481d49c479f4cdb218336bfd21a08f1b0b7a662542ef39e6b9b22aa
       selected_index_and_elf_join: required
@@ -479,7 +461,7 @@ operations:
       selection: predicate_selected_operand
       arithmetic_on_selected_value: none
     evidence:
-      reviewed_by: operator approval 2026-10-06
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: Exact typed source/IR screen and independent finite selected-scalar-package
         probe; all-input and RTL execution remain unqualified.
 - id: host_i64_scalar_eq_le_rank1
@@ -507,7 +489,7 @@ operations:
       comparison: exact_signed_integer_equality_or_order
       integer_dtype: i64
     evidence:
-      reviewed_by: operator approval 2026-10-06
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: Exact typed source/IR screen and saved rank-1 signed-endpoint Spike probe;
         18 output words matched, not an all-input or RTL proof.
 - id: host_i64_tensor_le_rank1_rank4
@@ -534,7 +516,7 @@ operations:
       comparison: exact_signed_integer_order
       integer_dtype: i64
     evidence:
-      reviewed_by: operator approval 2026-10-06
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: Exact typed source/IR screen and independent rank-1/rank-4 finite probes;
         no all-input or RTL proof.
 - id: host_i64_add_rank1
@@ -560,7 +542,7 @@ operations:
       arithmetic: twos_complement_modulo_2_64
       signed_no_wrap: false
     evidence:
-      reviewed_by: operator approval 2026-10-06
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: Exact typed source/IR screen and independent selected-scalar-package
         probe checking every result bit; no all-input or RTL proof.
 - id: host_i1_to_f32_rank1_rank4
@@ -589,7 +571,7 @@ operations:
       - 1
       signed_i1_conversion: excluded
     evidence:
-      reviewed_by: operator approval 2026-10-06
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: Exact typed source/IR screen; saved signed-endpoint compare capture lowers
         Boolean conversion as uitofp i1 and matches all 18 output words on Spike,
         not RTL or all-input proof.
@@ -617,7 +599,7 @@ operations:
       rounding: round_to_nearest_even
       execution: selected_startup_and_isa_path
     evidence:
-      reviewed_by: operator approval 2026-10-06
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       basis: Exact typed source/IR screen and independent finite selected-scalar-package
         probe; all-input and RTL execution remain unqualified.
 - id: host_review_f32_add_r1
@@ -2055,8 +2037,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
 - id: host_review_mixed_f64_f64_arith_addf
@@ -2083,8 +2064,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2117,8 +2097,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2147,8 +2126,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2177,8 +2155,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2214,8 +2191,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2245,8 +2221,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2276,8 +2251,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2309,8 +2283,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2340,8 +2313,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2371,8 +2343,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2403,8 +2374,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2433,8 +2403,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2464,8 +2433,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2494,8 +2462,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2527,8 +2494,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2557,8 +2523,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2593,8 +2558,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
   source_body:
@@ -2636,8 +2600,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
 - id: host_review_mixed_quant_ext_dequantize_per_tensor_bf16
@@ -2668,8 +2631,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
 - id: host_review_bf16_named_matmul
@@ -2696,8 +2658,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
 - id: host_review_f32_convolution_named_matmul
@@ -2724,8 +2685,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
 - id: host_review_f32_projected_bias_add
@@ -2758,8 +2718,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
 - id: host_review_bf16_scalar_fill
@@ -2785,8 +2744,7 @@ operations:
       all_input_accuracy: unqualified
       existing_numerical_tolerance: unchanged
     evidence:
-      reviewed_by: 'coordinating session decision 2026-10-12: preserve mixed precision
-        and extend Merlin owned host support'
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       native_execution: separate mandatory qualification
       source_and_linked_image: mandatory
 - id: host_review_literal_upper_compare_select_f32
@@ -2879,7 +2837,7 @@ operations:
       existing_numerical_tolerance: unchanged
       all_input_accuracy: unqualified
     evidence:
-      reviewed_by: coordinating_session_2026_10_19
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       source_body_and_linked_image: required
 - id: host_review_attention_int8_grid_clamp
   status: reviewed
@@ -2908,7 +2866,7 @@ operations:
       existing_numerical_tolerance: unchanged
       all_input_accuracy: unqualified
     evidence:
-      reviewed_by: coordinating_session_2026_10_19
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       source_body_and_linked_image: required
 - id: host_review_attention_rounded_int8_cast
   status: reviewed
@@ -2937,7 +2895,7 @@ operations:
       existing_numerical_tolerance: unchanged
       all_input_accuracy: unqualified
     evidence:
-      reviewed_by: coordinating_session_2026_10_19
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       complete_source_chain_and_linked_image: required
 - id: host_review_attention_i32_to_f32
   status: reviewed
@@ -2966,7 +2924,7 @@ operations:
       existing_numerical_tolerance: unchanged
       all_input_accuracy: unqualified
     evidence:
-      reviewed_by: coordinating_session_2026_10_19
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       source_body_and_linked_image: required
 - id: host_review_attention_projected_sub_f32
   status: reviewed
@@ -2996,7 +2954,7 @@ operations:
       existing_numerical_tolerance: unchanged
       all_input_accuracy: unqualified
     evidence:
-      reviewed_by: coordinating_session_2026_10_19
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       source_body_and_linked_image: required
 - id: host_review_attention_exp_f32
   status: reviewed
@@ -3083,7 +3041,7 @@ operations:
       existing_numerical_tolerance: unchanged
       all_input_accuracy: unqualified
     evidence:
-      reviewed_by: coordinating_session_2026_10_19
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       source_body_and_linked_image: required
 - id: host_review_attention_sum_f32
   status: reviewed
@@ -3110,7 +3068,7 @@ operations:
       existing_numerical_tolerance: unchanged
       all_input_accuracy: unqualified
     evidence:
-      reviewed_by: coordinating_session_2026_10_19
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       exact_f32_reduction_witness: required
       source_body_and_linked_image: required
 - id: host_review_i1_logical_not
@@ -3140,7 +3098,7 @@ operations:
       existing_numerical_tolerance: unchanged
       all_input_execution: unqualified
     evidence:
-      reviewed_by: coordinating_session_2026_10_19
+      reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       exact_typed_boolean_source_and_linked_image: required
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.

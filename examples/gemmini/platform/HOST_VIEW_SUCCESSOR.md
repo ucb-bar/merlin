@@ -27,6 +27,5 @@ The destination must be new. The producer uses the same descriptor/lane resolver
 as Phase 0 and records descriptor, host declaration, compiler package and exported
 view hashes. This command derives only the host view; it neither captures models
 nor seals a corpus or claims execution qualification. A later corpus/private
-specification must pin that new view under its own identity. Historical R26/P3
-declarations, failures, proofs and numerical selections remain authoritative for
-their original run.
+specification must pin that new view under its own identity. Existing sealed declarations and numerical selections retain their original
+identities; a successor requires a new explicit input selection.

@@ -50,7 +50,9 @@ def test_auxiliary_definitions_do_not_collide_or_capture_runtime_imports(tmp_pat
             ["nm", "--defined-only", "--extern-only", str(obj)], check=True, text=True, capture_output=True
         ).stdout
         assert {line.split()[-1] for line in exported.splitlines() if line.strip()} == {record["kernel_symbol"]}
-        undefined = subprocess.run(["nm", "--undefined-only", str(obj)], check=True, text=True, capture_output=True).stdout
+        undefined = subprocess.run(
+            ["nm", "--undefined-only", str(obj)], check=True, text=True, capture_output=True
+        ).stdout
         assert "shared_runtime_value" in undefined
         objects.append(str(obj))
         symbols.append(record["kernel_symbol"])

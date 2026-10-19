@@ -623,10 +623,15 @@ def test_public_only_prepare_pins_selected_facts_without_a_private_spec(project,
 
 def test_reviewed_semantic_diagnostic_is_private_and_resume_bound(project, monkeypatch):
     _external_substitutes(monkeypatch)
+    (project / "merlin/contract/claim_models.yaml").write_text("claim_models: [held_out_fixture]\n")
     from merlin_experiments.corpus import release
 
+    from merlin.runtime.backends import base
     from merlin.targetgen import capsule_runner
 
+    # The synthetic target declares no RoCC trace modes. Keep the real capsule
+    # discovery/readiness check while supplying its explicit fixture backend.
+    monkeypatch.setattr(base, "get_backend", lambda target: SimpleNamespace(rocc_semantics=None))
     monkeypatch.setattr(capsule_runner, "qa_loop_adapters", lambda *_args, **_kwargs: {"L0": object()})
     monkeypatch.setattr(capsule_runner, "oracle_adapters", lambda *_args, **_kwargs: {"L0": object()})
 
@@ -676,14 +681,17 @@ def test_treatment_gets_authored_bundle_and_resumes_without_restaging(project, m
         prepared.verify_inputs()
         assert prepared.environment["resolved_tools"] == ["treatment-after-stage"]
         task = (prepared.workspace / "TASK.md").read_text()
-        assert task == "Treatment task from " + str(project / "input_bundles/fixture")
-        observed.append(prepared.resuming)
+        assert task.startswith("Treatment task from " + str(project / "input_bundles/fixture"))
+        assert task.count("## Resource allocation and scheduling") == 1
+        assert (prepared.run_dir / "TASK.md").read_text() == task
+        observed.append((prepared.resuming, task))
         return 0
 
     assert _run(request, continuation) == 0
     resumed = dataclasses.replace(_request(project, resume=True), treatment=treatment)
     assert _run(resumed, continuation) == 0
-    assert observed == [False, True]
+    assert [resuming for resuming, _task in observed] == [False, True]
+    assert observed[0][1] == observed[1][1]
 
 
 def test_admission_observation_order_remains_source_then_snapshot_task_receipt_probe(project, monkeypatch):

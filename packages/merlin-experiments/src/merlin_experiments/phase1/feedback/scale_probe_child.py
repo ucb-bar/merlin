@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 from merlin.common import cpu_pool, invocation_record
 from merlin.common.digest import sha256_file
@@ -59,6 +60,41 @@ def _input_pin(value):
     if path.is_dir():
         return {"path": str(path), "kind": "directory", "tree": exact_tree_record(path)}
     return CHILD._pin(path)
+
+
+@contextlib.contextmanager
+def _execution_lifetime(owner, *, candidate, target_experiment, work_root, sandbox_inputs=None):
+    """Reuse only the same live original selection; never replace a foreign owner."""
+    if P.active_package_executor() is None:
+        with R._original_execution_lifetime(
+            owner, candidate=candidate, target_experiment=target_experiment,
+            work_root=work_root, sandbox_inputs=sandbox_inputs,
+        ):
+            yield
+        return
+
+    executor = CHILD._original_executor()
+    if type(owner) is not R.CommonTransformService:
+        raise StageGateError("public scale requires its exact original profile owner")
+    candidate = CHILD._plain(candidate)
+
+    def verify():
+        if (
+            CHILD._original_executor() is not executor
+            or executor.candidate != candidate
+            or CHILD._owner_record(executor.owner) != CHILD._owner_record(owner)
+            or CHILD._digest(executor.target) != CHILD._digest(target_experiment)
+            or CHILD._digest(executor.inputs) != CHILD._digest(sandbox_inputs)
+        ):
+            raise StageGateError("public scale changed its active original compiler selection")
+        R._Executor._verify(executor, SimpleNamespace(directory=candidate, integrity_exempt=False))
+        executor.snapshot_entry_for_call()
+
+    verify()
+    try:
+        yield
+    finally:
+        verify()
 
 
 def _verify_products(root, row):
@@ -143,7 +179,7 @@ def emit_cases(
         # every child issues a distinct restored namespace in its fresh interpreter.
         with C._snapshot_operation(owner):
             lifetime.enter_context(
-                R._original_execution_lifetime(
+                _execution_lifetime(
                     owner,
                     target_experiment=target_experiment,
                     candidate=candidate,
@@ -455,7 +491,9 @@ def main(argv=None):
                 "final_custody": finished_cpu - emitted_cpu,
                 "total": finished_cpu - started_cpu,
             },
-            "scope": "observed process-only CPU/wall stages; descendants and CPU lease waits are not separately measured",
+            "scope": (
+                "observed process-only CPU/wall stages; descendants and CPU lease waits are not separately measured"
+            ),
         },
     )
     # Completion becomes visible only after the restored owner's fresh final checks.

@@ -493,7 +493,7 @@ def test_phase1_checkpoint_qa_and_emit_probes_keep_original_scope(execution, mon
     monkeypatch.setattr(G, "_language_ok", lambda *args: (True, ""))
     monkeypatch.setattr(G.OH, "commit_graded", lambda *args, **kwargs: None)
     monkeypatch.setattr(G, "_write_stage_ledger", lambda *args, **kwargs: None)
-    monkeypatch.setattr(G, "_record_plateau", lambda *args: None)
+    monkeypatch.setattr(G, "_record_plateau", lambda *args, **kwargs: None)
     monkeypatch.setattr(G.FL, "record_channel_health", lambda *args: None)
     monkeypatch.setattr(promotion, "resolve_tiers", lambda *args, **kwargs: (None, None, None))
     seen = []

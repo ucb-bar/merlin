@@ -106,7 +106,7 @@ def admit_budget_extension(path, expected_sha256, *, proof_path, proof_sha256, p
 
 def admit_handoff(F, path: Path, expected_sha256: str, submission: Path, deadline: float, *,
                   budget_extension=None, budget_extension_sha256=None):
-    """Reopen root's immutable native-OOT handoff; a result string is insufficient."""
+    """Reopen the operator's immutable native-OOT handoff; a result string is insufficient."""
     if submission.is_symlink() or any(p.is_symlink() for p in submission.rglob("*")):
         raise ValueError("frozen compiler must be an ordinary self-contained directory")
     if sha256_file(path) != expected_sha256:
