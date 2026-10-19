@@ -17,6 +17,7 @@ from merlin.frontends.linalg_math_patterns import (
 )
 from merlin.frontends.linalg_patterns import InvalidLinalgPattern
 from merlin.targetgen.host_capabilities import admit_host_operation, validate_host_capabilities
+from merlin.targetgen.host_linkage_contract import validate_source_linkage_contract
 
 
 def _program(
@@ -236,3 +237,17 @@ def test_new_unary_forms_require_their_own_selection_and_exact_ssa(kind):
             admit_host_operation(_selected_math(kind), row, observed, source_operations=(wrong,))["status"]
             == "unsupported"
         )
+
+
+@pytest.mark.parametrize("kind", ("exp", "roundeven"))
+def test_new_unary_source_proof_does_not_invent_an_archive_supplier(kind):
+    contract = {
+        "schema": "merlin.host_linkage_contract.v1",
+        "supplier": "selected_math_archive",
+        "archive_sha256": "a" * 64,
+        "symbols": ["expf" if kind == "exp" else "roundevenf"],
+    }
+    # A portable selected runtime can supply a wrapped function from its own
+    # object. A source-body admission cannot assert a stock-archive supplier.
+    with pytest.raises(ValueError, match="exact composite"):
+        validate_source_linkage_contract(STATIC_F32_MATH_SOURCE_BODY_SCHEMA, f"math.{kind}", contract)
