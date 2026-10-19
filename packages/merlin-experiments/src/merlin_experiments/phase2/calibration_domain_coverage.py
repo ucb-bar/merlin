@@ -171,7 +171,7 @@ def assess(catalog, dataset, requirements, *, calibration_plan=None):
         "current_prediction_issued": False,
         "promotion_authority": "NONE",
         "limits": [
-            "exact TRAIN source semantics/geometry is necessary, not a current executable or host-work domain proof",
+            "the current recognizer requires exact TRAIN semantics/geometry; this report grants no extrapolation",
             "calibration/held matches are reported separately and cannot supply TRAIN support",
             "capacity, bank, overlap and schedule alternatives require original exact schedule pairs",
             "complete current numerics, raw event domain, hardware/runtime/window and target semantics remain separate",
