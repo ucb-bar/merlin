@@ -79,8 +79,16 @@ def verify(receipt_path, *, run_dir, private_spec_path, candidate_sha256):
     _require(set(resolution) == {"task_root", "prep", "run_id"}, "invalid full-chain config resolution")
     launch = L.build(L.load(config_path), **resolution)
     _require(Path(launch.variables["RUN"]) == Path(run_dir).absolute()
-             and launch.path(launch.document["inputs"]["private_full_model_spec"]) == spec,
+             and sha256_file(files.pin(launch.path(launch.document["inputs"]["private_full_model_spec"])))
+             == sha256_file(spec),
              "full-chain configuration selects another native owner/private specification")
+    import yaml
+    environment = yaml.safe_load(files.pin(Path(run_dir) / "environment.yaml").read_bytes())
+    frozen = environment["private_full_model_spec"]
+    _require(frozen["frozen_sha256"] == sha256_file(spec)
+             and files.pin(frozen["frozen_path"], frozen["frozen_sha256"]).parent
+             == Path(run_dir) / "private_full_model_input",
+             "numerical proof is not bound to the original native frozen specification")
     identity = receipt["selected_identity"]
     bundle = Path(launch.environment["MERLIN_MODEL_CHECK_BUNDLE"])
     expected = {

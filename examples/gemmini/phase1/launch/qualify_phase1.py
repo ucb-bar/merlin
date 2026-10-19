@@ -236,6 +236,9 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
             context = output.validate(launch, identity=identity, models=selected["models"])
             if context is None:
                 raise ValueError("qualification has no all-output context")
+            chain = P.operator_module("selected_chain_supervision")
+            native_chain = (chain.selected(launch, run_dir, deadline)
+                            if "private_full_model_spec" in launch.document["inputs"] else None)
             assigned = S.assigned_cpus(launch)
             remaining = int(deadline - time.time())
             if remaining <= 0:
@@ -249,10 +252,20 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                     raise ValueError("qualification model work path already exists")
                 jobs[name] = (F.model_command(launch, name, submission, report, work, remaining), report, work)
             for name, (argv, report, work) in jobs.items():
+                pin = prep / f"{name}-pin.json"
+                original_argv = argv
+                if native_chain is not None and name != "native":
+                    P.save(pin, {"selected_identity": identity, "submission": package,
+                           "argv": original_argv, "work": str(work), "timeout_s": remaining,
+                           "deadline_unix": deadline})
+                    argv = chain.worker_argv(native_chain, launch, name, submission, pin,
+                                             prep / "native-pin.json")
                 row = processes.start(argv, prep / f"{name}.log", role=name, cwd=repo, env=env, cpus=assigned)
                 pid = row["process"].pid
                 row.update(report=report, pin=prep / f"{name}-pin.json", input_id=policy["input"])
-                P.save(row["pin"], {"selected_identity": identity, "submission": package,
+                process_pin = (prep / f"{name}-process.json"
+                               if native_chain is not None and name != "native" else row["pin"])
+                P.save(process_pin, {"selected_identity": identity, "submission": package,
                        "argv": argv, "work": str(work) if work else None, "timeout_s": remaining,
                        "pid": pid, "start_ticks": processes.known.get(pid, (None, None))[0],
                        "boot_id": boot, "process_group": pid, "deadline_unix": deadline})
@@ -284,6 +297,15 @@ def run(launch, prep: Path, submission: Path, proof: Path, proof_sha256: str,
                     state["models"][name] = {"exit_code": row["process"].poll(),
                         "judged_full_chain_complete": judged, "all_declared_outputs": audit,
                         "full_chain_complete": judged and audit["status"] == "pass"}
+                if native_chain is not None:
+                    chain.publish_static(native_chain, selected["names"])
+                    chain.publish_numerical(native_chain, launch, children=children, names=selected["names"],
+                        state=state, identity=identity, package=package, output_context=context, output=output)
+                failed = [name for name, row in children.items()
+                          if row["process"].poll() not in (None, 0)]
+                if failed:
+                    code = 1
+                    raise RuntimeError("qualification children failed: " + ", ".join(failed))
                 state.update(owned_processes=len(records), pss_bytes=charged, host_available_bytes=available,
                              remaining_s=max(0, deadline - time.time()))
                 if all(row["process"].poll() is not None for row in children.values()):
