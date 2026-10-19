@@ -1061,9 +1061,7 @@ def run(
                     if type(selected_budget) is not dict:
                         raise ValueError("device_ir_budget must be explicit original build policy data")
                     program_ir_budgets[program] = DeviceIRBudget(**selected_budget)
-            program_boards = {
-                program: options.pop("board", row["board"]) for program, options in program_options.items()
-            }
+            program_boards = {program: opts.pop("board", row["board"]) for program, opts in program_options.items()}
             if any(not isinstance(board, str) or not board for board in program_boards.values()):
                 raise ValueError("every program requires an explicit valid selected build board")
             selected_index_observations = {
@@ -1190,6 +1188,7 @@ def run(
                         ),
                     }
                 else:
+                    _source_progress(progress, "program_build", model=name, program=program)
                     with target_registry.observed_contract(target, dict(capability), source_path=capability_path):
                         receipt = compile_saved_model(
                             capture=stage,
@@ -1225,6 +1224,7 @@ def run(
                         require_compilation_recipe=not diagnostic,
                     )
                 )
+                _source_progress(progress, "program_receipt_verified", model=name, program=program)
             if (
                 _capture_tree_bindings(
                     capture, row.get("capture_tree_sha256"), attested_capture.get("capture_tree_sha256")

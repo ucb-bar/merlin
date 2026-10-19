@@ -9,6 +9,7 @@ Numerical equivalence remains the separate exact-kernel/full-chain obligation.
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +26,16 @@ from merlin_experiments.phase1.feedback import private_instruction_declaration a
 from merlin_experiments.phase1.feedback import private_model_partitions as partitions
 
 SCHEMA = "merlin.phase1.native_static_chain_partition.v1"
+PROGRESS = "private_model_chain_progress.json"
+
+
+def _progress(out):
+    """Private stage observations grant no source, build or numerical credit."""
+    from .private_source_preflight import _observer
+
+    return _observer(
+        lambda event: print(json.dumps(event, sort_keys=True), file=sys.stderr, flush=True), out / PROGRESS
+    )
 
 
 def _read(path):
@@ -141,6 +152,8 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
     static_root = build_dir() / "phase1-native-chain" / run_dir.name / name / "static"
     if static_root.exists() or static_root.is_symlink():
         raise ValueError("native static build requires fresh selected output below MERLIN_OUT_ROOT")
+    observe = _progress(out)
+    observe({"stage": "instruction_selection", "model": name})
     prepared = instructions.prepare(selected, target=target, output=out / "instruction-selection")
     with selected_input_facts(spec, target=target, required_models=roster) as facts:
         prepared.require_facts(facts)
@@ -151,9 +164,11 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
             source_freeze_root=run_dir / "private_full_model_input/sources",
             build_options=options, linked_elf_admission=prepared.service,
             native_result_format_selection=from_run(run_dir, target=target),
+            progress=observe,
         )
         prepared.require_facts(facts)
     if not _partition_complete(result, name, strict_tree_sha256(submission)["sha256"]):
+        observe({"stage": "static_partition_refused", "model": name, "status": "fail"})
         raise ValueError("native static model partition did not pass: " + str(result.get("models")))
     static_path, = static_root.glob("private_full_model_partition-*.json")
     issuance, = (out / "instruction-selection/invocations").glob("*/invocation.json")
@@ -179,6 +194,7 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
     path = out / "native-static.json"
     path.write_text(json.dumps(record, indent=2) + "\n")
     _verify_record(record)
+    observe({"stage": "static_checks_complete", "model": name, "status": "verified"})
     partition = NativePartition(path, record, prepared)
     return partition
 
