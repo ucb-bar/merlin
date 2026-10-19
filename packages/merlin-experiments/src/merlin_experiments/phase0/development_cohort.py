@@ -163,7 +163,8 @@ def freeze(requests, output_root, *, provenance, budgets, resource_basis=None, p
                 loader=str(loader.relative_to(root)),
                 loader_identity=_identity(loader),
                 capsule_entry=D.capsule_entry(declaration, loader),
-                numeric_policy={
+                numeric_policy=description.get("pending_numeric_policy")
+                or {
                     "compare": "per_output",
                     "outputs": {
                         row["name"]: {"compare": "exact_int", "dtype": row["dtype"]} for row in description["outputs"]
@@ -192,6 +193,7 @@ def freeze(requests, output_root, *, provenance, budgets, resource_basis=None, p
                     "executed": False,
                 },
                 resource_pressure=V.resources(description, resource_basis),
+                pending_contract=description.get("pending_contract", []),
             )
             work, elements = description["scalar_products"], description["logical_elements"]
             if (

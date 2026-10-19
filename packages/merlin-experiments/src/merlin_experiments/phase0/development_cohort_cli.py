@@ -24,6 +24,11 @@ def main(argv=None):
     parser.add_argument("--capacity-sweep", required=True)
     parser.add_argument("--budgets", type=Path, required=True)
     parser.add_argument("--max-spectrum", type=int, default=32)
+    parser.add_argument(
+        "--include-complete-attention",
+        action="store_true",
+        help="add public complete semantic attention sources with selected numerical admission pending",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     facts = json.loads(args.facts.read_bytes())
@@ -39,6 +44,7 @@ def main(argv=None):
         max_spectrum=args.max_spectrum,
     )
     capacity, skipped = F.capacity_requests(selected[0], target=args.target, facts=facts)
+    attention = E.complete_attention_requests(args.public_architectures) if args.include_complete_attention else []
     provenance = {
         "architecture_derivation": architecture,
         "capacity_skipped": skipped,
@@ -50,7 +56,7 @@ def main(argv=None):
         },
     }
     manifest = F.freeze(
-        architecture["requests"] + capacity,
+        architecture["requests"] + capacity + attention,
         args.output,
         provenance=provenance,
         budgets=json.loads(args.budgets.read_bytes()),

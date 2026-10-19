@@ -235,3 +235,77 @@ def derive(config_root, *, axis_granules, resource_sha256, max_spectrum=32):
             "qualified_timing",
         ],
     }
+
+
+def complete_attention_requests(config_root):
+    """Optional complete semantic attention members; no selected numeric grant."""
+    from . import development_attention as A
+
+    configs, _ = public_configs(config_root)
+    decoder = configs["decoder"]
+    language = configs["vision_language"]["text_config"]
+    vision = configs["vision_language"]["vision_config"]
+    points = configs["operating_envelope"]["operator_points"]
+    declarations = [
+        A.declaration("attention_small_prefill", heads=6, kv=2, width=7, value_width=5, prefix=0, queries=[3]),
+        A.declaration("attention_small_decode", heads=6, kv=2, width=7, value_width=5, prefix=5, queries=[3, 1, 1]),
+        A.declaration(
+            "attention_explicit_mask",
+            heads=6,
+            kv=2,
+            width=17,
+            value_width=7,
+            prefix=3,
+            queries=[5],
+            mask="explicit_boolean",
+        ),
+    ]
+    for name, config, prefix, queries, mask in [
+        ("decoder", decoder, 0, [points["decoder_prefill"], 1, 1], "causal"),
+        ("decode_large_kv", decoder, decoder["max_position_embeddings"], [1, 1], "causal"),
+        ("decode_above_context", decoder, (5 * decoder["max_position_embeddings"] + 3) // 4, [1], "causal"),
+        ("language", language, 0, [points["decoder_prefill"], 1, 1], "causal"),
+        (
+            "prefix_action",
+            language,
+            (vision["image_size"] // vision["patch_size"]) ** 2,
+            [points["action_chunk"]],
+            "none",
+        ),
+    ]:
+        heads = config["num_attention_heads"]
+        declarations.append(
+            A.declaration(
+                "attention_" + name,
+                heads=heads,
+                kv=config["num_key_value_heads"],
+                width=config["hidden_size"] // heads,
+                prefix=prefix,
+                queries=queries,
+                mask=mask,
+            )
+        )
+    heads = vision["num_attention_heads"]
+    tokens = (vision["image_size"] // vision["patch_size"]) ** 2
+    for multiplier, name in [(1, "vision"), (5 / 4, "vision_above_upper")]:
+        declarations.append(
+            A.declaration(
+                "attention_" + name,
+                heads=heads,
+                kv=heads,
+                width=vision["hidden_size"] // heads,
+                prefix=0,
+                queries=[int(tokens * multiplier)],
+                mask="none",
+            )
+        )
+    return [
+        {
+            "declaration": d,
+            "basis": "public_complete_attention_semantic_envelope",
+            "family": "complete_attention",
+            "role": "development_performance",
+            "purposes": A.describe(d)["optimization_mechanisms"],
+        }
+        for d in declarations
+    ]

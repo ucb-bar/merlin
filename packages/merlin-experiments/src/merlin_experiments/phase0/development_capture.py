@@ -82,10 +82,23 @@ def capture(root, *, manifest_sha256, ordinals, output, max_work, max_elements, 
             ):
                 raise ValueError("fresh capture omitted complete outputs or required contractions")
             for actual, wanted, output_abi in zip(golden, expected, abi, strict=True):
-                dtype = {"int8": "i8", "int32": "i32"}[str(wanted.dtype)]
+                dtype = {"int8": "i8", "int32": "i32", "float32": "f32"}[str(wanted.dtype)]
                 if output_abi["dtype"] != dtype or output_abi["shape"] != list(wanted.shape):
                     raise ValueError("fresh capture changed a complete output dtype")
-                np.testing.assert_array_equal(actual, wanted)
+                if not description.get("pending_numeric_policy"):
+                    np.testing.assert_array_equal(actual, wanted)
+            if description.get("pending_numeric_policy"):
+                from .development_attention_diagnostic import retain
+
+                row.update(retain(description, captured, expected, golden, output / f"pending-{ordinal}"))
+                row.update(
+                    capture_freshness="UNKNOWN: ordinary capture cache may be reused",
+                    independent_reference_execution="fresh",
+                    capture_metadata=captured.meta,
+                    wall_seconds=time.monotonic() - start,
+                )
+                (output / "report.json").write_bytes(F._bytes(report))
+                continue
             binding = CorpusBinding(
                 target="source_only",
                 tile_dim=None,

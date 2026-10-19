@@ -27,6 +27,13 @@ def _digest(value):
 
 def describe(declaration):
     """Derive complete input/result geometry before allocating tensors or files."""
+    if (
+        isinstance(declaration, dict)
+        and declaration.get("schema") == "merlin.phase0.public_attention_semantic_source.v1"
+    ):
+        from .development_attention import describe as attention
+
+        return attention(declaration)
     if isinstance(declaration, dict) and declaration.get("schema") == "merlin.phase0.public_development_source.v2":
         from .development_patterns import describe as describe_pattern
 
@@ -105,6 +112,13 @@ def describe(declaration):
 
 
 def render(declaration):
+    if (
+        isinstance(declaration, dict)
+        and declaration.get("schema") == "merlin.phase0.public_attention_semantic_source.v1"
+    ):
+        from .development_attention import render as attention
+
+        return attention(declaration)
     """Unroll grouped contractions, exact readout and carried KV; retain live-outs."""
     if isinstance(declaration, dict) and declaration.get("schema") == "merlin.phase0.public_development_source.v2":
         from .development_patterns import render as render_pattern

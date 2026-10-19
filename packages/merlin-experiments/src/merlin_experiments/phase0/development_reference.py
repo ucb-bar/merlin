@@ -10,6 +10,10 @@ from . import development_sources as D
 
 
 def inputs(declaration):
+    if declaration.get("schema") == "merlin.phase0.public_attention_semantic_source.v1":
+        from .development_attention import inputs as attention
+
+        return attention(declaration)
     rows = D.describe(declaration)["inputs"]
     return [
         (((np.arange(prod(row["shape"]), dtype=np.int64) * (1 + 2 * index % 16) + index) % 17) - 8)
@@ -21,6 +25,10 @@ def inputs(declaration):
 
 def evaluate(declaration, values):
     """Compute every live-out in wide independent arithmetic before exact casts."""
+    if declaration.get("schema") == "merlin.phase0.public_attention_semantic_source.v1":
+        from .development_attention import evaluate as attention
+
+        return attention(declaration, values)
     pattern, g = declaration["pattern"], declaration["geometry"]
     shift = declaration["arithmetic"]["readout_shift"]
 

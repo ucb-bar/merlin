@@ -161,3 +161,39 @@ for V2 eager/reference, refusal, resource-accounting and ordinary capture checks
 The three installed-toolchain cases cover a padded/strided spatial transition,
 the connected vision/prefix/action chain and a shared-RHS sequence. No simulator
 or validation model runs in these tests.
+
+## Complete attention semantics and the remaining numeric gate
+
+`--include-complete-attention` explicitly adds ten public semantic attention
+members to the preparation command. Their separate schema is
+`merlin.phase0.public_attention_semantic_source.v1`. They express QK, scaling by
+the head dimension, causal or explicit Boolean masking, FP32 softmax, and PV,
+including GQA head mapping and prefill followed by two decode calls with growing
+KV state. The public envelope includes context and vision regimes and an upper
+control; expensive references remain budget-denied members. This is attention
+semantics suitable for testing a future FlashAttention-style transformation,
+not a FlashAttention implementation or selected full-model numerical recipe.
+
+The source supplies real signed-i8/i32 QK work. It explicitly uses FP32 for
+softmax and PV in a semantic diagnostic. The selected target's probability/value
+conversion, floating equivalence policy and execution contract have not been
+provided to this factory. It does not copy the separate integer-softmax model,
+invent probability quantization, select a new tolerance or assert full Gemmini
+PV offload. Those missing numerical gates are recorded per member and in the
+coverage matrix. Existing source-only integer patterns retain their arithmetic.
+
+Only final attention outputs and carried KV state are required live-outs. Score
+and probability matrices remain intermediates: making them observable would
+force their materialization and prevent the optimization under test. Coverage
+reports logical materialized score bytes and potential score elimination,
+online softmax, QK/PV tiling, GQA layout, KV reuse and lifetime mechanisms. No
+online-softmax reassociation is admitted merely because the source exists.
+
+The ordinary capture diagnostic retains complete source, interface, typed ABI,
+inputs, independent reference and floating-error observations in a
+`pending-capsule.json` closure. Exact carried integer state must match. It
+explicitly refuses the ordinary capsule writer while the floating policy is
+UNKNOWN; a small observed error cannot issue a tolerance or equivalence grant.
+Source tests cover an exact dyadic uniform-softmax case without a tolerance,
+future-token exclusion and independent GQA head-group effects. Run
+`python -m pytest packages/merlin-experiments/tests/test_development_attention.py`.
