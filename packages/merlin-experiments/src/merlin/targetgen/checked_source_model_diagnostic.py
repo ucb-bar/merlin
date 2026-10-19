@@ -29,6 +29,13 @@ _ISSUED = weakref.WeakKeyDictionary()
 _ACTIVE = contextvars.ContextVar("original_checked_source_model_diagnostic", default=None)
 
 
+def _require_issued(selection):
+    if (type(selection) is not CheckedSourceModelDiagnostic or selection not in _ISSUED
+            or selection._issuer is not _ISSUER
+            or _ISSUED[selection] != hashlib.sha256(selection._record_json.encode()).hexdigest()):
+        raise ValueError("checked source diagnostic was not issued by the original host")
+
+
 def _canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
@@ -61,9 +68,7 @@ class CheckedSourceModelDiagnostic:
     _issuer: object
 
     def revalidate(self):
-        if (type(self) is not CheckedSourceModelDiagnostic or self not in _ISSUED or self._issuer is not _ISSUER
-                or _ISSUED[self] != hashlib.sha256(self._record_json.encode()).hexdigest()):
-            raise ValueError("checked source diagnostic was not issued by the original host")
+        _require_issued(self)
         with self._passes.metadata_operation():
             self._passes.revalidate()
             row = json.loads(self._record_json)
@@ -96,21 +101,28 @@ class CheckedSourceModelDiagnostic:
         return json.loads(self._record_json)
 
     def verify_for(self, capsule, *, target):
-        self.revalidate()
-        row = json.loads(self._record_json)
-        required = capsule.get("required_oracle_tiers")
-        if (
-            active_compiler_passes() is not self._passes
-            or target != row["target"]
-            or capsule.get("kind") != "model"
-            or capsule.get("label") not in {"public", "dev"}
-            or capsule.get("oracle_tier_ceiling") != "L2"
-            or type(required) is not list
-            or any(type(tier) is not str for tier in required)
-            or len(required) != len(set(required))
-            or not {"L0", "L1", "L2"} <= set(required) <= {"L0", "L1", "L2", "L3"}
-        ):
-            raise ValueError("checked source diagnostic requires its explicit original public L2 selection")
+        # Reject forged selectors before entering any selected owner's scope.
+        _require_issued(self)
+        # These adjacent getters concern the same original pass registry only.
+        # Finish its fresh final check before returning metadata to the grader;
+        # compilation, source proofs and execution do not run in this scope.
+        with self._passes.metadata_operation():
+            self.revalidate()
+            row = json.loads(self._record_json)
+            required = capsule.get("required_oracle_tiers")
+            if (
+                active_compiler_passes() is not self._passes
+                or target != row["target"]
+                or capsule.get("kind") != "model"
+                or capsule.get("label") not in {"public", "dev"}
+                or capsule.get("oracle_tier_ceiling") != "L2"
+                or type(required) is not list
+                or any(type(tier) is not str for tier in required)
+                or len(required) != len(set(required))
+                or not {"L0", "L1", "L2"} <= set(required) <= {"L0", "L1", "L2", "L3"}
+            ):
+                raise ValueError("checked source diagnostic requires its explicit original public L2 selection")
+            self.revalidate()
         return row
 
 
