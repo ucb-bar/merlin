@@ -158,11 +158,15 @@ def host_compute_row(
                 "host_arithmetic",
                 "host_total_arithmetic",
                 "host_address_arithmetic",
+                "host_value_arithmetic",
+                "host_raw_payload_bytes",
+                "host_payload_bytes",
                 "arithmetic_per_element",
                 "value_arithmetic_per_element",
                 "payload_ratio",
                 "dominant_block",
                 "input_preparation",
+                "command_parameters",
             )
         },
     }
@@ -179,7 +183,7 @@ def _source_host_compute(name, capsule, buffer, artifact, outcome, *, target):
         preparation = None
     return host_compute_row(
         name, buffer, artifact, outcome,
-        **({"input_preparation": preparation, "target": target} if preparation is not None else {}),
+        input_preparation=preparation, target=target,
     )
 
 
