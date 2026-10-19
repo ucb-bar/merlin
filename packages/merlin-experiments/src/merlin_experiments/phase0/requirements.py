@@ -56,6 +56,7 @@ def _materialized_iteration_capsules(
     performance_selection: dict | None = None,
     performance_forms: dict | None = None,
     facts_sha256: str | None = None,
+    capture_attestations: dict | None = None,
 ) -> tuple[list[dict], dict[str, bytes]]:
     """Select full iteration programs, not a family representative or a held-out model.
 
@@ -98,7 +99,9 @@ def _materialized_iteration_capsules(
             "operation_count": application["n_operations"],
         }
         if performance_selection is not None:
-            selection["schema"] = PP.CAPTURE_SCHEMA
+            selection["schema"] = PP.capture_schema(performance_selection)
+            if performance_selection.get("source_mode"):
+                selection["source_mode"] = performance_selection["source_mode"]
         # Read the common public bundle payload before installing its selected
         # loader/profile beside it. The final performance selection validates
         # that complete closure again through the ordinary writer and freeze.
@@ -182,6 +185,20 @@ def _materialized_iteration_capsules(
                 forms=performance_forms or {},
                 facts_sha256=facts_sha256,
             )
+            if performance_selection.get("source_mode"):
+                from .capture_execution_attestation import require_verified_execution
+                from .connected_integer_qualification import SELECTION
+
+                if set(capture_attestations or {}) != set(full["applications"]):
+                    raise ValueError("integer public sources require every original sealed capture attestation")
+                attestation = capture_attestations[label]
+                require_verified_execution(attestation)
+                entry.update(
+                    capture_quantization="already_materialized",
+                    output_numeric_policy="captured_per_output_v1",
+                    source_integer_proof=SELECTION,
+                    capture_execution_attestations=[attestation],
+                )
     return entries, outputs
 
 
@@ -694,7 +711,7 @@ def derive(
             )
         for application in performance_full["applications"].values():
             trace = json.loads((Path(application["capture_source_path"]).parent / "frontend-trace.json").read_bytes())
-            for row in PP.original_contractions(trace):
+            for row in PP.original_contractions(trace, source_mode=public_selection.get("source_mode")):
                 if layer_guard.gemm(*row["gemm"]) is not None or (
                     row["conv"] is not None and layer_guard.conv(*row["conv"]) is not None
                 ):
@@ -819,6 +836,7 @@ def derive(
             performance_selection=public_selection,
             performance_forms=requirement["scope"]["performance"]["forms"],
             facts_sha256=selected.raw_facts_sha256,
+            capture_attestations=performance_attestations,
         )
         gradeable_sources.extend(public_entries)
         outputs.update(public_outputs)

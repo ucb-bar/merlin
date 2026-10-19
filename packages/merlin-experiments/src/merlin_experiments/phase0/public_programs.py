@@ -13,24 +13,36 @@ import json
 from math import prod
 from pathlib import Path
 
+from merlin.targetgen import materialized_integer_capture as N
 from merlin.targetgen.frontend_use_def import original_use_def_semantics
 
 POLICY_SCHEMA = "merlin.phase0.public_program_selection.v1"
+INTEGER_POLICY_SCHEMA = "merlin.phase0.public_program_selection.v2"
 CAPTURE_SCHEMA = "merlin.materialized_public_capture.v2"
+INTEGER_CAPTURE_SCHEMA = N.SCHEMA
 BASIS_SCHEMA = "merlin.phase0.public_program_source_basis.v1"
 
 
 def validate_selection(value):
+    integer = isinstance(value, dict) and value.get("schema") == INTEGER_POLICY_SCHEMA
     if (
         not isinstance(value, dict)
         or set(value)
         != {"schema", "selection", "max_members", "max_capture_bytes", "max_input_elements", "max_output_elements"}
-        or value["schema"] != POLICY_SCHEMA
+        | ({"source_mode"} if integer else set())
+        or value["schema"] not in {POLICY_SCHEMA, INTEGER_POLICY_SCHEMA}
+        or (integer and value.get("source_mode") != N.MODE)
         or value["selection"] != "declared_performance_applications"
-        or any(type(value[key]) is not int or value[key] < 1 for key in value if key not in {"schema", "selection"})
+        or any(type(value[key]) is not int or value[key] < 1 for key in value
+               if key not in {"schema", "selection", "source_mode"})
     ):
         raise ValueError("public program selection needs the declared performance roster and explicit finite budgets")
     return copy.deepcopy(value)
+
+
+def capture_schema(selection):
+    validate_selection(selection)
+    return INTEGER_CAPTURE_SCHEMA if selection["schema"] == INTEGER_POLICY_SCHEMA else CAPTURE_SCHEMA
 
 
 def observe_inventory(requirement, conformance_spec, observe):
@@ -48,7 +60,7 @@ def observe_inventory(requirement, conformance_spec, observe):
         raise ValueError("public program inventory differs from the requirement's commitment")
 
 
-def source_semantics(trace):
+def source_semantics(trace, *, source_mode=None):
     """Actual original operations and closed uses; never parameter initialization."""
     semantics = original_use_def_semantics(trace)
     operations = list(semantics.operations)
@@ -72,6 +84,10 @@ def source_semantics(trace):
         },
         "map": {"aten.add.Tensor", "aten.mul.Tensor", "aten.relu.default", "aten.silu.default", "aten.gelu.default"},
     }
+    if source_mode is not None:
+        if source_mode != N.MODE:
+            raise ValueError("unsupported public program source mode")
+        groups["contraction"].add("aten._int_mm.default")
     observed = {family: sorted(set(operations) & selected) for family, selected in groups.items()}
     values = {result["id"]: result for node in trace["graphs"]["original"]["nodes"] for result in node["results"]}
     observed["conversion"] = sorted(
@@ -99,7 +115,7 @@ def source_semantics(trace):
     }
 
 
-def original_contractions(trace):
+def original_contractions(trace, *, source_mode=None):
     """Ordered actual tensor signatures, including contractions inside a DAG."""
     original_use_def_semantics(trace)
     graph = trace["graphs"]["original"]
@@ -116,16 +132,17 @@ def original_contractions(trace):
         return value
 
     rows = []
+    contractions = {
+        "aten.linear.default", "aten.matmul.default", "aten.mm.default", "aten.bmm.default",
+        "aten.conv2d.default", "aten.convolution.default",
+    }
+    if source_mode is not None:
+        if source_mode != N.MODE:
+            raise ValueError("unsupported public program source mode")
+        contractions.add("aten._int_mm.default")
     for node in graph["nodes"]:
         target = node["target"]
-        if node["op"] not in {"call_function", "call_method", "call_module"} or target not in {
-            "aten.linear.default",
-            "aten.matmul.default",
-            "aten.mm.default",
-            "aten.bmm.default",
-            "aten.conv2d.default",
-            "aten.convolution.default",
-        }:
+        if node["op"] not in {"call_function", "call_method", "call_module"} or target not in contractions:
             continue
         args = node["args"]
         operands = [values[arg["value_id"]] for arg in args[:2]]
@@ -139,6 +156,13 @@ def original_contractions(trace):
         ):
             raise ValueError("public contraction requires actual complete positive tensor types")
         lhs, rhs = (row["shape"] for row in operands)
+        if target == "aten._int_mm.default" and (
+            [row.get("dtype") for row in tensors] != ["int8", "int8", "int32"]
+            or len(lhs) != 2 or len(rhs) != 2
+            or results[0]["shape"] != [lhs[0], rhs[1]]
+            or len(args) != 2 or node["kwargs"]
+        ):
+            raise ValueError("public _int_mm needs its original rank-two signed i8/i8/i32 storage")
         if target == "aten.linear.default":
             if len(lhs) < 2 or len(rhs) != 2 or lhs[-1] != rhs[-1]:
                 raise ValueError("public linear tensor shapes disagree")
@@ -193,8 +217,8 @@ def check_budget(directory: Path, selection):
 
 def performance(entry, *, trace, forms, facts_sha256):
     """A whole-call objective with conditional existing hardware boundaries."""
-    semantics = source_semantics(trace)
     capture = entry["materialized_capture"]
+    semantics = source_semantics(trace, source_mode=capture.get("source_mode"))
     label = capture["workload_id"]
     boundaries = [
         {"class": row["class_id"], "entry": member["entry"], "price": member["price"]}
@@ -282,11 +306,12 @@ def verify_written(capsule, directory):
     directory = Path(directory)
     capture = capsule.get("materialized_capture") or {}
     if (
-        capture.get("schema") != CAPTURE_SCHEMA
+        capture.get("schema") not in {CAPTURE_SCHEMA, INTEGER_CAPTURE_SCHEMA}
         or capture.get("workload_role") != "performance_scale"
         or capture.get("coverage_scope") != "full_capture"
     ):
         raise ValueError("public program lacks explicit performance capture selection")
+    native_integer = N.selected(capture)
     frontend = capsule["frontend_trace"]
     receipt_raw = (directory / "source-capture-receipt.json").read_bytes()
     if hashlib.sha256(receipt_raw).hexdigest() != capture["receipt_sha256"]:
@@ -305,7 +330,8 @@ def verify_written(capsule, directory):
     relocation = frontend["source_portability"]
     # Reconstruct the exact raw source using its receipt-bound recorded weights path.
     meta = None
-    for member in ("meta.json", "inputs.npz", "input_order.json", "golden.npy"):
+    references = N.reference_members(receipt["artifacts"]) if native_integer else ("golden.npy",)
+    for member in ("meta.json", "inputs.npz", "input_order.json", *references):
         raw = (directory / ("source-capture-" + member)).read_bytes()
         if (
             len(raw) != receipt["artifacts"][member]["bytes"]
@@ -348,7 +374,7 @@ def verify_written(capsule, directory):
             or profile_sha != capture.get("profile_sha256")
         ):
             raise ValueError("public program original profile changed")
-    semantics = source_semantics(json.loads(raw_trace))
+    semantics = source_semantics(json.loads(raw_trace), source_mode=capture.get("source_mode"))
     selected = capsule["performance"]["gate"]["source_execution_basis"]
     if (
         selected["operations"] != semantics["operation_semantics"]
@@ -363,12 +389,34 @@ def verify_written(capsule, directory):
     golden = load_golden(directory)
     attributes = capsule["operation"]["attributes"]
     names = attributes.get("outs") or [attributes["out"]]
-    if set(golden["outputs"]) != set(names) or len(names) != 1:
+    if set(golden["outputs"]) != set(names) or len(set(names)) != len(names):
         raise ValueError("public program reference omits a published output")
-    actual = np.asarray(golden["outputs"][names[0]], dtype=np.float32)
-    expected = np.load(directory / "source-capture-golden.npy", allow_pickle=False)
-    if actual.shape != expected.shape or actual.tobytes() != expected.tobytes():
-        raise ValueError("public program complete reference differs from its actual capture")
+    if native_integer:
+        from merlin.targetgen.capsule_privacy import capture_reference_closure
+
+        if capsule.get("reference_closure") != capture_reference_closure(receipt["artifacts"], source_mode=N.MODE):
+            raise ValueError("integer public reference closure omits expected-output leaves")
+        values = N.outputs(meta, (directory / "source-capture-golden.json").read_bytes())
+        values = values if len(meta["output_abi"]) > 1 else [values]
+        if len(names) != len(values):
+            raise ValueError("integer public result names differ from its complete typed ABI")
+        policies = capsule["numeric_policy"]
+        for name, value, abi in zip(names, values, meta["output_abi"], strict=True):
+            expected_policy = dict(compare="exact_int", dtype=abi["dtype"])
+            policy = policies.get("outputs", {}).get(name) if policies.get("compare") == "per_output" else policies
+            if policy != expected_policy:
+                raise ValueError("integer public result changed its exact per-output policy")
+            actual, expected = np.asarray(golden["outputs"][name]), np.asarray(value)
+            if actual.dtype.kind not in "iu" or actual.shape != expected.shape or not np.array_equal(actual, expected):
+                raise ValueError("integer public complete reference differs from its actual capture")
+        N.inputs(meta, (directory / "source-capture-inputs.npz").read_bytes())
+    else:
+        if len(names) != 1:
+            raise ValueError("public program reference omits a published output")
+        actual = np.asarray(golden["outputs"][names[0]], dtype=np.float32)
+        expected = np.load(directory / "source-capture-golden.npy", allow_pickle=False)
+        if actual.shape != expected.shape or actual.tobytes() != expected.tobytes():
+            raise ValueError("public program complete reference differs from its actual capture")
     with np.load(directory / "source-capture-inputs.npz", allow_pickle=False) as archive:
         if set(archive.files) != {"in" + str(i) for i in range(len(capsule["inputs"]))}:
             raise ValueError("public program input closure differs")

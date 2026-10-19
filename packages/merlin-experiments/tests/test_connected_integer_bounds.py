@@ -98,3 +98,33 @@ def test_unsupported_recurrence_undefined_storage_and_input_domain_refuse():
     for domain in [[(3, -3), (-3, 3)], [(-129, 127), (-3, 3)], [(-3, 3)]]:
         with pytest.raises(ValueError, match="overflow|ownership"):
             derive(mq.parse(program()), domain)
+
+
+def transpose_program():
+    text = program().replace("%w: tensor<3x2xi8>", "%w_nk: tensor<2x3xi8>")
+    return text.replace("%z = arith.constant", """%layout = tensor.empty() : tensor<3x2xi8>
+        %w = "linalg.transpose"(%w_nk, %layout) <{permutation = array<i64: 1, 0>}> ({
+        ^bb9(%input: i8, %unused: i8):
+          "linalg.yield"(%input) : (i8) -> ()
+        }) : (tensor<2x3xi8>, tensor<3x2xi8>) -> tensor<3x2xi8>
+        %z = arith.constant""")
+
+
+def test_pure_source_transpose_preserves_exact_input_domain_and_ownership():
+    proof = derive(mq.parse(transpose_program()), [(-3, 3), (-7, 5)])
+    layout = next(row for row in proof["operations"] if row.get("kind") == "layout_permutation")
+    assert layout["permutation"] == [1, 0]
+    assert layout["input_shape"] == [2, 3] and layout["output_shape"] == [3, 2]
+    assert layout["interval"] == [-7, 5]
+    assert layout["inputs"] == [{"argument": 1}, {"operation": 0, "result": 0}]
+    assert proof["output_intervals"] == [[-63, 63], [-8, 8]]
+
+
+@pytest.mark.parametrize("change", [
+    ("array<i64: 1, 0>", "array<i64: 0, 0>"),
+    ('"linalg.yield"(%input)', '"linalg.yield"(%unused)'),
+    ('permutation = array<i64: 1, 0>', 'permutation = array<i64: 1, 0>, unreviewed_effect = true'),
+])
+def test_transpose_refuses_wrong_permutation_initializer_read_or_extra_semantics(change):
+    with pytest.raises(Exception):
+        derive(mq.parse(transpose_program().replace(*change)), [(-3, 3)] * 2)
