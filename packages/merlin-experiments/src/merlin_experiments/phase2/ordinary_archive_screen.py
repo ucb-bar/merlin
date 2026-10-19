@@ -437,7 +437,8 @@ def issue_archive_screen(
     from merlin_timing import observations as O
 
     sources = (A, C, V, B, FIT, O, RT, OBS, CAP, REVIEW, FEEDBACK, FEEDBACK.R, NATIVE,
-               HISTORY, HISTORY_CONTEXT, SOURCE_DOMAIN, *SOURCE_DOMAIN.source_modules(), WORK, INTERFACE)
+               HISTORY, HISTORY_CONTEXT, SOURCE_DOMAIN, *SOURCE_DOMAIN.source_modules(),
+               OBS.ALIASES, *OBS.ALIASES.source_modules(), WORK, INTERFACE)
     paths = tuple(
         dict.fromkeys(
             (

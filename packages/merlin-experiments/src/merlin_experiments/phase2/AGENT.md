@@ -28,6 +28,14 @@ types and readout in TRAIN evidence, never independent axis ranges or graph
 labels. This selects a timing family only. Complete numerics, live semantics and
 actual raw-count guards remain separate; other compositions/capacity stay UNKNOWN.
 
+`_counter_symbol_aliases` preserves the original text-only counter review and
+issues an explicit v2 review only when selected symbols and disassembler aliases
+have identical positive executable ELF extents. Zero-sized labels, matching
+bytes at another address, ambiguous callers and changed counter order refuse.
+This spelling bridge changes neither the linked program nor its timing window;
+the actual boxed observer, complete numerics and independent timing owner still
+supply their original authority.
+
 The optional host author-stage additional-library route requires an explicit
 reviewed host selection before preflight. Preserve exact source-leaf grants, original
 public profile leaves and bound owner identity across broker threads. The outer
