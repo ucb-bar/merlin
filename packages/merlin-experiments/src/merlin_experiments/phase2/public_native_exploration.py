@@ -7,10 +7,13 @@ and fresh original boxed counts. Defaults and formal search remain unchanged.
 
 from __future__ import annotations
 
+import inspect
 import json
+import sys
 import weakref
 from dataclasses import dataclass
 from pathlib import Path
+from types import MethodType
 
 from merlin.llvmlower.reviewed_pass_capabilities import PassCapabilityBinding, ReviewedPassCapability
 from merlin.runtime import _native_files as F
@@ -29,6 +32,25 @@ from .contracts import StageGateError, canonical_json, document_sha256
 SCHEMA = "merlin.public_native_exploration.v1"
 _ISSUER = object()
 _ISSUED = weakref.WeakKeyDictionary()
+BRIDGE_MECHANISM = "compiler_source_native_correspondence"
+
+
+def _bridge_verification(bridge, native_binding):
+    if (
+        type(bridge) is not ReviewedPassCapability
+        or bridge.mechanism != BRIDGE_MECHANISM
+        or bridge.binding != native_binding
+    ):
+        raise StageGateError("native correspondence requires the original exact reviewed bridge")
+    owner = bridge.owner
+    callback = getattr(owner, "verify_compiler_binding", None)
+    if type(callback) is not MethodType or callback.__self__ is not owner:
+        raise StageGateError("native correspondence requires its original bound verification method")
+    source = inspect.getsourcefile(callback.__func__)
+    if source is None or Path(source).is_symlink() or not Path(source).is_file():
+        raise StageGateError("native correspondence verification source is unavailable")
+    path = Path(source).resolve()
+    return bridge, bridge.identity, callback.__func__, callback.__func__.__code__, str(path), F.digest(path)
 
 
 @dataclass(frozen=True, eq=False)
@@ -38,6 +60,7 @@ class PublicNativeExploration:
     catalog_json: bytes
     files: tuple
     _issuer: object
+    binding_correspondence: ReviewedPassCapability | None = None
 
     def verify(self):
         issued = _ISSUED.get(self)
@@ -46,6 +69,7 @@ class PublicNativeExploration:
             or self._issuer is not _ISSUER
             or issued is None
             or self.selection is not issued[0]
+            or self.binding_correspondence is not (issued[6][0] if issued[6] is not None else None)
             or (self.reviewed_json, self.catalog_json, self.files) != issued[1:4]
             or any(
                 getattr(owner, name) is not function or function.__code__ is not code
@@ -58,6 +82,11 @@ class PublicNativeExploration:
         NATIVE.verify_semantics(self.selection.native_semantics, self.selection.correspondence.binding)
         if (self.selection.correspondence.identity, self.selection.native_semantics.identity) != issued[5]:
             raise StageGateError("public native exploration semantics correspondence changed")
+        if (
+            self.binding_correspondence is not None
+            and _bridge_verification(self.binding_correspondence, self.selection.correspondence.binding) != issued[6]
+        ):
+            raise StageGateError("public native exploration original binding correspondence changed")
         for path, digest in self.files:
             if F.pin(Path(path), max_bytes=256 << 20)["sha256"] != digest:
                 raise StageGateError("public native exploration original evidence changed")
@@ -66,7 +95,7 @@ class PublicNativeExploration:
         self.verify()
         reviewed = json.loads(self.reviewed_json)
         return {
-            "schema": SCHEMA,
+            "schema": SCHEMA if self.binding_correspondence is None else "merlin.public_native_exploration.v2",
             "runtime_sha256": self.selection.runtime.sha256,
             "facts_sha256": self.selection.expected_rtl_facts_sha256,
             "software_sha256": self.selection.expected_observed_contract_sha256,
@@ -79,6 +108,11 @@ class PublicNativeExploration:
             "scope": "qualified-domain public exploration only",
             "measured_cycles": None,
             "promotion_authority": "NONE",
+            **(
+                {"compiler_source_native_correspondence": self.binding_correspondence.record()}
+                if self.binding_correspondence is not None
+                else {}
+            ),
         }
 
     def verify_for(self, policy):
@@ -86,9 +120,18 @@ class PublicNativeExploration:
         if (
             F.digest(policy.feedback_evaluator.rtl_facts_path) != self.selection.expected_rtl_facts_sha256
             or policy._compiler_pass_selection.binding.hardware != self.selection.expected_rtl_facts_sha256
-            or policy._compiler_pass_selection.binding.software != self.selection.expected_observed_contract_sha256
+            or self.binding_correspondence is None
+            and policy._compiler_pass_selection.binding.software != self.selection.expected_observed_contract_sha256
         ):
             raise StageGateError("public native exploration selected another hardware/software domain")
+        if self.binding_correspondence is not None:
+            try:
+                self.binding_correspondence.owner.verify_compiler_binding(
+                    policy._compiler_pass_selection.binding,
+                    native_binding=self.selection.correspondence.binding,
+                )
+            finally:
+                self.verify()
 
     def observe_member(self, policy, member, workspace, value, *, sandbox, remaining_s):
         self.verify_for(policy)
@@ -105,8 +148,14 @@ class PublicNativeExploration:
         return result
 
 
-def prepare_public_native_exploration(selection):
-    """Reconstruct original public gates; a saved report cannot issue this owner."""
+def prepare_public_native_exploration(selection, *, binding_correspondence=None):
+    """Reconstruct public gates, optionally joining distinct binding namespaces.
+
+    The optional exact reviewed bridge must be issued by original live owners.
+    Its bound verifier checks the complete compiler and native bindings; neither
+    a record nor equalized software hashes can establish that correspondence.
+    Default V1 selection and records retain their original direct comparison.
+    """
     if (
         type(selection) is not NativeArchiveScreenSelection
         or selection.screen_path is not None
@@ -128,6 +177,7 @@ def prepare_public_native_exploration(selection):
         or selection.correspondence.binding != binding
     ):
         raise StageGateError("public native exploration requires exact live model correspondence")
+    bridge = _bridge_verification(binding_correspondence, binding) if binding_correspondence is not None else None
     reviewed = selection.preflight()
     catalog = HISTORY.prepare(
         archive=selection.archive,
@@ -149,7 +199,9 @@ def prepare_public_native_exploration(selection):
         )
     )
     files = tuple((str(path), F.pin(path, max_bytes=256 << 20)["sha256"]) for path in paths)
-    result = PublicNativeExploration(selection, canonical_json(reviewed), canonical_json(catalog), files, _ISSUER)
+    result = PublicNativeExploration(
+        selection, canonical_json(reviewed), canonical_json(catalog), files, _ISSUER, binding_correspondence
+    )
     functions = tuple(
         (owner, name, getattr(owner, name), getattr(owner, name).__code__)
         for owner, names in (
@@ -161,6 +213,7 @@ def prepare_public_native_exploration(selection):
             (DOMAIN, ("current", "train_support", "typed_profile")),
             (REVIEW, ("review_archive", "domain_reason")),
             (HISTORY, ("prepare",)),
+            (sys.modules[__name__], ("_bridge_verification",)),
         )
         for name in names
     )
@@ -171,6 +224,7 @@ def prepare_public_native_exploration(selection):
         result.files,
         functions,
         (selection.correspondence.identity, selection.native_semantics.identity),
+        bridge,
     )
     try:
         result.verify()
