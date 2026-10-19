@@ -1,8 +1,11 @@
 """Static import never upgrades structural, diagnostic or incomplete partitions."""
 
+import os
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 from merlin_experiments.phase1.feedback import private_model_chain as C
 
 
@@ -67,3 +70,47 @@ def test_live_provider_cannot_run_before_producer_completion(tmp_path):
     partition = C.NativePartition(tmp_path / "record.json", {}, SimpleNamespace(verify=lambda: None))
     with pytest.raises(ValueError, match="producer has not completed"):
         partition.verify()
+
+
+def test_no_execution_gate_requires_explicit_private_criterion(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import private_numerical_selection as Q
+
+    spec = tmp_path / "private.yaml"
+    spec.write_text("models: []")
+    with pytest.raises(ValueError, match="explicitly selected full-chain criterion"):
+        C._build_options(None, spec=spec, name="one", programs={"one": ["forward", "host_only"]})
+    monkeypatch.setattr(Q, "read", lambda path: {"mode": Q.MODE})
+    options = C._build_options(None, spec=spec, name="one", programs={"one": ["forward", "host_only"]})
+    assert options == {"one": {p: {"readback": "full", "host_llvm_bitcode": True, "group_profile": True}
+                               for p in ("forward", "host_only")}}
+
+
+def test_actual_sealed_descriptor_without_whole_model_section_can_use_selected_chain(tmp_path):
+    """Operator integration fixture: reopen the actual admitted descriptor, never synthesize its old gate."""
+    from merlin_experiments.phase1.feedback import private_numerical_selection as Q
+
+    selected = os.environ.get("MERLIN_TEST_PHASE1_RELEASE_DESCRIPTOR")
+    if not selected:
+        pytest.skip("requires an explicit existing sealed release descriptor")
+    descriptor = Path(selected)
+    programs = C.models.program_requirements_for(descriptor)
+    assert programs and "whole_model" not in yaml.safe_load(descriptor.read_bytes()).get("phase1_gates", {})
+    gate = C.execution.gate_for(descriptor, required_programs=programs)
+    assert gate is None
+    pins = {}
+    for key in ("models", "reference_manifest", "reference_sums"):
+        path = tmp_path / key
+        path.write_text("immutable fixture selection")
+        pins[key] = C._pin(path)
+    config = tmp_path / "config.yaml"
+    config.write_text("{}")
+    spec = tmp_path / "private.yaml"
+    spec.write_text(yaml.safe_dump({"numerical_qualification": {
+        "schema": Q.SCHEMA, "mode": Q.MODE, "config": str(config), "static_root": str(tmp_path / "static"),
+        **pins, "comparison": "quantized-reference", "output_scope": "all_declared", "float_policy": Q.POLICY,
+        "kernel_exact": True, "deadline_unix": 2000000000,
+    }}))
+    for name, stages in programs.items():
+        options = C._build_options(gate, spec=spec, name=name, programs=programs)
+        assert list(options[name]) == list(stages)
+        assert all(o["readback"] == "full" and o["host_llvm_bitcode"] for o in options[name].values())

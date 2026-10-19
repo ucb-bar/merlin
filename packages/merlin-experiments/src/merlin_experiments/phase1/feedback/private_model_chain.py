@@ -134,14 +134,12 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
     target = load_target_experiment(descriptor).target
     roster, programs = models.requirements_for(descriptor), models.program_requirements_for(descriptor)
     gate = execution.gate_for(descriptor, required_programs=programs)
-    if name not in roster or selected is None or gate is None:
+    if name not in roster or selected is None:
         raise ValueError("native chain requires a declared model and independent instruction selection")
+    options = _build_options(gate, spec=spec, name=name, programs=programs)
     prepared = instructions.prepare(selected, target=target, output=out / "instruction-selection")
     with selected_input_facts(spec, target=target, required_models=roster) as facts:
         prepared.require_facts(facts)
-        options = execution.build_options(gate)
-        for program in programs[name]:
-            options.setdefault(name, {}).setdefault(program, {}).update(readback="full", host_llvm_bitcode=True)
         result = models.run(
             submission, spec, target=target, required_models=roster, required_programs=programs,
             loader_env_requirements=models.loader_env_requirements_for(descriptor), out=out / "static",
@@ -179,6 +177,18 @@ def _compile(*, run_dir, descriptor, submission, name, out, owner, spec, selecte
     _verify_record(record)
     partition = NativePartition(path, record, prepared)
     return partition
+
+
+def _build_options(gate, *, spec, name, programs):
+    from . import private_numerical_selection
+
+    if gate is None and private_numerical_selection.read(spec) is None:
+        raise ValueError("native chain requires an explicitly selected full-chain criterion or execution gate")
+    options = execution.build_options(gate) if gate is not None else {}
+    for program in programs[name]:
+        options.setdefault(name, {}).setdefault(program, {}).update(readback="full", host_llvm_bitcode=True)
+        options[name][program].setdefault("group_profile", True)
+    return options
 
 
 def run_static(*, run_dir, descriptor, submission, name, out):
