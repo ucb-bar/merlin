@@ -38,6 +38,9 @@ class GraphOptimizationContract:
     fusion_groups: tuple[tuple[int, ...], ...] = ()
     minimum_dispatches_saved: int = 1
     maximum_added_operations: int = 8192
+    physical_layout: bool = False
+    maximum_layout_assignments: int = 100_000
+    maximum_layout_permutations: int = 16
 
     def validate(self, source: str):
         if self.source_sha256 != hashlib.sha256(source.encode()).hexdigest():
@@ -48,10 +51,17 @@ class GraphOptimizationContract:
             "propagate_layout",
             "independent_element_order_unobserved",
             "floating_environment_unobserved_nontrapping",
+            "physical_layout",
         ):
             if type(getattr(self, field)) is not bool:
                 raise ValueError("graph permissions must be explicit booleans")
-        for field in ("minimum_transpose_bytes_saved", "minimum_dispatches_saved", "maximum_added_operations"):
+        for field in (
+            "minimum_transpose_bytes_saved",
+            "minimum_dispatches_saved",
+            "maximum_added_operations",
+            "maximum_layout_assignments",
+            "maximum_layout_permutations",
+        ):
             if type(getattr(self, field)) is not int or getattr(self, field) <= 0:
                 raise ValueError("graph cost constraints must be explicit positive integers")
         if type(self.fusion_groups) is not tuple or any(type(group) is not tuple for group in self.fusion_groups):
@@ -122,10 +132,12 @@ def _check_layout_output(original, modified, bodies):
         raise ValueError("layout propagation changed complete logical output coordinates or scalar expressions")
     if any(count > before_work[key] for key, count in after_work.items()):
         raise ValueError("layout propagation increases pointwise arithmetic in a control scope")
-    return {"before_scalar_evaluations": sum(before_work.values()),
-            "after_scalar_evaluations": sum(after_work.values()),
-            "scope": "static parallel tensor domains by typed scalar operation and lexical control scope; "
-                     "not dynamic invocation counts, machine instructions or cycles"}
+    return {
+        "before_scalar_evaluations": sum(before_work.values()),
+        "after_scalar_evaluations": sum(after_work.values()),
+        "scope": "static parallel tensor domains by typed scalar operation and lexical control scope; "
+        "not dynamic invocation counts, machine instructions or cycles",
+    }
 
 
 def _layout_expression(module):
@@ -188,6 +200,7 @@ def _check_fusion_growth(outlined, plan, entry, original_count, maximum_added):
 
 def _implementation_sources():
     from merlin.common import dense_float_ir
+    from merlin.perf import physical_layout
     from merlin.transforms import pipeline_state
 
     # Trusted host observations, not an SDK/export grant or imported dependency lock.
@@ -195,9 +208,19 @@ def _implementation_sources():
         name: hashlib.sha256(path.read_bytes()).hexdigest()
         for name, path in (
             ("graph_optimizations", Path(__file__)),
-            *((name, Path(__file__).with_name(name + ".py")) for name in (
-                "layout_propagation", "layout_conformance", "quant_round_check",
-                "host_graph_policy", "host_optimization_request")),
+            *(
+                (name, Path(__file__).with_name(name + ".py"))
+                for name in (
+                    "layout_propagation",
+                    "layout_conformance",
+                    "quant_round_check",
+                    "host_graph_policy",
+                    "host_optimization_request",
+                    "host_layout_planning",
+                    "host_layout_realization",
+                )
+            ),
+            ("physical_layout", Path(physical_layout.__file__)),
             ("pipeline_state", Path(pipeline_state.__file__)),
             ("dense_float_ir", Path(dense_float_ir.__file__)),
         )
@@ -206,10 +229,14 @@ def _implementation_sources():
 
 def recheck_host_graph_artifacts(directory: Path, contract: GraphOptimizationContract | HostGraphPolicy) -> dict:
     """Reopen actual source/report bytes; this grants no machine-code qualification."""
-    paths = {role: Path(directory) / name for role, name in (
-        ("input", "host-graph-input.mlir"), ("selected", "host-graph-optimized.mlir"),
-        ("report", "host-graph-optimization.json"),
-    )}
+    paths = {
+        role: Path(directory) / name
+        for role, name in (
+            ("input", "host-graph-input.mlir"),
+            ("selected", "host-graph-optimized.mlir"),
+            ("report", "host-graph-optimization.json"),
+        )
+    }
     if any(path.is_symlink() or not path.is_file() for path in paths.values()):
         raise ValueError("host graph optimization artifacts are absent or indirect")
     from .host_graph_policy import HostGraphPolicy
@@ -220,14 +247,18 @@ def recheck_host_graph_artifacts(directory: Path, contract: GraphOptimizationCon
         raise ValueError("host graph artifacts require the original typed contract")
     contract.validate(paths["input"].read_text())
     report = json.loads(paths["report"].read_text())
-    if (report.get("schema") != "merlin.host_graph_optimization.v1"
-            or report.get("source_sha256") != contract.source_sha256
-            or report.get("contract") != json.loads(json.dumps(asdict(contract)))
-            or report.get("transformed_sha256") != hashlib.sha256(paths["selected"].read_bytes()).hexdigest()
-            or report.get("implementation_sources_sha256") != _implementation_sources()):
+    if (
+        report.get("schema") != "merlin.host_graph_optimization.v1"
+        or report.get("source_sha256") != contract.source_sha256
+        or report.get("contract") != json.loads(json.dumps(asdict(contract)))
+        or report.get("transformed_sha256") != hashlib.sha256(paths["selected"].read_bytes()).hexdigest()
+        or report.get("implementation_sources_sha256") != _implementation_sources()
+    ):
         raise ValueError("host graph contract, selected source or implementation bytes changed")
-    return {role: {"path": str(path.resolve()), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-            for role, path in paths.items()}
+    return {
+        role: {"path": str(path.resolve()), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        for role, path in paths.items()
+    }
 
 
 def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostGraphPolicy) -> tuple[str, dict]:
@@ -270,36 +301,129 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostG
         )
         if floating and not contract.floating_environment_unobserved_nontrapping:
             raise GraphOptimizationUnavailable(
-                "floating layout propagation requires its nontrapping/unobserved environment contract")
+                "floating layout propagation requires its nontrapping/unobserved environment contract"
+            )
         original = module.clone()
         bodies = _layout_bodies(original)
         before_bytes = _transpose_bytes(original)
         from merlin.transforms.pipeline import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
         sources = report["implementation_sources_sha256"]
-        session = PipelineSession(module, ir_level="host_tensor", context=PipelineContext(
-            numerical_policy=hashlib.sha256(json.dumps(asdict(contract), sort_keys=True).encode()).hexdigest(),
-            resources=f"added_operations={contract.maximum_added_operations}",
-            library=hashlib.sha256(json.dumps(sources, sort_keys=True).encode()).hexdigest(),
-        ))
+        session = PipelineSession(
+            module,
+            ir_level="host_tensor",
+            context=PipelineContext(
+                numerical_policy=hashlib.sha256(json.dumps(asdict(contract), sort_keys=True).encode()).hexdigest(),
+                resources=f"added_operations={contract.maximum_added_operations}",
+                library=hashlib.sha256(json.dumps(sources, sort_keys=True).encode()).hexdigest(),
+            ),
+        )
         specs = (
             PassSpec("layout-source", 0, produces=("coordinates",), mutates_ir=False, ir_level="host_tensor"),
-            PassSpec("layout-propagation", 1, requires=("coordinates",), produces=("rewrite",),
-                     invalidates=("*",), ir_level="host_tensor"),
-            PassSpec("layout-conformance", 2, requires=("rewrite",), produces=("conformance",),
-                     mutates_ir=False, ir_level="host_tensor"),
+            PassSpec(
+                "layout-propagation",
+                1,
+                requires=("coordinates",),
+                produces=("rewrite",),
+                invalidates=("*",),
+                ir_level="host_tensor",
+            ),
+            PassSpec(
+                "layout-conformance",
+                2,
+                requires=("rewrite",),
+                produces=("conformance",),
+                mutates_ir=False,
+                ir_level="host_tensor",
+            ),
         )
+        if contract.physical_layout:
+            from .host_layout_planning import plan_islands
+            from .host_layout_realization import rewrite_module as realize_layouts
+
+            specs = (
+                specs[0],
+                PassSpec(
+                    "layout-planning",
+                    1,
+                    requires=("coordinates",),
+                    produces=("layout_plans",),
+                    mutates_ir=False,
+                    ir_level="host_tensor",
+                ),
+                PassSpec(
+                    "layout-propagation",
+                    2,
+                    requires=("coordinates", "layout_plans"),
+                    produces=("rewrite",),
+                    invalidates=("*",),
+                    ir_level="host_tensor",
+                ),
+                PassSpec(
+                    "layout-conformance",
+                    3,
+                    requires=("rewrite",),
+                    produces=("conformance",),
+                    mutates_ir=False,
+                    ir_level="host_tensor",
+                ),
+            )
         validate_pass_order(specs)
         session.run(specs[0], lambda: {"coordinates": _layout_expression(module)})
-        session.run(specs[1], lambda: {"rewrite": rewrite_module(
-            module, reduction_channel_block=0, pointwise_only=True,
-            maximum_added_operations=contract.maximum_added_operations,
-        )})
+        if contract.physical_layout:
+            session.run(
+                specs[1],
+                lambda: {
+                    "layout_plans": plan_islands(
+                        module,
+                        max_assignments=contract.maximum_layout_assignments,
+                        max_permutations=contract.maximum_layout_permutations,
+                    )
+                },
+            )
+            session.run(
+                specs[2],
+                lambda: {
+                    "rewrite": realize_layouts(
+                        module,
+                        islands=session.analysis("layout_plans"),
+                        maximum_added_operations=contract.maximum_added_operations,
+                    )
+                },
+            )
+        else:
+            session.run(
+                specs[1],
+                lambda: {
+                    "rewrite": rewrite_module(
+                        module,
+                        reduction_channel_block=0,
+                        pointwise_only=True,
+                        maximum_added_operations=contract.maximum_added_operations,
+                    )
+                },
+            )
         layout = session.analysis("rewrite")
-        session.run(specs[2], lambda: {"conformance": _check_layout_output(original, module, bodies)})
+
+        def conformance():
+            checked = _check_layout_output(original, module, bodies)
+            if contract.physical_layout:
+                checked["physical_layout"] = layout.verify(module)
+            return {"conformance": checked}
+
+        session.run(specs[-1], conformance)
         after_bytes = _transpose_bytes(module)
         if before_bytes - after_bytes < contract.minimum_transpose_bytes_saved:
-            raise GraphOptimizationUnavailable("layout rewrite does not satisfy its materialization-byte cost contract")
+            reasons = []
+            if contract.physical_layout:
+                for island in layout.to_dict()["islands"]:
+                    reasons.extend(row["code"] for row in island["selection"]["refusals"])
+                    if island.get("reason"):
+                        reasons.append(island["reason"])
+            detail = "; " + ", ".join(sorted(set(reasons))) if reasons else ""
+            raise GraphOptimizationUnavailable(
+                "layout rewrite does not satisfy its materialization-byte cost contract" + detail
+            )
         report["layout"] = {
             "rewrite": layout.to_dict(),
             "before_transpose_bytes": before_bytes,

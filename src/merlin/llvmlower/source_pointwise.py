@@ -44,8 +44,10 @@ class PointwiseProgram:
         from merlin.sched.ir import Kernel
 
         if (
-            type(self.kernel) is not Kernel or type(self.bindings) is not PointwiseBindings
-            or type(self.objects) is not tuple or any(type(o) is not TemporaryObject for o in self.objects)
+            type(self.kernel) is not Kernel
+            or type(self.bindings) is not PointwiseBindings
+            or type(self.objects) is not tuple
+            or any(type(o) is not TemporaryObject for o in self.objects)
         ):
             raise ValueError("pointwise program requires a typed kernel, immutable temporaries and runtime bindings")
 
@@ -72,6 +74,7 @@ class SourcePointwiseLowering:
     max_source_elements: int = 64 << 20
     max_islands: int = 64
     borrowed_effects: BorrowedBufferEffects | None = None
+    prefetch_qualification_identity: str | None = None
 
     def __post_init__(self):
         from merlin.compile.scheduling.program_limits import ProgramLimits
@@ -83,24 +86,35 @@ class SourcePointwiseLowering:
         alignment = self.allocation_alignment
         if (
             type(self.selected_contracts) is not SelectedSchedulingContracts
-            or type(self.adapter) is not StorageAdapter or type(self.encoding) is not ScheduleEncoding
-            or type(self.limits) is not ProgramLimits or type(self.budgets) is not ScheduleBudgets
+            or type(self.adapter) is not StorageAdapter
+            or type(self.encoding) is not ScheduleEncoding
+            or type(self.limits) is not ProgramLimits
+            or type(self.budgets) is not ScheduleBudgets
             or self.execution_domain not in ("host", "device")
-            or type(alignment) is not int or not 0 < alignment < 1 << 63 or alignment & (alignment - 1)
+            or type(alignment) is not int
+            or not 0 < alignment < 1 << 63
+            or alignment & (alignment - 1)
             or any(not callable(f) for f in (self.lower, self.prepare, self.build))
             or any(type(v) is not bool for v in (self.private_ownership, self.external_buffers_disjoint))
             or any(type(v) is not int or v <= 0 for v in (self.max_source_elements, self.max_islands))
-            or any(v is not None and (type(v) is not str or not v.strip()) for v in (
-                self.scalar_qualification_identity, self.configuration_qualification_identity,
-                self.spill_qualification_identity,
-            ))
+            or any(
+                v is not None and (type(v) is not str or not v.strip())
+                for v in (
+                    self.scalar_qualification_identity,
+                    self.configuration_qualification_identity,
+                    self.spill_qualification_identity,
+                    self.prefetch_qualification_identity,
+                )
+            )
         ):
             raise ValueError("source pointwise lowering requires fixed typed capabilities and bounded controls")
         for emitters in (self.fusion_emitters, self.spill_emitters):
             if (
                 type(emitters) is not tuple
-                or any(type(p) is not tuple or len(p) != 2 or type(p[0]) is not str or not p[0]
-                       or not callable(p[1]) for p in emitters)
+                or any(
+                    type(p) is not tuple or len(p) != 2 or type(p[0]) is not str or not p[0] or not callable(p[1])
+                    for p in emitters
+                )
                 or len({p[0] for p in emitters}) != len(emitters)
             ):
                 raise ValueError("pointwise emitters require immutable distinct declared selector/callback pairs")
@@ -133,9 +147,13 @@ def discover_pointwise(module, selection, validate):
         if declaration["execution"] != "contiguous_read_then_write":
             continue
         try:
-            supported.append(scalar_graph(
-                declaration["scalar_ir"].encode(), budgets.max_scalar_operations, budgets.max_scalar_ir_bytes,
-            ))
+            supported.append(
+                scalar_graph(
+                    declaration["scalar_ir"].encode(),
+                    budgets.max_scalar_operations,
+                    budgets.max_scalar_ir_bytes,
+                )
+            )
         except UnsupportedElementwise:
             continue
     regions, declined = [], []
@@ -144,8 +162,10 @@ def discover_pointwise(module, selection, validate):
             continue
         try:
             source = read_pointwise_source(
-                operation, max_elements=selection.max_source_elements,
-                max_operations=budgets.max_scalar_operations, max_ir_bytes=budgets.max_scalar_ir_bytes,
+                operation,
+                max_elements=selection.max_source_elements,
+                max_operations=budgets.max_scalar_operations,
+                max_ir_bytes=budgets.max_scalar_ir_bytes,
             )
         except UnsupportedElementwise:
             continue
@@ -166,14 +186,23 @@ def discover_pointwise(module, selection, validate):
             continue
         try:
             compiled = compile_source_pointwise(
-                module, operation, program.kernel, program.objects, selection.adapter, selection.encoding,
-                selection.limits, selected_contracts=contracts, bindings=program.bindings, budgets=budgets,
+                module,
+                operation,
+                program.kernel,
+                program.objects,
+                selection.adapter,
+                selection.encoding,
+                selection.limits,
+                selected_contracts=contracts,
+                bindings=program.bindings,
+                budgets=budgets,
                 private_ownership=selection.private_ownership,
                 fusion_emitters=dict(selection.fusion_emitters),
                 fusion_qualification_identity=selection.scalar_qualification_identity,
                 configuration_qualification_identity=selection.configuration_qualification_identity,
                 spill_emitters=dict(selection.spill_emitters) if selection.spill_emitters else None,
                 spill_qualification_identity=selection.spill_qualification_identity,
+                prefetch_qualification_identity=selection.prefetch_qualification_identity,
                 max_source_elements=selection.max_source_elements,
             )
         except (UnsupportedElementwise, StorageOptimizationUnavailable) as error:

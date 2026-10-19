@@ -36,7 +36,7 @@ from .program_limits import (
     _decode,
     finalize_program,
 )
-from .selected_contracts import SelectedSchedulingContracts
+from .selected_contracts import SelectedSchedulingContracts, _parse
 from .spill_conformance import validate_spill_classes
 from .temporary_storage import (
     StorageAdapter,
@@ -47,6 +47,7 @@ from .temporary_storage import (
     _problem,
     _project,
     allocate_temporary_storage,
+    prefetch_private_copies,
 )
 
 
@@ -92,6 +93,8 @@ class ScheduleBudgets:
     max_scalar_ir_bytes: int = 65536
     eliminate_configuration: bool = True
     optimize_storage: bool = True
+    prefetch_distance: int = 1
+    max_prefetch_moves: int = 8
 
     def __post_init__(self):
         if (
@@ -111,6 +114,10 @@ class ScheduleBudgets:
             or type(self.eliminate_copies) is not bool
             or type(self.eliminate_configuration) is not bool
             or type(self.optimize_storage) is not bool
+            or any(
+                type(value) is not int or not 0 <= value <= 1 << 20
+                for value in (self.prefetch_distance, self.max_prefetch_moves)
+            )
         ):
             raise ValueError("schedule compilation requires explicit finite work, repair and solver budgets")
 
@@ -124,8 +131,6 @@ class ScheduleCompilation:
 
 def _hash(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
-
-
 
 
 def _verify_kernel(kernel):
@@ -225,6 +230,7 @@ def compile_schedule(
     spill_emitters=None,
     spill_qualification_identity=None,
     continuation_qualification_identity=None,
+    prefetch_qualification_identity=None,
 ) -> ScheduleCompilation:
     """Allocate, check, encode and finalize through the existing pass session.
 
@@ -234,11 +240,22 @@ def compile_schedule(
     """
     if type(budgets) is not ScheduleBudgets:
         raise ValueError("schedule compilation requires typed work and repair budgets")
-    binding = None
+    binding, prefetch_admission = None, None
+    original_prefetch = None
     if selected_contracts is not None:
         if type(selected_contracts) is not SelectedSchedulingContracts:
             raise ValueError("schedule inputs require explicitly selected RTL/software contracts")
         selected_contracts.revalidate()
+        if prefetch_qualification_identity is not None:
+            # Parsed objects are not authority: compare to the original frozen
+            # files before binding and retain immutable bytes across callbacks.
+            original_storage = _parse(
+                selected_contracts.facts_bytes, selected_contracts.software_bytes, selected_contracts.target
+            )[5]
+            original_prefetch = original_storage.prefetch if original_storage is not None else None
+            current = selected_contracts.storage.prefetch if selected_contracts.storage is not None else None
+            if current != original_prefetch:
+                raise ValueError("selected prefetch contract differs from its original software/RTL declaration")
         if (
             type(adapter) is not StorageAdapter
             or adapter.configuration_identity != selected_contracts.hardware_identity
@@ -251,18 +268,30 @@ def compile_schedule(
         scopes = ["instruction_encoding", "configuration_fields"]
         if selected_contracts.storage is not None:
             banks, reservations, external_windows, adapter = selected_contracts.storage.bind(
-                selected_contracts.isa, adapter, banks=banks, reservations=reservations,
-                external_windows=external_windows, private_ownership=private_ownership,
+                selected_contracts.isa,
+                adapter,
+                banks=banks,
+                reservations=reservations,
+                external_windows=external_windows,
+                private_ownership=private_ownership,
                 configuration_adapter=configuration_adapter,
             )
             scopes.extend(("temporary_memory_windows", "physical_aliases", "storage_effects_and_completion"))
+            prefetch_admission = selected_contracts.storage.bind_prefetch(prefetch_qualification_identity)
+            if prefetch_admission is not None and prefetch_admission.available:
+                scopes.append("qualified_async_copy_overlap")
+        elif prefetch_qualification_identity is not None:
+            raise ValueError("prefetch qualification requires selected storage declarations")
         fusion_binding = None
         if selected_contracts.fusion is not None:
             if fusion_capabilities:
                 raise ValueError("selected fusion declarations cannot be overridden by arbitrary capabilities")
             adapter, fusion_capabilities, fusion_binding = selected_contracts.fusion.bind(
-                adapter, emitters=fusion_emitters, qualification_identity=fusion_qualification_identity,
-                max_operations=budgets.max_scalar_operations, max_ir_bytes=budgets.max_scalar_ir_bytes,
+                adapter,
+                emitters=fusion_emitters,
+                qualification_identity=fusion_qualification_identity,
+                max_operations=budgets.max_scalar_operations,
+                max_ir_bytes=budgets.max_scalar_ir_bytes,
             )
             scopes.extend(("scalar_computation_and_layouts", "physical_fusion_routes", "fusion_resource_bounds"))
         elif fusion_emitters is not None or fusion_qualification_identity is not None:
@@ -272,7 +301,10 @@ def compile_schedule(
             raise ValueError("selected device spill declarations cannot be overridden by arbitrary capabilities")
         if selected_contracts.spills is not None:
             spill_classes, spill_binding = selected_contracts.spills.bind(
-                adapter, banks, emitters=spill_emitters, qualification_identity=spill_qualification_identity,
+                adapter,
+                banks,
+                emitters=spill_emitters,
+                qualification_identity=spill_qualification_identity,
             )
             scopes.extend(("device_register_resources", "exact_spill_reload_routes"))
         elif spill_emitters is not None or spill_qualification_identity is not None:
@@ -282,12 +314,16 @@ def compile_schedule(
             if type(encoding) is not ScheduleEncoding:
                 raise ValueError("selected final program requires typed schedule encoding")
             limits, decoder, continuation, program_binding = selected_contracts.program.bind(
-                selected_contracts, limits, encoding.program_decoder, continuation,
+                selected_contracts,
+                limits,
+                encoding.program_decoder,
+                continuation,
                 continuation_qualification_identity,
             )
             encoding = replace(encoding, program_decoder=decoder)
-            scopes.extend(("final_program_limits", "physical_address_windows", "branch_encodings",
-                           "launch_state_continuation"))
+            scopes.extend(
+                ("final_program_limits", "physical_address_windows", "branch_encodings", "launch_state_continuation")
+            )
         elif continuation_qualification_identity is not None:
             raise ValueError("continuation qualification requires a selected program contract")
         binding = selected_contracts.record(scopes=tuple(scopes))
@@ -298,7 +334,8 @@ def compile_schedule(
         if program_binding is not None:
             binding["program"] = program_binding
         binding["configuration_pass"] = (
-            "selected_qualified_declaration" if configuration_adapter is not None
+            "selected_qualified_declaration"
+            if configuration_adapter is not None
             else "unavailable_missing_qualification"
         )
     elif configuration_qualification_identity is not None:
@@ -309,8 +346,21 @@ def compile_schedule(
         raise ValueError("device spill emitters and qualification require selected RTL/software contracts")
     elif continuation_qualification_identity is not None:
         raise ValueError("continuation qualification requires selected RTL/software program contracts")
+    elif prefetch_qualification_identity is not None:
+        raise ValueError("prefetch qualification requires selected RTL/software storage contracts")
     if external_windows is None:
         external_windows = ()
+    prefetch_snapshot = _hash(asdict(prefetch_admission) if prefetch_admission is not None else None)
+    original_prefetch_snapshot = _hash(asdict(original_prefetch) if original_prefetch is not None else None)
+
+    def revalidate_prefetch():
+        if _hash(asdict(prefetch_admission) if prefetch_admission is not None else None) != prefetch_snapshot:
+            raise ValueError("prefetch overlap qualification or resources changed during compilation")
+        if selected_contracts is not None and prefetch_qualification_identity is not None:
+            current = selected_contracts.storage.prefetch if selected_contracts.storage is not None else None
+            if _hash(asdict(current) if current is not None else None) != original_prefetch_snapshot:
+                raise ValueError("selected prefetch overlap declaration changed during compilation")
+
     if (
         type(adapter) is not StorageAdapter
         or type(encoding) is not ScheduleEncoding
@@ -390,6 +440,23 @@ def compile_schedule(
                 for spec in specs[1:]
             ),
         )
+    # Missing original capability/qualification preserves the legacy roster.
+    if prefetch_admission is not None and prefetch_admission.available and budgets.prefetch_distance:
+        requires = ("source_effects",)
+        if configuration_adapter is not None:
+            requires += ("configuration_candidate",)
+        if fusion_capabilities:
+            requires += ("fusion_candidate",)
+        prefetch_spec = PassSpec(
+            "prefetch", 2, requires=requires, produces=("prefetch_candidate",), mutates_ir=False, ir_level="schedule"
+        )
+        insertion = next(i for i, spec in enumerate(specs) if spec.name == "storage")
+        specs = (
+            *specs[:insertion],
+            prefetch_spec,
+            replace(specs[insertion], requires=(*specs[insertion].requires, "prefetch_candidate")),
+            *specs[insertion + 1 :],
+        )
     if pass_order:
         names = {spec.name: spec for spec in specs}
         if type(pass_order) is not tuple or len(pass_order) != len(specs) or set(pass_order) != set(names):
@@ -422,6 +489,7 @@ def compile_schedule(
         "budgets": asdict(budgets),
         "fusion_capabilities": [capability.record() for capability in fusion_capabilities],
         "configuration_adapter": configuration_adapter.record() if configuration_adapter is not None else None,
+        "prefetch_admission": asdict(prefetch_admission) if prefetch_admission is not None else None,
         "spill_classes": [
             {
                 name: getattr(capability, name)
@@ -447,6 +515,7 @@ def compile_schedule(
                 "decoder": encoding.program_decoder.qualification_identity,
                 "continuation": asdict(continuation) if continuation is not None else None,
                 "selected_contracts": binding,
+                "prefetch_qualification": prefetch_qualification_identity,
             }
         ),
         library=_hash(sources),
@@ -516,13 +585,29 @@ def compile_schedule(
             )
 
         candidate = session.analysis("fusion_candidate") if fusion_capabilities else None
-        result = allocate(candidate.kernel, candidate.objects) if candidate is not None else None
+        source = candidate.kernel if candidate is not None else configured
+        source_objects = candidate.objects if candidate is not None else objects
+        prefetch_report = {"status": "unchanged", "reason": "disabled_or_missing_qualified_overlap", "moves": []}
+        prefetch_selected = any(spec.name == "prefetch" for spec in specs)
+        if prefetch_selected:
+            reordered, prefetch_report = session.analysis("prefetch_candidate")
+            if prefetch_report["source_sha256"] != source.digest():
+                raise ValueError("prefetch candidate belongs to a different source composition")
+            result = allocate(reordered, source_objects)
+            if result is None and reordered != source:
+                session.repair(stage=3, reason="prefetch allocation failed; restore original issue order and replan")
+                prefetch_report = {**prefetch_report, "status": "allocation_fallback"}
+                result = allocate(source, source_objects)
+        else:
+            result = allocate(source, source_objects) if candidate is not None else None
         fusion_status = "realized"
         if candidate is not None and result is None:
             session.repair(stage=3, reason="fusion allocation failed; restore original composition and replan")
             fusion_status = "allocation_fallback"
         if result is None:
             result = allocate(configured, objects)
+            if candidate is not None and prefetch_selected:
+                prefetch_report = {**prefetch_report, "status": "composition_fallback"}
         if result is None:
             unavailable = binding.get("spills", {}).get("unavailable_classes", {}) if binding else {}
             raise StorageOptimizationUnavailable(
@@ -535,7 +620,27 @@ def compile_schedule(
             report["fusion"] = {"status": fusion_status, "checked_steps": list(candidate.checks)}
         if configuration_report is not None:
             report["configuration"] = configuration_report
+        report["prefetch"] = prefetch_report
         return {"storage": report, "realization": report}
+
+    def prefetch():
+        candidate = session.analysis("fusion_candidate") if fusion_capabilities else None
+        source = candidate.kernel if candidate is not None else configured_kernel()
+        source_objects = candidate.objects if candidate is not None else objects
+        reordered, report = prefetch_private_copies(
+            source,
+            source_objects,
+            banks,
+            adapter,
+            prefetch_admission,
+            distance=budgets.prefetch_distance,
+            max_moves=budgets.max_prefetch_moves,
+            external_windows=external_windows,
+            private_ownership=private_ownership,
+            max_calls=budgets.max_calls,
+            max_objects=budgets.max_objects,
+        )
+        return {"prefetch_candidate": (reordered, {"source_sha256": source.digest(), **report})}
 
     def configured_kernel():
         return (
@@ -579,8 +684,14 @@ def compile_schedule(
     def emission():
         image = encoding.encode(session.module)
         _emission_effects(
-            (image,), session.module, adapter, encoding, limits, budgets.max_calls,
-            configuration_adapter, selected_contracts,
+            (image,),
+            session.module,
+            adapter,
+            encoding,
+            limits,
+            budgets.max_calls,
+            configuration_adapter,
+            selected_contracts,
         )
         return {"encoded": image}
 
@@ -590,14 +701,42 @@ def compile_schedule(
         # an otherwise illegal segmentation boundary.
         outputs = tuple(EncodedAccess(window.space, window.start, window.size) for window in external_windows)
         program = finalize_program(
-            session.analysis("encoded"), limits, encoding.program_decoder, continuation=continuation, outputs=outputs,
-            selected_contracts=(selected_contracts if selected_contracts is not None
-                                and selected_contracts.program is not None else None),
+            session.analysis("encoded"),
+            limits,
+            encoding.program_decoder,
+            continuation=continuation,
+            outputs=outputs,
+            selected_contracts=(
+                selected_contracts
+                if selected_contracts is not None and selected_contracts.program is not None
+                else None
+            ),
         )
         effects = _emission_effects(
-            program.segments, session.module, adapter, encoding, limits, budgets.max_calls,
-            configuration_adapter, selected_contracts,
+            program.segments,
+            session.module,
+            adapter,
+            encoding,
+            limits,
+            budgets.max_calls,
+            configuration_adapter,
+            selected_contracts,
         )
+        prefetch_report = session.analysis("storage")["prefetch"]
+        observed_prefetch = []
+        if prefetch_report["status"] == "applied":
+            for move in prefetch_report["moves"]:
+                positions = [(i, effect) for i, effect in enumerate(effects) if effect.token == move["token"]]
+                if len(positions) != 1:
+                    raise ValueError("actual final bytes lost the selected prefetch launch")
+                index, effect = positions[0]
+                observed_prefetch.append(
+                    {
+                        "actual_instruction_index": index,
+                        "token": effect.token,
+                        "accesses": [asdict(access) for access in effect.accesses],
+                    }
+                )
         if len(program.segments) > 1 and configuration_adapter is not None:
             state_effects = tuple(configuration_adapter.project(call) for call in session.module.body)
             if any(type(effect) is not ConfigurationEffects or not effect.ordered for effect in state_effects):
@@ -617,12 +756,16 @@ def compile_schedule(
                 "actual_commands": len(effects),
                 "requested_read_bytes": sum(a.size for effect in effects for a in effect.accesses if not a.writes),
                 "requested_write_bytes": sum(a.size for effect in effects for a in effect.accesses if a.writes),
-                "completion_model": ("explicit_global_drains" if any(
-                    effect.completion == "asynchronous" for effect in effects) else "declared_synchronous"),
+                "completion_model": (
+                    "explicit_global_drains"
+                    if any(effect.completion == "asynchronous" for effect in effects)
+                    else "declared_synchronous"
+                ),
                 "encoding_qualification_identity": encoding.qualification_identity,
                 "machine_effects": "checked_under_selected_decoders",
                 "execution_qualification": "not_established",
                 "timing": "UNKNOWN",
+                "prefetch": {"status": prefetch_report["status"], "actual_launches": observed_prefetch},
             },
         }
 
@@ -630,12 +773,14 @@ def compile_schedule(
         "semantic_admission": admission,
         "configuration": configuration,
         "fusion": fusion,
+        "prefetch": prefetch,
         "storage": storage,
         "completion": completion,
         "emission": emission,
         "final_program": final,
     }
     for spec in specs:
+        revalidate_prefetch()
         if kernel.digest() != source_sha256:
             raise ValueError("source schedule changed during compilation; recompile")
         if selected_contracts is not None:
@@ -643,6 +788,7 @@ def compile_schedule(
         if sources != shared_library_sources():
             raise ValueError("shared scheduling library changed during compilation; recompile")
         session.run(spec, actions[spec.name])
+        revalidate_prefetch()
         if kernel.digest() != source_sha256:
             raise ValueError("source schedule changed during compilation; recompile")
         if sources != shared_library_sources():
