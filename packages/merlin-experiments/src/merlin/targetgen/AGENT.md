@@ -10,6 +10,11 @@ refuse. Original required tiers remain intact; L3 stays pending and the result
 is diagnostic/incomplete, with no public-program basis, placement, certification,
 timing or promotion authority. Defaults and old child schemas are unchanged.
 The issuer owns its leaf trace lease; never hold a parent CPU lease across it.
+The checked selector groups only adjacent pass/role metadata getters in its
+original opted-in registry transaction. Original owner checks run at both
+boundaries; selector source/callback checks remain fresh before and after those
+getters. Return metadata only after the final check. Never extend this scope
+across compilation, native execution, tracing or current source qualification.
 
 Owned-host model preparation, frozen placement and linked-device audit use the
 core capture-bound exact grouping helper. They must inspect the same selected

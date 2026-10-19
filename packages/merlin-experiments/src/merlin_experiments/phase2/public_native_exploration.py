@@ -38,14 +38,49 @@ from .contracts import StageGateError, canonical_json, document_sha256
 SCHEMA = "merlin.public_native_exploration.v1"
 _ISSUER = object()
 _ISSUED = weakref.WeakKeyDictionary()
+_JOINT_REGISTRIES = weakref.WeakKeyDictionary()
 BRIDGE_MECHANISM = "compiler_source_native_correspondence"
+JOINT_METADATA_PROTOCOL = "merlin.public_native_metadata.v1"
 
 
-def _bridge_verification(bridge, native_binding, registry):
+def _registry_roster(registry, expected):
+    if (
+        type(registry) is not ReviewedPassCapabilities
+        or type(expected) is not tuple
+        or type(registry._capabilities) is not tuple
+        or len(registry._capabilities) != len(expected)
+        or any(
+            type(cap) is not ReviewedPassCapability or actual is not cap
+            for actual, cap in zip(registry._capabilities, expected, strict=True)
+        )
+    ):
+        raise StageGateError("native correspondence requires its original exact bridge registry")
+
+
+def _metadata_roster(issued, selection, bridge):
+    registry, roster, protocol = issued[7:10]
+    expected = (bridge,)
+    if protocol == JOINT_METADATA_PROTOCOL:
+        expected = (selection.correspondence, selection.native_semantics, bridge)
+    elif protocol is not None:
+        raise StageGateError("native metadata protocol changed after original issuance")
+    if len(roster) != len(expected) or any(a is not b for a, b in zip(roster, expected, strict=True)):
+        raise StageGateError("native metadata lost its original selected capability roster")
+    _registry_roster(registry, roster)
+    if protocol == JOINT_METADATA_PROTOCOL and _JOINT_REGISTRIES.get(registry) is not roster:
+        raise StageGateError("joint native metadata lost its original issuance")
+    return roster
+
+
+def _bridge_verification(bridge, native_binding, registry, *, expected_roster=None):
     if type(bridge) is not ReviewedPassCapability or type(registry) is not ReviewedPassCapabilities:
         raise StageGateError("native correspondence requires the original exact reviewed bridge")
-    if len(registry._capabilities) != 1 or registry._capabilities[0] is not bridge:
+    roster = (bridge,) if expected_roster is None else expected_roster
+    if not roster or roster[-1] is not bridge:
         raise StageGateError("native correspondence requires its original exact bridge registry")
+    if len(roster) != 1 and (len(roster) != 3 or _JOINT_REGISTRIES.get(registry) is not roster):
+        raise StageGateError("joint native metadata requires its original exact issued roster")
+    _registry_roster(registry, roster)
     # Only historical-owner metadata getters are coalesced. The original owner
     # runs at both boundaries, and a failed final recheck prevents return.
     with METADATA.scoped_registry_metadata_verification(registry):
@@ -84,6 +119,7 @@ class PublicNativeExploration:
         if issued[7] is None:
             yield
             return
+        _metadata_roster(issued, self.selection, self.binding_correspondence)
         with METADATA.scoped_registry_metadata_verification(issued[7]):
             self.verify()
             primary = None
@@ -122,7 +158,12 @@ class PublicNativeExploration:
             raise StageGateError("public native exploration semantics correspondence changed")
         if (
             self.binding_correspondence is not None
-            and _bridge_verification(self.binding_correspondence, self.selection.correspondence.binding, issued[7])
+            and _bridge_verification(
+                self.binding_correspondence,
+                self.selection.correspondence.binding,
+                issued[7],
+                expected_roster=_metadata_roster(issued, self.selection, self.binding_correspondence),
+            )
             != issued[6]
         ):
             raise StageGateError("public native exploration original binding correspondence changed")
@@ -187,13 +228,16 @@ class PublicNativeExploration:
         return result
 
 
-def prepare_public_native_exploration(selection, *, binding_correspondence=None):
+def prepare_public_native_exploration(selection, *, binding_correspondence=None, metadata_protocol=None):
     """Reconstruct public gates, optionally joining distinct binding namespaces.
 
     The optional exact reviewed bridge must be issued by original live owners.
     Its bound verifier checks the complete compiler and native bindings; neither
     a record nor equalized software hashes can establish that correspondence.
     Default V1 selection and records retain their original direct comparison.
+    The optional original joint-metadata protocol coalesces only original Count,
+    native-semantics and bridge getters during one selection-record operation.
+    It preserves V2 record semantics and never brackets current target work.
     """
     if (
         type(selection) is not NativeArchiveScreenSelection
@@ -216,13 +260,25 @@ def prepare_public_native_exploration(selection, *, binding_correspondence=None)
         or selection.correspondence.binding != binding
     ):
         raise StageGateError("public native exploration requires exact live model correspondence")
-    bridge_registry = None
+    if metadata_protocol is not None and (
+        type(metadata_protocol) is not str or metadata_protocol != JOINT_METADATA_PROTOCOL
+    ):
+        raise StageGateError("native metadata requires the exact original opt-in protocol")
+    if metadata_protocol is not None and binding_correspondence is None:
+        raise StageGateError("joint native metadata requires an explicit original bridge")
+    bridge_registry, metadata_roster = None, ()
     if binding_correspondence is not None:
         if type(binding_correspondence) is not ReviewedPassCapability:
             raise StageGateError("native correspondence requires the original exact reviewed bridge")
-        bridge_registry = ReviewedPassCapabilities((binding_correspondence,))
+        metadata_roster = (binding_correspondence,)
+        if metadata_protocol == JOINT_METADATA_PROTOCOL:
+            NATIVE.verify_semantics(selection.native_semantics, binding)
+            metadata_roster = (selection.correspondence, selection.native_semantics, binding_correspondence)
+        bridge_registry = ReviewedPassCapabilities(metadata_roster)
+        if metadata_protocol == JOINT_METADATA_PROTOCOL:
+            _JOINT_REGISTRIES[bridge_registry] = metadata_roster
     bridge = (
-        _bridge_verification(binding_correspondence, binding, bridge_registry)
+        _bridge_verification(binding_correspondence, binding, bridge_registry, expected_roster=metadata_roster)
         if binding_correspondence is not None
         else None
     )
@@ -267,7 +323,7 @@ def prepare_public_native_exploration(selection, *, binding_correspondence=None)
             (DOMAIN, ("current", "train_support", "typed_profile")),
             (REVIEW, ("review_archive", "domain_reason")),
             (HISTORY, ("prepare",)),
-            (sys.modules[__name__], ("_bridge_verification",)),
+            (sys.modules[__name__], ("_bridge_verification", "_registry_roster", "_metadata_roster")),
         )
         for name in names
     )
@@ -280,10 +336,14 @@ def prepare_public_native_exploration(selection, *, binding_correspondence=None)
         (selection.correspondence.identity, selection.native_semantics.identity),
         bridge,
         bridge_registry,
+        metadata_roster,
+        metadata_protocol,
     )
     try:
         result.verify()
     except BaseException:
         del _ISSUED[result]
+        if bridge_registry is not None:
+            _JOINT_REGISTRIES.pop(bridge_registry, None)
         raise
     return result
