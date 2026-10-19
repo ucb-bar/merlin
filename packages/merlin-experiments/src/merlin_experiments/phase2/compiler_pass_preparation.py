@@ -15,6 +15,7 @@ from types import MethodType
 
 from merlin.benchharness import hash_tree
 from merlin.targetgen.compiler_pass_selection import CompilerPassSelection
+from merlin.targetgen.compiler_pass_selection import _tree as pass_tree
 
 from . import campaign as PC
 from .contracts import StageGateError
@@ -43,10 +44,14 @@ class CompilerPassPreparation:
             raise StageGateError("compiler preparation requires one explicit bounded mechanism")
         if type(baseline_policy) is not dict or type(candidate_policy) is not dict:
             raise StageGateError("compiler preparation requires explicit policy mappings for both treatments")
-        self._record = _plain(dict(
-            schema=POLICY_SCHEMA, mechanism=mechanism,
-            baseline_policy=baseline_policy, candidate_policy=candidate_policy,
-        ))
+        self._record = _plain(
+            dict(
+                schema=POLICY_SCHEMA,
+                mechanism=mechanism,
+                baseline_policy=baseline_policy,
+                candidate_policy=candidate_policy,
+            )
+        )
         if len(json.dumps(self._record)) > 1 << 20:
             raise StageGateError("compiler preparation policy exceeds its bound")
         self.identity = _sha(self._record)
@@ -61,8 +66,12 @@ def read_preparation(path, expected_sha256):
     """Read bounded choices only after their original host-selected byte hash."""
     path = Path(path)
     if (
-        not _is_sha(expected_sha256) or not path.is_absolute() or path.resolve() != path
-        or path.is_symlink() or not path.is_file() or path.stat().st_size > 1 << 20
+        not _is_sha(expected_sha256)
+        or not path.is_absolute()
+        or path.resolve() != path
+        or path.is_symlink()
+        or not path.is_file()
+        or path.stat().st_size > 1 << 20
     ):
         raise StageGateError("compiler preparation requires an exact bounded ordinary policy leaf")
     raw = path.read_bytes()
@@ -133,7 +142,7 @@ def validate_pair(record, *, functional_sha256=None):
         if not path.is_absolute() or str(path) != arm["path"] or ".." in path.parts:
             raise StageGateError("prepared compiler-pair has a noncanonical source path")
         paths.append(path)
-    if any(a == b or a.is_relative_to(b) or b.is_relative_to(a) for i, a in enumerate(paths) for b in paths[i + 1:]):
+    if any(a == b or a.is_relative_to(b) or b.is_relative_to(a) for i, a in enumerate(paths) for b in paths[i + 1 :]):
         raise StageGateError("prepared treatments and original parent must be disjoint")
     if functional_sha256 is not None and record["original"]["sha256"] != functional_sha256:
         raise StageGateError("prepared compiler-pair has a different original Phase 1 parent")
@@ -141,8 +150,10 @@ def validate_pair(record, *, functional_sha256=None):
         raise StageGateError("prepared compiler-pair lacks both original preparation receipts")
     for receipt in record["preparations"].values():
         if (
-            type(receipt) is not dict or receipt.get("schema") != "merlin.prepared_compiler_pass.v1"
-            or receipt.get("selection") != record["selection"] or receipt.get("mechanism") != policy["mechanism"]
+            type(receipt) is not dict
+            or receipt.get("schema") != "merlin.prepared_compiler_pass.v1"
+            or receipt.get("selection") != record["selection"]
+            or receipt.get("mechanism") != policy["mechanism"]
             or receipt.get("source") != record["original"]["path"]
         ):
             raise StageGateError("prepared compiler-pair contains a foreign original preparation receipt")
@@ -159,8 +170,34 @@ def verify_pair(record, selection, *, functional_sha256=None):
         if _tree(arm["path"], readonly=True) != arm["sha256"]:
             raise StageGateError("prepared compiler-pair changed " + role + " bytes")
     for role in ("baseline", "candidate_seed"):
+        receipt = record["preparations"][role]
+        if receipt.get("source_sha256") != pass_tree(Path(record["original"]["path"])) or receipt.get(
+            "prepared_sha256"
+        ) != pass_tree(Path(record[role]["path"])):
+            raise StageGateError("original preparation receipt has different source or treatment bytes")
         _check_binding(selection, record["preparation"]["mechanism"], Path(record[role]["path"]))
     return copy.deepcopy(record)
+
+
+def rederive_pair(record, selection, preparation, *, replay_root):
+    """Fresh original callback application under separately selected host choices.
+
+    The candidate record cannot choose the policies, capability or replay root.
+    Pure custody validation and package/source hashes alone grant no authority.
+    """
+    if type(preparation) is not CompilerPassPreparation or preparation.record() != record.get("preparation"):
+        raise StageGateError("prepared handoff requires its independently selected original host policies")
+    verify_pair(record, selection)
+    actual = prepare_pair(
+        selection,
+        preparation,
+        original=Path(record["original"]["path"]),
+        functional_sha256=record["original"]["sha256"],
+        root=Path(replay_root),
+    )
+    if any(actual[role]["sha256"] != record[role]["sha256"] for role in ("original", "baseline", "candidate_seed")):
+        raise StageGateError("fresh original preparation differs from recorded compiler treatments")
+    return actual
 
 
 def prepare_pair(selection, preparation, *, original, functional_sha256, root):
@@ -176,13 +213,22 @@ def prepare_pair(selection, preparation, *, original, functional_sha256, root):
     if _tree(original, readonly=True) != functional_sha256:
         raise StageGateError("compiler preparation original copy is not the exact Phase 1 parent")
     if (
-        root.exists() or root.is_symlink() or not root.is_absolute() or root.resolve() != root
-        or root.is_relative_to(original) or original.is_relative_to(root)
+        root.exists()
+        or root.is_symlink()
+        or not root.is_absolute()
+        or root.resolve() != root
+        or root.is_relative_to(original)
+        or original.is_relative_to(root)
     ):
         raise StageGateError("compiler preparation requires a fresh original host-owned directory")
     root.mkdir(parents=True)
-    record = dict(schema=PAIR_SCHEMA, selection=selection.record(), preparation=policy,
-                  original=dict(path=str(original), sha256=functional_sha256), preparations={})
+    record = dict(
+        schema=PAIR_SCHEMA,
+        selection=selection.record(),
+        preparation=policy,
+        original=dict(path=str(original), sha256=functional_sha256),
+        preparations={},
+    )
     for role, key in (("baseline", "baseline_policy"), ("candidate_seed", "candidate_policy")):
         working = root / "preparation" / role
         working.parent.mkdir(exist_ok=True)
