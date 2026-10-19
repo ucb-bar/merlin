@@ -172,6 +172,7 @@ def rewrite_module(module, *, islands, maximum_added_operations):
     """Plan typed source islands and consume their selected physical permutations."""
     from merlin.perf.physical_layout import _evaluate
 
+    from .graph_optimizations import GraphOptimizationUnavailable
     from .host_layout_planning import layout_from_id, layout_id
     from .layout_conformance import pointwise_kind
 
@@ -198,7 +199,7 @@ def rewrite_module(module, *, islands, maximum_added_operations):
         subtree = tuple(operation.walk())
         added += len(subtree)
         if added > maximum_added_operations:
-            raise ValueError("host layout exceeds its explicit compilation-space cost contract")
+            raise GraphOptimizationUnavailable("host layout exceeds its explicit compilation-space cost contract")
         anchor.parent.insert_op_before(operation, anchor)
         emitted_operations.update(subtree)
         return operation.results[0]
@@ -283,7 +284,9 @@ def rewrite_module(module, *, islands, maximum_added_operations):
                 # Refuse before cloning a potentially large scalar region.
                 # The fresh empty and every nested scalar operation count.
                 if added + 1 + sum(1 for _ in operation.walk()) > maximum_added_operations:
-                    raise ValueError("host layout exceeds its explicit compilation-space cost contract")
+                    raise GraphOptimizationUnavailable(
+                        "host layout exceeds its explicit compilation-space cost contract"
+                    )
                 inverse = tuple(native.index(i) for i in range(len(native)))
                 dimensions = [AffineExpr.dimension(inverse[i]) for i in range(len(native))]
                 maps = []

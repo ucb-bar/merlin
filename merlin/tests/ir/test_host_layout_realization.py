@@ -54,8 +54,10 @@ def test_shared_producer_publishes_both_canonical_outputs_once(tmp_path):
     np.testing.assert_array_equal(actual[1], (matrix + bias).T)
 
 
-@pytest.mark.parametrize("choice", [{"maximum_layout_assignments": 1}, {"maximum_layout_permutations": 1}])
-def test_exhausted_search_preserves_the_original_ordinary_route(tmp_path, choice):
+@pytest.mark.parametrize(
+    "choice", [{"maximum_layout_assignments": 1}, {"maximum_layout_permutations": 1}, {"maximum_added_operations": 1}]
+)
+def test_exhausted_budget_preserves_the_original_ordinary_route(tmp_path, choice):
     source = _source()
     policy = replace(select(tmp_path), **choice)
     selected, report = optimize_host_graph(source, policy)

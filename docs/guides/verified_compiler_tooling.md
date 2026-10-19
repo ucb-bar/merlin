@@ -493,8 +493,10 @@ The controls bound different parts of this process:
 An exhausted planning/domain budget retains the original island. A snapshot
 that would become an unsafe alias also retains its original materialization.
 If the complete selection then lacks the required savings, the automatic
-policy keeps the exact original source. Construction-budget exhaustion,
-malformed source and failed independent checks remain diagnostics.
+policy keeps the exact original source. Construction-budget exhaustion also
+retains the original source under the automatic policy; an explicit source
+contract receives a diagnostic. Malformed source and failed independent checks
+remain errors.
 
 The policy binds the actual source at the existing post-preparation logical
 hook, preserving captured quantization and the selected native host pipeline.
@@ -502,8 +504,7 @@ Original automatic host passes remain enabled. `enabled=False` provides a paired
 baseline under the same controls. Missing permission or insufficient transpose
 byte savings retains exact input source; no partially rewritten source is used.
 Unknown permission fields, malformed input, stale software/library bytes and
-failed conformance remain errors. Exceeding a construction budget remains a
-precise diagnostic. The software snapshot, policy, derived source-bound contract
+failed conformance remain errors. The software snapshot, policy, derived source-bound contract
 and selection status are retained and rechecked through saved-model execution.
 This selection accepts one policy or one explicit contract, never both.
 
