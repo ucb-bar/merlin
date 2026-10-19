@@ -8,6 +8,7 @@ model numerics; it does not replace a full numerics-bundle verification.
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path, PurePosixPath
 
 import yaml
@@ -62,7 +63,7 @@ def _sums(raw):
     return result
 
 
-def validation_sources(section):
+def _validation_sources(section, *, allow_catalog_aliases):
     """Reopen all source IR leaves committed by the original complete seal.
 
     This source-only intake checks the complete original leaf index and required
@@ -100,10 +101,14 @@ def validation_sources(section):
     sources = {member: sha for member, sha in sums.items() if member.endswith("/model.prepared.mlir")}
     if not sources or not required <= set(sums):
         raise ValueError("protected complete source or program-metadata roster is absent")
+    catalogs = {}
     for member in required:
         path = ordinary(manifest_path.parent / member)
-        if hashlib.sha256(path.read_bytes()).hexdigest() != sums[member]:
+        data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != sums[member]:
             raise ValueError("protected original source ownership metadata changed")
+        if member.endswith("/catalog.json"):
+            catalogs[path] = (strict_json.loads(data), sums[member])
     # Reuse the original seal's exact namespace convention without array reads.
     from merlin.model_check.seal import _files
 
@@ -112,9 +117,57 @@ def validation_sources(section):
     # Unrelated operand/result aliases retain their original seal semantics;
     # neither their bytes nor their link targets enter this source-only grant.
     # Every required source and source-ownership leaf is ordinary and pinned.
+    aliases = {}
     for member in sources:
-        ordinary(manifest_path.parent / member)
-    return manifest_path.parent, sources
+        path = manifest_path.parent / member
+        if not allow_catalog_aliases or not path.is_symlink():
+            ordinary(path)
+            continue
+        # The original seal hashes source contents through leaf aliases. The
+        # selected catalog must own this exact source namespace and role. The
+        # current resolved target is bound separately and its COMPLETE contents
+        # must still match the original source hash in the streaming issuer.
+        ordinary(path.parent.parent / "catalog.json")
+        role = path.parent.name
+        catalog_path = path.parent.parent / "catalog.json"
+        catalog, catalog_sha = catalogs.get(catalog_path, ({}, None))
+        if (role not in {"ref", "dev"} or not isinstance(catalog, dict)
+                or catalog.get("schema") != "merlin.model_check.catalog.v1"
+                or catalog.get(role + "_prepared") != str(path)
+                or any(parent.is_symlink() for parent in path.parents)):
+            raise ValueError("protected source alias has no exact original catalog role")
+        literal_target = os.readlink(path)
+        target = Path(literal_target)
+        if not target.is_absolute():
+            target = path.parent / target
+        target = ordinary(Path(os.path.abspath(target)))
+        if path.resolve(strict=True) != target:
+            raise ValueError("protected source alias changed during original catalog intake")
+        aliases[member] = dict(read_path=str(target), literal_target=literal_target,
+                               catalog=dict(path=str(catalog_path), sha256=catalog_sha), role=role)
+    return manifest_path.parent, sources, aliases
+
+
+def validation_sources(section):
+    """Original ordinary-source intake; aliases retain their historical refusal."""
+    root, sources, _ = _validation_sources(section, allow_catalog_aliases=False)
+    return root, sources
+
+
+def validation_sources_v2(section):
+    """Explicit original sealed/catalog alias composition; no content-hash waiver.
+
+    Every selected identity stays distinct. The returned read path is current
+    operator custody, not a claim that the original seal recorded link spelling.
+    A caller must hash complete source bytes and re-resolve this whole binding.
+    """
+    root, sources, aliases = _validation_sources(section, allow_catalog_aliases=True)
+    return {
+        str(root / member): dict(sha256=sha,
+            read_path=aliases[member]["read_path"] if member in aliases else str(ordinary(root / member)),
+            alias=aliases.get(member))
+        for member, sha in sources.items()
+    }
 
 
 def capsule_sources(pointer):
@@ -182,6 +235,22 @@ def resolve(path, sha256):
     sources = capsule_sources(pointer)
     root, validation = validation_sources(pointer["protected_validation_source_inventory"])
     sources.update({str(root / member): sha for member, sha in validation.items()})
+    if not sources:
+        raise ValueError("protected source inventory is empty")
+    return dict(sorted(sources.items()))
+
+
+def resolve_streaming_v2(path, sha256):
+    """Explicit source-hash/canonical-target composition for bounded streaming."""
+    pointer = strict_json.loads(pinned({"path": str(path), "sha256": sha256})[1])
+    if not isinstance(pointer, dict) or pointer.get("schema") != SCHEMA:
+        raise ValueError("protected inventory pointer has unsupported original ownership")
+    sources = {path: dict(sha256=sha, read_path=path, alias=None)
+               for path, sha in capsule_sources(pointer).items()}
+    validation = validation_sources_v2(pointer["protected_validation_source_inventory"])
+    if set(sources) & set(validation):
+        raise ValueError("protected selected source identities overlap")
+    sources.update(validation)
     if not sources:
         raise ValueError("protected source inventory is empty")
     return dict(sorted(sources.items()))

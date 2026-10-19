@@ -28,6 +28,16 @@ decoded-memory ceilings. Never elide contraction-region constants, unknown
 elements or unbounded literal forms; no projected source leaves enter author
 inputs or publication. Original ordinary-source intake remains unchanged.
 
+Explicit `operator_streaming_exclusion_issuer` uses the unchanged typed signature
+and V2 private reader. Separate streaming byte limits do not enlarge compact
+parse ceilings. `validation_sources_v2` may compose only a selected source leaf
+alias owned by the exact original sealed catalog role with an ordinary current
+target; complete source bytes must match the original seal and the full alias
+binding is re-resolved before issuance. Preserve every selected identity, refuse
+alias chains/ancestors, and never claim historical link spelling was sealed.
+No partial selection, protected names/shapes/answers or byte-only fallback may
+escape trusted intake. Original ordinary-source alias refusals remain unchanged.
+
 `sealed_native_program` reopens original sealed native stages with complete
 integral golden.json outputs, exact source leaves and receipt-bound metadata.
 Relocate metadata paths only; never modify captured bytes or use lossy output-zero
