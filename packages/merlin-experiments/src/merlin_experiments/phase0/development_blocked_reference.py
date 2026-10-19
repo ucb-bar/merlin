@@ -21,6 +21,7 @@ SUPPORTED = {
     "conv_transition_nhwc",
     "resident_rhs_reuse",
     "grouped_head_integer_mix",
+    "parameter_projection_chain",
 }
 
 
@@ -50,7 +51,7 @@ def plan(description, *, block, max_workspace_bytes, max_output_bytes, max_dense
     workspace = 64 * (m * k + k * n + m * n) + 4 * 1024**2
     output_bytes = sum(prod(row["shape"]) * np.dtype(row["dtype"]).itemsize for row in description["outputs"])
     # Two i64 temporaries coexist in the unchanged Torch seed expression.
-    dense_lower = 16 * max(prod(row["shape"]) for row in description["inputs"])
+    dense_lower = 16 * max(prod(row["shape"]) for row in [*description["inputs"], *description.get("parameters", [])])
     return {
         "block": block,
         "workspace_upper_bytes": workspace,
@@ -121,6 +122,28 @@ def materialize(declaration, description, directory, *, block, timeout_s):
             else (lambda p, j: seed_matrix((k, n), 1, p, j))
         )
         engine.mm(m, k, n, lambda i, p: seed_matrix((m, k), 0, i, p), rhs, engine.outputs[0])
+    elif pattern == "parameter_projection_chain":
+        width, depth, shared = (g[x] for x in ("width", "depth", "shared"))
+        state = ((np.arange(width, dtype=np.int64) % 17) - 8).astype(np.int8).reshape(1, width)
+        for stage in range(depth):
+            # The output map is reused between stages. Snapshot its *complete*
+            # previous value before any N panel is written, preserving the SSA
+            # state carried by the unchanged source program.
+            previous = np.array(state, copy=True)
+            parameter = 0 if shared else stage
+            engine.mm(
+                1,
+                width,
+                width,
+                lambda i, p: previous[np.ix_(i, p)],
+                lambda p, j, parameter=parameter: (
+                    ((p[:, None] * width + j[None, :] + 3 * parameter + 1) % 17) - 8
+                ).astype(np.int8),
+                engine.outputs[0],
+                narrowed=engine.outputs[1],
+                shift=declaration["arithmetic"]["readout_shift"],
+            )
+            state = engine.outputs[1]
     elif pattern == "resident_rhs_reuse":
         k, n, count = g["K"], g["N"], len(g["M"])
         for ordinal, m in enumerate(g["M"]):
