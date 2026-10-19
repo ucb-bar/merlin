@@ -1,5 +1,14 @@
 # AGENT.md — packages/merlin-experiments/src/merlin_experiments/phase0
 
+`development_shape_supplement` adds public projection/control shapes while
+preserving the original source cohort. Pin the selected public configuration
+implementation before resolving omitted defaults; unsupported defaults remain
+UNKNOWN. Preserve the connector's pixel shuffle and width equations: pre-shuffle
+vision tokens are not automatically language-prefix tokens. Keep upper-envelope
+controls separate from actual invocation proxies, reused prefix work once, and
+denoising10 versus decoder32. Expert-depth, extra-prefix-token and full connected
+model gaps remain explicit until their public implementation proves them.
+
 `development_blocked_reference` reconstructs exact original signed inputs in
 bounded coordinate panels and reuses the independent checked integer-matmul
 owner. Write every original output and evaluate every declared scalar product;

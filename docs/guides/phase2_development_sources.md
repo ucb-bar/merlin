@@ -11,6 +11,8 @@ code_refs:
   - src/merlin/targetgen/capsule_source.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_cohort.py
   - packages/merlin-experiments/src/merlin_experiments/phase0/development_capture.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/development_reference_supplement.py
+  - packages/merlin-experiments/src/merlin_experiments/phase0/development_shape_supplement.py
 ---
 
 # Construct fresh connected public development sources
@@ -231,7 +233,7 @@ allocation. Readout, each complete wide result, narrowed state and required KV
 live-outs remain exact. Recorded computed scalar products must equal the
 original complete program; output sampling cannot close a denial.
 
-Store the printed/file-computed `index.json` SHA independently.
+Store the file-computed `index.json` SHA independently.
 `development_reference_supplement.verify` checks that pin, the unchanged full
 source manifest, all member bindings and every complete output's bytes, shape
 and dtype. Reopening prior evidence does not make it a new measurement.
@@ -242,3 +244,35 @@ The unchanged eager Torch loader can still exceed its separate memory budget:
 its i64 seed expression alone requires two full temporary arrays. A cheap
 blocked reference does not qualify that eager capture, an accelerator schedule,
 the compiler, a complete-call floor or timing.
+
+## Add missing public vision, prefix and expert projection regimes
+
+`development_shape_supplement.derive(public_inputs, base_manifest_sha256=pin)`
+returns an additive audit and fifteen ordinary source requests. Feed its
+`requests` to `development_cohort.freeze` in a separate destination, with the
+audit as provenance. It neither regenerates the old member choices nor changes
+their objective. Large references can use the separate blocked supplement.
+
+The public config omits vision depth and intermediate width. Their values come
+from byte-preserved selected Transformers configuration and modeling source in
+`public-architectures/defaults-sources`, with version and hashes in
+`defaults-provenance.json`. The parser checks the constructor route, default
+assignments, four vision projections, MLP widths and connector equations.
+Unknown defaults or unsupported source forms cannot silently select familiar
+widths. These are defaults of the selected public implementation, not proof that
+every historical Transformers release interprets a checkpoint identically.
+
+The selected connector reduces 1024 patch tokens to 64 through pixel shuffle by
+four and projects width 12288 to 960. The postconnector image-plus-max-text
+envelope is therefore 112 tokens; extra state/special-token contributions remain
+UNKNOWN here. Language shapes at 1024 and 1072 rows are retained as disclosed
+preconnector upper controls, without invented occurrence counts. Additional
+sources cover vision width 768 and its source-proved MLP, above-upper vision M,
+and expert width 720. Prefix encoding is counted once when reused; ten denoising
+invocations are distinct from 32 decoder calls. Expert depth/MLP remain UNKNOWN
+without the expert implementation. Structural occurrence proxies guide sampling
+only, and omit unknown or control-only counts.
+
+These projection sources deliberately omit residual, bias, activation and
+normalization context. They supplement the connected patterns; they do not
+establish the smallest complete representative models or full-model coverage.
