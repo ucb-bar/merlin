@@ -135,7 +135,10 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
                         expected_contract, gsim["readback_transport"]
                     )
                 if operand_selection is not None:
-                    expected_contract = rocc_selection.select_operand_protocol(expected_contract, operand_selection)
+                    select = (rocc_selection.relocate_operand_protocol
+                              if "rocc_operand_selection" in expected_contract
+                              else rocc_selection.select_operand_protocol)
+                    expected_contract = select(expected_contract, operand_selection)
                 if (released.get("logical_harness") or {}).get("kernel_call_timing") is not None:
                     from merlin.common.digest import sha256_file
 

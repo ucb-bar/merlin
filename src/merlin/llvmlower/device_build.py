@@ -60,6 +60,24 @@ FROM_GROUP = "stated_group"
 FROM_EXTENTS = "bare_extents"
 
 
+def rename_object_command(objcopy, original, selected, raw, output):
+    """Expose only the selected entry; retain unresolved runtime imports.
+
+    LLVM applies symbol visibility before renaming; GNU applies it afterward.
+    Naming both sides preserves the entry with either tool, and privatizes helpers.
+    """
+    return [str(objcopy), f"--redefine-sym={original}={selected}",
+            f"--keep-global-symbol={original}", f"--keep-global-symbol={selected}",
+            str(raw), str(output)]
+
+
+def executable_kernel_entry(device: str) -> str:
+    """The selected executable entry, independently of logical pointer-layout names."""
+    from merlin.runtime.backends import base as backends
+
+    return backends.harness_build_recipe(device).require_kernel_stack_frame().entry_symbol
+
+
 @dataclass(frozen=True)
 class DeviceRouting:
     """Everything a whole-model build needs to offload onto one device.
@@ -595,22 +613,17 @@ def _run_build_tool(argv: Sequence[str], *, timeout: int) -> subprocess.Complete
         )
 
 
-def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output, metrics=None, expected_input_sha256=None):
+def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output, metrics=None,
+                         expected_input_sha256=None, metrics_stage="compilation_s"):
     """Return a process, closed file-identity pin, and separate wall duration."""
     from merlin.common import invocation_record
     from merlin.common.cpu_pool import shared_compute_pool
 
-    with (
-        shared_compute_pool(timeout_s=timeout),
-        invocation_record.observe(
-            directory,
-            stage=stage,
-            argv=argv,
-            inputs=inputs,
-            outputs=(output,),
-            dependencies=(Path(__file__), Path(__file__).with_name("device_build_jobs.py")),
-        ) as observed,
-    ):
+    with shared_compute_pool(timeout_s=timeout), invocation_record.observe(
+        directory, stage=stage, argv=argv, inputs=inputs, outputs=(output,),
+        dependencies=(Path(__file__), Path(__file__).with_name("device_build_jobs.py"),
+                      Path(__file__).with_name("device_object_optimization.py")),
+    ) as observed:
         if metrics is not None:
             observed.document["device_build_metrics"] = metrics
             observed._write()
@@ -624,7 +637,7 @@ def _observed_build_tool(argv, *, timeout, directory, stage, inputs, output, met
         result = _run_build_tool(argv, timeout=timeout)
         observed.document["tool_elapsed_s"] = time.monotonic() - started
         if metrics is not None:
-            metrics["stages"]["compilation_s"] = observed.document["tool_elapsed_s"]
+            metrics["stages"][metrics_stage] = observed.document["tool_elapsed_s"]
         observed.complete(result)
     path = observed.path
     return (
@@ -741,6 +754,7 @@ def build_device_objects(
 
     from .device_build_jobs import ArtifactBuild, ArtifactCompiler, build_workers
     from .device_ir_scalability import DeviceIRBudget, inspect_device_ir
+    from .device_object_optimization import observe as optimize_object_input
     from .device_shim import (
         emit_logical_translation_unit,
         emit_translation_unit,
@@ -817,6 +831,7 @@ def build_device_objects(
         return DeviceBuild(device=device, skipped=(("all", f"package unusable: {exc}"),))
     if (expected_interfaces is not None or target_selection is not None) and pkg.target != device:
         raise ValueError("exact interface package target differs from selected device")
+    entry_symbol = executable_kernel_entry(device)
 
     if expected_interfaces is None:
         from merlin.compile.mesh import _mesh_tile_binding
@@ -860,11 +875,9 @@ def build_device_objects(
             report = inspect_device_ir(ll, budget)
         except (OSError, ValueError) as error:
             return ArtifactBuild(refusal=f"device_ir_analysis: {type(error).__name__}: {error}")
-        report["stages"] = {
-            "translation_s": translation_s,
-            "analysis_s": report["analysis"]["elapsed_s"],
-            "compilation_s": None,
-        }
+        report["stages"] = {"translation_s": translation_s,
+                            "analysis_s": report["analysis"]["elapsed_s"], "compilation_s": None,
+                            "optimization_s": None, "optimized_import_s": None}
         report["compiler_started"] = False
         report_path = ll.with_suffix(".build-cost.json")
         report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
@@ -875,15 +888,19 @@ def build_device_objects(
                 f"retain counted loops; report={report_path.name}",
             )
         try:
+            optimized, refusal = optimize_object_input(
+                compile_command, translate_command[0], observer=_observed_build_tool,
+                timeout=timeout, directory=work, report=report,
+            )
+            if refusal:
+                report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+                return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
+                                     refusal=refusal)
             c, compiled_invocation, compilation_s = _observed_build_tool(
-                compile_command,
-                timeout=timeout,
-                directory=work,
-                stage="device_object_compilation",
-                inputs=(ll,),
-                output=raw,
-                metrics=report,
-                expected_input_sha256=report["analysis"]["sha256"],
+                optimized["argv"], timeout=timeout, directory=work,
+                stage="device_object_compilation", inputs=(Path(optimized["argv"][-3]),),
+                output=raw, metrics=report,
+                expected_input_sha256=optimized["sha256"],
             )
         except ValueError as error:
             report["decision"].update(status="refused", reason="device_ir_changed_after_analysis", action=str(error))
@@ -895,19 +912,12 @@ def build_device_objects(
         report["stages"]["compilation_s"] = compilation_s
         report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
         if c.returncode != 0:
-            return ArtifactBuild(
-                custody={"build_metrics": report, "build_metrics_path": str(report_path)},
-                refusal=f"clang: {(c.stderr or '').strip()[:200]}",
-            )
-        return ArtifactBuild(
-            raw,
-            {
-                "translation": translated_invocation,
-                "compilation": compiled_invocation,
-                "build_metrics": report,
-                "build_metrics_path": str(report_path),
-            },
-        )
+            return ArtifactBuild(custody={"build_metrics": report, "build_metrics_path": str(report_path)},
+                                 refusal=f"clang: {(c.stderr or '').strip()[:200]}")
+        return ArtifactBuild(raw, {"translation": translated_invocation, "compilation": compiled_invocation,
+                                   "optimization": optimized["optimization"],
+                                   "optimized_import": optimized["optimized_import"],
+                                   "build_metrics": report, "build_metrics_path": str(report_path)})
 
     def finish_one():
         # Refill after any completed job: one slow group must not idle the other
@@ -966,12 +976,9 @@ def build_device_objects(
             skipped.append((sym, "no objcopy available to give this kernel a distinct symbol"))
             return
         rn, renamed_invocation, _rename_s = _observed_build_tool(
-            [oc, f"--redefine-sym={abi.symbol}={want}", str(raw), str(obj)],
-            timeout=timeout,
-            directory=work,
-            stage="device_object_symbol_rename",
-            inputs=(raw,),
-            output=obj,
+            rename_object_command(oc, entry_symbol, want, raw, obj),
+            timeout=timeout, directory=work, stage="device_object_symbol_rename",
+            inputs=(raw,), output=obj,
         )
         if rn.returncode != 0:
             skipped.append((sym, f"symbol rename: {(rn.stderr or '').strip()[:200]}"))
@@ -979,7 +986,8 @@ def build_device_objects(
         objs.append(obj)
         objects_by_symbol[sym] = obj
         kernels[sym] = want
-        custody[sym] = {key: built.custody[key] for key in ("translation", "compilation")}
+        custody[sym] = {key: built.custody[key] for key in
+                        ("translation", "optimization", "optimized_import", "compilation")}
         custody[sym]["rename"] = renamed_invocation
         if target_receipt is not None:
             custody[sym]["target_configuration"] = target_receipt
@@ -1071,7 +1079,7 @@ def build_device_objects(
             except (BackendDeclined, CertFailure, ValueError) as error:
                 skipped.append((sym, f"package lowering: {type(error).__name__}: {str(error)[:300]}"))
                 continue
-            if expected_interfaces is not None and f"llvm.func @{abi.symbol}(" not in artifact:
+            if expected_interfaces is not None and f"llvm.func @{entry_symbol}(" not in artifact:
                 skipped.append((sym, "exact package artifact has no contract-named LLVM kernel entry"))
                 continue
             art = stem.with_suffix(".device.mlir")

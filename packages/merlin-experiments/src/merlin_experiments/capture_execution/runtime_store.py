@@ -9,7 +9,7 @@ Nothing about the seal is relaxed: the per-run guest root is still a private dir
 byte the issuer re-hashes against the plan before executing anything, and the replay re-hashes it
 again. A store entry is published only after its own trees match the plan's selected digests, and
 is built under a private name and renamed into place, so a half-built store is never linked. A
-per-entry advisory lock makes build/publish and verification exclusive and linking shared, so
+per-entry advisory lock makes build/publish exclusive and verification/linking shared, so
 parallel captures never remove or replace an entry another one is reading.
 File modes are kept exactly as copied, because the selected tree digests bind them.
 """
@@ -111,9 +111,10 @@ def verified_cached_entry(
         root = _canonical_path(_store_root(), exists=False)
         if not root.is_dir() or root.is_symlink():
             return None
-        # Exclusive: a concurrent hard-link changes member ctimes, which the inventory treats as
-        # an unstable read. Verification therefore excludes linkers as well as builders.
-        with _entry_lock(root, _identity(plan), exclusive=True):
+        # Readers keep builders out without serializing independent inventories or links.
+        # _tree rehashes link-count-only transitions and still requires a fully stable
+        # final file identity plus every original selected content digest.
+        with _entry_lock(root, _identity(plan), exclusive=False):
             return _verified_cached_entry(plan, destination, selected_system_libraries, root)
     except (KeyError, TypeError, ValueError, OSError):
         return None

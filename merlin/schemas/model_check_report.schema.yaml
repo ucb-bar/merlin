@@ -4,7 +4,10 @@ title: Full-Model Check Report
 purpose: >-
   One judgement of a device submission on complete quantized models: build and link status, the
   fixed-denominator offload census, per-kernel exactness on frozen boundary inputs, full-chain runs per
-  input, and model-level metrics against an FP and an INT8 reference under the ratio rule. Produced by
+  input, and model-level metrics against an FP and an INT8 reference under the ratio rule.
+  Full mode explicitly selects host-twin (default) or direct quantized-reference integration;
+  the latter records fixed floating tolerances and sealed reference/configuration identities,
+  compares every declared judged output, and does not claim CPU host-twin evidence. Produced by
   merlin.model_check; consumed by the Phase 1 harness (in-run gate, official grade). Contract:
   docs/reference/model_check.md.
 
@@ -54,3 +57,23 @@ example: |
   failures:
     - {gate: model_numerics, input: v03, program: decode, step: 17, first_bad_group: null}
   timing: {total_seconds: 5400.0}
+
+optional_full_comparison_fields:
+  comparison:
+    selected: host-twin | quantized-reference
+    float_policy: {atol: 2e-6, rtol: 1e-5, equal_nan: false, finite_required: true}
+    host_twin: {selected: false, status: not_run}
+  gates.quantized_reference:
+    status: pass | fail
+    partial: false
+    inputs_completed: 1
+    inputs_expected: 1
+    steps_completed: 33
+    steps_expected: 33
+    steps_declared: 33
+    outputs_compared: 33
+    outputs_expected: 33
+  model_metrics.per_input:
+    reference_consistent: null  # direct mode: NumPy chain not recomputed
+    reference_validation: {source: sealed_int8, sha256: <sha>, strict_arity: true, unchanged: true}
+    fp_quality: {report_only: true}

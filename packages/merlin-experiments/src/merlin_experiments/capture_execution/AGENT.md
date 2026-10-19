@@ -48,3 +48,14 @@ Inventory never accepts an unstable hash: a link-count-only transition permits
 at most two rehashes, and the final read must keep full device/inode/size/mtime/
 mode/owner/ctime identity stable. Content, mode or ownership changes still fail;
 selected tree SHA checks remain authoritative. Persistent link churn is unavailable.
+
+Failed sealed child processes retain their complete stdout/stderr and exit status
+beside the output directory, outside the capture whose bytes are attested.
+The error includes both stream tails; warnings cannot hide a worker's actual
+integerization refusal.
+
+Runtime CAS builders keep exclusive publication locks; independent full inventories
+and hard-link snapshots use shared reader locks. A reader must still hash every
+selected byte and require stable final identity, including the existing bounded
+rehash for link-count-only ctime transitions. Never replace verification with a
+completion-marker check. Persistent churn and any content/mode/owner drift refuse.

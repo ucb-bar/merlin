@@ -1,4 +1,4 @@
-"""Closed source-body evidence for unary f32 sine and cosine regions.
+"""Closed source-body evidence for explicitly selected unary f32 math regions.
 
 This proves the parsed Linalg scalar operation, not host admission, a selected
 libm implementation, or bit-exact equivalence with the capture framework.
@@ -18,7 +18,7 @@ from merlin.frontends.linalg_patterns import (
 
 SOURCE_ONLY_SCOPE = "source math only; no host admission, selected-libm equivalence, or PyTorch bit-exactness"
 STATIC_F32_MATH_SOURCE_BODY_SCHEMA = "merlin.static_f32_math_source_body.v1"
-_UNARY_MATH = frozenset({"math.sin", "math.cos"})
+_UNARY_MATH = frozenset({"math.sin", "math.cos", "math.exp", "math.roundeven"})
 
 
 def validate_static_f32_math_source_body(declaration: object) -> dict[str, str]:
@@ -73,8 +73,14 @@ def recognize_static_f32_math_body(op) -> StaticF32MathPattern:
     if len(shell.body) != 2:
         raise InvalidLinalgPattern("math source requires exactly one scalar operation and yield")
     scalar, yld = shell.body
-    if scalar.name not in _UNARY_MATH or type(scalar) not in (math.SinOp, math.CosOp):
-        raise InvalidLinalgPattern("math source operation is not registered unary sine or cosine")
+    registered = {
+        "math.sin": math.SinOp,
+        "math.cos": math.CosOp,
+        "math.exp": math.ExpOp,
+        "math.roundeven": math.RoundEvenOp,
+    }
+    if scalar.name not in _UNARY_MATH or type(scalar) is not registered.get(scalar.name):
+        raise InvalidLinalgPattern("math source operation is not a registered unary f32 form")
     if not type(scalar).has_trait(Pure) or scalar.regions or scalar.successors:
         raise InvalidLinalgPattern("math source scalar operation is not pure and region-free")
     if scalar.attributes and any(not name.startswith("prov.") for name in scalar.attributes):

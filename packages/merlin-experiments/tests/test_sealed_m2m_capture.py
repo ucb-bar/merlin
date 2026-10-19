@@ -659,6 +659,7 @@ def test_cpu_receipts_replay_only_under_their_selected_policy(tmp_path, monkeypa
     monkeypatch.setattr(sealed_m2m, "_declared_loader_env", lambda *_: ({}, []))
     monkeypatch.setattr(sealed_m2m, "_verify_selected_input", lambda *_: None)
     executed = []
+
     def replay_process(*args, **kwargs):
         assert args[3].parent == scratch
         assert args[5] == output, "guest output path remains selected by the receipt"
@@ -1068,3 +1069,14 @@ def test_scoped_replay_proof_cannot_be_used_as_phase0_admission(schema):
                 "phase0_admission": "not_granted",
             }
         )
+
+
+def test_failed_capture_retains_both_complete_process_streams(tmp_path):
+    from merlin_experiments.capture_execution import sealed_m2m
+
+    out = b"__M2M_INTEGERIZATION_FAILURE__ wrong output channel axis\n"
+    err = b"warning\n" * 2000
+    with pytest.raises(sealed_m2m.SealedM2MError, match="wrong output channel axis"):
+        sealed_m2m._process_record(3, out, err, failure_dir=tmp_path / "failure")
+    assert (tmp_path / "failure/stdout.bin").read_bytes() == out
+    assert (tmp_path / "failure/stderr.bin").read_bytes() == err

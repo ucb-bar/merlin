@@ -46,6 +46,13 @@ def test_gemmini_full_model_task_is_short_and_allows_edits_during_checks(tmp_pat
     assert "`--capsules changed`" in task and "`--capsules failing`" in task
     assert "`--submission variants/NAME`" in task and "never graded officially" in task
     assert "copy the winner there" in task
+    # The short full-model task bypasses the generic resource appendix. Its
+    # served bytes must still expose the actual early public compilation route.
+    assert "--compile-only --scale-probe --capsules PUBLIC_ID --timeout 120" in task
+    assert "--compile-only --capsules PUBLIC_ID --timeout 120" in task
+    assert "public convolution and output-readout families" in task
+    assert "reads no private model shapes" in task
+    assert "grants no numerical, offload, trace or full-model credit" in task
     assert (
         len(TS.full_model_task(conf, "bwrap", {"required_public_dev_capsules": 120, "held_out_capsules": 20}).encode())
         <= 10_000

@@ -76,6 +76,11 @@ _PRE_EXTERNAL_REPLAY_SCRATCH_ISSUER_SHA256 = "fe672aaf62efcf1f2c5cec499af646d59c
 _PRE_SELECTED_THREADS_ISSUER_SHA256 = "ba57b6e1bd00734b95b7cb4a64c30f636f715cc313aa048986b3812da04b5fb8"
 # Exact predecessor; new source mode never retroactively interprets its plans.
 _PRE_NATIVE_INTEGER_ISSUER_SHA256 = "7eb45b2169dac5b2984ab444c183155855b1ecd9de81c6c25890d12e0ce39889"
+# Exact issuer at 4acf64171c21, before failure-only process diagnostics were
+# retained outside the capture. Successful commands, policies and process
+# records are unchanged. Replay still checks every selected byte and executes
+# the original snapshot afresh; historical bytes cannot issue a new capture.
+_PRE_FAILURE_DIAGNOSTICS_ISSUER_SHA256 = "7eb45b2169dac5b2984ab444c183155855b1ecd9de81c6c25890d12e0ce39889"
 _V1_SCOPE = "isolated selected FP32 CPU M2M capture; no Phase 0 admission"
 _V2_SCOPE = "isolated selected CPU M2M capture; no Phase 0 admission"
 _V3_SCOPE = "isolated selected CPU M2M capture with declared model inputs; no Phase 0 admission"
@@ -320,9 +325,23 @@ def _sandbox_argv(
     ]
 
 
-def _process_record(returncode: int, stdout: bytes, stderr: bytes) -> dict[str, Any]:
+def _process_record(
+    returncode: int, stdout: bytes, stderr: bytes, *, failure_dir: Path | None = None
+) -> dict[str, Any]:
     if returncode:
-        raise SealedM2MError(f"sandboxed M2M exited {returncode}: {stderr.decode('utf-8', errors='replace')[-8000:]}")
+        diagnostic = ""
+        if failure_dir is not None:
+            # Beside, never inside, the capture whose complete bytes are sealed.
+            failure_dir.mkdir(parents=True, exist_ok=True)
+            (failure_dir / "stdout.bin").write_bytes(stdout)
+            (failure_dir / "stderr.bin").write_bytes(stderr)
+            (failure_dir / "process.json").write_text(
+                json.dumps({"returncode": returncode, "stdout_bytes": len(stdout), "stderr_bytes": len(stderr)}) + "\n"
+            )
+            diagnostic = f"; full process diagnostics: {failure_dir}"
+        detail = stderr.decode("utf-8", errors="replace")[-4000:]
+        tail = stdout.decode("utf-8", errors="replace")[-4000:]
+        raise SealedM2MError(f"sandboxed M2M exited {returncode}{diagnostic}: stderr={detail}; stdout={tail}")
     return {
         "returncode": 0,
         "stdout": {"bytes": len(stdout), "sha256": _digest(stdout)},
@@ -360,7 +379,9 @@ def _execute(
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise SealedM2MError(f"sandbox execution failed: {type(exc).__name__}") from exc
-    return _process_record(result.returncode, result.stdout, result.stderr)
+    return _process_record(
+        result.returncode, result.stdout, result.stderr, failure_dir=output.parent / (output.name + "-failure")
+    )
 
 
 def _execute_beside(
@@ -421,7 +442,12 @@ def _execute_beside(
                     stderr=subprocess.PIPE,
                 )
             stdout, stderr = processes[index].communicate(timeout=timeout_seconds)
-            results[index] = _process_record(processes[index].returncode, stdout, stderr)
+            results[index] = _process_record(
+                processes[index].returncode,
+                stdout,
+                stderr,
+                failure_dir=outputs[index].parent / (outputs[index].name + "-failure"),
+            )
         except (OSError, subprocess.TimeoutExpired) as exc:
             results[index] = SealedM2MError(f"sandbox execution failed: {type(exc).__name__}")
         except SealedM2MError as exc:
@@ -1982,6 +2008,7 @@ def replay_verify(
         supported_issuer.add(_PRE_SELECTED_THREADS_ISSUER_SHA256)
         if not native_integer.selected(plan.get("worker_options")):
             supported_issuer.add(_PRE_NATIVE_INTEGER_ISSUER_SHA256)
+        supported_issuer.add(_PRE_FAILURE_DIAGNOSTICS_ISSUER_SHA256)
     if schema in {SCHEMA, SCHEMA_V3} and "frozen_origin" not in plan:
         supported_issuer.add(_PRE_FROZEN_ORIGIN_ISSUER_SHA256)
     if native_integer.selected(plan.get("worker_options")) or "runtime_reuse" in plan:

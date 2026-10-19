@@ -124,6 +124,7 @@ def manifest_requires_weight_blob(manifest: dict) -> bool:
 
 
 def _out_specs(mlir_path: str | Path) -> list[tuple[list[int], str]]:
+    """Read the result ABI through the shared content-qualified signature cache."""
     from ..common.mlir_query import forward_signature
 
     _, results = forward_signature(mlir_path)

@@ -1,0 +1,306 @@
+schema: merlin.phase1.launch_config.v1
+id: gemmini-el4-capsule-closure-18cpu-v26
+description: Fresh empty-origin EL4 on sealed v26, 18 assigned CPUs. This selects
+  frozen accelerator inputs and untuned FireSim-aligned Spike/gSIM. Complete model
+  chains remain a separate external validation with exact quantized-reference and
+  accelerator-kernel checks. Capsule authoring and strict grading have a three-hour
+  clock after preparation; external validation starts only after the capsule owner
+  exits.
+validation_scope: capsules
+external_validation:
+  budget_s: 7200
+  start_after: capsule_owner_terminal
+  submission: verified_frozen_capsule_handoff
+variables:
+  WORKSPACE_ROOT: ${TASK_ROOT}/../..
+  REPO: /work/merlin/tasks/phase1-harness-v2/.sub/agent-a754baf87337521b4/merlin
+  RELEASE: ${REPO}/out/artifacts/protocols/gemmini/phase0-closure-20261019-v26
+  NUMERICS_BUNDLE: ${TASK_ROOT}/private/gemmini/numerics/closure-20261019-overnight-v1
+  PYTHON: ${TASK_ROOT}/merlin/.venv/bin/python
+  CHIPYARD: ${TASK_ROOT}/.tmp/chipyard-fire-aligned
+  SPIKE_RUNTIME: ${TASK_ROOT}/out/fire-aligned-spike-30mhz/runtime
+  GSIM_EMULATOR: ${TASK_ROOT}/.tmp/gsim-fire-aligned-provisional-v3/native/emulator
+  TIMING_PROFILE: ${TASK_ROOT}/.tmp/fire-aligned-timing-profile-v2.json
+  RTL_FACTS: ${TASK_ROOT}/merlin/out/artifacts/probes/gemmini/fire-aligned-30mhz/input/facts-v6.json
+  TARGET_CONTRACT: ${RELEASE}/payload/experiment/contracts/target_contract.yaml
+  MODEL2MLIR: ${TASK_ROOT}/model2mlir
+  INSTRUCTION_SELECTION: ${TASK_ROOT}/private/instruction-selection
+  ORACLE_TIMING: ${TASK_ROOT}/.tmp/phase1-prep-20261017-v4/oracle-timing.json
+  RUN: ${REPO}/out/runs/gemmini/phase1/${RUN_ID}
+  SOURCE_REVISION: 22e91311cd16da18406e453690f90afc5a5090e6
+  SUPERVISOR_FINAL_RESERVE_S: '3600'
+  SUPERVISOR_PSS_MAX_BYTES: '206158430208'
+  SUPERVISOR_HOST_HEADROOM_BYTES: '25769803776'
+  REFERENCE_CPUS: ''
+  READINESS: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-capsule-closure-20261019-v1/fresh
+identity:
+  target: gemmini
+  level: EL4
+  arm: merlin_assisted
+  treatment: rtlchecks
+  bundle: merlin_assisted_rtlchecks_public_v0
+  experiment: full
+  schedule: continuous
+launcher:
+  python: ${PYTHON}
+  module: merlin_experiments.phase1
+  cwd: ${REPO}
+  run_id_placeholder: <set by supervisor>
+  environment_file: ${PREP}/repro-profile/environment.sh
+  plan: ${PREP}/repro-profile/phase1-plan.json
+inputs:
+  repo: ${REPO}
+  descriptor: ${RELEASE}/payload/experiment/target_experiment.yaml
+  bundle_manifest: ${RELEASE}/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/input_bundle_manifest.yaml
+  corpus_seal: ${RELEASE}/private/seal.json
+  oracle_timing:
+    path: ${ORACLE_TIMING}
+    sha256: 1b5fbb60383183a82e04b92ba0203deb277790c467be5c94927c06cbc098fce5
+  private_full_model_spec: ${PREP}/private-models.yaml
+author:
+  driver: codex
+  model: gpt-6.1-sol
+  effort: high
+  max_subagents: 16
+  live_conformance_feedback: true
+  sandbox: bwrap
+  codex:
+    binary: ${HOME}/.local/share/codex-0.162.0/bin/codex
+    auth_source: ${HOME}/.codex/auth.json
+    home_root: ${TASK_ROOT}/private/codex-phase1-homes
+budgets:
+  authoring_s: 7200
+  supervisor_backstop_s: 10800
+  grade_interval_s: 300
+  qa_timeout_s: 1200
+  model_budget_s: 600
+  sim_per_capsule_timeout_s: 1200
+full_model_verification:
+  comparison: quantized-reference
+  atol: 2.0e-06
+  rtol: 1.0e-05
+  split: visible
+  input: visible/v00
+  readiness_receipt: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-capsule-closure-20261019-v1/fresh/readiness.json
+  readiness_sha256: dbb05cdfa65db7a718d5be12c3d1d749e03ea23f2ce66dd91491001067c121e2
+  output_scope: all_declared
+  all_output_plan:
+    path: /work/merlin/tasks/phase1-harness-v2/.tmp/phase1-capsule-closure-20261019-v1/fresh/all-output-plan.json
+    sha256: 1d6c861f04e533d77961ba9d91b1597b40a9c82704650c40ba08217deea32413
+origin:
+  initial_submission: empty; fresh start from scratch
+  seed_submission: null
+  resume: false
+cpu:
+  manager:
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+  - 19
+  - 20
+  - 21
+  author:
+    env: MERLIN_CODEX_CPUS
+    cpus:
+    - 22
+    - 23
+  compute_pool:
+    env: MERLIN_COMPUTE_CPUS
+    cpus:
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 19
+    - 20
+    - 21
+  sim_max_jobs: 12
+environment:
+  selected_process:
+    MERLIN_BACKGROUND_CODEGEN_SCALABILITY: '1'
+    MERLIN_BACKGROUND_FINISH_SNAPSHOT: '1'
+    MERLIN_BACKGROUND_PROGRESS: '1'
+    MERLIN_CAPSULE_CALIBRATION_S: '0'
+    MERLIN_CAPSULE_ORDER: measured-longest-first
+    MERLIN_CHIPYARD: ${TASK_ROOT}/.tmp/chipyard-fire-aligned
+    MERLIN_CHIPYARD_GEMMINI_ROCKET: ${TASK_ROOT}/.tmp/chipyard-fire-aligned
+    MERLIN_CLANG: ${WORKSPACE_ROOT}/toolchains/llvm-a47bddcc/install/bin/clang-23
+    MERLIN_COMPUTE_CPU_SLOTS: ${TASK_ROOT}/.tmp/phase1-compute-slots
+    MERLIN_DEVICE_BUILD_JOBS: '8'
+    MERLIN_EXT_CHIPYARD: ${TASK_ROOT}/.tmp/chipyard-fire-aligned
+    MERLIN_FIRE_ALIGNED_SPIKE_RUNTIME: ${TASK_ROOT}/out/fire-aligned-spike-30mhz/runtime
+    MERLIN_GEMMINI_GSIM_EMU: ${TASK_ROOT}/.tmp/gsim-fire-aligned-provisional-v3/native/emulator
+    MERLIN_GRADE_START_TO_START: '1'
+    MERLIN_GSIM_EMU_GEMMINI: ${TASK_ROOT}/.tmp/gsim-fire-aligned-provisional-v3/native/emulator
+    MERLIN_GSIM_MAX_SLOTS: '6'
+    MERLIN_GSIM_SLOT_ROOT: ${TASK_ROOT}/.tmp/phase1-gsim-slots
+    MERLIN_M2M_DIR: ${TASK_ROOT}/model2mlir
+    MERLIN_M2M_PYTHON: ${TASK_ROOT}/model2mlir/.venv/bin/python
+    MERLIN_MODEL2MLIR: ${TASK_ROOT}/model2mlir
+    MERLIN_MODEL_CHECK_BUNDLE: ${NUMERICS_BUNDLE}
+    MERLIN_OPERATOR_GRADE_PROCESSES: '1'
+    MERLIN_PHASE1_PUBLIC_HOST_BOARD: gemmini_rocket_gsim_fire_aligned
+    MERLIN_PRIVATE_EXECUTION_WORKERS: '3'
+    MERLIN_REPO_ROOT: ${REPO}
+    MERLIN_RTL_FACTS: ${TASK_ROOT}/merlin/out/artifacts/probes/gemmini/fire-aligned-30mhz/input/facts-v6.json
+    MERLIN_SELFCHECK_MAX_CAPSULES: auto
+    MERLIN_SHAPE_COVERAGE_CACHE: '1'
+    MERLIN_SIMULATION_CERT_CACHE: '1'
+    MERLIN_SNAPSHOT_LEASE_CACHE: '1'
+    MERLIN_SNAPSHOT_LEASE_MAX_FILES: '65536'
+    MERLIN_SNAPSHOT_LEASE_MIN_BYTES: '65536'
+    MERLIN_SPIKE: ${TASK_ROOT}/out/fire-aligned-spike-30mhz/runtime/bin/spike
+    MERLIN_SPIKE_MAX_SLOTS: '12'
+    MERLIN_TARGET_CONTRACT: ${TARGET_CONTRACT}
+    TMPDIR: ${TASK_ROOT}/.tmp
+    PYTHONPATH: ${REPO}/src:${REPO}/packages/merlin-experiments/src
+    PYTHONDONTWRITEBYTECODE: '1'
+    PYTHONUNBUFFERED: '1'
+    OMP_NUM_THREADS: '1'
+    OPENBLAS_NUM_THREADS: '1'
+    MKL_NUM_THREADS: '1'
+    MERLIN_PUBLIC_SCALE_BATCH_WORKERS: '2'
+  search_paths:
+    PATH:
+      prepend: ${TASK_ROOT}/merlin/.venv/bin:${WORKSPACE_ROOT}/hw/bubblewrap-0.11.0/bin
+    LD_LIBRARY_PATH:
+      prepend: ${SPIKE_RUNTIME}/lib
+environment_policy:
+  owned_prefixes:
+  - MERLIN_
+runtime_pins:
+  spike:
+    path: ${SPIKE_RUNTIME}/bin/spike
+    sha256: 5df9c82ca3e921823da8606284a258b491541defbafee4586fb938639e03c6b9
+  libgemmini:
+    path: ${SPIKE_RUNTIME}/lib/libgemmini.so
+    sha256: 2dbd8445376cdda0df63abcf217c7a19f974d34a16ada21b549ed82fffd718eb
+  gsim_emulator:
+    path: ${GSIM_EMULATOR}
+    sha256: 76ddbfdc5b3beadef6b6b37768a08522122327057b92d71d3539a9529e4ea651
+  timing_profile:
+    path: ${TIMING_PROFILE}
+    sha256: 12a1a0b45fe7767f03f1b277349b7600c7c68243f7161aba52242df1921721e0
+  corpus_seal:
+    path: ${RELEASE}/private/seal.json
+    sha256: 39a12d1f1b27d45b7f0aa88f1ce17f3f35e8203f8a39078c3dc77ec2c752b155
+  private_model_selection:
+    path: ${PREP}/private-models.yaml
+    sha256: 0cbe2f55cf1b1ceca289199f0e052131b5cebef56a00ebe4308802c16bf65b4e
+  operator_launcher:
+    path: ${REPO}/examples/gemmini/phase1/launch/launch_phase1.py
+    sha256: 9de8e8a7271f39130a73b00e898bc9509952b46c65166a6c92eee2b57478391c
+  operator_model_verification:
+    path: ${REPO}/examples/gemmini/phase1/launch/full_model_verification.py
+    sha256: a1917c6ce1cf57d524032eb4bb5fd4ae38bd305cc2c03ee0451bde76c9c0caf8
+  operator_supervisor:
+    path: ${REPO}/examples/gemmini/phase1/launch/launch_supervisor.py
+    sha256: 74fde4914001d67c0bfb8717b75b0ba12e8c18071d678ff41b03e5d936704430
+  private_bundle_manifest:
+    path: ${NUMERICS_BUNDLE}/MANIFEST.json
+    sha256: 0c092f1695ad021b01f5bfe36c6564c1ea611ce584e78d38117f66f4bf2ae69b
+  private_bundle_sums:
+    path: ${NUMERICS_BUNDLE}/SHA256SUMS
+    sha256: 003229ffc672727450c1a457bc3d403d59fbde87deddcae86817ef8c008ca352
+  mlir_translate:
+    path: ${REPO}/third_party/llvm-install/bin/mlir-translate
+    sha256: 05e1860f1751defd32157dd41969ddd607a45b79a54ec54fca7f54305337f429
+  mlir_opt:
+    path: ${REPO}/third_party/llvm-install/bin/mlir-opt
+    sha256: cf4a774b7ffe7a3421993a1f58940f5d62a6083e06d6450c1ae1c14f4bc17908
+  mlir_tblgen:
+    path: ${REPO}/third_party/llvm-install/bin/mlir-tblgen
+    sha256: c094581ddf43cba758f56888979c549de82038962a8c5467a47a44cae14fb859
+  mlir_cmake:
+    path: ${REPO}/third_party/llvm-install/lib/cmake/mlir/MLIRConfig.cmake
+    sha256: 1d3ec6a19550548ee57437ed2347fc55445aefb081af3c0bcf9cd5b939083f3e
+  operator_infrastructure_witness:
+    path: ${REPO}/build_tools/scripts/probe_model_build.py
+    sha256: c85da42cb5d57faf60b038639b1297cbb29633762b635a3dca2e9e4c80642f2e
+  operator_all_model_outputs:
+    path: ${REPO}/examples/gemmini/phase1/launch/full_model_outputs.py
+    sha256: 658a9a78814a386b4e44d8c0970a58349e1b75f741911bb3223523c22aa83742
+  operator_capsule_supervision:
+    path: ${REPO}/examples/gemmini/phase1/launch/capsule_supervision.py
+    sha256: cad51a827cdf1f64d501e92066433d7cf963d110d2f2f4a2f040c49f62799742
+  operator_post_freeze_qualification:
+    path: ${REPO}/examples/gemmini/phase1/launch/qualify_phase1.py
+    sha256: b32a99b4467520000520a7e1f2d8d560a4ed02747f120c51ec2c6b92ab93b367
+  operator_all_output_audit:
+    path: ${REPO}/src/merlin/model_check/full_output_audit.py
+    sha256: 132cbbd37d36d8f0c5bd23338dfe8f87ba0ab824ea7f21024bbebac7efea6fd3
+  operator_native_full_chain:
+    path: ${REPO}/examples/gemmini/phase1/launch/native_full_chain.py
+    sha256: 7cd1950f7c5d0810fcc7bfe7c2b9d874180b9d409911b21e26f1ebe7c13a3516
+  operator_selected_chain_supervision:
+    path: ${REPO}/examples/gemmini/phase1/launch/selected_chain_supervision.py
+    sha256: ce31fc07c6ceb3399f92ef9585710afb6d28ff0f188799d4c023335d36065764
+  private_chain_receipt_verifier:
+    path: ${REPO}/packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_chain_receipt.py
+    sha256: d14044f501cc6cc57a15f9034917775f3d2e93ff25133e90bb5dd5a5a645a621
+  operator_resource_reservation:
+    path: ${REPO}/examples/gemmini/phase1/launch/resource_reservation.py
+    sha256: 47c87506901668de7c7b0ff8d3c7ce096915afa059d438000c76a05d6c0e4ef9
+  operator_external_validation:
+    path: ${REPO}/examples/gemmini/phase1/launch/external_validation.py
+    sha256: 77648d6c002c67cf9ddf647c6f0983f5ba6989d7c0e0853b764f07ba7ba28c3c
+  operator_capsule_handoff_intake:
+    path: ${REPO}/examples/gemmini/phase1/launch/capsule_handoff_intake.py
+    sha256: ce65adbc546d623dc4efb9bcee7d3135ab71a8e0dcb5ca808d54dacbb9a954d3
+  capsule_certification_verifier:
+    path: ${REPO}/packages/merlin-experiments/src/merlin_experiments/phase1/feedback/capsule_certification.py
+    sha256: 2a171bc6afae21dd97ef85886d14f93c063a697d350f8a3db64e7b8bdd45043e
+target_selection:
+  contract:
+    path: ${TARGET_CONTRACT}
+    sha256: bfbfac9e98ff028aa184b5b13ea44e7421afeac2c35e1d3bb572fd0cbad5aa55
+  rtl_facts:
+    path: ${RTL_FACTS}
+    sha256: b8ff28edc096392cec356f9fececdf17ba70cd3e4b02e6c5931aedc43bb117af
+instruction_selection:
+  path: ${INSTRUCTION_SELECTION}/selection.json
+  sha256: 93c2102f37914cffb7e6a2c884b7d62d8a3149f0cc4ef72703a3ea026d265ec6
+  approval:
+    path: ${INSTRUCTION_SELECTION}/approval.json
+    sha256: 20524cfe3f4447bea7d83a0668f626a3b093b84972d6d2e82d1fd1496fec7340
+errata:
+  source: errata/closure-fresh-empty.md
+  path: ${PREP}/operator-errata.md
+  sha256: 3ad31abe1e79aa480963ac87f11392fd85a31c14087b3d0638db04aa9685f8f5
+exclusions:
+- id: conv-input-residency-r39
+  reason: Operator-authored convolution compiler patches from seeded r39 work.
+  paths:
+  - examples/gemmini/phase1/patches/
+  content_sha256:
+  - 6d862eb5e6c13d3268aa1bd12daf14e751887e3b83aa77491797b5180e02e592
+  - 7be4d8989fe357b20e5f6267d548222c0aa76a91ad3cce6f8355c5e73710d372
+  - a5c97dd44e9d493e82470736d50bf4ca8ec2c372c7f36406004df855d876eaf7
+  source_commits:
+  - 615940e9a939c054be654bbf97bb85bbdf8b975f
+  - 3324a6273096ca0c8b17e8a42f363b49b9be78f1
+  - 9b228d2f6cbc9eebbbc5aeb95eee364272b535df
+- id: operator-launch-config
+  reason: This config, its errata and the release config are operator inputs.
+  paths:
+  - examples/gemmini/phase1/launch/
+  - examples/gemmini/phase0/release/

@@ -1,4 +1,12 @@
-# How the Gemmini workloads are quantized
+# Historical r53b Gemmini quantization guide
+
+**Scope:** this guide records the r53b captures and dated 2026-10-16 recovery
+work. Its BF16 SmolVLA, per-tensor weights, 128-token prefill, floating attention
+and two-multiply epilogue describe that historical selection. For the selected
+successor's grouped-16 scales, INT8 attention, hardware-order integer epilogue,
+exact shapes and metric definitions, use the
+[shared experiment protocol](../protocol/README.md) and pinned recipe JSONs.
+Historical results below are preserved; they do not certify the current run.
 
 This guide explains how Merlin turns ResNet50, SmolVLA and TinyLlama into int8 programs for Gemmini,
 and how precision is handled from the PyTorch model down to the accelerator's readout. It is written
@@ -11,7 +19,7 @@ check. Section 8 is a dated status report (2026-10-16) and will change. Section 
 yet settled. The judging contract is [`docs/reference/model_check.md`](../../../docs/reference/model_check.md).
 The evaluation and calibration inputs are described in [`README.md`](README.md).
 
-"r53b" names the current development captures. They are kept in a private, sealed capture store,
+"r53b" names the historical development captures. They are kept in a private, sealed capture store,
 and every fact quoted from them below is structural (counts, settings, hashes). No tensor data is quoted.
 
 ## 1. Pipeline
@@ -123,10 +131,10 @@ As a result, the following run on the **host CPU**:
 - residual adds;
 - ResNet50's max pool, whose input is float.
 
-In the current bundle **every contraction kernel returns int32**, except ResNet50's average pool, which
+In the r53b bundle **every contraction kernel returns int32**, except ResNet50's average pool, which
 reads out int8 through `acc_scale`.
 
-## 3. The recipe used by the current captures
+## 3. The recipe used by the r53b captures
 
 All r53b captures use one recipe. Its content digest is `recipe_sha256`
 `6497b3dde13e91c1787ec6bce07674866861da6389bccc7f3388cda7e386df51` (`quant_recipe.digest`, which
@@ -189,7 +197,7 @@ All counts below come from each program's `meta.json` (`quantization_stats`,
 
 ## 5. Opt-in: quantized attention (`activation_contraction`)
 
-Attention is float in every current capture. The recipe family `activation_contraction`
+Attention is float in every r53b capture. The recipe family `activation_contraction`
 (`quant_recipe.with_activation_contractions`) quantizes contractions of two run-time tensors. Build a
 variant of any derived static per-tensor integer recipe with:
 
@@ -247,13 +255,15 @@ Contract: [`docs/reference/model_check.md`](../../../docs/reference/model_check.
 - **Reference admission (§4.5)**, for bundles rather than submissions. The bars are data:
   `judged.admission` in [`models.yaml`](models.yaml), evaluated per split when the references are built
   (into `reference_quality.json`; a rule without data is `unknown`, never a pass).
-  - ResNet50: top-1 agreement ≥ 15/16 and **mean** logits cosine ≥ 0.99 (approved).
-  - TinyLlama: mean KL ≤ 0.075 nats (about +7.8 % perplexity) and top-1 ≥ 90 % (approved).
+  - ResNet50: mean top-1 agreement ≥ 0.9375 **per split** (8/8 with eight B1 inputs), and
+    **mean** logits cosine ≥ 0.98 (user-approved successor; original r53b bar was 0.99).
+  - TinyLlama: mean KL ≤ 0.075 nats and top-1 ≥ 90 % (approved). KL is not measured corpus perplexity.
   - SmolVLA: per input, the worst action dim's relRMSE (dims 0–5, over the 50-step action chunk),
-    measured against an **fp32 execution** of the same checkpoint. Its mean and its maximum over the
-    inputs must each be ≤ 2 × the stock bf16 model's own error against that fp32 run. On the 8 visible
-    inputs the bf16 error is 0.0345 / 0.052, so the bar is 0.069 / 0.104. This is FlashAttention's rule
-    (approved, contract 1.9). The old comparison with the bf16 float noise is reported, not gated.
+    measured against an **fp32 execution** of the same checkpoint. The current declared rule uses
+    mean and p90 over four noise draws per input (32 chains per eight-input split), each ≤ 2 × the
+    corresponding stock BF16 error aggregate; maximum is report-only. Historical eight-input
+    mean/max BF16 errors were 0.0345 / 0.052, not a current p90 certificate. The old comparison with
+    BF16 float noise is reported, not gated. See the shared protocol for exact reduction semantics.
 - **Inputs.** 8 visible inputs per model, plus calibration item lists, are in this folder (see
   [`README.md`](README.md)). The sealed inputs are private.
 - **Running the check:** `python -m merlin.model_check check --submission S --model M --split visible
@@ -367,7 +377,7 @@ replace those in §3 and §7.
 - In the r53b `flow_denoise` capture, all 96 bf16 expert weight dequantizes carry the same scale
   constant. Whether this reflects the checkpoint or an observer effect has not been checked.
 - TinyLlama's admission bar is still a proposal (contract §4.5).
-- No residual add is routed to the device in the current bundle, although ResNet50's are quantized.
+- No residual add is routed to the device in the r53b bundle, although ResNet50's are quantized.
   Gemmini's load-time scaling rounds each operand, so it can be one step away from the reference
   (§2). This guide does not establish that this is the routing reason. Whether a later recipe moves
   them to the device is open.

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -76,6 +78,85 @@ def test_package_digest_sees_every_byte_and_follows_links(tmp_path):
     assert after != before
     (pkg / "manifest.yaml").write_text("a: 2\n")
     assert KC.package_digest(pkg) != after
+
+
+@needs_cc
+def test_bare_python_path_correction_invalidates_cached_import_refusal(tmp_path, monkeypatch):
+    """The same parent Python may invoke different manifest interpreters through PATH."""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "manifest.yaml").write_text("commands: {lower: {argv: [python3, compiler.py]}}\n")
+    old_bin, selected_bin = tmp_path / "old-bin", tmp_path / "selected-venv/bin"
+    old_bin.mkdir()
+    selected_bin.mkdir(parents=True)
+    unavailable = old_bin / "python3"
+    unavailable.write_text("#!/bin/sh\nprintf '%s\\n' 'No module named selected_dependency' >&2\nexit 1\n")
+    unavailable.chmod(0o755)
+    (selected_bin / "python3").symlink_to(sys.executable)
+    inherited_path = os.environ.get("PATH", "")
+    real_build = _Build()
+    attempts = []
+
+    def build(*args, **kwargs):
+        attempts.append(shutil.which("python3"))
+        result = subprocess.run(["python3", "-c", "print(42)"], capture_output=True, text=True, check=False)
+        if result.returncode:
+            return SimpleNamespace(kernels={}, objects=(), skipped=(("a", result.stderr.strip()),))
+        assert result.stdout == "42\n"
+        return real_build(*args, **kwargs)
+
+    def run(work):
+        return KC.build_kernels(
+            _catalog({"a": _IFACE}),
+            ["a"],
+            package_dir=pkg,
+            workdir=tmp_path / work,
+            toolchain=SimpleNamespace(device_cflags=()),
+            build=build,
+            root=tmp_path / "cache",
+        )
+
+    monkeypatch.setenv("PATH", str(old_bin) + os.pathsep + inherited_path)
+    first = run("w1")
+    assert first.refused and first.stats["stored"] == 1
+    assert run("w2").stats["hits"] == 1 and len(attempts) == 1
+    monkeypatch.setenv("PATH", str(selected_bin) + os.pathsep + inherited_path)
+    corrected = run("w3")
+    assert corrected.stats["misses"] == 1 and corrected.kernels and not corrected.refused
+    assert run("w4").stats["hits"] == 1 and len(attempts) == 2
+    assert attempts == [str(unavailable), str(selected_bin / "python3")]
+
+
+@pytest.mark.parametrize("name", ["PYTHONPATH", "PYTHONHOME", "PYTHONUSERBASE", "PYTHONNOUSERSITE", "VIRTUAL_ENV"])
+def test_kernel_material_binds_import_environment(name, monkeypatch):
+    kwargs = {"package_sha256": "package", "toolchain": SimpleNamespace(device_cflags=()), "tools": {}}
+    catalog = _catalog({"a": _IFACE})
+    monkeypatch.delenv(name, raising=False)
+    before = KC.kernel_material(catalog, "a", **kwargs)
+    monkeypatch.setenv(name, "selected-context")
+    assert KC.kernel_material(catalog, "a", **kwargs) != before
+
+
+def test_changed_compiler_environment_is_not_published(tmp_path, monkeypatch):
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "manifest.yaml").write_text("fixture\n")
+
+    def build(*_args, **_kwargs):
+        monkeypatch.setenv("PYTHONPATH", "changed-during-build")
+        return SimpleNamespace(kernels={}, objects=(), skipped=(("a", "unavailable import"),))
+
+    result = KC.build_kernels(
+        _catalog({"a": _IFACE}),
+        ["a"],
+        package_dir=package,
+        workdir=tmp_path / "work",
+        toolchain=SimpleNamespace(device_cflags=()),
+        build=build,
+        root=tmp_path / "cache",
+    )
+    assert result.refused == {"a": "unavailable import"} and result.stats["stored"] == 0
+    assert not list((tmp_path / "cache").rglob("entry.json"))
 
 
 @needs_cc
@@ -226,6 +307,54 @@ def test_without_the_cache_the_build_is_returned_as_built(tmp_path):
         enabled=False,
     )
     assert built.kernels == {"a": "kern_0"} and built.objects == [tmp_path / "w" / "a.o"]
+
+
+def test_cached_required_refusal_does_not_start_other_missing_kernels(tmp_path):
+    pkg = tmp_path / "package"
+    pkg.mkdir()
+    (pkg / "manifest.yaml").write_text("fixture\n")
+    catalog = _catalog({"a": _IFACE, "r": _IFACE + "// refusal\n"})
+    build = _Build(refuse={"r": "unsupported first interface"})
+    kwargs = {
+        "package_dir": pkg,
+        "toolchain": SimpleNamespace(device_cflags=()),
+        "build": build,
+        "root": tmp_path / "cache",
+    }
+    first = KC.build_kernels(catalog, ["r"], workdir=tmp_path / "first", **kwargs)
+    assert first.refused == {"r": "unsupported first interface"}
+    stopped = KC.build_kernels(catalog, ["a", "r"], workdir=tmp_path / "stopped", stop_on_first_failure=True, **kwargs)
+    assert build.calls == [["r"]]
+    assert list(stopped.unattempted) == ["a"] and stopped.refused == first.refused
+    assert len(list((tmp_path / "cache/kernels").glob("*/entry.json"))) == 1
+
+
+def test_unattempted_kernels_never_become_cached_package_refusals(tmp_path):
+    pkg = tmp_path / "package"
+    pkg.mkdir()
+    (pkg / "manifest.yaml").write_text("fixture\n")
+    catalog = _catalog({"a": _IFACE, "b": _IFACE + "// later\n"})
+    calls = []
+
+    def failed(_target, _sidecar, symbols, **kwargs):
+        calls.append((list(symbols), kwargs.get("stop_on_first_failure")))
+        return SimpleNamespace(kernels={}, objects=(), skipped=(("a", "timed out after 1s"),))
+
+    result = KC.build_kernels(
+        catalog,
+        ["a", "b"],
+        package_dir=pkg,
+        workdir=tmp_path / "work",
+        toolchain=SimpleNamespace(device_cflags=()),
+        build=failed,
+        root=tmp_path / "cache",
+        stop_on_first_failure=True,
+    )
+    assert calls == [(["a", "b"], True)]
+    assert result.refused == {"a": "timed out after 1s"} and list(result.unattempted) == ["b"]
+    assert not list((tmp_path / "cache").rglob("entry.json")), (
+        "Neither timeout nor unattempted work is a reusable refusal"
+    )
 
 
 def test_a_replay_console_is_reused_only_for_the_same_image(tmp_path, monkeypatch):

@@ -5,8 +5,9 @@ from dataclasses import asdict
 import pytest
 
 from merlin.common import mlir_query as mq
-from merlin.frontends.linalg_mixed_patterns import FORMS, recognize, validate_pattern
+from merlin.frontends.linalg_mixed_patterns import FORMS, SCHEMA, recognize, validate_pattern
 from merlin.frontends.linalg_patterns import InvalidLinalgPattern
+from merlin.targetgen.host_capabilities import admit_host_operation
 
 
 def _module(name, *, init_read=False, bad_literal=False):
@@ -65,3 +66,58 @@ def test_mixed_reciprocal_requires_unit_numerator():
     name = next(n for n, (_, body) in FORMS.items() if "arith.divf" in body)
     with pytest.raises(InvalidLinalgPattern):
         recognize(tuple(mq.walk(_module(name, bad_literal=True)))[2])
+
+
+def test_signed_i32_cast_refuses_unsigned_or_different_input_width():
+    op = tuple(mq.walk(_module("i32_arith_sitofp")))[2]
+    assert recognize(op).ordered_types == ("i32", "f32", "f32")
+    from merlin.xdsl_dialects._common import text
+
+    module = text(_module("i32_arith_sitofp"))
+    wrong_width = module.replace("i32", "i16").replace("array<i16:", "array<i32:")
+    for mutated in (module.replace("arith.sitofp", "arith.uitofp"), wrong_width):
+        with pytest.raises(InvalidLinalgPattern):
+            recognize(next(mq.walk(mq.parse(mutated), "linalg.generic")))
+
+
+def test_signed_i32_cast_host_screen_requires_explicit_typed_selection():
+    selection = {
+        "host": {
+            "package_sha256": "a" * 64,
+            "capability_spec_sha256": "b" * 64,
+            "dtype_strategy": "scalar",
+            "capability_spec": {
+                "schema": "merlin.host_capabilities.v1",
+                "status": "reviewed",
+                "compiler": {"package_sha256": "a" * 64, "dtype_strategy": "scalar"},
+                "operations": [
+                    {
+                        "id": "signed_cast",
+                        "ops": ["linalg.generic"],
+                        "placement": "host",
+                        "signature": {
+                            "ordered_operand_dtypes": ["i32", "f32"],
+                            "ordered_result_dtypes": ["f32"],
+                            "ranks": [2],
+                        },
+                        "source_body": {"schema": SCHEMA, "operation": "i32_arith_sitofp"},
+                        "numerical_contract": {"status": "unreviewed"},
+                    }
+                ],
+                "evidence": {"scope": "synthetic source-body declaration only"},
+            },
+        }
+    }
+    source = next(mq.walk(_module("i32_arith_sitofp"), "linalg.generic"))
+    row = {"mlir_operation": "linalg.generic", "count": 1}
+    signature = {
+        "family": "elementwise_map",
+        "ordered_operand_dtypes": ["i32", "f32"],
+        "ordered_result_dtypes": ["f32"],
+        "rank": 2,
+    }
+    decision = admit_host_operation(selection, row, signature, source_operations=(source,))
+    assert decision["status"] == "admitted"
+    assert "linkage_requirement" not in decision
+    selection["host"]["capability_spec"]["operations"][0]["source_body"]["operation"] = "i64_arith_sitofp"
+    assert admit_host_operation(selection, row, signature, source_operations=(source,))["status"] == "unsupported"

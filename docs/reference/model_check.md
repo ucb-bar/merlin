@@ -3,14 +3,14 @@ title: "Full-model check contract (model_check v1)"
 kind: reference
 status: current
 owner: core
-last_verified: 2026-10-18
+last_verified: 2026-10-19
 related: [contracts, lowering_pipeline]
 code_refs: [src/merlin/model_check/cli.py, src/merlin/model_check/report.py, src/merlin/model_check/references.py, src/merlin/runtime/linalg_numpy.py, merlin/schemas/model_check_report.schema.yaml, examples/gemmini/numerics/models.yaml]
 ---
 
 # Full-model check contract (model_check v1)
 
-Contract version **1.15**. A change bumps the version and adds a changelog line at the end; nothing here
+Contract version **1.22**. A change bumps the version and adds a changelog line at the end; nothing here
 changes silently. Owner: branch `cc/model-check`. Consumer: the Phase 1 harness. Progress notes for the
 consumer: `/work/merlin/tasks/model-check/TASK.md`. Read this file from another checkout with
 `git -C /work/merlin/repos/merlin.git show cc/model-check:docs/reference/model_check.md`.
@@ -29,10 +29,21 @@ each program, the outputs that are judged, and the metric kind. v1 declares:
 |---|---|---|---|
 | `resnet50` | `model` | `single` | logits [1, 1000] |
 | `smolvla` | `prefix_encode`, `flow_denoise`, `action_decode` | `flow`: prefix once → flow ×10 (t = 1.0, dt = −0.1, state carried) → action_decode | actions [1, 50, 32], dims 0–5 (the checkpoint's action shape is [6]; 6–31 padding) |
-| `tiny_llama` | `prefill`, `decode` | `causal`: prefill 128 tokens → decode ×K teacher-forced on the input's next K tokens (K = 32 official) | prefill last-position logits + K decode logits |
+| `tiny_llama` | `prefill`, `decode` | `causal`: selected prefill 32 tokens → decode ×K teacher-forced on the input's next K tokens (K = 32); historical stored inputs used 128-token prefill | prefill last-position logits + K decode logits |
 
 Each program is compiled once per submission. Per input, only the embedded-input object is regenerated
 and relinked; nothing is re-lowered.
+
+An operator may supply `cli.main(..., full_build_provider=...)` for `check --mode full` to reuse
+canonical native builds. The protected native owner uses the original frozen run's compiler profile,
+source freeze, complete source-demand request and independently issued instruction policy. Its
+complete static partitions must pass the existing native full-roster validator; diagnostic or
+structural-only images cannot be imported as native qualification. Imported images retain the exact
+capture, compiler, host arithmetic, ABI, weights and observed compilation recipe. Each input-specific
+relink records its actual selected symbol suppliers and is admitted by that same live instruction
+service before execution. Program build rows carry the native partition pin and step rows carry
+their admission receipt. This selects no CPU host twins and does not itself satisfy the separate
+exact-kernel, quantized-chain or all-declared-output gates. The ordinary CLI default is unchanged.
 
 ## 2. CLI
 
@@ -44,7 +55,9 @@ Every subcommand takes `--submission DIR`, optional `--models FILE` (default: th
 ```
 python -m merlin.model_check check --submission S --model M [--program P]
         --split {visible|sealed|all} [--mode {fast|full}] [--decode-steps K] [--jobs N]
-        [--timeout-s T] [--differential] [--agent-view] --out REPORT.json
+        [--timeout-s T] [--differential] [--agent-view]
+        [--full-comparison host-twin|quantized-reference]
+        [--quantized-reference-atol A] [--quantized-reference-rtol R] --out REPORT.json
 python -m merlin.model_check replay-kernel --submission S --model M --program P
         (--group SOURCE_REGION_ID | --all) --split {visible|sealed|all}
         [--engine {spike|gsim}] [--timeout-s T] [--agent-view] --out REPORT.json
@@ -78,11 +91,18 @@ whole model:**
    minimal replay ELF runs it on Spike on a sample of its groups and the split's boundary inputs
    (`fast`: up to 3 groups × 2 inputs per unique kernel; `--jobs` runs kernels in parallel).
    Every output is compared bit for bit (§4.2), or by §4.3 for a declared approximate kernel.
-3. Model gate: when every kernel is exact, the integrated model computes exactly the INT8 reference, so
-   the model metrics are the bundle's precomputed INT8-reference metrics, reported as such. Declared
+3. Kernel-replay model gate: when every kernel is exact, model metrics describe the bundle's precomputed
+   INT8 reference, reported as such. This does not prove the full program's host math, transport or
+   carried state; full execution remains a separate check. Declared
    approximate kernels are the only case that runs a model replay: the INT8 program on the host
    (`linalg_numpy`), with just those groups answered by the submission's kernel on Spike, then §4.4.
 4. Census from the bundle's grouping plus each kernel's outcome (lowered, or refused by the package).
+
+Mandatory full checks stop admitting new kernel builds after their first build failure and drain
+already admitted tool jobs. Unattempted kernels are `unfinished`, not compiler refusals; reports
+retain partial gates and list later `programs_unattempted`. Cached refusals stop missing-kernel work
+too. No full-model image or chain runs after a required kernel build failure. Fast checks and
+`replay-kernel` retain aggregate diagnostics.
 
 Target: minutes per model on one core per unique kernel. **`full`** additionally builds every program's
 linked ELF and runs the whole chain per input on Spike: the integration check (host code, ABI, memory
@@ -93,6 +113,56 @@ on a miss. A model whose `full.differential` is `cached` (SmolVLA, TinyLlama: th
 input on Spike) runs no twin: a step without a cached one is `pending` (not run, not failed) and so is
 the gate unless a step differs. Its grade is then every kernel exact and the whole chain completed, with
 `host_drift` reported; the per-call check will close the gate.
+`--full-comparison host-twin` is the unchanged default. Explicitly selecting
+`--full-comparison quantized-reference` instead runs the complete compiled chain on Spike and compares
+**every element of every declared judged output** directly with the sealed `int8.npz`. Its gate is
+`quantized_reference`, alongside the required exact accelerator-kernel replay and build gates. Integer
+and boolean outputs are exact; float outputs must satisfy `abs(actual-reference) <= atol +
+rtol*abs(reference)` at every element, with fixed defaults **atol = 2e-6, rtol = 1e-5**, inherited from
+Merlin's host-region qualifier. Both tensors must be finite; output arity, shape and dtype must match.
+The explicit tolerance flags and recorded `comparison.float_policy` select the policy before execution.
+
+Direct comparison validates the reference and model-configuration bytes against the bundle seal before
+execution and rechecks them afterward, including after early rejection. Each completed step's declared
+judged outputs are compared immediately; their first mismatch stops that input before its next step.
+Completed runs and comparisons remain in the report as a numerical gate failure. Incomplete chains
+remain partial with actual step/output counts and no FP metrics for a full input; they cannot receive
+full-chain credit. A reference/configuration mutation is still an infrastructure error.
+Direct comparison reuses protected, sealed payload aliases by their bound names and bytes.
+Full NumPy reference recomputation and CPU-only host twins are not selected. The report has
+`comparison.host_twin = {selected: false, status: not_run}` and no passing `differential` gate.
+`reference_consistent` is `null` because the NumPy chain was not recomputed; `reference_validation`
+records the sealed file/configuration/manifest/sums identities, strict output arity and unchanged reads.
+Existing FP-baseline quality data is informational, including when absent or unparseable; it cannot
+pass or fail the selected comparison. A failed exact-kernel gate prevents expensive full execution.
+Any missing program step, selected-output mismatch, nonfinite output or partial chain prevents an
+unqualified full-model pass. `--decode-steps` retains its explicit partial behavior.
+
+`full.host_math_policy` explicitly selects host scalar arithmetic, with a per-model `full` override
+over the common `full` block. The default `native` preserves existing emitted calls and reference
+behavior. `portable_exp_trig` defines binary32 `exp`, `sin` and `cos` using the same versioned scalar C
+source in Merlin's runtime and its batched reference adapter. It does not compile model IR in the
+reference, alter accelerator quantization or change tolerances. `portable_neural_f32` additionally
+defines binary32 `tanh` and `pow`, with explicit shared scalar sources and provenance. These policies
+do not define other transcendental functions. The selected C11 compile flags require scalar binary32
+evaluation, prohibit contraction and fast math, and the adapter requires nearest-even rounding. Default reference evidence remains compatible.
+
+Reference derivation records the actual policy, scalar source, reference compiler/object/library
+identities and output digest in `reference_numeric_contract.json`. A non-native direct comparison
+requires that receipt in the bundle seal and checks its output, version, selected policy, scalar source
+and compile-flag correspondence before building. A changed policy or implementation requires newly
+derived, separately sealed references; resealing an old output under a new declaration is rejected.
+Build and per-step reference caches bind the selected implementation. Hoisted reference constants
+cannot cross numerical implementations, and configuration/source mutations prevent publication.
+
+Full-mode INT8 references share a constant/weight cache across recurrent steps. Persisted reference
+steps are reused only under a versioned identity of the full chain, counts, input bytes, capture and
+prepared-reference closure, evaluator sources and dependencies. Each step also verifies its actual
+bound inputs, output arity, shapes, dtypes and stored bytes. Unkeyed old NPZ files are ignored; an
+input/source mutation during evaluation publishes no reference entries. A frozen judged-output
+comparison requires the complete output list. Before building, full mode logs any missing declared
+cached-twin coverage; this diagnostic never turns a pending differential into a pass.
+
 `--decode-steps K` below 32 marks the TinyLlama gate `partial: true`; a partial gate is never an
 official pass.
 
@@ -151,7 +221,22 @@ shares no code with any lowering:
 
 - integers wrap at their declared width; int8 × int8 contractions are summed exactly;
 - `f32` arithmetic is float32; `bf16` is computed in float32 and rounded to nearest-even per op;
+- named and non-contraction generic floating reductions carry the original initial accumulator
+  through reduction indices in source lexicographic order, rounding each body operation at its
+  declared type. An f32/f64 combiner's explicit `reassoc` flag permits NumPy's reduction tree;
+  f16/bf16 retain per-operation rounding because reassociation does not permit promotion;
 - float contractions sum through BLAS, so float results are an oracle up to reassociation.
+
+New reference derivations record `merlin.linalg_numpy.numeric.v2.strict_float_reductions`, the
+evaluator source digest and the declared numerical policy. Before this version, recognized floating
+reductions used NumPy's pairwise summation and added the initial accumulator after the fold. Their
+sealed references retain their historical identity. Correcting this requires a separately derived
+and sealed successor bundle; never replace their reference files or reinterpret them as v2 evidence.
+The same captures, weights, inputs and existing FP references may be reused. Recompute affected
+quantized chains, device-call boundaries and metrics with fresh reference scratch; unchanged legacy
+cases must retain their original policy attribution. Neither new captures nor a new FP inference is
+required for this interpreter correction. Floating contractions retain their separately documented
+bounded BLAS policy; their results do not establish exact agreement at a later integer boundary.
 
 The reference states the program's own epilogue order (e.g. f32 scale multiply, f32 bias add,
 round-to-nearest-even quantize). A device kernel that folds an epilogue into the accelerator's readout
@@ -206,9 +291,11 @@ the float model at the `baseline` precision (e.g. `native`, the checkpoint's own
 the same inputs. Building the references evaluates every rule per split into `reference_quality.json`
 (`admission.<split>.{status, checks[]}`); a rule with no data is `unknown`, never a pass. The bars below
 restate the target's models file.
-**Approved (1.7): ResNet50 top-1 agreement ≥ 15/16 and the logits cosine's mean over the inputs ≥ 0.99**,
-the worst image reported (one image's cosine is noisy). **Approved (1.15): TinyLlama mean `kl` ≤ 0.075
-nats** (exp(0.075) − 1 ≈ +7.8 % perplexity, measured against the FP model's own next-token distributions)
+**ResNet50: mean top-1 agreement ≥ 0.9375 per split and mean logits cosine ≥ 0.98**
+(user-approved successor to the original 0.99 cosine bar). With eight B1 inputs per split,
+the top-1 threshold requires 8/8 separately, not pooled 15/16. Report the worst image too.
+**Approved (1.15): TinyLlama mean `kl` ≤ 0.075 nats**
+(KL under the FP distribution is not a measured corpus-perplexity increase)
 **and top-1 agreement ≥ 90 %**. Set after the launch recipe was measured (8 inputs per split: visible 0.043,
 sealed 0.066). The split-to-split spread of 0.02 is as large as the gap the earlier proposal of 0.05 left.
 **Approved (1.9): SmolVLA within 2 × the bf16 model's own error,
@@ -429,3 +516,40 @@ models file defers (§2); a pending gate neither passes nor fails the report.
   compares with cached host twins only and records the rest `pending`; a pending gate does not fail a report.
 - 1.15 (2026-10-16): §4.5: TinyLlama's KL bar is 0.075 nats (approved); `bundle-admission` re-judges a built
   bundle's admission from its stored metrics.
+
+- 1.16 (2026-10-19): explicit `--full-comparison quantized-reference` reuses sealed quantized outputs,
+  requires complete compiled chains and exact accelerator-kernel replay, checks all declared judged
+  outputs under a fixed recorded float policy with exact integers, and selects no CPU-only host twins
+  or NumPy chain recomputation. Host-twin remains the default; FP-baseline quality is report-only in
+  the new mode. Reports distinguish the selected gate and sealed-reference validation explicitly.
+- 1.17 (2026-10-19): reference interpreter numeric policy v2 preserves source order and initial
+  accumulators for non-contraction floating reductions without explicit reassociation. Fresh reference
+  quality/case records and cache identities state the policy. Existing sealed references remain
+  historical evidence and require an explicitly derived successor for the new policy.
+  Mandatory full-check build failures now stop later kernel/program/image work with truthful
+  partial and unattempted evidence; fast checks and explicit kernel replays remain aggregate.
+- 1.18 (2026-10-19): direct full comparison rejects each input on its first completed-step judged-output
+  mismatch, retaining numerical failure evidence, completed counts and the sealed-reference recheck.
+  Later chain steps are not executed or credited; incomplete inputs have no full-input FP metrics.
+  Host-twin execution and numerical tolerances remain unchanged.
+- 1.19 (2026-10-19): explicit shared-source host exp/trig policy is forwarded through reference and full
+  compilation. Selected implementation bytes bind caches and per-case numerical receipts; non-native
+  references require sealed policy/output/source correspondence. Reference-quality summaries use the
+  actual cases' shared numeric contract, including in worker pools. Native defaults remain unchanged.
+- 1.20 (2026-10-19): explicit `portable_neural_f32` extends shared arithmetic to tanh and pow,
+  preserving the three-operation scope of `portable_exp_trig`. C11 scalar evaluation, implementation
+  identities and policy receipts bind newly derived references and target builds; quantization and
+  comparison tolerances remain unchanged.
+- 1.21 (2026-10-19): protected full-build providers reuse canonical native source/request/instruction
+  qualified images without another whole-model compilation. Original inputs/recipes remain bound;
+  actual input-specific relinks retain selected supplier observations and fresh instruction admission.
+  Complete static roster, exact-kernel replay and selected quantized/all-output comparisons remain
+  independent mandatory obligations; no historical structural build or CPU-twin result is upgraded.
+- 1.22 (2026-10-19): optional `numerics` reporting policy in the models file and
+  `python -m merlin.model_check.numerics_report --audit A --models M --out R` add offline
+  program/step/output/channel diagnostics, continuation NLL/PPL, manifest-bound label
+  accuracy and existing kernel/capture-site summaries. Original sealed configurations,
+  comparison tolerances, grading gates and historical results are unchanged. Reports
+  pin the original audit and selected artifacts separately from reporting-policy bytes;
+  missing FP boundaries are unavailable, never inferred or reexecuted. See the
+  [compact numerical contract and section reader](../../examples/gemmini/numerics/README.md).

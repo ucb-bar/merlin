@@ -110,7 +110,16 @@ veto can use `verify.conv_input_preparation` to exclude only independently prove
 padding and their address/control work. Private scratch globals require actual initialization and
 consumption by decoded accelerator loads. CPU arithmetic on tensor values, fabricated output stores,
 unknown pointers and unproved effects retain the ordinary audit outcome.
-The same proof supports unchanged activation and weight byte copies. It forbids
+
+`verify.host_command_parameters` separately proves immutable private integer tables
+whose scalar reads only pack selected device configuration operands. It follows
+every loaded bit into fields of the explicitly selected operand observer, checks
+all uses, bounds every read by the original initializer and agrees with independent
+CFG execution counts. Only those reads, integer casts and constant bit packing are
+excluded; raw totals and exact exclusions remain in `command_parameters` diagnostics.
+Tensor arithmetic, compute-command operands, mutable or escaped storage, unresolved
+fields and exhausted proof bounds retain the original audit charges.
+The bounded copy proof also supports unchanged activation and weight byte copies. It forbids
 arithmetic on either kind of loaded tensor value and CPU reads of the model output.
 Scratch forwarding retains the original source write epoch. Every nonzero write must
 feed a later unchanged tracked copy or a decoded accelerator input before overwrite;

@@ -62,12 +62,11 @@ def audit_built_device_host_compute(
     from xdsl.dialects import builtin, func, llvm
     from xdsl.parser import Parser
 
-    from merlin.llvmlower.device_shim import kernel_abi_for
+    from merlin.llvmlower.device_build import executable_kernel_entry
     from merlin.verify import host_compute_audit as HA
+    from merlin.verify.llvm_symbols import defined_function
 
-    abi = kernel_abi_for(target)
-    if abi is None:
-        raise ValueError("selected device has no readable kernel ABI for host-compute audit")
+    entry_symbol = executable_kernel_entry(target)
     device_dir = build / "device"
     if device_dir.is_symlink() or not device_dir.is_dir():
         raise ValueError("linked build has no ordinary device-artifact directory")
@@ -109,8 +108,10 @@ def audit_built_device_host_compute(
             context.load_dialect(dialect)
         module = Parser(context, artifact.read_text(encoding="utf-8")).parse_module()
         functions = HA._functions(module)  # noqa: PLC2701 -- shared independent host-code reader
-        if abi.symbol not in functions:
-            raise ValueError(f"linked group {index} has no body for its target ABI kernel")
+        try:
+            kernel = defined_function(module, entry_symbol)
+        except ValueError as error:
+            raise ValueError(f"linked group {index} has no body for its target ABI kernel") from error
         sites = [
             HA.GroupSite(
                 group=index,
@@ -124,10 +125,12 @@ def audit_built_device_host_compute(
         preparation = preparations.get(symbol)
         if preparation is not None and symbol in host_alignments:
             preparation = {**preparation, "argument_alignments": host_alignments[symbol]}
+        # The ABI may alias the real body. Scope proven transport to that one
+        # resolved function; every other helper retains the ordinary veto.
         report = HA.audit(
             module,
             sites,
-            input_preparation={abi.symbol: preparation} if preparation is not None else None,
+            input_preparation={kernel.sym_name.data: preparation} if preparation is not None else None,
             target=target,
         )
         # Retain the instrument's complete reasons on the exact built artifact.

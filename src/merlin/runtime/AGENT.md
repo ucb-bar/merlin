@@ -76,6 +76,15 @@ the per-backend adapters under `backends/`.
 - `host_math.py` — explicit portable libm evaluation policies and their compiled runtime objects.
   The default emits nothing. A selected policy changes linked-byte identity and must pass the
   caller's original numerical contract; it does not promise errno or exception-flag equivalence.
+- `host_math_reference.py` — the explicit `portable_exp_trig` array oracle compiles the same
+  pinned Arm exp/sin/cos C sources as the selected runtime recipe. Its task-local context defaults
+  to absent; binary32 inputs and round-to-nearest are required. Source, compiler, object and shared
+  library bytes remain bound and checked. Arithmetic correspondence alone grants no model,
+  accelerator or timing qualification; changed arithmetic requires new reference evidence.
+  `portable_neural_f32` additionally selects shared Arm powf and OpenLibm tanhf/private expm1f
+  sources; binary pow operands broadcast in binary32. The earlier exp/trig policy retains its
+  original three-operation scope. C11 precision semantics preserve the strict no-excess-precision
+  guard on RISC-V GCC configurations that otherwise report TS18661's binary16 evaluation mode.
 - `host_arithmetic.py` and `host_outward.py` share explicitly selected CPU
   arithmetic implementations independently of accelerators. ISA/ABI, source
   arithmetic and effect permissions remain caller obligations. Namespaces bind
@@ -135,4 +144,8 @@ admission, command schedule, device lowering or RTL qualification.
 - Real implementations only; every result is gated (simulator == reference; dispatch
   runtime == torch golden). `dispatch_runtime` raises on any view op it cannot evaluate —
   no silent skips.
+- `linalg_numpy.numeric_contract()` versions reference arithmetic. Named and non-contraction
+  generic floating reductions preserve source index order, the original init and per-operation
+  rounding; f32/f64 combiners may explicitly permit reassociation. New evaluator bytes/policy require
+  newly derived reference evidence; never rewrite or relabel a historical sealed bundle.
 - Every subdirectory must also contain an AGENT.md.

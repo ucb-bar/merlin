@@ -675,3 +675,43 @@ def test_background_grade_pool_is_worker_base_and_nested_lease_restore(tmp_path,
         if handle is not None:
             L.stop_background(handle)
         os.sched_setaffinity(0, original)
+
+
+def test_handoff_during_source_verification_does_not_start_another_grade(tmp_path, monkeypatch):
+    """A stop arriving during pre-grade bookkeeping must precede scheduling."""
+    class Event:
+        done = False
+
+        def is_set(self):
+            return self.done
+
+        def set(self):
+            self.done = True
+
+        def wait(self, _delay):
+            return self.done
+
+    class Thread:
+        def __init__(self, *, target, **_):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    event = Event()
+    monkeypatch.setattr(threading, "Event", lambda: event)
+    monkeypatch.setattr(threading, "Thread", Thread)
+    ws = tmp_path / "workspace"
+    (ws / "qa").mkdir(parents=True)
+    (ws / "qa/verdict.json").write_text('{"all_pass": false}')
+
+    def source():
+        event.set()  # The author terminates while its source is being hashed.
+        return "current-source"
+
+    L.start_background(
+        ws, tmp_path / "run", L.GradeCadence(30, False, 30), interval_grades=True,
+        grade_callback=lambda *a, **kw: pytest.fail("grade started after handoff"),
+        fast_grade_callback=lambda *a: pytest.fail("existing verdict"), source_identity=source,
+    )
+    assert event.done

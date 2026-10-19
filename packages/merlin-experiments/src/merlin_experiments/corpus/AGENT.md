@@ -23,3 +23,9 @@ its complete numerical assumptions. It never discovers target-named profiles or
 merges generated/private sidecars. Frozen callers resolve the file through their
 existing snapshot verifier before loading; this reader creates no seal. Its byte
 provenance identifies declared assumptions, not hardware-verified semantics.
+
+`operand_relocation` stages an already selected observer with its exact original
+facts and sidecar bytes. A canonical Phase 0 export must match the complete typed
+facts document before original intake bytes are retained. Relocation changes
+paths only; it never replaces an observer, edits its sources, or reissues hardware
+observations. Reviewed handoff rechecks identical documents and complete sources.

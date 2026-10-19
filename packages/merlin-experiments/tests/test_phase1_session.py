@@ -175,6 +175,36 @@ def test_unpaid_qualification_uses_formal_child_and_refuses_selected_source_drif
     assert len(receipt["initial_candidate_sha256"]) == 64
     assert len(receipt["graded_source_sha256"]) == 64
     assert len(calls) == 1
+    assert "--validation-scope" not in calls[0]
+
+    # The same real formal invocation preserves protected host inputs while
+    # forwarding the explicitly selected capsule boundary to the child.
+    from dataclasses import replace
+
+    capsule = prepared("capsule-formal")
+    capsule.request.options = replace(capsule.request.options, validation_scope="capsules")
+    assert formal_invocation.run(capsule, public_capsules=public, selected_rtl_facts=None) == 1
+    assert calls[-1][calls[-1].index("--validation-scope") + 1] == "capsules"
+
+    # Fresh unpaid capsule qualification must select the same scope, not enter
+    # any full-model requirement resolver after its capsule formal child exits.
+    from merlin_experiments.phase1.feedback import capsule_certification as CC
+    from merlin_experiments.phase1.feedback import certification, private_full_models
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(formal_invocation.subprocess, "run", lambda argv, **kw: subprocess.CompletedProcess(argv, 0))
+        scoped.setattr(certification, "_official_grade_result", lambda *a, **kw: pytest.fail("full-model gate"))
+        scoped.setattr(private_full_models, "requirements_for", lambda *a: pytest.fail("full-model requirements"))
+        scoped.setattr(CC, "verify", lambda *a, **kw: {"receipt": {"path": "technical", "sha256": "selected"}})
+        assert qualification.execute(capsule) == 0
+    qualified = json.loads((capsule.run_dir / "submission_qualification.json").read_text())
+    assert qualified["validation_scope"] == "capsules"
+    assert qualified["official_grade"]["validation_scope"] == "capsules"
+    assert qualified["official_grade"]["capsule_certification"] == {"path": "technical", "sha256": "selected"}
+    assert qualified["capsule_complete"] is True
+    for field in ("authoring_converged", "external_full_models_complete", "overall_release_qualified",
+                  "phase2_iteration_ready"):
+        assert qualified[field] is False
 
     def changed_during_formal(argv, **_kwargs):
         (selected / "compiler.py").write_text("# changed while the child ran\n")
@@ -394,6 +424,48 @@ def test_readback_selection_is_frozen_across_real_admission_and_resume(project, 
     assert _run(resumed, admitted) == 0
     with pytest.raises(RuntimeError, match="readback policy"):
         _run(_request(project, resume=True), lambda _: pytest.fail("resume dropped frozen output transport"))
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_live_conformance_selection_is_frozen_across_admission_and_resume(project, monkeypatch, enabled):
+    _external_substitutes(monkeypatch)
+    base = _request(project)
+    request = dataclasses.replace(base, options=dataclasses.replace(base.options, live_conformance_feedback=enabled))
+
+    def admitted(prepared):
+        prepared.verify_inputs()
+        assert prepared.environment["run_config"].get("live_conformance_feedback", False) is enabled
+        return 0
+
+    assert _run(request, admitted) == 0
+    resumed = dataclasses.replace(request, options=dataclasses.replace(request.options, resume=True))
+    assert _run(resumed, admitted) == 0
+    with pytest.raises(RuntimeError, match="feedback selection changed"):
+        changed = dataclasses.replace(
+            resumed, options=dataclasses.replace(resumed.options, live_conformance_feedback=not enabled)
+        )
+        _run(changed, lambda _: pytest.fail("resume changed live workflow feedback selection"))
+
+
+@pytest.mark.parametrize("scope", ["full", "capsules"])
+def test_validation_scope_is_admitted_and_cannot_change_on_resume(project, monkeypatch, scope):
+    _external_substitutes(monkeypatch)
+    base = _request(project)
+    request = dataclasses.replace(base, options=dataclasses.replace(base.options, validation_scope=scope))
+
+    def admitted(prepared):
+        prepared.verify_inputs()
+        assert prepared.environment["validation_scope"] == scope
+        return 0
+
+    assert _run(request, admitted) == 0
+    resumed = dataclasses.replace(request, options=dataclasses.replace(request.options, resume=True))
+    assert _run(resumed, admitted) == 0
+    changed = dataclasses.replace(resumed, options=dataclasses.replace(
+        resumed.options, validation_scope="capsules" if scope == "full" else "full",
+    ))
+    with pytest.raises(ValueError, match="validation scope differs"):
+        _run(changed, lambda _: pytest.fail("resume changed validation scope"))
 
 
 def test_public_object_build_selection_is_frozen_and_cannot_be_enabled_on_resume(project, monkeypatch):

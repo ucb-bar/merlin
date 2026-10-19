@@ -800,7 +800,10 @@ def run_entrypoint(
             str(Path(value or ".").resolve()) for value in env["PYTHONPATH"].split(os.pathsep)
         )
     if invocation_directory is None:
-        result = subprocess.run(argv, cwd=str(pkg.directory), env=env, capture_output=True, text=True, timeout=timeout)
+        from merlin.common import owned_process
+
+        result = owned_process.run(argv, cwd=str(pkg.directory), env=env, capture_output=True,
+                                   text=True, timeout=timeout)
     else:
         from merlin.common import invocation_record
 
@@ -814,6 +817,7 @@ def run_entrypoint(
             dependencies=(Path(__file__), *tuple(path for path in pkg.directory.rglob("*")
                                                  if path.is_file() and "__pycache__" not in path.parts)),
             cwd=str(pkg.directory), env=env, capture_output=True, text=True, timeout=timeout,
+            owned_process_tree=True,
         )
     _admit_artifact_protocol(pkg, artifact_profile)
     return result

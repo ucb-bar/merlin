@@ -54,6 +54,7 @@ class GradingInputs:
     compiler_profile_service: object | None = None
     verify_grade_inputs: Callable[[], None] | None = None
     driver_grade_completed: Callable[[object], None] | None = None
+    rtl_facts: Path | None = None
 
 
 def _history_runs_roots(run_dir: Path) -> tuple[Path, ...]:
@@ -61,6 +62,46 @@ def _history_runs_roots(run_dir: Path) -> tuple[Path, ...]:
     work = Path(run_dir) / "_qa_work"
     roots = [*sorted(work.glob("runs_*")), *sorted(work.glob("fruns_*")), *sorted(work.glob("selfchecks/*"))]
     return tuple(root for root in roots if root.is_dir() and not root.is_symlink())
+
+
+def _attribute_source(verdict: dict, ws: Path, snapshot_digest, *, stage: str) -> dict:
+    """Separate immutable measured rows from eligibility of the observed live source."""
+    verdict = dict(verdict)
+    verdict.setdefault(
+        "snapshot_result",
+        {
+            "scope": stage,
+            **{
+                key: verdict.get(key)
+                for key in (
+                    "all_pass",
+                    "gradeable",
+                    "n_passed",
+                    "n_capsules",
+                    "structural_evidence_complete",
+                )
+            },
+        },
+    )
+    try:
+        current = hash_tree(ws / "submission")["sha256"]
+    except OSError:
+        current = None
+    matches = snapshot_digest is not None and current == snapshot_digest
+    verdict.update(
+        graded_source_sha256=snapshot_digest,
+        current_source_sha256=current,
+        source_hash_algorithm="merlin.common.tree_hash.hash_tree",
+        source_checked_at=_dt.datetime.now(_dt.UTC).isoformat(),
+        snapshot_current=matches,
+        current_source_eligible=matches,
+        current_source_eligibility_scope="source identity only; all mandatory checks still apply",
+        count_scope="immutable_snapshot",
+        current_source_n_passed=verdict.get("n_passed") if matches else None,
+    )
+    if not matches:
+        verdict.update(all_pass=None, gradeable=False)
+    return verdict
 
 
 def compiler_execution(inputs, *, candidate, run_dir):
@@ -213,6 +254,7 @@ def grade(
 
         progress_rows[row["capsule"]] = row
         qualification = summarize(list(progress_rows.values()))
+        current = background_guard.current()
         progress_path.parent.mkdir(exist_ok=True)
         temporary = progress_path.with_suffix(".tmp")
         temporary.write_text(
@@ -223,7 +265,11 @@ def grade(
                     "all_pass": None,
                     "certified_complete": False,
                     "graded_source_sha256": snapshot_digest,
-                    "snapshot_current": background_guard.current(),
+                    "snapshot_current": current,
+                    "count_scope": "immutable_snapshot",
+                    "current_source_n_passed": sum(r.get("status") == "pass" for r in progress_rows.values())
+                    if current
+                    else None,
                     "n_completed": len(progress_rows),
                     "n_passed": sum(r.get("status") == "pass" for r in progress_rows.values()),
                     "n_execution_passed": qualification["execution_passed"],
@@ -252,13 +298,15 @@ def grade(
             "all_pass is unknown until they finish and the final verdict replaces this one.",
         }
         interim["graded_request_sha256"] = background_guard.source
-        interim["snapshot_current"] = background_guard.current()
-        if not interim["snapshot_current"]:
-            interim.update(all_pass=None, gradeable=False)
+        interim = _attribute_source(interim, ws, snapshot_digest, stage="capsule_evidence_before_shape_probes")
         write_verdict(ws / "qa" / "verdict.json", interim)
         if progress_rows:
             progress = json.loads(progress_path.read_text())
-            progress.update(state="shape_coverage_pending", snapshot_current=interim["snapshot_current"])
+            progress.update(
+                state="shape_coverage_pending",
+                snapshot_current=interim["snapshot_current"],
+                current_source_n_passed=interim["current_source_n_passed"],
+            )
             temporary = progress_path.with_suffix(".tmp")
             temporary.write_text(json.dumps(progress, indent=2) + "\n")
             temporary.replace(progress_path)
@@ -315,6 +363,27 @@ def grade(
         with shared_compute_pool(timeout_s=timeout):
             candidate_sha256 = snapshot_digest if inputs.public_build_service is not None else None
         public_root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
+        public_resources = None
+        if background_guard is None or background_guard.current():
+            from .public_scalability_gate import observe_authoring
+
+            public_resources = observe_authoring(
+                owner=inputs.compiler_profile_service,
+                candidate=cand,
+                context=inputs.context,
+                capsules_root=public_root,
+                contract=inputs.contract,
+                facts_path=inputs.rtl_facts,
+                work_root=run_dir.absolute() / "_qa_work" / f"public_scalability_{_key}",
+            )
+            if public_resources is not None:
+                # Publish this bounded source-only result before the first
+                # simulator. It is not a capsule verdict or numerical grade.
+                feedback = ws / "qa" / "public_codegen_resources.json"
+                feedback.parent.mkdir(exist_ok=True)
+                pending = feedback.with_suffix(".pending")
+                pending.write_text(json.dumps(public_resources, indent=2) + "\n")
+                pending.replace(feedback)
         out = run_dir / "qa_history" / f"verdict_{label}_{_key}.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         argv = [
@@ -344,7 +413,11 @@ def grade(
                 timeout,
                 **({"contract": inputs.contract} if inputs.contract is not None else {}),
                 **({"additional_forbidden": inputs.additional_forbidden} if inputs.additional_forbidden else {}),
-                **({"defer_pending": background_guard.reason} if background_guard is not None else {}),
+                **(
+                    {"defer_pending": background_guard.reason, "defer_running": False}
+                    if background_guard is not None
+                    else {}
+                ),
                 **(
                     {"on_capsule_complete": publish_progress}
                     if background_guard is not None and os.environ.get("MERLIN_BACKGROUND_PROGRESS") == "1"
@@ -352,6 +425,16 @@ def grade(
                 ),
                 **({"max_workers": background_workers} if background_workers else {}),
             )
+            if public_resources is not None:
+                verdict["public_codegen_resources"] = public_resources
+                if (
+                    public_resources["required"]
+                    and not public_resources["resource_complete"]
+                    and verdict.get("all_pass") is True
+                ):
+                    verdict["all_pass"] = False
+                    verdict["not_converged_reason"] = "selected public compilation resource ladder is incomplete"
+            verdict = _attribute_source(verdict, ws, snapshot_digest, stage="capsule_evidence_before_shape_probes")
             if background_guard is not None and background_guard.reason() is not None:
                 verdict.update(
                     all_pass=None,
@@ -433,6 +516,9 @@ def grade(
                         else {}
                     ),
                 )
+            verdict = _attribute_source(verdict, ws, snapshot_digest, stage="capsule_evidence_before_shape_probes")
+            completed_out = out.with_name(f"completed_{label}_{_key}.json")
+            verdict = write_verdict(completed_out, verdict)
             if inputs.driver_grade_completed is not None and not no_oracle:
                 from .grade_reuse import retain_driver_grade
 
@@ -444,9 +530,21 @@ def grade(
                         verdict=verdict,
                         inputs=inputs,
                         run_dir=run_dir,
+                        oot_commit=oot_commit.commit if oot_commit is not None else None,
+                        verdict_path=completed_out,
+                        evidence_paths=tuple(
+                            path
+                            for path in (
+                                out.parent / f"shape_coverage_round_{scratch_key or f'{rnd:02d}'}.json",
+                                out.parent / f"codegen_scalability_round_{scratch_key or f'{rnd:02d}'}.json",
+                                out.parent / f"codegen_scalability_public_round_{scratch_key or f'{rnd:02d}'}.json",
+                                run_dir / "_qa_work" / f"public_scalability_{_key}",
+                            )
+                            if path.exists()
+                        ),
                     )
                 inputs.driver_grade_completed(receipt)
-        _record_plateau(run_dir)  # operator-side; deliberately not in the agent's verdict
+        _record_plateau(run_dir, current_source_sha256=verdict.get("current_source_sha256"))
         FL.record_channel_health(ws, run_dir)
     # PROMOTE off the round grade too. Promotion is hooked into both BROKERS, but a broker only sees a
     # verdict the agent ASKED for -- and a converged agent stops asking. Measured on the run that
@@ -492,17 +590,17 @@ def grade(
     qa_dir.mkdir(exist_ok=True)
     if background_guard is not None:
         verdict["graded_request_sha256"] = background_guard.source
-        verdict["snapshot_current"] = background_guard.current()
-        if not verdict["snapshot_current"]:
-            # Completed immutable-source evidence remains useful, but it can
-            # never terminate authoring for a different current compiler.
-            verdict.update(all_pass=None, gradeable=False)
+    verdict = _attribute_source(verdict, ws, snapshot_digest, stage="capsule_evidence_before_shape_probes")
     # The immutable snapshot has a valid result even when the agent has since edited
     # its source. Suppressing that result left R52 without qa/verdict.json for hours.
     verdict = write_verdict(qa_dir / "verdict.json", verdict)
     if progress_rows:
         progress = json.loads(progress_path.read_text())
-        progress.update(state="complete", snapshot_current=verdict.get("snapshot_current"))
+        progress.update(
+            state="complete",
+            snapshot_current=verdict.get("snapshot_current"),
+            current_source_n_passed=verdict.get("current_source_n_passed"),
+        )
         temporary = progress_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(progress, indent=2) + "\n")
         temporary.replace(progress_path)
@@ -685,6 +783,7 @@ def fast_grade(
     from merlin_experiments.phase1.feedback import qa as _qc
 
     from .background_admission import BackgroundGuard, source_digest
+    from .grade_progress import SnapshotProgress
 
     if not (ws / "submission" / "manifest.yaml").is_file():
         raise RuntimeError("no submission/manifest.yaml to grade yet")
@@ -723,6 +822,13 @@ def fast_grade(
         print(f"[first-grade] streaming promotion unavailable: {type(exc).__name__}: {exc}", flush=True)
     from merlin.targetgen.capsule_scheduling import timing_history
 
+    progress = SnapshotProgress(ws, fruns, snapshot_digest, background_guard)
+
+    def completed(row):
+        progress.completed(row)
+        if completed_promotion is not None and background_guard.reason() is None:
+            completed_promotion(row)
+
     try:
         with compiler_execution(inputs, candidate=cand, run_dir=run_dir), timing_history(_history_runs_roots(run_dir)):
             _fast_score = (
@@ -741,15 +847,9 @@ def fast_grade(
                     target=te.target,
                     additional_forbidden=inputs.additional_forbidden,
                     defer_pending=background_guard.reason,
-                    **(
-                        {
-                            "on_capsule_complete": lambda row: (
-                                completed_promotion(row) if background_guard.reason() is None else None
-                            )
-                        }
-                        if completed_promotion is not None
-                        else {}
-                    ),
+                    defer_running=False,
+                    on_capsule_complete=completed,
+                    on_cohort_ready=progress.selected,
                 )
                 or {}
             )
@@ -757,7 +857,8 @@ def fast_grade(
         # grade did not reach stays UNKNOWN in the document below rather than reading as clean.
         print(f"[first-grade] grade error: {type(e).__name__}: {str(e)[:200]}", flush=True)
         _fast_score = {}
-    red = _qc._per_capsule_from_results(fruns)
+    package_not_ready = (_fast_score.get("package_readiness") or {}).get("status") == "not_ready"
+    red = {} if package_not_ready else _qc._per_capsule_from_results(fruns)
     for row in _fast_score.get("per_capsule") or []:
         if row.get("background_deferred") and row.get("capsule") not in red:
             red[row["capsule"]] = {"status": "gated", "tiers": {}}
@@ -768,7 +869,24 @@ def fast_grade(
         structural_evidence=_fast_score.get("structural_evidence_all_pass"),
         cohort_complete=_qc._original_cohort_complete(_fast_score),
     )
-    verdict["graded_source_sha256"] = snapshot_digest
+    if package_not_ready:
+        # Package bootstrap ran; no capsule or oracle did. This is readiness
+        # feedback, never a reduced cohort or an empty passing grade.
+        verdict.update(
+            all_pass=False,
+            gradeable=False,
+            n_passed=0,
+            n_capsules=0,
+            per_capsule=[],
+            mandatory_tiers_complete=False,
+            tiers_graded=[],
+            tiers_not_run=sorted(set(adapters) | set(_withheld)),
+            package_readiness=_fast_score["package_readiness"],
+            package_failure=_fast_score.get("failure"),
+            note="The declared compiler tool is missing after package build; no capsules executed. "
+            "Finish the declared tool; the first grade will retry shortly. The selected cohort is unchanged.",
+        )
+    verdict = _attribute_source(verdict, ws, snapshot_digest, stage="loop_screen")
     if background_guard.reason() is not None:
         verdict.update(
             all_pass=None,
@@ -780,15 +898,16 @@ def fast_grade(
                 "source_sha256": background_guard.source,
             },
         )
+    verdict["graded_request_sha256"] = background_guard.source
+    verdict = _attribute_source(verdict, ws, snapshot_digest, stage="loop_screen")
+    progress.finish(verdict)
     out = run_dir / "qa_history" / f"verdict_fast_{tick}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     verdict = write_verdict(out, verdict)
     (ws / "qa").mkdir(exist_ok=True)
-    verdict["graded_request_sha256"] = background_guard.source
-    verdict["snapshot_current"] = background_guard.current()
     if verdict["snapshot_current"]:
         verdict = write_verdict(ws / "qa" / "verdict.json", verdict)
-    _record_plateau(run_dir)  # operator-side; deliberately not in the agent's verdict
+    _record_plateau(run_dir, current_source_sha256=verdict.get("current_source_sha256"))
     FL.record_channel_health(ws, run_dir)
     # The first successful loop verdict unlocks cert work immediately. The existing
     # broker queue owns native parallelism, deduplication and certification; never
@@ -1124,7 +1243,7 @@ def write_verdict(path: Path, verdict: dict) -> dict:
     return verdict
 
 
-def _record_plateau(run_dir: Path) -> None:
+def _record_plateau(run_dir: Path, *, current_source_sha256: str | None = None) -> None:
     """Assess this run's progress across GRADES and record it OPERATOR-SIDE. Never raises.
 
     OUT OF BAND, for the same reason `_write_stage_ledger` is: telling the agent it has plateaued, or
@@ -1142,25 +1261,47 @@ def _record_plateau(run_dir: Path) -> None:
     try:
         from merlin.targetgen import plateau as _PL
 
-        hist = sorted((run_dir / "qa_history").glob("verdict_*.json"), key=lambda q: q.stat().st_mtime)
+        history = run_dir / "qa_history"
+        # Keep pre-shape archives, but use the completed record for that exact
+        # snapshot when available. A snapshot must never count as two grades.
+        selected = {path.name.removeprefix("verdict_"): path for path in history.glob("verdict_*.json")}
+        selected.update({path.name.removeprefix("completed_"): path for path in history.glob("completed_*.json")})
+        hist = sorted(selected.values(), key=lambda q: q.stat().st_mtime)
         grades = []
         for q in hist:
             try:
                 grades.append(json.loads(q.read_text()))
             except Exception:  # noqa: BLE001 -- one unreadable grade must not blind the assessment
                 continue
-        got = _PL.assess(grades)
+        current_grades = [
+            g
+            for g in grades
+            if current_source_sha256 is not None
+            and g.get("graded_source_sha256") == current_source_sha256
+            and g.get("snapshot_current") is True
+        ]
+        got = _PL.assess(current_grades)
+        historical = _PL.assess(grades)
         doc = {
+            "scope": "grades of the observed current source only",
+            "current_source_sha256": current_source_sha256,
+            "current_source_grade_available": bool(current_grades),
             "stuck": got.stuck,
             "reason": got.reason,
             "stalled_grades": got.stalled_grades,
             "n_grades": got.n_grades,
-            "best_passed": got.best_passed,
-            "latest_passed": got.latest_passed,
+            "best_passed": got.best_passed if current_grades else None,
+            "latest_passed": got.latest_passed if current_grades else None,
             "n_capsules": got.n_capsules,
             "never_passed": list(got.never_passed),
             "regressed": list(got.regressed),
-            "sentence": got.sentence(),
+            "sentence": got.sentence() if current_grades else "No grade for the observed current source is available.",
+            "snapshot_history": {
+                "scope": "immutable snapshots; not current-source qualification",
+                "n_grades": historical.n_grades,
+                "best_passed": historical.best_passed,
+                "latest_passed": historical.latest_passed,
+            },
             "note": (
                 "operator-side only: this is never handed to the agent, because new feedback "
                 "would change the arm's treatment"

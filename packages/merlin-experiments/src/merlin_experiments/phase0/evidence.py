@@ -421,6 +421,7 @@ def select_evidence(
     hardware_intake=None,
     software_intake=None,
     source_components: bool = False,
+    rtl_source_relocations=None,
 ) -> EvidenceSelection:
     """Observe selected source bytes once; never extract facts or modify a checkout.
 
@@ -770,37 +771,15 @@ def select_evidence(
     # are not enough to reconstruct provenance or declare numeric support.
     inputs = loaded_facts.get("inputs") or {}
     body = loaded_facts.get("facts") or {}
-    origin = body.get("source") or {}
-    source_records = [
-        inputs,
-        origin,
-        *(inputs.get("firrtl_inputs") or []),
-        *(inputs.get("reader_sources") or []),
-        *((loaded_facts.get("source_consistency") or {}).get("sources") or []),
-        ((loaded_facts.get("source_consistency") or {}).get("production") or {}).get("input_preparation") or {},
-    ]
-    for record in source_records:
-        if not isinstance(record, Mapping):
-            continue
-        for key, value in record.items():
-            if (key.endswith("_path") or key == "path") and isinstance(value, str) and value:
-                path = Path(value)
-                if path.is_absolute():
-                    observed = observe(path, f"rtl-source:{key}")
-                    expected = record.get("sha256" if key == "path" else key.removesuffix("_path") + "_sha256")
-                    if (
-                        observed is not None
-                        and isinstance(expected, str)
-                        and len(expected) == 64
-                        and expected != _digest(observed)
-                    ):
-                        diagnostics.append(
-                            {
-                                "component": "rtl-source",
-                                "status": "contradiction",
-                                "reason": f"recorded source digest differs from observed bytes: {path}",
-                            }
-                        )
+    from .evidence_rtl_sources import observe_sources
+
+    source_relocations = observe_sources(
+        loaded_facts,
+        observe,
+        diagnostics,
+        relocations=rtl_source_relocations,
+        facts_sha256=_digest(raw_facts) if raw_facts is not None else None,
+    )
     for record in body.get("interfaces") or []:
         if isinstance(record, Mapping) and record.get("name") == "register_bundle_layouts" and record.get("source"):
             observe(record["source"], "readout-register-source")
@@ -893,6 +872,8 @@ def select_evidence(
                     }
                 )
     snapshot_bytes = {str(path): source.content for path, source in sources.items()}
+    for row in (source_relocations or {}).get("sources", []):
+        snapshot_bytes[row["original_path"]] = snapshot_bytes[row["replacement_path"]]
     refreshed_facts = dict(readout_facet.with_current_register_layouts(loaded_facts, source_bytes=snapshot_bytes))
     readout_inputs = chipyard_rocc.readout_metadata(contract) if data_only else {}
     if hardware_intake is None and not data_only:
@@ -1173,6 +1154,8 @@ def select_evidence(
             ],
         },
     }
+    if source_relocations is not None:
+        views["rtl_source_relocations"] = source_relocations
     return EvidenceSelection(
         target,
         tuple(sources.values()),
@@ -1271,6 +1254,8 @@ def evidence_artifacts(selection: EvidenceSelection) -> dict[str, bytes]:
         },
         accounting,
     )
+    if getattr(selection, "rtl_source_relocations", None) is not None:
+        outputs["hardware/source-relocations.json"] = _json(selection.rtl_source_relocations)
     outputs["coverage/operation-accounting.json"] = _json(accounting)
     outputs["coverage/performance-basis.json"] = _json(
         build_performance_basis(

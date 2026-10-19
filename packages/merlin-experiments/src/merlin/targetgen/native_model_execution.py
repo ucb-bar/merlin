@@ -218,105 +218,12 @@ def _bind_inputs(
     if set(inputs) != read or len(inputs) != len(read):
         raise NativeModelExecutionError("captured leaf binding does not cover the exact source entry ABI")
 
-    tensors = command_buffer["tensors"]
-    mutable = {
-        str(arg["tensor"])
-        for arg in abi
-        if arg["access"] in ("write", "readwrite") and tensors[arg["tensor"]]["role"] == "intermediate"
-    }
-    readwrite = {str(arg["tensor"]) for arg in abi if arg["access"] == "readwrite"}
-    if readwrite - mutable:
-        raise NativeModelExecutionError("readwrite entry/output requires an explicit carried-state seed")
-    outputs = set(command_buffer["kernel_abi"]["outputs"])
-    if (
-        len(outputs) != len(command_buffer["kernel_abi"]["outputs"])
-        or set(tensors) != read | mutable | outputs
-        or any(tensors[name]["role"] != "output" for name in outputs)
-    ):
-        raise NativeModelExecutionError("one-shot model ABI has an unsupported writable pointer role")
-    plan = command_buffer["params"]["global_program_plan"]
-    inventory = source_operation_inventory(source_bytes)
-    source_values = {row["tensor"]: (row["op_index"], row["result_index"]) for row in plan["source_values"]}
-    if len(source_values) != len(plan["source_values"]):
-        raise NativeModelExecutionError("mutable source values alias one pointer without a carry contract")
-    temporary_owners = {row["tensor"]: row["source_op_index"] for row in plan["compiler_temporaries"]}
-    if len(temporary_owners) != len(plan["compiler_temporaries"]):
-        raise NativeModelExecutionError("compiler temporaries have duplicate pointer identity")
-    if read.intersection(set(source_values) | set(temporary_owners)):
-        raise NativeModelExecutionError("source-produced value aliases a captured read-only entry")
-    # This one-shot runner has no input/output alias or epilogue-copy contract.
-    # A named output must be written once by the task that owns its exact
-    # source result; merely listing it in the ABI proves no produced bytes.
-    for name in command_buffer["kernel_abi"]["outputs"]:
-        producer = source_values.get(name)
-        writers = [task for task in plan["tasks"] if name in task["writes"]]
-        if (
-            not any(arg["tensor"] == name and arg["access"] == "write" for arg in abi)
-            or producer is None
-            or len(writers) != 1
-            or producer[0] not in writers[0]["source_op_indices"]
-        ):
-            raise NativeModelExecutionError(
-                f"output writer lacks exact source-result task ownership: {name!r}",
-                code="output_writer_source_result_ownership_unverified",
-            )
+    from merlin.targetgen.contract.source_ownership import SourceOwnershipError, _source_owned_mutables
 
-    def has_source_initializer(name: str, task: Mapping[str, Any]) -> bool:
-        binding = source_values.get(name)
-        if binding is None or binding[0] not in task["source_op_indices"]:
-            return False
-        operation = inventory["operations"][binding[0]]
-        result_index = binding[1]
-        results = operation["results"]
-        operands = operation["operands"]
-        init_index = len(operands) - len(results) + result_index
-        if operation["operation"] not in ("linalg.generic", "linalg.reduce") or not 0 <= init_index < len(operands):
-            return False
-        init = operands[init_index]
-        origin = init.get("source") or {}
-        producer = origin.get("op_index")
-        if (
-            type(producer) is not int
-            or not 0 <= producer < binding[0]
-            or origin.get("result_index") != 0
-            or init.get("shape") != results[result_index].get("shape")
-            or init.get("dtype") != results[result_index].get("dtype")
-            or inventory["operations"][producer]["operation"] != "tensor.splat"
-            or any(row["op_index"] == producer for row in plan["source_values"])
-        ):
-            return False
-        splat = inventory["operations"][producer]
-        if len(splat["operands"]) != 1:
-            return False
-        scalar_origin = splat["operands"][0].get("source") or {}
-        constant = scalar_origin.get("op_index")
-        return (
-            type(constant) is int
-            and 0 <= constant < producer
-            and scalar_origin.get("result_index") == 0
-            and splat["operands"][0].get("type") == results[result_index].get("dtype")
-            and inventory["operations"][constant]["operation"] == "arith.constant"
-        )
-
-    initialized: set[str] = set()
-    for task in plan["tasks"]:
-        if read.intersection(task["writes"]):
-            raise NativeModelExecutionError("task writes a captured read-only entry")
-        for name in task["writes"]:
-            if name in mutable:
-                owner = source_values[name][0] if name in source_values else temporary_owners.get(name)
-                if owner not in task["source_op_indices"]:
-                    raise NativeModelExecutionError(f"mutable intermediate {name!r} has no source-owned writer")
-        for name in task["reads"]:
-            if (
-                name in mutable
-                and name not in initialized
-                and not (name in task["writes"] and has_source_initializer(name, task))
-            ):
-                raise NativeModelExecutionError(f"mutable intermediate {name!r} is read before a source-owned write")
-        initialized.update(name for name in task["writes"] if name in mutable)
-    if initialized != mutable:
-        raise NativeModelExecutionError("mutable intermediate lacks a source-owned writer")
+    try:
+        mutable = set(_source_owned_mutables(command_buffer, source_operation_inventory(source_bytes)))
+    except SourceOwnershipError as exc:
+        raise NativeModelExecutionError(str(exc), code=exc.code) from exc
     if hashlib.sha256(source_path.read_bytes()).hexdigest() != validation["source_sha256"]:
         raise NativeModelExecutionError("frozen model interface changed during source binding")
     return inputs, {

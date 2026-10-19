@@ -42,6 +42,14 @@ by policy proposals. Unsupported direct batched/GQA layouts and absent mixed
 attention numerical contracts retain source fallback; nested supported rank-two
 islands do not authorize changing their surrounding carried state or layout.
 
+`device_object_optimization` materializes the selected stock-Clang optimized
+LLVM before object emission, with observed generic LLVM-dialect import for
+structural inventory. Backend emission retains the selected optimization flags
+and skips repeated IR passes only. Raw source/mandatory-work proofs remain
+separate; exact optimized/object/linked inventories are still required by the
+selected consumer. Every transform and its source dependency retain invocation
+custody; optimizer output is not a new source-semantic permission.
+
 `stock_cli` is an explicitly selected scalar transport through stock upstream
 tools, using the ordinary scalar pass pipeline and shared object/link/runtime
 code. Python remains the default. Runner-only rewrites, guarded fusion, checked

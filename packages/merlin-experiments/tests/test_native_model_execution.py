@@ -5,7 +5,9 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import subprocess
 from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -986,6 +988,8 @@ def test_real_grade_rollup_withholds_legacy_tiers_cost_and_numeric_for_candidate
     package, capsules = tmp_path / "package", tmp_path / "capsules"
     package.mkdir()
     capsules.mkdir()
+    tool = package / "compiler.py"
+    tool.write_text("# Existing declared tool; this fixture tests model audit rollup.\n")
     capsule = {"name": "M", "kind": "model", "label": "public", "semantic": {"must_accelerate": True}}
     row = {
         "capsule": "M",
@@ -1014,7 +1018,9 @@ def test_real_grade_rollup_withholds_legacy_tiers_cost_and_numeric_for_candidate
             },
         },
     }
-    monkeypatch.setattr(grade_module, "load_package", lambda *a, **k: SimpleNamespace(integrity_exempt=False))
+    monkeypatch.setattr(
+        grade_module, "load_package", lambda *a, **k: SimpleNamespace(integrity_exempt=False, tool=tool)
+    )
     monkeypatch.setattr(grade_module, "integrity_scan", lambda *a, **k: None)
     monkeypatch.setattr(grade_module, "build_package", lambda *a, **k: None)
     monkeypatch.setattr(grade_module.CR, "discover_capsules", lambda *a, **k: [capsule])
@@ -1749,3 +1755,79 @@ def test_kernel_inventory_keeps_work_after_interior_relocation_label(tmp_path, m
     table = {"custom_opcode": 0x2B, "legal_funct": [4], "names": {"4": "MAC"}}
     words, functs = _kernel_command_inventory(path, symbol="kernel", table=table)
     assert words == [0x0800002B] and functs == [4]
+
+
+@pytest.mark.parametrize("instructions", [
+    "  4: 0800002b <unknown>\n",  # missing beginning, with a real command later
+    "  0: 0800002b <unknown>\n",  # truncated ending
+    "  0: 0001 nop\n  4: 0800002b <unknown>\n",  # interior hole
+    "  0: 0800002b <unknown>\n  0: 0800002b <unknown>\n  4: 00000013 nop\n",  # overlap
+    "  8: 0800002b <unknown>\n",  # only a neighboring function has work
+    "  0: 001 nop\n  1: 0800002b <unknown>\n",  # malformed byte width
+])
+def test_kernel_inventory_alias_labels_still_require_complete_owned_extent(tmp_path, monkeypatch, instructions):
+    from merlin.llvmlower import toolchain
+
+    path = tmp_path / "kernel.o"
+    path.write_bytes(_kernel_symbol_elf(size=8))
+    tool = tmp_path / "llvm-objdump"
+    tool.write_bytes(b"selected tool")
+    monkeypatch.setattr(toolchain, "objdump", lambda: tool)
+    monkeypatch.setattr(subprocess, "run", lambda argv, **kwargs: subprocess.CompletedProcess(
+        argv, 0, "Disassembly of section .text:\n00000000 <local_body>:\n" + instructions, ""
+    ))
+    with pytest.raises(NativeModelExecutionError, match="instruction coverage"):
+        _kernel_command_inventory(path, symbol="kernel", table={"custom_opcode": 0x2B})
+
+
+def test_kernel_inventory_alias_label_keeps_owned_work_and_rejects_unknown_custom(tmp_path, monkeypatch):
+    from merlin.llvmlower import toolchain
+
+    path = tmp_path / "kernel.o"
+    path.write_bytes(_kernel_symbol_elf(size=8))
+    tool = tmp_path / "llvm-objdump"
+    tool.write_bytes(b"selected tool")
+    monkeypatch.setattr(toolchain, "objdump", lambda: tool)
+    text = ("Disassembly of section .text:\n00000000 <local_body>:\n"
+            "  0: 0001 nop\n  2: 0001 nop\n  4: 0800002b <unknown>\n"
+            "00000008 <neighbor>:\n  8: 1000002b <unknown>\n")
+    monkeypatch.setattr(subprocess, "run", lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, text, ""))
+    table = {"custom_opcode": 0x2B, "legal_funct": [4], "names": {"4": "MAC"}}
+    assert _kernel_command_inventory(path, symbol="kernel", table=table) == ([0x0800002B], [4])
+    table["legal_funct"] = []
+    with pytest.raises(NativeModelExecutionError, match="unrecognized custom command"):
+        _kernel_command_inventory(path, symbol="kernel", table=table)
+
+
+def test_kernel_inventory_retained_real_alias_object_uses_actual_symbol_extent(monkeypatch):
+    """Opt-in preserved producer object: exercise the real selected disassembler, never a simulator."""
+    import os
+
+    from merlin.common.facts_view import interface
+    from merlin.llvmlower import toolchain
+    from merlin.perf.compiled_static_features import linked_entry_extent
+
+    selected = os.environ.get("MERLIN_TEST_INVENTORY_OBJECT")
+    if not selected:
+        pytest.skip("select a retained real alias object and its original fact table")
+    path = Path(selected)
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == os.environ["MERLIN_TEST_INVENTORY_OBJECT_SHA256"]
+    symbol = os.environ["MERLIN_TEST_INVENTORY_SYMBOL"]
+    body = os.environ["MERLIN_TEST_INVENTORY_BODY"]
+    tool = Path(os.environ["MERLIN_TEST_INVENTORY_OBJDUMP"])
+    monkeypatch.setattr(toolchain, "objdump", lambda: tool)
+    facts = json.loads(Path(os.environ["MERLIN_TEST_INVENTORY_FACTS"]).read_text())
+    table = interface(facts["facts"], "funct_decode_table")
+    extent = linked_entry_extent(path.read_bytes(), symbol)
+    assert {k: v for k, v in extent.items() if k != "symbol"} == {
+        k: v for k, v in linked_entry_extent(path.read_bytes(), body).items() if k != "symbol"
+    }
+    text = subprocess.check_output([
+        str(tool), "-d", "--disassemble-zeroes", "--triple=riscv64", "-M", "no-aliases",
+        f"--section={extent['section']}", f"--start-address={extent['address']}",
+        f"--stop-address={extent['address'] + extent['size_bytes']}", str(path),
+    ], text=True)
+    assert f"<{body}>:" in text and f"<{symbol}>:" not in text
+    actual = _kernel_command_inventory(path, symbol=symbol, table=table)
+    assert actual[0] and actual[1]
+    assert actual == _kernel_command_inventory(path, symbol=body, table=table)

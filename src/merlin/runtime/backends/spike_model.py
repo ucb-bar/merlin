@@ -441,6 +441,7 @@ def build(
     host_vectorize: bool | None = None,
     host_math_policy: str = "native",
     math_archive_symbols: Sequence[str] | None = None,
+    host_math_symbols: Sequence[str] | None = None,
     prepared_model_transform: Callable[[Path, Path], Path] | None = None,
     entry_weight_projection: GeneratedDispatchABI | None = None,
     masked_contraction_effects: MaskEffectContract | None = None,
@@ -547,7 +548,13 @@ def build(
         device.catalog_manifest is not None or device.catalog_builder is not None
     ):
         raise ValueError("target configuration cleanup requires consumed IR; compiled catalogs are unsupported")
-    supplier_flags = () if math_archive_symbols is None else trace_symbol_flags(math_archive_symbols)
+    from ..host_math import runtime_symbol_bindings
+
+    if math_archive_symbols is not None:
+        trace_symbol_flags(math_archive_symbols)
+    runtime_symbols = {} if host_math_symbols is None else runtime_symbol_bindings(host_math_policy, host_math_symbols)
+    requested_suppliers = [*(math_archive_symbols or ()), *runtime_symbols.values()]
+    supplier_flags = trace_symbol_flags(requested_suppliers) if requested_suppliers else ()
     (Path(work) / "execution_memory_admission.json").unlink(missing_ok=True)
     if host_llvm_transform_chain is not None:
         from ...llvmlower.host_transform_chain import HostLLVMTransformChain
@@ -609,7 +616,7 @@ def build(
         raise ValueError("output_dump_cap must be a positive signed 32-bit integer")
     if not isinstance(output_sha256, bool):
         raise ValueError("output_sha256 must be a bool")
-    from ..host_math import build_host_math, host_math_recipe
+    from ..host_math import build_host_math, host_math_recipe, record_math_suppliers
 
     host_math_recipe(host_math_policy)  # Refuse unsupported policy before build mutation.
     from ...llvmlower.source_model import bind_source_lowerings, source_borrowed_calls
@@ -996,6 +1003,7 @@ def build(
             )
         supplemental_objects.extend(_dev_build.objects)
         if _dev_side.get("catalog_manifest") is None:
+            from merlin.llvmlower.device_object_optimization import artifacts as optimized_artifacts
             # Producer-owned symbol mapping, never reconstructed from signature order.
             device_artifacts = {
                 "target": device.device,
@@ -1013,6 +1021,7 @@ def build(
                             for role, path in (
                                 ("llvm_mlir", work / "device" / f"{symbol}.device.mlir"),
                                 ("llvm_ir", work / "device" / f"{symbol}.ll"),
+                                *optimized_artifacts(_dev_build.custody[symbol]).items(),
                                 ("object", work / "device" / f"{symbol}.o"),
                             )
                         },
@@ -1278,8 +1287,7 @@ def build(
         inputs=[h / "model_link.ld", *objs, libm_archive],
         output=elf,
     )
-    if math_archive_symbols is not None:
-        compilation.record_link_suppliers({symbol: libm_archive for symbol in math_archive_symbols}, link_result)
+    record_math_suppliers(compilation, libm_archive, math_archive_symbols, runtime_symbols, math_objects, link_result)
     if device is not None and getattr(device, "final_elf_audit", None) is not None:
         device.final_elf_audit(elf)
     close_host_provider(host_provider_receipt, objs, elf, inspector=provider_inspector, link_flags=math_link_flags)

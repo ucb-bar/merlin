@@ -305,6 +305,7 @@ def compile_saved_model(
     rtl_facts: str | Path | None = None,
     device: Any | None = None,
     math_archive_symbols: Sequence[str] | None = None,
+    host_math_symbols: Sequence[str] | None = None,
     readback: str = "prefix",
     group_profile: bool = False,
     op_profile: bool = False,
@@ -317,6 +318,7 @@ def compile_saved_model(
     shared_source_lowerings: tuple[SourceRowLowering | SourcePointwiseLowering | SourceDenseLowering, ...] = (),
     graph_optimizations: GraphOptimizationContract | HostGraphPolicy | None = None,
     prepack_weights: bool = False,
+    host_math_policy: str = "native",
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
@@ -356,7 +358,16 @@ def compile_saved_model(
     ``reference_file`` is required for execution because a weight-only capture's
     ``golden.npy`` is not necessarily the reference for a W8A8 execution.  This
     initial executor supports one complete float32 OUT (at most 4096 values).
+
+    ``host_math_policy`` selects an explicit host runtime recipe. Native preserves
+    the default build arguments; unsupported policies refuse before input/output IO.
     """
+    from merlin.runtime.host_math import host_math_recipe
+
+    try:
+        host_math_recipe(host_math_policy)
+    except ValueError as error:
+        raise BaremetalModelError(str(error)) from error
     if run not in {"none", "spike", "gsim", "verilator"}:
         raise BaremetalModelError(f"unsupported bare-metal run {run!r}")
     if readback not in {"prefix", "full"}:
@@ -444,6 +455,7 @@ def compile_saved_model(
             "group_profile": bool(group_profile),
             "tolerance": tolerance,
             "blob_weights": blob_weights,
+            "host_math_policy": host_math_policy,
         },
     }
     try:
@@ -534,6 +546,10 @@ def compile_saved_model(
         if weights_source is not None:
             receipt["inputs"]["weights_source"] = str(Path(weights_source).resolve(strict=True))
             build_options["weights_source"] = weights_source
+        if host_math_symbols is not None:
+            build_options["host_math_symbols"] = host_math_symbols
+        if host_math_policy != "native":
+            build_options["host_math_policy"] = host_math_policy
         if respect_captured_quantization_scope:
             receipt["inputs"]["respect_captured_quantization_scope"] = True
         if host_llvm_bitcode:

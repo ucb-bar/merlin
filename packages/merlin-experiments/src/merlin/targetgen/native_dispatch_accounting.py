@@ -51,11 +51,13 @@ def _host_compute_report(command_buffer: Mapping[str, Any], lowered_mlir_text: s
 
 
 def _mandatory_command_blocks(function: Any, commands: set[Any]) -> bool:
-    """A return cannot be reached after removing blocks carrying real work commands.
+    """Prove selected work on every returning path, including finite positive loops.
 
-    This proves one command issues on every *returning* path, including a loop's
-    zero-trip edge. Nontermination and equivalence to source computation are
-    separate obligations; neither is inferred from this CFG property.
+    The structural cut proves the common case without evaluating conditions.
+    A loop's syntactic zero-trip edge can bypass work even when its actual
+    constant induction guarantees work. Only the existing complete constant-CFG
+    accounting may discharge that case. Nontermination and source equivalence
+    remain separate obligations; matching a command is the caller's authority.
     """
     from merlin.perf.host_cfg_index import prepare_host_cfg
 
@@ -71,7 +73,25 @@ def _mandatory_command_blocks(function: Any, commands: set[Any]) -> bool:
             continue
         reached.add(block)
         if block.last_op is not None and block.last_op.name == "llvm.return":
-            return False
+            from merlin.perf.host_cfg_activity import analyze_host_cfg_activity
+
+            activity = analyze_host_cfg_activity(function, prepared_cfg=cfg)
+            counts = activity.get("blocks")
+            if activity.get("status") != "derived" or not isinstance(counts, list) or len(counts) != len(cfg.blocks):
+                return False
+            for index, row in enumerate(counts):
+                if (
+                    not isinstance(row, dict)
+                    or row.get("block") != index
+                    or type(row.get("execution_count")) is not int
+                    or row["execution_count"] < 0
+                ):
+                    return False
+            return any(
+                counts[index]["execution_count"] > 0
+                for index, candidate in enumerate(cfg.blocks)
+                if candidate in carrying
+            )
         pending.extend(cfg.successors[block])
     return True
 
@@ -102,8 +122,15 @@ def _kernel_command_inventory(path: Path, *, symbol: str, table: Mapping[str, An
     # Decode the independently verified owner section and complete extent.
     run = subprocess.run(
         [
-            str(disassembler), "-d", "--triple=riscv64", "-M", "no-aliases",
-            f"--section={extent['section']}", f"--start-address={start}", f"--stop-address={start + size}",
+            str(disassembler),
+            "-d",
+            "--disassemble-zeroes",
+            "--triple=riscv64",
+            "-M",
+            "no-aliases",
+            f"--section={extent['section']}",
+            f"--start-address={start}",
+            f"--stop-address={start + size}",
             str(path),
         ],
         capture_output=True,
@@ -115,10 +142,21 @@ def _kernel_command_inventory(path: Path, *, symbol: str, table: Mapping[str, An
     if path.read_bytes() != image:
         raise NativeModelExecutionError("device image changed during symbol inventory")
     rows = [row for row in tokenize_text(run.stdout) if start <= row.addr < start + size]
-    if any(row.addr + len(row.hexcode.replace(" ", "")) // 2 > start + size for row in rows):
-        raise NativeModelExecutionError("decoded instruction crosses the selected function extent")
-    if not rows or f"<{symbol}>:" not in run.stdout:
-        raise NativeModelExecutionError(f"no disassembled {symbol!r} symbol in {path.name}")
+    # The disassembler may print a same-address body/local alias instead of the
+    # selected public symbol. Ownership comes from the verified ELF extent,
+    # never that display label. Every byte in that extent must still be present
+    # exactly once; decoys, omitted rows and truncated instructions cannot pass.
+    cursor = start
+    for row in rows:
+        encoded = row.hexcode.replace(" ", "")
+        width = len(encoded) // 2
+        if not width or len(encoded) % 2 or row.addr != cursor:
+            raise NativeModelExecutionError("incomplete or overlapping selected function instruction coverage")
+        if row.addr + width > start + size:
+            raise NativeModelExecutionError("decoded instruction crosses the selected function extent")
+        cursor += width
+    if cursor != start + size:
+        raise NativeModelExecutionError("incomplete selected function instruction coverage")
     decoded = decode_stream(rows, table)
     opcode = table.get("custom_opcode")
     if type(opcode) is not int:

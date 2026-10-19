@@ -341,7 +341,7 @@ def test_superseded_source_is_sticky_and_never_current(tmp_path):
     assert guard.reason() == "background source superseded"
 
 
-def test_selected_snapshot_completion_keeps_work_but_marks_source_stale(tmp_path, monkeypatch):
+def test_selected_snapshot_completion_cannot_keep_queuing_obsolete_work(tmp_path, monkeypatch):
     monkeypatch.setenv('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '1')
     ws = tmp_path / 'workspace'
     (ws/'submission').mkdir(parents=True)
@@ -350,11 +350,13 @@ def test_selected_snapshot_completion_keeps_work_but_marks_source_stale(tmp_path
     guard = admission.BackgroundGuard(ws, tmp_path,
         SimpleNamespace(compiler_profile_service=None), admission.source_digest(ws))
     program.write_text('replacement\n')
-    assert guard.reason() is None
+    assert guard.reason() == "background source superseded"
     assert not guard.current()
 
 
-def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(tmp_path, monkeypatch):
+@pytest.mark.parametrize("finish_snapshot", [False, True])
+def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(tmp_path, monkeypatch, finish_snapshot):
+    monkeypatch.setenv("MERLIN_BACKGROUND_FINISH_SNAPSHOT", str(int(finish_snapshot)))
     ws, run, public = (tmp_path / name for name in ("workspace", "run", "public"))
     (ws / "submission").mkdir(parents=True)
     (ws / "submission/manifest.yaml").write_text("language: python\n")
@@ -368,7 +370,7 @@ def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(t
     monkeypatch.setattr(LG, "cert_tiers_beyond_loop", lambda **k: ({"L3"}, {"L3"}))
     monkeypatch.setattr(CR, "qa_loop_adapters", lambda *a, **k: {"L2": object()})
     monkeypatch.setattr(LG, "readback_kwargs", lambda _: {})
-    monkeypatch.setattr(LG, "_record_plateau", lambda *a: None)
+    monkeypatch.setattr(LG, "_record_plateau", lambda *a, **kw: None)
     monkeypatch.setattr(LG.FL, "record_channel_health", lambda *a: None)
     from merlin_experiments.phase1.feedback import promotion, qa
 
@@ -382,6 +384,7 @@ def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(t
     def grade(*args, **kwargs):
         (ws / "submission/manifest.yaml").write_text("language: python\nrevision: replaced\n")
         assert kwargs["defer_pending"]() == "background source superseded"
+        assert kwargs["defer_running"] is False
         return {
             "per_capsule": [
                 {"capsule": "queued", "status": "gated", "background_deferred": "background source superseded"}
@@ -392,5 +395,8 @@ def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(t
     result = LG.fast_grade(ws, run, 900, 30, inputs=inputs)
     assert result["n_capsules"] == 2 and result["all_pass"] is None
     assert result["background_grade"]["status"] == "deferred"
+    assert result["snapshot_current"] is False
     assert json.loads((ws / "qa/verdict.json").read_text()) == {"current_feedback": True}
-    assert (run / "qa_history/verdict_fast_900.json").is_file()
+    archived = json.loads((run / "qa_history/verdict_fast_900.json").read_text())
+    assert archived["snapshot_current"] is False
+    assert archived["graded_request_sha256"] == result["graded_request_sha256"]

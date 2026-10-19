@@ -93,6 +93,7 @@ def _stage_rows(
     accumulator: str,
     destination_declared: bool,
     attributes: dict,
+    column_source: dict | None = None,
 ) -> list[dict]:
     from merlin.targetgen.semantic_families import from_op
 
@@ -109,10 +110,19 @@ def _stage_rows(
             result_dtypes=[result_dtype] if result_dtype else [],
             layout=_ROW_MAJOR if destination_declared else None,
             aliasing="disjoint_inputs_outputs",
+            **(
+                {"logical_output_column_source": {**column_source, "attributes": attributes}}
+                if column_source is not None and "acc_scale_by_column" in attributes
+                else {}
+            ),
             composed_observation={
                 "epilogues": [stage],
                 "composed_with": [producer] if producer else [],
-                "scale_granularity": "tensor" if scalar_scales else None,
+                "scale_granularity": "tensor"
+                if scalar_scales
+                else "channel"
+                if "acc_scale_by_column" in attributes
+                else None,
             },
         )
         for stage in stages
@@ -121,6 +131,7 @@ def _stage_rows(
 
 def command_rows(cb: dict[str, Any]) -> list[dict]:
     """One row per command and per declared epilogue stage, in program order."""
+    from merlin.runtime.commandbuffer import bias_tensor_name
     from merlin.targetgen.contract.interface_emit import _NAMED_OPCODE_TO_OP, _OPCODE_TO_OP, _acc_dtype
     from merlin.targetgen.semantic_families import from_op
 
@@ -128,6 +139,7 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
     accumulator = _acc_dtype(cb)
     resident: dict[str, str] = {}
     produced_by: dict[str, tuple[str | None, str | None]] = {}
+    column_sources: dict[str, dict] = {}
     rows: list[dict] = []
     for index, command in enumerate(cb.get("commands") or []):
         opcode = str(command.get("opcode"))
@@ -158,6 +170,18 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
                     accumulator=accumulator,
                     destination_declared=_typed(tensors, destination) is not None,
                     attributes=attributes,
+                    column_source={
+                        **column_sources[str(operands.get("src"))],
+                        "disjoint": column_sources[str(operands.get("src"))]["disjoint"]
+                        and destination not in column_sources[str(operands.get("src"))]["operand_names"]
+                        and destination != attributes.get("bias"),
+                        "result": _typed(tensors, destination),
+                        "bias": _typed(tensors, bias_tensor_name(operands, attributes, op=operation))
+                        if any(stage in {"bias", "bias_add"} for stage in stages)
+                        else None,
+                    }
+                    if str(operands.get("src")) in column_sources
+                    else None,
                 )
             )
             continue
@@ -175,6 +199,18 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
         # cannot accidentally license ReLU after an unrelated map on the same family.
         carrier = epilogue_carrier(operation, family)
         produced_by[str(destination)] = (carrier, operand_dtype)
+        if operation in {"matmul", "conv2d"} and len(typed_sources) >= 2:
+            column_sources[str(destination)] = {
+                "operation": operation,
+                "lhs": typed_sources[0],
+                "rhs": typed_sources[1],
+                "operand_names": [resident.get(str(name), str(name)) for name in sources],
+                "disjoint": destination not in sources and destination != attributes.get("bias"),
+                "result": _typed(tensors, destination),
+                "bias": _typed(tensors, bias_tensor_name(operands, attributes, op=operation))
+                if any(stage in {"bias", "bias_add"} for stage in attributes.get("epilogue") or ())
+                else None,
+            }
         row = _row(
             index,
             opcode,
@@ -236,6 +272,7 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
                     accumulator=accumulator,
                     destination_declared=_typed(tensors, destination) is not None,
                     attributes=attributes,
+                    column_source=column_sources.get(str(destination)),
                 )
             )
     return rows

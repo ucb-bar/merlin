@@ -931,3 +931,12 @@ other mandatory obligations or change sealed capture freshness.
 `capture_recipe` reads only the selected frozen software recipe index, checks
 exact bytes and semantic digests, and refuses ambiguous selections. Generation
 retains its callback alias; this helper cannot supply a hardware-only default.
+
+`parallel_capture` schedules independent generation-time operation captures in bounded
+batches (up to eight workers, clipped by CPU affinity and available memory). Copy
+observed-facts/import contexts into each worker. Model and materialized-source writes
+remain ordered because they may reuse sibling groups. Each sealed adapter keeps
+thread-local attestations; serialize shared source staging and slot allocation.
+Staging snapshots/publication are locked; admission and failure accounting retain
+source declaration order. Parallel scheduling never skips issue, replay, attestation,
+publication exclusion, required members, or ordinary software/hardware admission.

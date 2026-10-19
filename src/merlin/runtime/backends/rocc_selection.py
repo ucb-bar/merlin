@@ -100,7 +100,12 @@ def select_model_spike_timeout(contract, timeout_s):
 def select_gsim_readback(contract, transport):
     """Derive only the declared full-value gSIM transport, preserving semantics."""
     backend._require(type(contract) is dict, "readback selection requires an original contract")
-    from merlin.targetgen.contract.readback_policy import COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2, FULL_VALUES_B64
+    from merlin.targetgen.contract.readback_policy import (
+        COHERENT_DUMP_V1,
+        COHERENT_PACKET_V1,
+        COHERENT_PACKET_V2,
+        FULL_VALUES_B64,
+    )
 
     backend._require(
         type(transport) is str and transport in (COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2),
@@ -136,7 +141,8 @@ def select_gsim_readback(contract, transport):
             {"htif", "out_b64"} <= {row["id"] for row in headers},
             "packet selection requires the original B64 console header roster",
         )
-        for identifier in ("out_bin", "out_bin_memory", *(("out_packet_v2",) if transport == COHERENT_PACKET_V2 else ())):
+        identifiers = ("out_bin", "out_bin_memory", *(("out_packet_v2",) if transport == COHERENT_PACKET_V2 else ()))
+        for identifier in identifiers:
             matches = [row for row in headers if row["id"] == identifier]
             if matches:
                 _resources(matches, backend._HEADERS)
@@ -164,6 +170,32 @@ def select_operand_protocol(contract, selection):
     facts = _json(_read_pin(selection["original_facts"], 16 * 1024 * 1024), 16 * 1024 * 1024)
     original = BoundSemantics(target=contract.get("name"), contract=contract, facts=facts)
     bind_selected_observer(original, selection)
+    selected["rocc_operand_selection"] = copy.deepcopy(selection)
+    return selected
+
+
+def relocate_operand_protocol(contract, selection):
+    """Relocate an existing observer only to byte-identical facts and sidecar files."""
+    from merlin.targetgen.rocc.selected_operand_protocol import _json, _read_pin, bind_selected_observer
+    from merlin.targetgen.rocc.semantics import BoundSemantics
+
+    if type(contract) is not dict or "rocc_operand_protocol" in contract:
+        raise ValueError("observer relocation requires an unchanged selected contract")
+    previous = contract.get("rocc_operand_selection")
+    if any(type(row) is not dict or set(row) != {"original_facts", "sidecar"} for row in (previous, selection)):
+        raise ValueError("observer relocation requires the complete original and relocated selections")
+    originals = {key: _read_pin(previous[key], limit) for key, limit in
+                 (("original_facts", 16 * 1024 * 1024), ("sidecar", 2 * 1024 * 1024))}
+    for key, raw in originals.items():
+        if _read_pin(selection[key], 16 * 1024 * 1024 if key == "original_facts" else 2 * 1024 * 1024) != raw:
+            raise ValueError("observer relocation cannot change facts or sidecar bytes")
+    original = BoundSemantics(target=contract.get("name"), contract=contract,
+                              facts=_json(originals["original_facts"], 16 * 1024 * 1024))
+    bind_selected_observer(original, selection)
+    for key, raw in originals.items():
+        if _read_pin(previous[key], 16 * 1024 * 1024 if key == "original_facts" else 2 * 1024 * 1024) != raw:
+            raise ValueError("original operand selection changed during relocation")
+    selected = copy.deepcopy(contract)
     selected["rocc_operand_selection"] = copy.deepcopy(selection)
     return selected
 
