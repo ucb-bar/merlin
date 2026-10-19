@@ -398,7 +398,7 @@ class _Executor:
                 str(package),
                 "bash",
                 "-c",
-                policy.env_prefix + 'exec "$@"',
+                policy.env_prefix + f"export TMPDIR={shlex.quote(str(policy.workspace))}; " + 'exec "$@"',
                 "original-package",
                 *argv,
             ]
