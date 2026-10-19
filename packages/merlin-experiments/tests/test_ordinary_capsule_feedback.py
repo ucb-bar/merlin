@@ -321,3 +321,39 @@ def test_actual_measured_subfloor_refutes_and_schedule_waste_cannot_change_workl
     assert result["status"] == "floor_refuted"
     assert result["gap_cycles"] == -4 and result["attainment"] is None
     assert not result["objective_floor_eligible"] and not result["convergence_eligible"]
+
+
+def test_setup_and_verification_costs_never_remove_in_window_execution(compiled, machine, raw):
+    compiled["candidate_diagnostics"]["collection_cost"] = {"wall_seconds": 2.5}
+    raw["wall_seconds"] = 9999  # ISS process walltime cannot become target cycles.
+    raw["cycle_breakdown"] = {"scope": "whole_trace", "additive": False, "resources": [{"busy_unit_cycles": 1000000}]}
+    report = join(
+        compiled,
+        machine,
+        raw_report=raw,
+        measurement=measurement(compiled, machine, 20),
+        prediction={"prediction_kind": "event_timing", "status": "qualified", "estimated_cycles": 7},
+    )
+    cost = report["cost_boundaries"]
+    assert cost["setup"]["compiler_analysis_wall_seconds"] == 2.5
+    assert cost["setup"]["compilation_wall_seconds"] is None
+    assert cost["verification"]["wall_seconds"] is None
+    assert cost["execution_window"]["measured_target_cycles"] == 20
+    assert cost["execution_window"]["estimated_target_cycles"] == 7
+    assert cost["execution_window"]["observed_scope_kind"] == "whole_program"
+    assert cost["execution_window"]["complete_model_coverage"].startswith("UNKNOWN")
+    assert "packing" in cost["execution_window"]["included_if_performed_inside_window"]
+    assert cost["resource_context"]["scope"] == "whole_trace"
+    assert cost["resource_context"]["execution_window_utilization"] is None
+    assert not cost["walltime_to_target_cycle_conversion"]
+    assert report["timing_cycles"] == 20 and report["roofline"]["attainment"] == 0.5
+
+
+def test_unjoined_scope_and_nonfinite_setup_observation_remain_unknown(compiled, machine, raw):
+    compiled["candidate_diagnostics"]["collection_cost"] = {"wall_seconds": float("nan")}
+    raw["elf_sha256"] = "foreign"
+    cost = join(compiled, machine, raw_report=raw)["cost_boundaries"]
+    assert cost["setup"]["compiler_analysis_wall_seconds"] is None
+    assert cost["execution_window"]["observed_scope_kind"] is None
+    assert cost["execution_window"]["measured_target_cycles"] is None
+    assert cost["execution_window"]["cold_warm_state"].startswith("UNKNOWN")

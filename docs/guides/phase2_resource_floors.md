@@ -73,3 +73,13 @@ is not a compulsory packet size; logical tensor bytes do not prove physical
 traffic, residency, bank conflicts or DRAM misses. Missing selected sources or
 measurement evidence stay explicit. Generic aggregation contains no target
 names, opcodes, geometry or fitted latency prices.
+
+Ordinary feedback also emits `cost_boundaries` with separate setup, verification,
+declared execution-window and whole-trace context blocks. Original compiler
+analysis walltime is reported as setup when present; compile, input staging and
+verification times stay null until their original receipt costs are exposed.
+No amount is inferred by subtracting target counts or simulator walltime.
+An execution-window label does not prove complete-model coverage or cold/warm
+state. Packing, layout conversion, transfers, dispatch, synchronization, feeding
+host arithmetic and carried-state movement stay execution costs whenever they
+occur inside that declared window.
