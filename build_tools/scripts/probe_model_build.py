@@ -263,7 +263,7 @@ def main():
         "source_revision": a.source_revision,
         "producer": pin(__file__),
         "target": a.target,
-        "stage": {"path": str(stage), "sha256": strict_tree_sha256(stage)},
+        "stage": {"path": str(stage), "sha256": strict_tree_sha256(stage)["sha256"]},
         "build_record": pin(a.out / "build/build.json"),
         "dram_base": board.dram_base,
         "dram_bytes": board.dram_bytes,
