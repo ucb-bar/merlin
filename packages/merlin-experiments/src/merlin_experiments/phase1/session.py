@@ -26,6 +26,7 @@ from merlin.targetgen.sandbox import bwrap as _BWS
 from merlin.targetgen.target_experiment import load_target_experiment
 
 from . import author_subagents as AS
+from . import authoring_conformance as AC
 from . import corpus_inputs as CI
 from . import oot_history as _oot_history
 from . import run_inputs as RI
@@ -135,6 +136,7 @@ class RunRequest:
             "grade_interval_s": a.grade_interval,
             "selfcheck_protocol": 3,
             "launcher_argv": list(self.launcher_argv),
+            **({"live_conformance_feedback": True} if a.live_conformance_feedback else {}),
             **(
                 {"public_object_build_budget_s": a.public_object_build_budget_s}
                 if a.public_object_build_budget_s
@@ -231,6 +233,7 @@ class PreparedRun:
         )
         verify_readback_record(self.request.context, self.environment.get("readback_policy"))
         _verify_public_build_budget(self.request.options, self.environment)
+        AC.verify_live_selection(self.request.options, self.environment)
         _verify_client_selection(self.request.options, self.environment)
         self.selected_codex_runtime
         if self.environment.get("public_object_build_selection") != _public_build_selection(
@@ -558,6 +561,7 @@ def _prepare(
             _environment_record.get("hidden_capsule_validation"),
         )
         _verify_public_build_budget(a, _environment_record)
+        AC.verify_live_selection(a, _environment_record)
         _verify_client_selection(a, _environment_record)
         _implementation_sources = _environment_record.get("implementation_sources")
         SI.verify(_implementation_sources, **_source_context)
