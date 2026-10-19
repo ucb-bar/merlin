@@ -80,7 +80,7 @@ predates the newest change to the code it documents (see `check_docs_freshness.p
 - [Scalar pointwise FMA and division loop scheduling](reference/scalar_pointwise_unroll.md) — `current`, verified 2026-10-06 · owner: llvmlower
 - [Scalar pointwise lane packets](reference/scalar_pointwise_packets.md) — `current`, verified 2026-10-06 · owner: llvmlower
 - [Schema reference](reference/schemas.md) — `generated` · owner: tooling
-- [Shared compiler pass contracts](reference/shared_compiler_passes.md) — `current`, verified 2026-10-18 · owner: core
+- [Shared compiler pass contracts](reference/shared_compiler_passes.md) — `current`, verified 2026-10-19 · owner: core
 - [Shared explicit tensor permutation proof](reference/shared_permutation.md) — `current`, verified 2026-10-06 · owner: core
 - [Shared host CPU arithmetic](reference/host_cpu_arithmetic.md) — `current`, verified 2026-10-08 · owner: runtime — see also: [architecture](reference/architecture.md), [source_fma_batch](reference/source_fma_batch.md), [ordered_fma_certificates](reference/ordered_fma_certificates.md)
 - [Software instruction semantics declarations](reference/software_instruction_semantics.md) — `current`, verified 2026-10-12 · owner: targetgen — see also: [phase0_specification](guides/phase0_specification.md), [independent_instruction_policy](design/independent_instruction_policy.md), [verified_compiler_tooling](guides/verified_compiler_tooling.md)

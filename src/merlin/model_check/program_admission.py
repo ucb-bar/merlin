@@ -13,6 +13,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from merlin.common.digest import sha256_bytes
 from merlin.compile.scheduling.library_sources import shared_library_sources
 from merlin.compile.scheduling.program_limits import ProgramDecoder, ProgramLimits, finalize_program
 from merlin.compile.scheduling.selected_contracts import SelectedSchedulingContracts
@@ -57,6 +58,16 @@ class _ProgramCheck:
         ):
             raise ValueError("linked program selection or decoder changed; reselect and replan")
 
+    def validate_report(self, stored):
+        self.revalidate()
+        if (
+            stored.get("schema") != "merlin.model_check.program_admission.v1"
+            or stored.get("selection") != json.loads(self._state)
+            or stored.get("library_sources_sha256") != shared_library_sources()
+        ):
+            raise ValueError("linked program report belongs to a different policy context; reevaluate")
+        self.revalidate()
+
     def evaluate(self, *, elf, evidence_root, prerequisite_result):
         self.revalidate()
         result = {
@@ -64,6 +75,8 @@ class _ProgramCheck:
             "status": "refused",
             "elf_sha256": prerequisite_result["elf_sha256"],
             "prerequisite": prerequisite_result,
+            "selection": json.loads(self._state),
+            "library_sources_sha256": shared_library_sources(),
             "scope": "declared linked section; runtime coverage and execution qualification not established",
         }
         if prerequisite_result["status"] == "refused":
@@ -72,6 +85,7 @@ class _ProgramCheck:
             try:
                 image, location = read_program_section(elf, self.section, max_bytes=self.reader_max_bytes)
                 result["location"] = location
+                result["image_sha256"] = sha256_bytes(image)
                 checked = finalize_program(image, self.limits, self.decoder, selected_contracts=self.selected)
                 # Admission cannot rewrite a linked program or its launcher.
                 # Never approve a hypothetical segmented replacement.
@@ -83,9 +97,16 @@ class _ProgramCheck:
                 result["reason"] = str(error)
         self.revalidate()
         evidence_root.mkdir(parents=True, exist_ok=True)
-        path = evidence_root / "program-admission.json"
-        path.write_text(json.dumps(result, indent=1) + "\n")
-        return {**result, "report_path": str(path.resolve()), "report_sha256": file_digest(path)}
+        payload = (json.dumps(result, indent=1, sort_keys=True) + "\n").encode()
+        digest = sha256_bytes(payload)
+        path = evidence_root / ("program-admission-" + digest + ".json")
+        try:
+            with path.open("xb") as stream:
+                stream.write(payload)
+        except FileExistsError:
+            if path.read_bytes() != payload:
+                raise ValueError("existing linked program report changed; retain original evidence") from None
+        return {**result, "report_path": str(path.resolve()), "report_sha256": digest}
 
 
 def service(
@@ -161,7 +182,11 @@ def service(
         pins[str(path)] = digest
     check = _ProgramCheck(selected_contracts, decoder, section, reader_max_bytes, limits)
     result = LinkedElfAdmissionService(
-        selected_contracts.target, check.evaluate, tuple(sorted(pins.items())), prerequisite=prerequisite
+        selected_contracts.target,
+        check.evaluate,
+        tuple(sorted(pins.items())),
+        prerequisite=prerequisite,
+        result_validator=check.validate_report,
     )
     result.verify(selected_contracts.target)
     return result
