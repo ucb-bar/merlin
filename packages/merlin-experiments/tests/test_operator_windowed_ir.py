@@ -119,3 +119,62 @@ return %a : i32
 } }'''
     with pytest.raises(Exception):
         parsed(raw)
+
+
+def test_multiple_original_functions_calls_external_declarations_and_ssa_scopes():
+    raw = b'''module attributes {prov.kind = "public"} {
+func.func private @external(i32) -> i32
+func.func @helper(%a: i32) -> i32 {
+%next = arith.addi %a, %a : i32
+return %next : i32
+}
+func.func @forward(%a: i32) -> i32 {
+%next = func.call @helper(%a) : (i32) -> i32
+%last = func.call @external(%next) : (i32) -> i32
+return %last : i32
+}
+}'''
+    from xdsl.printer import Printer
+
+    original = Q.parse(raw.decode())
+    original.verify()
+    generic = io.StringIO()
+    Printer(stream=generic, print_generic_format=True).print_op(original)
+    for source in (raw, generic.getvalue().encode()):
+        rebuilt, metadata = parsed(source)
+        assert original.is_structurally_equivalent(rebuilt)
+        assert metadata['functions'] == 3
+        assert R.module_signatures(rebuilt) == R.module_signatures(original)
+
+
+@pytest.mark.parametrize('mutation', [
+    lambda x: x.replace(b'@helper(%a: i32)', b'@forward(%a: i32)'),
+    lambda x: x.replace(b'func.call @helper(%a) : (i32) -> i32', b'func.call @missing(%a) : (i32) -> i32'),
+    lambda x: x.replace(b'func.call @helper(%a) : (i32) -> i32', b'func.call @helper(%a) : (i32) -> i8'),
+])
+def test_cross_function_duplicate_symbols_missing_callee_and_typed_calls_refuse(mutation):
+    raw = b'''module {
+func.func @helper(%a: i32) -> i32 {
+return %a : i32
+}
+func.func @forward(%a: i32) -> i32 {
+%next = func.call @helper(%a) : (i32) -> i32
+return %next : i32
+}
+}'''
+    with pytest.raises(Exception):
+        parsed(mutation(raw))
+
+
+def test_cross_function_ssa_is_not_implicitly_imported_from_another_function():
+    raw = b'''module {
+func.func @first(%a: i32) -> i32 {
+%v = arith.addi %a, %a : i32
+return %v : i32
+}
+func.func @second(%a: i32) -> i32 {
+return %v : i32
+}
+}'''
+    with pytest.raises(Exception):
+        parsed(raw)
