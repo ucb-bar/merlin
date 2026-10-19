@@ -71,6 +71,7 @@ def implementation_paths():
             __name__,
             "merlin.llvmlower.device_build",
             "merlin.llvmlower.device_offload",
+            "merlin.llvmlower.device_preparation",
             "merlin.llvmlower.device_shim",
             "merlin.llvmlower.offload_plan",
             "merlin.system.offload",

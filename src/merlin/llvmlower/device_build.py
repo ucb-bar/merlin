@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
     from .device_ir_scalability import DeviceIRBudget
+    from .device_offload_selection import DeviceOffloadSelection
 
 __all__ = [
     "FROM_EXTENTS",
@@ -113,6 +114,8 @@ class DeviceRouting:
     require_complete_groups: bool = False
     #: Original selected target-IR cleanup; requires a declared consuming emitter.
     target_configuration: ConfigurationIRSelection | None = None
+    #: Original current-source narrowing; never device eligibility or qualification.
+    offload_selection: DeviceOffloadSelection | None = None
 
     def __post_init__(self):
         if type(self.require_complete_groups) is not bool:

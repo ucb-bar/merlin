@@ -940,6 +940,7 @@ def prepare_for_lowering(
     device: Any | None = None,
     outline_int8: bool = False,
     prepared_model_transform: Callable[[Path, Path], Path] | None = None,
+    device_offload_invocation=None,
 ) -> tuple[Path, frozenset[str]]:
     """``(prepared_mlir, concrete_features)`` — everything that must happen to a captured module
     before ``lower_model_file``, shared by every whole-model backend.
@@ -965,9 +966,21 @@ def prepare_for_lowering(
     and output bytes; semantic, effect and provider proofs remain caller-owned.
     No callback preserves the ordinary preparation path and bytes.
     """
+    from ...llvmlower.device_preparation import (
+        freeze_device_offload_selection,
+        prepare_device_route,
+        require_device_offload_selection,
+        require_supported_device_preparation,
+        retain_device_offload_source,
+    )
     from ...llvmlower.impr_features import vec_noncontraction_lanes as _vec_lanes
     from ...llvmlower.impr_features import vec_noncontraction_max_rank as _vec_max_rank
 
+    offload_selection = (
+        freeze_device_offload_selection(device) if device_offload_invocation is None else device_offload_invocation
+    )
+    require_device_offload_selection(device, offload_selection)
+    require_supported_device_preparation(offload_selection, prepared_model_transform)
     features = frozenset(features or frozenset())
     # Read the vec-family point off the IMPLIES CLOSURE, not off the raw set. `normalize` is what
     # expands `implies`, and it runs inside the LOWERING (pipeline.apply_schedule) -- after this
@@ -1035,17 +1048,21 @@ def prepare_for_lowering(
         from ...llvmlower.automatic_host import prepare_automatic_host
         from ...llvmlower.prepared_model_transform import apply_prepared_model_transform
 
+        require_device_offload_selection(device, offload_selection)
         # Placement, target ABI transforms and tagging have completed. Only
         # canonical pure host tensor bodies are eligible, under the original
         # captured policy. Explicit alternative lowerings retain their choice.
         if not _closed & {"lower_roundeven_to_intrinsic", "lower_exact_math_inline", _FUSE_QUANT_ROUND}:
-            path = prepare_automatic_host(Path(path), Path(work) / "automatic_host",
-                                          policy_path=Path(work) / "quantization-policy.json")
+            path = prepare_automatic_host(
+                Path(path), Path(work) / "automatic_host", policy_path=Path(work) / "quantization-policy.json"
+            )
         stripped = _strip_provenance(path, work, features)
-        return (
-            apply_prepared_model_transform(stripped, Path(work) / "prepared_model_transform", prepared_model_transform),
-            features,
+        selected = apply_prepared_model_transform(
+            stripped, Path(work) / "prepared_model_transform", prepared_model_transform
         )
+        retain_device_offload_source(offload_selection, selected)
+        require_device_offload_selection(device, offload_selection)
+        return selected, features
 
     def _judge_levers_on(mod_path) -> None:
         """Report inapplicable levers against the module LOWERING actually receives.
@@ -1153,55 +1170,9 @@ def prepare_for_lowering(
     # below must be derived from the IR that REMAINS. Inert unless a routing was supplied, and inert
     # again unless that routing carries a selector or source-bound catalog. The placement decision
     # is made elsewhere (merlin.system.place or the catalog's exact source binding), never here.
-    if device is not None and (
-        getattr(device, "select", None) is not None
-        or getattr(device, "exact_selection", None) is not None
-        or getattr(device, "catalog_manifest", None) is not None
-        or getattr(device, "catalog_builder", None) is not None
-    ):
-        from ...llvmlower.device_offload import BY_CONTRACTION
-        from ...llvmlower.device_offload import rewrite_prepared_file as _dev_rewrite
-
-        if getattr(device, "prepared_transform", None) is not None:
-            transformed = Path(device.prepared_transform(Path(prepared), Path(work) / "device_prepared"))
-            if not transformed.is_file():
-                raise ValueError("device prepared transform returned no model file")
-            prepared = transformed
-        exact = getattr(device, "exact_selection", None)
-        if exact is not None:
-            exact.check_package(device.package_dir)
-            exact.check_backend_contract()
-        _grain = str(getattr(device, "granularity", None) or BY_CONTRACTION)
-        catalog_manifest = getattr(device, "catalog_manifest", None)
-        catalog_object = getattr(device, "catalog_object", None)
-        if getattr(device, "catalog_builder", None) is not None:
-            catalog_manifest, catalog_object = device.catalog_builder(Path(prepared), Path(work) / "device_catalog")
-        moved = None if _early_complete_groups else _dev_rewrite(
-            prepared,
-            work,
-            device.device,
-            select=device.select,
-            exact_selection=exact,
-            catalog_manifest=catalog_manifest,
-            catalog_object=catalog_object,
-            granularity=_grain, capture=getattr(device, "capture", None),
-            model=str(getattr(device, "model", "") or ""),
-        )
-        from ...llvmlower.device_build import apply_post_offload_transform
-        from ...llvmlower.device_offload import SIDECAR_NAME as _device_sidecar_name
-
-        prepared = apply_post_offload_transform(
-            device,
-            Path(prepared),
-            Path(work) / _device_sidecar_name,
-            Path(work) / "device_host_abi",
-        )
-        if moved is not None:
-            print(
-                f"[device] routed {moved.moved} {_grain}(s) to {device.device} across "
-                f"{len(moved.signatures)} signature(s)"
-                + (f"; declined: {[why for _s, why in moved.skipped]}" if moved.skipped else "")
-            )
+    prepared = prepare_device_route(
+        device, prepared, work, early_complete_groups=_early_complete_groups, selection=offload_selection
+    )
 
     # The register-group-width REQUEST, resolved for the same reason the per-op block table is: the
     # width is a property of the arithmetic this module actually contains, and the prepared IR is the
