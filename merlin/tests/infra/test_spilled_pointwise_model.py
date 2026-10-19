@@ -17,12 +17,6 @@ from test_selected_storage_contracts import STORAGE_EXECUTOR
 
 from merlin.compile.scheduling.schedule_pipeline import ScheduleBudgets
 
-SCALAR = b"""builtin.module {func.func @forward(%x:i8)->i8 {
- %one=arith.constant 1:i8
- %y=arith.addi %x,%one:i8
- func.return %y:i8
-}}"""
-
 
 def increment(name, value, m, n):
     return f"""
@@ -91,7 +85,7 @@ def capture(directory, shape):
 
 
 class SpillProvider(Provider):
-    expected_scalar_source = SCALAR
+    capability_shape = (1, 47)
     input_dtypes = ("i1",)
     expect_command_reduction = False
     executor_source = """
@@ -156,6 +150,7 @@ void {symbol}(const descriptor *a,descriptor *out) {{
   totals[3]++;totals[4]++;
  }}
  for(int i=0;i<3;i++)totals[i]+=counts[i];totals[5]++;
+ pointwise_log();
 }}
 """
 
