@@ -9,6 +9,12 @@ each actual compiler-binding callback stay fresh; no scope spans compiler,
 execution, trace, counts, inference or prediction. Default V1/V2 behavior and
 V2 record semantics remain unchanged.
 
+`public_source_diagnostic` groups only the two adjacent original pass and
+checked-source record getters in one opted-in pass metadata operation. Both
+records are consumed only after fresh final owner verification. This scope
+does not include the native registry, policy-wide validation, current source
+proof, compilation, tracing or execution. Absent opt-in retains per-getter checks.
+
 `_ordinary_service_effects` consumes only an explicitly selected original live
 effect owner with the native selection's exact binding. Reopen actual current
 source/emission, annotated process, counter and ELF custody before feedback.
