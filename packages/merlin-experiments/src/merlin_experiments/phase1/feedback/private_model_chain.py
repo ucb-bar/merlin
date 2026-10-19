@@ -86,6 +86,11 @@ class NativePartition:
                                       "instruction_selection": self.record["instruction_selection"]},
                        admission=self.selection.service)
         self.verify()
+        directory = Path(directory)
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        with (directory / "build.json").open("x") as stream:
+            json.dump(result, stream, indent=2)
+            stream.write("\n")
         return result
 
 
