@@ -36,7 +36,7 @@ from .program_limits import AddressWindow
 from .schedule_pipeline import ScheduleBudgets, ScheduleCompilation, compile_schedule
 from .selected_contracts import SelectedSchedulingContracts
 from .spill_conformance import _Memory, _Piece
-from .temporary_storage import _overlap, _project
+from .temporary_storage import _completion, _overlap, _project
 
 
 @dataclass(frozen=True)
@@ -175,12 +175,21 @@ def _verify_vectors(source, kernel, bindings, banks, external, adapter, budgets,
         return identity[1]
 
     effects = _project(kernel, adapter, budgets.max_calls)
+    # Issue does not publish a result. This independent completion walk also
+    # proves that pending reads/writes cannot be observed or overwritten.
+    _completion(effects, bank_map)
+    pending = {}
     state = None
     if configuration_adapter is not None:
         state = verify_configuration_state(kernel, configuration_adapter, max_calls=budgets.max_calls)
     for call, effect in zip(kernel.body, effects, strict=True):
-        if effect.completion != "synchronous":
-            raise UnsupportedElementwise("source pointwise arithmetic requires qualified synchronous completion")
+        if effect.completion == "wait":
+            for token in effect.waits:
+                output, parts = pending.pop(token)
+                memory.write(key(output), output.start, output.size, parts)
+            continue
+        if effect.completion == "asynchronous" and not effect.exact_copy:
+            raise UnsupportedElementwise("source pointwise asynchronous arithmetic is unsupported")
         accesses = effect.accesses
         if not accesses and configuration_adapter is not None:
             configuration = configuration_adapter.project(call)
@@ -241,7 +250,13 @@ def _verify_vectors(source, kernel, bindings, banks, external, adapter, budgets,
         else:
             raise UnsupportedElementwise("pointwise program contains unmodeled arithmetic or execution effects")
         output = accesses[-1]
-        memory.write(key(output), output.start, output.size, parts)
+        if effect.completion == "asynchronous":
+            # _completion keeps the source stable until the named actual
+            # wait. Retaining its byte provenance here therefore permits
+            # issue-time or later read semantics within that interval.
+            pending[effect.token] = output, parts
+        else:
+            memory.write(key(output), output.start, output.size, parts)
     returned = memory.read(key(bindings.output), bindings.output.start, bindings.output.size)
     cursor, output_width = 0, graph.output_bits // 8
     for part in returned:
@@ -328,6 +343,7 @@ def compile_source_pointwise(
     configuration_qualification_identity=None,
     spill_emitters=None,
     spill_qualification_identity=None,
+    prefetch_qualification_identity=None,
     max_source_elements=64 << 20,
     pass_order=(),
 ):
@@ -369,6 +385,7 @@ def compile_source_pointwise(
                 fusion_qualification_identity,
                 configuration_qualification_identity,
                 spill_qualification_identity,
+                prefetch_qualification_identity,
             )
         ),
     )
@@ -440,6 +457,7 @@ def compile_source_pointwise(
                 configuration_qualification_identity=configuration_qualification_identity,
                 spill_emitters=spill_emitters,
                 spill_qualification_identity=spill_qualification_identity,
+                prefetch_qualification_identity=prefetch_qualification_identity,
             )
         }
 

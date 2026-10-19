@@ -40,8 +40,17 @@ def fixture(tmp_path, *, mapper=None, prepare=None, **controls):
         pytest.fail("discovery-only test must not build a provider")
 
     selected = SourcePointwiseLowering(
-        caps["selected_contracts"], caps["adapter"], caps["encoding"], caps["limits"], "host", 32,
-        lower, implement, build, private_ownership=True, external_buffers_disjoint=True,
+        caps["selected_contracts"],
+        caps["adapter"],
+        caps["encoding"],
+        caps["limits"],
+        "host",
+        32,
+        lower,
+        implement,
+        build,
+        private_ownership=True,
+        external_buffers_disjoint=True,
         scalar_qualification_identity=caps["fusion_qualification_identity"],
         fusion_emitters=tuple(caps["fusion_emitters"].items()),
     )
@@ -82,8 +91,10 @@ def test_selected_software_semantics_drive_discovery_without_target_source_match
 @pytest.mark.parametrize("unavailable", ["arithmetic", "qualified", "ownership", "alias", "mapping"])
 def test_unsupported_cases_preserve_exact_source_without_provider(tmp_path, unavailable):
     controls = {
-        "qualified": dict(scalar_qualification_identity=None), "ownership": dict(private_ownership=False),
-        "alias": dict(external_buffers_disjoint=False), "mapping": dict(mapper=lambda source, caps: None),
+        "qualified": dict(scalar_qualification_identity=None),
+        "ownership": dict(private_ownership=False),
+        "alias": dict(external_buffers_disjoint=False),
+        "mapping": dict(mapper=lambda source, caps: None),
     }.get(unavailable, {})
     selected, mapped, prepared = fixture(tmp_path, **controls)
     source = source_text().replace("%sum=arith.addi", "%sum=arith.subi") if unavailable == "arithmetic" else None
@@ -107,7 +118,7 @@ def test_wrong_original_program_is_rejected_before_writer_or_implementation(tmp_
     assert not (tmp_path / "preparation" / "source_pointwise.mlir").exists()
 
 
-@pytest.mark.parametrize("field", ["limits", "budgets", "domain", "window", "branch", "decoder", "decode"])
+@pytest.mark.parametrize("field", ["limits", "budgets", "domain", "window", "branch", "decoder", "decode", "prefetch"])
 def test_mapping_cannot_inflate_fixed_policy_or_change_execution_domain(tmp_path, field):
     def lower(source, caps):
         if field == "limits":
@@ -123,6 +134,8 @@ def test_mapping_cannot_inflate_fixed_policy_or_change_execution_domain(tmp_path
             object.__setattr__(selected.limits.branches[0], "maximum", 65536)
         elif field == "decoder":
             object.__setattr__(selected.encoding.program_decoder, "qualification_identity", "different")
+        elif field == "prefetch":
+            object.__setattr__(selected, "prefetch_qualification_identity", "candidate-asserted-overlap")
         else:
             object.__setattr__(selected.encoding.program_decoder, "decode", lambda image: ())
         return PointwiseProgram(caps["kernel"], caps["objects"], caps["bindings"])
@@ -131,13 +144,23 @@ def test_mapping_cannot_inflate_fixed_policy_or_change_execution_domain(tmp_path
     if field == "branch":
         from merlin.compile.scheduling.program_limits import BranchRule
 
-        selected = replace(selected, limits=replace(
-            selected.limits, branches=(BranchRule("relative", -8, 8, 1, "next_instruction"),),
-        ))
+        selected = replace(
+            selected,
+            limits=replace(
+                selected.limits,
+                branches=(BranchRule("relative", -8, 8, 1, "next_instruction"),),
+            ),
+        )
     module, _ = source_program(m=1, n=1)
     with pytest.raises(ValueError, match="selection changed"):
         run(tmp_path, selected, module)
     assert not prepared
+
+
+@pytest.mark.parametrize("identity", [True, 1, "", " "])
+def test_prefetch_qualification_requires_an_original_nonempty_identity(tmp_path, identity):
+    with pytest.raises(ValueError, match="fixed typed capabilities"):
+        fixture(tmp_path, prefetch_qualification_identity=identity)
 
 
 def test_duplicate_source_family_selection_is_ambiguous(tmp_path):
