@@ -53,6 +53,11 @@ model gaps remain explicit until their public implementation proves them.
 bounded coordinate panels and reuses the independent checked integer-matmul
 owner. Write every original output and evaluate every declared scalar product;
 preserve NHWC padding/stride, RHS orientation, readout and grouped KV state.
+Parameter chains reconstruct original immutable parameter seeds panel by panel,
+including every repeated use. Snapshot the complete prior narrow state before
+writing any output panel; output-map reuse must not change source SSA semantics.
+The eager-source seed lower bound includes parameters, independently of bounded
+reference preparation.
 `development_reference_supplement` binds separate cost admissions to the old
 complete manifest and its unchanged source/seed/ABI/numeric identities. Its
 verifier reopens complete NPY output bytes; reused evidence is not a fresh run.
