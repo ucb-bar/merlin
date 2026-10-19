@@ -34,7 +34,7 @@ def host_math_recipe(policy: str = "native") -> HostMathRecipe:
                 + "\n"
                 + Path(__file__).with_name("portable_exp.c").read_text()
             ),
-            compile_flags=("-fno-builtin", "-fno-fast-math", "-ffp-contract=off"),
+            compile_flags=("-std=c11", "-fno-builtin", "-fno-fast-math", "-ffp-contract=off"),
             link_flags=("-Wl,--wrap=expf", "-Wl,--wrap=sinf", "-Wl,--wrap=cosf"),
         )
     if policy != "expf_via_double":
