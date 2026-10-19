@@ -1,5 +1,12 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`session_outputs.observed_output_dump_bytes` reopens every selected native
+console hex tap against a previously ABI-validated session digest stream, with
+an explicit size limit and exact step coverage. It writes no files and refuses
+duplicate or missing taps. `assembled_output_bytes` separately checks retained
+file paths, complete bytes and hashes. Callers bind these observations to the
+actual invocation and preserve independent numerical and timing gates.
+
 `object_namespace` delegates complete symbol inspection and actual renaming to
 the provider. If no local, global or undefined name needs changing, it shares
 the immutable input inode instead of copying. Source hashes, output symbol
