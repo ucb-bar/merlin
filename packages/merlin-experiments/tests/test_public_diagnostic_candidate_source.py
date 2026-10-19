@@ -162,7 +162,8 @@ def test_launch_submits_the_original_issued_selected_revision(retained, tmp_path
     monkeypatch.setattr(compiler_library_state, "restore_selection", lambda *a: object())
     monkeypatch.setattr(L, "restore_original_factory", lambda *a: SimpleNamespace(
         inputs={"facts": str(leaf)},
-        create=lambda **kw: SimpleNamespace(_capabilities=[SimpleNamespace(binding=None)])))
+        create=lambda **kw: SimpleNamespace(_capabilities=[SimpleNamespace(
+            mechanism="source_execution_diagnostic", binding=None)])))
     monkeypatch.setattr(L, "CompilerPassSelection", lambda *a, **kw: object())
     monkeypatch.setattr(checked_source_model_diagnostic, "select_checked_source_diagnostic", lambda *a, **kw: object())
     selected_policy = []

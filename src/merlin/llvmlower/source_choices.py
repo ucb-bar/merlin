@@ -23,6 +23,7 @@ from .source_model import _values, bind_source_lowerings
 
 REQUEST_SCHEMA = "merlin.source_dense_choice_request.v1"
 _RESULTS = WeakKeyDictionary()
+_DENSE_CAPS = ("max_m_blocks", "max_n_blocks", "max_k_blocks")
 _CONTROLS = frozenset(
     {
         "outer_order",
@@ -32,6 +33,7 @@ _CONTROLS = frozenset(
         "max_convolution_packing_bytes",
         "max_convolution_candidates",
         "max_convolution_added_operations",
+        *_DENSE_CAPS,
     }
 )
 
@@ -55,7 +57,11 @@ def _file(path):
 
 @dataclass(frozen=True)
 class SourceDenseChoice:
-    """One original finite control point; no callback or capability fields."""
+    """One original finite control point; no callback or capability fields.
+
+    Block caps restrict the original effective dense search envelope; they do
+    not change hardware capacity, assigned storage or numerical capabilities.
+    """
 
     choice_id: str
     controls: tuple[tuple[str, object], ...] = ()
@@ -238,6 +244,7 @@ class SourceDenseChoices:
             raise ValueError("source choice original source changed during construction")
         original_values = _values((baseline, choices))
         original_context = offload_context(baseline)
+        choice_controls = []
         for choice in choices:
             choice.__post_init__()
             controls = dict(choice.controls)
@@ -249,6 +256,17 @@ class SourceDenseChoices:
                 selected = controls["max_convolution_packing_bytes"]
                 if selected is None or selected > cap:
                     raise ValueError("source choice cannot raise or remove its original packing cap")
+            caps = {name: controls.pop(name) for name in _DENSE_CAPS if name in controls}
+            if caps:
+                contract = baseline.selected_contracts.dense
+                if contract is None:
+                    raise ValueError("source choice block caps require an original dense declaration")
+                effective = contract._resource_limits(baseline.storage, baseline.resources)
+                if any(value > getattr(effective, name) for name, value in caps.items()):
+                    raise ValueError("source choice block cap exceeds its original effective resource ceiling")
+                original = effective if baseline.resources is None else baseline.resources
+                controls["resources"] = replace(original, **caps)
+            choice_controls.append(controls)
         self._selections, self._guards, self._contexts = [], [], []
         callbacks = [baseline.prepare, baseline.build, baseline.adapter.encode, baseline.adapter.project]
         callbacks.extend(c.offload_comparison._check for c in choices if c.offload_comparison is not None)
@@ -269,11 +287,11 @@ class SourceDenseChoices:
                 raise ValueError("source choice callback lacks its original source owner")
             paths.append(Path(owner).resolve())
         self._pins = tuple(_file(path) for path in dict.fromkeys(paths))
-        for choice in choices:
+        for choice, controls in zip(choices, choice_controls, strict=True):
             choice.__post_init__()
             selection = replace(
                 baseline,
-                **dict(choice.controls),
+                **controls,
                 offload_plan=choice.offload_plan,
                 offload_comparison=choice.offload_comparison,
             )

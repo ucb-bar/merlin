@@ -114,6 +114,37 @@ class DenseSchedulingContract:
         """Build a problem from computation extents and selected RTL geometry."""
         return DenseProblem(m, k, n, *self.primitive, *(DTYPE_BYTES[dtype] for dtype in self.dtypes))
 
+    def _resource_limits(self, storage, resources=None):
+        """Return policy ceilings, without admitting storage or execution.
+
+        Assigned byte windows and declared block limits bound optional search
+        restrictions. This calculation establishes no legality or qualification;
+        bind still checks physical backing, reservations, numerical semantics
+        and the independently qualified adapter before using these ceilings.
+        """
+        views = (storage.lhs, storage.rhs, storage.accumulator)
+        if storage.accumulator is None:
+            raise ValueError("dense resource limits require assigned accumulator storage")
+        derived = DenseResources(
+            sum(v.capacity * v.unit_bytes for v in views[:2]),
+            views[2].capacity * views[2].unit_bytes,
+            *self.block_limits,
+            partial_output_tiles=self.partial_output_tiles,
+            partial_output_blocks=self.partial_output_blocks,
+        )
+        if resources is not None:
+            derived = DenseResources(
+                *(
+                    min(getattr(resources, name), getattr(derived, name))
+                    for name in ("operand_bytes", "accumulator_bytes", "max_m_blocks", "max_n_blocks", "max_k_blocks")
+                ),
+                candidate_budget=resources.candidate_budget,
+                partial_output_tiles=resources.partial_output_tiles and self.partial_output_tiles,
+                partial_output_blocks=resources.partial_output_blocks and self.partial_output_blocks,
+            )
+
+        return derived
+
     def bind(
         self,
         problem,
@@ -182,23 +213,7 @@ class DenseSchedulingContract:
                 raise ValueError("dense assigned storage disagrees with selected RTL window, backing or alignment")
             if any(r.space == view.backing and start < r.start + r.size and r.start < end for r in reservations):
                 raise ValueError("dense assigned storage overlaps packing, staging or live storage reservations")
-        derived = DenseResources(
-            sum(v.capacity * v.unit_bytes for v in views[:2]),
-            views[2].capacity * views[2].unit_bytes,
-            *self.block_limits,
-            partial_output_tiles=self.partial_output_tiles,
-            partial_output_blocks=self.partial_output_blocks,
-        )
-        if resources is not None:
-            derived = DenseResources(
-                *(
-                    min(getattr(resources, name), getattr(derived, name))
-                    for name in ("operand_bytes", "accumulator_bytes", "max_m_blocks", "max_n_blocks", "max_k_blocks")
-                ),
-                candidate_budget=resources.candidate_budget,
-                partial_output_tiles=resources.partial_output_tiles and self.partial_output_tiles,
-                partial_output_blocks=resources.partial_output_blocks and self.partial_output_blocks,
-            )
+        derived = self._resource_limits(storage, resources)
 
         def project(call):
             operation = adapter.project(call)

@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
     from .device_ir_scalability import DeviceIRBudget
+    from .device_offload_selection import DeviceOffloadSelection
 
 __all__ = [
     "FROM_EXTENTS",
@@ -131,6 +132,8 @@ class DeviceRouting:
     require_complete_groups: bool = False
     #: Original selected target-IR cleanup; requires a declared consuming emitter.
     target_configuration: ConfigurationIRSelection | None = None
+    #: Original current-source narrowing; never device eligibility or qualification.
+    offload_selection: DeviceOffloadSelection | None = None
 
     def __post_init__(self):
         if type(self.require_complete_groups) is not bool:
@@ -264,6 +267,117 @@ def admit_linked_device_elf(device, selection, *, elf, linked_sha256, directory)
     if sha256_file(elf) != linked_sha256:
         raise ValueError("device linked ELF changed during its selected policy")
     return result
+
+
+@dataclass(frozen=True)
+class _DeviceElfCustody:
+    elf: Path
+    linked_sha256: str
+    selection: tuple = field(repr=False)
+    result: dict = field(repr=False)
+    result_record: bytes = field(repr=False)
+    selection_record: bytes = field(repr=False)
+    reports: tuple = field(repr=False)
+    original: tuple = field(repr=False)
+
+
+def _device_elf_custody_binding(custody):
+    from merlin.common.jsonio import canonical_json
+
+    if (
+        type(custody) is not _DeviceElfCustody
+        or (
+            custody.elf,
+            custody.linked_sha256,
+            id(custody.selection),
+            id(custody.result),
+            custody.result_record,
+            custody.selection_record,
+            custody.reports,
+        )
+        != custody.original
+    ):
+        raise ValueError("device linked ELF custody binding changed")
+    if (
+        canonical_json(custody.result) != custody.result_record
+        or canonical_json(custody.selection[2]) != custody.selection_record
+    ):
+        raise ValueError("device linked ELF original result or policy receipt changed")
+
+
+def _device_elf_report_bytes(reports):
+    from merlin.common.digest import sha256_file
+
+    for path, digest in reports:
+        if (
+            not path.is_absolute()
+            or any(p.is_symlink() for p in (path, *path.parents))
+            or not path.is_file()
+            or sha256_file(path) != digest
+        ):
+            raise ValueError("device linked ELF frozen report bytes changed")
+
+
+def freeze_device_elf_custody(device, selection, *, elf, linked_sha256, result):
+    """Freeze the original accepted result before another caller callback.
+
+    This retains actual receipt/report bytes, not policy or execution authority.
+    The caller still owns stable filesystem inputs during the checked boundary.
+    """
+    from merlin.common.digest import is_sha256
+    from merlin.common.jsonio import canonical_json
+
+    # Capture original values before service validation can invoke a validator.
+    if type(result) is not dict or selection is None or not is_sha256(linked_sha256):
+        raise ValueError("device linked ELF custody requires an original result and link digest")
+    result_record, selection_record = canonical_json(result), canonical_json(selection[2])
+    snapshot = json.loads(result_record)
+    if snapshot.get("status") != "accepted" or snapshot.get("elf_sha256") != linked_sha256:
+        raise ValueError("device linked ELF custody requires the original accepted linked image")
+    reports, row = [], snapshot
+    while True:
+        if len(reports) >= 32 or type(row) is not dict:
+            raise ValueError("device linked ELF custody report chain is invalid or exceeds 32 services")
+        reports.append((Path(row["report_path"]), row["report_sha256"]))
+        if "prerequisite" not in row:
+            break
+        row = row["prerequisite"]
+    elf, reports = Path(elf), tuple(reports)
+    original = (elf, linked_sha256, id(selection), id(result), result_record, selection_record, reports)
+    custody = _DeviceElfCustody(
+        elf, linked_sha256, selection, result, result_record, selection_record, reports, original
+    )
+    revalidate_device_elf_custody(device, selection, custody)
+    return custody
+
+
+def revalidate_device_elf_custody(device, selection, custody):
+    """Reopen frozen original reports after validators; read linked ELF last.
+
+    Extra selection/provider callbacks may run between freeze and this check.
+    They cannot replace the original service/result or endorse changed reports.
+    This check adds no policy and is not an atomic filesystem observation.
+    """
+    from merlin.common.digest import sha256_file
+    from merlin.common.jsonio import canonical_json
+
+    _device_elf_custody_binding(custody)
+    if selection is not custody.selection:
+        raise ValueError("device linked ELF original policy selection changed")
+    service = require_device_elf_admission(device, selection)
+    snapshot = json.loads(custody.result_record)
+    _device_elf_report_bytes(custody.reports)
+    if service.revalidate(elf=custody.elf, result=snapshot, target=selection[0]) != "accepted":
+        raise ValueError("device linked ELF original accepted policy was refused")
+    # The validator is an original callback: reopen all its possible outputs
+    # without invoking it again, and check its original implementation selection.
+    require_device_elf_admission(device, selection)
+    _device_elf_custody_binding(custody)
+    if canonical_json(snapshot) != custody.result_record:
+        raise ValueError("device linked ELF isolated result changed during validation")
+    _device_elf_report_bytes(custody.reports)
+    if sha256_file(custody.elf) != custody.linked_sha256:
+        raise ValueError("device linked ELF changed after original callback validation")
 
 
 def routing_for_placement(

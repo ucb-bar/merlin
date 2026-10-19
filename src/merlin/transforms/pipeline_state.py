@@ -7,7 +7,7 @@ The structured transform driver reexports the same types and owns its verifier.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .certificates import ir_digest
 
@@ -38,6 +38,14 @@ class AnalysisStamp:
     source_sha256: str
     context: PipelineContext
     ir_level: str
+
+    def __post_init__(self):
+        if type(self.context) is not PipelineContext:
+            raise ValueError("analysis stamps require an explicit pipeline context")
+        # Retain the selected scalar values, not the caller's live object.
+        # Otherwise an in-place change also changes every earlier stamp and
+        # can make stale analyses or an action's before/after checks agree.
+        object.__setattr__(self, "context", replace(self.context))
 
 
 @dataclass(frozen=True)

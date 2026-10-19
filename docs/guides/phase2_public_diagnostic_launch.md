@@ -59,6 +59,33 @@ source hash alone establishes no emitted-program, correctness or performance
 claim. The ordinary boxed numerical/source checks and permanent diagnostic
 decision remain mandatory. The default still submits the unchanged control.
 
+Before edit authority is frozen, an original Python host may additionally pass
+`compiler_pass_selection=` and `compiler_pass_preparation=`. These are the existing
+live `CompilerPassSelection` and typed `CompilerPassPreparation`, supplied together;
+V1 plan JSON cannot select either owner. The selected source factory must match the
+plan exactly, and the preparation binding must select the same library. Both seeds
+use the same explicit policy and are independently prepared from a separate immutable
+copy of the original compiler through `prepare_pair`. The raw compiler, prepared
+comparison baseline and prepared candidate seed retain separate identities in
+`compiler-preparation-selection.json`. An already-issued exact live registry can
+be reused; the launcher still freshly revalidates it and constructs its separate
+checked-source selector. This avoids rerunning admission solely to recover an owner
+the original host already holds.
+
+The original edit contract must explicitly name the prepared policy functions
+and any permitted new pass directory before freezing. Preparation does not expand
+that contract. A host can prepare a separate preview using the same original owner
+and policy, edit only those authorized components, then supply that actual directory
+as `candidate_source=`. Its retained revision is a child of the prepared control
+revision. Saved preparation receipts, substituted callbacks, foreign factories,
+unequal seed policies and changed library bindings refuse. Preparation grants no
+scheduling, numerical or timing qualification: each queued arm still requires the
+original current executable/source/complete-output checks.
+
+This route executes candidate-owned mechanisms in the retained compiler. It does
+not substitute the host-native `SourceDenseChoices` provider for that compiler;
+its provider ABI and independent execution obligations remain separate.
+
 For native predictions, the original host calls
 `prepare_public_native_exploration(native_selection)` with the existing exact
 `NativeArchiveScreenSelection`. Preparation reopens public archive eligibility,
