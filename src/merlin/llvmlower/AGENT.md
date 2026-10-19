@@ -2,7 +2,8 @@
 
 ## Purpose
 
-`shared_pointwise_routing` owns explicit ordinary source pointwise preparation:
+`shared_source_routing` owns explicit ordinary dense/pointwise preparation;
+`shared_pointwise_routing` retains compatibility imports for its original API:
 scan typed current source, call the shared source/program checks, invert all
 introduced calls to the complete original module, and use the existing fresh
 writer/provider ABI path. The original host supplies backend capability checks,
@@ -11,6 +12,12 @@ Missing selection or qualifier stays disabled; unsupported source stays on its
 original route. Incorrect programs and changed original limits refuse. No
 target-name discovery, hardware support, numerical relaxation or timing role is
 supplied by this connection. Callback/code/source custody remains explicit.
+Dense source requires exact signed modular rank-two recurrence, zero fill and
+the selected dense contract's synchronous completion. Original runtime buffer
+ownership and source/static/solver/repair ceilings cannot be supplied or widened
+by policy proposals. Unsupported direct batched/GQA layouts and absent mixed
+attention numerical contracts retain source fallback; nested supported rank-two
+islands do not authorize changing their surrounding carried state or layout.
 
 `stock_cli` is an explicitly selected scalar transport through stock upstream
 tools, using the ordinary scalar pass pipeline and shared object/link/runtime

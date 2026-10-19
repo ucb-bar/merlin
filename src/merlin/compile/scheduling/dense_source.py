@@ -93,6 +93,22 @@ def _problem(operation, selected, element_budget):
     return selected.dense.problem(m, k, n)
 
 
+def read_dense_source(operation, *, selected_contracts, max_source_elements=64 << 20):
+    """Match current exact signed dense source before asking a target for policy.
+
+    This establishes neither runtime ownership nor executable target support.
+    Compilation repeats admission and binds the complete original module.
+    """
+    if type(selected_contracts) is not SelectedSchedulingContracts or selected_contracts.dense is None:
+        raise DenseSourceUnavailable("selected software has no exact dense scheduling contract")
+    if type(max_source_elements) is not int or max_source_elements <= 0:
+        raise ValueError("dense source compilation needs a positive original element budget")
+    selected_contracts.revalidate()
+    result = _problem(operation, selected_contracts, max_source_elements)
+    selected_contracts.revalidate()
+    return result
+
+
 @dataclass(frozen=True)
 class DenseSourceResult:
     source: builtin.ModuleOp

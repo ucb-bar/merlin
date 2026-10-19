@@ -246,3 +246,26 @@ def test_saved_or_foreign_callback_owner_cannot_replace_original_selection(tmp_p
     route._backend = replace(route._backend, propose=lambda *args: None)
     with pytest.raises(ValueError, match="owner changed"):
         route.build_arguments()
+
+
+def test_shared_route_runs_supported_readouts_with_precise_missing_dense_capability(tmp_path, record_property):
+    from test_pointwise_source_whole_model import test_ordinary_recurrent_model_runs_source_bound_fusion as run_pair
+
+    from merlin.llvmlower.shared_source_routing import SharedSourceBackend, SharedSourceRouting
+
+    def selected(provider, trace):
+        original = routing(provider, trace)
+        backend = SharedSourceBackend(**vars(original._backend))
+        return SharedSourceRouting(backend, qualify=original._qualify)
+
+    run_pair(
+        tmp_path,
+        record_property,
+        shape=(2, 5, 11),
+        separate=True,
+        provider_class=AutomaticProvider,
+        routing_factory=selected,
+    )
+    report = json.loads((tmp_path / "optimized/prepared_model_transform/shared_source_routing.json").read_text())
+    assert report["routed_count"] == 2
+    assert any("no exact dense scheduling contract" in row.get("reason", "") for row in report["members"])

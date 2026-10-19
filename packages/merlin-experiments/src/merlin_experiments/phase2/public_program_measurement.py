@@ -157,11 +157,14 @@ def project(capsule, grade, *, target, readback_policy=None):
     if scope["kind"] != ACCELERATOR_ONLY:
         raise ValueError("public whole-program timing would score Merlin-supplied host compute")
     golden = load_golden(declaration_path.parent)
-    if set(observed) != set(golden["outputs"]) or set(observed) != set(cb["kernel_abi"]["outputs"]):
+    from merlin.targetgen.native_model_output_binding import checked_source_output_values
+
+    source_observed = checked_source_output_values(cb, native, golden, observed)
+    if set(source_observed) != set(golden["outputs"]) or set(observed) != set(cb["kernel_abi"]["outputs"]):
         raise ValueError("public native output names differ from the original complete result roster")
     comparison = compare(
         golden["outputs"],
-        observed,
+        source_observed,
         declaration["numeric_policy"],
         golden_source=str(golden.get("golden_source") or "independent_capsule"),
     )

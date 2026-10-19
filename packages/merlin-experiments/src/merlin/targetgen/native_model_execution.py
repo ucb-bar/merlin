@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from .native_model_output_binding import bind_source_outputs, checked_source_output_values
 from .native_model_values import logical_values as _decode_logical_values
 
 
@@ -923,6 +924,7 @@ def audit_candidate_tiers(
             _pinned_native_file(native["source"], "golden_arrays")
         declaration = yaml.safe_load((capsule_dir / "capsule.yaml").read_text(encoding="utf-8"))
         golden = load_golden(capsule_dir)
+        observed = checked_source_output_values(cb, native, golden, observed)
         if set(observed) != set(golden["outputs"]):
             raise NativeModelExecutionError("L2 console has no complete declared full output")
         numeric = compare(
@@ -1099,8 +1101,11 @@ def execute_candidate_model(
         if any((cb.get("tensors") or {}).get(name, {}).get("role") != "output" for name in outputs):
             raise NativeModelExecutionError("declared model output has no output tensor role")
         golden = load_golden(source)
-        if not isinstance(golden, dict) or set(golden.get("outputs") or {}) != set(outputs):
+        if not isinstance(golden, dict):
             raise NativeModelExecutionError("independent golden outputs do not match the candidate's ABI")
+        output_binding = bind_source_outputs(cb, source, capture / "model.mlir", golden)
+        if output_binding is not None:
+            record["source_output_binding"] = output_binding
         if numeric_policy is None:
             import yaml
 
@@ -1112,8 +1117,11 @@ def execute_candidate_model(
             policy = dict(numeric_policy)
         if policy.get("compare") not in ("exact_int", "tolerance_float", "per_output"):
             raise NativeModelExecutionError("no explicit supported numeric comparison policy")
+        original_names = (
+            {row["compiled_name"]: row["source_name"] for row in output_binding["returns"]} if output_binding else {}
+        )
         if any(
-            (policy.get("outputs", {}).get(name, policy)).get("compare") == "exact_int"
+            (policy.get("outputs", {}).get(original_names.get(name, name), policy)).get("compare") == "exact_int"
             and str(cb["tensors"][name]["dtype"]).startswith("f")
             for name in outputs
         ):
@@ -1317,7 +1325,7 @@ def execute_candidate_model(
             functional_observed = backends.decode_float_readback(functional_observed, declared_output_dtypes(cb))
             functional_numeric = compare(
                 golden["outputs"],
-                functional_observed,
+                checked_source_output_values(cb, record, golden, functional_observed),
                 policy,
                 golden_source=str(golden.get("golden_source") or "independent_capsule"),
             )
@@ -1413,7 +1421,8 @@ def execute_candidate_model(
             require_full_value_roster(cb, console, observed, policy=readback_policy)
         observed = backends.decode_float_readback(observed, declared_output_dtypes(cb))
         comparison = compare(
-            golden["outputs"], observed, policy, golden_source=str(golden.get("golden_source") or "independent_capsule")
+            golden["outputs"], checked_source_output_values(cb, record, golden, observed), policy,
+            golden_source=str(golden.get("golden_source") or "independent_capsule")
         )
         record.update(
             console=_digest(console_path),
