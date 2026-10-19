@@ -186,6 +186,12 @@ internal SSA numbering changes after hoisting. Supported integer/float bitcast r
 raw bits, poison and escaping intermediates. Unused static tensor.empty deletion requires a total
 producer and complete continuation liveness checks. No semantics or assumption is changed.
 
+A separate typed return-boundary comparator proves strict refinement when one actual identity
+parallel generic and return become a return-only function. It relates the source canonical tensor
+pointwise to the actual target input; raw tensor equality and arbitrary call continuations are not
+assumed. A retained live prefix still abstains. This comparison composes through the same exact
+normalizers and preserves the old script-checker interface; no frozen semantics is changed.
+
 ## Proposed dequantization source contract
 
 `Spec/Dequant.lean` specifies the distinct per-tensor and per-channel arithmetic orders from

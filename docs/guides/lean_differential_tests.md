@@ -663,6 +663,15 @@ empty destination; it preserves poison and excludes producer escapes, captures a
 Its native companion covers zero extents, rank zero, modular wrap and an observable wrong target.
 These families prove accepted boundaries relative to the locked semantics, not complete pass coverage.
 
+`test_lean_identity_return.py` checks whole-function identity-loop elimination after exact
+normalization. The comparator accepts only a single identity generic followed immediately by
+return, against a return-only target, and recomputes argument/result correspondence. Its strict
+refinement proof compares valid tensor indices; it does not equate raw tensors with their canonical
+copies or substitute them into arbitrary call continuations. A retained live arithmetic prefix
+remains outside this bounded comparison. Native cases preserve returned integer bits, float payloads,
+actual index widths and repeated/unchanged results; valid wrong-return/yield/layout mutations refuse.
+The earlier pure bitcast-body identity-loop gaps now require defined verified chains.
+
 ## Limits
 
 The corpus chooses defined inputs independently: divisors are nonzero, signed division overflow
