@@ -81,6 +81,19 @@ def test_only_explicit_frozen_qualification_delegates_source_precheck(modules, m
             assert value['status'] == 'delegated_to_canonical_native_static_gate'
 
 
+def test_capsule_scope_defers_source_execution_but_cannot_enter_external_qualification(modules, monkeypatch, tmp_path):
+    supervisor, _ = modules
+    launch = SimpleNamespace(document={'validation_scope': 'capsules'})
+    def forbidden(*args):
+        raise AssertionError('full-model source preflight was run')
+    monkeypatch.setattr(supervisor.P, 'source_preparation', forbidden)
+    result = supervisor.P.source_preparation_for(launch, tmp_path, tmp_path / 'spec')
+    assert result['author_allowed'] is True
+    assert result['source_preflight_passed'] is False and result['candidate_qualified'] is False
+    with pytest.raises(ValueError, match='requires validation_scope full'):
+        supervisor.P.source_preparation_for(launch, tmp_path, tmp_path / 'spec', qualification_only=True)
+
+
 def test_fresh_attempt_preserves_failed_metadata_and_rejects_completed_intake(modules, monkeypatch, tmp_path):
     from merlin_experiments.phase1.feedback import private_numerical_selection as selection
     supervisor, _ = modules
