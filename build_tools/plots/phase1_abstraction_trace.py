@@ -82,15 +82,25 @@ def abstraction_markers(metrics: dict[str, Any], agent_path: str) -> list[dict[s
         text = shlex.join(raw) if isinstance(raw, list) else str(raw or "")
         succeeded = item.get("exit_code") == 0 and item.get("status") != "failed"
         call = conformance.ToolCall(
-            "Bash", {"command": text}, str(item.get("id") or ""), True,
-            succeeded, str(item.get("aggregated_output") or ""),
+            "Bash",
+            {"command": text},
+            str(item.get("id") or ""),
+            True,
+            succeeded,
+            str(item.get("aggregated_output") or ""),
         )
         evidence = {
             "cca_bijection": conformance._cca_evidence(
-                call, script="cca_contract.py", subcommand="check-bijection", api="check_bijection",
+                call,
+                script="cca_contract.py",
+                subcommand="check-bijection",
+                api="check_bijection",
             ),
             "cca_escalation_ladder": conformance._cca_evidence(
-                call, script="action_catalog.py", subcommand="escalation-ladder", api="escalation_ladder",
+                call,
+                script="action_catalog.py",
+                subcommand="escalation-ladder",
+                api="escalation_ladder",
             ),
             "derived_levers": conformance._derived_levers_evidence(call),
             "rtl_facts": conformance._rtl_facts_evidence(call),
@@ -107,6 +117,7 @@ def abstraction_markers(metrics: dict[str, Any], agent_path: str) -> list[dict[s
                 "outer_command_succeeded": succeeded,
                 "agent_path": agent_path,
             }
-            for category, present in evidence.items() if present
+            for category, present in evidence.items()
+            if present
         )
     return markers
