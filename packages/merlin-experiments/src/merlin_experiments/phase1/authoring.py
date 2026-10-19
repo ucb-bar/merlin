@@ -290,6 +290,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
 
     from .feedback.compiler_profile_runtime import selected_service
     compiler_profile_service = selected_service(workspace=ws, run_dir=run_dir, repo=context.repo)
+    from .feedback import grade_reuse as GR
     _driver_grade_receipt = [None]
     grading_inputs = LG.GradingInputs(
         context=prepared.request.context,
@@ -695,7 +696,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             rc, tpath = 124, run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
             print(f"[round {rnd}] agent TIMEOUT")
         finally:
-            FL.stop_background(_bg)  # the post-turn grade below is the authoritative one
+            FL.stop_background(_bg)  # join the original owner before reusing or grading
         # A dead retry can overwrite this round's earlier transcript. Rediscover
         # the full round history rather than retaining a now-overwritten path.
         _latest_authoring_tpath = ROQ.latest_live_authoring_transcript(
@@ -767,7 +768,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             )
             break
 
-        verdict = _grade(ws, run_dir, rnd, a.no_oracle, a.qa_timeout)
+        verdict = GR.post_turn_grade(_driver_grade_receipt[0], ws, run_dir, rnd, a.no_oracle, a.qa_timeout,
+                                    inputs=grading_inputs, grade_callback=_grade)
         if context.target == "gemmini" and a.experiment == "full":  # target-ok: Gemmini scope
             from . import oot_history as _OH
 

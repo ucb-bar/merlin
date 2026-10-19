@@ -605,6 +605,8 @@ def start_background(
         while not stop.wait(delay):
             delay = interval
             before = source_identity() if source_identity is not None else None
+            if stop.is_set():
+                return  # Handoff may have arrived while source metadata was being verified.
             if source_identity is not None and (before is None or before == completed_source):
                 delay = min(30, interval)
                 continue
@@ -663,7 +665,7 @@ def start_background(
 
 
 def stop_background(handle) -> None:
-    """Stop the in-turn grader before the post-turn authoritative grade runs.
+    """Drain the in-turn owner before reusing its receipt or starting a post-turn grade.
 
     ``Thread.join(timeout=...)`` is not cancellation.  If the thread is already inside ``qa_grade``, a
     timed join merely returns with that full-suite grade still running and the caller immediately starts
