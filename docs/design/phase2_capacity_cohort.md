@@ -3,7 +3,7 @@ title: "Design note: the Phase 2 capacity cohort, its scope, its roofline and it
 kind: design
 status: current
 owner: merlin-experiments
-last_verified: 2026-10-17
+last_verified: 2026-10-19
 related: [merlin_supplied_host_placement, spike_timing]
 code_refs: [packages/merlin-experiments/src/merlin_experiments/phase2/metric_scope.py, packages/merlin-experiments/src/merlin_experiments/phase2/public_program_measurement.py, packages/merlin-experiments/src/merlin_experiments/phase0/form_perf.py, packages/merlin-experiments/src/merlin_experiments/phase0/capacity_families.py, packages/merlin-experiments/src/merlin_experiments/phase2/claims/capacity.py, packages/merlin-experiments/src/merlin_experiments/phase2/roofline_priority.py, packages/merlin-experiments/src/merlin_experiments/phase2/calibration_validation.py, src/merlin/perf/movement_peak.py, src/merlin/perf/staged_roofline.py, experiments/templates/phase0/performance.yaml]
 ---
@@ -214,6 +214,17 @@ candidate's distance from its frozen bound. They cannot redefine required work o
 raise the candidate's own objective floor. New construction must first produce
 reviewable diagnostic inputs, then enter a separately admitted future cohort; it
 does not change an active cohort's floors, membership, weights or attainment target.
+
+Run automatic construction in trusted cohort preparation, outside the compiler
+candidate's editable policy. Freeze the source obligations, target mapping, boundary
+and calibration identities before search, and give every treatment the same model.
+For an established arithmetic domain, compulsory work divided by a physical peak
+can supply a resource lower bound; the maximum of independently valid resource
+bounds remains a lower bound without promising achievable overlap. A schedule
+estimate additionally needs resource conflicts, fixed costs and dependency/completion
+edges. Add serial costs only when the selected effects prove that serialization.
+Compiler edits cannot tune their own evaluator; a timing-model revision requires
+separate validation and fresh paired comparison under the same selected version.
 
 ## D. Calibration validation (design and selection; not run)
 
