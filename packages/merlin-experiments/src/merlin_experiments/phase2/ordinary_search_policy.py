@@ -57,6 +57,7 @@ from . import ordinary_archive_screen as ARCHIVE_SCREEN
 from . import ordinary_build_runtime as BUILD
 from . import ordinary_calibration as CAL
 from . import ordinary_capsule_feedback as CAPSULE_FEEDBACK
+from . import ordinary_checked_source as CHECKED_SOURCE
 from . import ordinary_compile_only as COMPILE_ONLY
 from . import ordinary_fast_feedback as FAST
 from . import ordinary_impact_selection as IMPACT
@@ -139,6 +140,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         compiler_library_selection=None,
         compiler_pass_selection=None,
         compiler_pass_preparation=None,
+        checked_source_diagnostic=None,
         _issuer,
     ):
         if _issuer is not _ISSUER:
@@ -165,6 +167,8 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         if compiler_pass_selection is not None and type(compiler_pass_selection) is not CompilerPassSelection:
             raise StageGateError("compiler passes require an explicit original host selection")
         self._compiler_pass_selection = compiler_pass_selection
+        CHECKED_SOURCE.record(checked_source_diagnostic, compiler_pass_selection)
+        self._checked_source_diagnostic = checked_source_diagnostic
         self._compiler_pass_preparation = copy.deepcopy(compiler_pass_preparation)
         self._functional, self._corpus, self._selected_feedback = functional, corpus, feedback
         self._contract_root, self._issuer = contract_root, _issuer
@@ -185,6 +189,8 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             (AR, "observe_public_artifact_retests", AR.observe_public_artifact_retests),
             (FAST, "evaluate_retained", FAST.evaluate_retained),
             (FAST, "compiled_observation", FAST.compiled_observation),
+            (CHECKED_SOURCE, "record", CHECKED_SOURCE.record),
+            (CHECKED_SOURCE, "for_capsule", CHECKED_SOURCE.for_capsule),
             (COMPILE_ONLY, "evaluate_retained", COMPILE_ONLY.evaluate_retained),
             (COMPILE_ONLY.ORIGINAL, "observe", COMPILE_ONLY.ORIGINAL.observe),
             (COMPILE_ONLY.ORIGINAL.SOURCES, "derive", COMPILE_ONLY.ORIGINAL.SOURCES.derive),
@@ -243,6 +249,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
             COMPILE_ONLY.ORIGINAL.CO,
             CAL,
             CAPSULE_FEEDBACK,
+            CHECKED_SOURCE,
             ARCHIVE_SCREEN,
             ARCHIVE_RUNTIME,
             ARCHIVE_COUNTS,
@@ -350,6 +357,16 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
                 else {}
             ),
             "workflow_id": self.workflow_id,
+            **(
+                {
+                    "checked_source_diagnostic": CHECKED_SOURCE.record(
+                        self._checked_source_diagnostic,
+                        self._compiler_pass_selection,
+                    )
+                }
+                if self._checked_source_diagnostic is not None
+                else {}
+            ),
             "scope": "frozen_development_corpus_simulator_cycles",
             "functional_origin": _data(functional),
             "compiler_tool_profile": PROFILE_RUNTIME.compiler_profile_binding(
@@ -689,11 +706,15 @@ def prepare_ordinary_search_policy(
     compiler_library_selection=None,
     compiler_pass_selection=None,
     compiler_pass_preparation=None,
+    checked_source_diagnostic=None,
 ):
     """Admit the same Phase 1 functional fork and ordinary corpus feedback route.
 
     No executable callback, backend name, imported provider or saved verdict can
-    substitute for either original admission owner.
+    substitute for either original admission owner. An explicit live
+    checked_source_diagnostic only selects L2 source witnesses in selected
+    compile/Spike feedback. It does not waive this formal admission, infer public
+    placements, or grant timing or promotion authority.
     """
     if (
         type(corpus) is not CORPUS.FrozenPerformanceCorpus
@@ -775,6 +796,7 @@ def prepare_ordinary_search_policy(
         ),
         compiler_pass_selection=compiler_pass_selection,
         compiler_pass_preparation=compiler_pass_preparation,
+        checked_source_diagnostic=checked_source_diagnostic,
         _issuer=_ISSUER,
     )
     if native_runtime_view is not None:
