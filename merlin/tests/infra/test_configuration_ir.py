@@ -4,15 +4,21 @@ Synthetic contracts qualify this mechanism only; no hardware target support or
 instruction implementation qualification follows from these tests.
 """
 
+import importlib.util
 import json
+import subprocess
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
+import yaml
 from test_selected_schedule_contracts import inputs
 from xdsl.dialects import arith, builtin, func
 from xdsl.ir import Block, Region
 
 from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection, verify_configuration_ir
+from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
 from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
 from merlin.transforms.certificates import ir_text
 
@@ -262,3 +268,98 @@ def test_explicit_byte_budget_precedes_parsing_and_module_cloning(tmp_path):
         bounded.apply(module)
     with pytest.raises(ValueError, match="input byte budget"):
         bounded.parse("é" * 17)
+
+
+@pytest.mark.parametrize("signed", [False, True])
+def test_immediate_fields_preserve_signed_and_unsigned_encoded_bits(tmp_path, signed):
+    selected = configured(tmp_path).selected_contracts
+    software = yaml.safe_load(selected.software_bytes)
+    for instruction in software["isa"]["instructions"]:
+        arguments = instruction.pop("operands")
+        arguments[1]["type"]["signed"] = signed
+        instruction["operands"], instruction["immediates"] = [], arguments
+    selected.software_path.write_text(yaml.safe_dump(software))
+    current = read_scheduling_contracts(selected.facts_path, selected.software_path, target=selected.target)
+    selection = ConfigurationIRSelection(current, QUALIFICATION)
+    operation = '"neutral_isa.set"() {slot=0:i8,a=-1:i32,b=0:i32} : () -> ()'
+    module = selection.parse("module {func.func @run() {" + operation * 2 + " func.return}}")
+    result = selection.apply(module)
+    result.revalidate()
+    assert result.report["verification"]["removed_operations"] == 1
+    actual = next(op for op in result.module.walk() if op.name == "neutral_isa.set")
+    value = actual.attributes["a"].value.data
+    assert value == -1
+    # Reconstruct the original ISA interpretation independently from retained attributes.
+    semantic_value = value if signed else value & ((1 << 32) - 1)
+    word = encode_instruction(current.isa, "set", dict(slot=0, a=semantic_value, b=0))
+    assert decode_instruction(current.isa, word) == ("set", dict(slot=0, a=semantic_value, b=0))
+
+
+def test_same_typed_scalar_rewiring_inside_opaque_region_refuses(tmp_path):
+    selection = configured(tmp_path)
+    text = instructions(body='"opaque.region"() ({"opaque.use"(%a3):(i32)->()}) : ()->()')
+    original = selection.parse("module {" + text + "}")
+    actual = selection.apply(original).module
+    use = next(op for op in actual.walk() if op.attributes.get("op_name__") == builtin.StringAttr("opaque.use"))
+    wrong = next(op for op in actual.walk() if type(op) is arith.ConstantOp and op.value.value.data == 2)
+    use.operands = (wrong.results[0],)
+    actual.verify()
+    with pytest.raises(ValueError, match="opaque region"):
+        verify_configuration_ir(original, actual, selection=selection)
+
+
+def test_configuration_ir_executes_from_only_the_reviewed_shared_export(tmp_path):
+    from test_shared_scheduling_export import review
+
+    from merlin.compile.scheduling.export import export_shared_scheduling
+    from merlin.compile.scheduling.library_sources import LIBRARY_MODULES
+
+    selection = configured(tmp_path)
+    bundle = tmp_path / "library"
+    manifest = export_shared_scheduling(bundle)
+    review(bundle, manifest)
+    config = tmp_path / "worker.json"
+    dependencies = sorted(
+        {str(Path(importlib.util.find_spec(name).origin).parent.parent) for name in ("xdsl", "numpy", "yaml", "z3")}
+    )
+    config.write_text(
+        json.dumps(
+            dict(
+                bundle=str(bundle),
+                dependencies=dependencies,
+                facts=str(selection.selected_contracts.facts_path),
+                software=str(selection.selected_contracts.software_path),
+                source=ir_text(source(selection)),
+                qualification=QUALIFICATION,
+            )
+        )
+    )
+    worker = tmp_path / "worker.py"
+    worker.write_text("""import json,sys
+from pathlib import Path
+config=json.loads(Path(sys.argv[1]).read_text())
+sys.path[:0]=[config["bundle"],*config["dependencies"]]
+from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
+from merlin.compile.scheduling.selected_contracts import read_scheduling_contracts
+selected=read_scheduling_contracts(config["facts"],config["software"],target="neutral")
+selection=ConfigurationIRSelection(selected,config["qualification"])
+result=selection.apply(selection.parse(config["source"]))
+result.revalidate()
+assert all(Path(module.__file__).resolve().is_relative_to(Path(config["bundle"]).resolve())
+           for name,module in sys.modules.items() if name.startswith("merlin") and getattr(module,"__file__",None))
+try:
+ import merlin.runtime.backends
+except ModuleNotFoundError:
+ pass
+else:
+ raise AssertionError("private runtime discovery entered shared library")
+print(json.dumps(dict(removed=result.report["verification"]["removed_operations"],
+ owners=list(selection.record()["library"]))))
+""")
+    run = subprocess.run(
+        [sys.executable, "-I", "-S", "-B", str(worker), str(config)], capture_output=True, text=True, timeout=60
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    observed = json.loads(run.stdout)
+    assert observed["removed"] == 2 and set(observed["owners"]) == set(LIBRARY_MODULES)
+    assert not list(bundle.rglob("__pycache__"))
