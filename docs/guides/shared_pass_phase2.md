@@ -121,8 +121,9 @@ Opaque backend output and missing capabilities remain unavailable.
 Library availability does not automatically enroll every pass in saved-model
 compilation. A generic ordinary preparation owner now connects the supported
 integer pointwise source family through explicit backend and qualifier selection,
-as described below. Dense and typed-row complete-model tests still supply manual
-test adapters. Qualified real-device adapters and automatic discovery from an
+as described below. Dense preparation also has the explicit checked source route
+below; typed-row complete-model tests still supply manual test adapters.
+Qualified real-device adapters and automatic discovery from an
 original target capability selection remain unfinished. Importing the SDK alone
 changes no schedule.
 
@@ -165,6 +166,43 @@ The routing owner is host infrastructure, not a new public SDK/checker grant.
 The original caller still owns module loading, sandbox execution and transitive
 dependency qualification; direct source/code freshness checks do not supply
 those authorities or a calibrated hardware model.
+
+### Ordinary dense and shared source routing
+
+`llvmlower.shared_source_routing.SharedSourceRouting` accepts an explicit
+`DenseSourceBackend`, `PointwiseSourceBackend` or `SharedSourceBackend` plus the
+original independent execution qualifier. It uses the same ordinary build hooks,
+complete-module inverse and provider/link checks above. The older pointwise
+entry remains available. This host routing owner is outside the public SDK
+grant and creates no new candidate authority or target support.
+
+For dense islands, `read_dense_source` checks the current signed rank-two
+multiply/add recurrence, default tensor layout and exact zero initialization
+before invoking target policy. `schedule_source_dense` repeats that admission
+and checks the actual compact loop program against selected software/RTL,
+assigned storage, tails, continuation and address bounds. Policies may select
+blocking resources, loop order and smaller static/repair budgets; they cannot
+replace the current operation, selected contracts, original runtime buffer
+ownership, solver limit or source ceiling. The backend emits real ABI glue;
+the original qualifier must independently check that emitted implementation.
+The provider's exact source, compiled objects, typed ABI and final linked image
+remain separately checked. A schedule report is not an executable certificate.
+
+Shared selection can route supported integer readouts through the existing
+pointwise checker while leaving other arithmetic and layout work in its
+original source. It does not itself fuse contractions/readouts, establish
+device residency or transfer ownership across calls. Dense and readout tests
+exercise independent native implementations and complete ordinary recurrent
+programs with unchanged outputs/state. Their byte-machine command counts and
+functional Spike instruction counts are not accelerator latency.
+
+Direct batched contractions, arbitrary GQA layouts, KV ownership and mixed
+attention floating numerical contracts are not inferred. Only currently
+matched supported rank-two islands may route within an unchanged surrounding
+program. If an adapter's preload may remain pending when its fence returns,
+that fence does not establish the dense-v1 standalone synchronous completion
+premise. Missing exact target effects/qualification remain disabled;
+the original Phase 1 compiler/profile and numerical contracts are untouched.
 
 ## Prepare the release before Phase 1
 

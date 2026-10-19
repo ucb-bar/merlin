@@ -12,6 +12,7 @@ code_refs:
   - src/merlin/compile/scheduling/library_sources.py
   - src/merlin/compile/scheduling/compact_dense.py
   - src/merlin/compile/scheduling/dense_source.py
+  - src/merlin/llvmlower/shared_source_routing.py
   - src/merlin/compile/scheduling/pointwise_source.py
   - src/merlin/llvmlower/group_profile_bindings.py
   - src/merlin/compile/scheduling/compact_verification.py
@@ -2573,7 +2574,7 @@ ownership, real target support or absolute accuracy for an external model.
 | Configuration | Checked persistent-state cleanup through ordinary shared schedules, source pointwise lowering and neutral recurrent model builds; actual final bytes, complete outputs and settings, and isolated shared-library execution | Independently qualified real-target state decoder and model integration; general source loops and reset/pulse semantics |
 | Final program limits | Actual decoded instruction size, branch/address checks and closed-region segmentation through declared interfaces | Independently qualified target decoder and runtime continuation integration; ordinary targets retain their existing linked-image admission |
 | Persistent state | Runtime state binding, immutable weight hashing/reuse and recurrent relinking | Qualified address windows, ownership and persistence for each device runtime |
-| Whole-model coverage | Source routing/census, compiled CPU fallback and explicit generic pointwise preparation with complete-module inverse checks, original qualifiers and checked provider linking | Qualified real-device backend selection; dense/typed-row routing; complete realized coverage and unchanged numerical gates for each selected full model |
+| Whole-model coverage | Source routing/census, compiled CPU fallback and explicit generic rank-two dense/pointwise preparation with complete-module inverse checks, original qualifiers and checked provider linking | Qualified real-device backend selection; typed-row/batched/GQA routing; complete realized coverage and unchanged numerical gates for each selected full model |
 
 An analysis, selected composition, metadata assignment or small executed kernel
 does not establish these remaining integrations. Actual full outputs and carried
