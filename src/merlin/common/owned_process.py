@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import locale
 import os
-import select
 import selectors
 import signal
 import socket
@@ -36,6 +35,14 @@ else:
 
 class CleanupUnknown(RuntimeError):
     """The dedicated owner remains responsible for children whose cleanup is unknown."""
+
+
+def _readable(readers, timeout):
+    """Wait on actual reader identities without select's platform FD_SETSIZE cap."""
+    with selectors.DefaultSelector() as selector:
+        for reader in readers:
+            selector.register(reader, selectors.EVENT_READ)
+        return [key.fileobj for key, _events in selector.select(timeout)]
 
 
 def _close_other_fds(kept):
@@ -87,7 +94,7 @@ def _guardian(argv, environment, cwd, control, owner_fd, out_fd, err_fd):
         os.close(err_fd)
         child_fd = children.pidfd_open(pid)
         while not stopped:
-            ready = select.select([control, owner_fd, child_fd], [], [], 0.02)[0]
+            ready = _readable((control, owner_fd, child_fd), 0.02)
             if child_fd in ready or owner_fd in ready:
                 break
             if control in ready:
@@ -123,8 +130,8 @@ def _guardian(argv, environment, cwd, control, owner_fd, out_fd, err_fd):
         control.send(json.dumps(packet, sort_keys=True).encode())
         # Drain a racing cancellation before closing the seqpacket channel.
         until = time.monotonic() + 1
-        while time.monotonic() < until and not select.select([owner_fd], [], [], 0)[0]:
-            if select.select([control], [], [], 0.02)[0]:
+        while time.monotonic() < until and not _readable((owner_fd,), 0):
+            if _readable((control,), 0.02):
                 if control.recv(16) in (b"ack", b""):
                     break
     except OSError:
@@ -249,7 +256,7 @@ def run(argv, *, cwd=None, env=None, timeout=None, capture_output=True, text=Fal
             # close. The dedicated guardian also watches the caller's pidfd.
             until = time.monotonic() + 6
             while time.monotonic() < until:
-                if not select.select([parent], [], [], 0.02)[0]:
+                if not _readable((parent,), 0.02):
                     continue
                 raw = parent.recv(4096)
                 if raw:

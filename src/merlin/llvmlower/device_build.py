@@ -69,6 +69,13 @@ def rename_object_command(objcopy, original, selected, raw, output):
             str(raw), str(output)]
 
 
+def executable_kernel_entry(device: str) -> str:
+    """The selected executable entry, independently of logical pointer-layout names."""
+    from merlin.runtime.backends import base as backends
+
+    return backends.harness_build_recipe(device).require_kernel_stack_frame().entry_symbol
+
+
 @dataclass(frozen=True)
 class DeviceRouting:
     """Everything a whole-model build needs to offload onto one device.
@@ -756,6 +763,7 @@ def build_device_objects(
         return DeviceBuild(device=device, skipped=(("all", f"package unusable: {exc}"),))
     if expected_interfaces is not None and pkg.target != device:
         raise ValueError("exact interface package target differs from selected device")
+    entry_symbol = executable_kernel_entry(device)
 
     if expected_interfaces is None:
         from merlin.compile.mesh import _mesh_tile_binding
@@ -857,7 +865,7 @@ def build_device_objects(
             skipped.append((sym, "no objcopy available to give this kernel a distinct symbol"))
             return
         rn, renamed_invocation, _rename_s = _observed_build_tool(
-            rename_object_command(oc, abi.symbol, want, raw, obj),
+            rename_object_command(oc, entry_symbol, want, raw, obj),
             timeout=timeout, directory=work, stage="device_object_symbol_rename",
             inputs=(raw,), output=obj,
         )
@@ -932,7 +940,7 @@ def build_device_objects(
             except (BackendDeclined, CertFailure, ValueError) as error:
                 skipped.append((sym, f"package lowering: {type(error).__name__}: {str(error)[:300]}"))
                 continue
-            if expected_interfaces is not None and f"llvm.func @{abi.symbol}(" not in artifact:
+            if expected_interfaces is not None and f"llvm.func @{entry_symbol}(" not in artifact:
                 skipped.append((sym, "exact package artifact has no contract-named LLVM kernel entry"))
                 continue
             art = stem.with_suffix(".device.mlir")

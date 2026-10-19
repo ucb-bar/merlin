@@ -379,6 +379,49 @@ def _roles(capsules):
     return selections[0] if selections else ()
 
 
+def _case_instruction_policy(capsule, *, target):
+    """Reuse the original capsule/native selections; absence grants no permissions."""
+    field = "performance.arms.candidate.instruction_policy.prohibited_instruction_roles"
+    guidance = ("Use the ordinary certifying agent_selfcheck.py request without --compile-only; "
+                "the operator must repair unavailable frozen policy metadata.")
+
+    def unavailable(code, missing_field):
+        return {"roles": None, "pins": (), "diagnostic": {
+            "code": code, "missing_field": missing_field, "action": guidance,
+            "permission_inferred": False}}
+
+    policy = ((capsule.get("performance") or {}).get("arms") or {}).get("candidate") or {}
+    declared = policy.get("instruction_policy")
+    roles, pins = set(), {}
+    if declared is not None:
+        try:
+            roles.update(_roles([capsule]))
+        except (ValueError, AttributeError, TypeError):
+            return unavailable("invalid_capsule_instruction_policy", field)
+    if os.environ.get("MERLIN_TARGET_EXPERIMENT"):
+        from merlin.targetgen import native_model_policy
+
+        try:
+            selected = native_model_policy._frozen_model_policy(Path(capsule["__dir__"]), target=target)
+            roles.update(selected["prohibited_instruction_roles"])
+            for name in ("descriptor", "manifest", "capsule_declaration", "instruction_coverage"):
+                pin = selected[name]
+                path = Path(pin["path"])
+                if path.resolve() != path or path.is_symlink() or sha256_file(path) != pin["sha256"]:
+                    raise ValueError("selected native policy changed")
+                pins[str(path)] = pin["sha256"]
+            source = Path(native_model_policy.__file__).resolve()
+            pins[str(source)] = sha256_file(source)
+        except Exception:  # noqa: BLE001 — original unavailable authority cannot authorize a build
+            return unavailable("selected_native_instruction_policy_unavailable",
+                               "selected_corpus.instruction_policy")
+    elif declared is None:
+        return unavailable("missing_original_instruction_policy", field)
+    declaration = Path(capsule["__dir__"]) / "capsule.yaml"
+    pins[str(declaration)] = sha256_file(declaration)
+    return {"roles": tuple(sorted(roles)), "pins": tuple(sorted(pins.items())), "diagnostic": None}
+
+
 def _growth(actual):
     """Only actual reopened products supply sizes; schedules/claims supply none."""
 
@@ -499,10 +542,16 @@ def observe(
         work_root.mkdir(parents=True, mode=0o700)
         sources = work_root / "sources"
         sources.mkdir()
-        service = None if scale_probe else _build_service_for(target_experiment.target)
-        checker = (
-            None if scale_probe else _InstructionPolicy(target_experiment.target, _roles(capsules), facts, facts_path)
-        )
+        members = {case.member for case in cases}
+        policies = {} if scale_probe else {
+            str(capsule.get("name") or Path(capsule["__dir__"]).name):
+                _case_instruction_policy(capsule, target=target_experiment.target)
+            for capsule in capsules
+            if str(capsule.get("name") or Path(capsule["__dir__"]).name) in members
+        }
+        service = _build_service_for(target_experiment.target) if any(
+            policy["diagnostic"] is None for policy in policies.values()
+        ) else None
         pins = sorted(
             set(
                 [
@@ -512,13 +561,6 @@ def observe(
                     facts_path,
                     *(path for case in cases for path, _ in case.provenance),
                 ]
-            )
-        )
-        admission = (
-            None
-            if scale_probe
-            else LinkedElfAdmissionService(
-                target_experiment.target, checker.evaluate, tuple((str(path), sha256_file(path)) for path in pins)
             )
         )
     deadline_started = time.monotonic()
@@ -551,6 +593,19 @@ def observe(
             source.write_text(case.source_ir)
             remaining = min(600, math.floor(deadline - time.monotonic()))
             row = _case_row(case)
+            admission = None
+            if not scale_probe:
+                selected_policy = policies[case.member]
+                if selected_policy["diagnostic"] is not None:
+                    row.update(compilation_status="unavailable", reason="instruction_policy_unavailable",
+                               instruction_policy_diagnostic=selected_policy["diagnostic"])
+                    rows.append(row)
+                    continue
+                checker = _InstructionPolicy(target_experiment.target, selected_policy["roles"], facts, facts_path)
+                bound = {str(path): sha256_file(path) for path in pins}
+                bound.update(selected_policy["pins"])
+                admission = LinkedElfAdmissionService(target_experiment.target, checker.evaluate,
+                                                     tuple(sorted(bound.items())))
             if remaining < 1:
                 row["reason"] = "original aggregate compile budget exhausted"
                 rows.append(row)

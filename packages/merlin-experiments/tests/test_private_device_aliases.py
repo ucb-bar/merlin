@@ -10,12 +10,13 @@ from merlin_experiments.phase1.feedback.private_device_audit import audit_built_
 @pytest.mark.parametrize("alias", [False, True])
 @pytest.mark.parametrize("cpu_helper", [False, True])
 def test_alias_body_gets_closed_input_transport_but_helpers_remain_audited(tmp_path, monkeypatch, alias, cpu_helper):
-    from merlin.llvmlower import device_shim, toolchain
+    from merlin.llvmlower import device_build, device_shim, toolchain
     from merlin.targetgen.rocc import decode
     from merlin.verify import conv_input_preparation
 
     monkeypatch.setattr(device_shim, "kernel_abi_for",
-                        lambda _target: SimpleNamespace(symbol="entry" if alias else "body"))
+                        lambda _target: SimpleNamespace(symbol="logical_pointer_layout_name"))
+    monkeypatch.setattr(device_build, "executable_kernel_entry", lambda _target: "entry" if alias else "body")
     monkeypatch.setattr(toolchain, "nm", lambda: "nm")
     monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: SimpleNamespace(stdout=""))
 

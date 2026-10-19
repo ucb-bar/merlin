@@ -117,6 +117,26 @@ def file_identity(path: str | Path | None) -> dict[str, Any] | None:
 TARGET_INPUTS = ("MERLIN_TARGET_CONTRACT", "MERLIN_RTL_FACTS")
 
 
+def compiler_environment() -> dict[str, str | None]:
+    """Command lookup/import context, preserving lexical virtualenv paths.
+
+    A manifest may invoke bare ``python3`` rather than ``sys.executable``. The
+    resolved Python binary alone loses its virtualenv context, and a PATH or
+    import-path correction must invalidate cached refusals as well as objects.
+    """
+    return {
+        name: os.environ.get(name)
+        for name in (
+            "PATH",
+            "PYTHONPATH",
+            "PYTHONHOME",
+            "PYTHONUSERBASE",
+            "PYTHONNOUSERSITE",
+            "VIRTUAL_ENV",
+        )
+    }
+
+
 def target_inputs() -> dict[str, str | None]:
     """sha256 of the selected target contract and RTL facts (they bind the interface and the ABI)."""
     found: dict[str, str | None] = {}
@@ -170,6 +190,7 @@ def kernel_material(catalog, symbol: str, *, package_sha256: str, toolchain, too
             "device_cflags": list(toolchain.device_cflags),
         },
         "tools": dict(tools),
+        "compiler_environment": compiler_environment(),
         "builder_sha256": builder_digest(),
         "target_inputs": target_inputs(),
     }
@@ -343,7 +364,12 @@ def build_kernels(
         result.unattempted = {s: "not attempted after a cached required kernel refusal" for s in missing}
     elif missing:
         built = _build(build, catalog, missing, package_dir, workdir, toolchain, stop_on_first_failure)
-        storable = objcopy is not None and package_digest(Path(package_dir)) == package_sha256
+        environment_after = compiler_environment()
+        storable = (
+            objcopy is not None
+            and package_digest(Path(package_dir)) == package_sha256
+            and all(material["compiler_environment"] == environment_after for material in materials.values())
+        )
         skipped = {str(sym): str(why) for sym, why in built.skipped}
         for symbol in missing:
             directory = store / keys[symbol]

@@ -354,7 +354,9 @@ def test_selected_snapshot_completion_keeps_work_but_marks_source_stale(tmp_path
     assert not guard.current()
 
 
-def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(tmp_path, monkeypatch):
+@pytest.mark.parametrize("finish_snapshot", [False, True])
+def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(tmp_path, monkeypatch, finish_snapshot):
+    monkeypatch.setenv("MERLIN_BACKGROUND_FINISH_SNAPSHOT", str(int(finish_snapshot)))
     ws, run, public = (tmp_path / name for name in ("workspace", "run", "public"))
     (ws / "submission").mkdir(parents=True)
     (ws / "submission/manifest.yaml").write_text("language: python\n")
@@ -381,16 +383,22 @@ def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(t
 
     def grade(*args, **kwargs):
         (ws / "submission/manifest.yaml").write_text("language: python\nrevision: replaced\n")
-        assert kwargs["defer_pending"]() == "background source superseded"
+        assert kwargs["defer_pending"]() == (None if finish_snapshot else "background source superseded")
         return {
-            "per_capsule": [
+            "per_capsule": [] if finish_snapshot else [
                 {"capsule": "queued", "status": "gated", "background_deferred": "background source superseded"}
             ]
         }
 
     monkeypatch.setattr(CG, "grade", grade)
     result = LG.fast_grade(ws, run, 900, 30, inputs=inputs)
-    assert result["n_capsules"] == 2 and result["all_pass"] is None
-    assert result["background_grade"]["status"] == "deferred"
+    assert result["n_capsules"] == (1 if finish_snapshot else 2) and result["all_pass"] is None
+    if finish_snapshot:
+        assert "background_grade" not in result
+    else:
+        assert result["background_grade"]["status"] == "deferred"
+    assert result["snapshot_current"] is False
     assert json.loads((ws / "qa/verdict.json").read_text()) == {"current_feedback": True}
-    assert (run / "qa_history/verdict_fast_900.json").is_file()
+    archived = json.loads((run / "qa_history/verdict_fast_900.json").read_text())
+    assert archived["snapshot_current"] is False
+    assert archived["graded_request_sha256"] == result["graded_request_sha256"]

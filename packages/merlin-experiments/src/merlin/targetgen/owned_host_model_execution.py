@@ -518,7 +518,7 @@ def _dispatch_proof(record, *, target, facts):
     from xdsl.parser import Parser
 
     from merlin.common.facts_view import interface as facts_interface
-    from merlin.llvmlower.device_shim import kernel_abi_for
+    from merlin.llvmlower.device_build import executable_kernel_entry
     from merlin.targetgen.contract.schemas import contract_dir
     from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
     from merlin.targetgen.rocc.decode import decode_module
@@ -549,9 +549,7 @@ def _dispatch_proof(record, *, target, facts):
     ]
     work = _verified_work_functs_by_family(endpoints, table, work_roles_only=True)
     names = {int(key) for key in (table.get("names") or {})}
-    abi = kernel_abi_for(target)
-    if abi is None:
-        raise ValueError("actual device kernel has no independently selected ABI")
+    entry_symbol = executable_kernel_entry(target)
     completed, decoded_classes, artifact_pins = [], set(), {}
     for row in assigned:
         symbol = row["symbol"]
@@ -568,11 +566,11 @@ def _dispatch_proof(record, *, target, facts):
             artifact=artifact,
             llvm_ir=_pinned(pins, "llvm_ir"),
             obj=obj,
-            original_symbol=abi.symbol,
+            original_symbol=entry_symbol,
             kernel_symbol=kernel_symbol,
         )
         module = Parser(make_llvm_context(), artifact.read_text()).parse_module()
-        function = _llvm_function(module, abi.symbol)
+        function = _llvm_function(module, entry_symbol)
         with observed_facts(target, json.loads(Path(facts["path"]).read_text()), path=Path(facts["path"])):
             trace = decode_module(module, target=target)
         opcode = (trace.get("abi") or {}).get("custom_opcode")

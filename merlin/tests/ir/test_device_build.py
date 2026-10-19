@@ -74,18 +74,22 @@ def test_each_signature_gets_a_distinct_kernel_symbol(tmp_path):
     )
 
 
-def test_repeated_artifacts_compile_once_but_keep_distinct_symbols(tmp_path, monkeypatch):
+@pytest.mark.parametrize("selected_entry", ["kernel", "selected_executable_entry"])
+def test_repeated_artifacts_compile_once_but_keep_distinct_symbols(tmp_path, monkeypatch, selected_entry):
     """A reduced repeated-group proxy: three signatures, two identical emitted kernels."""
     from pathlib import Path
     from types import SimpleNamespace
 
     from merlin.llvmlower import device_build, device_shim, toolchain
+    from merlin.runtime.backends import base as backends
     from merlin.targetgen import corpus_spec, package_runtime
 
     monkeypatch.setattr(device_build, "objects_buildable", lambda device: None)
     monkeypatch.setattr(device_build, "_objcopy", lambda: "objcopy")
     monkeypatch.setattr("merlin.compile.mesh._mesh_tile_binding", lambda *args, **kwargs: None)
     monkeypatch.setattr(device_shim, "kernel_abi_for", lambda device: SimpleNamespace(symbol="kernel"))
+    monkeypatch.setattr(backends, "harness_build_recipe", lambda device: SimpleNamespace(
+        require_kernel_stack_frame=lambda: SimpleNamespace(entry_symbol=selected_entry)))
     monkeypatch.setattr(
         device_shim,
         "emit_translation_unit",
@@ -112,10 +116,11 @@ def test_repeated_artifacts_compile_once_but_keep_distinct_symbols(tmp_path, mon
     )
     monkeypatch.setattr(toolchain, "mlir_translate", lambda: "translate")
     monkeypatch.setattr(toolchain, "clang", lambda: "clang")
-    calls = []
+    calls, commands = [], []
 
     def fake_run(argv, *, timeout):
         calls.append(argv[0])
+        commands.append(argv)
         if argv[0] == "objcopy":
             Path(argv[-1]).write_bytes(Path(argv[-2]).read_bytes() + argv[1].encode())
         else:
@@ -139,6 +144,9 @@ def test_repeated_artifacts_compile_once_but_keep_distinct_symbols(tmp_path, mon
     assert calls.count("objcopy") == 3
     assert len(set(built.kernels.values())) == 3
     assert len({path.read_bytes() for path in built.objects[:3]}) == 3
+    renamed = [argv for argv in commands if argv[0] == "objcopy"]
+    assert all(argv[1].startswith(f"--redefine-sym={selected_entry}=kernel_") for argv in renamed)
+    assert set(built.kernels.values()) == {"kernel_0", "kernel_1", "kernel_2"}
 
 
 def test_every_kernel_object_defines_exactly_its_renamed_symbol(tmp_path):
@@ -198,6 +206,7 @@ def test_required_whole_model_kernel_stops_after_first_tool_timeout(
 
     monkeypatch.setattr(DB, "objects_buildable", lambda _device: None)
     monkeypatch.setattr(device_shim, "kernel_abi_for", lambda _device: SimpleNamespace(symbol="kernel"))
+    monkeypatch.setattr(DB, "executable_kernel_entry", lambda _device: "kernel")
     monkeypatch.setattr(DB, "kernel_entry", lambda *_args: ({"op": "matmul"}, "stated_group", ""))
     monkeypatch.setattr(DB, "_objcopy", lambda: "objcopy")
     monkeypatch.setattr(mesh, "_mesh_tile_binding", lambda *_args, **_kwargs: object())
@@ -292,6 +301,7 @@ def test_exact_model_build_hands_the_selected_interface_to_the_oot_package(tmp_p
     package.mkdir()
     (package / "manifest.yaml").write_text("target: gemmini\n")
     monkeypatch.setattr("merlin.llvmlower.device_build.objects_buildable", lambda _device: None)
+    monkeypatch.setattr("merlin.llvmlower.device_build.executable_kernel_entry", lambda _device: "kernel")
     monkeypatch.setattr(oot_runner, "load_package", lambda _path: SimpleNamespace(target="gemmini"))
     monkeypatch.setattr(
         "merlin.targetgen.corpus_spec.build",
