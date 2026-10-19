@@ -131,6 +131,17 @@ def test_installed_cli_reopens_explicit_original_pass_owner(tmp_path, monkeypatc
     from test_compiler_pass_state import original
 
     inputs, first = original.__wrapped__(tmp_path)
+    from merlin_experiments.phase2.compiler_pass_preparation import CompilerPassPreparation
+
+    from merlin.common.digest import sha256_file
+
+    preparation = CompilerPassPreparation(
+        "configuration_cleanup",
+        baseline_policy={"enabled": False},
+        candidate_policy={"enabled": True},
+    )
+    policies = tmp_path / "original-policies.json"
+    policies.write_text(json.dumps(preparation.record()))
     library = inputs["library"]
     contract = tmp_path / "selected-library.json"
     contract.write_text(json.dumps(library.contract.record()))
@@ -157,9 +168,14 @@ def test_installed_cli_reopens_explicit_original_pass_owner(tmp_path, monkeypatc
         inputs["sha256"],
         "--compiler-pass-admission-root",
         str(inputs["work_root"]),
+        "--compiler-pass-preparation",
+        str(policies),
+        "--compiler-pass-preparation-sha256",
+        sha256_file(policies),
     ]
     assert CLI.main(args) == 0
     assert observed["compiler_pass_selection"].record() == first.record()
+    assert observed["compiler_pass_preparation"].record() == preparation.record()
     assert (inputs["work_root"] / "original-check-ran").is_file()
     assert not (tmp_path / "stage-root").exists()
 

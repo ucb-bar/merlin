@@ -252,7 +252,11 @@ registry. A saved successful verdict supplies no capability. Original callbacks
 retain their independent resource admission; selecting no hard boundary adds
 no hard limits. The CLI forwards the resulting owner through the existing
 ordinary stage and final checks. Compiler preparation remains a separate host
-step before source/edit freezing; these flags do not prepare or enable a pass.
+choice before source/edit freezing. The CLI also requires
+`--compiler-pass-preparation` and `--compiler-pass-preparation-sha256` when
+selecting passes; those pin the policies for both copied compilers. The
+ordinary stage applies the live owner's checked preparation before freezing
+the actual edit surfaces. See [compiler preparation](phase2_compiler_preparation.md).
 
 The host-only `llvmlower.reviewed_pass_capabilities` registry transports live
 original owners. `PassCapabilityBinding` requires exact hardware, software,

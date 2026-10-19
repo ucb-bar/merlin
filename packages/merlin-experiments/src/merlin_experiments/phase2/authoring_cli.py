@@ -210,6 +210,7 @@ def main(
     )
     try:
         compiler_library = selection_from_arguments(args)
+        compiler_preparation = PASSES.preparation_from_arguments(args)
         if args.search_configuration is not None:
             from .search_configuration import read_search_configuration
             from .search_resource_launch import prepare_launch_boundary
@@ -226,6 +227,7 @@ def main(
         record = authoring.run_stage(
             **({"compiler_library_selection": compiler_library} if compiler_library is not None else {}),
             **({"compiler_pass_selection": compiler_passes} if compiler_passes is not None else {}),
+            **({"compiler_pass_preparation": compiler_preparation} if compiler_preparation is not None else {}),
             **layout,
             suite=suite if suite is not None else args.suite,
             functional_run_id=args.functional_run_id,
