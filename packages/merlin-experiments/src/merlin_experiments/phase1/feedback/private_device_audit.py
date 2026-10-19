@@ -111,7 +111,7 @@ def audit_built_device_host_compute(
         module = Parser(context, artifact.read_text(encoding="utf-8")).parse_module()
         functions = HA._functions(module)  # noqa: PLC2701 -- shared independent host-code reader
         try:
-            defined_function(module, abi.symbol)
+            kernel = defined_function(module, abi.symbol)
         except ValueError as error:
             raise ValueError(f"linked group {index} has no body for its target ABI kernel") from error
         sites = [
@@ -127,10 +127,12 @@ def audit_built_device_host_compute(
         preparation = preparations.get(symbol)
         if preparation is not None and symbol in host_alignments:
             preparation = {**preparation, "argument_alignments": host_alignments[symbol]}
+        # The ABI may alias the real body. Scope proven transport to that one
+        # resolved function; every other helper retains the ordinary veto.
         report = HA.audit(
             module,
             sites,
-            input_preparation={abi.symbol: preparation} if preparation is not None else None,
+            input_preparation={kernel.sym_name.data: preparation} if preparation is not None else None,
             target=target,
         )
         # Retain the instrument's complete reasons on the exact built artifact.
