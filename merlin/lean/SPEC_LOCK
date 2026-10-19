@@ -179,6 +179,8 @@
   "statement:MerlinVerify.Rules.IntegerCastDead.drop_sound": "f1234239da11cb3886a6f7ed0bfde6e99295aac75531772943517ccc839a1aaa",
   "statement:MerlinVerify.Rules.IntegerCastDead.normalize_sound": "5acb8924c04b4bc95113a825e5de3aa1a11069be39045a9361d329b1cbbadfde",
   "statement:MerlinVerify.Rules.IntegerCastDead.total_exec": "bf1290e9a49050a87bdfdff9113b2bb4535c56f45c8c2d2700a99afcff73f3c7",
+  "statement:MerlinVerify.Rules.IntegerCastHeader.canonical_step": "a566e693e48676ebdafb30fa438e751ae2fb11087bb7b1f6f3f831403ba9fbe9",
+  "statement:MerlinVerify.Rules.IntegerCastHeader.operation_spec": "3f653fd45521b2c166a615f46645c840964d9cab83839529ee071ed86873fdc6",
   "statement:MerlinVerify.Rules.IntegerCastPartial.meaning": "ed81bb3efcf9cd36e7d48936fac25c76c334b59a76c6a8af9537e4fd384ac6e2",
   "statement:MerlinVerify.Rules.IntegerCastPartial.normalize_sound": "e94fe40c322821e201c82f5b24c2f5826bfbc6b9a102c854afe07531f27473da",
   "statement:MerlinVerify.Rules.IntegerCompareOrder.operation_spec": "027634ed5204d71012ebaef5827cd065d5d4f6fb45ba0795c3846aed2724dcb0",

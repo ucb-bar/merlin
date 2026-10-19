@@ -204,6 +204,8 @@ PINNED = {
     "MerlinVerify.Rules.IntegerNeutral.normalize_sound": "MerlinVerify.Rules.IntegerNeutral",
     "MerlinVerify.Rules.IntegerCastPartial.meaning": "MerlinVerify.Rules.IntegerCastPartial",
     "MerlinVerify.Rules.IntegerCastPartial.normalize_sound": "MerlinVerify.Rules.IntegerCastPartial",
+    "MerlinVerify.Rules.IntegerCastHeader.canonical_step": "MerlinVerify.Rules.IntegerCastHeader",
+    "MerlinVerify.Rules.IntegerCastHeader.operation_spec": "MerlinVerify.Rules.IntegerCastHeader",
     "MerlinVerify.Rules.IntegerCompareOrder.operation_spec": "MerlinVerify.Rules.IntegerCompareOrder",
     "MerlinVerify.Rules.IntegerCompareOrder.operations_equal": "MerlinVerify.Rules.IntegerCompareOrder",
     "MerlinVerify.Rules.InsertExtract.inserted_get": "MerlinVerify.Rules.InsertExtractKernel",
