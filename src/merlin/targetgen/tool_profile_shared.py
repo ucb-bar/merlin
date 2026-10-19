@@ -31,33 +31,90 @@ _NAMESPACE_MODULES = (
     "merlin.verify",
 )
 
+# Exact pre-configuration V6 release, independent of future live API additions.
+# Archived profiles retain these grants and their original ordering.
+_V6_PRE_CONFIGURATION_MODULES = (
+    "merlin", "merlin.common", "merlin.common.dense_float_ir", "merlin.compile",
+    "merlin.compile.scheduling", "merlin.compile.scheduling.block_schedule",
+    "merlin.compile.scheduling.compact_dense", "merlin.compile.scheduling.compact_verification",
+    "merlin.compile.scheduling.configuration", "merlin.compile.scheduling.copy_elimination",
+    "merlin.compile.scheduling.dense_contracts", "merlin.compile.scheduling.dense_source",
+    "merlin.compile.scheduling.device_spills", "merlin.compile.scheduling.fusion",
+    "merlin.compile.scheduling.fusion_contracts", "merlin.compile.scheduling.fusion_semantics",
+    "merlin.compile.scheduling.library_sources", "merlin.compile.scheduling.pointwise_source",
+    "merlin.compile.scheduling.program_contracts", "merlin.compile.scheduling.program_limits",
+    "merlin.compile.scheduling.row_contracts", "merlin.compile.scheduling.row_softmax",
+    "merlin.compile.scheduling.row_softmax_verification", "merlin.compile.scheduling.schedule_pipeline",
+    "merlin.compile.scheduling.selected_contracts", "merlin.compile.scheduling.spill_conformance",
+    "merlin.compile.scheduling.spill_contracts", "merlin.compile.scheduling.storage_contracts",
+    "merlin.compile.scheduling.staged_dense", "merlin.compile.scheduling.staged_dense_verification",
+    "merlin.compile.scheduling.temporary_storage", "merlin.llvmlower", "merlin.llvmlower.cpu_softmax",
+    "merlin.sched", "merlin.sched.codegen", "merlin.sched.ir", "merlin.sched.ir.expr",
+    "merlin.sched.ir.integer_domain", "merlin.sched.ir.kernel", "merlin.sched.ir.parse",
+    "merlin.sched.isa", "merlin.sched.isa.types", "merlin.semantic_compiler",
+    "merlin.semantic_compiler.allocate", "merlin.semantic_compiler.allocation_types",
+    "merlin.semantic_compiler.egg_bridge", "merlin.semantic_compiler.extract",
+    "merlin.semantic_compiler.model", "merlin.semantic_compiler.rules", "merlin.targetgen",
+    "merlin.targetgen.isa_dialect_gen", "merlin.targetgen.isa_spec", "merlin.transforms",
+    "merlin.transforms.certificates", "merlin.transforms.dense_ir", "merlin.transforms.dense_planning",
+    "merlin.transforms.normalization", "merlin.transforms.pipeline_state", "merlin.transforms.pure_scalar",
+    "merlin.transforms.scalar_witness", "merlin.transforms.unrolling", "merlin.verify",
+    "merlin.verify.epilogue_applicability",
+)
+_V6_PRE_CONFIGURATION_PUBLIC = (
+    "merlin.compile.scheduling.block_schedule", "merlin.compile.scheduling.compact_dense",
+    "merlin.compile.scheduling.dense_source", "merlin.compile.scheduling.configuration",
+    "merlin.compile.scheduling.device_spills", "merlin.compile.scheduling.fusion",
+    "merlin.compile.scheduling.fusion_semantics", "merlin.compile.scheduling.library_sources",
+    "merlin.compile.scheduling.pointwise_source", "merlin.compile.scheduling.program_limits",
+    "merlin.compile.scheduling.row_softmax", "merlin.compile.scheduling.schedule_pipeline",
+    "merlin.compile.scheduling.selected_contracts", "merlin.compile.scheduling.spill_conformance",
+    "merlin.compile.scheduling.temporary_storage", "merlin.llvmlower.cpu_softmax",
+    "merlin.compile.scheduling.staged_dense", "merlin.sched.ir.expr", "merlin.sched.ir.integer_domain",
+    "merlin.sched.ir.kernel", "merlin.sched.ir.parse", "merlin.sched.isa.types",
+    "merlin.semantic_compiler.allocation_types", "merlin.targetgen.isa_dialect_gen",
+    "merlin.targetgen.isa_spec", "merlin.transforms.dense_ir", "merlin.transforms.dense_planning",
+    "merlin.transforms.pipeline_state",
+)
 
-def shared_inventory(namespaces, public, *, library_modules=LIBRARY_MODULES):
+
+def shared_inventory(namespaces, public, *, library_modules=LIBRARY_MODULES, public_modules=PUBLIC_MODULES):
     """Stable exact membership; package initializers never become public APIs."""
     namespaces = tuple(dict.fromkeys((*namespaces, *(name + ".__init__" for name in _NAMESPACE_MODULES
                                                    if name in library_modules))))
-    public = tuple(dict.fromkeys((*public, *PUBLIC_MODULES)))
+    public = tuple(dict.fromkeys((*public, *public_modules)))
     implementation = tuple(name for name in library_modules if name not in _NAMESPACE_MODULES and name not in public)
     return namespaces, public, implementation
 
 
-def _release_modules(document):
-    """Preserve the two explicit V6 source rosters; never add live grants to an archive."""
-    original = tuple(module for module in LIBRARY_MODULES if module not in
-                     ("merlin.common", "merlin.common.dense_float_ir"))
+def _release_inventory(document):
+    """Recognize exact versioned rosters; never upgrade an archived import grant."""
     members = document.get("members", []) if isinstance(document, dict) else []
     if isinstance(members, list):
         actual = [row.get("module") for row in members if isinstance(row, dict)]
-        for modules in (LIBRARY_MODULES, original):
-            if len(actual) == len(members) and actual == [*modules, None, None]:
-                return modules
+        for complete, public in (
+            (LIBRARY_MODULES, PUBLIC_MODULES),
+            (_V6_PRE_CONFIGURATION_MODULES, _V6_PRE_CONFIGURATION_PUBLIC),
+        ):
+            original = tuple(module for module in complete if module not in
+                             ("merlin.common", "merlin.common.dense_float_ir"))
+            for modules in (complete, original):
+                if len(actual) == len(members) and actual == [*modules, None, None]:
+                    if document.get("public_modules") != list(public):
+                        raise ValueError("shared compiler public API inventory changed")
+                    return modules, public
     raise ValueError("shared compiler source inventory changed")
+
+
+def _release_modules(document):
+    return _release_inventory(document)[0]
 
 
 def profile_inventory(profile, namespaces, public):
     """Derive unchanged grants from this frozen release, not the current checkout."""
+    modules, release_public = _release_inventory(profile.get("shared_scheduling_library"))
     return shared_inventory(
-        namespaces, public, library_modules=_release_modules(profile.get("shared_scheduling_library"))
+        namespaces, public, library_modules=modules, public_modules=release_public
     )
 
 
@@ -80,8 +137,6 @@ def reviewed_shared_manifest(root):
         raise ValueError("shared compiler release requires the reviewed SDK export")
     if document.get("library_sha256") != _digest({k: v for k, v in document.items() if k != "library_sha256"}):
         raise ValueError("shared compiler export identity changed")
-    if document.get("public_modules") != list(PUBLIC_MODULES):
-        raise ValueError("shared compiler public API inventory changed")
     members = document.get("members", [])
     library_modules = _release_modules(document)
     expected_paths = [
@@ -110,9 +165,7 @@ def validate_profile_release(profile):
         {k: v for k, v in document.items() if k != "library_sha256"}
     ):
         raise ValueError("shared compiler profile requires its unchanged export identity")
-    if document.get("schema") != "merlin.shared_scheduling_library.v1" or document.get("public_modules") != list(
-        PUBLIC_MODULES
-    ):
+    if document.get("schema") != "merlin.shared_scheduling_library.v1":
         raise ValueError("shared compiler profile API changed")
     rows = {row["module"].removesuffix(".__init__"): row for row in profile["common_sources"]}
     members = document.get("members", [])
