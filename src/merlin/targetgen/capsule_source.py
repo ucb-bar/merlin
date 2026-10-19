@@ -1354,7 +1354,8 @@ def _model_output_numeric_policy(output_abi: list[dict], golden_values: list, bi
     The capture worker serializes even integer tensors through float64 JSON. An
     integer policy is sound only where every serialized golden remains finite,
     integral and exactly representable; the ABI supplies the actual tensor dtype.
-    A capsule has one numeric policy, so heterogeneous result dtypes are refused.
+    Heterogeneous result dtypes require an explicit complete output roster and
+    receive one existing numerical policy per result; legacy calls refuse them.
     """
     if len(output_abi) != len(golden_values):
         raise M2MUnavailable("model output ABI/result cardinality disagrees with its golden")
@@ -3577,8 +3578,14 @@ def write_model_capsule(
     if len(out_names) != len(output_abi) or len(set(out_names)) != len(out_names):
         raise M2MUnavailable(f"model declares outputs {out_names!r}, but capture has {len(output_abi)} tensor results")
     typed_public = (entry.get("public_boundary") or {}).get("schema") == "merlin.phase0.public_joint_boundaries.v2"
+    output_selection = entry.get("output_numeric_policy")
+    if output_selection not in (None, "captured_per_output_v1"):
+        raise M2MUnavailable("model output numerical selection must be captured_per_output_v1")
     numeric_policy = _model_output_numeric_policy(
-        output_abi, golden_values, binding, output_names=out_names if typed_public else None
+        output_abi,
+        golden_values,
+        binding,
+        output_names=out_names if typed_public or output_selection == "captured_per_output_v1" else None,
     )
     out_name = out_names[0]
     gate = entry.get("gate") or {"after_op_pass_fraction": 0.8}
